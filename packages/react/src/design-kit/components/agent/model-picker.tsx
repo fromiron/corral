@@ -17,6 +17,7 @@ import {
   useEffect,
   useId,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from 'react';
@@ -57,6 +58,22 @@ export interface ModelOption {
   pricePerMTok?: number;
   /** Keep a saved, missing profile visible without allowing it to be chosen. */
   disabled?: boolean;
+  /** Group heading; consecutive options with the same group form one named group. */
+  group?: string;
+  /** More text the search matches besides the name (a model id, a provider name). */
+  keywords?: string;
+  /** The tile's letter when there is no mark. Omitted, the name's first letter. */
+  markText?: string;
+  /** Confirmed to take images: the row shows the image mark, named by `labels.image`. */
+  imageInput?: boolean;
+}
+
+/** The search field over the list; without it the list itself takes the keys. */
+export interface ModelPickerSearch {
+  label: string;
+  placeholder?: string;
+  /** Shown when nothing matches the query. */
+  noMatch: (query: string) => string;
 }
 
 export type ModelEffort = 'low' | 'medium' | 'high';
@@ -84,6 +101,8 @@ export interface ModelPickerLabels {
   settings: string;
   trigger: (name: string) => string;
   empty: string;
+  /** The image mark's name, on a model confirmed to take images. */
+  image: string;
 }
 
 const defaultLabels: ModelPickerLabels = {
@@ -91,6 +110,7 @@ const defaultLabels: ModelPickerLabels = {
   settings: 'Model settings',
   trigger: (name) => `Model: ${name}`,
   empty: 'No model profiles',
+  image: 'Image input',
 };
 
 export interface ModelPickerProps extends Omit<HTMLAttributes<HTMLDivElement>, 'onChange'> {
@@ -136,6 +156,17 @@ export interface ModelPickerProps extends Omit<HTMLAttributes<HTMLDivElement>, '
   placeholder?: string;
   triggerDescription?: string;
   labels?: Partial<ModelPickerLabels>;
+  /** A search field above the list (focused on open). Shown while there are models. */
+  search?: ModelPickerSearch;
+  /**
+   * `chip` is the composer's borderless chip; `field` is a bordered form field that fills its
+   * row, for a model chosen in a form. Default `chip`.
+   */
+  trigger?: 'chip' | 'field';
+  /** The footer readout and key hints. Default true. */
+  footer?: boolean;
+  /** The trigger's id, for a visible label's `htmlFor`. */
+  triggerId?: string;
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -178,10 +209,75 @@ function Glyph({ model, small }: { model: ModelOption; small?: boolean }) {
       {Mark ? (
         <Mark className={small ? 'size-2.5' : 'size-3'} strokeWidth={1.5} />
       ) : (
-        <span className={cn(typeClass('micro'), 'leading-none')}>{model.name.charAt(0)}</span>
+        <span className={cn(typeClass('micro'), 'leading-none')}>
+          {(model.markText ?? model.name).charAt(0)}
+        </span>
       )}
     </span>
   );
+}
+
+// ─── Windowed rows ───────────────────────────────────────────────────────────
+
+/** A row of the list: a group heading or an option (by its index in `models`). */
+type ListRow =
+  | { kind: 'group'; key: string; label: string }
+  | { kind: 'option'; key: string; index: number; position: number; double: boolean };
+type RowKind = 'group' | 'single' | 'double';
+const kindOf = (row: ListRow): RowKind =>
+  row.kind === 'group' ? 'group' : row.double ? 'double' : 'single';
+
+/** Row heights before the first rendered row of each kind is measured. */
+const ESTIMATE: Record<'default' | 'compact', Record<RowKind, number>> = {
+  default: { group: 28, single: 36, double: 48 },
+  compact: { group: 26, single: 32, double: 44 },
+};
+/** The list's height before it is laid out (and in environments without layout). */
+const FALLBACK_VIEWPORT = 320;
+/** Rows drawn beyond the visible part, in pixels, so a fast scroll never shows a gap. */
+const OVERSCAN = 240;
+
+function matches(model: ModelOption, query: string) {
+  if (!query) return true;
+  const text = `${model.name} ${model.keywords ?? ''} ${model.group ?? ''}`.toLowerCase();
+  return query
+    .split(/\s+/)
+    .filter(Boolean)
+    .every((word) => text.includes(word));
+}
+
+/** The visible options in order, with a heading wherever the group changes. */
+function listRows(models: ModelOption[], query: string): ListRow[] {
+  const rows: ListRow[] = [];
+  let group: string | undefined;
+  let position = 0;
+  models.forEach((model, index) => {
+    if (!matches(model, query)) return;
+    if (model.group !== undefined && model.group !== group)
+      rows.push({ kind: 'group', key: `group:${index}`, label: model.group });
+    group = model.group;
+    position++;
+    rows.push({
+      kind: 'option',
+      key: model.id,
+      index,
+      position,
+      double: Boolean(model.description),
+    });
+  });
+  return rows;
+}
+
+/** Index of the first row whose bottom is below `offset` (rows are sorted by top). */
+function firstBelow(tops: number[], heights: number[], offset: number) {
+  let low = 0;
+  let high = tops.length - 1;
+  while (low < high) {
+    const mid = (low + high) >> 1;
+    if ((tops[mid] ?? 0) + (heights[mid] ?? 0) <= offset) low = mid + 1;
+    else high = mid;
+  }
+  return low;
 }
 
 /** Five-segment hint bar; the lit layer fades in segment by segment. */
@@ -296,6 +392,10 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
       placeholder,
       triggerDescription,
       labels: labelOverrides,
+      search,
+      trigger: triggerKind = 'chip',
+      footer = true,
+      triggerId,
       value,
       defaultValue,
       onValueChange,
@@ -327,6 +427,8 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
     const Chevron = icons['chevron-down'];
     const Brain = icons.brain;
     const Globe = icons.globe;
+    const SearchIcon = icons.search;
+    const ImageIcon = icons.image;
 
     const [selected, setSelected] = useControllable(
       value,
@@ -349,38 +451,119 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
         (m) => m.auto || (m.speed !== undefined && m.quality !== undefined && m.cost !== undefined),
       );
     const selectedIndex = models.findIndex((m) => m.id === selected);
-    const [active, setActive] = useState(selectedIndex);
+    // The active row is kept by its model's id, so a list read again keeps it on that model.
+    const [activeId, setActiveId] = useState<string | null>(selected || null);
+    const active = activeId === null ? -1 : models.findIndex((m) => m.id === activeId);
+    const setActive = (index: number) => setActiveId(models[index]?.id ?? null);
     const [pointing, setPointing] = useState(false);
     const [keyboard, setKeyboard] = useState(false);
+
+    // The search narrows the rows; long lists draw only the rows near the visible part.
+    const searching = Boolean(search) && models.length > 0;
+    const [query, setQuery] = useState('');
+    const q = query.trim().toLowerCase();
+    const rows = useMemo(() => listRows(models, q), [models, q]);
+    const optionCount = useMemo(() => rows.filter((row) => row.kind === 'option').length, [rows]);
+    const rowOf = useMemo(() => {
+      const map = new Map<number, number>();
+      rows.forEach((row, i) => {
+        if (row.kind === 'option') map.set(row.index, i);
+      });
+      return map;
+    }, [rows]);
+    const [measured, setMeasured] = useState<Partial<Record<RowKind, number>>>({});
+    const estimate = ESTIMATE[size.variant];
+    const { tops, heights, total } = useMemo(() => {
+      const tops: number[] = [];
+      const heights: number[] = [];
+      let at = 0;
+      for (const row of rows) {
+        const kind = kindOf(row);
+        const height = measured[kind] ?? estimate[kind];
+        tops.push(at);
+        heights.push(height);
+        at += height;
+      }
+      return { tops, heights, total: at };
+    }, [rows, measured, estimate]);
+    const [scrollTop, setScrollTop] = useState(0);
+    const [viewport, setViewport] = useState(FALLBACK_VIEWPORT);
+    const from = rows.length ? firstBelow(tops, heights, scrollTop - OVERSCAN) : 0;
+    let to = from;
+    while (to < rows.length && (tops[to] ?? 0) < scrollTop + viewport + OVERSCAN) to++;
 
     const actionsRef = useRef<PopoverPrimitive.Root.Actions | null>(null);
     const triggerRef = useRef<HTMLButtonElement>(null);
     const listRef = useRef<HTMLDivElement>(null);
-    const optionRefs = useRef<(HTMLDivElement | null)[]>([]);
-    const [box, setBox] = useState<{ top: number; height: number } | null>(null);
+    const searchRef = useRef<HTMLInputElement>(null);
 
     const current = models[selectedIndex];
     const highlighted = models[active] ?? current;
+    // A form field says what to choose while it is empty; the chip only when there is nothing.
     const triggerName =
-      current?.name ?? (selected || (models.length === 0 ? placeholder : '') || '');
+      current?.name ??
+      (selected || (triggerKind === 'field' || models.length === 0 ? placeholder : '') || '');
     const thinkingShown =
       reasoning === undefined
         ? thinking
         : Boolean(reasoning?.effort && reasoning.effort.value !== 'off');
+    const optionId = (index: number) => `${id}-opt-${index}`;
+    // A current model that cannot be chosen says why (not connected, unavailable) in the trigger's
+    // description too, as a field already says it in its text.
+    const triggerNote =
+      [
+        triggerDescription,
+        current && (triggerKind === 'field' || current.disabled) ? current.description : '',
+      ]
+        .filter(Boolean)
+        .join(' · ') || undefined;
 
-    // Controlled choices remain the host's state until its update is confirmed.
-    useEffect(() => {
-      if (open) {
-        setActive(selectedIndex);
-        setPointing(false);
-      }
-    }, [open, selectedIndex]);
+    /** Scrolls the list so the option's row (and its group heading, when it opens one) shows. */
+    const reveal = (index: number, center = false) => {
+      const list = listRef.current;
+      const row = rowOf.get(index);
+      if (!list || row === undefined) return;
+      const height = list.clientHeight || viewport;
+      const top = rows[row - 1]?.kind === 'group' ? (tops[row - 1] ?? 0) : (tops[row] ?? 0);
+      const bottom = (tops[row] ?? 0) + (heights[row] ?? 0);
+      let next = list.scrollTop;
+      if (center) next = Math.max(0, top - (height - (bottom - top)) / 2);
+      else if (top < next) next = top;
+      else if (bottom > next + height) next = bottom - height;
+      if (next !== list.scrollTop) list.scrollTop = next;
+      setScrollTop(next);
+    };
 
-    // biome-ignore lint/correctness/useExhaustiveDependencies: Opening or replacing the model rows changes the measured highlight geometry.
+    // Controlled choices remain the host's state until its update is confirmed. Opening (or a
+    // new selection while open) recenters the list once it is in the document: the popup's
+    // content can mount a render after `open` turns true. A list read again with the same
+    // selection keeps the active row and the query.
+    const recenter = useRef(false);
     useLayoutEffect(() => {
-      const el = optionRefs.current[active];
-      setBox(el ? { top: el.offsetTop, height: el.offsetHeight } : null);
-    }, [active, open, models.length]);
+      if (!open) return;
+      setActiveId(selected || null);
+      setPointing(false);
+      setQuery('');
+      recenter.current = true;
+    }, [open, selected]);
+
+    // The first drawn row of each kind gives that kind's real height at this density.
+    useLayoutEffect(() => {
+      const list = listRef.current;
+      if (!list) return;
+      if (list.clientHeight && list.clientHeight !== viewport) setViewport(list.clientHeight);
+      if (recenter.current && open) {
+        recenter.current = false;
+        if (selectedIndex >= 0) reveal(selectedIndex, true);
+      }
+      const next: Partial<Record<RowKind, number>> = {};
+      for (const kind of ['group', 'single', 'double'] as const) {
+        if (measured[kind] !== undefined) continue;
+        const el = list.querySelector<HTMLElement>(`[data-row-kind="${kind}"]`);
+        if (el?.offsetHeight) next[kind] = el.offsetHeight;
+      }
+      if (Object.keys(next).length) setMeasured((all) => ({ ...all, ...next }));
+    });
 
     useEffect(() => {
       if (open) return;
@@ -401,36 +584,199 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
       }
     };
 
-    const onListKey = (e: KeyboardEvent<HTMLDivElement>) => {
+    const enabledIndices = () =>
+      rows.flatMap((row) =>
+        row.kind === 'option' && !models[row.index]?.disabled ? [row.index] : [],
+      );
+
+    const onListKey = (e: KeyboardEvent<HTMLElement>) => {
       if (disabled || e.nativeEvent.isComposing) return;
-      const enabled = models.flatMap((model, index) => (model.disabled ? [] : [index]));
-      if (!enabled.length) return;
+      const enabled = enabledIndices();
+      if (!enabled.length) {
+        if (e.key === 'Enter') e.preventDefault();
+        return;
+      }
       const move = (index: number | undefined) => {
         if (index === undefined) return;
         e.preventDefault();
         setKeyboard(true);
         setPointing(false);
         setActive(index);
-        optionRefs.current[index]?.scrollIntoView?.({ block: 'nearest' });
+        reveal(index);
       };
       const at = enabled.indexOf(active);
       if (e.key === 'ArrowDown') move(enabled[(at + 1) % enabled.length]);
       else if (e.key === 'ArrowUp') move(enabled[(at <= 0 ? enabled.length : at) - 1]);
       else if (e.key === 'Home') move(enabled[0]);
       else if (e.key === 'End') move(enabled.at(-1));
-      else if (e.key === 'Enter' || e.key === ' ') {
+      else if (e.key === 'Enter' || (e.key === ' ' && !searching)) {
         e.preventDefault();
         pick(active);
       }
     };
 
+    const changeQuery = (next: string) => {
+      setQuery(next);
+      const nextRows = listRows(models, next.trim().toLowerCase());
+      const first = nextRows.find((row) => row.kind === 'option' && !models[row.index]?.disabled);
+      setActive(first?.kind === 'option' ? first.index : -1);
+      setPointing(false);
+      if (listRef.current) listRef.current.scrollTop = 0;
+      setScrollTop(0);
+    };
+
     const showHighlight = pointing || keyboard;
+    const activeRow = rowOf.get(active);
+    // Only a drawn row can be named as the active one.
+    const activeDrawn = activeRow !== undefined && activeRow >= from && activeRow < to;
+    const box =
+      activeRow !== undefined
+        ? { top: tops[activeRow] ?? 0, height: heights[activeRow] ?? 0 }
+        : null;
     const foot = showHints && highlighted ? footerParts(highlighted) : null;
     const popVariants = {
       hidden: { opacity: 0, y: 'var(--model-picker-enter-y)', scale: 0.96 },
       shown: { opacity: 1, y: 0, scale: 1 },
     };
 
+    // The drawn rows, each run of one group inside its own named group.
+    const drawn: ReactNode[] = [];
+    let run: { label: string; key: string; rows: ReactNode[] } | null = null;
+    const flush = () => {
+      if (!run) return;
+      drawn.push(
+        // biome-ignore lint/a11y/useSemanticElements: A listbox groups its options with role="group"; a fieldset is not allowed there.
+        <div key={`run:${run.key}`} role="group" aria-label={run.label}>
+          {run.rows}
+        </div>,
+      );
+      run = null;
+    };
+    for (let r = from; r < to; r++) {
+      const row = rows[r];
+      if (!row) continue;
+      const style = { top: tops[r], height: heights[r] };
+      if (row.kind === 'group') {
+        flush();
+        drawn.push(
+          <div
+            key={row.key}
+            aria-hidden
+            data-row-kind="group"
+            className={cn(
+              'absolute inset-x-0 flex items-end px-2 pb-1 text-muted-foreground',
+              size.type.caption,
+            )}
+            style={style}
+          >
+            <span className="truncate" style={{ fontVariationSettings: fontWeights.semibold }}>
+              {row.label}
+            </span>
+          </div>,
+        );
+        continue;
+      }
+      const m = models[row.index];
+      if (!m) continue;
+      const i = row.index;
+      const isSel = i === selectedIndex;
+      const isActive = i === active;
+      const option = (
+        <motion.div
+          key={row.key}
+          id={optionId(i)}
+          role="option"
+          data-row-kind={kindOf(row)}
+          aria-selected={isSel}
+          aria-setsize={optionCount}
+          aria-posinset={row.position}
+          aria-label={
+            showHints
+              ? optionLabel(m)
+              : [m.name, m.description, m.imageInput ? labels.image : ''].filter(Boolean).join(', ')
+          }
+          aria-disabled={disabled || m.disabled || undefined}
+          data-active={isActive || undefined}
+          onPointerMove={() => {
+            if (!disabled && !m.disabled && (!pointing || active !== i)) {
+              setPointing(true);
+              setActive(i);
+            }
+          }}
+          onClick={() => pick(i)}
+          className={cn(
+            'absolute inset-x-0 z-10 flex cursor-pointer items-center gap-2.5 px-2 py-1.5',
+            keyboard && isActive && 'ring-2 ring-inset ring-[color:var(--focus-ring)]',
+            shape.item,
+            (disabled || m.disabled) && 'cursor-not-allowed opacity-50',
+          )}
+          style={style}
+          initial={false}
+          animate={{
+            opacity: disabled || m.disabled ? 0.5 : pointing && !isActive ? 0.55 : 1,
+          }}
+          transition={spring.fast}
+        >
+          <Glyph model={m} />
+          <span className="grid min-w-0 flex-1">
+            <span
+              className={cn('flex items-center gap-1 text-foreground', size.type.body)}
+              style={{
+                fontVariationSettings: isSel ? fontWeights.semibold : fontWeights.normal,
+              }}
+            >
+              <span className="truncate">{m.name}</span>
+              {isSel && <Check className="size-3.5 shrink-0" strokeWidth={2} aria-hidden />}
+            </span>
+            {m.description ? (
+              <span className={cn('truncate text-muted-foreground', size.type.caption)}>
+                {m.description}
+              </span>
+            ) : null}
+          </span>
+          {m.imageInput ? (
+            <span
+              data-mark="image"
+              title={labels.image}
+              className="inline-flex shrink-0 text-muted-foreground"
+            >
+              <ImageIcon aria-hidden className="size-3.5" strokeWidth={1.5} />
+            </span>
+          ) : null}
+          {showHints &&
+            (m.auto ? (
+              <span
+                className={cn(
+                  'w-[136px] shrink-0 text-center text-muted-foreground',
+                  size.type.caption,
+                )}
+              >
+                Varies
+              </span>
+            ) : (
+              <span className="grid shrink-0 grid-cols-[repeat(3,40px)] gap-2">
+                <HintMeter value={m.speed ?? 0} lit={isActive && showHighlight} column={0} />
+                <HintMeter value={m.quality ?? 0} lit={isActive && showHighlight} column={1} />
+                <HintMeter value={m.cost ?? 0} lit={isActive && showHighlight} column={2} />
+              </span>
+            ))}
+        </motion.div>
+      );
+      const group = m.group;
+      if (group === undefined) {
+        flush();
+        drawn.push(option);
+      } else {
+        if (!run || run.label !== group) {
+          flush();
+          run = { label: group, key: row.key, rows: [] };
+        }
+        run.rows.push(option);
+      }
+    }
+    flush();
+
+    const field = triggerKind === 'field';
     return (
       <PopoverPrimitive.Root
         open={open}
@@ -442,7 +788,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
       >
         <div
           ref={ref}
-          className={cn('relative inline-flex', className)}
+          className={cn(field ? 'relative flex w-full min-w-0' : 'relative inline-flex', className)}
           data-open={open || undefined}
           data-side={side}
           data-align={align}
@@ -450,27 +796,39 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
         >
           <PopoverPrimitive.Trigger
             ref={triggerRef}
+            id={triggerId}
             type="button"
             aria-haspopup="dialog"
             aria-expanded={open}
             aria-controls={`${id}-menu`}
             aria-label={labels.trigger(triggerName)}
-            aria-description={triggerDescription}
+            aria-description={triggerNote}
             disabled={disabled}
+            data-slot="model-picker-trigger"
             className={cn(
-              'inline-flex h-7 max-w-full items-center gap-1.5 px-1.5 text-muted-foreground transition-colors duration-160 hover:bg-hover hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed',
+              field
+                ? cn(
+                    'group flex w-full min-w-0 items-center border border-border bg-transparent text-left text-foreground transition-colors duration-80 hover:bg-hover disabled:pointer-events-none disabled:opacity-50',
+                    size.control,
+                    size.px,
+                    size.gap,
+                    shape.input,
+                  )
+                : cn(
+                    'inline-flex min-h-7 max-w-full items-center gap-1.5 px-1.5 py-1 text-left text-muted-foreground transition-colors duration-160 hover:bg-hover hover:text-foreground disabled:opacity-50 disabled:cursor-not-allowed',
+                    open && 'bg-hover text-foreground',
+                    shape.button,
+                  ),
               focusRing,
-              open && 'bg-hover text-foreground',
-              shape.button,
               size.type.body,
             )}
           >
             {current && <Glyph model={current} small />}
-            <span className="relative inline-grid min-w-0">
+            <span className={cn('relative inline-grid min-w-0', field && 'flex-1')}>
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
                   key={current?.id}
-                  className="truncate"
+                  className={field ? 'truncate' : '[overflow-wrap:anywhere]'}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0, transition: spring.fast.exit }}
@@ -480,6 +838,11 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                 </motion.span>
               </AnimatePresence>
             </span>
+            {field && current?.description ? (
+              <span className="min-w-0 max-w-[45%] shrink truncate text-muted-foreground">
+                {current.description}
+              </span>
+            ) : null}
             <AnimatePresence initial={false}>
               {thinkingShown && (
                 <motion.span
@@ -498,7 +861,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
             </AnimatePresence>
             <motion.span
               aria-hidden
-              className="inline-flex"
+              className={cn('inline-flex', field && 'text-muted-foreground')}
               initial={false}
               animate={{ rotate: open ? 180 : 0 }}
               transition={spring.moderate}
@@ -517,9 +880,15 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
               <PopoverPrimitive.Popup
                 id={`${id}-menu`}
                 aria-label={labels.settings}
-                initialFocus={listRef}
+                initialFocus={searching ? searchRef : listRef}
                 finalFocus={triggerRef}
-                className="w-[min(320px,calc(100vw-32px))] outline-none [--model-picker-enter-y:4px] data-[side=bottom]:[--model-picker-enter-y:-4px]"
+                data-slot="model-picker-popup"
+                className={cn(
+                  'outline-none [--model-picker-enter-y:4px] data-[side=bottom]:[--model-picker-enter-y:-4px]',
+                  field
+                    ? 'w-[max(var(--anchor-width),min(360px,calc(100vw-32px)))]'
+                    : 'w-[min(320px,calc(100vw-32px))]',
+                )}
               >
                 <motion.div
                   variants={popVariants}
@@ -538,167 +907,131 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                     className={cn('max-h-(--available-height) overflow-y-auto', shape.container)}
                   >
                     <div className="p-1">
-                      <div
-                        className={cn(
-                          'flex h-7 items-center justify-between gap-3 px-2 pt-1 text-muted-foreground',
-                          size.type.caption,
-                        )}
-                      >
-                        <span id={`${id}-label`}>{labels.model}</span>
-                        {showHints && (
-                          <span className="grid grid-cols-[repeat(3,40px)] gap-2" aria-hidden>
-                            {['Speed', 'Quality', 'Cost'].map((c) => (
-                              <span key={c} className="flex justify-center whitespace-nowrap">
-                                {c}
-                              </span>
-                            ))}
-                          </span>
-                        )}
-                      </div>
+                      {searching && search ? (
+                        <div
+                          className={cn(
+                            'group/search -mx-1 -mt-1 mb-0.5 flex items-center border-b border-border/60',
+                            size.control,
+                            size.gap,
+                            size.variant === 'compact' ? 'px-2.5' : 'px-3',
+                          )}
+                        >
+                          <SearchIcon
+                            size={size.icon}
+                            strokeWidth={1.5}
+                            aria-hidden
+                            className="shrink-0 text-muted-foreground transition-[color,stroke-width] duration-80 group-focus-within/search:text-foreground group-focus-within/search:stroke-[2]"
+                          />
+                          <input
+                            ref={searchRef}
+                            type="text"
+                            role="combobox"
+                            aria-expanded
+                            aria-controls={`${id}-list`}
+                            aria-autocomplete="list"
+                            aria-activedescendant={activeDrawn ? optionId(active) : undefined}
+                            aria-label={search.label}
+                            placeholder={search.placeholder ?? search.label}
+                            autoComplete="off"
+                            autoCorrect="off"
+                            spellCheck={false}
+                            disabled={disabled}
+                            value={query}
+                            onChange={(event) => changeQuery(event.target.value)}
+                            onKeyDown={onListKey}
+                            onFocus={() => setKeyboard(true)}
+                            onBlur={() => setKeyboard(false)}
+                            // rounded-none: a :focus-visible radius would clip the caret.
+                            className={cn(
+                              'min-w-0 flex-1 rounded-none bg-transparent text-foreground placeholder:text-muted-foreground outline-none font-[inherit] disabled:opacity-50',
+                              size.field,
+                              size.variant === 'compact' ? 'leading-5' : 'leading-6',
+                            )}
+                          />
+                        </div>
+                      ) : (
+                        <div
+                          className={cn(
+                            'flex h-7 items-center justify-between gap-3 px-2 pt-1 text-muted-foreground',
+                            size.type.caption,
+                          )}
+                        >
+                          <span id={`${id}-label`}>{labels.model}</span>
+                          {showHints && (
+                            <span className="grid grid-cols-[repeat(3,40px)] gap-2" aria-hidden>
+                              {['Speed', 'Quality', 'Cost'].map((c) => (
+                                <span key={c} className="flex justify-center whitespace-nowrap">
+                                  {c}
+                                </span>
+                              ))}
+                            </span>
+                          )}
+                        </div>
+                      )}
 
                       <div
                         ref={listRef}
+                        id={`${id}-list`}
                         role="listbox"
-                        tabIndex={0}
-                        aria-labelledby={`${id}-label`}
-                        aria-activedescendant={active >= 0 ? `${id}-opt-${active}` : undefined}
+                        tabIndex={searching ? -1 : 0}
+                        {...(searching
+                          ? { 'aria-label': labels.model }
+                          : {
+                              'aria-labelledby': `${id}-label`,
+                              'aria-activedescendant': activeDrawn ? optionId(active) : undefined,
+                            })}
                         aria-disabled={disabled || undefined}
                         data-pointing={pointing || undefined}
-                        onKeyDown={onListKey}
-                        onFocus={(event) =>
-                          setKeyboard(event.currentTarget.matches(':focus-visible'))
-                        }
-                        onBlur={() => setKeyboard(false)}
+                        onKeyDown={searching ? undefined : onListKey}
+                        onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
+                        onFocus={(event) => {
+                          if (!searching)
+                            setKeyboard(event.currentTarget.matches(':focus-visible'));
+                        }}
+                        onBlur={() => {
+                          if (!searching) setKeyboard(false);
+                        }}
                         onPointerLeave={() => {
                           setPointing(false);
-                          setActive(selectedIndex);
+                          if (!q) setActive(selectedIndex);
                         }}
-                        className={cn('relative outline-none', shape.item)}
-                      >
-                        {box && (
-                          <motion.div
-                            aria-hidden
-                            className={cn(
-                              'pointer-events-none absolute inset-x-0 top-0 bg-hover',
-                              shape.bg,
-                            )}
-                            style={{ height: box.height }}
-                            initial={false}
-                            animate={{ y: box.top, opacity: showHighlight ? 1 : 0 }}
-                            transition={spring.moderate}
-                          />
+                        className={cn(
+                          'relative max-h-80 overflow-y-auto overscroll-contain outline-none',
+                          shape.item,
                         )}
+                      >
+                        <div className="relative" style={{ height: total }}>
+                          {box && (
+                            <motion.div
+                              aria-hidden
+                              className={cn(
+                                'pointer-events-none absolute inset-x-0 top-0 bg-hover',
+                                shape.bg,
+                              )}
+                              style={{ height: box.height }}
+                              initial={false}
+                              animate={{ y: box.top, opacity: showHighlight ? 1 : 0 }}
+                              transition={spring.moderate}
+                            />
+                          )}
+                          {drawn}
+                        </div>
                         {models.length === 0 && (
                           <p className={cn(size.type.caption, 'px-2 py-2 text-muted-foreground')}>
                             {labels.empty}
                           </p>
                         )}
-                        {models.map((m, i) => {
-                          const isSel = i === selectedIndex;
-                          const isActive = i === active;
-                          return (
-                            <motion.div
-                              key={m.id}
-                              id={`${id}-opt-${i}`}
-                              ref={(el) => {
-                                optionRefs.current[i] = el;
-                              }}
-                              role="option"
-                              aria-selected={isSel}
-                              aria-label={
-                                showHints
-                                  ? optionLabel(m)
-                                  : [m.name, m.description].filter(Boolean).join(', ')
-                              }
-                              aria-disabled={disabled || m.disabled || undefined}
-                              data-active={isActive || undefined}
-                              onPointerMove={() => {
-                                if (!disabled && !m.disabled && (!pointing || active !== i)) {
-                                  setPointing(true);
-                                  setActive(i);
-                                }
-                              }}
-                              onClick={() => pick(i)}
-                              className={cn(
-                                'relative z-10 flex min-h-11 cursor-pointer items-center gap-2.5 px-2 py-1.5',
-                                keyboard &&
-                                  isActive &&
-                                  'ring-2 ring-inset ring-[color:var(--focus-ring)]',
-                                shape.item,
-                                (disabled || m.disabled) && 'cursor-not-allowed opacity-50',
-                              )}
-                              initial={false}
-                              animate={{
-                                opacity:
-                                  disabled || m.disabled ? 0.5 : pointing && !isActive ? 0.55 : 1,
-                              }}
-                              transition={spring.fast}
-                            >
-                              <Glyph model={m} />
-                              <span className="grid min-w-0 flex-1">
-                                <span
-                                  className={cn(
-                                    'flex items-center gap-1 text-foreground',
-                                    size.type.body,
-                                  )}
-                                  style={{
-                                    fontVariationSettings: isSel
-                                      ? fontWeights.semibold
-                                      : fontWeights.normal,
-                                  }}
-                                >
-                                  <span className="truncate">{m.name}</span>
-                                  {isSel && (
-                                    <Check
-                                      className="size-3.5 shrink-0"
-                                      strokeWidth={2}
-                                      aria-hidden
-                                    />
-                                  )}
-                                </span>
-                                <span
-                                  className={cn(
-                                    'truncate text-muted-foreground',
-                                    size.type.caption,
-                                  )}
-                                >
-                                  {m.description}
-                                </span>
-                              </span>
-                              {showHints &&
-                                (m.auto ? (
-                                  <span
-                                    className={cn(
-                                      'w-[136px] shrink-0 text-center text-muted-foreground',
-                                      size.type.caption,
-                                    )}
-                                  >
-                                    Varies
-                                  </span>
-                                ) : (
-                                  <span className="grid shrink-0 grid-cols-[repeat(3,40px)] gap-2">
-                                    <HintMeter
-                                      value={m.speed ?? 0}
-                                      lit={isActive && showHighlight}
-                                      column={0}
-                                    />
-                                    <HintMeter
-                                      value={m.quality ?? 0}
-                                      lit={isActive && showHighlight}
-                                      column={1}
-                                    />
-                                    <HintMeter
-                                      value={m.cost ?? 0}
-                                      lit={isActive && showHighlight}
-                                      column={2}
-                                    />
-                                  </span>
-                                ))}
-                            </motion.div>
-                          );
-                        })}
+                        {models.length > 0 && rows.length === 0 && search ? (
+                          <p
+                            className={cn(
+                              size.type.caption,
+                              'px-2 py-2 text-muted-foreground [overflow-wrap:anywhere]',
+                            )}
+                          >
+                            {search.noMatch(query.trim())}
+                          </p>
+                        ) : null}
                       </div>
-
                       {reasoning !== undefined ? (
                         reasoning ? (
                           <div className="mt-1 grid border-t border-border pt-1">
@@ -849,35 +1182,37 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
                       )}
                     </div>
 
-                    <div
-                      className={cn(
-                        'flex min-h-9 items-center gap-2 border-t border-border py-1.5 pr-2 pl-3 text-muted-foreground',
-                        size.type.caption,
-                      )}
-                    >
-                      <span className="relative inline-grid min-w-0 flex-1">
-                        <AnimatePresence initial={false} mode="popLayout">
-                          <motion.span
-                            key={highlighted?.id}
-                            aria-hidden
-                            className="flex min-w-0 items-center gap-1 truncate"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            exit={{ opacity: 0, transition: spring.fast.exit }}
-                            transition={spring.fast}
-                          >
-                            {footerText ?? foot?.caption}
-                          </motion.span>
-                        </AnimatePresence>
-                      </span>
-                      <span className="flex shrink-0 items-center gap-1" aria-hidden>
-                        <Keycap>↑↓</Keycap>
-                        <Keycap>↵</Keycap>
-                      </span>
-                      <span className="sr-only" aria-live="polite">
-                        {footerText ?? foot?.spoken}
-                      </span>
-                    </div>
+                    {footer ? (
+                      <div
+                        className={cn(
+                          'flex min-h-9 items-center gap-2 border-t border-border py-1.5 pr-2 pl-3 text-muted-foreground',
+                          size.type.caption,
+                        )}
+                      >
+                        <span className="relative inline-grid min-w-0 flex-1">
+                          <AnimatePresence initial={false} mode="popLayout">
+                            <motion.span
+                              key={highlighted?.id}
+                              aria-hidden
+                              className="flex min-w-0 items-center gap-1 truncate"
+                              initial={{ opacity: 0 }}
+                              animate={{ opacity: 1 }}
+                              exit={{ opacity: 0, transition: spring.fast.exit }}
+                              transition={spring.fast}
+                            >
+                              {footerText ?? foot?.caption}
+                            </motion.span>
+                          </AnimatePresence>
+                        </span>
+                        <span className="flex shrink-0 items-center gap-1" aria-hidden>
+                          <Keycap>↑↓</Keycap>
+                          <Keycap>↵</Keycap>
+                        </span>
+                        <span className="sr-only" aria-live="polite">
+                          {footerText ?? foot?.spoken}
+                        </span>
+                      </div>
+                    ) : null}
                   </Elevated>
                 </motion.div>
               </PopoverPrimitive.Popup>

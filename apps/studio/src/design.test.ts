@@ -65,6 +65,20 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  // DESIGN.md: controls 8px, panels and popup containers 12px, compact badges 4px, through the
+  // kit's radius classes. Only the kit itself sets a radius in pixels (its shape map's
+  // concentric focus rings and chips).
+  it('rounds corners with the kit radii, never an arbitrary pixel radius outside the kit', () => {
+    const found = [...text]
+      .filter(([path]) => !where(path).startsWith('packages/react/src/design-kit/'))
+      .flatMap(([path, body]) =>
+        [...body.matchAll(/\brounded(?:-[a-z]{1,2})?-\[[0-9.]+px\]/g)].map(
+          (match) => `${where(path)}: ${match[0]}`,
+        ),
+      );
+    expect(found).toEqual([]);
+  });
+
   it('does not extend the touch-field exception to local or other pixel sizes', () => {
     const shared = join(root, 'packages/react/src/design-kit/lib/type-scale.ts');
     const touchRole = "const fieldTouchClass = 'pointer-coarse:text-[16px]';";
@@ -166,7 +180,7 @@ describe('design guard (Workbench polish P0)', () => {
   it('builds text fields and toggles from the kit, never a native input with local styling', () => {
     // The request composer and the command palette own their editing surface and caret behavior;
     // schema question choices keep native fieldset, name/value and option descriptions (DESIGN.md).
-    const own = /(ComposerInput|RequestInput|CommandPalette|InteractionPanel)\.tsx$/;
+    const own = /(ComposerInput|CommandPalette|InteractionPanel)\.tsx$/;
     const found = [...text].flatMap(([path, body]) =>
       own.test(path) || path.includes('design-kit')
         ? []
@@ -194,5 +208,178 @@ describe('design guard (Workbench polish P0)', () => {
   it('merges the extra type steps as font sizes, not colors', () => {
     expect(cn('text-ui text-muted')).toBe('text-ui text-muted');
     expect(cn('text-xs text-ui')).toBe('text-ui');
+  });
+
+  it('hangs every bulleted list: a wrapped item continues under its text, not its bullet', () => {
+    // An inside marker sits in the text's line, so a second line starts under the bullet.
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/\blist-inside\b/g)].map((m) => `${where(path)}: ${m[0]}`),
+    );
+    expect(found).toEqual([]);
+  });
+
+  it('fades the cut edge of every tab list that scrolls, so a narrow strip shows there is more', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      [...body.matchAll(/<TabsList\b((?:[^>{]|\{[^}]*\})*)>/g)]
+        .filter((m) => /\boverflow-x-auto\b/.test(m[1] as string))
+        .filter((m) => !/\bscroll-fade-x\b/.test(m[1] as string))
+        .map(() => where(path)),
+    );
+    expect(found).toEqual([]);
+  });
+
+  // DESIGN.md Colors: theme values live in the theme module only, and components keep reading
+  // tokens. The copied kit and the Corral token file hold the default palette.
+  it('keeps color literals in the theme module and the token files, never in a component', () => {
+    const found = [...text].flatMap(([path, body]) =>
+      themeColorLiterals(where(path), body).map((hex) => `${where(path)}: ${hex}`),
+    );
+    // Known: the team editor's container tint predates themes and has no token yet, so it stays
+    // teal under every theme. Only these two literals in that file are tolerated.
+    const known = [
+      'packages/react/src/team-editor/TeamGraphCanvas.tsx: #3b82f6',
+      'packages/react/src/team-editor/TeamGraphCanvas.tsx: #14b8a6',
+    ];
+    expect(found.filter((each) => !known.includes(each))).toEqual([]);
+  });
+
+  it('finds a color literal in a component but not in the theme module or the token files', () => {
+    const line = "const accent = '#66d9ef';";
+    expect(themeColorLiterals('apps/studio/src/workbench/Panel.tsx', line)).toEqual(['#66d9ef']);
+    expect(themeColorLiterals('packages/react/src/components/Card.tsx', "fill='#FFF'")).toEqual([
+      '#FFF',
+    ]);
+    expect(themeColorLiterals('apps/studio/src/index.css', 'color: #00000080;')).toEqual([
+      '#00000080',
+    ]);
+    expect(themeColorLiterals('apps/studio/src/workbench/themes/builtin.ts', line)).toEqual([]);
+    expect(themeColorLiterals('packages/react/src/theme.css', line)).toEqual([]);
+    expect(themeColorLiterals('packages/react/src/design-kit/tokens.css', line)).toEqual([]);
+    // Not colors: issue numbers, element ids, fragments.
+    expect(
+      themeColorLiterals('apps/studio/src/a.ts', "'PR #479 open' '#root' '#bootstrap='"),
+    ).toEqual([]);
+  });
+});
+
+/** Colors written as hex outside the files that own palettes. */
+function themeColorLiterals(path: string, source: string): string[] {
+  if (
+    path.startsWith('apps/studio/src/workbench/themes/') ||
+    path.startsWith('packages/react/src/design-kit/') ||
+    path === 'packages/react/src/theme.css'
+  )
+    return [];
+  return [...source.matchAll(/(?<![\w&])#(?:[0-9a-f]{8}|[0-9a-f]{6}|[0-9a-f]{3})(?![\w-])/gi)]
+    .map((match) => match[0])
+    .filter((hex) => !/^#\d{3}$/.test(hex));
+}
+
+// The kit's six type roles and its variable-font weights replace Tailwind's default steps, and
+// transitions use the kit's motion tokens (DESIGN.md Typography, Motion and Accessibility).
+// The vendored kit, tests, stories and message catalogs are not product call sites.
+const callSites = [...text].filter(
+  ([path]) => /\.tsx?$/.test(path) && !path.includes('/src/design-kit/'),
+);
+
+// Highlighted code is set in the monospace family, which has no variable weight axis, and a
+// keyword's weight is its only highlight. Only this exact declaration is exempt.
+const codeKeyword = (path: string, line: string) =>
+  path === 'packages/react/src/components/CodeBlock.tsx' &&
+  line.trim().endsWith("color = 'font-semibold text-syntax-keyword';");
+
+/** `path:line: class` for each class `find` reports on a line of a call site. */
+function report(find: (line: string) => string[]): string[] {
+  return callSites.flatMap(([path, body]) =>
+    body
+      .split('\n')
+      .flatMap((line, index) =>
+        codeKeyword(where(path), line)
+          ? []
+          : find(line).map((name) => `${where(path)}:${index + 1}: ${name}`),
+      ),
+  );
+}
+
+/** Tailwind's default font-size and font-weight utilities, with any variant or modifier. */
+function defaultTypeClasses(source: string): string[] {
+  return [
+    ...source.matchAll(
+      /(?<![\w-])(text-(?:xs|sm|base|lg|[2-9]?xl)|font-(?:thin|extralight|light|normal|medium|semibold|bold|extrabold|black))(?![\w-])/g,
+    ),
+  ].map((match) => match[1] as string);
+}
+
+const kitTokens = readFileSync(join(root, 'packages/react/src/design-kit/tokens.css'), 'utf8');
+const kitMotion = new Set(
+  [...kitTokens.matchAll(/^\s*(--(?:duration|ease)-[a-z-]+)\s*:/gm)].map((m) => m[1] as string),
+);
+
+/** Transition durations and easings that do not name one of the kit's motion tokens. */
+function handWrittenMotion(source: string): string[] {
+  return [
+    ...source.matchAll(
+      /(?<![\w-])((?:duration|ease)-(?:\d+|\[[^\]\s]*\]|\(([^)\s]*)\)|in|out|in-out))(?![\w-])/g,
+    ),
+  ]
+    .filter((match) => match[1] !== 'duration-0' && !kitMotion.has(match[2] ?? ''))
+    .map((match) => match[1] as string);
+}
+
+describe('design guard (kit type roles and motion)', () => {
+  it('sets type with the kit roles and weights, never Tailwind default sizes or weights', () => {
+    expect(report(defaultTypeClasses)).toEqual([]);
+  });
+
+  it('times transitions with the kit motion tokens, never hand-written durations or easings', () => {
+    expect(report(handWrittenMotion)).toEqual([]);
+  });
+
+  it('recognizes default type classes behind variants and modifiers, and spares the kit roles', () => {
+    expect(
+      defaultTypeClasses(
+        "cn('sm:text-sm !text-xs text-lg/6 [&_p]:font-medium group-hover:font-semibold', `text-2xl`)",
+      ),
+    ).toEqual(['text-sm', 'text-xs', 'text-lg', 'font-medium', 'font-semibold', 'text-2xl']);
+    expect(
+      defaultTypeClasses(
+        'text-body text-caption text-subtitle text-2xs text-ui font-mono font-sans text-sm-wide --text-sm',
+      ),
+    ).toEqual([]);
+  });
+
+  it("exempts only the code highlighter's keyword weight", () => {
+    const line = "      if (KEYWORDS.has(word)) color = 'font-semibold text-syntax-keyword';";
+    expect(codeKeyword('packages/react/src/components/CodeBlock.tsx', line)).toBe(true);
+    expect(codeKeyword('packages/react/src/components/Other.tsx', line)).toBe(false);
+    expect(
+      codeKeyword('packages/react/src/components/CodeBlock.tsx', "color = 'font-medium';"),
+    ).toBe(false);
+  });
+
+  it('accepts only the kit motion tokens by name', () => {
+    expect([...kitMotion].sort()).toEqual([
+      '--duration-fast',
+      '--duration-moderate',
+      '--duration-slow',
+      '--ease-out-soft',
+    ]);
+    expect(
+      handWrittenMotion(
+        'duration-(--duration-fast) md:duration-(--duration-slow) ease-(--ease-out-soft) motion-reduce:duration-0',
+      ),
+    ).toEqual([]);
+    expect(
+      handWrittenMotion(
+        'duration-80 duration-[240ms] ease-[var(--ease-out-soft)] ease-out duration-(--duration-quick) ease-(--ease-snappy)',
+      ),
+    ).toEqual([
+      'duration-80',
+      'duration-[240ms]',
+      'ease-[var(--ease-out-soft)]',
+      'ease-out',
+      'duration-(--duration-quick)',
+      'ease-(--ease-snappy)',
+    ]);
   });
 });

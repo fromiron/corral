@@ -1,5 +1,5 @@
-import { expect, type Page, test } from '@playwright/test';
-import { requestBox, slash, startSession, teamFromTemplate } from './workbench.ts';
+import { expect, type Locator, type Page, test } from '@playwright/test';
+import { requestBox, startSession, teamFromTemplate } from './workbench.ts';
 
 // Work sessions and input intents in the in-browser runtime.
 
@@ -13,7 +13,18 @@ async function sessionWithTeam(page: Page, delay: number) {
 }
 
 const box = requestBox;
-const cards = (page: Page) => page.locator('[data-testid^="entry-"]');
+// The turns themselves: their flag and auto-choice lines carry `entry-…` test ids too.
+const cards = (page: Page) => page.locator('article[data-testid^="entry-"]');
+/**
+ * A turn's run: the state word the run row says about it, read from the element that carries the
+ * run's presence (the row's head starts with the role's name now, and its steps keep statuses
+ * of their own further in).
+ */
+const status = (card: Locator, name: string) =>
+  card
+    .getByRole('region', { name: /^Run #\d+$/ })
+    .locator('[data-presence-label^="run:"]')
+    .filter({ hasText: new RegExp(`^${name}$`) });
 
 test('a follow-up continues the conversation in a new run; an IME Enter sends nothing', async ({
   page,
@@ -31,28 +42,30 @@ test('a follow-up continues the conversation in a new run; an IME Enter sends no
   await box(page).press('Control+Enter');
   await expect(cards(page)).toHaveCount(1);
   await expect(cards(page).first()).toContainText('Started');
-  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible({
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
 
   // the next request carries the conversation; the first run is left as it was.
-  await expect(page.getByText('Continues this conversation', { exact: true })).toBeVisible();
+  await expect(box(page)).toHaveAccessibleDescription(
+    'Send to: new run in this conversation · next request',
+  );
   await box(page).fill('Now only for one writer');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(2);
-  await expect(cards(page).nth(1).getByText('Succeeded', { exact: true })).toBeVisible({
+  await expect(status(cards(page).nth(1), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
-  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible();
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible();
 
   // a question about an answer is an ordinary message; there is no separate mode.
   await box(page).fill('/');
   await expect(page.getByRole('option', { name: /\/ask/ })).toHaveCount(0);
   await box(page).fill('Which one is simpler to back up?');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(3);
   await expect(cards(page).nth(2)).not.toContainText('Question about the result');
-  await expect(cards(page).nth(2).getByText('Succeeded', { exact: true })).toBeVisible({
+  await expect(status(cards(page).nth(2), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
 });
@@ -62,18 +75,20 @@ test('while a run works, a request waits in the queue until a person starts it',
 }) => {
   await sessionWithTeam(page, 1500);
   await box(page).fill('First request');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(cards(page)).toHaveCount(1);
-  // Busy: continuing is not offered; queueing is.
-  await box(page).fill('/');
-  await expect(page.getByRole('option', { name: /\/next/ })).toHaveCount(0);
-  await slash(page, 'queue');
+  // Busy: Send joins the run (composer-flow.md "전송"); Alt+Enter sends a next request, which
+  // waits behind it.
+  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · Join$/);
+  await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
   await box(page).fill('Then summarise it');
-  await page.getByRole('button', { name: 'Send' }).click();
+  await box(page).press('Alt+Enter');
   const queue = page.getByRole('region', { name: 'Queued next tasks' });
   await expect(queue).toContainText('Then summarise it');
+  // Auto start is the server's; the browser demo has none, so a person starts it.
+  await expect(queue.getByRole('switch')).toHaveCount(0);
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeDisabled();
-  await expect(cards(page).first().getByText('Succeeded', { exact: true })).toBeVisible({
+  await expect(status(cards(page).first(), 'Completed')).toBeVisible({
     timeout: 20_000,
   });
   await expect(queue.getByRole('button', { name: 'Start now' })).toBeEnabled();

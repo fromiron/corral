@@ -523,7 +523,7 @@ async function startServer(
       );
     });
   }
-  const { createLiveModels, defaultLocalIntelligence, startCorralServer } = await import(
+  const { createLiveModels, defaultLocalIntelligence, loadFff, startCorralServer } = await import(
     '@corral/server'
   );
   const { ScriptedAgentAdapter, simulatedReply } = await import('@corral/testkit');
@@ -533,6 +533,7 @@ async function startServer(
     staticDir,
     allowSharedDevelopment,
     localIntelligence: defaultLocalIntelligence(),
+    fff: loadFff,
     agents: new ScriptedAgentAdapter({ turns: 2, reply: simulatedReply, appendNotes: false }),
     ...(values.demo ? {} : { live: createLiveModels() }),
   });

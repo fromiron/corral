@@ -1,14 +1,32 @@
 import { expect, it } from 'vitest';
 import {
   patchSessionSearch,
+  rememberedSessionView,
   resolveSessionSearch,
   reviewSessionSearch,
+  runSessionSearch,
   sessionPanelDescriptor,
   validateEditorSearch,
   validateReviewSearch,
   validateRunSearch,
   validateSessionSearch,
 } from './routes.ts';
+
+it('an advice arrival is read from the address, carried by no other change, and never remembered', () => {
+  // The route keeps the run a person came to read advice in.
+  expect(validateSessionSearch({ advice: 'run_a' })).toEqual({ advice: 'run_a' });
+  expect(validateSessionSearch({ advice: '' })).toEqual({});
+  // Another change of the view does not arrive again.
+  expect(patchSessionSearch({ advice: 'run_a' }, { panel: 'files' })).toEqual({ panel: 'files' });
+  expect(patchSessionSearch({ panel: 'files' }, { advice: 'run_b' })).toEqual({
+    panel: 'files',
+    advice: 'run_b',
+  });
+  // The view remembered for the session keeps none of the one-time requests.
+  expect(
+    rememberedSessionView({ panel: 'files', advice: 'run_a', respond: true, compose: true }),
+  ).toEqual({ panel: 'files' });
+});
 
 it('Git is a separate session pane and keeps its project/session identity', () => {
   expect(validateSessionSearch({ panel: 'git' })).toEqual({ panel: 'git' });
@@ -283,4 +301,35 @@ it('a clean session URL never inherits a stored subview while a tab URL retains 
   expect(resolveSessionSearch({}, remembered)).toEqual({});
   expect(resolveSessionSearch({}, { panel: 'changes' })).toEqual({});
   expect(resolveSessionSearch(remembered, {})).toEqual(remembered);
+});
+
+it('a request to respond reaches the run history once and is never remembered or inherited', () => {
+  const respond = { panel: 'run', run: 'run_waiting', view: 'run', respond: true } as const;
+  expect(validateSessionSearch(respond)).toEqual(respond);
+  expect(validateRunSearch({ view: 'run', respond: true })).toEqual({ view: 'run', respond: true });
+  // Only the literal request counts, and only for run history.
+  expect(validateSessionSearch({ ...respond, respond: 'yes' })).not.toHaveProperty('respond');
+  expect(validateRunSearch({ respond: 1 })).toEqual({});
+  expect(validateSessionSearch({ panel: 'files', respond: true })).toEqual({ panel: 'files' });
+  // A run's own address carries it into its session's run history.
+  expect(runSessionSearch('run_waiting', { respond: true })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    respond: true,
+  });
+  // Any later change of the view drops it; only an explicit request keeps it.
+  expect(patchSessionSearch(respond, { execution: 'exec_a' })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    view: 'run',
+    execution: 'exec_a',
+  });
+  expect(patchSessionSearch(respond, { respond: undefined })).not.toHaveProperty('respond');
+  expect(patchSessionSearch({ panel: 'run', run: 'run_waiting' }, { respond: true })).toEqual({
+    panel: 'run',
+    run: 'run_waiting',
+    respond: true,
+  });
+  // A remembered request never answers a later visit.
+  expect(resolveSessionSearch({ panel: 'run' }, respond)).not.toHaveProperty('respond');
 });

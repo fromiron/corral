@@ -1,5 +1,7 @@
-import type { RunEvent } from '@corral/contracts';
+import type { ExecutionStatus, RunEvent } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
+import type { RunFlowLoop } from '../run/flow.ts';
+import { executionWatching } from '../run/presence.ts';
 
 // Words for run facts (roadmap UX-A4). Event types and reason codes stay visible where they are
 // precise (Timeline detail, filters); everywhere a person reads, they read a sentence.
@@ -10,15 +12,28 @@ type Described = { key: string; values: Values } | null;
 const str = (value: unknown) => (typeof value === 'string' ? value : '');
 const num = (value: unknown) => (typeof value === 'number' ? value : 0);
 
+/** What the record knows beyond the event: who made a directive, which executions advise. */
+export interface EventContext {
+  /** The person or an advisor's advice. */
+  directiveOrigin?: (directiveId: string) => 'user' | 'advice' | undefined;
+  /** Whether an execution is an advisor's. */
+  advisor?: (executionId: string) => boolean;
+}
+
 /** Message key and values for an event, or null when there is no sentence for it. */
 export function describeEvent(
   event: RunEvent,
   labelOf: (executionId: string | undefined) => string,
   nodeLabel: (nodeId: string) => string,
+  { directiveOrigin = () => undefined, advisor = () => false }: EventContext = {},
 ): Described {
   const p = event.payload as Record<string, unknown>;
   const actor = labelOf(str(p.executionId) || event.executionId);
   const of = (key: string, values: Values = {}): Described => ({ key, values });
+  // An advice's directive is not the person's instruction (features/advisor.md).
+  const advice = directiveOrigin(str(p.directiveId)) === 'advice';
+  const directive = (key: string, values: Values = {}) =>
+    of(advice ? `advice${key[0]?.toUpperCase()}${key.slice(1)}` : key, values);
   switch (event.type) {
     case 'run.started':
       return of(p.mode === 'live' ? 'runStartedLive' : 'runStartedMock');
@@ -28,8 +43,15 @@ export function describeEvent(
       return of('runInterrupted');
     case 'execution.created':
       return of('executionCreated', { node: nodeLabel(str(p.nodeId)) });
-    case 'execution.state_changed':
-      return of('executionState', { node: actor, to: str(p.to) });
+    case 'execution.state_changed': {
+      // An advisor resting between reviews watches (presence), not waits for an answer.
+      const executionId = str(p.executionId) || (event.executionId ?? '');
+      const watching = executionWatching({
+        status: p.to as ExecutionStatus,
+        advisor: advisor(executionId),
+      });
+      return of('executionState', { node: actor, to: watching ? 'watching' : str(p.to) });
+    }
     case 'execution.settled':
       return of('executionSettled', { node: actor, outcome: str(p.outcome) });
     case 'task.created':
@@ -67,18 +89,29 @@ export function describeEvent(
       return of('roundStarted', { no: num(p.no), loop: nodeLabel(str(p.loopNodeId)) });
     case 'loop.iteration_finished':
       return of('roundFinished', { outcome: str(p.outcome), loop: nodeLabel(str(p.loopNodeId)) });
+    case 'loop.escalated':
+      return of('loopEscalated', {
+        loop: nodeLabel(str(p.loopNodeId)),
+        policy: str(p.policy),
+        model: str(p.modelProfile),
+      });
     case 'approval.requested':
       return of('approvalRequested', { kind: str(p.kind) });
     case 'approval.resolved':
-      return of('approvalResolved', { decision: str(p.decision) });
+      // One the runtime closed (its run or step ended, its time ran out) is no one's rejection.
+      return event.actor?.kind !== 'user' && p.decision === 'reject'
+        ? of('approvalClosed')
+        : of('approvalResolved', { decision: str(p.decision) });
     case 'directive.accepted':
-      return of('directiveAccepted', { node: labelOf(str(p.targetExecutionId)) });
+      return of(p.origin === 'advice' ? 'adviceDirectiveAccepted' : 'directiveAccepted', {
+        node: labelOf(str(p.targetExecutionId)),
+      });
     case 'directive.attached':
-      return of('directiveAttached');
+      return directive('directiveAttached');
     case 'directive.dispatched':
-      return of('directiveDispatched');
+      return directive('directiveDispatched');
     case 'directive.undelivered':
-      return of('directiveUndelivered', { status: str(p.status) });
+      return directive('directiveUndelivered', { status: str(p.status) });
     case 'patch.committed':
       return of('patchCommitted', { kind: str(p.kind) });
     case 'patch.activated':
@@ -93,6 +126,8 @@ export function describeEvent(
       return of('toolRequested', { node: actor, name: str(p.name) });
     case 'tool.allowed':
       return of('toolAllowed');
+    case 'tool.authorized':
+      return of('toolAuthorized');
     case 'tool.blocked':
       return of('toolBlocked', { reason: str(p.reason) });
     case 'tool.started':
@@ -117,6 +152,21 @@ export function describeEvent(
       return of('observationLate', { what: str(p.originalEventType) });
     case 'output.finalized':
       return of('outputFinalized');
+    // A relation from the advisor to its target; delivery says how it goes, not that it was
+    // followed. A dropped advice names its gatekeeper reason and no relation.
+    case 'advice.admitted':
+      return of('adviceAdmitted', {
+        advisor: labelOf(str(p.observerExecutionId)),
+        node: labelOf(str(p.targetExecutionId)),
+        severity: str(p.severity),
+        delivery: str(p.delivery),
+      });
+    case 'advice.suppressed':
+      return of('adviceSuppressed', {
+        advisor: labelOf(str(p.observerExecutionId)),
+        severity: str(p.severity),
+        reason: str(p.reason),
+      });
     default:
       return null;
   }
@@ -126,14 +176,26 @@ export function EventText({
   event,
   labelOf,
   nodeLabel,
+  context,
 }: {
   event: RunEvent;
   labelOf: (executionId: string | undefined) => string;
   nodeLabel: (nodeId: string) => string;
+  context?: EventContext;
 }) {
   const t = useTranslations('Events');
-  const described = describeEvent(event, labelOf, nodeLabel);
-  return <>{described ? t(described.key, described.values) : event.type}</>;
+  const described = describeEvent(event, labelOf, nodeLabel, context);
+  // Names a model or a person wrote are isolated, so their direction stays inside them.
+  return (
+    <>
+      {described
+        ? t.rich(described.key, {
+            ...described.values,
+            isolate: (chunks) => <bdi>{chunks}</bdi>,
+          })
+        : event.type}
+    </>
+  );
 }
 
 const REASONS = new Set([
@@ -157,7 +219,7 @@ const REASONS = new Set([
   'internal_error',
   'needs_user',
   'runner_finished_without_output',
-  'loop_cap_declined',
+  'loop_exhausted',
   'rejected',
   'final_output_rejected',
 ]);
@@ -171,10 +233,35 @@ export function RunReason({
   nodeLabel: (id: string) => string;
 }) {
   const t = useTranslations('RunReasons');
+  const recipe = useTranslations('Recipe');
+  // A run its review recipe stopped records `review_recipe:{reason}`; the recipe names it.
+  const stop = /^review_recipe:([a-z_]+)$/.exec(code)?.[1];
+  if (stop && recipe.has(`reasons.${stop}`)) return <>{recipe(`reasons.${stop}`)}</>;
   const at = code.indexOf(': ');
   const head = at < 0 ? code : code.slice(0, at);
   const rest = at < 0 ? '' : code.slice(at + 2);
   if (!REASONS.has(head)) return <>{code}</>;
-  const [first = ''] = rest.split(' ');
-  return <>{t(head, { detail: rest, node: nodeLabel(first) })}</>;
+  // `{node} {why}`: an exhausted Loop also names why it ran out (`cap_reached`, `stalled`).
+  const [first = '', second = ''] = rest.split(' ');
+  return <>{t(head, { detail: rest, node: nodeLabel(first), reason: second })}</>;
+}
+
+/** What a Loop's limit policy changed in its current entry, as one line of its group. */
+export function LoopEscalationText({
+  escalation,
+  modelName,
+}: {
+  escalation: RunFlowLoop['escalation'];
+  modelName: (profile: string) => string;
+}) {
+  const t = useTranslations('RunLoop');
+  const level = useTranslations('Reasoning.level');
+  if (!escalation) return null;
+  return (
+    <>
+      {escalation.policy === 'raise_reasoning'
+        ? t('raised', { level: level(escalation.level) })
+        : t('switched', { model: modelName(escalation.modelProfile) })}
+    </>
+  );
 }

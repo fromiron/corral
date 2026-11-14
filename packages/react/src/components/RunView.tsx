@@ -1,6 +1,6 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { isSessionAdvisor, type RunProjection } from '@corral/core';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -9,10 +9,14 @@ import {
   type AgentTreeLabels,
   type AgentTreeNode,
   Button,
+  cn,
+  fontWeights,
   formatClock,
+  KitBadge,
   Select,
 } from '../design-kit/index.ts';
 import { useIcon } from '../design-kit/lib/icon-context.tsx';
+import { useAgentName } from '../run/advisor.ts';
 import type { ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import {
@@ -22,16 +26,19 @@ import {
 } from '../run/flow.ts';
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
+import { executionWatching } from '../run/presence.ts';
+import { projectionPresence } from '../run/projectionPresence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { requestOpen } from '../run/transcript.ts';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
+import { PresenceBadge, usePresenceWord } from './PresenceBadge.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
-import { RunReason } from './RunText.tsx';
+import { LoopEscalationText, RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
-import { StatusBadge } from './StatusBadge.tsx';
+import { TermHint } from './TermHint.tsx';
 import { UsageInspector } from './UsageInspector.tsx';
 
 /** Run status, executions and output, from committed events only. Needs no editor. */
@@ -60,17 +67,16 @@ export function RunView({
   return (
     <div className="flex flex-col gap-3">
       {startError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('rejected', { message: startError.message })}
         </p>
       ) : null}
       {definitionError ? (
-        <p role="alert" className="text-xs text-warning">
+        <p role="alert" className="text-caption text-warning">
           {t('definitionUnavailable')}{' '}
           <Button
             type="button"
             variant="ghost"
-            size="compact"
             onClick={() => {
               const runId = session.getState().runId;
               if (runId) void session.getState().open(runId);
@@ -81,7 +87,7 @@ export function RunView({
         </p>
       ) : null}
       {streamError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('streamError', { message: streamError })}
         </p>
       ) : null}
@@ -89,18 +95,21 @@ export function RunView({
         <>
           <RunActions key={projection.runId} session={session} />
           {simulatedHarness ? (
-            <p className="text-xs text-muted-foreground">{t('harnessSimulation')}</p>
+            <p className="text-caption text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
           <UsageInspector session={session} prices={prices} />
           <HarnessDetails session={session} />
-          <div className="flex items-center gap-2 text-xs">
+          <div className="flex items-center gap-2 text-caption">
             <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">
-              <StatusBadge status={projection.status} />
+              <PresenceBadge
+                presence={projectionPresence(projection)}
+                target={`run:${projection.runId}`}
+              />
             </span>
           </div>
           {projection.statusReason ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t('reasonPrefix')}{' '}
               <RunReason
                 code={projection.statusReason}
@@ -146,11 +155,17 @@ export function RunOutput({
   const result = useRunDisplay(session, (s) =>
     resultId ? s.projection?.artifacts[resultId] : undefined,
   );
+  // Until there is output the run's status badge says it is still working; nothing is added.
+  if (outputText === null && !(onOpenResults && finals.length > 0)) return null;
   return (
     <div className="flex flex-col gap-1">
-      {heading ? <h3 className="text-xs font-semibold">{t('output')}</h3> : null}
+      {heading ? (
+        <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('output')}
+        </h3>
+      ) : null}
       {onOpenResults && finals.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 text-xs">
+        <div className="flex flex-wrap items-center gap-2 text-caption">
           {finals.length > 1 ? (
             <span className="text-muted-foreground">
               {tr('finalCount', { count: finals.length })}
@@ -165,7 +180,6 @@ export function RunOutput({
                 onClick={() => onOpenResults(artifact.artifactVersionId)}
                 aria-label={label}
                 variant="tertiary"
-                size="compact"
               >
                 {label} ↗
               </Button>
@@ -173,9 +187,7 @@ export function RunOutput({
           })}
         </div>
       ) : null}
-      {outputText === null ? (
-        <p className="text-xs text-muted-foreground">{t('outputPending')}</p>
-      ) : (
+      {outputText === null ? null : (
         <div
           data-testid="run-output"
           className={`overflow-auto rounded-md fill-group p-2 ${heading ? 'max-h-64' : ''}`}
@@ -194,7 +206,6 @@ export function RunOutput({
             })
           }
           variant="secondary"
-          size="compact"
           className="self-start"
         >
           {t('newRunFromResult')}
@@ -288,13 +299,19 @@ export function ExecutionTree({
   onSteer,
   selectedExecutionId = null,
   compact = false,
+  wideCards = false,
   now,
   rounds,
+  titled = true,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
   selectedExecutionId?: string | null;
   compact?: boolean;
+  /** Show the bar's title. Inside a tab whose label names the executions, only the counts stay. */
+  titled?: boolean;
+  /** Cards widen to the room their branches have, for a tree that owns a wide view. */
+  wideCards?: boolean;
   /** The inspected rounds when other views of the work flow share them; otherwise its own. */
   rounds?: RoundInspection;
   /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
@@ -305,12 +322,31 @@ export function ExecutionTree({
   const loopText = useTranslations('RunLoop');
   const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const LoopIcon = useIcon('rotate-ccw');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
+  const presenceText = useTranslations('Presence');
+  const adviceText = useTranslations('Advice');
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const streams = useRunDisplay(session, (s) => s.streams);
   const own = useRoundInspection(projection, selectedExecutionId);
+  // The tree's own width sets how wide its cards can be.
+  const [treeElement, treeRef] = useState<HTMLDivElement | null>(null);
+  const [treeWidth, setTreeWidth] = useState(0);
+  useLayoutEffect(() => {
+    if (!wideCards || !treeElement) return;
+    // A scrollbar coming and going must not resize the cards back and forth.
+    const measure = () =>
+      setTreeWidth((current) =>
+        Math.abs(treeElement.clientWidth - current) < 24 ? current : treeElement.clientWidth,
+      );
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(treeElement);
+    return () => observer.disconnect();
+  }, [wideCards, treeElement]);
   const { selected: selectedIterations, choose } = rounds ?? own;
   const intervals = useMemo(
     () => new Map(executionIntervals(events).map((row) => [row.executionId, row])),
@@ -318,7 +354,17 @@ export function ExecutionTree({
   );
   const labels = useMemo<Partial<AgentTreeLabels>>(
     () => ({
-      agents: (count) => tree('count', { count }),
+      // Under its title the bar names the executions once: the eye gets the number alone, a
+      // screen reader and the live count the whole count, as one sentence.
+      agents: (count) =>
+        titled ? (
+          <>
+            <span className="sr-only">{tree('count', { count })}</span>
+            <span aria-hidden="true">{tree('countOnly', { count })}</span>
+          </>
+        ) : (
+          tree('count', { count })
+        ),
       running: (count) => tree('running', { count }),
       needsYou: (count) => tree('needsYou', { count }),
       failed: (count) => tree('failed', { count }),
@@ -328,7 +374,7 @@ export function ExecutionTree({
       foldBranch: (name) => tree('foldBranch', { name }),
       duration: formatClock,
     }),
-    [tree],
+    [tree, titled],
   );
   if (!projection) return null;
   const loops = definition
@@ -339,7 +385,6 @@ export function ExecutionTree({
   const loopById = new Map(loops.map((loop) => [loop.nodeId, loop]));
   const loopTreeId = (id: string) => `loop-group-${id}`;
   const treeLoop = new Map(loops.map((loop) => [loopTreeId(loop.nodeId), loop]));
-  const nodeDefinition = new Map(definition?.nodes.map((node) => [node.id, node]));
   const iterationOf = new Map(
     projection.executionOrder.map((id) => [id, runFlowExecutionIterationId(projection, id)]),
   );
@@ -362,8 +407,8 @@ export function ExecutionTree({
       );
     }),
   );
-  const statusLabel = (value: string) => (status.has(value) ? status(value) : value);
-  const labelOf = (nodeId: string) => nodeDefinition.get(nodeId)?.label ?? nodeId;
+  const statusLabel = status;
+  const labelOf = nameOf;
   const childrenOf = new Map<string | null, string[]>();
   const addChild = (parent: string | null, id: string) => {
     const children = childrenOf.get(parent) ?? [];
@@ -411,7 +456,10 @@ export function ExecutionTree({
                 ? 'stopped'
                 : 'done',
         statusLabel: outcome,
-        task: loopText('summary', { count: loop.iterations.length, max: loop.maxIterations }),
+        task:
+          loop.maxIterations === null
+            ? loopText('summaryUnlimited', { count: loop.rounds })
+            : loopText('summary', { count: loop.rounds, max: loop.maxIterations }),
         selectable: false,
         summaryExcluded: true,
         cardProps: { 'data-testid': id, 'data-loop-id': loop.nodeId },
@@ -420,6 +468,14 @@ export function ExecutionTree({
             <p className="text-caption text-muted-foreground">
               {latest ? loopText('current', { no: latest.no, outcome }) : loopText('noIterations')}
             </p>
+            {loop.escalation ? (
+              <p className="text-caption" data-testid="run-loop-escalation">
+                <LoopEscalationText
+                  escalation={loop.escalation}
+                  modelName={(profile) => projection?.modelProfiles[profile]?.modelId ?? profile}
+                />
+              </p>
+            ) : null}
             {loop.iterations.length > 0 ? (
               <Select
                 label={loopText('iterationLabel', { name: loop.label })}
@@ -427,7 +483,6 @@ export function ExecutionTree({
                 onValueChange={(iterationId) =>
                   choose(loop.nodeId, iterationId === 'latest' ? null : iterationId)
                 }
-                size="xs"
                 options={[
                   { value: 'latest', label: loopText('latest') },
                   ...(!selected && selectedIterations[loop.nodeId]
@@ -474,9 +529,12 @@ export function ExecutionTree({
     const model = projection.modelProfiles[execution.modelProfile];
     const round = execution.iterationId ? projection.iterations[execution.iterationId]?.no : null;
     const handoffs = executionHandoffs(projection, id);
-    // A card names what its execution made, then where it sits among rounds and attempts.
+    // A card names what its execution made, then where it sits among rounds and attempts. A
+    // version already sent somewhere is named once, by its chip below.
     const made = handoffs.flatMap((handoff) =>
-      handoff.kind === 'artifact' ? [`${handoff.name} v${handoff.version}`] : [],
+      handoff.kind === 'artifact' && !handoff.targets.length
+        ? [`${handoff.name} v${handoff.version}`]
+        : [],
     );
     const task = [
       made.join(', ') || null,
@@ -498,13 +556,27 @@ export function ExecutionTree({
       ];
     });
     const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
+    // An advisor stands outside the flow: it says so once, by its name, and rests between
+    // reviews watching, not waiting for an answer (features/advisor.md).
+    const watching = executionWatching(execution);
     return {
       id,
       name: labelOf(execution.nodeId),
+      // A team's advisor is its name and the badge; a conversation's advisor is called
+      // "advisor" once, by its name alone (features/advisor.md, 보이는 곳).
+      ...(execution.advisor
+        ? {
+            outsideFlow: true,
+            ...(definition && isSessionAdvisor(definition, execution.nodeId)
+              ? {}
+              : { tag: <KitBadge>{adviceText('advisor')}</KitBadge> }),
+          }
+        : {}),
       model: model?.modelId ?? execution.modelProfile,
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),
-      statusLabel: statusLabel(execution.status),
+      statusLabel: watching ? presenceText('detail.watching') : statusLabel(execution.status),
+      statusLabelProps: { 'data-presence-label': `execution:${id}` },
       ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
@@ -536,6 +608,7 @@ export function ExecutionTree({
             projection={projection}
             streams={streams}
             compact={compact || priorRound}
+            watching={watching}
           />
         </>
       ),
@@ -553,23 +626,55 @@ export function ExecutionTree({
     name: definition?.name ?? projection.runId,
     status: runAgentStatus(projection.status),
     statusLabel: statusLabel(projection.status),
+    // The run's state is said in words by the header badge alone (workbench.md): the root card
+    // keeps only its mark.
+    statusShown: 'mark',
     selectable: false,
     summaryExcluded: true,
     children: (childrenOf.get(null) ?? []).flatMap((id) => node(id) ?? []),
   };
   return (
     <AgentTree
+      ref={treeRef}
       root={root}
       title={tree('title')}
+      // The tree's title is where Execution explains itself (glossary.md); a tab named for the
+      // tree hides the title, and the explanation with it.
+      {...(titled ? { titleAction: <TermHint term="execution" /> } : {})}
       selectedId={selectedExecutionId}
       onSelect={(agent) => onSteer(agent.id)}
       labels={labels}
-      size="compact"
-      // The column shrinks to the panel; cards truncate instead of widening it.
-      className="grid-cols-[minmax(0,1fr)]"
+      cardWidth={wideCards ? fittedCardWidth(root, treeWidth) : TREE.card}
+      // The column shrinks to the panel; cards truncate instead of widening it. Untitled, the
+      // bar's first two parts (spark mark and title) step aside; the tree keeps the name.
+      className={cn(
+        'grid-cols-[minmax(0,1fr)]',
+        !titled && '[&>header>span:nth-child(-n+2)]:hidden',
+      )}
       {...(now === undefined ? {} : { now })}
     />
   );
+}
+
+/** The kit AgentTree's card width, gap between branches and indent per level. */
+const TREE = { card: 216, widest: 320, gap: 8, indent: 32 } as const;
+
+/**
+ * Cards as wide as the tree's columns allow, so names read whole on a wide page: the first
+ * level's branches share the width, each taking its indents, between the kit's card width and a
+ * readable maximum. Too narrow for the kit's width, the tree stacks as before.
+ */
+function fittedCardWidth(root: AgentTreeNode, width: number): number {
+  const depth = (node: AgentTreeNode): number =>
+    Math.max(0, ...(node.children ?? []).map((child) => depth(child) + 1));
+  const branches = root.children ?? [];
+  if (!width || !branches.length) return TREE.card;
+  const indents = branches.reduce(
+    (sum, branch) => sum + TREE.indent * Math.max(1, depth(branch)),
+    0,
+  );
+  const share = (width - TREE.gap * (branches.length - 1) - indents) / branches.length;
+  return Math.round(Math.min(TREE.widest, Math.max(TREE.card, share)));
 }
 
 /** What a card adds under its summary: wait targets, the error and a streaming response. */
@@ -578,17 +683,20 @@ function ExecutionDetail({
   projection,
   streams,
   compact,
+  watching = false,
 }: {
   id: string;
   projection: RunProjection;
   streams: Record<string, StreamText>;
   compact: boolean;
+  /** An advisor between reviews: its state already says it watches, so no wait line. */
+  watching?: boolean;
 }) {
   const t = useTranslations('Run');
   const execution = projection.executions[id];
   if (!execution) return null;
   const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
-  const waiting = execution.waitingOn;
+  const waiting = watching ? null : execution.waitingOn;
   const openCall = execution.modelCallIds.at(-1);
   const lastResponse = openCall ? streams[openCall] : undefined;
   const live =
@@ -623,7 +731,9 @@ function ExecutionDetail({
         <FailureNotice message={execution.error} cancelled={execution.status === 'cancelled'} />
       ) : null}
       {!compact && live?.completed ? (
-        <p className="mt-1 font-medium">{t('completedResponse')}</p>
+        <p className="mt-1" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('completedResponse')}
+        </p>
       ) : null}
       {!compact && live?.text ? (
         <p

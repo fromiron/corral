@@ -11,8 +11,8 @@ const graph = (page: import('@playwright/test').Page) =>
 async function finishedRun(page: import('@playwright/test').Page) {
   await page.goto('/demo?template=starter&delay=100');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 20_000 });
-  await page.getByRole('link', { name: 'Open execution page' }).click();
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
+  await page.getByRole('link', { name: 'Open run page' }).click();
   await expect(page).toHaveURL(/\/runs\//);
   await expect(graph(page)).toBeVisible();
 }
@@ -20,7 +20,7 @@ async function finishedRun(page: import('@playwright/test').Page) {
 test('a narrow Run page shows one panel at a time and never scrolls sideways', async ({ page }) => {
   await finishedRun(page);
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views' });
+  const views = monitor.getByRole('tablist', { name: 'Run views' });
   await expect(views).toBeVisible();
   const activity = monitor.getByTestId('run-work-flow');
   await expect(activity).toHaveCount(0);
@@ -28,12 +28,12 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
   const side = monitor.getByRole('complementary', { name: 'Details', exact: true });
   await expect(side).toBeHidden();
   // The chosen workspace view replaces the graph; it is not a second dock below it.
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
-  const flow = monitor.getByRole('tabpanel', { name: 'Work flow', exact: true });
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
+  const flow = monitor.getByRole('tabpanel', { name: 'Workflow', exact: true });
   await expect(flow).toBeVisible();
   await expect(activity).toBeVisible();
   await expect(graph(page)).toBeHidden();
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(flow).toBeVisible();
 
   const selected = activity.getByRole('button', { name: / · exec_/ }).first();
@@ -53,7 +53,7 @@ test('a narrow Run page shows one panel at a time and never scrolls sideways', a
     () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
   );
   expect(overflow).toBeLessThanOrEqual(0);
-  await expect(page.getByRole('region', { name: 'Execution summary' })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Run summary' })).toBeVisible();
 });
 
 test('the primary graph fits a short window and keeps its zoom across view and size changes', async ({
@@ -61,7 +61,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
 }) => {
   await finishedRun(page);
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   // First opening must fit the graph to a real canvas, not to a hidden zero-size panel.
   await expect
     .poll(() =>
@@ -95,7 +95,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
     .click();
   await expect(viewport).not.toHaveAttribute('style', initial ?? '');
   const preferred = await viewport.getAttribute('style');
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(graph(page)).toBeHidden();
   await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
@@ -125,7 +125,7 @@ test('the primary graph fits a short window and keeps its zoom across view and s
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   await views.getByRole('tab', { name: 'Graph', exact: true }).focus();
   await page.keyboard.press('ArrowRight');
-  await expect(views.getByRole('tab', { name: 'Work flow', exact: true })).toHaveAttribute(
+  await expect(views.getByRole('tab', { name: 'Workflow', exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
   );

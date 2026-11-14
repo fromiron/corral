@@ -1,4 +1,4 @@
-import type { HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
+import type { HarnessBindingRef, HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
@@ -15,7 +15,7 @@ import {
   useSteerTarget,
   useStudioStores,
 } from '@corral/react';
-import { Button, KitBadge, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, KitBadge, Select } from '@corral/react/design-kit';
 import { Activity, Play, Redo2, Undo2 } from '@corral/react/icons';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -44,6 +44,7 @@ import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
+import { useImageProfiles } from '../workbench/useImageProfiles.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
 import { useRunStats } from '../workbench/useRunStats.ts';
@@ -102,10 +103,10 @@ export function TeamDesign({ corralId }: { corralId: string }) {
     () => (record ? editorWorkingCopy(repository, record) : null),
     [repository, record],
   );
-  if (record === undefined) return <p className="p-4 text-sm text-muted-foreground">…</p>;
+  if (record === undefined) return <p className="p-4 text-body text-muted-foreground">…</p>;
   if (!record || !copy)
     return (
-      <p role="status" className="p-4 text-sm text-muted-foreground">
+      <p role="status" className="p-4 text-body text-muted-foreground">
         {t('unknownPanel')}
       </p>
     );
@@ -119,7 +120,11 @@ export function TeamDesign({ corralId }: { corralId: string }) {
       record={record}
       workingCopy={copy}
       inSession
-      toolbar={<span className="text-xs text-muted-foreground">{te('appliesNextRun')}</span>}
+      toolbar={
+        <KitBadge size="compact" color="gray">
+          {te('appliesNextRun')}
+        </KitBadge>
+      }
     />
   );
 }
@@ -155,7 +160,7 @@ function TemplatePicker({ current }: { current: DemoTemplateId }) {
   const t = useTranslations('Demo');
   const navigate = useNavigate();
   return (
-    <div className="flex items-center gap-2 text-xs">
+    <div className="flex items-center gap-2 text-caption">
       <span aria-hidden="true" className="text-muted-foreground">
         {t('template')}
       </span>
@@ -228,10 +233,12 @@ function Editor({
     return view;
   }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
+  const imageProfiles = useImageProfiles();
   const draft = useStore(editor, (s) => s.draft);
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
+  const resolvesHarness = useHarnessResolver();
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
   const [statsOn, setStatsOn] = useState(false);
   const revision = saved.record.definitionRevision;
@@ -318,36 +325,40 @@ function Editor({
 
   return (
     <StudioStoresProvider editor={editor} session={session}>
-      <div
-        ref={shell}
-        className={`grid h-full min-h-0 ${fromSession ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
-      >
-        {fromSession ? (
-          <div
-            data-testid="from-session"
-            className="flex flex-wrap items-center gap-2 border-b border-border bg-muted/50 px-4 py-1.5 text-caption"
-          >
-            <Link
-              to="/sessions/$sessionId"
-              params={{ sessionId: fromSession }}
-              className="font-medium hover:underline"
+      <div ref={shell} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+        {/* One header row: the way back to the session leads it instead of a row of its own. */}
+        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
+          {fromSession ? (
+            <Button
+              data-testid="from-session"
+              variant="ghost"
+              size="compact"
+              render={<Link to="/sessions/$sessionId" params={{ sessionId: fromSession }} />}
             >
               ← {t('backToSession')}
-            </Link>
-            <span className="text-muted-foreground">{t('appliesNextRun')}</span>
-          </div>
-        ) : null}
-        <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
-          <h1 className="min-w-0 truncate text-body font-semibold text-foreground">
-            {draft.definition.name}
-          </h1>
+            </Button>
+          ) : null}
+          {/* The path bar names the team on screen (and the outline's team row); the heading
+              stays for the document outline. */}
+          <h1 className="sr-only">{draft.definition.name}</h1>
           <span className="text-caption text-muted-foreground" data-testid="revisions">
             {t('revisions', { definition: saved.record.definitionRevision })}
           </span>
-          <span aria-live="polite">
-            <KitBadge size="compact" color={dirty ? 'amber' : 'gray'}>
-              {saving ? c('saving') : dirty ? c('unsaved') : c('saved')}
+          {fromSession ? (
+            <KitBadge size="compact" color="gray">
+              {t('appliesNextRun')}
             </KitBadge>
+          ) : null}
+          {/* A disabled Save already says there is nothing to save; only unsaved work and a
+              save in progress show a badge. */}
+          <span aria-live="polite">
+            {saving || dirty ? (
+              <KitBadge size="compact" color="amber">
+                {saving ? c('saving') : c('unsaved')}
+              </KitBadge>
+            ) : (
+              <span className="sr-only">{c('saved')}</span>
+            )}
           </span>
           {message ? (
             <p
@@ -433,8 +444,10 @@ function Editor({
             <TeamEditor
               editor={editor}
               profiles={profiles}
+              imageProfiles={imageProfiles}
               teams={teams.references}
               resolveTeam={teams.resolve}
+              resolvesHarness={resolvesHarness}
               onOpenTeam={(corralId) =>
                 void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
               }
@@ -482,6 +495,43 @@ function Editor({
         </div>
       </div>
     </StudioStoresProvider>
+  );
+}
+
+/**
+ * Whether a work style a copied role names is one this installation keeps. Saved revisions stay,
+ * so any revision up to a profile's latest resolves. The browser demo has no work styles.
+ */
+function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined {
+  const { harnesses } = useServices();
+  const [latest, setLatest] = useState<ReadonlyMap<string, number> | null>(null);
+  useEffect(() => {
+    if (!harnesses) return;
+    let live = true;
+    // As the role's work style setting does: read again when work styles may have changed.
+    const refresh = () =>
+      void harnesses.profileManagement().then(
+        (profiles) =>
+          live &&
+          setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
+        // A failed read keeps what was read before; with nothing read, nothing resolves.
+        () => {},
+      );
+    refresh();
+    window.addEventListener('focus', refresh);
+    window.addEventListener('corral:harness-changed', refresh);
+    return () => {
+      live = false;
+      window.removeEventListener('focus', refresh);
+      window.removeEventListener('corral:harness-changed', refresh);
+    };
+  }, [harnesses]);
+  return useMemo(
+    () =>
+      latest
+        ? (ref: HarnessBindingRef) => (latest.get(ref.profileId) ?? 0) >= ref.revision
+        : undefined,
+    [latest],
   );
 }
 
@@ -535,14 +585,18 @@ function RunSide({
   return (
     <section aria-labelledby="run-heading" className="flex flex-col gap-3">
       {guide?.(session, setChosen)}
-      <p className="text-xs text-muted-foreground">{n('directRunHint')}</p>
+      <p className="text-caption text-muted-foreground">{n('directRunHint')}</p>
       <details
         open={setupOpen}
         onToggle={(event) => setSetupOpen(event.currentTarget.open)}
         className="rounded-lg fill-group p-3"
       >
-        <summary className="cursor-pointer text-sm font-medium">{n('prepareExecution')}</summary>
-        <p className="my-2 text-xs text-muted-foreground">{n('runOverridesHint')}</p>
+        <summary
+          className="cursor-pointer text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {n('prepareExecution')}
+        </summary>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}
@@ -601,7 +655,7 @@ function RunSide({
           params={{ runId }}
           // Keep the execution chosen here: the Run page opens on the same one.
           search={chosen ? { execution: chosen } : {}}
-          className="text-xs underline"
+          className="text-caption underline"
         >
           {t('openRun')}
         </Link>

@@ -4,7 +4,13 @@ import { rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { panelTab, requestBox } from '../workbench.ts';
+import {
+  closeSettings,
+  newConversation,
+  openFolderSettings,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('session file preview isolates cookies, reads refreshed assets and closes its lease', async ({
@@ -57,16 +63,15 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
   });
   try {
     await corral.open('/');
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+    const folder = await openFolderSettings(page);
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await expect(trust).toBeVisible();
     await trust.click();
     await expect(trust).toBeChecked();
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await closeSettings(page);
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/')[2];
     if (!sessionId) throw new Error('session did not open');
@@ -78,9 +83,9 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
       .click();
     await page.getByRole('tab', { name: 'Files', exact: true }).click();
     await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
-      'Session working copy',
+      'Conversation working copy',
     );
-    await page.getByRole('button', { name: 'Open index.html', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'index.html', exact: true }).click();
     await page.getByRole('button', { name: 'Open preview', exact: true }).click();
     const frame = page.frameLocator('[data-testid="file-preview-frame"]');
     await expect(
@@ -208,15 +213,14 @@ test.describe('run-owned previews', () => {
     });
     try {
       await corral.open('/');
-      await page.getByRole('tab', { name: /^Project folder/ }).click();
-      const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+      const folder = await openFolderSettings(page);
       await folder.getByLabel('Folder path on this computer').fill(original);
       await folder.getByRole('button', { name: 'Link folder' }).click();
       const trust = folder.getByRole('switch', { name: /Trust this repository/ });
       await trust.click();
       await expect(trust).toBeChecked();
-      await page.getByRole('tab', { name: /^Sessions/ }).click();
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await closeSettings(page);
+      await newConversation(page);
       await expect(page).toHaveURL(/\/sessions\/session_/);
       const sessionId = new URL(page.url()).pathname.split('/')[2];
       if (!sessionId) throw new Error('Session did not open');
@@ -238,9 +242,10 @@ test.describe('run-owned previews', () => {
         'Open index.html, click Add in the preview and verify Count: 1, then ask me before completing.',
       );
       await page.getByRole('button', { name: 'Send', exact: true }).click();
-      await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 45_000 });
-      await page.getByTestId('action-required').getByRole('link').click();
-      await expect(page.getByRole('form', { name: 'Waiting for your answer' })).toBeVisible();
+      // The question comes to the conversation's needed-now tray, in view.
+      await expect(page.getByRole('form', { name: 'Waiting for you' })).toBeVisible({
+        timeout: 45_000,
+      });
       const leasesResponse = await page.request.get(
         `${corral.server.url}/api/v1/sessions/${sessionId}/previews`,
       );
@@ -263,8 +268,7 @@ test.describe('run-owned previews', () => {
       );
       await page.screenshot({ path: testInfo.outputPath('run-owned-preview.png') });
       await panelTab(page, 'Conversation');
-      await page.getByTestId('action-required').getByRole('link').click();
-      const question = page.getByRole('form', { name: 'Waiting for your answer' });
+      const question = page.getByRole('form', { name: 'Waiting for you' });
       await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
       await question.getByRole('button', { name: 'Send answer' }).click();
       await panelTab(page, 'Conversation');

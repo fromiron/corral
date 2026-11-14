@@ -59,6 +59,7 @@ const models = () => ({
   installLocalRouting: vi.fn(),
   cancelLocalRoutingInstall: vi.fn(),
   startLocalRouting: vi.fn(),
+  removeLocalRouting: vi.fn(),
 });
 
 const cleanups: (() => void)[] = [];
@@ -130,8 +131,9 @@ it('starts Off with nothing to set up, and saving Manual with Local downloads no
   expect(radio(container, 'Local judge model')?.getAttribute('aria-checked')).toBe('true');
   expect(container.textContent).toContain('Runs on server-host');
   expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    'Not installed · about 1,123 MB',
+    'Not installed · about 1.1 GB',
   );
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
   await act(async () => button(container, 'Save')?.click());
   expect(api.saveEffortRouting).toHaveBeenCalledWith(LOCAL, 'rev_1');
   expect(api.installLocalRouting).not.toHaveBeenCalled();
@@ -167,22 +169,146 @@ it('installs only from its button, follows the download, and can cancel it', asy
   await act(async () => button(container, 'Cancel install')?.click());
   expect(api.cancelLocalRoutingInstall).toHaveBeenCalledTimes(1);
   expect(container.querySelector('[role="status"]')?.textContent).toBe(
-    'Not installed · about 1,123 MB',
+    'Not installed · about 1.1 GB',
+  );
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
+});
+
+it('says an install downloads about 1.1 GB again after it fails', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'install-error', error: 'the download did not match' }),
+    }),
+  );
+  const container = await render(api);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe('Install failed');
+  expect(container.textContent).toContain('Downloads about 1.1 GB.');
+  expect(button(container, 'Install')).toBeDefined();
+});
+
+it('says Prepare now starts the installed model and downloads nothing', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'stopped' }),
+    }),
+  );
+  const container = await render(api);
+  expect(button(container, 'Prepare now')).toBeDefined();
+  expect(container.textContent).toContain(
+    'Starts the model that is already installed. Nothing is downloaded.',
   );
 });
 
-it('keeps the GPU unselectable and says why', async () => {
+it('confirms the size freed before removing the judge model', async () => {
   const api = models();
-  api.effortRouting.mockResolvedValue(view({ settings: LOCAL }));
+  const absent = view({
+    settings: LOCAL,
+    local: local({ install: 'absent' }),
+  });
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'stopped' }),
+    }),
+  );
+  api.removeLocalRouting.mockResolvedValue(absent);
+  const container = await render(api);
+  await act(async () => button(container, 'Remove')?.click());
+  expect(api.removeLocalRouting).not.toHaveBeenCalled();
+  expect(document.body.textContent).toContain(
+    'Frees about 1.1 GB on this computer. The meeting analysis model stays.',
+  );
+  const confirm = [...document.querySelectorAll('button')].filter(
+    (node) => node.textContent === 'Remove',
+  );
+  await act(async () => confirm.at(-1)?.click());
+  expect(api.removeLocalRouting).toHaveBeenCalledTimes(1);
+  expect(container.querySelector('[role="status"]')?.textContent).toBe(
+    'Not installed · about 1.1 GB',
+  );
+});
+
+it('says a judgment must finish before the judge model can be removed', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({ install: 'installed', runtime: 'inferring' }),
+    }),
+  );
+  api.removeLocalRouting.mockRejectedValue(
+    new ApiError(409, 'RESOURCE_CAPACITY', 'a judgment is running'),
+  );
+  const container = await render(api);
+  await act(async () => button(container, 'Remove')?.click());
+  const confirm = [...document.querySelectorAll('button')].filter(
+    (node) => node.textContent === 'Remove',
+  );
+  await act(async () => confirm.at(-1)?.click());
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain(
+    'Cannot remove it while a judgment is running.',
+  );
+});
+
+it('lets the person install Vulkan or CUDA and says they are not verified here', async () => {
+  const api = models();
+  api.effortRouting.mockResolvedValue(
+    view({
+      settings: LOCAL,
+      local: local({
+        devices: [
+          { kind: 'cpu', installed: true, downloadBytes: 1123 * MB, requirement: null },
+          {
+            kind: 'vulkan',
+            installed: false,
+            downloadBytes: 36 * MB,
+            requirement: 'libvulkan.so.1',
+          },
+          {
+            kind: 'cuda',
+            installed: false,
+            downloadBytes: 188 * MB,
+            requirement: 'libcudart.so.12; NVIDIA Linux driver >= 570.26',
+          },
+        ],
+      }),
+    }),
+  );
+  api.installLocalRouting.mockResolvedValue(view({ settings: LOCAL }));
   const container = await render(api);
   await act(async () =>
     container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]')?.click(),
   );
-  const gpu = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
-    node.textContent?.startsWith('GPU'),
+  const option = (name: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((node) =>
+      node.textContent?.startsWith(name),
+    );
+  expect(option('Vulkan')?.getAttribute('aria-disabled')).not.toBe('true');
+  expect(option('Vulkan')?.textContent).toContain('Not verified on this computer');
+  expect(option('CUDA')?.textContent).toContain('Not verified on this computer');
+  expect(option('Vulkan')?.textContent).not.toContain('verified GPU');
+  await act(async () => option('Vulkan')?.click());
+  expect(container.textContent).toContain('Downloads about 36 MB.');
+  expect(container.textContent).toContain(
+    'Not verified on this computer. Needs libvulkan.so.1. Corral does not download these.',
   );
-  expect(gpu?.getAttribute('aria-disabled')).toBe('true');
-  expect(gpu?.textContent).toContain('No verified GPU setup yet');
+  const pick = async (name: string) => {
+    await act(async () =>
+      container.querySelector<HTMLElement>('button[role="combobox"][aria-label="Device"]')?.click(),
+    );
+    await act(async () => option(name)?.click());
+  };
+  await pick('CUDA');
+  expect(container.textContent).toContain(
+    'Needs libcudart.so.12; NVIDIA Linux driver >= 570.26. Corral does not download these.',
+  );
+  await pick('Vulkan');
+  await act(async () => button(container, 'Install')?.click());
+  expect(api.installLocalRouting).toHaveBeenCalledWith('vulkan');
 });
 
 it('prepares the saved Local engine again after an error', async () => {
@@ -210,7 +336,15 @@ it('prepares the saved Local engine again after an error', async () => {
 it('a computer without the Local engine cannot save it', async () => {
   const api = models();
   api.effortRouting.mockResolvedValue(
-    view({ local: local({ supported: false, reason: 'not here', downloadBytes: null }) }),
+    view({
+      local: local({
+        supported: false,
+        reason: 'not here',
+        downloadBytes: null,
+        installedBytes: null,
+        devices: [],
+      }),
+    }),
   );
   const container = await render(api);
   await act(async () => radio(container, 'Manual')?.click());

@@ -11,9 +11,12 @@ import {
   type MeetingsClient,
   ModelsApi,
   openSession,
+  type PathEngineStatus,
   probeServer,
   RestCorralRepository,
   RunModesApi,
+  type SessionDeletionRequest,
+  type SessionDeletionSummary,
   TerminalsApi,
   VaultApi,
   VoiceApi,
@@ -25,7 +28,6 @@ import {
   type CorralRepository,
   createAutoStarter,
   createKeyValueCorralRepository,
-  explainDefinition,
   type KeyValueStore,
   MeetingDecisionsService,
   MeetingService,
@@ -33,9 +35,10 @@ import {
   type RuntimeTransport,
   type StartRunResult,
 } from '@corral/core';
-import { createRunRecovery, type RunSessionStore } from '@corral/react';
+import { AdviceSeenProvider, createRunRecovery, type RunSessionStore } from '@corral/react';
 import { createContext, type ReactNode, useContext } from 'react';
 import { createDemoWorkspaces, type WorkspacesClient } from './demo/workspaces-client.ts';
+import { demoStartAuto } from './demoAutoContext.ts';
 import type {} from './desktop.tsx';
 import { createRunSessions } from './runSessions.ts';
 import { createDemoRuntime } from './runtime.ts';
@@ -48,6 +51,8 @@ import { sessionFetch } from './sessionConnection.ts';
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
+  /** The server's path search engine now; the browser demo has only the built-in one. */
+  pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
   transport: RuntimeTransport;
@@ -69,14 +74,17 @@ export interface StudioServices {
   live: boolean;
   /** A sandboxed address for HTML result previews; the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
-  /** A question about a result, as its own run in a session. */
-  startExplain: (request: ExplainStart) => Promise<StartRunResult>;
   /** A request in an auto session: the runtime picks the template and starts it. */
   startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
   /** Server cancellation also reconciles a start whose HTTP response was lost. */
   cancelAuto?: (request: AutoCancelRequest) => Promise<AutoCancelResult>;
   /** Work folders and file changes; the browser demo has an in-memory one. */
   workspaces: WorkspacesClient | null;
+  /** Session deletion exists on the local server. The browser demo has no delete. */
+  sessionDeletion: {
+    preview(sessionId: string): Promise<SessionDeletionSummary>;
+    delete(sessionId: string, body: SessionDeletionRequest): Promise<void>;
+  } | null;
   /** meeting rounds; the in-browser runtime runs the same service locally. */
   meetings: MeetingsClient;
   meetingHandoffs?: MeetingHandoffsApi;
@@ -84,15 +92,6 @@ export interface StudioServices {
   terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
   vault?: import('@corral/client').VaultClient | null;
-}
-
-export interface ExplainStart {
-  commandId: string;
-  sessionId: string;
-  question: string;
-  modelProfile: string;
-  mode: 'mock' | 'live';
-  startFrom?: { runId: string; artifactVersionId: string };
 }
 
 const systemClock: Clock = {
@@ -164,11 +163,21 @@ export async function createStudioServices(): Promise<StudioServices> {
     const choices = await modesApi.read().catch(() => ({ modes: {} }));
     let modeWrite: Promise<void> = Promise.resolve();
     const runs = createRunSessions(transport, recovery);
+    const repository = new RestCorralRepository(http);
     return {
       mode: 'server',
       serverVersion: health.version,
+      pathEngine: async () => {
+        const current = await probeServer(http);
+        if (!current) throw new Error('SERVER_UNAVAILABLE');
+        return current.pathEngine;
+      },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
-      repository: new RestCorralRepository(http),
+      repository,
+      sessionDeletion: {
+        preview: (sessionId) => repository.deletionPreview(sessionId),
+        delete: (sessionId, body) => repository.deleteSession(sessionId, body),
+      },
       transport,
       readHistory: (runId) => transport.exportRun(runId, { privateTranscript: true }),
       runFor: runs.runFor,
@@ -187,7 +196,6 @@ export async function createStudioServices(): Promise<StudioServices> {
       harnesses: new HarnessApi(http),
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
-      startExplain: (request) => transport.startExplain(request),
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
@@ -227,6 +235,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   return {
     mode: 'browser',
     terminals: null,
+    sessionDeletion: null,
     persistent,
     sessionMissing: false,
     models: null,
@@ -251,29 +260,16 @@ export async function createStudioServices(): Promise<StudioServices> {
       sendQueued: (id) => meetings.sendQueued(id),
       dropQueued: (id) => meetings.dropQueued(id),
       editQueued: (id, request) => meetings.editQueued(id, request),
+      continueChain: (id, request) => meetings.continueChain(id, request),
       adopt: (id, request) => meetingDecisions.adopt(id, request),
       withdraw: (id, request) => meetingDecisions.withdraw(id, request),
     },
-    startAuto: async (request, signal) => {
-      const copy = await workspaces.worktree(request.sessionId).catch(() => null);
-      return autoStarter.start(request, {
-        fileTools: Boolean(copy),
-        ...(signal ? { signal } : {}),
-      });
-    },
-    // The in-browser runtime runs inline definitions itself.
-    startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
-      transport.startRun({
-        schemaVersion: '0.1',
-        ...rest,
-        sessionId,
-        definition: explainDefinition({
-          id: `explain_${sessionId.replace(/^session_/, '')}`,
-          question,
-          modelProfile,
-        }),
-        ...(startFrom ? { startFrom } : {}),
-      }),
+    // As on the server: the stored session's criteria and advisor, read when it is admitted.
+    startAuto: demoStartAuto({
+      worktree: (sessionId) => workspaces.worktree(sessionId),
+      getSession: (sessionId) => repository.getSession(sessionId),
+      start: (request, context) => autoStarter.start(request, context),
+    }),
   };
 }
 
@@ -286,7 +282,21 @@ export function ServicesProvider({
   services: StudioServices;
   children: ReactNode;
 }) {
-  return <ServicesContext.Provider value={services}>{children}</ServicesContext.Provider>;
+  return (
+    <ServicesContext.Provider value={services}>
+      {/* Advice shown in full tells the server once, wherever it shows (features/inbox.md). The
+          client is read when telling: with none, nothing is told, and it is tried again. */}
+      <AdviceSeenProvider
+        send={(runId, executionId) =>
+          services.workspaces
+            ? services.workspaces.executionOpened(runId, executionId)
+            : Promise.reject(new Error('no workspace client'))
+        }
+      >
+        {children}
+      </AdviceSeenProvider>
+    </ServicesContext.Provider>
+  );
 }
 
 export function useServices(): StudioServices {

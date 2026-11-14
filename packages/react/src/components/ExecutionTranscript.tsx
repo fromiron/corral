@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -9,14 +9,22 @@ import {
   KitBadge as Badge,
   KitButton as Button,
   KitChatMessage as ChatMessage,
+  fontWeights,
   type ToolCall,
-  ToolCallCard,
   ToolCallGroup,
   type ToolCallLabels,
 } from '../design-kit/index.ts';
+import {
+  type AdviceEntry,
+  type DeliveredAdvice,
+  deliveredAdvice,
+  unreadAdviceOf,
+  useAgentName,
+} from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
+import { AdviceBlock } from './AdviceLine.tsx';
 import { FailureNotice } from './FailureNotice.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -31,12 +39,15 @@ export function ExecutionTranscript({
   executionId,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   session: RunSessionStore;
   executionId: string;
   onOpenArtifact?: (artifactVersionId: string) => void;
   /** Fold each model reply until the reader opens it. The full run page stays expanded. */
   compact?: boolean;
+  /** The host already leads with why the execution failed; its end keeps only the outcome. */
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   const events = useRunDisplay(session, (s) => s.events);
@@ -47,8 +58,32 @@ export function ExecutionTranscript({
     () => buildTranscript(events, projection, streams, executionId),
     [events, projection, streams, executionId],
   );
-  const labelOf = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const labelOf = useAgentName(definition);
+  const tm = useTranslations('Sessions.meta');
+  const ta = useTranslations('Advice');
+  // The advice this execution was given: delivered or on its way, by its directive, and what it
+  // never read, which its record keeps at its end (execution-monitor.md).
+  const delivered = useMemo(
+    () =>
+      new Map(
+        (projection ? deliveredAdvice(projection, executionId) : []).flatMap((item) => {
+          const directiveId = projection?.advice?.[item.adviceId]?.directiveId;
+          return directiveId ? [[directiveId, item] as const] : [];
+        }),
+      ),
+    [projection, executionId],
+  );
+  const unread = useMemo(
+    () =>
+      projection
+        ? unreadAdviceOf(projection).filter((item) => item.targetExecutionId === executionId)
+        : [],
+    [projection, executionId],
+  );
+  const adviserOf = (item: AdviceEntry) => {
+    const observer = projection?.executions[item.observerExecutionId];
+    return observer ? labelOf(observer.nodeId) : item.observerExecutionId;
+  };
 
   // Follow new entries unless the reader scrolled up to look at something earlier.
   const box = useRef<HTMLDivElement>(null);
@@ -77,7 +112,19 @@ export function ExecutionTranscript({
     >
       {entries.length === 0 ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {groupTools(entries).map((entry) =>
-        Array.isArray(entry) ? (
+        !Array.isArray(entry) && entry.kind === 'advice' ? (
+          // An advice's line where it was accepted; one its target never read is at the end.
+          delivered.get(entry.directiveId) ? (
+            <AdviceBlock
+              key={`advice-${entry.seq}`}
+              runId={projection?.runId ?? ''}
+              items={[delivered.get(entry.directiveId) as DeliveredAdvice]}
+              name={adviserOf(delivered.get(entry.directiveId) as DeliveredAdvice)}
+              nameOf={adviserOf}
+              status={tm((delivered.get(entry.directiveId) as DeliveredAdvice).state)}
+            />
+          ) : null
+        ) : Array.isArray(entry) ? (
           <ExecutionToolGroup
             key={`tools-${entry[0]?.seq}`}
             tools={entry}
@@ -90,14 +137,33 @@ export function ExecutionTranscript({
             labelOf={labelOf}
             {...(onOpenArtifact ? { onOpenArtifact } : {})}
             compact={compact}
+            failureShown={failureShown}
           />
         ),
       )}
+      {unread.length ? (
+        <AdviceBlock
+          runId={projection?.runId ?? ''}
+          items={unread}
+          name={
+            new Set(unread.map((item) => item.observerExecutionId)).size > 1
+              ? ta('advisors', {
+                  count: new Set(unread.map((item) => item.observerExecutionId)).size,
+                })
+              : adviserOf(unread[0] as AdviceEntry)
+          }
+          nameOf={adviserOf}
+          unread
+        />
+      ) : null}
     </div>
   );
 }
 
 type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
+
+const instructions = (entry: Extract<TranscriptEntry, { kind: 'request' }>) =>
+  entry.directives.filter((directive) => directive.origin !== 'advice').length;
 
 /** Consecutive tool calls fold into one kit tool-call group. */
 function groupTools(entries: TranscriptEntry[]): (TranscriptEntry | ToolEntry[])[] {
@@ -160,7 +226,13 @@ function useToolCalls(
     id: tool.toolCallId,
     name: tool.name,
     status: activityState && unfinished(tool) ? activityState.status : toolStatus[tool.status],
-    statusLabel: activityState && unfinished(tool) ? activityState.label : t(`tool.${tool.status}`),
+    statusLabel:
+      activityState && unfinished(tool)
+        ? activityState.label
+        : // A call that passed on an approval for the run says so after its state.
+          [t(`tool.${tool.status}`), tool.allowedForRun ? t('allowedForRun') : null]
+            .filter(Boolean)
+            .join(' · '),
     args: tool.args,
     ...(tool.detail ? { error: tool.detail } : {}),
     ...(tool.resultRef
@@ -198,73 +270,8 @@ export function ExecutionToolGroup({
     <ToolCallGroup
       calls={calls}
       labels={labels}
-      size="compact"
       label={activityState && tools.some(unfinished) ? activityState.label : undefined}
     />
-  );
-}
-
-/**
- * An execution's calls as flat kit rows. Consecutive calls of one tool fold into a single
- * `name ×N` group, open only while one of them runs or after one failed.
- */
-export function ExecutionToolRows({
-  tools,
-  onOpenArtifact,
-  activityState,
-}: {
-  tools: ToolEntry[];
-  onOpenArtifact?: (id: string) => void;
-  activityState?: ActivityState;
-}) {
-  const labels = useToolLabels();
-  const calls = useToolCalls(tools, onOpenArtifact, activityState);
-  const runs: ToolCall[][] = [];
-  for (const call of calls) {
-    const last = runs.at(-1);
-    if (last && last[0]?.name === call.name) last.push(call);
-    else runs.push([call]);
-  }
-  return (
-    <div className="grid min-w-0 gap-0.5">
-      {runs.map((run) => {
-        const [first] = run;
-        if (!first) return null;
-        if (run.length === 1)
-          return (
-            <ToolCallCard
-              key={first.id}
-              variant="row"
-              call={first}
-              labels={labels}
-              size="compact"
-            />
-          );
-        return <RepeatedTool key={first.id} calls={run} labels={labels} />;
-      })}
-    </div>
-  );
-}
-
-/**
- * Consecutive calls of one tool as one `name ×N` group. It stays open while a call runs or after
- * one failed, and folds once they settle, until the person opens or closes it themselves.
- */
-function RepeatedTool({ calls, labels }: { calls: ToolCall[]; labels: Partial<ToolCallLabels> }) {
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const hot = calls.some((call) => call.status === 'running' || call.status === 'error');
-  const [first] = calls;
-  return (
-    <div data-tool-repeat={first?.name}>
-      <ToolCallGroup
-        calls={calls}
-        labels={labels}
-        size="compact"
-        label={`${first?.name} ×${calls.length}`}
-        open={chosen ?? hot}
-        onOpenChange={setChosen}
-      />
-    </div>
   );
 }
 
@@ -273,11 +280,13 @@ function Entry({
   labelOf,
   onOpenArtifact,
   compact = false,
+  failureShown = false,
 }: {
   entry: TranscriptEntry;
   labelOf: (nodeId: string) => string;
   onOpenArtifact?: (id: string) => void;
   compact?: boolean;
+  failureShown?: boolean;
 }) {
   const t = useTranslations('Transcript');
   switch (entry.kind) {
@@ -292,18 +301,27 @@ function Entry({
     case 'instruction':
       return (
         <ChatMessage from="user" data-testid={`transcript-instruction-${entry.directiveId}`}>
-          <p className="font-medium">{t('you')}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('you')}</p>
           <p className="whitespace-pre-wrap">{entry.text}</p>
           <p className="text-muted-foreground">{t(`instruction.${entry.status}`)}</p>
         </ChatMessage>
       );
+    case 'advice':
+      // An advisor's advice is not the person's message; its own line is drawn with advice.
+      return null;
     case 'request':
       return (
         <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
           <span>{t('request', { no: entry.no })}</span>
           <ReasoningSummary call={entry} open={entry.open} />
-          {entry.directives.length > 0 ? (
-            <Badge>{t('withInstructions', { count: entry.directives.length })}</Badge>
+          {/* The person's instructions and an advisor's advice, each said as what it is. */}
+          {instructions(entry) > 0 ? (
+            <Badge>{t('withInstructions', { count: instructions(entry) })}</Badge>
+          ) : null}
+          {entry.directives.length > instructions(entry) ? (
+            <Badge>
+              {t('withAdvice', { count: entry.directives.length - instructions(entry) })}
+            </Badge>
           ) : null}
         </p>
       );
@@ -336,7 +354,9 @@ function Entry({
     case 'question':
       return (
         <ChatMessage from="assistant">
-          <p className="font-medium">{t('asked', { target: labelOf(entry.targetNodeId) })}</p>
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t('asked', { target: labelOf(entry.targetNodeId) })}
+          </p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
           {entry.answer ? (
             <div className="mt-4 space-y-2">
@@ -366,6 +386,8 @@ function Entry({
         </p>
       );
     case 'settled':
+      // The host's cause line above already says this execution failed: no second "Failed".
+      if (failureShown && entry.outcome === 'failed') return null;
       return (
         <div
           className={`text-center text-caption ${entry.outcome === 'succeeded' ? 'text-success' : 'text-danger'}`}

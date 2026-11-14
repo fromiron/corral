@@ -23,7 +23,8 @@ const LANGUAGES = new Set([
   'go',
   'rust',
 ]);
-// A small lexical aid, not a parser: unknown languages retain escaped plain source.
+// A small lexical aid, not a parser: unknown languages retain escaped plain source. The colors are
+// the syntax tokens (theme.css), which a named theme sets.
 // One linear pass and React text nodes keep incomplete streaming fences safe.
 const KEYWORDS = new Set(
   'const let var function return if else for while class import from export async await new throw try catch def print True False None true false null undefined public private static void int string select SELECT FROM WHERE'.split(
@@ -42,24 +43,24 @@ function highlighted(text: string, language: string): ReactNode {
     if (text.startsWith('//', cursor) || char === '#') {
       const end = text.indexOf('\n', cursor);
       cursor = end < 0 ? text.length : end;
-      color = 'text-muted-foreground';
+      color = 'text-syntax-comment';
     } else if (text.startsWith('/*', cursor)) {
       const end = text.indexOf('*/', cursor + 2);
       cursor = end < 0 ? text.length : end + 2;
-      color = 'text-muted-foreground';
+      color = 'text-syntax-comment';
     } else if (char === '"' || char === "'" || char === '`') {
       cursor++;
       while (cursor < text.length) {
         if (text[cursor] === '\\') cursor = Math.min(cursor + 2, text.length);
         else if (text[cursor++] === char) break;
       }
-      color = 'text-success';
+      color = 'text-syntax-string';
     } else if (char && /[0-9]/.test(char)) {
       while (cursor < text.length && /[0-9.]/.test(text[cursor] ?? '')) cursor++;
-      color = 'text-warning';
+      color = 'text-syntax-number';
     } else if (char && /[A-Za-z_$]/.test(char)) {
       while (cursor < text.length && /[A-Za-z0-9_$]/.test(text[cursor] ?? '')) cursor++;
-      if (KEYWORDS.has(text.slice(start, cursor))) color = 'font-semibold text-primary';
+      if (KEYWORDS.has(text.slice(start, cursor))) color = 'font-semibold text-syntax-keyword';
     } else cursor++;
     if (color) {
       if (plain < start) parts.push(text.slice(plain, start));
@@ -83,7 +84,11 @@ export function CodeBlock({ children }: { children: ReactNode }) {
   const language = /(?:^|\s)language-([^\s]+)/.exec(child.props.className ?? '')?.[1] ?? '';
   return (
     <div className="my-3 min-w-0 overflow-hidden rounded-lg border border-border">
-      <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-1 text-xs text-muted-foreground">
+      {/* Not the code: a copy of a passage over the block, and a quote of it, leave it out. */}
+      <div
+        data-copy-skip=""
+        className="flex select-none items-center justify-between gap-2 border-b border-border py-0.5 pr-1 pl-3 text-caption text-muted-foreground"
+      >
         <span data-code-language>{language || t('plainText')}</span>
         <CopyTextButton text={text} code />
       </div>

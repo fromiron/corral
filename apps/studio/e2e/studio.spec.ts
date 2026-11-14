@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
+import { newTeam, openLibraryTeams } from './workbench.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
@@ -15,8 +16,8 @@ async function trackErrors(page: Page): Promise<string[]> {
 
 async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
+  await openLibraryTeams(page);
+  await newTeam(page);
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
 
@@ -63,7 +64,7 @@ async function openTestRun(page: Page) {
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Demo');
 
   await buildAgentToOutput(page);
   const brief = 'Compare notebook formats for field notes.';
@@ -72,7 +73,7 @@ test('steps dropped on an empty canvas and connected run as drawn', async ({ pag
   const panel = await openTestRun(page);
   await panel.getByRole('button', { name: 'Run', exact: true }).click();
 
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('run-output')).toContainText(
     'Simulated Agent 1 reply, request 2 of 2. No model was called.',
   );
@@ -115,7 +116,7 @@ test('an imported team with a Loop validates and runs through its review and app
   const errors = await trackErrors(page);
   // Short simulated replies: the team makes about thirty model requests over two rounds.
   await page.goto('/?delay=50');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-team.corral.json')]);
@@ -135,7 +136,7 @@ test('an imported team with a Loop validates and runs through its review and app
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   expect(errors).toEqual([]);
 
@@ -187,12 +188,12 @@ test('the workspace and editor have no serious automated accessibility violation
       .map((v) => ({ rule: v.id, targets: v.nodes.map((node) => node.target) }));
   expect(await serious()).toEqual([]);
 
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team' }).click();
+  await openLibraryTeams(page);
+  await newTeam(page);
   await buildAgentToOutput(page);
   // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
   await page
-    .getByRole('complementary', { name: 'Team structure' })
+    .getByRole('complementary', { name: 'Corral structure' })
     .getByRole('button', { name: 'Agent 1', exact: true })
     .click();
   await expect(settings(page).getByRole('heading', { name: 'Agent', exact: true })).toBeVisible();
@@ -204,7 +205,7 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
 }) => {
   const errors = await trackErrors(page);
   await page.goto('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([

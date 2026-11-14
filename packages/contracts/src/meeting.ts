@@ -13,6 +13,8 @@ export const MeetingParticipant = z.strictObject({
   name: z.string().trim().min(1).max(40),
   /** What the person also calls them; messages may address them by these as by the name. */
   aliases: z.array(z.string().trim().min(1).max(40)).max(8).optional(),
+  /** Short label shown beside the name. The prompt is the longer role description. */
+  role: z.string().trim().min(1).max(40).optional(),
   /** Optional role guidance; an empty string means an ordinary chat participant. */
   prompt: z.string().trim().max(4000),
   modelProfile: Identifier,
@@ -22,9 +24,66 @@ export type MeetingParticipant = z.infer<typeof MeetingParticipant>;
 /** Local-only selection input: posted text and configured roles, never provider credentials. */
 export interface MeetingSelectionInput {
   message: string;
-  participants: { participantId: string; name?: string; prompt: string }[];
+  participants: {
+    participantId: string;
+    name?: string;
+    aliases?: string[];
+    role?: string;
+    prompt: string;
+  }[];
   history: { id?: string; participantId: string | null; text: string }[];
 }
+
+/** One participant's selector score; higher fits the message better. */
+export const MeetingSelectionScore = z.strictObject({
+  participantId: Identifier,
+  score: z.number(),
+});
+export type MeetingSelectionScore = z.infer<typeof MeetingSelectionScore>;
+
+/**
+ * What a selector returns: a score per participant and, optionally, how much the message needs a
+ * reply at all. Who answers, and how many, is the selection policy's call, not the selector's.
+ */
+export interface MeetingSelectorResult {
+  scores: { participantId: string; score: number }[];
+  needsReply?: number;
+}
+
+/** The reason codes each selection strategy may record; the screen words them. */
+export const MEETING_SELECTION_REASONS = {
+  explicit: ['composer_recipients', 'rebuttal', 'saved_recipients'],
+  mention: ['mention', 'participant_mention'],
+  address: ['addressed'],
+  selector: ['top_score', 'continuity', 'no_reply_needed'],
+  fallback: ['reply_target', 'recent_speaker', 'rotation', 'nobody_available', 'analysis_off'],
+  none: ['no_recipients'],
+} as const;
+type SelectionStrategy = keyof typeof MEETING_SELECTION_REASONS;
+export type MeetingSelectionReason<S extends SelectionStrategy = SelectionStrategy> =
+  (typeof MEETING_SELECTION_REASONS)[S][number];
+
+/** How a round's recipients were chosen, kept with the round. */
+export const MeetingSelection = z
+  .strictObject({
+    /** explicit: chosen in the composer; mention: @mention; address: the message's address rules;
+     * selector: selector scores and the policy; fallback: the fallback rule; none: no recipients. */
+    strategy: z.enum(['explicit', 'mention', 'address', 'selector', 'fallback', 'none']),
+    /** The selector's usable scores, when it was consulted. */
+    scores: z.array(MeetingSelectionScore).max(6).optional(),
+    reason: z.enum(
+      Object.values(MEETING_SELECTION_REASONS).flat() as [
+        MeetingSelectionReason,
+        ...MeetingSelectionReason[],
+      ],
+    ),
+  })
+  .refine(
+    ({ strategy, reason }) =>
+      (MEETING_SELECTION_REASONS[strategy] as readonly string[]).includes(reason),
+    'The selection reason does not belong to its strategy',
+  );
+export type MeetingSelection = z.infer<typeof MeetingSelection>;
 
 export const MeetingConfig = z
   .strictObject({
@@ -87,6 +146,10 @@ const MeetingRoundFields = z.strictObject({
   rebuttalNo: z.int().min(1).nullable(),
   participantIds: z.array(Identifier).max(6),
   answers: z.array(MeetingAnswer).max(6),
+  /** How the recipients were chosen. Absent in records saved before it was kept. */
+  selection: MeetingSelection.optional(),
+  /** A person chose to continue a held mention chain with this round; the chain count restarts. */
+  continued: z.literal(true).optional(),
   createdAt: z.string(),
   stoppedAt: z.string().nullable(),
 });
@@ -198,9 +261,22 @@ export type MeetingAdoptDecisionRequest = z.infer<typeof MeetingAdoptDecisionReq
 export const MeetingWithdrawDecisionRequest = MeetingDecisionWithdrawal.omit({ createdAt: true });
 export type MeetingWithdrawDecisionRequest = z.infer<typeof MeetingWithdrawDecisionRequest>;
 
+/** Set when participant mentions have chained eight rounds with no message from the person. */
+export const MeetingHold = z.strictObject({
+  kind: z.literal('chain'),
+  /** The round whose answer's mentions were not followed yet. */
+  after: Identifier,
+});
+export type MeetingHold = z.infer<typeof MeetingHold>;
+
+/** Continues a held mention chain. */
+export const MeetingContinueRequest = z.strictObject({ commandId: Identifier });
+export type MeetingContinueRequest = z.infer<typeof MeetingContinueRequest>;
+
 export const MeetingState = z.strictObject({
   config: MeetingConfig,
   rounds: z.array(MeetingRound),
+  hold: MeetingHold.optional(),
   /** Legacy unsent draft, retained for older clients. New human messages post immediately. */
   queued: QueuedMeetingMessage.nullable(),
   minutes: z.array(MeetingMinutes).optional(),
@@ -235,6 +311,8 @@ export const MeetingRoundRequest = z.discriminatedUnion('kind', [
     attachments: TextAttachments.optional(),
     /** Participant IDs or the secretary chosen in the composer, besides `@name` in the text. */
     mentions: z.array(Identifier).max(7).optional(),
+    /** `none` posts the message without asking anyone to reply. */
+    recipients: z.literal('none').optional(),
   }),
   z.strictObject({
     kind: z.literal('rebuttal'),
@@ -288,6 +366,7 @@ export const MeetingView = z.strictObject({
       }),
   ),
   queued: QueuedMeetingMessage.nullable(),
+  hold: MeetingHold.optional(),
   minutes: z.array(MeetingMinutes).optional(),
   decisions: z.array(MeetingDecisionVersion).optional(),
   decisionWithdrawals: z.array(MeetingDecisionWithdrawal).optional(),

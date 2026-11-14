@@ -101,17 +101,12 @@ export function DevelopmentMode({
     }
   };
   return (
-    <section className="flex flex-col gap-1.5 text-xs" aria-label={t('label')}>
+    <section className="flex flex-col gap-1.5 text-caption" aria-label={t('label')}>
       <div className="flex flex-wrap items-center gap-2">
         <span className={operation ? 'text-warning' : 'text-muted-foreground'}>
           {t(operation?.state === 'uncertain' ? 'uncertain' : operation ? 'shared' : 'strict')}
         </span>
-        <Button
-          size="compact"
-          variant="tertiary"
-          disabled={busy === query}
-          onClick={() => void change()}
-        >
+        <Button variant="tertiary" disabled={busy === query} onClick={() => void change()}>
           {t(operation ? 'finish' : 'start')}
         </Button>
       </div>

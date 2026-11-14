@@ -1,6 +1,6 @@
 import type { WorktreeCommandView } from '@corral/client';
 import type { CommandReport } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -108,9 +108,11 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
       className="flex min-w-0 flex-col gap-2 border-b border-line pb-3"
     >
       <div className="flex items-center justify-between gap-2">
-        <h3 className="text-xs font-medium">{t('title')}</h3>
+        <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('title')}
+        </h3>
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           onClick={() => {
@@ -127,7 +129,6 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
             <li key={item.id}>
               <Button
                 variant={item.id === selected ? 'secondary' : 'ghost'}
-                size="compact"
                 aria-pressed={item.id === selected}
                 onClick={() => select(item.id)}
                 title={item.command ?? undefined}
@@ -142,18 +143,18 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
           ))}
         </ul>
       ) : (
-        <p className="text-xs text-muted-foreground">{t('empty')}</p>
+        <p className="text-caption text-muted-foreground">{t('empty')}</p>
       )}
       {current ? (
         <div className="min-w-0 space-y-2">
-          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-xs">
+          <pre className="max-h-28 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-caption">
             {current.command ?? t('unavailableCommand')}
           </pre>
-          <p className="break-words text-xs text-muted-foreground">
+          <p className="break-words text-caption text-muted-foreground">
             {current.shellId} · {current.cwd} ·{' '}
             {current.mode === 'service' ? t('service') : t('foreground')}
           </p>
-          <div className="flex flex-wrap items-center gap-2 text-xs" aria-live="polite">
+          <div className="flex flex-wrap items-center gap-2 text-caption" aria-live="polite">
             <span>{state ? t(`state.${state}`) : t('loading')}</span>
             {report?.exitCode !== null && report?.exitCode !== undefined ? (
               <span>{t('exitCode', { code: report.exitCode })}</span>
@@ -167,7 +168,6 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
           </div>
           {state === 'running' ? (
             <Button
-              size="compact"
               variant="tertiary"
               disabled={stopping === selected}
               onClick={async () => {
@@ -196,20 +196,20 @@ function CommandPanel({ sessionId }: { sessionId: string }) {
             </Button>
           ) : null}
           <details>
-            <summary className="cursor-pointer text-xs text-muted-foreground">
+            <summary className="cursor-pointer text-caption text-muted-foreground">
               {t('output')}
             </summary>
-            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-xs">
+            <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-caption">
               {detail?.id === selected ? detail.output || t('noOutput') : t('loading')}
             </pre>
             {detail?.id === selected && detail.truncated ? (
-              <p className="mt-1 text-xs text-muted-foreground">{t('truncated')}</p>
+              <p className="mt-1 text-caption text-muted-foreground">{t('truncated')}</p>
             ) : null}
           </details>
         </div>
       ) : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}

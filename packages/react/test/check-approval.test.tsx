@@ -4,6 +4,7 @@ import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import { ApprovalPanel } from '../src/components/ApprovalPanel.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { projectionWith, sessionStore } from '../src/stories/fixtures.tsx';
 
 const plan: CheckPlan = {
@@ -174,6 +175,7 @@ it('command approval leads with source and launch scope, keeps transport in disc
     environmentHash: 'c'.repeat(64),
     timeoutMs: 120000,
     mode: 'service',
+    launchFingerprint: 'e'.repeat(64),
     fingerprint: 'd'.repeat(64),
     request: { command: 'Write-Output "hello"', mode: 'service' },
   };
@@ -234,7 +236,85 @@ it('edit permission shows the exact replacement pairs without claiming a current
   expect(screen.getByRole('button', { name: 'Allow once' })).toBeEnabled();
 });
 
-async function renderCorralTool(name: string, args: Record<string, unknown>) {
+const commandArgs = (mode: 'service' | 'foreground') => ({
+  operationId: 'command_1',
+  hostId: 'host_1',
+  sessionId: 'session_1',
+  workspaceBindingId: 'binding_1',
+  worktreeId: 'worktree_1',
+  rootIdentity: 'a'.repeat(64),
+  tree: 'b'.repeat(40),
+  shellId: 'bash',
+  command: 'node build.mjs',
+  executable: 'bash',
+  argv: ['-c', 'node build.mjs'],
+  cwd: '.',
+  environmentHash: 'c'.repeat(64),
+  timeoutMs: 120000,
+  mode,
+  launchFingerprint: 'e'.repeat(64),
+  fingerprint: 'd'.repeat(64),
+});
+const summaries: [string, Record<string, unknown>][] = [
+  ['run_command', commandArgs('foreground')],
+  ['run_command', commandArgs('service')],
+  ['write_file', { path: 'src/main.ts', text: 'const value = 2;' }],
+  ['edit', { path: 'src/main.ts', edits: [{ oldText: 'one', newText: 'two' }] }],
+  ['edit_hashline', { version: 1, path: 'src/main.ts', tag: 'A123', ops: 'PUT 1\n+two' }],
+];
+// The labels each summary shows, in both catalogs, word for word.
+const summaryLabels = {
+  en: [
+    [
+      'Run command',
+      'Shell',
+      'Working directory',
+      'Conversation working-copy root',
+      'Mode',
+      'Foreground',
+      'Timeout',
+    ],
+    ['Run command', 'Mode', 'Service'],
+    ['Proposed file content'],
+    ['Requested replacements', 'Before', 'After'],
+    ['Edit file'],
+  ],
+  ko: [
+    [
+      '명령 실행',
+      '셸',
+      '작업 디렉터리',
+      '대화 작업 사본의 루트',
+      '실행 방식',
+      '완료까지 실행',
+      '시간 제한',
+    ],
+    ['명령 실행', '실행 방식', '서비스'],
+    ['쓸 파일 내용'],
+    ['요청한 교체 내용', '교체 전', '교체 후'],
+    ['파일 변경'],
+  ],
+} as const;
+
+it.each(
+  (['en', 'ko'] as const).flatMap((locale) =>
+    summaries.map(([name, args], index) => ({
+      locale,
+      name,
+      args,
+      labels: summaryLabels[locale][index],
+    })),
+  ),
+)('$name approval summary keeps its $locale labels', async ({ locale, name, args, labels }) => {
+  await renderCorralTool(name, args, locale);
+  for (const label of labels ?? []) expect(await screen.findByText(label)).toBeVisible();
+});
+
+async function renderCorralTool(
+  name: string,
+  args: Record<string, unknown>,
+  locale: 'en' | 'ko' = 'en',
+) {
   const { toolPermissionPlan } = await import('@corral/core');
   const permission = toolPermissionPlan(
     { snapshotHash: 'e'.repeat(64), policyRevision: 2 },
@@ -272,7 +352,7 @@ async function renderCorralTool(name: string, args: Record<string, unknown>) {
     artifactTexts: { command_body: JSON.stringify(permission) },
   });
   render(
-    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+    <IntlProvider locale={locale} messages={locale === 'ko' ? koMessages : messages} timeZone="UTC">
       <ApprovalPanel session={session} onOpenArtifact={() => {}} />
     </IntlProvider>,
   );

@@ -1,4 +1,4 @@
-import { requestBox, slash } from '../workbench.ts';
+import { requestBox, slash, stopRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('saved requests with a stale instruction draft', () => {
@@ -18,18 +18,20 @@ test.describe('saved requests with a stale instruction draft', () => {
       hold();
       try {
         await corral.open('/');
-        await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+        await page.getByRole('button', { name: 'New conversation', exact: true }).click();
         const box = requestBox(page);
         await box.fill('Original request');
         await page.getByRole('button', { name: 'Send', exact: true }).click();
         await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
         const first = corral.server.coordinator.listRuns()[0];
         if (!first) throw new Error('First run missing');
-        await slash(page, 'queue');
+        // A next request (Alt+Enter) sent while the run works waits behind it. The server starts
+        // it when the run ends unless the session's auto start is off.
+        await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
         await box.fill('Saved queued request');
-        await page.getByRole('button', { name: 'Send', exact: true }).click();
+        await box.press('Alt+Enter');
         await expect(page.getByRole('button', { name: 'Start now', exact: true })).toBeVisible();
-        if (path === 'auto')
+        if (path !== 'auto')
           await page
             .getByRole('switch', {
               name: 'Start the next queued task when the run ends',
@@ -39,14 +41,7 @@ test.describe('saved requests with a stale instruction draft', () => {
         await slash(page, 'steer');
         await expect(page.getByTestId('composer-destination')).toContainText('instruction');
         await box.fill('Keep this  stale instruction');
-        await page
-          .getByRole('region', { name: 'Active run controls', exact: true })
-          .getByRole('button', { name: 'Cancel whole run', exact: true })
-          .click();
-        await page
-          .getByRole('dialog')
-          .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-          .click();
+        await stopRun(page);
         release();
         hold();
         await expect
@@ -63,12 +58,14 @@ test.describe('saved requests with a stale instruction draft', () => {
         await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(2);
         await expect(box).toHaveValue('Keep this  stale instruction');
         const sessionId = new URL(page.url()).pathname.split('/').at(-1);
+        // `/steer` chose the send once; no target was picked, so the kept draft is not fixed to
+        // the ended run's execution (composer-flow.md "합류 대상").
         expect(
           await page.evaluate(
             (id) => JSON.parse(localStorage.getItem(`corral:session-draft:${id}`) ?? '{}').intent,
             sessionId,
           ),
-        ).toBe('steer');
+        ).toBeNull();
         expect(corral.errors).toEqual([]);
       } finally {
         release();
@@ -77,19 +74,23 @@ test.describe('saved requests with a stale instruction draft', () => {
   }
 });
 
-test('same-name result references stay distinct after reload and deleting one', async ({
+// Needs a new scenario: once Run #2 succeeds, Run #1's results are released (api-contract.md
+// 산출물 본문 수명) and leave the @ menu, so two same-name results no longer come from two runs.
+test.fixme('same-name result references stay distinct after reload and deleting one', async ({
   page,
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   const box = requestBox(page);
   for (const [index, text] of ['First result', 'Second result'].entries()) {
     await box.fill(text);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => corral.server.coordinator.listRuns().length).toBe(index + 1);
     await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
-    await expect(page.getByTestId('composer-destination')).toContainText('follow-up');
+    await expect(page.getByTestId('composer-destination')).toContainText(
+      'new run in this session · next request',
+    );
   }
   await box.fill('@notes');
   const results = page.getByRole('listbox', { name: 'References', exact: true });
@@ -150,7 +151,10 @@ for (const locale of ['en', 'ko']) {
       await page.addInitScript((value) => localStorage.setItem('corral:locale', value), locale);
       await corral.open('/');
       await page
-        .getByRole('button', { name: locale === 'ko' ? '대화 시작' : 'Start chat', exact: true })
+        .getByRole('button', {
+          name: locale === 'ko' ? '새 대화' : 'New conversation',
+          exact: true,
+        })
         .click();
       const label = locale === 'ko' ? '라이브 음성' : 'Live voice';
       const trigger = page.getByRole('button', { name: label, exact: true });

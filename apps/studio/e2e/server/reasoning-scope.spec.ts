@@ -1,6 +1,14 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { editorSettings, openTestRun, startTestRun, teamNode } from '../workbench.ts';
+import {
+  editorSettings,
+  expectTeamSaved,
+  openLibraryTeams,
+  openProject,
+  openTestRun,
+  startTestRun,
+  teamNode,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const modeLabels = {
@@ -19,8 +27,8 @@ async function chooseMode(page: Page, value: keyof typeof modeLabels) {
 }
 
 async function importTeam(page: Page, id: string) {
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openProject(page);
+  await openLibraryTeams(page);
   const definition = linearCorral(['writer'], id);
   definition.name = id;
   await page.locator('input[type=file]').setInputFiles({
@@ -36,10 +44,10 @@ test('another team never inherits the previous run', async ({ page, corral }) =>
   await corral.open('/');
   await importTeam(page, 'team-a');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await importTeam(page, 'team-b');
   await expect(page.getByTestId('run-status')).toHaveCount(0);
-  await expect(page.getByRole('link', { name: 'Open execution page' })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Open run page' })).toHaveCount(0);
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
 });
 
@@ -83,7 +91,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await effort.click();
   await page.getByRole('option', { name: 'Low', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
-  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await expectTeamSaved(page);
   await page.reload();
   await teamNode(page, 'writer').click();
   await expect(effort).toContainText('Low');
@@ -105,7 +113,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
     oneRun.getByRole('combobox', { name: 'Reasoning effort', exact: true }),
   ).toContainText('High');
   await startTestRun(page);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('reasoning-summary').first()).toContainText('high');
   const run = corral.server.coordinator.listRuns()[0];
   expect(

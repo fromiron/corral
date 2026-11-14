@@ -1,24 +1,39 @@
-import { type RunEvent, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { ExecutionStatus, type RunEvent } from '@corral/contracts';
+import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
+  AdviceSummary,
+  AdviceText,
   buildTurnProcess,
   ExecutionToolGroup,
+  executionViewPresence,
+  FailureNotice,
+  type Presence,
   type ProcessRow,
+  projectionPresence,
+  ReasoningLevelLabel,
   ReasoningSummary,
   type RunSessionState,
+  statusPresence,
+  type TurnProcess as TurnProcessModel,
   turnSummary,
 } from '@corral/react';
 import {
+  Collapse,
+  cn,
+  DisclosureChevron,
+  focusRing,
+  fontWeights,
+  RollNumber,
   ThinkingStep,
-  ThinkingStepDetails,
   ThinkingStepSource,
   ThinkingStepSources,
   ThinkingSteps,
   ThinkingStepsContent,
-  ThinkingStepsHeader,
+  useSize,
 } from '@corral/react/design-kit';
-import { useEffect, useMemo, useState } from 'react';
+import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { MetaLine, RunHead } from './RunRow.tsx';
 
 type IconName = 'brain' | 'search' | 'pencil' | 'play' | 'users' | 'message-circle' | 'dot' | 'x';
 const ICONS: Record<string, IconName> = {
@@ -41,16 +56,84 @@ const ICONS: Record<string, IconName> = {
   spawn_subagents: 'users',
   await_tasks: 'users',
 };
+const ASKS = new Set(['ask_user', 'ask']);
+/** The states in which a turn is working: its time runs. */
+/** A model request's phase as the state it names (pausing, paused, stopping, ended). */
+const PHASE_STATUS = {
+  pausing: 'pausing',
+  paused: 'paused',
+  cancelling: 'cancelling',
+  failed: 'failed',
+  cancelled: 'cancelled',
+} as const;
+const ENDED_SHORT = new Set<Presence['kind']>(['failed', 'cancelled']);
+const ENDED = new Set<Presence['kind']>(['succeeded', 'failed', 'interrupted', 'cancelled']);
 function useElapsed(from: string | null, to: string | null, active: boolean) {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active || to || !from) return;
+    setNow(Date.now());
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
   }, [from, to, active]);
   if (!from) return null;
   return Math.max(0, Math.round(((to ? Date.parse(to) : now) - Date.parse(from)) / 1000));
 }
+/**
+ * A step row that opens its own details. The row's second line is the disclosure button, with a
+ * chevron, and its hit area covers the whole row; its name says which step's details it opens.
+ */
+function StepDetails({
+  step,
+  description,
+  detail,
+  target,
+  children,
+}: {
+  step: string;
+  description: string;
+  /** What the state's detail says, beside it (presence.md). */
+  detail?: string;
+  /** What the description's state words speak of, when they name a state. */
+  target?: `execution:${string}`;
+  children: ReactNode;
+}) {
+  const t = useTranslations('Turn');
+  const size = useSize();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    <>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={t('stepDetails', {
+          step: [step, description, detail].filter(Boolean).join(' · '),
+        })}
+        onClick={() => setOpen((value) => !value)}
+        className={cn(
+          size.type.body,
+          'flex w-fit max-w-full cursor-pointer items-center gap-1 rounded-sm text-left text-muted-foreground after:absolute after:inset-0 hover:text-foreground',
+          focusRing,
+        )}
+      >
+        {description ? (
+          <span className="min-w-0">
+            <span data-presence-label={target}>{description}</span>
+            {detail ? ` · ${detail}` : null}
+          </span>
+        ) : null}
+        <DisclosureChevron open={open} size={12} className="text-current" />
+      </button>
+      {/* Above the row's hit area, so the details' own controls stay reachable. */}
+      <Collapse id={id} open={open} hideWhenClosed className="relative">
+        <div className="pt-1">{children}</div>
+      </Collapse>
+    </>
+  );
+}
+
 function Sources({ sources }: { sources: ProcessRow['sources'] }) {
   return sources.length ? (
     <ThinkingStepSources>
@@ -61,54 +144,211 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
   ) : null;
 }
 
-/** The source kit's progressive work log, composed from observed requests and tools. */
+/** A step's name as the work log shows it on its row. */
+export function useStepName() {
+  const t = useTranslations('Turn');
+  return (row: Exclude<ProcessRow, { kind: 'advice' }>) =>
+    row.kind === 'model'
+      ? t('request', { no: row.no })
+      : row.kind === 'agent'
+        ? row.label
+        : t.has(`tool.${row.name}`)
+          ? t(`tool.${row.name}`)
+          : row.name;
+}
+
+/**
+ * An advice in the work it was given to: its line (the advisor · severity · first line · how its
+ * delivery stands, in the words a person's instruction uses) opens to its words.
+ */
+function AdviceStep({
+  row,
+  name,
+  isLast,
+}: {
+  row: Extract<ProcessRow, { kind: 'advice' }>;
+  name: string;
+  isLast: boolean;
+}) {
+  const tm = useTranslations('Sessions.meta');
+  const size = useSize();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    // The step's label names the advisor once; its line under it says the rest.
+    <ThinkingStep
+      icon="message-circle"
+      label={name}
+      status="complete"
+      isLast={isLast}
+      className="turn-process-row"
+    >
+      <AdviceSummary
+        items={[row]}
+        status={<span data-advice-state={row.state}>{tm(row.state)}</span>}
+        open={open}
+        controls={id}
+        onToggle={() => setOpen((value) => !value)}
+        className={size.type.body}
+      />
+      <AdviceText id={id} open={open} items={[row]} nameOf={() => name} />
+    </ThinkingStep>
+  );
+}
+
+/**
+ * The run row's head and the work log it opens: the source kit's progressive work log, composed
+ * from observed requests and tools. The head is the log's toggle; the log opens right under it.
+ */
 export function TurnProcess({
   events,
   projection,
+  process: given,
   label,
   open,
   onOpenChange,
+  trailing,
+  role,
+  status,
+  failed = 0,
+  toggle = true,
+  returning = false,
+  children,
 }: {
   events: readonly RunEvent[];
   projection: RunProjection;
+  /** The process the host already built from these events, so it is not built twice. */
+  process?: TurnProcessModel;
   streams: RunSessionState['streams'];
   label: (nodeId: string) => string;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** What ends the head line: the run's number, which opens its record. */
+  trailing?: ReactNode;
+  /** The name of the role that answers in the conversation. */
+  role?: string | null;
+  /** The run's state in words. */
+  status?: ReactNode;
+  /** Failed and cancelled steps, counted at the end of the head's values. */
+  failed?: number;
+  /** Whether the log can be opened here; without it the head keeps its line and its state. */
+  toggle?: boolean;
+  /**
+   * The row is mounted again with its log already open (the timeline brought it back): its
+   * steps are already there, so they do not grow in.
+   */
+  returning?: boolean;
+  /** What the log holds after its steps: what went wrong in them, why the run stands still. */
+  children?: ReactNode;
 }) {
   const t = useTranslations('Turn');
-  const ts = useTranslations('Status');
+  const tp = useTranslations('Presence');
   const tt = useTranslations('Transcript');
+  // A bare status's presence; an execution's, when the status is one, knows whether it is an
+  // advisor (its wait for a message is watching).
+  const presenceOf = (status: string, executionId?: string) => {
+    const parsed = ExecutionStatus.safeParse(status);
+    if (!parsed.success) return statusPresence(status);
+    const advisor = executionId ? projection.executions[executionId]?.advisor : undefined;
+    return executionViewPresence({ status: parsed.data, ...(advisor ? { advisor } : {}) });
+  };
+  // A state's name with its detail beside it, never instead of it (presence.md).
+  const words = (presence: Presence | null) =>
+    presence
+      ? [tp(presence.labelKey), presence.detailKey ? tp(presence.detailKey) : null]
+          .filter(Boolean)
+          .join(' · ')
+      : null;
+  const named = (status: string, executionId?: string) =>
+    words(presenceOf(status, executionId)) ?? status;
+  const size = useSize();
+  const panel = useId();
+  const stepName = useStepName();
   const process = useMemo(
-    () => buildTurnProcess(events, projection, {}, label),
-    [events, projection, label],
+    () => given ?? buildTurnProcess(events, projection, {}, label),
+    [given, events, projection, label],
   );
   const summary = events.length ? process : { ...process, ...turnSummary(projection) };
-  const seconds = useElapsed(summary.startedAt, summary.endedAt, summary.active);
-  const time =
-    seconds === null
-      ? null
-      : seconds < 60
-        ? t('seconds', { s: seconds })
-        : t('minutes', { m: Math.floor(seconds / 60), s: seconds % 60 });
-  const terminal = TERMINAL_RUN_STATUSES.has(projection.status);
-  const header =
-    summary.active && time
-      ? t('working', { time })
-      : projection.status === 'succeeded' && time
-        ? summary.steps
-          ? t('workedSteps', { time, count: summary.steps })
-          : t('worked', { time })
-        : ts.has(projection.status)
-          ? ts(projection.status)
-          : projection.status;
-  if (
-    terminal &&
-    summary.steps === 0 &&
-    process.rows.length === 0 &&
-    Object.keys(projection.modelCalls).length === 0
-  )
-    return null;
+  // The lead's open ask waits on the person, not on the tool. The composer's notice and the top
+  // bar's pill say so; its row names no tool state that would read as work going on.
+  const lead = projection.executionOrder[0];
+  const asking = useMemo(
+    () =>
+      pendingInteractions(events, projection).some(
+        (item) => item.kind !== 'approval' && item.event.payload.executionId === lead,
+      ),
+    [events, projection, lead],
+  );
+  // A waiting turn's time stops at its last record, as the run's timeline does.
+  const presence = projectionPresence(projection, events);
+  // The Run itself waits (its own state), not one of its executions on an approval.
+  const waiting = statusPresence(projection.status)?.kind === 'awaiting_user';
+  const until = summary.endedAt ?? (waiting ? (events.at(-1)?.recordedAt ?? null) : null);
+  const seconds = useElapsed(
+    summary.startedAt,
+    until,
+    presence.kind === 'starting' || presence.kind === 'working',
+  );
+  const clock = (value: number) =>
+    value < 60
+      ? t('seconds', { s: value })
+      : t('minutes', { m: Math.floor(value / 60), s: value % 60 });
+  const terminal = ENDED.has(presence.kind);
+  // The head opens the log only when it holds something; its mark keeps its place either way.
+  // A past turn's steps load when its log first opens, so the record's counts also say so.
+  const canOpen =
+    toggle &&
+    (process.rows.length > 0 ||
+      Boolean(children) ||
+      summary.steps > 0 ||
+      Object.keys(projection.modelCalls).length > 0);
+  const shown = canOpen && open;
+  const values = [
+    role
+      ? {
+          key: 'role',
+          node: (
+            <span
+              className="min-w-0 truncate text-foreground"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {role}
+            </span>
+          ),
+        }
+      : null,
+    status ? { key: 'status', node: <span className="shrink-0">{status}</span> } : null,
+    seconds !== null
+      ? {
+          key: 'time',
+          node: (
+            <span data-testid="turn-process-header" className="shrink-0 tabular-nums">
+              <RollNumber value={seconds} format={clock} />
+            </span>
+          ),
+        }
+      : null,
+    toggle && summary.steps
+      ? {
+          key: 'steps',
+          node: <span className="min-w-0 truncate">{t('steps', { count: summary.steps })}</span>,
+        }
+      : null,
+    failed
+      ? {
+          key: 'failed',
+          node: <span className="shrink-0 text-danger">{t('failedCount', { count: failed })}</span>,
+        }
+      : null,
+  ].filter((value) => value !== null);
+  const line = (
+    <>
+      <span className="inline-flex size-3 shrink-0 items-center justify-center">
+        {canOpen ? <DisclosureChevron open={shown} size={12} className="text-current" /> : null}
+      </span>
+      <MetaLine values={values} />
+    </>
+  );
   const modelDescription = (row: Extract<ProcessRow, { kind: 'model' }>) => {
     const phase =
       row.phase === 'preparing'
@@ -120,120 +360,200 @@ export function TurnProcess({
             : row.phase === 'unconfirmed'
               ? t('requestUnconfirmed')
               : row.phase === 'waiting'
-                ? ts.has(row.state)
-                  ? ts(row.state)
-                  : row.state
-                : ts(row.phase);
+                ? named(row.state)
+                : named(PHASE_STATUS[row.phase]);
     return [row.model, phase].filter(Boolean).join(' · ');
   };
-  const activityState = (active: boolean, executionState?: string) => {
+  const activityState = (active: boolean, executionState?: string, executionId?: string) => {
     if (active) return undefined;
     const state =
-      projection.status === 'running'
+      presence.kind === 'working'
         ? (executionState ??
           projection.executions[projection.executionOrder[0] ?? '']?.status ??
           projection.status)
         : projection.status;
+    const owner = executionState ? executionId : projection.executionOrder[0];
+    const kind = statusPresence(state)?.kind;
     return {
-      status: (terminal || state === 'cancelled' || state === 'failed' ? 'stopped' : 'waiting') as
+      status: (terminal || (kind && ENDED_SHORT.has(kind)) ? 'stopped' : 'waiting') as
         | 'waiting'
         | 'stopped',
-      label: ts.has(state) ? ts(state) : state,
+      label: named(state, owner),
     };
   };
   return (
     <ThinkingSteps
       data-testid="turn-process"
       className="turn-process w-full"
-      size="compact"
-      open={open}
+      open={shown}
       onOpenChange={onOpenChange}
     >
-      <ThinkingStepsHeader>
-        <span
-          data-testid="turn-process-header"
-          className={summary.active ? 'shimmer-text tabular-nums' : 'tabular-nums'}
-        >
-          {header}
-        </span>
-      </ThinkingStepsHeader>
-      <ThinkingStepsContent>
-        {process.rows.map((row, index) => {
-          const last = index === process.rows.length - 1;
-          if (row.kind === 'model')
+      <RunHead trailing={trailing}>
+        {canOpen ? (
+          <button
+            type="button"
+            // A stable name: what the line says but the ticking time, so a failed step is told
+            // before the log opens (chat-widgets-contract.md §6.3).
+            aria-label={t('logToggle', {
+              state: [
+                role,
+                words(presence),
+                summary.steps ? t('steps', { count: summary.steps }) : null,
+                failed ? t('failedCount', { count: failed }) : null,
+              ]
+                .filter(Boolean)
+                .join(' · '),
+            })}
+            aria-expanded={shown}
+            aria-controls={panel}
+            onClick={() => onOpenChange(!shown)}
+            className={cn(
+              'flex h-full min-w-0 cursor-pointer items-center gap-1.5 overflow-hidden rounded-sm text-left hover:text-foreground',
+              focusRing,
+            )}
+          >
+            {line}
+          </button>
+        ) : (
+          <span className="flex min-w-0 items-center gap-1.5 overflow-hidden">{line}</span>
+        )}
+      </RunHead>
+      {canOpen ? (
+        <ThinkingStepsContent id={panel} settledOnMount={returning}>
+          {process.rows.map((row, index) => {
+            const last = index === process.rows.length - 1;
+            if (row.kind === 'advice') {
+              const observer = projection.executions[row.observerExecutionId];
+              return (
+                <AdviceStep
+                  key={`advice:${row.id}`}
+                  row={row}
+                  name={observer ? label(observer.nodeId) : row.observerExecutionId}
+                  isLast={last}
+                />
+              );
+            }
+            if (row.kind === 'model') {
+              const label = stepName(row);
+              // The applied level stays on the row. A judged request also shows its judgement;
+              // any other keeps the rest of the record in the details.
+              const judged = Boolean(row.call.reasoning?.route);
+              return (
+                <ThinkingStep
+                  key={`model:${row.id}`}
+                  icon="brain"
+                  label={label}
+                  {...(judged ? { description: modelDescription(row) } : {})}
+                  status={row.active ? 'active' : 'complete'}
+                  isLast={last}
+                  className="turn-process-row"
+                >
+                  <ReasoningLevelLabel call={row.call} open={row.open} />
+                  {judged ? (
+                    // Aligns the button's text with the description.
+                    <div className="-ml-3 self-start">
+                      <ReasoningSummary call={row.call} open={row.open} />
+                    </div>
+                  ) : (
+                    <StepDetails step={label} description={modelDescription(row)}>
+                      {/* With no reasoning record there is no rest to show; the row says so. */}
+                      {row.call.reasoning ? (
+                        <div className="-ml-3">
+                          <ReasoningSummary call={row.call} open={row.open} />
+                        </div>
+                      ) : null}
+                    </StepDetails>
+                  )}
+                  <Sources sources={row.sources} />
+                </ThinkingStep>
+              );
+            }
+            if (row.kind === 'tool') {
+              const label = stepName(row);
+              // The open ask's question shows only in the notice above the composer, so its row
+              // offers no details until it is answered.
+              const pendingAsk =
+                asking &&
+                ASKS.has(row.name) &&
+                (row.status === 'requested' || row.status === 'allowed');
+              return (
+                <ThinkingStep
+                  key={`tool:${row.id}`}
+                  icon={
+                    row.status === 'blocked' || row.status === 'failed'
+                      ? 'x'
+                      : (ICONS[row.name] ?? 'dot')
+                  }
+                  label={label}
+                  status={row.active ? 'active' : 'complete'}
+                  isLast={last}
+                  className="turn-process-row"
+                >
+                  {pendingAsk ? null : (
+                    <StepDetails
+                      step={label}
+                      description={[
+                        row.artifact ? t('artifactTarget', row.artifact) : row.target,
+                        tt(`tool.${row.status}`),
+                        row.allowedForRun ? t('allowedForRun') : null,
+                      ]
+                        .filter(Boolean)
+                        .join(' · ')}
+                    >
+                      <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
+                    </StepDetails>
+                  )}
+                  <Sources sources={row.sources} />
+                </ThinkingStep>
+              );
+            }
+            // A team role's row says its own state once, by its execution, and keeps its failure.
+            const rowPresence = presenceOf(row.status, row.id);
+            const state = rowPresence ? tp(rowPresence.labelKey) : row.status;
+            const rowDetail = rowPresence?.detailKey ? tp(rowPresence.detailKey) : undefined;
+            const rowKind = rowPresence?.kind;
+            const target = `execution:${row.id}` as const;
+            const error = projection.executions[row.id]?.error;
             return (
-              <ThinkingStep
-                key={`model:${row.id}`}
-                icon="brain"
-                label={t('request', { no: row.no })}
-                description={modelDescription(row)}
-                status={row.active ? 'active' : 'complete'}
-                isLast={last}
-                className="turn-process-row"
-              >
-                {row.call.reasoning?.route ? (
-                  // Aligns the button's text with the description, like ThinkingStepDetails.
-                  <div className="-ml-3 self-start">
-                    <ReasoningSummary call={row.call} open={row.open} />
-                  </div>
-                ) : null}
-                <Sources sources={row.sources} />
-                {row.call.reasoning?.route ? null : (
-                  <ThinkingStepDetails summary={t('requestDetails')}>
-                    <ReasoningSummary call={row.call} open={row.open} />
-                  </ThinkingStepDetails>
-                )}
-              </ThinkingStep>
+              <div key={`agent:${row.id}`} data-chat-part={`role:${row.id}`}>
+                <ThinkingStep
+                  icon={rowKind && ENDED_SHORT.has(rowKind) ? 'x' : 'users'}
+                  label={row.label}
+                  status={row.active ? 'active' : 'complete'}
+                  isLast={last}
+                  className="turn-process-row"
+                >
+                  {row.tools.length ? (
+                    <StepDetails
+                      step={row.label}
+                      description={state}
+                      detail={rowDetail}
+                      target={target}
+                    >
+                      <ExecutionToolGroup
+                        tools={row.tools}
+                        activityState={activityState(row.active, row.status, row.id)}
+                      />
+                    </StepDetails>
+                  ) : (
+                    <span className={cn(size.type.body, 'text-muted-foreground')}>
+                      <span data-presence-label={target}>{state}</span>
+                      {rowDetail ? ` · ${rowDetail}` : null}
+                    </span>
+                  )}
+                  {error ? (
+                    <FailureNotice message={error} cancelled={rowKind === 'cancelled'} />
+                  ) : null}
+                  <Sources sources={row.sources} />
+                </ThinkingStep>
+              </div>
             );
-          if (row.kind === 'tool')
-            return (
-              <ThinkingStep
-                key={`tool:${row.id}`}
-                icon={
-                  row.status === 'blocked' || row.status === 'failed'
-                    ? 'x'
-                    : (ICONS[row.name] ?? 'dot')
-                }
-                label={t.has(`tool.${row.name}`) ? t(`tool.${row.name}`) : row.name}
-                description={[
-                  row.artifact ? t('artifactTarget', row.artifact) : row.target,
-                  tt(`tool.${row.status}`),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-                status={row.active ? 'active' : 'complete'}
-                isLast={last}
-                className="turn-process-row"
-              >
-                <Sources sources={row.sources} />
-                <ThinkingStepDetails summary={t('toolDetails')}>
-                  <ExecutionToolGroup tools={[row]} activityState={activityState(row.active)} />
-                </ThinkingStepDetails>
-              </ThinkingStep>
-            );
-          return (
-            <ThinkingStep
-              key={`agent:${row.id}`}
-              icon={row.status === 'failed' || row.status === 'cancelled' ? 'x' : 'users'}
-              label={row.label}
-              description={ts.has(row.status) ? ts(row.status) : row.status}
-              status={row.active ? 'active' : 'complete'}
-              isLast={last}
-              className="turn-process-row"
-            >
-              <Sources sources={row.sources} />
-              {row.tools.length ? (
-                <ThinkingStepDetails summary={t('agentDetails')}>
-                  <ExecutionToolGroup
-                    tools={row.tools}
-                    activityState={activityState(row.active, row.status)}
-                  />
-                </ThinkingStepDetails>
-              ) : null}
-            </ThinkingStep>
-          );
-        })}
-      </ThinkingStepsContent>
+          })}
+          {children ? (
+            <div className="flex flex-col gap-2 px-2 pt-1 text-caption">{children}</div>
+          ) : null}
+        </ThinkingStepsContent>
+      ) : null}
     </ThinkingSteps>
   );
 }

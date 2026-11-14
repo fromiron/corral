@@ -1,8 +1,11 @@
 import type { InboxItemView } from '@corral/client';
 
-export type NotificationTarget = Pick<InboxItemView, 'kind' | 'sessionId' | 'runId' | 'terminalId'>;
+export type NotificationTarget = Pick<
+  InboxItemView,
+  'kind' | 'sessionId' | 'runId' | 'terminalId' | 'executionId'
+>;
 const key = (item: NotificationTarget) =>
-  JSON.stringify([item.kind, item.sessionId, item.runId, item.terminalId]);
+  JSON.stringify([item.kind, item.sessionId, item.runId, item.terminalId, item.executionId]);
 
 /** Identity, never the session title or request body, crosses the native bridge. */
 export function inboxNotificationTargets(
@@ -10,17 +13,97 @@ export function inboxNotificationTargets(
   previous: readonly NotificationTarget[] = [],
 ): NotificationTarget[] {
   const seen = new Set(previous.map(key));
-  return items.flatMap(({ kind, sessionId, runId, terminalId }) => {
+  return items.flatMap(({ kind, sessionId, runId, terminalId, executionId }) => {
     const target = {
       kind,
       sessionId,
       runId,
       ...(kind === 'uncertain_terminal' && terminalId ? { terminalId } : {}),
+      ...(kind === 'advice' && executionId ? { executionId } : {}),
     };
     if (seen.has(key(target))) return [];
     seen.add(key(target));
     return [target];
   });
+}
+
+/**
+ * The exact screen an inbox item opens: its run's response area, the session's review (a failed
+ * check: that review's Checks), its queue, the terminal's own controls or, for an advice, its
+ * run's record on the execution row it was for. Desktop notifications and Needs you share it.
+ */
+export type InboxDestination =
+  | {
+      to: '/sessions/$sessionId';
+      params: { sessionId: string };
+      search: {
+        panel?: 'run' | 'terminal' | 'checks';
+        view?: 'run';
+        run?: string;
+        execution?: string;
+        terminal?: string;
+        respond?: true;
+        /** The run whose row's unread advice opens in the conversation. */
+        advice?: string;
+      };
+    }
+  | { to: '/sessions/$sessionId/review'; params: { sessionId: string }; search: object };
+
+export function inboxDestination(target: NotificationTarget): InboxDestination | null {
+  const params = { sessionId: target.sessionId };
+  if (target.kind === 'uncertain_terminal')
+    return target.terminalId && target.runId === null
+      ? {
+          to: '/sessions/$sessionId',
+          params,
+          search: { panel: 'terminal', terminal: target.terminalId },
+        }
+      : null;
+  // A decision opens its run's response area; a stopped review opens the run's record.
+  if (target.kind === 'decision' && target.runId)
+    return {
+      to: '/sessions/$sessionId',
+      params,
+      search: { panel: 'run', view: 'run', run: target.runId, respond: true },
+    };
+  if (target.kind === 'recipe_stopped' && target.runId)
+    return {
+      to: '/sessions/$sessionId',
+      params,
+      search: { panel: 'run', view: 'run', run: target.runId },
+    };
+  if (target.kind === 'advice') return adviceDestination(target);
+  if (target.kind === 'queued') return { to: '/sessions/$sessionId', params, search: {} };
+  // A failed check opens the review's Checks view; other review items open the review.
+  if (target.kind === 'check_failed')
+    return { to: '/sessions/$sessionId', params, search: { panel: 'checks' } };
+  return { to: '/sessions/$sessionId/review', params, search: {} };
+}
+
+/**
+ * Where an advice is gone to, from Needs you, a desktop notification or the sidebar's: the
+ * conversation's row of its run, with the advice its target never read open on the row's tail
+ * (features/inbox.md `advice`). Every path builds it here alone.
+ */
+export function adviceDestination(target: NotificationTarget): InboxDestination | null {
+  return target.runId && target.executionId
+    ? {
+        to: '/sessions/$sessionId',
+        params: { sessionId: target.sessionId },
+        search: { advice: target.runId },
+      }
+    : null;
+}
+
+export function destinationHref(destination: InboxDestination): string {
+  const path = destination.to.replace(
+    '$sessionId',
+    encodeURIComponent(destination.params.sessionId),
+  );
+  const query = Object.entries(destination.search)
+    .map(([name, value]) => `${name}=${encodeURIComponent(String(value))}`)
+    .join('&');
+  return query ? `${path}?${query}` : path;
 }
 
 /** Re-read the originating session's inbox: an old notification grants no action. */
@@ -35,12 +118,6 @@ export async function notificationDestination(
   if (!session || session.archivedAt) return null;
   const items = await source.inbox(session.projectId);
   if (!items.some((item) => key(item) === key(target))) return null;
-  const sessionPath = `/sessions/${encodeURIComponent(target.sessionId)}`;
-  if (target.kind === 'uncertain_terminal')
-    return target.terminalId && target.runId === null
-      ? `${sessionPath}?panel=terminal&terminal=${encodeURIComponent(target.terminalId)}`
-      : null;
-  if ((target.kind === 'decision' || target.kind === 'recipe_stopped') && target.runId)
-    return `${sessionPath}?panel=run&view=run&run=${encodeURIComponent(target.runId)}`;
-  return target.kind === 'queued' ? sessionPath : `${sessionPath}/review`;
+  const destination = inboxDestination(target);
+  return destination ? destinationHref(destination) : null;
 }

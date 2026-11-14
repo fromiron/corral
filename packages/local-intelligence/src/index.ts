@@ -1,4 +1,5 @@
 export { type Bundle, bundledManifest, validBundle } from './bundle.ts';
+export { BundleBusyError, type BundleBusyReason } from './busy.ts';
 export * from './d1/index.ts';
 export {
   type Backend,
@@ -32,10 +33,11 @@ export {
   type InstallState,
   installBundle,
   installState,
+  removeMeetingReleases,
 } from './install.ts';
 export { cleanupLegacyJudge } from './legacy.ts';
 export {
-  closestParticipant,
+  blendedScores,
   LocalMeetingSelector,
   MEETING_PREPROCESS_VERSION,
   type MeetingEngine,

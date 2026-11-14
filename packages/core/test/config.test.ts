@@ -134,7 +134,14 @@ describe('workspace config and installation policy', () => {
     expect(errors({ baseUrl: 'https://x.test/v1?k=1' })).not.toEqual([]);
     expect(errors({ baseUrl: 'ftp://x.test/' })).not.toEqual([]);
     expect(errors({ baseUrl: 'https://x.test/v1', access: 'oauth' })).not.toEqual([]);
-    expect(errors({ baseUrl: 'https://x.test/v1', models: [] })).not.toEqual([]);
+    // An endpoint may write no models of its own; it lists what its `/models` answers.
+    expect(errors({ baseUrl: 'https://x.test/v1', models: [] })).toEqual([]);
+    expect(
+      errors({
+        baseUrl: 'https://x.test/v1',
+        models: Array.from({ length: 51 }, (_, index) => ({ id: `m${index}` })),
+      }),
+    ).not.toEqual([]);
     // A key in the config file is refused as before; keys are entered under Settings → Models.
     expect(errors({ baseUrl: 'https://x.test/v1', apiKey: 'sk-test' }).join(' ')).toMatch(
       /Settings → Models/,

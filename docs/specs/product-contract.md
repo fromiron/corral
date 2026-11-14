@@ -134,13 +134,13 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 5.1 노드와 호출
 
-Agent의 `invocation`은 `scheduled` 또는 `callable`이다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. 팔레트상 새 노드 종류가 아니라 Agent의 속성이다. Decision은 이름 있는 분기 결과만 내며 임의 JavaScript를 평가하지 않는다. Output은 필수 작업·판정·승인을 검증한 뒤 최종 버전을 확정한다.
+Agent의 `invocation`은 `scheduled`, `callable`, `observer` 중 하나다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. observer는 그래프 순서에 들지 않고 `advise` 관계로 이은 Agent가 일하는 것을 지켜보다가 조언한다([감독](features/advisor.md)). 둘 다 팔레트상 새 노드 종류가 아니라 Agent의 속성이다. Decision은 이름 있는 분기 결과만 내며 임의 JavaScript를 평가하지 않는다. Output은 필수 작업·판정·승인을 검증한 뒤 최종 버전을 확정한다.
 
 ### 5.2 연결 종류
 
 **Control edge:** 다음 단계 실행을 뜻한다. 노드와 상자의 정해진 포트 사이에 연결한다. 한 포트의 연결이 여럿이면 동시에 실행되는 분기다.
 
-**Capability link:** `delegate` 또는 `question`을 허용하는 관계다. 실행 순서를 뜻하지 않는다. 별도 선 모양·핸들·레이어로 표시한다. 실제 호출은 Timeline과 실행 트리에 별도로 나타난다. 허용된 선이 있다는 이유만으로 호출됐다고 표시하지 않는다.
+**Capability link:** `delegate`, `question`, `advise`를 허용하는 관계다. `advise`는 감독 Agent가 그 대상을 지켜보고 조언할 수 있다는 뜻이다. 실행 순서를 뜻하지 않는다. 별도 선 모양·핸들·레이어로 표시한다. 실제 호출은 Timeline과 실행 트리에 별도로 나타난다. 허용된 선이 있다는 이유만으로 호출됐다고 표시하지 않는다.
 
 이벤트 스트림과 데이터 산출물의 연결을 control edge에 혼합하지 않는다. 입력 바인딩은 해당 노드 속성에서 선택한다. 범용 타입 설계기는 없지만, `text`, `notes`, `draft`, `review` 등 지원 계약의 호환성 검사는 한다.
 
@@ -195,7 +195,7 @@ Task 담당 역할은 한 명이다. 동시에 활성화된 ownerExecutionId도 
 | answer | questionId, responderExecutionId, taskId, body | evidenceRefs | 열린 질문 하나에 최종 답변 하나. 중복은 멱등 처리 |
 | submission | taskId, executionId, artifactVersionIds | comment | 자신이 소유한 작업의 허용 산출물만 제출 |
 
-사람의 지시는 동일한 실행 감사 체계에 남지만 agent answer로 위장하지 않는다. `actor.kind=user`의 별도 command/directive다.
+사람의 지시는 동일한 실행 감사 체계에 남지만 agent answer로 위장하지 않는다. `actor.kind=user`의 별도 command/directive다. 감독의 조언도 answer가 아니며, 문지기를 통과한 것만 출처가 `advice`인 지시가 된다([감독](features/advisor.md)).
 
 `question`은 허용 관계를 검사한 뒤 새로운 응답 Task를 만든다. 그 Task는 질문을 보낸 실행의 소유 하위 작업이므로 취소 전파 경계가 명확하다. 대상 역할의 다른 활성 실행에 임의로 대화를 끼워 넣지 않는다. 질문 생성도 spawnCount와 depth에 포함한다. depth는 control graph 깊이가 아니라 **동적으로 생성한 실행 계보**를 센다.
 
@@ -232,7 +232,7 @@ write는 새 버전을 저장하고 submit은 작업의 공식 출력을 확정�
 
 | 명령 | 기본 대상 | 적용 경계 | 하지 않는 일 |
 |---|---|---|---|
-| `steer.enqueue` | 선택 실행 1개 | 다음 모델 요청의 컨텍스트 확정 시점 | 진행 중 응답의 내용을 순간 수정 |
+| `steer.enqueue` | 선택 실행 1개 | 합류는 다음 모델 요청의 컨텍스트 확정 시점. 끼어들기는 흐르던 응답을 끊은 직후의 요청 | 진행 중 응답의 내용을 순간 수정, 실행 중인 도구의 중단 |
 | `run.pause` / `run.resume` | Run 전체 | 신규 효과 접수를 막고 진행 중 요청·도구 정리 후 안전 경계 | OS/프로세스 중단 후 복구 |
 | `execution.cancel` | 선택 실행 + 소유 후손 | 신규 효과 차단 후 Abort·종료 확인 | 자동 재할당·이미 수행한 외부 작업 롤백 |
 | `run.cancel` | 전체 Run | 모든 활성 범위의 취소 정리 | 즉시 cancelled로 표시 |
@@ -244,7 +244,7 @@ write는 새 버전을 저장하고 submit은 작업의 공식 출력을 확정�
 
 ### 8.2 지시 전달 상태
 
-`accepted → queued → attached_to_request → delivered`를 기본으로 한다. `delivered`는 해당 입력을 포함한 요청을 로컬 transport가 시작했다는 뜻이며 모델이 이해/준수했다는 뜻이 아니다. 요청 전 취소는 `not_delivered`, 대상 종료는 `expired`, 검증 실패는 `rejected`다. 응답 전 네트워크 단절은 `delivery_unknown`으로 남길 수 있다.
+`accepted → queued → attached_to_request → delivered`를 기본으로 한다. `delivered`는 해당 입력을 포함한 요청을 로컬 transport가 시작했다는 뜻이며 모델이 이해/준수했다는 뜻이 아니다. 요청 전 취소는 `not_delivered`, 대상 종료는 `expired`, 검증 실패는 `rejected`다. 응답 전 네트워크 단절은 `delivery_unknown`으로 남길 수 있다. 전달 방식(합류·끼어들기), 지시의 출처, 읽히지 못한 지시의 넘겨받기는 [Reins 기능 명세](features/reins.md#2-지시-전달-상태)가 정한다.
 
 두 지시가 같은 요청에 포함되면 순서와 두 ID를 기록한다. MVP에서는 이미 접수한 지시를 과거 기록에서 삭제하지 않는다. 방향을 정정하려면 새로운 명시적 상쇄 지시를 보낸다. 대기 지시 자체의 철회 UI는 후속으로 두되, 취소/종결로 인한 미전달 상태는 표시한다.
 
@@ -280,13 +280,17 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 
 ## 9. 사용량과 자원 정책
 
-실행에 사용량 예산은 없다. 모델 요청 수, 출력 토큰, 요청별 출력, 모델 응답 시간, 실행 시간, 이미지 생성 비용에 사용자가 거는 상한을 두지 않는다. 사용량과 비용은 기록하고 보여 준다. 실행을 멈추는 장치는 Loop 회차 상한, 정체 감지, 무진전 경고, 실패 경로, 사람의 승인과 취소다. 모델의 물리적 context/output 한도와 동시성·프로세스 자원 정책은 그대로 적용한다.
+실행을 조용히 끝내는 사용량 상한은 없다. 출력 토큰, 요청별 출력, 모델 응답 시간, 실행 시간, 이미지 생성 비용에 상한을 두지 않는다. 사용량과 비용은 기록하고 보여 준다. 실행을 멈추는 장치는 Loop 회차 상한, 정체 감지, 무진전 경고, 회의 연쇄 확인, 실패 경로, 사람의 승인과 취소다. 모델 요청 수에는 한도를 두지 않는다. 요청 수는 비용도 진척도 아니어서, 그 수로 사람에게 계속 여부를 묻지 않는다. 모델의 물리적 context/output 한도와 동시성·프로세스 자원 정책은 그대로 적용한다.
+
+사람의 메시지 없이 이어지는 구간에는 다음 확인이 있다.
+
+- **회의 연쇄 확인.** 사람의 메시지 없이 참가자 멘션으로 이어진 응답 묶음이 8개가 되면 다음 응답을 시작하지 않고 계속 여부를 묻는다. 사람이 계속을 고르거나 메시지를 보내면 다시 센다. 게시만 하는 메시지(수신자 없음)는 세는 수와 멈춤을 바꾸지 않는다. 계속을 고르면 멈춘 동안 따라가지 못한 멘션을 모두 이어 간다.
 
 | 항목 | 기본값 | 조절·적용 |
 |---|---:|---|
 | 캔버스 정의 규모 | 고정 개수 상한 없음 | 정의·초안·가져오기·컴파일에서 노드·역할·control edge·capability link와 역할별 설정 맵의 개수만으로 거절하지 않는다. 파일·요청 크기, 각 항목의 내용·권한, Loop 구조·반복 상한과 실행 자원 제한은 유지한다. |
 | Loop 수·중첩 | 제한 없음 | 정의와 실행 모두 |
-| Loop 회차 상한 | Loop의 `maxIterations` | `loop_limit` 패치로 바꿈. 설치 상한 없음. 다 쓰면 `exhausted` 경로나 사용자 확인([루프 실행](features/team-graph.md#루프-실행)) |
+| Loop 회차 상한 | Loop의 `maxIterations`, 또는 없음(`unlimited`) | `loop_limit` 패치로 바꿈. 설치 상한 없음. 닿으면 Loop의 한도 정책을 따르고 사용자에게 묻지 않는다([루프 실행](features/team-graph.md#루프-실행)) |
 | 동적 위임 깊이 | 2 | 정의의 `limits.maxDelegationDepth`로 바꿈. 설치 상한 없음. 최초 scheduled agent=0 |
 | 동시 모델 요청 | 6 | 양의 정수로 설정. host·Run 자원 admission, 대기는 슬롯 사용 안 함 |
 | resident execution | 12 | 대기 worker 포함, 모델 동시성과 별도 |
@@ -297,6 +301,7 @@ Run이 실제 `paused`가 되는 조건은 **활성 외부 효과가 0이고, �
 | 모델/문서 도구 timeout | 없음 / 30초 | 연결·취소 정리 정책은 별도 |
 | 산출물/입력 문서 | 버전당 UTF-8 1 MiB | workspace 총량 제한 별도 |
 | 무진전 | 6회 관측 후 경고 | 새로운 파일 범위·도구 근거·산출물·검토 진전으로 갱신. 횟수만으로 종료하지 않음 |
+| 회의 연쇄 | 사람 메시지 없이 8개 응답 묶음 | 닿으면 계속 여부를 물음. 사람의 메시지로 다시 셈 |
 | 추론 판정 | Local 판정은 모델 슬롯 미사용, 판정 API 호출은 판정 효과 승인·정산 | 엔진은 사용자가 고른 하나이며 다른 엔진으로 넘기지 않음 |
 | 판정 대기 | Local CPU 5초 / 판정 API 3초(설정 범위 100–10,000ms) | 초과하면 그 요청은 fallback 대상(기본은 공급자 기본값)으로 나가고 이유를 `timeout`으로 남김 |
 | Local 판정 물리 상한 | 추론 시작부터 120초 | 만료되면 소유 프로세스를 끝내고 실제 종료 뒤 슬롯을 반환 |
@@ -313,7 +318,7 @@ SQLite에 정의 revision, 실행 이벤트, Task/Execution 투영, 입력 스�
 
 ### 10.2 기본 보안
 
-localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다.
+localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않는다. 시작 시 발급한 세션, Host/Origin 검사, 상태 변경 요청의 CSRF 방어, rate/size 제한을 적용한다. API 키와 OAuth 토큰은 backend 환경/서버 측 credential store에서만 읽으며 Corral JSON·SQLite·클라이언트 번들·이벤트 payload·export·로그에 저장하지 않는다. 유일한 예외는 사람이 고른 키를 금고 암호로 암호화해 담는 [설정 금고](desktop-contract.md#abs-13--암호화-설정-금고) 내보내기다. OAuth 로그인은 provider 자체 흐름에서 사용자가 완료한다.
 
 외부 decision provider(v0.2)는 live Run에서 workspace의 명시적 opt-in이 있을 때만 쓴다. mock Run·공개 데모·CI에서는 시작 시 거절한다. 보내는 입력은 정해진 특징 값과 UTF-8 1,500자 이하 발췌로 제한하고, 전송 전에 그 사실을 effect로 기록한다. 이벤트·export에는 발췌 본문 대신 hash만 남긴다.
 

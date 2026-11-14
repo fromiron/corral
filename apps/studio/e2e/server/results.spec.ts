@@ -6,7 +6,15 @@ import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { usageTotals } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { chooseRun, openResult, panelTab, requestBox } from '../workbench.ts';
+import {
+  activityLine,
+  chooseRun,
+  lastRunSucceeded,
+  newConversation,
+  openResult,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The Results view against the local server.
@@ -55,21 +63,46 @@ test('a completed run explains failed file steps and opens their reasons', async
   await page.goto(`${corral.server.url}/sessions/${created.session.sessionId}`);
   await requestBox(page).fill('Write project notes');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  const banner = page.getByTestId('action-required');
-  await expect(banner).toContainText('The run completed, but some tool steps failed.');
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
   const run = corral.server.coordinator.listRuns()[0];
   assert(run);
-  expect(run.status).toBe('succeeded');
   const failed = Object.values(
     corral.server.coordinator.getSnapshot(run.runId).projection.toolCalls,
   ).find((tool) => tool.errorCode === 'TARGET_NOT_FOUND');
   assert(failed);
-  await page.goto(
-    `${corral.server.url}/sessions/${created.session.sessionId}?run=${run.runId}&atSeq=1`,
+  // chat-widgets-contract: a completed run's failed-steps notice shows once, in its turn, beside
+  // those steps; nothing above the input repeats it or counts the steps as items to answer.
+  // The run row's head counts the failed steps; the steps are in the log the head opens.
+  const head = page.locator('[data-chat-part="head"]');
+  await expect(head).toContainText(/\d+ failed/);
+  await head.getByRole('button', { expanded: false }).click();
+  const tools = page.getByRole('list', { name: /^Tools · \d+$/ });
+  await expect(tools).toContainText('The run completed, but some tool steps failed.');
+  await expect(activityLine(page)).not.toContainText('some tool steps failed');
+  await expect(activityLine(page)).not.toContainText('A failure needs attention');
+  // Each helper's list_files failed the same way; the first one stands for them.
+  const step = tools.getByRole('listitem').filter({ hasText: 'list_files' }).first();
+  await expect(
+    step.getByText('The requested file, folder, or target is unavailable.'),
+  ).toBeVisible();
+  await expect(step.locator('details')).not.toHaveAttribute('open');
+  await step.getByText('Diagnostics', { exact: true }).click();
+  await expect(step.locator('details code')).toHaveText(
+    'TARGET_NOT_FOUND: the folder is unavailable',
   );
-  await banner.getByRole('link', { name: 'Review failed steps' }).click();
+  // The run record keeps the same reasons on the execution that failed.
+  await panelTab(page, 'Runs');
+  await page
+    .getByTestId('run-monitor')
+    .getByRole('tablist', { name: 'Run views', exact: true })
+    .getByRole('tab', { name: 'Workflow', exact: true })
+    .click();
+  await page
+    .getByTestId('run-work-flow')
+    .getByRole('button', { name: new RegExp(` · ${failed.executionId}`) })
+    .first()
+    .click();
   await expect(page).toHaveURL(new RegExp(`execution=${failed.executionId}`));
-  await expect(page).not.toHaveURL(/atSeq=/);
   const failure = page.getByTestId(`failed-step-${failed.toolCallId}`);
   await expect(failure).toContainText('list_files');
   await expect(
@@ -93,28 +126,31 @@ test('selected-run usage and unique result identities survive reload without cha
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   for (const [index, text] of ['First scope check', 'Second scope check'].entries()) {
     await requestBox(page).fill(text);
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect(page.getByTestId('composer-stats')).toContainText(
-      text.startsWith('First') ? '1 turn' : '2 turns',
+      text.startsWith('First') ? '1 run' : '2 runs',
     );
-    await expect(
-      page.getByRole('link', { name: `Succeeded Last run · Run #${index + 1}`, exact: true }),
-    ).toBeVisible();
+    // The newest run is the last run; its turn, not the activity bar, names its number.
+    await expect(lastRunSucceeded(page)).toContainText('Last run');
+    await expect(activityLine(page)).not.toContainText(`Run #${index + 1}`);
+    await expect(page.getByTestId('turn-run').last()).toHaveText(`Run #${index + 1}`);
   }
-  const totals = await page.getByTestId('composer-stats').locator('summary').innerText();
-  expect(totals).toContain('Session total');
+  // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
+  const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
+  expect(totals).toContain('Conversation total');
   // The run segment of the top bar's path exists only in run history.
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await chooseRun(page, 1);
   await panelTab(page, 'Conversation');
-  const selected = page.getByRole('link', { name: /Selected run · Run #1 of 2/ });
+  // The activity bar names the run the conversation shows when it is not the last one.
+  const selected = activityLine(page).getByText('Selected run · Run #1 of 2', { exact: true });
   await expect(selected).toBeVisible();
   await page.reload();
   await expect(selected).toBeVisible();
-  await expect(page.getByTestId('composer-stats').locator('summary')).toHaveText(totals);
+  await expect(page.getByTestId('composer-stats')).toHaveText(totals);
   await page.getByTestId('session-summary-trigger').click();
   const overview = page.getByTestId('session-summary-popup');
   await expect(overview.getByTestId('overview-run-scope')).toHaveText('Selected run · Run #1');
@@ -148,10 +184,22 @@ test('selected-run usage and unique result identities survive reload without cha
   const result = current.artifacts[latestId];
   assert(result);
   expect(current.executionOrder).toContain(result.authorExecutionId);
-  await expect(results.getByRole('option')).toHaveCount(1);
-  await expect(results.getByRole('option')).toContainText(`${result.name} v${result.version}`);
-  await expect(results.getByRole('option')).toContainText('Run #2');
-  await expect(results.getByRole('option')).toContainText(
+  // A finished run keeps its final and step results (api-contract.md, 산출물 본문 수명): the
+  // conversation's final reply and its helper's notes are both offered, each once.
+  const kept = Object.values(current.artifacts).filter(
+    (artifact) => artifact.bodyAvailable !== false,
+  );
+  expect(kept.length).toBeGreaterThan(0);
+  await expect(results.getByRole('option')).toHaveCount(kept.length);
+  for (const artifact of kept)
+    await expect(
+      results.getByRole('option').filter({ hasText: `${artifact.name} v${artifact.version} · ` }),
+    ).toHaveCount(1);
+  const option = results
+    .getByRole('option')
+    .filter({ hasText: `${result.name} v${result.version} · ` });
+  await expect(option).toContainText('Run #2');
+  await expect(option).toContainText(
     `execution ${current.executionOrder.indexOf(result.authorExecutionId) + 1}`,
   );
   expect(projection.artifacts[previousId]?.bodyAvailable).toBe(false);
@@ -199,7 +247,7 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     return started.runId as string;
   }, definition);
   await corral.open(`/runs/${runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded', { timeout: 15_000 });
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 15_000 });
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
 }
@@ -257,7 +305,7 @@ test.describe('an HTML result', () => {
     expect(await page.evaluate(() => (window as unknown as { seen: unknown[] }).seen)).toEqual([]);
 
     // The source is the text as written; Studio's own page runs none of it.
-    await page.getByRole('radio', { name: 'Source', exact: true }).click();
+    await page.getByRole('tab', { name: 'Source', exact: true }).click();
     await expect(page.getByTestId('result-body').locator('pre')).toContainText('<script>');
     expect(await page.evaluate(() => document.body.dataset.ran)).toBeUndefined();
     // The harness fails the test if the tracker image was requested.

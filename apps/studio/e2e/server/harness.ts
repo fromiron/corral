@@ -48,6 +48,34 @@ export interface Harness {
 }
 
 type Fake = ReturnType<typeof fakeOpenAI>;
+type LocalIntelligence = NonNullable<Parameters<typeof startCorralServer>[0]['localIntelligence']>;
+
+/**
+ * A local AI whose only part is a scripted meeting selector: every message gets the same score
+ * per participant, in roster order. It installs nothing.
+ */
+function scriptedLocalAi(scores: readonly number[]): LocalIntelligence {
+  return {
+    meeting: {
+      select: async (input: { participants: { participantId: string }[] }) => ({
+        scores: input.participants.map((participant, index) => ({
+          participantId: participant.participantId,
+          score: scores[index] ?? 0,
+        })),
+      }),
+    },
+    status: () => ({
+      release: 'scripted',
+      models: { meeting: 'scripted' },
+      state: 'ready',
+      downloadBytes: null,
+      progress: null,
+      error: null,
+      device: { requested: 'cpu', actual: 'cpu' },
+    }),
+    close: async () => {},
+  } as unknown as LocalIntelligence;
+}
 type AgentReply =
   | string
   | {
@@ -62,6 +90,7 @@ async function serve(
   fake: Fake | null,
   endpoint: CompatibleEndpoint | null,
   agentReply: AgentReply,
+  meetingScores: readonly number[] | null,
   port = 0,
 ) {
   if (!existsSync(join(STUDIO, 'index.html'))) {
@@ -98,6 +127,7 @@ async function serve(
     // Sessions' working copies stay with the test, never in the user's data directory.
     worktreeRoot: `${workspace}-worktrees`,
     ...(fake ? { live: fake.live } : {}),
+    ...(meetingScores ? { localIntelligence: scriptedLocalAi(meetingScores) } : {}),
     agents: new ScriptedAgentAdapter({
       turns: 2,
       beforeReply:
@@ -113,7 +143,8 @@ async function serve(
   });
 }
 
-function watchErrors(page: Page): string[] {
+/** Collects the page's errors, leaving out the one 404 the client reads as "no stored turn". */
+export function watchErrors(page: Page): string[] {
   const errors: string[] = [];
   const absentConversationTurns = new Set<string>();
   page.on('response', (response) => {
@@ -150,6 +181,7 @@ export const test = base.extend<{
   imageInput: boolean;
   compatibleEndpoint: boolean;
   agentReply: AgentReply;
+  meetingScores: readonly number[] | null;
   corral: Harness;
 }>({
   replyDelayMs: [50, { option: true }],
@@ -163,6 +195,8 @@ export const test = base.extend<{
   compatibleEndpoint: [false, { option: true }],
   /** Deterministic text or role-specific replies, without provider calls. */
   agentReply: [null, { option: true }],
+  /** The meeting selector's score per participant, in place of the local AI; none: analysis off. */
+  meetingScores: [null, { option: true }],
   corral: async (
     {
       page,
@@ -174,6 +208,7 @@ export const test = base.extend<{
       imageInput,
       compatibleEndpoint,
       agentReply,
+      meetingScores,
     },
     use,
   ) => {
@@ -195,7 +230,7 @@ export const test = base.extend<{
         })
       : null;
     const endpoint = compatibleEndpoint ? await startCompatibleEndpoint() : null;
-    let server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply);
+    let server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply, meetingScores);
     const harness: Harness = {
       get server() {
         return server;
@@ -216,7 +251,15 @@ export const test = base.extend<{
       async restart() {
         const port = Number(new URL(server.url).port);
         await server.close();
-        server = await serve(workspace, replyDelayMs, fake, endpoint, agentReply, port);
+        server = await serve(
+          workspace,
+          replyDelayMs,
+          fake,
+          endpoint,
+          agentReply,
+          meetingScores,
+          port,
+        );
       },
     };
     try {

@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
-import { editorSettings, teamCanvas, teamNode } from './workbench.ts';
+import { approvalResearchTeam } from '../src/demo/testing/approval-team.ts';
+import { editorSettings, importTeam, startTestRun, teamCanvas, teamNode } from './workbench.ts';
 
 test('a narrow editor opens on the whole team, and a rename in its settings saves', async ({
   page,
@@ -9,7 +10,7 @@ test('a narrow editor opens on the whole team, and a rename in its settings save
   // The demo opens its guided test run; the editor alone is the narrow layout under test.
   await page.getByRole('button', { name: 'Close test run', exact: true }).click();
   const canvas = page.locator('[data-team-canvas]');
-  await expect(canvas.locator('[data-node]')).toHaveCount(9, { timeout: 20_000 });
+  await expect(canvas.locator('[data-node]')).toHaveCount(8, { timeout: 20_000 });
   await expect
     .poll(async () => {
       const bounds = await canvas.boundingBox();
@@ -45,9 +46,9 @@ test('a narrow editor opens on the whole team, and a rename in its settings save
 
 test('test-run approvals stay inside the run panel at 768px', async ({ page }) => {
   await page.setViewportSize({ width: 768, height: 900 });
-  await page.goto('/demo?delay=150');
-  const panel = page.getByRole('complementary', { name: 'Test run' });
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  // The research team with its approvals put back, so the run asks for both.
+  await importTeam(page, approvalResearchTeam().definition, 150);
+  const panel = await startTestRun(page);
   const approval = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(approval).toBeVisible({ timeout: 20_000 });
   await expect
@@ -60,7 +61,7 @@ test('test-run approvals stay inside the run panel at 768px', async ({ page }) =
   const final = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
   await final.getByRole('button', { name: 'Confirm as final result' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
 });
 
 test("at 768px the test run takes the editor's place and gives it back as it was", async ({

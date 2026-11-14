@@ -154,3 +154,41 @@ it('does not hide a missing body that remains readable', () => {
     db.close();
   }
 });
+
+it('finds an advisor’s advice as model text, never as the person’s message', () => {
+  const { db, search } = transcriptFixture();
+  try {
+    for (const [seq, origin, text] of [
+      [3, 'user', 'personsteertoken'],
+      [4, 'advice', 'advisoradvicetoken'],
+    ] as const) {
+      const event = {
+        type: 'directive.accepted',
+        runSeq: seq,
+        payload: {
+          directiveId: `dir_${seq}`,
+          targetExecutionId: 'exec',
+          text,
+          delivery: 'next_request',
+          origin,
+        },
+      };
+      db.prepare('INSERT INTO run_events VALUES (?,?,?,?,?)').run(
+        'run',
+        seq,
+        `event_dir_${seq}`,
+        event.type,
+        JSON.stringify(event),
+      );
+    }
+    db.prepare("UPDATE runs SET last_seq=4 WHERE id='run'").run();
+    expect(search.search({ query: 'personsteertoken', includeTranscript: true }).hits).toEqual([
+      expect.objectContaining({ kind: 'interaction' }),
+    ]);
+    expect(search.search({ query: 'advisoradvicetoken', includeTranscript: true }).hits).toEqual([
+      expect.objectContaining({ kind: 'response' }),
+    ]);
+  } finally {
+    db.close();
+  }
+});

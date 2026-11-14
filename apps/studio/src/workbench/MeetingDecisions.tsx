@@ -1,12 +1,18 @@
 import type { MeetingDecisionContent, MeetingView } from '@corral/contracts';
 import { activeMeetingDecision, type WorkSession } from '@corral/core';
-import { Button, Textarea } from '@corral/react/design-kit';
-import { useRef, useState } from 'react';
+import { Button, fontWeights, Textarea } from '@corral/react/design-kit';
+import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { useStore } from 'zustand';
+import { createStore } from 'zustand/vanilla';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { MeetingDiagnostics } from './MeetingDiagnostics.tsx';
 import { MeetingHandoff } from './MeetingHandoff.tsx';
+import { reveal } from './reviewNavigation.ts';
+
+const semibold = { fontVariationSettings: fontWeights.semibold };
+const normal = { fontVariationSettings: fontWeights.normal };
 
 const fields = [
   'scope',
@@ -24,6 +30,30 @@ type Draft = {
   content: MeetingDecisionContent;
   supersedesVersionId?: string;
 };
+type Withdrawal = { versionId: string; reason: string };
+interface DecisionEdit {
+  draft: Draft | null;
+  withdrawal: Withdrawal | null;
+  /** The command that saves this exact body, reused when its response was lost. */
+  command: { key: string; id: string } | null;
+}
+
+/**
+ * Each meeting's decision draft or withdrawal reason being typed, by meeting ID, for the life of
+ * this page. The records remount when the narrow drawer closes or the window crosses 1024px; the
+ * text and its pending command stay here until it is saved, cancelled or replaced by another edit.
+ */
+export const meetingDecisionEdits = createStore<Record<string, DecisionEdit>>(() => ({}));
+const noEdit: DecisionEdit = { draft: null, withdrawal: null, command: null };
+function changeEdit(sessionId: string, change: Partial<DecisionEdit>) {
+  meetingDecisionEdits.setState((all) => {
+    const next = { ...(all[sessionId] ?? noEdit), ...change };
+    const { [sessionId]: _previous, ...others } = all;
+    return next.draft || next.withdrawal || next.command
+      ? { ...others, [sessionId]: next }
+      : others;
+  }, true);
+}
 
 /** Candidates stay proposals until the person saves an immutable decision version. */
 export function MeetingDecisions({
@@ -38,11 +68,44 @@ export function MeetingDecisions({
   const t = useTranslations('MeetingsDecisions');
   const format = useFormatter();
   const { meetings } = useServices();
-  const [draft, setDraft] = useState<Draft | null>(null);
-  const [withdrawal, setWithdrawal] = useState<{ versionId: string; reason: string } | null>(null);
+  const sessionId = session.sessionId;
+  const draft = useStore(meetingDecisionEdits, (all) => all[sessionId]?.draft ?? null);
+  const setDraft = (next: Draft | null) => changeEdit(sessionId, { draft: next });
+  const withdrawal = useStore(meetingDecisionEdits, (all) => all[sessionId]?.withdrawal ?? null);
+  const setWithdrawal = (next: Withdrawal | null) => changeEdit(sessionId, { withdrawal: next });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const command = useRef<{ key: string; id: string } | null>(null);
+  // A form opened from a button comes into view with focus on its first field; cancelling it
+  // returns focus to that button. A draft restored on remount takes no focus.
+  const form = useRef<HTMLFormElement>(null);
+  const opener = useRef<HTMLElement | null>(null);
+  const bringForm = useRef(false);
+  const openDraft = (next: Draft, origin: HTMLElement) => {
+    opener.current = origin;
+    bringForm.current = true;
+    setDraft(next);
+    setWithdrawal(null);
+  };
+  const closeDraft = () => {
+    setDraft(null);
+    if (opener.current?.isConnected) opener.current.focus();
+  };
+  useEffect(() => {
+    if (!draft || !bringForm.current) return;
+    bringForm.current = false;
+    reveal(form.current);
+    form.current
+      ?.querySelector<HTMLTextAreaElement>('textarea[name="goal"]')
+      ?.focus({ preventScroll: true });
+  }, [draft]);
+  // The decision a candidate became, by its version number; none until one is adopted from it.
+  const adoptedAs = (minutesId: string, candidateId: string) => {
+    const index =
+      view.decisions?.findIndex(
+        (decision) => decision.minutesId === minutesId && decision.candidateId === candidateId,
+      ) ?? -1;
+    return index < 0 ? null : index + 1;
+  };
   const nameOf = (id: string) =>
     view.config.participants.find((p) => p.participantId === id)?.name ?? id;
   const run = async (kind: 'adopt' | 'withdraw') => {
@@ -62,30 +125,24 @@ export function MeetingDecisions({
     const body = kind === 'adopt' ? cleanedDraft : withdrawal;
     if (!body || busy) return;
     const key = JSON.stringify([kind, body]);
-    if (command.current?.key !== key) command.current = { key, id: newCommandId() };
+    const pending = meetingDecisionEdits.getState()[sessionId]?.command;
+    const commandId = pending?.key === key ? pending.id : newCommandId();
+    changeEdit(sessionId, { command: { key, id: commandId } });
     setBusy(true);
     setError('');
     try {
       const result =
         kind === 'adopt' && cleanedDraft
-          ? await meetings.adopt(session.sessionId, {
-              ...cleanedDraft,
-              commandId: command.current.id,
-            })
+          ? await meetings.adopt(sessionId, { ...cleanedDraft, commandId })
           : withdrawal
-            ? await meetings.withdraw(session.sessionId, {
-                ...withdrawal,
-                commandId: command.current.id,
-              })
+            ? await meetings.withdraw(sessionId, { ...withdrawal, commandId })
             : null;
       if (!result) return;
       if (!result.ok) {
         setError(result.message);
         return;
       }
-      command.current = null;
-      setDraft(null);
-      setWithdrawal(null);
+      changeEdit(sessionId, { draft: null, withdrawal: null, command: null });
       await onChange();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
@@ -97,9 +154,8 @@ export function MeetingDecisions({
     (minutes, index, all) => minutes.document || index === all.length - 1,
   );
   return (
-    <section className="flex min-w-0 flex-col gap-4 text-sm" aria-label={t('heading')}>
-      <h2 className="font-medium">{t('heading')}</h2>
-      <p className="text-muted-foreground">{t('candidateHint')}</p>
+    // The records' own heading names this part; candidates explain themselves on it.
+    <section className="flex min-w-0 flex-col gap-4 text-body" aria-label={t('heading')}>
       {!view.minutes?.length ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {displayedMinutes?.map((minutes) => {
         const doc = minutes.document;
@@ -116,18 +172,16 @@ export function MeetingDecisions({
         return (
           <article
             key={minutes.minutesId}
-            className="flex min-w-0 flex-col gap-3 rounded fill-group p-3"
+            className="flex min-w-0 flex-col gap-3 rounded-lg fill-group p-3"
             aria-label={t('minutes')}
           >
-            <h3 className="font-medium">
-              {t('minutes')} ·{' '}
-              <time dateTime={minutes.createdAt}>
-                {format.dateTime(new Date(minutes.createdAt), {
-                  dateStyle: 'short',
-                  timeStyle: 'medium',
-                })}
-              </time>
-            </h3>
+            {/* The panel title names the records; each minutes is told apart by its time. */}
+            <time dateTime={minutes.createdAt} className="text-caption text-muted-foreground">
+              {format.dateTime(new Date(minutes.createdAt), {
+                dateStyle: 'short',
+                timeStyle: 'medium',
+              })}
+            </time>
             {minutes.error ? (
               <div role="note" className="text-danger wrap-anywhere">
                 {t('invalidMinutes')}
@@ -159,8 +213,8 @@ export function MeetingDecisions({
                 <TextList title={t('unverifiedFacts')} values={doc.unverifiedFacts} />
                 {nonresponses.length ? (
                   <div>
-                    <h4 className="font-medium">{t('nonresponse')}</h4>
-                    <ul className="list-inside list-disc">
+                    <h4 style={semibold}>{t('nonresponse')}</h4>
+                    <ul className="list-outside list-disc pl-5">
                       {nonresponses.map((answer) => (
                         <li
                           key={`${answer.roundId}:${answer.participantId}`}
@@ -173,31 +227,64 @@ export function MeetingDecisions({
                     </ul>
                   </div>
                 ) : null}
-                {doc.candidates.map((candidate) => (
-                  <div key={candidate.candidateId} className="flex flex-col gap-2">
-                    <h4 className="font-medium">
-                      {t('candidate')}: {candidate.content.goal}
-                    </h4>
-                    <DecisionContent content={candidate.content} />
-                    <div>
-                      <Button
-                        size="compact"
-                        variant="tertiary"
-                        disabled={busy}
-                        onClick={() => {
-                          setDraft({
-                            minutesId: minutes.minutesId,
-                            candidateId: candidate.candidateId,
-                            content: candidate.content,
-                          });
-                          setWithdrawal(null);
-                        }}
-                      >
-                        {t('editCandidate')}
-                      </Button>
+                {doc.candidates.map((candidate) => {
+                  const body = (
+                    <>
+                      <DecisionContent content={candidate.content} />
+                      <div>
+                        <Button
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={(event) =>
+                            openDraft(
+                              {
+                                minutesId: minutes.minutesId,
+                                candidateId: candidate.candidateId,
+                                content: candidate.content,
+                              },
+                              event.currentTarget,
+                            )
+                          }
+                        >
+                          {t('editCandidate')}
+                        </Button>
+                      </div>
+                    </>
+                  );
+                  const number = adoptedAs(minutes.minutesId, candidate.candidateId);
+                  // Once adopted, the decision holds these sections; the candidate folds to its
+                  // goal and the decision it became.
+                  return number ? (
+                    <details
+                      key={candidate.candidateId}
+                      data-candidate={candidate.candidateId}
+                      className="border-t border-border pt-3"
+                    >
+                      <summary className="flex-wrap gap-x-2">
+                        <span className="text-foreground" style={semibold}>
+                          {candidate.content.goal}
+                        </span>
+                        <span className="text-caption">{t('adoptedAs', { number })}</span>
+                      </summary>
+                      <div className="mt-2 flex flex-col gap-2">{body}</div>
+                    </details>
+                  ) : (
+                    <div
+                      key={candidate.candidateId}
+                      data-candidate={candidate.candidateId}
+                      className="flex flex-col gap-2 border-t border-border pt-3"
+                    >
+                      {/* The goal is the candidate's name; it is printed once, here. */}
+                      <h4 className="text-subtitle" style={semibold}>
+                        <span className="block text-caption text-muted-foreground" style={normal}>
+                          {t('candidate')}
+                        </span>
+                        {candidate.content.goal}
+                      </h4>
+                      {body}
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </>
             ) : null}
           </article>
@@ -205,14 +292,17 @@ export function MeetingDecisions({
       })}
       {draft ? (
         <form
-          className="flex flex-col gap-3 rounded fill-group p-3"
+          ref={form}
+          className="flex flex-col gap-3 rounded-lg fill-group p-3"
           onSubmit={(event) => {
             event.preventDefault();
             void run('adopt');
           }}
         >
-          <h3 className="font-medium">{t(draft.supersedesVersionId ? 'revise' : 'adopt')}</h3>
-          <p className="text-muted-foreground">{t('editHint')}</p>
+          <h3 className="text-subtitle" style={semibold}>
+            {t(draft.supersedesVersionId ? 'revise' : 'adopt')}
+          </h3>
+          <p className="text-caption text-muted-foreground">{t('editHint')}</p>
           <fieldset disabled={busy} className="flex flex-col gap-3">
             <label className="flex flex-col gap-1">
               {t('goal')}
@@ -248,7 +338,7 @@ export function MeetingDecisions({
             <Button type="submit" disabled={busy || !draft.content.goal.trim()}>
               {t('adopt')}
             </Button>
-            <Button type="button" variant="tertiary" disabled={busy} onClick={() => setDraft(null)}>
+            <Button type="button" variant="tertiary" disabled={busy} onClick={closeDraft}>
               {t('cancel')}
             </Button>
           </div>
@@ -263,13 +353,13 @@ export function MeetingDecisions({
         return (
           <article
             key={decision.versionId}
-            className="flex min-w-0 flex-col gap-3 rounded fill-group p-3"
+            className="flex min-w-0 flex-col gap-3 rounded-lg fill-group p-3"
             aria-label={t('decision')}
           >
-            <h3 className="font-medium">
+            <h3 className="text-subtitle" style={semibold}>
               {t('decisionLabel', { number: index + 1, goal: decision.content.goal })}
             </h3>
-            <p>
+            <p className="text-caption text-muted-foreground">
               {t(withdrawn ? 'withdrawn' : superseded ? 'superseded' : 'adopted')}
               {withdrawn ? `: ${withdrawn.reason}` : ''}
               {superseded
@@ -284,23 +374,23 @@ export function MeetingDecisions({
               <>
                 <div className="flex flex-wrap gap-2">
                   <Button
-                    size="compact"
                     variant="tertiary"
                     disabled={busy}
-                    onClick={() => {
-                      setDraft({
-                        minutesId: decision.minutesId,
-                        candidateId: decision.candidateId,
-                        content: decision.content,
-                        supersedesVersionId: decision.versionId,
-                      });
-                      setWithdrawal(null);
-                    }}
+                    onClick={(event) =>
+                      openDraft(
+                        {
+                          minutesId: decision.minutesId,
+                          candidateId: decision.candidateId,
+                          content: decision.content,
+                          supersedesVersionId: decision.versionId,
+                        },
+                        event.currentTarget,
+                      )
+                    }
                   >
                     {t('revise')}
                   </Button>
                   <Button
-                    size="compact"
                     variant="ghost-destructive"
                     disabled={busy}
                     onClick={() => {
@@ -369,9 +459,9 @@ function TextList({ title, values }: { title: string; values: string[] }) {
   const t = useTranslations('MeetingsDecisions');
   return (
     <div>
-      <h4 className="font-medium">{title}</h4>
+      <h4 style={semibold}>{title}</h4>
       {values.length ? (
-        <ul className="list-inside list-disc">
+        <ul className="list-outside list-disc pl-5">
           {values.map((value, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: A saved immutable list may contain repeated text.
             <li key={`${index}:${value}`} className="wrap-anywhere">
@@ -388,8 +478,8 @@ function TextList({ title, values }: { title: string; values: string[] }) {
 function DecisionContent({ content }: { content: MeetingDecisionContent }) {
   const t = useTranslations('MeetingsDecisions');
   return (
+    // The goal heads the candidate or decision that holds this content.
     <div className="flex flex-col gap-2">
-      <p className="wrap-anywhere">{content.goal}</p>
       {fields.map((field) => (
         <TextList key={field} title={t(field)} values={content[field]} />
       ))}

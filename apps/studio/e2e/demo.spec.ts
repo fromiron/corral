@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import { expect, type Page, test } from '@playwright/test';
-import { startTestRun } from './workbench.ts';
+import { editorSettings, startTestRun, teamNode } from './workbench.ts';
 
 test('the worker preserves receipts, replay ordering and cancellation boundaries', async ({
   page,
@@ -103,17 +103,6 @@ test('the worker preserves receipts, replay ordering and cancellation boundaries
   expect(result.seen.length).toBe(result.countAtUnsubscribe);
 });
 
-const approve = async (page: Page, kind: 'Your decision' | 'Final output') => {
-  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: kind });
-  await expect(card).toBeVisible({ timeout: 20_000 });
-  // UX-11: each step's button says what approving it does.
-  await card
-    .getByRole('button', {
-      name: kind === 'Final output' ? 'Confirm as final result' : 'Continue with this version',
-    })
-    .click();
-};
-
 const step = (page: Page, id: string) =>
   page.getByRole('region', { name: 'Demo guide' }).locator(`[data-step="${id}"]`);
 
@@ -130,7 +119,7 @@ const under = (page: Page, parent: string, child: string) =>
     .getByRole('treeitem', { name: new RegExp(`^${parent}:`) })
     .getByRole('treeitem', { name: new RegExp(`^${child}:`) });
 
-test('the default demo team delegates, asks, revises once and finishes after approval offline', async ({
+test('the default demo team delegates, asks, revises once and finishes offline without asking for an approval', async ({
   page,
   context,
 }) => {
@@ -143,7 +132,8 @@ test('the default demo team delegates, asks, revises once and finishes after app
   await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible({
     timeout: 20_000,
   });
-  await expect(page.getByText('Demo · simulated', { exact: true })).toBeVisible();
+  // workbench.md (사이드바는 정상 모델 연결 배지를 상시 표시하지 않는다): the header's one word marks the demo.
+  await expect(page.getByTestId('sidebar-connection')).toHaveText('Demo');
   await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
   await expect(step(page, 'start')).toHaveAttribute('data-state', 'current');
   await context.setOffline(true);
@@ -160,9 +150,9 @@ test('the default demo team delegates, asks, revises once and finishes after app
   await expect(writers.filter({ hasText: 'Round 2' })).toHaveCount(1, { timeout: 15_000 });
   await expect(step(page, 'revise')).toHaveAttribute('data-state', 'done');
 
-  await approve(page, 'Your decision');
-  await approve(page, 'Final output');
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  // Nothing waits for the person: the reviewed draft becomes the output by itself.
+  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
+  await expect(page.locator('[data-testid^="approval-"]')).toHaveCount(0);
   const output = page.getByTestId('run-output');
   await expect(output).toContainText('Simulated');
   await expect(output).not.toContainText(/^read artv_/m);
@@ -172,14 +162,19 @@ test('the default demo team delegates, asks, revises once and finishes after app
 
 test('a rejected approval does not finish the run or the guide', async ({ page }) => {
   await page.goto('/demo?delay=150');
+  // The demo team asks for no approval; a person who wants one turns it on in the editor.
+  await teamNode(page, 'output').click();
+  await editorSettings(page)
+    .getByRole('switch', { name: 'Ask for final approval', exact: true })
+    .click();
   await startTestRun(page);
-  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
+  const card = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(card).toBeVisible({ timeout: 20_000 });
-  await card.getByRole('button', { name: 'Reject and stop' }).click();
-  await expect(page.getByTestId('run-status')).not.toContainText(/Running|Waiting/, {
+  await card.getByRole('button', { name: 'Do not confirm' }).click();
+  await expect(page.getByTestId('run-status')).not.toContainText(/Working|Waiting/, {
     timeout: 10_000,
   });
-  await expect(page.getByTestId('run-status')).not.toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).not.toContainText('Completed');
   await expect(step(page, 'finish')).toHaveAttribute('data-state', 'missed');
   await expect(step(page, 'finish')).toContainText("Didn't happen in this run");
 });
@@ -205,7 +200,7 @@ test('the guide can pause at round 2 so a visitor has time to steer at normal sp
   await page.getByLabel('Instruction', { exact: true }).press('Enter');
   await page.getByRole('button', { name: 'Resume run', exact: true }).click();
   await expect(step(page, 'steer')).toHaveAttribute('data-state', 'done', { timeout: 15_000 });
-  await approve(page, 'Your decision');
-  await approve(page, 'Final output');
-  await expect(page.getByTestId('run-output')).toContainText('Lead with the cost difference.');
+  await expect(page.getByTestId('run-output')).toContainText('Lead with the cost difference.', {
+    timeout: 20_000,
+  });
 });

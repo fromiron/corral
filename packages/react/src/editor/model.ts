@@ -10,7 +10,9 @@ import {
   type DecisionNode,
   FILE_TOOLS,
   type InputBinding,
+  isWorkAgent,
   type LoopNode,
+  type ObserverAgentNode,
   type OutputContract,
   type TargetPort,
 } from '@corral/contracts';
@@ -62,13 +64,44 @@ export type CapabilityRejection =
   | 'unknownNode'
   | 'selfConnection'
   | 'sourceNotAgent'
+  | 'sourceIsAdvisor'
   | 'targetNotCallable'
   | 'duplicateLink';
+
+/**
+ * The work tools an advisor may read with (team-graph.md structure rule 11). The compiler keeps
+ * the same list; it does not export it.
+ */
+export const ADVISOR_READ_TOOLS = ['search', 'read_document', 'list_files', 'read_file'] as const;
+export type AdvisorReadTool = (typeof ADVISOR_READ_TOOLS)[number];
+const ADVISOR_COLLABORATION_TOOLS: AgentRole['allowedCollaborationTools'] = [
+  'read_artifact',
+  'advise',
+];
+const ADVISOR_PROMPT =
+  'Watch the work of the agents you advise. Advise only when something would make the result wrong; otherwise say nothing.';
+
+/** What an advisor's sheet edits; other changes to an advisor are left out. */
+const ADVISOR_CHANGES: ReadonlySet<keyof NodeChange> = new Set([
+  'label',
+  'prompt',
+  'modelProfile',
+  'reasoning',
+  'readTools',
+]);
+
+const isReadTool = (tool: string): tool is AdvisorReadTool =>
+  (ADVISOR_READ_TOOLS as readonly string[]).includes(tool);
+const isAdvisor = (node: CorralNode | undefined): node is ObserverAgentNode =>
+  node?.type === 'agent' && node.invocation === 'observer';
 
 export interface NodeChange {
   label?: string;
   prompt?: string;
+  /** To or from an advisor too (features/canvas.md rule 11). */
   invocation?: AgentNode['invocation'];
+  /** An advisor's read tools, out of ADVISOR_READ_TOOLS. */
+  readTools?: AdvisorReadTool[];
   outputContract?: OutputContract;
   modelProfile?: string;
   reasoning?: AgentRole['reasoning'] | null;
@@ -214,6 +247,174 @@ export function addNode(
   };
 }
 
+/** A new advisor with its own role of advisor tools, watching nobody yet and outside any box. */
+export function addAdvisor(draft: EditorDraft): { draft: EditorDraft; nodeId: string } {
+  const { id, counters } = nextId(draft, 'advisor');
+  const index = counters.advisor as number;
+  const label = index === 1 ? 'Advisor' : `Advisor ${index}`;
+  const role: AgentRole = {
+    ...newRole(`${id}_role`, label),
+    prompt: ADVISOR_PROMPT,
+    allowedWorkTools: [...ADVISOR_READ_TOOLS],
+    allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
+    outputContract: 'notes',
+  };
+  const node: ObserverAgentNode = {
+    id,
+    type: 'agent',
+    label,
+    roleId: role.id,
+    invocation: 'observer',
+    outputName: 'notes',
+  };
+  return {
+    nodeId: id,
+    draft: withDefinition(
+      { ...draft, counters },
+      {
+        ...draft.definition,
+        roles: [...draft.definition.roles, role],
+        nodes: [...draft.definition.nodes, node],
+      },
+    ),
+  };
+}
+
+/** An advisor starts watching a scheduled or callable agent through an `advise` link. */
+export function watchAgent(
+  draft: EditorDraft,
+  advisorId: string,
+  agentId: string,
+):
+  | { ok: true; draft: EditorDraft; linkId: string }
+  | { ok: false; reason: 'unknownNode' | 'watchNeedsAdvisor' | 'watchNeedsAgent' | 'duplicate' } {
+  const advisor = findNode(draft, advisorId);
+  const agent = findNode(draft, agentId);
+  if (!advisor || !agent) return { ok: false, reason: 'unknownNode' };
+  if (!isAdvisor(advisor)) return { ok: false, reason: 'watchNeedsAdvisor' };
+  if (!isWorkAgent(agent)) return { ok: false, reason: 'watchNeedsAgent' };
+  const links = draft.definition.capabilityLinks;
+  if (
+    links.some(
+      (l) => l.kind === 'advise' && l.sourceNodeId === advisorId && l.targetNodeId === agentId,
+    )
+  )
+    return { ok: false, reason: 'duplicate' };
+  const { id, counters } = nextId(draft, 'link');
+  return {
+    ok: true,
+    linkId: id,
+    draft: withDefinition(
+      { ...draft, counters },
+      {
+        ...draft.definition,
+        capabilityLinks: [
+          ...links,
+          { id, kind: 'advise', sourceNodeId: advisorId, targetNodeId: agentId },
+        ],
+      },
+    ),
+  };
+}
+
+/**
+ * Changes how an agent runs. Becoming an advisor takes it out of the flow: its control edges,
+ * call links, inputs, retry and box go, and only advisor tools stay. An advisor that runs
+ * otherwise stops watching. A role other nodes share is copied, so they keep theirs.
+ */
+function changeInvocation(
+  draft: EditorDraft,
+  node: AgentNode,
+  invocation: AgentNode['invocation'],
+): EditorDraft {
+  const { definition } = draft;
+  const role = definition.roles.find((r) => r.id === node.roleId);
+  const shared = definition.nodes.some(
+    (n) => n.id !== node.id && n.type === 'agent' && n.roleId === node.roleId,
+  );
+  let counters = draft.counters;
+  let roleId = node.roleId;
+  if (role && shared) {
+    const fresh = nextId(draft, 'role');
+    counters = fresh.counters;
+    roleId = fresh.id;
+  }
+  const base = {
+    id: node.id,
+    type: 'agent' as const,
+    label: node.label,
+    roleId,
+    outputName: node.outputName,
+    ...(node.note !== undefined ? { note: node.note } : {}),
+  };
+  let next: AgentNode;
+  let tools: Pick<AgentRole, 'allowedWorkTools' | 'allowedCollaborationTools'> | undefined;
+  let { controlEdges, capabilityLinks } = definition;
+  if (invocation === 'observer') {
+    next = { ...base, invocation: 'observer' };
+    controlEdges = controlEdges.filter((e) => e.source !== node.id && e.target !== node.id);
+    capabilityLinks = capabilityLinks.filter(
+      (l) => l.sourceNodeId !== node.id && l.targetNodeId !== node.id,
+    );
+    tools = role && {
+      allowedWorkTools: role.allowedWorkTools.filter(isReadTool),
+      allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
+    };
+  } else {
+    // A working agent again: it reads the brief, as a new agent does, and works with a new
+    // agent's tools besides the ones it read with.
+    const fresh = newRole(roleId, node.label);
+    next = { ...base, invocation, inputBindings: [{ kind: 'run_input', name: 'brief' }] };
+    capabilityLinks = capabilityLinks.filter(
+      (l) => !(l.kind === 'advise' && l.sourceNodeId === node.id),
+    );
+    tools = role && {
+      allowedWorkTools: [...new Set([...role.allowedWorkTools, ...fresh.allowedWorkTools])],
+      allowedCollaborationTools: [
+        ...new Set([
+          ...role.allowedCollaborationTools.filter((tool) => tool !== 'advise'),
+          ...fresh.allowedCollaborationTools,
+        ]),
+      ],
+    };
+  }
+  let roles = definition.roles;
+  if (role && tools) {
+    let changed: AgentRole = { ...role, id: roleId, ...tools };
+    if (invocation === 'observer') {
+      // What an advisor's sheet does not show takes a new advisor's value, so a converted
+      // advisor's role has the shape of a new one: only its instructions, model, reasoning and
+      // read tools carry over.
+      const {
+        harness: _harness,
+        imageProfile: _image,
+        editingMode: _editing,
+        answer: _answer,
+        ...kept
+      } = changed;
+      changed = { ...kept, outputContract: 'notes' };
+    }
+    roles = shared
+      ? roles.flatMap((r) => (r.id === role.id ? [r, changed] : [r]))
+      : roles.map((r) => (r.id === role.id ? changed : r));
+  }
+  // The team plan stays with a working agent.
+  const { planOwnerRoleId, ...rest } = definition;
+  const owner =
+    invocation === 'observer' && planOwnerRoleId === roleId ? undefined : planOwnerRoleId;
+  return withDefinition(
+    { ...draft, counters },
+    {
+      ...rest,
+      ...(owner ? { planOwnerRoleId: owner } : {}),
+      roles,
+      nodes: definition.nodes.map((n) => (n.id === node.id ? next : n)),
+      controlEdges,
+      capabilityLinks,
+    },
+  );
+}
+
 export function duplicateNode(
   draft: EditorDraft,
   nodeId: string,
@@ -247,6 +448,26 @@ export function duplicateNode(
 export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChange): EditorDraft {
   const node = findNode(draft, nodeId);
   if (!node) return draft;
+  if (
+    node.type === 'agent' &&
+    change.invocation &&
+    change.invocation !== node.invocation &&
+    (change.invocation === 'observer' || node.invocation === 'observer')
+  ) {
+    const { invocation, ...others } = change;
+    return updateNode(changeInvocation(draft, node, invocation), nodeId, others);
+  }
+  if (
+    node.type === 'agent' &&
+    node.invocation === 'observer' &&
+    Object.keys(change).some((key) => !ADVISOR_CHANGES.has(key as keyof NodeChange))
+  ) {
+    // An advisor keeps advisor tools only, and what its sheet does not show does not change.
+    const kept = Object.entries(change).filter(([key]) =>
+      ADVISOR_CHANGES.has(key as keyof NodeChange),
+    );
+    return updateNode(draft, nodeId, Object.fromEntries(kept) as NodeChange);
+  }
   let { nodes, roles, controlEdges, capabilityLinks } = draft.definition;
   const setNode = (next: CorralNode) => {
     nodes = nodes.map((n) => (n.id === nodeId ? next : n));
@@ -288,6 +509,10 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
       const others = current.filter((tool) => tool !== 'run_command');
       roleChange.allowedWorkTools = change.runCommand ? [...others, 'run_command'] : others;
     }
+    if (change.readTools && next.invocation === 'observer')
+      roleChange.allowedWorkTools = ADVISOR_READ_TOOLS.filter((tool) =>
+        change.readTools?.includes(tool),
+      );
     if (change.imageProfile) roleChange.imageProfile = change.imageProfile;
     if (change.generateImage !== undefined) {
       const current =
@@ -332,6 +557,9 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
         return basic;
       });
     }
+  }
+  // An advisor takes no inputs; changing to or from one happened above.
+  if (next.type === 'agent' && next.invocation !== 'observer') {
     // A reviewer reviews against the criteria: give it their text when it becomes one (#20).
     const hasCriteria = next.inputBindings.some(
       (b) => b.kind === 'run_input' && b.name === 'criteria',
@@ -349,7 +577,10 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
         const { parentId: _loop, ...rest } = next;
         next = { ...rest, invocation: 'callable' };
       } else {
-        capabilityLinks = capabilityLinks.filter((l) => l.targetNodeId !== nodeId);
+        // Nobody calls an agent in the flow; an advisor watching it keeps watching.
+        capabilityLinks = capabilityLinks.filter(
+          (l) => l.targetNodeId !== nodeId || l.kind === 'advise',
+        );
         next = { ...next, invocation: 'scheduled' };
       }
     }
@@ -363,7 +594,16 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     next = { ...next, maxIterations: change.maxIterations };
   if (next.type === 'loop' && change.reviewRecipe !== undefined) {
     const { reviewRecipe: _prior, ...rest } = next;
-    next = change.reviewRecipe ? { ...rest, reviewRecipe: change.reviewRecipe } : rest;
+    if (change.reviewRecipe) {
+      // A recipe Loop can only end at its cap (team-graph.md structure rule 4): the recipe drops
+      // any other limit policy, and an unlimited Loop takes the recipe's attempts as its cap.
+      const { limitPolicy: _policy, ...capped } = rest;
+      next = {
+        ...capped,
+        maxIterations: capped.maxIterations ?? change.reviewRecipe.maxAttempts,
+        reviewRecipe: change.reviewRecipe,
+      };
+    } else next = rest;
   }
   if (next.type === 'output' && change.requireApproval !== undefined)
     next = { ...next, requireApproval: change.requireApproval };
@@ -483,7 +723,10 @@ export function connect(
   return { ok: true, edgeId: id, draft: withDefinition({ ...draft, counters }, definition) };
 }
 
-const TOOLS_FOR: Record<CapabilityLink['kind'], AgentRole['allowedCollaborationTools']> = {
+/** Call links; an advisor's `advise` links are made by `watchAgent`. */
+export type CallLinkKind = Exclude<CapabilityLink['kind'], 'advise'>;
+
+const TOOLS_FOR: Record<CallLinkKind, AgentRole['allowedCollaborationTools']> = {
   delegate: ['spawn_subagents', 'await_tasks'],
   question: ['ask'],
 };
@@ -493,7 +736,7 @@ export function connectCapability(
   draft: EditorDraft,
   sourceId: string,
   targetId: string,
-  kind: CapabilityLink['kind'],
+  kind: CallLinkKind,
 ): { ok: true; draft: EditorDraft; linkId: string } | { ok: false; reason: CapabilityRejection } {
   const source = findNode(draft, sourceId);
   const target = findNode(draft, targetId);
@@ -501,6 +744,8 @@ export function connectCapability(
   if (!source || !target) return refuse('unknownNode');
   if (sourceId === targetId) return refuse('selfConnection');
   if (source.type !== 'agent') return refuse('sourceNotAgent');
+  // An advisor only watches (team-graph.md structure rule 11).
+  if (source.invocation === 'observer') return refuse('sourceIsAdvisor');
   if (target.type !== 'agent' || target.invocation !== 'callable')
     return refuse('targetNotCallable');
   const links = draft.definition.capabilityLinks;
@@ -651,7 +896,7 @@ export function importDefinition(text: string): ImportResult {
 
 export function compileDraft(
   draft: EditorDraft,
-  options: Pick<CompileOptions, 'resolveTeam'> = {},
+  options: Pick<CompileOptions, 'resolveTeam' | 'knownModelProfiles'> = {},
 ): DraftCompilation {
   const compiled = compileDefinition(draft.definition, options);
   if (!compiled.ok)
@@ -684,7 +929,10 @@ function entryOf(definition: CorralDefinition): string {
     ...starts.filter((n) => n.type === 'loop' || n.type === 'team'),
   ];
   if (candidates.some((n) => n.id === definition.entryNodeId)) return definition.entryNodeId;
-  return candidates[0]?.id ?? definition.entryNodeId;
+  // An advisor is never the start: with nowhere else to start, the team has no start, as when
+  // the start is deleted.
+  const advisorStart = isAdvisor(definition.nodes.find((n) => n.id === definition.entryNodeId));
+  return candidates[0]?.id ?? (advisorStart ? '' : definition.entryNodeId);
 }
 
 function structuredCopy<T>(value: T): T {

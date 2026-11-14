@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { requestBox } from '../workbench.ts';
+import { closeSettings, openFolderSettings, requestBox, slash, stopRun } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -30,14 +30,12 @@ test('file and line references remain independent and Escape clears only an empt
     );
     await corral.open('/');
     await page.setViewportSize({ width: 1262, height: 833 });
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    await page.getByLabel('Folder path on this computer').fill(original);
-    await page.getByRole('button', { name: 'Link folder', exact: true }).click();
-    await expect(page.getByRole('tabpanel', { name: 'Project folder', exact: true })).toContainText(
-      'no uncommitted changes',
-    );
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    const folder = await openFolderSettings(page);
+    await folder.getByLabel('Folder path on this computer').fill(original);
+    await folder.getByRole('button', { name: 'Link folder', exact: true }).click();
+    await expect(folder).toContainText('no uncommitted changes');
+    await closeSettings(page);
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     const box = requestBox(page);
     await box.fill('@README');
     await page
@@ -46,9 +44,12 @@ test('file and line references remain independent and Escape clears only an empt
       .filter({ hasText: 'README.md' })
       .click();
     await page.getByRole('button', { name: 'Open file viewer', exact: true }).click();
-    await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
-    await page.getByLabel('To line', { exact: true }).fill('3');
-    await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
+    await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
+    await page.getByRole('button', { name: 'More actions for README.md', exact: true }).click();
+    await page.getByRole('menuitem', { name: 'Reference lines…', exact: true }).click();
+    const reference = page.getByRole('dialog', { name: 'Reference lines', exact: true });
+    await reference.getByLabel('To line', { exact: true }).fill('3');
+    await reference.getByRole('button', { name: 'Reference lines', exact: true }).click();
     await page
       .getByRole('complementary', { name: 'File viewer', exact: true })
       .getByRole('button', { name: 'Close file viewer', exact: true })
@@ -102,7 +103,13 @@ test('file and line references remain independent and Escape clears only an empt
     await box.press('Escape');
     await expect(box).toHaveValue('/typed-command');
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(page.getByTestId('composer-destination')).toBeInViewport();
+    await expect(box).toBeInViewport();
+    await expect(box).toHaveAccessibleDescription(
+      'Send to: new run in this conversation · next request',
+    );
+    await expect(page.getByTestId('composer-destination')).toHaveText(
+      'Send to: new run in this conversation · next request',
+    );
     await page.screenshot({ path: testInfo.outputPath('composer-destination-narrow.png') });
     expect(corral.server.coordinator.listRuns()).toHaveLength(0);
     expect(corral.errors).toEqual([]);
@@ -120,25 +127,24 @@ test.describe('viewed and active execution', () => {
     });
   };
   test.use({ agentReply: { reply: () => 'Deterministic reply', beforeReply: () => reply } });
-  test('shows the historical selection and preserves queue intent when opening the active run', async ({
+  // workbench.md: a next request is decided when it is sent, so while Run #2 works it waits behind
+  // it; choosing an instruction and then the next request again keeps the draft, and opening the
+  // active run changes neither the draft nor where it goes.
+  test('shows the historical selection and keeps a next request waiting behind the active run when opening it', async ({
     page,
     corral,
   }, testInfo) => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
       const first = corral.server.coordinator.listRuns()[0];
       if (!first) throw new Error('First run missing');
-      await page.getByRole('button', { name: 'Cancel whole run', exact: true }).first().click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await stopRun(page);
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
       const sessionUrl = new URL(page.url());
@@ -150,28 +156,22 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('viewed-run-warning')).toContainText(
         'Viewing Run #1 while Run #2 is active',
       );
-      await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
-      );
-      const intent = page.getByRole('combobox', { name: 'What this is', exact: true });
-      await intent.click();
-      await page.getByRole('option', { name: /^Instruction/ }).click();
-      await expect(intent).toHaveAttribute('aria-expanded', 'false');
+      // While Run #2 goes the send key joins it, never the run being viewed.
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('instruction');
-      await intent.click();
-      await page.getByRole('option', { name: /^Queue/ }).click();
-      await box.fill('Keep this queued request');
+      // `/next` picks a next request once; it waits behind the active run.
+      await slash(page, 'next');
+      await box.fill('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
+        'Send to: after the current run in this conversation · next request',
       );
       await page.screenshot({ path: testInfo.outputPath('viewed-run-warning.png') });
       await page.getByRole('button', { name: 'View active run', exact: true }).click();
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
       await expect(page.getByTestId('viewed-run-warning')).toHaveCount(0);
-      await expect(box).toHaveValue('Keep this queued request');
+      await expect(box).toHaveValue('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
-        'Send to: next run in this session · queue',
+        'Send to: after the current run in this conversation · next request',
       );
       expect(corral.errors).toEqual([]);
     } finally {
@@ -186,18 +186,14 @@ test.describe('viewed and active execution', () => {
     holdReply();
     try {
       await corral.open('/');
-      await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+      await page.getByRole('button', { name: 'New conversation', exact: true }).click();
       const box = requestBox(page);
       await box.fill('First request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
       const first = corral.server.coordinator.listRuns()[0];
       if (!first) throw new Error('First run missing');
-      await page.getByRole('button', { name: 'Cancel whole run', exact: true }).first().click();
-      await page
-        .getByRole('dialog')
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await stopRun(page);
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
 
@@ -212,7 +208,7 @@ test.describe('viewed and active execution', () => {
       );
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
-      await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(first.runId);
 
       const cancellations: { runId: string; type: string }[] = [];

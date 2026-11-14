@@ -55,6 +55,10 @@ it('shows the request and session run number, preserves exact identity in a clos
     'Release notes · Run #1 · Review the release',
   );
   expect(container.querySelector('time')?.dateTime).toBe(run.startedAt);
+  // The run's state in the presence words (docs/specs/features/presence.md).
+  const label = container.querySelector('[data-presence-label]');
+  expect(label?.textContent).toBe(messages.Presence.state.succeeded);
+  expect(label?.getAttribute('data-presence-label')).toBe(`run:${run.runId}`);
   const details = container.querySelector('details');
   expect(details?.open).toBe(false);
   expect(details?.querySelector('code')?.textContent).toBe(run.runId);

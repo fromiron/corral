@@ -3,6 +3,8 @@ import { cn } from '@corral/react/design-kit';
 import type { editor } from 'monaco-editor/editor';
 import { useEffect, useRef } from 'react';
 import { resolvedThemeColors } from '../theme-colors.ts';
+import { appliedAppearance } from '../themes/appearance.ts';
+import { EDITOR_COLOR_TOKENS, editorThemeData } from '../themes/code.ts';
 import { loadMonaco, type Monaco, onMonacoWorkerError } from './monaco.ts';
 
 export type LanguageSelection = {
@@ -27,6 +29,8 @@ export interface CodeEditorViewProps {
   onSelection?: (startLine: number, endLine: number, selection: TextRange | null) => void;
   revealRange?: { startLine: number; endLine: number };
   revealSelection?: TextRange;
+  /** A new number switches whether Tab moves focus, as the editor's own Ctrl+M does. */
+  tabFocusRequest?: number;
   onError?: () => void;
   onOpenResource?: (resource: string, range: TextRange) => Promise<boolean>;
   debug?: EditorDebugState;
@@ -57,35 +61,11 @@ function revealTextSelection(instance: editor.IStandaloneCodeEditor, range: Text
 }
 
 function applyEditorTheme(monaco: Monaco) {
-  const root = document.documentElement;
-  const colors = resolvedThemeColors([
-    'surface',
-    'text',
-    'muted-foreground',
-    'primary',
-    'raised',
-    'line',
-    'danger',
-    'warning',
-    'focus-ring',
-  ]);
-  monaco.editor.defineTheme('corral', {
-    base: root.classList.contains('dark') ? 'vs-dark' : 'vs',
-    inherit: true,
-    rules: [],
-    colors: {
-      'editor.background': colors.surface,
-      'editor.foreground': colors.text,
-      'editorLineNumber.foreground': colors['muted-foreground'],
-      'editorLineNumber.activeForeground': colors.text,
-      'editorCursor.foreground': colors.primary,
-      'editorWidget.background': colors.raised,
-      'editorWidget.border': colors.line,
-      'editorError.foreground': colors.danger,
-      'editorWarning.foreground': colors.warning,
-      focusBorder: colors['focus-ring'],
-    },
-  });
+  const dark = document.documentElement.classList.contains('dark');
+  const colors = resolvedThemeColors(EDITOR_COLOR_TOKENS);
+  // Under a named theme its syntax colors and selection; otherwise the kit theme as before.
+  const { palette } = appliedAppearance.getState();
+  monaco.editor.defineTheme('corral', editorThemeData(colors, palette, dark));
   monaco.editor.setTheme('corral');
 }
 
@@ -99,6 +79,7 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     saveLabel,
     revealRange,
     revealSelection,
+    tabFocusRequest,
     className,
     debug,
   } = props;
@@ -263,6 +244,10 @@ export function CodeEditorView(props: CodeEditorViewProps) {
           },
         });
         const stopWorkerErrors = onMonacoWorkerError(() => callbacks.current.onError?.());
+        // Every color the editor takes from a theme is also a root token, so the root's class and
+        // style change on every apply that matters, a draft's syntax colors included. Re-theming
+        // here, after the apply, and never inside it: a re-theme within the apply left Monaco's
+        // overview ruler unpainted. Neither recreates the editor.
         const theme = new MutationObserver(() => applyEditorTheme(monaco));
         theme.observe(document.documentElement, {
           attributes: true,
@@ -322,6 +307,13 @@ export function CodeEditorView(props: CodeEditorViewProps) {
     const instance = editorRef.current;
     if (instance && revealSelection) revealTextSelection(instance, revealSelection);
   }, [revealSelection]);
+
+  const handledTabFocus = useRef(tabFocusRequest);
+  useEffect(() => {
+    if (tabFocusRequest === handledTabFocus.current) return;
+    handledTabFocus.current = tabFocusRequest;
+    void editorRef.current?.getAction('editor.action.toggleTabFocusMode')?.run();
+  }, [tabFocusRequest]);
 
   return (
     <section

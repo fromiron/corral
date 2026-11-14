@@ -576,6 +576,105 @@ export function describeCorralRepositoryContract(
         expect((await repo.getSession(id))?.auto).toEqual({ modelProfile: 'model-a' });
       });
 
+      it('a work session keeps trimmed completion criteria under its revision', async () => {
+        const repo = makeRepository();
+        const plain = await repo.createSession({ projectId: 'default', title: 'Plain' });
+        if (!plain.ok) throw new Error(plain.message);
+        expect(plain.session.criteria).toEqual([]);
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'Report',
+          criteria: ['  The report names its sources ', 'Tables have units'],
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.criteria).toEqual([
+          'The report names its sources',
+          'Tables have units',
+        ]);
+        expect((await repo.getSession(id))?.criteria).toEqual([
+          'The report names its sources',
+          'Tables have units',
+        ]);
+        const changed = await repo.updateSession(id, {
+          criteria: ['Only one line'],
+          expectedRevision: 1,
+        });
+        expect(changed).toMatchObject({ ok: true, session: { revision: 2 } });
+        expect(
+          await repo.updateSession(id, { criteria: ['Stale'], expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        expect((await repo.getSession(id))?.criteria).toEqual(['Only one line']);
+        const cleared = await repo.updateSession(id, { criteria: [], expectedRevision: 2 });
+        expect(cleared.ok && cleared.session.criteria).toEqual([]);
+        const renamed = await repo.updateSession(id, { title: 'Renamed', expectedRevision: 3 });
+        expect(renamed.ok && renamed.session.criteria).toEqual([]);
+      });
+
+      it('criteria outside 0 to 20 lines of 1 to 200 characters save nothing', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({
+          projectId: 'default',
+          title: 'S',
+          criteria: ['Keep me'],
+        });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const bad = [
+          Array.from({ length: 21 }, (_, i) => `Line ${i + 1}`),
+          ['First', ''],
+          ['First', '   '],
+          ['x'.repeat(201)],
+        ];
+        for (const criteria of bad) {
+          expect(await repo.updateSession(id, { criteria, expectedRevision: 1 })).toMatchObject({
+            ok: false,
+            error: 'invalid',
+          });
+          expect(
+            await repo.createSession({ projectId: 'default', title: 'Bad', criteria }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        }
+        expect(await repo.getSession(id)).toMatchObject({ revision: 1, criteria: ['Keep me'] });
+        const edge = await repo.updateSession(id, {
+          criteria: [...Array.from({ length: 19 }, (_, i) => `Line ${i + 1}`), 'y'.repeat(200)],
+          expectedRevision: 1,
+        });
+        expect(edge.ok && edge.session.criteria).toHaveLength(20);
+      });
+
+      it('a meeting has no completion criteria', async () => {
+        const repo = makeRepository();
+        const meeting = {
+          version: 1 as const,
+          participants: [
+            { participantId: 'a', name: 'A', prompt: 'One view.', modelProfile: 'model-a' },
+            { participantId: 'b', name: 'B', prompt: 'Another view.', modelProfile: 'model-b' },
+          ],
+          secretary: { modelProfile: 'model-a' },
+        };
+        expect(
+          await repo.createSession({
+            projectId: 'default',
+            title: 'Meet',
+            meeting,
+            criteria: ['Agree on scope'],
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        const made = await repo.createSession({ projectId: 'default', title: 'Meet', meeting });
+        if (!made.ok) throw new Error(made.message);
+        expect(
+          await repo.updateSession(made.session.sessionId, {
+            criteria: ['Agree on scope'],
+            expectedRevision: 1,
+          }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect(await repo.getSession(made.session.sessionId)).toMatchObject({
+          revision: 1,
+          criteria: [],
+        });
+      });
+
       it('an auto session can let the start model choose the reasoning', async () => {
         const repo = makeRepository();
         const created = await repo.createSession({ projectId: 'default', title: 'S' });
@@ -672,24 +771,111 @@ export function describeCorralRepositoryContract(
               intent,
             }),
           ).toMatchObject({ ok: false });
+      });
+
+      it('a queued request keeps its images and references; a join, an interrupt or a question cannot', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Queued images' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const image = {
+          kind: 'image_attachment' as const,
+          imageId: 'image_fixture',
+          name: 'image.png',
+          mime: 'image/png' as const,
+          bytes: 1,
+          sha256: 'a'.repeat(64),
+          width: 1,
+          height: 1,
+        };
+        const references = [
+          { kind: 'file' as const, path: 'src/a.ts', lines: { start: 2, end: 4 } },
+          { kind: 'role' as const, roleId: 'writer' },
+        ];
+        const request = {
+          commandId: 'cmd_queue_image',
+          intent: 'queue' as const,
+          text: 'Look at this @src/a.ts:L2-L4',
+          state: 'queued' as const,
+          images: [image],
+          references,
+        };
+        const saved = await repo.addSessionEntry(id, request);
+        if (!saved.ok) throw new Error(saved.message);
+        expect(saved.session.entries[0]).toMatchObject({ images: [image], references });
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject({
+          images: [image],
+          references,
+        });
+        // The same command with other images or references is another request.
+        expect(await repo.addSessionEntry(id, request)).toMatchObject({ ok: true });
         expect(
-          await repo.addSessionEntry(created.session.sessionId, {
-            ...request,
-            commandId: 'cmd_queue_image',
-            images: [
-              {
-                kind: 'image_attachment',
-                imageId: 'image_fixture',
-                name: 'image.png',
-                mime: 'image/png',
-                bytes: 1,
-                sha256: 'a'.repeat(64),
-                width: 1,
-                height: 1,
-              },
-            ],
-          }),
-        ).toMatchObject({ ok: false });
+          await repo.addSessionEntry(id, { ...request, references: references.slice(0, 1) }),
+        ).toMatchObject({ ok: false, error: 'invalid' });
+        expect(await repo.addSessionEntry(id, { ...request, images: [] })).toMatchObject({
+          ok: false,
+          error: 'invalid',
+        });
+        // A new request keeps its references too.
+        const next = await repo.addSessionEntry(id, {
+          ...request,
+          commandId: 'cmd_next_image',
+          intent: 'next',
+          state: 'started',
+          runId: 'run_fixture',
+        });
+        expect(next.ok && next.session.entries[1]).toMatchObject({ images: [image], references });
+        for (const intent of ['steer', 'explain'] as const) {
+          expect(
+            await repo.addSessionEntry(id, {
+              commandId: `cmd_${intent}_image`,
+              intent,
+              text: 'Look',
+              state: 'sent',
+              images: [image],
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+          expect(
+            await repo.addSessionEntry(id, {
+              commandId: `cmd_${intent}_reference`,
+              intent,
+              text: 'Look',
+              state: 'sent',
+              references,
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        }
+        const refused = [
+          { images: [{ ...image, sha256: 'not a hash' }] },
+          { images: [image, image] },
+          { references: [{ kind: 'file', path: '../outside' }] },
+          { references: [{ kind: 'nothing', path: 'x' }] },
+          // Attachments ride in their own fields, never as references, even when the start
+          // list they would make is valid.
+          { references: [image] },
+          { images: undefined, references: [image] },
+          {
+            images: undefined,
+            references: [createTextAttachment('notes.txt', 'text/plain', 'a note')],
+          },
+          // A start takes 20 references in all, attachments and images included.
+          {
+            references: Array.from({ length: 20 }, (_, n) => ({
+              kind: 'file' as const,
+              path: `f${n}.ts`,
+            })),
+            images: [image],
+          },
+        ];
+        for (const [n, change] of refused.entries())
+          expect(
+            await repo.addSessionEntry(id, {
+              ...request,
+              commandId: `cmd_bad_${n}`,
+              ...(change as object),
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.entries).toHaveLength(2);
       });
 
       it('a queued auto request keeps its routing explanation and reasoning when started', async () => {
@@ -739,6 +925,200 @@ export function describeCorralRepositoryContract(
         );
         expect(updated.ok && updated.session.entries[0]?.auto).toEqual(auto);
         expect((await repo.getSession(id))?.entries[0]?.auto).toEqual(auto);
+      });
+
+      it('saves the session advisor, off by default, and refuses a malformed one', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Watched chat' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.advisor).toBeNull();
+        expect((await repo.getSession(id))?.advisor).toBeNull();
+        const on = await repo.updateSession(id, {
+          advisor: { modelProfile: 'model-b' },
+          expectedRevision: 1,
+        });
+        expect(on).toMatchObject({ ok: true, session: { advisor: { modelProfile: 'model-b' } } });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        // Another change leaves it as it is.
+        await repo.updateSession(id, { title: 'Renamed', expectedRevision: 2 });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        expect(await repo.updateSession(id, { advisor: null, expectedRevision: 2 })).toMatchObject({
+          ok: false,
+          error: 'revision_conflict',
+        });
+        for (const advisor of [
+          { modelProfile: '' },
+          { modelProfile: 'model-b', interval: 2 },
+          { model: 'model-b' },
+          'model-b',
+        ])
+          expect(
+            await repo.updateSession(id, {
+              advisor: advisor as unknown as { modelProfile: string },
+              expectedRevision: 3,
+            }),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        expect((await repo.getSession(id))?.advisor).toEqual({ modelProfile: 'model-b' });
+        const off = await repo.updateSession(id, { advisor: null, expectedRevision: 3 });
+        expect(off).toMatchObject({ ok: true, session: { advisor: null, revision: 4 } });
+        expect((await repo.getSession(id))?.advisor).toBeNull();
+      });
+
+      it('saves autoStart, true by default, and a queued start snapshot and carried source', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Server queue' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        expect(created.session.autoStart).toBe(true);
+        expect((await repo.getSession(id))?.autoStart).toBe(true);
+        const off = await repo.updateSession(id, { autoStart: false, expectedRevision: 1 });
+        expect(off).toMatchObject({ ok: true, session: { autoStart: false, revision: 2 } });
+        expect((await repo.getSession(id))?.autoStart).toBe(false);
+        expect(
+          await repo.updateSession(id, { autoStart: true, expectedRevision: 1 }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        const start = {
+          choice: { modelProfile: 'model-a' },
+          mode: 'mock' as const,
+          team: 'none' as const,
+          permissionMode: 'ask' as const,
+        };
+        const queued = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'Start me later',
+          state: 'queued',
+          permissionMode: 'ask',
+          start,
+          carriedFrom: 'directive_original',
+        });
+        if (!queued.ok) throw new Error(queued.message);
+        expect((await repo.getSession(id))?.entries[0]).toMatchObject({
+          start,
+          carriedFrom: 'directive_original',
+        });
+        const plain = await repo.addSessionEntry(id, {
+          intent: 'queue',
+          text: 'No snapshot',
+          state: 'queued',
+        });
+        if (!plain.ok) throw new Error(plain.message);
+        const stored = (await repo.getSession(id))?.entries[1];
+        expect(stored && 'start' in stored).toBe(false);
+        expect(stored && 'carriedFrom' in stored).toBe(false);
+        for (const refused of [
+          { intent: 'queue' as const, start: { ...start, mode: 'later' } },
+          { intent: 'queue' as const, start: { ...start, extra: true } },
+          // Only new and queued requests carry a start snapshot.
+          { intent: 'steer' as const, start, permissionMode: 'ask' as const },
+          { intent: 'explain' as const, start, permissionMode: 'ask' as const },
+          { intent: 'next' as const, start, permissionMode: 'auto' as const },
+          { intent: 'next' as const, start },
+          { intent: 'next' as const, carriedFrom: 'directive_original' },
+          // The snapshot's permission mode is the request's: both absent, or the same.
+          { intent: 'queue' as const, start },
+          { intent: 'queue' as const, start, permissionMode: 'auto' as const },
+          {
+            intent: 'queue' as const,
+            start: { ...start, permissionMode: undefined },
+            permissionMode: 'ask' as const,
+          },
+        ])
+          expect(
+            await repo.addSessionEntry(id, {
+              text: 'Refused',
+              state: 'queued',
+              ...(refused as object),
+            } as Parameters<CorralRepository['addSessionEntry']>[1]),
+          ).toMatchObject({ ok: false, error: 'invalid' });
+        // Without a permission mode, only the intent rule can refuse these.
+        const bare = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        for (const intent of ['steer', 'explain'] as const)
+          expect(
+            await repo.addSessionEntry(id, {
+              intent,
+              text: 'Refused',
+              state: 'queued',
+              start: bare,
+            }),
+          ).toEqual({
+            ok: false,
+            error: 'invalid',
+            message: 'a start request requires a valid new or queued request',
+          });
+        expect((await repo.getSession(id))?.entries).toHaveLength(2);
+        // A new request keeps the snapshot it started with, so a carried request can copy it.
+        const sent = await repo.addSessionEntry(id, {
+          intent: 'next',
+          text: 'Started by the screen',
+          state: 'started',
+          runId: 'run_sent',
+          permissionMode: 'ask',
+          start,
+        });
+        if (!sent.ok) throw new Error(sent.message);
+        expect((await repo.getSession(id))?.entries[2]).toMatchObject({
+          intent: 'next',
+          state: 'started',
+          start,
+        });
+      });
+
+      it('a resent queued command keeps its start and carried source, and refuses others', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Resend' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const start = { choice: { modelProfile: 'model-a' }, mode: 'mock' as const };
+        const entry = {
+          commandId: 'queue_resent',
+          intent: 'queue' as const,
+          text: 'Once',
+          state: 'queued' as const,
+          start,
+          carriedFrom: 'directive_one',
+        };
+        const first = await repo.addSessionEntry(id, entry);
+        if (!first.ok) throw new Error(first.message);
+        const again = await repo.addSessionEntry(id, clone(entry));
+        expect(again).toMatchObject({ ok: true });
+        expect(again.ok && again.session.entries).toEqual(first.session.entries);
+        for (const changed of [
+          { ...entry, start: { ...start, choice: { modelProfile: 'model-b' } } },
+          { ...entry, start: { ...start, team: 'auto' as const } },
+          { ...entry, carriedFrom: 'directive_two' },
+          (({ start: _start, ...rest }) => rest)(entry),
+          (({ carriedFrom: _from, ...rest }) => rest)(entry),
+        ])
+          expect(await repo.addSessionEntry(id, changed)).toMatchObject({
+            ok: false,
+            error: 'invalid',
+          });
+        expect((await repo.getSession(id))?.entries).toHaveLength(1);
+      });
+
+      it('records one carried request per directive, however often it is carried', async () => {
+        const repo = makeRepository();
+        const created = await repo.createSession({ projectId: 'default', title: 'Carry' });
+        if (!created.ok) throw new Error(created.message);
+        const id = created.session.sessionId;
+        const carried = {
+          intent: 'queue' as const,
+          text: 'Read this after all.',
+          state: 'queued' as const,
+          start: { choice: { modelProfile: 'model-a' }, mode: 'mock' as const },
+          carriedFrom: 'directive_unread',
+        };
+        const first = await repo.addSessionEntry(id, carried);
+        if (!first.ok) throw new Error(first.message);
+        const again = await repo.addSessionEntry(id, clone(carried));
+        expect(again).toMatchObject({ ok: true });
+        expect(again.ok && again.session.entries).toEqual(first.session.entries);
+        const other = await repo.addSessionEntry(id, { ...carried, carriedFrom: 'directive_next' });
+        expect(other.ok && other.session.entries.map((e) => e.carriedFrom)).toEqual([
+          'directive_unread',
+          'directive_next',
+        ]);
       });
     });
   });

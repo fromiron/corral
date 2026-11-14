@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { panelTab, requestBox } from '../workbench.ts';
+import { activityBar, newConversation, openActivity, panelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -63,7 +63,7 @@ test('attachments survive settings; the owned plan and question lead to one comp
     fauxAssistantMessage('Attachment verified. The answer is a table.'),
   ]);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const model = page.getByRole('button', { name: 'Model', exact: true });
   await model.click();
@@ -102,14 +102,24 @@ test('attachments survive settings; the owned plan and question lead to one comp
   await expect(page.getByRole('button', { name: 'Remove notes.txt' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Remove image pixel.png' })).toBeVisible();
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByTestId('action-required')).toBeVisible();
+  // The question comes to the conversation's needed-now tray, in view: the bar does not repeat it.
+  const question = page.locator('[data-pending-tray]').getByRole('form', {
+    name: 'Waiting for you',
+  });
+  await expect(question).toBeVisible();
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+  // The plan is one part of the activity bar's line; the person opens the bar to read its steps.
+  await expect(activityBar(page).getByTestId('activity-step')).toContainText(
+    'Read attachment and answer',
+  );
+  await openActivity(page);
   const planItem = page.getByTestId('composer-work-plan').locator('[data-plan-item="answer"]');
   await expect(planItem).toBeVisible();
   await expect(planItem).toContainText('Read attachment and answer');
-  await expect(planItem).toHaveAttribute('aria-current', 'step');
-  await page.getByTestId('action-required').getByRole('link').click();
-  const question = page.getByRole('form', { name: 'Waiting for your answer' });
-  await expect(question).toHaveCount(1);
+  // Product gap: the composer's Todo rows are not AgentSteering plan rows (chat-widgets-contract
+  // §4.1), so the step in progress has no aria-current. Soft, so the journey below still runs.
+  await expect.soft(planItem).toHaveAttribute('aria-current', 'step');
+  await expect(page.getByRole('form', { name: 'Waiting for you' })).toHaveCount(1);
   const answer = question.getByRole('textbox', { name: 'Your answer' });
   await answer.fill('A table');
   expect(
@@ -145,14 +155,18 @@ test('attachments survive settings; the owned plan and question lead to one comp
       .evaluate((element: HTMLImageElement) => element.naturalWidth),
   ).toBe(1);
   expect(Object.keys(current().projection.modelCalls)).toHaveLength(calls);
-  await page.getByRole('button', { name: 'View run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run #1', exact: true }).click();
+  // The run's status parts are rows of Run info's overview.
   await page
     .getByTestId('run-monitor')
-    .getByRole('button', { name: 'Show side panel', exact: true })
+    .getByRole('button', { name: 'Run info', exact: true })
     .click();
   for (const card of ['environment', 'context', 'connections', 'changes'])
     await expect(page.getByTestId(`status-${card}`)).toBeVisible();
-  await page.getByTestId('status-context').locator(':scope > summary').click();
+  await page
+    .getByTestId('status-context')
+    .getByRole('button', { name: /^Context and cost/ })
+    .click();
   await expect(page.getByTestId('status-context')).toContainText(/About [0-9,]+ message tokens/);
   await expect(page.getByTestId('status-context')).toContainText('Model context limit:');
   expect(corral.errors).toEqual([]);

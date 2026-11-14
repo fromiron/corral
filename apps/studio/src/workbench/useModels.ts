@@ -3,14 +3,19 @@ import type { HarnessBindingRef, ReasoningCapabilities, ReasoningPolicy } from '
 import type { CorralSummary } from '@corral/core';
 import { useEffect, useState } from 'react';
 import { useServices } from '../services.tsx';
+import { profileReady } from './modelReadiness.ts';
 
 // UX-06: which model each profile means and whether it is connected, as the local server
 // reports it. The in-browser demo has no profiles (its agents are simulated).
 
 export interface ProfileInfo {
   profileId: string;
+  /** A named profile, or a model of a connected provider (no profile needed). */
+  source?: 'profile' | 'connection';
   provider?: string;
+  providerName?: string;
   modelId?: string;
+  modelName?: string | null;
   /** "OpenAI · gpt-5" */
   label: string;
   available: boolean;
@@ -48,17 +53,15 @@ export function useModelProfiles(): ProfileInfo[] | null {
         setProfiles(
           list.map((p) => ({
             profileId: p.profileId,
+            source: p.source,
             provider: p.provider,
+            providerName: p.providerName,
             modelId: p.modelId,
+            modelName: p.modelName,
             reasoningCapabilities: p.reasoningCapabilities,
             imageInput: p.imageInput,
             label: `${p.providerName} · ${p.modelName ?? p.modelId}`,
-            // Ready to call: the model is known, a sign-in or key is set, and a subscription
-            // sign-in may use this model.
-            available:
-              p.available &&
-              p.method !== null &&
-              !(p.method === 'oauth' && p.subscriptionSupported === false),
+            available: profileReady(p),
           })),
         ),
       () => live && setProfiles(null),

@@ -2,10 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   actionCopy,
   actionRequired,
+  actionTone,
   activityLine,
   agentActivity,
   changesPresentation,
-  composerShowsRunStatus,
+  fileChangeCount,
   fileChangeSignals,
   planBodyStatus,
   presentContext,
@@ -56,6 +57,50 @@ describe('chat widget selectors', () => {
     });
     expect(actionCopy(action)).toEqual(['actionCompletedWithFailures']);
     expect(action.hasFailure).toBe(true);
+    expect(actionTone(action)).toBe('warning');
+  });
+  it('counts only what a person must answer: approvals, questions and unknown results', () => {
+    // The live finding: one approval waited while three tool steps had failed.
+    const waiting = actionRequired({
+      pendingApprovals: 1,
+      pendingQuestions: 0,
+      failedEffects: 3,
+      unclearEffects: 0,
+      runStatus: 'awaiting_user',
+    });
+    expect(waiting).toMatchObject({ visible: true, count: 1, summary: 'approval' });
+    expect(actionCopy(waiting)).toEqual(['actionApproval']);
+    const several = actionRequired({
+      pendingApprovals: 1,
+      pendingQuestions: 1,
+      failedEffects: 2,
+      unclearEffects: 1,
+    });
+    expect(several).toMatchObject({ count: 3, summary: 'mixed' });
+    // Failures alone are still told, without counting as items to answer.
+    expect(
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        failedEffects: 2,
+        unclearEffects: 0,
+      }),
+    ).toMatchObject({ visible: true, count: 0, summary: 'failure', hasFailure: true });
+  });
+  it('tells an ordinary question in the info tone and keeps the warning for what can go wrong', () => {
+    const action = (patch: Partial<Parameters<typeof actionRequired>[0]>) =>
+      actionRequired({
+        pendingApprovals: 0,
+        pendingQuestions: 0,
+        failedEffects: 0,
+        unclearEffects: 0,
+        ...patch,
+      });
+    expect(actionTone(action({ pendingQuestions: 2 }))).toBe('info');
+    expect(actionTone(action({ pendingApprovals: 1 }))).toBe('warning');
+    expect(actionTone(action({ pendingQuestions: 1, pendingApprovals: 1 }))).toBe('warning');
+    expect(actionTone(action({ pendingQuestions: 1, failedEffects: 1 }))).toBe('warning');
+    expect(actionTone(action({ unclearEffects: 1 }))).toBe('warning');
   });
   it('refreshes file changes after hashline and shell writes, including partial failures', () => {
     const calls = [
@@ -107,10 +152,10 @@ describe('chat widget selectors', () => {
     expect(ready.completed).toBe(1);
     expect(ready.total).toBe(3);
     expect(ready.runFinished).toBe(false);
-    expect(workPlanOpen('auto', 'running')).toBe(true);
-    expect(workPlanOpen('auto', 'succeeded')).toBe(false);
-    expect(workPlanOpen('open', 'succeeded')).toBe(true);
-    expect(workPlanOpen('closed', 'running')).toBe(false);
+    // A new plan starts collapsed; only the person's own choice opens it, and that is kept.
+    expect(workPlanOpen('auto')).toBe(false);
+    expect(workPlanOpen('open')).toBe(true);
+    expect(workPlanOpen('closed')).toBe(false);
     expect(
       workPlanPreferenceKey({
         sessionId: 'ses_1',
@@ -505,8 +550,9 @@ describe('chat widget selectors', () => {
           unclearEffects: 0,
           runStatus,
         }),
-      ).toMatchObject({ visible: true, summary: 'failure', count: 1, needsUser: false });
+      ).toMatchObject({ visible: true, summary: 'failure', count: 0, needsUser: false });
     }
+    // An unknown result is the one item to answer; the failure beside it is not counted.
     expect(
       actionRequired({
         pendingApprovals: 0,
@@ -514,7 +560,7 @@ describe('chat widget selectors', () => {
         failedEffects: 1,
         unclearEffects: 1,
       }),
-    ).toMatchObject({ summary: 'mixed', needsUser: false, hasFailure: true });
+    ).toMatchObject({ summary: 'unclear', count: 1, needsUser: false, hasFailure: true });
   });
 
   it('distinguishes active, queued, paused and failed agent states', () => {
@@ -681,32 +727,6 @@ describe('viewed run label (#72)', () => {
   });
 });
 
-describe('composer run status pill', () => {
-  it('leaves a live run to the top bar unless it needs the person', () => {
-    expect(
-      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: false }),
-    ).toBe(false);
-    expect(
-      composerShowsRunStatus({ runStatus: 'paused', readState: 'ready', needsAction: false }),
-    ).toBe(false);
-    expect(
-      composerShowsRunStatus({ runStatus: 'running', readState: 'ready', needsAction: true }),
-    ).toBe(true);
-  });
-
-  it('keeps one pill for an ended run and for a state it cannot read', () => {
-    expect(
-      composerShowsRunStatus({ runStatus: 'succeeded', readState: 'ready', needsAction: false }),
-    ).toBe(true);
-    expect(
-      composerShowsRunStatus({ runStatus: 'cancelled', readState: 'ready', needsAction: false }),
-    ).toBe(true);
-    expect(
-      composerShowsRunStatus({ runStatus: null, readState: 'error', needsAction: false }),
-    ).toBe(true);
-  });
-});
-
 it.each(['created', 'validating'])('activity shows startup, not working, for %s', (runStatus) => {
   expect(
     activityLine({
@@ -721,4 +741,19 @@ it.each(['created', 'validating'])('activity shows startup, not working, for %s'
       needsUser: false,
     }).text,
   ).toBe('starting');
+});
+
+it('counts only finished file writes as changes', () => {
+  expect(
+    fileChangeCount([
+      { name: 'write_file', phase: 'finished' },
+      { name: 'edit_hashline', phase: 'finished' },
+      { name: 'write_file', phase: 'failed' },
+      { name: 'edit', phase: 'running' },
+      { name: 'move_file', phase: 'allowed' },
+      { name: 'delete_file' },
+      { name: 'run_command', phase: 'finished' },
+      { name: 'read_file', phase: 'finished' },
+    ]),
+  ).toBe(2);
 });

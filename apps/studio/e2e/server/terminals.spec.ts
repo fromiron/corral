@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalView } from '@corral/contracts';
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { lastRunSucceeded, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -24,6 +24,15 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
     },
     { path, method, body },
   );
+}
+
+// The writer-hold explanation lives behind the terminal's status help.
+async function expectReleaseHint(page: Page, panel: Locator) {
+  await panel.getByRole('button', { name: 'About this terminal', exact: true }).click();
+  const details = page.getByRole('dialog', { name: 'About this terminal', exact: true });
+  await expect(details).toContainText('Stop it to free the copy; releasing input does not.');
+  await page.keyboard.press('Escape');
+  await expect(details).toBeHidden();
 }
 
 test.use({ replyDelayMs: 2000 });
@@ -128,23 +137,30 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   const panel = page.getByTestId('terminal-panel');
   await expect(panel).toBeVisible();
   await sidebar.getByRole('link', { name: 'Unvisited terminal project', exact: true }).click();
-  const inbox = page.getByRole('region', { name: 'Pending actions (1)', exact: true });
-  await expect(inbox).toContainText(
-    'Observed terminal owner · Terminal termination needs confirmation',
-  );
-  await page.getByRole('combobox', { name: 'Session status', exact: true }).click();
-  await page.getByRole('option', { name: 'Needs attention', exact: true }).click();
+  // The project header counts the item; Needs you lists it (docs/specs/features/inbox.md).
+  const summary = page.getByRole('link', { name: '1 pending', exact: true });
+  await expect(summary).toBeVisible();
   const sessionRow = page
-    .getByRole('list', { name: 'Sessions', exact: true })
+    .getByRole('list', { name: 'Needs attention', exact: true })
     .getByRole('link', { name: /Observed terminal owner/ });
   await expect(sessionRow).toBeVisible();
   await expect(sessionRow).toContainText('Terminal needs attention');
   await expect(sessionRow).toHaveAttribute('href', terminalPath);
-  await expect(inbox.getByRole('link', { name: 'Open', exact: true })).toHaveAttribute(
-    'href',
-    terminalPath,
-  );
-  await inbox.getByRole('link', { name: 'Open', exact: true }).click();
+  await summary.click();
+  // Only this project has an item, so the row does not name it (inbox.md: "프로젝트 이름은
+  // 목록에 프로젝트가 둘 이상일 때만 보인다").
+  await page
+    .getByRole('list', { name: 'Waiting for you', exact: true })
+    .getByRole('button', {
+      name: 'Observed terminal owner · Terminal exit needs checking',
+      exact: true,
+    })
+    .click();
+  const open = page
+    .getByRole('region', { name: 'Observed terminal owner', exact: true })
+    .getByRole('link', { name: 'Open terminal', exact: true });
+  await expect(open).toHaveAttribute('href', terminalPath);
+  await open.click();
   await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
   await expect(panel).toBeVisible();
   terminal = { ...terminal, state: 'running' };
@@ -153,7 +169,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   const notice = page.getByTestId('terminal-writer-notice');
   await expect(notice).toContainText('A terminal is holding this working copy');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
-  await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+  await expectReleaseHint(page, panel);
   terminal = {
     ...terminal,
     state: 'uncertain',
@@ -231,7 +247,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await input.pressSequentially('sleep 120');
     await input.press('Enter');
     await panel.getByRole('button', { name: 'Release input', exact: true }).click();
-    await expect(panel).toContainText('Releasing input only disconnects this view’s keyboard');
+    await expectReleaseHint(page, panel);
     await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
@@ -247,8 +263,13 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     ).toBeVisible();
     await requestBox(page).fill('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    const refusal = page.getByTestId('refusal').last();
-    await expect(refusal).toHaveAttribute('data-kind', 'terminal');
+    // Said once, on the refused message's meta line; the composer does not say it again.
+    const refusal = page
+      .locator('[data-chat-item]')
+      .filter({ hasText: 'Summarize the fixture' })
+      .getByTestId('entry-status');
+    await expect(refusal).toContainText('A terminal is holding this working copy');
+    await expect(page.getByTestId('refusal')).toHaveCount(0);
     const sidebarSession = page
       .getByTestId('app-sidebar')
       .getByRole('link', { name: /Terminal recovery/ });
@@ -313,7 +334,7 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
     await corral.open(`/sessions/${sessionId}?panel=terminal`);
     const panel = page.getByTestId('terminal-panel');
     await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
-    await expect(panel.getByText('This view controls input.', { exact: true })).toBeVisible();
+    await expect(panel.getByRole('button', { name: 'Release input', exact: true })).toBeVisible();
     const indicator = page.getByRole('tab').getByRole('img', { name: 'Terminal running' });
     await expect(indicator).toBeInViewport();
     const terminalList = await api(page, `/sessions/${sessionId}/terminals`, 'GET');

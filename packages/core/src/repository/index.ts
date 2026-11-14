@@ -8,6 +8,7 @@ import {
   CorralDefinition,
   CorralDefinitionDraft,
   HarnessBindingRef,
+  Identifier,
   type ImageAttachment,
   ImageAttachments,
   MeetingConfig,
@@ -15,6 +16,9 @@ import {
   MeetingState,
   PermissionMode,
   RunInput,
+  type RunReference,
+  RunReferences,
+  StartFrom,
   type TextAttachment,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -75,6 +79,8 @@ export interface SessionEntry {
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
+  /** What the person pointed at with `@`; attachments and images keep their own fields. */
+  references?: RunReference[];
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   entryId: string;
@@ -93,7 +99,32 @@ export interface SessionEntry {
   commandId?: string | null;
   /** The template an auto request ran with; absent for a chosen team. */
   auto?: SessionEntryAuto | null;
+  /**
+   * The start request of a new or next request. The server starts only an entry still
+   * `queued` with it; absent means only a person can start a queued one.
+   */
+  start?: SessionEntryStart;
+  /** The instruction this request was carried over from; it starts even without autoStart. */
+  carriedFrom?: string;
 }
+
+/**
+ * What a `POST /runs/auto` body holds besides the request itself: the model and reasoning
+ * choice, the team and the permission mode. The command, brief, conversation and references
+ * come from the entry and the run it follows, and the session from the entry's session.
+ */
+export const SessionEntryStart = z.strictObject({
+  harness: HarnessBindingRef.optional(),
+  permissionMode: PermissionMode.optional(),
+  taskScope: RunInput.shape.taskScope,
+  verificationScope: RunInput.shape.verificationScope,
+  choice: AutoModelChoice,
+  mode: z.enum(['mock', 'live']),
+  startFrom: StartFrom.optional(),
+  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
+  team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
+});
+export type SessionEntryStart = z.infer<typeof SessionEntryStart>;
 
 export const SessionEntryAuto = AutoRoute.pick({
   harness: true,
@@ -132,23 +163,52 @@ export interface WorkSession {
   /** True only until the first request names a session explicitly created without a user title. */
   autoTitle?: boolean;
   objective: string;
+  /**
+   * The completion criteria every request admitted in this session runs with, one line each.
+   * Empty means the team's or the auto default, as without criteria. A meeting has none.
+   * Stores always return it; only sessions saved in a browser before criteria existed lack it.
+   */
+  criteria?: string[];
   pinned: boolean;
   revision: number;
   createdAt: string;
   updatedAt: string;
   archivedAt: string | null;
+  /** Whether the server starts the first queued request when the session's run ends. */
+  autoStart: boolean;
+  /**
+   * The advisor that watches the conversation's answering role in runs started from now on; null
+   * when off. Stores always return it; only sessions built by hand may lack it.
+   */
+  advisor?: SessionAdvisor | null;
   entries: SessionEntry[];
   /** present only for a meeting; changed only by the meeting service. */
   meeting?: MeetingState;
 }
 
+/** The session's advisor setting (features/advisor.md, 계약): its model profile. */
+export const SessionAdvisor = z.strictObject({ modelProfile: Identifier });
+export type SessionAdvisor = z.infer<typeof SessionAdvisor>;
+
+/** 0 to 20 lines of 1 to 200 characters each, trimmed; a blank line is refused, not stored. */
+export const SESSION_CRITERIA_MAX = 20;
+export const SESSION_CRITERION_MAX = 200;
+export const SessionCriteria = z
+  .array(z.string().trim().min(1).max(SESSION_CRITERION_MAX))
+  .max(SESSION_CRITERIA_MAX);
+
 export interface SessionChange {
   title?: string;
   objective?: string;
+  /** replaces the session's completion criteria; [] clears them. */
+  criteria?: string[];
   corralId?: string | null;
   auto?: AutoModelChoice | null;
   pinned?: boolean;
   archived?: boolean;
+  autoStart?: boolean;
+  /** turns the session's advisor on with a model, or off with null. */
+  advisor?: SessionAdvisor | null;
   /** the meeting service's next state; a work session cannot become a meeting. */
   meeting?: MeetingState;
   expectedRevision: number;
@@ -168,6 +228,7 @@ export interface NewSessionEntry {
   permissionMode?: PermissionMode;
   images?: ImageAttachment[];
   attachments?: TextAttachment[];
+  references?: RunReference[];
   taskScope?: RunInput['taskScope'];
   verificationScope?: RunInput['verificationScope'];
   intent: SessionIntent;
@@ -179,6 +240,8 @@ export interface NewSessionEntry {
   refusal?: CommandError | null;
   commandId?: string | null;
   auto?: SessionEntryAuto | null;
+  start?: SessionEntryStart;
+  carriedFrom?: string;
 }
 
 export interface CorralRecord {
@@ -236,15 +299,7 @@ export interface CorralRepository {
   /** Pinned first, then most recently active. */
   listSessions(projectId: string): Promise<WorkSession[]>;
   getSession(sessionId: string): Promise<WorkSession | null>;
-  createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    /** creates a meeting with these participants. */
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult>;
+  createSession(input: NewSession): Promise<SessionResult>;
   updateSession(sessionId: string, change: SessionChange): Promise<SessionResult>;
   addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult>;
   /** Only the state, run and detail of an entry change; its text never does. */
@@ -259,17 +314,29 @@ const TITLE_MAX = 120;
 const ENTRY_MAX = 20_000;
 const ENTRIES_MAX = 1_000;
 
+export interface NewSession {
+  projectId: string;
+  title: string;
+  autoTitle?: boolean;
+  objective?: string;
+  /** a work session's completion criteria; a meeting refuses any. */
+  criteria?: string[];
+  corralId?: string | null;
+  /** creates a meeting with these participants. */
+  meeting?: MeetingConfig;
+}
+
+const CRITERIA_INVALID = `Completion criteria have up to ${SESSION_CRITERIA_MAX} lines of 1 to ${SESSION_CRITERION_MAX} characters.`;
+const MEETING_CRITERIA = 'A meeting has no completion criteria.';
+
 export function planSessionCreate(
-  input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  },
+  input: NewSession,
   context: { now: string; sessionId: string },
 ): SessionResult {
+  const criteria = SessionCriteria.safeParse(input.criteria ?? []);
+  if (!criteria.success) return { ok: false, error: 'invalid', message: CRITERIA_INVALID };
+  if (input.meeting !== undefined && criteria.data.length)
+    return { ok: false, error: 'invalid', message: MEETING_CRITERIA };
   const objective = (input.objective ?? '').trim();
   // A session may start from its purpose alone; the title is then its first line.
   const title = (input.title.trim() || objective.split('\n')[0]?.slice(0, 60) || '').trim();
@@ -296,11 +363,14 @@ export function planSessionCreate(
       title,
       autoTitle: input.autoTitle === true,
       objective,
+      criteria: criteria.data,
       pinned: false,
       revision: 1,
       createdAt: context.now,
       updatedAt: context.now,
       archivedAt: null,
+      autoStart: true,
+      advisor: null,
       entries: [],
       ...(meeting ? { meeting: { config: meeting.data, rounds: [], queued: null } } : {}),
     },
@@ -321,6 +391,14 @@ export function planSessionUpdate(
       error: 'revision_conflict',
       message: `This session was changed elsewhere (revision ${current.revision}). Reload first.`,
     };
+  if (change.autoStart !== undefined && typeof change.autoStart !== 'boolean')
+    return { ok: false, error: 'invalid', message: 'autoStart is true or false.' };
+  if (
+    change.advisor !== undefined &&
+    change.advisor !== null &&
+    !SessionAdvisor.safeParse(change.advisor).success
+  )
+    return { ok: false, error: 'invalid', message: 'The advisor names one model profile.' };
   if (change.auto && !AutoModelChoice.safeParse(change.auto).success)
     return { ok: false, error: 'invalid', message: 'The auto model choice is not valid.' };
   if (
@@ -330,6 +408,12 @@ export function planSessionUpdate(
     return { ok: false, error: 'invalid', message: 'Only a meeting keeps a valid meeting state.' };
   if (current.meeting && change.corralId)
     return { ok: false, error: 'invalid', message: 'A meeting does not run a chosen team.' };
+  const criteria =
+    change.criteria === undefined ? undefined : SessionCriteria.safeParse(change.criteria);
+  if (criteria && !criteria.success)
+    return { ok: false, error: 'invalid', message: CRITERIA_INVALID };
+  if (current.meeting && criteria?.data.length)
+    return { ok: false, error: 'invalid', message: MEETING_CRITERIA };
   const title = change.title?.trim();
   if (title !== undefined && (!title || title.length > TITLE_MAX))
     return {
@@ -348,9 +432,14 @@ export function planSessionUpdate(
       ...current,
       ...(title !== undefined ? { title, autoTitle: false } : {}),
       ...(change.objective !== undefined ? { objective: change.objective.trim() } : {}),
+      ...(criteria ? { criteria: criteria.data } : {}),
       ...(change.corralId !== undefined ? { corralId: change.corralId } : {}),
       ...(change.auto !== undefined ? { auto: change.auto } : {}),
       ...(change.pinned !== undefined ? { pinned: change.pinned } : {}),
+      ...(change.autoStart !== undefined ? { autoStart: change.autoStart } : {}),
+      ...(change.advisor !== undefined
+        ? { advisor: change.advisor ? SessionAdvisor.parse(change.advisor) : null }
+        : {}),
       ...(change.meeting !== undefined ? { meeting: MeetingState.parse(change.meeting) } : {}),
       ...(change.archived === undefined
         ? {}
@@ -397,14 +486,30 @@ export function planSessionEntry(
       !['next', 'queue'].includes(entry.intent))
   )
     return { ok: false, error: 'invalid', message: 'permission mode requires a next request' };
+  // Images and references are for a new run: a new request and a next request carry them.
   if (
     entry.images &&
-    (!ImageAttachments.safeParse(entry.images).success || entry.intent !== 'next')
+    (!ImageAttachments.safeParse(entry.images).success || !['next', 'queue'].includes(entry.intent))
   )
     return {
       ok: false,
       error: 'invalid',
-      message: 'images require valid immutable references and next intent',
+      message: 'images require valid immutable references and next or queue intent',
+    };
+  if (
+    entry.references &&
+    (!['next', 'queue'].includes(entry.intent) ||
+      !Array.isArray(entry.references) ||
+      entry.references.some(
+        (reference) =>
+          reference?.kind === 'text_attachment' || reference?.kind === 'image_attachment',
+      ) ||
+      !RunReferences.safeParse(entryStartReferences(entry)).success)
+  )
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'references require a valid start list and next or queue intent',
     };
   if (
     entry.attachments &&
@@ -431,6 +536,25 @@ export function planSessionEntry(
     };
   if (entry.refusal != null && !CommandError.safeParse(entry.refusal).success)
     return { ok: false, error: 'invalid', message: 'invalid refusal diagnostics' };
+  const start = entry.start === undefined ? undefined : SessionEntryStart.safeParse(entry.start);
+  if (start && (!start.success || !['next', 'queue'].includes(entry.intent)))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'a start request requires a valid new or queued request',
+    };
+  // The server starts with the snapshot; it must not run another permission than the one chosen.
+  if (start?.success && (start.data.permissionMode ?? null) !== (entry.permissionMode ?? null))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'a start request has the same permission mode as its request',
+    };
+  if (
+    entry.carriedFrom !== undefined &&
+    (typeof entry.carriedFrom !== 'string' || !entry.carriedFrom || entry.intent !== 'queue')
+  )
+    return { ok: false, error: 'invalid', message: 'a carried request requires a queued request' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -445,11 +569,14 @@ export function planSessionEntry(
           executionId: value.executionId ?? null,
           attachments: value.attachments ?? [],
           images: value.images ?? [],
+          references: value.references ?? [],
           ...(value.permissionMode ? { permissionMode: value.permissionMode } : {}),
           ...(value.harness ? { harness: value.harness } : {}),
           taskScope: value.taskScope ?? null,
           verificationScope: value.verificationScope ?? null,
           meetingHandoff: value.meetingHandoff ?? null,
+          start: value.start ?? null,
+          carriedFrom: value.carriedFrom ?? null,
         });
       return identity(previous) === identity(entry)
         ? { ok: true, session: current }
@@ -460,6 +587,9 @@ export function planSessionEntry(
           };
     }
   }
+  // A directive is carried once, however many times its end is reported.
+  if (entry.carriedFrom && current.entries.some((value) => value.carriedFrom === entry.carriedFrom))
+    return { ok: true, session: current };
   if (current.entries.length >= ENTRIES_MAX)
     return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
   const nameFromRequest =
@@ -496,6 +626,8 @@ export function planSessionEntry(
             ? { meetingHandoff: MeetingHandoffOrigin.parse(entry.meetingHandoff) }
             : {}),
           ...(entry.auto ? { auto: entry.auto } : {}),
+          ...(start?.success ? { start: start.data } : {}),
+          ...(entry.carriedFrom ? { carriedFrom: entry.carriedFrom } : {}),
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
@@ -506,10 +638,38 @@ export function planSessionEntry(
           ...(entry.images?.length
             ? { images: JSON.parse(canonicalJson(entry.images)) as ImageAttachment[] }
             : {}),
+          ...(entry.references?.length
+            ? { references: JSON.parse(canonicalJson(entry.references)) as RunReference[] }
+            : {}),
         },
       ],
     },
   };
+}
+
+/**
+ * The queued requests in the order they start: carried requests first, in the order they were
+ * carried, then the rest in the order queued. The server and a screen use this one order.
+ */
+export function queuedEntriesInStartOrder(session: WorkSession): SessionEntry[] {
+  const queued = session.entries.filter((entry) => entry.state === 'queued');
+  return [...queued.filter((entry) => entry.carriedFrom), ...queued.filter((e) => !e.carriedFrom)];
+}
+
+/**
+ * The references a request's run starts with: what the person pointed at, then its text
+ * attachments, then its images. The server and a screen start a saved request with this one
+ * list, so the same command has the same body (features/composer-flow.md "합류 대상").
+ */
+export function entryStartReferences(
+  entry: Pick<SessionEntry, 'references' | 'attachments' | 'images'>,
+): RunReference[] {
+  return [...(entry.references ?? []), ...(entry.attachments ?? []), ...(entry.images ?? [])];
+}
+
+/** The queued request the server starts next. */
+export function nextQueuedEntry(session: WorkSession): SessionEntry | undefined {
+  return queuedEntriesInStartOrder(session)[0];
 }
 
 /** A saved queue item has one start identity across tabs; model/history changes cannot clone it. */
@@ -867,7 +1027,13 @@ export function createKeyValueCorralRepository(
     const parsed = safeJson(raw);
     if (!Array.isArray(parsed)) throw new Error('The saved session list cannot be read.');
     // Sessions saved before auto mode have no choice yet.
-    return (parsed as WorkSession[]).map((x) => ({ ...x, auto: x.auto ?? null }));
+    // Sessions saved before autoStart start their queue, as new ones do.
+    return (parsed as WorkSession[]).map((x) => ({
+      ...x,
+      auto: x.auto ?? null,
+      autoStart: x.autoStart ?? true,
+      advisor: x.advisor ?? null,
+    }));
   };
   const findSession = (sessionId: string) =>
     readSessions().find((x) => x.sessionId === sessionId) ?? null;

@@ -2,13 +2,18 @@ import { z } from 'zod';
 import { HarnessBindingRef } from './harness.ts';
 import { Identifier } from './ids.ts';
 import { ReasoningPolicy } from './reasoning.ts';
-import { TEAM_PATTERNS } from './team-plan.ts';
+import type { TeamPattern } from './team-plan.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
-// built-in templates, which have the team patterns' shapes; tools and limits come from the
-// template, never from the model's answer.
+// built-in templates, which have the first three team patterns' shapes; tools and limits come
+// from the template, never from the model's answer. Drafting a team from a goal offers more
+// patterns; auto mode keeps these three.
 
-export const AUTO_TEMPLATES = TEAM_PATTERNS;
+export const AUTO_TEMPLATES = [
+  'single',
+  'write_review',
+  'research_write_review',
+] as const satisfies readonly TeamPattern[];
 export const AutoTemplate = z.enum(AUTO_TEMPLATES);
 export type AutoTemplate = z.infer<typeof AutoTemplate>;
 /** Changes whenever a template's roles, tools or wiring change. */

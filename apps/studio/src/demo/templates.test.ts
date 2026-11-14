@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join, relative } from 'node:path';
 import {
   type AgentStartInput,
+  type CorralDefinition,
   type RequestPermit,
   type RunEvent,
   WorkPlan,
@@ -13,13 +16,53 @@ import {
 } from '@corral/core';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { createDemoReply, demoPlansFor, demoPlanUpdate, publishDemoPlan } from './script.ts';
+import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import {
+  createDemoReply,
+  DEMO_TURNS,
+  demoPlansFor,
+  demoPlanUpdate,
+  publishDemoPlan,
+} from './script.ts';
 import { demoTemplate } from './templates.ts';
+import { approvalResearchTeam } from './testing/approval-team.ts';
 
 const HANGUL = /[ㄱ-ㆎ가-힣]/;
 
+/** A Run of `definition` with the demo's simulated agents, without their delays. */
+async function demoRun(definition: CorralDefinition, review?: () => string) {
+  const transport = new InProcessTransport(
+    new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({
+        turns: DEMO_TURNS,
+        reply: createDemoReply(),
+        appendNotes: false,
+        ...(review ? { review } : {}),
+      }),
+    }),
+  );
+  const { runId, receipt } = await transport.startRun({
+    schemaVersion: '0.1',
+    commandId: 'cmd_template_run',
+    definition,
+    mode: 'mock',
+  });
+  if (!runId) throw new Error(JSON.stringify(receipt.error));
+  const events: RunEvent[] = [];
+  transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+  /** The next point where the run ended or waits for a person. */
+  const settled = () =>
+    waitForProjection(transport, runId, (run) =>
+      ['succeeded', 'failed', 'cancelled', 'awaiting_user'].includes(run.status),
+    );
+  return { transport, runId, events, settled };
+}
+
 describe('demo templates', () => {
-  it('the default research team compiles and shows delegation, a question, a review Loop and approval', () => {
+  it('the default research team compiles and shows delegation, a question and a review Loop, and asks for no approval', () => {
     const template = demoTemplate(undefined);
     expect(template.id).toBe('research-team');
     const { definition } = template;
@@ -33,10 +76,72 @@ describe('demo templates', () => {
       'question',
     ]);
     expect(definition.nodes.filter((n) => n.type === 'loop')).toHaveLength(1);
-    expect(definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(true);
-    expect(definition.nodes.some((n) => n.type === 'output' && n.requireApproval)).toBe(true);
+    // Outputs are the agents' evidence, not the person's homework: nothing waits for an approval.
+    expect(definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(
+      false,
+    );
+    expect(definition.nodes.find((n) => n.type === 'output')).toMatchObject({
+      requireApproval: false,
+    });
+    // The review Loop leads straight to the Output.
+    expect(definition.controlEdges).toContainEqual(
+      expect.objectContaining({
+        source: 'review_loop',
+        sourcePort: 'next',
+        target: 'output',
+        targetPort: 'in',
+      }),
+    );
     // The UI has one English locale, so the demo speaks it too.
     expect(JSON.stringify(definition)).not.toMatch(HANGUL);
+  });
+
+  it('a run of the research team with simulated agents succeeds without waiting for a person', async () => {
+    const { events, settled } = await demoRun(demoTemplate('research-team').definition);
+    const run = await settled();
+    expect(run.status).toBe('succeeded');
+    expect(Object.keys(run.approvals)).toEqual([]);
+    expect(events.some((event) => event.type === 'approval.requested')).toBe(false);
+    expect(
+      events.some(
+        (event) => event.type === 'run.state_changed' && event.payload.to === 'awaiting_user',
+      ),
+    ).toBe(false);
+    // It still revises once through its review Loop and has a result.
+    expect(Object.values(run.reviews).map((review) => review.verdict)).toEqual(['revise', 'pass']);
+    expect(run.output?.artifactVersionIds).toHaveLength(1);
+  });
+
+  it('a review that never passes ends the research team with its last draft, asking nobody', async () => {
+    const { events, settled } = await demoRun(
+      demoTemplate('research-team').definition,
+      () => 'revise',
+    );
+    const run = await settled();
+    expect(run.status).toBe('succeeded');
+    expect(Object.keys(run.approvals)).toEqual([]);
+    expect(events.some((event) => event.type === 'approval.requested')).toBe(false);
+    const rounds = (run.loopIterations.review_loop ?? []).map((id) => run.iterations[id]?.outcome);
+    expect(rounds).toEqual(['revise', 'cap_reached']);
+    // The last review stays with the result, which is the last round's draft.
+    expect(Object.values(run.reviews).map((review) => review.verdict)).toEqual([
+      'revise',
+      'revise',
+    ]);
+    const last = run.nodeExecutions.write?.at(-1) ?? '';
+    expect(run.output?.artifactVersionIds).toEqual(
+      run.tasks[run.executions[last]?.taskId ?? '']?.submittedArtifactVersionIds,
+    );
+  });
+
+  it('the research team’s card and the demo guide do not tell the person to approve the result', () => {
+    for (const [messages, approve] of [
+      [en, /approv/i],
+      [ko, /승인/],
+    ] as const) {
+      expect(messages.Workspace.template['research-team'].body).not.toMatch(approve);
+      expect(messages.Demo.guide.steps.finish).not.toMatch(approve);
+    }
   });
 
   it('the starter template keeps the single Agent → Output demo', () => {
@@ -49,6 +154,95 @@ describe('demo templates', () => {
 
   it('an unknown template name opens the default template', () => {
     expect(demoTemplate('bogus').id).toBe('research-team');
+  });
+});
+
+describe('the research team with approvals, for tests of approvals', () => {
+  it('is the shipped team with an approval Decision after its Loop and an Output that requires approval, nothing else', () => {
+    const shipped = demoTemplate('research-team').definition;
+    const fixture = approvalResearchTeam().definition;
+    expect(compileDefinition(fixture).ok).toBe(true);
+    expect(fixture.nodes.find((n) => n.id === 'approval')).toMatchObject({
+      type: 'decision',
+      mode: 'approval',
+      rule: 'human_approval',
+    });
+    expect(fixture.nodes.find((n) => n.type === 'output')).toMatchObject({
+      requireApproval: true,
+    });
+    expect(fixture.controlEdges).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ source: 'review_loop', sourcePort: 'next', target: 'approval' }),
+        expect.objectContaining({
+          source: 'review_loop',
+          sourcePort: 'exhausted',
+          target: 'approval',
+        }),
+        expect.objectContaining({ source: 'approval', sourcePort: 'approve', target: 'output' }),
+      ]),
+    );
+    // Taking the two approvals out again gives the shipped team exactly.
+    expect({
+      ...fixture,
+      nodes: fixture.nodes
+        .filter((n) => n.id !== 'approval')
+        .map((n) => (n.type === 'output' ? { ...n, requireApproval: false } : n)),
+      controlEdges: fixture.controlEdges
+        .filter((e) => e.source !== 'approval')
+        .map((e) => (e.target === 'approval' ? { ...e, target: 'output' } : e)),
+    }).toEqual(shipped);
+    // A workspace copy gets its own id, like a template copy.
+    expect(approvalResearchTeam('approval_team').definition).toMatchObject({
+      id: 'approval_team',
+      name: 'Research team',
+    });
+  });
+
+  it('a run of it waits for the decision, then for the final output', async () => {
+    const { transport, runId, settled } = await demoRun(approvalResearchTeam().definition);
+    const approve = async (kind: string) => {
+      const run = await settled();
+      const approval = Object.values(run.approvals).find((a) => a.status === 'pending');
+      expect(run.status).toBe('awaiting_user');
+      expect(approval?.kind).toBe(kind);
+      const receipt = await transport.sendCommand({
+        schemaVersion: '0.1',
+        commandId: `cmd_approve_${kind}`,
+        runId,
+        type: 'resolve_approval',
+        expectedControlRevision: run.controlRevision,
+        payload: {
+          approvalId: approval?.approvalId ?? 'missing',
+          decision: 'approve',
+          subjectVersionId: approval?.subjectVersionIds[0] ?? 'missing',
+        },
+      });
+      expect(receipt.status).toBe('applied');
+      // The approval is committed before the next wait reads the run again.
+      await waitForProjection(
+        transport,
+        runId,
+        (p) => p.approvals[approval?.approvalId ?? '']?.status !== 'pending',
+      );
+    };
+    await approve('user_action');
+    await approve('final_output');
+    expect((await settled()).status).toBe('succeeded');
+  });
+
+  it('is never imported by the product', () => {
+    const src = join(import.meta.dirname, '..');
+    const sources = (dir: string): string[] =>
+      readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+        const path = join(dir, entry.name);
+        if (entry.isDirectory()) return sources(path);
+        return /\.tsx?$/.test(entry.name) && !/\.test\.tsx?$/.test(entry.name) ? [path] : [];
+      });
+    const importers = sources(src)
+      .filter((path) => !path.includes(`${join('demo', 'testing')}`))
+      .filter((path) => /testing\/approval-team/.test(readFileSync(path, 'utf8')))
+      .map((path) => relative(src, path));
+    expect(importers).toEqual([]);
   });
 });
 
@@ -160,7 +354,11 @@ describe('demo replies', () => {
 
   it('shows a directive from the request it was delivered in, and only for that execution', () => {
     const input = startInput('write', { round: 2, executionId: 'exec_0007' });
-    const directive = { directiveId: 'dir_0001', text: 'Lead with the cost difference.' };
+    const directive = {
+      directiveId: 'dir_0001',
+      text: 'Lead with the cost difference.',
+      origin: 'user' as const,
+    };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);
     // Delivered once, it stays in that execution's context for later requests ...
@@ -416,6 +614,7 @@ describe('demo replies', () => {
     const directive = {
       directiveId: 'dir_0009',
       text: 'Keyboard instructions reach the next request.',
+      origin: 'user' as const,
     };
     expect(demoReply(1, input, permit(), [])).not.toContain(directive.text);
     expect(demoReply(2, input, permit([directive]), [])).toContain(directive.text);

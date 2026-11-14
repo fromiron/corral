@@ -33,10 +33,29 @@ export const SteerCommand = z.strictObject({
   payload: z.strictObject({
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
-    delivery: z.literal('next_request'),
+    delivery: z.enum(['next_request', 'interrupt']),
+    /** Text attachments only, under the same caps as a new request's. */
+    attachments: TextAttachments.optional(),
   }),
 });
 export type SteerCommand = z.infer<typeof SteerCommand>;
+
+export const AdviceSeverity = z.enum(['nit', 'concern', 'blocker']);
+export type AdviceSeverity = z.infer<typeof AdviceSeverity>;
+
+/** Sent only by an advisor execution's `advise` tool, never by a person's screen. */
+export const SubmitAdviceCommand = z.strictObject({
+  ...base,
+  type: z.literal('submit_advice'),
+  payload: z.strictObject({
+    observerExecutionId: Identifier,
+    attemptNo: z.int().min(1),
+    targetExecutionId: Identifier,
+    severity: AdviceSeverity,
+    note: z.string().min(1).max(1000),
+  }),
+});
+export type SubmitAdviceCommand = z.infer<typeof SubmitAdviceCommand>;
 
 const RunScope = z.strictObject({ scope: z.literal('run') });
 
@@ -119,6 +138,11 @@ export const ResolveApprovalCommand = z.strictObject({
     subjectVersionId: Identifier,
     /** Required when approving a `route` approval, and only then. */
     routeId: Identifier.optional(),
+    /**
+     * How far approving a tool call reaches: `once` (the default) this call only, `run` also every
+     * later call of the Run with the same fingerprint. `run` only approves a tool call.
+     */
+    scope: z.enum(['once', 'run']).optional(),
   }),
 });
 export type ResolveApprovalCommand = z.infer<typeof ResolveApprovalCommand>;
@@ -183,6 +207,7 @@ export const RunCommand = z.discriminatedUnion('type', [
   AnswerExtensionUiCommand,
   AnswerUserCommand,
   SteerCommand,
+  SubmitAdviceCommand,
   PauseCommand,
   ResumeCommand,
   CancelCommand,

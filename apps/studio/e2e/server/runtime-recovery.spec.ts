@@ -1,60 +1,88 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
+import type { Page } from '@playwright/test';
 import { panelTab } from '../workbench.ts';
-import { expect, test } from './harness.ts';
+import { expect, type Harness, test } from './harness.ts';
+
+/** A live single-agent Run that failed before its output, shown in its run info's recovery. */
+async function failedRunRecovery(page: Page, corral: Harness) {
+  corral.fake!.setResponses([
+    fauxAssistantMessage('Stopped before an output.', {
+      stopReason: 'error',
+      errorMessage: 'Fixture failure',
+    }),
+  ]);
+  await corral.open('/projects');
+  const started = await page.evaluate(
+    async (definition) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const call = async (path: string, body: unknown) => {
+        const response = await fetch(`/api/v1${path}`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify(body),
+        });
+        if (!response.ok) throw new Error(`setup failed: ${path} ${response.status}`);
+        return response.json();
+      };
+      const saved = await call('/corrals', {
+        definition,
+      });
+      const session = (
+        await call('/sessions', {
+          projectId: 'default',
+          title: 'Recovery fixture',
+          corralId: saved.record.corralId,
+        })
+      ).session;
+      const result = await call('/runs', {
+        schemaVersion: '0.1',
+        commandId: 'start-recovery',
+        sessionId: session.sessionId,
+        corralId: saved.record.corralId,
+        definitionRevision: saved.record.definitionRevision,
+        mode: 'live',
+      });
+      return { sessionId: session.sessionId as string, runId: result.runId as string };
+    },
+    linearCorral(['writer']),
+  );
+  await page.goto(
+    `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
+  );
+  await page.reload();
+  const detail = page.getByTestId('run-monitor');
+  await detail.getByRole('button', { name: 'Run info', exact: true }).click();
+  await detail
+    .getByTestId('status-context')
+    .getByRole('button', { name: /^Context and cost/ })
+    .click();
+  return { started, recovery: detail.getByTestId('runtime-recovery') };
+}
 
 test.describe('runtime continuation', () => {
   test.use({ live: true, codexLogin: true });
-  test('continues a failed Run after reload and preserves the source', async ({ page, corral }) => {
-    corral.fake!.setResponses([
-      fauxAssistantMessage('Stopped before an output.', {
-        stopReason: 'error',
-        errorMessage: 'Fixture failure',
-      }),
-    ]);
-    await corral.open('/projects');
-    const started = await page.evaluate(
-      async (definition) => {
-        const { csrfToken } = await (await fetch('/api/v1/session')).json();
-        const call = async (path: string, body: unknown) => {
-          const response = await fetch(`/api/v1${path}`, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-            body: JSON.stringify(body),
-          });
-          if (!response.ok) throw new Error(`setup failed: ${path} ${response.status}`);
-          return response.json();
-        };
-        const saved = await call('/corrals', {
-          definition,
-        });
-        const session = (
-          await call('/sessions', {
-            projectId: 'default',
-            title: 'Recovery fixture',
-            corralId: saved.record.corralId,
-          })
-        ).session;
-        const result = await call('/runs', {
-          schemaVersion: '0.1',
-          commandId: 'start-recovery',
-          sessionId: session.sessionId,
-          corralId: saved.record.corralId,
-          definitionRevision: saved.record.definitionRevision,
-          mode: 'live',
-        });
-        return { sessionId: session.sessionId as string, runId: result.runId as string };
-      },
-      linearCorral(['writer']),
+  test('says why a Run whose kept text was released cannot continue from its checkpoint', async ({
+    page,
+    corral,
+  }) => {
+    const { recovery } = await failedRunRecovery(page, corral);
+    await expect(recovery).toContainText(
+      "The Run's kept text was released when it ended, so it cannot continue from this checkpoint. Send a new request instead.",
     );
-    await page.goto(
-      `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
-    );
-    await page.reload();
-    const detail = page.getByTestId('run-monitor');
-    await detail.getByRole('button', { name: 'Show side panel', exact: true }).click();
-    await detail.getByTestId('status-context').locator(':scope > summary').click();
-    const recovery = detail.getByTestId('runtime-recovery');
+    await expect(recovery).not.toContainText('RuntimeRecovery.blockers');
+    expect(corral.errors).toEqual([]);
+  });
+
+  // The failed Run's checkpoint context is released with its other bodies when the Run ends
+  // (api-contract.md, 산출물 본문 수명), so the server answers `content_released` and keeps
+  // "Continue in a new Run" blocked. Whether a stopped Run keeps what its runtime checkpoint
+  // needs is the product owner's decision; until then this journey cannot continue.
+  test.fixme('continues a failed Run after reload and preserves the source', async ({
+    page,
+    corral,
+  }) => {
+    const { started, recovery } = await failedRunRecovery(page, corral);
     await expect(
       recovery.getByRole('button', { name: 'Continue in a new Run' }).first(),
     ).toBeEnabled();
@@ -83,7 +111,7 @@ test.describe('runtime continuation', () => {
     ]);
     await recovery.getByRole('button', { name: 'Continue in a new Run' }).first().click();
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).not.toBe(started.runId);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     const source = await page.evaluate(
       async (runId) => (await fetch(`/api/v1/runs/${runId}/runtime-checkpoints`)).json(),
       started.runId,
@@ -100,37 +128,39 @@ test.describe('runtime continuation', () => {
     await page.setViewportSize({ width: 390, height: 844 });
     expect(await branch.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
     await expect(
-      branch.getByRole('button', { name: 'Start a new session from here' }),
+      branch.getByRole('button', { name: 'Start a new conversation from here' }),
     ).toBeInViewport();
     await page.setViewportSize({ width: 1280, height: 800 });
     corral.fake!.answerWith('A separate branch result.');
-    await branch.getByRole('button', { name: 'Start a new session from here' }).click();
+    await branch.getByRole('button', { name: 'Start a new conversation from here' }).click();
     await expect
       .poll(() => new URL(page.url()).pathname)
       .not.toBe(`/sessions/${started.sessionId}`);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     await page
       .getByTestId('run-monitor')
-      .getByRole('button', { name: 'Show side panel', exact: true })
+      .getByRole('button', { name: 'Run info', exact: true })
       .click();
     await expect(
       page.getByTestId('run-monitor').getByRole('link', { name: 'Open the source Run' }),
     ).toBeVisible();
     await panelTab(page, 'Conversation');
-    await page
+    // The request's icon row shows on hover or focus.
+    const branchBefore = page
       .getByTestId('chat-timeline')
       .getByRole('button', { name: 'Branch before this request' })
-      .first()
-      .click();
+      .first();
+    await branchBefore.hover({ force: true });
+    await branchBefore.click();
     await expect(page.getByRole('dialog')).toContainText('before any model response');
     corral.fake!.answerWith('Original request branch.');
     const priorSession = new URL(page.url()).pathname;
     await page
       .getByRole('dialog')
-      .getByRole('button', { name: 'Start a new session from here' })
+      .getByRole('button', { name: 'Start a new conversation from here' })
       .click();
     await expect.poll(() => new URL(page.url()).pathname).not.toBe(priorSession);
-    await expect(page.getByTestId('run-monitor')).toContainText('Succeeded');
+    await expect(page.getByTestId('run-monitor')).toContainText('Completed');
     expect(corral.errors).toEqual([]);
   });
 });

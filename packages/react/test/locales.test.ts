@@ -89,6 +89,19 @@ describe('Korean messages (UX-A5)', () => {
     );
   });
 
+  it('names role import in both languages', () => {
+    const keys = [
+      'TeamEditor.importRole',
+      'TeamEditor.importRoleTitle',
+      'TeamEditor.rolePresets',
+      'TeamEditor.roleSearch',
+      'TeamEditor.workStyleDropped',
+      'TeamEditor.rejected.roleNeedsAgent',
+    ];
+    expect(keys.filter((key) => !enLeaves.has(key))).toEqual([]);
+    expect(keys.filter((key) => !koLeaves.has(key))).toEqual([]);
+  });
+
   it('has every English key and no other', () => {
     expect([...koLeaves.keys()].sort()).toEqual([...enLeaves.keys()].sort());
   });
@@ -109,7 +122,15 @@ describe('Korean messages (UX-A5)', () => {
       onError: (error) => errors.push(error.message),
     });
     for (const [key, message] of koLeaves) {
-      (t as unknown as (k: string, v: Record<string, unknown>) => string)(key, sample(message));
+      // A message that isolates part of itself in a tag is formatted with that tag.
+      const tags = [...message.matchAll(/<([a-z]+)>/g)].map((match) => match[1] as string);
+      if (tags.length > 0)
+        (t.markup as unknown as (k: string, v: Record<string, unknown>) => string)(key, {
+          ...sample(message),
+          ...Object.fromEntries(tags.map((tag) => [tag, (chunks: string) => chunks])),
+        });
+      else
+        (t as unknown as (k: string, v: Record<string, unknown>) => string)(key, sample(message));
     }
     expect(errors).toEqual([]);
     // Text that should be translated: anything with a lowercase English word of 4+ letters
@@ -118,9 +139,28 @@ describe('Korean messages (UX-A5)', () => {
     // `auto` is the team selector's name for Corral's automatic team.
     const allowed =
       /\b(auto|Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
+    // A tag (`<isolate>…</isolate>`) is markup, not text.
     const untranslated = [...koLeaves].filter(([, message]) =>
-      /\b[a-z]{4,}\b/.test(parseIcu(message).text.replace(allowed, '')),
+      /\b[a-z]{4,}\b/.test(
+        parseIcu(message)
+          .text.replace(/<\/?[a-z]+>/g, '')
+          .replace(allowed, ''),
+      ),
     );
     expect(untranslated.map(([key]) => key)).toEqual([]);
+  });
+
+  // The product speaks in the 합니다/하세요 register; a 해요체 ending (해요, 돼요, 예요, 이에요,
+  // 어요, 아요, 네요, 죠) is a slip. Nouns that end in 요 (필요, 중요, 주요, 개요) are not endings.
+  it('ends sentences in the 합니다/하세요 register, never 해요체', () => {
+    const word = /([가-힣]+[요죠])(?![가-힣])/g;
+    const nouns = /(필요|중요|주요|개요|수요|소요|강요)$/;
+    const slips = [...koLeaves].flatMap(([key, message]) =>
+      [...parseIcu(message).text.matchAll(word)]
+        .map((match) => match[1] as string)
+        .filter((ending) => !ending.endsWith('세요') && !nouns.test(ending))
+        .map((ending) => `${key}: ${ending}`),
+    );
+    expect(slips).toEqual([]);
   });
 });

@@ -27,16 +27,27 @@ export interface Bounds {
 }
 
 export const ZOOM = { min: 0.2, max: 2, step: 1.2 } as const;
-const FIT_PADDING = 48;
 
-/** The view that shows `bounds` whole and centred, never enlarged past 100%. */
-export function fitBounds(bounds: Bounds | null, width: number, height: number): Viewport {
+/** How a fit frames the content: the margin around it and the largest zoom it may choose. */
+export interface FitRule {
+  padding: number;
+  maxZoom: number;
+}
+const DEFAULT_FIT: FitRule = { padding: 48, maxZoom: 1 };
+
+/** The view that shows `bounds` whole and centred, never enlarged past the rule's zoom. */
+export function fitBounds(
+  bounds: Bounds | null,
+  width: number,
+  height: number,
+  rule: FitRule = DEFAULT_FIT,
+): Viewport {
   if (!bounds || !width || !height) return { x: 0, y: 0, k: 1 };
   const w = Math.max(1, bounds.maxX - bounds.minX);
   const h = Math.max(1, bounds.maxY - bounds.minY);
   const k = Math.min(
-    1,
-    Math.max(ZOOM.min, Math.min((width - FIT_PADDING * 2) / w, (height - FIT_PADDING * 2) / h)),
+    rule.maxZoom,
+    Math.max(ZOOM.min, Math.min((width - rule.padding * 2) / w, (height - rule.padding * 2) / h)),
   );
   return {
     x: (width - w * k) / 2 - bounds.minX * k,
@@ -56,41 +67,86 @@ export interface GraphViewportOptions {
   onTap?: (event: ReactPointerEvent<HTMLDivElement>) => void;
   /** Return false to leave a press to the caller instead of panning. */
   canPan?: (event: ReactPointerEvent<HTMLDivElement>) => boolean;
+  /** How a fit frames the content. Omitted, a 48px margin and never past 100%. */
+  fitRule?: FitRule;
+  /**
+   * Fit when first shown and on request only. Until the person first works with the stage (a
+   * press, a key, the wheel or a zoom button), the first display follows the page as it settles;
+   * after that the view stays exactly where the person left it, whatever the pane's size.
+   * Omitted, the view refits with the pane until the person moves it.
+   */
+  fitOnce?: boolean;
+  /**
+   * Called with the view each fit the stage makes on its own chooses, and the zoom that would fit
+   * the content's width alone (what a narrow pane allows); a requested fit is not reported.
+   */
+  onAutoFit?: (viewport: Viewport, acrossZoom: number) => void;
 }
 
-export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: GraphViewportOptions) {
+export function useGraphViewport({
+  bounds,
+  ready,
+  onMove,
+  onTap,
+  canPan,
+  fitRule = DEFAULT_FIT,
+  fitOnce = false,
+  onAutoFit,
+}: GraphViewportOptions) {
   const pane = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const read = useRef({ bounds, onMove, onTap, canPan });
-  read.current = { bounds, onMove, onTap, canPan };
+  const read = useRef({ bounds, onMove, onTap, canPan, fitRule, onAutoFit });
+  read.current = { bounds, onMove, onTap, canPan, fitRule, onAutoFit };
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
-  const fit = useCallback(() => {
+  // With `fitOnce`: whether the person has worked with the stage, which ends the first display.
+  const engaged = useRef(false);
+  const place = useCallback((automatic: boolean) => {
     const element = pane.current;
     if (!element) return;
     moved.current = false;
-    setViewport(fitBounds(read.current.bounds(), element.clientWidth, element.clientHeight));
+    const content = read.current.bounds();
+    const next = fitBounds(
+      content,
+      element.clientWidth,
+      element.clientHeight,
+      read.current.fitRule,
+    );
+    setViewport(next);
+    if (automatic)
+      read.current.onAutoFit?.(
+        next,
+        fitBounds(content, element.clientWidth, Number.POSITIVE_INFINITY, read.current.fitRule).k,
+      );
   }, []);
+  /** A fit the person asked for. */
+  const fit = useCallback(() => {
+    engaged.current = true;
+    place(false);
+  }, [place]);
   useLayoutEffect(() => {
     const element = pane.current;
     if (!ready || !element) return;
     const measure = () => {
-      if (!moved.current && element.clientWidth > 0 && element.clientHeight > 0) fit();
+      if (element.clientWidth <= 0 || element.clientHeight <= 0) return;
+      if (fitOnce ? !engaged.current : !moved.current) place(true);
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(element);
     return () => observer.disconnect();
-  }, [ready, fit]);
+  }, [ready, place, fitOnce]);
   const moveTo = useCallback((next: SetStateAction<Viewport | null>) => {
     moved.current = true;
+    engaged.current = true;
     setViewport(next);
   }, []);
 
   const zoomAt = useCallback((factor: number, at?: { x: number; y: number }) => {
     read.current.onMove?.();
     moved.current = true;
+    engaged.current = true;
     setViewport((current) => {
       if (!current) return current;
       const element = pane.current;
@@ -124,11 +180,14 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
   /** Moves the view by a screen distance, as the arrow keys and a drag do. */
   const panBy = useCallback((dx: number, dy: number) => {
     moved.current = true;
+    engaged.current = true;
     setViewport((value) => (value ? { ...value, x: value.x + dx, y: value.y + dy } : value));
   }, []);
 
   const drag = useRef<{ id: number; x: number; y: number; moved: boolean } | null>(null);
   const onPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    // Any press on the stage, an agent's included, ends the first display.
+    engaged.current = true;
     if (event.button !== 0 || (event.target as Element).closest('button')) return;
     if (read.current.canPan && !read.current.canPan(event)) return;
     drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, moved: false };
@@ -167,6 +226,9 @@ export function useGraphViewport({ bounds, ready, onMove, onTap, canPan }: Graph
       onPointerMove,
       onPointerUp,
       onPointerCancel: onPointerUp,
+      onKeyDown: () => {
+        engaged.current = true;
+      },
     },
   };
 }

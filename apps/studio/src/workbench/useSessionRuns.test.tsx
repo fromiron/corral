@@ -109,3 +109,39 @@ it('refreshes appended and settled entries with unchanged revision and timestamp
   });
   expect(fixture.invalidate).toHaveBeenCalledTimes(2);
 });
+
+// A meta line holding an instruction seen to expire waits for a session read asked after it
+// (features/composer-flow.md "보낸 메시지의 메타 줄"). A read that found the session changed
+// counts once the page shows what it found, not while the page still shows the session before.
+it('a read that changed the session counts once the page shows that session', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const before = { revision: 1, entries: [] };
+  const after = { revision: 1, entries: [{ entryId: 'carried', state: 'started' }] };
+  let session: unknown = before;
+  fixture.listRuns.mockResolvedValue([]);
+  fixture.getSession.mockImplementation(async () => session);
+  const reads: number[] = [];
+  function View({ shown }: { shown: typeof before | typeof after }) {
+    const value = useSessionRuns('carry', undefined, shown.revision, shown.entries as never);
+    reads.push(value.sessionReads.read);
+    return null;
+  }
+  const root = createRoot(document.createElement('div'));
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+  });
+  await act(async () => root.render(<View shown={before} />));
+  const unchanged = reads.at(-1) as number;
+  expect(unchanged).toBeGreaterThan(0);
+  // The server saved the carried request; the router has not loaded it yet.
+  session = after;
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1500);
+  });
+  expect(fixture.invalidate).toHaveBeenCalledTimes(1);
+  expect(reads.at(-1)).toBe(unchanged);
+  // The page now shows what that read found.
+  await act(async () => root.render(<View shown={after} />));
+  expect(reads.at(-1)).toBeGreaterThan(unchanged);
+});

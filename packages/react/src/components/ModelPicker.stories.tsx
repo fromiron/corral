@@ -124,8 +124,9 @@ export const KeyboardAndContainment: Story = {
     const dialog = await page.findByRole('dialog', { name: 'Model settings' });
     await waitFor(() => expect(dialog).toBeVisible());
     expect(canvas.getByTestId('composer-scroll').contains(dialog)).toBe(false);
-    const models = within(dialog).getByRole('listbox', { name: 'Model' });
-    await waitFor(() => expect(models).toHaveFocus());
+    // The search field takes the focus; the arrows move through the list under it.
+    const search = within(dialog).getByRole('combobox', { name: 'Search models' });
+    await waitFor(() => expect(search).toHaveFocus());
     await userEvent.keyboard('{ArrowDown}{Enter}');
     await expect(args.onChange).toHaveBeenCalledWith({
       modelProfile: 'second',
@@ -153,6 +154,47 @@ export const KeyboardAndContainment: Story = {
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(page.queryByRole('dialog')).toBeNull());
     await expect(trigger).toHaveFocus();
+  },
+};
+
+/** Text of the trigger's own words that falls outside the trigger, as a cut name would. */
+function clippedWords(trigger: HTMLElement) {
+  const bounds = trigger.getBoundingClientRect();
+  return [...trigger.querySelectorAll('span')]
+    .filter((span) => {
+      if (span.children.length) return false;
+      const range = document.createRange();
+      range.selectNodeContents(span);
+      return [...range.getClientRects()].some(
+        (rect) =>
+          rect.left < bounds.left - 1 ||
+          rect.right > bounds.right + 1 ||
+          rect.top < bounds.top - 1 ||
+          rect.bottom > bounds.bottom + 1,
+      );
+    })
+    .map((span) => span.textContent);
+}
+
+// workbench.md: a narrow screen does not cut the model name; the chip takes more lines instead.
+export const LongNameNarrow: Story = {
+  args: {
+    profiles: [
+      {
+        ...(profiles[0] as ProfileInfo),
+        label:
+          'Provider A · Long model name verification · reasoning-model-with-a-long-name-2026-10',
+      },
+    ],
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole('button', { name: 'Model' });
+    const box = canvas.getByTestId('composer-scroll').getBoundingClientRect();
+    expect(clippedWords(trigger)).toEqual([]);
+    const bounds = trigger.getBoundingClientRect();
+    expect(bounds.right).toBeLessThanOrEqual(box.right);
+    expect(bounds.height).toBeGreaterThan(28);
   },
 };
 

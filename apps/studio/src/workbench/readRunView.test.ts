@@ -26,9 +26,29 @@ it('reads the retained conversation turn without restoring released artifact bod
   expect(history).not.toHaveBeenCalled();
 });
 
+it.each([false, true])(
+  'does not ask for the conversation turn of a run that has not ended (details=%s)',
+  async (details) => {
+    // The turn is stored when the run settles; asking earlier only answers 404.
+    const projection = { ...emptyProjection('run_live'), status: 'running' as const };
+    const transport = {
+      getSnapshot: async () => ({ projection, seq: 0 }),
+      getRunDefinition: async () => linearCorral(['writer']),
+      getConversationTurn: vi.fn(async () => null),
+    };
+    const history = vi.fn(async () => ({}));
+    const view = await readRunView(transport, history, 'run_live', details).catch(() => null);
+    expect(transport.getConversationTurn).not.toHaveBeenCalled();
+    if (!details) expect(view?.conversationTurn).toBeNull();
+  },
+);
+
 it('rejects a conversation turn from a different run', async () => {
   const transport = {
-    getSnapshot: async () => ({ projection: emptyProjection('run_chat'), seq: 0 }),
+    getSnapshot: async () => ({
+      projection: { ...emptyProjection('run_chat'), status: 'succeeded' as const },
+      seq: 0,
+    }),
     getRunDefinition: async () => linearCorral(['writer']),
     getConversationTurn: async () => ({
       runId: 'other',

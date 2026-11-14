@@ -35,7 +35,7 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
     });
     await corral.open('/settings/mcp?projectId=missing');
     await expect(page.getByRole('button', { name: 'Add', exact: true })).toHaveCount(0);
-    await page.getByRole('combobox', { name: 'Applies to project', exact: true }).click();
+    await page.getByRole('combobox', { name: 'Settings for', exact: true }).click();
     await page.getByRole('option', { name: 'My project', exact: true }).click();
     await expect(page).toHaveURL(/settings=mcp&settingsProject=default/);
     await page.evaluate(async (source) => {
@@ -139,7 +139,7 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
       return { runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     expect(fixture.mcpCalls).toBe(1);
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();

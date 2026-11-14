@@ -6,6 +6,7 @@ import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
+import { DocumentHeader } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { debugStore } from './debug/store.ts';
 import type { RecoveryDraft } from './documents/recovery.ts';
@@ -103,33 +104,24 @@ export function DockDocumentPanel({
       entry.dirty ||
       entry.pendingSave ||
       entry.recoveries.length);
-  return (
-    <div
-      className="flex h-full min-h-0 min-w-0 flex-col gap-2 overflow-auto p-3"
-      data-testid="dock-document-panel"
+  const link = !onReference ? (
+    <Button
+      variant="ghost"
+      title={target.sessionId}
+      render={<Link to="/sessions/$sessionId" params={{ sessionId: target.sessionId }} />}
     >
-      <div className="flex flex-wrap items-center gap-2 text-xs">
-        <p className="min-w-0 flex-1 break-all font-medium" title={path}>
-          {path}
-        </p>
-        {!onReference ? (
-          <Link
-            to="/sessions/$sessionId"
-            params={{ sessionId: target.sessionId }}
-            title={target.sessionId}
-            className="text-primary underline"
-          >
-            {t('openConversation')}
-          </Link>
-        ) : null}
-      </div>
+      {t('openConversation')}
+    </Button>
+  ) : null;
+  // Facts about the tab itself and a file's preview sit under the head, above the editor.
+  const notices = (
+    <>
       {stale || state.error ? (
-        <div className="space-y-2">
-          <p role="alert" className="break-words text-xs text-danger">
+        <div role="alert" className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
+          <p className="min-w-0 flex-1 break-words text-danger">
             {stale ? t('staleDock') : state.error}
           </p>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={state.pending}
             onClick={() => retry((value) => value + 1)}
@@ -146,6 +138,13 @@ export function DockDocumentPanel({
           path={path}
         />
       ) : null}
+    </>
+  );
+  return (
+    <div
+      className="flex h-full min-h-0 min-w-0 flex-col overflow-auto"
+      data-testid="dock-document-panel"
+    >
       {showEditor ? (
         <DocumentPanel
           owner={owner}
@@ -159,6 +158,11 @@ export function DockDocumentPanel({
               ? languageStore(services.workspaces, owner)
               : undefined
           }
+          edits={
+            services.mode === 'server' && services.workspaces?.fileEditProposals
+              ? services.workspaces
+              : undefined
+          }
           documentKey={key}
           viewId={viewId}
           onReference={onReference}
@@ -167,39 +171,56 @@ export function DockDocumentPanel({
           readOnlyTarget={stale || Boolean(state.error)}
           manageView={false}
           referencePending={state.pending}
+          headExtra={link}
           fill
-        />
-      ) : state.pending ? (
-        <p role="status" className="text-xs text-muted-foreground">
-          {t('loading')}
-        </p>
-      ) : entry ? (
-        <p className="text-xs text-muted-foreground">
-          {entry.file.content.kind === 'binary'
-            ? tf('binary')
-            : entry.file.content.kind === 'too_large'
-              ? tf('tooLarge')
-              : td('fileUnavailable')}
-        </p>
-      ) : null}
+        >
+          {notices}
+        </DocumentPanel>
+      ) : (
+        <>
+          <DocumentHeader
+            path={path}
+            target={{ kind: 'copy', target }}
+            unsaved={Boolean(entry && (entry.dirty || entry.pendingSave))}
+          >
+            {link}
+          </DocumentHeader>
+          <div className="flex min-w-0 flex-col gap-2 px-3 py-2">
+            {notices}
+            {state.pending ? (
+              <p role="status" className="text-caption text-muted-foreground">
+                {t('loading')}
+              </p>
+            ) : entry ? (
+              <p className="text-caption text-muted-foreground">
+                {entry.file.content.kind === 'binary'
+                  ? tf('binary')
+                  : entry.file.content.kind === 'too_large'
+                    ? tf('tooLarge')
+                    : td('fileUnavailable')}
+              </p>
+            ) : null}
+          </div>
+        </>
+      )}
       {recoveries
         .filter((candidate) => !entry || candidate.text !== entry.text)
         .map((candidate) => (
           <section
             key={candidate.id}
             aria-label={t('recovery')}
-            className="min-w-0 space-y-2 rounded fill-group p-3"
+            className="mx-3 mb-3 flex min-w-0 shrink-0 flex-col gap-2 rounded fill-group p-3"
           >
-            <p className="text-xs text-muted-foreground">{t('previousCopyHint')}</p>
+            <p className="text-caption text-muted-foreground">{t('previousCopyHint')}</p>
             <Textarea
               readOnly
               aria-label={t('draftContent')}
               value={candidate.text}
-              className="font-mono text-xs"
+              className="font-mono text-caption"
             />
             <Button
-              size="compact"
               variant="ghost"
+              className="self-start"
               onClick={() => {
                 void owner
                   .discardRecoveryCandidate(candidate)
@@ -212,7 +233,7 @@ export function DockDocumentPanel({
           </section>
         ))}
       {recoveryError ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="px-3 pb-3 text-caption text-danger">
           {t('recoveryReadFailed')}
         </p>
       ) : null}

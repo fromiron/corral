@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { startTestRun, teamCanvas } from '../workbench.ts';
+import { openLibraryTeams, startTestRun, teamCanvas } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', '..', 'examples');
@@ -9,7 +9,7 @@ test('one run shows two delegated helpers and a question answered by a new respo
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([join(EXAMPLES, 'research-brief.corral.json')]);
@@ -23,11 +23,11 @@ test('one run shows two delegated helpers and a question answered by a new respo
   await startTestRun(page);
   await expect(page.getByTestId('run-output')).toContainText('answer:', { timeout: 15_000 });
 
-  await page.getByRole('link', { name: 'Open execution page' }).click();
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await page.getByRole('link', { name: 'Open run page' }).click();
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   const monitor = page.getByTestId('run-monitor');
   // Two helper executions in the work flow, delegated by Research.
-  await monitor.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await monitor.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     monitor.getByTestId('run-work-flow').getByRole('button', { name: /^Research Helper · exec_/ }),
   ).toHaveCount(2);

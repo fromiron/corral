@@ -25,6 +25,7 @@ import type { EditRejection, Placement, PortRequest, StepKind } from './commands
 import { KIND_COLOR, KIND_ICON, kindOf, membersOf, roleOf } from './kinds.ts';
 import {
   boundsOf,
+  type LaidEdge,
   type LaidItem,
   layoutTeam,
   type PortMark,
@@ -116,6 +117,13 @@ function useTweenedItems(items: Map<string, LaidItem>, reduced: boolean): Map<st
   }, [items, reduced]);
   return shown;
 }
+
+const DASHES: Record<LaidEdge['kind'], string | undefined> = {
+  control: undefined,
+  call: '4 4',
+  // A dash, then a round dot: the near-zero dash is drawn by its round caps.
+  advise: '8 4 0.01 4',
+};
 
 const within = (r: Rect, p: { x: number; y: number }, slack = 0) =>
   p.x >= r.x - slack && p.x <= r.x + r.w + slack && p.y >= r.y - slack && p.y <= r.y + r.h + slack;
@@ -486,7 +494,9 @@ export function TeamGraphCanvas({
       case 'decision':
         return kindName(node);
       case 'loop':
-        return t('rounds', { count: node.maxIterations });
+        return node.maxIterations === undefined
+          ? t('roundsUnlimited')
+          : t('rounds', { count: node.maxIterations });
       case 'team':
         return node.source.kind === 'inline'
           ? t('inline')
@@ -571,7 +581,7 @@ export function TeamGraphCanvas({
                 key={item.id}
                 data-box={item.id}
                 className={cn(
-                  'absolute rounded-[14px] border',
+                  'absolute rounded-xl border',
                   isSelected ? 'border-emphasis' : 'border-border',
                   target && (target.check.ok ? 'border-emphasis' : 'border-destructive'),
                 )}
@@ -665,6 +675,15 @@ export function TeamGraphCanvas({
                     : 'n';
               return (
                 <g key={edge.id} data-edge={edge.id}>
+                  {edge.kind === 'advise' ? (
+                    // Named for whoever hovers it; the line itself carries no label.
+                    <title>
+                      {t('watchLink', {
+                        advisor: nodes.get(edge.from)?.label ?? edge.from,
+                        agent: nodes.get(edge.to)?.label ?? edge.to,
+                      })}
+                    </title>
+                  ) : null}
                   {/* biome-ignore lint/a11y/noStaticElementInteractions: a pointer shortcut; the inspector lists each connection with its own controls. */}
                   <path
                     d={edge.path}
@@ -685,7 +704,10 @@ export function TeamGraphCanvas({
                     fill="none"
                     stroke={stroke}
                     strokeWidth={selection.edge === edge.id ? 2 : 1.5}
-                    strokeDasharray={edge.kind === 'call' ? '4 4' : undefined}
+                    // Told apart by shape, not colour: control solid, calls dashed, an
+                    // advisor's watch dash-dot.
+                    strokeDasharray={DASHES[edge.kind]}
+                    strokeLinecap={edge.kind === 'advise' ? 'round' : undefined}
                     markerEnd={edge.arrow ? `url(#${markerId}-${marker})` : undefined}
                   />
                   {edge.label ? (
@@ -773,7 +795,7 @@ export function TeamGraphCanvas({
                 type="button"
                 data-node={item.id}
                 aria-pressed={isSelected}
-                className={cn(focusRing, 'absolute rounded-[12px] text-left')}
+                className={cn(focusRing, 'absolute rounded-xl text-left')}
                 style={{
                   transform: `translate(${item.rect.x}px, ${item.rect.y}px)`,
                   width: item.rect.w,
@@ -797,6 +819,8 @@ export function TeamGraphCanvas({
                     >
                       {node.label}
                     </span>
+                    {/* An advisor is told apart by more than its icon and its row. */}
+                    {kind === 'observer' ? <span className="sr-only">{kindName(node)}</span> : null}
                     {problemMark(item.id)}
                     <span className="grow" />
                     {item.kind === 'tile' ? <span aria-hidden className="size-5 shrink-0" /> : null}
@@ -812,12 +836,14 @@ export function TeamGraphCanvas({
                     >
                       {summary(node)}
                     </span>
-                    {definition.entryNodeId === node.id ? (
+                    {definition.entryNodeId === node.id && kind !== 'observer' ? (
                       <KitBadge size="compact" color={KIND_COLOR.output}>
                         {t('start')}
                       </KitBadge>
                     ) : null}
-                    {node.type === 'agent' && node.retry?.maxAttempts ? (
+                    {node.type === 'agent' &&
+                    node.invocation !== 'observer' &&
+                    node.retry?.maxAttempts ? (
                       <KitBadge size="compact" color="gray">
                         {t('retry', { count: node.retry.maxAttempts })}
                       </KitBadge>

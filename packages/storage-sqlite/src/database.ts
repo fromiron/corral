@@ -668,6 +668,69 @@ DROP TABLE IF EXISTS layouts;
         db.exec('ALTER TABLE corrals DROP COLUMN layout_revision');
     },
   },
+  {
+    // a work session's completion criteria, one line per item; existing sessions have none.
+    name: '0040_session_criteria',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'criteria_json'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN criteria_json TEXT NOT NULL DEFAULT '[]'
+  CHECK (json_valid(criteria_json) AND json_type(criteria_json) = 'array')`);
+    },
+  },
+  {
+    // A deleted session must leave the other side of a handoff in place.
+    name: '0041_meeting_handoff_survives_session',
+    sql: `
+CREATE TABLE meeting_handoffs_next (
+  source_session_id TEXT NOT NULL,
+  command_id TEXT NOT NULL,
+  target_session_id TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  payload_json TEXT NOT NULL,
+  PRIMARY KEY (source_session_id, command_id)
+) STRICT;
+INSERT INTO meeting_handoffs_next
+  SELECT source_session_id, command_id, target_session_id, request_hash, payload_json
+  FROM meeting_handoffs;
+DROP TABLE meeting_handoffs;
+ALTER TABLE meeting_handoffs_next RENAME TO meeting_handoffs;
+CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
+`,
+  },
+  {
+    // whether the server starts a session's queue when its run ends; existing sessions do.
+    name: '0042_session_auto_start',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'auto_start'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN auto_start INTEGER NOT NULL DEFAULT 1
+  CHECK (auto_start IN (0,1))`);
+    },
+  },
+  {
+    // execution rows the person opened; an advice item for that execution leaves the inbox.
+    name: '0043_execution_views',
+    sql: `CREATE TABLE IF NOT EXISTS execution_views (
+  run_id TEXT NOT NULL,
+  execution_id TEXT NOT NULL,
+  opened_at TEXT NOT NULL,
+  PRIMARY KEY (run_id, execution_id)
+) STRICT;`,
+  },
+  {
+    // the advisor a session's conversation runs with; null when off, as for existing sessions.
+    name: '0044_session_advisor',
+    sql: '-- the column is added below, once, so running this step again changes nothing.',
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'advisor_json'))
+        db.exec(`ALTER TABLE work_sessions ADD COLUMN advisor_json TEXT
+  CHECK (advisor_json IS NULL OR (json_valid(advisor_json) AND json_type(advisor_json) = 'object'))`);
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

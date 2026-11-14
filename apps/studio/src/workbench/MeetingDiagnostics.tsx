@@ -7,11 +7,10 @@ export function MeetingDiagnostics({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   const [failed, setFailed] = useState(false);
   return (
-    <details className="text-xs">
+    <details className="text-caption">
       <summary>{t('diagnostics')}</summary>
       <pre className="select-text whitespace-pre-wrap wrap-anywhere py-2">{text}</pre>
       <Button
-        size="compact"
         variant="tertiary"
         onClick={async () => {
           setCopied(false);

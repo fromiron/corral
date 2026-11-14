@@ -1,8 +1,9 @@
-import type {
-  TextAttachment,
-  TextAttachmentProvenance,
-  TextRange,
-  WorkspaceTarget,
+import {
+  type TextAttachment,
+  type TextAttachmentProvenance,
+  type TextRange,
+  textAttachmentKey,
+  type WorkspaceTarget,
 } from '@corral/contracts';
 import {
   Button,
@@ -14,6 +15,7 @@ import {
 import { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type StudioServices, useServices } from '../../services.tsx';
+import { QuoteChip } from '../TextAttachments.tsx';
 import {
   AttachmentSource,
   ContextAttachments,
@@ -25,6 +27,8 @@ export const SourceNavigationContext = createContext<{
   openDocument(target: WorkspaceTarget, path: string, range?: TextRange): boolean;
   openTerminal(source: Extract<TextAttachmentProvenance, { kind: 'terminal' }>): void;
 } | null>(null);
+
+const isQuote = (item: TextAttachment) => item.provenance?.kind === 'reply';
 
 type Preview = {
   owner: StudioServices;
@@ -40,6 +44,7 @@ export function SourceAttachments(props: {
   const services = useServices();
   const navigation = useContext(SourceNavigationContext);
   const t = useTranslations('Context');
+  const tc = useTranslations('Composer');
   const current = useRef({ services, props });
   current.current = { services, props };
   const alive = useRef(true);
@@ -103,10 +108,42 @@ export function SourceAttachments(props: {
       setPreview({ owner: services, item: candidate, replace: true });
     });
   };
+  // A reply quote is a chip; the other captures are source rows. Both edit the one list in order.
+  const changeCaptures = (next: TextAttachment[]) => {
+    const value = current.current.props.value;
+    let at = 0;
+    const kept = new Set(next.map(textAttachmentKey));
+    current.current.props.onChange(
+      next.length === value.filter((item) => !isQuote(item)).length
+        ? value.map((item) => (isQuote(item) ? item : (next[at++] ?? item)))
+        : value.filter((item) => isQuote(item) || kept.has(textAttachmentKey(item))),
+    );
+  };
+  const removeQuote = (key: string) => {
+    if (current.current.props.disabled) return;
+    current.current.props.onChange(
+      current.current.props.value.filter((item) => textAttachmentKey(item) !== key),
+    );
+  };
+  const quotes = props.value.filter(isQuote);
   return (
     <>
+      {quotes.length ? (
+        <ul aria-label={tc('quotes')} className="flex flex-wrap gap-1">
+          {quotes.map((item) => (
+            <QuoteChip
+              key={textAttachmentKey(item)}
+              item={item}
+              disabled={props.disabled}
+              onRemove={() => removeQuote(textAttachmentKey(item))}
+            />
+          ))}
+        </ul>
+      ) : null}
       <ContextAttachments
         {...props}
+        value={props.value.filter((item) => !isQuote(item))}
+        onChange={changeCaptures}
         inspect={(item) => readAttachmentSource(services, item)}
         onOpen={open}
         onReplace={replace}
@@ -126,7 +163,7 @@ export function SourceAttachments(props: {
                 <AttachmentSource source={preview.item.provenance} />
               ) : null}
               {preview.state ? (
-                <p role="status" className="text-xs text-muted-foreground">
+                <p role="status" className="text-caption text-muted-foreground">
                   {t(
                     preview.item.provenance?.kind === 'preview' && preview.state === 'current'
                       ? 'previewCurrent'
@@ -135,7 +172,7 @@ export function SourceAttachments(props: {
                 </p>
               ) : null}
               <section aria-label={t('preview')}>
-                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-3 text-xs">
+                <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-all rounded fill-group p-3 text-caption">
                   {preview.item.text}
                 </pre>
               </section>

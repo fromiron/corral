@@ -8,6 +8,7 @@ import type { AgentMessage } from '@earendil-works/pi-agent-core';
 import type { ToolResultMessage } from '@earendil-works/pi-ai';
 import { isCorralState } from './request-record.ts';
 import {
+  ADVICE_DIRECTIVE_PREFIX,
   DIRECTIVE_PREFIX,
   SDK_DIRECTIVE_PREFIX,
   withoutAssignmentMetadata,
@@ -69,9 +70,10 @@ export function snapshotText(text: string): SnapshotText {
 const isRequest = (message: AgentMessage) => {
   if (message.role !== 'user' || isCorralState(message)) return false;
   const text = textOf(message.content);
-  // Directives go to the judgment as their own source, from either worker's message form.
-  return ![DIRECTIVE_PREFIX, SDK_DIRECTIVE_PREFIX, QUESTIONS_PREFIX].some((prefix) =>
-    text.startsWith(prefix),
+  // Directives, a person's or an advice, go to the judgment as their own source, from either
+  // worker's message form; neither is the request.
+  return ![DIRECTIVE_PREFIX, SDK_DIRECTIVE_PREFIX, ADVICE_DIRECTIVE_PREFIX, QUESTIONS_PREFIX].some(
+    (prefix) => text.startsWith(prefix),
   );
 };
 

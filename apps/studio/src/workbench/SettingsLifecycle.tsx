@@ -107,7 +107,10 @@ export function useSettingsForm(form: Form) {
   return () => (context ? context.confirm([entry]) : Promise.resolve(true));
 }
 
-/** Register submitted work before starting it; closing its form does not cancel it. */
+/**
+ * Register submitted work before starting it; closing its form does not cancel it. A `part`
+ * makes its own target under this one, for a list whose rows act on their own.
+ */
 export function useSettingsTask(target: string) {
   const context = useContext(Context);
   const href = useRouterState({ select: (state) => state.location.href });
@@ -118,11 +121,12 @@ export function useSettingsTask(target: string) {
       active.current = false;
     };
   }, []);
-  return async <T,>(action: () => Promise<T>): Promise<T> => {
+  return async <T,>(action: () => Promise<T>, part?: string): Promise<T> => {
     if (!context) return action();
-    const value = await context.tasks.run(target, href, action);
+    const name = part ? `${target}:${part}` : target;
+    const value = await context.tasks.run(name, href, action);
     // The mounted form already shows its result. Retain a receipt only for detached work.
-    if (active.current) context.tasks.dismiss(target);
+    if (active.current) context.tasks.dismiss(name);
     return value;
   };
 }
@@ -154,7 +158,7 @@ export function SettingsLeavePrompt() {
         <DialogTitle>{t('unsaved')}</DialogTitle>
         <DialogDescription>{t(canSave ? 'unsavedHint' : 'explicitHint')}</DialogDescription>
         {failed ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {t('saveFailed')}
           </p>
         ) : null}
@@ -206,7 +210,7 @@ function OperationStatus({ tasks }: { tasks: ReturnType<typeof createSettingsTas
   if (!operations.length) return null;
   return (
     <div
-      className="flex max-h-28 shrink-0 flex-col gap-1 overflow-auto border-b border-line bg-surface px-4 py-2 text-xs"
+      className="flex max-h-28 shrink-0 flex-col gap-1 overflow-auto border-b border-line bg-surface px-4 py-2 text-caption"
       aria-live="polite"
       data-testid="settings-operations"
     >

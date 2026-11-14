@@ -18,7 +18,8 @@ vi.mock('../services.tsx', () => ({ useServices: () => state.services }));
 vi.mock('./useModels.ts', () => ({ useModelProfiles: () => state.profiles }));
 vi.mock('../projects.ts', () => ({ projectsChanged: vi.fn() }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }));
-vi.mock('@corral/react/design-kit', () => ({
+vi.mock('@corral/react/design-kit', async (importOriginal) => ({
+  fontWeights: (await importOriginal<typeof import('@corral/react/design-kit')>()).fontWeights,
   Input: (props: any) => <input {...props} />,
   Textarea: (props: any) => <textarea {...props} />,
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
@@ -28,6 +29,7 @@ vi.mock('@corral/react/design-kit', () => ({
   DialogPopup: ({ children }: any) => <div role="dialog">{children}</div>,
   DialogTitle: ({ children }: any) => <h2>{children}</h2>,
   DialogDescription: ({ children }: any) => <p>{children}</p>,
+  Tooltip: ({ children }: any) => children,
   Select: ({ label, options, value, onValueChange }: any) => (
     <select
       aria-label={label}
@@ -38,6 +40,24 @@ vi.mock('@corral/react/design-kit', () => ({
       {options.map((option: any) => (
         <option key={option.value} value={option.value}>
           {option.label}
+        </option>
+      ))}
+    </select>
+  ),
+}));
+// The searchable model field, as a native select over the same rows.
+vi.mock('@corral/react', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@corral/react')>()),
+  ModelSelect: ({ label, options, value, onValueChange }: any) => (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(event) => onValueChange(event.target.value)}
+    >
+      <option value="" />
+      {options.map((option: any) => (
+        <option key={option.id} value={option.id}>
+          {option.name}
         </option>
       ))}
     </select>
@@ -86,6 +106,87 @@ async function submit(f: Awaited<ReturnType<typeof mount>>) {
   return f.createSession.mock.calls.at(-1)?.[0].meeting;
 }
 
+/** The text nodes a sighted person reads, without the select's option lists. */
+function visibleTexts(root: Element) {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const texts: string[] = [];
+  while (walker.nextNode()) {
+    const node = walker.currentNode;
+    const text = node.nodeValue?.trim();
+    if (text && !node.parentElement?.closest('option, .sr-only')) texts.push(text);
+  }
+  return texts;
+}
+
+const labelText = (ids: string) =>
+  ids
+    .split(/\s+/)
+    .map((id) => document.getElementById(id)?.textContent?.trim() ?? '')
+    .join(' ');
+
+function accessibleName(element: Element) {
+  const labelledBy = element.getAttribute('aria-labelledby');
+  if (labelledBy) return labelText(labelledBy);
+  const label = element.getAttribute('aria-label');
+  if (label) return label;
+  const labels = (element as HTMLInputElement).labels;
+  if (labels?.length) return [...labels].map((item) => item.textContent?.trim()).join(' ');
+  return element.textContent?.trim() ?? '';
+}
+
+/** The name of the participant group a field sits in: a nested fieldset's legend or a labelled group. */
+function groupName(element: Element) {
+  const group = element.closest('fieldset fieldset, [role="group"]');
+  if (!group) return null;
+  const labelledBy = group.getAttribute('aria-labelledby');
+  if (labelledBy) return labelText(labelledBy);
+  return group.querySelector(':scope > legend')?.textContent?.trim() ?? null;
+}
+
+it('names each participant once on its card, and every field keeps a distinct accessible name', async () => {
+  const f = await mount([
+    { ...profile('first'), label: 'First model' },
+    { ...profile('second'), label: 'Second model' },
+  ]);
+  const form = f.container.querySelector('form');
+  if (!form) throw new Error('Missing the new meeting form');
+  // The number shows once per card, on its heading, and on none of its fields.
+  expect(visibleTexts(form).filter((text) => /\d/.test(text))).toEqual([
+    'participantDefault1',
+    'participantDefault2',
+    'participantDefault3',
+  ]);
+  // The comma rule and what callings do sit in the nickname field, not in a sentence above it.
+  expect(form.textContent).not.toContain('participantAliasesHint');
+  const controls = [...form.querySelectorAll('input, textarea, select, button')];
+  const names = controls.map(accessibleName);
+  expect(new Set(names).size).toBe(names.length);
+  for (const number of [1, 2, 3]) {
+    const own = [
+      `participantName${number}`,
+      `participantModel${number}`,
+      `participantAliases${number}`,
+      `participantRoleTag${number}`,
+      `participantRoleDescription${number}`,
+      `removeParticipant${number}`,
+    ].map((name) => controls[names.indexOf(name)]);
+    expect(own.every(Boolean)).toBe(true);
+    for (const control of own as Element[])
+      expect(groupName(control)).toBe(`participantDefault${number}`);
+    const [, , aliases, , , remove] = own as [
+      Element,
+      Element,
+      HTMLInputElement,
+      Element,
+      Element,
+      Element,
+    ];
+    expect(aliases.placeholder).toBe('aliasesPlaceholder');
+    // Remove is an icon button: its name is for assistive technology, not a line of red text.
+    expect(remove.textContent?.trim()).toBe('');
+  }
+});
+
 it('starts a general chat with distinct model names and optional blank roles', async () => {
   const f = await mount([
     { ...profile('gpt'), label: 'OpenAI · GPT' },
@@ -107,7 +208,7 @@ it('starts a general chat with distinct model names and optional blank roles', a
 it('saves what the person calls each participant, and leaves it out when blank', async () => {
   const f = await mount([profile('connected')]);
   const aliases = [
-    ...f.container.querySelectorAll<HTMLInputElement>('fieldset input:not([required])'),
+    ...f.container.querySelectorAll<HTMLInputElement>('input[aria-label^="participantAliases"]'),
   ];
   const names = [...f.container.querySelectorAll<HTMLInputElement>('fieldset input[required]')];
   expect(aliases).toHaveLength(3);
@@ -121,6 +222,32 @@ it('saves what the person calls each participant, and leaves it out when blank',
   const meeting = await submit(f);
   expect(meeting?.participants[0]?.aliases).toEqual(['루나', 'Luna']);
   expect(meeting?.participants[1]).not.toHaveProperty('aliases');
+});
+
+it('saves a short role label and leaves it out when blank', async () => {
+  const f = await mount([profile('connected')]);
+  const roles = [
+    ...f.container.querySelectorAll<HTMLInputElement>('input[aria-label^="participantRoleTag"]'),
+  ];
+  expect(roles).toHaveLength(3);
+  expect(roles.every((role) => role.maxLength === 40)).toBe(true);
+  const descriptions = [...f.container.querySelectorAll('textarea')];
+  expect(descriptions.map((item) => item.getAttribute('aria-label'))).toEqual([
+    'participantRoleDescription1',
+    'participantRoleDescription2',
+    'participantRoleDescription3',
+  ]);
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')!.set!.call(
+      roles[0],
+      '  설계  ',
+    );
+    roles[0]!.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+  const meeting = await submit(f);
+  expect(meeting?.participants[0]?.role).toBe('설계');
+  expect(meeting?.participants[0]?.prompt).toBe('');
+  expect(meeting?.participants[1]).not.toHaveProperty('role');
 });
 
 it('development roles are explicit and stay editable', async () => {

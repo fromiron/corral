@@ -1,12 +1,28 @@
 import { ApiError } from '@corral/client';
-import { TEAM_SLOTS, TeamPlan } from '@corral/contracts';
-import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/react';
-import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import {
+  hasReviewLoop,
+  TEAM_PATTERNS,
+  TEAM_SLOTS,
+  type TeamPattern,
+  TeamPlan,
+} from '@corral/contracts';
+import { planWithPattern, type TeamWording } from '@corral/core';
+import { draftFromPlan, planFromGoal } from '@corral/react';
+import {
+  Button,
+  fontWeights,
+  Input,
+  KitBadge,
+  Select,
+  Switch,
+  Textarea,
+} from '@corral/react/design-kit';
 import { useNavigate } from '@tanstack/react-router';
-import { useEffect, useId, useRef, useState } from 'react';
+import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
 import { Modal } from './CommandPalette.tsx';
 import { useServices } from './services.tsx';
+import { draftWording, patternName } from './templates.ts';
 
 /**
  * Goal → team draft. The person writes a goal, gets a plan from the local suggestion or
@@ -22,13 +38,15 @@ export function TeamDraftDialog({
   projectId?: string;
 }) {
   const t = useTranslations('TeamDraft');
-  const messages = useMessages() as { TeamDraft: { wording: TeamWording } };
+  const messages = useMessages();
+  const wording = useMemo(() => draftWording(messages), [messages]);
   const { repository, models, live } = useServices();
   const navigate = useNavigate();
   const [goal, setGoal] = useState('');
   const [plan, setPlan] = useState<TeamPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [askFailed, setAskFailed] = useState(false);
   const pendingRequest = useRef<AbortController | null>(null);
   const draftIntent = useRef<{ goal: string; id: string } | null>(null);
   useEffect(() => () => pendingRequest.current?.abort(), []);
@@ -48,7 +66,8 @@ export function TeamDraftDialog({
 
   const suggest = () => {
     setError(null);
-    setPlan(planFromGoal(goal, messages.TeamDraft.wording));
+    setAskFailed(false);
+    setPlan(planFromGoal(goal, wording));
   };
   const ask = async () => {
     if (!models) return;
@@ -64,15 +83,24 @@ export function TeamDraftDialog({
         operationId: draftIntent.current.id,
         signal: controller.signal,
       });
-      if (!controller.signal.aborted) setPlan(result.plan);
+      if (!controller.signal.aborted) {
+        setAskFailed(false);
+        setPlan(result.plan);
+      }
     } catch (failure) {
+      const unusable = failure instanceof ApiError && failure.code === 'MODEL_UNAVAILABLE';
       if (
         failure instanceof ApiError &&
         ['MODEL_UNAVAILABLE', 'CAPABILITY_DENIED'].includes(failure.code)
       )
         draftIntent.current = null;
-      if (!controller.signal.aborted)
-        setError(failure instanceof Error ? failure.message : String(failure));
+      if (!controller.signal.aborted) {
+        setAskFailed(true);
+        // The server's words for an unusable answer are not in the screen's language.
+        setError(
+          unusable ? t('unusable') : failure instanceof Error ? failure.message : String(failure),
+        );
+      }
     } finally {
       setBusy(false);
     }
@@ -85,7 +113,7 @@ export function TeamDraftDialog({
     const draft = draftFromPlan(
       checked.data,
       `team_${globalThis.crypto.randomUUID().slice(0, 8)}`,
-      messages.TeamDraft.wording.labels,
+      wording.labels,
     );
     const saved = await repository.save({
       ...draft,
@@ -101,10 +129,16 @@ export function TeamDraftDialog({
   return (
     <Modal label={t('title')} onClose={onClose}>
       <div className="flex max-h-[76vh] flex-col gap-3 overflow-y-auto p-4">
-        <h2 className="text-base font-semibold">{t('title')}</h2>
+        <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('title')}
+        </h2>
         {!plan ? (
           <>
-            <label htmlFor={goalId} className="text-sm font-medium">
+            <label
+              htmlFor={goalId}
+              className="text-subtitle"
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
               {t('goalLabel')}
             </label>
             <Textarea
@@ -116,50 +150,53 @@ export function TeamDraftDialog({
               onChange={(e) => {
                 pendingRequest.current?.abort();
                 draftIntent.current = null;
+                setAskFailed(false);
                 setGoal(e.target.value);
               }}
               placeholder={t('goalPlaceholder')}
             />
             <div className="flex flex-wrap items-start gap-3">
-              <div className="flex flex-col gap-1">
+              <Button
+                variant="primary"
+                size="compact"
+                type="button"
+                disabled={!goal.trim() || busy}
+                onClick={suggest}
+                className="self-start"
+              >
+                {t('suggest')}
+                <KitBadge size="compact" color="gray">
+                  {t('noModelCall')}
+                </KitBadge>
+              </Button>
+              {live && models ? (
                 <Button
-                  variant="primary"
+                  variant="tertiary"
                   size="compact"
                   type="button"
                   disabled={!goal.trim() || busy}
-                  onClick={suggest}
+                  onClick={() => void ask()}
                   className="self-start"
                 >
-                  {t('suggest')}
+                  {busy ? t('asking') : askFailed ? t('retry') : t('ask')}
+                  <KitBadge size="compact" color="gray">
+                    {t('askCost')}
+                  </KitBadge>
                 </Button>
-                <span className="text-xs text-muted-foreground">{t('suggestHint')}</span>
-              </div>
-              {live && models ? (
-                <div className="flex flex-col gap-1">
-                  <Button
-                    variant="tertiary"
-                    size="compact"
-                    type="button"
-                    disabled={!goal.trim() || busy}
-                    onClick={() => void ask()}
-                    className="self-start"
-                  >
-                    {busy ? t('asking') : t('ask')}
-                  </Button>
-                  <span className="text-xs text-muted-foreground">{t('askHint')}</span>
-                </div>
               ) : null}
             </div>
           </>
         ) : (
-          <PlanEditor plan={plan} onChange={setPlan} />
+          <PlanEditor plan={plan} wording={wording} onChange={setPlan} />
         )}
         {error ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {error}
           </p>
         ) : null}
-        {checked && !checked.success ? <p className="text-xs text-danger">{t('invalid')}</p> : null}
+        {checked && !checked.success ? (
+          <p className="text-caption text-danger">{t('invalid')}</p>
+        ) : null}
         <div className="flex justify-end gap-2 border-t border-line pt-3">
           {plan ? (
             <Button
@@ -193,11 +230,28 @@ export function TeamDraftDialog({
   );
 }
 
-function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPlan): void }) {
+function PlanEditor({
+  plan,
+  wording,
+  onChange,
+}: {
+  plan: TeamPlan;
+  wording: TeamWording;
+  onChange(plan: TeamPlan): void;
+}) {
   const t = useTranslations('TeamDraft');
+  const messages = useMessages();
   const id = useId();
   // The raw text, so a new empty line can be typed; the plan keeps the non-empty lines.
   const [criteria, setCriteria] = useState(plan.criteria.join('\n'));
+  // Criteria typed since the suggestion survive a pattern change; a new suggestion mounts a
+  // new editor, and criteria from a model answer count as not typed.
+  const [criteriaEdited, setCriteriaEdited] = useState(false);
+  const changePattern = (pattern: TeamPattern) => {
+    const next = planWithPattern(plan, pattern, wording, { keepCriteria: criteriaEdited });
+    if (!criteriaEdited) setCriteria(next.criteria.join('\n'));
+    onChange(next);
+  };
   const ordered = TEAM_SLOTS[plan.pattern].map((slot) => plan.roles.find((r) => r.slot === slot));
   const setRole = (index: number, patch: { name?: string; duty?: string }) =>
     onChange({
@@ -208,12 +262,20 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
     });
   return (
     <div className="flex flex-col gap-3">
-      <p className="text-sm">
-        <span className="rounded bg-surface px-2 py-0.5 font-medium">
-          {t(`patterns.${plan.pattern}`)}
-        </span>
-      </p>
-      <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-sm">
+      <div className="flex flex-col gap-1 text-body">
+        <span aria-hidden="true">{t('patternLabel')}</span>
+        <Select<TeamPattern>
+          label={t('patternLabel')}
+          value={plan.pattern}
+          onValueChange={changePattern}
+          options={TEAM_PATTERNS.map((pattern) => ({
+            value: pattern,
+            label: patternName(messages, pattern),
+          }))}
+          className="w-full"
+        />
+      </div>
+      <label htmlFor={`${id}-name`} className="flex flex-col gap-1 text-body">
         {t('nameLabel')}
         <Input
           id={`${id}-name`}
@@ -222,7 +284,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           onChange={(e) => onChange({ ...plan, name: e.target.value })}
         />
       </label>
-      <label htmlFor={`${id}-brief`} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-brief`} className="flex flex-col gap-1 text-body">
         {t('briefLabel')}
         <Textarea
           id={`${id}-brief`}
@@ -233,7 +295,9 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
         />
       </label>
       <fieldset className="flex flex-col gap-2">
-        <legend className="text-sm font-medium">{t('rolesLabel')}</legend>
+        <legend className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('rolesLabel')}
+        </legend>
         {ordered.map((role, index) =>
           role ? (
             <div key={role.slot} className="flex flex-col gap-1 rounded fill-group p-2">
@@ -245,7 +309,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
                 value={role.name}
                 maxLength={40}
                 onChange={(e) => setRole(index, { name: e.target.value })}
-                className="font-medium"
+                style={{ fontVariationSettings: fontWeights.semibold }}
               />
               <label htmlFor={`${id}-duty-${index}`} className="sr-only">
                 {t('roleDuty', { n: index + 1 })}
@@ -261,7 +325,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           ) : null,
         )}
       </fieldset>
-      <label htmlFor={`${id}-criteria`} className="flex flex-col gap-1 text-sm">
+      <label htmlFor={`${id}-criteria`} className="flex flex-col gap-1 text-body">
         {t('criteriaLabel')}
         <Textarea
           id={`${id}-criteria`}
@@ -269,6 +333,7 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           rows={3}
           onChange={(e) => {
             setCriteria(e.target.value);
+            setCriteriaEdited(true);
             onChange({
               ...plan,
               criteria: e.target.value
@@ -279,8 +344,8 @@ function PlanEditor({ plan, onChange }: { plan: TeamPlan; onChange(plan: TeamPla
           }}
         />
       </label>
-      <div className="flex flex-wrap items-center gap-4 text-sm">
-        {plan.pattern !== 'single' ? (
+      <div className="flex flex-wrap items-center gap-4 text-body">
+        {hasReviewLoop(plan.pattern) ? (
           <div className="flex items-center gap-2">
             <span>{t('rounds')}</span>
             <Select

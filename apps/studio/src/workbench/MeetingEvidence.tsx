@@ -114,7 +114,7 @@ export function MeetingEvidencePicker(props: {
       setResults(null);
     });
   return (
-    <div className="flex flex-col gap-1.5 text-xs">
+    <div className="flex flex-col gap-2 text-body">
       <TextAttachmentPicker
         key={`${services.mode}:${services.workspaceId ?? ''}:${props.projectId}`}
         value={props.value}
@@ -127,13 +127,7 @@ export function MeetingEvidencePicker(props: {
         enabled
       />
       <div>
-        <Button
-          type="button"
-          size="compact"
-          variant="ghost"
-          disabled={blocked}
-          onClick={() => void list()}
-        >
+        <Button type="button" variant="ghost" disabled={blocked} onClick={() => void list()}>
           {t('evidenceResults')}
         </Button>
       </div>
@@ -145,7 +139,6 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={artifact.artifactVersionId}
                   type="button"
-                  size="compact"
                   variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseArtifact(results.runId, artifact)}
@@ -157,7 +150,6 @@ export function MeetingEvidencePicker(props: {
                 <Button
                   key={run.runId}
                   type="button"
-                  size="compact"
                   variant="tertiary"
                   disabled={blocked}
                   onClick={() => void chooseRun(run.runId)}
@@ -174,7 +166,7 @@ export function MeetingEvidencePicker(props: {
           {t('evidenceFailed')}
         </p>
       ) : null}
-      <p className="text-muted-foreground">{t('evidenceHint')}</p>
+      <p className="text-caption text-muted-foreground">{t('evidenceHint')}</p>
     </div>
   );
 }

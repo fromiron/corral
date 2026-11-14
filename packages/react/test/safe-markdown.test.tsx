@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { render } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it } from 'vitest';
@@ -89,3 +91,23 @@ it.each(['/* '.repeat(30_000), `"${'\\"'.repeat(30_000)}`])(
     expect(view.querySelectorAll('pre code span')).toHaveLength(1);
   },
 );
+
+it('colors code through the syntax tokens, whose defaults are the code block’s colors before themes', () => {
+  const view = show('```ts\nconst n = 42; // note\nreturn "s";\n```');
+  const span = (text: string) =>
+    [...view.querySelectorAll('pre code span')].find((each) => each.textContent === text);
+  expect(span('// note')?.className).toBe('text-syntax-comment');
+  expect(span('"s"')?.className).toBe('text-syntax-string');
+  expect(span('42')?.className).toBe('text-syntax-number');
+  expect(span('const')?.className).toBe('font-semibold text-syntax-keyword');
+  // A named theme sets these on the root; without one they are the tokens the block used before.
+  const theme = readFileSync(join(import.meta.dirname, '../src/theme.css'), 'utf8');
+  for (const [role, before] of [
+    ['comment', 'muted-foreground'],
+    ['string', 'success'],
+    ['number', 'warning'],
+    ['keyword', 'primary'],
+  ])
+    expect(theme).toContain(`--syntax-${role}: var(--${before});`);
+  expect(theme).toMatch(/--color-syntax-keyword:\s*var\(--syntax-keyword\)/);
+});

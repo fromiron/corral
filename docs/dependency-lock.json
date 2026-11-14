@@ -1,6 +1,6 @@
 {
-  "generatedAt": "2026-11-09T06:32:40.029Z",
-  "node": "v24.14.0",
+  "generatedAt": "2026-11-10T15:34:38.162Z",
+  "node": "v24.19.0",
   "packageManager": "pnpm@10.30.3",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
   "dependencies": [
@@ -180,6 +180,38 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/server"
+      ]
+    },
+    {
+      "name": "@ff-labs/fff-node",
+      "version": "0.11.0",
+      "license": "MIT",
+      "integrity": "sha512-/7fX4kgy28pFZghxuXCAcIPQKb2+VqVirpFcDqMKgrFLTz56tVzHjOkFSdKGq7fa6wRb6eS5Dg9SaX1qyCcKxQ==",
+      "published": "2026-09-21T05:10:54.066Z",
+      "repository": "git+https://github.com/dmtrKovalenko/fff.git",
+      "gitHead": "95fd777c2529fc7b4d7572dabff64cc07268f2c5",
+      "engines": {
+        "node": ">=18.0.0"
+      },
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/server"
+      ]
+    },
+    {
+      "name": "@fontsource-variable/inter",
+      "version": "5.3.0",
+      "license": "OFL-1.1",
+      "integrity": "sha512-OupL48va4JNofb97w6NYeF9S7W/kHNKM0Er8Dem5nqi4jeOLrVJDoE8tZEpnMJmtkvNbB1EIPPwHcdkF6b1oUA==",
+      "published": "2026-07-19T03:50:25.793Z",
+      "repository": "git+https://github.com/fontsource/font-files.git",
+      "gitHead": "02b28c06b126c852a5b966b44aef777ca923f6f6",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
       ]
     },
     {
@@ -1027,6 +1059,21 @@
       "scope": "runtime",
       "usedBy": [
         "@corral/server"
+      ]
+    },
+    {
+      "name": "pretendard",
+      "version": "1.3.9",
+      "license": "OFL-1.1",
+      "integrity": "sha512-PaQAADyLY5v4kYFwkpSJHbSSYIkiriY/1xXw75TKoZ9UQQqeU+tvP05yTdZAWibiIYoo8ZKtRv8PM7w0IaywSw==",
+      "published": "2023-11-05T18:22:53.187Z",
+      "repository": "https://github.com/orioncactus/pretendard",
+      "gitHead": "5c41199ea0024a9e0b2cb31735265056e5472d76",
+      "engines": null,
+      "peerDependencies": null,
+      "scope": "runtime",
+      "usedBy": [
+        "@corral/react"
       ]
     },
     {

@@ -3,16 +3,17 @@ import type { ImageAttachment, TextAttachment } from '@corral/contracts';
 import {
   type CorralSummary,
   createTextAttachment,
+  emptyProjection,
   type RunSummary,
   type SessionEntry,
   type WorkSession,
 } from '@corral/core';
-import { createRunSession } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
+import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { appendComposerAttachment, beginAttachmentCapture } from '../workbench/context/bridge.ts';
 import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
@@ -21,8 +22,11 @@ import { Composer } from './SessionPage.tsx';
 const fixture = vi.hoisted(() => ({
   services: {},
   invalidate: vi.fn(async () => {}),
+  navigate: vi.fn(),
+  href: '/sessions/session?panel=files',
   profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
   roles: [] as { profileId: string; name: string }[],
+  executionStatus: 'active' as string,
   materialsRequest: vi.fn(
     async (_path: string, _body?: unknown): Promise<unknown> => ({ materials: [] }),
   ),
@@ -34,8 +38,11 @@ vi.mock('../projects-api.ts', () => ({
 vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#session">{children}</a>,
-  useNavigate: () => () => {},
-  useRouter: () => ({ invalidate: fixture.invalidate }),
+  useNavigate: () => fixture.navigate,
+  useRouter: () => ({
+    invalidate: fixture.invalidate,
+    state: { location: { href: fixture.href } },
+  }),
 }));
 vi.mock('../commandRegistry.ts', () => ({
   useRegisterCommands() {},
@@ -56,9 +63,13 @@ vi.mock('../workbench/useModels.ts', () => ({
   useTeamRoles: () => fixture.roles,
 }));
 vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
-vi.mock('../workbench/widgets/ChatWidgets.tsx', () => ({
-  ComposerDock: () => null,
-  ComposerPlan: () => <div data-testid="composer-plan-fixture">Work plan</div>,
+// The activity bar has its own tests (ComposerActivity.test.tsx); here it only holds its place.
+vi.mock('../workbench/session/ComposerActivity.tsx', () => ({
+  ComposerActivity: () => (
+    <div data-testid="activity-bar">
+      <div data-testid="composer-plan-fixture">Work plan</div>
+    </div>
+  ),
 }));
 vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
 vi.mock('../workbench/ImageAttachments.tsx', () => ({
@@ -74,6 +85,7 @@ afterEach(async () => {
   vi.clearAllMocks();
   fixture.profiles = null;
   fixture.roles = [];
+  fixture.executionStatus = 'active';
   fixture.materialsRequest.mockReset();
   fixture.materialsRequest.mockResolvedValue({ materials: [] });
 });
@@ -143,6 +155,10 @@ async function mount(
   selectedRunId: string | null = null,
   mode: 'server' | 'browser' = 'server',
   runControlsOwnConfirmation = false,
+  {
+    session: change,
+    ...extra
+  }: { home?: boolean; corrals?: CorralSummary[]; session?: Partial<WorkSession> } = {},
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
@@ -180,7 +196,9 @@ async function mount(
     createdAt: '2026-10-21T00:00:00Z',
     updatedAt: '2026-10-21T00:00:00Z',
     archivedAt: null,
+    autoStart: true,
     entries: [],
+    ...change,
   };
   let persistedQueue = initialQueue;
   const repository = {
@@ -194,6 +212,7 @@ async function mount(
       session,
     })),
     updateSessionEntry: vi.fn(async () => ({ ok: true, session })),
+    updateSession: vi.fn(async (_sessionId: string, _change: unknown) => ({ ok: true, session })),
   };
   const transport = {
     sendCommand: vi.fn(async (_command: unknown) => ({ error: null })),
@@ -216,31 +235,65 @@ async function mount(
       };
     }),
   };
-  const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
   const startAuto = vi.fn(async (_request: unknown, _signal?: AbortSignal) => ({
     runId: 'started',
     receipt: { error: null },
     autoRoute: null,
   }));
-  const runSessions = new Map<string, ReturnType<typeof createRunSession>>();
+  // The live run's projection the composer reads its targets from (composer-flow.md "계약"):
+  // the writer writing the answer, and a reviewer working beside it.
+  const runSessions = new Map<string, StoreApi<Record<string, unknown>>>();
+  const runFor = vi.fn((runId: string) => {
+    const existing = runSessions.get(runId);
+    if (existing) return existing;
+    const projection = emptyProjection(runId);
+    projection.status = 'running';
+    projection.executionOrder = ['execution', 'reviewer'];
+    projection.executions.execution = {
+      executionId: 'execution',
+      nodeId: 'writer',
+      taskId: 'task_execution',
+      attemptNo: 1,
+      status: fixture.executionStatus,
+      waitingOn: null,
+    } as never;
+    projection.executions.reviewer = {
+      executionId: 'reviewer',
+      nodeId: 'review',
+      taskId: 'task_reviewer',
+      attemptNo: 1,
+      status: fixture.executionStatus,
+      waitingOn: null,
+    } as never;
+    const team = linearCorral(['writer', 'review']);
+    const created = createStore<Record<string, unknown>>(() => ({
+      runId,
+      projection,
+      definition: {
+        ...team,
+        nodes: team.nodes.map((node) => ({
+          ...node,
+          label: node.id === 'writer' ? 'Writer' : node.id === 'review' ? 'Review' : node.label,
+        })),
+      },
+      streamError: null,
+      missingRunId: null,
+      open: async () => {},
+    }));
+    runSessions.set(runId, created);
+    return created;
+  });
   fixture.services = {
     repository,
     transport,
-    runFor: (runId: string) => {
-      const existing = runSessions.get(runId);
-      if (existing) return existing;
-      const created = createRunSession(transport as never);
-      runSessions.set(runId, created);
-      return created;
-    },
+    runFor,
     retainRun: () => () => {},
     startAuto,
     mode,
     live: false,
     workspaceId: 'host',
     workspaces: null,
-    startExplain,
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -262,6 +315,7 @@ async function mount(
             onChange={() => {}}
             reference={null}
             onReferenceUsed={() => {}}
+            {...extra}
           />
         </IntlProvider>,
       ),
@@ -280,7 +334,16 @@ async function mount(
     expect(button?.disabled, label).toBe(false);
     await act(async () => button?.click());
   };
-  return { container, session, repository, transport, startAuto, startExplain, render, click };
+  return {
+    container,
+    session,
+    repository,
+    transport,
+    runFor,
+    startAuto,
+    render,
+    click,
+  };
 }
 
 it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
@@ -291,7 +354,7 @@ it('exposes the demo model picker as simulation without pretending a model is co
   expect(document.querySelector('[role="switch"]')).toBeNull();
 });
 
-it('queues a captured source, consumes its draft attachment, and starts that snapshot without consuming next-only images or a later draft', async () => {
+it('queues a captured source with the draft images, consumes both, and starts that snapshot without consuming a later draft', async () => {
   const sessionId = 'queue_capture';
   writeComposerDraft(sessionId, {
     text: 'Keep my typed request',
@@ -321,10 +384,12 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
     state: 'queued',
     text: 'Keep my typed request',
     attachments: [captured],
+    // A next request carries its images (features/composer-flow.md "합류 대상").
+    images: [image],
   });
-  expect(saved).not.toHaveProperty('images');
   expect(f.startAuto).not.toHaveBeenCalled();
-  expect(readComposerDraft(sessionId)).toMatchObject({ text: '', images: [image] });
+  expect(readComposerDraft(sessionId)).toMatchObject({ text: '' });
+  expect(readComposerDraft(sessionId).images).toBeUndefined();
   expect(readComposerDraft(sessionId).attachments).toBeUndefined();
 
   await f.render(null, [{ ...queuedEntry(captured), ...saved }]);
@@ -341,7 +406,7 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
   expect(f.startAuto).toHaveBeenCalledWith(
     expect.objectContaining({
       sessionId,
-      references: [captured],
+      references: [captured, image],
       brief: 'Keep my typed request',
       team: { corralId: 'team' },
     }),
@@ -352,7 +417,8 @@ it('queues a captured source, consumes its draft attachment, and starts that sna
     'queued',
     expect.objectContaining({ state: 'started', runId: 'started' }),
   );
-  expect(readComposerDraft(sessionId)).toMatchObject({ attachments: [later], images: [image] });
+  expect(readComposerDraft(sessionId)).toMatchObject({ attachments: [later] });
+  expect(readComposerDraft(sessionId).images).toBeUndefined();
 });
 
 it('retries an uncertain queued snapshot with the same command identity and includes provenance in changed request identity', async () => {
@@ -378,7 +444,7 @@ it('retries an uncertain queued snapshot with the same command identity and incl
   expect(edited.commandId).not.toBe(first.commandId);
 });
 
-it('an explain draft with captured context requires an explicit follow-up choice before sending', async () => {
+it('an explain draft from an earlier version is sent as a next request with its captured context', async () => {
   const sessionId = 'context_explain';
   writeComposerDraft(sessionId, {
     text: 'Explain this capture',
@@ -394,23 +460,20 @@ it('an explain draft with captured context requires an explicit follow-up choice
     [],
     [{ ...active, runId: 'finished', sessionId, status: 'succeeded' }],
   );
-  const send = f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
-  expect(send?.disabled).toBe(true);
+  // A stored intent other than an instruction is not fixed on the draft: nothing blocks it.
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')).toBeNull();
   expect(readComposerDraft(sessionId)).toMatchObject({
     text: 'Explain this capture',
     attachments: [captured],
   });
-  expect(f.startExplain).not.toHaveBeenCalled();
-  await f.click('Send as a follow-up');
   await f.click('Send');
-  expect(f.startExplain).not.toHaveBeenCalled();
   expect(f.startAuto).toHaveBeenCalledWith(
     expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
     expect.anything(),
   );
 });
 
-it('leaves whole-run stop to the top bar while composing a queued next request in the single input', async () => {
+it('leaves whole-run stop to the activity bar while composing a queued next request in the single input', async () => {
   const sessionId = 'stop_while_typing';
   writeComposerDraft(sessionId, {
     text: 'After this, summarize the result',
@@ -425,10 +488,12 @@ it('leaves whole-run stop to the top bar while composing a queued next request i
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
     'After this, summarize the result',
   );
-  // The live run's Cancel sits once in the top bar's run controls (DockRunControls), so the
-  // composer does not repeat it beside the draft.
-  const stops = [...f.container.querySelectorAll('button')].filter((button) =>
-    button.textContent?.includes(messages.Reins.cancelRun),
+  // The live run's Stop sits in the activity bar's panel, and in Send's place only while
+  // nothing is written: beside a draft, Send stays and no second Stop or Cancel appears.
+  const stops = [...f.container.querySelectorAll('button')].filter(
+    (button) =>
+      button.textContent?.includes(messages.Reins.cancelRun) ||
+      button.getAttribute('aria-label') === messages.Activity.stop,
   );
   expect(stops).toHaveLength(0);
   expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
@@ -466,6 +531,23 @@ it('offers project references in the unified add menu instead of a second toolba
   await act(async () => reference?.click());
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe('@');
   expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
+});
+
+it('names the add button in a tooltip, as the row’s other icon buttons are', async () => {
+  const f = await mount('add_tooltip', null);
+  const add = f.container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Composer.attachmentActions}"]`,
+  );
+  expect(add).not.toBeNull();
+  await act(async () => {
+    add?.dispatchEvent(new PointerEvent('pointerenter', { bubbles: true }));
+    add?.dispatchEvent(new MouseEvent('mouseenter'));
+    add?.dispatchEvent(new PointerEvent('pointermove', { bubbles: true }));
+    add?.dispatchEvent(new MouseEvent('mousemove', { bubbles: true }));
+  });
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 1200)));
+  const tooltip = document.querySelector('[role="tooltip"]');
+  expect(tooltip?.textContent).toBe(messages.Composer.attachmentActions);
 });
 
 it('removes a whole-file token without damaging its range or longer paths', async () => {
@@ -546,7 +628,7 @@ it('removes one legacy same-name result while preserving the other exact draft r
   ).not.toBeNull();
 });
 
-it('names the viewed and active runs and the queue destination without changing the draft intent', async () => {
+it('names the viewed and active runs and that the request waits, without changing the draft', async () => {
   const sessionId = 'view_old_run';
   const current = { ...active, runId: 'second', sessionId };
   const previous = { ...current, runId: 'first', status: 'cancelled' as const };
@@ -561,10 +643,12 @@ it('names the viewed and active runs and the queue destination without changing 
   expect(f.container.querySelector('[data-testid="viewed-run-warning"]')?.textContent).toContain(
     'Viewing Run #1 while Run #2 is active',
   );
+  // A next request is picked for one send only, so the stored draft is not fixed to it: the
+  // send key joins the active run, never the one being viewed (composer-flow.md "합류 대상").
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: next run in this session · queue',
+    'Send to: Run #2 · Writer · Join',
   );
-  expect(readComposerDraft(sessionId).intent).toBe('queue');
+  expect(readComposerDraft(sessionId).text).toBe('Later request');
 });
 
 it('names the selected run and role for an instruction', async () => {
@@ -577,21 +661,22 @@ it('names the selected run and role for an instruction', async () => {
     [{ ...current, runId: 'first', status: 'cancelled' }, current],
     'second',
   );
+  // While a run goes, Send joins the execution writing the answer (composer-flow.md "전송"):
+  // no send mode to choose first.
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: next run in this session · queue',
+    'Send to: Run #2 · Writer · Join',
   );
-  await f.click(messages.Sessions.intentLabel);
-  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
-  );
-  expect(instruction).toBeDefined();
-  await act(async () => instruction?.click());
-  expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: Run #2 · Writer · #1 · instruction',
-  );
+  expect(
+    f.container.querySelector('[data-slot="composer-target"]')?.getAttribute('aria-label'),
+  ).toBe(messages.Composer.targetLabel.replace('{name}', 'Writer'));
+  expect(
+    [...f.container.querySelectorAll('button')].some(
+      (node) => node.getAttribute('aria-label') === messages.Sessions.intentLabel,
+    ),
+  ).toBe(false);
 });
 
-it('keeps one plan and the same draft input when explicitly switching from queue to instruction', async () => {
+it('keeps one plan and the same draft input when explicitly choosing the target', async () => {
   const sessionId = 'compact_instruction';
   writeComposerDraft(sessionId, {
     text: 'Keep this request',
@@ -605,12 +690,7 @@ it('keeps one plan and the same draft input when explicitly switching from queue
   expect(input).not.toBeNull();
   input?.focus();
   input?.setSelectionRange(3, 8);
-  await f.click(messages.Sessions.intentLabel);
-  const instruction = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
-    (option) => option.textContent?.includes(messages.Sessions.intentShort.steer),
-  );
-  expect(instruction).toBeDefined();
-  await act(async () => instruction?.click());
+  await chooseTarget(f.container, 'Writer');
   expect(f.container.querySelector('textarea')).toBe(input);
   expect(input?.value).toBe('Keep this request');
   expect([input?.selectionStart, input?.selectionEnd]).toEqual([3, 8]);
@@ -619,9 +699,23 @@ it('keeps one plan and the same draft input when explicitly switching from queue
   expect(f.container.textContent).not.toContain(messages.Reins.noHistory);
   expect(f.container.textContent).not.toContain(messages.Reins.deliveredNote);
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
-    'Writer · #1 · instruction',
+    'Writer · Join',
   );
+  // Picked with text in the box, the target is fixed on the draft.
+  expect(readComposerDraft(sessionId)).toMatchObject({ intent: 'steer', target: 'execution' });
 });
+
+/** Picks the instruction's target in the tool line's target menu. */
+async function chooseTarget(container: HTMLElement, name: string) {
+  const trigger = container.querySelector<HTMLButtonElement>('[data-slot="composer-target"]');
+  expect(trigger).not.toBeNull();
+  await act(async () => trigger?.click());
+  const item = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((node) =>
+    node.textContent?.includes(name),
+  );
+  expect(item, document.body.textContent ?? '').toBeDefined();
+  await act(async () => item?.click());
+}
 
 it.each(['cancelled', 'interrupted', 'failed'] as const)(
   'retries a %s request as a new entry without consuming the current draft or old entry',
@@ -647,6 +741,7 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
       intent: 'next' as const,
       state: 'started' as const,
       runId: 'cancelled',
+      references: [{ kind: 'folder' as const, path: 'docs' }],
       images: [image],
       permissionMode: 'ask' as const,
     };
@@ -661,13 +756,14 @@ it.each(['cancelled', 'interrupted', 'failed'] as const)(
     expect(f.startAuto).toHaveBeenCalledOnce();
     expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
       brief: entry.text,
-      references: [captured, image],
+      references: [{ kind: 'folder', path: 'docs' }, captured, image],
     });
     expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
       sessionId,
       expect.objectContaining({
         intent: 'next',
         text: entry.text,
+        references: [{ kind: 'folder', path: 'docs' }],
         attachments: [captured],
         images: [image],
         runId: 'started',
@@ -773,7 +869,9 @@ it('a late directive lookup cannot resend after another run starts', async () =>
   expect(f.startAuto).not.toHaveBeenCalled();
 });
 
-it.each(['retry', 'queue', 'auto'] as const)(
+// The page starts a saved request only when the person does (Start now, or again after a failed
+// run); the server starts the queue when a run ends (Composer.send.test.tsx).
+it.each(['retry', 'queue'] as const)(
   '%s starts a saved request once despite an unrelated stale instruction draft',
   async (path) => {
     const sessionId = `stale_steer_${path}`;
@@ -786,19 +884,9 @@ it.each(['retry', 'queue', 'auto'] as const)(
       images: [image],
     };
     writeComposerDraft(sessionId, draft);
-    const run: RunSummary = {
-      ...active,
-      sessionId,
-      status: path === 'auto' ? 'running' : 'cancelled',
-    };
+    const run: RunSummary = { ...active, sessionId, status: 'cancelled' };
     const queued = queuedEntry(captured);
-    const f = await mount(
-      sessionId,
-      path === 'auto' ? run : null,
-      path === 'retry' ? [] : [queued],
-      [run],
-      run.runId,
-    );
+    const f = await mount(sessionId, null, path === 'retry' ? [] : [queued], [run], run.runId);
     if (path === 'retry') {
       f.session.entries.push({
         ...queued,
@@ -813,15 +901,8 @@ it.each(['retry', 'queue', 'auto'] as const)(
           new CustomEvent('corral:resend-request', { detail: { sessionId, entryId: 'retry' } }),
         ),
       );
-    } else if (path === 'queue') {
-      await f.click('Start now');
     } else {
-      const automatic = f.container.querySelector<HTMLButtonElement>('[role="switch"]');
-      expect(automatic).not.toBeNull();
-      await act(async () => automatic?.click());
-      expect(automatic?.getAttribute('aria-checked')).toBe('true');
-      run.status = 'succeeded';
-      await f.render(null, [queued]);
+      await f.click('Start now');
     }
     expect(f.startAuto).toHaveBeenCalledOnce();
     expect(f.startAuto.mock.calls[0]?.[0]).toMatchObject({
@@ -1002,7 +1083,9 @@ it('browsing an older run does not change the active instruction destination', a
     references: [],
   });
   const f = await mount(sessionId, current, [], [previous, current], 'first');
-  expect(f.transport.getSnapshot).toHaveBeenCalledWith('second');
+  // The targets are the going run's, read from its live projection.
+  expect(f.runFor).toHaveBeenCalledWith('second');
+  expect(f.runFor).not.toHaveBeenCalledWith('first');
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
     'Run #2',
   );
@@ -1045,3 +1128,368 @@ it('two independent composers use one queued identity and a conflicting loser ca
   await second.click('Start now');
   expect(second.startAuto).toHaveBeenCalledTimes(1);
 });
+
+it('an empty session suggests up to four saved teams, and a chip sets the team through the existing selection', async () => {
+  const corrals = Array.from({ length: 5 }, (_, index) => ({
+    ...team,
+    corralId: `team_${index + 1}`,
+    name: `Team ${index + 1}`,
+  }));
+  const f = await mount('home_teams', null, [], [], null, 'server', false, {
+    home: true,
+    corrals,
+  });
+  const list = f.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`);
+  const chips = [...(list?.querySelectorAll('button') ?? [])];
+  expect(chips.map((chip) => chip.textContent)).toEqual(
+    ['Team 1', 'Team 2', 'Team 3', 'Team 4'].map((name) =>
+      messages.Sessions.startWithTeam.replace('{team}', name),
+    ),
+  );
+  await f.click(messages.Sessions.startWithTeam.replace('{team}', 'Team 2'));
+  expect(f.repository.updateSession).toHaveBeenCalledWith('home_teams', {
+    corralId: 'team_2',
+    expectedRevision: 1,
+  });
+  expect(fixture.invalidate).toHaveBeenCalled();
+  // A suggestion never writes a prompt.
+  expect(f.container.querySelector('textarea')?.value).toBe('');
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it('shows no start suggestions without saved teams or outside the empty session', async () => {
+  const empty = await mount('home_none', null, [], [], null, 'server', false, {
+    home: true,
+    corrals: [],
+  });
+  expect(
+    empty.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
+  ).toBeNull();
+  const busy = await mount('home_later', null, [], [], null, 'server', false, { home: false });
+  expect(
+    busy.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
+  ).toBeNull();
+});
+
+it('editing a queued request puts its text back in the composer and dismisses the entry', async () => {
+  const sessionId = 'queue_edit';
+  const f = await mount(sessionId, active, [queuedEntry(captured)]);
+  await f.click(`Edit queued request: ${queuedEntry(captured).text}`);
+  expect(
+    f.container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')?.value,
+  ).toBe('Use the captured source');
+  expect(f.repository.updateSessionEntry).toHaveBeenCalledWith(sessionId, 'queued', {
+    state: 'dismissed',
+    detail: 'edited',
+  });
+  expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+});
+
+it('shows the send keys on the tool line, never a send mode to choose first', async () => {
+  const keys = (container: HTMLElement) =>
+    container.querySelector('[data-slot="composer-keys"]')?.textContent ?? '';
+  const sessionId = 'idle_intent';
+  const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+  const f = await mount(sessionId, null, [], [finished]);
+  const line = f.container.querySelector('[data-slot="composer-notes"]');
+  // Idle, every key sends a new request: the status line names nothing and the keys say Send.
+  expect(line?.textContent).not.toContain(messages.Sessions.intent.next);
+  expect(keys(f.container)).toContain(messages.Composer.keyHint.new);
+  expect(f.container.querySelector('[data-slot="composer-target"]')).toBeNull();
+  // A running target: the keys join, interrupt and queue, and the target is named.
+  const running = await mount('two_modes', { ...active, sessionId: 'two_modes' });
+  for (const kind of ['join', 'interrupt', 'queue'] as const)
+    expect(keys(running.container)).toContain(messages.Composer.keyHint[kind]);
+  expect(running.container.querySelector('[data-slot="composer-target"]')).not.toBeNull();
+  for (const node of [f.container, running.container])
+    expect(
+      [...node.querySelectorAll('button')].some(
+        (button) => button.getAttribute('aria-label') === messages.Sessions.intentLabel,
+      ),
+    ).toBe(false);
+});
+
+it("the team chip's popup names the selected saved team's revision", async () => {
+  const f = await mount('team_revision', null);
+  await f.click(messages.Composer.teamLabel);
+  const selected = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (option) => option.getAttribute('aria-selected') === 'true',
+  );
+  expect(selected?.textContent).toContain('Team');
+  expect(selected?.textContent).toContain('r1');
+});
+
+it("the team picker's Create or manage opens the library's teams for this project and comes back", async () => {
+  fixture.href = '/sessions/manage_teams?panel=files';
+  const f = await mount('manage_teams', null);
+  await f.click(messages.Composer.teamLabel);
+  const manage = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((option) =>
+    option.textContent?.includes(messages.Composer.manageCorrals),
+  );
+  expect(manage).toBeDefined();
+  await act(async () => manage?.click());
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/library/teams',
+    search: { project: 'project', returnTo: '/sessions/manage_teams?panel=files' },
+  });
+});
+
+const destination = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-testid="composer-destination"]');
+const describedBy = (container: HTMLElement) =>
+  (
+    container
+      .querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]')
+      ?.getAttribute('aria-describedby') ?? ''
+  ).split(' ');
+
+it('a new run in this session has no visible destination line; the input describes it', async () => {
+  const sessionId = 'quiet_destination';
+  const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+  const f = await mount(sessionId, null, [], [finished]);
+  const line = destination(f.container);
+  expect(line?.textContent).toBe(messages.Composer.destination.next);
+  expect(line?.classList.contains('sr-only')).toBe(true);
+  expect(line?.id).toBeTruthy();
+  expect(describedBy(f.container)).toContain(line?.id);
+});
+
+it('an instruction destination is said by the target on the tool line and describes the input', async () => {
+  const sessionId = 'shown_destination_steer';
+  const current = { ...active, sessionId };
+  writeComposerDraft(sessionId, {
+    text: 'Later',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [current]);
+  const line = destination(f.container);
+  const input = f.container.querySelector('textarea[aria-label="Request"]');
+  expect(line?.textContent).toContain('Join');
+  // The name is shown once, on the target; the line only describes the input.
+  expect(line?.classList.contains('sr-only')).toBe(true);
+  expect(input).not.toBeNull();
+  expect(f.container.querySelector('[data-slot="composer-target"]')?.textContent).toContain(
+    'Writer',
+  );
+  expect(describedBy(f.container)).toContain(line?.id);
+});
+
+it('a next request that will wait is said by the input description only', async () => {
+  // A run goes and nothing in it takes an instruction: every key queues.
+  fixture.executionStatus = 'succeeded';
+  const sessionId = 'quiet_destination_queue';
+  const current = { ...active, sessionId };
+  writeComposerDraft(sessionId, {
+    text: 'Later',
+    intent: 'queue',
+    target: null,
+    targetLabel: null,
+    references: [],
+  });
+  const f = await mount(sessionId, current, [], [current]);
+  const line = destination(f.container);
+  expect(line?.textContent).toBe(messages.Composer.destination.queue);
+  expect(line?.classList.contains('sr-only')).toBe(true);
+  expect(describedBy(f.container)).toContain(line?.id);
+  expect(f.container.querySelector('[data-slot="composer-notes"]')?.textContent).not.toContain(
+    'Queue',
+  );
+});
+
+it('an instruction whose target ended shows that it cannot be delivered', async () => {
+  const sessionId = 'unavailable_destination';
+  writeComposerDraft(sessionId, {
+    text: 'Too late',
+    intent: 'steer',
+    target: 'execution',
+    targetLabel: 'Writer',
+    references: [],
+  });
+  const ended = { ...active, runId: 'ended', sessionId, status: 'cancelled' as const };
+  const f = await mount(sessionId, null, [], [ended]);
+  const line = destination(f.container);
+  expect(line?.textContent).toContain('target unavailable');
+  expect(describedBy(f.container)).toContain(line?.id);
+  // The blocked instruction is said once, where it can be sent another way.
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')?.textContent).toContain(
+    messages.Composer.blocked.run,
+  );
+});
+
+/** Types into the request box as a person does. */
+async function type(container: HTMLElement, value: string) {
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Request"]');
+  expect(input).not.toBeNull();
+  await act(async () => {
+    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+      input,
+      value,
+    );
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+it('a draft typed during a run without a picked target starts a run once the run ends', async () => {
+  const sessionId = 'typed_during_run';
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun]);
+  await type(f.container, 'After this run, write the summary');
+  // While the run goes, Send joins it; nothing is fixed on the draft.
+  expect(destination(f.container)?.textContent).toBe('Send to: Run #1 · Writer · Join');
+  // The run ends while the draft waits in the box.
+  await f.render(null, []);
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')).toBeNull();
+  expect(destination(f.container)?.textContent).toBe(messages.Composer.destination.next);
+  await f.click('Send');
+  expect(f.startAuto).toHaveBeenCalledWith(
+    expect.objectContaining({ brief: 'After this run, write the summary' }),
+    expect.anything(),
+  );
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    sessionId,
+    expect.objectContaining({ intent: 'next', state: 'started', runId: 'started' }),
+  );
+});
+
+it('a draft typed while idle and sent after a run started joins that run', async () => {
+  const sessionId = 'typed_while_idle';
+  const f = await mount(sessionId, null);
+  await type(f.container, 'Then check the docs');
+  expect(destination(f.container)?.textContent).toBe(messages.Composer.destination.next);
+  await f.render({ ...active, sessionId }, []);
+  await f.click('Send');
+  expect(f.startAuto).not.toHaveBeenCalled();
+  expect(f.transport.sendCommand).toHaveBeenCalledWith(
+    expect.objectContaining({
+      type: 'steer',
+      payload: expect.objectContaining({ text: 'Then check the docs', delivery: 'next_request' }),
+    }),
+  );
+});
+
+it('a draft typed while idle waits behind a run of another session', async () => {
+  const sessionId = 'typed_while_other';
+  const f = await mount(sessionId, null);
+  await type(f.container, 'Then check the docs');
+  await f.render(active, []);
+  await f.click('Send');
+  expect(f.startAuto).not.toHaveBeenCalled();
+  expect(f.repository.addSessionEntry).toHaveBeenCalledWith(
+    sessionId,
+    expect.objectContaining({ intent: 'queue', state: 'queued', text: 'Then check the docs' }),
+  );
+});
+
+it('an instruction typed for a run that then ends stays blocked, and its draft is kept', async () => {
+  const sessionId = 'instruction_run_ended';
+  const ownRun = { ...active, sessionId };
+  const f = await mount(sessionId, ownRun, [], [ownRun]);
+  await chooseTarget(f.container, 'Writer');
+  await type(f.container, 'Use shorter sentences');
+  await f.render(null, []);
+  expect(f.container.querySelector('[data-testid="intent-blocked"]')?.textContent).toContain(
+    messages.Composer.blocked.run,
+  );
+  const send = f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
+  expect(send?.disabled).toBe(true);
+  expect(f.container.querySelector('textarea')?.value).toBe('Use shorter sentences');
+  expect(readComposerDraft(sessionId)).toMatchObject({
+    text: 'Use shorter sentences',
+    intent: 'steer',
+    target: 'execution',
+  });
+  expect(f.transport.sendCommand).not.toHaveBeenCalled();
+  expect(f.startAuto).not.toHaveBeenCalled();
+});
+
+it.each(['next', 'queue'] as const)(
+  'nothing but the session totals sits under the input (%s)',
+  async (intent) => {
+    const sessionId = `quiet_footer_${intent}`;
+    const finished = { ...active, runId: 'finished', sessionId, status: 'succeeded' as const };
+    const current = { ...active, sessionId };
+    const f =
+      intent === 'next'
+        ? await mount(sessionId, null, [], [finished])
+        : await mount(sessionId, current, [], [finished, current]);
+    await act(async () => {});
+    const footer = f.container.querySelector<HTMLElement>('[data-testid="composer-footer"]');
+    expect(footer).not.toBeNull();
+    const text = footer?.textContent ?? '';
+    for (const sentence of [
+      'Continues this conversation',
+      messages.Sessions.intentHint.queue,
+      messages.Sessions.intentHint.steer,
+      messages.Sessions.modeLive,
+    ])
+      expect(text).not.toContain(sentence);
+    expect(footer?.querySelector('[data-testid="pre-run"]')).toBeNull();
+    // The footer holds the totals alone.
+    expect(text).toBe(footer?.querySelector('[data-testid="composer-stats"]')?.textContent ?? '');
+  },
+);
+
+// workbench.md: the header's connection word alone says the runs are simulated; the totals
+// under the input do not say it again.
+it('says nothing of the simulation under the input, on a server or in the demo', async () => {
+  const server = await mount('environment_server', null);
+  expect(server.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
+  const footer = server.container.querySelector('[data-testid="composer-footer"]');
+  expect(footer?.textContent ?? '').not.toContain(messages.Sessions.modeMock);
+  const demo = await mount('environment_demo', null, [], [], null, 'browser');
+  expect(demo.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
+  expect(demo.container.textContent).toContain(messages.Composer.modelPicker.demo);
+});
+
+it('keeps what the next run starts with for assistive tech, not as a line under the input', async () => {
+  const f = await mount('pre_run_state', null);
+  await act(async () => {});
+  const summary = f.container.querySelector<HTMLElement>('[data-testid="pre-run"]');
+  expect(summary?.textContent).toContain('r1');
+  expect(summary?.classList.contains('sr-only')).toBe(true);
+  expect(summary?.closest('[data-testid="composer-footer"]')).toBeNull();
+});
+
+it.each(['next', 'queue'] as const)(
+  'sends no completion criteria with a %s request; the server reads them from the session',
+  async (intent) => {
+    const sessionId = `done_when_${intent}`;
+    const criterion = 'The build passes without warnings';
+    writeComposerDraft(sessionId, {
+      text: 'Fix the build',
+      intent,
+      target: null,
+      targetLabel: null,
+      references: [],
+    });
+    const f =
+      intent === 'next'
+        ? await mount(sessionId, null, [], [], null, 'server', false, {
+            session: { criteria: [criterion] },
+          })
+        : await mount(sessionId, active, [], [], null, 'server', false, {
+            session: { criteria: [criterion] },
+          });
+    await f.click('Send');
+    if (intent === 'queue') {
+      expect(f.repository.addSessionEntry).toHaveBeenCalledOnce();
+      const saved = f.repository.addSessionEntry.mock.calls[0]?.[1];
+      await f.render(null, [{ ...queuedEntry(captured), attachments: undefined, ...saved }]);
+      await f.click('Start now');
+    }
+    expect(f.startAuto).toHaveBeenCalledOnce();
+    const sent = JSON.stringify([
+      f.startAuto.mock.calls,
+      f.repository.addSessionEntry.mock.calls,
+      f.repository.updateSessionEntry.mock.calls,
+      f.repository.updateSession.mock.calls,
+      f.transport.startRun.mock.calls,
+      f.transport.sendCommand.mock.calls,
+    ]);
+    expect(sent).not.toContain('"criteria"');
+    expect(sent).not.toContain(criterion);
+  },
+);

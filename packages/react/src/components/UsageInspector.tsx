@@ -11,10 +11,17 @@ import {
   KitCardContent,
   KitCardHeader,
   KitCardTitle,
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
 } from '../design-kit/index.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
+import { usageByAgent } from '../run/usage-by-agent.ts';
 
 // Runs have no usage budget (product contract §9): this shows what was used, never a limit.
 
@@ -22,9 +29,12 @@ import type { RunSessionStore } from '../run/session.ts';
 export function UsageInspector({
   session,
   prices,
+  headed = true,
 }: {
   session: RunSessionStore;
   prices?: ModelPrices | undefined;
+  /** Show the heading. Inside a tab whose label already says Usage, the region keeps the name. */
+  headed?: boolean;
 }) {
   const t = useTranslations('Usage');
   const format = useFormatter();
@@ -65,6 +75,10 @@ export function UsageInspector({
   const roleOf = (executionId: string) =>
     definition.nodes.find((node) => node.id === projection.executions[executionId]?.nodeId)
       ?.label ?? t('unknownRole');
+  const labelOf = (nodeId: string) =>
+    definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+  // Each agent's share, counted as the totals above are, so the rows add up to them.
+  const agents = usageByAgent(projection);
   const calls = Object.values(projection.modelCalls);
   const others = Object.values(projection.usage);
   const imageNo = new Map(
@@ -74,12 +88,17 @@ export function UsageInspector({
     (id) => projection.executions[id]?.parentExecutionId,
   ).length;
   return (
-    <KitCard role="region" aria-labelledby={headingId}>
-      <KitCardHeader>
-        <h3 id={headingId}>
-          <KitCardTitle>{t('heading')}</KitCardTitle>
-        </h3>
-      </KitCardHeader>
+    <KitCard
+      role="region"
+      {...(headed ? { 'aria-labelledby': headingId } : { 'aria-label': t('heading') })}
+    >
+      {headed ? (
+        <KitCardHeader>
+          <h3 id={headingId}>
+            <KitCardTitle>{t('heading')}</KitCardTitle>
+          </h3>
+        </KitCardHeader>
+      ) : null}
       <KitCardContent className="flex flex-col gap-3">
         <dl className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-3 gap-y-1">
           <dt>{t('outputTokens')}</dt>
@@ -119,6 +138,38 @@ export function UsageInspector({
           <p data-testid="cost-estimate" className="text-muted-foreground">
             {costText()}
           </p>
+        ) : null}
+        {agents.length ? (
+          <Table aria-label={t('byAgent')}>
+            <TableHeader>
+              <TableRow>
+                <TableHead>{t('agent')}</TableHead>
+                <TableHead className="text-right">{t('reportedOutput')}</TableHead>
+                <TableHead className="text-right">{t('requestCount')}</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {agents.map((row, index) => (
+                <TableRow
+                  key={row.nodeId ?? ''}
+                  index={index}
+                  data-usage-agent={row.nodeId ?? undefined}
+                >
+                  <TableCell className="text-foreground">
+                    {row.nodeId === null ? t('outsideAgents') : labelOf(row.nodeId)}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">
+                    {row.reported
+                      ? t('tokens', { count: row.totals.outputTokens })
+                      : row.totals.inFlight > 0
+                        ? t('running')
+                        : t('noInformation')}
+                  </TableCell>
+                  <TableCell className="text-right tabular-nums">{row.totals.requests}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         ) : null}
         {calls.length + others.length > 0 ? (
           <KitAccordion type="multiple" className="w-full">

@@ -5,11 +5,34 @@ import type {
   TextAttachment,
 } from '@corral/contracts';
 import { createTextAttachment } from '@corral/core';
-import { Button, Checkbox } from '@corral/react/design-kit';
+import { Button, Checkbox, fontWeights } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
+
+/**
+ * The line numbers the diff shows on a part's changed lines: a removed line by its number in
+ * the old file, an added one by its number in the new file. Null for a part without a header.
+ */
+export function partLines(patch: string): { start: number; end: number } | null {
+  const [header = '', ...body] = patch.split('\n');
+  const at = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(header);
+  if (!at) return null;
+  let before = Number(at[1]);
+  let after = Number(at[2]);
+  const shown: number[] = [];
+  for (const line of body) {
+    if (line.startsWith('-')) shown.push(before++);
+    else if (line.startsWith('+')) shown.push(after++);
+    else if (line.startsWith(' ')) {
+      before++;
+      after++;
+    }
+  }
+  if (!shown.length) return null;
+  return { start: Math.min(...shown), end: Math.max(...shown) };
+}
 
 export function HunkActions({
   sessionId,
@@ -59,6 +82,13 @@ export function HunkActions({
     }
   };
   if (mode !== 'server' || !workspaces) return null;
+  const partName = (patch: string, index: number) => {
+    const lines = partLines(patch);
+    if (!lines) return t('part', { number: index + 1 });
+    return lines.start === lines.end
+      ? t('line', { line: lines.start })
+      : t('lines', { start: lines.start, end: lines.end });
+  };
   const prepare = (action: 'apply_original' | 'revert_working_copy') =>
     act(async () => {
       if (!hunks || !selected.length) return;
@@ -77,12 +107,15 @@ export function HunkActions({
       }
     });
   return (
-    <section className="mt-4 space-y-2 border-t border-line pt-3 text-xs" aria-label={t('heading')}>
-      <h3 className="font-medium">{t('heading')}</h3>
+    // The button names the part until it opens; no heading stands over that one control.
+    <section
+      className="flex flex-col gap-2 border-t border-border pt-3 text-caption"
+      aria-label={t('heading')}
+    >
       {!hunks ? (
         <Button
-          size="compact"
           variant="tertiary"
+          className="self-start"
           disabled={busy}
           onClick={() =>
             void act(async () => {
@@ -91,15 +124,27 @@ export function HunkActions({
             })
           }
         >
-          {t('load')}
+          {t('heading')}
         </Button>
       ) : (
         <>
-          <ul className="space-y-2">
+          {/* A long path keeps its file name: it is cut at the start. */}
+          <p
+            dir="rtl"
+            title={path}
+            className="m-0 truncate text-left font-mono text-muted-foreground"
+          >
+            <bdi>{path}</bdi>
+          </p>
+          <ul className="m-0 flex list-none flex-col gap-2 p-0">
             {hunks.hunks.map((hunk, index) => (
-              <li key={hunk.id}>
+              // The part's number and hash stay on it for support; its name is its lines.
+              <li
+                key={hunk.id}
+                title={`${t('part', { number: index + 1 })} · ${hunk.id.slice(0, 8)}`}
+              >
                 <Checkbox
-                  label={`${t('part', { number: index + 1 })} · ${hunk.id.slice(0, 8)}`}
+                  label={partName(hunk.patch, index)}
                   checked={selected.includes(hunk.id)}
                   disabled={busy}
                   onToggle={() => {
@@ -117,7 +162,9 @@ export function HunkActions({
                   <summary className="cursor-pointer text-muted-foreground">
                     {t('showPatch')}
                   </summary>
-                  <pre className="max-h-64 overflow-auto whitespace-pre-wrap">{hunk.patch}</pre>
+                  <pre className="m-0 max-h-64 overflow-auto font-mono whitespace-pre-wrap">
+                    {hunk.patch}
+                  </pre>
                 </details>
               </li>
             ))}
@@ -125,7 +172,6 @@ export function HunkActions({
           <div className="flex flex-wrap gap-2">
             {onAttach && workspaceId ? (
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy || !selected.length}
                 onClick={() =>
@@ -173,7 +219,6 @@ export function HunkActions({
               </Button>
             ) : null}
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('apply_original')}
@@ -181,7 +226,6 @@ export function HunkActions({
               {t('planOriginal')}
             </Button>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={busy || active || !selected.length}
               onClick={() => void prepare('revert_working_copy')}
@@ -192,16 +236,17 @@ export function HunkActions({
         </>
       )}
       {plan && !result ? (
-        <div className="space-y-2 rounded fill-group p-2">
-          <p className="font-medium">
+        <div className="flex flex-col items-start gap-2 fill-group p-3">
+          {/* The trees the preview goes between stay on its heading for support. */}
+          <p
+            className="m-0"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+            title={`${plan.expectedTree.slice(0, 12)} → ${plan.targetTree.slice(0, 12)}`}
+          >
             {t(plan.target === 'original' ? 'original' : 'workingCopy')}
           </p>
-          <p>{t('approval', { count: selected.length, path })}</p>
-          <p className="font-mono">
-            {plan.expectedTree.slice(0, 12)} → {plan.targetTree.slice(0, 12)}
-          </p>
+          <p className="m-0">{t('approval', { count: selected.length, path })}</p>
           <Button
-            size="compact"
             disabled={busy || active}
             onClick={() =>
               void act(async () => {
@@ -222,10 +267,18 @@ export function HunkActions({
           </Button>
         </div>
       ) : null}
-      {result ? <p role="status">{t(`state.${result.state}`)}</p> : null}
-      {attached ? <p role="status">{tc('attached')}</p> : null}
+      {result ? (
+        <p role="status" className="m-0">
+          {t(`state.${result.state}`)}
+        </p>
+      ) : null}
+      {attached ? (
+        <p role="status" className="m-0">
+          {tc('attached')}
+        </p>
+      ) : null}
       {error ? (
-        <p role="alert" className="text-danger">
+        <p role="alert" className="m-0 text-destructive">
           {error}
         </p>
       ) : null}

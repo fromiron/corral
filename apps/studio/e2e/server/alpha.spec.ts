@@ -2,7 +2,17 @@ import { execFileSync } from 'node:child_process';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
-import { panelTab, requestBox } from '../workbench.ts';
+import {
+  closeSettings,
+  lastRunSucceeded,
+  newConversation,
+  openConversationDetails,
+  openFolderSettings,
+  openLibraryTeams,
+  openProject,
+  panelTab,
+  requestBox,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Alpha acceptance: the development workbench end to end in the real app, with a real
@@ -54,8 +64,7 @@ async function project(page: Page, corral: Harness, options: { check?: string } 
   };
 
   await corral.open('/projects/default');
-  await page.getByRole('tab', { name: /^Project folder/ }).click();
-  const folder = page.getByRole('tabpanel', { name: 'Project folder', exact: true });
+  const folder = await openFolderSettings(page);
   await folder.getByLabel('Folder path on this computer').fill(original);
   await folder.getByRole('button', { name: 'Link folder' }).click();
   const trust = folder.getByRole('switch', { name: /Trust this repository/ });
@@ -65,12 +74,18 @@ async function project(page: Page, corral: Harness, options: { check?: string } 
     .getByRole('textbox', { name: /Checks/ })
     .fill(options.check ?? 'Typecheck = node check.js');
   await folder.getByRole('button', { name: 'Save checks' }).click();
+  await closeSettings(page);
   return { original, remote, before };
 }
 
-async function startSession(page: Page, fromSessionsTab = true) {
-  if (fromSessionsTab) await page.getByRole('tab', { name: /^Sessions/ }).click();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+async function startSession(page: Page, team?: string) {
+  if (team) {
+    // A team is chosen in the new conversation's details before it starts.
+    const details = await openConversationDetails(page);
+    await details.getByRole('combobox', { name: 'Corral', exact: true }).click();
+    await page.getByRole('option', { name: team, exact: true }).click();
+    await details.getByRole('button', { name: 'Start chat', exact: true }).click();
+  } else await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
   await panelTab(page, 'Changes');
@@ -138,7 +153,7 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
 
   // Edit and save in a document tab.
   await panelTab(page, 'Files');
-  await page.getByRole('button', { name: 'Open app.js', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'app.js', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'app.js', exact: true })).toBeVisible();
   await replaceDocument(page, 'console.log("two");\n');
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();
@@ -193,7 +208,11 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
   // Review the change as Git sees it, then stage, commit and push.
   await panelTab(page, 'Git');
   await page.locator('[data-git-side="unstaged"][data-path="app.js"]').click();
-  await expect(page.getByTestId('file-diff')).toBeVisible();
+  // Review keeps its own first changed file open behind the Git view (workbench.md), so the
+  // diff the click opened is the Git view's.
+  await expect(
+    page.getByRole('tabpanel', { name: 'Git', exact: true }).getByTestId('file-diff'),
+  ).toBeVisible();
   await commitAndPush(page, 'app.js', 'Print two', 'feature/alpha');
   await expect
     .poll(() => git(remote, 'for-each-ref', '--format=%(refname)', 'refs/heads/feature/alpha'))
@@ -266,21 +285,17 @@ test('one deterministic agent request changes the copy, and the person commits a
   corral,
 }) => {
   const { original, remote, before } = await project(page, corral);
-  await page.getByRole('tab', { name: /^Teams/ }).click();
+  await openLibraryTeams(page);
   await page
     .locator('input[type=file]')
     .setInputFiles([writerTeam(join(corral.workspace, 'team.corral.json'))]);
   await expect(page).toHaveURL(/\/edit$/);
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('button', { name: /^Session details \(optional\)/ }).click();
-  await page.getByRole('combobox', { name: 'Corral', exact: true }).click();
-  await page.getByRole('option', { name: 'Alpha writer', exact: true }).click();
-  const { sessionId } = await startSession(page, false);
+  await openProject(page);
+  const { sessionId } = await startSession(page, 'Alpha writer');
   await panelTab(page, 'Conversation');
   await requestBox(page).fill('Write the notes');
-  await page.getByRole('button', { name: 'Send' }).click();
-  const card = page.locator('[data-testid^="entry-"]').first();
-  await expect(card.getByText('Succeeded', { exact: true })).toBeVisible({ timeout: 20_000 });
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   const copy = copyOf(original, sessionId);
   // the session's lead calls the team's writer, whose node is team_writer_role.
   expect(readFileSync(join(copy, 'notes', 'team_writer_role.md'), 'utf8').length).toBeGreaterThan(
@@ -323,12 +338,14 @@ test('a failed check, a disk conflict, the settings dialog, a bad branch name an
   // Fixing the file makes that result one from an older tree.
   await replaceDocument(page, 'const a = 1;\nconst b: number = 2;\n');
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  // Beside the Problems pane the document head is narrow, where its saved state is announced
+  // but not shown (DocumentPanel's head keeps one line).
   await expect(
     page
       .getByRole('status')
       .filter({ hasText: /^Saved$/ })
       .first(),
-  ).toBeVisible();
+  ).toBeAttached();
   await panelTab(page, 'Problems');
   await problems.getByRole('button', { name: 'Refresh problems', exact: true }).click();
   await expect(problems.getByText('Outdated', { exact: true })).toBeVisible();

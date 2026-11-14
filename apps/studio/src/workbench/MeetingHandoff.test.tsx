@@ -28,6 +28,7 @@ vi.mock('@tanstack/react-router', () => ({
   ),
 }));
 vi.mock('@corral/react/design-kit', () => ({
+  fontWeights: { normal: '', semibold: '', bold: '' },
   Input: (props: any) => <input {...props} />,
   Textarea: (props: any) => <textarea {...props} />,
   Button: ({ children, variant: _v, size: _s, ...props }: any) => (
@@ -49,6 +50,8 @@ vi.mock('@corral/react/design-kit', () => ({
   ),
 }));
 const { MeetingHandoff, MeetingHandoffLinks } = await import('./MeetingHandoff.tsx');
+// jsdom does not scroll; a form that opens asks to be brought into view.
+Element.prototype.scrollIntoView ??= () => {};
 const receipt = {
   commandId: 'h',
   startCommandId: 's',
@@ -172,6 +175,21 @@ it('handoff excludes meetings, other projects and archived targets and preserves
   );
   expect(readDraft('work')).toBe('Keep this request');
 });
+it('opening the handoff brings its form into view and puts focus on the target session', async () => {
+  const reveal = vi.spyOn(Element.prototype, 'scrollIntoView');
+  const f = await mount();
+  const open = f.button('open');
+  open.focus();
+  await act(async () => open.click());
+  const target = f.container.querySelector('select[aria-label="target"]');
+  expect(document.activeElement).toBe(target);
+  expect(reveal).toHaveBeenCalled();
+  // Closing it leaves focus on the button that opened it.
+  await act(async () => open.click());
+  expect(f.container.querySelector('select[aria-label="target"]')).toBeNull();
+  expect(document.activeElement).toBe(open);
+});
+
 it('lost response reads its receipt first and retries only the original command', async () => {
   const f = await mount();
   f.api.send.mockRejectedValueOnce(new Error('connection lost'));

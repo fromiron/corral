@@ -19,7 +19,7 @@ import {
   shell,
   Tray,
 } from 'electron';
-import { type DesktopRun, RunSleepBlocker, runRoute } from './lifecycle.ts';
+import { type DesktopRun, RunSleepBlocker, runRoute, trayRunState } from './lifecycle.ts';
 import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
 import { installStudioMicrophone } from './microphone.ts';
 import { DesktopPreviews } from './preview.ts';
@@ -148,19 +148,10 @@ function refreshTray() {
       { label: ko ? 'Corral 열기' : 'Open Corral', click: showWindow },
       ...desktopRuns.slice(0, 20).map(
         (run): MenuItemConstructorOptions => ({
-          label: `${run.title || (ko ? '작업' : 'Work')} · ${
-            (
-              {
-                running: ko ? '실행 중' : 'Running',
-                paused: ko ? '일시정지' : 'Paused',
-                awaiting_user: ko ? '응답 필요' : 'Needs input',
-                cancelling: ko ? '취소 중' : 'Cancelling',
-              } as Record<string, string>
-            )[run.status] ?? (ko ? '준비 중' : 'Preparing')
-          }`,
+          label: `${run.title || (ko ? '실행' : 'Run')} · ${trayRunState(run.status, ko)}`,
           submenu: [
             {
-              label: ko ? '작업 열기' : 'Open work',
+              label: ko ? '실행 열기' : 'Open run',
               click: () => {
                 showWindow();
                 if (origin && window) void window.loadURL(`${origin}${runRoute(run)}`);
@@ -176,7 +167,7 @@ function refreshTray() {
       ),
       ...(desktopRuns.length
         ? []
-        : [{ label: ko ? '진행 중인 작업 없음' : 'No active work', enabled: false }]),
+        : [{ label: ko ? '진행 중인 실행 없음' : 'No active runs', enabled: false }]),
       { type: 'separator' },
       { label: ko ? '종료' : 'Quit', click: () => void quit() },
     ]),
@@ -300,12 +291,12 @@ async function confirmStop(nextWorkspace?: string): Promise<boolean> {
         ? '다른 데이터 폴더로 전환할까요?'
         : 'Switch data folder?'
       : ko
-        ? '진행 중인 작업을 중단할까요?'
-        : 'Stop the current work?',
+        ? '진행 중인 실행을 중단할까요?'
+        : 'Stop the current runs?',
     detail: nextWorkspace
-      ? `${ko ? '앱 서버를 다시 시작합니다. 기존 데이터는 유지됩니다.' : 'The app server will restart. Existing data is kept.'}${active !== 0 ? (ko ? ' 진행 중인 작업은 중단되며 자동 재개하지 않습니다.' : ' Active work will stop and will not resume automatically.') : ''}\n\n${nextWorkspace}`
+      ? `${ko ? '앱 서버를 다시 시작합니다. 기존 데이터는 유지됩니다.' : 'The app server will restart. Existing data is kept.'}${active !== 0 ? (ko ? ' 진행 중인 실행은 중단되며 자동 재개하지 않습니다.' : ' Active runs will stop and will not resume automatically.') : ''}\n\n${nextWorkspace}`
       : ko
-        ? '실행 중인 작업이 중단될 수 있습니다. 기록은 보존되며 다음에 자동 재개하지 않습니다.'
+        ? '진행 중인 실행이 중단될 수 있습니다. 기록은 보존되며 다음에 자동 재개하지 않습니다.'
         : 'Active runs will be interrupted. Their history is kept; they will not resume automatically.',
     buttons: nextWorkspace
       ? ko
@@ -623,7 +614,7 @@ function buildMenu() {
         label: say('File', '파일'),
         submenu: [
           {
-            label: say('New session', '새 세션'),
+            label: say('New conversation', '새 대화'),
             accelerator: accelerator('session.new', 'CommandOrControl+N'),
             click: command('session.new'),
           },
@@ -691,7 +682,7 @@ function buildMenu() {
             click: command('view.sidebar'),
           },
           {
-            label: say('Toggle side panel', '사이드 패널'),
+            label: say('Toggle side pane', '사이드 패널'),
             accelerator: accelerator('view.panel', 'CommandOrControl+Alt+B'),
             click: command('view.panel'),
           },

@@ -1,11 +1,11 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
-import type { TeamReference } from '@corral/react';
+import { importableRoles, type TeamReference } from '@corral/react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useServices } from '../services.tsx';
 
-// The other saved teams a team can put in as reference Teams, and the saved revisions its
-// reference Teams name, so the editor's compiler checks them as a run would.
+// The other saved teams a team can put in as reference Teams or copy roles from, and the saved
+// revisions its reference Teams name, so the editor's compiler checks them as a run would.
 
 const keyOf = (corralId: string, revision: number) => `${corralId}@${revision}`;
 
@@ -34,21 +34,33 @@ export function useSavedTeams(
   const [references, setReferences] = useState<TeamReference[]>([]);
   useEffect(() => {
     let live = true;
-    repository.list().then(
-      (all) => {
-        if (!live) return;
-        setReferences(
-          all
-            .filter((c) => c.projectId === record.projectId && c.corralId !== record.corralId)
-            .map((c) => ({
-              corralId: c.corralId,
-              definitionRevision: c.definitionRevision,
-              name: c.name,
-            })),
-        );
-      },
-      () => live && setReferences([]),
-    );
+    void (async () => {
+      const all = await repository.list().catch(() => null);
+      if (!live) return;
+      const others = (all ?? [])
+        .filter((c) => c.projectId === record.projectId && c.corralId !== record.corralId)
+        .map((c) => ({
+          corralId: c.corralId,
+          definitionRevision: c.definitionRevision,
+          name: c.name,
+        }));
+      setReferences(others);
+      // Each team's saved roles, to copy one onto an agent; reading them changes nothing.
+      const read = await Promise.all(
+        others.map(async (team): Promise<TeamReference> => {
+          const saved = await repository.get(team.corralId).catch(() => null);
+          return saved
+            ? {
+                ...team,
+                definitionRevision: saved.definitionRevision,
+                // Not the roles its advisors run: those only advise.
+                roles: importableRoles(saved.definition),
+              }
+            : team;
+        }),
+      );
+      if (live) setReferences(read);
+    })();
     return () => {
       live = false;
     };

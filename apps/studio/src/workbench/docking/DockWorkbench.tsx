@@ -12,12 +12,10 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
-  Select,
-  TabItem,
   TabPanel,
   Tabs,
-  TabsList,
   Tooltip,
+  useSize,
 } from '@corral/react/design-kit';
 import { Ellipsis, Plus, X } from '@corral/react/icons';
 import {
@@ -47,7 +45,7 @@ import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
-import { TopbarViews, useTopbarHostsViews } from '../TopbarSlot.tsx';
+import { DockTopBar, type PrimaryView, primaryViewFor } from './DockTopBar.tsx';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -59,12 +57,15 @@ import {
   type DockPreset,
   documentTabLabel,
   INITIAL_PANELS,
+  initialLayout,
   isEditorPanel,
   layoutStorageKey,
   MAX_DOCUMENTS,
   parseLayout,
   presetPanels,
   serializeLayout,
+  TREE_GROUP,
+  TREE_WIDTH,
 } from './layout.ts';
 import 'dockview-react/dist/styles/dockview.css';
 import './docking.css';
@@ -77,7 +78,8 @@ export interface DockOpenDocument {
 }
 export interface DockWorkbenchHandle {
   openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
-  openContext(view: DockContextView): void;
+  /** `reveal` brings the pane itself to the front even while a document is active. */
+  openContext(view: DockContextView, reveal?: boolean): void;
   /** Opens this project's saved team graph as a tab, or shows the one already open. */
   openGraph(corralId: string): boolean;
   /**
@@ -93,6 +95,8 @@ export interface DockWorkbenchProps {
   selectedPanel?: SessionPanel | null;
   selectionKey?: string;
   fileWorkAvailable?: boolean;
+  /** Files this session changed, shown as a count on the Changes view. */
+  changeCount?: number;
   renderContext(view: DockContextView, requestedView?: DockContextView): ReactNode;
   renderDocument(
     descriptor: DockDocumentDescriptor,
@@ -106,21 +110,12 @@ export interface DockWorkbenchProps {
   graphTitle?(corralId: string): string;
   /** Called with a listener that refreshes graph tab titles; returns the unsubscribe. */
   subscribeGraphs?(listener: () => void): () => void;
-  controls?: ReactNode;
   terminalStatus?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
   /** Whether only the conversation is on screen now. */
   onPanesHiddenChange?: (hidden: boolean) => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
-type PrimaryView = 'chat' | 'files' | 'changes' | 'run';
-function primaryViewFor(view: DockContextView): PrimaryView {
-  if (view === 'chat') return 'chat';
-  if (view === 'run' || view === 'artifacts') return 'run';
-  if (view === 'changes' || view === 'git' || view === 'checks' || view === 'problems')
-    return 'changes';
-  return 'files';
-}
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
 const presets = ['conversation', 'implementation', 'review'] as const;
 type GroupName = (typeof groupNames)[number];
@@ -145,7 +140,6 @@ const RendererContext = createContext<{
   actions: PaneActions;
 } | null>(null);
 const theme = { name: 'corral', className: 'corral-dock-theme', gap: 4 };
-const groupLabel = { develop: 'groupDevelop', verify: 'groupVerify', run: 'groupRun' } as const;
 // At or below this host width one pane shows at a time.
 const NARROW = 600;
 const descriptorOf = (panel: IDockviewPanel) => (panel.params as PanelParams).descriptor;
@@ -173,7 +167,7 @@ function DockPanel({ params, api }: IDockviewPanelProps<PanelParams>) {
       ) : descriptor.kind === 'graph' && renderer?.renderGraph ? (
         <GraphView api={api}>{renderer.renderGraph(descriptor, api.id)}</GraphView>
       ) : (
-        <p role="status" className="p-4 text-sm text-muted-foreground">
+        <p role="status" className="p-4 text-body text-muted-foreground">
           {t('unknownPanel')} {descriptor.kind === 'unknown' ? descriptor.label : ''}
         </p>
       )}
@@ -238,7 +232,7 @@ function DockHeaderActions({
     <Tooltip content={`${t('close')}: ${activePanel.title}`}>
       <Button
         variant="ghost"
-        size="icon-compact"
+        size="icon"
         aria-label={`${t('close')}: ${activePanel.title}`}
         onClick={() => renderer.close(activePanel.id)}
       >
@@ -253,9 +247,7 @@ function DockHeaderActions({
   return (
     <div className="corral-dock-header-actions">
       <Menu>
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-compact" aria-label={t('openPane')} />}
-        >
+        <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={t('openPane')} />}>
           <Plus />
         </MenuTrigger>
         <MenuPopup align="end" className="min-w-48">
@@ -274,16 +266,14 @@ function DockHeaderActions({
         </MenuPopup>
       </Menu>
       <Menu>
-        <MenuTrigger
-          render={<Button variant="ghost" size="icon-compact" aria-label={t('paneActions')} />}
-        >
+        <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={t('paneActions')} />}>
           <Ellipsis />
         </MenuTrigger>
         <MenuPopup align="end" className="w-64">
           <MenuSub>
             <MenuSubTrigger>
               {t('preset')}
-              <span className="ml-auto truncate pl-3 text-xs text-muted-foreground">
+              <span className="ml-auto truncate pl-3 text-caption text-muted-foreground">
                 {actions.preset ? t(actions.preset) : t('savedLayout')}
               </span>
             </MenuSubTrigger>
@@ -340,8 +330,6 @@ function DockHeaderActions({
           <MenuSeparator />
           <MenuItem onClick={() => actions.step('previous')}>{t('previousPane')}</MenuItem>
           <MenuItem onClick={() => actions.step('next')}>{t('nextPane')}</MenuItem>
-          <MenuSeparator />
-          <p className="px-2 py-1.5 text-xs text-muted-foreground">{t('savedWhere')}</p>
         </MenuPopup>
       </Menu>
       {close}
@@ -353,6 +341,8 @@ const components = { workbench: DockPanel };
 export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>(
   function DockWorkbench(props, ref) {
     const t = useTranslations('Docking');
+    // The tab strip's height and type follow the interface density (docking.css).
+    const density = useSize().variant;
     const current = useRef(props);
     current.current = props;
     const labels = useRef(t);
@@ -388,7 +378,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const [dockApi, setDockApi] = useState<DockviewApi | null>(null);
     // Narrow hosts (a phone) show one pane at a time, the conversation first (#94).
     const [compact, setCompact] = useState(false);
-    const viewsInTopbar = useTopbarHostsViews();
 
     function documentLabel(descriptor: DockDocumentDescriptor) {
       return documentTabLabel(
@@ -455,13 +444,22 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       );
     }
     /** The central group to add an editor tab to, created when every one was closed. */
-    function editorGroup(api: DockviewApi) {
+    function editorGroup(api: DockviewApi, kind: 'document' | 'graph' = 'document') {
       const group =
         mainGroups(api).find((item) => item.id === api.activeGroup?.id) ?? mainGroups(api)[0];
       if (group) return group;
+      // A wide new dock's tree keeps its narrow column and documents open to its right; a team
+      // design keeps the dock's width as a tab with the tree.
+      const tree = api.groups.find((item) => item.id === TREE_GROUP);
+      if (tree && kind === 'graph') return tree;
       if (api.groups.length >= 4) {
         setMessage('splitLimit');
         return null;
+      }
+      if (tree) {
+        const created = api.addGroup({ id: 'main1', direction: 'right', referenceGroup: tree });
+        tree.api.setSize({ width: TREE_WIDTH[density] });
+        return created;
       }
       return api.addGroup({
         id: 'main1',
@@ -614,7 +612,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         setMessage('invalidTarget');
         return false;
       }
-      const group = editorGroup(api);
+      const group = editorGroup(api, 'graph');
       if (!group) return false;
       const panel = api.addPanel({
         id,
@@ -634,7 +632,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     }
     useImperativeHandle(ref, () => ({
       openDocument,
-      openContext: (view) => openContext(view),
+      openContext: (view, reveal = false) => openContext(view, reveal),
       openGraph,
       setPanesHidden,
     }));
@@ -826,10 +824,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       try {
         api.fromJSON(
           loaded?.layout ??
-            createPresetLayout(
-              'conversation',
-              loaded?.panels.length ? loaded.panels : INITIAL_PANELS,
-            ),
+            (loaded?.panels.length
+              ? createPresetLayout('conversation', loaded.panels)
+              : initialLayout(host.current?.getBoundingClientRect().width ?? 0)),
           { reuseExistingPanels: true },
         );
       } catch {
@@ -973,19 +970,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     useEffect(() => {
       current.current.onPanesHiddenChange?.(sessionView === 'chat');
     }, [sessionView]);
-    const primaryTabs: PrimaryView[] = [
-      'chat',
-      ...(props.fileWorkAvailable || hasFileWork ? (['files', 'changes'] as const) : []),
-      'run',
-    ];
-    // Opening a pane lists every pane once, under what it is for (#70 IA-04).
-    const paneOptions = PANE_CATALOG.filter((entry) => primaryViewFor(entry.view) === 'files').map(
-      (entry) => ({
-        value: `context:${entry.view}`,
-        label: t(entry.view),
-        group: t(groupLabel[entry.group]),
-      }),
-    );
+    /** Choosing a session view, from its tab or from the top bar's folded view menu. */
+    const selectView = (value: string) => {
+      if (value === 'files') {
+        openContext('files');
+        current.current.onActiveContext?.('files');
+      } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
+    };
     return (
       <RendererContext.Provider
         value={{
@@ -1065,62 +1056,25 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             });
           }}
         >
-          <Tabs
-            value={sessionView}
-            onValueChange={(value) => {
-              if (value === 'files') {
-                openContext('files');
-                current.current.onActiveContext?.('files');
-              } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
-            }}
-            className="corral-dock-tabs"
-          >
-            {/* The session's views share the top bar's one row; standalone hosts keep their own. */}
-            <TopbarViews>
-              <div className={viewsInTopbar ? 'flex items-center' : 'corral-dock-primary-tabs'}>
-                <TabsList aria-label={t('sessionViews')}>
-                  {primaryTabs.map((view) => (
-                    <TabItem
-                      key={view}
-                      value={view}
-                      label={t(view === 'run' ? 'history' : view)}
-                      onClick={() => {
-                        if (sessionView === view && (view === 'changes' || view === 'run'))
-                          openContext(view, true);
-                      }}
-                    />
-                  ))}
-                </TabsList>
-              </div>
-            </TopbarViews>
-            {compact && sessionView === 'files' ? (
-              <div className="corral-dock-toolbar" data-testid="dock-toolbar">
-                <Select
-                  label={t('panes')}
-                  placeholder={t('panes')}
-                  size="sm"
-                  value={active}
-                  onValueChange={(id) => {
-                    const panel = apiRef.current?.getPanel(id);
-                    if (panel) focus(panel, true);
-                    else if (id.startsWith('context:'))
-                      openContext(id.slice('context:'.length) as DockContextView, true);
-                  }}
-                  options={[
-                    ...paneOptions,
-                    ...panels
-                      .filter(
-                        (panel) =>
-                          panel.id.startsWith('document:') || panel.id.startsWith('graph:'),
-                      )
-                      .map((panel) => ({ value: panel.id, label: panel.title })),
-                  ]}
-                />
-              </div>
-            ) : null}
-            {props.controls ? <div className="corral-dock-controls">{props.controls}</div> : null}
+          <Tabs value={sessionView} onValueChange={selectView} className="corral-dock-tabs">
+            <DockTopBar
+              sessionView={sessionView}
+              changeCount={props.changeCount}
+              onSelectView={selectView}
+              fileWork={Boolean(props.fileWorkAvailable) || hasFileWork}
+              compact={compact}
+              active={active}
+              panels={panels}
+              openContext={openContext}
+              onSelectPane={(id) => {
+                const panel = apiRef.current?.getPanel(id);
+                if (panel) focus(panel, true);
+                else if (id.startsWith('context:'))
+                  openContext(id.slice('context:'.length) as DockContextView, true);
+              }}
+            />
             {message ? (
-              <p role="status" className="px-3 py-1 text-xs text-muted-foreground">
+              <p role="status" className="px-3 py-1 text-caption text-muted-foreground">
                 {t(message)}
               </p>
             ) : null}
@@ -1128,7 +1082,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               {props.renderContext('chat')}
             </TabPanel>
             <TabPanel value="files" keepMounted className="corral-dock-session-panel">
-              <div className="corral-dock-area">
+              <div className="corral-dock-area" data-size={density}>
                 <DockviewReact
                   components={components}
                   defaultTabComponent={DockTab}

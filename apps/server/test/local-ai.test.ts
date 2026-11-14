@@ -113,6 +113,7 @@ it.skipIf(!target)(
           downloadBytes: bundle.models.meeting.size + runtimeSize,
           progress: null,
           error: null,
+          device: { requested: 'cpu', actual: null },
         },
       });
       expect(await call('/local-ai/install', 'POST')).toMatchObject({
@@ -179,6 +180,7 @@ it('refuses to install where local AI cannot run, and a server without it report
         downloadBytes: null,
         progress: null,
         error: null,
+        device: { requested: 'cpu', actual: null },
       },
     });
     for (const method of ['POST', 'DELETE'])
@@ -316,5 +318,161 @@ it.skipIf(!target)(
       launches.length = 0;
     }
     expect(localIntelligence.engine.available()).toMatch(/closed/);
+  },
+);
+
+it.skipIf(!target)(
+  'removes only the meeting bundle and refuses while an install or a computation is running',
+  async () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+    dirs.push(dataRoot);
+    const judge = join(dataRoot, 'd1', 'd1-test');
+    mkdirSync(judge, { recursive: true });
+    writeFileSync(join(judge, 'keep'), 'judge');
+    const held = heldFetch();
+    const installing = createLocalIntelligence({
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+      fetchFn: held.fetchFn,
+    });
+    const duringInstall = await serve(installing);
+    try {
+      expect((await duringInstall.call('/local-ai/install', 'POST')).body).toMatchObject({
+        state: 'installing',
+      });
+      const refused = await duringInstall.call('/local-ai', 'DELETE');
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: 'RESOURCE_CAPACITY', message: 'an install is in progress' },
+      });
+      expect(held.aborted).toEqual([]);
+      expect(existsSync(join(judge, 'keep'))).toBe(true);
+    } finally {
+      await duringInstall.server.close();
+    }
+
+    const installed = createLocalIntelligence({
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+    });
+    mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
+    writeFileSync(
+      join(bundleDir(dataRoot, bundle), 'install.json'),
+      JSON.stringify({ release: bundle.release, target }),
+    );
+    expect(installed.status().state).toBe('idle');
+    const pending = installed.engine.embed({
+      texts: ['hi'],
+      task: 'classification',
+      overflow: 'truncate',
+    });
+    const busy = await serve(installed);
+    try {
+      const refused = await busy.call('/local-ai', 'DELETE');
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: 'RESOURCE_CAPACITY', message: 'a computation is in progress' },
+      });
+      expect(existsSync(join(bundleDir(dataRoot, bundle), 'install.json'))).toBe(true);
+      expect(existsSync(join(judge, 'keep'))).toBe(true);
+    } finally {
+      pending.catch(() => {});
+      await busy.server.close();
+    }
+
+    const idle = createLocalIntelligence({
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+    });
+    const done = await serve(idle);
+    try {
+      const removed = await done.call('/local-ai', 'DELETE');
+      expect(removed.status).toBe(200);
+      expect(removed.body).toMatchObject({ state: 'missing', progress: null, error: null });
+      expect(existsSync(bundleDir(dataRoot, bundle))).toBe(false);
+      expect(existsSync(join(judge, 'keep'))).toBe(true);
+      const again = await done.call('/local-ai', 'DELETE');
+      expect(again.status).toBe(200);
+      expect(again.body).toMatchObject({ state: 'missing' });
+      expect(existsSync(join(judge, 'keep'))).toBe(true);
+    } finally {
+      await done.server.close();
+    }
+  },
+);
+
+it('saves the meeting device and restores it for the next engine', async () => {
+  const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+  dirs.push(dataRoot);
+  const options = {
+    root: dataRoot,
+    env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+    launch: neverReady,
+    platform: 'linux' as const,
+    arch: 'x64' as const,
+  };
+  const { server, call } = await serve(createLocalIntelligence(options));
+  try {
+    expect((await call('/local-ai')).body).toMatchObject({
+      device: { requested: 'cpu', actual: null },
+    });
+    const saved = await call('/local-ai/device', 'PUT', { device: 'gpu' });
+    expect(saved.status).toBe(200);
+    expect(saved.body).toMatchObject({ device: { requested: 'gpu', actual: null } });
+  } finally {
+    await server.close();
+  }
+  const again = createLocalIntelligence(options);
+  expect(again.status().device).toEqual({ requested: 'gpu', actual: null });
+  await again.close();
+});
+
+it.skipIf(!target)(
+  'refuses a meeting device change while a computation is running and keeps the device',
+  async () => {
+    const dataRoot = mkdtempSync(join(tmpdir(), 'corral-local-ai-data-'));
+    dirs.push(dataRoot);
+    const options = {
+      root: dataRoot,
+      env: { CORRAL_LOCAL_AI_HELPER: '/opt/corral-helper' },
+      launch: neverReady,
+    };
+    mkdirSync(bundleDir(dataRoot, bundle), { recursive: true });
+    writeFileSync(
+      join(bundleDir(dataRoot, bundle), 'install.json'),
+      JSON.stringify({ release: bundle.release, target }),
+    );
+    const local = createLocalIntelligence(options);
+    expect(local.status().state).toBe('idle');
+    let settled = false;
+    const pending = local.engine
+      .embed({ texts: ['hi'], task: 'classification', overflow: 'truncate' })
+      .finally(() => {
+        settled = true;
+      });
+    pending.catch(() => {});
+    const { server, call } = await serve(local);
+    try {
+      const refused = await call('/local-ai/device', 'PUT', { device: 'gpu' });
+      expect(refused.status).toBe(409);
+      expect(refused.body).toMatchObject({
+        error: { code: 'RESOURCE_CAPACITY', message: 'a computation is in progress' },
+      });
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(settled).toBe(false);
+      expect((await call('/local-ai')).body).toMatchObject({ device: { requested: 'cpu' } });
+      // Choosing the device already saved is not a change.
+      expect((await call('/local-ai/device', 'PUT', { device: 'cpu' })).status).toBe(200);
+      expect(settled).toBe(false);
+    } finally {
+      await server.close();
+      launches.length = 0;
+    }
+    const again = createLocalIntelligence(options);
+    expect(again.status().device.requested).toBe('cpu');
+    await again.close();
   },
 );

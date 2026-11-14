@@ -30,7 +30,6 @@
   align-items: center;
   gap: 0.25rem;
   padding: 0.375rem;
-  background: var(--color-surface);
 }
 .corral-dock-toolbar [role="combobox"] {
   max-width: 13rem;
@@ -50,17 +49,18 @@
   min-width: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  background: var(--color-surface);
 }
 .corral-dock-content-fixed {
   display: flex;
   flex-direction: column;
   overflow: clip;
 }
+/* The dock is drawn on the surface it sits on (the kit inset beside the sidebar, or the floor
+   in a narrow window), so its own backgrounds stay clear instead of painting another step. */
 .corral-dock-theme {
-  --dv-background-color: var(--color-surface);
-  --dv-group-view-background-color: var(--color-surface);
-  --dv-tabs-and-actions-container-background-color: var(--color-surface);
+  --dv-background-color: transparent;
+  --dv-group-view-background-color: transparent;
+  --dv-tabs-and-actions-container-background-color: transparent;
   --dv-tabs-and-actions-container-height: 40px;
   --dv-tabs-and-actions-container-font-size: var(--fs-caption);
   --dv-activegroup-visiblepanel-tab-background-color: var(--tint);
@@ -75,8 +75,16 @@
   --dv-separator-border: var(--color-line);
   --dv-drag-over-background-color: color-mix(in srgb, var(--color-primary) 14%, transparent);
   --dv-drag-over-border: 1px solid var(--color-primary);
+  --corral-dock-tab-height: var(--control-height-compact);
 }
-/* Tabs read as the kit's compact segmented controls: a rounded tint for the shown pane. */
+/* The tab strip takes the interface density: a tab is one control high with 6px above and
+   below it, in the step's control text. */
+.corral-dock-area[data-size="default"] .corral-dock-theme {
+  --dv-tabs-and-actions-container-height: 48px;
+  --dv-tabs-and-actions-container-font-size: var(--fs-body);
+  --corral-dock-tab-height: var(--control-height);
+}
+/* Tabs read as the kit's segmented controls: a rounded tint for the shown pane. */
 .corral-dock-theme .dv-tabs-and-actions-container {
   align-items: center;
   gap: 0.25rem;
@@ -87,7 +95,7 @@
   gap: 0.125rem;
 }
 .corral-dock-theme .dv-tab {
-  height: 28px;
+  height: var(--corral-dock-tab-height);
   padding: 0 0.625rem;
   border-radius: var(--control-radius);
   font-weight: 500;
@@ -110,13 +118,13 @@
 .corral-dock-theme .dv-tab:has(:focus-visible)::after {
   display: none;
 }
-/* Tabs that do not fit fold into dockview's overflow list, drawn as a compact kit control. */
+/* Tabs that do not fit fold into dockview's overflow list, drawn as a kit control. */
 .corral-dock-theme .dv-tabs-overflow-dropdown-default {
-  height: 28px;
+  height: var(--corral-dock-tab-height);
   padding: 0 0.5rem;
   border-radius: var(--control-radius);
   color: var(--color-muted-foreground);
-  font-size: var(--fs-caption);
+  font-size: var(--dv-tabs-and-actions-container-font-size);
 }
 .corral-dock-theme .dv-tabs-overflow-dropdown-default:hover {
   background-color: var(--hover);
@@ -136,10 +144,6 @@
   align-items: center;
   gap: 0.125rem;
   color: var(--color-muted-foreground);
-}
-.corral-dock-controls {
-  flex-shrink: 0;
-  padding: 0.25rem 0.5rem;
 }
 @media (max-width: 600px) {
   .corral-dock-toolbar [role="combobox"] {

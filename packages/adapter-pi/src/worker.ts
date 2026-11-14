@@ -53,7 +53,7 @@ import {
   withProtectedContext,
   withRequiredImages,
 } from './request-record.ts';
-import { managedRetryStream } from './request-retry.ts';
+import { managedRetryStream, streamedText } from './request-retry.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
 import {
@@ -66,6 +66,7 @@ import {
   systemPrompt,
   TOOL_TEXT,
   textOf,
+  unfinished,
   userPrompt,
 } from './worker-tools.ts';
 
@@ -86,7 +87,30 @@ export interface WorkerDeps {
   ): Model<string> | undefined;
 }
 
-type Reply = Exclude<HostFrame, StartFrame | { type: 'cancel' | 'directive' | 'compact' }>;
+/** One model request's response: what it carried, and whether an interrupt cut it. */
+interface Flight {
+  abort: AbortController;
+  directiveIds: Set<string>;
+  /** The prepared context the request sent, without its response. */
+  messages: AgentContext['messages'];
+  cut: boolean;
+}
+
+type Reply = Exclude<
+  HostFrame,
+  StartFrame | { type: 'cancel' | 'directive' | 'interrupt' | 'compact' | 'end_review' }
+>;
+
+/** The review an advisor is running a turn on, and the requests it made for it. */
+interface Review {
+  reviewId: string;
+  maxRequests: number;
+  requests: number;
+  /** The host ended it, or its requests are used up: no further request is made for it. */
+  ended: boolean;
+  /** Its last permitted request ended in an error: the advisor has failed, whether or not a retry was left. */
+  lastFailed: boolean;
+}
 
 export function runWorker(port: Channel, deps: WorkerDeps): void {
   let executionId: string | null = null;
@@ -97,6 +121,17 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   let pendingCompaction: string | null = null;
   const directives = new Map<string, DeliveredDirective>();
   const waiting = new Map<string, (reply: Reply) => void>();
+  // The model response in flight and the directives its request carries; null between
+  // requests and while a tool runs, when an interrupt has nothing to cut.
+  let inFlight: Flight | null = null;
+  let directivesInPrepared = new Set<string>();
+  // True while a request is prepared, until its permit: a directive arriving then rides it
+  // (a stale protected context makes the host ask for a new preparation).
+  let unrecorded = false;
+  // Interrupt directives that cut a response and still have to lead the next request.
+  const interrupting = new Map<string, DeliveredDirective>();
+  // An advisor's current review; null outside one, when it makes no model request.
+  let review: Review | null = null;
 
   port.onFrame((raw) => {
     const parsed = HostFrame.safeParse(raw);
@@ -133,6 +168,23 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       directives.set(frame.directiveId, frame);
       return;
     }
+    if (frame.type === 'interrupt') {
+      directives.set(frame.directiveId, frame);
+      // A response whose request already carries the directive has nothing to gain from a cut.
+      // A request still being prepared takes the directive itself and is never cut for it.
+      if (cancelled || !inFlight || unrecorded || inFlight.directiveIds.has(frame.directiveId))
+        return;
+      interrupting.set(frame.directiveId, frame);
+      inFlight.abort.abort();
+      return;
+    }
+    if (frame.type === 'end_review') {
+      // Only the review in progress ends; a late end for an earlier one does nothing.
+      if (!review || review.reviewId !== frame.reviewId || review.ended) return;
+      review.ended = true;
+      if (inFlight && !unrecorded) inFlight.abort.abort();
+      return;
+    }
     waiting.get(frame.requestId)?.(frame);
     waiting.delete(frame.requestId);
   });
@@ -141,6 +193,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   async function execute(start: StartFrame) {
     executionId = start.executionId;
     const head = { protocolVersion: PROTOCOL_VERSION, executionId: start.executionId };
+    const advisor = start.assignment.kind === 'advisor';
     const settle = (
       outcome: 'succeeded' | 'failed' | 'cancelled',
       error?: string,
@@ -213,7 +266,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     const meter = new ContextMeter();
     let lastPrepared: Context | undefined;
     let measuredContext: ReturnType<typeof inspectContext> | null = null;
-    let chunk = 0;
+    // The text the call in flight streams, counted from its permit.
+    let text: ReturnType<typeof streamedText> | null = null;
+    const textOfCall = (modelCallId: string) => {
+      let chunk = 0;
+      return streamedText((delta) =>
+        port.send({ type: 'stream', ...head, modelCallId, chunkIndex: chunk++, text: delta }),
+      );
+    };
     const authorized = new Map<string, string>();
     let logicalRequests = 0;
     let logicalRequestId = '';
@@ -243,10 +303,46 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     }));
 
     let forceCompaction = false;
+    // A compaction completed for the request being prepared.
+    let rebased = false;
+    let preparedMessages: AgentContext['messages'] = [];
+    // The flight of the latest response; set when an interrupt cut it.
+    let latest: Flight | null = null;
+    let cutFlight: Flight | null = null;
+    let automaticCompactions = 0;
+    // One message per directive: no directive's text follows another's attachment body.
+    const withDirectives = (context: AgentContext, skip?: Set<string>): AgentContext => {
+      const present = JSON.stringify(context.messages);
+      const missing = [...directives.values()].filter(
+        (d) =>
+          !skip?.has(d.directiveId) &&
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
+      );
+      if (!missing.length) return context;
+      return {
+        ...context,
+        messages: [
+          ...context.messages,
+          ...missing.map((d) => ({
+            role: 'user' as const,
+            content: directiveText(d),
+            timestamp: Date.now(),
+          })),
+        ],
+      };
+    };
     const prepareRequest = async (context: AgentContext, retryIndex = 0) => {
+      try {
+        return await prepareFixed(context, retryIndex);
+      } finally {
+        unrecorded = false;
+      }
+    };
+    const prepareFixed = async (context: AgentContext, retryIndex: number) => {
       if (!retryIndex) logicalRequestId = `request_${++logicalRequests}`;
       let preparedContext = context;
       const prepare = async () => {
+        unrecorded = true;
         const state = await call({ type: 'get_protected_context' });
         if (state.type !== 'protected_context') throw new Error('protected context refused');
         if (state.value) {
@@ -257,18 +353,8 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             protectedState.section,
           ];
         }
-        const present = JSON.stringify(preparedContext.messages);
-        const missing = [...directives.values()].filter(
-          (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
-        );
-        if (missing.length)
-          preparedContext = {
-            ...preparedContext,
-            messages: [
-              ...preparedContext.messages,
-              { role: 'user', content: directiveText(missing), timestamp: Date.now() },
-            ],
-          };
+        preparedContext = withDirectives(preparedContext);
+        const placed = new Set(directives.keys());
         const saved = await call({
           type: 'checkpoint_context',
           value: checkpointContext(preparedContext, 'pi-core'),
@@ -284,18 +370,32 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
           .digest('hex');
         const summaryCalls: string[] = [];
-        if (commandId)
+        // A manual compaction names its command; an automatic one gets a deterministic id.
+        let owner: { commandId: string; trigger?: 'automatic' } | null = commandId
+          ? { commandId }
+          : null;
+        if (owner)
           await call({
             type: 'compaction_report',
-            report: { commandId, phase: 'started', beforeHash, modelCallIds: [] },
+            report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
           });
         try {
           if (
-            commandId ||
+            owner ||
             forceCompaction ||
             meter.measure(preparedContext, model).tokens >
               automaticCompactionThresholdFor({ hardLimit })
           ) {
+            if (!owner) {
+              owner = {
+                commandId: `compaction.${++automaticCompactions}.${start.executionId}`,
+                trigger: 'automatic',
+              };
+              await call({
+                type: 'compaction_report',
+                report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
+              });
+            }
             const region = selectCompactableRange(
               preparedContext.messages,
               forceCompaction ? 0 : (start.compaction?.keepRecentTokens ?? budget.keepRecentTokens),
@@ -342,6 +442,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                             modelCallId: grant.modelCallId,
                             text: textOf(response),
                             ...normalizeUsage(response),
+                            ...(unfinished(response) ? { failed: true } : {}),
                           });
                         },
                       );
@@ -358,6 +459,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                           reasoningTokens: null,
                         },
                         rawUsage: null,
+                        failed: true,
                       });
                       throw error;
                     }
@@ -369,17 +471,16 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             if (currentState.type !== 'protected_context')
               throw new Error('protected context refused');
             if (currentState.value?.hash !== state.value?.hash) {
-              if (commandId)
-                await call({
-                  type: 'compaction_report',
-                  report: {
-                    commandId,
-                    phase: 'failed',
-                    beforeHash,
-                    afterHash: beforeHash,
-                    modelCallIds: summaryCalls,
-                  },
-                });
+              await call({
+                type: 'compaction_report',
+                report: {
+                  ...owner,
+                  phase: 'failed',
+                  beforeHash,
+                  afterHash: beforeHash,
+                  modelCallIds: summaryCalls,
+                },
+              });
               return { type: 'reprepare' as const, directives: [] };
             }
             let restored = withRequiredImages(compacted.context, start.images);
@@ -387,36 +488,41 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             if (meter.measure(restored, model).tokens >= hardLimit)
               throw new Error('compacted context still exceeds model capacity');
             preparedContext = { ...preparedContext, messages: restored.messages };
-            if (commandId)
-              await call({
-                type: 'compaction_report',
-                report: {
-                  commandId,
-                  phase: 'completed',
-                  beforeHash,
-                  afterHash: createHash('sha256')
-                    .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
-                    .digest('hex'),
-                  modelCallIds: summaryCalls,
-                },
-              });
+            await call({
+              type: 'compaction_report',
+              report: {
+                ...owner,
+                phase: 'completed',
+                beforeHash,
+                afterHash: createHash('sha256')
+                  .update(canonicalJson(JSON.parse(JSON.stringify(preparedContext.messages))))
+                  .digest('hex'),
+                modelCallIds: summaryCalls,
+              },
+            });
+            rebased = true;
           }
         } catch (error) {
-          if (!commandId) throw error;
+          if (!owner) throw error;
           if (!cancelled)
             await call({
               type: 'compaction_report',
               report: {
-                commandId,
+                ...owner,
                 phase: 'failed',
                 beforeHash,
                 afterHash: beforeHash,
                 modelCallIds: summaryCalls,
               },
             });
+          // Only a manual compaction's failure leaves the request to go on uncompacted.
+          if (owner.trigger === 'automatic') throw error;
         }
+        // Directives that arrived during preparation (a summary call, say) still go in now.
+        preparedContext = withDirectives(preparedContext, placed);
         lastPrepared = normalizeContext({ messages: preparedContext.messages as Message[] });
         measuredContext = inspectContext(preparedContext);
+        directivesInPrepared = new Set(directives.keys());
         return call({
           type: 'prepare_request',
           logicalRequestId,
@@ -433,7 +539,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             'pi-core',
             [...directives.values()].map((d) => ({
               directiveId: d.directiveId,
-              text: directiveText([d]),
+              text: directiveText(d),
             })),
             protectedSections,
             { usage: measuredContext.usage },
@@ -445,7 +551,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         for (const directive of reply.directives) directives.set(directive.directiveId, directive);
         reply = await prepare();
       }
-      if (reply.type !== 'permit' || cancelled) throw new Error('the request was refused');
+      unrecorded = false;
+      if (reply.type !== 'permit' || cancelled) {
+        // A refused request was never made: its empty failure is neither observed nor a failed request.
+        if (review) permit = null;
+        throw new Error('the request was refused');
+      }
+      // Every permitted request of the review counts, a retry too, as the Coordinator counts it.
+      if (review) review.requests += 1;
       permit = {
         modelCallId: reply.modelCallId,
         apiKey: reply.apiKey,
@@ -454,11 +567,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         cacheRetention: reply.cacheRetention,
         ...(reply.reasoning ? { reasoning: reply.reasoning } : {}),
       };
-      chunk = 0;
+      text = textOfCall(reply.modelCallId);
       // Older hosts may deliver a directive only with the permit (compatibility path).
       const present = JSON.stringify(preparedContext.messages);
       const missing = reply.directives.filter(
-        (d) => !present.includes(JSON.stringify(directiveText([d])).slice(1, -1)),
+        (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
       );
       for (const directive of reply.directives) directives.set(directive.directiveId, directive);
       if (missing.length)
@@ -466,7 +579,11 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           ...preparedContext,
           messages: [
             ...preparedContext.messages,
-            { role: 'user', content: directiveText(missing), timestamp: Date.now() },
+            ...missing.map((d) => ({
+              role: 'user' as const,
+              content: directiveText(d),
+              timestamp: Date.now(),
+            })),
           ],
         };
       // Exactly the questions the routing input held; the host left out those already present.
@@ -483,6 +600,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             },
           ],
         };
+      preparedMessages = [...preparedContext.messages];
+      // An advisor's conversation goes on from review to review, so a compaction is where it now
+      // stands: the next review starts from the compacted context, and a later summary builds on
+      // this one (features/advisor.md, 계약). The response and its tool results follow it.
+      if (advisor && rebased && agent) agent.state.messages = [...preparedMessages];
+      rebased = false;
       return preparedContext === context ? undefined : { context: preparedContext };
     };
 
@@ -552,14 +675,29 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       // Each request carries the token and output cap from its own permit.
       streamFn: (m, context, options) => {
         let current = context;
-        return managedRetryStream({
+        // An interrupt cuts this response only; the run's own signal still cancels everything.
+        const flight: Flight = {
+          abort: new AbortController(),
+          directiveIds: directivesInPrepared,
+          messages: preparedMessages,
+          cut: false,
+        };
+        inFlight = flight;
+        latest = flight;
+        const signal = AbortSignal.any([
+          options?.signal ?? cancellation.signal,
+          flight.abort.signal,
+        ]);
+        const stream = managedRetryStream({
           model: m,
-          signal: options?.signal ?? cancellation.signal,
+          // A cut response is never retried: the abort is ours, not a transient failure.
+          signal,
           onContextOverflow: () => {
             forceCompaction = true;
             return true;
           },
           beforeRetry: (message) => {
+            if (review) review.lastFailed = true;
             if (permit)
               port.send({
                 type: 'observe',
@@ -567,6 +705,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 modelCallId: permit.modelCallId,
                 text: textOf(message),
                 ...normalizeUsage(message),
+                failed: true,
               });
           },
           open: async (attempt) => {
@@ -576,13 +715,26 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 current = normalizeContext({ messages: next.context.messages as Message[] });
             }
             if (!permit) throw new Error('request has no permit');
-            return await sendRequest(permit, m, current, options);
+            flight.directiveIds = directivesInPrepared;
+            flight.messages = preparedMessages;
+            return await sendRequest(permit, m, current, { ...options, signal });
           },
         });
+        // The mark stays with this request, whichever permit its last attempt got.
+        flight.abort.signal.addEventListener('abort', () => {
+          flight.cut = true;
+        });
+        void stream.result().finally(() => {
+          if (inFlight === flight) inFlight = null;
+        });
+        return stream;
       },
       getApiKey: () => keyOf(permit?.apiKey),
       toolExecution: 'sequential',
-      finishTurn: () => (completionAccepted ? { action: 'end' } : undefined),
+      finishTurn: () =>
+        completionAccepted || (review && (review.ended || review.requests >= review.maxRequests))
+          ? { action: 'end' }
+          : undefined,
       prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
         const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
@@ -609,17 +761,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
 
     agent.subscribe((event) => {
       if (!permit) return;
-      if (event.type === 'message_update' && event.assistantMessageEvent.type === 'text_delta') {
-        port.send({
-          type: 'stream',
-          ...head,
-          modelCallId: permit.modelCallId,
-          chunkIndex: chunk++,
-          text: event.assistantMessageEvent.delta,
-        });
-      }
+      if (event.type === 'message_update') text?.event(event.assistantMessageEvent);
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const message = event.message as AssistantMessage;
+        text?.end(!unfinished(message));
         if (lastPrepared) meter.observe(lastPrepared, model, message);
         attemptedTools ||= message.content.some((part) => part.type === 'toolCall');
         // Meetings answer before any tool; a final-reply role may use tools first.
@@ -630,6 +775,9 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             ? permit.modelCallId
             : undefined;
         const { usage, rawUsage } = normalizeUsage(message);
+        const cut =
+          latest?.cut === true &&
+          (message.stopReason === 'aborted' || message.stopReason === 'error');
         port.send({
           type: 'observe',
           ...head,
@@ -637,22 +785,68 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           text: textOf(message),
           usage,
           rawUsage,
+          ...(cut ? { interrupted: true } : unfinished(message) ? { failed: true } : {}),
         });
+        if (review && !cut) review.lastFailed = unfinished(message);
+        cutFlight = cut ? latest : null;
+        // A response that ended on its own was not cut, whatever the abort asked.
+        if (latest && !cut) latest.cut = false;
       }
     });
 
-    try {
-      await agent.prompt(
-        userPrompt(start),
-        start.images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
+    const takeCut = (): Flight | null => {
+      const flight = cutFlight;
+      cutFlight = null;
+      return flight;
+    };
+    const lastAssistant = () =>
+      [...(agent?.state.messages ?? [])]
+        .reverse()
+        .find((m): m is AssistantMessage => m.role === 'assistant');
+    const runner = agent;
+    const turn = async (prompt: string, images?: StartFrame['images']) => {
+      await runner.prompt(
+        prompt,
+        images?.map((image) => ({ type: 'image', data: image.data, mimeType: image.mime })),
       );
+      // A response cut by an interrupt does not end the execution: the agent goes on from the
+      // context the cut request actually sent (compaction, delivered directives and state
+      // included), then the cut response, then every directive that request did not carry,
+      // in arrival order, so the interrupt is the last. A cancel, even after the cut, still
+      // ends it.
+      for (let flight = takeCut(); !cancelled && flight; flight = takeCut()) {
+        const cutResponse = lastAssistant();
+        const base = cutResponse ? [...flight.messages, cutResponse] : [...flight.messages];
+        const present = JSON.stringify(base);
+        const absent = (d: DeliveredDirective) =>
+          !present.includes(JSON.stringify(directiveText(d)).slice(1, -1));
+        const interrupted = [...interrupting.values()].some(absent);
+        interrupting.clear();
+        if (!interrupted) break;
+        const leading = [...directives.values()].filter(absent);
+        runner.state.messages = base;
+        // One message per directive, as the request preparation would add them.
+        await runner.prompt(
+          leading.map((d) => ({
+            role: 'user' as const,
+            content: directiveText(d),
+            timestamp: Date.now(),
+          })),
+        );
+      }
+    };
+
+    if (advisor) {
+      await reviews();
+      return;
+    }
+    try {
+      await turn(userPrompt(start), start.images);
     } catch (error) {
       settle(cancelled ? 'cancelled' : 'failed', String(error));
       return;
     }
-    const last = [...agent.state.messages]
-      .reverse()
-      .find((m): m is AssistantMessage => m.role === 'assistant');
+    const last = lastAssistant();
     if (!cancelled && !completionAccepted && last?.stopReason === 'stop' && lastPrepared)
       await call({
         type: 'checkpoint_context',
@@ -666,5 +860,57 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     if (cancelled || last?.stopReason === 'aborted') settle('cancelled');
     else if (last?.stopReason === 'error') settle('failed', last.errorMessage ?? 'model error');
     else settle('succeeded', undefined, finalTextModelCallId);
+
+    /**
+     * An advisor's life (features/advisor.md): one review at a time from the host, one turn on its
+     * text within its request cap, the conversation kept from review to review, until the host
+     * says there is nothing more to review. It submits nothing.
+     */
+    async function reviews() {
+      for (;;) {
+        const next = await call({ type: 'next_review' });
+        if (cancelled) return settle('cancelled');
+        if (next.type !== 'review') return settle('failed', 'the next review was refused');
+        if (!next.review) break;
+        review = {
+          reviewId: next.review.reviewId,
+          maxRequests: next.review.maxRequests,
+          requests: 0,
+          ended: false,
+          lastFailed: false,
+        };
+        try {
+          await turn(next.review.text);
+        } catch (error) {
+          return settle(cancelled ? 'cancelled' : 'failed', String(error));
+        }
+        if (cancelled) return settle('cancelled');
+        const { ended, lastFailed } = review;
+        review = null;
+        const last = lastAssistant();
+        // Its last permitted request ended in an error: the advisor has failed, even when the cap
+        // left no retry (features/advisor.md). What the frames' order was does not matter.
+        if (lastFailed) return settle('failed', last?.errorMessage ?? 'model error');
+        if (ended) {
+          // A request refused for the ended review leaves an empty failure; it is not kept.
+          if (
+            runner.state.messages.at(-1) === last &&
+            last &&
+            unfinished(last) &&
+            !last.content.some(
+              (part) => part.type === 'toolCall' || (part.type === 'text' && part.text),
+            )
+          )
+            runner.state.messages = runner.state.messages.slice(0, -1);
+        } else if (last?.stopReason === 'error')
+          return settle('failed', last.errorMessage ?? 'model error');
+      }
+      if (pendingCompaction && !cancelled)
+        await call({
+          type: 'compaction_report',
+          report: { commandId: pendingCompaction, phase: 'skipped', modelCallIds: [] },
+        });
+      settle(cancelled ? 'cancelled' : 'succeeded');
+    }
   }
 }

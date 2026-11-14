@@ -42,19 +42,18 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
   }, [requested, path, sessionId, workspaces]);
   if (!requested)
     return (
-      <Button size="compact" variant="tertiary" onClick={() => setRequested(true)}>
+      <Button variant="tertiary" onClick={() => setRequested(true)}>
         {t('open')}
       </Button>
     );
   return (
     <section aria-label={t('title')} className="flex min-h-0 flex-col gap-2">
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-xs" title={path}>
+        <span className="min-w-0 flex-1 truncate text-caption" title={path}>
           {path}
         </span>
         {desktop && lease ? (
           <Button
-            size="compact"
             variant="tertiary"
             onClick={() => {
               void desktop
@@ -68,7 +67,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           </Button>
         ) : null}
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           disabled={!lease}
@@ -77,7 +76,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           <RefreshCw />
         </Button>
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('close')}
           disabled={closing}
@@ -99,7 +98,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : lease ? (
@@ -113,7 +112,7 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
           data-testid="file-preview-frame"
         />
       ) : (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
       )}

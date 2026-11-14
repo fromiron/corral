@@ -15,6 +15,7 @@ import {
   KitCardDescription as CardDescription,
   KitCardHeader as CardHeader,
   KitCardTitle as CardTitle,
+  fontWeights,
 } from '../design-kit/index.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
@@ -199,7 +200,7 @@ export function ArtifactViewer({
               </p>
             ) : null}
             <dl className="flex flex-col gap-1">
-              <dt className="font-medium">{t('direct')}</dt>
+              <dt style={{ fontVariationSettings: fontWeights.semibold }}>{t('direct')}</dt>
               <dd>
                 {lineage.directDirectiveIds.length === 0 ? (
                   t('noDirectives')
@@ -213,7 +214,7 @@ export function ArtifactViewer({
                   </ul>
                 )}
               </dd>
-              <dt className="font-medium">{t('indirect')}</dt>
+              <dt style={{ fontVariationSettings: fontWeights.semibold }}>{t('indirect')}</dt>
               <dd>
                 {lineage.indirectDirectiveIds.length === 0 ? (
                   t('noDirectives')
@@ -338,7 +339,9 @@ export function ReviewSummary({
   return (
     <div className="flex flex-col gap-2 text-body" data-testid="review-verdict">
       <p>
-        <span className="font-semibold">{t(`verdict.${review.verdict}`)}</span>
+        <span style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t(`verdict.${review.verdict}`)}
+        </span>
         <span className="text-muted-foreground"> · {t('reviewOf')} </span>
         {target}
       </p>

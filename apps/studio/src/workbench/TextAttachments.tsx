@@ -6,6 +6,7 @@ import {
 } from '@corral/contracts';
 import { createTextAttachment, validTextAttachments } from '@corral/core';
 import { Button } from '@corral/react/design-kit';
+import { Quote, X } from '@corral/react/icons';
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { AttachmentSource } from './context/ContextAttachments.tsx';
@@ -106,7 +107,6 @@ export function TextAttachmentPicker({
         {!inputRef ? (
           <Button
             type="button"
-            size="compact"
             variant="ghost"
             disabled={disabled || !enabled || loading || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
             onClick={() => input.current?.click()}
@@ -119,7 +119,6 @@ export function TextAttachmentPicker({
             <Button
               key={textAttachmentKey(item)}
               type="button"
-              size="compact"
               variant="tertiary"
               disabled={disabled || loading}
               aria-label={t('removeAttachment', { name: item.name })}
@@ -134,7 +133,7 @@ export function TextAttachmentPicker({
           ))}
       </div>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {t('attachmentError')}
         </p>
       ) : null}
@@ -145,7 +144,7 @@ export function TextAttachmentPicker({
 export function TextAttachmentList({ attachments }: { attachments: TextAttachment[] }) {
   const t = useTranslations('Composer');
   return (
-    <ul aria-label={t('attachments')} className="mt-2 flex flex-col gap-1 text-xs">
+    <ul aria-label={t('attachments')} className="mt-2 flex flex-col gap-1 text-caption">
       {attachments.map((item) => (
         <li key={textAttachmentKey(item)}>
           <details>
@@ -163,5 +162,59 @@ export function TextAttachmentList({ attachments }: { attachments: TextAttachmen
         </li>
       ))}
     </ul>
+  );
+}
+
+const QUOTE_CHIP_LENGTH = 40;
+
+/**
+ * A quote's text on one line and its opening: the first 40 characters as a reader counts them
+ * (grapheme clusters, so a joined emoji or a syllable of conjoining jamo is never cut).
+ */
+export function quoteOpening(value: string) {
+  const text = value.replace(/\s*[\r\n]+\s*/g, ' ');
+  const characters =
+    typeof Intl.Segmenter === 'function'
+      ? [...new Intl.Segmenter(undefined, { granularity: 'grapheme' }).segment(text)].map(
+          (part) => part.segment,
+        )
+      : [...text];
+  const opening =
+    characters.length > QUOTE_CHIP_LENGTH
+      ? `${characters.slice(0, QUOTE_CHIP_LENGTH).join('')}…`
+      : text;
+  return { text, opening };
+}
+
+/** A reply quote in the chip row: its mark and opening words; the whole passage is its name. */
+export function QuoteChip({
+  item,
+  disabled,
+  onRemove,
+}: {
+  item: TextAttachment;
+  disabled?: boolean;
+  onRemove(): void;
+}) {
+  const t = useTranslations('Composer');
+  const { text, opening } = quoteOpening(item.text);
+  return (
+    <li className="flex max-w-full items-center gap-1 rounded-md bg-subtle py-0.5 pr-0.5 pl-2 text-caption">
+      <Quote className="size-3 shrink-0 text-muted-foreground" />
+      <span aria-hidden="true" className="truncate" title={text}>
+        {opening}
+      </span>
+      <span className="sr-only">{`${t('quote')}: ${text}`}</span>
+      <Button
+        type="button"
+        variant="ghost"
+        size="icon-tiny"
+        disabled={disabled}
+        aria-label={t('removeQuote', { text: opening })}
+        onClick={onRemove}
+      >
+        <X />
+      </Button>
+    </li>
   );
 }

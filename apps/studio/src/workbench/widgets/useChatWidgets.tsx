@@ -1,9 +1,17 @@
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import { type ExecutionStatus, TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import {
+  canReadArtifactBody,
+  canReleaseArtifactBodies,
+  pendingInteractions,
+  type RunProjection,
+} from '@corral/core';
 import {
   estimateRunCost,
+  type Presence,
+  projectionPresence,
   type RunCostEstimate,
   type RunSessionState,
+  type RunSessionStore,
   runResults,
   useWorkPlanSnapshot,
 } from '@corral/react';
@@ -22,21 +30,24 @@ import { useShallow } from 'zustand/react/shallow';
 import { useRemembered } from '../../pages/Workbench.tsx';
 import { useModelPrices } from '../../prices.ts';
 import { useServices } from '../../services.tsx';
+import { type CompactReason, compactTarget } from '../compactTarget.ts';
+import { useQuestionNotice } from '../questionNotice.ts';
 import { readRunView } from '../readRunView.ts';
 import { contextCalls } from './contextCalls.ts';
 import {
-  actionRequired,
+  type actionRequired,
   activityLine,
   agentActivity,
   type ContextPresentation,
   changesPresentation,
+  conversationAction,
   currentAgentExecutions,
-  effectAttention,
+  failedToolExecutionId,
   fileChangeSignals,
   type PlanRef,
   presentContext,
+  runToolRows,
   selectPresentedPlan,
-  toolRows,
   type UsageSummary,
   usageSummary,
   viewedRun,
@@ -49,6 +60,8 @@ import {
 export interface ChatWidgetModel {
   sessionId: string;
   runId: string | null;
+  /** The presented run's shown state: the one its row's head shows (presence.md). */
+  presence?: Presence | null;
   runNumber: number | null;
   live: boolean;
   /** The finished run on screen and its place among the session's runs. */
@@ -66,7 +79,7 @@ export interface ChatWidgetModel {
   changeDeletions: number | null;
   agents: { total: number; working: number; waiting: number; failed: number } | null;
   /** Current attempts only; the execution view retains retry history. */
-  agentRows: { id: string; name: string; status: string }[];
+  agentRows: { id: string; name: string; status: ExecutionStatus }[];
   tools: { id: string; name: string; tone: string }[];
   results: { id: string; label: string }[];
   environment: 'simulated' | 'restricted' | null;
@@ -75,7 +88,16 @@ export interface ChatWidgetModel {
   /** The list-price estimate, or why there is none; null before the run is read. */
   cost: RunCostEstimate | null;
   action: ReturnType<typeof actionRequired>;
+  /** The waiting questions' notice (first title, count from two), once the first is read. */
+  questionNotice: string | null;
   failedExecutionId: string | null;
+  /** Manual compaction for the execution this context is showing. */
+  compaction?: {
+    reason: CompactReason | null;
+    pending: boolean;
+    phase: 'queued' | 'started' | 'completed' | 'failed' | 'cancelled' | 'skipped' | null;
+    request: () => Promise<string | null>;
+  };
   activity: ReturnType<typeof activityLine> & { runId: string | null };
   plan: {
     open: boolean;
@@ -94,7 +116,13 @@ export interface ChatWidgetModel {
   notice: string;
 }
 
+type PlanProgressStatus = Extract<
+  ReturnType<typeof useWorkPlanSnapshot>['status'],
+  { plan: unknown }
+>;
+
 const ChatWidgetContext = createContext<ChatWidgetModel | null>(null);
+const NO_TEXTS: Readonly<Record<string, string>> = {};
 
 export function useChatWidget() {
   return useContext(ChatWidgetContext);
@@ -307,7 +335,7 @@ function useChatWidgetState(
     },
     [presentationRunId, usingLive, session, transport],
   );
-  const { status: planStatus, retry: retryPlan } = useWorkPlanSnapshot({
+  const { status: readPlan, retry: retryPlan } = useWorkPlanSnapshot({
     runId: presentationRunId,
     ref,
     currentCriteriaVersionId: projection?.currentCriteriaVersionId ?? null,
@@ -317,8 +345,44 @@ function useChatWidgetState(
     cacheScope: usingLive ? session : transport,
     text,
   });
+  // A settled run releases its plan body. The chip keeps the count it last read for this plan
+  // revision, or is not shown; a released body is never a load error.
+  const planOwner =
+    presentationRunId && ref
+      ? [presentationRunId, ref.scope, ref.executionId, ref.attemptNo].join('|')
+      : null;
+  const planKey = planOwner && ref ? [planOwner, ref.revision, ref.bodyHash].join('|') : null;
+  const [lastPlan, setLastPlan] = useState<{
+    key: string;
+    owner: string;
+    status: PlanProgressStatus;
+  } | null>(null);
+  if (
+    planKey &&
+    planOwner &&
+    'plan' in readPlan &&
+    (lastPlan?.key !== planKey ||
+      lastPlan.status.plan !== readPlan.plan ||
+      lastPlan.status.state !== readPlan.state)
+  ) {
+    setLastPlan({ key: planKey, owner: planOwner, status: readPlan });
+  }
+  // A newer revision of the same plan is read while the one before stays: its rows change in
+  // place, and the plan never gives its place to a loading line it would take back.
+  const revising =
+    readPlan.state === 'loading' && lastPlan !== null && lastPlan.owner === planOwner;
+  const planStatus: ReturnType<typeof useWorkPlanSnapshot>['status'] =
+    projection &&
+    (readPlan.state === 'loading' || readPlan.state === 'error') &&
+    canReleaseArtifactBodies(projection)
+      ? lastPlan && lastPlan.key === planKey
+        ? { ...lastPlan.status, runFinished: true }
+        : { state: 'hidden' }
+      : revising && lastPlan
+        ? lastPlan.status
+        : readPlan;
   // Loading and error details must remain expandable so their scoped Retry is reachable.
-  const open = Boolean(ref) && workPlanOpen(preference, projection?.status ?? 'running');
+  const open = Boolean(ref) && workPlanOpen(preference);
   const calls = useMemo(
     () =>
       contextCalls(
@@ -337,6 +401,7 @@ function useChatWidgetState(
               {
                 executionId: event.executionId ?? event.payload.executionId,
                 phase: event.payload.phase,
+                automatic: event.payload.trigger === 'automatic',
                 recordedAt: event.recordedAt,
               },
             ]
@@ -382,26 +447,24 @@ function useChatWidgetState(
   );
   const interactions =
     runOpen && projection ? pendingInteractions(view?.events ?? [], projection) : [];
-  const action = actionRequired({
-    pendingApprovals: interactions.filter((item) => item.kind === 'approval').length,
-    pendingQuestions: interactions.filter((item) => item.kind !== 'approval').length,
-    ...effectAttention(projection),
-    runStatus: projection?.status,
+  const questionNotice = useQuestionNotice(
+    interactions.flatMap((item) => (item.kind === 'approval' ? [] : [item])),
+    view?.artifactTexts ?? NO_TEXTS,
+    loadPlan,
+  );
+  const action = conversationAction({
+    projection,
+    approvals: interactions.filter((item) => item.kind === 'approval').length,
+    questions: interactions.filter((item) => item.kind !== 'approval').length,
   });
   const activeItem =
     planStatus.state === 'ready' && selectedChoice?.live
       ? planStatus.plan.items.find((item) => item.status === 'in_progress')
       : undefined;
-  const tools = toolRows(
-    Object.values(projection?.toolCalls ?? {}).map((call) => ({
-      toolCallId: call.toolCallId,
-      name: call.name,
-      phase: call.phase ?? call.status,
-      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
-    })),
-  );
+  const tools = runToolRows(projection);
   const currentTool = tools.find((row) => row.tone === 'running') ?? null;
   const resultText = useTranslations('Results');
+  const turnText = useTranslations('Turn');
   const listed = projection ? runResults(projection) : null;
   const resultItems = (
     listed?.final.length ? listed.final : (listed?.intermediate.map((group) => group.latest) ?? [])
@@ -436,7 +499,12 @@ function useChatWidgetState(
       now,
       planTitle: activeItem?.title ?? null,
       planVisible: open && Boolean(activeItem),
-      toolName: currentTool?.name ?? null,
+      // The tool is named as the work log names it (Wait, not await_tasks).
+      toolName: currentTool
+        ? turnText.has(`tool.${currentTool.name}`)
+          ? turnText(`tool.${currentTool.name}`)
+          : currentTool.name
+        : null,
       failed: action.hasFailure,
       needsUser: action.needsUser,
     }),
@@ -454,7 +522,7 @@ function useChatWidgetState(
     .filter((execution) => currentIds.has(execution.executionId))
     .map((execution) =>
       execution.status === 'active' && awaitingApproval.has(execution.executionId)
-        ? { ...execution, status: 'waiting_approval' }
+        ? { ...execution, status: 'waiting_approval' as const }
         : execution,
     );
   const agents = agentActivity(currentAgents);
@@ -489,6 +557,7 @@ function useChatWidgetState(
   return {
     sessionId,
     runId: presentationRunId,
+    presence: projection ? projectionPresence(projection, view?.events ?? []) : null,
     live,
     runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
     viewed: viewedRun({ runIds, presentationRunId, live }),
@@ -529,9 +598,15 @@ function useChatWidgetState(
     usage: usageSummary(projection),
     cost: projection && prices ? estimateRunCost(projection, prices) : null,
     action,
-    failedExecutionId:
-      projection?.toolCalls[tools.find((row) => row.tone === 'failed')?.id ?? '']?.executionId ??
-      null,
+    questionNotice,
+    failedExecutionId: failedToolExecutionId(projection, tools),
+    compaction: compactionControl(
+      session,
+      presentationRunId,
+      projection,
+      context.executionId,
+      compactions,
+    ),
     activity,
     plan: {
       open,
@@ -551,6 +626,46 @@ function useChatWidgetState(
       choose: (key) => setManualKey(key),
     },
     notice,
+  };
+}
+
+function compactionControl(
+  session: RunSessionStore,
+  presentationRunId: string | null,
+  projection: RunProjection | null,
+  executionId: string | null,
+  compactions: {
+    executionId?: string;
+    phase: NonNullable<ChatWidgetModel['compaction']>['phase'];
+    automatic?: boolean;
+  }[],
+): NonNullable<ChatWidgetModel['compaction']> {
+  const decision = compactTarget(projection, executionId);
+  const targetId = decision.ok ? decision.executionId : executionId;
+  const phase =
+    [...compactions].reverse().find((item) => !item.automatic && item.executionId === targetId)
+      ?.phase ?? null;
+  return {
+    reason: decision.ok ? (presentationRunId ? null : 'compactNoExecution') : decision.reason,
+    pending: decision.ok && decision.pending,
+    phase,
+    request: async () => {
+      const current = session.getState();
+      if (!presentationRunId || current.runId !== presentationRunId || !current.projection)
+        return null;
+      const next = compactTarget(current.projection, executionId);
+      if (!next.ok || next.pending) return null;
+      try {
+        const receipt = await current.sendCommand({
+          type: 'compact_context',
+          expectedControlRevision: next.expectedControlRevision,
+          payload: { executionId: next.executionId, attemptNo: next.attemptNo },
+        });
+        return receipt.error?.message ?? null;
+      } catch (failure) {
+        return failure instanceof Error ? failure.message : String(failure);
+      }
+    },
   };
 }
 

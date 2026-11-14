@@ -309,6 +309,42 @@ describe('file tools switch', () => {
       'reviewRecipe',
     );
   });
+  it.each([
+    ['a raise policy', { limitPolicy: { kind: 'raise_reasoning', level: 'high' } }, 3],
+    ['a model switch', { limitPolicy: { kind: 'upper_model', modelProfile: 'model-a' } }, 3],
+    ['no limit', { limitPolicy: { kind: 'unlimited' }, maxIterations: undefined }, 2],
+  ])(
+    'pinning a recipe on a Loop with %s leaves it ending at its cap, in one write',
+    (_name, limit, cap) => {
+      const draft = draftFromDefinition(team());
+      const limited = draftFromDefinition({
+        ...draft.definition,
+        nodes: draft.definition.nodes.map((node) => {
+          if (node.id !== 'review_loop') return node;
+          const next = { ...node, maxIterations: 3, ...limit } as Record<string, unknown>;
+          if (next.maxIterations === undefined) delete next.maxIterations;
+          return next as typeof node;
+        }),
+      });
+      const recipe = {
+        recipeId: 'quality',
+        revision: 1,
+        criteriaHash: reviewCriteriaHash(draft.definition.input.criteria),
+        candidateNodeId: 'write',
+        evaluatorRoleId: 'reviewer',
+        checkIds: [],
+        criteriaFiles: [],
+        maxAttempts: 2,
+        maxRepairs: 1,
+      };
+      const on = updateNode(limited, 'review_loop', { reviewRecipe: recipe });
+      const loop = on.definition.nodes.find((node) => node.id === 'review_loop');
+      expect(loop).not.toHaveProperty('limitPolicy');
+      expect(loop).toMatchObject({ maxIterations: cap, reviewRecipe: recipe });
+      expect(compileDraft(on).diagnostics.map((d) => d.code)).not.toContain('LOOP_LIMIT_RECIPE');
+      expect(compileDraft(on).diagnostics.map((d) => d.code)).not.toContain('LOOP_MAX_ITERATIONS');
+    },
+  );
   it('pins and removes a role harness without retaining a null field', () => {
     const added = addNode(emptyDraft(), 'agent');
     const binding = { profileId: 'writer', revision: 2 };

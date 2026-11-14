@@ -2,6 +2,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import {
   lastRunSucceeded,
+  newConversation,
   panelTab,
   requestBox,
   startSession,
@@ -12,9 +13,8 @@ async function openSession(page: Page, blank = false) {
   await page.goto('/?delay=50');
   await teamFromTemplate(page);
   if (blank) {
-    await expect(page.getByRole('button', { name: 'Start chat', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
-    await expect(page).toHaveURL(/\/sessions\/session_/);
+    await expect(page.getByRole('button', { name: 'New conversation', exact: true })).toBeEnabled();
+    await newConversation(page);
     await expect(requestBox(page)).toHaveValue('');
     await expect(page.getByTestId('chat-timeline').getByRole('article')).toHaveCount(0);
   } else await startSession(page, 'Desktop workbench');
@@ -71,8 +71,8 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await expect(page).toHaveURL(workUrl);
   await expect(
     page
-      .getByRole('tablist', { name: 'Session views' })
-      .getByRole('tab', { name: 'Execution history', exact: true }),
+      .getByRole('tablist', { name: 'Conversation views' })
+      .getByRole('tab', { name: 'Runs', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(
@@ -107,39 +107,46 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   });
   await openSession(page);
   await panelTab(page, 'Files');
-  await expect(page.getByText('Link a work folder to browse files.')).toBeVisible();
+  await expect(page.getByText('Link a project source folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(
     page
-      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tablist', { name: 'Conversation views' })
       .getByRole('tab', { name: 'Files', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await page
-    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tablist', { name: 'Conversation views' })
     .getByRole('tab', { name: 'Files', exact: true })
     .click();
-  await page.getByRole('button', { name: 'Open README.md', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   await expect(
     page
       .getByRole('region', { name: 'File content', exact: true })
       .getByText('# Release notes', { exact: true }),
   ).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Desktop workbench');
-  await page.getByRole('button', { name: 'Reference lines', exact: true }).click();
+  await page.getByRole('button', { name: 'More actions for README.md', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Reference lines…', exact: true }).click();
+  await page
+    .getByRole('dialog', { name: 'Reference lines', exact: true })
+    .getByRole('button', { name: 'Reference lines', exact: true })
+    .click();
   await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page
-    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tablist', { name: 'Conversation views' })
     .getByRole('tab', { name: 'Files', exact: true })
     .click();
   // #87: an original-folder file has one read-only preview in Files, kept across panes; the
   // dock's document tabs are the only tab strip.
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Open src/version.ts', exact: true }).click();
+  // A nested file shows in the tree once its folder is expanded.
+  await page.getByRole('treeitem', { name: 'src', exact: true }).click();
+  await page.getByRole('treeitem', { name: 'version.ts', exact: true }).click();
   await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
   await panelTab(page, 'Conversation');

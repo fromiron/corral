@@ -125,3 +125,48 @@ it('stale sources open the unchanged read-only capture and replacement requires 
     vi.unstubAllGlobals();
   }
 });
+
+it('shows a reply quote as a chip in the chip row and keeps the other captures in order around it', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.read.mockReset();
+  fixture.read.mockResolvedValue({ state: 'current' });
+  const first = createTextAttachment('first.txt', 'text/plain', 'first');
+  const quote = createTextAttachment('quote.txt', 'text/plain', 'quoted passage', {
+    kind: 'reply',
+    runId: 'run_quoted',
+    modelCallId: 'call_quoted',
+    start: 0,
+    end: 14,
+    prefix: '',
+    suffix: '',
+  });
+  const last = createTextAttachment('last.txt', 'text/plain', 'last');
+  const onChange = vi.fn();
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const button = (label: string) =>
+    [...container.querySelectorAll('button')].filter(
+      (item) => item.getAttribute('aria-label') === label,
+    );
+  try {
+    await act(async () =>
+      root.render(<SourceAttachments value={[first, quote, last]} onChange={onChange} />),
+    );
+    // The quote is a chip, never a source row that reads the reply back.
+    expect(container.querySelectorAll('details')).toHaveLength(2);
+    expect(container.textContent).toContain('quoted passage');
+    expect(fixture.read).not.toHaveBeenCalledWith(expect.anything(), quote);
+    // The chip list is named, so its chips are read as the request's quotes.
+    const chips = container.querySelector('li')?.closest('ul');
+    expect(chips?.getAttribute('aria-label')).toBe('Composer.quotes');
+    await act(async () => button('Context.removeCapture')[0]?.click());
+    expect(onChange).toHaveBeenLastCalledWith([quote, last]);
+    await act(async () => button('Composer.removeQuote')[0]?.click());
+    expect(onChange).toHaveBeenLastCalledWith([first, last]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  }
+});

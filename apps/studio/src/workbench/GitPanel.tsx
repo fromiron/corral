@@ -13,7 +13,7 @@ import {
   type GitWriteResult,
   type WorkspaceTarget,
 } from '@corral/contracts';
-import { Button, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Minus, Plus } from '@corral/react/icons';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -503,7 +503,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       <div className="flex flex-wrap items-end gap-2">
         <Select
           label={t('source')}
-          size="sm"
           value={source}
           onValueChange={(value) => setSource(value as 'session' | 'project')}
           options={[
@@ -512,7 +511,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           ]}
         />
         <Button
-          size="compact"
           variant="tertiary"
           disabled={!result}
           onClick={() => setRevision((value) => value + 1)}
@@ -521,21 +519,21 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
         </Button>
       </div>
       {!result ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
         </p>
       ) : result.noCopy ? (
-        <p role="status" className="text-xs text-muted-foreground">
+        <p role="status" className="text-caption text-muted-foreground">
           {t('noSessionCopy')}
         </p>
       ) : result.error ? (
-        <p role="alert" className="text-xs text-muted-foreground">
+        <p role="alert" className="text-caption text-muted-foreground">
           {t('unavailable')}
         </p>
       ) : null}
       {status ? (
         <>
-          <div className="flex flex-wrap gap-x-3 gap-y-1 text-xs">
+          <div className="flex flex-wrap gap-x-3 gap-y-1 text-caption">
             <span>
               {t('branch')}:{' '}
               <span className="break-all font-mono">{status.head.branch ?? '—'}</span>
@@ -565,11 +563,14 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           </div>
           {writable ? (
             <details
-              className="text-xs"
+              className="text-caption"
               open={branchOpen}
               onToggle={(event) => setBranchOpen(event.currentTarget.open)}
             >
-              <summary className="cursor-pointer select-none py-1 font-medium">
+              <summary
+                className="cursor-pointer select-none py-1"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
                 {t('branchActions')}
               </summary>
               <div className="flex flex-col gap-2 pt-1">
@@ -589,7 +590,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                   />
                   <Button
                     type="submit"
-                    size="compact"
                     variant="tertiary"
                     disabled={!branchName.trim() || Boolean(busy || unconfirmed)}
                   >
@@ -601,7 +601,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {others.slice(0, 20).map((branch) => (
                       <li key={branch}>
                         <Button
-                          size="compact"
                           variant="ghost"
                           aria-label={t('switchTo', { branch })}
                           title={t('switchTo', { branch })}
@@ -617,7 +616,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {remote ? (
                   <div className="flex flex-wrap gap-1">
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() => void change({ kind: 'fetch', remote })}
@@ -625,7 +623,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       {t('fetch')}
                     </Button>
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -639,7 +636,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       {t('pull')}
                     </Button>
                     <Button
-                      size="compact"
                       variant="tertiary"
                       disabled={!status.head.branch || Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -657,18 +653,20 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           ) : null}
           {sequence?.sequence ? sequenceControls : null}
           {status.filtersDisabled ? (
-            <p className="text-xs text-muted-foreground">{t('rawContent')}</p>
+            <p className="text-caption text-muted-foreground">{t('rawContent')}</p>
           ) : null}
           {status.truncated ? (
-            <p role="status" className="text-xs text-warning">
+            <p role="status" className="text-caption text-warning">
               {t('truncated')}
             </p>
           ) : null}
           {unconfirmed ? (
-            <div role="status" className="flex flex-wrap items-center gap-2 text-xs text-warning">
+            <div
+              role="status"
+              className="flex flex-wrap items-center gap-2 text-caption text-warning"
+            >
               <span>{t('unconfirmed')}</span>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={Boolean(busy)}
                 onClick={() => void check(unconfirmed)}
@@ -678,7 +676,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               {unconfirmed.advanced ? (
                 <>
                   <Button
-                    size="compact"
                     variant="tertiary"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'reconcile')}
@@ -686,7 +683,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                     {t('reconcile')}
                   </Button>
                   <Button
-                    size="compact"
                     variant="ghost"
                     disabled={Boolean(busy)}
                     onClick={() => void recoverAdvanced(unconfirmed, 'cancel')}
@@ -698,10 +694,9 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             </div>
           ) : null}
           {busy?.advanced && !unconfirmed ? (
-            <div role="status" className="flex flex-wrap items-center gap-2 text-xs">
+            <div role="status" className="flex flex-wrap items-center gap-2 text-caption">
               <span>{t('advancedRunning')}</span>
               <Button
-                size="compact"
                 variant="tertiary"
                 onClick={() =>
                   void workspaces
@@ -715,7 +710,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             </div>
           ) : null}
           {failure ? (
-            <div role="alert" className="flex flex-col gap-1 text-xs text-danger">
+            <div role="alert" className="flex flex-col gap-1 text-caption text-danger">
               <span>{t(failure.key)}</span>
               {failure.detail && failure.key !== 'stateChanged' ? (
                 <pre className="whitespace-pre-wrap break-words font-mono text-2xs text-muted-foreground">
@@ -765,7 +760,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               <div className="flex flex-wrap items-center gap-3">
                 <Button
                   type="submit"
-                  size="compact"
                   disabled={!message.trim() || Boolean(busy) || Boolean(unconfirmed)}
                 >
                   {busy?.kind === 'commit'
@@ -775,7 +769,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 {busy?.kind === 'commit' ? (
                   <Button
                     type="button"
-                    size="compact"
                     variant="tertiary"
                     onClick={() =>
                       void workspaces?.cancelGitOperation?.(sessionId, busy.operationId)
@@ -786,7 +779,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 ) : null}
                 <Switch
                   label={t('runHooks')}
-                  size="compact"
                   checked={runHooks}
                   onToggle={() => setRunHooks(!runHooks)}
                 />
@@ -794,19 +786,22 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
             </form>
           ) : null}
           {!status.entries.length ? (
-            <p className="text-xs text-muted-foreground">{t('noChanges')}</p>
+            <p className="text-caption text-muted-foreground">{t('noChanges')}</p>
           ) : null}
           {sides.map((side) => {
             const entries = status.entries.filter((entry) => belongs(entry, side));
             return (
               <section key={side} aria-labelledby={`${id}-${side}`} className="flex flex-col gap-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h3 id={`${id}-${side}`} className="text-xs font-semibold">
+                  <h3
+                    id={`${id}-${side}`}
+                    className="text-caption"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     {t(side)} · {entries.length}
                   </h3>
                   {writable && entries.length > 1 ? (
                     <Button
-                      size="compact"
                       variant="ghost"
                       disabled={Boolean(busy || unconfirmed)}
                       onClick={() =>
@@ -829,7 +824,6 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                             ? 'secondary'
                             : 'ghost'
                         }
-                        size="compact"
                         data-git-side={side}
                         data-path={entry.path}
                         aria-pressed={selected?.side === side && selected.path === entry.path}
@@ -847,7 +841,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                       </Button>
                       {writable ? (
                         <Button
-                          size="icon-compact"
+                          size="icon"
                           variant="ghost"
                           aria-label={t(side === 'staged' ? 'unstage' : 'stage', {
                             path: entry.path,
@@ -872,7 +866,11 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           })}
           {conflicts.length ? (
             <section aria-labelledby={`${id}-conflicts`} className="flex flex-col gap-1">
-              <h3 id={`${id}-conflicts`} className="text-xs font-semibold">
+              <h3
+                id={`${id}-conflicts`}
+                className="text-caption"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
                 {t('conflicts')} · {conflicts.length}
               </h3>
               {sequence && typeof workspaces?.gitConflict === 'function' ? (
@@ -886,12 +884,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
                 />
               ) : (
                 <>
-                  <p className="text-xs text-warning">{t('conflictUnavailable')}</p>
+                  <p className="text-caption text-warning">{t('conflictUnavailable')}</p>
                   <ul>
                     {conflicts.map((entry) => (
                       <li
                         key={entry.path}
-                        className="whitespace-pre-wrap break-all font-mono text-xs"
+                        className="whitespace-pre-wrap break-all font-mono text-caption"
                       >
                         {entry.path}
                       </li>
@@ -906,7 +904,9 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
               aria-label={t(`comparison.${selected.side}`)}
               className="flex min-w-0 flex-col gap-2"
             >
-              <h3 className="text-xs font-semibold">{t(`comparison.${selected.side}`)}</h3>
+              <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t(`comparison.${selected.side}`)}
+              </h3>
               {writable &&
               status.target.kind === 'session' &&
               selected.side !== 'untracked' &&

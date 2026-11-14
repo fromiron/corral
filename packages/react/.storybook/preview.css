@@ -1,3 +1,5 @@
 @import "tailwindcss";
 @import "../src/theme.css";
 @source "../src";
+/* Some stories render Studio screens (Needs you, overview widgets); their classes come from there. */
+@source "../../../apps/studio/src";

@@ -141,6 +141,26 @@ export class LocalEmbeddingEngine {
     return this.running === 'ready';
   }
 
+  /** An embedding occupies the slot or is waiting for it. Removal waits for that to finish. */
+  busy(): boolean {
+    return this.active !== null || this.waiting.length > 0;
+  }
+
+  /**
+   * Ends the helper this engine started and leaves it able to start again. In-flight embeddings
+   * are rejected; callers that must not cancel them check `busy` first. It reads as not installed
+   * until `refreshInstall`, so nothing starts a helper while its files are being removed.
+   */
+  async stop(): Promise<void> {
+    if (this.closing) return;
+    this.install = 'missing';
+    await this.stopHelper(new Error('the local AI model was removed'));
+    if (this.closing) return;
+    this.running = 'idle';
+    this.error = null;
+    this.failedUntil = 0;
+  }
+
   /** True, or why no embedding can be computed right now. */
   available(): true | string {
     return this.unavailable() ?? true;
@@ -364,8 +384,11 @@ export class LocalEmbeddingEngine {
           return;
         }
         if (!started) {
-          if (message.type === 'ready') settle(null);
-          else if (message.type === 'fatal') settle(new Error(message.message));
+          if (message.type === 'ready') {
+            if (message.backend !== backend)
+              settle(new Error('the local AI helper reported a different device'));
+            else settle(null);
+          } else if (message.type === 'fatal') settle(new Error(message.message));
           return;
         }
         if (generation === this.generation && helper === this.helper) this.onMessage(message);

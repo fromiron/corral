@@ -1,29 +1,43 @@
 import type { WorkspacePreview } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { PreviewView } from './PreviewView.tsx';
 
 /** Human and model open the same run-owned lease; source navigation keeps concurrent runs distinct. */
-export function PreviewLeases({ sessionId }: { sessionId: string }) {
+export function PreviewLeases({
+  sessionId,
+  onRead,
+}: {
+  sessionId: string;
+  /** After each read: whether any preview of the session is running. */
+  onRead?: (running: boolean) => void;
+}) {
   const t = useTranslations('Preview');
   const format = useFormatter();
   const { workspaces, mode } = useServices();
   const [leases, setLeases] = useState<WorkspacePreview[]>([]);
   const [opened, setOpened] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const reported = useRef(onRead);
+  reported.current = onRead;
   useEffect(() => {
     if (!workspaces || mode !== 'server') return;
     let live = true;
     const refresh = () =>
       void workspaces.previews(sessionId).then(
         (items) => {
-          if (live) setLeases(items.filter((lease) => lease.runId && lease.state === 'ready'));
+          if (!live) return;
+          setLeases(items.filter((lease) => lease.runId && lease.state === 'ready'));
+          reported.current?.(items.some((lease) => lease.state === 'ready'));
         },
         () => {
-          if (live) setLeases([]);
+          if (!live) return;
+          setLeases([]);
+          reported.current?.(false);
         },
       );
     refresh();
@@ -36,10 +50,12 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
   if (!leases.length) return null;
   return (
     <section aria-label={t('opened')} className="flex flex-col gap-2 border-b border-line pb-2">
-      <h3 className="text-xs font-medium">{t('opened')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('opened')}
+      </h3>
       <ul className="flex flex-col gap-2">
         {leases.map((lease) => (
-          <li key={lease.leaseId} className="flex flex-col gap-1 text-xs">
+          <li key={lease.leaseId} className="flex flex-col gap-1 text-caption">
             <div className="flex min-w-0 items-center gap-2">
               <span className="min-w-0 flex-1 truncate" title={lease.path}>
                 {lease.kind === 'service' ? `${t('service')} · ` : ''}
@@ -53,15 +69,14 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
               {desktop || lease.kind === 'static' ? (
                 <Button
                   variant="tertiary"
-                  size="compact"
                   onClick={() => {
                     setError(null);
                     if (desktop)
-                      void desktop
-                        .openPreview(sessionId, lease.leaseId)
-                        .catch((reason: unknown) =>
+                      void desktop.openPreview(sessionId, lease.leaseId).then(
+                        () => setOpened(lease.leaseId),
+                        (reason: unknown) =>
                           setError(reason instanceof Error ? reason.message : String(reason)),
-                        );
+                      );
                     else setOpened(lease.leaseId);
                   }}
                 >
@@ -80,7 +95,6 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
               </Link>
               <Button
                 variant="ghost"
-                size="compact"
                 onClick={async () => {
                   try {
                     await workspaces?.stopPreview(sessionId, lease.leaseId);
@@ -93,23 +107,28 @@ export function PreviewLeases({ sessionId }: { sessionId: string }) {
                 {t('close')}
               </Button>
             </div>
-            {!desktop && lease.kind === 'static' && opened === lease.leaseId ? (
+            {opened === lease.leaseId ? (
               <>
-                <iframe
-                  title={t('title')}
-                  src={lease.url}
-                  sandbox=""
-                  referrerPolicy="no-referrer"
-                  className="h-[45vh] min-h-64 w-full rounded border border-line bg-white"
+                <PreviewView
+                  sessionId={sessionId}
+                  lease={lease}
+                  inline={!desktop && lease.kind === 'static'}
+                  output={
+                    lease.kind === 'service' && lease.operationId
+                      ? { kind: 'command', operationId: lease.operationId }
+                      : null
+                  }
                 />
-                <p className="text-2xs text-muted-foreground">{t('staticOnly')}</p>
+                {!desktop && lease.kind === 'static' ? (
+                  <p className="text-2xs text-muted-foreground">{t('staticOnly')}</p>
+                ) : null}
               </>
             ) : null}
           </li>
         ))}
       </ul>
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}

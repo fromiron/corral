@@ -115,9 +115,17 @@ test('registers and selects a language server, approves an SDK query and trusts 
       return { sessionId, runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByText('node lsp.mjs', { exact: true })).toBeVisible();
-    await page.getByRole('button', { name: 'Run this query once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Succeeded');
+    // A session's run opens in its run history, beside the conversation that also shows the request.
+    // The record beside it reads the request; the conversation's needed-now tray answers it.
+    await expect(
+      page.getByTestId('run-side').getByText('node lsp.mjs', { exact: true }),
+    ).toBeVisible();
+    await page.getByTestId('run-side').getByTestId('respond-in-conversation').click();
+    const needsYou = page.locator('[data-pending-tray]');
+    await expect(needsYou).toBeFocused();
+    await expect(needsYou.getByText('node lsp.mjs', { exact: true })).toBeVisible();
+    await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
+    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
     await page.goto(`${corral.server.url}/settings?section=workspace&projectId=default`);
     await page
       .getByRole('button', { name: 'Review launch for Fixture server', exact: true })

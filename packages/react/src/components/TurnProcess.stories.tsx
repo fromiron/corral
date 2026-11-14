@@ -302,7 +302,10 @@ export const RunningFirstRequest: Story = {
     await waitFor(() => expect(canvas.getByText(/Generating response/)).toBeVisible());
     await expect(canvas.getByText('Research brief')).toBeVisible();
     await expect(canvas.queryByText(ordinaryResponse)).toBeNull();
-    const details = canvas.getByRole('button', { name: 'Request details' });
+    // The row says the reasoning record is missing without being opened.
+    await expect(canvas.getByTestId('reasoning-level')).toHaveTextContent('Reasoning not recorded');
+    // The request's row is the way to its details, which do not repeat that.
+    const details = canvas.getByRole('button', { name: /^Details of Model request 1/ });
     details.focus();
     await userEvent.keyboard('{Enter}');
     await expect(details).toHaveAttribute('aria-expanded', 'true');
@@ -319,7 +322,7 @@ export const JudgedRequest: Story = {
       name: 'Local · CPU · Recommended low → applied low · 420ms',
     });
     await waitFor(() => expect(line).toBeVisible());
-    await expect(canvas.queryByRole('button', { name: 'Request details' })).toBeNull();
+    await expect(canvas.queryByRole('button', { name: /^Details of Model request/ })).toBeNull();
     await userEvent.click(line);
     const detail = await within(document.body).findByRole('dialog');
     await expect(detail).toHaveTextContent('Payload verifiednot verified');
@@ -332,9 +335,9 @@ export const ToolsAndDelegates: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await waitFor(() => expect(canvas.getByText(/^Researcher/)).toBeVisible());
-    await expect(canvas.getByText('Active')).toBeVisible();
+    await expect(canvas.getByText('Working')).toBeVisible();
     await expect(canvas.getByText('Source notes')).toBeVisible();
-    const details = canvas.getByRole('button', { name: 'Tool details' });
+    const details = canvas.getByRole('button', { name: /^Details of Read/ });
     await userEvent.click(details);
     await expect(details).toHaveAttribute('aria-expanded', 'true');
     const card = canvas.getByRole('button', { name: /^read_document/ });
@@ -350,14 +353,19 @@ export const Paused: Story = {
   args: {
     projection: pausedProjection(),
     events: toolEvents.slice(0, 3),
+    // The head line as a conversation draws it: the answering role and the run's state.
+    role: 'Assistant',
+    status: 'Paused',
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    // The head names the paused state, and does not animate it as work going on.
     const header = canvas.getByRole('button', { name: /Paused/ });
+    await expect(header).toHaveTextContent('Paused');
     await expect(header).toBeVisible();
     await expect(header.querySelector('.shimmer-text')).toBeNull();
     await waitFor(() => expect(canvas.getByText(/^Model request 1/)).toBeVisible());
-    await userEvent.click(canvas.getByRole('button', { name: 'Tool details' }));
+    await userEvent.click(canvas.getByRole('button', { name: /^Details of Read/ }));
     await waitFor(() =>
       expect(canvas.getByRole('button', { name: /^read_document/ })).toBeVisible(),
     );

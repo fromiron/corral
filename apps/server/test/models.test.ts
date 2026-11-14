@@ -11,6 +11,7 @@ import { startCompatibleEndpoint } from '@corral/testkit/endpoint';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import { assertOutsideWorkspace } from '../src/models/index.ts';
+import { DRAFT_SYSTEM_PROMPT } from '../src/models/team-draft.ts';
 import { FAKE_PROFILES, FAKE_REDIRECT_BAD, FAKE_REDIRECT_OK, fakeOpenAI } from '../src/testing.ts';
 import { expectPrivatePermissions } from './fixtures/private-permissions.ts';
 
@@ -131,6 +132,7 @@ describe('model sign-in and profiles', () => {
     expect(started.body).toEqual({
       state: 'waiting',
       authUrl: 'https://auth.example.test/authorize?state=s1',
+      userCode: null,
       error: null,
     });
     const openai = await signIn(context.json);
@@ -178,6 +180,7 @@ describe('model sign-in and profiles', () => {
     expect(login).toEqual({
       state: 'failed',
       authUrl: 'https://auth.example.test/authorize?state=s1',
+      userCode: null,
       error: 'The provider refused the sign-in. Try again.',
     });
     expect(context.responses.join('\n')).not.toContain('leaked-body');
@@ -270,10 +273,16 @@ describe('model sign-in and profiles', () => {
       { id: 'model-b', provider: 'openai', model: 'gpt-test-b-api-only' },
     ]);
     await signIn(context.json);
-    const profiles = (await context.json('/model-profiles')).body;
+    const profiles: { source: string; subscriptionSupported: boolean | null }[] = (
+      await context.json('/model-profiles')
+    ).body;
     expect(
-      profiles.map((p: { subscriptionSupported: boolean | null }) => p.subscriptionSupported),
+      profiles.filter((p) => p.source === 'profile').map((p) => p.subscriptionSupported),
     ).toEqual([true, false]);
+    // The connection lists only the models the subscription sign-in may use.
+    expect(
+      profiles.filter((p) => p.source === 'connection').map((p) => p.subscriptionSupported),
+    ).toEqual([true]);
     const repo = new RestCorralRepository({ baseUrl: context.server.url, fetch: context.call });
     const definition = linearCorral(['writer']);
     for (const role of definition.roles) role.modelProfile = 'model-b';
@@ -358,7 +367,7 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await finish(context)).status).toBe('refused');
   });
 
-  it('refuses an empty or oversized key, a provider no profile uses, and Anthropic subscription sign-in', async () => {
+  it('refuses an empty or oversized key and a provider Pi does not know; Anthropic offers both methods', async () => {
     const context = await start(makeFake(), [
       ...FAKE_PROFILES,
       { id: 'claude', provider: 'anthropic', model: 'claude-test' },
@@ -367,13 +376,11 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     expect((await setKey(context.json, 'openai', 'x'.repeat(2000))).status).toBe(400);
     expect((await setKey(context.json, 'nobody', 'sk-x')).status).toBe(404);
     const login = await context.json('/model-auth/anthropic/login', { method: 'POST' });
-    expect(login.status).toBe(501);
-    expect(login.body.error).toMatchObject({ code: 'COMMAND_NOT_SUPPORTED' });
-    expect(login.body.error.message).toMatch(/API key/);
+    expect(login.status).toBe(202);
     const anthropic = (await context.json('/model-auth')).body.find(
       (p: { providerId: string }) => p.providerId === 'anthropic',
     );
-    expect(anthropic).toMatchObject({ methods: { oauth: false, apiKey: true } });
+    expect(anthropic).toMatchObject({ methods: { oauth: true, apiKey: true } });
   });
 
   it('a keyless local endpoint runs without a key; a keyed one gets the entered key', async () => {
@@ -444,12 +451,6 @@ describe('API keys and OpenAI-compatible endpoints', () => {
       expect(local).toMatchObject({ signedIn: false, endpointChanged: true });
       const result = await finish(moved);
       expect(result.status).toBe('refused');
-      const { revision } = (await moved.json('/model-config')).body;
-      const probe = await moved.json('/model-auth/local/probe', {
-        method: 'POST',
-        body: JSON.stringify({ revision }),
-      });
-      expect(probe.body).toMatchObject({ kind: 'authentication', status: null });
       expect(second.authorizations).toEqual([]);
     } finally {
       await first.close();
@@ -457,7 +458,25 @@ describe('API keys and OpenAI-compatible endpoints', () => {
     }
   });
 
-  it('tests endpoint metadata explicitly, rejects stale settings and never forwards a key through a redirect', async () => {
+  it('the separate connection check is gone: its route answers 404 and /model-auth carries no result of it', async () => {
+    const context = await start(
+      makeFake(),
+      LOCAL_PROFILES,
+      endpointConfig('https://example.test/v1', 'api_key'),
+    );
+    const { revision } = (await context.json('/model-config')).body;
+    const probe = await context.json('/model-auth/local/probe', {
+      method: 'POST',
+      body: JSON.stringify({ revision }),
+    });
+    expect(probe.status).toBe(404);
+    expect(probe.body.error.code).toBe('TARGET_NOT_FOUND');
+    const auth = (await context.json('/model-auth')).body as Record<string, unknown>[];
+    expect(auth.map((view) => view.providerId)).toContain('local');
+    for (const view of auth) expect(view).not.toHaveProperty('connectionTest');
+  });
+
+  it('the model list fetch over HTTP sends one GET with the key, never follows a redirect and answers a result late past a key change with 409', async () => {
     const seen: { path: string; method: string; authorization: string | undefined }[] = [];
     let status = 200;
     let hold: ((reply: () => void) => void) | undefined;
@@ -487,51 +506,74 @@ describe('API keys and OpenAI-compatible endpoints', () => {
         endpointConfig(`http://127.0.0.1:${address.port}/v1`, 'api_key'),
       );
       const { revision } = (await context.json('/model-config')).body;
-      const probe = (rev = revision) =>
-        context.json('/model-auth/local/probe', {
+      const refresh = () =>
+        context.json('/model-auth/local/models/refresh', {
           method: 'POST',
-          body: JSON.stringify({ revision: rev }),
+          body: JSON.stringify({ revision }),
         });
-      expect((await probe('stale')).status).toBe(409);
-      expect((await probe()).body).toMatchObject({ kind: 'authentication', status: null });
-      expect(seen).toEqual([]);
-      await setKey(context.json, 'local', 'fixture-probe-secret');
-      expect((await probe()).body).toMatchObject({
-        kind: 'connected',
-        status: 200,
-        checkedAt: expect.any(String),
+      // Saving a key also fetches the model list once, in the background
+      // (features/model-connections.md); wait for that fetch to settle.
+      const fetched = async (kind: string, fetchedStatus: number) => {
+        for (let i = 0; i < 200; i++) {
+          const view = (await context.json('/model-auth')).body[0];
+          if (view.modelFetch?.kind === kind && view.modelFetch.status === fetchedStatus)
+            return view.modelFetch;
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        throw new Error(`no ${kind} model fetch`);
+      };
+      const listed = (key: string) => ({
+        path: '/v1/models',
+        method: 'GET',
+        authorization: `Bearer ${key}`,
       });
-      expect(seen).toEqual([
-        { path: '/v1/models', method: 'GET', authorization: 'Bearer fixture-probe-secret' },
-      ]);
+      // No key yet: authentication, and nothing is sent.
+      expect((await refresh()).body).toMatchObject({
+        kind: 'authentication',
+        status: null,
+        modelCount: 0,
+      });
+      expect(seen).toEqual([]);
+      await setKey(context.json, 'local', 'fixture-fetch-secret');
+      // The fixture answers a body that is no model list.
+      await fetched('unsupported', 200);
+      expect(seen).toEqual([listed('fixture-fetch-secret')]);
       status = 302;
-      expect((await probe()).body).toMatchObject({ kind: 'redirect', status: 302 });
-      expect(seen).toHaveLength(2);
-      expect((await context.json('/model-auth')).body[0].connectionTest.kind).toBe('redirect');
-      await setKey(context.json, 'local', 'replacement-probe-secret');
-      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
-      expect(context.responses.join('\n')).not.toMatch(
-        /fixture-probe-secret|private provider response|replacement-probe-secret/,
-      );
+      expect((await refresh()).body).toMatchObject({ kind: 'redirect', status: 302 });
+      expect(seen).toEqual([listed('fixture-fetch-secret'), listed('fixture-fetch-secret')]);
+      expect(seen.some((request) => request.path.includes('credential-sink'))).toBe(false);
+      expect((await context.json('/model-auth')).body[0].modelFetch).toMatchObject({
+        kind: 'redirect',
+        status: 302,
+      });
       status = 200;
       let release: (() => void) | undefined;
       let entered: (() => void) | undefined;
       const received = new Promise<void>((resolve) => {
         entered = resolve;
       });
+      // Only this refresh is held; the fetch the next key save starts is answered at once.
       hold = (send) => {
+        hold = undefined;
         release = send;
         entered?.();
       };
-      const pending = probe();
+      const pending = refresh();
       await received;
       try {
-        await setKey(context.json, 'local', 'new-key-during-probe');
+        await setKey(context.json, 'local', 'new-key-during-fetch');
       } finally {
         release?.();
       }
-      expect((await pending).status).toBe(501);
-      expect((await context.json('/model-auth')).body[0].connectionTest).toBeNull();
+      const late = await pending;
+      expect(late.status).toBe(409);
+      expect(late.body.error.code).toBe('REVISION_CONFLICT');
+      // What the endpoint shows is the fetch made with the new key.
+      await fetched('unsupported', 200);
+      expect(seen.at(-1)).toEqual(listed('new-key-during-fetch'));
+      expect(context.responses.join('\n')).not.toMatch(
+        /fixture-fetch-secret|private provider response|new-key-during-fetch/,
+      );
     } finally {
       await new Promise<void>((resolve, reject) =>
         endpoint.close((error) => (error ? reject(error) : resolve())),
@@ -592,6 +634,13 @@ describe('team drafts from a goal', () => {
   };
   const draft = (json: Awaited<ReturnType<typeof start>>['json'], goal: string) =>
     json('/team-drafts', { method: 'POST', body: JSON.stringify({ goal }) });
+
+  it('tells the model to ask for a final approval only when the goal asks for one', () => {
+    const line = DRAFT_SYSTEM_PROMPT.split('\n').find((l) => l.startsWith('- finalApproval:'));
+    expect(line).toBe(
+      '- finalApproval: true or false; false unless the goal itself asks that a person approve the result before it is final',
+    );
+  });
 
   it('asks the first profile’s model once, with an output cap, and returns the checked plan', async () => {
     const fake = makeFake();
@@ -778,7 +827,7 @@ describe('editing profiles and endpoints from the Models page', () => {
         cacheWrite: expect.any(Number),
       },
     });
-    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(false);
+    expect(catalog.find((p) => p.providerId === 'anthropic')?.methods.oauth).toBe(true);
 
     const current = await context.json('/model-config');
     expect(current.body).toMatchObject({

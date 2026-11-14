@@ -50,7 +50,7 @@ export function DocumentCloseDialog({
         <DialogTitle>{t('closeTitle', { path: path ?? '' })}</DialogTitle>
         <DialogDescription>{t('closeHint')}</DialogDescription>
         {failed ? (
-          <p role="alert" className="text-sm text-danger">
+          <p role="alert" className="text-body text-danger">
             {t('closeFailed')}
           </p>
         ) : null}

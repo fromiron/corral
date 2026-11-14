@@ -1,7 +1,9 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import type { ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Popover, PopoverPopup, PopoverTrigger } from '../design-kit/index.ts';
+import { Pause, Play, Square } from '../design-kit/icons.ts';
+import { Button, Popover, PopoverPopup, PopoverTrigger, Tooltip } from '../design-kit/index.ts';
 import { useCancelConfirmation } from '../run/cancel-confirmation.ts';
 import type { RunSessionStore, SessionCommand } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
@@ -11,13 +13,34 @@ export function RunActions({
   session,
   compact = false,
   showCancel = true,
+  narrowIcons = false,
 }: {
   session: RunSessionStore;
   compact?: boolean;
   /** A composer with its existing stop control only needs Pause/Resume and receipts here. */
   showCancel?: boolean;
+  /**
+   * The host's bar is too narrow for words: Pause/Resume and Cancel show only their icons.
+   * Their words stay their accessible names and become their tooltips.
+   */
+  narrowIcons?: boolean;
 }) {
   const t = useTranslations('Reins');
+  /** A control's words; in a narrow bar its icon stands in and the words stay its name. */
+  const label = (icon: ReactNode, words: string) =>
+    narrowIcons ? (
+      <>
+        {icon}
+        <span data-run-action-label="" className="sr-only">
+          {words}
+        </span>
+      </>
+    ) : (
+      words
+    );
+  // In a bar (the run header, the top bar) they keep the bar's compact actions, as icons among
+  // its other icon buttons; in a panel they take the interface density.
+  const size = narrowIcons ? 'icon-compact' : compact ? 'compact' : undefined;
   const projection = useStore(session, (s) => s.projection);
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
   const shownRun = projection?.runId ?? null;
@@ -42,7 +65,7 @@ export function RunActions({
     <div
       className={
         compact
-          ? 'flex max-w-72 flex-col gap-2 text-xs'
+          ? 'flex max-w-72 flex-col gap-2 text-caption'
           : 'flex flex-col gap-2 rounded-lg border border-danger/40 bg-danger/5 p-3'
       }
     >
@@ -51,7 +74,6 @@ export function RunActions({
       <div className="flex flex-wrap gap-1">
         <Button
           variant="destructive"
-          size="compact"
           disabled={pending}
           onClick={() => {
             const chosen = shownRun;
@@ -65,7 +87,7 @@ export function RunActions({
         >
           {t('confirmCancelRun')}
         </Button>
-        <Button variant="tertiary" size="compact" onClick={() => setConfirmCancel(false)}>
+        <Button variant="tertiary" onClick={() => setConfirmCancel(false)}>
           {t('keepRunning')}
         </Button>
       </div>
@@ -74,17 +96,19 @@ export function RunActions({
   const cancelButton = (
     <Button
       variant="ghost-destructive"
-      size="compact"
+      size={size}
       disabled={pending || projection.status === 'cancelling'}
       onClick={() => setConfirmCancel(true)}
     >
-      {t('cancelRun')}
+      {label(<Square aria-hidden="true" />, t('cancelRun'))}
     </Button>
   );
+  const pauseWords = projection.status === 'paused' ? t('resume') : t('pause');
   return (
     <section
       aria-label={t('runControls')}
-      className={`flex flex-col gap-2 text-xs ${compact ? '' : 'rounded-lg fill-group p-3'}`}
+      // In a bar, an empty receipts region adds no gap below the buttons: they stay centred.
+      className={`flex flex-col gap-2 text-caption ${compact ? 'has-[>[aria-live]:empty]:gap-0' : 'rounded-lg fill-group p-3'}`}
     >
       {compact ? null : (
         <>
@@ -94,25 +118,39 @@ export function RunActions({
       )}
       {!terminal ? (
         <div className="flex flex-wrap gap-1">
-          <Button
-            variant="tertiary"
-            size="compact"
-            disabled={
-              pending || projection.status === 'pausing' || projection.status === 'cancelling'
-            }
-            onClick={() =>
-              send({
-                type: projection.status === 'paused' ? 'resume' : 'pause',
-                payload: { scope: 'run' },
-              })
-            }
-          >
-            {projection.status === 'paused' ? t('resume') : t('pause')}
-          </Button>
+          <Tooltip content={pauseWords} forceOpen={narrowIcons ? undefined : false}>
+            <Button
+              variant={narrowIcons ? 'ghost' : 'tertiary'}
+              size={size}
+              disabled={
+                pending || projection.status === 'pausing' || projection.status === 'cancelling'
+              }
+              onClick={() =>
+                send({
+                  type: projection.status === 'paused' ? 'resume' : 'pause',
+                  payload: { scope: 'run' },
+                })
+              }
+            >
+              {label(
+                projection.status === 'paused' ? (
+                  <Play aria-hidden="true" />
+                ) : (
+                  <Pause aria-hidden="true" />
+                ),
+                pauseWords,
+              )}
+            </Button>
+          </Tooltip>
           {showCancel && compact ? (
             // In a one-line bar the confirmation opens beside the button instead of growing the bar.
             <Popover open={confirming} onOpenChange={setConfirmCancel}>
-              <PopoverTrigger render={cancelButton} />
+              <Tooltip
+                content={t('cancelRun')}
+                forceOpen={narrowIcons && !confirming ? undefined : false}
+              >
+                <PopoverTrigger render={cancelButton} />
+              </Tooltip>
               <PopoverPopup align="end" side="bottom" width="sm" aria-label={t('cancelRun')}>
                 {confirmation}
               </PopoverPopup>

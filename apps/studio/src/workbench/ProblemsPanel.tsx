@@ -1,4 +1,4 @@
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { RefreshCw } from '@corral/react/icons';
 import { useContext, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -142,7 +142,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
     >
       <div className="flex shrink-0 items-center justify-end border-b border-line px-2 py-1">
         <Button
-          size="icon-compact"
+          size="icon"
           variant="ghost"
           aria-label={t('refresh')}
           onClick={() => refresh((value) => value + 1)}
@@ -152,18 +152,21 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
         {openError ? (
-          <p role="alert" className="mb-2 px-1 text-xs text-danger">
+          <p role="alert" className="mb-2 px-1 text-caption text-danger">
             {openError}
           </p>
         ) : null}
         {failed ? (
-          <p role="alert" className="text-xs text-danger">
+          <p role="alert" className="text-caption text-danger">
             {t('unavailable')}
           </p>
         ) : sources.length ? (
           sources.map((source) => (
             <section key={source.key} aria-label={source.name} className="mb-3">
-              <h3 className="flex items-baseline gap-2 px-1 text-xs font-medium">
+              <h3
+                className="flex items-baseline gap-2 px-1 text-caption"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
                 <span className="truncate">{source.name}</span>
                 <span className="text-muted-foreground">{t(source.kind)}</span>
                 {source.freshness === 'stale' || source.freshness === 'configChanged' ? (
@@ -179,10 +182,9 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
                     <li key={`${location}:${problem.message}`}>
                       <Button
                         variant="ghost"
-                        size="compact"
                         onClick={() => void reveal(problem)}
                         title={problem.message}
-                        className="h-auto w-full justify-start gap-2 py-1 text-left font-normal"
+                        className="h-auto w-full justify-start gap-2 py-1 text-left"
                       >
                         <span
                           aria-hidden
@@ -203,7 +205,7 @@ export function ProblemsPanel({ sessionId }: { sessionId: string }) {
             </section>
           ))
         ) : (
-          <p className="px-1 text-xs text-muted-foreground">{t('empty')}</p>
+          <p className="px-1 text-caption text-muted-foreground">{t('empty')}</p>
         )}
       </div>
     </section>

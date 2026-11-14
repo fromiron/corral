@@ -14,6 +14,11 @@ import {
   BannerTitle,
   Button,
   Checkbox,
+  Dialog,
+  DialogDescription,
+  DialogPopup,
+  DialogTitle,
+  fontWeights,
   Input,
   RadioGroup,
   RadioItem,
@@ -23,6 +28,7 @@ import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { formatDownload } from './download-size.ts';
 
 const MB = 1_000_000;
 
@@ -30,9 +36,12 @@ type ApiId = EffortRoutingView['apis'][number]['id'];
 type Fallback = 'provider-default' | EffortLevel;
 
 /** What the person is editing; numbers stay text until they are valid. */
+type LocalDevice = 'cpu' | 'vulkan' | 'cuda';
+
 interface Form {
   mode: Settings['mode'];
   engine: 'local' | 'api';
+  device: LocalDevice;
   threads: string;
   localTimeout: string;
   apiId: ApiId | null;
@@ -47,6 +56,7 @@ function formOf(view: EffortRoutingView): Form {
   return {
     mode: saved.mode,
     engine: engine?.kind ?? 'local',
+    device: localDevice(view, engine?.kind === 'local' ? engine.device.kind : 'cpu'),
     threads: String(engine?.kind === 'local' ? engine.device.threads : view.local.defaultThreads),
     localTimeout: String(
       engine?.kind === 'local' ? engine.callerTimeoutMs : LOCAL_ROUTING_TIMEOUT_MS,
@@ -60,6 +70,12 @@ function formOf(view: EffortRoutingView): Form {
         ? saved.fallback.effort
         : 'provider-default',
   };
+}
+
+function localDevice(view: EffortRoutingView, saved: LocalDevice): LocalDevice {
+  const offered = view.local.devices;
+  if (!offered || offered.some((entry) => entry.kind === saved)) return saved;
+  return 'cpu';
 }
 
 const whole = (text: string, min: number, max: number) => {
@@ -87,9 +103,11 @@ function settingsOf(form: Form, view: EffortRoutingView): Settings | null {
       ROUTING_TIMEOUT_MAX_MS,
     );
     if (!view.local.supported || threads === null || callerTimeoutMs === null) return null;
+    if (view.local.devices && !view.local.devices.some((entry) => entry.kind === form.device))
+      return null;
     return {
       mode: 'manual',
-      engine: { kind: 'local', device: { kind: 'cpu', threads }, callerTimeoutMs },
+      engine: { kind: 'local', device: { kind: form.device, threads }, callerTimeoutMs },
       fallback,
       ...application,
     };
@@ -130,7 +148,14 @@ export function EffortRoutingSettings({
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState<'saved' | null>(null);
   const [problem, setProblem] = useState<
-    'loadFailed' | 'saveFailed' | 'conflict' | 'actionFailed' | null
+    | 'loadFailed'
+    | 'saveFailed'
+    | 'conflict'
+    | 'actionFailed'
+    | 'removeInstalling'
+    | 'removeJudging'
+    | 'removeFailed'
+    | null
   >(null);
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: a new reloadKey asks for a fresh read.
@@ -225,15 +250,38 @@ export function EffortRoutingSettings({
   };
   const localAction = (action: () => Promise<EffortRoutingView>) =>
     void act(async () => setView(await action()), 'actionFailed');
+  const removeLocal = () => {
+    if (!models) return;
+    const api = models;
+    void act(async () => {
+      try {
+        setView(await api.removeLocalRouting());
+      } catch (error) {
+        if (error instanceof ApiError && error.message === 'an install is in progress') {
+          setProblem('removeInstalling');
+          return;
+        }
+        if (error instanceof ApiError && error.message === 'a judgment is running') {
+          setProblem('removeJudging');
+          return;
+        }
+        setProblem('removeFailed');
+      }
+    }, 'actionFailed');
+  };
 
   if (!models) return null;
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-4">
-      <h3 id={heading} className="text-sm font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
       {problem === 'loadFailed' ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('loadFailed')}
         </p>
       ) : null}
@@ -269,9 +317,10 @@ export function EffortRoutingSettings({
                   form={form}
                   busy={busy}
                   change={change}
-                  install={() => localAction(() => models.installLocalRouting())}
+                  install={() => localAction(() => models.installLocalRouting(form.device))}
                   cancel={() => localAction(() => models.cancelLocalRoutingInstall())}
                   start={() => localAction(() => models.startLocalRouting())}
+                  remove={removeLocal}
                 />
               ) : (
                 <ApiEngine view={view} form={form} change={change} />
@@ -303,13 +352,13 @@ export function EffortRoutingSettings({
               {t('save')}
             </Button>
             {notice === 'saved' ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 {t('saved')}
               </p>
             ) : null}
           </div>
           {problem && problem !== 'loadFailed' ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {t(problem)}
             </p>
           ) : null}
@@ -327,6 +376,7 @@ function LocalEngine({
   install,
   cancel,
   start,
+  remove,
 }: {
   view: EffortRoutingView;
   form: Form;
@@ -335,73 +385,187 @@ function LocalEngine({
   install(): void;
   cancel(): void;
   start(): void;
+  remove(): void;
 }) {
   const t = useTranslations('EffortRouting');
   const format = useFormatter();
+  const downloadHint = useId();
+  const prepareHint = useId();
+  const [confirming, setConfirming] = useState(false);
   const local = view.local;
+  const offered = local.devices?.length ? local.devices : null;
+  const cpu = {
+    kind: 'cpu' as const,
+    installed: local.install === 'installed',
+    downloadBytes: local.downloadBytes ?? 0,
+    requirement: null,
+  };
+  const catalog = offered ?? [cpu];
+  const picked = catalog.find((entry) => entry.kind === form.device) ?? cpu;
   const mb = (bytes: number) => format.number(Math.round(bytes / MB));
+  const downloadBytes = offered ? picked.downloadBytes : local.downloadBytes;
+  const removeBytes = local.installedBytes ?? local.downloadBytes;
+  const download =
+    downloadBytes === null
+      ? null
+      : formatDownload(downloadBytes, (value, options) => format.number(value, options));
+  const removal =
+    removeBytes === null
+      ? null
+      : formatDownload(removeBytes, (value, options) => format.number(value, options));
+  const pickedInstalled = offered ? picked.installed : local.install === 'installed';
   const status = !local.supported
     ? t('unsupported')
-    : local.install === 'absent'
-      ? t('install.absent', { size: mb(local.downloadBytes ?? 0) })
-      : local.install === 'downloading'
-        ? t('install.downloading', {
-            percent: local.progress
-              ? Math.floor((local.progress.received / local.progress.total) * 100)
-              : 0,
-            received: mb(local.progress?.received ?? 0),
-            total: mb(local.progress?.total ?? local.downloadBytes ?? 0),
-          })
-        : local.install === 'installed'
-          ? t(`runtime.${local.runtime}`)
-          : t(`install.${local.install}`);
-  const saved = view.settings.mode === 'manual' && view.settings.engine.kind === 'local';
+    : local.install === 'downloading'
+      ? t('install.downloading', {
+          percent: local.progress
+            ? Math.floor((local.progress.received / local.progress.total) * 100)
+            : 0,
+          received: mb(local.progress?.received ?? 0),
+          total: mb(local.progress?.total ?? downloadBytes ?? 0),
+        })
+      : local.install === 'verifying'
+        ? t('install.verifying')
+        : local.install === 'install-error' && (!offered || form.device === local.device.requested)
+          ? t('install.install-error')
+          : !pickedInstalled
+            ? t('install.absent', {
+                size: download?.size ?? mb(downloadBytes ?? 0),
+                unit: download?.unit ?? 'MB',
+              })
+            : t(`runtime.${local.runtime}`);
+  const savedEngine =
+    view.settings.mode === 'manual' && view.settings.engine.kind === 'local'
+      ? view.settings.engine
+      : null;
   const canPrepare =
-    saved &&
-    local.install === 'installed' &&
+    savedEngine !== null &&
+    savedEngine.device.kind === form.device &&
+    pickedInstalled &&
     (local.runtime === 'stopped' || local.runtime === 'error');
+  const canInstall =
+    local.supported &&
+    !pickedInstalled &&
+    local.install !== 'downloading' &&
+    local.install !== 'verifying';
+  const canRemove =
+    local.supported &&
+    (offered ? offered.some((entry) => entry.installed) : local.install === 'installed');
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="flex min-w-0 flex-col gap-1">
-          <h4 className="font-medium">{local.model ?? t('engines.local')}</h4>
-          <p className="text-xs text-muted-foreground">{t('host', { host: local.host })}</p>
-          <p role="status" className="text-sm">
+          <h4 style={{ fontVariationSettings: fontWeights.semibold }}>
+            {local.model ?? t('engines.local')}
+          </h4>
+          <p className="text-caption text-muted-foreground">{t('host', { host: local.host })}</p>
+          <p role="status" className="text-body">
             {status}
           </p>
           {local.supported && local.error ? (
-            <p role="alert" className="text-sm text-danger">
+            <p role="alert" className="text-body text-danger">
               {local.error}
             </p>
           ) : null}
         </div>
-        {local.supported && (local.install === 'absent' || local.install === 'install-error') ? (
-          <Button variant="secondary" size="compact" disabled={busy} onClick={install}>
-            {t('installAction')}
-          </Button>
+        {canInstall ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {download ? (
+              <p id={downloadHint} className="text-caption text-muted-foreground">
+                {t('download', download)}
+              </p>
+            ) : null}
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={busy}
+              aria-describedby={download ? downloadHint : undefined}
+              onClick={install}
+            >
+              {t('installAction')}
+            </Button>
+          </div>
         ) : local.install === 'downloading' || local.install === 'verifying' ? (
           <Button variant="tertiary" size="compact" disabled={busy} onClick={cancel}>
             {t('cancelInstall')}
           </Button>
-        ) : canPrepare ? (
-          <Button variant="tertiary" size="compact" disabled={busy} onClick={start}>
-            {local.runtime === 'error' ? t('prepareAgain') : t('prepare')}
-          </Button>
+        ) : canPrepare || canRemove ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {canPrepare ? (
+              <>
+                <p id={prepareHint} className="text-caption text-muted-foreground">
+                  {t('prepareHint')}
+                </p>
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  disabled={busy}
+                  aria-describedby={prepareHint}
+                  onClick={start}
+                >
+                  {local.runtime === 'error' ? t('prepareAgain') : t('prepare')}
+                </Button>
+              </>
+            ) : null}
+            {canRemove ? (
+              <Button
+                variant="tertiary"
+                size="compact"
+                disabled={busy}
+                onClick={() => setConfirming(true)}
+              >
+                {t('remove')}
+              </Button>
+            ) : null}
+          </div>
         ) : null}
       </div>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogPopup className="p-6" showCloseButton={false}>
+          <DialogTitle>{t('removeTitle')}</DialogTitle>
+          <DialogDescription className="my-4">
+            {t('removeConfirm', {
+              size: removal?.size ?? download?.size ?? '0',
+              unit: removal?.unit ?? download?.unit ?? 'MB',
+            })}
+          </DialogDescription>
+          <div className="flex justify-end gap-2">
+            <Button variant="tertiary" onClick={() => setConfirming(false)}>
+              {t('removeDismiss')}
+            </Button>
+            <Button
+              onClick={() => {
+                setConfirming(false);
+                remove();
+              }}
+            >
+              {t('remove')}
+            </Button>
+          </div>
+        </DialogPopup>
+      </Dialog>
       <Labeled label={t('device')}>
-        <Select<'cpu' | 'gpu'>
+        <Select<LocalDevice>
           label={t('device')}
-          value="cpu"
-          onValueChange={() => {}}
-          options={[
-            { value: 'cpu', label: t('cpu') },
-            { value: 'gpu', label: t('gpu'), disabled: true, hint: t('gpuUnverified') },
-          ]}
+          value={form.device}
+          onValueChange={(device) => change({ device })}
+          options={catalog.map((entry) => ({
+            value: entry.kind,
+            label: t(entry.kind),
+            hint: entry.kind === 'cpu' ? undefined : t('notVerified'),
+          }))}
           className="w-fit min-w-32"
         />
       </Labeled>
-      <details className="text-sm">
+      {picked.kind !== 'cpu' ? (
+        <p className="text-caption text-muted-foreground">
+          {t('notVerified')}.
+          {picked.requirement
+            ? ` ${t('gpuRequirement', { requirement: picked.requirement })}`
+            : null}
+        </p>
+      ) : null}
+      <details className="text-body">
         <summary>{t('advanced')}</summary>
         <div className="mt-2 flex flex-wrap gap-4">
           <NumberField
@@ -438,7 +602,7 @@ function ApiEngine({
   const api = view.apis.find((entry) => entry.id === form.apiId && entry.keyConfigured);
   if (!view.apis.some((entry) => entry.keyConfigured))
     return (
-      <div className="flex flex-col items-start gap-2 rounded-lg border border-line p-3 text-sm">
+      <div className="flex flex-col items-start gap-2 rounded-lg border border-line p-3 text-body">
         <p>{t('noApi')}</p>
         <Button variant="tertiary" size="compact" render={<a href="#models-decision-apis" />}>
           {t('connectApi')}
@@ -476,7 +640,7 @@ function ApiEngine({
               <BannerTitle>{t('consentChanged')}</BannerTitle>
             </Banner>
           ) : null}
-          <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+          <div className="flex flex-col gap-1 text-caption text-muted-foreground">
             <p>{t('sends')}</p>
             <p>{td(`data.${api.id}`)}</p>
           </div>
@@ -487,7 +651,7 @@ function ApiEngine({
               change({ consent: form.consent === api.noticeRevision ? null : api.noticeRevision })
             }
           />
-          <details className="text-sm">
+          <details className="text-body">
             <summary>{t('advanced')}</summary>
             <div className="mt-2">
               <NumberField
@@ -507,7 +671,7 @@ function ApiEngine({
 
 function Labeled({ label, children }: { label: string; children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-1 text-xs">
+    <div className="flex flex-col gap-1 text-caption">
       <span aria-hidden="true" className="text-muted-foreground">
         {label}
       </span>
@@ -534,7 +698,7 @@ function NumberField({
   const invalid = whole(value, min, max) === null;
   return (
     <div className="flex flex-col gap-1">
-      <label className="flex flex-col gap-1 text-xs">
+      <label className="flex flex-col gap-1 text-caption">
         {label}
         <Input
           type="number"
@@ -549,7 +713,7 @@ function NumberField({
         />
       </label>
       {invalid ? (
-        <p id={error} role="alert" className="text-xs text-danger">
+        <p id={error} role="alert" className="text-caption text-danger">
           {t('range', { min, max })}
         </p>
       ) : null}

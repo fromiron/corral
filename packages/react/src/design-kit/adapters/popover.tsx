@@ -1,6 +1,7 @@
 'use client';
 
 import { Popover as Primitive } from '@base-ui/react/popover';
+import { TOOLTIP_SURFACE } from '../components/ui/tooltip.tsx';
 import { Elevated } from '../lib/elevated.tsx';
 import { useShape } from '../lib/shape-context.tsx';
 import { cn } from '../lib/utils.ts';
@@ -21,10 +22,15 @@ function PopoverPopup({
   sideOffset = 6,
   alignOffset,
   collisionAvoidance,
+  collisionBoundary,
+  collisionPadding,
   keepMounted = false,
   anchor,
+  surface = 'card',
   ...props
 }: Primitive.Popup.Props & {
+  /** `tooltip`: the kit tooltip's surface, for a popup that reads as one (no card, no padding). */
+  surface?: 'card' | 'tooltip';
   padding?: 'default' | 'compact' | 'none';
   width?: keyof typeof widths;
   side?: Primitive.Positioner.Props['side'];
@@ -32,6 +38,8 @@ function PopoverPopup({
   sideOffset?: Primitive.Positioner.Props['sideOffset'];
   alignOffset?: Primitive.Positioner.Props['alignOffset'];
   collisionAvoidance?: Primitive.Positioner.Props['collisionAvoidance'];
+  collisionBoundary?: Primitive.Positioner.Props['collisionBoundary'];
+  collisionPadding?: Primitive.Positioner.Props['collisionPadding'];
   anchor?: Primitive.Positioner.Props['anchor'];
   keepMounted?: boolean;
 }) {
@@ -45,14 +53,18 @@ function PopoverPopup({
         alignOffset={alignOffset}
         anchor={anchor}
         collisionAvoidance={collisionAvoidance}
+        {...(collisionBoundary === undefined ? {} : { collisionBoundary })}
+        {...(collisionPadding === undefined ? {} : { collisionPadding })}
         className="z-50 max-w-(--available-width)"
         data-slot="popover-positioner"
       >
         <Primitive.Popup
-          render={<Elevated offset={2} />}
+          {...(surface === 'tooltip' ? {} : { render: <Elevated offset={2} /> })}
           className={cn(
-            'max-w-[calc(100vw-2rem)] overflow-hidden text-body text-foreground outline-none [-webkit-app-region:no-drag]',
-            shape.container,
+            'max-w-[calc(100vw-2rem)] overflow-hidden outline-none [-webkit-app-region:no-drag]',
+            surface === 'tooltip'
+              ? [TOOLTIP_SURFACE, shape.bg]
+              : ['text-body text-foreground', shape.container],
             widths[width],
             className,
           )}
@@ -63,9 +75,11 @@ function PopoverPopup({
           <div
             data-slot="popover-viewport"
             className={cn(
-              'max-h-(--available-height) overflow-y-auto',
-              padding === 'default' && 'p-4',
-              padding === 'compact' && 'p-2',
+              // A tooltip's few lines never scroll; a scroll box there would also keep the
+              // surface's trim from reaching its words.
+              surface === 'card' && 'max-h-(--available-height) overflow-y-auto',
+              surface === 'card' && padding === 'default' && 'p-4',
+              surface === 'card' && padding === 'compact' && 'p-2',
             )}
           >
             {children}

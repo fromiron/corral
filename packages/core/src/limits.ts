@@ -95,7 +95,7 @@ export function noProgressReached(state: ProgressState): boolean {
 export function applyProgressEvent(
   state: ProgressState,
   event: RunEvent,
-  projection: Pick<RunProjection, 'artifacts' | 'questions'>,
+  projection: Pick<RunProjection, 'artifacts' | 'questions' | 'executions'>,
 ): ProgressState {
   switch (event.type) {
     case 'tool.finished': {
@@ -121,7 +121,11 @@ export function applyProgressEvent(
           };
     }
     case 'model.finished':
-      if (state.observedCalls.includes(event.payload.modelCallId)) return state;
+      // A response the person cut is not a turn the agent spent without progress.
+      if (event.payload.interrupted || state.observedCalls.includes(event.payload.modelCallId))
+        return state;
+      // An advisor's reply is not the run's work: it never brings the run nearer the pause.
+      if (projection.executions[event.payload.executionId]?.advisor) return state;
       return {
         ...state,
         turns: state.turns + 1,

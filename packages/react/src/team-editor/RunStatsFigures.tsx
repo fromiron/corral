@@ -1,6 +1,7 @@
 import type { CorralNode } from '@corral/contracts';
 import type { RunStats } from '@corral/core';
 import { useFormatter, useTranslations } from 'use-intl';
+import { usePresenceWord } from '../components/PresenceBadge.tsx';
 import {
   Popover,
   PopoverPopup,
@@ -30,7 +31,7 @@ export function RunStatsFigures({
   onOpenRun?: ((runId: string) => void) | undefined;
 }) {
   const t = useTranslations('TeamEditor.stats');
-  const status = useTranslations('Status');
+  const status = usePresenceWord();
   const portName = useTranslations('Canvas.ports');
   const format = useFormatter();
   const size = useSize();
@@ -100,7 +101,7 @@ export function RunStatsFigures({
               {label(figure)}
             </PopoverTrigger>
             <PopoverPopup width="sm" padding="compact" side="bottom" align="start">
-              <PopoverTitle className={cn(size.type.caption, 'px-2 pt-1 pb-2 font-semibold')}>
+              <PopoverTitle className={cn(size.type.caption, 'px-2 pt-1 pb-2')}>
                 {node.label} · {label(figure)}
               </PopoverTitle>
               <ul className="grid gap-0.5">

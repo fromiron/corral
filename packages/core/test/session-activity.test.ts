@@ -14,6 +14,7 @@ const current = {
   createdAt: '2026-10-28T00:00:00Z',
   updatedAt: '2026-10-28T01:00:00Z',
   archivedAt: null,
+  autoStart: true,
   entries: [],
 } satisfies WorkSession;
 

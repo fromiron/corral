@@ -23,7 +23,13 @@ function events(count: number, from = 1): RunEvent[] {
         actor: { kind: 'user', id: 'local_user' },
         type: 'directive.accepted',
         executionId,
-        payload: { directiveId: `dir_${runSeq}`, targetExecutionId: executionId, text: 'Steer' },
+        payload: {
+          directiveId: `dir_${runSeq}`,
+          targetExecutionId: executionId,
+          text: 'Steer',
+          delivery: 'next_request',
+          origin: 'user',
+        },
       } as RunEvent;
     }
     return {

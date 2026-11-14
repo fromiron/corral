@@ -176,7 +176,6 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
           <li key={file}>
             <Button
               variant="ghost"
-              size="compact"
               className="max-w-full justify-start font-mono"
               onClick={() => void select(file)}
             >
@@ -194,9 +193,9 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
         <DialogPopup className="flex max-h-[90dvh] w-[min(68rem,96vw)] max-w-none flex-col gap-3 overflow-y-auto p-5">
           <DialogTitle>{t('title')}</DialogTitle>
           <DialogDescription>{t('description')}</DialogDescription>
-          <p className="shrink-0 whitespace-pre-wrap break-all font-mono text-sm">{path}</p>
+          <p className="shrink-0 whitespace-pre-wrap break-all font-mono text-body">{path}</p>
           {state.sequence?.kind === 'rebase' ? (
-            <p className="shrink-0 text-xs text-muted-foreground">{t('rebaseSides')}</p>
+            <p className="shrink-0 text-caption text-muted-foreground">{t('rebaseSides')}</p>
           ) : null}
           {value ? (
             <>
@@ -207,7 +206,6 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
                 {(['ours', 'theirs', 'current'] as const).map((item) => (
                   <Button
                     key={item}
-                    size="compact"
                     variant={side === item ? 'secondary' : 'ghost'}
                     aria-pressed={side === item}
                     onClick={() => setSide(item)}
@@ -217,7 +215,7 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
                 ))}
               </fieldset>
               {value.unsupported ? (
-                <p role="status" className="text-xs text-warning">
+                <p role="status" className="text-caption text-warning">
                   {t('unsupported')} · {value.unsupported}
                 </p>
               ) : null}
@@ -230,23 +228,22 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
                 />
               </Suspense>
               {drafts ? (
-                <p role="status" className="text-xs text-warning">
+                <p role="status" className="text-caption text-warning">
                   {t('drafts')}
                 </p>
               ) : null}
             </>
           ) : null}
           {error ? (
-            <p role="alert" className="text-xs text-danger">
+            <p role="alert" className="text-caption text-danger">
               {error}
             </p>
           ) : null}
           <div className="flex shrink-0 flex-wrap justify-end gap-2">
-            <Button size="compact" variant="ghost" onClick={close}>
+            <Button variant="ghost" onClick={close}>
               {t('close')}
             </Button>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={
                 !value ||
@@ -261,7 +258,6 @@ function Conflicts({ api, owner, state, writable, disabled, onStage }: Props) {
             </Button>
             {writable ? (
               <Button
-                size="compact"
                 disabled={!value || busy || disabled || drafts || Boolean(value.unsupported)}
                 onClick={() => void stage()}
               >

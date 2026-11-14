@@ -10,12 +10,13 @@ Node 24.15.0 이상인 24.x와 pnpm 10.30.3이 필요하다. 검증·CI 기준�
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm dev          # 브라우저의 모의 runtime
+pnpm dev          # 브라우저의 모의 runtime. 화면 수정은 바로 반영된다
+pnpm dev --live   # 같은 화면을 로컬 서버에 붙인다. 연결된 모델을 호출할 수 있다
 pnpm serve        # production Studio + 로컬 서버, 출력된 bootstrap 링크로 접속
 pnpm storybook    # 상태별 component와 접근성 검사
 ```
 
-`/demo`는 키나 로컬 서버 없이 모의 에이전트를 실행한다. 실제 모델 연결은 사용자가 [모델 설정](docs/guides/models.md)에서 완료한다. credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. Desktop 실행·패키징 절차는 [Desktop 안내](apps/desktop/README.md)를 따른다. 공개 배포나 모든 플랫폼·공급자의 검증 완료를 뜻하지 않는다.
+`pnpm dev`와 `/demo`는 모의 에이전트만 실행한다. `pnpm dev --live`는 Studio를 미리 빌드하지 않고 로컬 서버와 Vite를 함께 띄운 뒤, 열어야 할 `http://localhost:5173/#bootstrap=…` 링크를 출력한다. 그 화면에서 [모델 설정](docs/guides/models.md)을 마치면 연결된 모델을 호출할 수 있다. `apps/studio`와 `packages/react`의 수정은 바로 반영되고, 서버와 Coordinator의 수정은 명령을 다시 실행해야 반영된다. credential은 서버 측 설정에 보관하며 Corral 정의나 이벤트에 포함하지 않는다. Desktop 실행·패키징 절차는 [Desktop 안내](apps/desktop/README.md)를 따른다. 공개 배포나 모든 플랫폼·공급자의 검증 완료를 뜻하지 않는다.
 
 ## 문서
 

@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, type ReactNode } from 'react';
+import { Fragment, type ReactElement, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import {
   Select as KitSelect,
@@ -26,21 +26,25 @@ export function Select<T extends string>({
   onValueChange,
   options,
   label,
+  describedBy,
   placeholder,
   variant = 'outline',
-  size = 'sm',
+  size,
   disabled,
   className,
   icon,
   align = 'start',
   open,
   onOpenChange,
+  trigger = (control) => control,
 }: {
   id?: string;
   value: T | null;
   onValueChange: (value: T) => void;
   options: readonly SelectOption<T>[];
   label: string;
+  /** id of the note that describes this select. */
+  describedBy?: string;
   placeholder?: ReactNode;
   variant?: 'outline' | 'ghost' | 'chip';
   size?: 'xs' | 'sm';
@@ -50,6 +54,8 @@ export function Select<T extends string>({
   align?: 'start' | 'center' | 'end';
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
+  /** Wraps the trigger, as a tooltip that explains it does; the trigger keeps its name. */
+  trigger?: (control: ReactElement<{ 'aria-describedby'?: string }>) => ReactNode;
 }) {
   const t = useTranslations('Select');
   const hasHints = options.some((option) => option.hint);
@@ -83,21 +89,25 @@ export function Select<T extends string>({
       value={value ?? ''}
       onValueChange={(next) => onValueChange(next as T)}
       items={options.map(({ value, label }) => ({ value, label }))}
-      // A chip sits among compact buttons (the composer, the top bar) and hugs its value.
-      size={size === 'xs' || variant === 'chip' ? 'compact' : 'default'}
+      // A chip sits among compact buttons (the composer, the top bar) and hugs its value. No size
+      // takes the step of the surrounding size scope (the person's interface density).
+      size={size === 'xs' || variant === 'chip' ? 'compact' : size === 'sm' ? 'default' : undefined}
       disabled={disabled}
       open={open}
       onOpenChange={onOpenChange}
     >
-      <SelectTrigger
-        id={id}
-        aria-label={label}
-        placeholder={placeholder ?? t('placeholder')}
-        leadingContent={icon}
-        variant={variant === 'outline' ? 'bordered' : 'borderless'}
-        className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
-        data-slot="select-trigger"
-      />
+      {trigger(
+        <SelectTrigger
+          id={id}
+          aria-label={label}
+          aria-describedby={describedBy}
+          placeholder={placeholder ?? t('placeholder')}
+          leadingContent={icon}
+          variant={variant === 'outline' ? 'bordered' : 'borderless'}
+          className={cn(variant !== 'outline' && 'min-w-0 max-w-full', className)}
+          data-slot="select-trigger"
+        />,
+      )}
       <SelectContent
         align={align}
         className={hasHints ? 'max-w-[min(24rem,calc(100vw-2rem))]' : undefined}

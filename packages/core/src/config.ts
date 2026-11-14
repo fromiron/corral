@@ -82,8 +82,9 @@ export const ModelProviderConfig = z.strictObject({
         imageInput: z.boolean().optional(),
       }),
     )
-    .min(1)
-    .max(50),
+    .max(50)
+    // Models the endpoint lists at `/models` are added to these; an entry wins for its id.
+    .default([]),
 });
 export type ModelProviderConfig = z.infer<typeof ModelProviderConfig>;
 
@@ -110,7 +111,6 @@ export const WorkspaceConfig = z.strictObject({
         ...ProfileContextOverrides.shape,
       }),
     )
-    .max(20)
     .optional(),
   /** OpenAI-compatible endpoints the profiles may name. Keys are not configuration. */
   modelProviders: z.array(ModelProviderConfig).max(10).optional(),

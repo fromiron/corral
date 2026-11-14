@@ -173,7 +173,14 @@ export const ShortComposer: Story = {
     await expect(activity.scrollHeight).toBeGreaterThan(activity.clientHeight);
     activity.focus();
     await expect(activity).toHaveFocus();
-    await userEvent.click(canvas.getByRole('button', { name: /^spawn_subagents/ }));
+    const tool = canvas.getByRole('button', { name: /^spawn_subagents/ });
+    await userEvent.click(tool);
+    // The kit keeps the opened call's fade-in. Contrast is measured once it has settled, not
+    // mid-fade, as the other stories with entrance motion do.
+    const body = canvasElement.ownerDocument.getElementById(
+      tool.getAttribute('aria-controls') ?? '',
+    );
+    await waitFor(() => expect(body && getComputedStyle(body).opacity).toBe('1'));
     await waitFor(() =>
       expect(send.getBoundingClientRect().bottom).toBeLessThanOrEqual(
         host.getBoundingClientRect().bottom,

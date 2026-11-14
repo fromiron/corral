@@ -1,0 +1,1365 @@
+// @vitest-environment jsdom
+import type { RunEvent } from '@corral/contracts';
+import {
+  type ExecutionView,
+  emptyProjection,
+  type RunProjection,
+  type StoredConversationTurn,
+} from '@corral/core';
+import type { RunSessionStore } from '@corral/react';
+import { linearCorral } from '@corral/testkit';
+import { act, type ReactNode, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { IntlProvider } from 'use-intl';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { useStore } from 'zustand';
+import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { sessionStore } from '../../../../packages/react/src/stories/fixtures.tsx';
+import { changePreferences, parsePreferences, preferences } from './preferences.ts';
+import { RunMessage } from './RunMessage.tsx';
+
+// The run row in a conversation keeps one fixed set of parts from its start to its end
+// (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 3): a head line, a body that only
+// grows, and a tail line. A state change changes words inside those lines, never the lines.
+
+const fixture = vi.hoisted(() => ({
+  store: null as RunSessionStore | null,
+  // The conversation turn's record, read once the row is no longer live.
+  turn: null as StoredConversationTurn | null,
+  settled: true,
+}));
+vi.mock('./useCorralChat.ts', () => ({
+  useCorralRun: () => ({
+    store: fixture.store,
+    state: useStore(fixture.store as RunSessionStore),
+    conversationTurn: fixture.turn,
+    bodyMetadataCurrent: true,
+    settled: fixture.settled,
+  }),
+}));
+vi.mock('../pages/Workbench.tsx', () => ({
+  useRemembered: (_key: string, initial: boolean) => useState(initial),
+}));
+vi.mock('../pages/GettingStarted.tsx', () => ({ markRunReviewed() {} }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children, ...props }: { children?: ReactNode; 'aria-label'?: string }) => (
+    <a href="#link" aria-label={props['aria-label']}>
+      {children}
+    </a>
+  ),
+}));
+
+const RUN = 'run_row';
+const cleanup: (() => void)[] = [];
+Element.prototype.getAnimations ??= () => [];
+beforeEach(() => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  changePreferences({ chatDensity: 'basic' });
+});
+afterEach(() => {
+  for (const dispose of cleanup.splice(0)) act(dispose);
+  fixture.turn = null;
+  fixture.settled = true;
+  preferences.setState(parsePreferences(null));
+  vi.unstubAllGlobals();
+});
+
+const execution = (executionId: string, patch: Partial<ExecutionView> = {}): ExecutionView => ({
+  executionId,
+  nodeId: 'writer',
+  taskId: `task_${executionId}`,
+  attemptNo: 1,
+  parentExecutionId: null,
+  previousExecutionId: null,
+  depth: 0,
+  iterationId: null,
+  modelProfile: 'model-a',
+  configRevision: 0,
+  criteriaVersionId: null,
+  status: 'active',
+  activity: null,
+  waitingOn: null,
+  modelCallIds: [],
+  error: null,
+  ...patch,
+});
+
+function running(): RunProjection {
+  const projection = emptyProjection(RUN);
+  projection.status = 'running';
+  projection.startedAt = '2026-11-13T00:00:00.000Z';
+  projection.executions.lead = execution('lead');
+  projection.executionOrder = ['lead'];
+  projection.toolCalls.read = {
+    toolCallId: 'read',
+    executionId: 'lead',
+    name: 'read_file',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  return projection;
+}
+
+function answered(projection: RunProjection): RunProjection {
+  return {
+    ...projection,
+    status: 'succeeded',
+    endedAt: '2026-11-13T00:00:09.000Z',
+    executions: { lead: execution('lead', { status: 'succeeded' }) },
+    artifacts: {
+      answer: {
+        artifactVersionId: 'answer',
+        artifactId: 'answer',
+        version: 1,
+        parentVersionId: null,
+        name: 'Answer',
+        contract: 'text',
+        contentHash: 'a'.repeat(64),
+        byteLength: 10,
+        authorExecutionId: 'lead',
+        modelCallId: null,
+        contextSnapshotId: null,
+        submitted: true,
+        configRevision: 0,
+        criteriaVersionId: null,
+        inputArtifactVersionIds: [],
+      },
+    },
+    output: { nodeId: 'output', artifactVersionIds: ['answer'] },
+  };
+}
+
+function failed(projection: RunProjection): RunProjection {
+  return {
+    ...projection,
+    status: 'failed',
+    // The answering role (node `writer`) failed: what the head already says.
+    statusReason: 'execution_failed: writer',
+    endedAt: '2026-11-13T00:00:09.000Z',
+    executions: {
+      lead: execution('lead', { status: 'failed', error: 'the model request failed: RATE_LIMIT' }),
+    },
+  };
+}
+
+async function show(
+  projection: RunProjection | null,
+  endActions?: ReactNode,
+  sessionId: string | null = 'session_row',
+) {
+  fixture.store = sessionStore({
+    runId: RUN,
+    definition: linearCorral(['writer']),
+    projection,
+    artifactTexts: { answer: 'The answer body' },
+  });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  const draw = (live: boolean) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <RunMessage
+            runId={RUN}
+            sessionId={sessionId}
+            live={live}
+            onOpenArtifact={vi.fn()}
+            endActions={endActions}
+            runLine={<button type="button">Run #1</button>}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await draw(true);
+  const set = (next: RunProjection) =>
+    act(async () => fixture.store?.setState({ projection: next }));
+  return { container, set, draw };
+}
+
+/** The row's own parts, in document order; a team role's row is a part inside the process. */
+const parts = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('[data-chat-part]')]
+    .map((node) => node.dataset.chatPart ?? '')
+    .filter((value) => !value.startsWith('role:'));
+const part = (container: HTMLElement, name: string) =>
+  container.querySelector<HTMLElement>(`[data-chat-part="${name}"]`);
+const toggle = (container: HTMLElement) =>
+  part(container, 'head')?.querySelector<HTMLButtonElement>('button[aria-expanded]') ?? null;
+
+it.each([
+  ['working to done', () => running(), (p: RunProjection) => answered(p)],
+  ['working to failed', () => running(), (p: RunProjection) => failed(p)],
+])('keeps the same parts in the same order from %s', async (_name, start, end) => {
+  const first = start();
+  const f = await show(first);
+  expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+  await f.set(end(first));
+  expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+});
+
+it('keeps the same parts from before the record is read to the working run', async () => {
+  const f = await show(null);
+  expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+  // The run's number keeps its place in the head while the record loads.
+  expect(part(f.container, 'head')?.textContent).toContain('Run #1');
+  await f.set(running());
+  expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+  expect(part(f.container, 'head')?.textContent).toContain('Run #1');
+});
+
+it('marks its head as the run’s place before its record is read, once, as after', async () => {
+  // The row is on screen from the moment it comes: the activity bar must not say the run's state
+  // for it while its words load.
+  const f = await show(null);
+  const label = () => f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+  await f.set(running());
+  expect(label()).toHaveLength(1);
+  expect(part(f.container, 'head')?.contains(label()[0] ?? null)).toBe(true);
+});
+
+it('the head and tail say nothing to assistive tech on their own', async () => {
+  const f = await show(running());
+  expect(part(f.container, 'head')?.getAttribute('aria-live')).toBe('off');
+  expect(part(f.container, 'tail')?.getAttribute('aria-live')).toBe('off');
+});
+
+it('a closed process stays closed when the run ends', async () => {
+  const first = running();
+  const f = await show(first);
+  // In a conversation the process starts closed; the head is its toggle.
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('false');
+  await f.set(answered(first));
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('false');
+});
+
+it('a process the person opened stays open when the run ends', async () => {
+  const first = running();
+  const f = await show(first);
+  await act(async () => toggle(f.container)?.click());
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('true');
+  await f.set(answered(first));
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('the detailed density opens the process', async () => {
+  changePreferences({ chatDensity: 'detailed' });
+  const f = await show(running());
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('true');
+});
+
+it('an unfinished turn says its state once in the head and its cause at the end of the body', async () => {
+  const f = await show(failed(running()), <button type="button">Retry request</button>);
+  expect(f.container.querySelector('[data-testid="run-ended"]')).toBeNull();
+  expect(f.container.querySelector('[data-slot="banner"]')).toBeNull();
+  const head = part(f.container, 'head');
+  const labels = f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+  expect(labels).toHaveLength(1);
+  expect(head?.contains(labels[0] ?? null)).toBe(true);
+  expect(labels[0]?.textContent).toBe(messages.Status.failed);
+  // The run's state word shows nowhere else in the row.
+  expect(f.container.textContent?.split(messages.Status.failed)).toHaveLength(2);
+  const end = part(f.container, 'body')?.lastElementChild;
+  // The failure's cause and what to do next close the body. The reason "writer failed" would
+  // repeat the head ("writer · Failed"), so it has no line.
+  expect(end?.textContent).not.toContain('writer failed');
+  expect(end?.textContent).toContain(messages.Failure.provider.RATE_LIMIT);
+  expect(end?.textContent).toContain(messages.Failure.recovery.RATE_LIMIT);
+  expect(end?.querySelector('button')?.textContent).toBe('Retry request');
+  expect(end?.textContent).not.toContain(messages.Run.reasonPrefix);
+  expect(f.container.querySelector('[data-testid="run-made-results"]')).toBeNull();
+});
+
+it.each([
+  [
+    'with',
+    <button key="retry" type="button">
+      Retry request
+    </button>,
+  ],
+  ['without', undefined],
+])(
+  'a team turn whose answering role failed ends its body with that failure, %s next steps',
+  async (_name, endActions) => {
+    const projection = failed(running());
+    projection.executions.helper = execution('helper', { nodeId: 'reviewer', status: 'succeeded' });
+    projection.executionOrder = ['lead', 'helper'];
+    const f = await show(projection, endActions);
+    const end = f.container.querySelector('[data-testid="turn-end"]');
+    expect(end).not.toBeNull();
+    expect(part(f.container, 'body')?.lastElementChild).toBe(end);
+    expect(end?.textContent).toContain(messages.Failure.provider.RATE_LIMIT);
+    // Said once: the log does not list the answering role's failure again.
+    expect(f.container.textContent?.split(messages.Failure.provider.RATE_LIMIT)).toHaveLength(2);
+    // The answering role is the head's, so the head does not count it among failed steps.
+    expect(part(f.container, 'head')?.textContent).not.toContain('failed');
+  },
+);
+
+const logName = (...values: string[]) =>
+  messages.Turn.logToggle.replace('{state}', values.join(' · '));
+
+it('names the head button by its role, state, steps and log, never by its ticking time', async () => {
+  const f = await show(running());
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+    logName('writer', messages.Presence.state.working, '1 step'),
+  );
+  expect(toggle(f.container)?.textContent).toMatch(/\d+s/);
+  await f.set(failed(running()));
+  expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+    logName('writer', messages.Status.failed, '1 step'),
+  );
+});
+
+// docs/specs/chat-widgets-contract.md §6.3: a failed step is told outside the fold, to assistive
+// tech as well, before the log is opened.
+it.each([
+  ['succeeded', 'succeeded', (p: RunProjection) => answered(p)],
+  ['paused', 'paused', (p: RunProjection) => ({ ...p, status: 'paused' as const })],
+  ['running', 'working', (p: RunProjection) => p],
+] as const)(
+  'a %s turn with a failed step names the failure on its head button',
+  async (_status, kind, as) => {
+    const projection = running();
+    projection.toolCalls.broken = {
+      toolCallId: 'broken',
+      executionId: 'lead',
+      name: 'run_command',
+      status: 'requested',
+      phase: 'failed',
+      reason: 'exit 1',
+    };
+    const f = await show(as(projection));
+    expect(part(f.container, 'head')?.textContent).toContain('1 failed');
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(
+      logName('writer', messages.Presence.state[kind], '2 steps', '1 failed'),
+    );
+  },
+);
+
+it('a turn with no failed step has no failure in its head button’s name', async () => {
+  const f = await show(answered(running()));
+  expect(toggle(f.container)?.getAttribute('aria-label')).not.toContain('failed');
+});
+
+it('the head button’s name stays the same while the time runs', async () => {
+  // Only the clock the head's time reads; animation frames and timeouts stay real.
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval', 'Date'] });
+  vi.setSystemTime(new Date('2026-11-13T00:00:02.000Z'));
+  try {
+    const f = await show(running());
+    const name = toggle(f.container)?.getAttribute('aria-label');
+    const time = toggle(f.container)?.textContent;
+    await act(async () => vi.advanceTimersByTime(5_000));
+    expect(toggle(f.container)?.textContent).not.toBe(time);
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(name);
+  } finally {
+    vi.useRealTimers();
+  }
+});
+
+it('names the run once and each team role once, each by its own target', async () => {
+  const projection = running();
+  projection.executions.helper_a = execution('helper_a', { status: 'failed', error: 'Broke' });
+  projection.executions.helper_b = execution('helper_b');
+  projection.executionOrder = ['lead', 'helper_a', 'helper_b'];
+  const f = await show(projection);
+  expect(f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`)).toHaveLength(1);
+  const roles = [...f.container.querySelectorAll<HTMLElement>('[data-chat-part^="role:"]')].map(
+    (node) => node.dataset.chatPart,
+  );
+  expect(roles).toEqual(['role:helper_a', 'role:helper_b']);
+  for (const id of ['helper_a', 'helper_b']) {
+    const row = part(f.container, `role:${id}`);
+    const label = f.container.querySelectorAll(`[data-presence-label="execution:${id}"]`);
+    expect(label).toHaveLength(1);
+    expect(row?.contains(label[0] ?? null)).toBe(true);
+  }
+  // A role's failure stays with its row, inside the process.
+  expect(part(f.container, 'role:helper_a')?.textContent).toContain('Broke');
+  // The head counts it, outside the fold.
+  expect(part(f.container, 'head')?.textContent).toContain('1 failed');
+});
+
+it('the tail shows only the values the run has, with no dash', async () => {
+  const f = await show(running());
+  const tail = part(f.container, 'tail');
+  expect(tail).not.toBeNull();
+  expect(tail?.textContent).toBe('');
+  await f.set(answered(running()));
+  // The answer shown in the body is not a result to count: a plain answer's tail has no words.
+  expect(part(f.container, 'tail')?.textContent).toBe('');
+  expect(part(f.container, 'tail')?.querySelector('[data-testid="turn-actions"]')).not.toBeNull();
+});
+
+it('counts the results drawn as their own folded blocks', async () => {
+  // A cancelled run's partial results each fold under their own line.
+  const projection = { ...answered(running()), status: 'cancelled' as const, output: null };
+  const f = await show(projection);
+  expect(f.container.querySelector('details[data-testid="chat-result"]')).not.toBeNull();
+  expect(part(f.container, 'tail')?.textContent).toBe('1 result');
+  expect(part(f.container, 'tail')?.textContent).not.toMatch(/—|0 /);
+});
+
+/** Another version made by another role, beside the answer. */
+function withArtifact(projection: RunProjection, id: string, name: string, executionId: string) {
+  const answer = projection.artifacts.answer;
+  if (!answer) throw new Error('no answer');
+  projection.executions[executionId] ??= execution(executionId, {
+    nodeId: 'writer',
+    status: 'succeeded',
+  });
+  if (!projection.executionOrder.includes(executionId)) projection.executionOrder.push(executionId);
+  projection.artifacts[id] = {
+    ...answer,
+    artifactVersionId: id,
+    artifactId: id,
+    name,
+    authorExecutionId: executionId,
+  };
+  return projection;
+}
+
+/** A recorded review of the answer, which the conversation folds as its own block. */
+function reviewed(projection: RunProjection, id: string) {
+  projection.reviews[id] = {
+    stale: false,
+    newCriteriaVersionId: null,
+    reviewVersionId: id,
+    targetVersionId: 'answer',
+    criteriaVersionId: 'criteria',
+    verdict: 'pass',
+    issues: [],
+  };
+  return projection;
+}
+
+const summaries = (container: HTMLElement) =>
+  [...container.querySelectorAll('details[data-testid="chat-result"] > summary')].map(
+    // The line's values are spaced by the layout, not by spaces.
+    (node) => (node.textContent ?? '').replace(/\s*·\s*/g, ' · '),
+  );
+
+// The kind of the results is said once in the row (features/presence.md, "한 화면에 한 번").
+it('names the kind of several partial results once, over their blocks', async () => {
+  const projection = { ...answered(running()), status: 'failed' as const, output: null };
+  withArtifact(projection, 'review', 'review', 'helper');
+  withArtifact(projection, 'draft', 'draft', 'helper_2');
+  const f = await show(projection);
+  const group = f.container.querySelector<HTMLElement>('ul[aria-labelledby]');
+  const label = group?.getAttribute('aria-labelledby');
+  expect(label && f.container.querySelector(`[id="${label}"]`)?.textContent).toBe(
+    messages.Results.partial,
+  );
+  expect(f.container.textContent?.split(messages.Results.partial)).toHaveLength(2);
+  expect(summaries(f.container)).toHaveLength(3);
+  for (const line of summaries(f.container)) {
+    expect(line).not.toContain(messages.Results.partial);
+    expect(line).toMatch(/^\w+ v1 · writer #\d$/);
+  }
+  // The blocks are in the named list, its name above them.
+  expect(group?.querySelectorAll('details[data-testid="chat-result"]')).toHaveLength(3);
+  expect(group?.previousElementSibling?.id).toBe(label);
+});
+
+const kindLabel = (container: HTMLElement) =>
+  container.querySelector('ul[aria-labelledby]')?.previousElementSibling ?? null;
+
+it.each([
+  [
+    'partial',
+    () => ({ ...answered(running()), status: 'cancelled' as const, output: null }),
+    'Partial result',
+  ],
+  ['final', () => reviewed(answered(running()), 'answer'), 'Result'],
+])('one %s result block stands under its kind’s name too', async (_kind, projection, name) => {
+  const f = await show(projection());
+  const list = f.container.querySelector('ul[aria-labelledby]');
+  expect(kindLabel(f.container)?.textContent).toBe(name);
+  expect(kindLabel(f.container)?.id).toBe(list?.getAttribute('aria-labelledby'));
+  expect(summaries(f.container)).toEqual(['Answer v1 · writer #1']);
+});
+
+it('a row whose answer is in its body has no kind name', async () => {
+  const f = await show(answered(running()));
+  expect(f.container.querySelector('ul[aria-labelledby]')).toBeNull();
+  expect(f.container.textContent).not.toContain(messages.Desktop.result);
+});
+
+it('a block’s look comes from the row’s data alone, whether or not it was seen working', async () => {
+  const done = reviewed(answered(running()), 'answer');
+  const seen = await show({ ...done, status: 'running', endedAt: null });
+  await seen.set(done);
+  const seenLook = {
+    name: kindLabel(seen.container)?.textContent,
+    lines: summaries(seen.container),
+  };
+  for (const dispose of cleanup.splice(0)) act(dispose);
+  const fresh = await show(done);
+  expect({
+    name: kindLabel(fresh.container)?.textContent,
+    lines: summaries(fresh.container),
+  }).toEqual(seenLook);
+});
+
+it('a working run’s result blocks keep their place and their line as more arrive', async () => {
+  // The first block comes with its kind's name; the second changes only that name's number, so
+  // it neither pushes the first block down nor changes its line.
+  const first = reviewed(answered(running()), 'answer');
+  const working = { ...first, status: 'running' as const, endedAt: null };
+  const f = await show(working);
+  const label = () => kindLabel(f.container);
+  const before = { label: label(), line: summaries(f.container)[0] };
+  expect(before.label?.textContent).toBe('Result');
+  expect(before.line).toBe('Answer v1 · writer #1');
+  const more = reviewed(
+    withArtifact(structuredClone(working), 'second', 'Second', 'helper'),
+    'second',
+  );
+  more.output = { nodeId: 'output', artifactVersionIds: ['answer', 'second'] };
+  await f.set(more);
+  expect(label()).toBe(before.label);
+  expect(summaries(f.container)[0]).toBe(before.line);
+  expect(summaries(f.container)).toHaveLength(2);
+  expect(label()?.textContent).toBe('Results');
+  // It ends with them: the name stays as it was.
+  await f.set({ ...more, status: 'succeeded', endedAt: '2026-11-13T00:00:09.000Z' });
+  expect(label()).toBe(before.label);
+  expect(f.container.textContent?.split('Results')).toHaveLength(2);
+});
+
+it('counts the finished file changes in the tail', async () => {
+  const projection = answered(running());
+  projection.toolCalls.edit = {
+    toolCallId: 'edit',
+    executionId: 'lead',
+    name: 'edit',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  projection.toolCalls.write = {
+    toolCallId: 'write',
+    executionId: 'lead',
+    name: 'write_file',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  // Not changes: a write that failed, one still running, and a command (whatever it did).
+  projection.toolCalls.failedWrite = {
+    toolCallId: 'failedWrite',
+    executionId: 'lead',
+    name: 'write_file',
+    status: 'requested',
+    phase: 'failed',
+    reason: 'denied',
+  };
+  projection.toolCalls.runningEdit = {
+    toolCallId: 'runningEdit',
+    executionId: 'lead',
+    name: 'edit',
+    status: 'requested',
+    phase: 'running',
+    reason: null,
+  };
+  projection.toolCalls.command = {
+    toolCallId: 'command',
+    executionId: 'lead',
+    name: 'run_command',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  const f = await show(projection);
+  expect(part(f.container, 'tail')?.textContent).toBe('2 changes');
+});
+
+it('the one answer’s icon actions sit in the tail, after its values', async () => {
+  const projection = answered(running());
+  projection.toolCalls.edit = {
+    toolCallId: 'edit',
+    executionId: 'lead',
+    name: 'edit',
+    status: 'requested',
+    phase: 'finished',
+    reason: null,
+  };
+  const f = await show(projection);
+  const tail = part(f.container, 'tail');
+  const actions = tail?.querySelector('[data-testid="turn-actions"]');
+  expect(tail?.firstElementChild?.textContent).toBe('1 change');
+  expect(tail?.lastElementChild).toBe(actions);
+  expect(
+    actions?.querySelector(`button[aria-label="${messages.MessageBody.copyMessage}"]`),
+  ).not.toBeNull();
+  expect(actions?.querySelector(`a[aria-label="${messages.Results.openResults}"]`)).not.toBeNull();
+  expect(
+    f.container.querySelector('[data-testid="chat-result"] [data-testid="turn-actions"]'),
+  ).toBeNull();
+  expect(f.container.querySelectorAll('[data-testid="turn-actions"]')).toHaveLength(1);
+});
+
+it('an interrupted output’s copy sits in the tail', async () => {
+  const projection = running();
+  const f = await show(projection);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: { text: 'Partial words', next: 1, broken: false, completed: false } },
+    }),
+  );
+  await f.set({ ...projection, status: 'cancelled', endedAt: '2026-11-13T00:00:05.000Z' });
+  const tail = part(f.container, 'tail');
+  expect(
+    tail?.querySelector(
+      `[data-testid="turn-actions"] button[aria-label="${messages.MessageBody.copyMessage}"]`,
+    ),
+  ).not.toBeNull();
+  expect(
+    f.container.querySelector('[data-testid="live-text"] [data-testid="turn-actions"]'),
+  ).toBeNull();
+});
+
+it('leaves a waiting approval out of the row: the needed-now tray draws and answers it', async () => {
+  const projection = running();
+  projection.status = 'awaiting_user';
+  projection.approvals.approval = {
+    approvalId: 'approval',
+    kind: 'user_action',
+    subjectVersionIds: [],
+    criteriaVersionId: null,
+    status: 'pending',
+  };
+  const f = await show(projection);
+  // Neither in its three parts nor after them (composer-flow.md "튐 없는 본문" rule 2).
+  expect(f.container.querySelector('[data-approval], [data-testid^="approval-"]')).toBeNull();
+  const decisions = [...f.container.querySelectorAll('button')].filter((button) =>
+    [messages.Approvals.approveAs.user_action, messages.Approvals.rejectAs.user_action].includes(
+      button.textContent ?? '',
+    ),
+  );
+  expect(decisions).toHaveLength(0);
+  // The row is its three parts alone: nothing stands after the block that holds them.
+  const parts = part(f.container, 'body')?.parentElement;
+  expect(parts?.contains(part(f.container, 'head'))).toBe(true);
+  expect(parts?.contains(part(f.container, 'tail'))).toBe(true);
+  expect(parts?.parentElement?.children).toHaveLength(1);
+});
+
+it('waits for the reply with the kit mark alone, and names the step in progress', async () => {
+  const f = await show(running());
+  const pending = () => f.container.querySelector<HTMLElement>('[data-testid="reply-pending"]');
+  // No step yet: the mark, no words (the head already says the run is running).
+  expect(pending()).not.toBeNull();
+  expect(part(f.container, 'body')?.contains(pending())).toBe(true);
+  const visibleWords = () =>
+    [...(pending()?.querySelectorAll('span[aria-hidden="true"]') ?? [])]
+      .map((node) => node.textContent)
+      .join('');
+  expect(visibleWords()).toBe('');
+  // A model request in progress has no name worth reading: still the mark alone.
+  const request = {
+    type: 'model.request_prepared',
+    runSeq: 1,
+    actor: { kind: 'agent', id: 'lead' },
+    payload: { executionId: 'lead', modelCallId: 'call_model', directiveIds: [] },
+  };
+  await act(async () => fixture.store?.setState({ events: [request] as unknown as RunEvent[] }));
+  expect(f.container.querySelector('[data-testid="turn-process"]')?.textContent).toContain(
+    messages.Turn.request.replace('{no}', '1'),
+  );
+  expect(pending()).not.toBeNull();
+  expect(visibleWords()).toBe('');
+  // A tool in progress names itself as the log does, and the log's rows do not end the wait.
+  await act(async () =>
+    fixture.store?.setState({
+      events: [
+        request,
+        {
+          type: 'tool.requested',
+          actor: { kind: 'agent', id: 'lead' },
+          payload: {
+            executionId: 'lead',
+            toolCallId: 'call_read',
+            name: 'read_file',
+            validatedArgs: { path: 'README.md' },
+          },
+        },
+      ] as unknown as RunEvent[],
+    }),
+  );
+  expect(pending()).not.toBeNull();
+  expect(visibleWords()).toContain(messages.Turn.tool.read_file);
+  expect(pending()?.textContent).not.toContain(messages.Presence.state.working);
+  // The first words take its place.
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: { text: 'First words', next: 1, broken: false, completed: false } },
+    }),
+  );
+  expect(pending()).toBeNull();
+});
+
+it('the working state word shimmers; an ended one does not', async () => {
+  const first = running();
+  const f = await show(first);
+  const word = () => f.container.querySelector(`[data-presence-label="run:${RUN}"]`);
+  expect(word()?.classList.contains('shimmer-text')).toBe(true);
+  await f.set(failed(first));
+  expect(word()?.classList.contains('shimmer-text')).toBe(false);
+});
+
+// The session store keeps a complete response's words only while their body can be read
+// (api-contract.md, 산출물 본문 수명); this row does not drop what the store still holds.
+it('a turn that fails after showing words keeps those the store holds, and its end follows them', async () => {
+  const first = running();
+  first.modelCalls.call = {
+    modelCallId: 'call',
+    executionId: 'lead',
+    finished: true,
+    responseRef: 'response_call',
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        call: { text: 'Words seen while working', next: 1, broken: false, completed: true },
+      },
+    }),
+  );
+  expect(f.container.querySelector('[data-testid="live-text"]')?.textContent).toContain(
+    'Words seen while working',
+  );
+  await f.set(failed(first));
+  const body = part(f.container, 'body');
+  const kept = f.container.querySelector('[data-testid="live-text"]');
+  expect(kept?.textContent).toContain('Words seen while working');
+  // A complete response is not marked as cut off.
+  expect(kept?.textContent).not.toContain(messages.MessageBody.interrupted);
+  const end = f.container.querySelector('[data-testid="turn-end"]');
+  expect(body?.lastElementChild).toBe(end);
+  expect(kept?.compareDocumentPosition(end as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+});
+
+// reply-citation.md: a quote counts in the reply's drawn text, as the run and model call that
+// wrote it, while it streams, once it is the answer, and when it was cut off.
+const replyBody = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('[data-reply-body]')].map((node) => ({
+    run: node.dataset.runId,
+    call: node.dataset.modelCallId,
+    text: node.textContent,
+  }));
+
+it('marks the reply being written, the answer and cut-off words as quotable text', async () => {
+  const projection = running();
+  const f = await show(projection);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: { text: 'Words so far', next: 1, broken: false, completed: false } },
+    }),
+  );
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'Words so far' }]);
+  await f.set({ ...projection, status: 'cancelled', endedAt: '2026-11-13T00:00:05.000Z' });
+  // The note under cut-off words is not part of the reply.
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'Words so far' }]);
+  const done = answered(running());
+  const answer = done.artifacts.answer;
+  if (!answer) throw new Error('answer');
+  done.artifacts.answer = { ...answer, modelCallId: 'call' };
+  await f.set(done);
+  expect(replyBody(f.container)).toEqual([{ run: RUN, call: 'call', text: 'The answer body' }]);
+});
+
+it('marks the words an interrupt cut as quotable text of that call, apart from the answer', async () => {
+  const first = running();
+  first.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+  ]);
+  const done = answered(first);
+  const answer = done.artifacts.answer;
+  if (!answer) throw new Error('answer');
+  done.artifacts.answer = { ...answer, modelCallId: 'next' };
+  await f.set(done);
+  // The note under the cut words is not part of them.
+  expect(replyBody(f.container)).toEqual([
+    { run: RUN, call: 'cut', text: 'Words cut by the interrupt' },
+    { run: RUN, call: 'next', text: 'The answer body' },
+  ]);
+});
+
+it('an interrupted output is marked as cut off under its words', async () => {
+  const projection = running();
+  const f = await show(projection);
+  await act(async () =>
+    fixture.store?.setState({
+      streams: { call: { text: 'Partial words', next: 1, broken: false, completed: false } },
+    }),
+  );
+  await f.set({ ...projection, status: 'cancelled', endedAt: '2026-11-13T00:00:05.000Z' });
+  expect(f.container.querySelector('[data-testid="live-text"]')?.textContent).toContain(
+    messages.MessageBody.interrupted,
+  );
+});
+
+// An interrupt cuts a response and the run goes on (workbench.md, 대화 본문과 중단된 출력): the
+// cut words stay where they stood, as an interrupted response, above what the run says next and
+// above its final answer once it ends. The body only grows below them.
+it('keeps a response cut by an interrupt in its place through the next reply and the run end', async () => {
+  const first = running();
+  first.modelCalls.cut = {
+    modelCallId: 'cut',
+    executionId: 'lead',
+    finished: true,
+    responseRef: null,
+    interrupted: true,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  const stopped = () => f.container.querySelector<HTMLElement>('[data-testid="stopped-text"]');
+  const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const note = () => stopped()?.querySelector('[role="note"]') ?? null;
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  // Cut, with the next request still on its way: the words stay, with nothing new under them.
+  const block = stopped();
+  expect(block?.textContent).toContain('Words cut by the interrupt');
+  expect(f.container.querySelector('[data-testid="reply-pending"]')).toBeNull();
+  expect(live()).toBeNull();
+  expect(note()).toBeNull();
+  // The next reply is written under them; they read as interrupted from then on.
+  first.modelCalls.next = {
+    modelCallId: 'next',
+    executionId: 'lead',
+    finished: false,
+    responseRef: null,
+  } as unknown as RunProjection['modelCalls'][string];
+  await act(async () =>
+    fixture.store?.setState({
+      streams: {
+        cut: { text: 'Words cut by the interrupt', next: 1, broken: false, completed: false },
+        next: { text: 'The answer body', next: 1, broken: false, completed: false },
+      },
+    }),
+  );
+  expect(stopped()).toBe(block);
+  expect(note()?.textContent).toBe(messages.MessageBody.interrupted);
+  expect(live()?.textContent).toContain('The answer body');
+  expect(block?.compareDocumentPosition(live() as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  // The run ends with the answer: the cut words are still there, above it.
+  first.modelCalls.next = {
+    ...first.modelCalls.next,
+    finished: true,
+    responseRef: 'response_next',
+  } as RunProjection['modelCalls'][string];
+  await f.set(answered(first));
+  expect(stopped()).toBe(block);
+  expect(block?.textContent).toContain('Words cut by the interrupt');
+  expect(note()?.textContent).toBe(messages.MessageBody.interrupted);
+  const answer = f.container.querySelector('[data-testid="chat-result"]');
+  expect(answer?.textContent).toContain('The answer body');
+  expect(block?.compareDocumentPosition(answer as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(part(f.container, 'body')?.contains(block as Node)).toBe(true);
+});
+
+// A finishing run's reply can leave the store before its answer is read (its response body
+// follows the answer's, and the answer arrives with the turn's record): the words stay in their
+// place until the answer takes it, with no wait drawn in between.
+it('keeps the last words of a finishing run until its answer is read, even once the store lets them go', async () => {
+  const first = running();
+  first.modelCalls.next = {
+    modelCallId: 'next',
+    executionId: 'lead',
+    finished: false,
+    responseRef: null,
+  } as unknown as RunProjection['modelCalls'][string];
+  const f = await show(first);
+  const live = () => f.container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const answer = () => f.container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  await act(async () =>
+    fixture.store?.setState({
+      // The answer's body is still being read.
+      loadArtifact: () => new Promise<void>(() => {}),
+      artifactTexts: {},
+      streams: { next: { text: 'The answer body', next: 1, broken: false, completed: false } },
+    }),
+  );
+  expect(live()?.textContent).toContain('The answer body');
+  // The run ends, and the store drops the reply's words before the answer is read.
+  await act(async () => fixture.store?.setState({ projection: answered(first), streams: {} }));
+  expect(live()?.textContent).toContain('The answer body');
+  expect(answer()).toBeNull();
+  // Read: the answer takes the words' place.
+  await act(async () => fixture.store?.setState({ artifactTexts: { answer: 'The answer body' } }));
+  expect(live()).toBeNull();
+  expect(answer()?.textContent).toContain('The answer body');
+});
+
+// A later run of the conversation succeeding releases this run's answer body (superseded) while
+// the row still waits for the turn's record, which keeps the answer: the row never draws less
+// than it drew while it waits.
+describe('an answer drawn and then released before the turn’s record is read', () => {
+  const answer = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  /** The run ends with its answer drawn, then a later run's success releases the answer's body. */
+  async function drawnThenReleased() {
+    const ended = answered(running());
+    const f = await show(running());
+    await f.set(ended);
+    const drawn = answer(f.container);
+    expect(drawn?.textContent).toContain('The answer body');
+    const released: RunProjection = {
+      ...ended,
+      artifacts: {
+        answer: {
+          ...(ended.artifacts.answer as RunProjection['artifacts'][string]),
+          bodyAvailable: false,
+        },
+      },
+    };
+    // The store drops a body it can no longer read.
+    await act(async () => fixture.store?.setState({ projection: released, artifactTexts: {} }));
+    return { ...f, drawn, released };
+  }
+
+  it('keeps the answer it drew, the same text in the same place, until the record’s answer takes it', async () => {
+    const f = await drawnThenReleased();
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    // No longer live: the turn's record is being read.
+    fixture.settled = false;
+    await f.draw(false);
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    expect(f.container.textContent).not.toContain(messages.Artifact.loading);
+    // Read: the record's answer takes the same place.
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    expect(answer(f.container)).toBe(f.drawn);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  it('a record read that fails says so, and the row is not left blank', async () => {
+    const f = await drawnThenReleased();
+    fixture.settled = false;
+    await f.draw(false);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    await act(async () =>
+      fixture.store?.setState({ projection: null, streamError: 'The record could not be read' }),
+    );
+    await f.draw(false);
+    expect(f.container.querySelector('[role="alert"]')?.textContent).toBe(
+      'The record could not be read',
+    );
+  });
+
+  it('with the record read and no answer kept for it, the released body says it was let go', async () => {
+    const f = await drawnThenReleased();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(answer(f.container)?.textContent).toBe(messages.Artifact.retired);
+  });
+});
+
+// The answer's body read can fail while the row reads the turn's record (the store it read with
+// went with the row's live view, say); the record keeps the answer.
+describe('an answer body read that fails while the turn’s record is read', () => {
+  const live = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="live-text"]');
+  const answer = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-testid="chat-result"]');
+  const alert = (container: HTMLElement) => container.querySelector('[role="alert"]');
+  async function failedWhileReading(whileLive = false) {
+    const first = running();
+    first.modelCalls.next = {
+      modelCallId: 'next',
+      executionId: 'lead',
+      finished: false,
+      responseRef: null,
+    } as unknown as RunProjection['modelCalls'][string];
+    const f = await show(first);
+    await act(async () =>
+      fixture.store?.setState({
+        artifactTexts: {},
+        streams: { next: { text: 'The answer body', next: 1, broken: false, completed: true } },
+      }),
+    );
+    const reading = async () => {
+      // No longer live: the turn's record is being read.
+      fixture.settled = false;
+      await f.draw(false);
+    };
+    if (!whileLive) await reading();
+    // The run ends; its answer's body read ends with no text.
+    await act(async () =>
+      fixture.store?.setState({
+        projection: answered(first),
+        streams: {},
+        loadArtifact: async () => {},
+      }),
+    );
+    if (whileLive) {
+      expect(alert(f.container)).toBeNull();
+      expect(live(f.container)?.textContent).toContain('The answer body');
+      await reading();
+    }
+    return f;
+  }
+
+  it('failed while the row was live, the words stay through the record read', async () => {
+    const f = await failedWhileReading(true);
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+  });
+
+  it('keeps the words in their place with no failure said, until the record’s answer takes it', async () => {
+    const f = await failedWhileReading();
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)?.textContent).toContain('The answer body');
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    expect(alert(f.container)).toBeNull();
+    expect(live(f.container)).toBeNull();
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  // The record's answer and the end of the wait come in one render: the failure the wait held
+  // back is in no render of it, not even one the row's effects then take back.
+  /** Every failure line added to the row while it is watched, in every render. */
+  function watchAlerts(container: HTMLElement) {
+    const said: string[] = [];
+    const take = (records: MutationRecord[]) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (
+            node instanceof Element &&
+            (node.matches('[role="alert"]') || node.querySelector('[role="alert"]'))
+          )
+            said.push(node.textContent ?? '');
+    };
+    const watch = new MutationObserver(take);
+    watch.observe(container, { childList: true, subtree: true });
+    return () => {
+      take(watch.takeRecords());
+      watch.disconnect();
+      return said;
+    };
+  }
+
+  it('the record read with the answer says no failure in any render', async () => {
+    const f = await failedWhileReading();
+    const stop = watchAlerts(f.container);
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    expect(stop()).toEqual([]);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  // A live row hands over to the store its record was read into (useCorralChat.ts): the same
+  // answers asked for again from another store are a new read, so the live store's failure is in
+  // no render of that store; the new store's own failure is said.
+  it('a failure read from the live store is in no render of the store the row moves to', async () => {
+    const f = await failedWhileReading(true);
+    const projection = fixture.store?.getState().projection ?? null;
+    let fail = () => {};
+    const reading = vi.fn(
+      () =>
+        new Promise<void>((done) => {
+          fail = done;
+        }),
+    );
+    const own = sessionStore({
+      runId: RUN,
+      definition: linearCorral(['writer']),
+      projection,
+      artifactTexts: {},
+    });
+    own.setState({ loadArtifact: reading });
+    const stop = watchAlerts(f.container);
+    // The record is read into the row's own store, without the answer: the row stops waiting.
+    fixture.store = own;
+    fixture.settled = true;
+    await f.draw(false);
+    expect(reading).toHaveBeenCalledWith('answer');
+    expect(stop()).toEqual([]);
+    // That store's own read fails: said.
+    await act(async () => fail());
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
+  });
+
+  it('says the failure once the record is read without the answer', async () => {
+    const f = await failedWhileReading();
+    expect(alert(f.container)).toBeNull();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+  });
+
+  const retry = (container: HTMLElement) =>
+    [...container.querySelectorAll<HTMLButtonElement>('[role="alert"] button')].find(
+      (button) => button.textContent === messages.Desktop.retryResult,
+    );
+
+  it('trying again reads the body again: a failure again is said, a body read takes its place', async () => {
+    const f = await failedWhileReading();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+    const failing = vi.fn(async () => {});
+    await act(async () => fixture.store?.setState({ loadArtifact: failing }));
+    await act(async () => retry(f.container)?.click());
+    expect(failing).toHaveBeenCalledWith('answer');
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
+    const reading = vi.fn(async (id: string) => {
+      fixture.store?.setState({ artifactTexts: { [id]: 'The answer body' } });
+    });
+    await act(async () => fixture.store?.setState({ loadArtifact: reading }));
+    await act(async () => retry(f.container)?.click());
+    expect(reading).toHaveBeenCalledWith('answer');
+    expect(alert(f.container)).toBeNull();
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  it('a read of another answer that fails is said, after the first failure went with its answer', async () => {
+    const f = await failedWhileReading();
+    fixture.settled = true;
+    await f.draw(false);
+    expect(alert(f.container)).not.toBeNull();
+    const ended = answered(running());
+    const first = ended.artifacts.answer as RunProjection['artifacts'][string];
+    const next: RunProjection = {
+      ...ended,
+      artifacts: {
+        ...ended.artifacts,
+        second: { ...first, artifactVersionId: 'second', version: 2, parentVersionId: 'answer' },
+      },
+      output: { nodeId: 'output', artifactVersionIds: ['second'] },
+    };
+    const failing = vi.fn(async () => {});
+    await act(async () =>
+      fixture.store?.setState({ projection: next, artifactTexts: {}, loadArtifact: failing }),
+    );
+    expect(failing).toHaveBeenCalledWith('second');
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
+  });
+});
+
+// Outside a conversation there is no turn's record to wait for: a body read that fails says so
+// as soon as it ends.
+it('outside a conversation a body read that fails is said at once', async () => {
+  const f = await show(running(), undefined, null);
+  const failing = vi.fn(async () => {});
+  // The run ends; its answer's body read ends with no text.
+  await act(async () =>
+    fixture.store?.setState({
+      projection: answered(running()),
+      artifactTexts: {},
+      loadArtifact: failing,
+    }),
+  );
+  expect(failing).toHaveBeenCalledWith('answer');
+  expect(f.container.querySelector('[role="alert"]')?.textContent).toContain(
+    messages.Desktop.resultUnavailable,
+  );
+});
+
+it.each([
+  ['cancel_confirmed', null],
+  ['internal_error', messages.RunReasons.internal_error],
+  ['execution_failed: reviewer', 'reviewer failed'],
+  ['backend_restarted', messages.RunReasons.backend_restarted],
+])('the end says the reason %s only when the head does not', async (code, shown) => {
+  const f = await show({ ...failed(running()), statusReason: code });
+  const end = f.container.querySelector('[data-testid="turn-end"]');
+  if (shown) expect(end?.textContent).toContain(shown);
+  else expect(end?.textContent).not.toContain(messages.RunReasons.cancel_confirmed);
+  // The cause and what to do next stay either way.
+  expect(end?.textContent).toContain(messages.Failure.provider.RATE_LIMIT);
+});
+
+it('a process the person opened stays open when its row mounts again', async () => {
+  const f = await show(running());
+  await act(async () => toggle(f.container)?.click());
+  expect(toggle(f.container)?.getAttribute('aria-expanded')).toBe('true');
+  // The timeline unmounts the row off screen and mounts it again.
+  for (const dispose of cleanup.splice(0)) act(dispose);
+  const again = await show(running());
+  expect(toggle(again.container)?.getAttribute('aria-expanded')).toBe('true');
+  // Closing it is remembered the same way.
+  await act(async () => toggle(again.container)?.click());
+  for (const dispose of cleanup.splice(0)) act(dispose);
+  const third = await show(running());
+  expect(toggle(third.container)?.getAttribute('aria-expanded')).toBe('false');
+});
+
+// A review loop that runs out of rounds goes on with its last candidate; the run then ends
+// completed, and its head says why in the state's place (presence.md, composer-flow.md rule 3).
+const round = (no: number, outcome: RunProjection['iterations'][string]['outcome']) => ({
+  iterationId: `round_${no}`,
+  loopNodeId: 'review',
+  parentIterationId: null,
+  no,
+  criteriaVersionId: 'criteria',
+  outcome,
+});
+const loopEnded = (projection: RunProjection, outcome: 'cap_reached' | 'stalled' | 'pass') => ({
+  ...answered(projection),
+  loopIterations: { review: ['round_1', 'round_2'] },
+  iterations: { round_1: round(1, 'revise'), round_2: round(2, outcome) },
+});
+const done = messages.Presence.state.succeeded;
+const detail = messages.Presence.detail;
+
+it.each([
+  ['cap_reached', detail.round_limit],
+  ['stalled', detail.rounds_stalled],
+  ['pass', null],
+] as const)(
+  'a run whose review loop ended by %s says so beside its head state and in the head’s name',
+  async (outcome, beside) => {
+    const first = running();
+    const f = await show(first);
+    const head = part(f.container, 'head');
+    await f.set(loopEnded(first, outcome));
+    expect(part(f.container, 'head')).toBe(head);
+    expect(parts(f.container)).toEqual(['head', 'body', 'tail']);
+    const labels = f.container.querySelectorAll(`[data-presence-label="run:${RUN}"]`);
+    expect(labels).toHaveLength(1);
+    expect(head?.contains(labels[0] ?? null)).toBe(true);
+    // The label holds the state's name alone; the detail stands beside it.
+    expect(labels[0]?.textContent).toBe(done);
+    const said = beside ? `${done} · ${beside}` : done;
+    expect(head?.textContent).toContain(said);
+    if (!beside) expect(head?.textContent).not.toMatch(/Round limit|Rounds stalled/);
+    expect(toggle(f.container)?.getAttribute('aria-label')).toBe(logName('writer', said, '1 step'));
+  },
+);
+
+it('a failed run says nothing of the loop that ran out', async () => {
+  const first = running();
+  const f = await show(first);
+  await f.set({ ...loopEnded(first, 'cap_reached'), ...failed(first), status: 'failed' });
+  expect(part(f.container, 'head')?.textContent).not.toContain(detail.round_limit);
+  expect(toggle(f.container)?.getAttribute('aria-label')).not.toContain(detail.round_limit);
+});
+
+// A role's row names its state once by its execution, with what it waits for beside it.
+it.each([
+  ['waiting_children', false, detail.waiting_agents],
+  ['waiting_message', false, detail.waiting_reply],
+] as const)(
+  'a role that is %s (advisor: %s) says so beside its state',
+  async (status, advisor, said) => {
+    const projection = running();
+    projection.executions.helper = execution('helper', {
+      status,
+      ...(advisor ? { advisor: true as const } : {}),
+    });
+    projection.executionOrder = ['lead', 'helper'];
+    const f = await show(projection);
+    const label = f.container.querySelector('[data-presence-label="execution:helper"]');
+    expect(label?.textContent).toBe(messages.Presence.state.working);
+    expect(part(f.container, 'role:helper')?.textContent).toContain(
+      `${messages.Presence.state.working} · ${said}`,
+    );
+  },
+);
+
+// An advisor watching is no role of the turn (features/advisor.md 보이는 곳): its row, with
+// "Watching" beside its state, is the activity bar's (ComposerActivity.test.tsx).
+it('a watching advisor has no role row in the run row', async () => {
+  const projection = running();
+  projection.executions.helper = execution('helper', {
+    status: 'waiting_message',
+    advisor: true as const,
+  });
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  expect(part(f.container, 'role:helper')).toBeNull();
+  expect(f.container.querySelector('[data-presence-label="execution:helper"]')).toBeNull();
+});
+
+it.each([
+  ['failed', (p: RunProjection) => failed(p), 'text-danger'],
+  ['paused', (p: RunProjection) => ({ ...p, status: 'paused' as const }), 'text-warning'],
+  ['succeeded', (p: RunProjection) => answered(p), null],
+] as const)('a %s head state takes its tone’s colour', async (_name, as, colour) => {
+  const f = await show(as(running()));
+  const word = f.container.querySelector(`[data-presence-label="run:${RUN}"]`);
+  if (colour) expect(word?.classList.contains(colour)).toBe(true);
+  else expect(word?.className ?? '').not.toMatch(/text-(danger|warning|success)/);
+});
+
+it('the log names the lead’s failure by its execution while the run goes on', async () => {
+  const projection = running();
+  projection.executions.lead = execution('lead', { status: 'failed', error: 'Broke' });
+  projection.executions.helper = execution('helper');
+  projection.executionOrder = ['lead', 'helper'];
+  const f = await show(projection);
+  await act(async () => toggle(f.container)?.click());
+  const team = f.container.querySelector('[data-testid="team-activity"]');
+  expect(team).not.toBeNull();
+  const label = team?.querySelector('[data-presence-label]');
+  expect(label?.getAttribute('data-presence-label')).toBe('execution:lead');
+  expect(f.container.querySelectorAll('[data-presence-label="execution:lead"]')).toHaveLength(1);
+});

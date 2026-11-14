@@ -75,7 +75,7 @@ export function presetPanels(preset: DockPreset, open: DockPanel[]): DockPanel[]
     ...contextPanels(PRESET_VIEWS[preset]).filter((panel) => !present.has(panel.id)),
   ];
 }
-const unavailable = (): DockPanelDescriptor => ({ kind: 'unknown', label: 'Unavailable panel' });
+const unavailable = (): DockPanelDescriptor => ({ kind: 'unknown', label: 'Unavailable pane' });
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -166,7 +166,7 @@ function serializedPanels(panels: DockPanel[]): SerializedDockview['panels'] {
               ? descriptor.view
               : descriptor.kind === 'graph'
                 ? 'graph'
-                : 'Unavailable panel',
+                : 'Unavailable pane',
         params: { descriptor },
       },
     ]),
@@ -251,6 +251,44 @@ export function createPresetLayout(
     },
     panels: serializedPanels(panels),
     activeGroup: top[0] ?? 'bottom',
+  };
+}
+
+/**
+ * The file tree's own group in a wide new dock, and the column it keeps: wide enough for the
+ * tree's head at the interface density.
+ */
+export const TREE_GROUP = 'tree';
+export const TREE_WIDTH = { compact: 260, default: 300 } as const;
+/** From this dock width a new dock opens documents in a group beside the tree. */
+export const TREE_BESIDE_DOCUMENTS = 960;
+
+/**
+ * A new dock's first arrangement. From 960px the file tree stands alone in its own group, so
+ * the first document opens in a group to its right; a narrower dock keeps one group, where a
+ * document opens as a tab beside the tree. A saved arrangement is never replaced by this.
+ */
+export function initialLayout(width: number): SerializedDockview {
+  if (width < TREE_BESIDE_DOCUMENTS) return createPresetLayout('conversation', INITIAL_PANELS);
+  return {
+    grid: {
+      root: {
+        type: 'branch',
+        size: 1200,
+        data: [
+          leaf(
+            TREE_GROUP,
+            INITIAL_PANELS.map((panel) => panel.id),
+            800,
+          ),
+        ],
+      },
+      width: 1200,
+      height: 800,
+      orientation: 'VERTICAL' as SerializedDockview['grid']['orientation'],
+    },
+    panels: serializedPanels(INITIAL_PANELS),
+    activeGroup: TREE_GROUP,
   };
 }
 

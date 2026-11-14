@@ -157,6 +157,9 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
     const substrate = useSurface();
     // Active pill sits 3 surface levels above its substrate (page 1 → 4).
     const indicatorLevel = Math.min(substrate + 3, 8);
+    // Its shadow stays at the resting-control step: the pill is a segment inside the
+    // track, not a floating surface, so it must not gain drop layers as it nests.
+    const indicatorShadow = 2;
     const valueOrderCtx = useContext(TabsValueOrderContext);
 
     const values = Children.toArray(children)
@@ -290,7 +293,7 @@ const TabsList = forwardRef<HTMLDivElement, TabsListProps>(
             <motion.div
               className={cn(
                 'absolute pointer-events-none',
-                surfaceClasses(indicatorLevel),
+                surfaceClasses(indicatorLevel, indicatorShadow),
                 shape.bg,
               )}
               initial={false}

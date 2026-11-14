@@ -110,6 +110,45 @@ describe('file broker', () => {
       s.db.close();
     }
   });
+  it('list_files with a folder that names the root lists the root; other paths keep their refusals', async () => {
+    const s = await setup();
+    try {
+      const root = s.service.copyOf('session_1')!.worktree;
+      mkdirSync(join(root, 'src'));
+      writeFileSync(join(root, 'src', 'b.txt'), 'two\n');
+      const whole = await s.call('list_files', {});
+      expect(whole.files).toEqual(
+        expect.arrayContaining([
+          { path: 'a.txt', bytes: 4 },
+          { path: 'src/b.txt', bytes: 4 },
+        ]),
+      );
+      for (const path of ['.', './', ''])
+        expect(await s.call('list_files', { path })).toEqual(whole);
+      expect((await s.call('list_files', { path: './src' })).files).toEqual([
+        { path: 'src/b.txt', bytes: 4 },
+      ]);
+      await expect(s.call('list_files', { path: '..' })).rejects.toMatchObject({
+        code: 'CAPABILITY_DENIED',
+      });
+      await expect(s.call('list_files', { path: '/etc' })).rejects.toMatchObject({
+        code: 'SCHEMA_INVALID',
+      });
+      for (const path of ['.git', '.corral', './.git'])
+        await expect(s.call('list_files', { path })).rejects.toMatchObject({
+          code: 'CAPABILITY_DENIED',
+        });
+      // A file tool still refuses a path that names no file.
+      for (const path of ['.', './'])
+        await expect(s.call('read_file', { path })).rejects.toMatchObject({
+          code: 'SCHEMA_INVALID',
+          message: 'the path names no file',
+        });
+    } finally {
+      await s.service.dispose();
+      s.db.close();
+    }
+  });
   it('paged file reads do not authorize replacing unread content', async () => {
     const s = await setup();
     try {
@@ -245,6 +284,7 @@ describe('file broker', () => {
     const root = s.service.copyOf('session_1')!.worktree;
     try {
       const reference = await s.service.captureRuntimeFiles('run_1', 'runtime_files');
+      if (!reference) throw new Error('a working copy run has runtime files');
       await s.service.captureRuntimeFiles('run_1', 'runtime_files_second');
       expect(await s.service.verifyRuntimeFiles('run_1', reference)).toBe(true);
       expect(await s.service.verifyRuntimeFiles('run_missing', reference)).toBe(false);

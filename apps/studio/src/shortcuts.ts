@@ -25,7 +25,8 @@ export type ShortcutId =
   | 'settings'
   | 'nav.back'
   | 'nav.forward'
-  | 'run.stop';
+  | 'run.stop'
+  | 'reply.quote';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -47,6 +48,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'nav.back', chord: { mod: true, key: '[' } },
   { id: 'nav.forward', chord: { mod: true, key: ']' } },
   { id: 'run.stop', chord: { mod: true, key: '.' } },
+  // Quotes the passage chosen in a reply (reply-citation.md); with no such passage it does nothing.
+  { id: 'reply.quote', chord: { alt: true, key: 'q' } },
 ];
 
 /** Keys that work only inside one place (composer, editor); listed in help, not bound here. */
@@ -56,6 +59,12 @@ export const LOCAL_KEYS = [
     keys: (sendWithEnter: boolean) =>
       sendWithEnter ? 'Enter' : formatChord({ mod: true, key: 'Enter' }),
   },
+  {
+    id: 'interrupt',
+    keys: (sendWithEnter: boolean) =>
+      formatChord({ mod: true, shift: !sendWithEnter, key: 'Enter' }),
+  },
+  { id: 'queueNext', keys: () => formatChord({ alt: true, key: 'Enter' }) },
   {
     id: 'newline',
     keys: (sendWithEnter: boolean) =>
@@ -136,4 +145,14 @@ export function shortcutFor(event: KeyboardEvent): { id: ShortcutId; digit?: num
 /** The key that sends a request, as the person chose it (Settings › General). */
 export function sendKeyLabel(sendKey: 'enter' | 'mod-enter'): string {
   return sendKey === 'enter' ? 'Enter' : formatChord({ mod: true, key: 'Enter' });
+}
+
+/** The composer's three send keys, short, for its key line (features/composer-flow.md "전송"). */
+export function sendKeyLabels(sendKey: 'enter' | 'mod-enter') {
+  const enter = sendKey === 'enter';
+  return {
+    send: enter ? '↵' : formatChord({ mod: true, key: '↵' }),
+    interrupt: formatChord({ mod: true, shift: !enter, key: '↵' }),
+    queue: formatChord({ alt: true, key: '↵' }),
+  };
 }

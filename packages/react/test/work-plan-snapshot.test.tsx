@@ -71,6 +71,60 @@ describe('shared work plan snapshots', () => {
     expect(await screen.findByText(messages.WorkPlan.unavailable)).toBeVisible();
   });
 
+  it('a stored plan in the old format with verification fields is not shown, and nothing breaks', async () => {
+    // No migration: the old body keeps its recorded hash, but it is no longer a work plan.
+    const old = {
+      ...body,
+      items: [
+        {
+          id: 'test',
+          title: 'Run npm test',
+          status: 'completed',
+          requiresVerification: true,
+          evidenceRefs: ['result_1'],
+        },
+      ],
+    } as unknown as WorkPlan;
+    const ref = await reference(old);
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith({
+        runId: 'run_1',
+        currentCriteriaVersionId: body.criteriaVersionId,
+        workPlans: { execution_1: ref },
+      }),
+      artifactTexts: { [ref.bodyRef]: canonicalJson(old) },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <WorkPlanPanel session={session} />
+      </IntlProvider>,
+    );
+    expect(await screen.findByText(messages.WorkPlan.unavailable)).toBeVisible();
+    expect(screen.queryByText('Run npm test')).not.toBeInTheDocument();
+    expect(screen.queryByText(/verification|evidence/i)).not.toBeInTheDocument();
+  });
+
+  it('the panel lists the plan items without a paragraph about what progress means', async () => {
+    const ref = await reference();
+    const session = sessionStore({
+      runId: 'run_1',
+      projection: projectionWith({
+        runId: 'run_1',
+        currentCriteriaVersionId: body.criteriaVersionId,
+        workPlans: { execution_1: ref },
+      }),
+      artifactTexts: { [ref.bodyRef]: JSON.stringify(body) },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages}>
+        <WorkPlanPanel session={session} />
+      </IntlProvider>,
+    );
+    expect(await screen.findByText('Verify the change')).toBeVisible();
+    expect(screen.queryByText(/Plan progress is separate/)).not.toBeInTheDocument();
+  });
+
   it('deduplicates composer and detail reads without merging runs or transports', async () => {
     const ref = await reference();
     const loading = deferred<string | null>();

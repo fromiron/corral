@@ -200,7 +200,10 @@ export type ExtensionUiNotice = z.infer<typeof ExtensionUiNotice>;
 
 /** The final context at the Corral provider boundary, before dispatch. */
 export const CompactionReport = z.strictObject({
+  /** The compact_context command, or the worker's own id for an automatic compaction. */
   commandId: Identifier,
+  /** Absent means manual: an automatic compaction carries no command. */
+  trigger: z.enum(['manual', 'automatic']).optional(),
   phase: z.enum(['started', 'completed', 'failed', 'cancelled', 'skipped']),
   beforeHash: ContentHash.optional(),
   afterHash: ContentHash.optional(),

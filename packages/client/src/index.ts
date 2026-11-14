@@ -59,7 +59,7 @@ import type {
   LanguageStart,
   LanguageState,
   MeetingAdoptDecisionRequest,
-  MeetingConfig,
+  MeetingContinueRequest,
   MeetingDecisionVersion,
   MeetingDecisionWithdrawal,
   MeetingHandoffReceipt,
@@ -255,6 +255,7 @@ import type {
   CorralRepository,
   CorralSummary,
   MeetingResult,
+  NewSession,
   NewSessionEntry,
   ProjectChange,
   ProjectResult,
@@ -439,6 +440,8 @@ export interface MeetingsClient {
   sendQueued(sessionId: string): Promise<MeetingResult>;
   dropQueued(sessionId: string): Promise<MeetingResult>;
   editQueued(sessionId: string, message: QueuedMeetingMessage): Promise<MeetingResult>;
+  /** Continues a held mention chain; a lost receipt is sent again with the same command. */
+  continueChain(sessionId: string, request: MeetingContinueRequest): Promise<MeetingResult>;
   adopt(
     sessionId: string,
     request: MeetingAdoptDecisionRequest,
@@ -483,6 +486,9 @@ export class MeetingsApi implements MeetingsClient {
   }
   editQueued(sessionId: string, message: QueuedMeetingMessage) {
     return this.write(`${this.path(sessionId)}/queued`, 'PATCH', message);
+  }
+  continueChain(sessionId: string, request: MeetingContinueRequest) {
+    return this.write(`${this.path(sessionId)}/continue`, 'POST', request);
   }
   adopt(sessionId: string, request: MeetingAdoptDecisionRequest) {
     return this.write<{ decision: MeetingDecisionVersion }>(
@@ -600,6 +606,12 @@ export class VaultApi extends VaultClient {
   }
 }
 
+/** The engine the server's path search answers with, and why it is not FFF. Never a path. */
+export interface PathEngineStatus {
+  engine: 'fff' | 'builtIn';
+  reason?: 'loadFailed' | 'noBinary' | 'indexCap' | 'callFailed' | 'timeBudget';
+}
+
 export interface ServerHealth {
   ok: true;
   schemaVersion: string;
@@ -607,6 +619,7 @@ export interface ServerHealth {
   backendSessionId: string;
   /** Whether this server can run real models (signed in or not). */
   live: boolean;
+  pathEngine: PathEngineStatus;
 }
 
 /** The local server, if this page was served by one; null for the in-browser runtime. */
@@ -1267,14 +1280,7 @@ export class RestCorralRepository implements CorralRepository {
     return (await response.json()) as WorkSession;
   }
 
-  createSession(input: {
-    projectId: string;
-    title: string;
-    autoTitle?: boolean;
-    objective?: string;
-    corralId?: string | null;
-    meeting?: MeetingConfig;
-  }): Promise<SessionResult> {
+  createSession(input: NewSession): Promise<SessionResult> {
     return this.projectWrite('/sessions', 'POST', input) as Promise<SessionResult>;
   }
 
@@ -1284,6 +1290,20 @@ export class RestCorralRepository implements CorralRepository {
       'PATCH',
       change,
     ) as Promise<SessionResult>;
+  }
+
+  deletionPreview(sessionId: string): Promise<SessionDeletionSummary> {
+    return this.http.json(`/sessions/${encodeURIComponent(sessionId)}/deletion`);
+  }
+
+  /** 204 removes it. A repeated confirmed delete is 404 and is already done. A conflict throws. */
+  async deleteSession(sessionId: string, body: SessionDeletionRequest): Promise<void> {
+    const response = await this.http.request(`/sessions/${encodeURIComponent(sessionId)}`, {
+      method: 'DELETE',
+      body: JSON.stringify(body),
+    });
+    if (response.status === 204 || response.status === 404) return;
+    throw await apiError(response);
   }
 
   addSessionEntry(sessionId: string, entry: NewSessionEntry): Promise<SessionResult> {
@@ -1365,8 +1385,30 @@ export class RestCorralRepository implements CorralRepository {
 
 export interface LoginView {
   state: 'waiting' | 'exchanging' | 'failed';
+  /** The provider's sign-in page; opening it is the person's own step. */
   authUrl: string | null;
+  /** The code to enter on that page, for a device-code sign-in. */
+  userCode: string | null;
   error: string | null;
+}
+
+/** The category of an endpoint's last `/models` fetch: the list was read, or why it was not. */
+export type EndpointCheckKind =
+  | 'connected'
+  | 'authentication'
+  | 'rateLimit'
+  | 'server'
+  | 'redirect'
+  | 'unsupported'
+  | 'connection';
+
+/** POST /model-auth/:providerId/models/refresh: the fetch's result and the list in use after it. */
+export interface EndpointModelsView {
+  kind: EndpointCheckKind;
+  status: number | null;
+  fetchedAt: string;
+  /** Models of the endpoint the server can use now. */
+  modelCount: number;
 }
 
 export interface ProviderAuthView {
@@ -1380,18 +1422,6 @@ export interface ProviderAuthView {
   endpoint: string | null;
   /** A key was entered for another address than the one the workspace names now. */
   endpointChanged: boolean;
-  connectionTest?: {
-    kind:
-      | 'connected'
-      | 'authentication'
-      | 'rateLimit'
-      | 'server'
-      | 'redirect'
-      | 'unsupported'
-      | 'connection';
-    status: number | null;
-    checkedAt: string;
-  } | null;
   subscription: boolean;
   expiresAt: string | null;
   login: LoginView | null;
@@ -1399,6 +1429,10 @@ export interface ProviderAuthView {
   source: 'corral' | 'codex-cli' | 'environment' | null;
   /** True only when borrowed login permissions are verified private; false includes unknown. */
   permissionsOk: boolean;
+  /** Models this connection can use now; 0 when it is not connected. */
+  modelCount: number;
+  /** An endpoint's last `/models` fetch; null for built-in providers and before any fetch. */
+  modelFetch: Omit<EndpointModelsView, 'modelCount'> | null;
 }
 
 /** GET /local-ai: the local AI bundle for the settings panel's install. */
@@ -1418,6 +1452,7 @@ export interface LocalAiView {
   downloadBytes: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
+  device: { requested: 'cpu' | 'gpu' | 'auto'; actual: 'cpu' | 'gpu' | null };
 }
 
 /** GET /decision-apis: judge-only APIs and whether a key is stored, never the key. */
@@ -1438,9 +1473,18 @@ export interface LocalRoutingView {
   install: 'absent' | 'downloading' | 'verifying' | 'installed' | 'install-error';
   runtime: 'stopped' | 'starting' | 'ready' | 'packing' | 'inferring' | 'draining' | 'error';
   downloadBytes: number | null;
+  /** Bytes a removal frees, or null when nothing is installed. */
+  installedBytes?: number | null;
   progress: { received: number; total: number } | null;
   error: string | null;
-  device: { requested: 'cpu'; active: 'cpu' | null };
+  device: { requested: 'cpu' | 'vulkan' | 'cuda'; active: string | null };
+  /** Runtimes this computer can install. GPU entries are not a verification. */
+  devices?: {
+    kind: 'cpu' | 'vulkan' | 'cuda';
+    installed: boolean;
+    downloadBytes: number;
+    requirement: string | null;
+  }[];
   /** The running instance's threads. */
   threads: number | null;
   /** What a new Local setting starts with, from the server's processor. */
@@ -1463,6 +1507,8 @@ export interface EffortRoutingView {
 
 export interface ModelProfileView {
   profileId: string;
+  /** A named profile from the config, or a model of a connected provider. */
+  source: 'profile' | 'connection';
   provider: string;
   providerName: string;
   modelId: string;
@@ -1492,7 +1538,23 @@ export interface CatalogProvider {
     id: string;
     name: string;
     cost: { input: number; output: number; cacheRead: number; cacheWrite: number };
+    /** Endpoint models only: each limit and ability with where it came from. */
+    limits?: {
+      contextWindow: SourcedValue<number>;
+      maxOutput: SourcedValue<number>;
+      reasoning: SourcedValue<boolean>;
+      imageInput: SourcedValue<boolean>;
+    };
   }[];
+}
+
+/**
+ * One value of an endpoint model and its source, highest first: the config, Corral's known
+ * values for the address, the endpoint's `/models`, models.dev, the defaults.
+ */
+export interface SourcedValue<T> {
+  value: T;
+  source: 'config' | 'known' | 'response' | 'catalog' | 'default';
 }
 
 export interface ProfileConfig extends ProfileContextOverrides {
@@ -1515,6 +1577,7 @@ export interface EndpointConfig {
     contextWindow?: number;
     maxOutput?: number;
     reasoning?: boolean;
+    imageInput?: boolean;
   }[];
 }
 
@@ -1556,6 +1619,17 @@ export class ModelsApi {
   cancelLocalAiInstall(): Promise<LocalAiView> {
     return this.http.json('/local-ai/install', { method: 'DELETE' });
   }
+  /** Deletes the meeting bundle only. The judge model stays. */
+  removeLocalAi(): Promise<LocalAiView> {
+    return this.http.json('/local-ai', { method: 'DELETE' });
+  }
+  /** Saves the meeting engine's device and stops its helper until the next computation. */
+  setLocalAiDevice(device: 'cpu' | 'gpu' | 'auto'): Promise<LocalAiView> {
+    return this.http.json('/local-ai/device', {
+      method: 'PUT',
+      body: JSON.stringify({ device }),
+    });
+  }
   decisionApis(): Promise<DecisionApiView[]> {
     return this.http.json('/decision-apis');
   }
@@ -1581,11 +1655,18 @@ export class ModelsApi {
       body: JSON.stringify({ settings, revision }),
     });
   }
-  installLocalRouting(): Promise<EffortRoutingView> {
-    return this.http.json('/effort-routing/local/install', { method: 'POST' });
+  installLocalRouting(device?: 'cpu' | 'vulkan' | 'cuda'): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local/install', {
+      method: 'POST',
+      ...(device ? { body: JSON.stringify({ device }) } : {}),
+    });
   }
   cancelLocalRoutingInstall(): Promise<EffortRoutingView> {
     return this.http.json('/effort-routing/local/install', { method: 'DELETE' });
+  }
+  /** Deletes the installed Local judge model only. The saved setting and the meeting bundle stay. */
+  removeLocalRouting(): Promise<EffortRoutingView> {
+    return this.http.json('/effort-routing/local', { method: 'DELETE' });
   }
   /** Prepares the saved, installed Local engine again. */
   startLocalRouting(): Promise<EffortRoutingView> {
@@ -1689,11 +1770,12 @@ export class ModelsApi {
     });
   }
 
-  testEndpoint(
-    providerId: string,
-    revision: string,
-  ): Promise<NonNullable<ProviderAuthView['connectionTest']>> {
-    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/probe`, {
+  /**
+   * Fetches an endpoint's `/models` again from the saved address. The revision is the config the
+   * person is looking at; a changed config answers REVISION_CONFLICT and sends nothing.
+   */
+  refreshEndpointModels(providerId: string, revision: string): Promise<EndpointModelsView> {
+    return this.http.json(`/model-auth/${encodeURIComponent(providerId)}/models/refresh`, {
       method: 'POST',
       body: JSON.stringify({ revision }),
     });
@@ -2159,6 +2241,43 @@ export interface WorktreeView {
   missing: boolean;
 }
 
+export interface SessionDeletionSummary {
+  sessionId: string;
+  revision: number;
+  title: string;
+  meeting: boolean;
+  archived: boolean;
+  runs: number;
+  messages: number;
+  unfinishedRunIds: string[];
+  generatedMedia: number;
+  inputImages: number;
+  schedules: { id: string; title: string }[];
+  handoffs: {
+    commandId: string;
+    direction: 'outgoing' | 'incoming';
+    otherSessionId: string;
+    otherTitle: string;
+    otherDeleted: boolean;
+  }[];
+  checkpoints: number;
+  /** Restore points of the linked source folder that go with the session. */
+  sourceCheckpoints: number;
+  /** Applies still in the source folder that Corral could revert until the session is gone. */
+  revertibleIntegrations: number;
+  reviewDecisions: number;
+  reviewComments: number;
+  verifications: number;
+  copyGeneration: number | null;
+  /** The working-copy removal summary when a copy is still live; browser drafts are absent. */
+  workingCopy: CopyRemovalPlan | null;
+}
+
+export interface SessionDeletionRequest {
+  expectedRevision: number;
+  copyGeneration?: number;
+}
+
 export interface CopyRemovalPlan {
   sessionId: string;
   bindingId: string;
@@ -2365,9 +2484,15 @@ export class WorkspacesApi {
     return this.send(`${this.browsePath(scope)}/files?${new URLSearchParams({ path })}`);
   }
   /** files and folders whose path matches `query`, best first; names only. */
-  searchFiles(scope: FileBrowseScope, query: string, limit = 20): Promise<PathSearchView> {
-    return this.send(
+  searchFiles(
+    scope: FileBrowseScope,
+    query: string,
+    limit = 20,
+    signal?: AbortSignal,
+  ): Promise<PathSearchView> {
+    return this.http.json(
       `${this.browsePath(scope)}/search?${new URLSearchParams({ q: query, limit: String(limit) })}`,
+      signal ? { signal } : {},
     );
   }
   searchContents(
@@ -2997,6 +3122,17 @@ export class WorkspacesApi {
   inbox(projectId: string): Promise<InboxItemView[]> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/inbox`);
   }
+  /** The person opened this execution row; its unread advice leaves the inbox (inbox.md). */
+  async executionOpened(runId: string, executionId: string): Promise<void> {
+    await this.send(
+      `/runs/${encodeURIComponent(runId)}/executions/${encodeURIComponent(executionId)}/opened`,
+      'POST',
+    );
+  }
+  /** Each unarchived session's latest recorded check, decision and applying; read only. */
+  sessionEvidence(projectId: string): Promise<SessionEvidenceView[]> {
+    return this.send(`/projects/${encodeURIComponent(projectId)}/session-evidence`);
+  }
 }
 
 export interface ReviewCommentView {
@@ -3049,11 +3185,35 @@ export interface InboxItemView {
     | 'check_failed'
     | 'unreviewed'
     | 'recipe_stopped'
-    | 'lsp_proposal';
+    | 'lsp_proposal'
+    | 'advice';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
   /** Present only for an uncertain terminal's read-only recovery link. */
   terminalId?: string;
+  /** `advice` only: the execution row the advice was for, which the item opens. */
+  executionId?: string;
+  /** `advice` only; `detail` is the advice's first line. */
+  severity?: import('@corral/contracts').AdviceSeverity;
+}
+
+/** A session's latest recorded check, decision and applying, without text, paths or output. */
+export interface SessionEvidenceView {
+  sessionId: string;
+  /** Present only when the latest check completed. */
+  check: {
+    /** The configured check's name, as recorded when it ran. */
+    name: string;
+    verdict: 'pass' | 'fail' | 'inconclusive' | 'not_evaluated';
+    /** An applied file write was recorded after the check started. */
+    writesSince: boolean;
+  } | null;
+  decision: {
+    decision: 'approved' | 'changes_requested';
+    /** An applied file write was recorded after the decision. */
+    writesSince: boolean;
+  } | null;
+  integration: IntegrationResultView['state'] | null;
 }

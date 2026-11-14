@@ -1,4 +1,6 @@
 import type {
+  AdviceSeverity,
+  DirectiveOrigin,
   DirectiveStatus,
   EventOf,
   EventPayload,
@@ -14,6 +16,7 @@ import type {
   RunLimits,
   RunStatus,
   TaskStatus,
+  TextAttachment,
   WaitingOn,
 } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
@@ -25,6 +28,8 @@ import { applyUsageRecord, type UsageRecordView } from './usage.ts';
 
 export interface ExecutionView {
   item?: ItemRef;
+  /** An advisor's execution: its replies are not the run's work. */
+  advisor?: true;
   executionId: string;
   nodeId: string;
   taskId: string;
@@ -59,12 +64,20 @@ export interface DirectiveView {
   directiveId: string;
   targetExecutionId: string;
   text: string;
+  /** Who made it: the person or an accepted advice. */
+  origin: DirectiveOrigin;
+  /** How it is delivered, as accepted: an interrupt the target cannot take is a next_request. */
+  delivery: 'next_request' | 'interrupt';
+  /** Text attachments carried after the text when a request delivers it. */
+  attachments?: TextAttachment[];
   status: DirectiveStatus;
   commandId: string | null;
   acceptedSeq: number;
   contextSnapshotId: string | null;
   modelCallId: string | null;
   reason: string | null;
+  /** An `advice` directive's advice: its severity and the advisor execution that gave it. */
+  advice?: { adviceId: string; severity: AdviceSeverity; observerExecutionId: string };
 }
 
 /** How a judgment's engine call ended physically, possibly after its request went out. */
@@ -90,6 +103,8 @@ export interface ModelCallView {
   certainty: 'reported' | 'estimated' | 'unknown' | null;
   /** Committed response text, available after reconnect even without an output artifact. */
   responseRef?: string | null;
+  /** Cut by an interrupt: the response is interrupted output, not an answer. */
+  interrupted?: true;
 }
 
 export interface ArtifactVersionView {
@@ -168,18 +183,30 @@ export interface QuestionView {
 export interface ApprovalView {
   approvalId: string;
   kind: EventPayload<'approval.requested'>['kind'];
-  /** Why a Loop asks for another round. */
-  loopStop?: EventPayload<'approval.requested'>['loopStop'];
   routes?: EventPayload<'approval.requested'>['routes'];
   /** The step a `breakpoint` approval holds before it starts. */
   nodeId?: string;
   /** The route the person picked, once a `route` approval is approved. */
   routeId?: string;
+  /** How far an approved tool call reaches; `run` also covers the Run's same-fingerprint calls. */
+  scope?: 'once' | 'run';
+  /** Why the runtime closed it, when it did (`allowed_for_run`: another approval covered it). */
+  reason?: EventPayload<'approval.resolved'>['reason'];
   /** The exact versions this decision is about; the first is the one being approved. */
   subjectVersionIds: string[];
   criteriaVersionId: string | null;
   tool?: EventPayload<'approval.requested'>['tool'];
+  /**
+   * The run limit this decision pauses for: the `limit.reached` fact committed immediately before
+   * a plain `user_action` approval (the no-progress pause). Absent for every other approval.
+   */
+  limit?: { kind: EventPayload<'limit.reached'>['limitKind']; used: number; max: number };
   status: 'pending' | 'approved' | 'rejected' | 'stale';
+  /**
+   * Who closed it, from the `approval.resolved` envelope actor: the person, or the runtime (the
+   * run or step ended, a deadline passed, or the person's allow-for-run covered it).
+   */
+  resolvedBy?: 'person' | 'runtime';
 }
 
 export interface PatchView extends EventPayload<'patch.committed'> {
@@ -197,6 +224,9 @@ export interface ReviewView {
   verdict: 'pass' | 'revise' | 'inconclusive';
   issues: { criterionId: string; reason: string; severity: 'required' | 'advisory' }[];
 }
+
+/** One `loop.escalated` fact and where it sits in the run. */
+export type LoopEscalationView = EventPayload<'loop.escalated'> & { runSeq: number };
 
 export interface WorkflowBranchView extends EventPayload<'workflow.branch_selected'> {
   eventId: string;
@@ -257,11 +287,41 @@ export interface RunProjection {
   artifactReads: Record<string, string[]>;
   /** Iteration ids per Loop node, in round order. */
   loopIterations: Record<string, string[]>;
+  /** What each Loop's limit policy changed, in order (`loop.escalated`). */
+  loopEscalations?: Record<string, LoopEscalationView[]>;
   /** Set when a backend restart ended the run (RUN-007). */
   interruptedBy: string | null;
   output: { nodeId: string; artifactVersionIds: string[] } | null;
   /** Actual workflow routes, not reasoning-effort observations; absent in older snapshots. */
   workflowBranches?: Record<string, WorkflowBranchView>;
+  /** The latest `limit.reached` fact and its sequence, so the approval right after can name it. */
+  lastLimit?: { runSeq: number } & EventPayload<'limit.reached'>;
+  /** Admitted advice by id (features/advisor.md); absent until an advisor gives one. */
+  advice?: Record<string, AdviceView>;
+  /** Dropped advice, in order: severity and reason only, never its text. */
+  suppressedAdvice?: SuppressedAdviceView[];
+}
+
+/** An admitted advice: delivered through its `advice` directive, or preserved with its note. */
+export interface AdviceView {
+  adviceId: string;
+  observerExecutionId: string;
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  delivery: 'next_request' | 'interrupt' | 'preserve';
+  /** The directive that carries it; null when preserved. */
+  directiveId: string | null;
+  /** A preserved advice's text; a delivered one's is its directive's. */
+  note: string | null;
+  acceptedSeq: number;
+}
+
+export interface SuppressedAdviceView {
+  observerExecutionId: string;
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  reason: EventPayload<'advice.suppressed'>['reason'];
+  runSeq: number;
 }
 
 export class ProjectionGapError extends Error {
@@ -317,6 +377,7 @@ export function emptyProjection(runId: string): RunProjection {
     startedAt: null,
     endedAt: null,
     workflowBranches: {},
+    loopEscalations: {},
   };
 }
 
@@ -476,6 +537,7 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         rawUsage: event.payload.rawUsage,
         certainty: event.payload.certainty,
         responseRef: event.payload.responseRef,
+        ...(event.payload.interrupted ? { interrupted: true as const } : {}),
       });
     }
     case 'model.usage_reconciled': {
@@ -497,11 +559,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       });
     }
     case 'directive.accepted': {
-      const { directiveId, targetExecutionId, text } = event.payload;
+      const { directiveId, targetExecutionId, text, origin, attachments, delivery } = event.payload;
       const directive: DirectiveView = {
         directiveId,
         targetExecutionId,
         text,
+        origin,
+        delivery,
+        ...(attachments?.length ? { attachments } : {}),
         status: 'queued',
         commandId: event.commandId ?? null,
         acceptedSeq: event.runSeq,
@@ -641,6 +706,14 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       };
     case 'approval.requested': {
       const { approvalId, kind, subjectVersionIds, criteriaVersionId } = event.payload;
+      // The Coordinator commits the limit it reached, then the approval that pauses for it.
+      const limit =
+        kind === 'user_action' &&
+        !event.payload.tool &&
+        !event.payload.nodeId &&
+        p.lastLimit?.runSeq === event.runSeq - 1
+          ? { kind: p.lastLimit.limitKind, used: p.lastLimit.used, max: p.lastLimit.max }
+          : null;
       const approval: ApprovalView = {
         approvalId,
         kind,
@@ -648,14 +721,16 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
         criteriaVersionId,
         status: 'pending',
         ...(event.payload.tool ? { tool: event.payload.tool } : {}),
-        ...(event.payload.loopStop ? { loopStop: event.payload.loopStop } : {}),
         ...(event.payload.routes ? { routes: event.payload.routes } : {}),
         ...(event.payload.nodeId ? { nodeId: event.payload.nodeId } : {}),
+        ...(limit ? { limit } : {}),
       };
       return { ...p, approvals: { ...p.approvals, [approvalId]: approval } };
     }
     case 'breakpoints.changed':
       return { ...p, breakpoints: event.payload.nodeIds };
+    case 'limit.reached':
+      return { ...p, lastLimit: { runSeq: event.runSeq, ...event.payload } };
     case 'approval.resolved': {
       const approval = p.approvals[event.payload.approvalId];
       if (!approval) return p;
@@ -667,7 +742,10 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           [approval.approvalId]: {
             ...approval,
             status,
+            resolvedBy: event.actor.kind === 'user' ? 'person' : 'runtime',
             ...(event.payload.routeId ? { routeId: event.payload.routeId } : {}),
+            ...(event.payload.scope ? { scope: event.payload.scope } : {}),
+            ...(event.payload.reason ? { reason: event.payload.reason } : {}),
           },
         },
       };
@@ -752,6 +830,17 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
       if (!iteration) return p;
       const finished: IterationView = { ...iteration, outcome: event.payload.outcome };
       return { ...p, iterations: { ...p.iterations, [iteration.iterationId]: finished } };
+    }
+    case 'loop.escalated': {
+      const { loopNodeId } = event.payload;
+      const escalation: LoopEscalationView = { ...event.payload, runSeq: event.runSeq };
+      return {
+        ...p,
+        loopEscalations: {
+          ...p.loopEscalations,
+          [loopNodeId]: [...(p.loopEscalations?.[loopNodeId] ?? []), escalation],
+        },
+      };
     }
     case 'message.question_created': {
       const { questionId, ...rest } = event.payload;
@@ -881,11 +970,39 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
     case 'extension.ui_notified':
     case 'model.request_recorded':
     case 'skill.read':
-    case 'limit.reached':
     case 'cancel.requested':
     case 'cancel.confirmed':
     case 'observation.late':
       return p;
+    case 'advice.admitted': {
+      const { adviceId, observerExecutionId, targetExecutionId, severity, delivery } =
+        event.payload;
+      const directiveId = event.payload.delivery === 'preserve' ? null : event.payload.directiveId;
+      const advice: AdviceView = {
+        adviceId,
+        observerExecutionId,
+        targetExecutionId,
+        severity,
+        delivery,
+        directiveId,
+        note: event.payload.delivery === 'preserve' ? event.payload.note : null,
+        acceptedSeq: event.runSeq,
+      };
+      const next = { ...p, advice: { ...p.advice, [adviceId]: advice } };
+      return directiveId
+        ? updateDirective(next, directiveId, {
+            advice: { adviceId, severity, observerExecutionId },
+          })
+        : next;
+    }
+    case 'advice.suppressed':
+      return {
+        ...p,
+        suppressedAdvice: [
+          ...(p.suppressedAdvice ?? []),
+          { ...event.payload, runSeq: event.runSeq },
+        ],
+      };
     default:
       // A stored log can hold event types this version no longer records (e.g. `budget.*`).
       return p;
@@ -903,6 +1020,7 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
     parentExecutionId,
     previousExecutionId: event.payload.previousExecutionId ?? null,
     ...(event.payload.item ? { item: event.payload.item } : {}),
+    ...(event.payload.advisor ? { advisor: true as const } : {}),
     depth,
     iterationId,
     modelProfile: event.payload.modelProfile,
@@ -977,6 +1095,27 @@ function updateModelCall(
   const current = p.modelCalls[id];
   if (!current) return p;
   return { ...p, modelCalls: { ...p.modelCalls, [id]: { ...current, ...change } } };
+}
+
+/** The key "allow for this run" matches a later call by: a command's launch, else the call. */
+export const toolGrantKey = (tool: NonNullable<ApprovalView['tool']>) =>
+  tool.grantFingerprint ?? tool.fingerprint;
+
+/**
+ * The Run's "allow for this run" grant for a call with exactly this key: an approved tool approval
+ * resolved with `scope: run`. It is read from the approvals alone, so a projection rebuilt from the
+ * Run's events has the same grants, and another Run has none.
+ */
+export function toolRunGrant(projection: RunProjection, key: string): ApprovalView | null {
+  for (const approval of Object.values(projection.approvals))
+    if (
+      approval.status === 'approved' &&
+      approval.scope === 'run' &&
+      approval.tool?.purpose === 'tool' &&
+      toolGrantKey(approval.tool) === key
+    )
+      return approval;
+  return null;
 }
 
 /**

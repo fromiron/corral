@@ -79,7 +79,7 @@ import {
   withProtectedContext,
   withRequiredImages,
 } from './request-record.ts';
-import { managedRetryStream } from './request-retry.ts';
+import { managedRetryStream, streamedText } from './request-retry.ts';
 import { brokerParameters, describeTool } from './static-tools.ts';
 import { corralToolResultContent } from './tool-result-content.ts';
 import { normalizeUsage } from './usage.ts';
@@ -93,6 +93,7 @@ import {
   systemPrompt,
   TOOL_TEXT,
   textOf,
+  unfinished,
   userPrompt,
 } from './worker-tools.ts';
 
@@ -102,7 +103,10 @@ export interface SdkWorkerDeps extends WorkerDeps {
   workerLeaseDirectory?: string;
   now(): number;
 }
-type Reply = Exclude<SdkHostFrame, { type: 'start' | 'cancel' | 'directive' | 'compact' }>;
+type Reply = Exclude<
+  SdkHostFrame,
+  { type: 'start' | 'cancel' | 'directive' | 'interrupt' | 'compact' }
+>;
 const hashOf = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
 const cleanJson = (value: unknown): unknown => JSON.parse(JSON.stringify(value));
 const directiveText = (d: DeliveredDirective) => sdkDirectiveText(d);
@@ -120,12 +124,48 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
   const deferredSteers = new Map<string, DeliveredDirective>();
   let preparingRequest = false;
   let pendingCompaction: string | null = null;
-  const steer = (directive: DeliveredDirective) => {
-    void session?.steer(directiveText(directive)).catch(() => {
-      cancelled = true;
-      cancellation.abort();
-      void session?.abort();
-    });
+  // The turn response in flight and the directives its request carries. Extension and
+  // compaction requests are never cut, and none is in flight while a tool runs.
+  // `ended` is how the observe frame of its latest attempt reported the response.
+  type Verdict = 'cut' | 'failed' | 'whole';
+  type TurnFlight = {
+    abort: AbortController;
+    directiveIds: Set<string>;
+    cut: boolean;
+    ended?: Verdict;
+  };
+  let turnFlight: TurnFlight | null = null;
+  // The mark stays with the request, whichever permit its last attempt got.
+  const wasCut = (flight: TurnFlight | null, answer: Pick<AssistantMessage, 'stopReason'>) =>
+    flight?.cut === true && (answer.stopReason === 'aborted' || answer.stopReason === 'error');
+  const verdictOf = (
+    flight: TurnFlight | null,
+    answer: Pick<AssistantMessage, 'stopReason'>,
+  ): Verdict => (wasCut(flight, answer) ? 'cut' : unfinished(answer) ? 'failed' : 'whole');
+  const steerFailed = () => {
+    cancelled = true;
+    cancellation.abort();
+    void session?.abort();
+  };
+  // Set once a turn ended in an error or abort without a cut, or a request could not be
+  // prepared: the execution fails, and no waiting directive or manual compaction may start
+  // another turn (reins §2).
+  let endedUnfinished = false;
+  const endUnfinished = () => {
+    endedUnfinished = true;
+    session?.clearQueue();
+  };
+  const steer = async (directive: DeliveredDirective) => {
+    if (endedUnfinished) return;
+    try {
+      await session?.steer(directiveText(directive));
+    } catch {
+      steerFailed();
+      return;
+    }
+    // Pi queues a steer asynchronously: one begun before the failure was known lands after
+    // the queue was cleared, so it is cleared again.
+    if (endedUnfinished) session?.clearQueue();
   };
   port.onFrame((raw) => {
     const parsed = SdkHostFrame.safeParse(raw);
@@ -162,14 +202,30 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       void session?.abort();
     } else if (frame.type === 'compact') {
       if (!cancelled && !pendingCompaction) pendingCompaction = frame.commandId;
-    } else if (frame.type === 'directive') {
-      if (directives.has(frame.directiveId) || cancelled) return;
+    } else if (frame.type === 'directive' || frame.type === 'interrupt') {
+      if (cancelled) return;
+      const known = directives.has(frame.directiveId);
+      if (known && frame.type === 'directive') return;
       directives.set(frame.directiveId, frame);
-      if (session?.isStreaming) {
-        if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
-        else steer(frame);
+      const flight = turnFlight;
+      if (
+        frame.type === 'interrupt' &&
+        flight &&
+        !preparingRequest &&
+        session?.isStreaming &&
+        !flight.directiveIds.has(frame.directiveId)
+      ) {
+        // Steered first, so Pi goes on with the directive once the cut response has ended.
+        void (known ? Promise.resolve() : steer(frame)).then(() => {
+          if (!cancelled) flight.abort.abort();
+        });
+        return;
       }
-    } else {
+      if (!known && session?.isStreaming) {
+        if (preparingRequest) deferredSteers.set(frame.directiveId, frame);
+        else void steer(frame);
+      }
+    } else if ('requestId' in frame) {
       waiting.get(frame.requestId)?.(frame);
       waiting.delete(frame.requestId);
     }
@@ -192,7 +248,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
     };
     let completionAccepted = false;
     let finalReplyModelCallId: string | undefined;
-    let manualCompactionCalls: string[] | null = null;
+    let compactionCalls: string[] | null = null;
     let notifications = Promise.resolve();
     let reported = false;
     let requiredExtensionFailed = false;
@@ -286,6 +342,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       let requests: Promise<void> = Promise.resolve();
       const meter = new ContextMeter();
       let lastPrepared: Context | undefined;
+      let automaticCompactions = 0;
       let compactSessionContext:
         | ((context: Context, signal: AbortSignal, force?: boolean) => Promise<Context>)
         | undefined;
@@ -311,6 +368,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         attempts: { modelCallId?: string },
       ) => {
         const out = createAssistantMessageEventStream();
+        // The turn this attempt answers; only a turn response can be cut by an interrupt.
+        const flight = requestPurpose === 'turn' || requestPurpose === 'retry' ? turnFlight : null;
         const owned = cleanJson(context) as Context;
         owned.messages = owned.messages.map((message) =>
           message.role === 'assistant' && message.provider === 'corral'
@@ -368,6 +427,23 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         requests = requests.then(async () => {
           let modelCallId: string | undefined;
           let observed = false;
+          // The one judgement of how this attempt ended: the record and what follows share it.
+          const report = (answer: AssistantMessage, text = textOf(answer)) => {
+            const verdict = verdictOf(flight, answer);
+            if (flight) flight.ended = verdict;
+            send({
+              type: 'observe',
+              modelCallId,
+              text,
+              ...normalizeUsage(answer),
+              ...(verdict === 'cut'
+                ? { interrupted: true }
+                : verdict === 'failed'
+                  ? { failed: true }
+                  : {}),
+            });
+            observed = true;
+          };
           try {
             await registryUpdates;
             if (requiredExtensionFailed) throw new Error('required extension failed');
@@ -390,16 +466,17 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               const missing = [...directives.values()].filter(
                 (d) => !present.includes(JSON.stringify(directiveText(d)).slice(1, -1)),
               );
+              // One message per directive: no directive's text follows another's attachment body.
               if (missing.length)
                 requestContext = {
                   ...requestContext,
                   messages: [
                     ...requestContext.messages,
-                    {
-                      role: 'user',
-                      content: missing.map(directiveText).join('\n\n'),
+                    ...missing.map((d) => ({
+                      role: 'user' as const,
+                      content: directiveText(d),
                       timestamp: deps.now(),
-                    },
+                    })),
                   ],
                 };
               measuredContext = inspectContext(requestContext, {
@@ -433,6 +510,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 method: measured.source === 'usage_anchor' ? 'usage-anchor-v2' : 'dsh-density-v2',
               };
               preparedDirectiveIds = record.directiveIds;
+              if (flight) flight.directiveIds = new Set(preparedDirectiveIds);
               if (requestPurpose === 'turn' || requestPurpose === 'retry') {
                 const saved = await call({
                   type: 'checkpoint_context',
@@ -489,7 +567,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             }
             modelCallId = permit.modelCallId;
             attempts.modelCallId = modelCallId;
-            if (requestPurpose === 'compaction') manualCompactionCalls?.push(modelCallId);
+            if (requestPurpose === 'compaction') compactionCalls?.push(modelCallId);
             await ack({ type: 'request_dispatched', modelCallId });
             if (cancelled || options?.signal?.aborted) throw new Error('cancelled before dispatch');
             const chosen = reasoningRequest(model, options, permit.reasoning);
@@ -548,25 +626,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               },
             });
             let chunkIndex = 0;
+            // A summary is internal: its text is never shown as the conversation's.
+            const text = streamedText((delta) => {
+              if (!cancelled && requestPurpose !== 'compaction')
+                send({ type: 'stream', modelCallId, chunkIndex: chunkIndex++, text: delta });
+            });
             for await (const event of stream) {
-              if (event.type === 'text_delta' && !cancelled)
-                send({
-                  type: 'stream',
-                  modelCallId,
-                  chunkIndex: chunkIndex++,
-                  text: event.delta,
-                });
               if (event.type === 'done' || event.type === 'error') {
                 const answer = event.type === 'done' ? event.message : event.error;
                 meter.observe(requestContext, model, answer);
-                send({
-                  type: 'observe',
-                  modelCallId,
-                  text: textOf(answer),
-                  ...normalizeUsage(answer),
-                });
-                observed = true;
-              }
+                text.end(!unfinished(answer));
+                report(answer);
+              } else text.event(event);
               out.push(proxyEvent(event));
             }
             const answer = await stream.result();
@@ -578,22 +649,17 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               !answer.content.some((part) => part.type === 'toolCall')
                 ? modelCallId
                 : undefined;
-            if (!observed)
-              send({
-                type: 'observe',
-                modelCallId,
-                text: textOf(answer),
-                ...normalizeUsage(answer),
-              });
-            observed = true;
+            if (!observed) {
+              text.end(!unfinished(answer));
+              report(answer);
+            }
             out.end(proxyMessage(answer));
           } catch {
             const answer = failedMessage(
               cancelled || options?.signal?.aborted ? 'aborted' : 'error',
               deps.now(),
             );
-            if (modelCallId && !observed)
-              send({ type: 'observe', modelCallId, text: '', ...normalizeUsage(answer) });
+            if (modelCallId && !observed) report(answer, '');
             out.push({
               type: 'error',
               reason: answer.stopReason === 'aborted' ? 'aborted' : 'error',
@@ -627,11 +693,24 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           const requestPurpose = nativeDepth ? 'extension' : purpose;
           const logicalRequestId = `request_${++logicalRequests}`;
           const attempts: { modelCallId?: string } = {};
-          const signal = options?.signal
-            ? AbortSignal.any([options.signal, cancellation.signal])
-            : cancellation.signal;
+          // Only a turn response can be cut by an interrupt; a cut is never retried.
+          const flight: TurnFlight | null =
+            requestPurpose === 'turn'
+              ? { abort: new AbortController(), directiveIds: new Set<string>(), cut: false }
+              : null;
+          const signal = AbortSignal.any([
+            ...(options?.signal ? [options.signal] : []),
+            cancellation.signal,
+            ...(flight ? [flight.abort.signal] : []),
+          ]);
+          if (flight) {
+            turnFlight = flight;
+            flight.abort.signal.addEventListener('abort', () => {
+              flight.cut = true;
+            });
+          }
           let current = context;
-          return managedRetryStream({
+          const stream = managedRetryStream({
             model: selected,
             ...(requestPurpose === 'turn'
               ? {
@@ -653,6 +732,14 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 }
               : {}),
             signal,
+            // An attempt asked for again ended nothing; the wait before it can still be cut.
+            ...(flight
+              ? {
+                  beforeRetry: () => {
+                    flight.ended = undefined;
+                  },
+                }
+              : {}),
             open: (attempt) =>
               oneRequest(
                 selected,
@@ -664,6 +751,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 attempts,
               ),
           });
+          if (flight)
+            void stream
+              .result()
+              .then((answer) => {
+                // The verdict its observe frame reported, so a cut that lands after the host
+                // recorded a failure does not carry the execution on.
+                if ((flight.ended ?? verdictOf(flight, answer)) === 'failed') endUnfinished();
+              })
+              .finally(() => {
+                if (turnFlight === flight) turnFlight = null;
+              });
+          return stream;
         },
       });
       const proxyModel = runtime.getModel('corral', model.id);
@@ -922,6 +1021,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         },
         cacheWarming: 'off',
         retry: { enabled: false, maxRetries: 0, baseDelayMs: 500, maxAgentDelayMs: 10000 },
+        // Every queued directive goes into the next turn, each as its own message.
+        steeringMode: 'all',
       });
       const loader = new DefaultResourceLoader({
         cwd,
@@ -1181,6 +1282,56 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           model.contextWindow - (start.compaction?.reserveTokens ?? budget.requestHeadroom);
         const tokens = meter.measure(context, model).tokens;
         if (!force && tokens <= automaticCompactionThresholdFor({ hardLimit })) return context;
+        // An automatic compaction carries no command: its id is the execution and its order.
+        const owner = {
+          commandId: `compaction.${++automaticCompactions}.${start.executionId}`,
+          trigger: 'automatic' as const,
+        };
+        const beforeHash = hashOf(cleanJson(context.messages));
+        await call({
+          type: 'compaction_report',
+          report: { ...owner, phase: 'started', beforeHash, modelCallIds: [] },
+        });
+        const outer = compactionCalls;
+        const calls: string[] = [];
+        compactionCalls = calls;
+        try {
+          const compacted = await compactRegion(context, signal, force, tokens);
+          await call({
+            type: 'compaction_report',
+            report: {
+              ...owner,
+              phase: 'completed',
+              beforeHash,
+              afterHash: hashOf(cleanJson(compacted.messages)),
+              modelCallIds: calls,
+            },
+          });
+          return compacted;
+        } catch (error) {
+          if (!cancelled)
+            await call({
+              type: 'compaction_report',
+              report: {
+                ...owner,
+                phase: 'failed',
+                beforeHash,
+                afterHash: beforeHash,
+                modelCallIds: calls,
+              },
+            });
+          throw error;
+        } finally {
+          compactionCalls = outer;
+        }
+      };
+      const compactRegion = async (
+        context: Context,
+        signal: AbortSignal,
+        force: boolean,
+        tokens: number,
+      ) => {
+        const budget = contextBudgetLimitsFor(model);
         const region = selectCompactableRange(
           context.messages,
           force ? 0 : (start.compaction?.keepRecentTokens ?? budget.keepRecentTokens),
@@ -1232,13 +1383,20 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       };
       const prepareSessionRequest = session.agent.prepareRequest;
       session.agent.prepareRequest = async (request, signal) => {
-        const prepared = await prepareSessionRequest?.(request, signal);
-        const base = prepared?.context ?? request.context;
-        const context = await compactSessionContext!(
-          normalizeContext({ messages: convertToLlm(base.messages) }),
-          signal ?? cancellation.signal,
-        );
-        return { ...prepared, context: { ...base, messages: context.messages } };
+        try {
+          const prepared = await prepareSessionRequest?.(request, signal);
+          const base = prepared?.context ?? request.context;
+          const context = await compactSessionContext!(
+            normalizeContext({ messages: convertToLlm(base.messages) }),
+            signal ?? cancellation.signal,
+          );
+          return { ...prepared, context: { ...base, messages: context.messages } };
+        } catch (error) {
+          // The Pi run ends in this failure (a failed automatic summary, say); a directive
+          // waiting in its queue must not continue it.
+          endUnfinished();
+          throw error;
+        }
       };
       const finishTurn = session.agent.finishTurn;
       session.agent.finishTurn = async (turn, signal) => {
@@ -1397,20 +1555,21 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             : input,
         ),
       };
-      await session.prompt(
-        [userPrompt(start), ...[...directives.values()].map(directiveText)].join('\n\n'),
-        {
-          images: start.images?.map((image) => ({
-            type: 'image',
-            data: image.data,
-            mimeType: image.mime,
-          })),
-        },
-      );
+      // Directives waiting at start are steered before the first prompt; in "all" mode they
+      // follow the request text in its first turn, one message each.
+      for (const directive of directives.values()) await session.steer(directiveText(directive));
+      await session.prompt(userPrompt(start), {
+        images: start.images?.map((image) => ({
+          type: 'image',
+          data: image.data,
+          mimeType: image.mime,
+        })),
+      });
       await session.waitForIdle();
       await notifications;
       await requests;
-      while (pendingCompaction && !completionAccepted && !cancelled) {
+      // A turn that failed ends the execution: the waiting compaction is skipped below.
+      while (pendingCompaction && !completionAccepted && !cancelled && !endedUnfinished) {
         const commandId = pendingCompaction;
         pendingCompaction = null;
         const beforeHash = hashOf(cleanJson(session.messages));
@@ -1418,7 +1577,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
           type: 'compaction_report',
           report: { commandId, phase: 'started', beforeHash, modelCallIds: [] },
         });
-        manualCompactionCalls = [];
+        compactionCalls = [];
         try {
           if (
             loader
@@ -1432,7 +1591,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
             throw new Error('custom compaction hooks are unsupported for manual compaction');
           await session.compact();
           await requests;
-          if (!manualCompactionCalls.length) throw new Error('compaction needs a model request');
+          if (!compactionCalls.length) throw new Error('compaction needs a model request');
           await ack({
             type: 'compaction_report',
             report: {
@@ -1440,7 +1599,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
               phase: 'completed',
               beforeHash,
               afterHash: hashOf(cleanJson(session.messages)),
-              modelCallIds: manualCompactionCalls,
+              modelCallIds: compactionCalls,
             },
           });
         } catch {
@@ -1454,11 +1613,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                 phase: 'failed',
                 beforeHash,
                 afterHash: beforeHash,
-                modelCallIds: manualCompactionCalls,
+                modelCallIds: compactionCalls,
               },
             });
         } finally {
-          manualCompactionCalls = null;
+          compactionCalls = null;
         }
         if (cancelled) break;
         await session.prompt(

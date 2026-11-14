@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { newConversation, openAllProjects, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('settings guidance', () => {
@@ -15,12 +15,12 @@ test.describe('settings guidance', () => {
     await expect(menu.getByRole('link', { name: 'Models', exact: true })).toBeFocused();
     await page.screenshot({ path: '/tmp/corral-guidance-settings.png' });
     await menu.getByRole('link', { name: 'Folders & tools', exact: true }).click();
-    await expect(
-      page.getByRole('combobox', { name: 'Applies to project', exact: true }),
-    ).toContainText('My project');
+    await expect(page.getByRole('combobox', { name: 'Settings for', exact: true })).toContainText(
+      'My project',
+    );
     await page.setViewportSize({ width: 390, height: 844 });
     await expect(
-      page.getByRole('combobox', { name: 'Applies to project', exact: true }),
+      page.getByRole('combobox', { name: 'Settings for', exact: true }),
     ).toBeInViewport();
     await page.screenshot({ path: '/tmp/corral-guidance-settings-narrow.png' });
     expect(corral.errors).toEqual([]);
@@ -54,14 +54,14 @@ test('server restart explains reconnection while keeping the unsent request', as
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Keep this unsent draft after reconnection.');
   await corral.restart();
   await expect(
     page.getByRole('alert').filter({ hasText: 'Connect to the local server.' }),
   ).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Keep this unsent draft after reconnection.');
-  await page.getByRole('link', { name: 'All projects', exact: true }).click();
+  await openAllProjects(page);
   await expect(
     page.getByRole('alert').filter({ hasText: 'Connect to the local server.' }),
   ).toBeVisible();
@@ -73,21 +73,26 @@ test('file setup remains reachable after a request without a working copy', asyn
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Add a comment to example.js.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
-  const notice = page.getByTestId('work-folder-notice');
-  await expect(notice).toContainText('cannot change files');
-  const dismiss = notice.getByRole('button', { name: 'Hide working copy notice', exact: true });
-  await dismiss.focus();
-  await dismiss.press('Enter');
-  await expect(notice).toHaveCount(0);
-  const setup = page.getByTestId('work-folder-setup');
-  await expect(setup).toBeFocused();
+  // One icon button in the composer row says it, by its name and tooltip, and nothing above the
+  // conversation repeats it.
+  const setup = page.getByRole('button', {
+    name: 'The agent cannot read or change files. Link a folder.',
+    exact: true,
+  });
+  await expect(setup).toHaveText('');
+  await setup.hover();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'The agent cannot read or change files. Link a folder.',
+  );
+  await expect(page.getByTestId('chat-timeline')).not.toContainText(
+    'The agent cannot read or change files.',
+  );
   await page.reload();
   await expect(setup).toBeVisible();
-  await expect(notice).toHaveCount(0);
   await setup.click();
   await expect(page.getByRole('link', { name: 'Open Folders & tools', exact: true })).toBeVisible();
 });
@@ -96,7 +101,7 @@ test.describe('no connected models', () => {
   test.use({ live: true, codexLogin: false });
   test('keeps the draft and offers connection and a separate demo', async ({ page, corral }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     await requestBox(page).fill('Do not send without a connection.');
     const banner = page.getByTestId('models-not-ready');
     await expect(banner).toBeVisible();
@@ -107,13 +112,19 @@ test.describe('no connected models', () => {
     );
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeDisabled();
     await expect(requestBox(page)).toHaveValue('Do not send without a connection.');
-    await page.getByRole('button', { name: 'Connect a model', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('Live requests are blocked');
+    // The sidebar head's connection word is the connection entry point; no card repeats the
+    // banner (workbench.md: "모델 미연결의 연결 진입점과 데모·시뮬레이션 표시는 머리의 연결 상태
+    // 낱말 하나가 맡고, 같은 사실을 카드나 문장으로 반복하지 않는다").
+    const word = page.getByTestId('app-sidebar').getByTestId('sidebar-connection');
+    await expect(word).toHaveText('No model');
+    await expect(word).toHaveRole('button');
+    await expect(word).toHaveAccessibleName('No model: open model settings');
+    await expect(page.getByTestId('app-sidebar')).not.toContainText('Live requests are blocked');
     await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
     await page.reload();
     await expect(page.getByTestId('models-not-ready')).toBeVisible();
-    await page.getByRole('button', { name: '모델 연결 필요', exact: true }).hover();
-    await expect(page.getByRole('tooltip')).toContainText('실제 모델 요청은 차단됩니다');
+    await expect(word).toHaveText('모델 없음');
+    await expect(word).toHaveAccessibleName('모델 없음: 모델 설정 열기');
     await corral.open('/projects/default?settings=project-defaults');
     await expect(
       page.getByRole('combobox', { name: '프로젝트 기본값', exact: true }),

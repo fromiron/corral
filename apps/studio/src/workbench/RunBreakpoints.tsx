@@ -1,5 +1,5 @@
 import type { CorralNode } from '@corral/contracts';
-import { Switch } from '@corral/react/design-kit';
+import { fontWeights, Switch } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
 
 /** The steps a breakpoint can hold: scheduled Agents and Decisions. */
@@ -24,15 +24,14 @@ export function RunBreakpoints({
   if (!steps.length) return null;
   const chosen = value.filter((id) => steps.some((step) => step.id === id));
   return (
-    <details className="rounded fill-group p-2 text-xs" data-testid="run-breakpoints">
-      <summary className="cursor-pointer font-medium">
+    <details className="rounded fill-group p-2 text-caption" data-testid="run-breakpoints">
+      <summary className="cursor-pointer" style={{ fontVariationSettings: fontWeights.semibold }}>
         {chosen.length ? t('breakpointsCount', { count: chosen.length }) : t('breakpoints')}
       </summary>
       <div className="mt-2 flex flex-col gap-1">
         {steps.map((step) => (
           <Switch
             key={step.id}
-            size="compact"
             label={step.label}
             checked={chosen.includes(step.id)}
             onToggle={() =>

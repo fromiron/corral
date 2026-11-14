@@ -36,10 +36,9 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
   const unknown =
     changes?.files.filter((file) => file.additions === null || file.deletions === null).length ?? 0;
   return (
-    <div className="flex flex-wrap items-center gap-2 text-xs">
+    <div className="flex flex-wrap items-center gap-2 text-caption">
       <Button
         variant="tertiary"
-        size="compact"
         data-testid="run-change-summary"
         render={
           <Link
@@ -53,14 +52,17 @@ export function RunChanges({ sessionId, runId }: { sessionId: string; runId: str
         {changes?.unavailable
           ? tf('noBaseline')
           : changes
-            ? `${tw('changeCount', { count: changes.files.length })} · +${changes.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)} −${changes.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}`
+            ? // The line counts follow only a run that changed a file.
+              changes.files.length
+              ? `${tw('changeCount', { count: changes.files.length })} · +${changes.files.reduce((sum, file) => sum + (file.additions ?? 0), 0)} −${changes.files.reduce((sum, file) => sum + (file.deletions ?? 0), 0)}`
+              : tw('changeCount', { count: 0 })
             : ts('reviewChanges')}
       </Button>
       {unknown > 0 ? (
         <span className="text-muted-foreground">{t('uncountedChanges', { count: unknown })}</span>
       ) : null}
       {error ? (
-        <Button variant="ghost" size="compact" onClick={() => setRetry((value) => value + 1)}>
+        <Button variant="ghost" onClick={() => setRetry((value) => value + 1)}>
           {t('retryChanges')}
         </Button>
       ) : null}

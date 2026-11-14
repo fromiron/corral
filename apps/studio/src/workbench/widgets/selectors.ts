@@ -1,6 +1,7 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { ExecutionStatus, RunStatus } from '@corral/contracts';
 import { canReadArtifactBody, type RunProjection, usageTotals } from '@corral/core';
+import { executionPresence, type PresenceKind, runPresence } from '@corral/react';
 
 export function availableResultLinks(
   projection: RunProjection | null,
@@ -11,28 +12,60 @@ export function availableResultLinks(
     .map((item) => ({ id: item.artifactVersionId, label: `${item.name} v${item.version}` }));
 }
 
+/** The tools that write, move or delete a file themselves. */
+const FILE_WRITES = new Set([
+  'write_file',
+  'delete_file',
+  'move_file',
+  'write',
+  'edit',
+  'edit_hashline',
+]);
+
+/**
+ * The finished calls of a run that changed a file, as the run's record knows them. A command may
+ * change files too, but the record cannot tell, so it is not counted.
+ */
+export function fileChangeCount(calls: readonly { name: string; phase?: string }[]) {
+  return calls.filter((call) => FILE_WRITES.has(call.name) && call.phase === 'finished').length;
+}
+
+/** A Run's presence kind from a bare status, or null when the status is not a Run's. */
+function runKind(status: string | null | undefined): PresenceKind | null {
+  const parsed = RunStatus.safeParse(status);
+  return parsed.success ? runPresence({ status: parsed.data }, [], []).kind : null;
+}
+
+/** An execution's presence kind from a bare status, or null when it is not an execution's. */
+function executionKind(status: string): PresenceKind | null {
+  const parsed = ExecutionStatus.safeParse(status);
+  return parsed.success ? executionPresence({ status: parsed.data }).kind : null;
+}
+
+const ENDED_KINDS = new Set<PresenceKind>(['succeeded', 'failed', 'interrupted', 'cancelled']);
+
+/** An execution working on its own: not waiting on agents or a reply. */
+function isActive(status: string) {
+  const parsed = ExecutionStatus.safeParse(status);
+  if (!parsed.success) return false;
+  const presence = executionPresence({ status: parsed.data });
+  return presence.kind === 'working' && !presence.detail;
+}
+
 /** Shell services can change files after the launch tool has already finished. */
 export function fileChangeSignals(
   calls: readonly { name: string; phase?: string }[],
   status: string | undefined,
   live: boolean,
 ) {
-  const mutations = new Set([
-    'write_file',
-    'delete_file',
-    'move_file',
-    'write',
-    'edit',
-    'edit_hashline',
-    'run_command',
-  ]);
+  const mutations = new Set([...FILE_WRITES, 'run_command']);
   return {
     revision: calls.filter(
       (call) => mutations.has(call.name) && (call.phase === 'finished' || call.phase === 'failed'),
     ).length,
     poll:
       live &&
-      status === 'running' &&
+      runKind(status) === 'working' &&
       calls.some(
         (call) =>
           call.name === 'run_command' && (call.phase === 'running' || call.phase === 'finished'),
@@ -101,8 +134,6 @@ export type PlanBodyView =
       planFinished: boolean;
     };
 
-const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'interrupted']);
-
 export function planBodyStatus(input: {
   ref: PlanRef;
   parsed: PlanBody | null;
@@ -132,13 +163,13 @@ export function planBodyStatus(input: {
   ) {
     return { state: 'stale-criteria', plan: parsed, completed, total };
   }
-  const runStatus = input.runStatus ?? 'running';
+  const runEnded = ENDED_KINDS.has(runKind(input.runStatus) ?? 'working');
   return {
     state: 'ready',
     plan: parsed,
     completed,
     total,
-    runFinished: TERMINAL.has(runStatus),
+    runFinished: runEnded,
     planFinished: total > 0 && completed === total,
   };
 }
@@ -154,10 +185,9 @@ export function workPlanPreferenceKey(input: {
 }
 
 /** Auto opens while the run is not a success. A manual open or closed choice stays. */
-export function workPlanOpen(preference: 'auto' | 'open' | 'closed', runStatus: string) {
-  if (preference === 'open') return true;
-  if (preference === 'closed') return false;
-  return runStatus !== 'succeeded';
+export function workPlanOpen(preference: 'auto' | 'open' | 'closed') {
+  // A plan starts as one line (count and current step); the person chooses to expand it.
+  return preference === 'open';
 }
 
 export interface ExecutionFact {
@@ -233,7 +263,7 @@ export function selectPresentedPlan(input: {
   const hasPlan = (execution: ExecutionFact) =>
     choices.some((choice) => choice.key === execution.executionId);
   const liveExecution =
-    liveExecutions.find((execution) => execution.status === 'active' && hasPlan(execution)) ??
+    liveExecutions.find((execution) => isActive(execution.status) && hasPlan(execution)) ??
     liveExecutions.find(hasPlan);
   const liveChoice = liveExecution
     ? choices.find((choice) => choice.key === liveExecution.executionId)
@@ -438,23 +468,29 @@ export function actionRequired(input: {
   unclearCauses?: UnclearCause[];
   runStatus?: string;
 }) {
-  const failed = Math.max(
-    input.failedEffects,
-    input.runStatus === 'failed' || input.runStatus === 'interrupted' ? 1 : 0,
-  );
-  const kinds = [
+  const kind = runKind(input.runStatus);
+  const failed = Math.max(input.failedEffects, kind === 'failed' || kind === 'interrupted' ? 1 : 0);
+  // What a person must answer (chat-widgets-contract §6.3): approvals, questions and results
+  // whose outcome is unknown. A failed step is told, but it is not an item to answer or count.
+  const answers = [
     input.pendingApprovals ? 'approval' : null,
     input.pendingQuestions ? 'question' : null,
-    failed ? 'failure' : null,
     input.unclearEffects ? 'unclear' : null,
-  ].filter((kind): kind is 'approval' | 'question' | 'failure' | 'unclear' => kind !== null);
+  ].filter((kind): kind is 'approval' | 'question' | 'unclear' => kind !== null);
   return {
-    visible: kinds.length > 0,
+    visible: answers.length > 0 || failed > 0,
     needsUser: input.pendingApprovals + input.pendingQuestions > 0,
     hasFailure: failed + input.unclearEffects > 0,
-    completedWithFailures: input.runStatus === 'succeeded' && failed > 0,
-    count: input.pendingApprovals + input.pendingQuestions + failed + input.unclearEffects,
-    summary: kinds.length === 0 ? 'none' : kinds.length === 1 ? kinds[0]! : 'mixed',
+    completedWithFailures: kind === 'succeeded' && failed > 0,
+    count: input.pendingApprovals + input.pendingQuestions + input.unclearEffects,
+    summary:
+      answers.length === 0
+        ? failed
+          ? ('failure' as const)
+          : ('none' as const)
+        : answers.length === 1
+          ? answers[0]!
+          : ('mixed' as const),
     unclearCauses: input.unclearEffects ? (input.unclearCauses ?? ['effect']) : [],
   };
 }
@@ -465,6 +501,14 @@ const unclearCopy = {
   usage: 'actionUsageUnknown',
   termination: 'actionStopUnconfirmed',
 } as const;
+
+/**
+ * The attention banner's kit status: a question only asks, so it reads in the info tone; an
+ * approval, a failure or an unclear effect keeps the warning.
+ */
+export function actionTone(action: ReturnType<typeof actionRequired>): 'info' | 'warning' {
+  return action.summary === 'question' && !action.hasFailure ? 'info' : 'warning';
+}
 
 /** Widgets message keys for the attention banner; several unclear causes are each named. */
 export function actionCopy(action: ReturnType<typeof actionRequired>) {
@@ -505,6 +549,46 @@ export function effectAttention(projection: RunProjection | null) {
   };
 }
 
+/**
+ * The projection without what its advisors did: their requests, those requests' effects and
+ * their own failures are said on their rows, never as the conversation's attention
+ * (features/composer-flow.md "활동 바", features/advisor.md). Everything else is kept as it is.
+ */
+function withoutAdvisors(projection: RunProjection): RunProjection {
+  const advisors = new Set(
+    Object.values(projection.executions).flatMap((execution) =>
+      execution.advisor ? [execution.executionId] : [],
+    ),
+  );
+  if (!advisors.size) return projection;
+  const keep = <T>(record: Record<string, T>, own: (item: T) => boolean) =>
+    Object.fromEntries(Object.entries(record).filter(([, item]) => !own(item)));
+  return {
+    ...projection,
+    effects: keep(projection.effects, (effect) => advisors.has(effect.scope)),
+    modelCalls: keep(projection.modelCalls, (call) => advisors.has(call.executionId)),
+    executions: keep(projection.executions, (execution) => advisors.has(execution.executionId)),
+  };
+}
+
+/**
+ * What the conversation asks of the person about a run: its waiting approvals and questions,
+ * its results whose outcome nobody knows, and its failure. An advisor's own trouble is not one;
+ * a role's beside it still is.
+ */
+export function conversationAction(input: {
+  projection: RunProjection | null;
+  approvals: number;
+  questions: number;
+}) {
+  return actionRequired({
+    pendingApprovals: input.approvals,
+    pendingQuestions: input.questions,
+    ...effectAttention(input.projection ? withoutAdvisors(input.projection) : null),
+    runStatus: input.projection?.status,
+  });
+}
+
 /** One current attempt per task; retry history stays in the execution view. */
 export function currentAgentExecutions(projection: RunProjection | null) {
   if (!projection) return [];
@@ -523,21 +607,22 @@ export function currentAgentExecutions(projection: RunProjection | null) {
   });
 }
 
+/** Waiting kinds of an execution not working on its own: before it starts, or held. */
+const WAITING_KINDS = new Set<PresenceKind>(['starting', 'awaiting_user', 'pausing', 'paused']);
+
 export function agentActivity(executions: ExecutionFact[]) {
-  const waitingStatuses = new Set([
-    'queued',
-    'ready',
-    'waiting_children',
-    'waiting_message',
-    'waiting_approval',
-    'pausing',
-    'paused',
-  ]);
-  const working = executions.filter((execution) => execution.status === 'active').length;
-  const waiting = executions.filter(
-    (execution) => !execution.ended && waitingStatuses.has(execution.status),
+  const working = executions.filter((execution) => isActive(execution.status)).length;
+  const waiting = executions.filter((execution) => {
+    if (execution.ended) return false;
+    const parsed = ExecutionStatus.safeParse(execution.status);
+    if (!parsed.success) return false;
+    const presence = executionPresence({ status: parsed.data });
+    // Working with a detail waits on agents or a reply.
+    return WAITING_KINDS.has(presence.kind) || Boolean(presence.detail);
+  }).length;
+  const failed = executions.filter(
+    (execution) => executionKind(execution.status) === 'failed',
   ).length;
-  const failed = executions.filter((execution) => execution.status === 'failed').length;
   return executions.length > 1 || working > 0 || waiting > 0 || failed > 0
     ? { total: executions.length, working, waiting, failed }
     : null;
@@ -563,6 +648,41 @@ export function toolRows(
     rows.set(call.toolCallId, { id: call.toolCallId, name: call.name, tone });
   }
   return [...rows.values()];
+}
+
+/** The calls of a run as tool rows, each call's effect outcome beside its phase. */
+export function runToolRows(projection: RunProjection | null) {
+  return toolRows(
+    Object.values(projection?.toolCalls ?? {}).map((call) => ({
+      toolCallId: call.toolCallId,
+      name: call.name,
+      phase: call.phase ?? call.status,
+      effect: call.effectId ? projection?.effects[call.effectId]?.outcome : null,
+    })),
+  );
+}
+
+/** The execution of the run's first failed tool call: where its failed steps are reviewed. */
+export function failedToolExecutionId(
+  projection: RunProjection | null,
+  rows = runToolRows(projection),
+): string | null {
+  const id = rows.find((row) => row.tone === 'failed')?.id;
+  return (id ? projection?.toolCalls[id]?.executionId : null) ?? null;
+}
+
+/**
+ * The run's failed execution, for the one way to its detail: the latest execution that ended
+ * failed, else the execution of its first failed tool call. None when nothing failed.
+ */
+export function failedExecutionId(projection: RunProjection | null): string | null {
+  const failed = projection?.executionOrder
+    .filter((id) => {
+      const execution = projection.executions[id];
+      return execution ? executionPresence(execution).kind === 'failed' : false;
+    })
+    .at(-1);
+  return failed ?? failedToolExecutionId(projection);
 }
 
 export type WidgetChip = 'context' | 'environment' | 'agents' | 'changes';
@@ -767,6 +887,15 @@ export function changesPresentation(input: {
   };
 }
 
+/** The activity line's word for a held or stopped run, by its presence kind. */
+const HELD_TEXT = {
+  paused: 'paused',
+  pausing: 'pausing',
+  stopping: 'cancelling',
+  cancelled: 'cancelled',
+  interrupted: 'interrupted',
+} as const;
+
 export function activityLine(input: {
   runStatus: string;
   startedAt: string | null;
@@ -778,18 +907,16 @@ export function activityLine(input: {
   failed: boolean;
   needsUser: boolean;
 }) {
-  const terminal = ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(input.runStatus);
+  const kind = runKind(input.runStatus);
+  const terminal = kind !== null && ENDED_KINDS.has(kind);
   const end = input.endedAt ?? (!terminal ? input.now : null);
   const elapsedMs = input.startedAt && end ? Date.parse(end) - Date.parse(input.startedAt) : null;
   const frozen = Boolean(input.endedAt) || terminal;
   let text = 'working';
-  if (['created', 'validating'].includes(input.runStatus)) text = 'starting';
+  if (kind === 'starting') text = 'starting';
   else if (input.needsUser && !terminal) text = 'user';
-  else if (input.failed || input.runStatus === 'failed') text = 'failed';
-  else if (
-    ['paused', 'pausing', 'cancelling', 'cancelled', 'interrupted'].includes(input.runStatus)
-  )
-    text = input.runStatus;
+  else if (input.failed || kind === 'failed') text = 'failed';
+  else if (kind && kind in HELD_TEXT) text = HELD_TEXT[kind as keyof typeof HELD_TEXT];
   else if (!terminal && !input.planVisible && input.planTitle) text = input.planTitle;
   else if (!terminal && input.toolName && !(input.planVisible && input.planTitle))
     text = input.toolName;
@@ -816,18 +943,4 @@ export function viewedRun(input: {
     number: index + 1,
     total: input.runIds.length,
   };
-}
-
-/**
- * Whether the composer shows its run status pill. A live run's status and controls belong to the
- * top bar, so the pill appears only when the person is needed, when the state cannot be read,
- * and for an ended run.
- */
-export function composerShowsRunStatus(input: {
-  runStatus: string | null;
-  readState: 'empty' | 'loading' | 'ready' | 'error';
-  needsAction: boolean;
-}): boolean {
-  if (input.needsAction || input.readState === 'error') return true;
-  return input.runStatus !== null && (TERMINAL_RUN_STATUSES as Set<string>).has(input.runStatus);
 }

@@ -3,6 +3,7 @@ import {
   ImageAttachment,
   ImageAttachments,
   type TextAttachment,
+  type TextAttachmentProvenance,
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
@@ -37,6 +38,21 @@ export interface AttachmentRequest {
 export function beginAttachmentCapture(target: ComposerTarget): AttachmentCapture {
   return { target: { ...target }, revision: composerDraftRevision(target.sessionId) };
 }
+/** A streaming reply grows around a quote, so its passage is the run, call and offsets alone. */
+function samePassage(
+  source: TextAttachmentProvenance | undefined,
+  attachment: TextAttachment,
+): boolean {
+  const other = attachment.provenance;
+  return (
+    source?.kind === 'reply' &&
+    other?.kind === 'reply' &&
+    source.runId === other.runId &&
+    source.modelCallId === other.modelCallId &&
+    source.start === other.start &&
+    source.end === other.end
+  );
+}
 export function mergeComposerAttachment(
   value: TextAttachment[],
   request: AttachmentRequest,
@@ -49,11 +65,18 @@ export function mergeComposerAttachment(
     ? value.findIndex((item) => textAttachmentKey(item) === request.replaceKey)
     : -1;
   if (request.replaceKey && index < 0) return { ok: false, reason: 'changed' };
+  // The same passage again keeps its chip; with other words (a reply still streaming) the later
+  // capture takes its place.
+  const passage = value.findIndex((item) => samePassage(item.provenance, request.attachment));
   const next = request.replaceKey
     ? value.map((item, i) => (i === index ? request.attachment : item))
     : value.some((item) => textAttachmentKey(item) === key)
       ? value
-      : [...value, request.attachment];
+      : passage >= 0
+        ? value[passage]?.text === request.attachment.text
+          ? value
+          : value.map((item, i) => (i === passage ? request.attachment : item))
+        : [...value, request.attachment];
   return validTextAttachments(next) ? next : { ok: false, reason: 'limit' };
 }
 export function mergeComposerCapture(

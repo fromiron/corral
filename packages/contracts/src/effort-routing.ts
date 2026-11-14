@@ -30,7 +30,7 @@ export const RoutingEngine = z.discriminatedUnion('kind', [
   z.strictObject({
     kind: z.literal('local'),
     device: z.strictObject({
-      kind: z.literal('cpu'),
+      kind: z.enum(['cpu', 'vulkan', 'cuda']),
       threads: z.int().min(1).max(LOCAL_ROUTING_MAX_THREADS),
     }),
     callerTimeoutMs: CallerTimeoutMs,
@@ -195,7 +195,7 @@ export const RouteRecord = z.strictObject({
   }),
   device: z
     .strictObject({
-      requested: z.literal('cpu'),
+      requested: z.enum(['cpu', 'vulkan', 'cuda']),
       actual: z.string().min(1).max(100).nullable(),
       host: z.string().min(1).max(200).nullable(),
       threads: z.int().min(1).max(256).nullable(),

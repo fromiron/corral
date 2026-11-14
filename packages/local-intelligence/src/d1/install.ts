@@ -5,11 +5,19 @@
 // interrupted install never reads as installed. Each manifest gets its own folder, so a running
 // instance keeps the files it started with.
 import { execFile } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, statSync } from 'node:fs';
-import { statfs, writeFile } from 'node:fs/promises';
+import {
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
+import { statfs } from 'node:fs/promises';
 import { join } from 'node:path';
 import { downloadPinned, matchesPinned } from '../install.ts';
-import { type D1Manifest, manifestProblem } from './manifest.ts';
+import { type D1Device, type D1Manifest, d1Runtime, manifestProblem } from './manifest.ts';
 import { extractTarGzMembers } from './tar.ts';
 
 const STAMP = 'install.json';
@@ -30,6 +38,8 @@ export interface D1InstallOptions {
   fetchFn?: typeof fetch;
   signal?: AbortSignal;
   onProgress?(progress: D1InstallProgress): void;
+  /** Which device runtime to install. The model is shared. Defaults to CPU. */
+  device?: D1Device;
   probe?: VersionProbe;
   /** Free bytes where the folder is; null when the system cannot say. */
   freeBytes?(dir: string): Promise<number | null>;
@@ -39,17 +49,45 @@ export function d1Dir(root: string, manifest: D1Manifest): string {
   return join(root, manifest.id);
 }
 
-/** Installed: the stamp names this manifest and every pinned file has its size. */
-export function d1Installed(root: string, manifest: D1Manifest): boolean {
+interface InstallStamp {
+  id?: unknown;
+  devices?: unknown;
+}
+
+function readStamp(dir: string): InstallStamp | null {
+  try {
+    return JSON.parse(readFileSync(join(dir, STAMP), 'utf8')) as InstallStamp;
+  } catch {
+    return null;
+  }
+}
+
+/** Devices named by the stamp. A stamp without a device list names none. */
+function stampedDevices(stamp: InstallStamp | null, manifest: D1Manifest): D1Device[] {
+  if (!stamp || stamp.id !== manifest.id || !Array.isArray(stamp.devices)) return [];
+  return stamp.devices.filter(
+    (device): device is D1Device => device === 'cpu' || device === 'vulkan' || device === 'cuda',
+  );
+}
+
+function writeStamp(dir: string, manifest: D1Manifest, devices: D1Device[]) {
+  writeFileSync(join(dir, STAMP), `${JSON.stringify({ id: manifest.id, devices })}\n`, {
+    mode: 0o600,
+  });
+}
+
+/** Installed: the stamp names this manifest and this device's files, plus the shared model, have their sizes. */
+export function d1Installed(root: string, manifest: D1Manifest, device: D1Device = 'cpu'): boolean {
+  const runtime = d1Runtime(manifest, device);
+  if (!runtime) return false;
   const dir = d1Dir(root, manifest);
   try {
-    const stamp = JSON.parse(readFileSync(join(dir, STAMP), 'utf8')) as { id?: unknown };
-    if (stamp.id !== manifest.id) return false;
-    const files: [string, { size: number }][] = [
-      [manifest.model.file, manifest.model],
-      ...Object.entries(manifest.runtime.files),
-    ];
-    return files.every(([name, file]) => statSync(join(dir, name)).size === file.size);
+    if (!stampedDevices(readStamp(dir), manifest).includes(device)) return false;
+    if (statSync(join(dir, manifest.model.file)).size !== manifest.model.size) return false;
+    const base = device === 'cpu' ? dir : join(dir, device);
+    return Object.entries(runtime.files).every(
+      ([name, file]) => statSync(join(base, name)).size === file.size,
+    );
   } catch {
     return false;
   }
@@ -79,49 +117,61 @@ async function systemFree(dir: string): Promise<number | null> {
 }
 
 /** True when the version text names the pinned build and a prefix of its commit. */
-export function versionMatches(output: string, manifest: D1Manifest): boolean {
-  const build = manifest.runtime.build.replace(/^b/, '');
+export function versionMatches(
+  output: string,
+  manifest: D1Manifest,
+  device: D1Device = 'cpu',
+): boolean {
+  const runtime = d1Runtime(manifest, device);
+  if (!runtime) return false;
+  const build = runtime.build.replace(/^b/, '');
   const commit = /commit ([0-9a-f]{7,40})\b/.exec(output)?.[1];
   return (
-    new RegExp(`\\bbuild ${build}\\b`).test(output) &&
-    !!commit &&
-    manifest.runtime.commit.startsWith(commit)
+    new RegExp(`\\bbuild ${build}\\b`).test(output) && !!commit && runtime.commit.startsWith(commit)
   );
 }
 
-/** Downloads what is missing or different, checks the server, then stamps the folder. */
+/** Downloads what is missing or different for one device, checks the server, then stamps the folder. */
 export async function installD1(root: string, options: D1InstallOptions): Promise<string> {
   const { manifest } = options;
-  const problem = manifestProblem(manifest);
-  if (problem) throw new Error(problem);
+  const device = options.device ?? 'cpu';
+  const runtime = d1Runtime(manifest, device);
+  const problem =
+    manifestProblem(manifest) ??
+    (runtime ? null : 'the Local runtime is not available on this computer');
+  if (problem || !runtime)
+    throw new Error(problem ?? 'the Local runtime is not available on this computer');
   const dir = d1Dir(root, manifest);
-  mkdirSync(dir, { recursive: true, mode: 0o700 });
-  const total = manifest.model.size + manifest.runtime.size;
+  const base = device === 'cpu' ? dir : join(dir, device);
+  mkdirSync(base, { recursive: true, mode: 0o700 });
   const partials: string[] = [];
-  let unstamped = false;
-  const unstamp = () => {
-    if (unstamped) return;
-    rmSync(join(dir, STAMP), { force: true });
-    unstamped = true;
+  let dropped = false;
+  const dropDevice = () => {
+    if (dropped) return;
+    dropped = true;
+    const kept = stampedDevices(readStamp(dir), manifest).filter((entry) => entry !== device);
+    if (kept.length) writeStamp(dir, manifest, kept);
+    else rmSync(join(dir, STAMP), { force: true });
   };
-  const report = (phase: D1InstallProgress['phase'], received: number) =>
-    options.onProgress?.({ phase, received, total });
   try {
     const modelPath = join(dir, manifest.model.file);
     const needModel = !(await matchesPinned(modelPath, manifest.model));
-    const runtimeFiles = Object.entries(manifest.runtime.files);
+    const runtimeFiles = Object.entries(runtime.files);
     const stale: string[] = [];
     for (const [name, file] of runtimeFiles)
-      if (!(await matchesPinned(join(dir, name), file))) stale.push(name);
+      if (!(await matchesPinned(join(base, name), file))) stale.push(name);
+    const total = (needModel ? manifest.model.size : 0) + (stale.length ? runtime.size : 0);
     const needed =
       (needModel ? manifest.model.size : 0) +
       (stale.length
-        ? manifest.runtime.size +
-          stale.reduce((n, name) => n + manifest.runtime.files[name]!.size, 0)
+        ? runtime.size + stale.reduce((n, name) => n + runtime.files[name]!.size, 0)
         : 0);
     const free = await (options.freeBytes ?? systemFree)(dir);
     if (free !== null && free < needed)
       throw new Error('not enough disk space for the Local model');
+    const report = (phase: D1InstallProgress['phase'], received: number) =>
+      options.onProgress?.({ phase, received, total });
+    let received = 0;
 
     if (needModel) {
       const partial = `${modelPath}.part`;
@@ -129,40 +179,42 @@ export async function installD1(root: string, options: D1InstallOptions): Promis
       await downloadPinned(manifest.model.url, partial, manifest.model, 'model', {
         ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
-        onProgress: ({ received }) => report('downloading', received),
+        onProgress: ({ received: got }) => report('downloading', got),
       });
-      unstamp();
+      dropDevice();
       renameSync(partial, modelPath);
+      received = manifest.model.size;
     }
     if (stale.length) {
-      const archive = join(dir, ARCHIVE);
+      const archive = join(dir, `${device}-${ARCHIVE}`);
       partials.push(archive);
-      await downloadPinned(manifest.runtime.url, archive, manifest.runtime, 'runtime', {
+      await downloadPinned(runtime.url, archive, runtime, 'runtime', {
         ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
         ...(options.signal ? { signal: options.signal } : {}),
-        onProgress: ({ received }) => report('downloading', manifest.model.size + received),
+        onProgress: ({ received: got }) => report('downloading', received + got),
       });
       report('verifying', total);
       const wanted = new Map(
         stale.map((name) => {
-          const file = manifest.runtime.files[name]!;
-          const target = join(dir, `${name}.part`);
+          const file = runtime.files[name]!;
+          const target = join(base, `${name}.part`);
           partials.push(target);
           return [file.member, { target, size: file.size, sha256: file.sha256 }] as const;
         }),
       );
       await extractTarGzMembers(archive, wanted, options.signal);
-      unstamp();
-      for (const name of stale) renameSync(join(dir, `${name}.part`), join(dir, name));
+      dropDevice();
+      for (const name of stale) renameSync(join(base, `${name}.part`), join(base, name));
     }
     report('verifying', total);
-    const server = join(dir, manifest.runtime.server);
+    const server = join(base, runtime.server);
     if (!existsSync(server)) throw new Error('the Local runtime is missing its server');
-    const version = await (options.probe ?? probeVersion)(server, dir, options.signal);
-    if (!versionMatches(version, manifest))
-      throw new Error(`the Local runtime is not llama.cpp ${manifest.runtime.build}`);
+    const version = await (options.probe ?? probeVersion)(server, base, options.signal);
+    if (!versionMatches(version, manifest, device))
+      throw new Error(`the Local runtime is not llama.cpp ${runtime.build}`);
     options.signal?.throwIfAborted();
-    await writeFile(join(dir, STAMP), `${JSON.stringify({ id: manifest.id })}\n`, { mode: 0o600 });
+    const kept = stampedDevices(readStamp(dir), manifest).filter((entry) => entry !== device);
+    writeStamp(dir, manifest, [...kept, device]);
     return dir;
   } finally {
     for (const partial of partials) rmSync(partial, { force: true });

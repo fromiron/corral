@@ -13,6 +13,22 @@ import {
   type VaultDomainSnapshot,
 } from './types.ts';
 
+const ShortcutKey = z.string().regex(/^(?:[a-z0-9,./[\]]|Digit)$/i);
+// A chord as the shortcut settings save it: each modifier held or not, or left out.
+/** A chord with the platform modifier: what every shortcut may be bound to. */
+const ModChord = z.strictObject({
+  key: ShortcutKey,
+  mod: z.literal(true),
+  shift: z.boolean().optional(),
+  alt: z.boolean().optional(),
+});
+/** Alt without the platform modifier: the reply quote's own default kind of chord. */
+const AltChord = z.strictObject({
+  key: ShortcutKey,
+  mod: z.literal(false).optional(),
+  alt: z.literal(true),
+  shift: z.boolean().optional(),
+});
 export const PortableApplication = z.strictObject({
   version: z.literal(1),
   theme: z.enum(['system', 'light', 'dark']),
@@ -20,27 +36,20 @@ export const PortableApplication = z.strictObject({
   sendKey: z.enum(['enter', 'mod-enter']),
   notify: z.boolean(),
   shortcuts: z
-    .partialRecord(
-      z.enum([
-        'palette',
-        'help',
-        'session.new',
-        'session.jump',
-        'view.sidebar',
-        'view.panel',
-        'composer.focus',
-        'settings',
-        'nav.back',
-        'nav.forward',
-        'run.stop',
-      ]),
-      z.strictObject({
-        key: z.string().regex(/^(?:[a-z0-9,./[\]]|Digit)$/i),
-        mod: z.literal(true),
-        shift: z.boolean().optional(),
-        alt: z.boolean().optional(),
-      }),
-    )
+    .strictObject({
+      palette: ModChord.optional(),
+      help: ModChord.optional(),
+      'session.new': ModChord.optional(),
+      'session.jump': ModChord.optional(),
+      'view.sidebar': ModChord.optional(),
+      'view.panel': ModChord.optional(),
+      'composer.focus': ModChord.optional(),
+      settings: ModChord.optional(),
+      'nav.back': ModChord.optional(),
+      'nav.forward': ModChord.optional(),
+      'run.stop': ModChord.optional(),
+      'reply.quote': z.union([ModChord, AltChord]).optional(),
+    })
     .optional(),
 });
 export type PortableApplication = z.infer<typeof PortableApplication>;

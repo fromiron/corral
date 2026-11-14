@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredDeployment } from '@corral/contracts';
-import { Button, Input, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
@@ -85,11 +85,10 @@ export function DeploymentSettings({
   }
   return (
     <section className="flex flex-col gap-3" aria-label={t('settingsTitle')}>
-      <h4 className="font-medium">{t('settingsTitle')}</h4>
-      <p className="text-xs text-muted-foreground">{t('settingsHint')}</p>
+      <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('settingsTitle')}</h4>
       {(config?.deployments ?? []).map((profile) => (
         <div key={profile.id} className="settings-surface flex flex-col gap-2">
-          <p className="text-sm font-medium">
+          <p className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
             {profile.name} · {profile.environment}
           </p>
           <div className="flex flex-wrap gap-2">
@@ -126,9 +125,11 @@ export function DeploymentSettings({
         </div>
       ))}
       <fieldset disabled={busy} className="settings-surface flex flex-col gap-3">
-        <legend className="mb-3 font-medium">{t('configure')}</legend>
+        <legend className="mb-3" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('configure')}
+        </legend>
         {(['id', 'name', 'environment', 'envRefs'] as const).map((key) => (
-          <label key={key} className="flex flex-col gap-1 text-sm">
+          <label key={key} className="flex flex-col gap-1 text-body">
             {t(key)}
             <Input
               name={key}
@@ -138,9 +139,9 @@ export function DeploymentSettings({
             />
           </label>
         ))}
-        <p className="text-xs text-muted-foreground">{t('envHint')}</p>
+        <p className="text-caption text-muted-foreground">{t('envHint')}</p>
         {(['argv', 'readbackArgv'] as const).map((key) => (
-          <label key={key} className="flex flex-col gap-1 text-sm">
+          <label key={key} className="flex flex-col gap-1 text-body">
             {t(key)}
             <Textarea
               rows={3}
@@ -149,9 +150,9 @@ export function DeploymentSettings({
             />
           </label>
         ))}
-        <p className="text-xs text-muted-foreground">{t('argvHint')}</p>
-        <p className="text-xs text-muted-foreground">{t('readbackHint')}</p>
-        <label className="flex flex-col gap-1 text-sm">
+        <p className="text-caption text-muted-foreground">{t('argvHint')}</p>
+        <p className="text-caption text-muted-foreground">{t('readbackHint')}</p>
+        <label className="flex flex-col gap-1 text-body">
           {t('timeout')}
           <Input
             type="number"
@@ -188,12 +189,12 @@ export function DeploymentSettings({
         </div>
       </fieldset>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {notice ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {notice}
         </p>
       ) : null}

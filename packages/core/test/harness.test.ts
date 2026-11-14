@@ -5,6 +5,7 @@ import {
   type CommandPlan,
   canonicalJson,
   type EffectiveHarnessSnapshot,
+  isWorkAgent,
   type LspReport,
   type ModelRequestRecord,
   type PermissionMode,
@@ -177,6 +178,7 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
     cwd: '.',
     environmentHash: 'e'.repeat(64),
     timeoutMs: 10000,
+    launchFingerprint: '1'.repeat(64),
     fingerprint: 'f'.repeat(64),
   };
   async function commandSetup(
@@ -713,7 +715,7 @@ describe('Coordinator harness boundary (H2)', () => {
     definition.roles[0]!.harness = snapshot.binding;
 
     definition.roles[0]!.allowedCollaborationTools.push('spawn_subagents');
-    const writer = definition.nodes.find((n) => n.type === 'agent')!;
+    const writer = definition.nodes.find(isWorkAgent)!;
     definition.nodes.push({ ...writer, id: 'helper', invocation: 'callable' });
     definition.capabilityLinks.push({
       id: 'delegate',
@@ -1290,19 +1292,13 @@ describe('Coordinator harness boundary (H2)', () => {
     expect(() =>
       openRunArchive(exportRunArchive(s.store, s.input().runId, { privateTranscript: true })),
     ).not.toThrow();
+    // The plan is a plain checklist: it is not checked against the check's result, and a
+    // later change of the working copy does not hold it back.
     const update = {
       scope: 'execution',
       expectedRevision: 0,
       criteriaVersionId: s.input().criteriaVersionId,
-      items: [
-        {
-          id: 'verify',
-          title: 'Verify current files',
-          status: 'completed',
-          requiresVerification: true,
-          evidenceRefs: [`result_${auth.toolCallId}`],
-        },
-      ],
+      items: [{ id: 'verify', title: 'Verify current files', status: 'completed' }],
     };
     expect(await s.host().invokeTool({ name: 'update_plan', args: update })).toMatchObject({
       ok: true,
@@ -1311,7 +1307,17 @@ describe('Coordinator harness boundary (H2)', () => {
     currentTree = '0'.repeat(40);
     expect(
       await s.host().invokeTool({ name: 'update_plan', args: { ...update, expectedRevision: 1 } }),
-    ).toMatchObject({ ok: false });
+    ).toMatchObject({ ok: true, result: { revision: 2 } });
+    expect(
+      await s.host().invokeTool({
+        name: 'update_plan',
+        args: {
+          ...update,
+          expectedRevision: 2,
+          items: [{ ...update.items[0], evidenceRefs: [`result_${auth.toolCallId}`] }],
+        },
+      }),
+    ).toMatchObject({ ok: false, error: { code: 'SCHEMA_INVALID' } });
     expect(
       s.coordinator.getSnapshot(s.input().runId).projection.tasks[s.input().taskId]?.status,
     ).not.toBe('completed');
@@ -1984,6 +1990,48 @@ it('core tools enforce path boundaries and role caps, then execute a granted cal
     expect(await running).toMatchObject({ ok: true });
     expect(await s.host().executeTool(call.toolCallId)).toMatchObject({ ok: false });
     expect(paths).toEqual(['src/file', 'src-other/file']);
+  } finally {
+    s.done.open();
+  }
+});
+
+it('a running run loses file tools at the next admission when the folder is no longer available', async () => {
+  const read: ToolDescriptor = { ...descriptor, name: 'read_file', source: 'corral' };
+  let open = true;
+  const selected: EffectiveHarnessSnapshot = {
+    ...snapshot,
+    policy: 'strict',
+    resources: [],
+    allowedTools: ['read_file'],
+    permissionPolicies: [
+      {
+        default: 'deny',
+        rules: [{ tool: 'read_file', action: 'allow', descriptorHash: hash(read) }],
+      },
+    ],
+  };
+  const s = setup(true, selected, {
+    fileTools: true,
+    files: {
+      available: () => open,
+      execute: async () => ({ text: 'fixture' }),
+    },
+  });
+  await s.started.wait();
+  await s.host().reportHarness!({
+    ok: true,
+    snapshotHash: selected.snapshotHash,
+    tools: [read],
+    diagnostics: [],
+  });
+  try {
+    expect(
+      await s.host().authorizeTool({ name: 'read_file', args: { path: 'a.txt' } }),
+    ).toMatchObject({ ok: true });
+    open = false;
+    expect(
+      await s.host().authorizeTool({ name: 'read_file', args: { path: 'a.txt' } }),
+    ).toMatchObject({ ok: false });
   } finally {
     s.done.open();
   }

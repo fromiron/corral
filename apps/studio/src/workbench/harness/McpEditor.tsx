@@ -179,7 +179,7 @@ export function McpEditor({
           }}
         >
           <fieldset disabled={busy} className="flex flex-col gap-4">
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-body">
               {t('serverName')}
               <Input
                 required
@@ -188,7 +188,7 @@ export function McpEditor({
                 onChange={(e) => setName(e.target.value)}
               />
             </label>
-            <div className="flex flex-col gap-1 text-sm">
+            <div className="flex flex-col gap-1 text-body">
               {h('mcpTransport')}
               <Select
                 className="h-9 w-full justify-between"
@@ -213,8 +213,8 @@ export function McpEditor({
                 />
                 {localBrowser ? (
                   <>
-                    <p className="text-xs text-muted-foreground">{t('browserFixtureHint')}</p>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <p className="text-caption text-muted-foreground">{t('browserFixtureHint')}</p>
+                    <label className="flex flex-col gap-1 text-body">
                       {t('browserOrigin')}
                       <Input
                         value={browserOrigin}
@@ -222,7 +222,7 @@ export function McpEditor({
                         required
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {t('browserExecutable')}
                       <Input
                         value={browserExecutable}
@@ -230,7 +230,7 @@ export function McpEditor({
                         required
                       />
                     </label>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {t('browserReady')}
                       <Input
                         value={readyText}
@@ -240,11 +240,11 @@ export function McpEditor({
                     </label>
                   </>
                 ) : null}
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {t(localBrowser ? 'browserDevCommand' : 'command')}
                   <Input required value={command} onChange={(e) => setCommand(e.target.value)} />
                 </label>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {t('arguments')}
                   <Textarea
                     className="font-mono"
@@ -253,15 +253,15 @@ export function McpEditor({
                     onChange={(e) => setArgs(e.target.value)}
                   />
                 </label>
-                <p className="text-xs text-muted-foreground">{t('argsHint')}</p>
+                <p className="text-caption text-muted-foreground">{t('argsHint')}</p>
               </>
             ) : (
               <>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {h('mcpUrl')}
                   <Input type="url" required value={url} onChange={(e) => setUrl(e.target.value)} />
                 </label>
-                <div className="flex flex-col gap-1 text-sm">
+                <div className="flex flex-col gap-1 text-body">
                   {h('mcpAuth')}
                   <Select
                     className="h-9 w-full justify-between"
@@ -280,11 +280,11 @@ export function McpEditor({
                 </div>
                 {auth === 'oauth' ? (
                   <>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {h('mcpScope')}
                       <Input required value={scope} onChange={(e) => setScope(e.target.value)} />
                     </label>
-                    <label className="flex flex-col gap-1 text-sm">
+                    <label className="flex flex-col gap-1 text-body">
                       {h('mcpClientId')}
                       <Input value={clientId} onChange={(e) => setClientId(e.target.value)} />
                     </label>
@@ -293,10 +293,10 @@ export function McpEditor({
               </>
             )}
             <details>
-              <summary className="cursor-pointer text-sm">{t('connectionOptions')}</summary>
+              <summary className="cursor-pointer text-body">{t('connectionOptions')}</summary>
               <div className="mt-3 flex flex-col gap-3">
-                {server ? <p className="font-mono text-xs">{server.id}</p> : null}
-                <div className="flex flex-col gap-1 text-sm">
+                {server ? <p className="font-mono text-caption">{server.id}</p> : null}
+                <div className="flex flex-col gap-1 text-body">
                   {h('mcpExposure')}
                   <Select
                     className="h-9 w-full justify-between"
@@ -312,7 +312,7 @@ export function McpEditor({
                     ]}
                   />
                 </div>
-                <label className="flex flex-col gap-1 text-sm">
+                <label className="flex flex-col gap-1 text-body">
                   {h('mcpTimeout')}
                   <Input
                     type="number"
@@ -326,7 +326,7 @@ export function McpEditor({
               </div>
             </details>
             {error ? (
-              <p role="alert" className="text-sm text-danger">
+              <p role="alert" className="text-body text-danger">
                 {error}
               </p>
             ) : null}

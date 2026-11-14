@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { SizeScope } from '@corral/react/design-kit';
 import { act, createRef } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
@@ -28,9 +29,11 @@ const target = {
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
+  laidOutWidth = null;
   vi.unstubAllGlobals();
   localStorage.clear();
 });
+let laidOutWidth: number | null = null;
 async function fixture(
   props: Partial<
     Pick<
@@ -40,13 +43,13 @@ async function fixture(
       | 'renderDocument'
       | 'renderGraph'
       | 'graphTitle'
-      | 'controls'
       | 'terminalStatus'
       | 'onActiveContext'
       | 'fileWorkAvailable'
     >
   > = {},
   topbar: HTMLElement | null = null,
+  density?: 'default' | 'compact',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
@@ -57,7 +60,19 @@ async function fixture(
   vi.stubGlobal(
     'ResizeObserver',
     class {
-      observe() {}
+      readonly callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) {
+        this.callback = callback;
+      }
+      // Only a test that gives the dock a width lays its grid out.
+      observe(element: Element) {
+        if (laidOutWidth === null) return;
+        const contentRect = { width: laidOutWidth, height: 800 } as DOMRectReadOnly;
+        this.callback(
+          [{ target: element, contentRect } as ResizeObserverEntry],
+          this as unknown as ResizeObserver,
+        );
+      }
       unobserve() {}
       disconnect() {}
     },
@@ -81,7 +96,7 @@ async function fixture(
   const ref = createRef<DockWorkbenchHandle>();
   const renderSession = async (sessionId: string) =>
     act(async () => {
-      root.render(
+      const dock = (
         <TopbarSlotContext.Provider value={{ actions: null, views: topbar, crumbs: null }}>
           <DockWorkbench
             ref={ref}
@@ -93,8 +108,9 @@ async function fixture(
             renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
             {...props}
           />
-        </TopbarSlotContext.Provider>,
+        </TopbarSlotContext.Provider>
       );
+      root.render(density ? <SizeScope size={density}>{dock}</SizeScope> : dock);
     });
   await renderSession('session');
   return { ref, container, owner, closeView, key, renderSession };
@@ -193,7 +209,6 @@ it('uses the single top conversation tab without remounting the draft or open do
       ) : (
         <span data-testid={view === 'run' ? 'history' : undefined}>{view}</span>
       ),
-    controls: <button type="button">Run controls</button>,
     onActiveContext,
   });
   const draft = f.container.querySelector<HTMLTextAreaElement>('[data-testid="draft"]');
@@ -219,9 +234,6 @@ it('uses the single top conversation tab without remounting the draft or open do
   expect(f.container.querySelectorAll('[data-testid="history"]')).toHaveLength(1);
   expect(draft.value).toBe('keep my draft');
   expect(f.container.querySelector('[data-testid="document"]')).toBe(documentView);
-  expect(
-    f.container.querySelector('.corral-dock-controls')?.closest('[role="tabpanel"]'),
-  ).toBeNull();
   await act(async () => sessionTab(f.container, 'chat')?.click());
   expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
   expect(f.container.querySelector('[data-testid="draft"]')).toBe(draft);
@@ -641,4 +653,128 @@ it('keeps the terminal activity indicator on its tab while another pane is activ
   props.terminalStatus = null;
   await f.renderSession('session');
   expect(f.container.querySelector('[aria-label="Terminal running"]')).toBeNull();
+});
+
+type SavedNode = {
+  type: 'leaf' | 'branch';
+  size: number;
+  data: { id: string; views: string[] } | SavedNode[];
+};
+const savedGroups = () => {
+  const saved = JSON.parse(localStorage.getItem(layoutStorageKey('host', 'project') ?? '') ?? '{}');
+  const walk = (node: SavedNode): { id: string; views: string[]; size: number }[] =>
+    node.type === 'leaf'
+      ? [{ ...(node.data as { id: string; views: string[] }), size: node.size }]
+      : (node.data as SavedNode[]).flatMap(walk);
+  return saved.layout ? walk(saved.layout.grid.root) : [];
+};
+/** A dock of this width; jsdom otherwise measures every element as zero. */
+function dockWidth(width: number) {
+  laidOutWidth = width;
+  // Dockview lays out only an element that is displayed.
+  vi.spyOn(HTMLElement.prototype, 'offsetParent', 'get').mockReturnValue(document.body);
+  vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
+    width,
+    height: 800,
+    top: 0,
+    left: 0,
+    right: width,
+    bottom: 800,
+    x: 0,
+    y: 0,
+    toJSON: () => ({}),
+  } as DOMRect);
+}
+
+// The tree's column fits its head (where it reads from with its tools, then the filter row) at the
+// interface density: about 260px at compact, 300px at the default size.
+it.each([
+  ['compact', 240, 280],
+  ['default', 280, 320],
+] as const)(
+  'from 960px a new dock opens documents in a group beside the file tree (%s)',
+  async (density, min, max) => {
+    dockWidth(1280);
+    try {
+      const f = await fixture({}, null, density);
+      // Dockview lays the grid out on the frame after it is measured.
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+      await act(async () => f.ref.current?.openContext('files'));
+      await act(async () => {
+        expect(f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' })).toBe(
+          true,
+        );
+      });
+      const groups = savedGroups();
+      expect(groups.map(({ id, views }) => ({ id, views }))).toEqual([
+        { id: 'tree', views: ['context:files'] },
+        { id: 'main1', views: [expect.stringMatching(/^document:/)] },
+      ]);
+      // The tree keeps its column; the document takes the rest.
+      expect(groups[0]?.size).toBeGreaterThanOrEqual(min);
+      expect(groups[0]?.size).toBeLessThanOrEqual(max);
+      expect(groups[1]?.size).toBeGreaterThan(900);
+    } finally {
+      vi.restoreAllMocks();
+    }
+  },
+);
+
+it('a team design opened first in a wide new dock stays a full-width tab with the tree', async () => {
+  dockWidth(1280);
+  try {
+    const f = await fixture({
+      renderGraph: (descriptor) => <span>{descriptor.corralId}</span>,
+      graphTitle: (corralId) => `Team ${corralId}`,
+    });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    await act(async () => {
+      expect(f.ref.current?.openGraph('corral_a')).toBe(true);
+    });
+    const groups = savedGroups();
+    // Only documents open beside the tree; the canvas keeps the dock's width.
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.views).toEqual(['context:files', expect.stringMatching(/^graph:/)]);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a narrower new dock keeps the document a tab beside the file tree', async () => {
+  dockWidth(900);
+  try {
+    const f = await fixture();
+    await act(async () => f.ref.current?.openContext('files'));
+    await act(async () => {
+      f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+    });
+    const groups = savedGroups();
+    expect(groups).toHaveLength(1);
+    expect(groups[0]?.views).toEqual(['context:files', expect.stringMatching(/^document:/)]);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a saved arrangement is restored as it was, however wide the dock', async () => {
+  const panels = [
+    { id: 'context:files', descriptor: { kind: 'context' as const, view: 'files' as const } },
+    {
+      id: 'document:saved',
+      descriptor: { kind: 'document' as const, target, path: 'file.ts', viewId: 'document:saved' },
+    },
+  ];
+  localStorage.setItem(
+    layoutStorageKey('host', 'project') ?? '',
+    serializeLayout(createPresetLayout('implementation', panels), 'host', 'project'),
+  );
+  const before = savedGroups().map(({ id, views }) => ({ id, views }));
+  dockWidth(1280);
+  try {
+    await fixture();
+    expect(savedGroups().map(({ id, views }) => ({ id, views }))).toEqual(before);
+    expect(before.map((group) => group.id)).not.toContain('tree');
+  } finally {
+    vi.restoreAllMocks();
+  }
 });

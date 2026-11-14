@@ -1,4 +1,4 @@
-import { requestBox } from '../workbench.ts';
+import { newTeam, openLibraryTeams, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('conversation smoke', () => {
@@ -6,7 +6,7 @@ test.describe('conversation smoke', () => {
 
   test('a request receives an answer and survives reload', async ({ page, corral }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await page.getByRole('button', { name: 'New conversation', exact: true }).click();
     corral.fake?.answerWith('Smoke answer.');
     await requestBox(page).fill('Answer the smoke request.');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -19,8 +19,8 @@ test.describe('conversation smoke', () => {
 
 test('canvas handles receive a pointer connection', async ({ page, corral }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await openLibraryTeams(page);
+  await newTeam(page);
   const canvas = page.locator('[data-team-canvas]');
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   // With nothing selected the output lands on its own, unconnected.

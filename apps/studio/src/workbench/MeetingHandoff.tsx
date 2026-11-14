@@ -8,7 +8,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@corral/core';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -22,6 +22,7 @@ import {
   sessionRunMode,
 } from './autoChoice.ts';
 import { watchRefresh } from './refresh.ts';
+import { reveal } from './reviewNavigation.ts';
 import { readComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
 import { type ProfileInfo, useModelProfiles } from './useModels.ts';
 
@@ -87,6 +88,21 @@ export function MeetingHandoff({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [receipt, setReceipt] = useState<MeetingHandoffReceipt | null>(null);
+  // Opened from its button, the form comes into view with focus on its first field. A handoff
+  // reopened from a saved command takes no focus.
+  const form = useRef<HTMLDivElement>(null);
+  const toggle = useRef<HTMLButtonElement>(null);
+  const bringForm = useRef(false);
+  useEffect(() => {
+    if (!open || !bringForm.current) return;
+    bringForm.current = false;
+    reveal(form.current);
+    form.current
+      ?.querySelector<HTMLElement>(
+        'button:not(:disabled), select:not(:disabled), input:not(:disabled)',
+      )
+      ?.focus({ preventScroll: true });
+  }, [open]);
   // Mock runs use the simulated profiles, whatever the connected models are.
   const menuProfiles = useMemo<ProfileInfo[]>(
     () =>
@@ -204,16 +220,21 @@ export function MeetingHandoff({
     <div className="flex min-w-0 flex-col gap-3">
       <div>
         <Button
-          size="compact"
           variant="tertiary"
-          onClick={() => setOpen(!open)}
+          ref={toggle}
+          onClick={() => {
+            bringForm.current = !open;
+            setOpen(!open);
+            // Closing returns focus here from the form it removes.
+            if (open) toggle.current?.focus();
+          }}
           aria-expanded={open}
         >
           {t('open')}
         </Button>
       </div>
       {open ? (
-        <div className="flex min-w-0 flex-col gap-3">
+        <div ref={form} className="flex min-w-0 flex-col gap-3">
           <p className="text-muted-foreground">{t('scopeHint')}</p>
           <fieldset disabled={busy || !!pending} className="flex min-w-0 flex-col gap-3">
             <div className="flex flex-col gap-1">
@@ -273,19 +294,13 @@ export function MeetingHandoff({
           {pending ? (
             <div>
               <p role="status">{t('pending')}</p>
-              <Button
-                size="compact"
-                variant="tertiary"
-                disabled={busy}
-                onClick={() => void send(pending.action)}
-              >
+              <Button variant="tertiary" disabled={busy} onClick={() => void send(pending.action)}>
                 {t('retry')}
               </Button>
             </div>
           ) : (
             <div className="flex flex-wrap gap-2">
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('draft')}
@@ -293,7 +308,6 @@ export function MeetingHandoff({
                 {t('draft')}
               </Button>
               <Button
-                size="compact"
                 disabled={busy || !loaded || (target === 'new' && !title.trim()) || autoBlocked}
                 onClick={() => void send('start')}
               >
@@ -309,13 +323,21 @@ export function MeetingHandoff({
           {receipt ? (
             <p role="status">
               {t(`state.${receipt.state}`)}{' '}
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId: receipt.targetSessionId }}
-                className="underline"
-              >
-                {t('targetLink')}
-              </Link>
+              {receipt.targetDeleted ? (
+                <span>
+                  {t('deletedSession', {
+                    title: receipt.targetTitle || t('untitledSession'),
+                  })}
+                </span>
+              ) : (
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: receipt.targetSessionId }}
+                  className="underline"
+                >
+                  {t('targetLink')}
+                </Link>
+              )}
             </p>
           ) : null}
         </div>
@@ -417,12 +439,14 @@ export function MeetingHandoffLinks({
   };
   if (!api || (!receipts.length && !error && !readError)) return null;
   return (
-    <section className="flex min-w-0 flex-col gap-3 text-sm" aria-label={t('history')}>
-      <h2 className="font-medium">{t('history')}</h2>
+    <section className="flex min-w-0 flex-col gap-3 text-body" aria-label={t('history')}>
+      <h2 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('history')}
+      </h2>
       {receipts.map((receipt) => (
         <article
           key={receipt.commandId}
-          className="flex min-w-0 flex-col gap-2 rounded fill-group p-3"
+          className="flex min-w-0 flex-col gap-2 rounded-lg fill-group p-3"
         >
           <p className="wrap-anywhere">
             {t('decisionVersion')}: {receipt.decisionVersionId} · {t(`state.${receipt.state}`)}
@@ -435,25 +459,40 @@ export function MeetingHandoffLinks({
           </p>
           {receipt.detail ? <p className="wrap-anywhere">{receipt.detail}</p> : null}
           <div className="flex flex-wrap gap-3">
-            <Link
-              to="/sessions/$sessionId"
-              params={{
-                sessionId:
-                  receipt.sourceSessionId === sessionId
-                    ? receipt.targetSessionId
-                    : receipt.sourceSessionId,
-              }}
-              className="underline"
-            >
-              {t(receipt.sourceSessionId === sessionId ? 'targetLink' : 'sourceLink')}
-            </Link>
-            {receipt.runId ? (
+            {receipt.sourceSessionId === sessionId ? (
+              receipt.targetDeleted ? (
+                <span>
+                  {t('deletedSession', { title: receipt.targetTitle || t('untitledSession') })}
+                </span>
+              ) : (
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: receipt.targetSessionId }}
+                  className="underline"
+                >
+                  {t('targetLink')}
+                </Link>
+              )
+            ) : receipt.sourceDeleted ? (
+              <span>
+                {t('deletedSession', { title: receipt.sourceTitle || t('untitledSession') })}
+              </span>
+            ) : (
+              <Link
+                to="/sessions/$sessionId"
+                params={{ sessionId: receipt.sourceSessionId }}
+                className="underline"
+              >
+                {t('sourceLink')}
+              </Link>
+            )}
+            {receipt.runId && !receipt.targetDeleted ? (
               <Link to="/runs/$runId" params={{ runId: receipt.runId }} className="underline">
                 {t('runLink')}
                 {receipt.result ? ` · ${receipt.result.status}` : ''}
               </Link>
             ) : null}
-            {receipt.runId && receipt.result?.artifactVersionId ? (
+            {receipt.runId && !receipt.targetDeleted && receipt.result?.artifactVersionId ? (
               <Link
                 to="/runs/$runId"
                 params={{ runId: receipt.runId }}
@@ -464,11 +503,12 @@ export function MeetingHandoffLinks({
               </Link>
             ) : null}
           </div>
-          {['drafted', 'starting', 'uncertain'].includes(receipt.state) &&
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          ['drafted', 'starting', 'uncertain'].includes(receipt.state) &&
           (!meeting || activeMeetingDecision(meeting, receipt.decisionVersionId)) ? (
             <div>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'start')}
@@ -477,14 +517,15 @@ export function MeetingHandoffLinks({
               </Button>
             </div>
           ) : null}
-          {receipt.sourceSessionId === sessionId &&
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          receipt.sourceSessionId === sessionId &&
           receipt.result &&
           TERMINAL_RUN_STATUSES.has(
             RunStatus.safeParse(receipt.result.status).data ?? 'created',
           ) ? (
             <div>
               <Button
-                size="compact"
                 variant="tertiary"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'rediscuss')}
@@ -493,14 +534,15 @@ export function MeetingHandoffLinks({
               </Button>
             </div>
           ) : null}
-          {['starting', 'uncertain'].includes(receipt.state) ||
-          (receipt.state === 'started' &&
-            !TERMINAL_RUN_STATUSES.has(
-              RunStatus.safeParse(receipt.result?.status).data ?? 'created',
-            )) ? (
+          {!receipt.sourceDeleted &&
+          !receipt.targetDeleted &&
+          (['starting', 'uncertain'].includes(receipt.state) ||
+            (receipt.state === 'started' &&
+              !TERMINAL_RUN_STATUSES.has(
+                RunStatus.safeParse(receipt.result?.status).data ?? 'created',
+              ))) ? (
             <div>
               <Button
-                size="compact"
                 variant="ghost-destructive"
                 disabled={busy}
                 onClick={() => void actOn(receipt, 'cancel')}
@@ -516,7 +558,7 @@ export function MeetingHandoffLinks({
           <p role="alert" className="text-danger wrap-anywhere">
             {readError}
           </p>
-          <Button variant="ghost" size="compact" onClick={() => retryRead.current()}>
+          <Button variant="ghost" onClick={() => retryRead.current()}>
             {t('reload')}
           </Button>
         </div>

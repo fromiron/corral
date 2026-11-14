@@ -9,6 +9,7 @@ import {
   AccordionItem,
   AccordionTrigger,
   Button,
+  fontWeights,
   Input,
   Select,
   Textarea,
@@ -86,7 +87,9 @@ export function SettingsPatchPanel({
           : definition.input.criteria.join('\n')
         : field === 'reasoning'
           ? JSON.stringify(nodeSettings.reasoning ?? null)
-          : String(nodeSettings[field] ?? '');
+          : field === 'maxIterations' && nodeSettings.maxIterations === undefined
+            ? t('unlimited')
+            : String(nodeSettings[field] ?? '');
   const target = kind === 'run_limits' || kind === 'criteria' ? projection.runId : (node?.id ?? '');
   const fields: Field[] =
     kind === 'run_limits'
@@ -187,7 +190,7 @@ export function SettingsPatchPanel({
       <AccordionItem value="settings-patch">
         <AccordionTrigger>{t('heading')}</AccordionTrigger>
         <AccordionContent>
-          <div className="flex flex-col gap-2 text-xs">
+          <div className="flex flex-col gap-2 text-caption">
             {!terminal ? (
               <>
                 <label htmlFor={`${id}-kind`}>{t('scope')}</label>
@@ -280,7 +283,6 @@ export function SettingsPatchPanel({
                   }
                   onClick={prepare}
                   variant="secondary"
-                  size="compact"
                 >
                   {t('preview')}
                 </Button>
@@ -294,7 +296,7 @@ export function SettingsPatchPanel({
                     className="flex flex-col gap-2 rounded border border-primary p-2"
                     data-testid="patch-preview"
                   >
-                    <h4 className="font-semibold">{t('diff')}</h4>
+                    <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('diff')}</h4>
                     <p>
                       {t('target', { target: preview.target })} · {t(`field.${preview.field}`)}
                     </p>
@@ -323,7 +325,6 @@ export function SettingsPatchPanel({
                       disabled={pending || projection.controlRevision !== preview.revision}
                       onClick={() => void confirm()}
                       variant="primary"
-                      size="compact"
                     >
                       {t('confirm')}
                     </Button>
@@ -335,7 +336,7 @@ export function SettingsPatchPanel({
             )}
             {patches.length > 0 ? (
               <div className="flex flex-col gap-1">
-                <h4 className="font-semibold">{t('history')}</h4>
+                <h4 style={{ fontVariationSettings: fontWeights.semibold }}>{t('history')}</h4>
                 {patches.map((patch) => (
                   <div key={patch.patchId} className="border-b border-border py-2 last:border-0">
                     <p>

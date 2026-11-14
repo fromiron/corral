@@ -172,21 +172,11 @@ export function StructureTree({
   };
 
   return (
+    // The team row heads the outline: its name, its problems and the way to add a step.
     <aside aria-label={t('outline')} className="flex min-h-0 flex-col border-r border-border">
-      <header className="flex items-center gap-1.5 py-2 pr-2 pl-4">
-        <h2
-          className={cn(size.type.caption, 'grow text-muted-foreground')}
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('structure')}
-        </h2>
-        <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>
-          <Plus />
-        </Button>
-      </header>
       <div
         className={cn(
-          'mx-2 mb-1 flex items-center gap-2 rounded-md px-2 py-1.5',
+          'mx-2 mt-2 mb-1 flex items-center gap-2 rounded-md py-1.5 pr-0.5 pl-2',
           over === '__top' && 'outline-2 outline-emphasis',
         )}
         {...dropProps(null, '__top')}
@@ -207,6 +197,9 @@ export function StructureTree({
             {t('problems', { count: diagnostics.length })}
           </KitBadge>
         </button>
+        <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>
+          <Plus />
+        </Button>
       </div>
       <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {children(null).map((node) => row(node, 0))}

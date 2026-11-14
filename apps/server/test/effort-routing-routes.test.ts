@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EffortRoutingSettings } from '@corral/contracts';
@@ -50,7 +50,7 @@ function installed(root: string) {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, manifest.model.file), 'model');
   writeFileSync(join(dir, 'llama-server'), 'server');
-  writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id }));
+  writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id, devices: ['cpu'] }));
 }
 
 /** A child that never becomes ready and exits when told to. */
@@ -127,7 +127,7 @@ async function start(options: { install?: boolean; live?: boolean } = {}) {
     // biome-ignore lint/suspicious/noExplicitAny: test reads loose JSON
     return { status: response.status, body: (await response.json()) as any };
   };
-  return { call, children, downloads, workspace, fake };
+  return { call, children, downloads, workspace, fake, localRoot, local };
 }
 
 const LOCAL: EffortRoutingSettings = {
@@ -244,12 +244,58 @@ describe('effort routing routes', () => {
     expect(ready.children.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('removes only the Local manifest, keeps Manual + Local, and falls back as unavailable', async () => {
+    const s = await start({ install: true });
+    const meeting = join(s.localRoot, '..', 'corral-local-ai-2');
+    mkdirSync(meeting, { recursive: true });
+    writeFileSync(join(meeting, 'keep'), 'meeting');
+    const { revision } = (await s.call('/effort-routing')).body;
+    await s.call('/effort-routing', 'PUT', { settings: LOCAL, revision });
+
+    const removed = await s.call('/effort-routing/local', 'DELETE');
+    expect(removed.status).toBe(200);
+    expect(removed.body.local.install).toBe('absent');
+    expect(removed.body.settings).toEqual(LOCAL);
+    expect(existsSync(join(meeting, 'keep'))).toBe(true);
+    expect(existsSync(join(s.localRoot, manifest.id))).toBe(false);
+    expect(s.children[0]!.alive).toBe(false);
+    if (LOCAL.engine.kind !== 'local') throw new Error('expected the Local engine');
+    expect(s.local.backend(LOCAL.engine).admit()).toEqual({ ok: false, reason: 'unavailable' });
+
+    const again = await s.call('/effort-routing/local', 'DELETE');
+    expect(again.status).toBe(200);
+    expect(again.body.local.install).toBe('absent');
+    expect(existsSync(join(meeting, 'keep'))).toBe(true);
+  });
+
+  it('refuses to remove Local while an install is in progress', async () => {
+    const s = await start();
+    const meeting = join(s.localRoot, '..', 'corral-local-ai-2');
+    mkdirSync(meeting, { recursive: true });
+    writeFileSync(join(meeting, 'keep'), 'meeting');
+    expect((await s.call('/effort-routing/local/install', 'POST')).body.local.install).toBe(
+      'downloading',
+    );
+
+    const removed = await s.call('/effort-routing/local', 'DELETE');
+    expect(removed.status).toBe(409);
+    expect(removed.body.error).toEqual({
+      code: 'RESOURCE_CAPACITY',
+      message: 'an install is in progress',
+    });
+    expect((await s.call('/effort-routing')).body.local.install).toBe('downloading');
+    expect(s.downloads).toHaveLength(1);
+    expect(existsSync(join(meeting, 'keep'))).toBe(true);
+  });
+
   it('is refused on a server without real models', async () => {
     const s = await start({ live: false });
     for (const [path, method] of [
       ['/effort-routing', 'GET'],
       ['/effort-routing', 'PUT'],
       ['/effort-routing/local/install', 'POST'],
+      ['/effort-routing/local/install', 'DELETE'],
+      ['/effort-routing/local', 'DELETE'],
       ['/effort-routing/local/start', 'POST'],
     ] as const) {
       const response = await s.call(path, method, method === 'GET' ? undefined : {});

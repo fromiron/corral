@@ -10,9 +10,11 @@ import {
   type CommandError,
   type ConversationSource,
   type CorralDefinition,
+  DEFAULT_ADVISOR_REVIEW,
   FILE_TOOLS,
   type HarnessBindingRef,
   type ModelProfileSnapshot,
+  type PatternSlot,
   type PermissionMode,
   type ReasoningLevel,
   type RunInput,
@@ -26,10 +28,15 @@ import {
 import { sha256 } from '@noble/hashes/sha2.js';
 import { bytesToHex, utf8ToBytes } from '@noble/hashes/utils.js';
 import { z } from 'zod';
+import {
+  ADVISOR_COLLABORATION_TOOLS,
+  ADVISOR_WORK_TOOLS,
+  advisorRoleIds,
+} from './advisor/tools.ts';
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
-import { draftFromPlan, planFromGoal, type TeamWording } from './team-draft.ts';
+import { basePatternFromGoal, draftFromPlan, type TeamWording } from './team-draft.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
 // built-in templates (the team patterns); the template fixes roles, tools, wiring and
@@ -66,7 +73,7 @@ const WORDING: TeamWording = {
   labels: { loop: 'Review loop', decision: 'Review decision', output: 'Output' },
 };
 
-const SLOTS: Record<AutoTemplate, TeamSlot[]> = {
+const SLOTS: Record<AutoTemplate, PatternSlot<AutoTemplate>[]> = {
   single: ['worker'],
   write_review: ['planner', 'writer', 'reviewer'],
   research_write_review: ['researcher', 'writer', 'reviewer'],
@@ -83,6 +90,27 @@ const FILE_NOTE =
   ' The session has a working copy: read files with the file tools before relying on them.';
 const WRITE_NOTE = ' Make the changes the request asks for with the file tools.';
 
+/**
+ * Where a session turn's file tools point. Absent on a definition means the historical
+ * rule: `fileTools` true is a working copy. Names stay the labels the screen already uses.
+ */
+export type SessionFiles =
+  | { mode: 'copy' }
+  | { mode: 'direct' }
+  | { mode: 'none'; reason: 'unlinked' | 'untrusted' | 'missing' };
+
+function workspaceNote(workspace: SessionFiles): string {
+  if (workspace.mode === 'copy')
+    return " You work in this session's working copy, not in the project source folder.";
+  if (workspace.mode === 'direct')
+    return ' You work directly in the project source folder. List, read and search files there. Commands run in that folder. File tools do not change files.';
+  if (workspace.reason === 'unlinked')
+    return ' You have no file or command tools because this project has no linked folder. The person links a folder in the project settings.';
+  if (workspace.reason === 'untrusted')
+    return ' You have no file or command tools because the linked folder is not trusted. The person trusts the folder in the project settings.';
+  return ' You have no file or command tools because the linked folder is unavailable. The person checks the folder link in the project settings.';
+}
+
 export interface AutoDefinitionInput {
   harness?: HarnessBindingRef;
   commandTools?: boolean;
@@ -95,6 +123,11 @@ export interface AutoDefinitionInput {
   choice: AutoModelChoice;
   /** The session has a working copy, so the roles get file tools. */
   fileTools: boolean;
+  /**
+   * The session folder this turn works in. When set, it decides reads, writes and the
+   * prompt; `fileTools` alone stays the historical working-copy switch.
+   */
+  workspace?: SessionFiles;
   /** With `route` reasoning: the level the start model picked; medium when absent. */
   routeLevel?: AutoRouteLevel;
 }
@@ -122,23 +155,37 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     asked?.mode === 'route'
       ? { mode: 'fixed' as const, level: input.routeLevel ?? ('medium' as const) }
       : asked;
+  const mode = input.workspace?.mode ?? (input.fileTools ? 'copy' : 'none');
+  const reads = mode === 'copy' || mode === 'direct';
   const roles = definition.roles.map((role) => {
-    const writes = WRITERS.has(role.id as TeamSlot) && input.taskScope !== 'review_only';
-    const tools: WorkTool[] = input.fileTools
+    const writes =
+      reads &&
+      mode === 'copy' &&
+      WRITERS.has(role.id as TeamSlot) &&
+      input.taskScope !== 'review_only';
+    const commands =
+      Boolean(input.commandTools) &&
+      reads &&
+      input.taskScope !== 'review_only' &&
+      (writes || mode === 'direct');
+    const tools: WorkTool[] = reads
       ? [
           'write_artifact',
           ...(writes ? FILE_TOOLS : READ_TOOLS),
-          ...(input.commandTools ? ['preview_file' as const] : []),
-          ...(writes && input.commandTools
+          ...(input.commandTools && mode === 'copy' ? ['preview_file' as const] : []),
+          ...(commands && mode === 'copy'
             ? ['run_command' as const, 'preview_app' as const, 'preview_action' as const]
             : []),
+          ...(commands && mode === 'direct' ? ['run_command' as const] : []),
         ]
       : ['write_artifact'];
+    const fileNote =
+      mode === 'copy' && (input.workspace || input.fileTools)
+        ? `${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
+        : '';
     return {
       ...role,
-      prompt: input.fileTools
-        ? `${role.prompt}${FILE_NOTE}${writes ? WRITE_NOTE : ''}`
-        : role.prompt,
+      prompt: `${role.prompt}${fileNote}${input.workspace ? workspaceNote(input.workspace) : ''}`,
       modelProfile: input.choice.modelProfile,
       ...(input.harness ? { harness: { ...input.harness } } : {}),
       ...(reasoning ? { reasoning } : {}),
@@ -151,7 +198,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     };
   });
   const nodes = definition.nodes.map((node) =>
-    node.type === 'agent' && node.roleId === 'reviewer'
+    node.type === 'agent' && node.invocation !== 'observer' && node.roleId === 'reviewer'
       ? {
           ...node,
           inputBindings: [...node.inputBindings, { kind: 'run_input' as const, name: 'brief' }],
@@ -185,8 +232,9 @@ export interface ConversationRoster {
 
 /**
  * session chat is one lead agent that answers with its final reply. It keeps the auto
- * single role's tools, model, harness and reasoning, minus the output tools. Without a roster
- * it may call a helper on explicit request; with one, it leads that team by itself.
+ * single role's tools, model and harness, minus the output tools. Without a roster, per-request
+ * reasoning is judged on each of the lead's requests and the helper copies that choice; with a
+ * roster, it leads that team by itself.
  */
 export function conversationDefinition(
   input: Omit<AutoDefinitionInput, 'template'> & {
@@ -195,9 +243,12 @@ export function conversationDefinition(
 ): CorralDefinition {
   const { roster, ...rest } = input;
   const base = autoDefinition({ ...rest, template: 'single' });
+  // Team none has no start-model level, so per request is judged like automatic reasoning.
+  const perRequest = !roster && rest.choice.reasoning?.mode === 'route';
   const duty = roster ? leadTeamDuty(roster) : LEAD_DUTY;
   const roles = base.roles.map((role) => ({
     ...role,
+    ...(perRequest ? { reasoning: { mode: 'auto' as const } } : {}),
     name: 'Assistant',
     prompt: role.prompt.replace(WORDING.roles.worker.duty, duty),
     answer: 'final_reply' as const,
@@ -250,6 +301,122 @@ export function conversationDefinition(
   };
 }
 
+/** The session advisor's built-in review principles (features/advisor.md, 두는 곳 › 대화). */
+export const SESSION_ADVISOR_PROMPT = [
+  "You are the advisor in this conversation. You watch the assistant's work and advise it only when something would make the result wrong.",
+  'Look for: drifting from what the person asked; wrong assumptions; claims that were not checked; saying the work is done or works without verifying it.',
+  'Say only what would change the outcome. Do not comment on style, wording or taste.',
+  'When nothing would change the outcome, do not advise.',
+].join('\n');
+
+/**
+ * A refused model preparation names the session advisor's model when the profile that failed is
+ * the advisor's alone (a preparation's message starts with the profile that failed).
+ */
+function advisorModelError(
+  definition: CorralDefinition,
+  advisor: SessionAdvisorChoice | null | undefined,
+  error: CommandError,
+): CommandError {
+  const profile = advisor?.modelProfile;
+  if (!profile || !error.message.startsWith(`${profile}: `)) return error;
+  const advisors = advisorRoleIds(definition);
+  const shared = definition.roles.some(
+    (role) => !advisors.has(role.id) && role.modelProfile === profile,
+  );
+  return shared ? error : { ...error, message: `Advisor model ${error.message}` };
+}
+
+/** The advisor name its advice's heading carries. */
+export const SESSION_ADVISOR_NAME = 'Advisor';
+
+/** The node and role id of the advisor a session adds; a taken id gets `_2`, `_3`… */
+export const SESSION_ADVISOR_ID = 'session_advisor';
+
+/**
+ * Whether a definition's node is the advisor a conversation's session setting added
+ * (`withSessionAdvisor`): an observer whose node and role share the session advisor's id. Such
+ * an advisor has no name of its own (features/advisor.md, 보이는 곳).
+ */
+export function isSessionAdvisor(definition: CorralDefinition, nodeId: string): boolean {
+  const node = definition.nodes.find((candidate) => candidate.id === nodeId);
+  return (
+    node?.type === 'agent' &&
+    node.invocation === 'observer' &&
+    node.roleId === node.id &&
+    new RegExp(`^${SESSION_ADVISOR_ID}(_[0-9]+)?$`).test(node.id)
+  );
+}
+
+/** The session's advisor setting: on with a model, or off (null). */
+export interface SessionAdvisorChoice {
+  modelProfile: string;
+}
+
+/**
+ * The conversation with the session's advisor added: one observer Agent with the built-in
+ * principles, every advisor read tool and the default review, watching the role that answers
+ * the conversation. Its role is bound to that role's work style so the style's permission rules
+ * hold for its reads; it writes no answer. Advisors the definition already has stay.
+ */
+export function withSessionAdvisor(
+  definition: CorralDefinition,
+  advisor: SessionAdvisorChoice,
+): CorralDefinition {
+  const answering = definition.nodes.find(
+    (node) => node.type === 'agent' && node.id === definition.entryNodeId,
+  );
+  if (answering?.type !== 'agent') return definition;
+  const lead = definition.roles.find((role) => role.id === answering.roleId);
+  const taken = new Set([
+    ...definition.roles.map((role) => role.id),
+    ...definition.nodes.map((node) => node.id),
+    ...definition.capabilityLinks.map((link) => link.id),
+  ]);
+  // It reads no further than the conversation's own roles do (features/advisor.md, 두는 곳 › 대화).
+  const advisors = advisorRoleIds(definition);
+  const held = new Set(
+    definition.roles
+      .filter((role) => !advisors.has(role.id))
+      .flatMap((role) => role.allowedWorkTools),
+  );
+  const reads = ADVISOR_WORK_TOOLS.filter((tool) => held.has(tool));
+  let id = SESSION_ADVISOR_ID;
+  for (let n = 2; taken.has(id) || taken.has(`${id}_watch`); n++) id = `${SESSION_ADVISOR_ID}_${n}`;
+  return {
+    ...definition,
+    roles: [
+      ...definition.roles,
+      {
+        id,
+        name: SESSION_ADVISOR_NAME,
+        prompt: SESSION_ADVISOR_PROMPT,
+        modelProfile: advisor.modelProfile,
+        ...(lead?.harness ? { harness: { ...lead.harness } } : {}),
+        allowedWorkTools: reads,
+        allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
+        outputContract: 'notes',
+      },
+    ],
+    nodes: [
+      ...definition.nodes,
+      {
+        id,
+        type: 'agent',
+        label: SESSION_ADVISOR_NAME,
+        roleId: id,
+        invocation: 'observer',
+        outputName: 'notes',
+        review: { ...DEFAULT_ADVISOR_REVIEW },
+      },
+    ],
+    capabilityLinks: [
+      ...definition.capabilityLinks,
+      { id: `${id}_watch`, kind: 'advise', sourceNodeId: id, targetNodeId: answering.id },
+    ],
+  };
+}
+
 function leadTeamDuty(roster: ConversationRoster): string {
   const members = roster.roles.map((role) => `${role.name} (${role.id})`).join(', ');
   return [
@@ -293,11 +460,16 @@ export function autoRoster(input: Omit<AutoDefinitionInput, 'template'>): Conver
 /** Corral: a saved Corral's roles as delegates; its graph becomes guidance. */
 export function corralRoster(corral: CorralDefinition): ConversationRoster {
   const label = (id: string) => corral.nodes.find((node) => node.id === id)?.label ?? id;
+  const advisors = advisorRoleIds(corral);
   const flow = corral.controlEdges
     .map((edge) => `${label(edge.source)} → ${label(edge.target)}`)
     .join('; ');
   return {
-    roles: corral.roles.map((role) => delegateRole(role, `team_${role.id}`)),
+    // The conversation borrows roles, not the flow: the team's advisors have nothing of theirs to
+    // watch there, and their roles are no one's delegate.
+    roles: corral.roles
+      .filter((role) => !advisors.has(role.id))
+      .map((role) => delegateRole(role, `team_${role.id}`)),
     ...(flow ? { guidance: `${corral.name}: ${flow}.` } : {}),
   };
 }
@@ -362,8 +534,7 @@ export function parseAutoRoute(
 
 /** The choice without a model (the demo, simulated runs): the local suggestion. */
 export function localAutoRoute(brief: string): { template: AutoTemplate; reason: string } {
-  const plan = planFromGoal(brief, WORDING);
-  return { template: plan?.pattern ?? 'single', reason: '' };
+  return { template: basePatternFromGoal(brief), reason: '' };
 }
 
 export type RouteAnswer =
@@ -405,6 +576,23 @@ export interface AutoSignal {
 
 const cancelled = () => new Error('the auto request was cancelled before a run started');
 
+/** What the server knows when it admits a request; none of it is part of the request identity. */
+export interface AutoStartContext<S extends AutoSignal = AutoSignal> {
+  fileTools: boolean;
+  signal?: S;
+  /**
+   * the stored session's completion criteria, read when the request was admitted. They stand in
+   * for the team's or auto default; criteria the request carries itself (a meeting handoff's
+   * adopted ones) win. A resend of the same command keeps what its first admission used.
+   */
+  sessionCriteria?: readonly string[];
+  /**
+   * the stored session's advisor, read when the request was admitted. A conversation started with
+   * it has the advisor in its definition; a resend keeps what its first admission used.
+   */
+  sessionAdvisor?: SessionAdvisorChoice | null;
+}
+
 export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
   prepareModels?(
     request: AutoStart,
@@ -426,10 +614,11 @@ export interface AutoStarterDeps<S extends AutoSignal = AutoSignal> {
     request: AutoStart,
   ): AutoStartResult | null;
   /**
-   * whether the session has a working copy for the conversation lead's file tools; the
-   * start context's value when absent. No chooser runs, so the answer is read at start.
+   * whether the session has a working copy for the conversation lead's file tools, or the
+   * folder mode when the server can name it. The start context's boolean when absent.
+   * No chooser runs, so the answer is read at start.
    */
-  fileTools?(request: AutoStart): boolean | Promise<boolean>;
+  fileTools?(request: AutoStart): boolean | SessionFiles | Promise<boolean | SessionFiles>;
   /** a saved Corral whose roles the lead may call; null when it does not exist. */
   corral?(
     corralId: string,
@@ -544,11 +733,13 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
 
   const run = async (
     request: AutoStart,
-    context: { fileTools: boolean; signal?: S },
+    context: AutoStartContext<S>,
     requestHash: string,
   ): Promise<AutoStartResult> => {
     const signal = context.signal;
     if (signal?.aborted) throw cancelled();
+    const criteria =
+      request.criteria ?? (context.sessionCriteria?.length ? [...context.sessionCriteria] : null);
     const refused = deps.precheck?.(request);
     if (refused) return { ...refused, autoRoute: null };
     const prepared = deps.prepareModels?.(request);
@@ -560,12 +751,17 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       };
     const models = prepared?.models;
     if (request.team !== undefined) {
-      const fileTools = (await deps.fileTools?.(request)) ?? context.fileTools;
+      const reported = deps.fileTools ? await deps.fileTools(request) : undefined;
+      const workspace = reported && typeof reported === 'object' ? reported : undefined;
+      const fileTools = workspace
+        ? workspace.mode !== 'none'
+        : typeof reported === 'boolean'
+          ? reported
+          : context.fileTools;
       if (signal?.aborted) throw cancelled();
-      // in a linked, trusted folder a live session works with commands and previews
-      // by default. An explicit work style wins; otherwise the session's default is layered under
-      // the person's and project's defaults, which may restrict it. Simulated agents get none:
-      // a work style would only be simulated and would take their file tools away.
+      // a live session with a working copy or a direct folder uses the built-in work style
+      // unless one was chosen. The person's and project's defaults may still narrow it.
+      // Simulated agents get none: a work style would only be simulated and would take their file tools away.
       const harness =
         request.harness ??
         (fileTools && request.mode === 'live'
@@ -577,10 +773,11 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
         brief: request.brief,
         ...(request.taskScope ? { taskScope: request.taskScope } : {}),
         ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
-        ...(request.criteria ? { criteria: request.criteria } : {}),
+        ...(criteria ? { criteria } : {}),
         choice: request.choice,
         ...(harness ? { harness, commandTools: true } : {}),
         fileTools,
+        ...(workspace ? { workspace } : {}),
       };
       let roster: ConversationRoster | undefined;
       let sourceTeam: CorralDefinition['sourceTeam'];
@@ -611,7 +808,10 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
             roles: roster.roles.map((role) => (role.harness ? role : { ...role, harness })),
           };
       }
-      const definition = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      const conversation = conversationDefinition({ ...common, ...(roster ? { roster } : {}) });
+      const definition = context.sessionAdvisor
+        ? withSessionAdvisor(conversation, context.sessionAdvisor)
+        : conversation;
       if (sourceTeam) definition.sourceTeam = sourceTeam;
       // A saved team's roles may use other models; each must be prepared before the start.
       const profiles = [...new Set(definition.roles.map((role) => role.modelProfile))];
@@ -622,7 +822,10 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
           return {
             runId: null,
             autoRoute: null,
-            receipt: { ...conflict(request).receipt, error: again.error },
+            receipt: {
+              ...conflict(request).receipt,
+              error: advisorModelError(definition, context.sessionAdvisor, again.error),
+            },
           };
         teamModels = again?.models;
       }
@@ -661,7 +864,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
       brief: request.brief,
       ...(request.taskScope ? { taskScope: request.taskScope } : {}),
       ...(request.verificationScope ? { verificationScope: request.verificationScope } : {}),
-      ...(request.criteria ? { criteria: request.criteria } : {}),
+      ...(criteria ? { criteria } : {}),
       choice: request.choice,
       ...(request.harness ? { harness: request.harness } : {}),
       fileTools: context.fileTools,
@@ -688,10 +891,7 @@ export function createAutoStarter<S extends AutoSignal = AutoSignal>(deps: AutoS
   };
 
   return {
-    start(
-      request: AutoStart,
-      context: { fileTools: boolean; signal?: S },
-    ): Promise<AutoStartResult> {
+    start(request: AutoStart, context: AutoStartContext<S>): Promise<AutoStartResult> {
       const requestHash = bytesToHex(sha256(utf8ToBytes(canonicalJson(request))));
       const previous = deps.previousStart?.(request.commandId, requestHash, request);
       if (previous)

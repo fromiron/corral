@@ -5,6 +5,7 @@ import {
   PREFERENCES_KEY,
   parsePreferences,
   preferences,
+  sendKeyRole,
 } from './preferences.ts';
 
 describe('DW-02 workbench preferences', () => {
@@ -14,11 +15,13 @@ describe('DW-02 workbench preferences', () => {
     ).toEqual({
       version: 1,
       theme: 'dark',
+      palette: null,
       sidebarWidth: 420,
       sidebarOpen: false,
       sendKey: 'enter',
       notify: false,
       chatDensity: 'basic',
+      density: 'default',
     });
   });
   it('ignores corrupt and future preferences without losing access to navigation', () => {
@@ -31,13 +34,27 @@ describe('DW-02 workbench preferences', () => {
       expect(parsePreferences(raw)).toEqual({
         version: 1,
         theme: 'system',
+        palette: null,
         sidebarWidth: 256,
         sidebarOpen: true,
         sendKey: 'enter',
         notify: false,
         chatDensity: 'basic',
+        density: 'default',
       });
     }
+  });
+  it('reads a named theme by its id, and anything else, or nothing, as no named theme', () => {
+    expect(parsePreferences('{"version":1,"palette":"builtin:monokai"}').palette).toBe(
+      'builtin:monokai',
+    );
+    expect(parsePreferences('{"version":1,"palette":"custom:0f3a-9c"}').palette).toBe(
+      'custom:0f3a-9c',
+    );
+    // A record written before themes existed has no palette and reads as the default colors.
+    expect(parsePreferences('{"version":1,"theme":"dark"}').palette).toBeNull();
+    for (const palette of ['monokai', 'builtin:', 'custom:Bad Id', 'theme:x', 7, { id: 'x' }])
+      expect(parsePreferences(JSON.stringify({ version: 1, palette })).palette).toBeNull();
   });
   it('keeps the chosen send key and reads anything else as Enter', () => {
     expect(parsePreferences('{"version":1,"sendKey":"mod-enter"}').sendKey).toBe('mod-enter');
@@ -63,6 +80,14 @@ describe('Workbench polish: send key', () => {
     expect(isSendKey(key({}), 'mod-enter')).toBe(false);
     expect(isSendKey(key({ ctrlKey: true }), 'mod-enter')).toBe(true);
     expect(isSendKey(key({ metaKey: true }), 'mod-enter')).toBe(true);
+  });
+  it('queues on Alt+Enter alone; Alt with another modifier sends nothing', () => {
+    for (const sendKey of ['enter', 'mod-enter'] as const) {
+      expect(sendKeyRole(key({ altKey: true }), sendKey)).toBe('queue');
+      expect(sendKeyRole(key({ altKey: true, shiftKey: true }), sendKey)).toBeNull();
+      expect(sendKeyRole(key({ altKey: true, ctrlKey: true }), sendKey)).toBeNull();
+      expect(sendKeyRole(key({ altKey: true, metaKey: true }), sendKey)).toBeNull();
+    }
   });
 });
 

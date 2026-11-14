@@ -42,7 +42,9 @@ describe('the call snapshot a worker sends', () => {
       messages: [
         { role: 'system', content: 'system rules', timestamp: 1 } as unknown as AgentMessage,
         user(`${assignmentMetadata('{"criteriaVersionId":"crit_1"}')}## brief\n\nFix the parser.`),
-        user(directiveText([{ directiveId: 'dir_1', text: 'Keep the API.' }])),
+        user(
+          directiveText({ directiveId: 'dir_1', text: 'Keep the API.', origin: 'user' as const }),
+        ),
         { role: 'user', content: '[Corral current state]\n{"questions":[]}', timestamp: 0 },
       ],
     });
@@ -59,13 +61,41 @@ describe('the call snapshot a worker sends', () => {
         user('Fix the parser bug.'),
         assistant('Running the tests first.', [{ id: 't1', name: 'bash', arguments: {} }]),
         result('t1', '1 failing', true),
-        user(sdkDirectiveText({ directiveId: 'dir_1', text: 'Keep the public API.' })),
+        user(
+          sdkDirectiveText({
+            directiveId: 'dir_1',
+            text: 'Keep the public API.',
+            origin: 'user' as const,
+          }),
+        ),
       ],
     });
     expect(snapshot.request?.text).toBe('Fix the parser bug.');
     expect(snapshot.previousAssistant?.text).toBe('Running the tests first.');
     expect(snapshot.toolCalls.map((call) => call.toolCallId)).toEqual(['t1']);
     expect(JSON.stringify(snapshot)).not.toContain('Keep the public API.');
+  });
+
+  it.each([
+    ['core', directiveText],
+    ['SDK', sdkDirectiveText],
+  ])('an advice the %s worker delivered is not the request', (_worker, form) => {
+    const snapshot = callSnapshotInput({
+      messages: [
+        user('Fix the parser bug.'),
+        assistant('Reading the parser.', []),
+        user(
+          form({
+            directiveId: 'dir_1',
+            text: 'The tokenizer is the cause.',
+            origin: 'advice' as const,
+            advice: { severity: 'concern', from: 'Reviewer' },
+          }),
+        ),
+      ],
+    });
+    expect(snapshot.request?.text).toBe('Fix the parser bug.');
+    expect(JSON.stringify(snapshot)).not.toContain('The tokenizer is the cause.');
   });
 
   it('keeps every tool call of the latest step with its own status (P02, P08)', () => {

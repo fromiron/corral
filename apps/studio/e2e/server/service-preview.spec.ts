@@ -5,7 +5,14 @@ import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { panelTab, requestBox } from '../workbench.ts';
+import {
+  closeSettings,
+  newConversation,
+  openFolderSettings,
+  panelTab,
+  requestBox,
+  stopRun,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -105,15 +112,14 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
   try {
     // a trusted folder's session runs commands in the built-in work style.
     await corral.open('/');
-    await page.getByRole('tab', { name: /^Project folder/ }).click();
-    const folder = page.getByRole('tabpanel', { name: 'Project folder' });
+    const folder = await openFolderSettings(page);
     await folder.getByLabel('Folder path on this computer').fill(original);
     await folder.getByRole('button', { name: 'Link folder' }).click();
     const trust = folder.getByRole('switch', { name: /Trust this repository/ });
     await trust.click();
     await expect(trust).toBeChecked();
-    await page.getByRole('tab', { name: /^Sessions/ }).click();
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await closeSettings(page);
+    await newConversation(page);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/')[2];
     if (!sessionId) throw new Error('Session did not open');
@@ -133,10 +139,10 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       'Start preview-app.cjs as a service, open its owned preview, verify the heading and ask me whether to keep it running.',
     );
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await expect(page.getByTestId('action-required')).toBeVisible({ timeout: 45_000 });
-    await page.getByTestId('action-required').getByRole('link').click();
-    await expect(page.getByRole('form', { name: 'Waiting for your answer' })).toContainText(
+    // The question comes to the conversation's needed-now tray, in view: no notice repeats it.
+    await expect(page.getByRole('form', { name: 'Waiting for you' })).toContainText(
       'Keep the service running?',
+      { timeout: 45_000 },
     );
     await panelTab(page, 'Tasks & preview');
     const previews = page.getByRole('region', { name: 'Open previews', exact: true });
@@ -152,14 +158,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       ]),
     );
     await page.screenshot({ path: testInfo.outputPath('service-preview.png') });
-    await page
-      .getByRole('region', { name: 'Active run controls', exact: true })
-      .getByRole('button', { name: 'Cancel whole run', exact: true })
-      .click();
-    await page
-      .getByRole('dialog', { name: 'Cancel whole run', exact: true })
-      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-      .click();
+    await stopRun(page);
     await expect
       .poll(async () => (await page.request.get(`${prefix}/processes/${operationId}`)).json(), {
         timeout: 30000,

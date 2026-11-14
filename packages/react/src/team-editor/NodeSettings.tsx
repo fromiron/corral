@@ -1,49 +1,86 @@
-import type {
-  AgentRole,
-  CorralNode,
-  InputBinding,
-  InputBindingKind,
-  LoopNode,
-  OutputContract,
-  ReasoningCapabilities,
+import {
+  type AgentNode,
+  type AgentRole,
+  advisorReview,
+  type CorralNode,
+  Identifier,
+  type InputBinding,
+  type InputBindingKind,
+  type LoopLimitPolicy,
+  type LoopNode,
+  type ObserverAgentNode,
+  type OutputContract,
+  type ReasoningCapabilities,
+  ReasoningLevel,
 } from '@corral/contracts';
-import { type ReactNode, useId, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { ModelSelect, type ProfileChoice, profileChoices } from '../components/ModelSelect.tsx';
 import { ReasoningSelect } from '../components/ReasoningSelect.tsx';
 import {
   KitButton as Button,
+  Collapse,
   KitAccordion,
   KitAccordionContent,
   KitAccordionItem,
   KitAccordionTrigger,
+  KitCheckboxGroup,
+  KitCheckboxItem,
   KitInputField,
   KitInputGroup,
   KitRadioGroup,
   KitRadioItem,
   KitSwitch,
   Select,
+  TabItem,
+  Tabs,
+  TabsList,
   Textarea,
 } from '../design-kit/index.ts';
-import { connectCapability, type EditorDraft, withDefinition } from '../editor/model.ts';
+import {
+  ADVISOR_READ_TOOLS,
+  connectCapability,
+  type EditorDraft,
+  withDefinition,
+} from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
+import { X } from '../ui/icons.ts';
+import { patchNode, removeItems, watchAgent } from './commands.ts';
 
 // The settings of one step that the team editor's sheet shows: role, model, tools, inputs and
 // call links for agents, and the kind-specific fields of decisions, loops and outputs. Every
 // field writes through the editor store, so undo covers it.
 
 /** A model profile the role may use, as the local server knows it. */
-export interface ProfileOption {
+export interface ProfileOption extends ProfileChoice {
+  reasoningCapabilities?: ReasoningCapabilities | undefined;
+}
+
+/** A saved image profile a role can choose. The value stored on the role is profileId. */
+export interface ImageProfileChoice {
   profileId: string;
   label: string;
-  available: boolean;
-  reasoningCapabilities?: ReasoningCapabilities | undefined;
+}
+
+function imageProfileChoices(
+  saved: readonly ImageProfileChoice[] | null,
+  current: string | null | undefined,
+  missing: (id: string) => string,
+): { value: string; label: string }[] {
+  // Unknown list: keep the role's saved id on screen and do not pretend the list is empty.
+  if (!saved) return current ? [{ value: current, label: current }] : [];
+  const options = saved.map((profile) => ({ value: profile.profileId, label: profile.label }));
+  if (current && !saved.some((profile) => profile.profileId === current))
+    options.unshift({ value: current, label: missing(current) });
+  return options;
 }
 
 export type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
 export type LoopSettings = (node: LoopNode) => ReactNode;
 
 const CONTRACTS: OutputContract[] = ['text', 'notes', 'draft', 'review'];
+const INVOCATIONS: AgentNode['invocation'][] = ['scheduled', 'callable', 'observer'];
 const BINDING_KINDS: InputBindingKind[] = [
   'run_input',
   'task_output',
@@ -64,16 +101,19 @@ export function NodeSettings({
   editor,
   node,
   profiles,
+  imageProfiles,
   roleSettings,
   loopSettings,
 }: {
   editor: EditorStore;
   node: CorralNode;
   profiles: ProfileOption[] | null;
+  imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings: RoleSettings | undefined;
   loopSettings: LoopSettings | undefined;
 }) {
   const t = useTranslations('Inspector');
+  const tm = useTranslations('ModelSelect');
   const id = useId();
   const session = useEditSession(editor);
   const draft = useStore(editor, (s) => s.draft);
@@ -104,10 +144,10 @@ export function NodeSettings({
               aria-label={t('invocation')}
               value={node.invocation}
               onValueChange={(value) =>
-                update(node.id, { invocation: value as typeof node.invocation })
+                update(node.id, { invocation: value as AgentNode['invocation'] })
               }
             >
-              {(['scheduled', 'callable'] as const).map((value, index) => (
+              {INVOCATIONS.map((value, index) => (
                 <KitRadioItem key={value} index={index} value={value} label={t(value)} />
               ))}
             </KitRadioGroup>
@@ -126,31 +166,21 @@ export function NodeSettings({
           {sharedBy > 1 ? (
             <p className="text-caption text-warning">{t('sharedRole', { count: sharedBy })}</p>
           ) : null}
-          {roleSettings?.(role, node.id)}
+          {node.invocation === 'observer' ? null : roleSettings?.(role, node.id)}
           {profiles?.length ? (
             <div className="flex flex-col gap-1">
               <label htmlFor={`${id}-profile`} className="text-caption">
                 {t('modelProfile')}
               </label>
-              <Select
+              <ModelSelect
                 id={`${id}-profile`}
                 label={t('modelProfile')}
                 value={role.modelProfile}
                 onValueChange={(modelProfile) => update(node.id, { modelProfile })}
-                options={[
-                  ...(profiles.some((p) => p.profileId === role.modelProfile)
-                    ? []
-                    : [
-                        {
-                          value: role.modelProfile,
-                          label: t('profileMissing', { profile: role.modelProfile }),
-                        },
-                      ]),
-                  ...profiles.map((p) => ({
-                    value: p.profileId,
-                    label: `${p.profileId} — ${p.label}${p.available ? '' : ` (${t('profileSignIn')})`}`,
-                  })),
-                ]}
+                options={profileChoices(profiles, {
+                  profiles: tm('profiles'),
+                  unavailable: t('profileSignIn'),
+                })}
               />
             </div>
           ) : (
@@ -170,128 +200,18 @@ export function NodeSettings({
             }
             onChange={(reasoning) => update(node.id, { reasoning })}
           />
-          <div className="flex flex-col gap-1">
-            <KitSwitch
-              label={t('fileTools')}
-              checked={role.allowedWorkTools.includes('write_file')}
-              onToggle={() =>
-                update(node.id, { fileTools: !role.allowedWorkTools.includes('write_file') })
-              }
+          {node.invocation === 'observer' ? (
+            <AdvisorFields editor={editor} node={node} role={role} draft={draft} />
+          ) : (
+            <WorkTools
+              editor={editor}
+              node={node}
+              role={role}
+              draft={draft}
+              sharedBy={sharedBy}
+              imageProfiles={imageProfiles}
             />
-            <p className="text-caption text-muted-foreground">{t('fileToolsHint')}</p>
-          </div>
-          {role.allowedWorkTools.includes('write_file') ? (
-            <label htmlFor={`${id}-editing`} className="flex flex-col gap-1 text-caption">
-              {t('editingMode')}
-              <Select
-                id={`${id}-editing`}
-                label={t('editingMode')}
-                value={role.editingMode ?? 'pi'}
-                onValueChange={(editingMode) => update(node.id, { editingMode })}
-                options={[
-                  { value: 'pi', label: t('editingModePi') },
-                  { value: 'hashline', label: t('editingModeHashline') },
-                ]}
-              />
-              <span className="font-normal text-muted-foreground">{t('editingModeHint')}</span>
-            </label>
-          ) : null}
-          <div className="flex flex-col gap-1">
-            <KitSwitch
-              label={t('runCommand')}
-              checked={role.allowedWorkTools.includes('run_command')}
-              onToggle={() =>
-                update(node.id, { runCommand: !role.allowedWorkTools.includes('run_command') })
-              }
-            />
-            <p className="text-caption text-muted-foreground">{t('runCommandHint')}</p>
-          </div>
-          <KitSwitch
-            label={t('teamPlanOwner')}
-            checked={draft.definition.planOwnerRoleId === role.id}
-            disabled={sharedBy > 1}
-            onToggle={() =>
-              update(node.id, { teamPlanOwner: !(draft.definition.planOwnerRoleId === role.id) })
-            }
-          />
-          <div className="flex flex-col gap-1">
-            <KitSwitch
-              label={t('generateImage')}
-              checked={role.allowedWorkTools.includes('generate_image')}
-              onToggle={() =>
-                update(node.id, {
-                  generateImage: !role.allowedWorkTools.includes('generate_image'),
-                })
-              }
-            />
-            <p className="text-caption text-muted-foreground">{t('generateImageHint')}</p>
-          </div>
-          {role.allowedWorkTools.includes('generate_image') ? (
-            <div className="flex flex-col gap-1 text-caption">
-              <KitInputGroup className="w-full" {...session}>
-                <KitInputField
-                  index={0}
-                  label={t('imageProfile')}
-                  value={role.imageProfile ?? ''}
-                  onChange={(value) => update(node.id, { imageProfile: value || null })}
-                  required
-                  aria-describedby={`${id}-image-profile-hint`}
-                />
-              </KitInputGroup>
-              <span id={`${id}-image-profile-hint`} className="font-normal text-muted-foreground">
-                {t('imageProfileHint')}
-              </span>
-            </div>
-          ) : null}
-          <KitAccordion className="w-full">
-            <KitAccordionItem value="previews">
-              <KitAccordionTrigger>{t('previews')}</KitAccordionTrigger>
-              <KitAccordionContent>
-                <div className="mt-2 flex flex-col gap-3">
-                  {(
-                    [
-                      ['previewFile', 'preview_file'],
-                      ['previewApp', 'preview_app'],
-                      ['previewAction', 'preview_action'],
-                    ] as const
-                  ).map(([key, tool]) => (
-                    <div key={key} className="flex flex-col gap-1">
-                      <KitSwitch
-                        label={t(key)}
-                        checked={role.allowedWorkTools.includes(tool)}
-                        onToggle={() =>
-                          update(node.id, { [key]: !role.allowedWorkTools.includes(tool) })
-                        }
-                      />
-                      <p className="text-caption text-muted-foreground">{t(`${key}Hint`)}</p>
-                    </div>
-                  ))}
-                </div>
-              </KitAccordionContent>
-            </KitAccordionItem>
-          </KitAccordion>
-          <KitAccordion className="w-full">
-            <KitAccordionItem value="advanced">
-              <KitAccordionTrigger>{t('advanced')}</KitAccordionTrigger>
-              <KitAccordionContent>
-                <div className="mt-2 flex flex-col gap-3">
-                  <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-caption">
-                    {t('contract')}
-                    <Select
-                      id={`${id}-contract`}
-                      label={t('contract')}
-                      value={role.outputContract}
-                      onValueChange={(outputContract) => update(node.id, { outputContract })}
-                      options={CONTRACTS.map((value) => ({
-                        value,
-                        label: t(`contracts.${value}`),
-                      }))}
-                    />
-                  </label>
-                </div>
-              </KitAccordionContent>
-            </KitAccordionItem>
-          </KitAccordion>
+          )}
         </>
       ) : null}
 
@@ -312,31 +232,16 @@ export function NodeSettings({
       ) : null}
 
       {node.type === 'loop' ? (
-        <KitInputGroup className="w-full" {...session}>
-          <KitInputField
-            index={0}
-            label={t('maxIterations')}
-            type="number"
-            min={1}
-            value={String(node.maxIterations)}
-            onChange={(input) => {
-              const value = Number(input);
-              if (Number.isInteger(value) && value >= 1) update(node.id, { maxIterations: value });
-            }}
-          />
-        </KitInputGroup>
+        <LoopLimit editor={editor} node={node} profiles={profiles} draft={draft} />
       ) : null}
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
-        <>
-          <KitSwitch
-            label={t('requireApproval')}
-            checked={node.requireApproval}
-            onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
-          />
-          <p className="text-caption text-muted-foreground">{t('outputNote')}</p>
-        </>
+        <KitSwitch
+          label={t('requireApproval')}
+          checked={node.requireApproval}
+          onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
+        />
       ) : null}
 
       {(node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
@@ -350,6 +255,462 @@ export function NodeSettings({
         <Calls editor={editor} nodeId={node.id} draft={draft} />
       ) : null}
     </div>
+  );
+}
+
+/** A working agent's tools and output: files, commands, the team plan, images and previews. */
+function WorkTools({
+  editor,
+  node,
+  role,
+  draft,
+  sharedBy,
+  imageProfiles,
+}: {
+  editor: EditorStore;
+  node: CorralNode;
+  role: AgentRole;
+  draft: EditorDraft;
+  sharedBy: number;
+  imageProfiles: readonly ImageProfileChoice[] | null;
+}) {
+  const t = useTranslations('Inspector');
+  const id = useId();
+  const update = editor.getState().updateNode;
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <KitSwitch
+          label={t('fileTools')}
+          checked={role.allowedWorkTools.includes('write_file')}
+          onToggle={() =>
+            update(node.id, { fileTools: !role.allowedWorkTools.includes('write_file') })
+          }
+        />
+        <p className="text-caption text-muted-foreground">{t('fileToolsHint')}</p>
+      </div>
+      {role.allowedWorkTools.includes('write_file') ? (
+        <label htmlFor={`${id}-editing`} className="flex flex-col gap-1 text-caption">
+          {t('editingMode')}
+          <Select
+            id={`${id}-editing`}
+            label={t('editingMode')}
+            value={role.editingMode ?? 'pi'}
+            onValueChange={(editingMode) => update(node.id, { editingMode })}
+            options={[
+              { value: 'pi', label: t('editingModePi') },
+              { value: 'hashline', label: t('editingModeHashline') },
+            ]}
+          />
+          <span className="text-muted-foreground">{t('editingModeHint')}</span>
+        </label>
+      ) : null}
+      <div className="flex flex-col gap-1">
+        <KitSwitch
+          label={t('runCommand')}
+          checked={role.allowedWorkTools.includes('run_command')}
+          onToggle={() =>
+            update(node.id, { runCommand: !role.allowedWorkTools.includes('run_command') })
+          }
+        />
+        <p className="text-caption text-muted-foreground">{t('runCommandHint')}</p>
+      </div>
+      <KitSwitch
+        label={t('teamPlanOwner')}
+        checked={draft.definition.planOwnerRoleId === role.id}
+        disabled={sharedBy > 1}
+        onToggle={() =>
+          update(node.id, { teamPlanOwner: !(draft.definition.planOwnerRoleId === role.id) })
+        }
+      />
+      <div className="flex flex-col gap-1">
+        <KitSwitch
+          label={t('generateImage')}
+          checked={role.allowedWorkTools.includes('generate_image')}
+          onToggle={() =>
+            update(node.id, {
+              generateImage: !role.allowedWorkTools.includes('generate_image'),
+            })
+          }
+        />
+        <p className="text-caption text-muted-foreground">{t('generateImageHint')}</p>
+      </div>
+      {role.allowedWorkTools.includes('generate_image') ? (
+        <div className="flex flex-col gap-1 text-caption">
+          <Select
+            label={t('imageProfile')}
+            describedBy={`${id}-image-profile-hint`}
+            value={role.imageProfile ?? null}
+            placeholder={t('imageProfilePlaceholder')}
+            onValueChange={(imageProfile) => update(node.id, { imageProfile })}
+            options={imageProfileChoices(
+              imageProfiles,
+              role.imageProfile,
+              (profileId) => `${profileId} (${t('imageProfileMissing')})`,
+            )}
+          />
+          <span id={`${id}-image-profile-hint`} className="text-muted-foreground">
+            {t('imageProfileHint')}
+          </span>
+        </div>
+      ) : null}
+      <KitAccordion className="w-full">
+        <KitAccordionItem value="previews">
+          <KitAccordionTrigger>{t('previews')}</KitAccordionTrigger>
+          <KitAccordionContent>
+            <div className="mt-2 flex flex-col gap-3">
+              {(
+                [
+                  ['previewFile', 'preview_file'],
+                  ['previewApp', 'preview_app'],
+                  ['previewAction', 'preview_action'],
+                ] as const
+              ).map(([key, tool]) => (
+                <div key={key} className="flex flex-col gap-1">
+                  <KitSwitch
+                    label={t(key)}
+                    checked={role.allowedWorkTools.includes(tool)}
+                    onToggle={() =>
+                      update(node.id, { [key]: !role.allowedWorkTools.includes(tool) })
+                    }
+                  />
+                  <p className="text-caption text-muted-foreground">{t(`${key}Hint`)}</p>
+                </div>
+              ))}
+            </div>
+          </KitAccordionContent>
+        </KitAccordionItem>
+      </KitAccordion>
+      <KitAccordion className="w-full">
+        <KitAccordionItem value="advanced">
+          <KitAccordionTrigger>{t('advanced')}</KitAccordionTrigger>
+          <KitAccordionContent>
+            <div className="mt-2 flex flex-col gap-3">
+              <label htmlFor={`${id}-contract`} className="flex flex-col gap-1 text-caption">
+                {t('contract')}
+                <Select
+                  id={`${id}-contract`}
+                  label={t('contract')}
+                  value={role.outputContract}
+                  onValueChange={(outputContract) => update(node.id, { outputContract })}
+                  options={CONTRACTS.map((value) => ({
+                    value,
+                    label: t(`contracts.${value}`),
+                  }))}
+                />
+              </label>
+            </div>
+          </KitAccordionContent>
+        </KitAccordionItem>
+      </KitAccordion>
+    </>
+  );
+}
+
+/**
+ * What only an advisor has: the tools it reads with, the agents it watches as name chips with a
+ * way to add one, and how many model requests of theirs pass between its reviews. Its other
+ * review setting is kept as it is.
+ */
+function AdvisorFields({
+  editor,
+  node,
+  role,
+  draft,
+}: {
+  editor: EditorStore;
+  node: ObserverAgentNode;
+  role: AgentRole;
+  draft: EditorDraft;
+}) {
+  const t = useTranslations('Inspector');
+  const id = useId();
+  const session = useEditSession(editor);
+  const { applyDraft, updateNode } = editor.getState();
+  const reads = ADVISOR_READ_TOOLS.filter((tool) => role.allowedWorkTools.includes(tool));
+  const checked = new Set(
+    ADVISOR_READ_TOOLS.flatMap((tool, index) => (reads.includes(tool) ? [index] : [])),
+  );
+  const labelOf = (nodeId: string) =>
+    draft.definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const watching = draft.definition.capabilityLinks.filter(
+    (link) => link.kind === 'advise' && link.sourceNodeId === node.id,
+  );
+  const candidates = draft.definition.nodes.filter((n) => watchAgent(draft, node.id, n.id).ok);
+  const review = advisorReview(node);
+  // A removed chip's focus goes to the next chip, else to the add list, never to the page.
+  const chips = useRef<HTMLDivElement>(null);
+  const [refocus, setRefocus] = useState<{ next: string | null } | null>(null);
+  useEffect(() => {
+    if (!refocus) return;
+    const target =
+      (refocus.next
+        ? chips.current?.querySelector<HTMLElement>(`[data-watch="${refocus.next}"]`)
+        : null) ?? document.getElementById(`${id}-add-watch`);
+    target?.focus();
+    setRefocus(null);
+  }, [refocus, id]);
+  return (
+    <>
+      <div className="flex flex-col gap-1">
+        <span id={`${id}-reads`} className="text-caption">
+          {t('readTools')}
+        </span>
+        <KitCheckboxGroup
+          aria-labelledby={`${id}-reads`}
+          checkedIndices={checked}
+          className="w-full"
+        >
+          {ADVISOR_READ_TOOLS.map((tool, index) => (
+            <KitCheckboxItem
+              key={tool}
+              index={index}
+              label={t(`readTool.${tool}`)}
+              checked={reads.includes(tool)}
+              onToggle={() =>
+                updateNode(node.id, {
+                  readTools: reads.includes(tool)
+                    ? reads.filter((other) => other !== tool)
+                    : [...reads, tool],
+                })
+              }
+            />
+          ))}
+        </KitCheckboxGroup>
+      </div>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1.5 text-caption">{t('watches')}</legend>
+        {watching.length ? (
+          <div ref={chips} className="flex flex-wrap gap-1.5">
+            {watching.map((link, index) => (
+              <Button
+                key={link.id}
+                data-watch={link.id}
+                variant="secondary"
+                size="compact"
+                trailingIcon={X}
+                aria-label={t('removeWatched', { target: labelOf(link.targetNodeId) })}
+                onClick={() => {
+                  applyDraft(removeItems(editor.getState().draft, [link.id]));
+                  setRefocus({ next: watching[index + 1]?.id ?? null });
+                }}
+              >
+                {labelOf(link.targetNodeId)}
+              </Button>
+            ))}
+          </div>
+        ) : null}
+        {candidates.length ? (
+          <Select
+            id={`${id}-add-watch`}
+            label={t('addWatched')}
+            placeholder={t('addWatched')}
+            value={null}
+            onValueChange={(agent: string) => {
+              const result = watchAgent(editor.getState().draft, node.id, agent);
+              if (result.ok) applyDraft(result.draft);
+            }}
+            options={candidates.map((n) => ({ value: n.id, label: n.label }))}
+          />
+        ) : null}
+      </fieldset>
+      <div className="flex items-center gap-2 text-body">
+        <span aria-hidden="true">{t('reviewEvery')}</span>
+        <KitInputGroup className="w-16" {...session}>
+          <KitInputField
+            index={0}
+            label={t('reviewField')}
+            labelHidden
+            type="number"
+            min={1}
+            value={String(review.interval)}
+            onChange={(input) => {
+              const interval = Number(input);
+              if (Number.isSafeInteger(interval) && interval >= 1)
+                applyDraft(
+                  patchNode(editor.getState().draft, node.id, { review: { ...review, interval } }),
+                );
+            }}
+          />
+        </KitInputGroup>
+        <span aria-hidden="true">{t('reviewRequests', { count: review.interval })}</span>
+      </div>
+    </>
+  );
+}
+
+type LimitChoice = Exclude<LoopLimitPolicy['kind'], 'unlimited'>;
+const LIMIT_CHOICES: LimitChoice[] = ['exhaust', 'raise_reasoning', 'upper_model'];
+const RAISE_LEVELS = ReasoningLevel.options.filter((level) => level !== 'off');
+const DEFAULT_ROUNDS = 3;
+
+/**
+ * A Loop's limit, read as a sentence: up to N rounds or no limit, and at the limit end, raise
+ * reasoning to a level or switch to another model. Each choice is one write, so the Loop never
+ * passes through a state that team-graph.md structure rule 4 rejects. Turning the cap back on
+ * starts from three rounds that end; undo brings back what was there.
+ */
+function LoopLimit({
+  editor,
+  node,
+  profiles,
+  draft,
+}: {
+  editor: EditorStore;
+  node: LoopNode;
+  profiles: ProfileOption[] | null;
+  draft: EditorDraft;
+}) {
+  const t = useTranslations('Inspector.loopLimit');
+  const level = useTranslations('Reasoning.level');
+  const tm = useTranslations('ModelSelect');
+  const ti = useTranslations('Inspector');
+  const id = useId();
+  const session = useEditSession(editor);
+  const write = (change: Record<string, unknown>) =>
+    editor.getState().applyDraft(patchNode(editor.getState().draft, node.id, change));
+
+  const policy = node.limitPolicy;
+  const unlimited = policy?.kind === 'unlimited';
+  const choice: LimitChoice = !policy || policy.kind === 'unlimited' ? 'exhaust' : policy.kind;
+  // A review recipe ends the Loop at its attempts, so the Loop can only end.
+  const recipe = node.reviewRecipe !== undefined;
+  const reason = recipe ? `${id}-recipe` : undefined;
+  // A runnable profile first; with no list, the model a role already uses.
+  const upperProfile = [
+    profiles?.find((profile) => profile.available)?.profileId,
+    profiles?.[0]?.profileId,
+    draft.definition.roles[0]?.modelProfile,
+  ].find((profile) => profile !== undefined && Identifier.safeParse(profile).success);
+  const unavailable = (value: LimitChoice) =>
+    (recipe && value !== 'exhaust') || (value === 'upper_model' && !upperProfile);
+
+  const toggleUnlimited = () =>
+    write(
+      unlimited
+        ? { maxIterations: DEFAULT_ROUNDS, limitPolicy: undefined }
+        : { maxIterations: undefined, limitPolicy: { kind: 'unlimited' } },
+    );
+  const choose = (next: string) => {
+    if (next === choice || unavailable(next as LimitChoice)) return;
+    write({
+      limitPolicy:
+        next === 'raise_reasoning'
+          ? { kind: 'raise_reasoning', level: 'high' }
+          : next === 'upper_model'
+            ? { kind: 'upper_model', modelProfile: upperProfile }
+            : undefined,
+    });
+  };
+
+  return (
+    // Named by its first line rather than a legend, so the switch can share that line.
+    <fieldset
+      aria-labelledby={`${id}-limit`}
+      aria-describedby={reason}
+      className="flex flex-col gap-2"
+    >
+      {/* The switch sits on the group's own line, so it stays put when the rows below go. */}
+      <div className="flex items-center justify-between gap-2">
+        <span id={`${id}-limit`} className="text-caption">
+          {t('group')}
+        </span>
+        <KitSwitch
+          label={t('unlimited')}
+          checked={unlimited}
+          disabled={recipe && !unlimited}
+          onToggle={toggleUnlimited}
+        />
+      </div>
+      {reason ? (
+        <span id={reason} className="sr-only">
+          {t('recipeOnly')}
+        </span>
+      ) : null}
+      {/* The kit's fold, as other rows that come and go with a choice; the margin keeps focus
+          rings outside its clip. */}
+      <Collapse
+        open={!unlimited}
+        hideWhenClosed
+        className="-m-1"
+        innerClassName="flex flex-col gap-2 p-1"
+      >
+        <div className="flex items-center gap-2 text-body">
+          <span aria-hidden="true">{t('upTo')}</span>
+          <KitInputGroup className="w-16" {...session}>
+            <KitInputField
+              index={0}
+              label={t('roundsField')}
+              labelHidden
+              type="number"
+              min={1}
+              value={String(node.maxIterations ?? '')}
+              onChange={(input) => {
+                const value = Number(input);
+                if (Number.isSafeInteger(value) && value >= 1)
+                  editor.getState().updateNode(node.id, { maxIterations: value });
+              }}
+            />
+          </KitInputGroup>
+          <span aria-hidden="true">{t('rounds', { count: node.maxIterations ?? 0 })}</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-body">
+          <span id={`${id}-at`}>{t('atLimit')}</span>
+          <Tabs value={choice} onValueChange={choose} size="compact">
+            <TabsList aria-labelledby={`${id}-at`} aria-describedby={reason}>
+              {LIMIT_CHOICES.map((value) => (
+                <TabItem
+                  key={value}
+                  value={value}
+                  label={t(`policy.${value}`)}
+                  disabled={unavailable(value)}
+                  // The kit's tabs draw no disabled state; this one matches its Switch.
+                  className={unavailable(value) ? 'pointer-events-none opacity-50' : undefined}
+                />
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+      </Collapse>
+      {!recipe && policy?.kind === 'raise_reasoning' ? (
+        <Select
+          label={t('level')}
+          value={policy.level}
+          onValueChange={(next) =>
+            write({ limitPolicy: { kind: 'raise_reasoning', level: ReasoningLevel.parse(next) } })
+          }
+          options={RAISE_LEVELS.map((value) => ({ value, label: level(value) }))}
+        />
+      ) : null}
+      {!recipe && policy?.kind === 'upper_model' ? (
+        profiles?.length ? (
+          <ModelSelect
+            label={t('model')}
+            value={policy.modelProfile}
+            onValueChange={(modelProfile) =>
+              write({ limitPolicy: { kind: 'upper_model', modelProfile } })
+            }
+            options={profileChoices(profiles, {
+              profiles: tm('profiles'),
+              unavailable: ti('profileSignIn'),
+            })}
+          />
+        ) : (
+          <KitInputGroup className="w-full" {...session}>
+            <KitInputField
+              index={0}
+              label={t('model')}
+              value={policy.modelProfile}
+              onChange={(modelProfile) => {
+                // As the role's model field: a blank or malformed id keeps the one before.
+                if (Identifier.safeParse(modelProfile).success)
+                  write({ limitPolicy: { kind: 'upper_model', modelProfile } });
+              }}
+            />
+          </KitInputGroup>
+        )
+      ) : null}
+    </fieldset>
   );
 }
 

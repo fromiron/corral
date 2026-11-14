@@ -81,6 +81,36 @@ describe('event sentences (UX-A4)', () => {
     expect(text('tool.requested')).toMatch(/^Research called spawn_subagents$/);
   });
 
+  it('an approval the runtime closed is not written as the person rejecting it', () => {
+    const resolved = (
+      actor: 'user' | 'runtime',
+      decision: 'approve' | 'reject',
+      reason = 'execution_ended',
+    ) => {
+      const event = {
+        type: 'approval.resolved',
+        runSeq: 1,
+        actor: { kind: actor, id: actor === 'user' ? 'local_user' : 'coordinator' },
+        payload: {
+          approvalId: 'appr_1',
+          decision,
+          actor: actor === 'user' ? 'local_user' : 'coordinator',
+          subjectVersionIds: ['v1'],
+          ...(actor === 'runtime' ? { reason } : {}),
+        },
+      } as unknown as RunEvent;
+      const view = intl(<EventText event={event} labelOf={() => ''} nodeLabel={(id) => id} />);
+      const out = view.container.textContent ?? '';
+      view.unmount();
+      return out;
+    };
+    expect(resolved('runtime', 'reject')).toBe('Closed without a decision');
+    expect(resolved('user', 'reject')).toBe('You rejected');
+    expect(resolved('user', 'approve')).toBe('You approved');
+    // A call the person allowed for the run passes others like it: still the person's approval.
+    expect(resolved('runtime', 'approve', 'allowed_for_run')).toBe('You approved');
+  });
+
   it('an event without a sentence still shows its type, never an empty row', async () => {
     const event = {
       type: 'future.event',
@@ -108,6 +138,22 @@ describe('run status reasons (UX-A4)', () => {
     expect(reason('approval_requested: user_action')).toBe('Waiting for your decision');
     expect(reason('execution_failed: write')).toBe('Writer failed');
     expect(reason('final_output_rejected')).toBe('You rejected the final output');
+  });
+
+  it('names the Loop and why it ran out when an exhausted Loop failed the run', () => {
+    expect(reason('loop_exhausted: write cap_reached')).toBe(
+      'Writer ran out of rounds: it reached its round limit',
+    );
+    expect(reason('loop_exhausted: write stalled')).toBe(
+      'Writer ran out of rounds: it kept producing the same result',
+    );
+  });
+
+  it('names why a review recipe stopped the run', () => {
+    expect(reason('review_recipe:attempt_limit')).toBe('Generation attempt limit reached');
+    expect(reason('review_recipe:repeated_output')).toBe('Candidate repeated without change');
+    // A stop the catalog cannot name stays as recorded.
+    expect(reason('review_recipe:something_new')).toBe('review_recipe:something_new');
   });
 
   it('an unknown code is shown as it is', () => {

@@ -13,6 +13,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  Bot,
   Brain,
   Calendar,
   Check,
@@ -21,26 +22,42 @@ import {
   ChevronsUpDown,
   Circle,
   Clock,
+  Code,
   Copy,
   CornerDownLeft,
   CornerDownRight,
+  Database,
   Dot,
+  Download,
   Ellipsis,
   EllipsisVertical,
+  Eye,
+  FileText,
   Folder,
+  GitBranch,
   Globe,
+  GripVertical,
+  Hand,
+  Headset,
   Heart,
   Home,
+  Hourglass,
   ImageIcon,
   Inbox,
   Info,
+  Layers,
   Lightbulb,
   Link,
+  List,
+  ListChecks,
+  ListFilter,
   Loader,
   Lock,
   Mail,
+  Maximize2,
   Menu,
   MessageCircle,
+  Minus,
   Monitor,
   Moon,
   Paintbrush,
@@ -49,6 +66,7 @@ import {
   PanelRight,
   Pause,
   Pencil,
+  Pin,
   Pipette,
   Play,
   Plus,
@@ -57,16 +75,25 @@ import {
   RotateCcw,
   Scaling,
   Search,
+  Send,
   Settings,
   Shield,
+  Shuffle,
   SkipForward,
   SlidersHorizontal,
+  Sparkles,
+  Square,
   SquareLibrary,
+  SquareTerminal,
   Star,
   Sun,
+  Trash2,
+  TriangleAlert,
   User,
   Users,
+  Wrench,
   X,
+  Zap,
 } from 'lucide-react';
 import { type ComponentType, createContext, type ReactNode, useContext, useMemo } from 'react';
 
@@ -140,7 +167,35 @@ export type IconName =
   | 'calendar'
   | 'folder'
   | 'sliders-horizontal'
-  | 'info';
+  | 'info'
+  // Agent UI
+  | 'file'
+  | 'terminal'
+  | 'list-checks'
+  | 'hand'
+  | 'stop'
+  | 'git-branch'
+  | 'eye'
+  | 'send'
+  | 'trash'
+  | 'grip-vertical'
+  | 'list'
+  | 'alert-triangle'
+  | 'download'
+  | 'bot'
+  | 'shuffle'
+  | 'filter'
+  | 'zap'
+  | 'layers'
+  | 'hourglass'
+  | 'headset'
+  | 'maximize'
+  | 'code'
+  | 'database'
+  | 'minus'
+  | 'sparkles'
+  | 'wrench'
+  | 'pin';
 
 export const defaultIcons: Record<IconName, IconComponent> = {
   'chevron-right': ChevronRight,
@@ -202,6 +257,33 @@ export const defaultIcons: Record<IconName, IconComponent> = {
   folder: Folder,
   'sliders-horizontal': SlidersHorizontal,
   info: Info,
+  file: FileText,
+  terminal: SquareTerminal,
+  'list-checks': ListChecks,
+  hand: Hand,
+  stop: Square,
+  'git-branch': GitBranch,
+  eye: Eye,
+  send: Send,
+  trash: Trash2,
+  'grip-vertical': GripVertical,
+  list: List,
+  'alert-triangle': TriangleAlert,
+  download: Download,
+  bot: Bot,
+  shuffle: Shuffle,
+  filter: ListFilter,
+  zap: Zap,
+  layers: Layers,
+  hourglass: Hourglass,
+  headset: Headset,
+  maximize: Maximize2,
+  code: Code,
+  database: Database,
+  minus: Minus,
+  sparkles: Sparkles,
+  wrench: Wrench,
+  pin: Pin,
 };
 
 const IconContext = createContext<Record<IconName, IconComponent> | null>(null);

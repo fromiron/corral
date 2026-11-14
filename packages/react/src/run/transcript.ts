@@ -1,4 +1,5 @@
 import {
+  type AdviceSeverity,
   type ReasoningResolution,
   type ReasoningWire,
   type RunEvent,
@@ -21,6 +22,15 @@ export type TranscriptEntry =
       text: string;
       status: RunProjection['directives'][string]['status'] | 'accepted';
     }
+  /** An advisor's advice delivered as a directive: never the person's words. */
+  | {
+      kind: 'advice';
+      seq: number;
+      directiveId: string;
+      text: string;
+      severity: AdviceSeverity | null;
+      status: RunProjection['directives'][string]['status'] | 'accepted';
+    }
   | {
       kind: 'request';
       reasoning?: ReasoningResolution;
@@ -31,7 +41,8 @@ export type TranscriptEntry =
       no: number;
       /** The request can still record what it sent; see `requestOpen`. */
       open: boolean;
-      directives: { directiveId: string; text: string }[];
+      /** What the request carried: the person's instructions and an advisor's advice. */
+      directives: { directiveId: string; text: string; origin: 'user' | 'advice' }[];
     }
   | {
       kind: 'reply';
@@ -56,6 +67,8 @@ export type TranscriptEntry =
       resultRef: string | null;
       /** The validated arguments as recorded; large values are already size-and-hash stubs. */
       args: Record<string, unknown>;
+      /** It passed without asking on an earlier approval of this run for the same call. */
+      allowedForRun?: true;
     }
   | {
       kind: 'question';
@@ -111,16 +124,22 @@ export function buildTranscript(
             : null,
         });
         break;
-      case 'directive.accepted':
+      case 'directive.accepted': {
         if (event.payload.targetExecutionId !== executionId) break;
-        entries.push({
-          kind: 'instruction',
+        const directive = projection.directives[event.payload.directiveId];
+        const common = {
           seq: event.runSeq,
           directiveId: event.payload.directiveId,
           text: event.payload.text,
-          status: projection.directives[event.payload.directiveId]?.status ?? 'accepted',
-        });
+          status: directive?.status ?? ('accepted' as const),
+        };
+        entries.push(
+          event.payload.origin === 'advice'
+            ? { kind: 'advice', ...common, severity: directive?.advice?.severity ?? null }
+            : { kind: 'instruction', ...common },
+        );
         break;
+      }
       case 'model.request_prepared': {
         if (event.payload.executionId !== executionId) break;
         const call = event.payload.modelCallId;
@@ -139,6 +158,7 @@ export function buildTranscript(
           directives: event.payload.directiveIds.map((id) => ({
             directiveId: id,
             text: projection.directives[id]?.text ?? '',
+            origin: projection.directives[id]?.origin ?? 'user',
           })),
         });
         // The reply follows its request, streaming until model.finished brings the final text.
@@ -168,6 +188,7 @@ export function buildTranscript(
         break;
       }
       case 'tool.allowed':
+      case 'tool.authorized':
       case 'tool.blocked':
       case 'tool.started':
       case 'tool.finished': {
@@ -222,7 +243,7 @@ export function buildTranscript(
 type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
 type ToolUpdate = Extract<
   RunEvent,
-  { type: 'tool.allowed' | 'tool.blocked' | 'tool.started' | 'tool.finished' }
+  { type: 'tool.allowed' | 'tool.authorized' | 'tool.blocked' | 'tool.started' | 'tool.finished' }
 >;
 
 function toolEntry(event: Extract<RunEvent, { type: 'tool.requested' }>): ToolEntry {
@@ -243,6 +264,9 @@ function updateTool(tool: ToolEntry, event: ToolUpdate): void {
   switch (event.type) {
     case 'tool.allowed':
       tool.status = 'allowed';
+      return;
+    case 'tool.authorized':
+      tool.allowedForRun = true;
       return;
     case 'tool.blocked':
       tool.status = 'blocked';
@@ -271,6 +295,7 @@ export function executionToolEntries(events: readonly RunEvent[]): Map<string, T
       byExecution.set(event.payload.executionId, list);
     } else if (
       event.type === 'tool.allowed' ||
+      event.type === 'tool.authorized' ||
       event.type === 'tool.blocked' ||
       event.type === 'tool.started' ||
       event.type === 'tool.finished'

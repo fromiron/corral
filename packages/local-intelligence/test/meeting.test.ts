@@ -1,13 +1,17 @@
-import type { MeetingSelectionInput } from '@corral/contracts';
+import type { MeetingSelectionInput, MeetingSelectorResult } from '@corral/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  closestParticipant,
+  blendedScores,
   LocalMeetingSelector,
   type MeetingEngine,
   meetingTexts,
 } from '../src/meeting/selector.ts';
 
 afterEach(() => vi.useRealTimers());
+
+/** The highest score, the earlier participant on a tie, as the meeting policy reads it. */
+const top = (result: MeetingSelectorResult | null) =>
+  result?.scores.reduce((best, next) => (next.score > best.score ? next : best)).participantId;
 
 const input: MeetingSelectionInput = {
   message: 'question',
@@ -41,19 +45,60 @@ describe('meeting selector', () => {
     ]);
   });
 
-  it("weighs a person's own turns above their role and keeps the roster order on a tie", () => {
+  it('puts aliases and the short role label into the participant text', () => {
+    const { participants } = meetingTexts({
+      ...input,
+      participants: [
+        {
+          participantId: 'a',
+          name: 'Ann',
+          aliases: ['앤', 'Anne'],
+          role: '설계',
+          prompt: 'role a',
+        },
+        { participantId: 'b', name: 'Bo', prompt: '' },
+      ],
+    });
+    expect(participants.map((person) => person.role)).toEqual([
+      'Ann\n앤\nAnne\n설계\nrole a',
+      'Bo',
+    ]);
+  });
+
+  it("weighs a person's own turns above their role and stands on the role without turns", () => {
     expect(
-      closestParticipant([
+      blendedScores([
         { participantId: 'a', role: 1, history: 0 },
         { participantId: 'b', role: 0, history: 0.5 },
+        { participantId: 'c', role: 0.4, history: null },
       ]),
-    ).toBe('b');
-    expect(
-      closestParticipant([
-        { participantId: 'a', role: 0.5, history: 0.5 },
-        { participantId: 'b', role: 0.5, history: 0.5 },
-      ]),
-    ).toBe('a');
+    ).toEqual([
+      { participantId: 'a', score: 0.25 },
+      { participantId: 'b', score: 0.375 },
+      { participantId: 'c', score: 0.4 },
+    ]);
+  });
+
+  it('returns a score for every participant and no needsReply', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({
+        question: [1, 0, 0],
+        'Ann\nrole a': [1, 0, 0],
+        'Bo\nrole b': [0, 1, 0],
+        'answer a': [0, 1, 0],
+        'answer b': [0, 1, 0],
+        'second answer b': [1, 0, 0],
+      }),
+      'release',
+    );
+    const result = await selector.select(input);
+    expect(result).toEqual({
+      scores: [
+        { participantId: 'a', score: 0.25 },
+        { participantId: 'b', score: 0.75 },
+      ],
+    });
+    expect(result).not.toHaveProperty('needsReply');
   });
 
   it('picks the participant whose closest turn matches the message', async () => {
@@ -68,7 +113,7 @@ describe('meeting selector', () => {
       }),
       'release',
     );
-    await expect(selector.select(input)).resolves.toEqual(['b']);
+    expect(top(await selector.select(input))).toBe('b');
   });
 
   it('scores a participant with no posted turns by their role alone', async () => {
@@ -76,7 +121,7 @@ describe('meeting selector', () => {
       engine({ question: [1, 0, 0], 'Ann\nrole a': [1, 0, 0], 'Bo\nrole b': [0, 1, 0] }),
       'release',
     );
-    await expect(selector.select({ ...input, history: [] })).resolves.toEqual(['a']);
+    expect(top(await selector.select({ ...input, history: [] }))).toBe('a');
   });
 
   it('lets a silent participant whose role fits win against someone who already spoke', async () => {
@@ -89,9 +134,9 @@ describe('meeting selector', () => {
       }),
       'release',
     );
-    await expect(
-      selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] }),
-    ).resolves.toEqual(['b']);
+    expect(
+      top(await selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] })),
+    ).toBe('b');
   });
 
   it('keeps the speaker when their own turn is closer than a silent role', async () => {
@@ -104,9 +149,9 @@ describe('meeting selector', () => {
       }),
       'release',
     );
-    await expect(
-      selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] }),
-    ).resolves.toEqual(['a']);
+    expect(
+      top(await selector.select({ ...input, history: [{ participantId: 'a', text: 'answer a' }] })),
+    ).toBe('a');
   });
 
   it('reads nothing into the name of someone with no role and no turns', async () => {
@@ -119,13 +164,15 @@ describe('meeting selector', () => {
       }),
       'release',
     );
-    await expect(
-      selector.select({
-        ...input,
-        participants: [input.participants[0]!, { participantId: 'b', name: 'Bo', prompt: '' }],
-        history: [{ participantId: 'a', text: 'answer a' }],
-      }),
-    ).resolves.toEqual(['a']);
+    expect(
+      top(
+        await selector.select({
+          ...input,
+          participants: [input.participants[0]!, { participantId: 'b', name: 'Bo', prompt: '' }],
+          history: [{ participantId: 'a', text: 'answer a' }],
+        }),
+      ),
+    ).toBe('a');
   });
 
   it('embeds a repeated text once and keeps no meeting text', async () => {
@@ -191,6 +238,48 @@ describe('meeting selector', () => {
     );
     await expect(selector.select(input)).resolves.toBeNull();
     expect(embed).not.toHaveBeenCalled();
+  });
+
+  it('scores a short role label when the longer description is empty', async () => {
+    const selector = new LocalMeetingSelector(
+      engine({ question: [1, 0, 0], 'Ann\n설계': [1, 0, 0], Bo: [0, 1, 0] }),
+      'release',
+    );
+    expect(
+      top(
+        await selector.select({
+          ...input,
+          participants: [
+            { participantId: 'a', name: 'Ann', role: '설계', prompt: '' },
+            { participantId: 'b', name: 'Bo', prompt: '' },
+          ],
+          history: [],
+        }),
+      ),
+    ).toBe('a');
+  });
+
+  it('does not let aliases alone decide who answers', async () => {
+    const fake = engine({
+      question: [1, 0, 0],
+      'Bo\n질문': [1, 0, 0],
+      Bo: [1, 0, 0],
+      'Ann\nrole a': [0, 1, 0],
+      'answer a': [0, 1, 0],
+    });
+    const selector = new LocalMeetingSelector(fake, 'release');
+    expect(
+      top(
+        await selector.select({
+          ...input,
+          participants: [
+            input.participants[0]!,
+            { participantId: 'b', name: 'Bo', aliases: ['질문'], prompt: '' },
+          ],
+          history: [{ participantId: 'a', text: 'answer a' }],
+        }),
+      ),
+    ).toBe('a');
   });
 
   it('abstains when no role or posted turn can tell ordinary participants apart', async () => {

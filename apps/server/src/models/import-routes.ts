@@ -6,8 +6,8 @@ import type { FastifyInstance } from 'fastify';
 import { z } from 'zod';
 import type { LiveModels } from '../app.ts';
 import { readWorkspaceConfig, type Workspace, writeModelConfig } from '../workspace.ts';
-import { ModelCatalogService } from './catalog-service.ts';
-import { endpointClashes, endpointsFrom, registerEndpoints } from './endpoints.ts';
+import type { ModelCatalogService } from './catalog-service.ts';
+import { endpointClashes, registerEndpoints } from './endpoints.ts';
 import {
   IMPORT_SOURCES,
   type ImportDraft,
@@ -47,6 +47,8 @@ export function registerModelImportRoutes(
     workspace: Workspace;
     registry: ModelRegistry | null;
     live: LiveModels | undefined;
+    /** models.dev metadata; the server shares one with endpoint model fetches. */
+    catalog: ModelCatalogService | null;
     now?: () => number;
     previewId?: () => string;
   },
@@ -58,9 +60,7 @@ export function registerModelImportRoutes(
     string,
     { created: number; revision: string; drafts: ImportDraft[]; supported: boolean[] }
   >();
-  const catalog = live
-    ? new ModelCatalogService(join(live.configDir, 'model-catalog-v1.json'))
-    : null;
+  const catalog = options.catalog;
   app.get('/api/v1/model-catalog/metadata', async () => catalog?.view() ?? null);
   app.post('/api/v1/model-catalog/metadata/refresh', async (_request, reply) =>
     catalog
@@ -219,7 +219,7 @@ export function registerModelImportRoutes(
       { modelProfiles: profiles, modelProviders: providers },
       body.data.revision,
       (config) => {
-        const endpoints = endpointsFrom(config.modelProviders);
+        const endpoints = registry.endpointsFor(config.modelProviders);
         return [
           ...endpointClashes(live.models, endpoints),
           ...registry.unknownProviders(config.modelProfiles ?? [], endpoints),
@@ -236,7 +236,7 @@ export function registerModelImportRoutes(
     // No await occurs between the revision check, atomic config save and endpoint registration.
     workspace.config = written.config;
     workspace.configRevision = written.revision;
-    const endpoints = endpointsFrom(written.config.modelProviders);
+    const endpoints = registry.endpointsFor(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
     await registry.reconfigure(profiles, endpoints, written.revision);
     const keyFailures: string[] = [];

@@ -1,6 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/contracts';
-import { Button, Input, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Textarea } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -85,17 +85,21 @@ export function ProjectToolSettings({
   }
   return (
     <section className="flex flex-col gap-4" aria-labelledby={heading}>
-      <h3 id={heading} className="text-lg font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle text-foreground"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('projectTools')}
       </h3>
-      <p className="text-xs text-muted-foreground">{t('checkTrustHint')}</p>
+      <p className="text-caption text-muted-foreground">{t('checkTrustHint')}</p>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {busy || notice ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {busy ? t('busy') : notice}
         </p>
       ) : null}
@@ -106,12 +110,14 @@ export function ProjectToolSettings({
         ] as const
       ).map(([kind, tools]) => (
         <div key={kind} className="flex flex-col gap-3">
-          <h4 className="font-medium">{t(kind === 'check' ? 'projectChecks' : 'projectLsp')}</h4>
+          <h4 className="text-body" style={{ fontVariationSettings: fontWeights.semibold }}>
+            {t(kind === 'check' ? 'projectChecks' : 'projectLsp')}
+          </h4>
           {kind === 'lsp' ? (
-            <p className="text-xs text-muted-foreground">{t('lspSetupHint')}</p>
+            <p className="text-caption text-muted-foreground">{t('lspSetupHint')}</p>
           ) : null}
           {!tools.length ? (
-            <p className="text-xs text-muted-foreground">
+            <p className="text-caption text-muted-foreground">
               {t(kind === 'check' ? 'noProjectChecks' : 'noProjectLsp')}
             </p>
           ) : null}
@@ -120,7 +126,10 @@ export function ProjectToolSettings({
               launch = launches[key];
             return (
               <div key={key} className="settings-surface flex flex-col gap-2">
-                <p className="text-sm font-medium">
+                <p
+                  className="text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   {tool.name} <span className="text-muted-foreground">{tool.id}</span>
                 </p>
                 <div className="flex flex-wrap gap-2">
@@ -173,7 +182,9 @@ export function ProjectToolSettings({
                 </div>
                 {launch ? (
                   <>
-                    <code className="break-all text-xs">{JSON.stringify(launch.command.argv)}</code>
+                    <code className="break-all text-caption">
+                      {JSON.stringify(launch.command.argv)}
+                    </code>
                     <p className="break-all font-mono text-2xs text-muted-foreground">
                       SHA-256 {launch.fingerprint}
                     </p>
@@ -206,7 +217,9 @@ export function ProjectToolSettings({
         </div>
       ))}
       <fieldset disabled={busy} className="settings-surface flex flex-col gap-3">
-        <legend className="mb-3 font-medium">{t('configureLsp')}</legend>
+        <legend className="mb-3" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('configureLsp')}
+        </legend>
         {(
           [
             ['id', 'lspId'],
@@ -215,7 +228,7 @@ export function ProjectToolSettings({
             ['extensions', 'lspExtensions'],
           ] as const
         ).map(([key, label]) => (
-          <label key={key} className="flex flex-col gap-1 text-sm">
+          <label key={key} className="flex flex-col gap-1 text-body">
             {t(label)}
             <Input
               value={draft[key]}
@@ -226,7 +239,7 @@ export function ProjectToolSettings({
             />
           </label>
         ))}
-        <label className="flex flex-col gap-1 text-sm">
+        <label className="flex flex-col gap-1 text-body">
           {t('lspArgv')}
           <Textarea
             rows={3}
@@ -234,8 +247,8 @@ export function ProjectToolSettings({
             onChange={(event) => setDraft((current) => ({ ...current, argv: event.target.value }))}
           />
         </label>
-        <p className="text-xs text-muted-foreground">{t('lspArgvHint')}</p>
-        <label className="flex flex-col gap-1 text-sm">
+        <p className="text-caption text-muted-foreground">{t('lspArgvHint')}</p>
+        <label className="flex flex-col gap-1 text-body">
           {t('lspTimeout')}
           <Input
             type="number"

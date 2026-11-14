@@ -1,11 +1,13 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
-import { Button, Input, Switch } from '@corral/react/design-kit';
+import { EmptyView } from '@corral/react';
+import { Button, cn, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
 import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
@@ -36,7 +38,9 @@ function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
       {harnesses ? (
         <ResourceManager key={kind} api={harnesses} kind={kind} />
       ) : (
-        <p className="p-8">{t('localOnly')}</p>
+        <main className="settings-content">
+          <p className="text-body text-muted-foreground">{t('localOnly')}</p>
+        </main>
       )}
     </SettingsLayout>
   );
@@ -108,18 +112,21 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       if (alive.current) setBusy(false);
     }
   }
+  // Nothing at all, archived included: one empty state that carries the Add action.
+  const none = loaded && entries.length === 0;
+  // The first saved item replaces the empty state and the Add focus went back to; focus moves on
+  // to the Add above the list.
+  const wasNone = useRef(none);
+  useLayoutEffect(() => {
+    if (wasNone.current && !none && document.activeElement === document.body) add.current?.focus();
+    wasNone.current = none;
+  }, [none]);
   return (
     <main className="settings-content">
-      <div>
-        <h2 className="text-2xl font-semibold tracking-tight">
-          {t(kind === 'skill' ? 'skills' : 'hooks')}
-        </h2>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t(kind === 'skill' ? 'skillsIntro' : 'hooksIntro')}
-        </p>
-      </div>
-      {/* Package management lives below the hook library; say so at the top (#82). */}
-      {kind === 'extension' ? (
+      {/* Package management lives below the hook library; with a library above it the top of the
+          page says so and lets the keyboard jump there (#82). An empty library leaves the
+          Packages heading right below, and the row would only repeat it. */}
+      {kind === 'extension' && entries.length > 0 ? (
         <SectionIndex
           sections={[
             { id: 'resources-library', label: t('library') },
@@ -127,77 +134,93 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           ]}
         />
       ) : null}
-      <section id="resources-library" tabIndex={-1} className="settings-row outline-none">
-        <div>
-          <h3>{t('library')}</h3>
-        </div>
-        <Button ref={add} onClick={() => setEditor({})}>
-          <Plus size={16} />
-          {t('add')}
-        </Button>
+      <section
+        id="resources-library"
+        tabIndex={-1}
+        aria-label={t('library')}
+        className="flex flex-wrap items-center gap-3 outline-none"
+      >
+        {none ? null : (
+          <>
+            <Input
+              aria-label={t('search')}
+              className="min-w-0 flex-1 sm:max-w-72"
+              value={search}
+              placeholder={t('search')}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <Switch
+              label={t('showArchived')}
+              checked={archived}
+              onToggle={() => setArchived(!archived)}
+            />
+          </>
+        )}
+        {none ? (
+          <EmptyView
+            className="w-full"
+            title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')}
+            action={{ label: t('add'), onClick: () => setEditor({}), ref: add }}
+          />
+        ) : (
+          <Button ref={add} className="ml-auto" onClick={() => setEditor({})}>
+            <Plus size={16} />
+            {t('add')}
+          </Button>
+        )}
       </section>
-      <section className="settings-row">
-        <div>
-          <h3>{t('search')}</h3>
-        </div>
-        <Input
-          aria-label={t('search')}
-          className="sm:w-72"
-          value={search}
-          placeholder={t('search')}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </section>
-      <div className="settings-row">
-        <Switch
-          label={t('showArchived')}
-          checked={archived}
-          onToggle={() => setArchived(!archived)}
-        />
-      </div>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
-      <div className="flex flex-col gap-6">
-        <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
-          {!loaded ? (
-            <p role="status" className="p-5 text-sm text-muted-foreground">
-              {h('busy')}
-            </p>
-          ) : !filtered.length ? (
-            <p className="p-5 text-sm text-muted-foreground">{t(search ? 'noMatches' : 'empty')}</p>
-          ) : (
-            <ul className="flex flex-col">
-              {filtered.map((entry) => (
-                <li key={keyOf(entry)}>
-                  <Button
-                    variant={selection === keyOf(entry) ? 'secondary' : 'ghost'}
-                    aria-pressed={selection === keyOf(entry)}
-                    onClick={() => setSelection(keyOf(entry))}
-                    className="h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left"
-                  >
-                    <span className="font-medium">{entry.name}</span>
-                    {entry.description ? (
-                      <span className="line-clamp-2 text-sm text-muted-foreground">
-                        {entry.description}
+      <div className="flex flex-col gap-6 empty:hidden">
+        {none ? null : (
+          <section className="settings-list max-h-80 overflow-y-auto" aria-label={t('library')}>
+            {!loaded ? (
+              <p role="status" className="p-5 text-body text-muted-foreground">
+                {h('busy')}
+              </p>
+            ) : !filtered.length ? (
+              <p className="p-5 text-body text-muted-foreground">
+                {t(search ? 'noMatches' : archived ? 'noArchived' : 'onlyArchived')}
+              </p>
+            ) : (
+              <ul className="flex flex-col">
+                {filtered.map((entry) => (
+                  <li key={keyOf(entry)}>
+                    <Button
+                      variant="ghost"
+                      aria-pressed={selection === keyOf(entry)}
+                      onClick={() => setSelection(keyOf(entry))}
+                      className={cn(
+                        'h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left',
+                        selection === keyOf(entry) && CHOSEN_BUTTON_ROW,
+                      )}
+                    >
+                      <span style={{ fontVariationSettings: fontWeights.semibold }}>
+                        {entry.name}
                       </span>
-                    ) : null}
-                    <span className="flex flex-wrap gap-2 text-xs text-muted-foreground">
-                      <span>{entry.resource.trustedAt ? h('trusted') : h('untrusted')}</span>
-                      {entry.archivedAt ? <span>{t('archived')}</span> : null}
-                      {entry.successor ? <span>{t('newCopy')}</span> : null}
-                      {entry.profiles.length ? (
-                        <span>{t('profileCount', { count: entry.profiles.length })}</span>
+                      {entry.description ? (
+                        <span className="line-clamp-2 text-body text-muted-foreground">
+                          {entry.description}
+                        </span>
                       ) : null}
-                    </span>
-                  </Button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </section>
+                      <span className="flex flex-wrap gap-2 text-caption text-muted-foreground">
+                        <span>{entry.resource.trustedAt ? h('trusted') : h('untrusted')}</span>
+                        {entry.archivedAt ? <span>{t('archived')}</span> : null}
+                        {entry.successor ? <span>{t('newCopy')}</span> : null}
+                        {entry.profiles.length ? (
+                          <span>{t('profileCount', { count: entry.profiles.length })}</span>
+                        ) : null}
+                      </span>
+                    </Button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+        )}
         {selected ? (
           <section key={keyOf(selected)} className="flex flex-col gap-6" aria-label={t('details')}>
             <section className="settings-row">
@@ -312,9 +335,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               <EntryContent api={api} entry={selected} />
             </section>
           </section>
-        ) : (
-          <p className="text-sm text-muted-foreground">{t('selectItem')}</p>
-        )}
+        ) : null}
       </div>
       {editor ? (
         <ResourceEditor
@@ -336,6 +357,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           }}
         />
       ) : null}
+      {/* Below the hook library, named by its own heading. */}
       {kind === 'extension' ? (
         <div id="resources-packages" tabIndex={-1} className="outline-none">
           <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
@@ -368,20 +390,20 @@ function EntryContent({ api, entry }: { api: HarnessApi; entry: HarnessEntryView
   return (
     <>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {entry.kind === 'extension' ? (
-        <p className="text-xs text-muted-foreground">
+        <p className="text-caption text-muted-foreground">
           {t(value?.hook ? 'managedHook' : 'externalExtension')}
         </p>
       ) : null}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-xs">
+      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-caption">
         {value?.content ?? t('loadingContent')}
       </pre>
       <details
-        className="text-xs text-muted-foreground"
+        className="text-caption text-muted-foreground"
         onToggle={(e) => setFilesOpen(e.currentTarget.open)}
       >
         <summary className="cursor-pointer">

@@ -39,6 +39,7 @@ import {
   LanguageStart,
   MeetingAdoptDecisionRequest,
   MeetingConfig,
+  MeetingContinueRequest,
   MeetingRoundRequest,
   MeetingWithdrawDecisionRequest,
   MessageBranchPoint,
@@ -82,11 +83,16 @@ import {
   parseWorkspaceConfig,
   planRun,
   type SaveResult,
+  SessionAdvisor,
   SessionEntryAuto,
+  SessionEntryStart,
   type SessionResult,
   ToolRefusal,
+  unreadAdvice,
+  type WorkSession,
 } from '@corral/core';
 import {
+  BundleBusyError,
   bundledManifest,
   type D1Engine,
   d1Threads,
@@ -95,7 +101,9 @@ import {
 } from '@corral/local-intelligence';
 import { LangGraphRunner } from '@corral/runner-langgraph';
 import {
+  deleteSessionRecords,
   openDatabase,
+  previewSessionDeletion,
   SqliteCorralRepository,
   SqliteHarnessStore,
   SqliteModelAttemptStore,
@@ -116,6 +124,7 @@ import { registerDebugRoutes } from './files/debug-routes.ts';
 import { registerDeploymentRoutes } from './files/deployment-routes.ts';
 import { registerFileEditRoutes } from './files/edit-routes.ts';
 import { registerGitAdvancedRoutes } from './files/git-advanced-routes.ts';
+import { type FffModule, FffPathEngine } from './files/path-engine.ts';
 import { ReviewService } from './files/review.ts';
 import { type ChangeScope, WorkspaceError, WorkspaceService } from './files/service.ts';
 import { McpCredentials } from './harness/mcp-credentials.ts';
@@ -131,6 +140,8 @@ import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
 import { defaultD1Engine } from './local-ai.ts';
 import { MeetingHandoffService, registerMeetingHandoffRoutes } from './meeting-handoffs.ts';
+import { ModelCatalogService } from './models/catalog-service.ts';
+import { EndpointModelCache } from './models/endpoint-models.ts';
 import { registerModelImportRoutes } from './models/import-routes.ts';
 import {
   assertOutsideWorkspace,
@@ -170,6 +181,7 @@ import {
   Sessions,
 } from './security.ts';
 import { prepareBranchSession } from './session-branches.ts';
+import { createSessionQueue } from './session-queue.ts';
 import { SessionSearch } from './session-search.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
 import { providersVaultAdapter } from './vault/providers.ts';
@@ -228,6 +240,11 @@ export interface ServerOptions {
   worktreeRoot?: string;
   /** Opt-in only for a local launcher; remote and generic servers leave this off. */
   allowSharedDevelopment?: boolean;
+  /**
+   * FFF's native module for path search ranking: launchers pass `loadFff`, tests a fake. Without
+   * it path search uses only the built-in engine.
+   */
+  fff?: () => Promise<FffModule>;
 }
 
 export interface LiveModels {
@@ -239,6 +256,11 @@ export interface LiveModels {
   getDeviceId(): string;
   /** Models a subscription sign-in may call (pi-ai's ChatGPT-account catalog for OpenAI). */
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
+  /**
+   * Requests for model metadata: an endpoint's `/models` and the models.dev catalog. Never a
+   * model request. Tests pass one that stays on this computer.
+   */
+  fetch?: typeof fetch;
   /** The agent adapter for live runs; it asks the registry for each request's token. */
   agents(
     registry: ModelRegistry,
@@ -315,22 +337,32 @@ const CreateCorral = z.strictObject({
   projectId: Identifier.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
+// Bounded here; the session rules (20 lines of 1 to 200 characters) answer with their reason.
+const CriteriaBody = z.array(z.string().max(2_000)).max(100).optional();
 const CreateSession = z.strictObject({
   projectId: Identifier,
   title: z.string().max(200),
   autoTitle: z.boolean().optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   /** creates a meeting with these participants. */
   meeting: MeetingConfig.optional(),
 });
+const DeleteSession = z.strictObject({
+  expectedRevision: z.int().min(1),
+  copyGeneration: z.int().min(1).optional(),
+});
 const UpdateSession = z.strictObject({
   title: z.string().max(200).optional(),
   objective: z.string().max(20_000).optional(),
+  criteria: CriteriaBody,
   corralId: Identifier.nullable().optional(),
   auto: AutoModelChoice.nullable().optional(),
   pinned: z.boolean().optional(),
   archived: z.boolean().optional(),
+  autoStart: z.boolean().optional(),
+  advisor: SessionAdvisor.nullable().optional(),
   expectedRevision: z.int().min(1),
 });
 const EntryRefusal = CommandError.extend({ message: z.string().min(1).max(2000) });
@@ -341,6 +373,8 @@ const NewEntry = z.strictObject({
   taskScope: RunInput.shape.taskScope,
   verificationScope: RunInput.shape.verificationScope,
   attachments: TextAttachments.optional(),
+  // What the person pointed at with `@`; the repository checks it against the attachments.
+  references: RunReferences.optional(),
   intent: z.enum(['next', 'queue', 'steer', 'explain']),
   text: z.string().max(20_000),
   state: EntryState,
@@ -351,6 +385,8 @@ const NewEntry = z.strictObject({
   commandId: Identifier.nullable().optional(),
   // The template an auto request ran with.
   auto: SessionEntryAuto.nullable().optional(),
+  // The start request of a new or next request; the server starts only a `queued` entry with it.
+  start: SessionEntryStart.optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
@@ -368,21 +404,13 @@ const ExplainRequest = z.strictObject({
   startFrom: StartFrom.optional(),
 });
 // a request in an auto session; the runtime chooses the template and builds the team.
-const AutoRunRequest = z.strictObject({
-  harness: HarnessBindingRef.optional(),
-  permissionMode: PermissionMode.optional(),
-  taskScope: RunInput.shape.taskScope,
-  verificationScope: RunInput.shape.verificationScope,
+// A queued entry saves the same choices as its start snapshot (SessionEntryStart).
+const AutoRunRequest = SessionEntryStart.extend({
   schemaVersion: SchemaVersion,
   commandId: Identifier,
   sessionId: Identifier,
   brief: z.string().trim().min(1).max(20_000),
-  choice: AutoModelChoice,
-  mode: z.enum(['mock', 'live']),
-  startFrom: StartFrom.optional(),
   conversation: ConversationSource.optional(),
-  /** the conversation lead alone, with the auto roster, or with a saved Corral's roles. */
-  team: z.union([z.enum(['none', 'auto']), z.strictObject({ corralId: Identifier })]).optional(),
   references: RunReferences.optional(),
 });
 const CreateProject = z.strictObject({
@@ -459,9 +487,20 @@ async function createCorralServer(
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
   let registry: ModelRegistry | null = null;
+  // models.dev metadata and fetched endpoint lists, both in the user's config directory.
+  const modelCatalog = options.live
+    ? new ModelCatalogService(
+        join(options.live.configDir, 'model-catalog-v1.json'),
+        options.live.fetch ?? fetch,
+      )
+    : null;
   if (options.live) {
     assertOutsideWorkspace(options.live.configDir, workspace.root);
-    const endpoints = endpointsFrom(workspace.config.modelProviders);
+    const endpointModels = new EndpointModelCache(
+      join(options.live.configDir, 'endpoint-models-v1.json'),
+    );
+    // A restart uses the cached lists and sends nothing.
+    const endpoints = endpointsFrom(workspace.config.modelProviders, endpointModels);
     registerEndpoints(options.live.models, endpoints);
     registry = new ModelRegistry(
       options.live.models,
@@ -476,21 +515,39 @@ async function createCorralServer(
           : {}),
         endpoints,
         configRevision: workspace.configRevision,
+        endpointModels: {
+          cache: endpointModels,
+          catalog: modelCatalog,
+          ...(options.live.fetch ? { fetch: options.live.fetch } : {}),
+        },
       },
     );
+    const started = registry;
+    resources.defer(() => started.close());
     await registry.refreshStatus();
+    registry.refreshDynamicProviders();
   }
   const store = new SqliteRunStore(db);
   const inputs = new InputRegistry(db, { ...options.inputs, clock });
   // linked folders, session worktrees and the file broker.
+  const worktreeRoot = options.worktreeRoot ?? defaultWorktreeRoot();
   const files: WorkspaceService = new WorkspaceService({
     db,
     clock,
     hostId: workspace.id,
     allowSharedDevelopment: options.allowSharedDevelopment,
-    worktreeRoot: options.worktreeRoot ?? defaultWorktreeRoot(),
+    worktreeRoot,
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
     timers: options.timers ?? systemTimers,
+    ...(options.fff
+      ? {
+          pathEngine: new FffPathEngine({
+            load: options.fff,
+            clock,
+            dataDir: join(workspace.root, '.corral', 'path-search'),
+          }),
+        }
+      : {}),
     debugPreview: async (sessionId, leaseId, target, open) => {
       const current = () =>
         canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
@@ -596,8 +653,13 @@ async function createCorralServer(
   // Manual + Local readies the engine ahead of the first request; it never downloads.
   const prepareLocal = () => {
     const saved = currentEffortRouting(workspace.root);
-    if (saved.mode === 'manual' && saved.engine.kind === 'local')
-      localRouting?.prepare(saved.engine.device.threads);
+    if (
+      localRouting &&
+      saved.mode === 'manual' &&
+      saved.engine.kind === 'local' &&
+      localRouting.installed(saved.engine.device.kind)
+    )
+      localRouting.prepare(saved.engine.device.threads, saved.engine.device.kind);
   };
   if (localRouting) {
     resources.defer(() => localRouting.close());
@@ -612,7 +674,12 @@ async function createCorralServer(
     modelAttempts,
   );
   imageGeneration.cleanupOrphans();
+  // Bound once the auto start path exists; runs cannot end before the server is ready.
+  let sessionQueue: ReturnType<typeof createSessionQueue> | null = null;
   const coordinator = new Coordinator({
+    onRunEnded: (runId) => void sessionQueue?.onRunEnded(runId),
+    onDirectivesExpired: (runId, projection) =>
+      void sessionQueue?.onDirectivesExpired(runId, projection),
     previewTools,
     imageGeneration: {
       read: (runId, versionId) => {
@@ -655,6 +722,7 @@ async function createCorralServer(
     store,
     tools: inputs,
     files,
+    workspaceRoots: (runId) => files.runWorkspaceRoots(runId),
     harnesses,
     runner: new LangGraphRunner(),
     corrals,
@@ -836,6 +904,7 @@ async function createCorralServer(
     version: packageJson.version,
     backendSessionId,
     live: registry !== null,
+    pathEngine: await files.pathEngineStatus(),
   }));
   // Stored with the workspace so a new loopback port does not reset an explicit choice.
   const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
@@ -1073,25 +1142,15 @@ async function createCorralServer(
   const registryFailure = (reply: FastifyReply, error: unknown) =>
     error instanceof RegistryError && error.code === 'unsupported'
       ? fail(reply, 'COMMAND_NOT_SUPPORTED', error.message)
-      : fail(reply, 'TARGET_NOT_FOUND', 'no model profile uses this provider');
+      : error instanceof RegistryError && error.code === 'conflict'
+        ? fail(reply, 'REVISION_CONFLICT', error.message)
+        : fail(reply, 'TARGET_NOT_FOUND', 'no such model provider');
   const noLive = (reply: FastifyReply) =>
     fail(reply, 'COMMAND_NOT_SUPPORTED', 'this server has no live model connection');
   app.post<ProviderParams>('/api/v1/model-auth/:providerId/login', async (request, reply) => {
     if (!registry) return noLive(reply);
     try {
       return reply.code(202).send(await registry.startLogin(request.params.providerId));
-    } catch (error) {
-      return registryFailure(reply, error);
-    }
-  });
-  app.post<ProviderParams>('/api/v1/model-auth/:providerId/probe', async (request, reply) => {
-    if (!registry) return noLive(reply);
-    const body = parse(z.strictObject({ revision: z.string().min(1).max(100) }), request, reply);
-    if (!body) return reply;
-    if (body.revision !== configRevision(workspace.root))
-      return fail(reply, 'REVISION_CONFLICT', 'the config changed before the connection test');
-    try {
-      return await registry.testEndpoint(request.params.providerId);
     } catch (error) {
       return registryFailure(reply, error);
     }
@@ -1135,9 +1194,31 @@ async function createCorralServer(
   });
   app.delete<ProviderParams>('/api/v1/model-auth/:providerId', async (request, reply) => {
     if (!registry) return noLive(reply);
-    await registry.logout(request.params.providerId);
+    try {
+      await registry.logout(request.params.providerId);
+    } catch (error) {
+      return registryFailure(reply, error);
+    }
     return registry.authView();
   });
+  // An added endpoint's model list again from its saved address; never a caller's URL.
+  app.post<ProviderParams>(
+    '/api/v1/model-auth/:providerId/models/refresh',
+    async (request, reply) => {
+      if (!registry) return noLive(reply);
+      const body = parse(z.strictObject({ revision: z.string().min(1).max(100) }), request, reply);
+      if (!body) return reply;
+      try {
+        // The target first, then the revision; neither refusal sends anything.
+        registry.assertEndpoint(request.params.providerId);
+        if (body.revision !== configRevision(workspace.root))
+          return fail(reply, 'REVISION_CONFLICT', 'the config changed before the model refresh');
+        return await registry.refreshEndpointModels(request.params.providerId);
+      } catch (error) {
+        return registryFailure(reply, error);
+      }
+    },
+  );
 
   // ── local AI (settings panel) ─────────────────────────────────────
   const noLocalAi = (reply: FastifyReply) =>
@@ -1152,6 +1233,7 @@ async function createCorralServer(
       downloadBytes: null,
       progress: null,
       error: null,
+      device: { requested: 'cpu', actual: null },
     };
   };
   app.get('/api/v1/local-ai', async () => (local ? local.status() : noLocalAiView()));
@@ -1164,6 +1246,34 @@ async function createCorralServer(
   app.delete('/api/v1/local-ai/install', async (_request, reply) =>
     local ? await local.cancelInstall() : noLocalAi(reply),
   );
+  const bundleRefusal = (reply: FastifyReply, error: unknown) => {
+    if (error instanceof BundleBusyError) return fail(reply, 'RESOURCE_CAPACITY', error.message);
+    throw error;
+  };
+  app.put('/api/v1/local-ai/device', async (request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    const parsed = z
+      .strictObject({ device: z.enum(['cpu', 'gpu', 'auto']) })
+      .safeParse(request.body);
+    if (!parsed.success) return fail(reply, 'SCHEMA_INVALID', 'choose CPU, GPU, or automatic');
+    try {
+      return await local.setDevice(parsed.data.device);
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
+  });
+  app.delete('/api/v1/local-ai', async (_request, reply) => {
+    if (!local) return noLocalAi(reply);
+    if (local.status().state === 'unsupported')
+      return fail(reply, 'CAPABILITY_DENIED', 'local AI cannot run in this environment');
+    try {
+      return await local.remove();
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
+  });
   // ── decision APIs (features/decision-apis.md) ─────────────────────
   type DecisionApiParams = { Params: { id: string } };
   const listDecisionApis = () => decisionApis?.list() ?? decisionApiList();
@@ -1197,9 +1307,11 @@ async function createCorralServer(
     install: 'absent',
     runtime: 'stopped',
     downloadBytes: null,
+    installedBytes: null,
     progress: null,
     error: null,
     device: { requested: 'cpu', active: null },
+    devices: [],
     threads: null,
     defaultThreads: d1Threads(availableParallelism()),
   } as const;
@@ -1236,7 +1348,7 @@ async function createCorralServer(
       if (engine.consentRevision !== decisionApiConsent(engine.id))
         return fail(reply, 'SCHEMA_INVALID', 'agree to the current notice for this decision API');
     }
-    if (engine?.kind === 'local' && !localRouting?.status().supported)
+    if (engine?.kind === 'local' && !localRouting?.supports(engine.device.kind))
       return fail(reply, 'SCHEMA_INVALID', 'the Local engine is not available on this computer');
     const written = writeEffortRouting(workspace.root, settings, revision);
     if (!written.ok)
@@ -1248,16 +1360,32 @@ async function createCorralServer(
     workspace.config = readWorkspaceConfig(workspace.root).config;
     workspace.configRevision = written.revision;
     // Saving never downloads; leaving Local ends the child Corral started.
-    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads);
+    if (engine?.kind === 'local') localRouting?.prepare(engine.device.threads, engine.device.kind);
     else await localRouting?.stop();
     return effortRoutingView();
   });
-  app.post('/api/v1/effort-routing/local/install', async (_request, reply) => {
+  app.post('/api/v1/effort-routing/local/install', async (request, reply) => {
     if (!options.live) return routingDenied(reply);
     if (!localRouting?.status().supported)
       return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
-    localRouting.install();
-    void localRouting.installing()?.then(prepareLocal);
+    const parsed = z
+      .strictObject({ device: z.enum(['cpu', 'vulkan', 'cuda']).optional() })
+      .safeParse(request.body ?? {});
+    if (!parsed.success)
+      return fail(reply, 'SCHEMA_INVALID', 'the Local runtime is not available on this computer');
+    const device = parsed.data.device ?? 'cpu';
+    if (!localRouting.supports(device))
+      return fail(reply, 'SCHEMA_INVALID', 'the Local runtime is not available on this computer');
+    localRouting.install(device);
+    void localRouting.installing()?.then(() => {
+      const saved = currentEffortRouting(workspace.root);
+      if (
+        saved.mode === 'manual' &&
+        saved.engine.kind === 'local' &&
+        saved.engine.device.kind === device
+      )
+        prepareLocal();
+    });
     return reply.code(202).send(effortRoutingView());
   });
   app.delete('/api/v1/effort-routing/local/install', async (_request, reply) => {
@@ -1265,12 +1393,27 @@ async function createCorralServer(
     await localRouting?.cancelInstall();
     return effortRoutingView();
   });
+  app.delete('/api/v1/effort-routing/local', async (_request, reply) => {
+    if (!options.live) return routingDenied(reply);
+    if (!localRouting?.status().supported)
+      return fail(reply, 'CAPABILITY_DENIED', 'the Local engine is not available on this computer');
+    try {
+      await localRouting.remove();
+    } catch (error) {
+      return bundleRefusal(reply, error);
+    }
+    return effortRoutingView();
+  });
   app.post('/api/v1/effort-routing/local/start', async (_request, reply) => {
     if (!options.live) return routingDenied(reply);
     const saved = currentEffortRouting(workspace.root);
-    if (saved.mode !== 'manual' || saved.engine.kind !== 'local' || !localRouting?.installed())
+    if (
+      saved.mode !== 'manual' ||
+      saved.engine.kind !== 'local' ||
+      !localRouting?.installed(saved.engine.device.kind)
+    )
       return fail(reply, 'SCHEMA_INVALID', 'save Manual with the installed Local engine first');
-    localRouting.prepare(saved.engine.device.threads);
+    localRouting.prepare(saved.engine.device.threads, saved.engine.device.kind);
     return reply.code(202).send(effortRoutingView());
   });
 
@@ -1295,14 +1438,15 @@ async function createCorralServer(
       revision: snapshot.revision,
       effectiveProfiles: registry.contextPolicies(
         snapshot.config.modelProfiles ?? registry.profileConfigs(),
-        endpointsFrom(snapshot.config.modelProviders),
+        registry.endpointsFor(snapshot.config.modelProviders),
         snapshot.revision,
       ),
     };
   });
   const modelConfigBody = z.strictObject({
     revision: z.string().min(1).max(100),
-    modelProfiles: z.array(z.unknown()).max(20),
+    // Profiles have no count limit; the request body limit still applies.
+    modelProfiles: z.array(z.unknown()),
     modelProviders: z.array(z.unknown()).max(10),
   });
   app.post('/api/v1/model-config/preview', async (request, reply) => {
@@ -1319,7 +1463,7 @@ async function createCorralServer(
       revision: body.revision,
       effectiveProfiles: registry.contextPolicies(
         parsed.config.modelProfiles ?? [],
-        endpointsFrom(parsed.config.modelProviders),
+        registry.endpointsFor(parsed.config.modelProviders),
         body.revision,
       ),
     };
@@ -1335,7 +1479,7 @@ async function createCorralServer(
       { modelProfiles: body.modelProfiles, modelProviders: body.modelProviders },
       body.revision,
       (config) => {
-        const next = endpointsFrom(config.modelProviders);
+        const next = current.endpointsFor(config.modelProviders);
         return [
           ...endpointClashes(live.models, next),
           ...current.unknownProviders(config.modelProfiles ?? [], next),
@@ -1356,7 +1500,7 @@ async function createCorralServer(
     }
     workspace.config = written.config;
     workspace.configRevision = written.revision;
-    const endpoints = endpointsFrom(written.config.modelProviders);
+    const endpoints = current.endpointsFor(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
     await current.reconfigure(
       written.config.modelProfiles ?? DEFAULT_PROFILES,
@@ -1372,7 +1516,12 @@ async function createCorralServer(
     };
   });
 
-  registerModelImportRoutes(app, { workspace, registry, live: options.live });
+  registerModelImportRoutes(app, {
+    workspace,
+    registry,
+    live: options.live,
+    catalog: modelCatalog,
+  });
   registerPreviewRoutes(app, previews, previewTools);
   const projectServices = registerProjectRoutes(app, { root: workspace.root, repository: corrals });
   registerVoiceRoutes(app, {
@@ -1611,9 +1760,11 @@ async function createCorralServer(
   const autoStarter = createAutoStarter<AbortSignal>({
     prepareModels: (request, profiles) =>
       coordinator.prepareModels(profiles ?? [request.choice.modelProfile], request.mode),
-    // the conversation lead gets file tools when the session has a working copy.
-    fileTools: async (request) =>
-      request.sessionId ? (await files.currentTree(request.sessionId)) !== null : false,
+    // file tools follow the session folder: a working copy, or a linked trusted folder.
+    fileTools: (request) =>
+      request.sessionId
+        ? files.sessionFiles(request.sessionId)
+        : { mode: 'none' as const, reason: 'unlinked' as const },
     corral: (corralId) => corrals.get(corralId),
     // a session turn in a trusted folder works in the built-in work style by default.
     sessionHarness: () => harnesses.sessionDefault(),
@@ -1634,6 +1785,9 @@ async function createCorralServer(
           }),
         };
       const route = request.autoRoute;
+      const workspace = request.sessionId
+        ? files.sessionFiles(request.sessionId)
+        : { mode: 'none' as const, reason: 'unlinked' as const };
       const result = coordinator.startRun(
         route
           ? {
@@ -1649,7 +1803,8 @@ async function createCorralServer(
                   modelProfile: route.modelProfile,
                   ...(route.reasoning ? { reasoning: route.reasoning } : {}),
                 },
-                fileTools: startTree !== null,
+                fileTools: workspace.mode !== 'none',
+                workspace,
                 ...(route.harness ? { harness: route.harness, commandTools: true } : {}),
                 ...(route.reasoningChoice ? { routeLevel: route.reasoningChoice.level } : {}),
               }),
@@ -1807,7 +1962,18 @@ async function createCorralServer(
     now: () => clock.nowIso(),
     id: () => `schedule_${crypto.randomUUID().replaceAll('-', '')}`,
     repository: corrals,
-    start: (request, signal) => autoStarter.start(request, { fileTools: false, signal }),
+    // a scheduled request is admitted like a typed one: with the session's current criteria.
+    // It runs without the session's advisor (features/advisor.md, 두는 곳 › 대화).
+    start: async (request, signal) => {
+      const sessionCriteria = request.sessionId
+        ? (await corrals.getSession(request.sessionId))?.criteria
+        : undefined;
+      return autoStarter.start(request, {
+        fileTools: false,
+        signal,
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+      });
+    },
     previous: recordedAuto,
     isRunActive: (id) => {
       const run = coordinator.listRuns().find((item) => item.runId === id);
@@ -1855,15 +2021,77 @@ async function createCorralServer(
     }),
   });
   registerVaultRoutes(app, { vault, directory: vaultDirectory });
+  type AutoRunBody = z.infer<typeof AutoRunRequest>;
+  /**
+   * Admits one auto request the way `POST /runs/auto` does; the server queue calls it too.
+   * A refusal before admission is returned; the start's own refusal is in its receipt.
+   */
+  const startAutoRun = async (
+    body: AutoRunBody,
+    signal: AbortSignal,
+    controller: AbortController,
+  ): Promise<
+    | { ok: false; code: ErrorCode; message: string }
+    | { ok: true; result: AutoResult; resend: boolean }
+  > => {
+    if (body.commandId.startsWith('meeting_'))
+      return {
+        ok: false,
+        code: 'CAPABILITY_DENIED',
+        message: 'Meeting start commands belong to the meeting service.',
+      };
+    const resend = coordinator.hasStartCommand(body.commandId);
+    // A resend returns its first start, so the session is read for a new admission only.
+    let sessionCriteria: string[] | undefined;
+    let sessionAdvisor: WorkSession['advisor'];
+    if (!resend) {
+      const session = await corrals.getSession(body.sessionId);
+      if (!session) return { ok: false, code: 'TARGET_NOT_FOUND', message: 'no such session' };
+      if (session.meeting)
+        return {
+          ok: false,
+          code: 'CAPABILITY_DENIED',
+          message: 'A meeting starts answers through its rounds only.',
+        };
+      sessionCriteria = session.criteria;
+      sessionAdvisor = session.advisor;
+    }
+    const work = autoStarter.start(
+      {
+        commandId: body.commandId,
+        sessionId: body.sessionId,
+        brief: body.brief,
+        choice: body.choice,
+        mode: body.mode,
+        ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
+        ...(body.harness ? { harness: body.harness } : {}),
+        ...(body.taskScope ? { taskScope: body.taskScope } : {}),
+        ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
+        ...(body.startFrom ? { startFrom: body.startFrom } : {}),
+        ...(body.conversation ? { conversation: body.conversation } : {}),
+        ...(body.team ? { team: body.team } : {}),
+        ...(body.references ? { references: body.references } : {}),
+      },
+      {
+        fileTools: false,
+        signal,
+        ...(sessionCriteria?.length ? { sessionCriteria } : {}),
+        ...(sessionAdvisor ? { sessionAdvisor } : {}),
+      },
+    );
+    if (!autoRequests.has(body.commandId)) {
+      const pending = { sessionId: body.sessionId, controller, work };
+      autoRequests.set(body.commandId, pending);
+      const clear = () => {
+        if (autoRequests.get(body.commandId) === pending) autoRequests.delete(body.commandId);
+      };
+      void work.then(clear, clear);
+    }
+    return { ok: true, result: await work, resend };
+  };
   app.post('/api/v1/runs/auto', async (request, reply) => {
     const body = parse(AutoRunRequest, request, reply);
     if (!body) return reply;
-    if (body.commandId.startsWith('meeting_'))
-      return fail(
-        reply,
-        'CAPABILITY_DENIED',
-        'Meeting start commands belong to the meeting service.',
-      );
     const dropped = new AbortController();
     const onClose = () => {
       if (!reply.raw.writableEnded) dropped.abort();
@@ -1871,44 +2099,9 @@ async function createCorralServer(
     reply.raw.once('close', onClose);
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
-      const resend = coordinator.hasStartCommand(body.commandId);
-      if (!resend) {
-        const session = await corrals.getSession(body.sessionId);
-        if (!session) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
-        if (session.meeting)
-          return fail(
-            reply,
-            'CAPABILITY_DENIED',
-            'A meeting starts answers through its rounds only.',
-          );
-      }
-      const work = autoStarter.start(
-        {
-          commandId: body.commandId,
-          sessionId: body.sessionId,
-          brief: body.brief,
-          choice: body.choice,
-          mode: body.mode,
-          ...(body.permissionMode ? { permissionMode: body.permissionMode } : {}),
-          ...(body.harness ? { harness: body.harness } : {}),
-          ...(body.taskScope ? { taskScope: body.taskScope } : {}),
-          ...(body.verificationScope ? { verificationScope: body.verificationScope } : {}),
-          ...(body.startFrom ? { startFrom: body.startFrom } : {}),
-          ...(body.conversation ? { conversation: body.conversation } : {}),
-          ...(body.team ? { team: body.team } : {}),
-          ...(body.references ? { references: body.references } : {}),
-        },
-        { fileTools: false, signal: dropped.signal },
-      );
-      if (!autoRequests.has(body.commandId)) {
-        const pending = { sessionId: body.sessionId, controller: dropped, work };
-        autoRequests.set(body.commandId, pending);
-        const clear = () => {
-          if (autoRequests.get(body.commandId) === pending) autoRequests.delete(body.commandId);
-        };
-        void work.then(clear, clear);
-      }
-      const result = await work;
+      const started = await startAutoRun(body, dropped.signal, dropped);
+      if (!started.ok) return fail(reply, started.code, started.message);
+      const { result, resend } = started;
       const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
       return reply.code(status).send(result);
     } catch (error) {
@@ -1922,6 +2115,44 @@ async function createCorralServer(
     } finally {
       reply.raw.off('close', onClose);
     }
+  });
+  // The server starts a session's first queued request when this process sees its run end.
+  // Each start has its own controller: cancelling one queued start must not stop the others.
+  const queueStarts = new Set<AbortController>();
+  let queueClosed = false;
+  resources.defer(() => {
+    queueClosed = true;
+    for (const controller of queueStarts) controller.abort();
+  });
+  sessionQueue = createSessionQueue({
+    repository: corrals,
+    runs: () => coordinator.listRuns(),
+    directiveRun: (sessionId, directiveId) =>
+      coordinator
+        .listRuns()
+        .find(
+          (run) =>
+            run.sessionId === sessionId &&
+            coordinator.findSnapshot(run.runId)?.projection.directives[directiveId] !== undefined,
+        )?.runId ?? null,
+    start: async (request) => {
+      if (queueClosed) return { ok: false, code: 'CANCELLED' };
+      const controller = new AbortController();
+      queueStarts.add(controller);
+      const started = await startAutoRun(
+        { ...request, schemaVersion: SCHEMA_VERSION },
+        controller.signal,
+        controller,
+      ).finally(() => queueStarts.delete(controller));
+      if (!started.ok) return { ok: false, code: started.code };
+      return {
+        ok: true,
+        runId: started.result.runId,
+        error: started.result.receipt.error ?? null,
+        autoRoute: started.result.autoRoute ?? null,
+      };
+    },
+    log: (sessionId, code) => console.warn(`session queue: ${sessionId} ${code}`),
   });
   app.post<{ Params: { commandId: string } }>(
     '/api/v1/runs/auto/:commandId/cancel',
@@ -2238,14 +2469,23 @@ async function createCorralServer(
         })
         .safeParse(request.query);
       if (!query.success) return fail(reply, 'SCHEMA_INVALID', 'q and limit are invalid');
+      const dropped = new AbortController();
+      const onClose = () => {
+        if (!reply.raw.writableEnded) dropped.abort();
+      };
+      reply.raw.once('close', onClose);
+      if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
       try {
         return await files.searchPaths(
           { kind, id: request.params.id },
           query.data.q,
           query.data.limit,
+          dropped.signal,
         );
       } catch (error) {
         return workspaceFail(reply, error);
+      } finally {
+        reply.raw.off('close', onClose);
       }
     });
     app.get<{ Params: { id: string } }>(`${base}/file`, async (request, reply) => {
@@ -2965,11 +3205,35 @@ async function createCorralServer(
   app.get('/api/v1/terminals/attention', async () => review.terminalAttention());
   app.get<ProjectParams>('/api/v1/projects/:projectId/inbox', async (request) => {
     const sessions = await corrals.listSessions(request.params.projectId);
+    // Approvals and questions come from each run's status; advice needs the projection, so only
+    // runs that recorded advice are read.
+    const advised = review.runsWithAdvice();
     return review.inbox(
       sessions.filter((x) => !x.archivedAt),
       coordinator.listRuns(),
+      (runId) => {
+        const projection = advised.has(runId) ? coordinator.findSnapshot(runId)?.projection : null;
+        return projection ? unreadAdvice(projection) : [];
+      },
     );
   });
+  // The person opened an execution row (features/inbox.md, `advice`).
+  app.post<{ Params: { runId: string; executionId: string } }>(
+    '/api/v1/runs/:runId/executions/:executionId/opened',
+    async (request, reply) => {
+      const { runId, executionId } = request.params;
+      if (!coordinator.findSnapshot(runId)?.projection.executions[executionId])
+        return fail(reply, 'TARGET_NOT_FOUND', 'no such execution');
+      review.markExecutionOpened(runId, executionId);
+      return reply.code(204).send();
+    },
+  );
+  app.get<ProjectParams>(
+    '/api/v1/projects/:projectId/session-evidence',
+    async (request, reply) =>
+      review.sessionEvidence(request.params.projectId) ??
+      fail(reply, 'TARGET_NOT_FOUND', 'no such project'),
+  );
 
   // ── Work sessions ───────────────────────────────────────────────────
   const sessionReply = (reply: FastifyReply, result: SessionResult, created: boolean) => {
@@ -3013,6 +3277,64 @@ async function createCorralServer(
       );
     },
   );
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/deletion', async (request, reply) => {
+    const preview = previewSessionDeletion(db, request.params.sessionId);
+    if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    if (preview.copyGeneration === null) return { ...preview, workingCopy: null };
+    try {
+      return { ...preview, workingCopy: await files.removalPlan(request.params.sessionId) };
+    } catch (error) {
+      if (error instanceof WorkspaceError && error.code === 'TARGET_NOT_FOUND')
+        return { ...preview, copyGeneration: null, workingCopy: null };
+      return workspaceFail(reply, error);
+    }
+  });
+  app.delete<SessionParams>('/api/v1/sessions/:sessionId', async (request, reply) => {
+    const body = parse(DeleteSession, request, reply);
+    if (!body) return reply;
+    const { sessionId } = request.params;
+    const preview = previewSessionDeletion(db, sessionId);
+    if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+    if (preview.revision !== body.expectedRevision)
+      return fail(
+        reply,
+        'REVISION_CONFLICT',
+        'the session changed since this deletion was confirmed',
+      );
+    const live = coordinator
+      .listRuns()
+      .filter((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
+    if (preview.unfinishedRunIds.length || live.length)
+      return fail(reply, 'RUN_ALREADY_ACTIVE', 'a run in this session has not finished');
+    if (preview.copyGeneration !== null) {
+      if (body.copyGeneration !== preview.copyGeneration)
+        return fail(
+          reply,
+          'REVISION_CONFLICT',
+          'the working copy generation is not the one that was confirmed',
+        );
+      try {
+        await files.removeWorktree(sessionId, body.copyGeneration);
+      } catch (error) {
+        return workspaceFail(reply, error);
+      }
+    }
+    // A refused delete leaves the schedules' in-flight dispatches running.
+    const releaseDispatches = schedules.sessionDispatches(sessionId);
+    const removed = deleteSessionRecords(db, sessionId, body.expectedRevision, worktreeRoot);
+    if (!removed.ok) {
+      if (removed.error === 'not_found') return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
+      if (removed.error === 'conflict')
+        return fail(
+          reply,
+          'REVISION_CONFLICT',
+          'the session changed since this deletion was confirmed',
+        );
+      return fail(reply, 'RUN_ALREADY_ACTIVE', 'a run in this session has not finished');
+    }
+    releaseDispatches();
+    return reply.code(204).send();
+  });
   // ── Meetings ──────────────────────────────────────────────────────
   const meetingReply = async (
     reply: FastifyReply,
@@ -3048,6 +3370,15 @@ async function createCorralServer(
       if (!body) return reply;
       const { sessionId } = request.params;
       return meetingReply(reply, sessionId, await meetings.send(sessionId, body));
+    },
+  );
+  app.post<{ Params: { sessionId: string } }>(
+    '/api/v1/sessions/:sessionId/meeting/continue',
+    async (request, reply) => {
+      const body = parse(MeetingContinueRequest, request, reply);
+      if (!body) return reply;
+      const { sessionId } = request.params;
+      return meetingReply(reply, sessionId, await meetings.continueChain(sessionId, body));
     },
   );
   app.post<{ Params: { sessionId: string; roundId: string } }>(
@@ -3103,11 +3434,11 @@ async function createCorralServer(
     async (request, reply) => {
       const body = parse(NewEntry, request, reply);
       if (!body) return reply;
-      return sessionReply(
-        reply,
-        await corrals.addSessionEntry(request.params.sessionId, body),
-        true,
-      );
+      const saved = await corrals.addSessionEntry(request.params.sessionId, body);
+      // A request queued just after the session's run ended would otherwise wait for a person.
+      if (saved.ok && body.state === 'queued')
+        void sessionQueue?.onEntryQueued(request.params.sessionId);
+      return sessionReply(reply, saved, true);
     },
   );
   app.patch<{ Params: { sessionId: string; entryId: string } }>(
@@ -3324,10 +3655,13 @@ async function createCorralServer(
     return reply.header('Cache-Control', 'private, no-store').send(turn);
   });
   app.post<RunParams>('/api/v1/runs/:runId/commands', async (request, reply) => {
-    const body = request.body as { runId?: unknown; commandId?: unknown } | null;
+    const body = request.body as { runId?: unknown; commandId?: unknown; type?: unknown } | null;
     if (body?.runId !== request.params.runId) {
       return fail(reply, 'SCHEMA_INVALID', 'runId does not match the address');
     }
+    // Advice comes only from an advisor's advise tool, never from a screen (features/advisor.md).
+    if (body.type === 'submit_advice')
+      return fail(reply, 'CAPABILITY_DENIED', 'advice is not a command a person sends');
     const receipt = coordinator.submit(request.body as never);
     return reply.code(receiptStatus(receipt)).send(receipt);
   });

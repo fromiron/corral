@@ -1,6 +1,8 @@
 import type { FitAddon } from '@xterm/addon-fit';
 import type { Terminal } from '@xterm/xterm';
 import { resolvedThemeColors } from '../theme-colors.ts';
+import { appliedAppearance } from '../themes/appearance.ts';
+import { TERMINAL_COLOR_TOKENS, terminalTheme } from '../themes/code.ts';
 
 export interface XtermRuntime {
   terminal: Terminal;
@@ -43,14 +45,12 @@ export async function createXterm(
   terminal.parser.registerOscHandler(8, () => true);
   terminal.open(host);
   const input = terminal.onData(onData);
+  // A named theme adds its sixteen colors and selection; the terminal is recolored, never rebuilt.
   const theme = () => {
-    const colors = resolvedThemeColors(['surface', 'text', 'primary']);
-    terminal.options.theme = {
-      background: colors.surface,
-      foreground: colors.text,
-      cursor: colors.primary,
-      cursorAccent: colors.surface,
-    };
+    terminal.options.theme = terminalTheme(
+      resolvedThemeColors(TERMINAL_COLOR_TOKENS),
+      appliedAppearance.getState().palette,
+    );
   };
   theme();
   const observer = new MutationObserver(theme);
@@ -58,6 +58,7 @@ export async function createXterm(
     attributes: true,
     attributeFilter: ['class', 'data-theme', 'style'],
   });
+  const stopTheme = appliedAppearance.subscribe(theme);
   return {
     terminal,
     fit,
@@ -65,6 +66,7 @@ export async function createXterm(
     dispose() {
       input.dispose();
       observer.disconnect();
+      stopTheme();
       terminal.dispose();
       host.remove();
     },

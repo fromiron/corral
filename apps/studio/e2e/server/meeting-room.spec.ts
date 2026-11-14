@@ -2,7 +2,7 @@ import type { MeetingHandoffReceipt, MeetingView } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import { Gate, simulatedReply } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { requestBox } from '../workbench.ts';
+import { chooseModel, newConversation, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // only model replies are simulated. Creation, conversation, decisions and handoffs
@@ -65,8 +65,10 @@ async function createMeeting(page: Page, corral: Harness, development = true) {
     await dialog.getByRole('button', { name: 'Apply development roles', exact: true }).click();
   await dialog.getByRole('button', { name: 'Remove participant 3', exact: true }).click();
   if (development) {
-    await dialog.getByRole('combobox', { name: 'Participant 1 model', exact: true }).click();
-    await page.getByRole('option', { name: 'model-b', exact: true }).click();
+    await chooseModel(page, 'Participant 1 model', 'model-b');
+    await expect(
+      dialog.getByRole('button', { name: 'Participant 1 model: model-b', exact: true }),
+    ).toBeVisible();
   }
   await dialog.getByRole('button', { name: 'Create meeting', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
@@ -112,7 +114,7 @@ async function adoptDecision(page: Page, id: string) {
   await expect
     .poll(async () => (await meeting(page, id)).minutes?.[0]?.document?.candidates.length)
     .toBe(1);
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Review and adopt', exact: true }).click();
   await page.locator('textarea[name="goal"]').fill('Measure before releasing');
@@ -149,10 +151,20 @@ test('role and secretary selection survive reopening without more calls', async 
   await expect(conversation.getByRole('article')).toHaveCount(3);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Builder');
   await page.screenshot({ path: test.info().outputPath('meeting-room-narrow.png') });
-  const secretary = page.getByRole('button', { name: '@Secretary', exact: true });
+  // The recipients are the tool line's badge; the keyboard alone opens it and ticks the secretary.
+  await page.getByRole('button', { name: 'Recipients: Auto', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  const secretary = page.getByRole('menuitemcheckbox', { name: 'Secretary', exact: true });
   await secretary.focus();
   await page.keyboard.press('Space');
-  await expect(secretary).toHaveAttribute('aria-pressed', 'true');
+  await expect(secretary).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('Escape');
+  // Narrow, the chosen read as a count, so the badge keeps its width; its name says who.
+  await expect(
+    page.getByRole('button', { name: 'Recipients (1 person): Secretary', exact: true }),
+  ).toBeVisible();
+  // Escape gave the focus back to the box.
+  await expect(page.getByRole('textbox', { name: 'Meeting message', exact: true })).toBeFocused();
   await send(page, 'Record the remaining disagreement');
   await finishReplies(page, id, 2);
   await expect(conversation.getByRole('article').last()).toHaveAttribute('aria-label', 'Secretary');
@@ -223,7 +235,12 @@ test.describe('general chat', () => {
       { name: 'Participant 2', prompt: '', modelProfile: 'model-b' },
     ]);
     const conversation = page.getByTestId('chat-timeline');
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    // The records panel stays closed until asked for.
+    const records = page.getByRole('complementary', {
+      name: 'Minutes, plan and handoff',
+      exact: true,
+    });
+    await expect(records).toHaveCount(0);
     await expect(page.getByRole('button', { name: /round|rebuttal/i })).toHaveCount(0);
     await send(page, 'What should I eat for dinner?');
     await finishReplies(page, id, 0);
@@ -257,7 +274,7 @@ test.describe('general chat', () => {
     await expect(
       conversation.getByRole('article', { name: 'Participant 2', exact: true }).first(),
     ).toContainText('I would have potato soup.');
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toHaveCount(0);
+    await expect(records).toHaveCount(0);
     await expect(conversation.getByRole('article', { name: 'Secretary', exact: true })).toHaveCount(
       0,
     );
@@ -265,10 +282,15 @@ test.describe('general chat', () => {
 
     await page.getByRole('button', { name: 'Ask secretary for a plan', exact: true }).click();
     await finishReplies(page, id, 3);
-    await expect(page.getByText('Minutes, plan and handoff', { exact: true })).toBeVisible();
     await expect(
       conversation.getByRole('article', { name: 'Secretary', exact: true }),
     ).toBeVisible();
+    // Where the secretary posts the minutes, they open for review in the records panel.
+    await conversation
+      .getByRole('article', { name: 'Secretary', exact: true })
+      .getByRole('button', { name: 'Review minutes and plan', exact: true })
+      .click();
+    await expect(records).toBeVisible();
     expect((await meeting(page, id)).minutes?.[0]?.document?.candidates).toEqual([]);
     expect(corral.server.coordinator.listRuns()).toHaveLength(6);
     expect(corral.errors).toEqual([]);
@@ -308,7 +330,11 @@ test.describe('active meeting', () => {
       .getByRole('textbox', { name: 'Meeting message', exact: true })
       .fill('Still able to type');
     await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeEnabled();
-    await page.getByRole('button', { name: 'Stop answering', exact: true }).click();
+    // Something is written: Send keeps its place, and Stop is the activity bar's.
+    await expect(page.getByRole('button', { name: 'Stop answering', exact: true })).toHaveCount(0);
+    const activity = page.getByTestId('activity-bar');
+    await activity.getByRole('button', { name: 'Activity details', exact: true }).click();
+    await activity.getByRole('button', { name: 'Stop', exact: true }).click();
     replies.open();
     await expect
       .poll(async () => (await meeting(page, id)).rounds.every((round) => !round.active))
@@ -376,6 +402,12 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  // Below 1024px the records open as a drawer on request; a panel left open on a wide screen
+  // does not cover the phone's conversation by itself.
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await expect(
+    page.getByRole('dialog', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Withdraw decision', exact: true }).click();
   await page
     .getByRole('textbox', { name: 'Reason for withdrawal', exact: true })
@@ -385,7 +417,7 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
     .poll(async () => (await meeting(page, id)).decisionWithdrawals?.[0]?.reason)
     .toBe('Need another measurement first');
   await page.reload();
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   expect((await meeting(page, id)).decisions).toHaveLength(1);
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
@@ -398,7 +430,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
 }) => {
   test.setTimeout(60_000);
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const targetId = new URL(page.url()).pathname.split('/').at(-1) ?? '';
   await requestBox(page).fill('Keep my unsent request');
@@ -413,7 +445,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
     return (await response.json()).handoffs;
   };
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Target session', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Target conversation', exact: true }).click();
   await page.getByRole('option', { name: targetTitle, exact: true }).click();
   await page.getByRole('button', { name: 'Hand off and start', exact: true }).click();
   await expect.poll(async () => (await handoffs())[0]?.state).toBe('drafted');
@@ -426,9 +458,17 @@ test('handoffs preserve existing input and start work only when requested', asyn
   ).toHaveAttribute('href', `/sessions/${id}`);
 
   await page.goto(`${corral.server.url}/sessions/${id}`);
-  await page.getByText('Minutes, plan and handoff', { exact: true }).click();
+  // The records panel was left open here, so it comes back open.
+  await expect(
+    page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
-  await page.getByRole('textbox', { name: 'New session name', exact: true }).fill('Saved handoff');
+  await page
+    .getByRole('textbox', { name: 'New conversation name', exact: true })
+    .fill('Saved handoff');
   await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
   await expect.poll(async () => (await handoffs()).length).toBe(2);
   expect((await handoffs())[0]).toMatchObject({ state: 'drafted', runId: null });
@@ -436,7 +476,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
 
   await page
-    .getByRole('textbox', { name: 'New session name', exact: true })
+    .getByRole('textbox', { name: 'New conversation name', exact: true })
     .fill('Started handoff');
   await page.getByRole('button', { name: 'Hand off and start', exact: true }).click();
   await expect
@@ -468,7 +508,7 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const workUrl = page.url();
   await requestBox(page).fill('Keep the work draft too');
@@ -476,17 +516,18 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   const meetingUrl = page.url();
   const box = page.getByRole('textbox', { name: 'Meeting message', exact: true });
   await box.fill('Meeting draft with exact punctuation!');
-  await page.getByRole('button', { name: '@Participant 2', exact: true }).click();
+  await page.getByRole('button', { name: 'Recipients: Auto', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Participant 2', exact: true }).click();
+  await page.keyboard.press('Escape');
   await page.goto(workUrl);
   await expect(requestBox(page)).toHaveValue('Keep the work draft too');
   await page.goto(meetingUrl);
   await expect(box).toHaveValue('Meeting draft with exact punctuation!');
   await page.reload();
   await expect(box).toHaveValue('Meeting draft with exact punctuation!');
-  await expect(page.getByRole('button', { name: '@Participant 2', exact: true })).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(
+    page.getByRole('button', { name: 'Recipients: Participant 2', exact: true }),
+  ).toBeVisible();
   const second = await page.context().newPage();
   await second.goto(meetingUrl);
   await second
@@ -495,9 +536,14 @@ test('unsent meeting drafts survive navigation, reload and closing their tab', a
   await second.close();
   await page.reload();
   await expect(box).toHaveValue('Saved before closing this tab');
-  await page.getByRole('button', { name: 'Clear draft', exact: true }).click();
+  // The draft is cleared where each part is: the text in the box, the recipients by Auto.
+  await expect(page.getByRole('button', { name: 'Clear draft', exact: true })).toHaveCount(0);
+  await box.fill('');
+  await page.getByRole('button', { name: 'Recipients: Participant 2', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Auto', exact: true }).click();
   await page.reload();
   await expect(box).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Recipients: Auto', exact: true })).toBeVisible();
   expect((await meeting(page, id)).rounds).toHaveLength(0);
   expect(corral.errors).toEqual([]);
 });
@@ -528,7 +574,7 @@ test.describe('default simulation', () => {
     await expect.poll(async () => (await meeting(page, id)).decisions?.length).toBe(1);
     await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
     await page
-      .getByRole('textbox', { name: 'New session name', exact: true })
+      .getByRole('textbox', { name: 'New conversation name', exact: true })
       .fill('Simulation handoff');
     await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
     await expect
@@ -560,9 +606,10 @@ test.describe('secretary failure', () => {
       .getByRole('alert')
       .filter({ hasText: 'The secretary could not prepare the minutes.' });
     await expect(recovery).toBeVisible();
+    // The failure shows outside the records panel, which stays closed.
     await expect(
-      page.getByRole('group', { name: 'Minutes, plan and handoff' }),
-    ).not.toHaveAttribute('open');
+      page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+    ).toHaveCount(0);
     await page.getByRole('button', { name: 'Request minutes again', exact: true }).click();
     await finishReplies(page, id, 2);
     await expect(recovery).toHaveCount(1);

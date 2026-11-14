@@ -1,6 +1,12 @@
 import type { WorkSession } from '@corral/core';
 import type { Page } from '@playwright/test';
-import { requestBox, slash, startSession, teamFromTemplate } from '../workbench.ts';
+import {
+  newConversation,
+  requestBox,
+  slash,
+  startSession,
+  teamFromTemplate,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 const picker = (page: Page) =>
@@ -28,7 +34,7 @@ test('the Auto composer restores a permission draft and starts with that policy'
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(picker(page)).toContainText('Default policy');
   await choose(page, 'Ask');
   await requestBox(page).fill('Summarize the permission choice.');
@@ -63,7 +69,10 @@ test.describe('queued permission ownership', () => {
     expect(corral.server.coordinator.getRunSnapshot(firstRunId)?.permissionMode).toBe(
       'accept_edits',
     );
-    await slash(page, 'queue');
+    // While the run works Send joins it; `/next` picks a next request, which has its own
+    // permission policy and waits behind the run.
+    await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
+    await slash(page, 'next');
     await choose(page, 'Ask');
     await requestBox(page).fill('Queued request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -72,6 +81,10 @@ test.describe('queued permission ownership', () => {
       .toBe('ask');
     const queue = page.getByRole('region', { name: 'Queued next tasks' });
     await expect(queue).toContainText('Queued request');
+    // Left on, the server would start it when the run ends; here the person starts it.
+    await queue
+      .getByRole('switch', { name: 'Start the next queued task when the run ends', exact: true })
+      .click();
     await expect(queue.getByRole('button', { name: 'Start now' })).toBeEnabled({
       timeout: 20_000,
     });

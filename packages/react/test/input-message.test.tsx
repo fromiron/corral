@@ -71,3 +71,33 @@ it('does not steal focus from a portaled action menu inside a slot', () => {
   fireEvent.mouseDown(item);
   expect(item).toHaveFocus();
 });
+
+it('keeps the toolbar on one line when asked, and wraps it otherwise', () => {
+  const row = (toolbar?: 'single' | 'wrap') => {
+    const { unmount } = render(
+      <InputMessage
+        value=""
+        onValueChange={() => {}}
+        toolbar={toolbar}
+        leftSlot={<button type="button">Left tool</button>}
+        rightSlot={<button type="button">Right tool</button>}
+      />,
+    );
+    const left = screen.getByRole('button', { name: 'Left tool' }).parentElement;
+    const right = screen.getByRole('button', { name: 'Right tool' }).parentElement;
+    const classes = {
+      row: left?.parentElement?.className ?? '',
+      left: left?.className ?? '',
+      right: right?.className ?? '',
+    };
+    unmount();
+    return classes;
+  };
+  const single = row('single');
+  // From the sm width up the row never takes a second line: the left slot gives way and the
+  // right actions keep their size.
+  expect(single.row).toContain('sm:flex-nowrap');
+  expect(single.left).toContain('sm:flex-1');
+  expect(single.right).toContain('sm:shrink-0');
+  for (const part of Object.values(row())) expect(part).not.toContain('sm:flex-nowrap');
+});

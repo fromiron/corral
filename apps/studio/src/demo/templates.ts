@@ -1,8 +1,9 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
 import { addNode, connect, emptyDraft } from '@corral/react';
 
-// Demo templates. The default shows what the runtime is for: delegation, a question,
-// a review Loop that revises once, and human approval. `starter` is the single
+// Demo templates. The default shows what the runtime is for: delegation, a question and
+// a review Loop that revises once; its result is final without asking the person to approve it
+// (an approval is something a person adds in the editor). `starter` is the single
 // Agent → Output Corral the demo opened with before.
 
 export type DemoTemplateId = 'research-team' | 'starter';
@@ -35,7 +36,10 @@ function starter(): DemoTemplate {
 const rolePrompt = (duty: string) =>
   `${duty} Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result. Do not hide tool failures or missing evidence.`;
 
-/** examples/research-team.corral.json in English, without work tools the demo never calls. */
+/**
+ * examples/research-team.corral.json in English, without work tools the demo never calls and
+ * without its two approvals (the final approval Decision and the Output's).
+ */
 function researchTeam(): DemoTemplate {
   const definition: CorralDefinition = {
     schemaVersion: '0.1',
@@ -167,19 +171,11 @@ function researchTeam(): DemoTemplate {
         inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'review' }],
       },
       {
-        id: 'approval',
-        type: 'decision',
-        label: 'Final approval',
-        mode: 'approval',
-        rule: 'human_approval',
-        inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'write' }],
-      },
-      {
         id: 'output',
         type: 'output',
         label: 'Output',
         inputBindings: [{ kind: 'task_output', name: 'draft', sourceNodeId: 'write' }],
-        requireApproval: true,
+        requireApproval: false,
       },
     ],
     controlEdges: [
@@ -213,8 +209,15 @@ function researchTeam(): DemoTemplate {
         target: 'review_loop',
         targetPort: 'exit',
       },
-      { id: 'e7', source: 'review_loop', sourcePort: 'next', target: 'approval', targetPort: 'in' },
-      { id: 'e8', source: 'approval', sourcePort: 'approve', target: 'output', targetPort: 'in' },
+      { id: 'e7', source: 'review_loop', sourcePort: 'next', target: 'output', targetPort: 'in' },
+      // At the round cap nobody is asked: the last draft goes on with its review.
+      {
+        id: 'e8',
+        source: 'review_loop',
+        sourcePort: 'exhausted',
+        target: 'output',
+        targetPort: 'in',
+      },
     ],
     capabilityLinks: [
       { id: 'cap1', kind: 'delegate', sourceNodeId: 'research', targetNodeId: 'helper' },

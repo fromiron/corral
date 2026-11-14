@@ -13,7 +13,11 @@ const capture = vi.hoisted(() => ({
   target: { hostId: 'host', projectId: 'project', sessionId: 'session' },
   revision: 7,
 }));
+Element.prototype.getAnimations ??= () => [];
+
 vi.mock('./bridge.ts', () => ({ beginAttachmentCapture: vi.fn(() => capture) }));
+// The document head reads the copy's branch through the services; this copy has none to read.
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ mode: 'server' }) }));
 vi.mock('../documents/CodeEditorView.tsx', () => ({
   CodeEditorView: ({
     onSelection,
@@ -36,6 +40,19 @@ vi.mock('../documents/CodeEditorView.tsx', () => ({
 
 it('dirty confirmation and retries keep the selected text and original capture ticket', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
   vi.stubGlobal('crypto', { subtle: { digest: async () => new Uint8Array(32).buffer } });
   const target = { ...capture.target, bindingId: 'binding', copyGeneration: 1 };
   const entry: DocumentBuffer = {
@@ -105,7 +122,14 @@ it('dirty confirmation and retries keep the selected text and original capture t
       JSON.stringify({ startLine: 1, startColumn: 1, endLine: 1, endColumn: 9 }),
     );
     await click('Select code');
-    await click('Attach selected code');
+    await act(async () =>
+      container.querySelector<HTMLElement>('[aria-label^="More actions for"]')?.click(),
+    );
+    const attach = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+      (row) => row.getAttribute('aria-label') === 'Attach selected code',
+    );
+    expect(attach).toBeDefined();
+    await act(async () => attach?.click());
     expect(onAttach).not.toHaveBeenCalled();
     expect(document.querySelector('textarea[aria-label="Captured selection"]')?.textContent).toBe(
       'captured',

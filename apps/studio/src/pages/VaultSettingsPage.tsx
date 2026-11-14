@@ -5,7 +5,16 @@ import type {
   VaultPreview,
   VaultStatus,
 } from '@corral/client';
-import { Button, Checkbox, Input, Select } from '@corral/react/design-kit';
+import type { CorralNode } from '@corral/contracts';
+import { ModelSelect, profileChoices } from '@corral/react';
+import {
+  Button,
+  Checkbox,
+  fontWeights,
+  Input,
+  type ModelOption,
+  Select,
+} from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useLocale } from '../locale.tsx';
@@ -20,8 +29,18 @@ import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };
 const inputClass = 'min-w-0';
+
+/** Who may take imported subagents: only an agent in the flow delegates; callable agents and
+ * advisors do not (team-graph.md structure rule 11). */
+export function subagentParents(nodes: readonly CorralNode[]): Choice[] {
+  return nodes
+    .filter((node) => node.type === 'agent' && node.invocation === 'scheduled')
+    .map((node) => ({ value: node.id, label: node.label }));
+}
+
 export function VaultSettingsPage() {
   const t = useTranslations('Vault');
+  const tc = useTranslations('Composer');
   const projectText = useTranslations('Projects');
   const defaultProjectName = projectText('defaultName');
   const { vault, repository, models } = useServices();
@@ -40,7 +59,7 @@ export function VaultSettingsPage() {
   const [teams, setTeams] = useState<Choice[]>([]);
   const [sessions, setSessions] = useState<Choice[]>([]);
   const [parents, setParents] = useState<Choice[]>([]);
-  const [profiles, setProfiles] = useState<Choice[]>([]);
+  const [profiles, setProfiles] = useState<ModelOption[]>([]);
   const [keys, setKeys] = useState<Choice[]>([]);
   const [includeSecrets, setIncludeSecrets] = useState<string[]>([]);
   const [etag, setEtag] = useState<string | null>(null);
@@ -81,12 +100,15 @@ export function VaultSettingsPage() {
         );
         setTeams(teams.map((team) => ({ value: team.corralId, label: team.name })));
         setProfiles(
-          profiles
-            .filter((profile) => profile.available)
-            .map((profile) => ({
-              value: profile.profileId,
-              label: `${profile.profileId} · ${profile.modelId}`,
-            })),
+          profileChoices(
+            profiles
+              .filter((profile) => profile.available)
+              .map((profile) => ({
+                ...profile,
+                label: `${profile.providerName} · ${profile.modelName ?? profile.modelId}`,
+              })),
+            { profiles: tc('modelPicker.profiles'), unavailable: tc('modelPicker.unavailable') },
+          ),
         );
         setKeys(
           providers
@@ -100,7 +122,7 @@ export function VaultSettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [vault, repository, models, t, defaultProjectName]);
+  }, [vault, repository, models, t, tc, defaultProjectName]);
   useEffect(() => {
     let cancelled = false;
     void Promise.all([
@@ -112,11 +134,7 @@ export function VaultSettingsPage() {
         setSessions(
           sessions.map((session) => ({ value: session.sessionId, label: session.title })),
         );
-        setParents(
-          team?.definition.nodes
-            .filter((node) => node.type === 'agent' && node.invocation !== 'callable')
-            .map((node) => ({ value: node.id, label: node.label })) ?? [],
-        );
+        setParents(team ? subagentParents(team.definition.nodes) : []);
       })
       .catch(() => {
         if (!cancelled) setError(t('loadFailed'));
@@ -179,13 +197,11 @@ export function VaultSettingsPage() {
   return (
     <SettingsLayout active="vault">
       <main className="settings-content">
-        <h2 className="text-2xl font-semibold">{t('heading')}</h2>
         {!vault ? (
-          <p className="text-sm text-muted-foreground">{t('serverOnly')}</p>
+          <p className="text-body text-muted-foreground">{t('serverOnly')}</p>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">{t('intro')}</p>
-            <label className="flex flex-col gap-1 text-sm">
+            <label className="flex flex-col gap-1 text-body">
               {t('password')}
               <Input
                 type="password"
@@ -196,11 +212,13 @@ export function VaultSettingsPage() {
                 disabled={busy}
               />
             </label>
-            <p id="vault-password-hint" className="text-xs text-muted-foreground">
+            <p id="vault-password-hint" className="text-caption text-muted-foreground">
               {t('passwordHint')}
             </p>
             <section className="settings-surface flex flex-col gap-3" aria-label={t('scope')}>
-              <h3 className="text-sm font-semibold">{t('scope')}</h3>
+              <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('scope')}
+              </h3>
               <div className="flex flex-wrap gap-3">
                 {status?.domains.map(({ domain, available }) => (
                   <Checkbox
@@ -218,6 +236,8 @@ export function VaultSettingsPage() {
                   />
                 ))}
               </div>
+              {/* What never leaves this computer, beside the choice of what does. */}
+              <p className="text-caption text-muted-foreground">{t('excluded')}</p>
               <div className="flex flex-wrap gap-2">
                 <Select
                   label={t('project')}
@@ -264,8 +284,8 @@ export function VaultSettingsPage() {
               </div>
               {keys.length ? (
                 <details>
-                  <summary className="cursor-pointer text-sm">{t('secretOptions')}</summary>
-                  <p className="my-2 text-xs text-muted-foreground">{t('secretHint')}</p>
+                  <summary className="cursor-pointer text-body">{t('secretOptions')}</summary>
+                  <p className="my-2 text-caption text-muted-foreground">{t('secretHint')}</p>
                   {keys.map((key) => (
                     <Checkbox
                       key={key.value}
@@ -306,8 +326,10 @@ export function VaultSettingsPage() {
               </Button>
             </section>
             <section className="settings-surface flex flex-col gap-3" aria-label={t('import')}>
-              <h3 className="text-sm font-semibold">{t('import')}</h3>
-              <label className="flex flex-col gap-1 text-sm">
+              <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('import')}
+              </h3>
+              <label className="flex flex-col gap-1 text-body">
                 {t('file')}
                 <input
                   type="file"
@@ -362,13 +384,34 @@ export function VaultSettingsPage() {
                     }
                   />
                   {entry.warnings.map((warning) => (
-                    <p key={warning} className="mt-1 text-xs text-muted-foreground">
+                    <p key={warning} className="mt-1 text-caption text-muted-foreground">
                       {warning}
                     </p>
                   ))}
                   <div className="mt-2 flex flex-wrap gap-2">
                     {entry.fields.map((field) => {
                       const value = bindings[entry.domain]?.[field.key] ?? '';
+                      const bind = (next: string) => {
+                        setPreviewDirty(true);
+                        setBindings((current) => ({
+                          ...current,
+                          [entry.domain]: { ...current[entry.domain], [field.key]: next },
+                        }));
+                      };
+                      // A model is chosen with the searchable, grouped model field.
+                      if (field.kind === 'model')
+                        return (
+                          <div key={field.key} className="min-w-56">
+                            <ModelSelect
+                              label={field.label}
+                              placeholder={field.label}
+                              value={value}
+                              options={profiles}
+                              disabled={busy}
+                              onValueChange={bind}
+                            />
+                          </div>
+                        );
                       const options =
                         field.kind === 'project'
                           ? projects
@@ -378,9 +421,7 @@ export function VaultSettingsPage() {
                               ? sessions
                               : field.kind === 'parent'
                                 ? parents
-                                : field.kind === 'model'
-                                  ? profiles
-                                  : null;
+                                : null;
                       return options ? (
                         <Select
                           key={field.key}
@@ -398,7 +439,7 @@ export function VaultSettingsPage() {
                           }}
                         />
                       ) : (
-                        <label key={field.key} className="flex flex-col gap-1 text-xs">
+                        <label key={field.key} className="flex flex-col gap-1 text-caption">
                           {field.label}
                           <Input
                             value={value}
@@ -444,8 +485,13 @@ export function VaultSettingsPage() {
             </section>
             {pending ? (
               <section className="settings-surface flex flex-col gap-2" aria-label={t('recovery')}>
-                <h3 className="text-sm font-semibold">{t('recovery')}</h3>
-                <p className="text-sm text-muted-foreground">{t('recoveryHint')}</p>
+                <h3
+                  className="text-subtitle"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
+                  {t('recovery')}
+                </h3>
+                <p className="text-body text-muted-foreground">{t('recoveryHint')}</p>
                 <div className="flex flex-wrap gap-2">
                   <Button
                     size="compact"
@@ -474,8 +520,13 @@ export function VaultSettingsPage() {
               </section>
             ) : null}
             <details className="settings-surface">
-              <summary className="cursor-pointer text-sm font-semibold">{t('s3')}</summary>
-              <p className="my-2 text-xs text-muted-foreground">{t('s3Hint')}</p>
+              <summary
+                className="cursor-pointer text-subtitle"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {t('s3')}
+              </summary>
+              <p className="my-2 text-caption text-muted-foreground">{t('s3Hint')}</p>
               <div className="grid gap-2 sm:grid-cols-2">
                 {(
                   [
@@ -488,7 +539,7 @@ export function VaultSettingsPage() {
                     'sessionToken',
                   ] as const
                 ).map((key) => (
-                  <label key={key} className="flex flex-col gap-1 text-xs">
+                  <label key={key} className="flex flex-col gap-1 text-caption">
                     {t(key)}
                     <Input
                       type={
@@ -572,18 +623,18 @@ export function VaultSettingsPage() {
                 </Button>
               </div>
               {etag ? (
-                <p className="mt-2 break-all text-xs text-muted-foreground">
+                <p className="mt-2 break-all text-caption text-muted-foreground">
                   {t('remoteRevision', { revision: etag })}
                 </p>
               ) : null}
             </details>
             {message ? (
-              <p role="status" className="text-sm">
+              <p role="status" className="text-body">
                 {message}
               </p>
             ) : null}
             {error ? (
-              <p role="alert" className="text-sm text-danger">
+              <p role="alert" className="text-body text-danger">
                 {error}
               </p>
             ) : null}

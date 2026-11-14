@@ -1,5 +1,5 @@
 import type { TaskCandidates, UserTaskView } from '@corral/client';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { Play, Square } from '@corral/react/icons';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -167,7 +167,9 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
       data-testid="workbench-tasks"
       className="flex min-w-0 flex-col gap-2 border-b border-line pb-3"
     >
-      <h3 className="text-xs font-medium">{t('title')}</h3>
+      <h3 className="text-caption" style={{ fontVariationSettings: fontWeights.semibold }}>
+        {t('title')}
+      </h3>
       {candidates.scripts.length ? (
         <ul aria-label={t('scripts')} className="max-h-48 space-y-0.5 overflow-y-auto">
           {candidates.scripts.map((script) => {
@@ -177,7 +179,6 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
               <li key={script.name} className="flex min-w-0 items-center gap-2 rounded px-1 py-0.5">
                 <Button
                   variant={last && last.operationId === selected ? 'secondary' : 'ghost'}
-                  size="compact"
                   disabled={!last}
                   aria-pressed={Boolean(last) && last?.operationId === selected}
                   onClick={() => last && select(last.operationId)}
@@ -196,7 +197,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                 </Button>
                 {live ? (
                   <Button
-                    size="icon-compact"
+                    size="icon"
                     variant="ghost"
                     aria-label={t('stop', { script: script.name })}
                     disabled={pending !== null || live.state !== 'running'}
@@ -206,7 +207,7 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
                   </Button>
                 ) : (
                   <Button
-                    size="icon-compact"
+                    size="icon"
                     variant="ghost"
                     aria-label={t('run', { script: script.name })}
                     disabled={pending !== null}
@@ -220,19 +221,19 @@ function Tasks({ sessionId, projectId }: { sessionId: string; projectId: string 
           })}
         </ul>
       ) : (
-        <p className="text-xs text-muted-foreground">{t('empty')}</p>
+        <p className="text-caption text-muted-foreground">{t('empty')}</p>
       )}
       {current ? (
         <pre
           role="log"
           aria-label={t('output', { script: current.script })}
-          className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-xs"
+          className="max-h-48 overflow-auto whitespace-pre-wrap break-words rounded bg-subtle p-2 text-caption"
         >
           {shown}
         </pre>
       ) : null}
       {error ? (
-        <p role="alert" className="break-words text-xs text-danger">
+        <p role="alert" className="break-words text-caption text-danger">
           {error}
         </p>
       ) : null}

@@ -30,6 +30,10 @@
   min-width: 0;
   overflow: auto;
 }
+/* One h1 per screen: the app's name heads a screen until a list page names itself (kit Page). */
+.app-main:has([data-slot="page-title"]) .app-name {
+  display: none;
+}
 .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {
   display: none;
 }
@@ -51,38 +55,48 @@
   margin-inline: auto;
   flex-direction: column;
   gap: 24px;
-  padding: 20px 24px 24px;
+  /* The frame's heading above holds the top space (SettingsLayout). */
+  padding: 0 24px 24px;
 }
-.settings-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 24px;
-  border-bottom: 1px solid var(--border);
-  padding-block: 16px;
-}
-.settings-row:last-child {
-  border-bottom: 0;
-}
-.settings-row h3 {
-  margin: 0 0 4px;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  font-weight: 400;
-}
-.settings-row p {
-  margin: 0;
-  font-size: var(--fs-body);
-  line-height: var(--lh-body);
-  color: var(--muted-foreground);
-}
-.settings-row .text-danger {
-  color: var(--danger);
-}
-.settings-row .text-warning {
-  color: var(--warning);
-}
+/* Layered like the surfaces below, so a row's own utilities (flex-col, items-start, gap-1)
+   take effect instead of losing to these defaults. */
 @layer components {
+  .settings-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 24px;
+    border-bottom: 1px solid var(--border);
+    padding-block: 16px;
+  }
+  .settings-row:last-child {
+    border-bottom: 0;
+  }
+  .settings-row h3 {
+    margin: 0 0 4px;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    font-weight: 400;
+  }
+  .settings-row p {
+    margin: 0;
+    font-size: var(--fs-body);
+    line-height: var(--lh-body);
+    color: var(--muted-foreground);
+  }
+  .settings-row .text-danger {
+    color: var(--danger);
+  }
+  .settings-row .text-warning {
+    color: var(--warning);
+  }
+  @media (max-width: 640px) {
+    .settings-row {
+      align-items: flex-start;
+      flex-direction: column;
+      gap: 12px;
+    }
+  }
   .settings-surface,
   .settings-list {
     border-radius: var(--panel-radius);
@@ -124,6 +138,42 @@
    they hide, and the composer's Overview button opens the same widgets. */
 [data-chat-view] {
   container: chat-view / inline-size;
+  /* The conversation column is 744px with its gutters (its text 696px), over a composer as
+     wide as the chat content (46rem), so the composer's tool row holds on one line. The empty
+     session is the kit home, whose composer is 672px. */
+  --chat-column-width: 744px;
+  --chat-composer-width: var(--chat-content-max-width);
+  /* Set by ChatView: the composer's height, which the timeline keeps as its bottom space, and
+     the timeline's scrollbar width, which the composer leaves uncovered. */
+  --composer-h: 0px;
+  --timeline-gutter: 0px;
+}
+/* The floor the work sits on (RootLayout's .app-main): the page background, one surface up
+   beside the inset sidebar. The composer zone is painted with it, so the conversation passes
+   under the composer without a second surface. */
+.app-main {
+  --chat-floor: var(--background);
+}
+:where(.peer)[data-variant="inset"] ~ .app-main {
+  --chat-floor: var(--surface-2);
+}
+[data-chat-view][data-empty-centered] {
+  --chat-composer-width: 672px;
+}
+/* A turn's icon row keeps its place and its buttons stay in the tab order. It shows on hover or
+   focus within its message, always under the latest answer, and wherever nothing can hover. */
+.turn-actions {
+  opacity: 0;
+}
+.turn-actions-scope:hover .turn-actions,
+.turn-actions-scope:focus-within .turn-actions,
+[data-chat-item][data-latest] .turn-actions {
+  opacity: 1;
+}
+@media (hover: none) {
+  .turn-actions {
+    opacity: 1;
+  }
 }
 .chat-overview {
   position: absolute;
@@ -145,25 +195,7 @@
     display: flex;
   }
 }
-.corral-quiet-activity > span {
-  animation: corral-quiet-wave 1.4s ease-in-out infinite;
-}
-@keyframes corral-quiet-wave {
-  0%,
-  70%,
-  100% {
-    opacity: 0.4;
-    transform: translateY(0);
-  }
-  35% {
-    opacity: 1;
-    transform: translateY(-2px);
-  }
-}
 @media (prefers-reduced-motion: reduce) {
-  .corral-quiet-activity > span {
-    animation: none;
-  }
   /* a running turn's header stays still; its ticking time still says it works. */
   .turn-process .shimmer-text {
     animation: none;
@@ -177,8 +209,9 @@
     max-height: 18dvh;
   }
 }
+/* Each message reserves its own action row, so turns need only the kit's gap between them. */
 .chat-turn {
-  margin-bottom: 32px;
+  margin-bottom: 16px;
 }
 @media (max-width: 1023px) {
   .app-shell[data-sidebar-open="true"] .app-sidebar-trigger {
@@ -188,67 +221,49 @@
     padding: 0 12px;
   }
 }
+/*
+ * The bar is fitted to its own width (workbench/topbarTier.ts). In its last tiers it wraps: the
+ * menu, path and search keep the first row; the page's views and its actions take the second.
+ */
+.app-topbar[data-topbar-rows="2"] {
+  flex-wrap: wrap;
+  height: auto;
+  min-height: var(--workspace-topbar-height);
+  padding-block: 6px;
+  row-gap: 6px;
+}
+.app-topbar[data-topbar-rows="2"]::after {
+  content: "";
+  order: 1;
+  flex-basis: 100%;
+}
+.app-topbar[data-topbar-rows="2"] > nav {
+  flex: 1 1 0;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-views,
+.app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
+  order: 2;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-views {
+  margin-left: 0;
+}
+.app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
+  margin-left: auto;
+}
+/* Past the last tier nothing more can fold: the actions wrap instead of leaving the bar. */
+.app-topbar[data-topbar-tier="two-rows-menu"] > .app-topbar-actions {
+  min-width: 0;
+  flex-shrink: 1;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+}
 @media (max-width: 640px) {
-  .settings-row {
-    align-items: flex-start;
-    flex-direction: column;
-    gap: 12px;
-  }
   .settings-layout > nav {
     overflow-x: auto;
   }
   .chat-composer {
     padding: 8px;
-  }
-}
-
-/* Keep review panels mounted as their available workbench width changes, preserving drafts. */
-.review-layout {
-  grid-template-columns: minmax(0, 1fr);
-  grid-auto-rows: max-content;
-  align-content: start;
-  overflow: auto;
-}
-.review-files {
-  max-height: 12rem;
-  border-bottom-width: 1px;
-}
-.review-diff {
-  min-height: 20rem;
-}
-.review-details {
-  border-top-width: 1px;
-}
-@container workbench (min-width: 48rem) {
-  .review-layout {
-    grid-template-columns: 12rem minmax(0, 1fr);
-  }
-  .review-files {
-    max-height: 65dvh;
-    border-bottom-width: 0;
-    border-right-width: 1px;
-  }
-  .review-details {
-    grid-column: 1 / -1;
-  }
-}
-@container workbench (min-width: 75rem) {
-  .review-layout {
-    grid-template-columns: 14rem minmax(0, 1fr) 20rem;
-    grid-template-rows: minmax(0, 1fr);
-    grid-auto-rows: auto;
-    align-content: stretch;
-    overflow: hidden;
-  }
-  .review-layout > * {
-    min-height: 0;
-    max-height: none;
-    overflow: auto;
-  }
-  .review-details {
-    grid-column: auto;
-    border-top-width: 0;
-    border-left-width: 1px;
   }
 }
 
@@ -271,18 +286,24 @@
   grid-row-start: 1;
   backdrop-filter: none;
 }
+/* A sheet opened from Settings is drawn beside the Settings dialog, not inside it. */
 @media (pointer: coarse) {
-  .settings-content [data-slot="select-trigger"],
-  .settings-content [data-slot="button"],
-  .settings-content [data-slot="input-control"] {
+  :is(.settings-content, [data-settings-sheet]) [data-slot="select-trigger"],
+  :is(.settings-content, [data-settings-sheet]) [data-slot="button"],
+  :is(.settings-content, [data-settings-sheet]) [data-slot="input-control"] {
     min-height: 44px;
   }
-  .settings-content [data-slot="input"] {
+  :is(.settings-content, [data-settings-sheet]) [data-slot="input"] {
     min-height: 42px;
   }
-  [data-settings-dialog] button,
-  [data-settings-dialog] a {
+  :is([data-settings-dialog], [data-settings-sheet]) button,
+  :is([data-settings-dialog], [data-settings-sheet]) a {
     min-height: 44px;
+  }
+  /* A term's icon keeps that target but not its height: its line stays as tall as the name
+     (features/term-hints.md), the target reaching past it above and below. */
+  :is([data-settings-dialog], [data-settings-sheet]) button[data-term-hint] {
+    margin-block: -14px;
   }
 }
 @media (max-width: 639px) {
@@ -309,4 +330,11 @@
 .monaco-editor .corral-debug-paused {
   background: color-mix(in srgb, var(--warning) 16%, transparent);
   border-left: 2px solid var(--warning);
+}
+
+/* A sent quote's passage, marked for a moment where it leads back to (ReplySelection.tsx). */
+::highlight(corral-quote) {
+  background-color: var(--selected);
+  text-decoration: underline;
+  text-decoration-color: var(--focus-ring);
 }

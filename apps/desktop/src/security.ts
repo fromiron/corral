@@ -153,11 +153,16 @@ export function notificationTarget(value: unknown): {
   sessionId: string;
   runId: string | null;
   terminalId?: string;
+  executionId?: string;
 } | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
-  if (Object.keys(value).some((key) => !['kind', 'sessionId', 'runId', 'terminalId'].includes(key)))
+  if (
+    Object.keys(value).some(
+      (key) => !['kind', 'sessionId', 'runId', 'terminalId', 'executionId'].includes(key),
+    )
+  )
     return null;
-  const { kind, sessionId, runId, terminalId } = value as Record<string, unknown>;
+  const { kind, sessionId, runId, terminalId, executionId } = value as Record<string, unknown>;
   const identifier = (id: unknown): id is string =>
     typeof id === 'string' && /^[A-Za-z0-9_-]{1,160}$/.test(id);
   if (
@@ -172,13 +177,16 @@ export function notificationTarget(value: unknown): {
       'unreviewed',
       'recipe_stopped',
       'lsp_proposal',
+      'advice',
     ].includes(kind) ||
     !identifier(sessionId) ||
     !(runId === null || identifier(runId)) ||
-    ((kind === 'decision' || kind === 'recipe_stopped') && !runId) ||
+    ((kind === 'decision' || kind === 'recipe_stopped' || kind === 'advice') && !runId) ||
     (kind === 'uncertain_terminal'
       ? !identifier(terminalId) || runId !== null
-      : Object.hasOwn(value, 'terminalId'))
+      : Object.hasOwn(value, 'terminalId')) ||
+    // An advice names the execution row it was for; no other kind carries one.
+    (kind === 'advice' ? !identifier(executionId) : Object.hasOwn(value, 'executionId'))
   )
     return null;
   return {
@@ -186,6 +194,7 @@ export function notificationTarget(value: unknown): {
     sessionId,
     runId,
     ...(kind === 'uncertain_terminal' ? { terminalId: terminalId as string } : {}),
+    ...(kind === 'advice' ? { executionId: executionId as string } : {}),
   };
 }
 

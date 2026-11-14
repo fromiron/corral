@@ -14,8 +14,10 @@ import {
   KitCardHeader,
   KitCardTitle,
   Select,
+  useSize,
 } from '../design-kit/index.ts';
 import { formatClock } from '../design-kit/lib/agent-format.ts';
+import { useAgentName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
@@ -23,8 +25,6 @@ import { EventText } from './RunText.tsx';
 // Committed events of one run. Only the rows in view are in the DOM, so a run
 // with 10,000 events costs the same as one with 50. New events are appended
 // below: the selection and the scroll position stay where the reader left them.
-
-const ROW_HEIGHT = 36;
 
 type ActorFilter = 'all' | RunEvent['actor']['kind'];
 
@@ -38,6 +38,7 @@ export function Timeline({
   selectedSeq,
   onSelectSeq,
   fill = false,
+  headed = true,
   onOpenExecution,
 }: {
   session: RunSessionStore;
@@ -47,6 +48,11 @@ export function Timeline({
   onOpenExecution?: (executionId: string) => void;
   /** Fill the parent's height (the run workspace) instead of a fixed list height. */
   fill?: boolean;
+  /**
+   * Show the heading and the count. Inside a tab whose label already names the events and their
+   * number, the count shows only while a filter hides some of them.
+   */
+  headed?: boolean;
 }) {
   const t = useTranslations('Timeline');
   const format = useFormatter();
@@ -54,9 +60,14 @@ export function Timeline({
   const events = useRunDisplay(session, (s) => s.events);
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const iterations = useRunDisplay(session, (s) => s.projection?.iterations);
+  const directives = useRunDisplay(session, (s) => s.projection?.directives);
+  const context = {
+    directiveOrigin: (directiveId: string) => directives?.[directiveId]?.origin,
+    advisor: (executionId: string) => executionViews?.[executionId]?.advisor === true,
+  };
   const definition = useStore(session, (s) => s.definition);
-  const nodeLabel = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  // A conversation's advisor is called "advisor", in the reader's language.
+  const nodeLabel = useAgentName(definition);
   const labelOf = (executionId: string | undefined) => {
     const nodeId = executionId ? executionViews?.[executionId]?.nodeId : undefined;
     return nodeId ? nodeLabel(nodeId) : (executionId ?? '');
@@ -80,7 +91,7 @@ export function Timeline({
       const round = view?.iterationId ? iterations?.[view.iterationId]?.no : null;
       const nodeId = view?.nodeId;
       const base = [
-        (nodeId && definition?.nodes.find((n) => n.id === nodeId)?.label) || nodeId || id,
+        (nodeId && nodeLabel(nodeId)) || id,
         round ? t('round', { no: round }) : null,
         view && view.attemptNo > 1 ? t('attempt', { no: view.attemptNo }) : null,
       ]
@@ -90,7 +101,7 @@ export function Timeline({
       seen.set(base, count);
       return [id, count > 1 ? `${base} (${count})` : base];
     });
-  }, [executions, executionViews, iterations, definition, t]);
+  }, [executions, executionViews, iterations, nodeLabel, t]);
   const origin = useMemo(() => {
     const first = startedAt ?? events[0]?.recordedAt;
     return first ? Date.parse(first) : null;
@@ -131,13 +142,18 @@ export function Timeline({
       })
     : [];
 
+  // One event per control-high row of the interface density.
+  const rowHeight = useSize().controlHeight;
   const rows = useVirtualizer({
     count: shown.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
+    estimateSize: () => rowHeight,
     overscan: 8,
     getItemKey: (index) => shown[index]?.eventId ?? index,
   });
+  // A density change moves every row; sizes already placed are dropped.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the row height is the trigger.
+  useEffect(() => rows.measure(), [rowHeight]);
 
   useEffect(() => {
     if (!reveal) return;
@@ -167,9 +183,15 @@ export function Timeline({
     </div>
   );
 
+  const filtered = actor !== 'all' || kind !== 'all' || execution !== 'all';
+  const count = (
+    <span className="text-muted-foreground" data-testid="timeline-count">
+      {t('count', { shown: shown.length, total: events.length })}
+    </span>
+  );
   return (
     <section
-      aria-labelledby="timeline-heading"
+      {...(headed ? { 'aria-labelledby': 'timeline-heading' } : { 'aria-label': t('heading') })}
       className={
         fill
           ? // The detail column exists only once an event is chosen; until then the list is full width.
@@ -178,20 +200,18 @@ export function Timeline({
       }
     >
       <KitCard className={fill ? 'flex min-h-0 flex-1 flex-col @3xl:h-full' : undefined}>
-        <KitCardHeader>
-          <h3 id="timeline-heading">
-            <KitCardTitle>{t('heading')}</KitCardTitle>
-          </h3>
-          <KitCardAction>
-            <span className="text-muted-foreground" data-testid="timeline-count">
-              {t('count', { shown: shown.length, total: events.length })}
-            </span>
-          </KitCardAction>
-        </KitCardHeader>
+        {headed ? (
+          <KitCardHeader>
+            <h3 id="timeline-heading">
+              <KitCardTitle>{t('heading')}</KitCardTitle>
+            </h3>
+            <KitCardAction>{count}</KitCardAction>
+          </KitCardHeader>
+        ) : null}
         <KitCardContent
           className={fill ? 'flex min-h-0 flex-1 flex-col gap-3' : 'flex flex-col gap-3'}
         >
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             {filter(t('actor'), actor, (v) => setActor(v as ActorFilter), [
               ['user', t('actors.user')],
               ['runtime', t('actors.runtime')],
@@ -204,6 +224,7 @@ export function Timeline({
               kinds.map((k) => [k, k]),
             )}
             {filter(t('execution'), execution, setExecution, executionOptions)}
+            {!headed && filtered ? <p className="ml-auto self-center">{count}</p> : null}
           </div>
           <div
             data-testid="timeline-columns"
@@ -239,12 +260,11 @@ export function Timeline({
                       data-testid="timeline-row"
                       data-seq={event.runSeq}
                       className="absolute left-0 w-full"
-                      style={{ height: ROW_HEIGHT, transform: `translateY(${item.start}px)` }}
+                      style={{ height: rowHeight, transform: `translateY(${item.start}px)` }}
                     >
                       <KitButton
                         type="button"
                         variant={isSelected ? 'secondary' : 'ghost'}
-                        size="default"
                         aria-pressed={isSelected}
                         onClick={() => {
                           setSelectedId(event.eventId);
@@ -263,7 +283,12 @@ export function Timeline({
                           {t(`actors.${event.actor.kind}`)}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={event}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            context={context}
+                          />
                         </span>
                         <span className="ml-auto shrink-0 font-mono text-muted-foreground">
                           {event.type}
@@ -287,7 +312,12 @@ export function Timeline({
           <KitCardContent className="grid gap-4">
             <div className="grid gap-1">
               <p className="text-foreground">
-                <EventText event={selected} labelOf={labelOf} nodeLabel={nodeLabel} />
+                <EventText
+                  event={selected}
+                  labelOf={labelOf}
+                  nodeLabel={nodeLabel}
+                  context={context}
+                />
               </p>
               <p className="text-caption text-muted-foreground tabular-nums">
                 {format.dateTime(new Date(selected.recordedAt), {
@@ -306,7 +336,6 @@ export function Timeline({
                       <KitButton
                         type="button"
                         variant="ghost"
-                        size="compact"
                         className="w-full justify-start text-left"
                         onClick={() => choose(cause)}
                       >
@@ -314,7 +343,12 @@ export function Timeline({
                           #{cause.runSeq}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={cause} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={cause}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            context={context}
+                          />
                         </span>
                       </KitButton>
                     </li>
@@ -334,7 +368,6 @@ export function Timeline({
                     <KitButton
                       type="button"
                       variant="secondary"
-                      size="compact"
                       onClick={() => selected.executionId && onOpenExecution(selected.executionId)}
                     >
                       {t('openExecution')}

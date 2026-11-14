@@ -1,5 +1,5 @@
 // Formatters shared by the agent components: money, elapsed time, latency,
-// relative time, counts, and initials. Pure functions, so they also run in
+// seconds, spoken durations, relative time, counts, tokens, and initials. Pure functions, so they also run in
 // server components and tests.
 
 const countFormat = new Intl.NumberFormat('en-US');
@@ -46,6 +46,28 @@ function formatLatency(ms: number): string {
   return formatDuration(ms);
 }
 
+/** One-decimal seconds for short spans: `0.8s`, `11.3s`; worded from a
+ *  minute up (`1m 05s`). */
+function formatSeconds(ms: number): string {
+  const v = Math.max(0, ms);
+  return v < 60_000 ? `${(v / 1000).toFixed(1)}s` : formatDuration(v);
+}
+
+/** Duration for accessible names: `8 minutes 2 seconds`, `1 hour 5 minutes`
+ *  (the visible clock reads `8:02`). */
+function formatSpokenDuration(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const part = (n: number, unit: string) => `${n} ${unit}${n === 1 ? '' : 's'}`;
+  const parts: string[] = [];
+  if (h) parts.push(part(h, 'hour'));
+  if (m) parts.push(part(m, 'minute'));
+  if (s || parts.length === 0) parts.push(part(s, 'second'));
+  return parts.join(' ');
+}
+
 /** Relative time against `now`: `now`, `17s ago`, `4m ago`, `2h ago`, `3d ago`;
  *  future times read `in 5m`. */
 function formatRelative(at: number | Date, now: number = Date.now()): string {
@@ -71,6 +93,18 @@ function formatCount(value: number): string {
   return countFormat.format(value);
 }
 
+/** Token counts: `840`, `1.2k`, `8k`, `17.4k`, `200k`, `1.5M`. */
+function formatTokens(value: number): string {
+  const n = Math.max(0, value);
+  const trim = (v: number) => v.toFixed(1).replace(/\.0$/, '');
+  if (n < 1000) return String(Math.round(n));
+  if (n < 1_000_000) {
+    const k = n / 1000;
+    return `${k >= 100 ? Math.round(k) : trim(k)}k`;
+  }
+  return `${trim(n / 1_000_000)}M`;
+}
+
 /** Up to two initials from a name: `Alex Morgan` → `AM`, `Researcher` → `R`. */
 function initials(name: string): string {
   return name
@@ -90,6 +124,9 @@ export {
   formatLatency,
   formatRate,
   formatRelative,
+  formatSeconds,
+  formatSpokenDuration,
   formatTimeOfDay,
+  formatTokens,
   initials,
 };

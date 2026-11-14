@@ -1,7 +1,7 @@
 // The composer's text box with one menu for `/` commands and `@` references, after
 // keyboard first, IME safe. The renderer only reads names; picking a file grants nothing.
 import { rankFuzzy } from '@corral/core';
-import { type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
+import { fontWeights, type InputMessageInputProps, Kbd } from '@corral/react/design-kit';
 import { Bot, File, FileText, Folder, History, type LucideIcon, Slash } from '@corral/react/icons';
 import {
   type KeyboardEvent,
@@ -25,6 +25,7 @@ import {
   type Trigger,
   triggerAt,
 } from './composerMenu.ts';
+import { type Preferences, sendKeyRole } from './preferences.ts';
 
 const ICON: Record<MentionKind, LucideIcon> = {
   file: File,
@@ -42,6 +43,8 @@ export function ComposerInput({
   value,
   onChange,
   onKeyDown,
+  sendKey,
+  onSend,
   commands,
   searchMentions,
   onMention,
@@ -49,11 +52,16 @@ export function ComposerInput({
   placeholder,
   label,
   textareaProps,
+  menus = true,
 }: {
   value: string;
   onChange: (value: string) => void;
-  /** Keys the menu does not take (sending, history). */
+  /** Keys the menu and the send keys do not take (history). */
   onKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
+  /** The send key the person chose (Settings › General). */
+  sendKey: Preferences['sendKey'];
+  /** One of the three send keys was pressed (features/composer-flow.md "전송"). */
+  onSend: (role: 'send' | 'interrupt' | 'queue') => void;
   commands: AppCommand[];
   searchMentions: (query: string) => Promise<MentionItem[]>;
   onMention: (item: MentionItem) => MentionItem;
@@ -62,6 +70,11 @@ export function ComposerInput({
   label: string;
   /** InputMessage owns field appearance, focus feedback and measured height. */
   textareaProps?: InputMessageInputProps;
+  /**
+   * Whether `/` and `@` open the command and reference menu. Without it the box is a plain text
+   * box: `/` and `@` are text, and the send keys always send.
+   */
+  menus?: boolean;
 }) {
   const t = useTranslations('Composer');
   const listId = useId();
@@ -70,7 +83,10 @@ export function ComposerInput({
   const [dismissed, setDismissed] = useState<string | null>(null);
   const [index, setIndex] = useState(0);
   const [mentions, setMentions] = useState<{ query: string; items: MentionItem[] } | null>(null);
-  const trigger: Trigger | null = !focused || dismissed === value ? null : triggerAt(value, caret);
+  // An IME composition owns every key until it ends, whether or not a key says so itself.
+  const composing = useRef(false);
+  const trigger: Trigger | null =
+    !menus || !focused || dismissed === value ? null : triggerAt(value, caret);
   const query = trigger?.query ?? null;
   const kind = trigger?.kind ?? null;
 
@@ -198,14 +214,17 @@ export function ComposerInput({
               className="dropdown-glass z-[130] overflow-auto rounded-xl p-1 shadow-popup"
             >
               {rows.length === 0 ? (
-                <p className="px-2 py-1.5 text-xs text-muted-foreground">
+                <p className="px-2 py-1.5 text-caption text-muted-foreground">
                   {kind === 'slash' ? t('noCommand') : t('noReference')}
                 </p>
               ) : null}
               {groups.map((group) => (
                 // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
                 <div key={group.title} role="group" aria-label={group.title}>
-                  <p className="px-2 pt-1.5 pb-0.5 text-2xs font-medium text-muted-foreground">
+                  <p
+                    className="px-2 pt-1.5 pb-0.5 text-2xs text-muted-foreground"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
                     {group.title}
                   </p>
                   {group.rows.map((row) => {
@@ -234,14 +253,15 @@ export function ComposerInput({
                           event.preventDefault();
                           choose(row);
                         }}
-                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
+                        className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-caption ${selected === at ? 'bg-subtle' : ''} ${row.kind === 'command' && row.command.disabled ? 'opacity-50' : ''}`}
                       >
                         <Icon
                           className="size-4 shrink-0 text-muted-foreground"
                           aria-hidden="true"
                         />
                         <span
-                          className={`max-w-[45%] shrink-0 truncate font-medium ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
+                          className={`max-w-[45%] shrink-0 truncate ${row.kind === 'mention' && (row.item.kind === 'file' || row.item.kind === 'folder') ? 'font-mono' : ''}`}
+                          style={{ fontVariationSettings: fontWeights.semibold }}
                         >
                           {name}
                         </span>
@@ -264,11 +284,15 @@ export function ComposerInput({
         {...textareaProps}
         ref={inputRef}
         aria-label={label}
-        role="combobox"
-        aria-expanded={open}
-        aria-autocomplete="list"
-        aria-controls={open ? listId : undefined}
-        aria-activedescendant={open && rows.length ? `${listId}-${selected}` : undefined}
+        {...(menus
+          ? {
+              role: 'combobox',
+              'aria-expanded': open,
+              'aria-autocomplete': 'list' as const,
+              'aria-controls': open ? listId : undefined,
+              'aria-activedescendant': open && rows.length ? `${listId}-${selected}` : undefined,
+            }
+          : {})}
         value={value}
         placeholder={placeholder}
         rows={1}
@@ -280,8 +304,16 @@ export function ComposerInput({
           setIndex(0);
           onChange(e.target.value);
         }}
+        onCompositionStart={(e) => {
+          composing.current = true;
+          textareaProps?.onCompositionStart?.(e);
+        }}
+        onCompositionEnd={(e) => {
+          composing.current = false;
+          textareaProps?.onCompositionEnd?.(e);
+        }}
         onKeyDown={(e) => {
-          if (e.nativeEvent.isComposing || e.keyCode === 229) return;
+          if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
           if (open && !e.ctrlKey && !e.metaKey && !e.altKey) {
             if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && rows.length) {
               e.preventDefault();
@@ -299,6 +331,13 @@ export function ComposerInput({
               choose(ordered[selected]);
               return;
             }
+          }
+          const role = sendKeyRole(e, sendKey);
+          if (role) {
+            e.preventDefault();
+            // A command being chosen is not a message: no send key sends it.
+            if (!(open && kind === 'slash')) onSend(role);
+            return;
           }
           onKeyDown(e);
         }}

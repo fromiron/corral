@@ -14,6 +14,7 @@ import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'j
 import { ChatDensityMenu, ChatView } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
+import { PendingTray } from './session/PendingTray.tsx';
 
 const fixture = vi.hoisted(() => ({ store: null as RunSessionStore | null, read: vi.fn() }));
 vi.mock('./useCorralChat.ts', () => ({
@@ -21,6 +22,10 @@ vi.mock('./useCorralChat.ts', () => ({
     fixture.read(runId, live, details);
     return { store: fixture.store, state: useStore(fixture.store as RunSessionStore) };
   },
+}));
+// The conversation's needed-now tray follows the same run.
+vi.mock('../services.tsx', () => ({
+  useServices: () => ({ runFor: () => fixture.store, retainRun: () => () => {} }),
 }));
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
@@ -135,6 +140,8 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
     events,
     streams: { call: { text: 'Currently drafting', next: 1, broken: false, completed: false } },
     artifactTexts: { result: 'Finished answer' },
+    // Already followed: the tray's open() keeps what the run shows.
+    open: async () => {},
   });
   const container = document.createElement('div');
   document.body.append(container);
@@ -156,6 +163,22 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
         <ChatView
           sessionId="session"
           composer={<textarea aria-label="Draft" defaultValue="Keep this draft" />}
+          tray={
+            <PendingTray
+              sessionId="session"
+              runs={[
+                {
+                  runId: 'run_density',
+                  status,
+                  corralId: 'team',
+                  projectId: 'project',
+                  sessionId: 'session',
+                  startedAt: '2026-10-21T00:00:00Z',
+                },
+              ]}
+              onOpenArtifact={() => {}}
+            />
+          }
           items={[
             {
               id: 'entry',
@@ -215,50 +238,74 @@ it.each(['en', 'ko'] as const)(
     const failed = labels.find((label) => label.textContent === 'failed_tool')?.closest('li');
     expect(cancelled?.textContent).toContain(text.Desktop.toolPhase.cancelled);
     expect(cancelled?.textContent).toContain(text.Failure.cancelled);
-    expect(cancelled?.textContent).not.toContain(text.Failure.unknown);
     expect(cancelled?.querySelector<HTMLDetailsElement>('details')?.open).toBe(false);
     expect(cancelled?.querySelector('details code')?.textContent).toBe('scope cancelled');
     expect(failed?.textContent).toContain(text.Desktop.toolPhase.failed);
-    expect(failed?.textContent).toContain(text.Failure.unknown);
+    // A failure of unknown cause adds no sentence: its closed Diagnostics hold the reason.
+    expect(failed?.querySelectorAll('p')).toHaveLength(0);
+    expect(failed?.querySelector('details summary')?.textContent).toBe(text.Failure.diagnostics);
+    expect(failed?.querySelector<HTMLDetailsElement>('details')?.open).toBe(false);
+    expect(failed?.querySelector('details code')?.textContent).toBe(
+      'Actual failure before cancellation',
+    );
     expect(failed?.textContent).not.toContain(text.Failure.cancelled);
     expect(f.sendCommand).not.toHaveBeenCalled();
   },
 );
 
-it('changes only display density while keeping results and required attention outside folds', async () => {
+it('changes only display density while keeping results, the decision and the failure count outside folds', async () => {
   const f = await render();
   expect(f.container.querySelector('[data-testid="live-text"]')).not.toBeNull();
   await act(async () => preferences.setState({ chatDensity: 'results' }));
   expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
+  const head = () => f.container.querySelector<HTMLElement>('[data-chat-part="head"]');
+  const log = () => {
+    const id = head()?.querySelector('button[aria-expanded]')?.getAttribute('aria-controls');
+    return id ? document.getElementById(id) : null;
+  };
   for (const chatDensity of ['results', 'basic', 'detailed'] as const) {
     await act(async () => preferences.setState({ chatDensity }));
     const action = f.container.querySelector('[data-testid="approval-approval"]');
     expect(action).not.toBeNull();
     expect(action?.closest('details')).toBeNull();
+    // In the needed-now tray at the timeline's end, whatever the row shows.
+    expect(action?.closest('[data-pending-tray]')).not.toBeNull();
+    expect(action?.closest('[data-chat-item]')).toBeNull();
     expect(action?.textContent).toContain('Continue with this version');
-    expect(f.container.textContent).toContain('failed_tool');
-    expect(f.container.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
-      'Execution failed visibly',
-    );
+    // The failed step is counted on the head in every density.
+    expect(head()?.textContent).toContain('1 failed');
     expect(f.container.querySelector('[data-testid="chat-result"]')?.textContent).toContain(
       'Finished answer',
     );
     expect(fixture.store?.getState().projection).toBe(f.projection);
     expect(fixture.store?.getState().events).toBe(f.events);
+    // Which steps failed, and the lead's failure, are in the log the head opens, in every
+    // density: the head is the same in all three.
+    const toggle = head()?.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    expect(toggle).not.toBeNull();
+    if (toggle?.getAttribute('aria-expanded') === 'false') await act(async () => toggle.click());
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(log()?.textContent).toContain('failed_tool');
+    expect(log()?.querySelector('[data-testid="team-activity"]')?.textContent).toContain(
+      'Execution failed visibly',
+    );
   }
   // The kit keeps an agent's name in the step label and state in its description.
-  const log = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
-  if (!log) throw new Error('turn process missing');
-  expect(log.tagName).not.toBe('DETAILS');
-  const trigger = () => log.querySelector<HTMLButtonElement>('button[aria-expanded]');
-  expect(trigger()?.textContent).toContain('Working · ');
+  const process = f.container.querySelector<HTMLElement>('[data-testid="turn-process"]');
+  if (!process) throw new Error('turn process missing');
+  expect(process.tagName).not.toBe('DETAILS');
+  const trigger = () => process.querySelector<HTMLButtonElement>('button[aria-expanded]');
+  // The head names the role and the run's state, which its open decision makes a wait for the
+  // person (presence.md); the detailed density opens the log.
+  expect(trigger()?.textContent).toContain('writer');
+  expect(trigger()?.textContent).toContain(messages.Presence.state.awaiting_user);
   expect(trigger()?.getAttribute('aria-expanded')).toBe('true');
   // Only the running delegate is an active row; the failed lead is not animated as live work.
-  const active = [...log.querySelectorAll('.turn-process-row .shimmer-text')].map(
+  const active = [...process.querySelectorAll('.turn-process-row .shimmer-text')].map(
     (node) => node.textContent,
   );
   expect(active).toEqual(['writer…']);
-  expect(log.textContent).toContain('Active');
+  expect(process.textContent).toContain(messages.Presence.state.working);
   // Raw transcripts stay in the run pane beside the conversation.
   expect(f.container.querySelector('[data-testid="density-transcript"]')).toBeNull();
   await act(async () => trigger()?.click());
@@ -372,7 +419,10 @@ it('on success the live reply stays until the result text is read, without a loa
   );
 });
 
-it('a result that cannot be read ends the hand-off and shows the error', async () => {
+// In a conversation the turn's record keeps the answer: a result that cannot be read waits for
+// that record, which the row reads once it is no longer live; a record read without the answer
+// ends the hand-off and shows the error (RunMessage.row.test.tsx).
+it('a result that cannot be read in a live conversation row keeps the words, the failure waiting for the turn’s record', async () => {
   const f = await render();
   await act(async () =>
     fixture.store?.setState({
@@ -382,40 +432,48 @@ it('a result that cannot be read ends the hand-off and shows the error', async (
       loadArtifact: async () => {},
     }),
   );
-  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
-  expect(f.container.querySelector('[role="alert"]')).not.toBeNull();
+  expect(f.container.querySelector('[data-testid="live-text"]')?.textContent).toContain(
+    'Draft as written',
+  );
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
 });
 
-it('the turn process sits above the reply, open while working and folded when done', async () => {
+it('the turn process sits above the reply, closed while working and still closed when done', async () => {
   const f = await render();
   const before = (a: Element | null, b: Element | null) =>
     Boolean(a && b && a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
   await act(async () => preferences.setState({ chatDensity: 'basic' }));
   const log = () => f.container.querySelector('[data-testid="turn-process"]');
-  const expandedState = () =>
-    log()?.querySelector('button[aria-expanded]')?.getAttribute('aria-expanded');
-  // Working: the process is open above the live reply.
+  const toggle = () => log()?.querySelector('button[aria-expanded]');
+  const expandedState = () => toggle()?.getAttribute('aria-expanded');
+  // Working: the process is closed above the live reply; the run starting does not open it.
   expect(log()).not.toBeNull();
-  expect(expandedState()).toBe('true');
+  expect(expandedState()).toBe('false');
   expect(before(log(), f.container.querySelector('[data-testid="live-text"]'))).toBe(true);
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   const working = log();
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'succeeded' } }),
   );
-  // Finishing folds the same element under its duration and steps, above the answer.
+  // Finishing keeps the same element, closed, its steps counted on the head, above the answer.
   expect(log()).toBe(working);
   expect(expandedState()).toBe('false');
-  expect(log()?.textContent).toMatch(/Worked \d+s · 1 step/);
+  expect(toggle()?.textContent).toContain('1 step');
   expect(before(log(), f.container.querySelector('[data-testid="chat-result"]'))).toBe(true);
   // The answer is visible without opening anything.
   expect(f.container.querySelector('[data-testid="chat-result"]')?.closest('details')).toBeNull();
-  // The results-only density still hides the process while the turn works.
+  // The results-only density keeps the same head while the turn works: closed, its steps
+  // counted, ready to open. It differs only in hiding the words being written.
   await act(async () =>
     fixture.store?.setState({ projection: { ...f.projection, status: 'running' } }),
   );
   await act(async () => preferences.setState({ chatDensity: 'results' }));
-  expect(log()).toBeNull();
+  expect(expandedState()).toBe('false');
+  expect(toggle()?.textContent).toContain('1 step');
+  expect(f.container.querySelector('[data-testid="live-text"]')).toBeNull();
+  expect(f.container.querySelector('[data-presence-label="run:run_density"]')?.textContent).toBe(
+    messages.Presence.state.awaiting_user,
+  );
 });
 
 it('a turn that finishes without streamed text shows its result only once read', async () => {

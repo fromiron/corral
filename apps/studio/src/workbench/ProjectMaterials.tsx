@@ -4,7 +4,7 @@ import {
   textAttachmentKey,
 } from '@corral/contracts';
 import { validTextAttachments } from '@corral/core';
-import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ProjectMaterial, projectRequest } from '../projects-api.ts';
@@ -85,12 +85,11 @@ export function ProjectMaterialPicker({
   }, [onBusyChange]);
   if (mode !== 'server') return null;
   return (
-    <div className="flex flex-col gap-1 text-xs">
+    <div className="flex flex-col gap-1 text-caption">
       <Select
         label={t('attach')}
         className="max-w-52"
         variant="chip"
-        size="xs"
         disabled={disabled || busy || value.length >= TEXT_ATTACHMENT_MAX_COUNT}
         value={null}
         placeholder={t('attachPlaceholder')}
@@ -168,16 +167,19 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
   };
   return (
     <section className="flex flex-col gap-3" aria-labelledby="project-materials-heading">
-      <h3 id="project-materials-heading" className="text-sm font-semibold">
+      <h3
+        id="project-materials-heading"
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
-      <p className="text-xs text-muted-foreground">{t('hint')}</p>
+      <p className="text-caption text-muted-foreground">{t('hint')}</p>
       <ul className="flex flex-col gap-2">
         {materials.map((item) => (
-          <li key={item.id} className="flex items-center gap-2 text-sm">
+          <li key={item.id} className="flex items-center gap-2 text-body">
             <Button
               variant="ghost"
-              size="compact"
               className="min-w-0 flex-1 justify-start"
               onClick={() => {
                 setEditing(item);
@@ -191,7 +193,6 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
               </span>
             </Button>
             <Button
-              size="compact"
               variant="ghost"
               disabled={busy}
               onClick={async () => {
@@ -237,11 +238,11 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           }
         }}
       >
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-caption">
           {t('name')}
           <Input required maxLength={90} value={name} onChange={(e) => setName(e.target.value)} />
         </label>
-        <div className="flex flex-col gap-1 text-xs">
+        <div className="flex flex-col gap-1 text-caption">
           <span>{t('kind')}</span>
           <Select<'instructions' | 'memory'>
             label={t('kind')}
@@ -254,7 +255,7 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
             className="self-start"
           />
         </div>
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex flex-col gap-1 text-caption">
           {t('contents')}
           <Textarea
             required
@@ -265,18 +266,18 @@ export function ProjectMaterials({ projectId }: { projectId: string }) {
           />
         </label>
         <div className="flex gap-2">
-          <Button type="submit" size="compact" disabled={busy}>
+          <Button type="submit" disabled={busy}>
             {editing ? t('saveVersion') : t('add')}
           </Button>
           {editing ? (
-            <Button type="button" variant="ghost" size="compact" onClick={clear}>
+            <Button type="button" variant="ghost" onClick={clear}>
               {t('cancelEdit')}
             </Button>
           ) : null}
         </div>
       </form>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}

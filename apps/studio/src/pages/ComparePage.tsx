@@ -1,4 +1,5 @@
 import { type ComparedRun, RunComparison } from '@corral/react';
+import { fontWeights } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -75,20 +76,22 @@ export function ComparePage() {
   return (
     <main className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-4 p-4 sm:p-6">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-lg font-semibold">{t('heading')}</h2>
-        <Link to="/projects/$projectId" params={{ projectId }} className="text-xs underline">
+        <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('heading')}
+        </h2>
+        <Link to="/projects/$projectId" params={{ projectId }} className="text-caption underline">
           {t('back')}
         </Link>
       </div>
       {incomplete ? (
-        <div className="flex flex-col items-start gap-3 text-sm">
+        <div className="flex flex-col items-start gap-3 text-body">
           <p>{t('chooseRunsHint')}</p>
           <Link to="/projects/$projectId" params={{ projectId }} hash="runs" className="underline">
             {t('chooseRuns')}
           </Link>
         </div>
       ) : missing !== null ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {t('notFound', { runId: missing })}
         </p>
       ) : runs ? (

@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { ScriptedAgentAdapter, simulatedReply } from '@corral/testkit';
 import { startCorralServer } from './app.ts';
+import { loadFff } from './files/path-engine.ts';
 import { createLiveModels } from './live-models.ts';
 import { defaultLocalIntelligence } from './local-ai.ts';
 
@@ -35,6 +36,7 @@ const server = await startCorralServer({
   ...(values.static ? { staticDir: resolve(values.static) } : {}),
   // The same local AI as `corral dev` (#21).
   localIntelligence: defaultLocalIntelligence(),
+  fff: loadFff,
   extraOrigins: values['allow-origin'],
   ...(values['no-live'] ? {} : { live: createLiveModels() }),
   ...(values['allow-live-search']

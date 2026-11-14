@@ -1,10 +1,12 @@
 import type { ModelProfileView } from '@corral/client';
 import { ImageGenerationProfile } from '@corral/contracts';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { imageProfilesChanged } from '../workbench/useImageProfiles.ts';
+import { imageProfileIdFor } from './modelConnections.ts';
 
 /** Image operations have their own explicit provider model and spend limits. */
 export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelProfileView[] }) {
@@ -48,15 +50,25 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
       setBusy(false);
     }
   }
+  const takenIds = () => data?.profiles.map((profile) => profile.profileId) ?? [];
+  // A new id follows the connection and the image model. A saved id stays, so roles that name it
+  // keep resolving.
+  function idFor(next: ImageGenerationProfile): string {
+    if (editingId) return next.profileId;
+    if (!next.modelProfileId || !next.modelId) return '';
+    return imageProfileIdFor(next.modelProfileId, next.modelId, takenIds());
+  }
   async function saveDraft() {
     if (!draft || busy) return false;
+    const ready = { ...draft, profileId: idFor(draft) };
     return act(async () => {
-      const parsed = ImageGenerationProfile.safeParse(draft);
+      const parsed = ImageGenerationProfile.safeParse(ready);
       if (!parsed.success) throw new Error(t('invalid'));
-      if (!editingId && data?.profiles.some((profile) => profile.profileId === draft.profileId))
+      if (!editingId && data?.profiles.some((profile) => profile.profileId === ready.profileId))
         throw new Error(t('duplicate'));
       await imageProfilesApi.save(parsed.data);
       setData(await imageProfilesApi.list());
+      imageProfilesChanged();
       setDraft(null);
       setEditingId(null);
       setSaved(true);
@@ -65,41 +77,46 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
 
   return (
     <section aria-labelledby={heading} className="settings-surface flex flex-col gap-3">
-      <h3 id={heading} className="text-sm font-semibold">
+      <h3
+        id={heading}
+        className="text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
         {t('heading')}
       </h3>
-      <p className="text-sm text-muted-foreground">{t('intro')}</p>
       {error ? (
-        <p role="alert" className="text-sm text-danger">
+        <p role="alert" className="text-body text-danger">
           {error}
         </p>
       ) : null}
       {saved ? (
-        <p role="status" className="text-sm">
+        <p role="status" className="text-body">
           {t('saved')}
         </p>
       ) : null}
       {!data && !error ? (
-        <p role="status" className="text-sm text-muted-foreground">
+        <p role="status" className="text-body text-muted-foreground">
           {t('loading')}
         </p>
       ) : null}
       {data && !data.profiles.length ? (
-        <p className="text-sm text-muted-foreground">{t('empty')}</p>
+        <p className="text-body text-muted-foreground">{t('empty')}</p>
       ) : null}
       <ul className="flex flex-col gap-2">
         {data?.profiles.map((profile) => (
           <li
             key={profile.profileId}
-            className="flex flex-wrap items-center gap-2 rounded border border-line p-2 text-sm"
+            className="flex flex-wrap items-center gap-2 rounded border border-line p-2 text-body"
           >
             <div className="min-w-0 flex-1">
-              <p className="break-words font-medium">{profile.profileId}</p>
-              <p className="break-words text-xs text-muted-foreground">
+              <p className="break-words" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {profile.profileId}
+              </p>
+              <p className="break-words text-caption text-muted-foreground">
                 {profile.modelId} · {profile.modelProfileId}
               </p>
               {data.statuses?.[profile.profileId]?.available === false ? (
-                <p className="text-xs text-warning">
+                <p className="text-caption text-warning">
                   {data.statuses[profile.profileId]?.reason ?? t('unavailable')}
                 </p>
               ) : null}
@@ -127,6 +144,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                     void act(async () => {
                       await imageProfilesApi.remove(profile.profileId);
                       setData(await imageProfilesApi.list());
+                      imageProfilesChanged();
                       setDeleteId(null);
                       if (editingId === profile.profileId) {
                         setDraft(null);
@@ -168,19 +186,15 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           }}
         >
           <div className="grid gap-3 sm:grid-cols-2">
-            <label htmlFor={`${ids}-id`} className="flex flex-col gap-1 text-xs">
-              {t('id')}
-              <Input
-                nativeInput
-                id={`${ids}-id`}
-                value={draft.profileId}
-                disabled={busy || editingId !== null}
-                required
-                pattern={'[A-Za-z][A-Za-z0-9_.:\\-]{0,119}'}
-                onChange={(event) => setDraft({ ...draft, profileId: event.target.value })}
-              />
-            </label>
-            <div className="flex flex-col gap-1 text-xs">
+            <dl className="m-0 flex flex-col gap-1 text-caption">
+              <dt>{t('id')}</dt>
+              <dd
+                className={`m-0 break-all font-mono text-body ${idFor(draft) ? 'text-foreground' : 'text-muted-foreground'}`}
+              >
+                {idFor(draft) || t('idPending')}
+              </dd>
+            </dl>
+            <div className="flex flex-col gap-1 text-caption">
               <span aria-hidden="true">{t('providerProfile')}</span>
               <Select
                 label={t('providerProfile')}
@@ -204,9 +218,14 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                   })),
                 ]}
               />
+              {/* Image generation is authorized by an API key only, never a subscription. */}
+              {modelProfiles.find((profile) => profile.profileId === draft.modelProfileId)
+                ?.method === 'oauth' ? (
+                <p className="text-danger">{t('needsApiKey')}</p>
+              ) : null}
             </div>
-            <label htmlFor={`${ids}-model`} className="flex flex-col gap-1 text-xs">
-              {t('model')}
+            <div className="flex flex-col gap-1 text-caption">
+              <label htmlFor={`${ids}-model`}>{t('model')}</label>
               <Input
                 nativeInput
                 id={`${ids}-model`}
@@ -214,10 +233,14 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                 disabled={busy}
                 required
                 maxLength={200}
+                aria-describedby={`${ids}-model-hint`}
                 onChange={(event) => setDraft({ ...draft, modelId: event.target.value })}
               />
-            </label>
-            <label htmlFor={`${ids}-timeout`} className="flex flex-col gap-1 text-xs">
+              <span id={`${ids}-model-hint`} className="text-muted-foreground">
+                {t('modelHint')}
+              </span>
+            </div>
+            <label htmlFor={`${ids}-timeout`} className="flex flex-col gap-1 text-caption">
               {t('timeout')}
               <Input
                 nativeInput
@@ -275,7 +298,8 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
           {t('add')}
         </Button>
       )}
-      <p className="text-xs text-muted-foreground">{t('roleHint')}</p>
+      <p className="text-caption text-muted-foreground">{t('reasoningNote')}</p>
+      <p className="text-caption text-muted-foreground">{t('roleHint')}</p>
     </section>
   );
 }

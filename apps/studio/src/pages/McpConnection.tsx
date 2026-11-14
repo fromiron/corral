@@ -1,6 +1,6 @@
 import type { HarnessApi, McpProbeResult } from '@corral/client';
 import type { RegisteredMcpServer } from '@corral/contracts';
-import { Button, Input, Select } from '@corral/react/design-kit';
+import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -169,7 +169,7 @@ export function McpConnection({
       {manage ? (
         <>
           <section className="settings-surface">
-            <p className="break-all font-mono text-xs">
+            <p className="break-all font-mono text-caption">
               {server.transport === 'stdio' ? server.argv.join(' ') : server.url}
             </p>
           </section>
@@ -229,8 +229,11 @@ export function McpConnection({
                 </Button>
               </section>
               {/* Each state on its own line with its next step; none implies another (#82). */}
-              <section aria-label={t('mcpStatusHeading')} className="settings-surface text-sm">
-                <h3 className="text-xs font-medium text-muted-foreground">
+              <section aria-label={t('mcpStatusHeading')} className="settings-surface text-body">
+                <h3
+                  className="text-caption text-muted-foreground"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
                   {t('mcpStatusHeading')}
                 </h3>
                 <ul className="mt-1 flex flex-col gap-0.5">
@@ -384,7 +387,7 @@ export function McpConnection({
           ) : null}
         </>
       ) : (
-        <p className="text-xs text-muted-foreground">{r('configureMcpFirst')}</p>
+        <p className="text-caption text-muted-foreground">{r('configureMcpFirst')}</p>
       )}
       <section className="settings-row">
         <div>
@@ -453,7 +456,7 @@ export function McpConnection({
         </div>
       </section>
       {error ? (
-        <div role="alert" className="text-sm text-danger">
+        <div role="alert" className="text-body text-danger">
           <p>{failureKind ? r(`probeFailure.${failureKind}`) : error}</p>
           {failureKind ? (
             <details className="text-muted-foreground">

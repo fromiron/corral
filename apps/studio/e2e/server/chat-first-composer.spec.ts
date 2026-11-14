@@ -1,7 +1,13 @@
 import type { CorralSummary, WorkSession } from '@corral/core';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { requestBox, slash } from '../workbench.ts';
+import {
+  activityBar,
+  newConversation,
+  openLibrary,
+  openProject,
+  requestBox,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Use the real browser entry, server, adapter and Coordinator. Only the
@@ -10,7 +16,7 @@ test.use({ live: true, codexLogin: true, reasoningApi: true });
 
 async function startChat(page: Page, corral: Harness) {
   await corral.open('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   return new URL(page.url()).pathname;
 }
@@ -32,7 +38,7 @@ async function savedCorrals(page: Page): Promise<CorralSummary[]> {
 const teamChip = (page: Page) =>
   page
     .getByRole('region', { name: 'Request', exact: true })
-    .getByRole('combobox', { name: 'Team', exact: true });
+    .getByRole('combobox', { name: 'Corral', exact: true });
 
 async function chooseTeam(page: Page, name: string) {
   await teamChip(page).click();
@@ -50,7 +56,7 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   expect((await session(page)).autoTitle).toBe(true);
 
   await expect(page.getByRole('button', { name: 'Request options', exact: true })).toHaveCount(0);
-  await expect(teamChip(page)).toContainText('No team');
+  await expect(teamChip(page)).toContainText('No Corral');
   await expect(page.getByRole('button', { name: 'Attachments', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).not.toContainText(
@@ -61,7 +67,7 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   ).toContainText('Default policy');
   await expect(page.getByRole('button', { name: 'Live voice', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  for (const label of ['Quality preset', 'Verification scope', 'Work style for next request']) {
+  for (const label of ['Check scope']) {
     await expect(page.getByRole('combobox', { name: label, exact: true })).toBeHidden();
   }
   await expect(
@@ -89,11 +95,12 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   const persisted = await session(page);
   expect(persisted).toMatchObject({ title: prompt, autoTitle: false });
   await expect(
-    page.getByRole('navigation', { name: 'Projects and sessions', exact: true }),
+    page.getByRole('navigation', { name: 'Projects and conversations', exact: true }),
   ).toContainText(prompt);
-  await expect(page.getByRole('navigation', { name: 'Session tabs', exact: true })).toContainText(
-    prompt,
-  );
+  // The session tab strip is gone (18bc4e25); the top bar's path names the open session.
+  await expect(
+    page.getByRole('navigation', { name: 'Current location', exact: true }),
+  ).toContainText(prompt);
   expect(persisted.corralId).toBeNull();
   expect(persisted.entries[0]).toMatchObject({ text: prompt, state: 'started', intent: 'next' });
   const run = corral.server.coordinator.listRuns()[0];
@@ -129,14 +136,14 @@ test('the auto team survives reload and gives the lead its roster for the next t
 }) => {
   await startChat(page, corral);
   await requestBox(page).fill('Plan and review the launch checklist.');
-  await chooseTeam(page, 'auto');
+  await chooseTeam(page, 'Auto');
   await page.reload();
   await expect(requestBox(page)).toHaveValue('Plan and review the launch checklist.');
-  await expect(teamChip(page)).toContainText('auto');
+  await expect(teamChip(page)).toContainText('Auto');
   await page.setViewportSize({ width: 390, height: 844 });
   await teamChip(page).focus();
   await page.keyboard.press('Enter');
-  await expect(page.getByRole('option', { name: /^No team/ })).toBeInViewport();
+  await expect(page.getByRole('option', { name: /^No Corral/ })).toBeInViewport();
   await page.keyboard.press('Escape');
   await expect(teamChip(page)).toBeFocused();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
@@ -166,21 +173,16 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   corral,
 }) => {
   await corral.open('/');
-  await page.getByRole('tab', { name: /^Teams/ }).click();
-  await page
-    .getByRole('region', { name: 'Start from a template', exact: true })
-    .getByRole('article')
-    .filter({ hasText: 'Single agent' })
-    .getByRole('button', { name: 'Edit this team', exact: true })
-    .click();
+  await openLibrary(page, 'Templates');
+  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
   await page.getByRole('button', { name: 'Save copy and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
   const saved = await savedCorrals(page);
   expect(saved).toHaveLength(1);
   const custom = saved[0];
   if (!custom) throw new Error('Creating a Corral from the template must persist it');
-  await page.getByRole('link', { name: 'Project home', exact: true }).click();
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await openProject(page);
+  await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   expect((await session(page)).corralId).toBeNull();
 
@@ -189,7 +191,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   await page.reload();
   await expect(teamChip(page)).toContainText(custom.name);
   expect((await session(page)).corralId).toBe(custom.corralId);
-  await chooseTeam(page, 'No team');
+  await chooseTeam(page, 'No Corral');
   await expect.poll(async () => (await session(page)).corralId).toBeNull();
   await expect(page.getByRole('button', { name: 'Model', exact: true })).toBeVisible();
 
@@ -225,18 +227,88 @@ test('a request typed while the lead waits is queued, not started', async ({ pag
   await requestBox(page).fill('Ask me before continuing with this review.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('awaiting_user');
-  await expect(page.getByTestId('action-required')).toBeVisible();
-  await slash(page, 'queue');
+  // The question stands in the conversation's needed-now tray, in view: the activity bar does
+  // not repeat it.
+  await expect(
+    page.locator('[data-pending-tray]').getByText('What should I review next?', { exact: true }),
+  ).toBeVisible();
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+  // composer-flow.md "전송": while the run waits on the person, Send joins (read after the
+  // decision) and Alt+Enter sends a next request, which waits behind the run.
   const draft = 'Keep this queued request while I decide the next step.';
   await requestBox(page).fill(draft);
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toHaveAttribute(
     'aria-description',
-    'Send · Queue as next task',
+    'Join',
   );
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await requestBox(page).press('Alt+Enter');
   await expect
     .poll(async () => (await session(page)).entries.at(-1))
     .toMatchObject({ text: draft, state: 'queued', intent: 'queue' });
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
+  expect(corral.errors).toEqual([]);
+});
+
+test('the activity bar tells of a waiting question only while its tray is out of view', async ({
+  page,
+  corral,
+}) => {
+  await startChat(page, corral);
+  const earlier = Array.from(
+    { length: 40 },
+    (_, i) => `Finding ${i + 1}: the review read this part and left it as it was.`,
+  ).join('\n\n');
+  corral.fake?.answerWith(earlier);
+  await requestBox(page).fill('Summarise what the review read.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  corral.fake?.setResponses([
+    fauxAssistantMessage(
+      [
+        fauxToolCall('ask_user', {
+          key: 'continue',
+          questions: [{ id: 'continue', kind: 'text', prompt: 'What should I review next?' }],
+        }),
+      ],
+      { stopReason: 'toolUse' },
+    ),
+  ]);
+  await requestBox(page).fill('Ask me before continuing with this review.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect
+    .poll(() => corral.server.coordinator.listRuns().find((r) => r.status === 'awaiting_user'))
+    .toBeTruthy();
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray.getByText('What should I review next?', { exact: true })).toBeVisible();
+  const bar = activityBar(page);
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
+  // The person wheels up to the earlier answer, in the margin beside the column: the tray leaves
+  // the view, and only now does the activity bar tell of it.
+  const timeline = page.getByTestId('chat-timeline');
+  await timeline.hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 40; step += 1) {
+    if (await timeline.evaluate((box) => box.scrollTop === 0)) break;
+    await page.mouse.wheel(0, -3000);
+    await page.waitForTimeout(30);
+  }
+  await expect(tray).not.toBeInViewport();
+  await expect(bar).toHaveAttribute('data-line', 'waiting');
+  await expect(bar).toContainText('What should I review next?');
+  // Its View brings the tray into view and gives it focus; the bar lets the question go.
+  await bar.getByRole('button', { name: 'View', exact: true }).click();
+  await expect(tray).toBeInViewport();
+  await expect(tray).toBeFocused();
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
+  // Away again, and back by Jump to latest.
+  await timeline.hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 40; step += 1) {
+    if (await timeline.evaluate((box) => box.scrollTop === 0)) break;
+    await page.mouse.wheel(0, -3000);
+    await page.waitForTimeout(30);
+  }
+  await expect(bar).toHaveAttribute('data-line', 'waiting');
+  await page.getByRole('button', { name: 'Jump to latest' }).click();
+  await expect(tray).toBeInViewport();
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
   expect(corral.errors).toEqual([]);
 });

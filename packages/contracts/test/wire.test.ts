@@ -49,6 +49,8 @@ describe('RunEvent envelope', () => {
       directiveId: 'dir_0001',
       targetExecutionId: 'exec_0001',
       text: 'Primary sources only.',
+      delivery: 'next_request',
+      origin: 'user',
     },
   };
 

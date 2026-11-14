@@ -1,6 +1,7 @@
 import { z } from 'zod';
+import { TextAttachments } from './attachments.ts';
 import { AutoRoute } from './auto-team.ts';
-import { CancelScope, ForkFrom, StartFrom } from './commands.ts';
+import { AdviceSeverity, CancelScope, ForkFrom, StartFrom } from './commands.ts';
 import { ItemRef, OutputContract, RunLimits } from './definition.ts';
 import {
   ReasoningObservedPayload,
@@ -21,7 +22,7 @@ import {
 import { Identifier, SchemaVersion } from './ids.ts';
 import { BinaryArtifact, ImageGenerationProfile } from './media-artifact.ts';
 import { MeetingRunOrigin } from './meeting.ts';
-import { ReasoningCapabilities } from './reasoning.ts';
+import { ReasoningCapabilities, ReasoningLevel } from './reasoning.ts';
 import { DesignReviewEvidence, ReviewIssue } from './review.ts';
 import { RecipeStopReason } from './review-recipe.ts';
 import { ResumedFrom, RuntimeCheckpointRecord } from './runtime-checkpoints.ts';
@@ -150,6 +151,8 @@ export const ExecutionCreated = event(
     modelProfile: Identifier,
     configRevision: z.int().min(0).optional(),
     criteriaVersionId: Identifier.optional(),
+    /** An advisor's execution (features/advisor.md): it watches and does no work of the run. */
+    advisor: z.literal(true).optional(),
   }),
 );
 export const ExecutionStateChanged = event(
@@ -344,6 +347,31 @@ export const LoopIterationFinished = event(
     submittedVersionIds: Ids,
   }),
 );
+const loopEscalation = {
+  loopNodeId: Identifier,
+  /** The round that reached the limit; it ends as `revise` and the next round opens. */
+  iterationId: Identifier,
+  reason: z.enum(['cap_reached', 'stalled']),
+  /** The Agent nodes in the Loop this changes, for the rest of this entry. */
+  nodeIds: z.array(Identifier).min(1).max(1000),
+};
+/** A Loop's limit policy raised its Agents for more rounds instead of ending (features/team-graph.md). */
+export const LoopEscalated = event(
+  'loop.escalated',
+  z.discriminatedUnion('policy', [
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('raise_reasoning'),
+      /** The fixed level each changed node now asks for. */
+      levels: z.record(Identifier, ReasoningLevel),
+    }),
+    z.strictObject({
+      ...loopEscalation,
+      policy: z.literal('upper_model'),
+      modelProfile: Identifier,
+    }),
+  ]),
+);
 /** The run's whole breakpoint list after a start or a `set_breakpoints` command. */
 export const BreakpointsChanged = event(
   'breakpoints.changed',
@@ -353,11 +381,9 @@ export const ApprovalRequested = event(
   'approval.requested',
   z.strictObject({
     approvalId: Identifier,
-    kind: z.enum(['final_output', 'loop_cap', 'user_action', 'route', 'check', 'breakpoint']),
+    kind: z.enum(['final_output', 'user_action', 'route', 'check', 'breakpoint']),
     /** The step a `breakpoint` approval holds before it starts. */
     nodeId: Identifier.optional(),
-    /** Why a Loop asks for another round: its round cap or a stall. */
-    loopStop: z.enum(['cap_reached', 'stalled']).optional(),
     /** The connected routes a person may pick for a router that could not choose. */
     routes: z
       .array(z.strictObject({ id: Identifier, label: z.string().min(1) }))
@@ -375,6 +401,11 @@ export const ApprovalRequested = event(
         toolCallId: Identifier,
         bodyRef: Identifier,
         fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
+        /**
+         * The key "allow for this run" matches a later call by, when it is not `fingerprint`: a
+         * command's launch under the same tool and policy, without its call and working tree.
+         */
+        grantFingerprint: ContentHash.optional(),
         targetTree: z
           .string()
           .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
@@ -385,7 +416,9 @@ export const ApprovalRequested = event(
         (tool) =>
           tool.purpose === 'tool'
             ? tool.effectId === undefined && tool.targetTree === undefined
-            : tool.effectId !== undefined && tool.targetTree !== undefined,
+            : tool.effectId !== undefined &&
+              tool.targetTree !== undefined &&
+              tool.grantFingerprint === undefined,
         'invalid approval scope',
       )
       .optional(),
@@ -398,9 +431,15 @@ export const ApprovalResolved = event(
     decision: z.enum(['approve', 'reject']),
     actor: Identifier,
     subjectVersionIds: Ids,
-    reason: z.enum(['cancelled', 'timeout', 'execution_ended']).optional(),
+    /**
+     * Why the runtime closed it: stopped, timed out or its execution ended (rejected), or a waiting
+     * tool call covered by another approval of the Run for the run (approved).
+     */
+    reason: z.enum(['cancelled', 'timeout', 'execution_ended', 'allowed_for_run']).optional(),
     /** The route a person picked when approving a `route` approval. */
     routeId: Identifier.optional(),
+    /** How far an approved tool call reaches: this call, or also the Run's same-fingerprint calls. */
+    scope: z.enum(['once', 'run']).optional(),
   }),
 );
 /** A Join let one path continue; `any` names the steps of the branches it stopped. */
@@ -465,12 +504,19 @@ export const OutputFinalized = event(
 );
 
 // ── Reins ────────────────────────────────────────────────────────────────────
+export const DirectiveOrigin = z.enum(['user', 'advice']);
+export type DirectiveOrigin = z.infer<typeof DirectiveOrigin>;
 export const DirectiveAccepted = event(
   'directive.accepted',
   z.strictObject({
     directiveId: Identifier,
     targetExecutionId: Identifier,
     text: z.string().min(1).max(12000),
+    /** The delivery actually used: an interrupt the target cannot take is next_request. */
+    delivery: z.enum(['next_request', 'interrupt']),
+    /** Who made it: the person or an accepted advice (features/reins.md). */
+    origin: DirectiveOrigin,
+    attachments: TextAttachments.optional(),
   }),
 );
 export const DirectiveAttached = event(
@@ -495,6 +541,41 @@ export const DirectiveUndelivered = event(
     directiveId: Identifier,
     status: z.enum(['not_delivered', 'expired', 'delivery_unknown']),
     reason: z.string().min(1),
+  }),
+);
+const AdmittedAdvice = {
+  adviceId: Identifier,
+  observerExecutionId: Identifier,
+  targetExecutionId: Identifier,
+  severity: AdviceSeverity,
+};
+/**
+ * A delivered advice's text is in its `advice` directive; a preserved one (its target had ended)
+ * is kept for the person in `note`, with no directive.
+ */
+export const AdviceAdmitted = event(
+  'advice.admitted',
+  z.discriminatedUnion('delivery', [
+    z.strictObject({
+      ...AdmittedAdvice,
+      delivery: z.enum(['next_request', 'interrupt']),
+      directiveId: Identifier,
+    }),
+    z.strictObject({
+      ...AdmittedAdvice,
+      delivery: z.literal('preserve'),
+      note: z.string().min(1).max(1000),
+    }),
+  ]),
+);
+/** A gatekept advice. It never carries the advice's text. */
+export const AdviceSuppressed = event(
+  'advice.suppressed',
+  z.strictObject({
+    observerExecutionId: Identifier,
+    targetExecutionId: Identifier,
+    severity: AdviceSeverity,
+    reason: z.enum(['noise', 'duplicate', 'over_budget', 'target_terminal']),
   }),
 );
 export const PatchCommitted = event(
@@ -575,6 +656,19 @@ export const ToolAllowed = event(
       .optional(),
   }),
 );
+/**
+ * A call passed without asking because a tool approval of this Run with `scope: run` covers its
+ * exact fingerprint; `approvalId` is that approval.
+ */
+export const ToolAuthorized = event(
+  'tool.authorized',
+  z.strictObject({
+    executionId: Identifier,
+    toolCallId: Identifier,
+    approvalId: Identifier,
+    fingerprint: ContentHash,
+  }),
+);
 export const ToolBlocked = event(
   'tool.blocked',
   z.strictObject({ executionId: Identifier, toolCallId: Identifier, reason: z.string().min(1) }),
@@ -623,11 +717,13 @@ export const ModelFinished = event(
     rawUsage: z.record(z.string(), z.unknown()).nullable(),
     normalizedUsage: NormalizedUsage,
     certainty: z.enum(['reported', 'estimated', 'unknown']),
+    /** The response was cut by an interrupt; the execution went on with the next request. */
+    interrupted: z.literal(true).optional(),
   }),
 );
 export const ModelUsageReconciled = event(
   'model.usage_reconciled',
-  ModelFinished.shape.payload.omit({ responseRef: true }),
+  ModelFinished.shape.payload.omit({ responseRef: true, interrupted: true }),
 );
 /**
  * Usage spent outside the run's model calls: a team chooser call or an image generation.
@@ -819,6 +915,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   ReviewStale,
   LoopIterationStarted,
   LoopIterationFinished,
+  LoopEscalated,
   ApprovalRequested,
   ApprovalResolved,
   BreakpointsChanged,
@@ -826,6 +923,8 @@ export const RunEvent = z.discriminatedUnion('type', [
   DirectiveAttached,
   DirectiveDispatched,
   DirectiveUndelivered,
+  AdviceAdmitted,
+  AdviceSuppressed,
   PatchCommitted,
   PatchActivated,
   EffectAdmitted,
@@ -833,6 +932,7 @@ export const RunEvent = z.discriminatedUnion('type', [
   EffectSettled,
   ToolRequested,
   ToolAllowed,
+  ToolAuthorized,
   ToolBlocked,
   ToolStarted,
   ToolFinished,

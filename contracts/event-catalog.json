@@ -105,6 +105,11 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "loop.escalated",
+    "requiredContent": "loopNodeId,iterationId,reason,policy,nodeIds",
+    "status": "implemented"
+  },
+  {
     "type": "approval.requested",
     "requiredContent": "approvalId,kind,subjectVersions,criteriaVersion",
     "status": "payload_schema_to_implement"
@@ -140,6 +145,16 @@
     "status": "payload_schema_to_implement"
   },
   {
+    "type": "advice.admitted",
+    "requiredContent": "adviceId,observerExecutionId,targetExecutionId,severity,delivery; optional directiveId (when delivered)",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "advice.suppressed",
+    "requiredContent": "observerExecutionId,targetExecutionId,severity,reason (no advice text)",
+    "status": "payload_schema_to_implement"
+  },
+  {
     "type": "patch.committed",
     "requiredContent": "patchId,scope,before,after,controlRevision",
     "status": "payload_schema_to_implement"
@@ -172,6 +187,11 @@
   {
     "type": "tool.allowed",
     "requiredContent": "toolCallId,policyVersion",
+    "status": "payload_schema_to_implement"
+  },
+  {
+    "type": "tool.authorized",
+    "requiredContent": "executionId,toolCallId,approvalId,fingerprint",
     "status": "payload_schema_to_implement"
   },
   {

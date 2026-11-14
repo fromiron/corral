@@ -105,7 +105,7 @@ for (const locale of ['en', 'ko'] as const) {
         });
       }
       await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=changes`);
-      await page.getByRole('button', { name: m.Workbench.backToGit, exact: true }).click();
+      await page.getByRole('tab', { name: m.Checkpoints.tab, exact: true }).click();
       const checkpoints = page.getByRole('region', { name: m.Checkpoints.heading, exact: true });
       const second = checkpoints
         .getByTestId('checkpoint-row')

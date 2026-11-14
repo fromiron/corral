@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { lstat, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
-import { type Clock, RecipeStopReason } from '@corral/contracts';
+import { type AdviceSeverity, type Clock, RecipeStopReason } from '@corral/contracts';
 import type { Db } from '@corral/storage-sqlite';
 import { safeRelative, WorkspaceError, type WorkspaceService } from './service.ts';
 
@@ -63,14 +63,84 @@ export interface InboxItem {
     | 'check_failed'
     | 'unreviewed'
     | 'recipe_stopped'
-    | 'lsp_proposal';
+    | 'lsp_proposal'
+    | 'advice';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
   /** Present only for an uncertain terminal's read-only recovery link. */
   terminalId?: string;
+  /** `advice` only: the execution row the advice was for, which the item's button opens. */
+  executionId?: string;
+  /** `advice` only; `detail` is the advice's first line. */
+  severity?: AdviceSeverity;
 }
+
+/** An advice its target never read, or kept because the target had ended (features/inbox.md). */
+export interface UnreadAdviceItem {
+  /** Core `unreadAdvice` gives it; when it was left is read from the run's record by it. */
+  adviceId?: string;
+  targetExecutionId: string;
+  severity: AdviceSeverity;
+  text: string;
+}
+
+/** A session's latest recorded check, decision and applying, with no text, paths or output. */
+export interface SessionEvidence {
+  sessionId: string;
+  /** Present only when the latest check completed. */
+  check: {
+    name: string;
+    verdict: 'pass' | 'fail' | 'inconclusive' | 'not_evaluated';
+    /** An applied file write was recorded after the check started. */
+    writesSince: boolean;
+  } | null;
+  decision: {
+    decision: DecisionView['decision'];
+    /** An applied file write was recorded after the decision. */
+    writesSince: boolean;
+  } | null;
+  integration: IntegrationView['state'] | null;
+}
+
+// One statement for every session of the project: each table is read once, ranked per session,
+// and only the latest row of each is kept. A write counts when it was recorded strictly later.
+const SESSION_EVIDENCE = `
+WITH s AS (
+  SELECT id, pinned, updated_at FROM work_sessions WHERE project_id = ? AND archived_at IS NULL
+),
+v AS (
+  SELECT session_id, started_at AS at, json_extract(command_json, '$.name') AS name,
+    json_extract(report_json, '$.state') AS state, json_extract(report_json, '$.verdict') AS verdict,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY started_at DESC, rowid DESC) AS n
+  FROM verifications WHERE session_id IN (SELECT id FROM s)
+),
+d AS (
+  SELECT session_id, created_at AS at, decision,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, rowid DESC) AS n
+  FROM review_decisions WHERE session_id IN (SELECT id FROM s)
+),
+i AS (
+  SELECT session_id, state,
+    ROW_NUMBER() OVER (PARTITION BY session_id ORDER BY created_at DESC, rowid DESC) AS n
+  FROM integrations WHERE session_id IN (SELECT id FROM s)
+),
+w AS (
+  SELECT session_id, MAX(created_at) AS at FROM file_operations
+  WHERE state = 'applied' AND session_id IN (SELECT id FROM s) GROUP BY session_id
+)
+SELECT s.id AS session_id,
+  v.name AS check_name, v.state AS check_state, v.verdict AS check_verdict,
+  COALESCE(w.at > v.at, 0) AS check_writes,
+  d.decision AS decision, COALESCE(w.at > d.at, 0) AS decision_writes,
+  i.state AS integration
+FROM s
+LEFT JOIN v ON v.session_id = s.id AND v.n = 1
+LEFT JOIN d ON d.session_id = s.id AND d.n = 1
+LEFT JOIN i ON i.session_id = s.id AND i.n = 1
+LEFT JOIN w ON w.session_id = s.id
+ORDER BY s.pinned DESC, s.updated_at DESC, s.id`;
 
 /** The file in the linked folder as it is now: absent, its hash, or refused (a link). */
 async function originalState(
@@ -535,6 +605,39 @@ export class ReviewService {
     });
   }
 
+  // ── what a session already has on record ────────────────────────────────────
+
+  /**
+   * Each unarchived session's latest check, decision and applying; null for an unknown project.
+   * Reads recorded rows only: no Git, no working copy, no retention clean-up, no writes.
+   */
+  sessionEvidence(projectId: string): SessionEvidence[] | null {
+    if (!this.db.prepare('SELECT 1 FROM projects WHERE id = ?').get(projectId)) return null;
+    const rows = this.db.prepare(SESSION_EVIDENCE).all(projectId) as {
+      session_id: string;
+      check_name: string | null;
+      check_state: string | null;
+      check_verdict: NonNullable<SessionEvidence['check']>['verdict'] | null;
+      check_writes: number;
+      decision: DecisionView['decision'] | null;
+      decision_writes: number;
+      integration: IntegrationView['state'] | null;
+    }[];
+    return rows.map((r) => ({
+      sessionId: r.session_id,
+      check:
+        r.check_state === 'completed' && r.check_verdict
+          ? {
+              name: String(r.check_name),
+              verdict: r.check_verdict,
+              writesSince: r.check_writes === 1,
+            }
+          : null,
+      decision: r.decision ? { decision: r.decision, writesSince: r.decision_writes === 1 } : null,
+      integration: r.integration,
+    }));
+  }
+
   // ── what needs a person ─────────────────────────────────────────────────────
 
   /** Unresolved current terminal writers only; no history, output or filesystem paths. */
@@ -569,9 +672,58 @@ export class ReviewService {
     }));
   }
 
+  /**
+   * The person opened an execution row: the advice left at it until now leaves the inbox. Opened
+   * again, the time is written anew (features/inbox.md; api-contract.md).
+   */
+  markExecutionOpened(runId: string, executionId: string) {
+    this.db
+      .prepare(
+        `INSERT INTO execution_views (run_id, execution_id, opened_at) VALUES (?,?,?)
+         ON CONFLICT (run_id, execution_id) DO UPDATE SET opened_at = excluded.opened_at`,
+      )
+      .run(runId, executionId, now(this.clock));
+  }
+
+  /** When the person last opened an execution row; null when never. */
+  private executionOpenedAt(runId: string, executionId: string): number | null {
+    const row = this.db
+      .prepare('SELECT opened_at FROM execution_views WHERE run_id = ? AND execution_id = ?')
+      .get(runId, executionId) as { opened_at: string } | undefined;
+    return row ? Date.parse(row.opened_at) : null;
+  }
+
+  /**
+   * When an advice was left: the time its admitted event was recorded in the run's record. Null
+   * when the record does not say, and it is then taken as left before any opening.
+   */
+  private adviceLeftAt(runId: string, adviceId: string): number | null {
+    const row = this.db
+      .prepare(
+        `SELECT json_extract(event_json, '$.recordedAt') AS at FROM run_events
+         WHERE run_id = ? AND type = 'advice.admitted'
+           AND json_extract(event_json, '$.payload.adviceId') = ?`,
+      )
+      .get(runId, adviceId) as { at: string | null } | undefined;
+    const at = row?.at ? Date.parse(row.at) : Number.NaN;
+    return Number.isNaN(at) ? null : at;
+  }
+
+  /**
+   * Runs that recorded any advice. Only their projections can hold an inbox advice item, so the
+   * inbox reads no other run's projection.
+   */
+  runsWithAdvice(): Set<string> {
+    const rows = this.db
+      .prepare("SELECT id FROM runs WHERE json_type(projection_json, '$.advice') = 'object'")
+      .all() as { id: string }[];
+    return new Set(rows.map((row) => row.id));
+  }
+
   inbox(
     sessions: { sessionId: string; title: string; entries: { state: string; text: string }[] }[],
     runs: { runId: string; status: string; sessionId: string | null }[],
+    unreadAdvice: (runId: string) => readonly UnreadAdviceItem[] = () => [],
   ): InboxItem[] {
     const items: InboxItem[] = [];
     const titleOf = new Map(sessions.map((s) => [s.sessionId, s.title]));
@@ -580,6 +732,31 @@ export class ReviewService {
     for (const run of runs) {
       const latest = run.sessionId !== null && !seenSessions.has(run.sessionId);
       if (run.sessionId) seenSessions.add(run.sessionId);
+      if (run.sessionId && titleOf.has(run.sessionId))
+        for (const advice of unreadAdvice(run.runId)) {
+          // Opened, the row's advice leaves; an advice left after that opening is an item again.
+          // One left at the very time it was opened was seen with it.
+          const opened = this.executionOpenedAt(run.runId, advice.targetExecutionId);
+          if (opened !== null) {
+            const left = advice.adviceId ? this.adviceLeftAt(run.runId, advice.adviceId) : null;
+            if (left === null || left <= opened) continue;
+          }
+          items.push({
+            kind: 'advice',
+            sessionId: run.sessionId,
+            sessionTitle: titleOf.get(run.sessionId) ?? '',
+            runId: run.runId,
+            executionId: advice.targetExecutionId,
+            severity: advice.severity,
+            // Its first line that has text: a model's reply may open with blank lines.
+            detail:
+              advice.text
+                .split('\n')
+                .map((line) => line.trim())
+                .find((line) => line.length > 0)
+                ?.slice(0, 120) ?? null,
+          });
+        }
       if (latest && run.status === 'failed' && run.sessionId && titleOf.has(run.sessionId)) {
         const row = this.db
           .prepare(

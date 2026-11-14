@@ -68,7 +68,11 @@ describe('ExecutionSteering', () => {
   it.each([
     { runStatus: 'paused', executionStatus: 'paused', label: 'Paused' },
     { runStatus: 'awaiting_user', executionStatus: 'waiting_approval', label: 'Waiting for you' },
-    { runStatus: 'running', executionStatus: 'waiting_children', label: 'Waiting for sub-agents' },
+    {
+      runStatus: 'running',
+      executionStatus: 'waiting_children',
+      label: 'Working · Waiting for agents',
+    },
   ] as const)(
     'keeps unfinished tools static while their owner is $executionStatus',
     ({ runStatus, executionStatus, label }) => {
@@ -152,6 +156,39 @@ describe('ExecutionSteering', () => {
       expect(container.querySelector('.shimmer-text')).toBeNull();
     },
   );
+
+  // The screen writes what the presence rule gives (features/presence.md): an advisor waiting for
+  // a message is watching, which its bare status alone does not say.
+  it('says an advisor waiting for a message is watching, in its state and on its unfinished tools', () => {
+    const session = sessionWithTwoExecutions();
+    const state = session.getState();
+    if (!state.projection) throw new Error('fixture projection missing');
+    const writer = state.projection.executions.exec_writer;
+    if (!writer) throw new Error('fixture execution missing');
+    session.setState({
+      projection: {
+        ...state.projection,
+        executions: {
+          ...state.projection.executions,
+          exec_writer: { ...writer, status: 'waiting_message', advisor: true },
+        },
+      },
+    });
+    const { container } = render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionSteering
+          session={session}
+          target={{ executionId: 'exec_writer', nodeLabel: 'Writer', finished: false }}
+          compose={null}
+          showToolActivity
+        />
+      </IntlProvider>,
+    );
+    const pending = screen.getByRole('button', { name: /^writer_search/ });
+    expect(pending.closest('[data-status]')).toHaveAttribute('data-status', 'waiting');
+    expect(pending).toHaveTextContent('Working · Watching');
+    expect(container.textContent).not.toContain('Waiting for a reply');
+  });
 
   it('shows only the selected execution’s tool activity and directive delivery state', () => {
     render(

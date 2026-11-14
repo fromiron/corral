@@ -1,11 +1,17 @@
 import { useStore } from 'zustand';
 import { createStore } from 'zustand/vanilla';
+import { isPaletteId, type PaletteId } from './themes/palette.ts';
 
 export type ChatDensity = 'results' | 'basic' | 'detailed';
 export type Theme = 'system' | 'light' | 'dark';
+/** The design kit's size step for the whole app. */
+export type InterfaceDensity = 'default' | 'compact';
 export interface Preferences {
   version: 1;
+  /** Light or dark; under a named theme, that theme's base (the vault carries only this). */
   theme: Theme;
+  /** A named theme (themes/appearance.ts), or null for the kit's own palette. */
+  palette: PaletteId | null;
   sidebarOpen: boolean;
   sidebarWidth: number;
   /** Enter sends and Shift+Enter adds a line, or Ctrl/⌘+Enter sends and Enter adds a line. */
@@ -13,17 +19,20 @@ export interface Preferences {
   /** Desktop app: a system notification when something needs the person (off by default). */
   notify: boolean;
   chatDensity: ChatDensity;
+  density: InterfaceDensity;
 }
 
 export const PREFERENCES_KEY = 'corral:workbench:v1';
 const defaults: Preferences = {
   version: 1,
   theme: 'system',
+  palette: null,
   sidebarOpen: true,
   sidebarWidth: 256,
   sendKey: 'enter',
   notify: false,
   chatDensity: 'basic',
+  density: 'default',
 };
 
 export function parsePreferences(raw: string | null): Preferences {
@@ -33,6 +42,7 @@ export function parsePreferences(raw: string | null): Preferences {
     return {
       version: 1,
       theme: ['system', 'light', 'dark'].includes(value.theme) ? value.theme : 'system',
+      palette: isPaletteId(value.palette) ? value.palette : null,
       sidebarOpen: typeof value.sidebarOpen === 'boolean' ? value.sidebarOpen : true,
       sidebarWidth:
         typeof value.sidebarWidth === 'number' && Number.isFinite(value.sidebarWidth)
@@ -44,6 +54,7 @@ export function parsePreferences(raw: string | null): Preferences {
         value.chatDensity === 'results' || value.chatDensity === 'detailed'
           ? value.chatDensity
           : 'basic',
+      density: value.density === 'compact' ? 'compact' : 'default',
     };
   } catch {
     return { ...defaults };
@@ -80,6 +91,23 @@ export function applyTheme(theme: Theme): boolean {
   document.documentElement.classList.toggle('light', !dark);
   document.documentElement.style.colorScheme = dark ? 'dark' : 'light';
   return dark;
+}
+
+/**
+ * Which of the composer's three send keys a key press is (features/composer-flow.md "전송"):
+ * the send key; the interrupt key (Mod+Enter, or Mod+Shift+Enter when Mod+Enter sends); Alt+Enter.
+ * Anything else, such as the line-break key, is null. The caller rules out an IME composition.
+ */
+export function sendKeyRole(
+  event: { key: string; shiftKey: boolean; ctrlKey: boolean; metaKey: boolean; altKey: boolean },
+  sendKey: Preferences['sendKey'],
+): 'send' | 'interrupt' | 'queue' | null {
+  if (event.key !== 'Enter') return null;
+  const mod = event.ctrlKey || event.metaKey;
+  if (event.altKey) return mod || event.shiftKey ? null : 'queue';
+  if (sendKey === 'mod-enter') return mod ? (event.shiftKey ? 'interrupt' : 'send') : null;
+  if (event.shiftKey) return null;
+  return mod ? 'interrupt' : 'send';
 }
 
 /** Whether a key press in a request box sends it, per the person's choice; never mid-IME. */

@@ -252,6 +252,8 @@ it('a chooser can wait for a slot and still use its full response timeout', asyn
     response.end(message);
     const result = await pending;
     expect(result.autoRoute).toMatchObject({ source: 'model', template: 'research_write_review' });
+    // The run itself goes on host time: its review Loop lets the host turn between rounds.
+    vi.useRealTimers();
     await f.settled(result.runId!);
   } finally {
     release();

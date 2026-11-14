@@ -9,8 +9,8 @@ import {
   ToolPermissionPlan,
 } from '@corral/contracts';
 import { type ApprovalView, validToolPermissionPlan } from '@corral/core';
-import { type ReactNode, useEffect, useId, useMemo, useState } from 'react';
-import { useLocale, useTranslations } from 'use-intl';
+import { type ReactNode, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
   Accordion,
@@ -22,21 +22,143 @@ import {
   Banner,
   BannerTitle,
   Button,
+  fontWeights,
+  SizeScope,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
-import { InteractionPanel } from './InteractionPanel.tsx';
-import { RecipeStatusPanel } from './RecipeStatusPanel.tsx';
+import { FirstRow, RowAction } from './FirstRow.tsx';
+import { useFreshDecisions } from './freshDecisions.ts';
+import { InteractionPanel, interactionShown } from './InteractionPanel.tsx';
+import { RecipeStatusPanel, recipeStatusShown } from './RecipeStatusPanel.tsx';
+import {
+  RequestAreaContext,
+  RequestCardHead,
+  requestCard,
+  useRequestOwner,
+} from './RequestCard.tsx';
+import { nextResponseTarget } from './responseFocus.ts';
 import { WorkPlanPanel } from './WorkPlanPanel.tsx';
 
-/** A Loop that stopped for a stall is asked about in its own words. */
-const copyKey = (approval: Pick<ApprovalView, 'kind' | 'loopStop'>) =>
-  approval.kind === 'loop_cap' && approval.loopStop && approval.loopStop !== 'cap_reached'
-    ? `loop_${approval.loopStop}`
-    : approval.kind;
+/**
+ * A waiting call's plan as its card reads it from the call's body: null when the body is not
+ * a valid plan for this very approval (another fingerprint, or a plan the core refuses).
+ */
+export function waitingToolPlan(text: string | undefined, fingerprint: string) {
+  const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
+  if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
+    throw new Error('permission changed');
+  return plan;
+}
 
 /**
- * Decisions waiting for the person: each names the exact versions and the
- * criteria it is about. Approving applies to that subject only; a newer version needs its own.
+ * A call in one line, as its card and the activity bar name it: its tool, then its main subject
+ * (the command it runs, the file it touches, or where a file moves from and to) when it has one.
+ * `whole` says the line holds every argument of the call, on one line and not cut: only then may
+ * the line decide it (features/composer-flow.md "활동 바").
+ */
+export function callLine(plan: ToolPermissionPlan, toolLabel: (name: string) => string) {
+  const found = callSubject(plan);
+  const subject = found?.text ?? null;
+  const tool = toolLabel(plan.descriptor.name);
+  return {
+    tool,
+    subject,
+    whole: Boolean(found?.whole),
+    text: subject ? `${tool} · ${subject}` : tool,
+  };
+}
+
+const SUBJECT_MAX = 80;
+/** Every character that ends a line, whatever its kind: a subject with one is several lines. */
+const LINE_BREAK = /[\n\r\v\f\u0085\u2028\u2029]/;
+/**
+ * Characters a line draws as nothing, as a blank or a box, or reorders: controls but a tab, format
+ * characters such as direction overrides and zero-width ones, the default-ignorable ones such as
+ * variation selectors and Hangul fillers, those drawn blank or as a box (the empty braille pattern,
+ * the null notehead, the object replacement character, the Khitan filler, the Egyptian insertion
+ * and lost signs), and every space but the plain one. With one, the line cannot say all of its
+ * subject. An emoji with a variation selector is one of them.
+ */
+const UNSEEN =
+  /[^\P{Cc}\t]|\p{Cf}|\p{Default_Ignorable_Code_Point}|[\u2800\uFFFC\u{1D159}\u{16FE4}\u{13441}\u{13442}]|[^\P{Zs} ]/u;
+/** An ideographic tone mark with no letter to sit on: drawn as nothing or a blank. */
+const LONE_MARK = /(?:^|\s)[\u302A\u302B]/u;
+/**
+ * Right-to-left text, letters and digits alike (Hebrew, Arabic, Syriac, Thaana, NKo and the rest
+ * of their blocks): the line lays it out in another order than it is run.
+ */
+const RIGHT_TO_LEFT =
+  /[\u0590-\u08FF\uFB1D-\uFDFF\uFE70-\uFEFF\u{10800}-\u{10FFF}\u{1E800}-\u{1EFFF}]/u;
+/**
+ * Line feeds, with the spaces and tabs between them, at a command's end: the shell ends its one line
+ * there. Any other line break at the end is part of the last word (`./deploy.sh\r` is another name).
+ */
+const TRAILING_BREAKS = /\n[\n\t ]*$/;
+
+/**
+ * The call's main subject in one line, and whether the line holds all its arguments. Judged by
+ * the arguments, not by the tool's name: one the line does not write (a write's content, an
+ * edit's changes, a new argument of any tool) leaves the call to its card.
+ */
+function callSubject(plan: ToolPermissionPlan): { text: string; whole: boolean } | null {
+  if (plan.descriptor.source !== 'corral') return null;
+  const command = plan.descriptor.name === 'run_command';
+  const args = command
+    ? commandArguments(plan.arguments)
+    : (plan.arguments as Record<string, unknown>);
+  const said = command
+    ? ['command']
+    : typeof args.from === 'string' && typeof args.to === 'string'
+      ? ['from', 'to']
+      : ['path'];
+  const given = said.map((key) => args[key]);
+  if (!given.every((part): part is string => typeof part === 'string' && Boolean(part.trim())))
+    return null;
+  const parts = command ? given.map((part) => part.replace(TRAILING_BREAKS, '')) : given;
+  const oneLine = parts.every((part) => !LINE_BREAK.test(part));
+  const text = parts.map((part) => part.trim().split(LINE_BREAK)[0]?.trim() ?? '').join(' → ');
+  if (text.length > SUBJECT_MAX || !oneLine)
+    return { text: `${text.slice(0, SUBJECT_MAX - 1)}…`, whole: false };
+  return {
+    text,
+    whole:
+      parts.every(
+        (part) => !UNSEEN.test(part) && !LONE_MARK.test(part) && !RIGHT_TO_LEFT.test(part),
+      ) &&
+      // A path's blanks at either end are part of its name, which the line shows trimmed.
+      (command || parts.every((part) => part === part.trim())) &&
+      Object.keys(args).every((key) => said.includes(key)),
+  };
+}
+
+/**
+ * A command's own arguments. Its plan is the server's resolution (identity, hashes, argv, shell,
+ * timeout) of the agent's arguments, `request`, and the request is what the line must hold (the
+ * server writes the plan's `command` from `request.command`, so the line and the card, which reads
+ * the plan's, show the same command). Left
+ * out of it, the shell and the timeout are the session's defaults the server fills in; the working
+ * copy's root (`.`) and the foreground are the defaults the request may also name, so they count
+ * as not given. Any other folder or mode, asked for or resolved, is an argument the line lacks.
+ */
+function commandArguments(plan: Record<string, unknown>): Record<string, unknown> {
+  const request =
+    plan.request && typeof plan.request === 'object'
+      ? (plan.request as Record<string, unknown>)
+      : plan;
+  const own: Record<string, unknown> = { ...request };
+  if (own.cwd === '.') delete own.cwd;
+  if (own.mode === 'foreground') delete own.mode;
+  if (request !== plan) {
+    if (plan.cwd !== undefined && plan.cwd !== '.') own.cwd = plan.cwd;
+    if (plan.mode !== undefined && plan.mode !== 'foreground') own.mode = plan.mode;
+  }
+  return own;
+}
+
+/**
+ * Decisions waiting for the person: each says in words what it is about (the versions and
+ * criteria, the call, or the run limit that paused the run). Approving applies to that subject
+ * only; a newer version needs its own. Internal identifiers stay in titles and collapsed details.
  */
 export function ApprovalPanel({
   session,
@@ -45,7 +167,11 @@ export function ApprovalPanel({
   compact = false,
   showPlan = true,
   showRelatedPanels = true,
+  headed = true,
   policySettingsAction,
+  action,
+  readOnly = false,
+  skip,
 }: {
   session: RunSessionStore;
   onOpenArtifact: (artifactVersionId: string) => void;
@@ -57,32 +183,85 @@ export function ApprovalPanel({
   showPlan?: boolean;
   /** Conversation turns already own their workflow and question surfaces. */
   showRelatedPanels?: boolean;
+  /**
+   * False when the host already names this area or its state (the Run page's panel, Needs you's
+   * detail, a session conversation under the top bar's waiting pill): no visible heading is
+   * added, and the region keeps its name.
+   */
+  headed?: boolean;
   /** Navigation only: never grants broader permission to this call. */
   policySettingsAction?: ReactNode;
+  /**
+   * A control of the host's frame (the Run page's close), set at the end of the area's first row
+   * (the first card's heading row, or the first line above it) so it never takes a row of its
+   * own. For hosts that leave the plan out (`showPlan` false).
+   */
+  action?: ReactNode;
+  /**
+   * The requests shown to read, without their decisions: another place on the same screen
+   * answers them (a session's run record, whose conversation holds the response place).
+   */
+  readOnly?: boolean;
+  /** Approvals another part of the host draws and answers (continue-or-stop decisions). */
+  skip?: (approval: ApprovalView) => boolean;
 }) {
   const t = useTranslations('Approvals');
   const headingId = useId();
+  // Which part draws the area's first row, and so carries the host's control.
+  const lead = useStore(session, (s) =>
+    !action || !showRelatedPanels
+      ? 'approvals'
+      : recipeStatusShown(s.events)
+        ? 'recipe'
+        : interactionShown(s.events, s.projection)
+          ? 'interaction'
+          : 'approvals',
+  );
   const all = useStore(session, (s) => s.projection?.approvals);
   const artifacts = useStore(session, (s) => s.projection?.artifacts);
+  const owner = useRequestOwner(session);
+  const inArea = useContext(RequestAreaContext);
+  const toolCalls = useStore(session, (s) => s.projection?.toolCalls);
   const nodes = useStore(session, (s) => s.definition?.nodes);
+  const tTurn = useTranslations('Turn');
   const approvals = useMemo(
-    () => Object.values(all ?? {}).filter((a) => a.status === 'pending'),
-    [all],
+    () => Object.values(all ?? {}).filter((a) => a.status === 'pending' && !skip?.(a)),
+    [all, skip],
   );
+  // A card the run-wide decision covered leaves with no line of its own: that decision says it.
+  const decided = useMemo(
+    () =>
+      Object.values(all ?? {}).filter(
+        (a) => a.status === 'approved' && a.reason !== 'allowed_for_run' && !skip?.(a),
+      ),
+    [all, skip],
+  );
+  // Only decisions of the current wait fold into a line; earlier waits' never come back.
+  const fresh = useFreshDecisions(session, 'approval');
+  const freshKey = decided
+    .filter((approval) => fresh(approval.approvalId))
+    .map((approval) => approval.approvalId)
+    .join(',');
   const done = useMemo(
-    () => Object.values(all ?? {}).filter((a) => a.status === 'approved'),
-    [all],
+    () => decided.filter((approval) => freshKey.split(',').includes(approval.approvalId)),
+    [decided, freshKey],
   );
-  const criteriaId = approvals[0]?.criteriaVersionId;
+  // The criteria a decision about versions is judged by; a run limit and a tool call have none.
+  const criteriaId = approvals.find((a) => !a.limit && !a.tool)?.criteriaVersionId;
   const criteria = useStore(session, (s) => (criteriaId ? s.artifactTexts[criteriaId] : undefined));
   const [busy, setBusy] = useState(false);
   const [refused, setRefused] = useState<Receipt | null>(null);
   const [toolPlans, setToolPlans] = useState<Record<string, ToolPermissionPlan | null>>({});
   const [checkPlans, setCheckPlans] = useState<Record<string, CheckPlan | null>>({});
 
+  // Waiting calls show their details; calls already allowed are named by them in their line.
+  const described = useMemo(
+    () => [...approvals, ...(compact ? [] : done)].filter((approval) => approval.tool),
+    [approvals, done, compact],
+  );
   useEffect(() => {
     let active = true;
-    for (const approval of approvals) {
+    for (const approval of described) {
       if (!approval.tool) continue;
       const { bodyRef, fingerprint, targetTree } = approval.tool;
       void (async () => {
@@ -91,9 +270,7 @@ export function ApprovalPanel({
             await session.getState().loadArtifact(bodyRef);
           const text = session.getState().artifactTexts[bodyRef];
           if (approval.tool?.purpose === 'tool') {
-            const plan = ToolPermissionPlan.parse(JSON.parse(text ?? 'null'));
-            if (plan.fingerprint !== fingerprint || !validToolPermissionPlan(plan))
-              throw new Error('permission changed');
+            const plan = waitingToolPlan(text, fingerprint);
             if (active) setToolPlans((previous) => ({ ...previous, [bodyRef]: plan }));
             return;
           }
@@ -116,36 +293,157 @@ export function ApprovalPanel({
     return () => {
       active = false;
     };
-  }, [approvals, session]);
+  }, [described, session]);
 
   useEffect(() => {
     if (criteriaId) void session.getState().loadArtifact(criteriaId);
   }, [session, criteriaId]);
 
+  // A decision sent while focus was in its card hands focus on once the card has left and the
+  // decision's receipt is in (the buttons are enabled again), as an answered question does: to
+  // the next waiting card's main action (its decline when that action cannot be taken) in the same
+  // response place (a conversation's needed-now tray holds every run's), else, in a chat view, to
+  // the request box. Focus the person moved elsewhere stays; other hosts (the Run page, Needs
+  // you) place focus themselves once nothing waits.
+  const section = useRef<HTMLElement>(null);
+  const handoff = useRef<{
+    approvalId: string;
+    chat: Element | null;
+    tray: Element | null;
+  } | null>(null);
+  useEffect(() => {
+    const owned = handoff.current;
+    if (!owned || busy || approvals.some((approval) => approval.approvalId === owned.approvalId))
+      return;
+    const frame = requestAnimationFrame(() => {
+      handoff.current = null;
+      if (document.activeElement && document.activeElement !== document.body) return;
+      nextResponseTarget(owned.tray?.isConnected ? owned.tray : section.current, owned.chat)?.focus(
+        { preventScroll: true },
+      );
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [approvals, busy]);
+  // The area itself left with the decision (its run waits on nothing else): the same hand-off,
+  // from the response place the card stood in.
+  useEffect(
+    () => () => {
+      const owned = handoff.current;
+      if (!owned) return;
+      requestAnimationFrame(() => {
+        if (document.activeElement && document.activeElement !== document.body) return;
+        nextResponseTarget(owned.tray?.isConnected ? owned.tray : null, owned.chat)?.focus({
+          preventScroll: true,
+        });
+      });
+    },
+    [],
+  );
+
+  const related = showRelatedPanels ? (
+    <>
+      <RecipeStatusPanel
+        session={session}
+        onOpenArtifact={onOpenArtifact}
+        action={lead === 'recipe' ? action : undefined}
+      />
+      <InteractionPanel
+        session={session}
+        readOnly={readOnly}
+        action={lead === 'interaction' ? action : undefined}
+      />
+    </>
+  ) : null;
   if (approvals.length === 0)
     return (
       <>
-        {showRelatedPanels ? (
-          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        ) : null}
-        {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+        {related}
+        {/* Nothing else to stand beside: the host's control keeps its place. */}
+        {lead === 'approvals' && action ? <FirstRow action={action}>{null}</FirstRow> : null}
         {showPlan ? <WorkPlanPanel session={session} /> : null}
       </>
     );
+  const shownDone = compact ? [] : done;
+  // The first row that shows: the visible heading, the first decision already made, or the
+  // first card's heading row.
+  const approvalsAction = lead === 'approvals' ? action : undefined;
+  const headingAction = headed && !compact ? approvalsAction : undefined;
+  const doneAction = headingAction ? undefined : approvalsAction;
+  const cardAction = headingAction || shownDone.length ? undefined : approvalsAction;
+  /** A version by its name; an id the run does not name stays out of the visible text. */
   const label = (id: string) =>
-    artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : id;
-  /** What waits; a breakpoint names the step it holds. */
+    artifacts?.[id] ? `${artifacts[id].name} v${artifacts[id].version}` : null;
+  /** Which limit paused the run, and at what count. */
+  const limitText = (limit: NonNullable<ApprovalView['limit']>) =>
+    t(`limit.title.${limit.kind}`, { used: limit.used, max: limit.max });
+  /** What waits; a breakpoint names the step it holds, a run limit the limit. */
   const kindText = (approval: ApprovalView) =>
-    t(`kind.${copyKey(approval)}`, {
-      step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
-    });
-  const decide = async (approvalId: string, decision: 'approve' | 'reject', routeId?: string) => {
+    approval.limit
+      ? limitText(approval.limit)
+      : t(`kind.${approval.kind}`, {
+          step: nodes?.find((node) => node.id === approval.nodeId)?.label ?? approval.nodeId ?? '',
+        });
+  const toolLabel = (name: string) => (tTurn.has(`tool.${name}`) ? tTurn(`tool.${name}`) : name);
+  /** A decision already made, in words: the limit, the call or check, or the version. */
+  const doneText = (approval: ApprovalView) => {
+    if (approval.limit) return t('doneLimit', { limit: limitText(approval.limit) });
+    if (approval.tool?.purpose === 'tool') {
+      const plan = toolPlans[approval.tool.bodyRef];
+      const name = toolCalls?.[approval.tool.toolCallId]?.name;
+      const call = plan
+        ? callLine(plan, toolLabel).text
+        : name
+          ? toolLabel(name)
+          : t('toolHeading');
+      return t(approval.scope === 'run' ? 'doneToolRun' : 'doneTool', { call });
+    }
+    if (approval.tool) {
+      const name = checkPlans[approval.tool.bodyRef]?.name;
+      const step = t(approval.tool.purpose === 'lsp' ? 'doneLsp' : 'doneCheck');
+      return name ? `${step}: ${name}` : step;
+    }
+    const subject = label(approval.subjectVersionIds[0] ?? '');
+    return subject
+      ? t('done', { step: kindText(approval), subject })
+      : t('doneBare', { step: kindText(approval) });
+  };
+  /** The card's title: the kind of call, or what waits. */
+  const headingText = (approval: ApprovalView) =>
+    approval.tool
+      ? t(
+          approval.tool.purpose === 'tool'
+            ? 'toolHeading'
+            : approval.tool.purpose === 'lsp'
+              ? 'lspHeading'
+              : 'checkHeading',
+        )
+      : kindText(approval);
+  const decide = async (
+    approvalId: string,
+    decision: 'approve' | 'reject',
+    options?: { routeId?: string; scope?: 'run' },
+  ) => {
+    // Focus in this decision's card is handed on when the card leaves.
+    handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
+      ? {
+          approvalId,
+          chat: section.current?.closest('[data-chat-view]') ?? null,
+          // The response place: a conversation's needed-now tray, else the run's whole response
+          // area (Needs you, the Run page), so a continue-or-stop decision beside it is next.
+          tray:
+            section.current?.closest('[data-pending-tray]') ??
+            section.current?.closest('[data-run-response]') ??
+            null,
+        }
+      : null;
     setBusy(true);
     try {
-      const receipt = routeId
-        ? await session.getState().resolveApproval(approvalId, decision, routeId)
+      const receipt = options
+        ? await session.getState().resolveApproval(approvalId, decision, options)
         : await session.getState().resolveApproval(approvalId, decision);
       setRefused(receipt.error ? receipt : null);
+      // Refused: the card stays, and so does the person's focus.
+      if (receipt.error && handoff.current?.approvalId === approvalId) handoff.current = null;
     } catch {
       // The session preserves the unconfirmed receipt; approval stays pending.
     } finally {
@@ -154,165 +452,202 @@ export function ApprovalPanel({
   };
 
   // Buttons are the only way to decide: the card has no Enter/Escape shortcut. As in the kit's
-  // permission card, the decline sits left of the primary action.
+  // permission card, the decline sits left of the primary action, and as there and in the kit
+  // run screen's approval card, the decision row is compact at every interface density.
   const decisionButtons = (approval: (typeof approvals)[number]) =>
+    readOnly ? null : <SizeScope size="compact">{decisionRow(approval)}</SizeScope>;
+  /** Decline, then approve; a tool call also offers approving it for the run. */
+  const answers = (approval: (typeof approvals)[number]) => (
+    <>
+      <Button
+        variant="tertiary"
+        disabled={busy}
+        data-approval-action="decline"
+        onClick={() => void decide(approval.approvalId, 'reject')}
+      >
+        {approval.tool
+          ? t(
+              approval.tool.purpose === 'tool'
+                ? 'rejectTool'
+                : approval.tool.purpose === 'lsp'
+                  ? 'rejectLsp'
+                  : 'rejectCheck',
+            )
+          : approval.limit
+            ? t('limit.reject')
+            : t(`rejectAs.${approval.kind}`)}
+      </Button>
+      {approval.tool?.purpose === 'tool' ? (
+        // The same call again needs no answer until the run ends; a command is matched by its
+        // launch, so it reaches past the run's file changes, and any other change asks again.
+        <Button
+          variant="secondary"
+          data-approval-action="run"
+          disabled={busy || !toolPlans[approval.tool.bodyRef]}
+          title={t(approval.tool.grantFingerprint ? 'toolRunCommand' : 'toolRun')}
+          onClick={() => void decide(approval.approvalId, 'approve', { scope: 'run' })}
+        >
+          {t('approveToolRun')}
+        </Button>
+      ) : null}
+      <Button
+        data-approval-action="primary"
+        disabled={
+          busy ||
+          !!(
+            approval.tool &&
+            !(approval.tool.purpose === 'tool'
+              ? toolPlans[approval.tool.bodyRef]
+              : checkPlans[approval.tool.bodyRef])
+          )
+        }
+        title={
+          approval.tool
+            ? t(
+                approval.tool.purpose === 'tool'
+                  ? 'toolOnce'
+                  : approval.tool.purpose === 'lsp'
+                    ? 'lspOnce'
+                    : 'checkOnce',
+              )
+            : approval.limit
+              ? t('limit.then')
+              : t(`then.${approval.kind}`)
+        }
+        onClick={() => void decide(approval.approvalId, 'approve')}
+      >
+        {approval.tool
+          ? t(
+              approval.tool.purpose === 'tool'
+                ? 'approveTool'
+                : approval.tool.purpose === 'lsp'
+                  ? 'approveLsp'
+                  : 'approveCheck',
+            )
+          : approval.limit
+            ? t('limit.approve')
+            : t(`approveAs.${approval.kind}`)}
+      </Button>
+    </>
+  );
+  const decisionRow = (approval: (typeof approvals)[number]) =>
     approval.kind === 'route' ? (
       // A router that could not choose: each connected route is its own answer.
       <>
         <Button
           variant="tertiary"
-          size="compact"
           disabled={busy}
+          data-approval-action="decline"
           onClick={() => void decide(approval.approvalId, 'reject')}
         >
           {t('rejectAs.route')}
         </Button>
-        {(approval.routes ?? []).map((route) => (
+        {(approval.routes ?? []).map((route, index) => (
           <Button
             key={route.id}
             variant="secondary"
-            size="compact"
             disabled={busy}
+            // The first route is the card's main action when focus is handed to it.
+            data-approval-action={index === 0 ? 'primary' : 'route'}
             title={t('then.route')}
-            onClick={() => void decide(approval.approvalId, 'approve', route.id)}
+            onClick={() => void decide(approval.approvalId, 'approve', { routeId: route.id })}
           >
             {route.label}
           </Button>
         ))}
       </>
-    ) : (
+    ) : approval.tool?.purpose === 'tool' ? (
       <>
-        <Button
-          variant="tertiary"
-          size="compact"
-          disabled={busy}
-          onClick={() => void decide(approval.approvalId, 'reject')}
-        >
-          {approval.tool
-            ? t(
-                approval.tool.purpose === 'tool'
-                  ? 'rejectTool'
-                  : approval.tool.purpose === 'lsp'
-                    ? 'rejectLsp'
-                    : 'rejectCheck',
-              )
-            : t(`rejectAs.${copyKey(approval)}`)}
-        </Button>
-        <Button
-          size="compact"
-          disabled={
-            busy ||
-            !!(
-              approval.tool &&
-              !(approval.tool.purpose === 'tool'
-                ? toolPlans[approval.tool.bodyRef]
-                : checkPlans[approval.tool.bodyRef])
-            )
-          }
-          title={
-            approval.tool
-              ? t(
-                  approval.tool.purpose === 'tool'
-                    ? 'toolOnce'
-                    : approval.tool.purpose === 'lsp'
-                      ? 'lspOnce'
-                      : 'checkOnce',
-                )
-              : t(`then.${copyKey(approval)}`)
-          }
-          onClick={() => void decide(approval.approvalId, 'approve')}
-        >
-          {approval.tool
-            ? t(
-                approval.tool.purpose === 'tool'
-                  ? 'approveTool'
-                  : approval.tool.purpose === 'lsp'
-                    ? 'approveLsp'
-                    : 'approveCheck',
-              )
-            : t(`approveAs.${copyKey(approval)}`)}
-        </Button>
-        {approval.tool?.purpose === 'tool' ? policySettingsAction : null}
+        {policySettingsAction ? (
+          // The rules of later runs are a way out of the card, apart from its decisions.
+          <span className="mr-auto flex">{policySettingsAction}</span>
+        ) : null}
+        {/* The decisions wrap as one group, so a narrow card never parts them. */}
+        <span className="flex flex-wrap justify-end gap-2">{answers(approval)}</span>
       </>
+    ) : (
+      answers(approval)
     );
 
   return (
     <>
-      {showRelatedPanels ? (
-        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-      ) : null}
-      {showRelatedPanels ? <InteractionPanel session={session} /> : null}
+      {related}
       {showPlan ? <WorkPlanPanel session={session} /> : null}
-      <section aria-labelledby={headingId} className={`flex flex-col gap-2 ${className ?? ''}`}>
-        <h3 id={headingId} className={compact ? 'sr-only' : 'text-ui font-semibold'}>
-          {t('heading')}
-        </h3>
+      <section
+        ref={section}
+        {...(headed
+          ? { 'aria-labelledby': headingId }
+          : inArea
+            ? {}
+            : { 'aria-label': t('heading') })}
+        className={`flex flex-col gap-2 ${className ?? ''}`}
+      >
+        {headed ? (
+          <FirstRow action={headingAction}>
+            <h3
+              id={headingId}
+              className={compact ? 'sr-only' : 'text-ui'}
+              style={{ fontVariationSettings: fontWeights.semibold }}
+            >
+              {t('heading')}
+            </h3>
+          </FirstRow>
+        ) : null}
         {/* UX-11: decisions already made in this run stay in view, so the next one reads as a
           new step rather than a retry of the last. */}
-        {(compact ? [] : done).map((approval) => (
+        {shownDone.map((approval, index) => (
           <p
             key={approval.approvalId}
             data-testid={`approved-${approval.approvalId}`}
+            // The exact versions stay at hand for diagnostics, never as the line's words.
+            title={approval.subjectVersionIds.join(', ')}
             className="flex items-center gap-1.5 text-caption text-muted-foreground"
           >
+            {index === 0 ? <RowAction action={doneAction} /> : null}
             <AgentStatusIcon status="done" size={12} />
-            {t('done', {
-              step: kindText(approval),
-              subject: label(approval.subjectVersionIds[0] ?? ''),
-            })}
+            {doneText(approval)}
           </p>
         ))}
-        {approvals.map((approval) => (
+        {approvals.map((approval, index) => (
           <AgentCard
             key={approval.approvalId}
             data-testid={`approval-${approval.approvalId}`}
+            data-approval={approval.approvalId}
             role="article"
-            aria-label={t('heading')}
+            // Named by its own title: several waiting cards are told apart.
+            {...(compact
+              ? { 'aria-label': headingText(approval) }
+              : { 'aria-labelledby': `${headingId}-${approval.approvalId}` })}
             className="text-caption"
           >
-            <div
-              className={
-                compact
-                  ? 'flex flex-wrap items-center gap-2.5 px-3 py-2'
-                  : 'flex items-start gap-2.5 px-4 pt-3.5 pr-3.5'
-              }
-            >
-              <AgentStatusIcon
-                status="waiting"
-                size={14}
-                className={compact ? undefined : 'mt-0.5 self-start'}
-              />
-              <div className="grid min-w-0 flex-1">
-                <p className="text-body font-medium text-foreground [overflow-wrap:anywhere]">
-                  {approval.tool
-                    ? t(
-                        approval.tool.purpose === 'tool'
-                          ? 'toolHeading'
-                          : approval.tool.purpose === 'lsp'
-                            ? 'lspHeading'
-                            : 'checkHeading',
-                      )
-                    : kindText(approval)}
-                </p>
-                {approval.tool && !compact ? (
-                  <span className="truncate text-muted-foreground">
-                    {approval.tool.executionId}
-                  </span>
-                ) : null}
-              </div>
-              {compact ? (
+            {compact ? (
+              <div className="flex flex-wrap items-center gap-2.5 px-3 py-2">
+                <AgentStatusIcon status="waiting" size={14} />
+                <div className="grid min-w-0 flex-1">
+                  <p
+                    className="text-body text-foreground [overflow-wrap:anywhere]"
+                    style={{ fontVariationSettings: fontWeights.semibold }}
+                  >
+                    {headingText(approval)}
+                  </p>
+                </div>
                 <div className="ml-auto flex flex-wrap items-center gap-2">
+                  {index === 0 ? <RowAction action={cardAction} /> : null}
                   {decisionButtons(approval)}
                 </div>
-              ) : null}
-            </div>
-            <div
-              className={
-                compact
-                  ? 'flex min-w-0 flex-col gap-2 px-3 pb-2'
-                  : 'flex min-w-0 flex-col gap-2 py-3 pr-4 pl-10'
-              }
-            >
+              </div>
+            ) : (
+              <RequestCardHead
+                title={headingText(approval)}
+                titleId={`${headingId}-${approval.approvalId}`}
+                owner={owner({
+                  executionId: approval.tool?.executionId ?? null,
+                  nodeId: approval.tool ? null : (approval.nodeId ?? null),
+                })}
+                action={index === 0 ? cardAction : undefined}
+              />
+            )}
+            <div className={compact ? 'flex min-w-0 flex-col gap-2 px-3 pb-2' : requestCard.body}>
               {approval.tool?.purpose === 'tool' ? (
                 <PermissionDetails plan={toolPlans[approval.tool.bodyRef]} />
               ) : approval.tool ? (
@@ -330,17 +665,24 @@ export function ApprovalPanel({
                         {checkPlans[approval.tool.bodyRef]?.argv.join(' ')}
                       </code>
                       <p className="text-muted-foreground">
-                        {t('checkScope', {
-                          execution: approval.tool.executionId,
-                          attempt: approval.tool.attemptNo,
-                          revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
-                          fingerprint: approval.tool.fingerprint.slice(0, 12),
-                          tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
-                        })}
-                      </p>
-                      <p className="text-muted-foreground">
                         {t(approval.tool.purpose === 'lsp' ? 'lspOnce' : 'checkOnce')}
                       </p>
+                      <Accordion>
+                        <AccordionItem value="identity">
+                          <AccordionTrigger>{t('checkIdentity')}</AccordionTrigger>
+                          <AccordionContent>
+                            <p className="break-all">
+                              {t('checkScope', {
+                                execution: approval.tool.executionId,
+                                attempt: approval.tool.attemptNo,
+                                revision: checkPlans[approval.tool.bodyRef]?.configRevision ?? 0,
+                                fingerprint: approval.tool.fingerprint.slice(0, 12),
+                                tree: approval.tool.targetTree?.slice(0, 12) ?? '—',
+                              })}
+                            </p>
+                          </AccordionContent>
+                        </AccordionItem>
+                      </Accordion>
                     </>
                   ) : (
                     <p role={checkPlans[approval.tool.bodyRef] === null ? 'alert' : 'status'}>
@@ -354,25 +696,35 @@ export function ApprovalPanel({
                 </div>
               ) : null}
               {compact || approval.tool ? null : (
-                <p className="text-muted-foreground">{t(`explain.${copyKey(approval)}`)}</p>
+                <p className="text-muted-foreground">
+                  {approval.limit ? t('limit.explain') : t(`explain.${approval.kind}`)}
+                </p>
               )}
-              {approval.tool ? null : (
+              {/* A run limit is about the run, not a version: it names no subject or criteria. */}
+              {approval.tool ||
+              approval.limit ||
+              !approval.subjectVersionIds.some((id) => label(id)) ? null : (
                 <div className="flex flex-wrap items-center gap-1">
                   <span className="text-muted-foreground">{t('subject')}</span>
-                  {approval.subjectVersionIds.map((id) => (
-                    <Button
-                      key={id}
-                      variant="tertiary"
-                      size="compact"
-                      title={id}
-                      onClick={() => onOpenArtifact(id)}
-                    >
-                      {label(id)}
-                    </Button>
-                  ))}
+                  {approval.subjectVersionIds.flatMap((id) => {
+                    const name = label(id);
+                    return name
+                      ? [
+                          <Button
+                            key={id}
+                            variant="tertiary"
+                            size="compact"
+                            title={id}
+                            onClick={() => onOpenArtifact(id)}
+                          >
+                            {name}
+                          </Button>,
+                        ]
+                      : [];
+                  })}
                 </div>
               )}
-              {criteria ? (
+              {criteria && !approval.limit && approval.criteriaVersionId === criteriaId ? (
                 <div className="text-muted-foreground">
                   {t('criteria')}
                   <ul className="list-disc pl-5">
@@ -383,13 +735,13 @@ export function ApprovalPanel({
                 </div>
               ) : null}
             </div>
-            {compact ? null : (
-              <div className="flex flex-wrap justify-end gap-2 border-t border-border px-4 pt-3 pb-4">
+            {compact || readOnly ? null : (
+              <div data-request-foot className={requestCard.foot}>
                 {decisionButtons(approval)}
               </div>
             )}
             {refused?.error ? (
-              <Banner role="alert" status="error" size="compact" className="mx-3 mb-3">
+              <Banner role="alert" status="error" className="mx-3 mb-3">
                 <BannerTitle>{t('refused', { message: refused.error.message })}</BannerTitle>
               </Banner>
             ) : null}
@@ -402,19 +754,18 @@ export function ApprovalPanel({
 
 function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefined }) {
   const t = useTranslations('Approvals');
-  const ko = useLocale().startsWith('ko');
   if (!plan)
     return (
       <p role={plan === null ? 'alert' : 'status'}>
         {t(plan === null ? 'checkUnavailable' : 'checkLoading')}
       </p>
     );
-  const summary = permissionSummary(plan, ko);
+  const summary = permissionSummary(plan, t);
   return (
     <div className="flex min-w-0 flex-col gap-2">
       {summary ?? (
         <>
-          <p className="font-medium">
+          <p style={{ fontVariationSettings: fontWeights.semibold }}>
             {plan.descriptor.name} · {plan.descriptor.source}
           </p>
           <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-muted p-2">
@@ -422,7 +773,6 @@ function PermissionDetails({ plan }: { plan: ToolPermissionPlan | null | undefin
           </pre>
         </>
       )}
-      <p className="text-muted-foreground">{t('toolOnce')}</p>
       <Accordion>
         <AccordionItem value="identity">
           <AccordionTrigger>{t('toolIdentity')}</AccordionTrigger>
@@ -458,7 +808,10 @@ const shellNames = {
 };
 
 /** Summaries only change presentation. The verified body/fingerprint still authorizes the exact call. */
-function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
+function permissionSummary(
+  plan: ToolPermissionPlan,
+  t: ReturnType<typeof useTranslations<'Approvals'>>,
+) {
   if (plan.descriptor.source !== 'corral') return null;
   if (plan.descriptor.name === 'write_file' || plan.descriptor.name === 'write') {
     const args = plan.arguments;
@@ -473,7 +826,9 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '쓸 파일 내용' : 'Proposed file content'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('toolSummary.proposedFileContent')}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre
           data-testid="file-approval-content"
@@ -489,17 +844,19 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2">
-        <p className="font-medium">{ko ? '요청한 교체 내용' : 'Requested replacements'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>
+          {t('toolSummary.requestedReplacements')}
+        </p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <ol className="max-h-80 space-y-3 overflow-auto">
           {parsed.data.edits.map((edit, index) => (
             // biome-ignore lint/suspicious/noArrayIndexKey: the fingerprint fixes this immutable ordered edit list.
             <li key={`${plan.fingerprint}:${index}`}>
-              <p className="text-muted-foreground">{ko ? '교체 전' : 'Before'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.before')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.oldText}
               </pre>
-              <p className="text-muted-foreground">{ko ? '교체 후' : 'After'}</p>
+              <p className="text-muted-foreground">{t('toolSummary.after')}</p>
               <pre className="overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
                 {edit.newText}
               </pre>
@@ -517,32 +874,22 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!source) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="command-approval-summary">
-        <p className="font-medium">{ko ? '명령 실행' : 'Run command'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.runCommand')}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {source}
         </pre>
         <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1">
-          <dt className="text-muted-foreground">{ko ? '셸' : 'Shell'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.shell')}</dt>
           <dd>{shellNames[command.shellId]}</dd>
-          <dt className="text-muted-foreground">{ko ? '작업 폴더' : 'Working directory'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.workingDirectory')}</dt>
           <dd className="break-words font-mono">
-            {command.cwd === '.'
-              ? ko
-                ? '세션 작업 사본의 루트'
-                : 'Session working-copy root'
-              : command.cwd}
+            {command.cwd === '.' ? t('toolSummary.workingCopyRoot') : command.cwd}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '실행 방식' : 'Mode'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.mode')}</dt>
           <dd>
-            {command.mode === 'service'
-              ? ko
-                ? '서비스'
-                : 'Service'
-              : ko
-                ? '완료까지 실행'
-                : 'Foreground'}
+            {t(command.mode === 'service' ? 'toolSummary.service' : 'toolSummary.foreground')}
           </dd>
-          <dt className="text-muted-foreground">{ko ? '시간 제한' : 'Timeout'}</dt>
+          <dt className="text-muted-foreground">{t('toolSummary.timeout')}</dt>
           <dd>{command.timeoutMs / 1000} s</dd>
         </dl>
       </div>
@@ -553,7 +900,7 @@ function permissionSummary(plan: ToolPermissionPlan, ko: boolean) {
     if (!parsed.success) return null;
     return (
       <div className="flex min-w-0 flex-col gap-2" data-testid="hashline-approval-summary">
-        <p className="font-medium">{ko ? '파일 변경' : 'Edit file'}</p>
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('toolSummary.editFile')}</p>
         <p className="break-words font-mono">{parsed.data.path}</p>
         <pre className="max-h-60 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-muted p-2 font-mono">
           {parsed.data.ops}

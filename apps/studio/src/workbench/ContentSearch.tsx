@@ -8,7 +8,7 @@ import type {
 } from '@corral/contracts';
 import { Button, Input, Switch } from '@corral/react/design-kit';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
+import { type ReactNode, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import type { DocumentStore } from './documents/store.ts';
 import { EditProposals } from './EditProposalReview.tsx';
@@ -56,6 +56,17 @@ export function ContentSearch({
   const current = useRef(scope);
   current.current = scope;
   const scroll = useRef<HTMLElement>(null);
+  // Search reads saved files; that it leaves drafts out matters only while this copy has one.
+  const hasDraft = useSyncExternalStore(
+    owner.subscribe,
+    () =>
+      Object.values(owner.getState().documents).some(
+        (entry) =>
+          targetKey(entry.target) === targetKey(target) &&
+          (entry.dirty || entry.saving || entry.pendingSave),
+      ),
+    () => false,
+  );
   const rows = useVirtualizer({
     count: result?.matches.length ?? 0,
     getScrollElement: () => scroll.current,
@@ -244,7 +255,6 @@ export function ContentSearch({
           {modeControl}
           <Input
             type="text"
-            size="sm"
             aria-label={t('placeholder')}
             placeholder={t('placeholder')}
             maxLength={200}
@@ -256,32 +266,30 @@ export function ContentSearch({
         <div className="flex flex-wrap items-center gap-2">
           <Switch
             label={t('caseSensitive')}
-            size="compact"
             checked={caseSensitive}
             onToggle={() => setCaseSensitive(!caseSensitive)}
           />
           <Button
             type="submit"
-            size="compact"
             variant="tertiary"
             disabled={!query || phase === 'searching' || phase === 'preparing'}
           >
             {t('search')}
           </Button>
           {phase === 'searching' || phase === 'preparing' ? (
-            <Button size="compact" type="button" variant="ghost" onClick={cancel}>
+            <Button type="button" variant="ghost" onClick={cancel}>
               {phase === 'preparing' ? te('cancel') : t('cancel')}
             </Button>
           ) : null}
         </div>
       </form>
-      <p className="text-xs text-muted-foreground">{t('diskOnly')}</p>
+      {hasDraft ? <p className="text-caption text-muted-foreground">{t('diskOnly')}</p> : null}
       {error ? (
-        <p role="alert" className="text-xs text-danger">
+        <p role="alert" className="text-caption text-danger">
           {error}
         </p>
       ) : null}
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-caption text-muted-foreground">
         {phase === 'preparing'
           ? te('previewing')
           : phase === 'searching'
@@ -297,16 +305,15 @@ export function ContentSearch({
                 : null}
       </p>
       {result?.truncated ? (
-        <p role="note" className="text-xs text-warning">
+        <p role="note" className="text-caption text-warning">
           {t('truncated')}
         </p>
       ) : null}
       {edits?.previewFileEdits && result?.matches.length ? (
         <div className="flex flex-col gap-2 rounded fill-group p-2">
-          <label htmlFor={replacementId} className="flex flex-col gap-1 text-xs">
+          <label htmlFor={replacementId} className="flex flex-col gap-1 text-caption">
             {te('replacement')}
             <Input
-              size="sm"
               id={replacementId}
               aria-label={te('replacement')}
               value={replacement}
@@ -319,9 +326,8 @@ export function ContentSearch({
               }}
             />
           </label>
-          <p className="text-xs text-muted-foreground">{te('savedOnly')}</p>
+          <p className="text-caption text-muted-foreground">{te('savedOnly')}</p>
           <Button
-            size="compact"
             variant="tertiary"
             disabled={result.truncated || phase === 'preparing'}
             onClick={() => void previewReplace()}
@@ -358,7 +364,7 @@ export function ContentSearch({
                     width: '100%',
                     height: row.size,
                   }}
-                  className="flex min-w-0 flex-col justify-center gap-1 rounded px-2 text-left text-xs hover:bg-raised"
+                  className="flex min-w-0 flex-col justify-center gap-1 rounded px-2 text-left text-caption hover:bg-raised"
                 >
                   <span className="w-full truncate">
                     {match.path}:{match.range.startLine}:{match.range.startColumn}
@@ -371,7 +377,7 @@ export function ContentSearch({
             })}
           </div>
           {!result.matches.length ? (
-            <p className="p-2 text-xs text-muted-foreground">{t('empty')}</p>
+            <p className="p-2 text-caption text-muted-foreground">{t('empty')}</p>
           ) : null}
         </section>
       ) : null}

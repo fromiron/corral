@@ -1,10 +1,19 @@
 // One local AI instance per server: the embedding engine with the meeting model, for meeting
 // analysis. The caller creates it once and closes it on shutdown; nothing starts until the first
 // use.
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { availableParallelism } from 'node:os';
+import { join } from 'node:path';
 import { type Bundle, bundledManifest } from './bundle.ts';
-import { type Device, type EngineState, LocalEmbeddingEngine } from './engine/engine.ts';
+import { BundleBusyError } from './busy.ts';
+import {
+  type Backend,
+  type Device,
+  type EngineState,
+  LocalEmbeddingEngine,
+} from './engine/engine.ts';
 import { builtHelperPath, type HelperLauncher, spawnHelper } from './engine/helper.ts';
+import { removeMeetingReleases } from './install.ts';
 import { BundleInstaller, type InstallProgressView } from './installer.ts';
 import { LocalMeetingSelector } from './meeting/selector.ts';
 import { cpuThreads, defaultLocalAiDir, runtimeTarget } from './platform.ts';
@@ -19,6 +28,11 @@ export interface LocalIntelligenceOptions {
   launch?: HelperLauncher;
   /** Downloads for the settings panel's install. */
   fetchFn?: typeof fetch;
+  /**
+   * Awaited after an install's files are on disk and before that install is accepted. A removal
+   * in that gap discards the install, including files the callback writes afterwards.
+   */
+  beforeAccept?(): Promise<void>;
   platform?: string;
   arch?: string;
   logicalCores?: number;
@@ -35,6 +49,8 @@ export interface LocalAiStatus {
   progress: InstallProgressView | null;
   /** The last install failure, else why the engine cannot run. */
   error: string | null;
+  /** The device the person chose, and the device the helper reported once it is ready. */
+  device: { requested: Device; actual: Backend | null };
 }
 
 export interface LocalIntelligence {
@@ -47,10 +63,43 @@ export interface LocalIntelligence {
   status(): LocalAiStatus;
   /** Starts installing this release in the background unless it cannot or need not. */
   install(): LocalAiStatus;
+  /** The in-flight install, including the moment before it is accepted. Null when none runs. */
+  installing(): Promise<void> | null;
   /** Stops a running install; resolves once its partial files are removed. */
   cancelInstall(): Promise<LocalAiStatus>;
+  /**
+   * Stops the helper Corral started and deletes this bundle's release folders. Refused while an
+   * install or an embedding is in progress. The judge model under `d1` stays.
+   */
+  remove(): Promise<LocalAiStatus>;
+  /**
+   * Saves the device and stops the helper until the next computation. Changing it is refused
+   * while an embedding holds the slot or waits for it; the saved device and the helper stay.
+   */
+  setDevice(device: Device): Promise<LocalAiStatus>;
   /** Cancels a running install and stops the engine. */
   close(): Promise<void>;
+}
+
+const DEVICE_FILE = 'device.json';
+
+/** The device saved for this server, or CPU when the file is missing or unreadable. */
+export function readSavedDevice(root: string): Device {
+  try {
+    const parsed = JSON.parse(readFileSync(join(root, DEVICE_FILE), 'utf8')) as {
+      device?: unknown;
+    };
+    if (parsed.device === 'cpu' || parsed.device === 'gpu' || parsed.device === 'auto')
+      return parsed.device;
+  } catch {
+    // A missing file is the default.
+  }
+  return 'cpu';
+}
+
+function writeSavedDevice(root: string, device: Device) {
+  mkdirSync(root, { recursive: true, mode: 0o700 });
+  writeFileSync(join(root, DEVICE_FILE), `${JSON.stringify({ device })}\n`, { mode: 0o600 });
 }
 
 export function createLocalIntelligence(options: LocalIntelligenceOptions = {}): LocalIntelligence {
@@ -58,6 +107,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
   const platform = options.platform ?? process.platform;
   const arch = options.arch ?? process.arch;
   const root = options.root ?? defaultLocalAiDir();
+  const device = options.device ?? readSavedDevice(root);
   const target = runtimeTarget(bundle, platform, arch);
   const helperPath =
     (options.env ?? process.env).CORRAL_LOCAL_AI_HELPER || builtHelperPath(platform);
@@ -67,7 +117,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     target,
     helperPath,
     launch: options.launch ?? spawnHelper,
-    device: options.device,
+    device,
     threads: cpuThreads(arch, options.logicalCores ?? availableParallelism()),
   });
   let meetingSelector: LocalMeetingSelector | undefined;
@@ -83,7 +133,12 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
     bundle,
     target,
     ...(options.fetchFn ? { fetchFn: options.fetchFn } : {}),
+    ...(options.beforeAccept ? { beforeAccept: options.beforeAccept } : {}),
     onInstalled: () => engine.refreshInstall(),
+    onDiscarded: () => {
+      removeMeetingReleases(root, bundle);
+      engine.refreshInstall();
+    },
   });
   // Runtime and spawn errors name the bundle folder or the helper; the panel shows neither.
   const withoutPaths = (text: string | null) => {
@@ -103,6 +158,7 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
       downloadBytes: installer.downloadBytes(),
       progress: installer.progress(),
       error: withoutPaths(installer.error() ?? current.error),
+      device: { requested: current.requestedDevice, actual: current.actualDevice },
     };
   };
   return {
@@ -116,11 +172,33 @@ export function createLocalIntelligence(options: LocalIntelligenceOptions = {}):
       if (status().state !== 'unsupported') installer.start();
       return status();
     },
+    installing: () => installer.installing(),
     cancelInstall: async () => {
       await installer.cancel();
       return status();
     },
+    remove: async () => {
+      if (!target) throw new Error('local AI has no runtime for this platform');
+      if (installer.running()) throw new BundleBusyError('installing');
+      if (engine.busy()) throw new BundleBusyError('computing');
+      installer.invalidate();
+      try {
+        await engine.stop();
+        removeMeetingReleases(root, bundle);
+      } finally {
+        engine.refreshInstall();
+      }
+      return status();
+    },
+    setDevice: async (next) => {
+      if (next !== engine.status().requestedDevice && engine.busy())
+        throw new BundleBusyError('computing');
+      writeSavedDevice(root, next);
+      await engine.setDevice(next);
+      return status();
+    },
     close: async () => {
+      installer.invalidate();
       await installer.cancel();
       await engine.close();
     },

@@ -1,13 +1,14 @@
 import type { RuntimeCheckpointView } from '@corral/contracts';
-import { Button } from '@corral/react/design-kit';
+import { Button, fontWeights } from '@corral/react/design-kit';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 
 export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId: string | null }) {
   const t = useTranslations('RuntimeRecovery');
+  const format = useFormatter();
   const { workspaces } = useServices();
   const navigate = useNavigate();
   const router = useRouter();
@@ -31,14 +32,15 @@ export function RuntimeRecovery({ runId, sessionId }: { runId: string; sessionId
   }, [runId, workspaces, t]);
   return (
     <div data-testid="runtime-recovery" className="space-y-2 border-t border-line pt-2">
-      <p className="font-medium">{t('title')}</p>
+      <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('title')}</p>
       <p className="text-muted-foreground">{t('scope')}</p>
       {items?.length === 0 ? <p>{t('empty')}</p> : null}
       {items?.map((item) => (
         <div key={item.checkpointId} className="space-y-1">
           <p>
-            {item.runtime} · {new Date(item.createdAt).toLocaleString()} ·{' '}
-            <code>{item.contextHash.slice(0, 12)}</code>
+            {item.runtime} ·{' '}
+            {format.dateTime(new Date(item.createdAt), { dateStyle: 'short', timeStyle: 'medium' })}{' '}
+            · <code>{item.contextHash.slice(0, 12)}</code>
           </p>
           <p>{t('tree', { tree: item.tree?.slice(0, 12) ?? t('noFiles') })}</p>
           {item.blockers.map((blocker) => (

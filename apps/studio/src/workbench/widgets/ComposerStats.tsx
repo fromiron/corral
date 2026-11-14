@@ -1,17 +1,20 @@
 import type { RunProjection, RunSummary } from '@corral/core';
 import { turnSummary } from '@corral/react';
 import { useEffect, useState } from 'react';
-import { useFormatter, useTranslations } from 'use-intl';
+import { useFormatter, useLocale, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { formatCount } from './numbers.ts';
 import { sessionStats } from './selectors.ts';
 
 /**
- * turns · steps · tokens · cache hit for the session, under the composer (DSH-style),
- * read from each turn's Coordinator snapshot. An unreported cache figure is named, never 0.
+ * runs · tool and agent steps · reported in/out tokens · cache hit for the session, under the
+ * composer (DSH-style), read from each run's Coordinator snapshot. Each figure is named so it
+ * needs no definition. An unreported cache figure is named, never 0.
  */
 export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   const t = useTranslations('Turn');
   const format = useFormatter();
+  const locale = useLocale();
   const { transport } = useServices();
   const [projections, setProjections] = useState<RunProjection[]>([]);
   // A turn's status change is when its usage settles; nothing polls in between.
@@ -36,24 +39,31 @@ export function ComposerStats({ runs }: { runs: readonly RunSummary[] }) {
   const stats = sessionStats(projections, (projection) => turnSummary(projection).steps);
   if (!stats) return null;
   const parts = [
-    t('statTurns', { count: stats.turns }),
+    t('statSession'),
+    t('statRuns', { count: stats.turns }),
     t('statSteps', { count: stats.steps }),
     t('statTokens', {
-      tokens: format.number(stats.tokens, { notation: 'compact', maximumFractionDigits: 1 }),
+      tokens: formatCount(stats.tokens, locale, (value) =>
+        format.number(value, { notation: 'compact', maximumFractionDigits: 1 }),
+      ),
     }),
     stats.cacheShare === null
       ? t('statCacheUnreported')
       : t('statCache', { share: format.number(stats.cacheShare, { style: 'percent' }) }),
   ];
+  // Every figure stays, each kept whole: a narrow composer breaks the line between figures,
+  // never inside one. Each figure carries the separator before it in a fixed slot; the row is
+  // pulled left by that slot and clipped, so a wrapped line starts with a figure, not a "·".
   return (
-    <>
-      <details data-testid="composer-stats" className="tabular-nums">
-        <summary className="cursor-pointer">
-          {t('statSession')} · {parts.join(' · ')}
-        </summary>
-        <p className="mt-1 max-w-prose text-muted-foreground">{t('statDefinition')}</p>
-      </details>
-      <span aria-hidden="true">·</span>
-    </>
+    <p data-testid="composer-stats" className="min-w-0 overflow-hidden tabular-nums">
+      <span className="-ml-2.5 flex flex-wrap">
+        {parts.map((part, index) => (
+          <span key={part} data-stat className="whitespace-nowrap">
+            <span className="inline-block w-2.5 text-center">{index ? ' · ' : ''}</span>
+            {part}
+          </span>
+        ))}
+      </span>
+    </p>
   );
 }

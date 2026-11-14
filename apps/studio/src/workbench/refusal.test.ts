@@ -29,7 +29,7 @@ describe('refused start (UX-04)', () => {
     expect(refusalKind({ message: 'model-a: sign in to OpenAI under Settings → Models' })).toBe(
       'signin',
     );
-    expect(refusalKind({ message: 'Choose a team before continuing.' })).toBe('other');
+    expect(refusalKind({ message: 'Choose a Corral before continuing.' })).toBe('other');
   });
 
   it('calls a lost answer a network failure, not a refusal', () => {
@@ -94,4 +94,22 @@ it('distinguishes unsupported image input from missing credentials', () => {
       message: 'Linux worker isolation is unavailable on this OS',
     }),
   ).toBe('capability');
+});
+
+// features/advisor.md "두는 곳" (대화): a request whose advisor's model could not be prepared does
+// not start, and the refusal says it is the advisor's model, whatever the model's own trouble was.
+it("tells the advisor's model apart from the conversation's", () => {
+  for (const message of [
+    'Advisor model model-x: no such model profile',
+    'Advisor model model-a: sign in to OpenAI under Settings → Models',
+    'Advisor model openai: has no model gpt-x',
+  ])
+    for (const code of ['GRAPH_INVALID', 'CAPABILITY_DENIED', undefined])
+      expect(refusalKind({ code, message })).toBe('advisor');
+  // A lost answer stays a lost answer.
+  expect(
+    refusalKind({ network: true, message: 'Advisor model model-x: no such model profile' }),
+  ).toBe('network');
+  // The conversation's own model is not the advisor's.
+  expect(refusalKind({ message: 'model-x: no such model profile' })).toBe('profile');
 });

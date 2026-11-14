@@ -1,4 +1,27 @@
-import type { ModelProfileSnapshot, ReasoningPolicy, ReasoningResolution } from '@corral/contracts';
+import {
+  type ModelProfileSnapshot,
+  ReasoningLevel,
+  type ReasoningPolicy,
+  type ReasoningResolution,
+} from '@corral/contracts';
+
+/** A level's place in the order from off to max. */
+export const levelRank = (level: ReasoningLevel) => ReasoningLevel.options.indexOf(level);
+
+/**
+ * The highest level at or below `level` that a model can be asked for, never off; null when it
+ * can use none of them.
+ */
+export function fittedLevel(
+  level: ReasoningLevel,
+  model: ModelProfileSnapshot,
+): ReasoningLevel | null {
+  for (let rank = levelRank(level); rank > 0; rank--) {
+    const candidate = ReasoningLevel.options[rank] as ReasoningLevel;
+    if (!reasoningError({ mode: 'fixed', level: candidate }, model)) return candidate;
+  }
+  return null;
+}
 
 export function reasoningError(
   policy: ReasoningPolicy | undefined,

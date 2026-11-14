@@ -1,39 +1,83 @@
-import { Button, KitSwitch, ScrollArea, Select } from '@corral/react/design-kit';
-import type { ReactNode } from 'react';
+import { TermHint } from '@corral/react';
+import { Button, fontWeights, KitSwitch, Select } from '@corral/react/design-kit';
+import { type ReactNode, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { ShortcutTable } from '../CommandPalette.tsx';
 import { DesktopAbout, DesktopWorkspace, desktop } from '../desktop.tsx';
 import { LOCALES, useLocale } from '../locale.tsx';
 import { useServices } from '../services.tsx';
 import { formatChord, sendKeyLabel } from '../shortcuts.ts';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { type SettingsSection, useSettingsNavigation } from '../workbench/navigation.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
-import { SettingsProjectPicker } from '../workbench/SettingsNavigation.tsx';
+import { useSettingsSectionLabel } from '../workbench/SettingsNavigation.tsx';
+import { AppearanceSettings, type ThemeListFocus } from './AppearanceSettings.tsx';
 import { WorkFolderSection } from './FilesViews.tsx';
 import { WorkspaceToolSettings } from './ProjectToolSettings.tsx';
+import { SettingsScroll } from './SettingsScroll.tsx';
+import { ThemeEditor, type ThemeEditorTarget } from './ThemeEditor.tsx';
 
-export function SettingsLayout({ children, active }: { children: ReactNode; active: string }) {
+/**
+ * The settings dialog's content frame: one heading named after the section, an optional line for
+ * a fact the controls cannot show, then the section's own scrolling content. Pages never draw
+ * their own title (the kit's settings panel: title, description, scrolling body).
+ */
+export function SettingsLayout({
+  children,
+  active,
+  description,
+  descriptionId,
+  scroll = true,
+}: {
+  children: ReactNode;
+  active: SettingsSection;
+  /** One line, only where it says something the controls cannot. */
+  description?: ReactNode;
+  /** A test or link target for the description line. */
+  descriptionId?: string;
+  /** False for a sub-view that keeps its own head above its own scrolling body. */
+  scroll?: boolean;
+}) {
   const { projectId } = useSettingsNavigation();
   const n = useTranslations('Navigation');
-  const r = useTranslations('Resources');
+  const label = useSettingsSectionLabel();
   const projectSection = ['workspace', 'mcp', 'project-defaults'].includes(active);
+  const needsProject = projectSection && !projectId;
   return (
     <div className="settings-layout flex h-full min-h-0 flex-col" data-settings-section={active}>
-      {projectSection ? <SettingsProjectPicker /> : null}
-      <ScrollArea className="min-h-0 flex-1" radius="none">
-        {projectSection && !projectId ? (
-          <main className="settings-content">
-            <h2 className="text-title">
-              {active === 'mcp'
-                ? r('mcp')
-                : n(active === 'workspace' ? 'projectFolder' : 'projectDefaults')}
-            </h2>
-            <p className="text-sm text-muted-foreground">{n('projectRequired')}</p>
-          </main>
-        ) : (
-          children
-        )}
-      </ScrollArea>
+      {/* Narrow screens name the section in the dialog's own selector above. */}
+      <header
+        data-settings-header
+        className="flex shrink-0 flex-col gap-1 px-6 pt-5 pr-12 pb-4 max-sm:pt-0"
+      >
+        {/* Below sm the row itself steps aside, so the header keeps its old spacing. */}
+        <div className="flex min-w-0 items-center gap-1 max-sm:contents">
+          <h2
+            className="text-title text-foreground max-sm:sr-only"
+            style={{ fontVariationSettings: fontWeights.normal }}
+          >
+            {label(active)}
+          </h2>
+          {/* The work-style title explains its term (glossary.md); below sm the title is only
+              read, and its icon goes with it. */}
+          {active === 'harness' ? (
+            <span className="inline-flex max-sm:hidden">
+              <TermHint term="workStyle" />
+            </span>
+          ) : null}
+        </div>
+        {needsProject ? (
+          <p className="text-body text-muted-foreground">{n('projectRequired')}</p>
+        ) : description ? (
+          <p data-testid={descriptionId} className="text-body text-muted-foreground">
+            {description}
+          </p>
+        ) : null}
+      </header>
+      {scroll ? (
+        <SettingsScroll className="min-h-0 flex-1">{needsProject ? null : children}</SettingsScroll>
+      ) : (
+        <div className="flex min-h-0 flex-1 flex-col">{needsProject ? null : children}</div>
+      )}
     </div>
   );
 }
@@ -44,40 +88,58 @@ export function SettingsPage({
   section?: 'general' | 'workspace' | 'shortcuts' | 'about';
 }) {
   const t = useTranslations('Desktop');
+  const tp = useTranslations('Preferences');
   const { serverVersion } = useServices();
-  const { theme, sendKey, notify } = usePreferences();
+  const prefs = usePreferences();
+  const { sendKey, notify, density } = prefs;
   const { locale, setLocale } = useLocale();
   const { projectId: project } = useSettingsNavigation();
+  // The personal theme editor opens in place of General, with its own head and scrolling body.
+  const [editing, setEditing] = useState<{
+    target: ThemeEditorTarget;
+    opener: ThemeListFocus;
+  } | null>(null);
+  const [returnFocus, setReturnFocus] = useState<ThemeListFocus | null>(null);
+  if (section === 'general' && editing)
+    return (
+      <SettingsLayout active={section} scroll={false}>
+        <ThemeEditor
+          target={editing.target}
+          onClose={() => {
+            setReturnFocus(editing.opener);
+            setEditing(null);
+          }}
+        />
+      </SettingsLayout>
+    );
   return (
     <SettingsLayout active={section}>
       <main className="settings-content">
-        <h2 className="text-title">{t(section)}</h2>
-        {/* How this form saves, said where it applies (#81 SET-S10). */}
-        {section === 'general' || section === 'shortcuts' ? (
-          <p data-testid="settings-save-mode" className="text-sm text-muted-foreground">
-            {t('savesAutomatically')}
-          </p>
-        ) : null}
         {section === 'general' ? (
           <div className="flex flex-col">
+            <AppearanceSettings
+              onEdit={(target, opener) => setEditing({ target, opener })}
+              focus={returnFocus}
+              onFocused={() => setReturnFocus(null)}
+            />
             <section className="settings-row">
               <div>
-                <h3>{t('appearance')}</h3>
+                <h3>{tp('density')}</h3>
               </div>
               <Select
-                label={t('appearance')}
-                value={theme}
-                onValueChange={(theme) => changePreferences({ theme })}
-                options={(['system', 'light', 'dark'] as const).map((value) => ({
-                  value,
-                  label: t(value),
-                }))}
+                label={tp('density')}
+                value={density}
+                onValueChange={(density) => changePreferences({ density })}
+                options={[
+                  { value: 'default', label: tp('densityDefault') },
+                  { value: 'compact', label: tp('densityCompact') },
+                ]}
               />
             </section>
             <section className="settings-row">
               <div>
                 <h3>{t('sendKey')}</h3>
-                <p>{t('sendKeyHint')}</p>
+                {/* The one place the other key is named. */}
                 <p>
                   {t('sendCombination', {
                     send: sendKeyLabel(sendKey),
@@ -100,7 +162,6 @@ export function SettingsPage({
             <section className="settings-row">
               <div>
                 <h3>{t('language')}</h3>
-                <p>{t('languageHint')}</p>
               </div>
               <Select
                 label={t('language')}
@@ -109,21 +170,11 @@ export function SettingsPage({
                 options={LOCALES.map((l) => ({ value: l.id, label: l.name }))}
               />
             </section>
-            {/* Native-only controls stay in the app menu; say where (#84). Desktop shell only:
-                remote windows never get local desktop controls. */}
-            {desktop ? (
-              <section className="settings-row" data-testid="desktop-native-options">
-                <div>
-                  <h3>{t('nativeHeading')}</h3>
-                  <p>{t('nativeHint')}</p>
-                </div>
-              </section>
-            ) : null}
+            {/* Desktop shell only: remote windows never get local desktop controls. */}
             {desktop ? (
               <section className="settings-row">
                 <div>
-                  <h3>{t('notifySetting')}</h3>
-                  <p>{t('notifyHint')}</p>
+                  <h3>{t('notifyOn')}</h3>
                 </div>
                 <KitSwitch
                   label={t('notifyOn')}
@@ -148,7 +199,6 @@ export function SettingsPage({
           </section>
         ) : (
           <>
-            <p className="text-sm text-muted-foreground">{t('aboutText')}</p>
             <DesktopAbout serverVersion={serverVersion} />
             <Button
               variant="tertiary"

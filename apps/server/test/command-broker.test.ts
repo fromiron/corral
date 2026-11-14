@@ -1,8 +1,10 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { canonicalJson } from '@corral/contracts';
 import { openDatabase } from '@corral/storage-sqlite';
 import { FakeClock } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -164,6 +166,67 @@ describe('primary working copy command broker', () => {
     await s.service.configure('default', { trusted: false });
     await expect(s.service.planCommand(s.input, live())).rejects.toMatchObject({
       code: 'CAPABILITY_DENIED',
+    });
+  }, 20000);
+
+  it('a launch fingerprint names the launch without its call or the working tree, while each call keeps its own exact plan check', async () => {
+    const s = await setup();
+    const first = await s.service.planCommand(s.input, live());
+    // The run edits a file, then makes the same call again.
+    await writeFile(join(s.worktree, 'a.txt'), 'edited by the run\n');
+    const second = { ...s.input, effectId: 'effect_2' };
+    const again = await s.service.planCommand(second, live());
+    expect(again.operationId).not.toBe(first.operationId);
+    expect(again.tree).not.toBe(first.tree);
+    expect(again.fingerprint).not.toBe(first.fingerprint);
+    expect(again.launchFingerprint).toBe(first.launchFingerprint);
+    // Exactly the launch: executable and its content, argv, shell, cwd, environment, timeout,
+    // mode, the working-copy identity, the source command and the call's final arguments.
+    const hash = (value: unknown) =>
+      createHash('sha256').update(canonicalJson(value)).digest('hex');
+    const executableHash = createHash('sha256')
+      .update(await readFile(again.executable))
+      .digest('hex');
+    expect(again.launchFingerprint).toBe(
+      hash({
+        hostId: again.hostId,
+        sessionId: again.sessionId,
+        workspaceBindingId: again.workspaceBindingId,
+        worktreeId: again.worktreeId,
+        rootIdentity: again.rootIdentity,
+        shellId: again.shellId,
+        command: again.command,
+        executable: again.executable,
+        executableHash,
+        argv: again.argv,
+        cwd: again.cwd,
+        environmentHash: again.environmentHash,
+        timeoutMs: again.timeoutMs,
+        mode: again.mode,
+        request: second.request,
+      }),
+    );
+    await mkdir(join(s.worktree, 'src'));
+    for (const request of [
+      { ...s.input.request, command: `${s.input.request.command} ` },
+      { ...s.input.request, cwd: 'src' },
+      { ...s.input.request, timeoutMs: 30000 },
+      { ...s.input.request, mode: 'service' as const },
+    ])
+      expect(
+        (await s.service.planCommand({ ...second, request }, live())).launchFingerprint,
+      ).not.toBe(first.launchFingerprint);
+    // The broker still launches a call only on its own exact plan and fingerprint.
+    await expect(
+      s.service.runCommand(second, again, first.fingerprint, live()),
+    ).rejects.toMatchObject({ code: 'CAPABILITY_DENIED' });
+    await expect(
+      s.service.runCommand(second, first, first.fingerprint, live()),
+    ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(s.service.listCommands('session_1')).toEqual([]);
+    expect(await s.service.runCommand(second, again, again.fingerprint, live())).toMatchObject({
+      state: 'completed',
+      exitCode: 0,
     });
   }, 20000);
 

@@ -2,16 +2,26 @@ import definition from '../../../../examples/research-brief.corral.json' with { 
 import approvalDefinition from '../../../../examples/research-team.corral.json' with {
   type: 'json',
 };
-import { openResult, panelTab, requestBox } from '../workbench.ts';
+import {
+  activityBar,
+  newConversation,
+  openActivity,
+  openResult,
+  panelTab,
+  requestBox,
+  runControls,
+  runGoing,
+  slash,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function startRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
-  fixture: { definition: unknown } = { definition },
+  fixture: { definition: unknown; earlier?: number } = { definition },
 ) {
   await corral.open('/');
-  return page.evaluate(async ({ definition }) => {
+  return page.evaluate(async ({ definition, earlier = 0 }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const call = async (path: string, body: unknown) => {
       const response = await fetch(`/api/v1${path}`, {
@@ -30,6 +40,13 @@ async function startRun(
         corralId: saved.record.corralId,
       })
     ).session;
+    // Refused requests before the run, long enough to wrap, so the conversation scrolls.
+    for (let index = 0; index < earlier; index += 1)
+      await call(`/sessions/${session.sessionId}/entries`, {
+        intent: 'next',
+        text: `Earlier request ${index + 1}. ${'Long enough to wrap over lines. '.repeat(3)}`,
+        state: 'refused',
+      });
     const started = await call('/runs', {
       schemaVersion: '0.1',
       commandId: 'run-page-fixture',
@@ -51,12 +68,14 @@ async function finishedRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
 ) {
-  const { runId } = await startRun(page, corral);
+  const { runId, sessionId } = await startRun(page, corral);
   await corral.open(`/runs/${runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  // A session's run opens in that session's run history.
+  await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}\\?.*run=${runId}`));
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
-  return new URL(page.url()).pathname;
+  return `/runs/${runId}`;
 }
 
 test('a run completed behind conversation fits its graph when opened and then preserves the chosen zoom', async ({
@@ -74,7 +93,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
     'aria-selected',
     'true',
   );
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
   await panelTab(page, 'Conversation');
@@ -98,9 +117,11 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
     .toBe('succeeded');
-  await expect(page.getByTestId('composer-status-pills')).toContainText('Run #2');
+  // The activity bar says it is the last run; the turn's link carries its number.
+  await expect(activityBar(page)).toContainText('Last run');
+  await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
@@ -137,7 +158,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   const preferred = await viewport.getAttribute('style');
   await panelTab(page, 'Conversation');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Execution history');
+  await panelTab(page, 'Runs');
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   expect(corral.errors).toEqual([]);
@@ -150,9 +171,49 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await page.setViewportSize({ width: 1600, height: 900 });
   const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
-  await page.getByTestId('run-respond').click();
-  const approval = page.getByRole('button', { name: 'Continue with this version', exact: true });
-  await expect(approval).toBeVisible();
+  // The run waits; its record reads the request beside the conversation, whose tray answers it.
+  await expect(page.getByTestId('run-side').getByTestId('respond-in-conversation')).toBeVisible({
+    timeout: 30_000,
+  });
+  // The decision comes from elsewhere (another client), so events arrive while this view stays.
+  const approve = () =>
+    page.evaluate(
+      async ({ runId, approval }) => {
+        const { csrfToken } = await (await fetch('/api/v1/session')).json();
+        const response = await fetch(`/api/v1/runs/${runId}/commands`, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+          body: JSON.stringify({
+            schemaVersion: '0.1',
+            commandId: 'live-events-approval',
+            runId,
+            type: 'resolve_approval',
+            expectedControlRevision: approval.controlRevision,
+            payload: {
+              approvalId: approval.approvalId,
+              decision: 'approve',
+              subjectVersionId: approval.subjectVersionId,
+            },
+          }),
+        });
+        if (!response.ok) throw new Error(`approve: ${response.status}`);
+      },
+      (() => {
+        const { projection } = corral.server.coordinator.getSnapshot(runId);
+        const waiting = Object.values(projection.approvals).find(
+          (item) => item.status === 'pending',
+        );
+        if (!waiting) throw new Error('no waiting approval');
+        return {
+          runId,
+          approval: {
+            approvalId: waiting.approvalId,
+            subjectVersionId: waiting.subjectVersionIds[0] ?? '',
+            controlRevision: projection.controlRevision,
+          },
+        };
+      })(),
+    );
   const monitor = page.getByTestId('run-monitor');
   const tab = monitor.getByRole('tab', { name: /^Events \d+$/ });
   await tab.click();
@@ -169,7 +230,7 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await expect.poll(() => scroll.evaluate((element) => element.scrollTop)).toBeGreaterThan(0);
   const top = await scroll.evaluate((element) => element.scrollTop);
   const count = await tab.textContent();
-  await approval.click();
+  await approve();
   await expect(tab).not.toHaveText(count ?? '');
   await expect(kind).toContainText('tool');
   await expect(selected).toHaveText(selectedText ?? '');
@@ -186,8 +247,8 @@ test('switching workspace views and reading a result preserves selection, scroll
   await page.setViewportSize({ width: 1600, height: 500 });
   await finishedRun(page, corral);
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   const flow = monitor.locator('[data-run-workspace-view="flow"]');
   await expect(flow.getByRole('tree')).toBeVisible();
   const side = page.getByTestId('run-side');
@@ -233,6 +294,9 @@ test('switching workspace views and reading a result preserves selection, scroll
   await expect(document.getByTestId('result-body')).toBeVisible();
   await expect(graph).toBeHidden();
   await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  // Back returns to the Results view the result was opened from; the graph kept its state.
+  await expect(monitor.locator('[data-run-workspace-view="results"]')).toBeVisible();
+  await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', transform ?? '');
   await expect.poll(() => side.evaluate((element) => element.scrollTop)).toBe(sideTop);
@@ -240,7 +304,7 @@ test('switching workspace views and reading a result preserves selection, scroll
     'aria-selected',
     'true',
   );
-  await views.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect.poll(() => flow.evaluate((element) => element.scrollTop)).toBe(flowTop);
   await expect(
     flow
@@ -340,7 +404,8 @@ test.describe('active graph preview', () => {
       await steer.click();
       const reins = monitor.getByTestId('run-instructions');
       await expect(reins).toBeVisible();
-      await expect(reins).toBeFocused();
+      // A running execution takes instructions, so focus lands in the instruction box.
+      await expect(reins.getByLabel('Instruction', { exact: true })).toBeFocused();
       await expect(reins).toContainText('Agent execution 1');
       await expect(monitor.getByTestId('run-side')).toBeHidden();
       expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
@@ -360,8 +425,8 @@ test.describe('active graph preview', () => {
 
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
-  await expect(page.getByText('Layout from the saved team')).toHaveCount(0);
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await expect(page.getByText('Layout from the saved Corral')).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await page
     .getByTestId('run-work-flow')
     .getByRole('button', { name: /^Research Helper · exec_/ })
@@ -377,13 +442,14 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
       .locator('[data-agent-id="helper"]')
       .getByRole('button'),
   ).toHaveAttribute('aria-pressed', 'true');
+  // The side shows the chosen execution again. It has finished, so it offers no instruction:
+  // what was sent to it is read in its call conversation (execution-monitor.md: "지시하기는 끝나지
+  // 않은 실행에만 제공하며, 끝난 실행에 보냈던 지시와 전달 여부는 그 실행의 호출 대화에서 본다").
   const side = page.getByTestId('run-side');
-  await side.getByRole('button', { name: 'Reins', exact: true }).click();
-  const reins = page.getByTestId('run-instructions');
-  await expect(reins).toContainText('Research Helper');
-  await expect(reins.getByLabel('Instruction', { exact: true })).toHaveCount(0);
-  await reins.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await page.getByRole('tab', { name: 'Work flow', exact: true }).click();
+  await expect(side).toContainText('Research Helper');
+  await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
+  await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await expect(
     page
       .getByTestId('run-work-flow')
@@ -417,9 +483,9 @@ test('a long multiline request keeps graph, events and run information reachable
     { ...started, request },
   );
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   const monitor = page.getByTestId('run-monitor');
-  const views = monitor.getByRole('tablist', { name: 'Execution views', exact: true });
+  const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
   const eventsTab = views.getByRole('tab', { name: /^Events \d+$/ });
   const info = monitor.getByRole('button', { name: 'Run info', exact: true });
@@ -432,7 +498,14 @@ test('a long multiline request keeps graph, events and run information reachable
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
     const graph = monitor.getByRole('group', { name: 'Run graph', exact: true });
-    await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
+    // Too narrow for the map's names to read, the graph view starts as its list.
+    if (viewport.width < 640) {
+      await expect(monitor.getByRole('button', { name: 'List', exact: true })).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      await expect(graph.getByRole('table', { name: 'Agents', exact: true })).toBeInViewport();
+    } else await expect(graph.getByRole('button', { name: /^zoom in$/i })).toBeInViewport();
     await eventsTab.click();
     await expect(monitor.locator('[data-run-workspace-view="events"]')).toBeVisible();
     await graphTab.click();
@@ -462,12 +535,140 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(
     page.getByTestId('run-monitor').getByRole('slider', { name: 'View point' }),
   ).toHaveCount(0);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByRole('alert')).toContainText('exec_9999 is not part of this run');
   const side = page.getByTestId('run-side');
   await expect(side.getByRole('button', { name: 'Reins', exact: true })).toHaveCount(0);
   await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
   await expect(page.getByLabel('Instruction', { exact: true })).toHaveCount(0);
+});
+
+test('the activity bar names an approval only once its card is off screen, and leaves a person’s decision to its card, even in a narrow window', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 390, height: 600 });
+  const started = await startRun(page, corral, { definition: approvalDefinition, earlier: 12 });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const tray = page.locator('[data-pending-tray]');
+  const card = tray.locator('[data-testid^="approval-"]');
+  await expect(card.getByRole('button', { name: 'Continue with this version' })).toBeVisible({
+    timeout: 30_000,
+  });
+  // The card on screen answers it: the bar does not repeat it.
+  const bar = activityBar(page);
+  await expect(bar).toHaveAttribute('data-run', 'awaiting_user');
+  await expect(bar).not.toHaveAttribute('data-line', 'waiting');
+  await expect(bar.getByRole('button', { name: /^Continue with this version/ })).toHaveCount(0);
+  // Scrolled away, the bar says what waits. A person's decision is more than its line can say,
+  // so the line offers View alone (composer-flow.md "활동 바").
+  // The person scrolls up, as with the wheel: the conversation stops following its end.
+  await page.getByTestId('chat-timeline').hover({ position: { x: 16, y: 120 } });
+  for (let step = 0; step < 8; step += 1) await page.mouse.wheel(0, -500);
+  await expect(tray).not.toBeInViewport();
+  await expect(bar).toHaveAttribute('data-line', 'waiting');
+  await expect(bar).toContainText('Your decision');
+  await expect(bar.getByRole('button', { name: /^Continue with this version/ })).toHaveCount(0);
+  await expect(bar.getByRole('button', { name: /^Reject and stop/ })).toHaveCount(0);
+  // Enter on the bar's toggle opens its panel; it decides nothing.
+  await bar.locator('[data-activity-toggle]').press('Enter');
+  await expect(bar.locator('[data-activity-toggle]')).toHaveAttribute('aria-expanded', 'true');
+  await page.keyboard.press('Escape');
+  const [decided] = Object.values(
+    corral.server.coordinator.getSnapshot(started.runId).projection.approvals,
+  );
+  if (!decided) throw new Error('The approval is missing');
+  expect(decided.status).toBe('pending');
+  // View brings the card back, where it is decided.
+  await bar.getByRole('button', { name: 'View', exact: true }).click();
+  const approve = card.getByRole('button', { name: 'Continue with this version' });
+  await expect(approve).toBeInViewport();
+  await approve.click();
+  await expect
+    .poll(
+      () =>
+        corral.server.coordinator.getSnapshot(started.runId).projection.approvals[
+          decided.approvalId
+        ]?.status,
+    )
+    .not.toBe('pending');
+  // Its card leaves the tray; the run may ask for its next decision there.
+  await expect(tray.getByTestId(`approval-${decided.approvalId}`)).toHaveCount(0);
+  expect(corral.errors).toEqual([]);
+});
+
+/**
+ * The session screen's main area as a person reads it: the top bar and the workbench, without
+ * the sidebar and without screen-reader-only text.
+ */
+function mainText(page: import('@playwright/test').Page) {
+  return page.evaluate(() => {
+    const hidden = [...document.querySelectorAll<HTMLElement>('.sr-only')];
+    for (const node of hidden) node.style.setProperty('display', 'none', 'important');
+    const text = [
+      document.querySelector<HTMLElement>('[role="banner"], header'),
+      document.querySelector<HTMLElement>('section[aria-label="Workbench layout"]'),
+    ]
+      .map((node) => node?.innerText ?? '')
+      .join('\n');
+    for (const node of hidden) node.style.removeProperty('display');
+    return text;
+  });
+}
+
+test('a waiting approval shows its state once (the run row) and its decision once (the card)', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const card = page.locator('[data-testid^="approval-"]');
+  await expect(card.getByRole('button', { name: 'Continue with this version' })).toBeVisible({
+    timeout: 30_000,
+  });
+  // The top bar has no run state; the run row's head says the wait in words, once, and the
+  // activity bar, with the row and the card on screen, repeats neither.
+  await expect(page.getByRole('banner')).not.toContainText('Waiting for you');
+  await expect(activityBar(page)).toHaveAttribute('data-run', 'awaiting_user');
+  await expect(activityBar(page)).not.toHaveAttribute('data-line', 'waiting');
+  const shown = await mainText(page);
+  // "Waiting for you", not the start of "Waiting for your decision".
+  expect(shown.match(/Waiting for you(?!r)/g)).toHaveLength(1);
+  expect(shown.match(/Your decision/g)).toHaveLength(1);
+  expect(shown.match(/Continue with this version/g)).toHaveLength(1);
+  expect(shown).not.toContain('Reason:');
+  expect(shown).not.toContain('Approval needed');
+  expect(corral.errors).toEqual([]);
+});
+
+test('a decision sent from the conversation’s card hands focus on instead of dropping it', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral, { definition: approvalDefinition });
+  await corral.open(`/sessions/${started.sessionId}`);
+  const decide = page
+    .locator('[data-testid^="approval-"]')
+    .getByRole('button', { name: 'Continue with this version' });
+  await expect(decide).toBeVisible({ timeout: 30_000 });
+  await decide.focus();
+  await page.keyboard.press('Enter');
+  await expect(decide).toHaveCount(0);
+  // The card left: focus goes to the next waiting card's main action if the final output
+  // already waits, else to the request box; never to the page.
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) return 'page';
+        if (active.matches('[data-testid="chat-composer"] textarea')) return 'request';
+        if (active.textContent === 'Confirm as final result') return 'final';
+        return active.outerHTML.slice(0, 120);
+      }),
+    )
+    .toMatch(/^(request|final)$/);
+  expect(corral.errors).toEqual([]);
 });
 
 test('ACTION-01 opens one scoped response host and keeps later typing focus', async ({
@@ -476,21 +677,28 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
 }) => {
   const started = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/sessions/${started.sessionId}`);
-  const action = page.getByTestId('dock-open-active-run');
-  await expect(action).toContainText('response needed');
-  await action.click();
-  await page.getByTestId('run-respond').click();
-  const response = page.locator('[data-run-response]');
-  await expect(response).toBeFocused();
+  // The conversation's needed-now tray holds the response; nothing else offers it.
+  await expect(activityBar(page)).toHaveAttribute('data-run', 'awaiting_user', {
+    timeout: 30_000,
+  });
+  const tray = page.locator('[data-pending-tray]');
+  await expect(tray).toBeInViewport();
+  const response = tray.locator('[data-run-response]');
   await expect(page.getByRole('button', { name: 'Continue with this version' })).toHaveCount(1);
+  // A subject opens beside the conversation, and the tray keeps the decision.
   await response.getByRole('button', { name: 'draft v2', exact: true }).click();
   await expect(
     page.getByTestId('run-monitor').getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
+  // The run record reads what waits and does not answer it.
   await page
     .getByTestId('run-document')
     .getByRole('button', { name: 'Back to work', exact: true })
     .click();
+  await expect(
+    page.getByTestId('run-monitor').getByRole('button', { name: 'Continue with this version' }),
+  ).toHaveCount(0);
+  await panelTab(page, 'Conversation');
   await expect(response).toBeVisible();
   await response.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
@@ -504,8 +712,6 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     .click();
   await panelTab(page, 'Conversation');
   const input = requestBox(page);
-  await input.fill('Keep typing while the run continues');
-  await expect(input).toBeFocused();
 
   let releaseApproval!: () => void;
   const approvalReady = new Promise<void>((resolve) => {
@@ -516,20 +722,20 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     await route.continue();
   });
   try {
-    await panelTab(page, 'Execution history');
     const posted = page.waitForRequest(
       (request) =>
         request.url().endsWith('/commands') && request.postDataJSON()?.type === 'resolve_approval',
     );
     await response.getByRole('button', { name: 'Continue with this version' }).click();
     await posted;
-    await panelTab(page, 'Conversation');
-    await input.focus();
+    // While the decision waits for its receipt, the person goes on typing.
+    await input.fill('Keep typing while the run continues');
+    await expect(input).toBeFocused();
     releaseApproval();
     await expect(
       response.getByRole('button', { name: 'Confirm as final result', includeHidden: true }),
     ).toHaveCount(1);
-    await expect(action).toContainText('response needed');
+    await expect(activityBar(page)).toHaveAttribute('data-run', 'awaiting_user');
     await expect(input).toHaveValue('Keep typing while the run continues');
     await expect(input).toBeFocused();
   } finally {
@@ -547,7 +753,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
     .toBe('succeeded');
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}&atSeq=1`);
-  await expect(page.getByTestId('run-status')).toContainText('Succeeded');
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page).not.toHaveURL(/[?&]atSeq=/);
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await panelTab(page, 'Conversation');
@@ -565,7 +771,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   );
   await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
-  const historyTab = page.getByRole('tab', { name: 'Execution history', exact: true });
+  const historyTab = page.getByRole('tab', { name: 'Runs', exact: true });
   await expect(historyTab).toBeVisible();
   await historyTab.click();
   const flow = page.getByRole('group', { name: 'Run graph', exact: true });
@@ -593,7 +799,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
   );
   await page.reload();
-  await page.getByRole('tab', { name: 'Execution history', exact: true }).click();
+  await page.getByRole('tab', { name: 'Runs', exact: true }).click();
   await expect(flow).toHaveCSS('color-scheme', 'light');
   const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(lightSurface).not.toBe(darkSurface);
@@ -641,10 +847,9 @@ test.describe('cancel recovery', () => {
         )
         .toBe(true);
       await corral.open(`/sessions/${target.sessionId}`);
-      await page
-        .getByRole('region', { name: 'Active run controls', exact: true })
-        .getByRole('button', { name: 'Cancel whole run', exact: true })
-        .click();
+      // Two executions work (the lead waits on its team), so Stop asks first.
+      await openActivity(page);
+      await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
       const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
       await expect(confirmation).toHaveCount(1);
       await expect(page.getByRole('dialog')).toHaveCount(1);
@@ -658,6 +863,13 @@ test.describe('cancel recovery', () => {
         .toBe('cancelled');
       for (const reload of [false, true]) {
         if (reload) await page.reload();
+        // The steps that went wrong are in the work log the run row's head opens.
+        const head = page
+          .getByTestId('chat-timeline')
+          .locator('[data-chat-part="head"] button[aria-expanded]')
+          .last();
+        await expect(head).toHaveAttribute('aria-expanded', 'false');
+        await head.click();
         const tool = page
           .getByTestId('chat-timeline')
           .locator('li > code')
@@ -689,13 +901,14 @@ test.describe('cancel recovery', () => {
     corral,
   }) => {
     await corral.open('/');
-    await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+    await newConversation(page);
     holdLifecycleReplies = true;
     await requestBox(page).fill('Retry this cancelled request');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
     await expect.poll(() => lifecycleReplies.length).toBeGreaterThan(0);
-    const controls = page.getByRole('region', { name: 'Active run controls', exact: true });
-    await controls.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
+    // `/stop` always asks first, whatever works.
+    await expect(runGoing(page)).toBeVisible();
+    await slash(page, 'stop');
     const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
     await expect(page.getByRole('dialog')).toHaveCount(1);
     await expect(confirmation).toContainText('Cancellation has not been sent');

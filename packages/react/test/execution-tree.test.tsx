@@ -6,6 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { ExecutionTree, RunView } from '../src/components/RunView.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import ko from '../src/messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 
 const execution = (
@@ -72,7 +73,11 @@ function projection(): RunProjection {
   };
 }
 
-function renderTree(selectedExecutionId: string | null = null) {
+function renderTree(
+  selectedExecutionId: string | null = null,
+  titled = true,
+  locale: 'en' | 'ko' = 'en',
+) {
   const onSteer = vi.fn();
   const session = sessionStore({
     runId: 'run_tree',
@@ -80,11 +85,12 @@ function renderTree(selectedExecutionId: string | null = null) {
     projection: projection(),
   });
   render(
-    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+    <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
       <ExecutionTree
         session={session}
         onSteer={onSteer}
         selectedExecutionId={selectedExecutionId}
+        titled={titled}
       />
     </IntlProvider>,
   );
@@ -114,6 +120,13 @@ describe('execution card tree', () => {
     ).toHaveLength(1);
     fireEvent.click(screen.getByRole('button', { name: /^writer · exec_first/ }));
     expect(onSteer).toHaveBeenCalledWith('exec_first');
+  });
+
+  // The tree's count of working executions uses Presence's word for that state.
+  it('counts working executions in Presence’s word', () => {
+    expect(messages.Run.tree.running).toBe(
+      `{count} ${messages.Presence.state.working.toLowerCase()}`,
+    );
   });
 
   it('keeps the run root unselectable and the waiting links inside their card', () => {
@@ -161,6 +174,24 @@ describe('execution card tree', () => {
             inputArtifactVersionIds: [],
             bodyAvailable: false,
           },
+          notes_v1: {
+            artifactVersionId: 'notes_v1',
+            artifactId: 'notes',
+            version: 1,
+            parentVersionId: null,
+            name: 'notes',
+            contract: 'text',
+            contentHash: 'hash',
+            byteLength: 5,
+            authorExecutionId: 'exec_other',
+            modelCallId: null,
+            contextSnapshotId: null,
+            submitted: true,
+            configRevision: 0,
+            criteriaVersionId: null,
+            inputArtifactVersionIds: [],
+            bodyAvailable: false,
+          },
         },
         artifactReads: { exec_lead: ['draft_v1'] },
         questions: {
@@ -188,11 +219,17 @@ describe('execution card tree', () => {
       [...screen.getByTestId(`execution-${id}`).querySelectorAll('[data-handoff]')].map(
         (item) => item.textContent,
       );
+    const made = (id: string) =>
+      screen.getByTestId(`execution-${id}`).querySelector('p[title]')?.getAttribute('title') ??
+      null;
     const retry = screen.getByTestId('execution-exec_retry');
-    expect(retry.textContent).toContain('draft v1');
     expect(retry.textContent).not.toMatch(/model request/);
     expect(sent('exec_retry')).toEqual(['draft v1 → research']);
+    // A version its chip already names is not repeated above it; an attempt number stays.
+    expect(made('exec_retry')).toBe('Attempt 2');
     expect(sent('exec_other')).toEqual(['Question → research · Answered']);
+    // A version nobody has read yet has no chip and keeps its own line.
+    expect(made('exec_other')).toBe('notes v1');
     // The receiver does not repeat what it was sent.
     expect(sent('exec_lead')).toEqual([]);
     expect(screen.queryByText(/Private/)).toBeNull();
@@ -205,6 +242,71 @@ describe('execution card tree', () => {
     await vi.waitFor(() => expect(within(list).getByText('Tool timed out')).toBeVisible());
     expect(within(list).queryByRole('button')).toBeNull();
     expect(screen.getByRole('button', { name: /1 needs you/ })).toBeInTheDocument();
+  });
+
+  // glossary.md, "설명이 붙는 용어": the tree's title is where Execution explains itself.
+  it('puts the execution term’s icon right after its title, and none when untitled', async () => {
+    const user = userEvent.setup();
+    renderTree();
+    const header = document.querySelector('header') as HTMLElement;
+    const hint = within(header).getByRole('button', {
+      name: `About ${messages.Terms.execution.name}`,
+    });
+    expect(hint).toHaveAccessibleDescription(messages.Terms.execution.meaning);
+    // Right after the title: the spark mark, the title, then the icon.
+    const title = header.children[1];
+    expect(title?.textContent).toBe(messages.Run.tree.title);
+    expect(title?.nextElementSibling?.contains(hint) || title?.nextElementSibling === hint).toBe(
+      true,
+    );
+    await user.click(hint);
+    await waitFor(() =>
+      expect(document.querySelector('[data-term-popup] [data-term-meaning]')).toHaveTextContent(
+        messages.Terms.execution.meaning,
+      ),
+    );
+    await user.keyboard('{Escape}');
+  });
+
+  // One name per screen: under its title the count shows only the number, and is still read as
+  // the whole count; untitled, the count keeps the name.
+  it.each([
+    ['en', messages, '4 executions', '4 total'],
+    ['ko', ko, '실행 단위 4개', '4개'],
+  ] as const)('names the executions once on a titled bar (%s)', (locale, text, whole, number) => {
+    renderTree(null, true, locale);
+    const header = document.querySelector('header') as HTMLElement;
+    // What the eye reads: neither visually hidden nor hidden text.
+    const shown = header.cloneNode(true) as HTMLElement;
+    for (const node of shown.querySelectorAll('.sr-only, [hidden]')) node.remove();
+    const name = text.Run.tree.title.toLowerCase();
+    expect(shown.textContent?.toLowerCase().split(name).length).toBe(2);
+    const counts = header.querySelector('[aria-live]') as HTMLElement;
+    // What is read: the whole count, once, and not the number drawn for the eye.
+    const read = counts.cloneNode(true) as HTMLElement;
+    for (const node of read.querySelectorAll('[aria-hidden="true"]')) node.remove();
+    expect(read.textContent).toContain(whole);
+    const hidden = counts.querySelector('.sr-only');
+    expect(hidden?.textContent).toBe(whole);
+    expect(hidden?.nextElementSibling?.getAttribute('aria-hidden')).toBe('true');
+    expect(hidden?.nextElementSibling?.textContent).toBe(number);
+  });
+
+  it('untitled, keeps the name in its count', () => {
+    renderTree(null, false, 'ko');
+    const counts = document.querySelector('header [aria-live]') as HTMLElement;
+    expect(counts.textContent).toContain('실행 단위 4개');
+    expect(counts.querySelector('.sr-only')).toBeNull();
+  });
+
+  it('inside a tab named for it, drops its title and keeps the count and the tree name', () => {
+    renderTree(null, false);
+    expect(document.querySelector('[data-term-hint]')).toBeNull();
+    const header = document.querySelector('header');
+    // The bar's spark mark and title are its first two parts; the counts follow and stay.
+    expect(header?.parentElement?.className).toContain('[&>header>span:nth-child(-n+2)]:hidden');
+    expect(header?.textContent).toContain('4 executions');
+    expect(screen.getByRole('tree', { name: 'Executions' })).toBeInTheDocument();
   });
 
   it('shows no estimated cost in the tree', () => {
@@ -281,7 +383,9 @@ describe('bounded loop execution tree', () => {
     expect(container.querySelectorAll('[data-execution-id]')).toHaveLength(4);
     expect(screen.getAllByRole('treeitem')).toHaveLength(6);
     expect(screen.getByText('4 executions', { exact: true })).toBeInTheDocument();
-    expect(screen.getByText('1 running', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(messages.Run.tree.running.replace('{count}', '1'), { exact: true }),
+    ).toBeInTheDocument();
     expect(within(group).getByRole('combobox', { name: 'Round for Revision' })).toBeInTheDocument();
   });
 

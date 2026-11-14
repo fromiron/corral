@@ -12,6 +12,7 @@ import {
   DialogDescription,
   DialogPopup,
   DialogTitle,
+  fontWeights,
   Select,
   Switch,
 } from '@corral/react/design-kit';
@@ -160,46 +161,40 @@ function SequenceControls({
   };
   if (!state)
     return (
-      <p role="status" className="text-xs text-muted-foreground">
+      <p role="status" className="text-caption text-muted-foreground">
         {t('loading')}
       </p>
     );
   if (!matches)
     return (
-      <p role="alert" className="text-xs text-warning">
+      <p role="alert" className="text-caption text-warning">
         {t('changed')}
       </p>
     );
   if (unsupported)
     return (
-      <section aria-label={t('title')} className="flex flex-col gap-1 text-xs">
-        <p className="font-medium">{t('title')}</p>
+      <section aria-label={t('title')} className="flex flex-col gap-1 text-caption">
+        <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('title')}</p>
         <p role="status" className="text-muted-foreground">
           {sequence?.reason || t(state.ownerOperationId ? 'unsupported' : 'external')}
         </p>
       </section>
     );
   return (
-    <section aria-label={t('title')} className="flex flex-col gap-2 text-xs">
-      <h3 className="font-medium">{t('title')}</h3>
+    <section aria-label={t('title')} className="flex flex-col gap-2 text-caption">
+      <h3 style={{ fontVariationSettings: fontWeights.semibold }}>{t('title')}</h3>
       {sequence ? (
         <>
           <p role="status">{t(`active.${sequence.kind}`)}</p>
           <div className="flex flex-wrap gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !!state.conflicts.length}
               onClick={() => prepare('continue')}
             >
               {t('reviewContinue')}
             </Button>
-            <Button
-              size="compact"
-              variant="tertiary"
-              disabled={blocked}
-              onClick={() => prepare('abort')}
-            >
+            <Button variant="tertiary" disabled={blocked} onClick={() => prepare('abort')}>
               {t('reviewAbort')}
             </Button>
           </div>
@@ -211,7 +206,6 @@ function SequenceControls({
         <>
           <Select
             label={t('branch')}
-            size="xs"
             value={branch?.name ?? ''}
             onValueChange={setSelected}
             disabled={blocked || !branches.length}
@@ -219,7 +213,6 @@ function SequenceControls({
           />
           <div className="flex flex-wrap gap-2">
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('merge')}
@@ -227,7 +220,6 @@ function SequenceControls({
               {t('reviewMerge')}
             </Button>
             <Button
-              size="compact"
               variant="tertiary"
               disabled={blocked || !clean || !branch}
               onClick={() => prepare('rebase')}
@@ -272,7 +264,7 @@ function SequenceControls({
           <DialogDescription>{t(`hint.${review?.command.kind ?? 'merge'}`)}</DialogDescription>
           {review ? (
             <>
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
                 <dt>{t('currentBranch')}</dt>
                 <dd className="break-all font-mono">{review.branch ?? '—'}</dd>
                 <dt>HEAD</dt>
@@ -305,10 +297,10 @@ function SequenceControls({
               </dl>
               {review.command.kind === 'abort' ? (
                 <>
-                  <p className="text-sm text-warning">{t('abortLoss')}</p>
+                  <p className="text-body text-warning">{t('abortLoss')}</p>
                   <ul
                     aria-label={t('affected')}
-                    className="max-h-40 overflow-auto font-mono text-xs"
+                    className="max-h-40 overflow-auto font-mono text-caption"
                   >
                     {review.paths.map((path) => (
                       <li key={path} className="break-all">
@@ -324,20 +316,20 @@ function SequenceControls({
                   />
                 </>
               ) : (
-                <p className="text-xs text-muted-foreground">{t('signing')}</p>
+                <p className="text-caption text-muted-foreground">{t('signing')}</p>
               )}
               {stale ? (
-                <p role="alert" className="text-sm text-warning">
+                <p role="alert" className="text-body text-warning">
                   {t('changed')}
                 </p>
               ) : null}
               {drafts ? (
-                <p role="alert" className="text-sm text-warning">
+                <p role="alert" className="text-body text-warning">
                   {t('drafts')}
                 </p>
               ) : null}
               {error ? (
-                <p role="alert" className="text-sm text-danger">
+                <p role="alert" className="text-body text-danger">
                   {error}
                 </p>
               ) : null}

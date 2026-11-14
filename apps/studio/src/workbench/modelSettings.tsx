@@ -26,15 +26,20 @@ export function useModelSettings(api: ModelsApi | null) {
   });
   const [error, setError] = useState(false);
   const [loading, setLoading] = useState(true);
+  // The lists were read once: screens that announce changes start from them.
+  const [loaded, setLoaded] = useState(false);
   const generation = useRef(0);
   const refresh = useCallback(async () => {
     const request = ++generation.current;
     try {
       const value = await readModels(api);
       if (generation.current === request) {
-        setData(value);
+        // A config that failed to read this time keeps the last one read, so open editors and
+        // their drafts stay; the other lists are replaced.
+        setData((before) => ({ ...value, config: value.config ?? before.config }));
         modelsChanged();
         setError(false);
+        setLoaded(true);
       }
     } catch (error) {
       if (generation.current === request) setError(true);
@@ -66,5 +71,5 @@ export function useModelSettings(api: ModelsApi | null) {
       clearTimeout(timer);
     };
   }, [pending, refresh]);
-  return { ...data, refresh, error, loading };
+  return { ...data, refresh, error, loading, loaded };
 }

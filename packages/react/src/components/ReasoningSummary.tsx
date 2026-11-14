@@ -13,6 +13,44 @@ type Call = Pick<ModelCallView, 'reasoning' | 'reasoningWire' | 'reasoningSettle
 
 const DECISION_APIS = ['jev', 'openai-decisions'] as const;
 
+type ReasoningText = ReturnType<typeof useTranslations<'Reasoning'>>;
+
+/** The level the request record applied. Null means the record itself is missing. */
+function appliedLevel(call: Call, t: ReasoningText): string | null {
+  const resolution = call.reasoning;
+  if (!resolution) return null;
+  if (resolution.resolved === null) return t('provider_default');
+  return t(`level.${resolution.resolved}`);
+}
+
+/** Whether the wire value was verified, and that value when one was recorded. */
+function wireCheck(call: Call, open: boolean, nothingSent: boolean, t: ReasoningText): string {
+  const wire = call.reasoningWire;
+  if (!wire) return open ? t('unverified') : t('notVerified');
+  if (wire.value) return t('rowVerified', { value: wire.value });
+  // The payload record says nothing was sent. Don't repeat that when the level already does.
+  return nothingSent ? t('rowVerifiedPlain') : t('rowVerified', { value: t('provider_default') });
+}
+
+/**
+ * Applied level and wire check for a conversation row, visible without opening the request.
+ * Provider default is only a record that nothing was sent. No record stays unrecorded.
+ */
+export function ReasoningLevelLabel({ call, open }: { call: Call; open: boolean }) {
+  const t = useTranslations('Reasoning');
+  const level = appliedLevel(call, t);
+  const check = wireCheck(call, open, call.reasoning?.resolved === null, t);
+  const text =
+    level === null && !call.reasoningWire
+      ? t('unrecorded')
+      : t('rowLine', { level: level ?? t('unrecorded'), check });
+  return (
+    <span data-testid="reasoning-level" className="text-caption text-muted-foreground">
+      {text}
+    </span>
+  );
+}
+
 /**
  * One request's reasoning: the judgment line where one ran, else what was asked and sent.
  * `open` says whether the request can still record what it sent, so a missing record reads as
@@ -26,7 +64,7 @@ export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) 
     return (
       <span
         data-testid="reasoning-summary"
-        className="text-xs text-muted-foreground"
+        className="text-caption text-muted-foreground"
         title={resolution.preparationId}
       >
         {t('route.off')}
@@ -43,7 +81,7 @@ export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) 
   return (
     <span
       data-testid="reasoning-summary"
-      className="text-xs text-muted-foreground"
+      className="text-caption text-muted-foreground"
       title={resolution.preparationId}
     >
       {t('label')}: {requested} → {resolution.resolved ?? t('provider_default')}
@@ -55,9 +93,9 @@ export function ReasoningSummary({ call, open }: { call: Call; open: boolean }) 
   );
 }
 
-/** What the provider request carried, as recorded; never assumed from the resolution. */
+/** What the provider request carried. A recorded null means nothing was sent; no record is unverified. */
 function sent(call: Call, open: boolean, t: ReturnType<typeof useTranslations<'Reasoning'>>) {
-  if (call.reasoningWire) return call.reasoningWire.value ?? t('omitted');
+  if (call.reasoningWire) return call.reasoningWire.value ?? t('provider_default');
   return open ? t('unverified') : t('notVerified');
 }
 
@@ -192,15 +230,15 @@ function RouteSummary({
             size="sm-multiline"
             data-testid="reasoning-summary"
             title={resolution.preparationId}
-            className="text-xs text-muted-foreground"
+            className="text-caption text-muted-foreground"
           />
         }
       >
         {line}
       </PopoverTrigger>
       <PopoverPopup width="md">
-        <PopoverTitle className="text-sm font-semibold">{t('route.detail')}</PopoverTitle>
-        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs">
+        <PopoverTitle>{t('route.detail')}</PopoverTitle>
+        <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption">
           {rows.map(([term, value]) => (
             <div key={term} className="contents">
               <dt className="text-muted-foreground">{term}</dt>

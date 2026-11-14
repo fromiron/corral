@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { requestBox } from './workbench.ts';
+import { newConversation, requestBox } from './workbench.ts';
 
 test('the kit themes preserve project creation and explicit theme choice', async ({ page }) => {
   await page.emulateMedia({ colorScheme: 'dark' });
@@ -8,6 +8,7 @@ test('the kit themes preserve project creation and explicit theme choice', async
       localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' }));
   });
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
   await expect(page.locator('body')).toHaveCSS('background-color', 'rgb(250, 250, 250)');
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Design kit');
@@ -26,10 +27,81 @@ test('the kit themes preserve project creation and explicit theme choice', async
   );
 });
 
+test('the bundled Inter variable font renders the kit weights from the studio origin', async ({
+  page,
+}) => {
+  const fontRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.push(request.url());
+  });
+  await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
+  await expect(page.getByRole('textbox', { name: 'Name', exact: true })).toBeVisible();
+  const faces = await page.evaluate(async () => {
+    const loaded = await document.fonts.load('550 14px Inter');
+    return loaded.map((face) => ({ family: face.family, status: face.status }));
+  });
+  expect(faces.length).toBeGreaterThan(0);
+  expect(faces.every((face) => face.family.replaceAll('"', '') === 'Inter')).toBe(true);
+  expect(faces.every((face) => face.status === 'loaded')).toBe(true);
+  expect(await page.evaluate(() => document.fonts.check('550 14px Inter'))).toBe(true);
+  const origin = new URL(page.url()).origin;
+  expect(fontRequests.length).toBeGreaterThan(0);
+  expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
+});
+
+test('Hangul takes the kit weights from a bundled variable face after Inter', async ({ page }) => {
+  const fontRequests: string[] = [];
+  page.on('request', (request) => {
+    if (request.resourceType() === 'font') fontRequests.push(request.url());
+  });
+  await page.goto('/projects');
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
+  const stack = await page.evaluate(() =>
+    getComputedStyle(document.body)
+      .fontFamily.split(',')
+      .map((family) => family.trim().replaceAll('"', '')),
+  );
+  expect(stack.slice(0, 2)).toEqual(['Inter', 'Pretendard Variable']);
+  const faces = await page.evaluate(() =>
+    [...document.fonts]
+      .filter((face) => face.family.replaceAll('"', '') === 'Pretendard Variable')
+      .map((face) => ({ weight: face.weight, unicodeRange: face.unicodeRange })),
+  );
+  expect(faces).toHaveLength(1);
+  const [face] = faces as [(typeof faces)[number]];
+  const [lightest = Number.NaN, heaviest = lightest] = face.weight.split(' ').map(Number);
+  expect(lightest).toBeLessThanOrEqual(400);
+  expect(heaviest).toBeGreaterThanOrEqual(700);
+  const ranges = face.unicodeRange.split(',').map((range) => {
+    const [from = '', to = from] = range.trim().replace(/^U\+/i, '').split('-');
+    return [Number.parseInt(from, 16), Number.parseInt(to, 16)] as const;
+  });
+  const covers = (from: number, to: number) =>
+    ranges.some(([start, end]) => start <= from && to <= end);
+  // Hangul syllables, Jamo and compatibility Jamo; Latin, digits and punctuation stay with Inter.
+  expect(covers(0xac00, 0xd7a3)).toBe(true);
+  expect(covers(0x1100, 0x11ff)).toBe(true);
+  expect(covers(0x3131, 0x318e)).toBe(true);
+  for (const character of 'Aa0,.·…') {
+    const code = character.codePointAt(0) as number;
+    expect(covers(code, code), character).toBe(false);
+  }
+  const hangul = await page.evaluate(async () => {
+    const loaded = await document.fonts.load('550 14px "Pretendard Variable"', '판정');
+    return loaded.map((loadedFace) => loadedFace.status);
+  });
+  expect(hangul).toEqual(['loaded']);
+  const origin = new URL(page.url()).origin;
+  expect(fontRequests.some((url) => /pretendard/i.test(url))).toBe(true);
+  expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
+});
+
 test('narrow forms retain names, keyboard focus and reduced motion', async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
   await page.goto('/projects');
+  await page.getByRole('button', { name: 'New project', exact: true }).click();
   const name = page.getByRole('textbox', { name: 'Name', exact: true });
   await expect(name).toBeVisible();
   await name.focus();
@@ -60,7 +132,7 @@ test('described select choices stay separated and readable without losing a draf
   page,
 }, testInfo) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'Start chat', exact: true }).click();
+  await newConversation(page);
   await requestBox(page).fill('Keep this draft');
   const picker = page.getByRole('combobox', { name: 'Permissions for next request', exact: true });
   for (const width of [1280, 390]) {

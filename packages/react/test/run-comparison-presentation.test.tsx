@@ -3,7 +3,31 @@ import { IntlProvider } from 'use-intl';
 import { expect, it } from 'vitest';
 import { RunComparison } from '../src/components/RunComparison.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { projectionWith } from '../src/stories/fixtures.tsx';
+
+it.each([
+  ['en', messages, 'Applied reasoning by request'],
+  ['ko', koMessages, '요청별 추론 적용 기록'],
+] as const)('names the applied-reasoning disclosure in %s', (locale, catalog, name) => {
+  render(
+    <IntlProvider locale={locale} messages={catalog} timeZone="UTC" onError={() => {}}>
+      <RunComparison
+        a={{
+          projection: projectionWith({ runId: 'run_first', startedAt: '2026-10-30T01:00:00Z' }),
+          name: 'First',
+          output: 'First result',
+        }}
+        b={{
+          projection: projectionWith({ runId: 'run_second', startedAt: '2026-10-30T02:00:00Z' }),
+          name: 'Second',
+          output: 'Second result',
+        }}
+      />
+    </IntlProvider>,
+  );
+  expect(screen.getByRole('button', { name })).toBeInTheDocument();
+});
 
 it('keeps unknown run names generic and exact identifiers inside the existing disclosure', () => {
   render(

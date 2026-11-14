@@ -7,6 +7,7 @@ import type { CommandError } from '@corral/contracts';
 export type RefusalKind =
   | 'signin'
   | 'profile'
+  | 'advisor'
   | 'image'
   | 'capability'
   | 'terminal'
@@ -40,6 +41,8 @@ export function refusalKind({
   if (owner && (code === 'RUN_ALREADY_ACTIVE' || code === 'RESOURCE_CAPACITY'))
     return owner.state === 'uncertain' ? 'terminalUncertain' : 'terminal';
   if (!owner && terminalOwner(message)) return 'terminal';
+  // The conversation's advisor's model, whatever its own trouble (features/advisor.md "두는 곳").
+  if (message.startsWith('Advisor model ')) return 'advisor';
   if (/no confirmed image input support|image input is not supported/i.test(message))
     return 'image';
   if (/\bsign[ -]?in\b|login has expired|subscription sign-in/i.test(message)) return 'signin';

@@ -65,7 +65,7 @@ it('keeps a Korean recovery action visible while retaining the safe diagnostic i
       <FailureNotice message="the model request failed: HTTP 401 (AUTH)" />
     </IntlProvider>,
   );
-  expect(screen.getByText('모델 제공자가 인증 정보를 거부했어요.')).toBeVisible();
+  expect(screen.getByText('모델 제공자가 인증 정보를 거부했습니다.')).toBeVisible();
   expect(
     screen.getByText('설정 → 모델에서 다시 연결하거나 API 키를 바꾼 뒤 재시도하세요.'),
   ).toBeVisible();
@@ -73,10 +73,14 @@ it('keeps a Korean recovery action visible while retaining the safe diagnostic i
 });
 
 it('does not treat arbitrary diagnostic text as a trusted provider classification', () => {
-  render(
+  const { container } = render(
     <IntlProvider locale="en" messages={en}>
       <FailureNotice message="raw response AUTH HTTP 401" />
     </IntlProvider>,
   );
-  expect(screen.getByText(en.Failure.unknown)).toBeVisible();
+  expect(screen.queryByText(en.Failure.provider.AUTH)).toBeNull();
+  // A cause it cannot name adds no sentence; the closed diagnostics hold the recorded text.
+  expect(container.querySelector('p')).toBeNull();
+  expect(container.querySelector('details')).not.toHaveAttribute('open');
+  expect(container.querySelector('details code')).toHaveTextContent('raw response AUTH HTTP 401');
 });

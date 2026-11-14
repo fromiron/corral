@@ -65,10 +65,19 @@ it('an approval of this exact comparison is current and can be applied', async (
     'Review.decisionState.approved',
   );
   expect(view.textContent).toContain('Review.integrateHeading');
-  const approve = [...view.querySelectorAll('button')].find((button) =>
-    button.textContent?.includes('Review.decisionState.approved'),
+  // The state says it once; there is no second, disabled "Approved" button.
+  expect(view.textContent?.split('Review.decisionState.approved')).toHaveLength(2);
+  const approve = [...view.querySelectorAll('button')].find(
+    (button) =>
+      button.textContent?.includes('Review.decisionState.approved') ||
+      button.textContent?.includes('Review.approve'),
   );
-  expect(approve?.disabled).toBe(true);
+  expect(approve).toBeUndefined();
+  expect(
+    [...view.querySelectorAll('button')].some(
+      (button) => button.textContent === 'Review.requestChanges',
+    ),
+  ).toBe(true);
 });
 
 it('requires confirmation before reverting', async () => {

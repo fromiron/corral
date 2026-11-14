@@ -1,4 +1,4 @@
-import { chmodSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
+import { chmodSync, existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { D1Engine } from '../src/d1/engine.ts';
@@ -7,6 +7,7 @@ import { type D1Manifest, LINUX_X64_CPU, manifestProblem } from '../src/d1/manif
 import { installState } from '../src/install.ts';
 import {
   goodVersion,
+  installFake,
   LIB_BYTES,
   MODEL_BYTES,
   releaseArchive,
@@ -59,6 +60,15 @@ describe('installing the Local engine', () => {
       ['d1-2B-Q4_K_M.gguf', 'install.json', 'libggml.so', 'llama-server'].sort(),
     );
     expect(d1Installed(root, manifest)).toBe(true);
+  });
+
+  it('reads a completion stamp without a device list as not installed', () => {
+    const root = tempRoot();
+    const manifest = testManifest();
+    const dir = installFake(root, manifest);
+    expect(d1Installed(root, manifest)).toBe(true);
+    writeFileSync(join(dir, 'install.json'), JSON.stringify({ id: manifest.id }));
+    expect(d1Installed(root, manifest)).toBe(false);
   });
 
   it('refuses an archive with a path outside its folder, an absolute path, or a pinned link', async () => {
@@ -175,6 +185,14 @@ describe('installing the Local engine', () => {
     expect(asked).toEqual([]);
     const complete = withArchive(releaseArchive());
     expect(manifestProblem(complete)).toBeNull();
+    const { device: _device, ...noDevice } = complete.runtime;
+    expect(manifestProblem({ ...complete, runtime: noDevice as D1Manifest['runtime'] })).toMatch(
+      /incomplete/,
+    );
+    const { requirement: _requirement, ...noRequirement } = complete.runtime;
+    expect(
+      manifestProblem({ ...complete, runtime: noRequirement as D1Manifest['runtime'] }),
+    ).toMatch(/incomplete/);
     expect(
       manifestProblem({
         ...complete,
