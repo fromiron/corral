@@ -75,7 +75,7 @@ test('while a run works, a request waits in the queue until a person starts it',
   await expect(cards(page)).toHaveCount(1);
   // Busy: Send joins the run (composer-flow.md "전송"); Alt+Enter sends a next request, which
   // waits behind it.
-  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · instruction$/);
+  await expect(box(page)).toHaveAccessibleDescription(/^Send to: Run #1 · .+ · Join$/);
   await expect(page.locator('[data-slot="composer-keys"]')).toContainText('Next');
   await box(page).fill('Then summarise it');
   await box(page).press('Alt+Enter');

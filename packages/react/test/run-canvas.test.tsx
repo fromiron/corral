@@ -719,14 +719,14 @@ describe('RunCanvas', () => {
       [...screen.getByRole('list', { name: 'Observed relationships' }).children].map(
         (item) => item.textContent,
       );
-    expect(legend()).toEqual(['Call', 'Data', 'Needs you', 'Failed', 'Finished']);
+    expect(legend()).toEqual(['Call', 'Data', 'Needs you', 'Failed', 'Completed']);
     await act(async () =>
       harness.session.setState({ projection: { ...live, status: 'cancelled' } }),
     );
     expect(document.querySelectorAll('path.flow-dash:not(.flow-dash-slow)')).toHaveLength(0);
     expect(state('research', 'helper')).toBe('settled');
     expect(state('research', 'review')).toBe('failed');
-    expect(legend()).toEqual(['Failed', 'Finished']);
+    expect(legend()).toEqual(['Failed', 'Completed']);
     // An ended run whose relations all finished has one state: the lines say it, no legend.
     await act(async () =>
       harness.session.setState({

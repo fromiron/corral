@@ -354,7 +354,7 @@
     "executions": "Executions",
     "noExecutions": "No executions yet.",
     "requests": "{count, plural, =0 {no model requests} one {# model request} other {# model requests}}",
-    "steerThis": "Steer",
+    "steerThis": "Give instruction",
     "output": "Output",
     "streamError": "Live updates stopped: {message}",
     "notRunnable": "Fix the problems in the structure list to enable Run.",
@@ -397,7 +397,7 @@
       "question": "Question",
       "sent": "Sent",
       "questionStatus": {
-        "open": "Waiting for an answer",
+        "open": "Waiting for you",
         "answered": "Answered",
         "cancelled": "Cancelled",
         "timed_out": "Timed out"
@@ -409,7 +409,7 @@
   "Reins": {
     "executionNumber": "Agent execution {number}",
     "heading": "Give instruction",
-    "noTarget": "Start a run and choose an execution to steer.",
+    "noTarget": "Start a run and choose an execution to give an instruction.",
     "target": "Target",
     "delivery": "Delivery",
     "deliveryValue": "next model request",
@@ -836,7 +836,7 @@
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
-    "waiting": "Waiting for an answer until {deadline}",
+    "waiting": "Waiting for you until {deadline}",
     "paused": "The question timeout is paused."
   },
   "Artifact": {
@@ -1129,10 +1129,10 @@
         "delegate": "Research hands two parts to Research Helpers. They appear under it in Executions.",
         "ask": "The Writer asks the Source Responder a question and gets an answer.",
         "revise": "The Reviewer asks for a revision, so the Writer runs a second round.",
-        "steer": "Optional: steer the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
+        "steer": "Optional: give an instruction to the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
         "finish": "The reviewed draft becomes the final output, and the run finishes."
       },
-      "steerAction": "Steer the round 2 Writer",
+      "steerAction": "Give instruction to the round 2 Writer",
       "pauseAtRound2": "Pause the run when the round 2 Writer starts"
     }
   },
@@ -1170,7 +1170,7 @@
       "data": "Data",
       "ask": "Needs you",
       "failed": "Failed",
-      "settled": "Finished"
+      "settled": "Completed"
     }
   },
   "Transcript": {
@@ -1211,7 +1211,7 @@
     "asked": "Asked {target}",
     "answer": "Answer",
     "question": {
-      "open": "Waiting for an answer",
+      "open": "Waiting for you",
       "answered": "Answered",
       "cancelled": "Cancelled",
       "timed_out": "Timed out"
@@ -1860,7 +1860,7 @@
     "intent": {
       "next": "Next request",
       "queue": "Next request, after the current run",
-      "steer": "Instruction to the running run",
+      "steer": "Join the running run",
       "explain": "Question about the result"
     },
     "intentHint": {
@@ -1924,7 +1924,7 @@
     "autoTeam": "Default chat",
     "runSettings": "Run settings",
     "autoModel": "Model",
-    "autoHint": "The request uses the default workflow. Model:",
+    "autoHint": "Proceeds to fit the request. Model:",
     "autoNotReady": "{model} is not connected",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
@@ -2419,9 +2419,9 @@
       "working": "{count} working",
       "paused": "{count} paused",
       "waitingApproval": "{count} waiting for approval",
-      "waitingChildren": "{count} waiting for sub-tasks",
+      "waitingChildren": "{count} waiting for agents",
       "waitingMessage": "{count} waiting for a reply",
-      "starting": "{count} about to start",
+      "starting": "{count} starting",
       "stopping": "{count} stopping"
     },
     "uncountedChanges": "{count, plural, one {# file has no line count (binary or unavailable)} other {# files have no line count (binary or unavailable)}}",
@@ -2470,8 +2470,8 @@
     "destination": {
       "next": "Send to: new run in this conversation · next request",
       "queue": "Send to: after the current run in this conversation · next request",
-      "steer": "Send to: Run #{number} · {name} · instruction",
-      "steerUnavailable": "Instruction for {name} · target unavailable",
+      "steer": "Send to: Run #{number} · {name} · Join",
+      "steerUnavailable": "Join {name} · target unavailable",
       "explain": "Send to: new run about the latest result · question"
     },
     "modelPicker": {
@@ -2512,12 +2512,12 @@
     "focus": "Focus the request box",
     "ended": "{name} (ended)",
     "blocked": {
-      "target": "This role has ended and takes no more instructions. Pick another role, or send this as a next request.",
-      "run": "This run has ended, so the instruction cannot be delivered. Send it as a next request."
+      "target": "This role has ended and can no longer be joined. Pick another role, or send this as a next request.",
+      "run": "This run has ended, so the message cannot join it. Send it as a next request."
     },
     "switchTo": {
       "next": "Send as a next request",
-      "steer": "Send as an instruction"
+      "steer": "Send as a Join"
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
     "tooManyItems": "A request carries up to {max} references, text attachments and images in all. Remove {over} before sending.",
@@ -2555,7 +2555,7 @@
     "attachments": "Attached text files",
     "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
     "reviewOnly": "Review only · no file changes",
-    "verificationScope": "Verification scope",
+    "verificationScope": "Check scope",
     "targetedScope": "Targeted checks",
     "releaseScope": "Release checks",
     "designTemplate": "Design task template",
@@ -2607,7 +2607,7 @@
     "appliesNext": "Next request only",
     "scopeOptions": "Scope",
     "addToRequest": "Add to the request",
-    "optionalCorralHint": "Start with a message. Choose a saved Corral when you want a reusable workflow.",
+    "optionalCorralHint": "Start with a message. For repeated work, choose a saved Corral.",
     "manageCorrals": "Create or manage Corrals",
     "customWorkStyle": "Custom work style",
     "customRoles": "Custom role settings",
@@ -2616,7 +2616,7 @@
       "references": "references",
       "images": "images",
       "attachments": "text attachments",
-      "scope": "review scope"
+      "scope": "check scope"
     },
     "teamLabel": "Corral",
     "teamNone": "No Corral",
@@ -2641,7 +2641,7 @@
     "sendMenu": "Send as",
     "targetLabel": "Send to {name}",
     "targetAwaiting": "{name} · read after the decision",
-    "targetNone": "No role takes instructions now",
+    "targetNone": "No role can be joined now",
     "lowered": "This role cannot be interrupted now; the message is read at its next request."
   },
   "Commands": {
@@ -4579,7 +4579,7 @@
     "panes": "Panes",
     "backToChat": "Back to conversation",
     "groupDevelop": "Develop",
-    "groupVerify": "Verify and results",
+    "groupVerify": "Checks and results",
     "groupRun": "Run",
     "open": "Open",
     "moveTo": "Move to group",
@@ -4834,7 +4834,7 @@
     "completion": "Completion",
     "definition": "Definitions",
     "references": "References",
-    "diagnostics": "Diagnostics"
+    "diagnostics": "Problems"
   },
   "GitHunks": {
     "reviewBasis": "Review basis",

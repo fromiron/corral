@@ -646,7 +646,7 @@ it('names the viewed and active runs and that the request waits, without changin
   // A next request is picked for one send only, so the stored draft is not fixed to it: the
   // send key joins the active run, never the one being viewed (composer-flow.md "합류 대상").
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: Run #2 · Writer · instruction',
+    'Send to: Run #2 · Writer · Join',
   );
   expect(readComposerDraft(sessionId).text).toBe('Later request');
 });
@@ -664,7 +664,7 @@ it('names the selected run and role for an instruction', async () => {
   // While a run goes, Send joins the execution writing the answer (composer-flow.md "전송"):
   // no send mode to choose first.
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
-    'Send to: Run #2 · Writer · instruction',
+    'Send to: Run #2 · Writer · Join',
   );
   expect(
     f.container.querySelector('[data-slot="composer-target"]')?.getAttribute('aria-label'),
@@ -699,7 +699,7 @@ it('keeps one plan and the same draft input when explicitly choosing the target'
   expect(f.container.textContent).not.toContain(messages.Reins.noHistory);
   expect(f.container.textContent).not.toContain(messages.Reins.deliveredNote);
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toContain(
-    'Writer · instruction',
+    'Writer · Join',
   );
   // Picked with text in the box, the target is fixed on the draft.
   expect(readComposerDraft(sessionId)).toMatchObject({ intent: 'steer', target: 'execution' });
@@ -1267,7 +1267,7 @@ it('an instruction destination is said by the target on the tool line and descri
   const f = await mount(sessionId, current, [], [current]);
   const line = destination(f.container);
   const input = f.container.querySelector('textarea[aria-label="Request"]');
-  expect(line?.textContent).toContain('instruction');
+  expect(line?.textContent).toContain('Join');
   // The name is shown once, on the target; the line only describes the input.
   expect(line?.classList.contains('sr-only')).toBe(true);
   expect(input).not.toBeNull();
@@ -1338,7 +1338,7 @@ it('a draft typed during a run without a picked target starts a run once the run
   const f = await mount(sessionId, ownRun, [], [ownRun]);
   await type(f.container, 'After this run, write the summary');
   // While the run goes, Send joins it; nothing is fixed on the draft.
-  expect(destination(f.container)?.textContent).toBe('Send to: Run #1 · Writer · instruction');
+  expect(destination(f.container)?.textContent).toBe('Send to: Run #1 · Writer · Join');
   // The run ends while the draft waits in the box.
   await f.render(null, []);
   expect(f.container.querySelector('[data-testid="intent-blocked"]')).toBeNull();
