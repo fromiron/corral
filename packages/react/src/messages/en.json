@@ -61,7 +61,7 @@
     "model": "Image model ID",
     "modelHint": "There is no list of image models. Enter the model name sent to the Images API.",
     "timeout": "Timeout (seconds)",
-    "roleHint": "In the team editor, turn on image generation for a role and choose this profile.",
+    "roleHint": "In the Corral editor, turn on image generation for a role and choose this profile.",
     "reasoningNote": "The role's text model writes the prompt, so that role's reasoning setting decides it.",
     "idPending": "Set once the connection and the image model ID are chosen.",
     "invalid": "Complete all fields with valid values.",
@@ -74,7 +74,7 @@
   "Studio": {
     "title": "Corral Studio",
     "notFound": "This page does not exist.",
-    "notFoundCorral": "This team does not exist here.",
+    "notFoundCorral": "This Corral does not exist here.",
     "backToCorrals": "Back to project",
     "error": "Something went wrong: {message}",
     "sessionMissing": "Connect to the local server. If it restarted, the previous connection has expired. Open its current start link from the terminal, or reopen the workspace in the desktop app. Unsent requests are not sent automatically.",
@@ -256,7 +256,7 @@
     "noCallableAgents": "Add an agent and set it to Only when called.",
     "fileTools": "Can change files",
     "fileToolsHint": "Reads and writes files only in the conversation's working copy, through Corral's file tools. Without a working copy the tools are refused.",
-    "teamDefaults": "For every run of this team",
+    "teamDefaults": "For every run of this Corral",
     "advanced": "Advanced",
     "profileSignIn": "sign-in needed",
     "teamPlanOwner": "Own the team work plan (one planner per team)",
@@ -333,9 +333,9 @@
       "TEAM_NO_EXIT": "Connect a step inside the Team to “exit”.",
       "TEAM_NO_MEMBERS": "Put at least one step inside the Team.",
       "TEAM_REFERENCE_MEMBERS": "A referenced Team brings its own members. Move this node out.",
-      "TEAM_REF_CYCLE": "Team references lead back to a team already being expanded.",
-      "TEAM_REF_INVALID": "The referenced team revision has problems of its own.",
-      "TEAM_REF_NOT_FOUND": "The referenced team revision cannot be found.",
+      "TEAM_REF_CYCLE": "Team references lead back to a Corral already being expanded.",
+      "TEAM_REF_INVALID": "The referenced Corral revision has problems of its own.",
+      "TEAM_REF_NOT_FOUND": "The referenced Corral revision cannot be found.",
       "UNKNOWN_MODEL_PROFILE": "A role uses a model profile that is not configured.",
       "UNKNOWN_REFERENCE": "Something refers to an item that does not exist.",
       "UNREACHABLE": "The flow never reaches this node."
@@ -345,7 +345,7 @@
   "Run": {
     "permissionSettings": "Tool rules for future runs",
     "heading": "Run",
-    "scopeSaved": "Saves this team first, then starts a separate run. It is not added to a conversation.",
+    "scopeSaved": "Saves this Corral first, then starts a separate run. It is not added to a conversation.",
     "scopeDraft": "Starts a separate run of this draft. It is not added to a conversation.",
     "start": "Run",
     "starting": "Starting…",
@@ -354,11 +354,11 @@
     "executions": "Executions",
     "noExecutions": "No executions yet.",
     "requests": "{count, plural, =0 {no model requests} one {# model request} other {# model requests}}",
-    "steerThis": "Steer",
+    "steerThis": "Give instruction",
     "output": "Output",
     "streamError": "Live updates stopped: {message}",
     "notRunnable": "Fix the problems in the structure list to enable Run.",
-    "checksNeedSession": "Check steps run only in a conversation's working copy, so this team can't start here.",
+    "checksNeedSession": "Check steps run only in a conversation's working copy, so this Corral can't start here.",
     "notRunnableHere": "This Corral is valid but uses steps this runtime cannot run yet.",
     "round": "Round {no}",
     "attempt": "Attempt {no}",
@@ -397,7 +397,7 @@
       "question": "Question",
       "sent": "Sent",
       "questionStatus": {
-        "open": "Waiting for an answer",
+        "open": "Waiting for a reply",
         "answered": "Answered",
         "cancelled": "Cancelled",
         "timed_out": "Timed out"
@@ -409,7 +409,7 @@
   "Reins": {
     "executionNumber": "Agent execution {number}",
     "heading": "Give instruction",
-    "noTarget": "Start a run and choose an execution to steer.",
+    "noTarget": "Start a run and choose an execution to give an instruction.",
     "target": "Target",
     "delivery": "Delivery",
     "deliveryValue": "next model request",
@@ -462,7 +462,23 @@
     "produced": "Produced: {versions}",
     "receiptRun": "Whole-run command",
     "receiptExecution": "Command to one execution",
-    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run."
+    "cancelNotSent": "Cancellation has not been sent. Confirm below to stop this run.",
+    "steering": {
+      "pause": "Pause the run",
+      "resume": "Resume the run",
+      "now": "Interrupt",
+      "remove": "Remove “{text}”",
+      "steps": "Step {current} of {total}",
+      "instruction": "Give instruction",
+      "placeholder": "Give instruction…",
+      "send": "Send instruction",
+      "nextHint": "next request",
+      "interruptHint": "interrupt now",
+      "steered": "Instruction given",
+      "interrupted": "Interrupted",
+      "queuedAnnouncement": "Waiting for the next request: {text}",
+      "interruptAnnouncement": "Interrupting now: {text}"
+    }
   },
   "Schedules": {
     "occurrence": {
@@ -517,7 +533,7 @@
     "timeZone": "Time zone",
     "days": "Days",
     "modelProfile": "Model profile",
-    "execution": "Execution",
+    "execution": "How it runs",
     "simulation": "Simulation",
     "connectedModel": "Connected model",
     "permissions": "Permissions",
@@ -571,15 +587,15 @@
     "error": "Error"
   },
   "Workspace": {
-    "heading": "Teams",
-    "new": "New team",
-    "newName": "Untitled team",
+    "heading": "Corrals",
+    "new": "New Corral",
+    "newName": "Untitled Corral",
     "import": "Import JSON",
     "importHint": "Choose a .corral.json file.",
     "importFailed": "Import failed:",
-    "empty": "No teams yet",
-    "storedLocally": "Teams are saved in this browser only, and executions last until you reload.",
-    "notPersistent": "This browser does not allow saving. Teams last until you close this tab.",
+    "empty": "No Corrals yet",
+    "storedLocally": "Corrals are saved in this browser only, and runs last until you reload.",
+    "notPersistent": "This browser does not allow saving. Corrals last until you close this tab.",
     "revisions": "Version {definition} · {nodes, plural, =0 {no nodes} one {# node} other {# nodes}}",
     "updated": "Saved {time}",
     "open": "Open",
@@ -588,20 +604,20 @@
     "delete": "Delete",
     "confirmDelete": "Confirm delete",
     "cancel": "Cancel",
-    "storedOnServer": "Teams and executions are saved in this app data folder on your computer.",
+    "storedOnServer": "Corrals and runs are saved in this app data folder on your computer.",
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
     "runStarted": "Started {time}",
-    "emptyHint": "A team saves the roles a conversation can start with.",
+    "emptyHint": "A Corral saves the roles a conversation can start with.",
     "readOnly": "Read-only",
     "templateRoles": "Roles",
     "editCopy": "Edit a copy",
     "templateNewConversation": "New conversation with {name}",
     "templateEditCopy": "Edit a copy of {name}",
-    "saveCopyTitle": "Save a team copy",
-    "copyName": "Team name",
+    "saveCopyTitle": "Save a Corral copy",
+    "copyName": "Corral name",
     "saveCopyEdit": "Save copy and edit",
-    "copyNameAdjusted": "A team with this name exists. This copy will be saved as “{name}”.",
+    "copyNameAdjusted": "A Corral with this name exists. This copy will be saved as “{name}”.",
     "template": {
       "research-team": {
         "name": "Research team",
@@ -637,7 +653,7 @@
       },
       "goal": {
         "name": "From a goal",
-        "body": "Describe what the team should do; get a team shape to review before it opens."
+        "body": "Describe what the team should do; get a Corral shape to review before it opens."
       }
     },
     "draftFromGoal": "Draft from a goal",
@@ -645,7 +661,7 @@
     "startChat": "Start chat",
     "newConversation": "New conversation",
     "newConversationMenu": "More ways to start a conversation",
-    "detailsFirst": "Set name, purpose and team first…",
+    "detailsFirst": "Set name, purpose and Corral first…",
     "pending": "{count, plural, one {# pending} other {# pending}}",
     "folder": {
       "loading": "Checking the folder…",
@@ -671,7 +687,7 @@
     }
   },
   "Editor": {
-    "name": "Team name",
+    "name": "Corral name",
     "revisions": "Version {definition}",
     "unsaved": "Unsaved changes",
     "saved": "All changes saved",
@@ -681,7 +697,7 @@
     "noChanges": "Nothing to save.",
     "export": "Export JSON",
     "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
-    "openRun": "Open execution page",
+    "openRun": "Open run page",
     "backToSession": "Back to the conversation",
     "appliesNextRun": "Applies from the next run",
     "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
@@ -690,12 +706,12 @@
     "retry": "Retry loading run",
     "heading": "Run {runId}",
     "missing": "This run is not available here. Runs of the in-browser demo end when the page reloads.",
-    "openCorral": "Edit team",
-    "unsavedTeam": "Team composed for this run · not a saved team",
+    "openCorral": "Edit Corral",
+    "unsavedTeam": "Team composed for this run · not a saved Corral",
     "decisionWaiting": "{count, plural, one {A decision is waiting for you} other {# decisions are waiting for you}}",
     "openResponse": "Open the response",
     "loading": "Loading the run…",
-    "summary": "Execution summary",
+    "summary": "Run summary",
     "working": "Working now: {labels}",
     "idle": "Nothing is running",
     "loopRound": "{label}: round {round} of {max}",
@@ -718,18 +734,6 @@
     "conversation": "Conversation",
     "startedFrom": "Started from",
     "startedFromLink": "{name} of run {runId}",
-    "views": {
-      "label": "Run view",
-      "canvas": "Graph",
-      "tree": "Calls",
-      "side": "Conversation & Reins",
-      "dock": "Details"
-    },
-    "view": {
-      "label": "Run page view",
-      "results": "Results",
-      "run": "Execution"
-    },
     "evidence": "What this execution left",
     "evidenceFiles": "Files",
     "evidenceResults": "Results",
@@ -836,11 +840,11 @@
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
-    "waiting": "Waiting for an answer until {deadline}",
+    "waiting": "Waiting for a reply until {deadline}",
     "paused": "The question timeout is paused."
   },
   "Artifact": {
-    "retired": "The body of this result is no longer available. Its creation and delivery relationships remain in the execution flow.",
+    "retired": "The body of this result is no longer available. Its creation and delivery relationships remain in the run flow.",
     "downloadImage": "Download original PNG",
     "imageIntegrity": "Original image checksum",
     "imageUnavailable": "The generated image could not be loaded. Check your server session and try reopening this result.",
@@ -1068,7 +1072,7 @@
     "kind": {
       "run_limits": "Run limits",
       "node_future": "Future executions of one node",
-      "loop_limit": "Future loop rounds",
+      "loop_limit": "Future Loop rounds",
       "criteria": "Review criteria"
     },
     "node": "Target node",
@@ -1076,7 +1080,7 @@
     "field": {
       "prompt": "Role prompt",
       "modelProfile": "Model profile",
-      "maxIterations": "Automatic loop rounds",
+      "maxIterations": "Automatic Loop rounds",
       "criteria": "Review criteria (one per line)",
       "maxSpawns": "Child execution limit",
       "reasoning": "Model and reasoning"
@@ -1091,11 +1095,11 @@
     "boundary": {
       "run_limits": "Applies to child executions started from now on. Existing child executions are kept.",
       "node_future": "Applies when this node creates a future execution. Existing executions and other nodes using the same role stay unchanged.",
-      "loop_limit": "Applies at the next round boundary of this loop.",
+      "loop_limit": "Applies at the next round boundary of this Loop.",
       "criteria": "Creates a new criteria version. Earlier reviews retain their original criteria and are marked stale."
     },
     "futureNodes": "Future target nodes: {count, number}",
-    "dynamicCount": "The number of future executions depends on remaining branches, loop rounds and dynamic calls.",
+    "dynamicCount": "The number of future executions depends on remaining branches, Loop rounds and dynamic calls.",
     "unchanged": "Current executions unaffected: {count, number}",
     "spent": "{spent, number} output tokens already used",
     "stale": "The run changed after this preview. Preview again before confirming.",
@@ -1129,10 +1133,10 @@
         "delegate": "Research hands two parts to Research Helpers. They appear under it in Executions.",
         "ask": "The Writer asks the Source Responder a question and gets an answer.",
         "revise": "The Reviewer asks for a revision, so the Writer runs a second round.",
-        "steer": "Optional: steer the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
+        "steer": "Optional: give an instruction to the round 2 Writer. Your instruction reaches its next request, not the draft it already submitted.",
         "finish": "The reviewed draft becomes the final output, and the run finishes."
       },
-      "steerAction": "Steer the round 2 Writer",
+      "steerAction": "Give instruction to the round 2 Writer",
       "pauseAtRound2": "Pause the run when the round 2 Writer starts"
     }
   },
@@ -1141,7 +1145,7 @@
     "loading": "Loading agent activity…",
     "label": "Run graph",
     "layout": {
-      "saved": "Layout from the saved team",
+      "saved": "Layout from the saved Corral",
       "auto": "Arranged automatically"
     },
     "layoutNote": "Positions only; they do not change what ran.",
@@ -1168,9 +1172,9 @@
     "state": {
       "call": "Call",
       "data": "Data",
-      "ask": "Needs you",
+      "ask": "Waiting for a reply",
       "failed": "Failed",
-      "settled": "Finished"
+      "settled": "Completed"
     }
   },
   "Transcript": {
@@ -1211,7 +1215,7 @@
     "asked": "Asked {target}",
     "answer": "Answer",
     "question": {
-      "open": "Waiting for an answer",
+      "open": "Waiting for a reply",
       "answered": "Answered",
       "cancelled": "Cancelled",
       "timed_out": "Timed out"
@@ -1328,13 +1332,13 @@
   "CommandPalette": {
     "label": "Command palette",
     "search": "Search commands",
-    "placeholder": "Find commands, panes, settings, teams, executions or conversations…",
+    "placeholder": "Find commands, panes, settings, Corrals, runs or conversations…",
     "results": "Commands",
     "none": "No matching commands.",
-    "openCorral": "Open team: {name}",
+    "openCorral": "Open Corral: {name}",
     "openRun": "Open run {runId}",
-    "newBlank": "New empty team",
-    "newFromTemplate": "New team from template: {name}",
+    "newBlank": "New empty Corral",
+    "newFromTemplate": "New Corral from template: {name}",
     "templates": {
       "research-team": "Research team",
       "starter": "Single agent",
@@ -1353,14 +1357,14 @@
     "groups": {
       "create": "Create",
       "go": "Go to",
-      "corrals": "Teams",
+      "corrals": "Corrals",
       "runs": "Runs",
       "help": "Help",
       "editor": "Editor",
       "projects": "Projects",
       "sessions": "Open a conversation"
     },
-    "draftTeam": "Draft a team from a goal",
+    "draftTeam": "Draft a Corral from a goal",
     "sessionSearch": "Search conversations",
     "sessionPlaceholder": "Find a conversation by title or purpose…",
     "scope": "Find conversations in",
@@ -1421,27 +1425,27 @@
       "app": "App and dialogs",
       "session": "Conversations and runs",
       "composer": "Request input",
-      "editor": "Team editor"
+      "editor": "Corral editor"
     },
     "interrupt": "Interrupt the running response with a request",
     "queueNext": "Send a request for after the run"
   },
   "TeamDraft": {
-    "title": "Draft a team from a goal",
+    "title": "Draft a Corral from a goal",
     "goalLabel": "What should the team do?",
     "goalPlaceholder": "e.g. Compare three help desk tools for a 20-person team",
-    "suggest": "Suggest a team",
+    "suggest": "Suggest a Corral",
     "ask": "Ask the model",
     "asking": "Asking the model…",
     "askCost": "1 request",
     "retry": "Try again",
-    "unusable": "The model did not give a usable team.",
-    "patternLabel": "Team shape",
+    "unusable": "The model did not give a usable Corral.",
+    "patternLabel": "Corral shape",
     "patterns": {
       "write_review": "Write and review",
       "research_write_review": "Research, write and review"
     },
-    "nameLabel": "Team name",
+    "nameLabel": "Corral name",
     "briefLabel": "Brief",
     "rolesLabel": "Roles",
     "roleName": "Name of role {n}",
@@ -1757,7 +1761,7 @@
     "nameLabel": "Name",
     "descriptionLabel": "Description (optional)",
     "create": "Create project",
-    "counts": "{corrals, plural, =0 {no teams} one {# team} other {# teams}} · {runs, plural, =0 {no runs} one {# run} other {# runs}}",
+    "counts": "{corrals, plural, =0 {no Corrals} one {# Corral} other {# Corrals}} · {runs, plural, =0 {no runs} one {# run} other {# runs}}",
     "archived": "Archived",
     "archive": "Archive",
     "restore": "Restore",
@@ -1769,7 +1773,7 @@
     "open": "Open",
     "moveTo": "Move {name} to another project",
     "moveChoose": "Move to…",
-    "archivedNote": "This project is archived. Its runs still open; restore it to add teams.",
+    "archivedNote": "This project is archived. Its runs still open; restore it to add Corrals.",
     "runIn": "Project: {name}",
     "failed": "Could not save: {message}",
     "switchTo": "Switch to project: {name}",
@@ -1790,7 +1794,7 @@
     "exampleSession5": "Summarise the changes for support",
     "exampleSession6": "Prepare the announcement email",
     "examples": "Make example projects",
-    "examplesHint": "Two projects with a team each and six conversations, for trying the workbench with simulated agents.",
+    "examplesHint": "Two projects with a Corral each and six conversations, for trying the workbench with simulated agents.",
     "tabsLabel": "Project views",
     "tab": {
       "sessions": "Conversations",
@@ -1801,7 +1805,7 @@
     "actions": "Actions for {name}",
     "column": {
       "name": "Name",
-      "contents": "Teams and runs",
+      "contents": "Corrals and runs",
       "saved": "Saved",
       "actions": "Actions"
     }
@@ -1815,7 +1819,7 @@
     "nameLabel": "Name",
     "objectiveLabel": "Purpose",
     "teamLabel": "Corral",
-    "noTeam": "No team yet",
+    "noTeam": "No Corral yet",
     "create": "Start conversation",
     "search": "Search this project’s conversations",
     "pinned": "Pinned",
@@ -1853,18 +1857,18 @@
     "withoutSession": "Runs without a conversation",
     "backTo": "← {name}",
     "purpose": "Purpose",
-    "teamLine": "Team: {name}",
+    "teamLine": "Corral: {name}",
     "chooseTeam": "Choose a Corral",
     "timelineEmpty": "Nothing asked yet. Write the first request below.",
     "intentLabel": "What this is",
     "intent": {
       "next": "Next request",
       "queue": "Next request, after the current run",
-      "steer": "Instruction to the running run",
+      "steer": "Join the running run",
       "explain": "Question about the result"
     },
     "intentHint": {
-      "next": "New run with the team, latest result passed along",
+      "next": "New run with the Corral, latest result passed along",
       "queue": "Starts when you choose, after the current run",
       "steer": "Delivered at the execution's next model request",
       "explain": "Separate one-agent run, recorded and counted"
@@ -1880,7 +1884,7 @@
     "target": "Target",
     "noTarget": "No execution is running",
     "busyElsewhere": "Run {runId} is running in another conversation. You can queue this request.",
-    "noTeamYet": "Choose a team before continuing.",
+    "noTeamYet": "Choose a Corral before continuing.",
     "send": "Send",
     "sendHint": "Ctrl+Enter (⌘+Enter) sends. Enter adds a line.",
     "requestLabel": "Request",
@@ -1919,12 +1923,12 @@
     "intentShort": {
       "explain": "Question"
     },
-    "editTeam": "Open team design",
+    "editTeam": "Open Corral design",
     "objectivePlaceholder": "A note that is not sent to agents",
     "autoTeam": "Default chat",
     "runSettings": "Run settings",
     "autoModel": "Model",
-    "autoHint": "The request uses the default workflow. Model:",
+    "autoHint": "Proceeds to fit the request. Model:",
     "autoNotReady": "{model} is not connected",
     "autoFallback": "choice failed, ran one agent",
     "autoTemplate": {
@@ -1935,9 +1939,9 @@
     "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}",
     "reasoningRoute": "Chosen per request",
     "reasoningPicked": "reasoning {level}",
-    "cancelAutoChoice": "Cancel team selection",
-    "selectedTeamUnavailable": "Selected team unavailable",
-    "selectedTeamMissing": "The selected team was deleted or moved. Choose a team or Auto before sending.",
+    "cancelAutoChoice": "Cancel team choice",
+    "selectedTeamUnavailable": "Selected Corral unavailable",
+    "selectedTeamMissing": "The selected Corral was deleted or moved. Choose a Corral or Auto before sending.",
     "preRunAutoExplain": "Auto · {model} · files: {files} · {mode}",
     "autoFallbackReason": {
       "invalid_answer": "Invalid model response",
@@ -2299,7 +2303,7 @@
     "resizePanel": "Pane width",
     "sessions": "Conversations",
     "needsYou": "Needs you ({count})",
-    "teamLibrary": "Team library",
+    "teamLibrary": "Corral library",
     "allProjects": "All projects",
     "models": "Models",
     "noSessions": "No conversations yet.",
@@ -2309,8 +2313,8 @@
     "areaPanel": "Pane",
     "tabs": "Conversation view",
     "panelTabs": "Side pane",
-    "headerTeam": "Team: {name} r{revision}",
-    "noTeamHeader": "No team",
+    "headerTeam": "Corral: {name} r{revision}",
+    "noTeamHeader": "No Corral",
     "copyNone": "No working copy",
     "copyFrom": "Copy from {commit}",
     "idle": "No run working",
@@ -2419,9 +2423,9 @@
       "working": "{count} working",
       "paused": "{count} paused",
       "waitingApproval": "{count} waiting for approval",
-      "waitingChildren": "{count} waiting for sub-tasks",
+      "waitingChildren": "{count} waiting for agents",
       "waitingMessage": "{count} waiting for a reply",
-      "starting": "{count} about to start",
+      "starting": "{count} starting",
       "stopping": "{count} stopping"
     },
     "uncountedChanges": "{count, plural, one {# file has no line count (binary or unavailable)} other {# files have no line count (binary or unavailable)}}",
@@ -2470,8 +2474,8 @@
     "destination": {
       "next": "Send to: new run in this conversation · next request",
       "queue": "Send to: after the current run in this conversation · next request",
-      "steer": "Send to: Run #{number} · {name} · instruction",
-      "steerUnavailable": "Instruction for {name} · target unavailable",
+      "steer": "Send to: Run #{number} · {name} · Join",
+      "steerUnavailable": "Join {name} · target unavailable",
       "explain": "Send to: new run about the latest result · question"
     },
     "modelPicker": {
@@ -2512,22 +2516,22 @@
     "focus": "Focus the request box",
     "ended": "{name} (ended)",
     "blocked": {
-      "target": "This role has ended and takes no more instructions. Pick another role, or send this as a next request.",
-      "run": "This run has ended, so the instruction cannot be delivered. Send it as a next request."
+      "target": "This role has ended and can no longer be joined. Pick another role, or send this as a next request.",
+      "run": "This run has ended, so the message cannot join it. Send it as a next request."
     },
     "switchTo": {
       "next": "Send as a next request",
-      "steer": "Send as an instruction"
+      "steer": "Send as a Join"
     },
     "missingReferences": "{count, plural, one {A reference no longer exists.} other {# references no longer exist.}} Remove it before sending.",
     "tooManyItems": "A request carries up to {max} references, text attachments and images in all. Remove {over} before sending.",
     "referenceGone": "(no longer exists)",
     "models": {
-      "title": "Models of this team",
+      "title": "Models for this conversation",
       "liveNote": "Live models are chosen: each role calls the model below.",
       "mockNote": "Simulated agents are chosen: no model is called. With live models, each role would call the model below.",
       "settings": "Model settings",
-      "noTeam": "Choose a team to see its models.",
+      "noTeam": "Choose a Corral to see its models.",
       "notReady": "Not connected: {roles}",
       "connect": "Connect a model",
       "useSimulated": "Use simulated agents",
@@ -2555,7 +2559,7 @@
     "attachments": "Attached text files",
     "attachmentError": "Choose up to 5 UTF-8 text files, each at most 64 KiB. Binary or invalid files cannot be attached.",
     "reviewOnly": "Review only · no file changes",
-    "verificationScope": "Verification scope",
+    "verificationScope": "Check scope",
     "targetedScope": "Targeted checks",
     "releaseScope": "Release checks",
     "designTemplate": "Design task template",
@@ -2594,7 +2598,6 @@
       "accept_editsHint": "Allow permitted file edits; ask before commands.",
       "autoHint": "Allow actions within the existing tool policy."
     },
-    "autoHarnessLabel": "Work style for next request",
     "autoHarnessDefault": "Use defaults · project over personal",
     "requestOptions": "Request options",
     "changeScope": "Change scope",
@@ -2607,24 +2610,22 @@
     "appliesNext": "Next request only",
     "scopeOptions": "Scope",
     "addToRequest": "Add to the request",
-    "optionalCorralHint": "Start with a message. Choose a saved Corral when you want a reusable workflow.",
+    "optionalCorralHint": "Start with a message. For repeated work, choose a saved Corral.",
     "manageCorrals": "Create or manage Corrals",
-    "customWorkStyle": "Custom work style",
     "customRoles": "Custom role settings",
     "heldForNew": "Applies to a new request only: {items}",
     "held": {
       "references": "references",
       "images": "images",
       "attachments": "text attachments",
-      "scope": "review scope"
+      "scope": "check scope"
     },
-    "teamLabel": "Team",
-    "teamNone": "No team",
-    "teamAuto": "auto",
+    "teamLabel": "Corral",
+    "teamNone": "No Corral",
+    "teamAuto": "Auto",
     "teamNoneHint": "One assistant; subagents only when asked",
     "teamAutoHint": "Assistant leading planner, researcher, writer and reviewer",
     "teamCorralHint": "Assistant leading its roles, flow as a guide",
-    "teamCorralGroup": "Corral",
     "attachmentHash": "Content hash (SHA-256)",
     "sendAs": {
       "new": "Send",
@@ -2642,7 +2643,7 @@
     "sendMenu": "Send as",
     "targetLabel": "Send to {name}",
     "targetAwaiting": "{name} · read after the decision",
-    "targetNone": "No role takes instructions now",
+    "targetNone": "No role can be joined now",
     "lowered": "This role cannot be interrupted now; the message is read at its next request."
   },
   "Commands": {
@@ -2677,8 +2678,8 @@
     "gitCommit": "Commit staged changes"
   },
   "Refusal": {
-    "signin": "The team's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
-    "profile": "The team uses a model profile that is not set up here. Check the model settings or the team's roles.",
+    "signin": "The model this request uses is not connected. Sign in under Settings › Models, or send it with simulated agents.",
+    "profile": "The model profile this request uses is not set up here. Check the model settings or the Corral's roles.",
     "advisor": "The advisor’s model could not be prepared.",
     "busy": "Another run is working right now. Queue this request to start it afterwards.",
     "limit": "The request is over this installation's limits (for example, referenced results are too large).",
@@ -2824,7 +2825,7 @@
     "unregisteredLsp": "Unregistered language server: {id}",
     "selectedLsp": "Language servers: {ids}",
     "runStyles": "Work styles for this run",
-    "runStyleHint": "Adds a final layer to the selected roles for this run only. Required resources and stricter tool restrictions remain. Saved team settings stay unchanged.",
+    "runStyleHint": "Adds a final layer to the selected roles for this run only. Required resources and stricter tool restrictions remain. Saved Corral settings stay unchanged.",
     "runStyleFor": "Run work style for {name}",
     "previewRunStyle": "Preview run style for {name}",
     "keepRoleStyle": "Keep role settings",
@@ -2925,8 +2926,8 @@
       "personalHint": "Every project on this server.",
       "project": "Project default",
       "projectHint": "One project; replaces the personal default there.",
-      "role": "Team role",
-      "roleHint": "Set on a role in the team editor; replaces both defaults for that role.",
+      "role": "Corral role",
+      "roleHint": "Set on a role in the Corral editor; replaces both defaults for that role.",
       "run": "This run",
       "runHint": "Chosen when sending a request; applies to that run only."
     },
@@ -3289,7 +3290,7 @@
     "details": "Item details",
     "loadingContent": "Loading content…",
     "useInProfile": "Use in {name}",
-    "nextRun": "Running executions stay unchanged. After editing a standalone work style, choose its new revision on the role.",
+    "nextRun": "Runs in progress stay unchanged. After editing a standalone work style, choose its new revision on the role.",
     "trustBeforeUse": "Review and trust the content before selecting it in a work style.",
     "packageTrust": "Trust covers every file in this package. Archiving does not revoke trust.",
     "archive": "Remove from list",
@@ -3322,11 +3323,11 @@
     "save": "Save",
     "edit": "Edit",
     "remove": "Remove",
-    "removeMcpConfirm": "Remove from this project configuration? Running executions and historical settings remain. First deselect it in settings that still use it.",
+    "removeMcpConfirm": "Remove from this project configuration? Runs in progress and historical settings remain. First deselect it in settings that still use it.",
     "removedServers": "Previous server configurations & credentials",
     "mcpRestored": "Restores as disabled. Review launch trust again.",
     "forgetAuth": "Forget credentials for this version",
-    "logoutHint": "This can affect executions using the same credentials.",
+    "logoutHint": "This can affect runs using the same credentials.",
     "authChanged": "Changing the endpoint or auth scope requires fresh credentials and preserves credentials used by existing runs.",
     "connection": "Connection & authentication",
     "probe": "Test connection & discover tools",
@@ -3341,7 +3342,7 @@
     "selectTools": "Tools allowed in this work style",
     "allowTools": "Use selected tools and server",
     "toolDiscoveryHint": "Selection updates the allowlist. Parent restrictions and execution-time approvals still apply.",
-    "mcpUsageEmpty": "Not selected by a current default or team role.",
+    "mcpUsageEmpty": "Not selected by a current default or Corral role.",
     "refresh": "Refresh",
     "replaceVersion": "Replace {count} previous versions in this work style with this copy? Previous runs and other work styles stay unchanged.",
     "connectionOptions": "Advanced connection settings",
@@ -3389,7 +3390,7 @@
     "title": "Library",
     "views": "Library views",
     "view": {
-      "teams": "Teams",
+      "teams": "Corrals",
       "templates": "Templates",
       "resources": "Resources"
     },
@@ -3398,15 +3399,15 @@
     "loadFailed": "Could not load the library.",
     "retry": "Try again",
     "teams": {
-      "list": "Saved teams",
+      "list": "Saved Corrals",
       "name": "Name",
       "version": "Version",
       "updated": "Saved",
-      "detail": "Team details",
-      "newConversation": "New conversation with this team",
+      "detail": "Corral details",
+      "newConversation": "New conversation with this Corral",
       "edit": "Edit",
       "browseTemplates": "Browse templates",
-      "storage": "Where teams are saved"
+      "storage": "Where Corrals are saved"
     },
     "resources": {
       "group": {
@@ -3483,22 +3484,22 @@
     "projectRequired": "Choose the project whose settings you want to manage.",
     "location": "Current location",
     "switchProject": "Go to project",
-    "runDetails": "Execution details",
-    "compare": "Compare executions",
+    "runDetails": "Run details",
+    "compare": "Compare runs",
     "demo": "Demo",
-    "openRunDetails": "Open execution details",
+    "openRunDetails": "Open run details",
     "closeControls": "Close controls",
-    "firstRequestHint": "Leave the team on Auto or choose one, then write your request in the conversation.",
+    "firstRequestHint": "Leave the Corral on Auto or choose one, then write your request in the conversation.",
     "addToWorkStyle": "Connect in Work styles",
     "connectWorkStyle": "Connect a work style",
     "finishConnecting": "Done configuring usage",
     "projectDefaults": "Project default work style",
     "chooseProjectDefaults": "Choose a project to manage its default work style",
-    "teamTools": "Team tools",
+    "teamTools": "Corral tools",
     "design": "Design",
     "testRun": "Test run",
-    "directRunHint": "This execution is not added to a conversation.",
-    "prepareExecution": "Prepare an execution",
+    "directRunHint": "This run is not added to a conversation.",
+    "prepareExecution": "Prepare a run",
     "closeResult": "Close result",
     "personalDefaults": "Personal default work style",
     "switchSession": "Switch conversation"
@@ -3601,7 +3602,7 @@
     "changes": "Changes",
     "fixedRun": "Fixed start/end trees for this Run",
     "changesSoFar": "Changes observed so far for this Run",
-    "linuxIsolationRequested": "Linux worker isolation requested by model profile. Model network is brokered by the host; inspect execution failures if launch did not complete. Host tools retain their own permissions.",
+    "linuxIsolationRequested": "Linux worker isolation requested by model profile. Model network is brokered by the host; inspect run failures if launch did not complete. Host tools retain their own permissions.",
     "compactRequest": "Compact at next safe boundary",
     "compactHint": "Queues history compaction after current tools and questions settle. Current work and permissions stay in place.",
     "compactUnavailable": "Compaction could not be sent.",
@@ -3643,7 +3644,7 @@
   },
   "RuntimeRecovery": {
     "title": "Runtime recovery",
-    "scope": "Continues a stopped single-agent Run in a new Run. Native extensions, teams and loops are not supported. The source Run is kept.",
+    "scope": "Continues a stopped single-agent Run in a new Run. Runs that use native extensions or more than one agent are not supported. The source Run is kept.",
     "empty": "No verified runtime checkpoint. Send a new request to continue from the existing results.",
     "unavailable": "Runtime recovery is unavailable.",
     "tree": "Files: {tree}",
@@ -3852,9 +3853,9 @@
     "source": "Open the source Run",
     "unavailable": "This checkpoint cannot be branched. Try context-only or inspect the source Run.",
     "requestOpen": "Branch before this request",
-    "requestDescription": "Start this original request in a separate conversation and Run, using its original team and criteria.",
+    "requestDescription": "Start this original request in a separate conversation and Run, using its original Corral and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response.",
-    "activeRun": "Branching requires idle work and confirmed cleanup. Wait for running work to finish, then try again.",
+    "activeRun": "Branching requires the run to be idle and cleanup confirmed. Wait for the run to finish, then try again.",
     "model": "Model {model}"
   },
   "ProfileContext": {
@@ -3922,7 +3923,7 @@
     "planError": "Plan unavailable",
     "planStale": "These criteria are no longer current",
     "planMismatch": "This plan body does not match the current revision",
-    "follow": "Follow current work",
+    "follow": "Follow current run",
     "teamLast": "Last team plan",
     "activityWorking": "Working",
     "actionApproval": "Approval needed",
@@ -3964,11 +3965,11 @@
     "tokens": "tokens",
     "notMeasured": "Not measured",
     "estimatedRemaining": "Estimated remaining",
-    "measurementFailed": "The request record could not be read. Check the execution details.",
+    "measurementFailed": "The request record could not be read. Check the run details.",
     "missingCoverage": "Unmeasured coverage",
     "providerUsage": "Provider usage",
     "providerNumbers": "Input {input} · cached {cache} · output {output}",
-    "contextDetails": "Execution & context details",
+    "contextDetails": "Run & context details",
     "allAgents": "View all executions",
     "teamPlan": "Team plan",
     "planOwner": "Work plan to display",
@@ -4289,7 +4290,7 @@
     "memory": "Memory",
     "needsBinding": "(choose a local binding)",
     "project": "Choose local project",
-    "team": "Choose team for agents",
+    "team": "Choose Corral for agents",
     "refreshBindings": "Use these bindings",
     "secretOptions": "Include selected API keys",
     "secretHint": "Keys are excluded by default. Selected API keys are encrypted with the vault; OAuth sessions remain on this device.",
@@ -4580,7 +4581,7 @@
     "panes": "Panes",
     "backToChat": "Back to conversation",
     "groupDevelop": "Develop",
-    "groupVerify": "Verify and results",
+    "groupVerify": "Checks and results",
     "groupRun": "Run",
     "open": "Open",
     "moveTo": "Move to group",
@@ -4617,7 +4618,6 @@
     "run": "Run",
     "terminal": "Terminal",
     "tools": "Tasks & preview",
-    "activeRun": "Active run controls",
     "openActiveRun": "Open run",
     "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
@@ -4625,7 +4625,7 @@
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout",
     "git": "Git",
-    "team": "Team",
+    "team": "Corral",
     "debug": "Debugger",
     "paneActions": "Pane actions",
     "size": "Size",
@@ -4835,7 +4835,7 @@
     "completion": "Completion",
     "definition": "Definitions",
     "references": "References",
-    "diagnostics": "Diagnostics"
+    "diagnostics": "Problems"
   },
   "GitHunks": {
     "reviewBasis": "Review basis",
@@ -5451,10 +5451,10 @@
     "target": "Target conversation",
     "newSession": "New conversation",
     "title": "New conversation name",
-    "execution": "Execution setup",
+    "execution": "Run setup",
     "auto": "Auto",
     "draftHint": "A draft leaves a handoff item without starting work. If the target is running or has unsent input, Start also leaves a draft and preserves that input.",
-    "modelUnavailable": "Choose connected models and a valid execution setup before handing off.",
+    "modelUnavailable": "Choose connected models and a valid run setup before handing off.",
     "pending": "The outcome is not confirmed. Check the saved command before trying again.",
     "retry": "Check handoff and retry",
     "draft": "Hand off as draft",
@@ -5591,7 +5591,7 @@
     "relations": "Work relationships",
     "settings": "Settings",
     "flow": "Workflow",
-    "views": "Execution views",
+    "views": "Run views",
     "graph": "Graph",
     "events": "Events",
     "details": "Details",
@@ -5606,10 +5606,10 @@
     "previous": "Previous",
     "next": "Next",
     "latest": "Latest",
-    "historical": "Viewing record #{seq} · reconstructed through #{visible} · {newer} newer records. Current execution controls are unavailable.",
+    "historical": "Viewing record #{seq} · reconstructed through #{visible} · {newer} newer records. Current run controls are unavailable.",
     "historyLoading": "Record #{seq} is not available yet. Showing the contiguous history through #{visible}.",
     "historyGap": "Record #{expected} is missing. Only the history through #{visible} can be reconstructed.",
-    "readOnly": "Historical view is read-only. Return to Latest to control the current execution.",
+    "readOnly": "Historical view is read-only. Return to Latest to control the current run.",
     "currentEvidence": "Current file, verification and recovery information is available in Latest.",
     "executionMissingAt": "Execution {executionId} does not exist at this point.",
     "noIntervals": "No execution intervals have been recorded at this point.",
@@ -5798,7 +5798,7 @@
     "switched": "Switched to {model}"
   },
   "TeamEditor": {
-    "canvas": "Team graph",
+    "canvas": "Corral graph",
     "canvasRole": "graph editor",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
@@ -5870,7 +5870,7 @@
       "watchNeedsAgent": "An advisor watches an agent in the flow or a callable agent.",
       "advisorRole": "An advisor’s role is not copied onto an agent."
     },
-    "outline": "Team structure",
+    "outline": "Corral structure",
     "addStep": "Add a step",
     "problems": "{count, plural, =0 {No problems} one {# problem} other {# problems}}",
     "teamSettings": "Limits and criteria",
@@ -5919,7 +5919,7 @@
     "selectedCount": "{count, plural, one {# step selected} other {# steps selected}}",
     "issues": "Problems",
     "commandTitle": "Commands",
-    "commandDescription": "Add steps and change the team's structure.",
+    "commandDescription": "Add steps and change the Corral's structure.",
     "commandPlaceholder": "Add a step or run a command…",
     "commandEmpty": "Nothing matches.",
     "groups": {
@@ -5944,8 +5944,8 @@
     "saved": "Saved",
     "unsaved": "Unsaved changes",
     "patterns": {
-      "reviewLoop": "Wrap in a review loop",
-      "checkLoop": "Wrap in a check loop",
+      "reviewLoop": "Wrap in a review Loop",
+      "checkLoop": "Wrap in a check Loop",
       "parallel": "Split in parallel"
     },
     "patternDescriptions": {
@@ -5961,11 +5961,11 @@
     "workStyleDropped": "Copied without its work style, which is not available here.",
     "problemsList": "Problems",
     "noProblems": "Nothing to fix.",
-    "openTeam": "Open this team",
+    "openTeam": "Open this Corral",
     "useRevision": "Use v{revision}",
-    "savedTeams": "Saved teams",
+    "savedTeams": "Saved Corrals",
     "addReference": "Add {name}",
-    "referenceDescription": "Runs that team as saved, v{revision}",
+    "referenceDescription": "Runs that Corral as saved, v{revision}",
     "testRun": "Test run",
     "hideRun": "Close test run",
     "stats": {

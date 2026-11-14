@@ -1,5 +1,5 @@
 import { expect, it, vi } from 'vitest';
-import { RunSleepBlocker, runRoute } from '../src/lifecycle.ts';
+import { RunSleepBlocker, runRoute, trayRunState } from '../src/lifecycle.ts';
 import { recentWorkspaces } from '../src/security.ts';
 
 it('simultaneous runs share a blocker and terminal runs release it', () => {
@@ -39,4 +39,24 @@ it('Windows recent folders are preserved across app restart', () => {
     'D:\\two',
     'C:\\Toys\\one',
   ]);
+});
+
+it('the tray says each unfinished run state in the words of the presence table', () => {
+  // docs/specs/features/presence.md: the display state of a Run that has not ended.
+  const table: [string, string, string][] = [
+    ['created', 'Starting', '시작하는 중'],
+    ['validating', 'Starting', '시작하는 중'],
+    ['running', 'Working', '작업 중'],
+    ['pausing', 'Pausing', '일시정지하는 중'],
+    ['paused', 'Paused', '일시정지됨'],
+    ['awaiting_user', 'Waiting for you', '응답 대기'],
+    ['cancelling', 'Stopping', '중지하는 중'],
+  ];
+  for (const [status, en, ko] of table) {
+    expect(trayRunState(status, false)).toBe(en);
+    expect(trayRunState(status, true)).toBe(ko);
+  }
+  // A status the table does not know is not made to look like one it does.
+  expect(trayRunState('something_new', false)).toBe('Preparing');
+  expect(trayRunState('something_new', true)).toBe('준비 중');
 });

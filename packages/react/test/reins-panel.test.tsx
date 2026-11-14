@@ -281,7 +281,9 @@ describe('ReinsPanel', () => {
         <ReinsPanel session={fakeSession()} target={null} />
       </IntlProvider>,
     );
-    expect(screen.getByText('Start a run and choose an execution to steer.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Start a run and choose an execution to give an instruction.'),
+    ).toBeInTheDocument();
     expect(screen.queryByLabelText('Instruction')).not.toBeInTheDocument();
   });
 

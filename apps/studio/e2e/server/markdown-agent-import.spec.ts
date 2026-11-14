@@ -22,7 +22,7 @@ test('reviewed Markdown agent import survives save/reload and is one undoable ed
   test.setTimeout(60000);
   await corral.open('/');
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
   // The agent is still selected, so the output is placed after it and connected.
@@ -42,7 +42,7 @@ Read the supplied code and report the evidence.`);
   await choose(page, 'Read mapping', 'read_file');
   await choose(page, 'Glob mapping', 'list_files');
   await expect(dialog.getByText('Excluded: handled by parent', { exact: true })).toHaveCount(2);
-  const add = dialog.getByRole('button', { name: 'Add to team', exact: true });
+  const add = dialog.getByRole('button', { name: 'Add to Corral', exact: true });
   await expect(add).toBeDisabled();
   await dialog.getByRole('checkbox').check();
   await page.screenshot({ path: testInfo.outputPath('markdown-import-preview.png') });
@@ -194,7 +194,7 @@ test('Markdown Edit imports a reviewed Hashline role with parent file permission
 }) => {
   await corral.open('/');
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
@@ -211,7 +211,7 @@ Read the current file before applying a bounded edit.`);
   await choose(page, 'Edit mapping', 'write_file + Hashline editing');
   await expect(dialog.getByText(/Edit selects Hashline mode/)).toBeVisible();
   await dialog.getByRole('checkbox').check();
-  await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Add to Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expectTeamSaved(page);
   await page.reload();
@@ -261,7 +261,7 @@ test('Bash import inherits a verified local parent work style without trusting s
     if (!response.ok) throw new Error(`Local work style setup failed: ${response.status}`);
   });
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New team', exact: true }).click();
+  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Run shell commands/ }).check();
   await page.getByRole('combobox', { name: 'Work styles', exact: true }).click();
@@ -281,7 +281,7 @@ Use only the command requested by the parent.`);
     dialog.getByText(/Inherited work style: local-shell-style · r1 · trusted-native/),
   ).toBeVisible();
   await dialog.getByRole('checkbox').check();
-  await dialog.getByRole('button', { name: 'Add to team', exact: true }).click();
+  await dialog.getByRole('button', { name: 'Add to Corral', exact: true }).click();
   await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expectTeamSaved(page);
   await page.reload();

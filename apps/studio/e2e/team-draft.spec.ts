@@ -7,17 +7,17 @@ test('a local security review suggestion has specific roles and a short name bef
   await page.goto('/');
   await openLibrary(page, 'Templates');
   await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a team from a goal' });
+  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
   const goal =
     'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve';
   await dialog.getByLabel('What should the team do?').fill(goal);
   // The local suggestion says on its own button that it calls no model.
-  await expect(dialog.getByRole('button', { name: /^Suggest a team/ })).toContainText(
+  await expect(dialog.getByRole('button', { name: /^Suggest a Corral/ })).toContainText(
     'No model call',
   );
   await expect(dialog).not.toContainText('Picks a team shape');
-  await dialog.getByRole('button', { name: 'Suggest a team' }).click();
-  await expect(dialog.getByLabel('Team name', { exact: true })).toHaveValue('Security PR review');
+  await dialog.getByRole('button', { name: 'Suggest a Corral' }).click();
+  await expect(dialog.getByLabel('Corral name', { exact: true })).toHaveValue('Security PR review');
   await expect(dialog.getByRole('textbox', { name: 'Brief', exact: true })).toHaveValue(goal);
   await expect(dialog.getByLabel('Name of role 1', { exact: true })).toHaveValue(
     'Security reviewer',
@@ -35,7 +35,7 @@ test('a local security review suggestion has specific roles and a short name bef
   await expect(
     page.getByRole('heading', { level: 1, name: 'Security PR review', exact: true }),
   ).toBeVisible();
-  await expect(page.getByRole('application', { name: 'Team graph' })).toContainText(
+  await expect(page.getByRole('application', { name: 'Corral graph' })).toContainText(
     'Security reviewer',
   );
 });

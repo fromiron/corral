@@ -5,7 +5,7 @@ test('saved details are shown again before a quick new conversation starts', asy
   await page.goto('/');
   // Name and purpose are set in the header menu's dialog; closing it keeps them as a draft.
   await page.getByRole('button', { name: 'More ways to start a conversation' }).click();
-  await page.getByRole('menuitem', { name: /^Set name, purpose and team first/ }).click();
+  await page.getByRole('menuitem', { name: /^Set name, purpose and Corral first/ }).click();
   const details = page.getByRole('dialog', { name: 'New conversation', exact: true });
   await details.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');
   await details.getByRole('textbox', { name: 'Purpose' }).fill('Visible purpose');
@@ -34,7 +34,7 @@ test('saved details are shown again before a quick new conversation starts', asy
 test('closed saved details still show that a name or purpose is saved', async ({ page }) => {
   await page.goto('/');
   const more = page.getByRole('button', { name: 'More ways to start a conversation' });
-  const details = page.getByRole('menuitem', { name: /^Set name, purpose and team first/ });
+  const details = page.getByRole('menuitem', { name: /^Set name, purpose and Corral first/ });
   await more.click();
   await details.click();
   await page.getByRole('textbox', { name: 'Name', exact: true }).fill('Visible name');

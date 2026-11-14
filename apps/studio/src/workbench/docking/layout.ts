@@ -75,7 +75,7 @@ export function presetPanels(preset: DockPreset, open: DockPanel[]): DockPanel[]
     ...contextPanels(PRESET_VIEWS[preset]).filter((panel) => !present.has(panel.id)),
   ];
 }
-const unavailable = (): DockPanelDescriptor => ({ kind: 'unknown', label: 'Unavailable panel' });
+const unavailable = (): DockPanelDescriptor => ({ kind: 'unknown', label: 'Unavailable pane' });
 const object = (value: unknown): Record<string, unknown> | null =>
   value !== null && typeof value === 'object' && !Array.isArray(value)
     ? (value as Record<string, unknown>)
@@ -166,7 +166,7 @@ function serializedPanels(panels: DockPanel[]): SerializedDockview['panels'] {
               ? descriptor.view
               : descriptor.kind === 'graph'
                 ? 'graph'
-                : 'Unavailable panel',
+                : 'Unavailable pane',
         params: { descriptor },
       },
     ]),

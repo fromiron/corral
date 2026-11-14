@@ -39,7 +39,7 @@ async function singleAgentRun(page: Page) {
   await expect(page).toHaveURL(/\/edit$/);
   await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
-  await page.getByRole('link', { name: 'Open execution page', exact: true }).click();
+  await page.getByRole('link', { name: 'Open run page', exact: true }).click();
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     projectLocation,
   );
@@ -73,7 +73,7 @@ test('a project keeps its Corrals and runs apart, and / returns to it', async ({
   await projectTab(page, 'Runs');
   await expect(page.getByText('No runs yet.')).toBeVisible();
   await openLibraryTeams(page, 'My project');
-  await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
 
   // `/` opens the project worked in last.
   await openProject(page, 'Docs');
@@ -96,11 +96,11 @@ test('two projects may share a name; a Corral moves; an archived project is hidd
   await newTeam(page);
   await page.goBack();
   await expect(page).toHaveURL(/\/library\/teams$/);
-  const detail = await chooseTeam(page, 'Untitled team');
+  const detail = await chooseTeam(page, 'Untitled Corral');
   await detail.getByRole('button', { name: 'Move to…', exact: true }).click();
   await page.getByRole('menuitem', { name: 'Same', exact: true }).click();
   await expect(savedTeams(page)).toHaveCount(0);
-  await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
   await page.goto(`/projects/${first}`);
   await openLibraryTeams(page);
   await expect(savedTeams(page)).toHaveCount(1);
@@ -112,7 +112,7 @@ test('two projects may share a name; a Corral moves; an archived project is hidd
   await expect(page.getByRole('note')).toContainText('archived');
   await openLibraryTeams(page);
   await expect(page.getByRole('note')).toContainText('archived');
-  await expect(page.getByRole('button', { name: 'New team' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'New Corral' })).toBeHidden();
   await page.goto(`/projects/${first}`);
   await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
   await switcher(page).click();

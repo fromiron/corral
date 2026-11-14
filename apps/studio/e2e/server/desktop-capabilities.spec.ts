@@ -564,7 +564,7 @@ test('a session writer and another session’s writer keep separate controls', a
   });
   const first = await prepareSession(page, capability);
   // Without a team, the lead works in the session default of the trusted folder.
-  await selectSessionTeam(page, 'No team');
+  await selectSessionTeam(page, 'No Corral');
   await requestBox(page).fill(
     'Hold A: run node command-write.mjs, then wait while I inspect the independent controls.',
   );

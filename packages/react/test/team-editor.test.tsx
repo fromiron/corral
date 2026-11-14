@@ -262,7 +262,7 @@ describe('team editor', () => {
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     await act(async () => fireEvent.keyDown(canvasNode('agent_1'), { key: 'k', ctrlKey: true }));
     await act(async () =>
-      fireEvent.click(screen.getByRole('option', { name: /Wrap in a review loop/ })),
+      fireEvent.click(screen.getByRole('option', { name: /Wrap in a review Loop/ })),
     );
     const { nodes } = editor.getState().draft.definition;
     const loop = nodes.find((n) => n.type === 'loop');

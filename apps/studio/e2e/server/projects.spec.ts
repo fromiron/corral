@@ -36,11 +36,11 @@ test('a run stays in the project it started in when its Corral moves', async ({ 
 
   // Move the Corral to the default project: it goes, its finished run stays.
   await openLibraryTeams(page, 'Client A');
-  const detail = await chooseTeam(page, 'Untitled team');
+  const detail = await chooseTeam(page, 'Untitled Corral');
   await detail.getByRole('button', { name: 'Move to…', exact: true }).click();
   await page.getByRole('menuitem', { name: 'My project', exact: true }).click();
   await expect(savedTeams(page)).toHaveCount(0);
-  await expect(page.getByText('No teams yet', { exact: true })).toBeVisible();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
   await page.goto(`${corral.server.url}${projectPath}`);
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: 'Client A' })).toBeVisible();

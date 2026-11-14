@@ -29,7 +29,7 @@ describe('refused start (UX-04)', () => {
     expect(refusalKind({ message: 'model-a: sign in to OpenAI under Settings → Models' })).toBe(
       'signin',
     );
-    expect(refusalKind({ message: 'Choose a team before continuing.' })).toBe('other');
+    expect(refusalKind({ message: 'Choose a Corral before continuing.' })).toBe('other');
   });
 
   it('calls a lost answer a network failure, not a refusal', () => {

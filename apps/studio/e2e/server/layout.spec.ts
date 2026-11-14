@@ -252,7 +252,7 @@ test('#88 both default screens show the same four-step ladder and mark which ste
     await expect(ladder.getByRole('listitem').locator('h4')).toHaveText([
       'Personal default',
       'Project default',
-      'Team role',
+      'Corral role',
       'This run',
     ]);
     await expect(ladder.locator('[aria-current="step"] h4')).toHaveText(here);

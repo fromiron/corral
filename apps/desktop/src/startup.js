@@ -33,7 +33,7 @@ async function update() {
       ? '작업 공간을 열지 못했습니다'
       : 'Could not open this workspace';
     document.getElementById('message').textContent = ko
-      ? '다른 Corral이 사용 중이거나 접근할 수 없는 폴더일 수 있습니다. 실행 중이던 작업은 자동으로 다시 시작하지 않습니다.'
+      ? '다른 Corral이 사용 중이거나 접근할 수 없는 폴더일 수 있습니다. 진행 중이던 실행은 자동으로 다시 시작하지 않습니다.'
       : 'The folder may be in use or inaccessible. Interrupted runs are not resumed automatically.';
     document.getElementById('actions').hidden = false;
   }

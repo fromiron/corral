@@ -287,7 +287,7 @@ it('the chosen schedule’s detail keeps only what its row lacks', async () => {
   // Timing and next run are on the row; at a narrow width, where the row drops them, the detail
   // shows them instead.
   const wide = terms.filter((term) => !term.parentElement?.className.includes('md:hidden'));
-  expect(wide.map((term) => term.textContent)).toEqual(['Time zone', 'Target', 'Execution']);
+  expect(wide.map((term) => term.textContent)).toEqual(['Time zone', 'Target', 'How it runs']);
   expect(detail?.textContent).toContain('Asia/Seoul');
   // The switch is the one control and the one mark for enabled.
   expect(detail?.querySelectorAll('[role="switch"]')).toHaveLength(1);
