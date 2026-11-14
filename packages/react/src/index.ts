@@ -20,7 +20,6 @@ export { EmptyView, type EmptyViewAction } from './components/EmptyView.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
   ExecutionToolGroup,
-  ExecutionToolRows,
   ExecutionTranscript,
 } from './components/ExecutionTranscript.tsx';
 export { FailureNotice } from './components/FailureNotice.tsx';

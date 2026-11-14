@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -11,7 +11,6 @@ import {
   KitChatMessage as ChatMessage,
   fontWeights,
   type ToolCall,
-  ToolCallCard,
   ToolCallGroup,
   type ToolCallLabels,
 } from '../design-kit/index.ts';
@@ -273,61 +272,6 @@ export function ExecutionToolGroup({
       labels={labels}
       label={activityState && tools.some(unfinished) ? activityState.label : undefined}
     />
-  );
-}
-
-/**
- * An execution's calls as flat kit rows. Consecutive calls of one tool fold into a single
- * `name ×N` group, open only while one of them runs or after one failed.
- */
-export function ExecutionToolRows({
-  tools,
-  onOpenArtifact,
-  activityState,
-}: {
-  tools: ToolEntry[];
-  onOpenArtifact?: (id: string) => void;
-  activityState?: ActivityState;
-}) {
-  const labels = useToolLabels();
-  const calls = useToolCalls(tools, onOpenArtifact, activityState);
-  const runs: ToolCall[][] = [];
-  for (const call of calls) {
-    const last = runs.at(-1);
-    if (last && last[0]?.name === call.name) last.push(call);
-    else runs.push([call]);
-  }
-  return (
-    <div className="grid min-w-0 gap-0.5">
-      {runs.map((run) => {
-        const [first] = run;
-        if (!first) return null;
-        if (run.length === 1)
-          return <ToolCallCard key={first.id} variant="row" call={first} labels={labels} />;
-        return <RepeatedTool key={first.id} calls={run} labels={labels} />;
-      })}
-    </div>
-  );
-}
-
-/**
- * Consecutive calls of one tool as one `name ×N` group. It stays open while a call runs or after
- * one failed, and folds once they settle, until the person opens or closes it themselves.
- */
-function RepeatedTool({ calls, labels }: { calls: ToolCall[]; labels: Partial<ToolCallLabels> }) {
-  const [chosen, setChosen] = useState<boolean | null>(null);
-  const hot = calls.some((call) => call.status === 'running' || call.status === 'error');
-  const [first] = calls;
-  return (
-    <div data-tool-repeat={first?.name}>
-      <ToolCallGroup
-        calls={calls}
-        labels={labels}
-        label={`${first?.name} ×${calls.length}`}
-        open={chosen ?? hot}
-        onOpenChange={setChosen}
-      />
-    </div>
   );
 }
 

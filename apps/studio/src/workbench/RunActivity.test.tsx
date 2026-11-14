@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { type EventOf, RunEvent } from '@corral/contracts';
 import { applyEvent, emptyProjection } from '@corral/core';
-import { ExecutionToolRows, executionToolEntries } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -144,116 +143,6 @@ it('shows no card without a work plan', () => {
   const { projection } = fixture();
   const container = show(<RunPlanCard projection={projection} plan={null} />);
   expect(container.textContent).toBe('');
-});
-
-/** One finished (or failed) call of `name` by the writer's retry, from request to end. */
-function call(seq: number, id: string, name: string, ms: number, error: string | null = null) {
-  return [
-    event(
-      seq,
-      'tool.requested',
-      { executionId: 'exec_w2', toolCallId: id, name, validatedArgs: {} },
-      ms,
-    ),
-    event(
-      seq + 1,
-      'tool.allowed',
-      { executionId: 'exec_w2', toolCallId: id, policyVersion: 'p1' },
-      ms,
-    ),
-    event(
-      seq + 2,
-      'tool.started',
-      { executionId: 'exec_w2', toolCallId: id, effectId: `eff_${id}` },
-      ms,
-    ),
-    event(
-      seq + 3,
-      'tool.finished',
-      { executionId: 'exec_w2', toolCallId: id, resultRef: null, error },
-      ms + 100,
-    ),
-  ] as RunEvent[];
-}
-
-/** The writer's retry's own calls, as the run record's tool rows list them. */
-const toolsOf = (events: RunEvent[]) => executionToolEntries(events).get('exec_w2') ?? [];
-
-function repeated(failed: boolean) {
-  const base = fixture();
-  const settled = base.events.at(-1) as RunEvent;
-  const events = [
-    ...base.events.slice(0, -1),
-    event(
-      19,
-      'execution.state_changed',
-      { executionId: 'exec_w2', from: 'queued', to: 'active', activity: 'tool', waitingOn: null },
-      6250,
-    ),
-    ...call(20, 'call_2', 'read_source', 6300),
-    ...call(30, 'call_3', 'read_source', 6600, failed ? 'not found' : null),
-    ...call(40, 'call_4', 'write_draft', 7000),
-    ...call(50, 'call_5', 'read_source', 7400),
-    settled,
-  ].map((item, index) => ({ ...item, runSeq: index + 1, eventId: `evt_${index + 1}` }) as RunEvent);
-  const projection = events.reduce(applyEvent, emptyProjection(RUN));
-  return { events, projection, definition: base.definition };
-}
-
-it('folds consecutive calls of the same tool into one row, folded unless one failed', () => {
-  for (const failed of [false, true]) {
-    const { events } = repeated(failed);
-    const container = show(<ExecutionToolRows tools={toolsOf(events)} />);
-    const entry = container;
-    const folds = [...entry.querySelectorAll('[data-tool-repeat]')];
-    // read_source ×3, then write_draft, then a lone read_source: only the run of three folds.
-    expect(folds).toHaveLength(1);
-    expect(folds[0]?.textContent).toContain('read_source ×3');
-    expect(folds[0]?.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
-      String(failed),
-    );
-    expect(entry.textContent).toContain('write_draft');
-    act(() => container.remove());
-  }
-});
-
-it('folds a repeated tool once its running call settles', () => {
-  const { events, projection } = repeated(false);
-  // Up to the third read_source's start: that call is still running.
-  const cut = events.findIndex(
-    (item) => item.type === 'tool.finished' && item.payload.toolCallId === 'call_3',
-  );
-  const running = events.slice(0, cut);
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-  const container = document.createElement('div');
-  document.body.append(container);
-  const root = createRoot(container);
-  roots.push(() => {
-    root.unmount();
-    container.remove();
-  });
-  const render = (list: RunEvent[]) =>
-    act(() =>
-      root.render(
-        <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <ExecutionToolRows tools={toolsOf(list)} />
-        </IntlProvider>,
-      ),
-    );
-  const expanded = () =>
-    container.querySelector('[data-tool-repeat] [aria-expanded]')?.getAttribute('aria-expanded');
-  render(running);
-  expect(expanded()).toBe('true');
-  render(events);
-  expect(projection.toolCalls.call_3?.phase).toBe('finished');
-  expect(expanded()).toBe('false');
 });
 
 it('summarizes a work plan by its items and completed count', () => {
