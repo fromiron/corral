@@ -1073,6 +1073,34 @@ describe('an answer body read that fails while the turn’s record is read', () 
     expect(answer(f.container)?.textContent).toContain('The answer body');
   });
 
+  // The record's answer and the end of the wait come in one render: the failure the wait held
+  // back is in no render of it, not even one the row's effects then take back.
+  it('the record read with the answer says no failure in any render', async () => {
+    const f = await failedWhileReading();
+    const said: string[] = [];
+    const watch = new MutationObserver((records) => {
+      for (const record of records)
+        for (const node of record.addedNodes)
+          if (
+            node instanceof Element &&
+            (node.matches('[role="alert"]') || node.querySelector('[role="alert"]'))
+          )
+            said.push(node.textContent ?? '');
+    });
+    watch.observe(f.container, { childList: true, subtree: true });
+    fixture.settled = true;
+    fixture.turn = {
+      runId: RUN,
+      answer: 'The answer body',
+      status: 'succeeded',
+      artifactVersionId: 'answer',
+    } as StoredConversationTurn;
+    await f.draw(false);
+    watch.disconnect();
+    expect(said).toEqual([]);
+    expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
   it('says the failure once the record is read without the answer', async () => {
     const f = await failedWhileReading();
     expect(alert(f.container)).toBeNull();
