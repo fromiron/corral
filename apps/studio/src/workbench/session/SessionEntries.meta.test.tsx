@@ -18,6 +18,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
+import { OPEN_ADVISOR } from './composer/AdvisorControl.tsx';
 import { placeEntries, type SteerRecord } from './entryMeta.ts';
 import { EntryCard } from './SessionEntries.tsx';
 
@@ -496,6 +497,25 @@ function expectQuiet(status: HTMLElement | null | undefined) {
     expect(control.className, control.textContent ?? '').toContain('h-7');
   }
 }
+
+it('a request refused for the advisor’s model offers the advisor control on its line', async () => {
+  const advisor = vi.fn();
+  window.addEventListener(OPEN_ADVISOR, advisor);
+  cleanup.push(() => window.removeEventListener(OPEN_ADVISOR, advisor));
+  const f = await show(
+    request({
+      state: 'refused',
+      runId: null,
+      detail: 'Advisor model model-a: sign in to OpenAI',
+      refusal: { code: 'GRAPH_INVALID', message: 'Advisor model model-a: sign in to OpenAI' },
+    }),
+  );
+  expect(f.status()?.textContent?.startsWith(messages.Refusal.advisor)).toBe(true);
+  const choose = f.button(messages.Refusal.chooseAdvisor);
+  expect(f.status()?.contains(choose ?? null)).toBe(true);
+  await act(async () => choose?.click());
+  expect(advisor).toHaveBeenCalledTimes(1);
+});
 
 it('a refused request says why in one line; the reason opens the runtime’s words', async () => {
   const value = request({
