@@ -1,5 +1,5 @@
-import { Button, Tooltip } from '@corral/react/design-kit';
-import { FolderOpen } from '@corral/react/icons';
+import { Button, cn, focusRing, Tooltip } from '@corral/react/design-kit';
+import { BookOpen, FolderOpen, Pencil } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
@@ -50,11 +50,11 @@ export function useFolderAccess(
   return access;
 }
 
-/** One composer mark: whether the agent can read and change files, and the one next step. */
-// On the composer's one-line tool line the folder's words give way first: they take the room
-// left, at most their own width.
-const GIVES_WAY = 'min-w-0 sm:min-w-7 sm:max-w-max sm:grow sm:basis-0';
-
+/**
+ * One composer mark: whether the agent can read and change files, and the one next step. Every
+ * state is one icon of one size in one place (workbench.md); its sentence is the icon's name and
+ * tooltip, so the tool line never cuts it.
+ */
 export function FolderAccessNotice({
   access,
   onAction,
@@ -64,13 +64,31 @@ export function FolderAccessNotice({
 }) {
   const t = useTranslations('Sessions');
   if (access === 'unknown') return null;
-  // The composer's tool line stays one line: where it runs short, the notice gives way first.
-  if (access === 'copy' || access === 'direct')
+  // A usable folder has no next step: a mark, not a button, still reached by keyboard so its
+  // tooltip can be read. The working copy can be changed; the folder itself is only read.
+  if (access === 'copy' || access === 'direct') {
+    const sentence = t(access === 'copy' ? 'agentCopy' : 'agentDirect');
+    // Not the eye: the Advisor control beside it on the tool line already is one.
+    const Glyph = access === 'copy' ? Pencil : BookOpen;
     return (
-      <span data-testid="folder-access" className={`truncate ${GIVES_WAY}`}>
-        {t(access === 'copy' ? 'agentCopy' : 'agentDirect')}
-      </span>
+      <Tooltip content={sentence}>
+        <span
+          data-testid="folder-access"
+          data-access={access}
+          role="img"
+          aria-label={sentence}
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: the tooltip's trigger must be reachable by keyboard.
+          tabIndex={0}
+          className={cn(
+            'inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground [&_svg]:size-3.5',
+            focusRing,
+          )}
+        >
+          <Glyph aria-hidden="true" />
+        </span>
+      </Tooltip>
     );
+  }
   // No usable folder: the folder icon alone, its sentence and next step its name and tooltip.
   const fact = access === 'missing' ? 'agentFolderMissing' : 'agentNoFiles';
   const next =
