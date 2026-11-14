@@ -69,6 +69,16 @@ function answerSummary(requestText: string | undefined, answerText: string | und
   }
 }
 
+/** Whether an expansion request's recorded answer is the person's dismissal of it (`null`). */
+function isDismissal(answerText: string | undefined) {
+  if (answerText === undefined) return false;
+  try {
+    return JSON.parse(answerText) === null;
+  } catch {
+    return false;
+  }
+}
+
 /** What an expansion request was answered with, in one line: the choice or words, or yes or no. */
 function extensionAnswerSummary(
   answerText: string | undefined,
@@ -193,6 +203,11 @@ export function InteractionPanel({
       {requests.map((event) => {
         const answered = answers.get(event.payload.requestId);
         if (answered) {
+          // A dismissed request was not answered: its line says what the person did, with a
+          // neutral mark.
+          const dismissed =
+            event.type === 'extension.ui_requested' &&
+            isDismissal(bodies[answered.payload.answerRef]);
           const summary =
             event.type === 'user_input.requested'
               ? answerSummary(bodies[event.payload.bodyRef], bodies[answered.payload.answerRef])
@@ -206,9 +221,17 @@ export function InteractionPanel({
               data-testid={`answered-${event.payload.requestId}`}
               className="flex min-w-0 items-center gap-1.5 text-caption text-muted-foreground"
             >
-              <AgentStatusIcon status="done" size={12} className="shrink-0" />
+              <AgentStatusIcon
+                status={dismissed ? 'stopped' : 'done'}
+                size={12}
+                className="shrink-0"
+              />
               <span className="min-w-0 truncate">
-                {summary ? t('answeredLine', { answer: summary }) : t('answered')}
+                {dismissed
+                  ? t('dismissed')
+                  : summary
+                    ? t('answeredLine', { answer: summary })
+                    : t('answered')}
               </span>
             </p>
           );

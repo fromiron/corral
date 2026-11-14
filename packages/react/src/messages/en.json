@@ -2893,6 +2893,7 @@
     "userQuestionsNamed": "Waiting for you: {question}",
     "answered": "Answered",
     "answeredLine": "Answered: {answer}",
+    "dismissed": "Dismissed",
     "questionUnavailable": "The question could not be loaded. Try again or cancel the run.",
     "recommended": "Recommended",
     "yourAnswer": "Your answer",
