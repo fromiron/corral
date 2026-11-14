@@ -116,6 +116,56 @@ describe('closedLine', () => {
     expect(line).toMatchObject({ stateShown: false });
   });
 
+  // presence.md "한 화면에 한 번": a role's row on screen says its state's detail beside the state.
+  it.each([
+    ['waiting_children', 'Waiting for agents'],
+    ['waiting_message', 'Waiting for a reply'],
+  ] as const)(
+    'does not repeat the detail (%s) of a target whose row says it, and says the summary',
+    (status, detail) => {
+      const waiting: ActivityRole = {
+        ...role('exec_research', 'Researcher', detail),
+        presence: executionPresence({ status }),
+      };
+      const roles = [team[0] as ActivityRole, waiting];
+      const seen = closedLine(
+        input({
+          roles,
+          visible: new Set(['run:run_a', 'execution:exec_research']),
+          target: 'exec_research',
+        }),
+      );
+      expect(seen).toEqual({ kind: 'summary', stateShown: false });
+      // Off-screen, its row says nothing: the line says the detail as before.
+      const away = closedLine(
+        input({ roles, visible: new Set(['run:run_a']), target: 'exec_research' }),
+      );
+      expect(away).toMatchObject({ kind: 'role', role: { id: 'exec_research' } });
+    },
+  );
+
+  it('still says the lead’s detail: the run row on screen says the run’s state, not its', () => {
+    const lead: ActivityRole = {
+      ...role('exec_lead', 'Implementer', 'Waiting for agents'),
+      presence: executionPresence({ status: 'waiting_children' }),
+    };
+    const line = closedLine(input({ roles: [lead], visible: new Set(['run:run_a']) }));
+    expect(line).toMatchObject({ kind: 'target', role: { id: 'exec_lead' }, stateShown: false });
+  });
+
+  it('still says a target’s real work its row does not say', () => {
+    const line = closedLine(
+      input({
+        visible: new Set(['run:run_a', 'execution:exec_research', 'execution:exec_review']),
+        target: 'exec_research',
+      }),
+    );
+    expect(line).toMatchObject({
+      kind: 'target',
+      role: { id: 'exec_research', activity: 'Read file' },
+    });
+  });
+
   it('says a single off-screen role as its activity', () => {
     const single = [role('exec_lead', 'Corral')];
     const line = closedLine(

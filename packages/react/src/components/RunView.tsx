@@ -565,6 +565,7 @@ export function ExecutionTree({
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),
       statusLabel: watching ? presenceText('detail.watching') : statusLabel(execution.status),
+      statusLabelProps: { 'data-presence-label': `execution:${id}` },
       ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
@@ -614,6 +615,9 @@ export function ExecutionTree({
     name: definition?.name ?? projection.runId,
     status: runAgentStatus(projection.status),
     statusLabel: statusLabel(projection.status),
+    // The run's state is said in words by the header badge alone (workbench.md): the root card
+    // keeps only its mark.
+    statusShown: 'mark',
     selectable: false,
     summaryExcluded: true,
     children: (childrenOf.get(null) ?? []).flatMap((id) => node(id) ?? []),

@@ -1431,21 +1431,18 @@ it.each(['next', 'queue'] as const)(
     ])
       expect(text).not.toContain(sentence);
     expect(footer?.querySelector('[data-testid="pre-run"]')).toBeNull();
-    // The footer holds the totals and, where nothing else says so, the simulation badge.
-    expect(text).toBe(
-      [
-        footer?.querySelector('[data-testid="composer-stats"]')?.textContent ?? '',
-        footer?.querySelector('[data-testid="composer-environment"]')?.textContent ?? '',
-      ].join(''),
-    );
+    // The footer holds the totals alone.
+    expect(text).toBe(footer?.querySelector('[data-testid="composer-stats"]')?.textContent ?? '');
   },
 );
 
-it('says Simulated once: under the input on a server without live models, on the model chip in the demo', async () => {
+// workbench.md: the header's connection word alone says the runs are simulated; the totals
+// under the input do not say it again.
+it('says nothing of the simulation under the input, on a server or in the demo', async () => {
   const server = await mount('environment_server', null);
-  expect(server.container.querySelector('[data-testid="composer-environment"]')?.textContent).toBe(
-    messages.Sessions.modeMock,
-  );
+  expect(server.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
+  const footer = server.container.querySelector('[data-testid="composer-footer"]');
+  expect(footer?.textContent ?? '').not.toContain(messages.Sessions.modeMock);
   const demo = await mount('environment_demo', null, [], [], null, 'browser');
   expect(demo.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
   expect(demo.container.textContent).toContain(messages.Composer.modelPicker.demo);
