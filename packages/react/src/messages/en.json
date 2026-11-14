@@ -734,18 +734,6 @@
     "conversation": "Conversation",
     "startedFrom": "Started from",
     "startedFromLink": "{name} of run {runId}",
-    "views": {
-      "label": "Run view",
-      "canvas": "Graph",
-      "tree": "Calls",
-      "side": "Conversation & Reins",
-      "dock": "Details"
-    },
-    "view": {
-      "label": "Run page view",
-      "results": "Results",
-      "run": "Run"
-    },
     "evidence": "What this execution left",
     "evidenceFiles": "Files",
     "evidenceResults": "Results",
@@ -2610,7 +2598,6 @@
       "accept_editsHint": "Allow permitted file edits; ask before commands.",
       "autoHint": "Allow actions within the existing tool policy."
     },
-    "autoHarnessLabel": "Work style for next request",
     "autoHarnessDefault": "Use defaults · project over personal",
     "requestOptions": "Request options",
     "changeScope": "Change scope",
@@ -2625,7 +2612,6 @@
     "addToRequest": "Add to the request",
     "optionalCorralHint": "Start with a message. For repeated work, choose a saved Corral.",
     "manageCorrals": "Create or manage Corrals",
-    "customWorkStyle": "Custom work style",
     "customRoles": "Custom role settings",
     "heldForNew": "Applies to a new request only: {items}",
     "held": {
@@ -2636,7 +2622,7 @@
     },
     "teamLabel": "Corral",
     "teamNone": "No Corral",
-    "teamAuto": "auto",
+    "teamAuto": "Auto",
     "teamNoneHint": "One assistant; subagents only when asked",
     "teamAutoHint": "Assistant leading planner, researcher, writer and reviewer",
     "teamCorralHint": "Assistant leading its roles, flow as a guide",
@@ -3658,7 +3644,7 @@
   },
   "RuntimeRecovery": {
     "title": "Runtime recovery",
-    "scope": "Continues a stopped single-agent Run in a new Run. Native extensions and any Corral beyond one agent and its Output are not supported. The source Run is kept.",
+    "scope": "Continues a stopped single-agent Run in a new Run. Corrals that use native extensions or hold more than one agent and its Output are not supported. The source Run is kept.",
     "empty": "No verified runtime checkpoint. Send a new request to continue from the existing results.",
     "unavailable": "Runtime recovery is unavailable.",
     "tree": "Files: {tree}",

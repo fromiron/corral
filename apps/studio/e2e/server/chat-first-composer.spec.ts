@@ -136,10 +136,10 @@ test('the auto team survives reload and gives the lead its roster for the next t
 }) => {
   await startChat(page, corral);
   await requestBox(page).fill('Plan and review the launch checklist.');
-  await chooseTeam(page, 'auto');
+  await chooseTeam(page, 'Auto');
   await page.reload();
   await expect(requestBox(page)).toHaveValue('Plan and review the launch checklist.');
-  await expect(teamChip(page)).toContainText('auto');
+  await expect(teamChip(page)).toContainText('Auto');
   await page.setViewportSize({ width: 390, height: 844 });
   await teamChip(page).focus();
   await page.keyboard.press('Enter');
