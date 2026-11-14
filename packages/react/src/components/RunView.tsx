@@ -306,8 +306,8 @@ export function ExecutionTree({
   onSteer: (executionId: string) => void;
   /**
    * Selecting a card picks whom the Reins instruct. An Outrider takes no person's instruction
-   * (features/advisor.md), so its card is no control here; it stays reachable from the keyboard
-   * so its state and work still read.
+   * (features/advisor.md), so its card is no control here: static content, like the run's root
+   * card, whose tree item still carries its name and state.
    */
   steers?: boolean;
   selectedExecutionId?: string | null;
@@ -623,7 +623,6 @@ export function ExecutionTree({
         'data-testid': `execution-${id}`,
         'data-execution-id': id,
         'aria-current': id === selectedExecutionId ? 'true' : undefined,
-        ...(readOnly ? { tabIndex: 0 } : {}),
       },
       ...(children.length ? { children } : {}),
     };
