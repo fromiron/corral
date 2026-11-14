@@ -110,7 +110,6 @@ export interface DockWorkbenchProps {
   graphTitle?(corralId: string): string;
   /** Called with a listener that refreshes graph tab titles; returns the unsubscribe. */
   subscribeGraphs?(listener: () => void): () => void;
-  controls?: ReactNode;
   terminalStatus?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
   /** Whether only the conversation is on screen now. */
@@ -1066,7 +1065,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               compact={compact}
               active={active}
               panels={panels}
-              controls={props.controls}
               openContext={openContext}
               onSelectPane={(id) => {
                 const panel = apiRef.current?.getPanel(id);

@@ -230,6 +230,70 @@ export const ExtensionPrompts: Story = {
   play: async ({ canvasElement }) => sameFrame(canvasElement),
 };
 
+/** A choice already answered folds into its one line while the run still waits on the next. */
+export const AnsweredExtension: Story = {
+  args: {
+    session: (() => {
+      const session = store(
+        [
+          {
+            type: 'extension.ui_requested',
+            body: {
+              kind: 'select',
+              title: 'Pick a channel',
+              options: ['General', 'Releases'],
+              timeoutMs: 300000,
+            },
+          },
+          {
+            type: 'extension.ui_requested',
+            body: {
+              kind: 'input',
+              title: 'Name the build',
+              placeholder: 'nightly',
+              timeoutMs: 300000,
+            },
+          },
+        ],
+        [],
+      );
+      const state = session.getState();
+      session.setState({
+        events: [
+          ...state.events,
+          RunEvent.parse({
+            schemaVersion: '0.1',
+            eventId: 'event_answered',
+            runId: 'run_story',
+            runSeq: 3,
+            recordedAt: '2026-11-09T00:00:30.000Z',
+            actor: { kind: 'user', id: 'local' },
+            causedByEventIds: [],
+            type: 'extension.ui_answered',
+            payload: {
+              requestId: 'request_0',
+              executionId: 'exec_0',
+              attemptNo: 1,
+              answerRef: 'answer_0',
+              answerHash: 'c'.repeat(64),
+            },
+          }),
+        ],
+        artifactTexts: { ...state.artifactTexts, answer_0: '"Releases"' },
+      });
+      return session;
+    })(),
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByTestId('answered-request_0')).toHaveTextContent(
+      'Answered: Releases',
+    );
+    await expect(canvas.queryByText('Pick a channel')).toBeNull();
+    await expect(canvas.getByText('Name the build')).toBeVisible();
+  },
+};
+
 /**
  * Two runs waiting in one place, as a conversation's tray holds them: each area is named by its
  * run, and inside it every card by its own title, so no two landmarks share a name.

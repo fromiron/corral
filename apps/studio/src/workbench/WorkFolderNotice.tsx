@@ -51,8 +51,8 @@ export function useFolderAccess(
 }
 
 /** One composer mark: whether the agent can read and change files, and the one next step. */
-// On the composer's one-line tool line the notice gives way first: it takes the room left,
-// at most its own width, down to its icon; its words stay in the tooltip and the name.
+// On the composer's one-line tool line the folder's words give way first: they take the room
+// left, at most their own width.
 const GIVES_WAY = 'min-w-0 sm:min-w-7 sm:max-w-max sm:grow sm:basis-0';
 
 export function FolderAccessNotice({
@@ -71,21 +71,23 @@ export function FolderAccessNotice({
         {t(access === 'copy' ? 'agentCopy' : 'agentDirect')}
       </span>
     );
+  // No usable folder: the folder icon alone, its sentence and next step its name and tooltip.
   const fact = access === 'missing' ? 'agentFolderMissing' : 'agentNoFiles';
   const next =
     access === 'untrusted' ? 'trustFolder' : access === 'missing' ? 'checkFolder' : 'linkFolder';
+  // The fact is a sentence with its own full stop; the next step becomes one.
+  const name = `${t(fact)} ${t(next)}.`;
   return (
-    <Tooltip content={t(next)}>
+    <Tooltip content={name}>
       <Button
         data-testid="working-copy-chip"
         variant="ghost"
-        size="compact"
-        aria-label={`${t(fact)}. ${t(next)}`}
+        size="icon-compact"
+        aria-label={name}
         onClick={onAction}
-        className={GIVES_WAY}
+        className="shrink-0"
       >
         <FolderOpen aria-hidden="true" />
-        <span className="min-w-0 truncate">{t(fact)}</span>
       </Button>
     </Tooltip>
   );

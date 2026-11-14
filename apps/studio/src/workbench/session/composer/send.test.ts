@@ -81,7 +81,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     ok: true as const,
     session,
   }));
-  const startExplain = vi.fn();
   const store = createPendingSessionCommands();
   const pending = { current: null as PendingCommand | null };
   const ids = ['cmd_fixed', 'cmd_second'];
@@ -90,7 +89,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
       mode: 'server',
       live: true,
       startAuto,
-      startExplain,
       transport: { sendCommand },
       repository: { addSessionEntry },
     },
@@ -101,7 +99,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     missingTeam: false,
     messages: {
       selectedTeamMissing: 'team missing',
-      noResult: 'no result',
       failed: (message: string) => `failed: ${message}`,
     },
     commands: {
@@ -116,7 +113,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     onTitleChange: vi.fn(),
     team: null,
     ownActive: null,
-    latest: null,
     runMode: 'live',
     setBusy: vi.fn(),
     setError: vi.fn(),
@@ -126,7 +122,7 @@ function harness(overrides: Partial<SendDeps> = {}) {
     clearDraft: vi.fn(),
     ...overrides,
   } as unknown as SendDeps;
-  return { deps, startAuto, sendCommand, addSessionEntry, startExplain, store, pending };
+  return { deps, startAuto, sendCommand, addSessionEntry, store, pending };
 }
 
 const input = (overrides: Partial<SendInput> = {}): SendInput => ({
@@ -210,6 +206,27 @@ describe('composer send paths', () => {
         mode: 'live',
       },
     });
+  });
+
+  it('a refused new request is recorded with its reason, and the refusal says so', async () => {
+    const h = harness();
+    h.startAuto.mockResolvedValueOnce({
+      runId: null,
+      receipt: {
+        commandId: 'cmd_fixed',
+        accepted: false,
+        error: { code: 'TARGET_NOT_FOUND', message: 'no such model profile: writer' },
+      },
+      autoRoute: null,
+    } as never);
+    await sendRequest(h.deps, input());
+    expect(h.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ state: 'refused', detail: 'no such model profile: writer' }),
+    );
+    expect(h.deps.setRefusal).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'no such model profile: writer', recorded: true }),
+    );
   });
 
   it('retries a lost new request with the same command and the same start body', async () => {
@@ -334,10 +351,12 @@ describe('composer send paths', () => {
       'session',
       expect.objectContaining({ state: 'refused', detail: 'The execution ended', refusal: error }),
     );
+    // Its message is in the conversation and says why: the composer does not say it again.
     expect(h.deps.setRefusal).toHaveBeenLastCalledWith({
       message: 'The execution ended',
       code: 'TARGET_ENDED',
       owner: 'runtime',
+      recorded: true,
     });
     expect(h.deps.clearDraft).not.toHaveBeenCalled();
   });

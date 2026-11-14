@@ -28,7 +28,6 @@ import {
   type CorralRepository,
   createAutoStarter,
   createKeyValueCorralRepository,
-  explainDefinition,
   type KeyValueStore,
   MeetingDecisionsService,
   MeetingService,
@@ -76,7 +75,6 @@ export interface StudioServices {
   /** A sandboxed address for HTML result previews; the browser runtime has none. */
   previewUrl?: (runId: string, artifactVersionId: string) => string;
   /** A question about a result, as its own run in a session. */
-  startExplain: (request: ExplainStart) => Promise<StartRunResult>;
   /** A request in an auto session: the runtime picks the template and starts it. */
   startAuto: (request: AutoRunStart, signal?: AbortSignal) => Promise<AutoStartResult>;
   /** Server cancellation also reconciles a start whose HTTP response was lost. */
@@ -95,15 +93,6 @@ export interface StudioServices {
   terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
   vault?: import('@corral/client').VaultClient | null;
-}
-
-export interface ExplainStart {
-  commandId: string;
-  sessionId: string;
-  question: string;
-  modelProfile: string;
-  mode: 'mock' | 'live';
-  startFrom?: { runId: string; artifactVersionId: string };
 }
 
 const systemClock: Clock = {
@@ -208,7 +197,6 @@ export async function createStudioServices(): Promise<StudioServices> {
       harnesses: new HarnessApi(http),
       live: health.live,
       previewUrl: (runId, artifactVersionId) => transport.previewUrl(runId, artifactVersionId),
-      startExplain: (request) => transport.startExplain(request),
       startAuto: (request, signal) => transport.startAuto(request, signal),
       cancelAuto: (request) => transport.cancelAuto(request),
       workspaces: new WorkspacesApi(http),
@@ -283,19 +271,6 @@ export async function createStudioServices(): Promise<StudioServices> {
       getSession: (sessionId) => repository.getSession(sessionId),
       start: (request, context) => autoStarter.start(request, context),
     }),
-    // The in-browser runtime runs inline definitions itself.
-    startExplain: ({ question, modelProfile, sessionId, startFrom, ...rest }) =>
-      transport.startRun({
-        schemaVersion: '0.1',
-        ...rest,
-        sessionId,
-        definition: explainDefinition({
-          id: `explain_${sessionId.replace(/^session_/, '')}`,
-          question,
-          modelProfile,
-        }),
-        ...(startFrom ? { startFrom } : {}),
-      }),
   };
 }
 

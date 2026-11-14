@@ -23,8 +23,7 @@ import { autoCommandSeed } from '../../autoChoice.ts';
 import type { Delivery } from '../../composerIntent.ts';
 
 // The composer's send paths as plain functions: a new request, a queued one, an instruction to
-// a running execution (a join or an interrupt), and a question about the latest result. The
-// component owns the state; these get it, and the services, as arguments.
+// a running execution (a join or an interrupt). The component owns the state; these get it, and the services, as arguments.
 
 export const newCommandId = () => `cmd_${globalThis.crypto.randomUUID()}`;
 
@@ -295,22 +294,21 @@ export interface Refusal {
   code?: string | undefined;
   owner?: CommandError['owner'];
   network?: boolean;
+  /**
+   * The refused request is in the conversation with its reason: its message's meta line says
+   * why, so the composer does not say it again (features/composer-flow.md).
+   */
+  recorded?: boolean;
 }
 
 export interface SendDeps extends StartDeps, RecordDeps {
-  services: Pick<
-    StudioServices,
-    'mode' | 'live' | 'startAuto' | 'startExplain' | 'transport' | 'repository'
-  >;
+  services: Pick<StudioServices, 'mode' | 'live' | 'startAuto' | 'transport' | 'repository'>;
   messages: {
     selectedTeamMissing: string;
-    noResult: string;
     failed: (message: string) => string;
   };
   team: CorralSummary | null;
   ownActive: RunSummary | null;
-  /** The newest final result, which an explain question asks about. */
-  latest: { runId: string; id: string } | null;
   runMode: 'mock' | 'live';
   setBusy: (busy: boolean) => void;
   setError: (message: string | null) => void;
@@ -347,10 +345,11 @@ async function refused(
   message: string,
   code?: string,
   owner?: CommandError['owner'],
+  recorded = false,
 ) {
   // A refusal is final for that command; the next attempt is a new command.
   clearPending(deps.commands);
-  deps.setRefusal({ message, code, owner });
+  deps.setRefusal({ message, code, owner, ...(recorded ? { recorded } : {}) });
   await deps.invalidate();
   deps.onChange();
 }
@@ -408,7 +407,13 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         return outcome;
       }
       if (!runId) {
-        await refused(deps, detail ?? deps.messages.failed(''), code, commandError?.owner);
+        await refused(
+          deps,
+          detail ?? deps.messages.failed(''),
+          code,
+          commandError?.owner,
+          Boolean(detail),
+        );
         return outcome;
       }
     } else if (intent === 'queue') {
@@ -460,54 +465,24 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         commandId,
       });
       if (receipt.error) {
-        await refused(deps, receipt.error.message, receipt.error.code, receipt.error.owner);
+        await refused(
+          deps,
+          receipt.error.message,
+          receipt.error.code,
+          receipt.error.owner,
+          Boolean(receipt.error.message),
+        );
         return outcome;
       }
       // An interrupt the target cannot take is lowered to the next request by the runtime
       // (features/reins.md "전달 방식"); the receipt's boundary says so.
       outcome.lowered = delivery === 'interrupt' && receipt.requestedBoundary === 'next_request';
-    } else if (intent === 'explain') {
-      const corral = team ? await services.repository.get(team.corralId) : null;
-      // An auto session asks with its own model.
-      const profile = team
-        ? (corral?.definition.roles[0]?.modelProfile ?? 'model-a')
-        : deps.choice.modelProfile;
-      const latest = deps.latest;
-      if (!latest) {
-        deps.setError(deps.messages.noResult);
-        return outcome;
-      }
-      const result = await services.startExplain({
-        commandId: commandFor(deps.commands, `explain\u0000${body}`),
-        sessionId: session.sessionId,
-        question: body,
-        modelProfile: profile,
-        mode: deps.runMode,
-        startFrom: { runId: latest.runId, artifactVersionId: latest.id },
-      });
-      await recordEntry(deps, {
-        intent,
-        text: body,
-        state: result.runId ? 'started' : 'refused',
-        runId: result.runId,
-        detail: result.receipt.error?.message ?? null,
-        refusal: result.receipt.error ?? null,
-      });
-      if (!result.runId) {
-        await refused(
-          deps,
-          result.receipt.error?.message ?? deps.messages.noResult,
-          result.receipt.error?.code,
-          result.receipt.error?.owner,
-        );
-        return outcome;
-      }
     } else {
       return outcome;
     }
     clearPending(deps.commands);
     // Text attachments ride every send; images a new or a next request (features/composer-flow.md).
-    deps.clearDraft(input.revision, intent === 'explain', intent !== 'next' && intent !== 'queue');
+    deps.clearDraft(input.revision, false, intent !== 'next' && intent !== 'queue');
     await deps.invalidate();
     deps.onChange();
     outcome.sent = true;

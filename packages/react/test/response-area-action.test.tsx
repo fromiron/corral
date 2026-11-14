@@ -123,9 +123,11 @@ it('puts the close on the question card head row, with its question, not on a la
   expect(form.contains(row)).toBe(true);
   expect(row?.hasAttribute('data-request-head')).toBe(true);
   expect(row?.textContent).toContain(asked.questions[0]?.prompt);
+  // The card carries no execution id and no copy of it, on its head row or anywhere else.
   expect(
-    within(row as HTMLElement).getByRole('button', { name: 'Copy execution ID' }),
-  ).toBeVisible();
+    within(form).queryByRole('button', { name: 'Copy execution ID', hidden: true }),
+  ).toBeNull();
+  expect(form.textContent).not.toMatch(/exec_/);
   const card = screen.getByRole('article', { name: messages.Approvals.kind.user_action });
   expect(within(card).queryByRole('button', { name: 'Close details' })).toBeNull();
 });

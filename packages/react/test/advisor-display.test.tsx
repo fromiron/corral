@@ -344,8 +344,9 @@ describe('the execution tree', () => {
     );
     const bar = container.querySelector('header');
     expect(bar?.textContent).toContain('2 executions');
-    expect(bar?.textContent).toContain('1 running');
-    expect(bar?.textContent).not.toContain('2 running');
+    const working = (count: number) => en.Run.tree.running.replace('{count}', String(count));
+    expect(bar?.textContent).toContain(working(1));
+    expect(bar?.textContent).not.toContain(working(2));
   });
 });
 

@@ -11,7 +11,6 @@ import { pendingInteractions, type RunProjection } from '@corral/core';
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Check, Copy } from '../design-kit/icons.ts';
 import {
   AgentCard,
   AgentStatusIcon,
@@ -21,7 +20,6 @@ import {
   fontWeights,
   Input,
   Select,
-  Tooltip,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FirstRow } from './FirstRow.tsx';
@@ -71,6 +69,27 @@ function answerSummary(requestText: string | undefined, answerText: string | und
   }
 }
 
+/** What an expansion request was answered with, in one line: the choice or words, or yes or no. */
+function extensionAnswerSummary(
+  answerText: string | undefined,
+  words: { yes: string; no: string },
+) {
+  if (!answerText) return null;
+  try {
+    const value: unknown = JSON.parse(answerText);
+    if (typeof value === 'boolean') return value ? words.yes : words.no;
+    if (typeof value !== 'string') return null;
+    // As a question's answer line: its first line, kept out of the page past 200 code points.
+    return (
+      Array.from(value.trim().split('\n')[0] ?? '')
+        .slice(0, 200)
+        .join('') || null
+    );
+  } catch {
+    return null;
+  }
+}
+
 export function InteractionPanel({
   session,
   action,
@@ -93,13 +112,15 @@ export function InteractionPanel({
   const pendingIds = new Set(
     waiting.flatMap((item) => (item.kind === 'approval' ? [] : [item.event.payload.requestId])),
   );
-  // A question answered in this run folds into one line in its place while the run still waits on
-  // something, as a decided approval does; once nothing waits, it leaves with the area.
-  // Only answers of the current wait fold into a line; earlier waits' never come back.
+  // A question or an expansion request answered in this run folds into one line in its place
+  // while the run still waits on something, as a decided approval does; once nothing waits, it
+  // leaves with the area. Only answers of the current wait fold into a line; earlier waits' never
+  // come back.
   const fresh = useFreshDecisions(session, 'answer');
   const answers = new Map(
     (waiting.length ? events : []).flatMap((event) =>
-      event.type === 'user_input.answered' && fresh(event.payload.requestId)
+      (event.type === 'user_input.answered' || event.type === 'extension.ui_answered') &&
+      fresh(event.payload.requestId)
         ? [[event.payload.requestId, event] as const]
         : [],
     ),
@@ -108,8 +129,7 @@ export function InteractionPanel({
     ...new Map(
       events.flatMap((event) =>
         (event.type === 'user_input.requested' || event.type === 'extension.ui_requested') &&
-        (pendingIds.has(event.payload.requestId) ||
-          (event.type === 'user_input.requested' && answers.has(event.payload.requestId)))
+        (pendingIds.has(event.payload.requestId) || answers.has(event.payload.requestId))
           ? [[event.payload.requestId, event] as const]
           : [],
       ),
@@ -172,11 +192,14 @@ export function InteractionPanel({
     >
       {requests.map((event) => {
         const answered = answers.get(event.payload.requestId);
-        if (answered && event.type === 'user_input.requested') {
-          const summary = answerSummary(
-            bodies[event.payload.bodyRef],
-            bodies[answered.payload.answerRef],
-          );
+        if (answered) {
+          const summary =
+            event.type === 'user_input.requested'
+              ? answerSummary(bodies[event.payload.bodyRef], bodies[answered.payload.answerRef])
+              : extensionAnswerSummary(bodies[answered.payload.answerRef], {
+                  yes: t('confirmYes'),
+                  no: t('confirmNo'),
+                });
           return (
             <p
               key={event.payload.requestId}
@@ -263,35 +286,6 @@ function useAskedBy(session: RunSessionStore, executionId: string, attemptNo: nu
     ]
       .filter(Boolean)
       .join(' · ') || null;
-}
-
-/** The exact execution id, one copy away for a report: the card head's secondary control. */
-function CopyExecutionId({ executionId }: { executionId: string }) {
-  const t = useTranslations('Harness');
-  const [copied, setCopied] = useState(false);
-  return (
-    <>
-      <Tooltip content={copied ? t('executionIdCopied') : executionId}>
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon"
-          aria-label={t('copyExecutionId')}
-          onClick={() =>
-            void navigator.clipboard?.writeText(executionId).then(
-              () => setCopied(true),
-              () => setCopied(false),
-            )
-          }
-        >
-          {copied ? <Check /> : <Copy />}
-        </Button>
-      </Tooltip>
-      <span role="status" className="sr-only">
-        {copied ? t('executionIdCopied') : ''}
-      </span>
-    </>
-  );
 }
 
 /** A refused or unconfirmed answer, in its card, as a refused decision is. */
@@ -391,7 +385,6 @@ function ExtensionPrompt({
           t(loadFailed || text !== undefined ? 'promptUnavailable' : 'loadingPrompt')
         }
         owner={[t('extensionUi'), askedBy()].filter(Boolean).join(' · ')}
-        aside={<CopyExecutionId executionId={event.payload.executionId} />}
         action={action}
       />
       <div className={requestCard.body}>
@@ -585,7 +578,6 @@ function UserQuestionPrompt({
       titleId={headingId}
       {...(readOnly ? {} : { titleRef: stepHeading })}
       owner={owner}
-      aside={<CopyExecutionId executionId={event.payload.executionId} />}
       action={action}
     />
   );

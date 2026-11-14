@@ -77,7 +77,10 @@ export function useFreshDecisions(session: RunSessionStore, kind: 'approval' | '
       case 'user_input.closed':
       case 'extension.ui_answered':
       case 'extension.ui_expired':
-        if (kind === 'answer' && event.type === 'user_input.answered')
+        if (
+          kind === 'answer' &&
+          (event.type === 'user_input.answered' || event.type === 'extension.ui_answered')
+        )
           given.set(event.payload.requestId, event.runSeq);
         if (open.delete(event.payload.requestId) && !open.size) idleAt = event.runSeq;
         break;

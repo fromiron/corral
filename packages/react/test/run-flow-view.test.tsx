@@ -1,12 +1,11 @@
 import { type EventOf, RunEvent } from '@corral/contracts';
 import { applyEvent, emptyProjection } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
-import { DecisionDetail, RunFlowView } from '../src/components/RunFlowView.tsx';
+import { DecisionDetail } from '../src/components/RunFlowDecisions.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
-import { sessionStore } from '../src/stories/fixtures.tsx';
 
 function event<K extends RunEvent['type']>(
   seq: number,
@@ -80,13 +79,7 @@ function fixture() {
     ...events.reduce(applyEvent, emptyProjection('flow_run')),
     status: 'succeeded' as const,
   };
-  const loadArtifact = vi.fn();
-  return {
-    projection,
-    definition: linearCorral(['research', 'writer']),
-    session: sessionStore({ projection, events, loadArtifact }),
-    loadArtifact,
-  };
+  return { projection, definition: linearCorral(['research', 'writer']) };
 }
 function wrap(ui: React.ReactNode) {
   return render(
@@ -96,102 +89,7 @@ function wrap(ui: React.ReactNode) {
   );
 }
 
-describe('causal execution interface', () => {
-  it('keeps observed reads distinct from inputs and opens only the current result', () => {
-    const { session, definition, loadArtifact } = fixture();
-    const onOpenArtifact = vi.fn(),
-      onSelectExecution = vi.fn();
-    wrap(<RunFlowView {...{ session, definition, onOpenArtifact, onSelectExecution }} />);
-    expect(screen.getByText('Read')).toBeInTheDocument();
-    expect(screen.getByText('Included in model input')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Open Notes' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'Open Report' }));
-    expect(onOpenArtifact).toHaveBeenCalledWith('Report');
-    expect(loadArtifact).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'research' }));
-    expect(onSelectExecution).toHaveBeenCalledWith('research_1');
-  });
-
-  it('lists only artifacts that no relationship card already shows', () => {
-    const { session, definition } = fixture();
-    wrap(
-      <RunFlowView
-        {...{ session, definition }}
-        onOpenArtifact={vi.fn()}
-        onSelectExecution={vi.fn()}
-      />,
-    );
-    const list = screen.getByRole('region', { name: 'Created results' });
-    // Notes is the card of the research → writer relationship, so it is not repeated here.
-    expect(within(list).queryByText('Notes')).toBeNull();
-    expect(within(list).getByText('Report')).toBeInTheDocument();
-  });
-
-  it('shows current model activity instead of marking a running agent unrecorded', () => {
-    const { session, definition, projection } = fixture();
-    const execution = projection.executions.research_1;
-    if (!execution) throw new Error('research fixture');
-    session.setState({
-      projection: {
-        ...projection,
-        executions: {
-          ...projection.executions,
-          research_1: { ...execution, status: 'active', activity: 'model' },
-        },
-      },
-    });
-    wrap(
-      <RunFlowView
-        session={session}
-        definition={definition}
-        onOpenArtifact={vi.fn()}
-        onSelectExecution={vi.fn()}
-      />,
-    );
-    expect(screen.getAllByText('Generating response').length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'research – Generating response' })).toHaveAttribute(
-      'data-status',
-      'working',
-    );
-  });
-
-  it('names the attached artifact in a question relationship without loading its old body', () => {
-    const { session, definition, projection, loadArtifact } = fixture();
-    session.setState({
-      projection: {
-        ...projection,
-        questions: {
-          question: {
-            questionId: 'question',
-            taskId: 'question_task',
-            senderExecutionId: 'research_1',
-            targetExecutionId: 'write_1',
-            targetNodeId: 'writer',
-            targetRoleId: 'writer',
-            body: 'private question',
-            artifactRefs: ['Notes'],
-            deadline: '2026-11-06T00:10:00.000Z',
-            status: 'open',
-            answer: null,
-          },
-        },
-      },
-    });
-    wrap(
-      <RunFlowView
-        session={session}
-        definition={definition}
-        onOpenArtifact={vi.fn()}
-        onSelectExecution={vi.fn()}
-      />,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Question sent/ }));
-    expect(screen.getByText('Attached: Notes')).toBeInTheDocument();
-    expect(screen.queryByText('private question')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Open Notes' })).toBeNull();
-    expect(loadArtifact).not.toHaveBeenCalled();
-  });
-
+describe('a recorded decision', () => {
   it('explains exact task, approval and check evidence without opening retained bodies', () => {
     const { projection, definition } = fixture();
     projection.tasks.task_review = {

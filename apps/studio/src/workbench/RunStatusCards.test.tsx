@@ -116,7 +116,9 @@ function liveExecution(status: 'active' | 'succeeded', mode: 'live' | 'mock' = '
   return projection;
 }
 
-it('compacts a live Core execution that is still running, without a harness', async () => {
+// Compaction is sent from /compact and the activity bar's context detail only
+// (docs/plans/unified-flow.md D15); Run info and the execution's context line show none.
+it('offers no compaction in Run info for a live execution that is still running', async () => {
   const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
   const session = createRunSession({ sendCommand } as never);
   session.setState({
@@ -125,69 +127,66 @@ it('compacts a live Core execution that is still running, without a harness', as
     definition: linearCorral(['writer']),
   });
   const container = await showOpen(session);
-  const button = [...container.querySelectorAll('button')].find((node) =>
-    node.textContent?.includes(messages.RunStatus.compactRequest),
-  );
-  expect(button, container.textContent ?? '').toBeDefined();
-  expect(button?.disabled).toBe(false);
-  expect(container.textContent).not.toContain(messages.RunStatus.compactUnavailable);
-  await act(async () => button?.click());
-  expect(sendCommand).toHaveBeenCalledWith(
-    expect.objectContaining({
-      type: 'compact_context',
-      expectedControlRevision: 4,
-      payload: { executionId: 'exec_writer', attemptNo: 2 },
-    }),
-  );
-});
-
-it('does not show an automatic compaction as the manual request in progress', async () => {
-  const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
-  const session = createRunSession({ sendCommand } as never);
-  const payload = {
-    commandId: 'compaction.1.exec_writer',
-    trigger: 'automatic' as const,
-    executionId: 'exec_writer',
-    attemptNo: 2,
-    phase: 'started' as const,
-    modelCallIds: [],
-  };
-  const projection = liveExecution('active');
-  projection.compactions = { [payload.commandId]: payload };
-  session.setState({
-    runId: 'run_cards',
-    projection,
-    definition: linearCorral(['writer']),
-    events: [{ type: 'context.compaction_changed', executionId: 'exec_writer', payload } as never],
-  });
-  const container = await showOpen(session);
-  expect(container.textContent).not.toContain(messages.RunStatus.compactPhase.started);
-  const button = [...container.querySelectorAll('button')].find((node) =>
-    node.textContent?.includes(messages.RunStatus.compactRequest),
-  );
-  expect(button?.disabled).toBe(false);
-  await act(async () => button?.click());
-  expect(sendCommand).toHaveBeenCalledTimes(1);
-});
-
-it('says why and sends nothing when the live execution has already finished', async () => {
-  const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
-  const session = createRunSession({ sendCommand } as never);
-  session.setState({
-    runId: 'run_cards',
-    projection: liveExecution('succeeded'),
-    definition: linearCorral(['writer']),
-  });
-  const container = await showOpen(session);
-  expect(container.textContent).toContain(
-    'No execution is still running, so compaction was not sent.',
-  );
+  expect(container.querySelector('[data-testid="status-context"]')).not.toBeNull();
   expect(
     [...container.querySelectorAll('button')].some((node) =>
       node.textContent?.includes(messages.RunStatus.compactRequest),
     ),
   ).toBe(false);
+  expect(container.textContent).not.toContain(messages.RunStatus.compactHint);
   expect(sendCommand).not.toHaveBeenCalled();
+});
+
+async function showContextLine(session: RunSessionStore) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ExecutionContext session={session} executionId="exec_writer" />
+      </IntlProvider>,
+    ),
+  );
+  return container;
+}
+
+it('shows a running execution’s context estimate with no compaction beside it', async () => {
+  const projection = liveExecution('active');
+  projection.modelCalls.call_a = { modelCallId: 'call_a', executionId: 'exec_writer' } as never;
+  const session = createRunSession({} as never);
+  session.setState({
+    runId: 'run_cards',
+    projection,
+    definition: linearCorral(['writer']),
+    events: [
+      {
+        type: 'model.request_recorded',
+        payload: { modelCallId: 'call_a', contextEstimate: { tokens: 1200 } },
+      } as never,
+    ],
+  });
+  const container = await showContextLine(session);
+  const line = container.querySelector('[data-testid="execution-context"]');
+  expect(line?.textContent).toMatch(/1,?200/);
+  expect(line?.querySelector('button')).toBeNull();
+  expect(line?.textContent).not.toContain(messages.RunStatus.compactHint);
+});
+
+it('shows no context line for a running execution with no recorded request', async () => {
+  const session = createRunSession({} as never);
+  session.setState({
+    runId: 'run_cards',
+    projection: liveExecution('active'),
+    definition: linearCorral(['writer']),
+  });
+  const container = await showContextLine(session);
+  expect(container.querySelector('[data-testid="execution-context"]')).toBeNull();
 });
 
 it('keeps compaction out of a finished execution’s context line', async () => {
@@ -223,17 +222,4 @@ it('keeps compaction out of a finished execution’s context line', async () => 
   const line = container.querySelector('[data-testid="execution-context"]');
   expect(line?.textContent).toMatch(/1,?200/);
   expect(line?.textContent).not.toContain(messages.RunStatus.compactNoExecution);
-});
-
-it('says why and sends nothing for a simulated run', async () => {
-  const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
-  const session = createRunSession({ sendCommand } as never);
-  session.setState({
-    runId: 'run_cards',
-    projection: liveExecution('active', 'mock'),
-    definition: linearCorral(['writer']),
-  });
-  const container = await showOpen(session);
-  expect(container.textContent).toContain('Manual compaction is only available during a live run.');
-  expect(sendCommand).not.toHaveBeenCalled();
 });
