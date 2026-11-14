@@ -72,13 +72,12 @@
 
 | 용어 (EN / KO) | 메시지 | 설명이 붙는 자리 |
 |---|---|---|
-| Corral / Corral | `Terms.corral` | 라이브러리의 Corral 보기, 컴포저의 Corral 선택 |
-| Reins / Reins | `Terms.reins` | 실행 화면의 Reins 영역 |
-| Execution / 실행 단위 | `Terms.execution` | 실행 화면의 실행 단위 목록 |
-| Work style / 작업 방식 | `Terms.workStyle` | 작업 방식 설정 화면 |
-| Advisor / 감독 | `Terms.advisor` | 컴포저의 감독 설정 |
+| Corral / Corral | `Terms.corral` | 라이브러리의 Corral 탭(툴팁), 컴포저 도구 줄의 Corral 선택(툴팁) |
+| Execution / 실행 단위 | `Terms.execution` | 편집기 실행 창의 실행 단위 목록 제목(아이콘) |
+| Work style / 작업 방식 | `Terms.workStyle` | 설정의 작업 방식 화면 제목(아이콘), 편집기 Inspector의 작업 방식 이름표(아이콘) |
+| Advisor / 감독 | `Terms.advisor` | 컴포저 도구 줄의 감독 버튼(툴팁) |
 
-Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 보이므로 여기에 넣지 않는다.
+Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 보이므로 여기에 넣지 않는다. Reins는 명세와 코드의 이름이고 화면에는 나오지 않는다(실행 화면의 그 영역은 "지시하기"와 "실행 제어"로 부른다).
 
 ## 남은 불일치
 
