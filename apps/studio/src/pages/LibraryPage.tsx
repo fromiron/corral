@@ -148,7 +148,7 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
                   its left edge, so it covers neither the page title above nor the sidebar; the list's index reaches the tab through it. */}
               {LIBRARY_VIEWS.map((value) =>
                 value === 'teams' ? (
-                  <TermTooltip key={value} term="corral" side="bottom" align="start">
+                  <TermTooltip key={value} term="corral" value={value} side="bottom" align="start">
                     <TabItem value={value} label={viewLabel(value)} />
                   </TermTooltip>
                 ) : (

@@ -237,3 +237,112 @@ export const KitTooltipLines: Story = {
     for (const line of two.words) await expect(line.bottom).toBeLessThanOrEqual(two.box.bottom);
   },
 };
+
+/** A title with its icon between two other controls, as the icon sits in a real screen. */
+function Between() {
+  return (
+    <div className="flex w-[420px] flex-col gap-3">
+      <Button variant="ghost" size="compact">
+        Before
+      </Button>
+      <h2 className="m-0 flex items-center gap-1 text-subtitle font-semibold">
+        {messages.Terms.corral.name}
+        <TermHint term="corral" />
+      </h2>
+      <p data-below="" className="m-0 text-body text-muted-foreground">
+        Release review · 3 roles
+      </p>
+      <Button variant="ghost" size="compact">
+        After
+      </Button>
+    </div>
+  );
+}
+
+const hintPopup = () => document.querySelector('[data-term-popup]');
+const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** Opened by focus, Tab and Shift+Tab go straight on to the next control and close it. */
+export const KeyboardAround: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const icon = canvas.getByRole('button', { name: 'About Corral' });
+    const before = canvas.getByRole('button', { name: 'Before' });
+    const after = canvas.getByRole('button', { name: 'After' });
+    before.focus();
+    await userEvent.tab();
+    await expect(icon).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    // One Tab: on to the next control, and the explanation closes.
+    await userEvent.tab();
+    await expect(after).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).toBeNull());
+    // Back with one Shift+Tab, which opens it by focus again.
+    await userEvent.tab({ shift: true });
+    await expect(icon).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    // One Shift+Tab: on to the control before, and it closes.
+    await userEvent.tab({ shift: true });
+    await expect(before).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).toBeNull());
+  },
+};
+
+/** Opened by focus, it stays while the focus does, though a pointer passes over and away. */
+export const FocusOutlastsPointer: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const icon = canvas.getByRole('button', { name: 'About Corral' });
+    canvas.getByRole('button', { name: 'Before' }).focus();
+    await userEvent.tab();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    await userEvent.hover(icon);
+    await pause(300);
+    await userEvent.unhover(icon);
+    await userEvent.hover(canvas.getByText('Release review · 3 roles'));
+    await pause(600);
+    await expect(icon).toHaveFocus();
+    await expect(hintPopup()).not.toBeNull();
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(hintPopup()).toBeNull());
+  },
+};
+
+/** Pressing an icon that already has the focus leaves nothing behind: focus opens it again. */
+export const PressThenTabBack: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const icon = canvas.getByRole('button', { name: 'About Corral' });
+    await userEvent.click(icon);
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    await userEvent.click(icon);
+    await waitFor(() => expect(hintPopup()).toBeNull());
+    await expect(icon).toHaveFocus();
+    await userEvent.tab();
+    await expect(canvas.getByRole('button', { name: 'After' })).toHaveFocus();
+    await userEvent.tab({ shift: true });
+    await expect(icon).toHaveFocus();
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    await userEvent.keyboard('{Escape}');
+  },
+};
+
+/** Closed by a press on something that takes no focus, it stays closed. */
+export const PressOutsideStaysClosed: Story = {
+  render: () => <Between />,
+  play: async ({ canvasElement }) => {
+    const icon = within(canvasElement).getByRole('button', { name: 'About Corral' });
+    await userEvent.click(icon);
+    await waitFor(() => expect(hintPopup()).not.toBeNull());
+    await userEvent.click(canvasElement.querySelector('[data-below]') as HTMLElement);
+    const samples: number[] = [];
+    for (let i = 0; i < 6; i++) {
+      await pause(150);
+      samples.push(hintPopup() ? 1 : 0);
+    }
+    await expect(samples.join('')).toBe('000000');
+  },
+};

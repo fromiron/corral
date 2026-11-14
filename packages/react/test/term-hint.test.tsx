@@ -3,7 +3,7 @@ import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { expect, it } from 'vitest';
 import { TermHint, TermTooltip } from '../src/components/TermHint.tsx';
-import { Button } from '../src/design-kit/index.ts';
+import { Button, TabItem, Tabs, TabsList } from '../src/design-kit/index.ts';
 import en from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
 
@@ -138,4 +138,48 @@ it('stays closed while the control says so, as while its own menu is open', asyn
   await user.hover(screen.getByRole('button', { name: 'Team' }));
   await new Promise((resolve) => setTimeout(resolve, 400));
   expect(screen.queryByRole('tooltip')).toBeNull();
+});
+
+it('keeps the description a control already had, before the term’s', () => {
+  render(
+    <IntlProvider locale="en" messages={en} timeZone="UTC">
+      <span id="own-note">Saved per project</span>
+      <TermTooltip term="corral">
+        <Button variant="ghost" aria-label="Team" aria-describedby="own-note">
+          Team
+        </Button>
+      </TermTooltip>
+    </IntlProvider>,
+  );
+  expect(screen.getByRole('button', { name: 'Team' })).toHaveAccessibleDescription(
+    `Saved per project ${corral.meaning}`,
+  );
+});
+
+// A tab list orders its tabs by their values and numbers them by place: a wrapped tab that is not
+// the first keeps both, so choosing it, and the tabs after it, report the right place.
+it('keeps a wrapped tab in its tab list’s order, wherever it stands', async () => {
+  const user = userEvent.setup();
+  const chosen: number[] = [];
+  render(
+    <IntlProvider locale="en" messages={en} timeZone="UTC">
+      <Tabs onSelect={(index) => chosen.push(index)}>
+        <TabsList aria-label="Views">
+          <TabItem value="templates" label="Templates" />
+          <TermTooltip term="corral" value="teams">
+            <TabItem value="teams" label="Corrals" />
+          </TermTooltip>
+          <TabItem value="resources" label="Resources" />
+        </TabsList>
+      </Tabs>
+    </IntlProvider>,
+  );
+  const tabs = screen.getAllByRole('tab');
+  // Uncontrolled, the first tab is the one chosen.
+  expect(tabs[0]).toHaveAttribute('aria-selected', 'true');
+  expect(tabs.map((tab) => tab.dataset.fluidHoverIndex)).toEqual(['0', '1', '2']);
+  await user.click(screen.getByRole('tab', { name: /Corrals/ }));
+  await user.click(screen.getByRole('tab', { name: /Resources/ }));
+  expect(chosen).toEqual([1, 2]);
+  expect(screen.getByRole('tab', { name: /Resources/ })).toHaveAttribute('aria-selected', 'true');
 });

@@ -59,18 +59,39 @@ export function TermHint({ term, className }: { term: TermId; className?: string
   const t = useTranslations('Terms');
   const meaningId = useId();
   const [open, setOpen] = useState(false);
-  // How it was opened: one opened by focus closes when the focus leaves.
+  // How it was opened: one opened by focus stays while the focus does.
   const openedBy = useRef<string | null>(null);
   // A press focuses the icon too; that focus is the press's, which opens and closes it itself.
+  // The press ends with its click (on a touch screen the focus comes after the finger lifts).
   const pressing = useRef(false);
+  const trigger = useRef<HTMLButtonElement>(null);
   const change = (next: boolean, reason: string | null) => {
     openedBy.current = next ? reason : null;
     setOpen(next);
   };
+  /** The focus is on the icon or in its explanation. */
+  const focusHere = () => {
+    const active = document.activeElement;
+    const popup = document.querySelector(`[data-term-popup="${meaningId}"]`);
+    return !!active && (active === trigger.current || !!popup?.contains(active));
+  };
   return (
     <>
-      <Popover open={open} onOpenChange={(next, details) => change(next, details?.reason ?? null)}>
+      <Popover
+        open={open}
+        onOpenChange={(next, details) => {
+          const reason = details?.reason ?? null;
+          if (openedBy.current === 'focus') {
+            // Opened by focus, a pointer coming and going neither takes it over nor closes it
+            // while the focus stays (the pointer and the focus must both leave).
+            if (next) return;
+            if (reason === 'trigger-hover' && focusHere()) return;
+          }
+          change(next, reason);
+        }}
+      >
         <PopoverTrigger
+          ref={trigger}
           openOnHover
           delay={200}
           render={
@@ -88,14 +109,27 @@ export function TermHint({ term, className }: { term: TermId; className?: string
           onPointerDown={() => {
             pressing.current = true;
           }}
-          onFocus={() => {
-            if (!pressing.current && !open) change(true, 'focus');
+          onClick={() => {
             pressing.current = false;
           }}
-          onBlur={(event) => {
-            const popup = document.querySelector(`[data-term-popup="${meaningId}"]`);
-            if (openedBy.current === 'focus' && !popup?.contains(event.relatedTarget as Node))
-              change(false, null);
+          onPointerCancel={() => {
+            pressing.current = false;
+          }}
+          onPointerLeave={(event) => {
+            // A mouse dragged off the icon makes no click; a finger leaves on lifting, before its
+            // focus, so it keeps the press.
+            if (event.pointerType === 'mouse') pressing.current = false;
+          }}
+          onFocus={() => {
+            if (!pressing.current && !open) change(true, 'focus');
+          }}
+          onBlur={() => {
+            // The focus may pass through the explanation's focus guards on its way to the next
+            // control: judge where it went once it has landed, so a Tab goes straight on.
+            if (openedBy.current !== 'focus') return;
+            setTimeout(() => {
+              if (openedBy.current === 'focus' && !focusHere()) change(false, null);
+            }, 0);
           }}
         >
           <Info aria-hidden="true" />
@@ -140,6 +174,11 @@ export function TermTooltip({
   state?: string;
   /** Kept closed, as while the control's own menu is open. */
   closed?: boolean;
+  /**
+   * The wrapped control's value, passed on to it and shown here to a list that reads its
+   * children's values (a tab list orders its tabs by them).
+   */
+  value?: string;
   side?: 'top' | 'bottom' | 'left' | 'right';
   align?: 'start' | 'center' | 'end';
   children: ReactElement<{ 'aria-describedby'?: string }>;

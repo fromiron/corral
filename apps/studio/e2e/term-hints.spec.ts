@@ -1,14 +1,62 @@
 import { linearCorral } from '@corral/testkit';
-import { expect, type Page, test } from '@playwright/test';
+import { expect, type Locator, type Page, test } from '@playwright/test';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { importTeam, newConversationFromSidebar, openSettings, startTestRun } from './workbench.ts';
 
 // Coined terms explain themselves where they stand as names (docs/specs/features/term-hints.md).
-// Only what needs a real browser: a touch press on the icon, and the icons a whole screen draws.
+// Only what needs a real browser: a touch press on the icon and the line it stands on, the real
+// keyboard around an open explanation, and the icons a whole screen draws.
 
 const about = (term: keyof typeof en.Terms & string) =>
   en.Terms.about.replace('{term}', (en.Terms[term] as { name: string }).name);
 const popup = (page: Page) => page.locator('[data-term-popup]');
+
+/** What has the focus: its tag and its name. */
+const focused = (page: Page) =>
+  page.evaluate(() => {
+    const active = document.activeElement as HTMLElement | null;
+    return `${active?.tagName ?? ''}|${active?.getAttribute('aria-label') ?? active?.textContent ?? ''}`;
+  });
+
+/**
+ * Opened by focus, one Tab and one Shift+Tab each go straight on to a control beside the icon,
+ * never through the page itself, and the explanation closes; coming back opens it again.
+ */
+async function keyboardAround(page: Page, icon: Locator, within: Locator) {
+  const name = await icon.getAttribute('aria-label');
+  await icon.focus();
+  await expect(popup(page)).toBeVisible();
+  for (const key of ['Tab', 'Shift+Tab']) {
+    await page.keyboard.press(key);
+    const now = await focused(page);
+    expect(now.startsWith('BODY'), `${key} from the open explanation`).toBe(false);
+    expect(now, key).not.toBe(`BUTTON|${name}`);
+    expect(await within.evaluate((node) => node.contains(document.activeElement)), key).toBe(true);
+    await expect(popup(page)).toHaveCount(0);
+    await page.keyboard.press(key === 'Tab' ? 'Shift+Tab' : 'Tab');
+    await expect(icon).toBeFocused();
+    await expect(popup(page)).toBeVisible();
+  }
+  await page.keyboard.press('Escape');
+  await expect(popup(page)).toHaveCount(0);
+}
+
+/** A line's box and where the content after it starts, with the icon and with it taken out. */
+async function lineWithAndWithout(icon: Locator, line: Locator, after: Locator) {
+  const measure = async () => ({
+    line: (await line.boundingBox())?.height,
+    after: (await after.boundingBox())?.y,
+  });
+  const withIcon = await measure();
+  await icon.evaluate((node) => {
+    (node as HTMLElement).style.display = 'none';
+  });
+  const without = await measure();
+  await icon.evaluate((node) => {
+    (node as HTMLElement).style.display = '';
+  });
+  return { withIcon, without };
+}
 
 /** The term of each info icon on the screen, counted. */
 async function icons(page: Page) {
@@ -38,6 +86,44 @@ test.describe('on a touch screen', () => {
     await expect(popup(page)).toHaveCount(0, { timeout: 1000 });
     await expect(icon).toBeVisible();
   });
+
+  test('the icon gets a finger-sized target and leaves its line as tall as before', async ({
+    page,
+  }) => {
+    await page.goto('/');
+    const dialog = await openSettings(page, en.Harness.heading);
+    const icon = dialog.locator('[data-term-hint="workStyle"]');
+    expect((await icon.boundingBox())?.height).toBeGreaterThanOrEqual(44);
+    const header = dialog.locator('[data-settings-header]');
+    const settings = await lineWithAndWithout(
+      icon,
+      header,
+      header.locator('xpath=following-sibling::*[1]'),
+    );
+    expect(settings.withIcon).toEqual(settings.without);
+
+    await importTeam(page, linearCorral(['writer']));
+    await startTestRun(page);
+    const execution = page.locator('[data-term-hint="execution"]');
+    const head = execution.locator('xpath=ancestor::header[1]');
+    const tree = await lineWithAndWithout(
+      execution,
+      head,
+      head.locator('xpath=following-sibling::*[1]'),
+    );
+    expect(tree.withIcon).toEqual(tree.without);
+  });
+});
+
+test('around an explanation opened by focus, the keyboard goes straight on', async ({ page }) => {
+  await page.goto('/');
+  const dialog = await openSettings(page, en.Harness.heading);
+  await keyboardAround(page, dialog.locator('[data-term-hint="workStyle"]'), dialog);
+  await page.keyboard.press('Escape');
+
+  await importTeam(page, linearCorral(['writer']));
+  const panel = await startTestRun(page);
+  await keyboardAround(page, page.locator('[data-term-hint="execution"]'), panel);
 });
 
 test('no screen explains one term in two places', async ({ page }) => {

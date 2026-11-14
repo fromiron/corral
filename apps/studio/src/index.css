@@ -300,6 +300,11 @@
   :is([data-settings-dialog], [data-settings-sheet]) a {
     min-height: 44px;
   }
+  /* A term's icon keeps that target but not its height: its line stays as tall as the name
+     (features/term-hints.md), the target reaching past it above and below. */
+  :is([data-settings-dialog], [data-settings-sheet]) button[data-term-hint] {
+    margin-block: -14px;
+  }
 }
 @media (max-width: 639px) {
   [data-slot="dialog-viewport"]:has(> [data-settings-dialog]) {
