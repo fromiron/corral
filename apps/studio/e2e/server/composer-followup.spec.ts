@@ -39,7 +39,7 @@ test.describe('saved requests with a stale instruction draft', () => {
             })
             .click();
         await slash(page, 'steer');
-        await expect(page.getByTestId('composer-destination')).toContainText('instruction');
+        await expect(page.getByTestId('composer-destination')).toContainText('· Join');
         await box.fill('Keep this  stale instruction');
         await stopRun(page);
         release();
