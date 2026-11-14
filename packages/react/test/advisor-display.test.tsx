@@ -308,7 +308,7 @@ describe('the execution tree', () => {
     const advisor = screen.getByTestId('execution-advisor_1');
     expect(within(advisor).getAllByText('Advisor')).toHaveLength(1);
     expect(within(advisor).getByText('Watching')).toBeTruthy();
-    expect(advisor.textContent).not.toContain('Waiting for an answer');
+    expect(advisor.textContent).not.toContain('Waiting for a reply');
     expect(within(advisor).queryByTestId('waiting-on')).toBeNull();
     // The name keeps its own direction: a model-written override cannot turn the card around.
     expect(within(advisor).getByText('Reviewer').closest('[dir]')).not.toBeNull();

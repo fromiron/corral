@@ -397,7 +397,7 @@
       "question": "Question",
       "sent": "Sent",
       "questionStatus": {
-        "open": "Waiting for you",
+        "open": "Waiting for a reply",
         "answered": "Answered",
         "cancelled": "Cancelled",
         "timed_out": "Timed out"
@@ -497,7 +497,7 @@
     "title": "Schedules",
     "new": "New schedule",
     "whenRuns": "Runs while this server is open. Missed times and overlapping runs are skipped and recorded. A repeated daylight-saving time runs once, at its earlier instant; nonexistent times are skipped.",
-    "howRuns": "Requests use the normal Auto Corral, its model, and your selected permission mode. Approval requests wait in the conversation. Disabling or deleting a schedule does not cancel an already started run.",
+    "howRuns": "Requests use the normal Auto team, its model, and your selected permission mode. Approval requests wait in the conversation. Disabling or deleting a schedule does not cancel an already started run.",
     "localOnly": "Available with the local server",
     "needsSession": "Create an Auto conversation in a project first.",
     "enabled": "Enabled",
@@ -840,7 +840,7 @@
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
-    "waiting": "Waiting for you until {deadline}",
+    "waiting": "Waiting for a reply until {deadline}",
     "paused": "The question timeout is paused."
   },
   "Artifact": {
@@ -1172,7 +1172,7 @@
     "state": {
       "call": "Call",
       "data": "Data",
-      "ask": "Needs you",
+      "ask": "Waiting for a reply",
       "failed": "Failed",
       "settled": "Completed"
     }
@@ -1215,7 +1215,7 @@
     "asked": "Asked {target}",
     "answer": "Answer",
     "question": {
-      "open": "Waiting for you",
+      "open": "Waiting for a reply",
       "answered": "Answered",
       "cancelled": "Cancelled",
       "timed_out": "Timed out"
@@ -1939,7 +1939,7 @@
     "preRunAuto": "Auto · {model} · reasoning: {reasoning} · files: {files} · {mode}",
     "reasoningRoute": "Chosen per request",
     "reasoningPicked": "reasoning {level}",
-    "cancelAutoChoice": "Cancel Corral selection",
+    "cancelAutoChoice": "Cancel team choice",
     "selectedTeamUnavailable": "Selected Corral unavailable",
     "selectedTeamMissing": "The selected Corral was deleted or moved. Choose a Corral or Auto before sending.",
     "preRunAutoExplain": "Auto · {model} · files: {files} · {mode}",
@@ -2527,7 +2527,7 @@
     "tooManyItems": "A request carries up to {max} references, text attachments and images in all. Remove {over} before sending.",
     "referenceGone": "(no longer exists)",
     "models": {
-      "title": "Models of this Corral",
+      "title": "Models for this conversation",
       "liveNote": "Live models are chosen: each role calls the model below.",
       "mockNote": "Simulated agents are chosen: no model is called. With live models, each role would call the model below.",
       "settings": "Model settings",
@@ -2678,8 +2678,8 @@
     "gitCommit": "Commit staged changes"
   },
   "Refusal": {
-    "signin": "The Corral's model is not connected. Sign in under Settings › Models, or send it with simulated agents.",
-    "profile": "The Corral uses a model profile that is not set up here. Check the model settings or the Corral's roles.",
+    "signin": "The model this request uses is not connected. Sign in under Settings › Models, or send it with simulated agents.",
+    "profile": "The model profile this request uses is not set up here. Check the model settings or the Corral's roles.",
     "advisor": "The advisor’s model could not be prepared.",
     "busy": "Another run is working right now. Queue this request to start it afterwards.",
     "limit": "The request is over this installation's limits (for example, referenced results are too large).",
@@ -3644,7 +3644,7 @@
   },
   "RuntimeRecovery": {
     "title": "Runtime recovery",
-    "scope": "Continues a stopped single-agent Run in a new Run. Corrals that use native extensions or hold more than one agent and its Output are not supported. The source Run is kept.",
+    "scope": "Continues a stopped single-agent Run in a new Run. Runs that use native extensions or more than one agent are not supported. The source Run is kept.",
     "empty": "No verified runtime checkpoint. Send a new request to continue from the existing results.",
     "unavailable": "Runtime recovery is unavailable.",
     "tree": "Files: {tree}",
@@ -3855,7 +3855,7 @@
     "requestOpen": "Branch before this request",
     "requestDescription": "Start this original request in a separate conversation and Run, using its original Corral and criteria.",
     "requestBoundary": "Starts at the original request boundary, before any model response.",
-    "activeRun": "Branching requires idle work and confirmed cleanup. Wait for running work to finish, then try again.",
+    "activeRun": "Branching requires the run to be idle and cleanup confirmed. Wait for the run to finish, then try again.",
     "model": "Model {model}"
   },
   "ProfileContext": {
@@ -3923,7 +3923,7 @@
     "planError": "Plan unavailable",
     "planStale": "These criteria are no longer current",
     "planMismatch": "This plan body does not match the current revision",
-    "follow": "Follow current work",
+    "follow": "Follow current run",
     "teamLast": "Last team plan",
     "activityWorking": "Working",
     "actionApproval": "Approval needed",
@@ -4618,7 +4618,6 @@
     "run": "Run",
     "terminal": "Terminal",
     "tools": "Tasks & preview",
-    "activeRun": "Active run controls",
     "openActiveRun": "Open run",
     "activeRunTarget": "Request: {request}",
     "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
@@ -4626,7 +4625,7 @@
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout",
     "git": "Git",
-    "team": "Team",
+    "team": "Corral",
     "debug": "Debugger",
     "paneActions": "Pane actions",
     "size": "Size",

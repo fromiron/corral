@@ -719,7 +719,7 @@ describe('RunCanvas', () => {
       [...screen.getByRole('list', { name: 'Observed relationships' }).children].map(
         (item) => item.textContent,
       );
-    expect(legend()).toEqual(['Call', 'Data', 'Needs you', 'Failed', 'Completed']);
+    expect(legend()).toEqual(['Call', 'Data', 'Waiting for a reply', 'Failed', 'Completed']);
     await act(async () =>
       harness.session.setState({ projection: { ...live, status: 'cancelled' } }),
     );

@@ -95,7 +95,7 @@ for (const stop of ['cancel', 'navigate'] as const) {
     expect(runId).toBeTruthy();
     try {
       if (stop === 'cancel')
-        await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
+        await page.getByRole('button', { name: 'Cancel team choice', exact: true }).click();
       else await openAllProjects(page);
       await expect
         .poll(() =>
@@ -172,7 +172,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     await started;
     const runId = corral.server.coordinator.listRuns()[0]?.runId;
     try {
-      await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel team choice', exact: true }).click();
       await expect(page.getByTestId('refusal')).toHaveAttribute('data-kind', 'network');
       await expect(page.getByTestId('refusal')).toContainText('Failed to fetch');
     } finally {
@@ -251,7 +251,7 @@ for (const outcome of ['failed', 'succeeded'] as const) {
     await started;
     const runId = corral.server.coordinator.listRuns()[0]?.runId;
     try {
-      await page.getByRole('button', { name: 'Cancel Corral selection', exact: true }).click();
+      await page.getByRole('button', { name: 'Cancel team choice', exact: true }).click();
       await expect(page.getByRole('alert').filter({ hasText: 'Failed to fetch' })).toBeVisible();
     } finally {
       releaseWorker();

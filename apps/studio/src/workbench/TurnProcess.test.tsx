@@ -467,7 +467,7 @@ it.each(['en', 'ko'] as const)(
     const plan = rows.find((row) => row.includes(messages.Turn.tool.update_plan));
     // The pill and the notice above the composer say the run waits; the turn does not.
     expect(ask).not.toContain(messages.Presence.state.awaiting_user);
-    expect(ask).not.toContain(locale === 'en' ? 'Waiting for your answer' : '답을 기다리는 중');
+    expect(ask).not.toContain(messages.Transcript.question.open);
     expect(ask).not.toContain(messages.Transcript.tool.allowed);
     // Nor does it open the question: its text shows only in that notice.
     const askRow = [...container.querySelectorAll('.turn-process-row')].find((row) =>
