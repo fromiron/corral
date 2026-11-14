@@ -114,7 +114,7 @@ export function RunView({
               {t('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={nameOf} />
             </p>
           ) : null}
-          <ExecutionTree session={session} onSteer={onSteer} />
+          <ExecutionTree session={session} onSteer={onSteer} steers />
           <RunOutput session={session} {...(onStartFrom ? { onStartFrom } : {})} />
         </>
       ) : null}
@@ -300,9 +300,16 @@ export function ExecutionTree({
   now,
   rounds,
   titled = true,
+  steers = false,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
+  /**
+   * Selecting a card picks whom the Reins instruct. An Outrider takes no person's instruction
+   * (features/advisor.md), so its card is no control here; it stays reachable from the keyboard
+   * so its state and work still read.
+   */
+  steers?: boolean;
   selectedExecutionId?: string | null;
   compact?: boolean;
   /** Show the bar's title. Inside a tab whose label names the executions, only the counts stay. */
@@ -556,6 +563,7 @@ export function ExecutionTree({
     // An advisor stands outside the flow: it says so once, by its name, and rests between
     // reviews watching, not waiting for an answer (features/advisor.md).
     const watching = executionWatching(execution);
+    const readOnly = steers && execution.advisor;
     return {
       id,
       name: labelOf(execution.nodeId),
@@ -609,11 +617,13 @@ export function ExecutionTree({
           />
         </>
       ),
+      ...(readOnly ? { selectable: false } : {}),
       cardProps: {
         id: `execution-${id}`,
         'data-testid': `execution-${id}`,
         'data-execution-id': id,
         'aria-current': id === selectedExecutionId ? 'true' : undefined,
+        ...(readOnly ? { tabIndex: 0 } : {}),
       },
       ...(children.length ? { children } : {}),
     };

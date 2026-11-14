@@ -2641,3 +2641,86 @@ describe.each(['en', 'ko'] as const)('a conversation’s Outrider on the run pag
     expect(pageText(view.container)).not.toContain('Advisor');
   });
 });
+
+/** worker, watched by the Outrider "Watcher"; both still working. */
+async function watchedRun(search: RunDetailSearch, locale: 'en' | 'ko' = 'en') {
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+  const base = linearCorral(['worker'], 'inline_team');
+  const definition = {
+    ...base,
+    nodes: [
+      ...base.nodes,
+      {
+        id: 'watcher',
+        type: 'agent' as const,
+        label: 'Watcher',
+        roleId: 'worker_role',
+        invocation: 'observer' as const,
+        outputName: 'notes',
+      },
+    ],
+    capabilityLinks: [
+      { id: 'watch', kind: 'advise' as const, sourceNodeId: 'watcher', targetNodeId: 'worker' },
+    ],
+  };
+  const projection = {
+    ...emptyProjection('run_layout'),
+    corralId: 'inline_team',
+    status: 'running' as const,
+    startedAt: '2026-10-26T09:05:00.000Z',
+  };
+  const mounted = await mount(
+    'inline_team',
+    null,
+    search,
+    undefined,
+    false,
+    undefined,
+    definition,
+    undefined,
+    { projection, locale },
+  );
+  await populateGraph(mounted.run, [
+    graphExecution('exec_worker', 'worker'),
+    { ...graphExecution('exec_watcher', 'watcher'), advisor: true, status: 'waiting_message' },
+  ]);
+  return mounted;
+}
+const buttonTexts = (root: Element | null | undefined) =>
+  [...(root?.querySelectorAll('button') ?? [])].map((button) => button.textContent?.trim());
+
+// An Outrider takes no person's instruction (features/advisor.md "보이는 곳";
+// execution-monitor.md, Reins): its execution reads like any other but offers no Give instruction.
+it.each([
+  ['en', 'Give instruction', messages.RunMonitor.calls],
+  ['ko', '지시하기', ko.RunMonitor.calls],
+] as const)(
+  'an address naming an Outrider’s execution shows its details but no instruction, and opens no Reins (%s)',
+  async (locale, instruct, calls) => {
+    const { container, navigate } = await watchedRun({ execution: 'exec_watcher' }, locale);
+    const side = container.querySelector<HTMLElement>('[data-testid="run-side"]');
+    expect(side?.hidden).toBe(false);
+    expect(side?.querySelector('h2')?.textContent).toBe('Watcher');
+    // Its work reads as any execution's does: its call conversation is there.
+    expect(side?.querySelector(`section[aria-label="${calls}"]`)).not.toBeNull();
+    expect(buttonTexts(side)).not.toContain(instruct);
+    expect(container.querySelector<HTMLElement>('[data-testid="run-instructions"]')?.hidden).toBe(
+      true,
+    );
+    expect(container.querySelector('[data-testid="reins-probe"]')).toBeNull();
+    // The quick view of the Outrider's node: its execution's details, no instruction.
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="select-watcher"]')?.click(),
+    );
+    const preview = () => container.querySelector('[data-testid="node-preview"]');
+    expect(preview()?.querySelector('[data-execution-id="exec_watcher"]')).not.toBeNull();
+    expect(buttonTexts(preview())).not.toContain(instruct);
+    // An ordinary execution still offers it, in the side and in its node's quick view.
+    await navigate({ execution: 'exec_worker' });
+    expect(buttonTexts(side)).toContain(instruct);
+    await act(async () =>
+      container.querySelector<HTMLButtonElement>('[data-testid="select-worker"]')?.click(),
+    );
+    expect(buttonTexts(preview())).toContain(instruct);
+  },
+);

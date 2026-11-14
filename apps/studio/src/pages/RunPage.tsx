@@ -34,6 +34,7 @@ import {
   SettingsPatchPanel,
   TaskBoard,
   Timeline,
+  takesInstruction,
   UsageInspector,
   useAgentName,
   useRoundInspection,
@@ -323,7 +324,6 @@ function RunWorkspace({
     setSearch({ atSeq: undefined }, { replace: true });
   }, [search.atSeq, setSearch]);
   const prices = useModelPrices();
-  const target = useSteerTarget(session, execution ?? null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [listedNodeId, setListedNodeId] = useState<string | null>(null);
   // The graph view's display, kept with the other view state across view switches. Until the
@@ -523,7 +523,8 @@ function RunWorkspace({
     });
   };
   const openSteering = (id: string, origin = activeElement()) => {
-    if (!projection?.executions[id]) return;
+    // An Outrider takes no person's instruction (features/advisor.md): no Reins for it.
+    if (!takesInstruction(projection?.executions[id])) return;
     steeringTrigger.current = origin;
     setSteeringId(id);
     setSteeringTargets((previous) => new Set(previous).add(id));
@@ -555,7 +556,14 @@ function RunWorkspace({
     );
   };
   const highlightedNode = selectedNodeId ?? executionNodeId;
-  const selectedTarget = execution ? target : null;
+  // The execution read in the side; it offers Give instruction only when a person may instruct it.
+  const selected = selectedExecution
+    ? {
+        executionId: selectedExecution.executionId,
+        nodeLabel: nameOf(selectedExecution.nodeId),
+        finished: TERMINAL_EXECUTION_STATUSES.has(selectedExecution.status),
+      }
+    : null;
   const closeDetails = (
     <Button
       variant="ghost"
@@ -845,7 +853,7 @@ function RunWorkspace({
                   >
                     {panel === 'run'
                       ? m('runInfo')
-                      : (selectedTarget?.nodeLabel ??
+                      : (selected?.nodeLabel ??
                         (listedNodeId && definition.nodes.some((node) => node.id === listedNodeId)
                           ? nameOf(listedNodeId)
                           : null) ??
@@ -884,8 +892,11 @@ function RunWorkspace({
                   onChoose={(id) => chooseExecution(id, trigger.current)}
                 />
               ) : null}
-              {selectedTarget && !selectedTarget.finished && panel === 'selection' ? (
-                <Button variant="primary" onClick={() => openSteering(selectedTarget.executionId)}>
+              {selected &&
+              !selected.finished &&
+              takesInstruction(selectedExecution) &&
+              panel === 'selection' ? (
+                <Button variant="primary" onClick={() => openSteering(selected.executionId)}>
                   {m('steer')}
                 </Button>
               ) : null}
@@ -932,11 +943,11 @@ function RunWorkspace({
                   </TabPanel>
                 </Tabs>
               ) : null}
-              {panel === 'selection' && selectedTarget && sessionId ? (
+              {panel === 'selection' && selected && sessionId ? (
                 <ExecutionEvidence
                   session={session}
                   sessionId={sessionId}
-                  executionId={selectedTarget.executionId}
+                  executionId={selected.executionId}
                   onOpenArtifact={openArtifact}
                 />
               ) : null}
@@ -960,13 +971,13 @@ function RunWorkspace({
                   ))}
                 </section>
               ) : null}
-              {panel === 'selection' && selectedTarget ? (
+              {panel === 'selection' && selected ? (
                 <div className="mt-4 grid gap-4">
-                  <ExecutionContext session={session} executionId={selectedTarget.executionId} />
+                  <ExecutionContext session={session} executionId={selected.executionId} />
                   <section aria-label={m('calls')} className="-mx-4 grid">
                     <ExecutionTranscript
                       session={session}
-                      executionId={selectedTarget.executionId}
+                      executionId={selected.executionId}
                       onOpenArtifact={openArtifact}
                       failureShown={Boolean(failedError)}
                     />
@@ -1744,6 +1755,7 @@ function NodeExecutions({
                   </Button>
                 ) : null}
                 {isActive(id) &&
+                takesInstruction(e) &&
                 projection.status !== 'cancelling' &&
                 e.status !== 'cancelling' &&
                 onSteer ? (

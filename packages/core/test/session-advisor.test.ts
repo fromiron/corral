@@ -509,6 +509,40 @@ async function conversation(options: Run = {}) {
 }
 
 describe('a conversation with the session advisor on a Coordinator', () => {
+  it('a steer to the conversation’s Outrider is refused and makes no directive', async () => {
+    const hold = new Gate();
+    // The review falls due after three requests; the fourth waits while it is steered.
+    const c = await conversation({
+      lead: {
+        turns: 4,
+        before: async (turn) => {
+          if (turn === 4) await hold.wait();
+        },
+      },
+    });
+    const advisorOf = () =>
+      Object.values(c.projection().executions).find((e) => e.nodeId === 'session_advisor');
+    await until(() => advisorOf() !== undefined, 'the advisor to start');
+    const advisor = advisorOf()?.executionId ?? '';
+    const steer = () =>
+      c.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: 'steer_advisor',
+        runId: c.runId,
+        type: 'steer',
+        payload: { targetExecutionId: advisor, text: 'Stop advising.', delivery: 'next_request' },
+      });
+    const receipt = steer();
+    expect(receipt).toMatchObject({ status: 'rejected', error: { code: 'CAPABILITY_DENIED' } });
+    expect(steer()).toEqual(receipt);
+    const directives = c.store
+      .readEvents(c.runId, 0)
+      .filter((event) => event.type.startsWith('directive.'));
+    expect(directives).toEqual([]);
+    hold.open();
+    await c.ended();
+  });
+
   it('pins the advisor in the run’s snapshot; a run started without it has none', async () => {
     const on = await conversation();
     const off = await conversation({ advisorOn: false });
