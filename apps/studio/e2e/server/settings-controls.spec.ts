@@ -79,7 +79,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await panel.getByRole('button', { name: 'Close', exact: true }).click();
     await expect(panel).toBeHidden();
 
-    await page.getByRole('link', { name: 'Work styles', exact: true }).click();
+    await page.getByRole('link', { name: 'Harnesses', exact: true }).click();
     const tools = page.getByRole('textbox', { name: 'Allowed tool names', exact: true });
     await expect(tools).toBeVisible();
     await tools.click();

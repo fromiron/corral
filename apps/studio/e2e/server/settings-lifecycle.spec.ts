@@ -5,13 +5,13 @@ test('settings guard preserves failed edits and saves only their selected target
   corral,
 }) => {
   await corral.open('/settings/harness');
-  await page.getByLabel('Work style name', { exact: true }).fill('Guarded style');
-  await page.getByRole('link', { name: 'Personal default work style', exact: true }).click();
+  await page.getByLabel('Harness name', { exact: true }).fill('Guarded style');
+  await page.getByRole('link', { name: 'Personal default Harness', exact: true }).click();
   const guard = page.getByRole('dialog', { name: 'Unsaved settings' });
   await expect(guard).toBeVisible();
   await guard.getByRole('button', { name: 'Keep editing' }).click();
-  await expect(page.getByLabel('Work style name', { exact: true })).toHaveValue('Guarded style');
-  await page.getByRole('link', { name: 'Personal default work style', exact: true }).click();
+  await expect(page.getByLabel('Harness name', { exact: true })).toHaveValue('Guarded style');
+  await page.getByRole('link', { name: 'Personal default Harness', exact: true }).click();
   await guard.getByRole('button', { name: 'Save and continue' }).click();
   await expect(page).toHaveURL(/settings=defaults/);
   const choose = page.getByRole('combobox', { name: 'Personal default', exact: true });

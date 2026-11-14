@@ -129,11 +129,11 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     writeFileSync(join(original, 'README.md'), 'hello\n');
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
 
-    const copy = page.getByRole('region', { name: 'Working copy' });
-    await copy.getByRole('button', { name: /Make a working copy from/ }).click();
+    const copy = page.getByRole('region', { name: 'Paddock' });
+    await copy.getByRole('button', { name: /Make a Paddock from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-    await expect(page.getByTestId('pre-run')).toContainText('can change the working copy');
+    await expect(page.getByTestId('pre-run')).toContainText('can change the Paddock');
 
     await requestBox(page).fill('Write the notes');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -291,18 +291,18 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await baseline.getByRole('button', { name: 'Preview restore' }).click();
     const preview = checkpoints.getByRole('region', { name: 'Preview restore' });
     await expect(preview).toContainText('notes/team_writer_role.md');
-    await preview.getByRole('button', { name: 'Restore working copy' }).click();
+    await preview.getByRole('button', { name: 'Restore Paddock' }).click();
     await expect(
       checkpoints
         .getByTestId('checkpoint-restore')
-        .filter({ hasText: 'Conversation working copy' })
+        .filter({ hasText: 'Paddock' })
         .first(),
     ).toContainText('Restore: Applied');
     await expect(
       checkpoints
         .getByTestId('checkpoint-row')
         .filter({ hasText: 'Before restore' })
-        .filter({ hasText: 'Conversation working copy' }),
+        .filter({ hasText: 'Paddock' }),
     ).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {

@@ -63,13 +63,13 @@ test('registers and selects a language server, approves an SDK query and trusts 
     await page.getByRole('button', { name: 'Save language server', exact: true }).click();
     await expect(page.getByText('Saved project tools revision 1', { exact: true })).toBeVisible();
     await page.goto(`${corral.server.url}/settings/harness?projectId=default`);
-    await page.getByLabel('Work style name', { exact: true }).fill('LSP writer');
+    await page.getByLabel('Harness name', { exact: true }).fill('LSP writer');
     await page
-      .getByRole('combobox', { name: 'Select language servers for this style', exact: true })
+      .getByRole('combobox', { name: 'Select language servers for this Harness', exact: true })
       .click();
     await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use language server Fixture server', { exact: true }).check();
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('typescript');

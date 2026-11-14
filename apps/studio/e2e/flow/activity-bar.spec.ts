@@ -597,8 +597,8 @@ async function commandSession(page: Page, corral: Harness) {
   await panelTab(page, 'Files');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page
-    .getByRole('region', { name: 'Working copy' })
-    .getByRole('button', { name: /Make a working copy from/ })
+    .getByRole('region', { name: 'Paddock' })
+    .getByRole('button', { name: /Make a Paddock from/ })
     .click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
   await panelTab(page, 'Conversation');

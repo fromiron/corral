@@ -191,11 +191,11 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   await closeSettings(page);
 
   await page.goto(`${capability.server.url}/settings/harness?projectId=default`);
-  await page.getByLabel('Work style name', { exact: true }).fill('Native integration work');
+  await page.getByLabel('Harness name', { exact: true }).fill('Native integration work');
   await page.getByRole('combobox', { name: 'Policy', exact: true }).click();
   await page.getByRole('option', { name: 'Trusted native extensions', exact: true }).click();
   await page.getByLabel('Allowed tool names', { exact: true }).fill(tools.join(', '));
-  await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+  await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
   await expect(page.getByTestId('harness-status')).toContainText('Saved revision 1');
   const response = await page.request.get(`${capability.server.url}/api/v1/harness/profiles`);
   expect(response.ok()).toBe(true);
@@ -235,7 +235,7 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   if (!sessionId) throw new Error('The UI did not create a session');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   // The working copy offer sits beside the panel's empty state.
-  await page.getByRole('button', { name: /Make a working copy from/ }).click();
+  await page.getByRole('button', { name: /Make a Paddock from/ }).click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
@@ -614,7 +614,7 @@ test('a session writer and another session’s writer keep separate controls', a
   await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  await page.getByRole('button', { name: /Make a working copy from/ }).click();
+  await page.getByRole('button', { name: /Make a Paddock from/ }).click();
   await panelTab(page, 'Conversation');
   await requestBox(page).fill('Hold C in this separate working copy.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();

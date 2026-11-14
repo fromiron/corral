@@ -30,7 +30,7 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
 async function expectReleaseHint(page: Page, panel: Locator) {
   await panel.getByRole('button', { name: 'About this terminal', exact: true }).click();
   const details = page.getByRole('dialog', { name: 'About this terminal', exact: true });
-  await expect(details).toContainText('Stop it to free the copy; releasing input does not.');
+  await expect(details).toContainText('Stop it to free the Paddock; releasing input does not.');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
 }
@@ -167,7 +167,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await panel.getByRole('button', { name: 'Refresh terminals' }).click();
   await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   const notice = page.getByTestId('terminal-writer-notice');
-  await expect(notice).toContainText('A terminal is holding this working copy');
+  await expect(notice).toContainText('A terminal is holding this Paddock');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
   await expectReleaseHint(page, panel);
   terminal = {
@@ -238,7 +238,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     const panel = page.getByTestId('terminal-panel');
     await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeDisabled();
     await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-    await page.getByRole('button', { name: /Make a working copy from/ }).click();
+    await page.getByRole('button', { name: /Make a Paddock from/ }).click();
     await openTerminal.click();
     await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeEnabled();
     await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
@@ -251,7 +251,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
-      'A terminal is holding this working copy',
+      'A terminal is holding this Paddock',
     );
     await page
       .getByTestId('terminal-writer-notice')
@@ -268,7 +268,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
       .locator('[data-chat-item]')
       .filter({ hasText: 'Summarize the fixture' })
       .getByTestId('entry-status');
-    await expect(refusal).toContainText('A terminal is holding this working copy');
+    await expect(refusal).toContainText('A terminal is holding this Paddock');
     await expect(page.getByTestId('refusal')).toHaveCount(0);
     const sidebarSession = page
       .getByTestId('app-sidebar')
@@ -277,7 +277,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(
       page.getByTestId('app-sidebar').getByRole('img', { name: 'Failed', exact: true }),
     ).toHaveCount(0);
-    await expect(refusal).toContainText('A terminal is holding this working copy');
+    await expect(refusal).toContainText('A terminal is holding this Paddock');
     await expect(refusal.getByText(/working copy terminal writer/)).not.toBeVisible();
     await refusal.getByRole('link', { name: 'Open terminal controls' }).click();
     await panel.getByRole('button', { name: 'Stop terminal', exact: true }).click();

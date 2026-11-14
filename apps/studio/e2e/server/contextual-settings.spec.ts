@@ -78,7 +78,7 @@ test('closing a pending save keeps its target and does not overwrite another pro
   await page.reload();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   let dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await dialog.getByRole('link', { name: 'Project default work style', exact: true }).click();
+  await dialog.getByRole('link', { name: 'Project default Harness', exact: true }).click();
   await dialog.getByRole('combobox', { name: 'Project default', exact: true }).click();
   await page.getByRole('option', { name: 'Modal style · r1', exact: true }).click();
   // Browser Back is the same guarded transition as the close control.
@@ -110,7 +110,7 @@ test('closing a pending save keeps its target and does not overwrite another pro
     await expect(page.getByTestId('settings-operations')).toContainText('pending');
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
     dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-    await dialog.getByRole('link', { name: 'Project default work style', exact: true }).click();
+    await dialog.getByRole('link', { name: 'Project default Harness', exact: true }).click();
     await dialog.getByRole('combobox', { name: 'Settings for', exact: true }).click();
     await page.getByRole('option', { name: 'Other modal project', exact: true }).click();
     const choose = dialog.getByRole('combobox', { name: 'Project default', exact: true });
@@ -436,10 +436,10 @@ test('a late profile save cannot erase another profile lost-response receipt', a
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
   const open = async (id: string) => {
     await page.getByRole('button', { name: 'Settings', exact: true }).click();
-    await dialog.getByRole('link', { name: 'Work styles', exact: true }).click();
+    await dialog.getByRole('link', { name: 'Harnesses', exact: true }).click();
     await dialog.getByRole('button', { name: `Style ${id} · r1`, exact: true }).click();
-    await dialog.getByLabel('Work style name', { exact: true }).fill(`Updated ${id}`);
-    await dialog.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await dialog.getByLabel('Harness name', { exact: true }).fill(`Updated ${id}`);
+    await dialog.getByRole('button', { name: 'Save Harness', exact: true }).click();
   };
   try {
     await open('a');
@@ -452,7 +452,7 @@ test('a late profile save cannot erase another profile lost-response receipt', a
     await expect(page.getByTestId('settings-operations')).toContainText('completed');
     finishB();
     await expect(dialog.getByRole('alert')).toBeVisible();
-    await dialog.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await dialog.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(dialog.getByTestId('harness-status')).toContainText('Saved revision 2');
     expect(bCommands).toHaveLength(2);
     expect(bCommands[1]).toBe(bCommands[0]);

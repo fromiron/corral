@@ -91,13 +91,13 @@ test('#79 without a default, adoption points to the chosen scope defaults screen
   await page.reload();
   await page.getByRole('button', { name: /Layout fixture writer/ }).click();
   // One way to Work styles, named for what happens there.
-  await expect(page.getByRole('link', { name: 'Connect in Work styles', exact: true })).toHaveCount(
+  await expect(page.getByRole('link', { name: 'Connect in Harnesses', exact: true })).toHaveCount(
     1,
   );
-  await expect(page.getByRole('link', { name: 'Manage work styles', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('link', { name: 'Manage Harnesses', exact: true })).toHaveCount(0);
   const panel = page.getByTestId('skill-quality');
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
-  const defaults = panel.getByRole('link', { name: /default work style/ });
+  const defaults = panel.getByRole('link', { name: /default Harness/ });
   await expect(defaults).toHaveAttribute('href', /settings\/defaults|settings=defaults/);
   await panel.getByRole('combobox', { name: 'Apply to', exact: true }).click();
   await page.getByRole('option').nth(1).click();
@@ -110,9 +110,9 @@ test('#80 settings say which project they target, that work styles are shared, a
   corral,
 }) => {
   await corral.open('/settings/harness');
-  await expect(page.getByTestId('shared-scope')).toContainText('Shared work style');
+  await expect(page.getByTestId('shared-scope')).toContainText('Shared Harness');
   const checks = page.getByRole('combobox', {
-    name: 'Select registered checks for this style',
+    name: 'Select registered checks for this Harness',
     exact: true,
   });
   await expect(checks).toHaveText(/Follow the parent setting/);
@@ -247,7 +247,7 @@ test('#88 both default screens show the same four-step ladder and mark which ste
   ] as const) {
     // Later pages reuse the session cookie.
     await page.goto(`${corral.server.url}${path}`);
-    const ladder = page.getByRole('list', { name: 'Which work style a run uses', exact: true });
+    const ladder = page.getByRole('list', { name: 'Which Harness a run uses', exact: true });
     await expect(ladder.getByRole('listitem')).toHaveCount(4);
     await expect(ladder.getByRole('listitem').locator('h4')).toHaveText([
       'Personal default',
@@ -259,13 +259,13 @@ test('#88 both default screens show the same four-step ladder and mark which ste
   }
   // The other default is one link away instead of in another settings group.
   await page
-    .getByRole('list', { name: 'Which work style a run uses', exact: true })
+    .getByRole('list', { name: 'Which Harness a run uses', exact: true })
     .getByRole('link', { name: 'Personal default', exact: true })
     .click();
   await expect(
     page
       .locator('[data-settings-header]')
-      .getByRole('heading', { name: 'Personal default work style', exact: true }),
+      .getByRole('heading', { name: 'Personal default Harness', exact: true }),
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });
@@ -289,7 +289,7 @@ test('#88 a settings address opens the same settings dialog over work, and closi
   await expect(
     page
       .getByRole('dialog', { name: 'Settings', exact: true })
-      .getByRole('list', { name: 'Which work style a run uses', exact: true }),
+      .getByRole('list', { name: 'Which Harness a run uses', exact: true }),
   ).toBeVisible();
   expect(corral.errors).toEqual([]);
 });

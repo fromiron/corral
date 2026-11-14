@@ -48,8 +48,8 @@ test('previews a run-only work style, uses its pinned layer and clears it after 
   corral.fake?.answerWith('Run override applied.');
   await page.goto(`${corral.server.url}/corrals/${corralId}/edit`);
   await openTestRun(page);
-  await page.getByText('Work styles for this run', { exact: true }).click();
-  const select = page.getByRole('combobox', { name: 'Run work style for writer', exact: true });
+  await page.getByText('Harnesses for this run', { exact: true }).click();
+  const select = page.getByRole('combobox', { name: 'Run Harness for writer', exact: true });
   await select.click();
   await page.getByRole('option', { name: 'One-time style · r1', exact: true }).click();
   await expect(select).toHaveAttribute('aria-expanded', 'false');

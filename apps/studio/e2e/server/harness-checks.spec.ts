@@ -49,13 +49,13 @@ test('selects a registered check, approves its SDK call and reads the owned veri
       );
     }, source);
     await page.reload();
-    await page.getByLabel('Work style name', { exact: true }).fill('Checked writer');
+    await page.getByLabel('Harness name', { exact: true }).fill('Checked writer');
     await page
-      .getByRole('combobox', { name: 'Select registered checks for this style', exact: true })
+      .getByRole('combobox', { name: 'Select registered checks for this Harness', exact: true })
       .click();
     await page.getByRole('option', { name: 'Choose below', exact: true }).click();
     await page.getByLabel('Use check Types', { exact: true }).check();
-    await page.getByRole('button', { name: 'Save work style', exact: true }).click();
+    await page.getByRole('button', { name: 'Save Harness', exact: true }).click();
     await expect(page.getByRole('status')).toContainText('Saved revision 1');
     await page.getByRole('button', { name: 'Preview effective settings', exact: true }).click();
     await expect(page.getByTestId('harness-preview')).toContainText('types');
