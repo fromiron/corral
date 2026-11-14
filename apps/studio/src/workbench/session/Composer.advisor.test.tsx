@@ -692,7 +692,16 @@ describe('what holds a request while the advisor saves', () => {
   });
 });
 
-it('the refusal under the input opens the advisor control', async () => {
+// What the composer announces: its live regions that say something.
+const said = (f: { container: HTMLElement }) =>
+  [...f.container.querySelectorAll('[role="alert"]')]
+    .map((node) => node.textContent ?? '')
+    .filter(Boolean);
+
+// A refused request is said once (features/composer-flow.md "보낸 메시지의 메타 줄"): its message
+// in the conversation says why, with the actions that help; the composer does not say it again,
+// but tells assistive tech once that it was refused.
+it('a refused request whose message is in the conversation is not said again under the input', async () => {
   const f = await mount({
     session: { ...baseSession, advisor: { modelProfile: 'model-a' } },
     start: async () => ({
@@ -707,13 +716,27 @@ it('the refusal under the input opens the advisor control', async () => {
   });
   await f.type('Find why login is slow');
   await f.press();
-  const refusal = f.container.querySelector('[data-kind="advisor"]');
-  expect(refusal).not.toBeNull();
-  expect(f.toggle()).toBeNull();
-  await act(async () =>
-    [...(refusal?.querySelectorAll('button') ?? [])]
-      .find((node) => node.textContent === messages.Refusal.chooseAdvisor)
-      ?.click(),
-  );
-  expect(f.toggle()?.getAttribute('aria-checked')).toBe('true');
+  expect(f.startAuto).toHaveBeenCalledTimes(1);
+  expect(f.container.querySelector('[data-testid="refusal"]')).toBeNull();
+  expect(f.button(messages.Refusal.chooseAdvisor)).toBeUndefined();
+  // Announced once, with the reason the message's line shows.
+  expect(said(f)).toEqual([messages.Refusal.advisor]);
+});
+
+it('a refusal that left no message is said under the input, with what helps', async () => {
+  const f = await mount({
+    session: { ...baseSession, advisor: { modelProfile: 'model-a' } },
+    start: async () => {
+      throw new TypeError('Failed to fetch');
+    },
+  });
+  await f.type('Find why login is slow');
+  await f.press();
+  const refusal = f.container.querySelector('[data-testid="refusal"]');
+  expect(refusal?.getAttribute('data-kind')).toBe('network');
+  expect(refusal?.getAttribute('role')).toBe('alert');
+  expect(said(f)).toHaveLength(1);
+  expect([...(refusal?.querySelectorAll('button') ?? [])].map((node) => node.textContent)).toEqual([
+    messages.Refusal.retry,
+  ]);
 });

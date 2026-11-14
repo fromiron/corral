@@ -41,7 +41,8 @@ export type TranscriptEntry =
       no: number;
       /** The request can still record what it sent; see `requestOpen`. */
       open: boolean;
-      directives: { directiveId: string; text: string }[];
+      /** What the request carried: the person's instructions and an advisor's advice. */
+      directives: { directiveId: string; text: string; origin: 'user' | 'advice' }[];
     }
   | {
       kind: 'reply';
@@ -157,6 +158,7 @@ export function buildTranscript(
           directives: event.payload.directiveIds.map((id) => ({
             directiveId: id,
             text: projection.directives[id]?.text ?? '',
+            origin: projection.directives[id]?.origin ?? 'user',
           })),
         });
         // The reply follows its request, streaming until model.finished brings the final text.

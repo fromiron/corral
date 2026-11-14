@@ -1,6 +1,7 @@
 import type { CorralDefinition } from '@corral/contracts';
 import type { DirectiveView, RunProjection, SessionEntry } from '@corral/core';
-import { awaitsPerson, targetLabel } from '../composerIntent.ts';
+import { deliveryState } from '@corral/react';
+import { targetLabel } from '../composerIntent.ts';
 
 // What a sent message's meta line says became of it (features/composer-flow.md "보낸 메시지의
 // 메타 줄"). Everything here is read from the run's own record and the session's entries.
@@ -31,19 +32,6 @@ export type SteerMeta =
   | { kind: 'notDelivered' }
   | { kind: 'unknown' };
 
-/**
- * An interrupt is "interrupted" only when the response just before the request that delivered
- * it, in the same execution, was really cut; with nothing to cut it was simply read.
- */
-export function cutBefore(projection: RunProjection, directive: DirectiveView): boolean {
-  if (directive.delivery !== 'interrupt' || !directive.modelCallId) return false;
-  const calls = Object.values(projection.modelCalls).filter(
-    (call) => call.executionId === directive.targetExecutionId,
-  );
-  const at = calls.findIndex((call) => call.modelCallId === directive.modelCallId);
-  return at > 0 && calls[at - 1]?.interrupted === true;
-}
-
 /** The meta line of an instruction (a join or an interrupt). */
 export function steerMeta(
   record: SteerRecord | null,
@@ -57,23 +45,12 @@ export function steerMeta(
   if (!record) return { kind: 'unread' };
   const { directive, projection, definition } = record;
   const executionId = directive.targetExecutionId;
+  // On its way or delivered, it says what an advice on the same path says (@corral/react).
+  const state = deliveryState(projection, directive);
+  if (state === 'read' || state === 'interrupted')
+    return { kind: state, executionId, target: targetLabel(projection, definition, executionId) };
+  if (state !== 'ended') return { kind: state };
   switch (directive.status) {
-    case 'accepted':
-      return { kind: 'waiting' };
-    case 'queued': {
-      const target = projection.executions[executionId];
-      return target && awaitsPerson(target) ? { kind: 'afterDecision' } : { kind: 'waiting' };
-    }
-    case 'attached_to_request':
-      return { kind: 'delivering' };
-    case 'delivered': {
-      const target = targetLabel(projection, definition, executionId);
-      return cutBefore(projection, directive)
-        ? { kind: 'interrupted', executionId, target }
-        : { kind: 'read', executionId, target };
-    }
-    case 'delivery_unknown':
-      return { kind: 'unknown' };
     case 'expired':
       // Whether it was carried is the session's word alone.
       if (carried) {

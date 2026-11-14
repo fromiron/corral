@@ -139,3 +139,23 @@ it('terminal notifications require an exact terminal identity and do not accept 
   ])
     expect(notificationTarget(value)).toBeNull();
 });
+
+it('advice notifications require the exact run and execution row and do not accept it on other kinds', async () => {
+  const { notificationTarget } = await import('../src/security.ts');
+  const target = {
+    kind: 'advice',
+    sessionId: 'session_a',
+    runId: 'run_a',
+    executionId: 'exec_a',
+  };
+  expect(notificationTarget(target)).toEqual(target);
+  for (const value of [
+    { ...target, executionId: undefined },
+    { ...target, executionId: '../other' },
+    { ...target, runId: null },
+    { ...target, terminalId: 'pty_a' },
+    { ...target, kind: 'decision' },
+    { kind: 'queued', sessionId: 'session_a', runId: null, executionId: 'exec_a' },
+  ])
+    expect(notificationTarget(value)).toBeNull();
+});

@@ -17,6 +17,7 @@ import {
   useSize,
 } from '../design-kit/index.ts';
 import { formatClock } from '../design-kit/lib/agent-format.ts';
+import { useAgentName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { EventText } from './RunText.tsx';
@@ -59,9 +60,14 @@ export function Timeline({
   const events = useRunDisplay(session, (s) => s.events);
   const executionViews = useRunDisplay(session, (s) => s.projection?.executions);
   const iterations = useRunDisplay(session, (s) => s.projection?.iterations);
+  const directives = useRunDisplay(session, (s) => s.projection?.directives);
+  const context = {
+    directiveOrigin: (directiveId: string) => directives?.[directiveId]?.origin,
+    advisor: (executionId: string) => executionViews?.[executionId]?.advisor === true,
+  };
   const definition = useStore(session, (s) => s.definition);
-  const nodeLabel = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  // A conversation's advisor is called "advisor", in the reader's language.
+  const nodeLabel = useAgentName(definition);
   const labelOf = (executionId: string | undefined) => {
     const nodeId = executionId ? executionViews?.[executionId]?.nodeId : undefined;
     return nodeId ? nodeLabel(nodeId) : (executionId ?? '');
@@ -85,7 +91,7 @@ export function Timeline({
       const round = view?.iterationId ? iterations?.[view.iterationId]?.no : null;
       const nodeId = view?.nodeId;
       const base = [
-        (nodeId && definition?.nodes.find((n) => n.id === nodeId)?.label) || nodeId || id,
+        (nodeId && nodeLabel(nodeId)) || id,
         round ? t('round', { no: round }) : null,
         view && view.attemptNo > 1 ? t('attempt', { no: view.attemptNo }) : null,
       ]
@@ -95,7 +101,7 @@ export function Timeline({
       seen.set(base, count);
       return [id, count > 1 ? `${base} (${count})` : base];
     });
-  }, [executions, executionViews, iterations, definition, t]);
+  }, [executions, executionViews, iterations, nodeLabel, t]);
   const origin = useMemo(() => {
     const first = startedAt ?? events[0]?.recordedAt;
     return first ? Date.parse(first) : null;
@@ -277,7 +283,12 @@ export function Timeline({
                           {t(`actors.${event.actor.kind}`)}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={event} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={event}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            context={context}
+                          />
                         </span>
                         <span className="ml-auto shrink-0 font-mono text-muted-foreground">
                           {event.type}
@@ -301,7 +312,12 @@ export function Timeline({
           <KitCardContent className="grid gap-4">
             <div className="grid gap-1">
               <p className="text-foreground">
-                <EventText event={selected} labelOf={labelOf} nodeLabel={nodeLabel} />
+                <EventText
+                  event={selected}
+                  labelOf={labelOf}
+                  nodeLabel={nodeLabel}
+                  context={context}
+                />
               </p>
               <p className="text-caption text-muted-foreground tabular-nums">
                 {format.dateTime(new Date(selected.recordedAt), {
@@ -327,7 +343,12 @@ export function Timeline({
                           #{cause.runSeq}
                         </span>
                         <span className="min-w-0 truncate">
-                          <EventText event={cause} labelOf={labelOf} nodeLabel={nodeLabel} />
+                          <EventText
+                            event={cause}
+                            labelOf={labelOf}
+                            nodeLabel={nodeLabel}
+                            context={context}
+                          />
                         </span>
                       </KitButton>
                     </li>

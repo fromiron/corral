@@ -15,9 +15,17 @@ import {
   ToolCallGroup,
   type ToolCallLabels,
 } from '../design-kit/index.ts';
+import {
+  type AdviceEntry,
+  type DeliveredAdvice,
+  deliveredAdvice,
+  unreadAdviceOf,
+  useAgentName,
+} from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
+import { AdviceBlock } from './AdviceLine.tsx';
 import { FailureNotice } from './FailureNotice.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
@@ -51,8 +59,32 @@ export function ExecutionTranscript({
     () => buildTranscript(events, projection, streams, executionId),
     [events, projection, streams, executionId],
   );
-  const labelOf = (nodeId: string) =>
-    definition?.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
+  const labelOf = useAgentName(definition);
+  const tm = useTranslations('Sessions.meta');
+  const ta = useTranslations('Advice');
+  // The advice this execution was given: delivered or on its way, by its directive, and what it
+  // never read, which its record keeps at its end (execution-monitor.md).
+  const delivered = useMemo(
+    () =>
+      new Map(
+        (projection ? deliveredAdvice(projection, executionId) : []).flatMap((item) => {
+          const directiveId = projection?.advice?.[item.adviceId]?.directiveId;
+          return directiveId ? [[directiveId, item] as const] : [];
+        }),
+      ),
+    [projection, executionId],
+  );
+  const unread = useMemo(
+    () =>
+      projection
+        ? unreadAdviceOf(projection).filter((item) => item.targetExecutionId === executionId)
+        : [],
+    [projection, executionId],
+  );
+  const adviserOf = (item: AdviceEntry) => {
+    const observer = projection?.executions[item.observerExecutionId];
+    return observer ? labelOf(observer.nodeId) : item.observerExecutionId;
+  };
 
   // Follow new entries unless the reader scrolled up to look at something earlier.
   const box = useRef<HTMLDivElement>(null);
@@ -81,7 +113,19 @@ export function ExecutionTranscript({
     >
       {entries.length === 0 ? <p className="text-muted-foreground">{t('empty')}</p> : null}
       {groupTools(entries).map((entry) =>
-        Array.isArray(entry) ? (
+        !Array.isArray(entry) && entry.kind === 'advice' ? (
+          // An advice's line where it was accepted; one its target never read is at the end.
+          delivered.get(entry.directiveId) ? (
+            <AdviceBlock
+              key={`advice-${entry.seq}`}
+              runId={projection?.runId ?? ''}
+              items={[delivered.get(entry.directiveId) as DeliveredAdvice]}
+              name={adviserOf(delivered.get(entry.directiveId) as DeliveredAdvice)}
+              nameOf={adviserOf}
+              status={tm((delivered.get(entry.directiveId) as DeliveredAdvice).state)}
+            />
+          ) : null
+        ) : Array.isArray(entry) ? (
           <ExecutionToolGroup
             key={`tools-${entry[0]?.seq}`}
             tools={entry}
@@ -98,11 +142,29 @@ export function ExecutionTranscript({
           />
         ),
       )}
+      {unread.length ? (
+        <AdviceBlock
+          runId={projection?.runId ?? ''}
+          items={unread}
+          name={
+            new Set(unread.map((item) => item.observerExecutionId)).size > 1
+              ? ta('advisors', {
+                  count: new Set(unread.map((item) => item.observerExecutionId)).size,
+                })
+              : adviserOf(unread[0] as AdviceEntry)
+          }
+          nameOf={adviserOf}
+          unread
+        />
+      ) : null}
     </div>
   );
 }
 
 type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
+
+const instructions = (entry: Extract<TranscriptEntry, { kind: 'request' }>) =>
+  entry.directives.filter((directive) => directive.origin !== 'advice').length;
 
 /** Consecutive tool calls fold into one kit tool-call group. */
 function groupTools(entries: TranscriptEntry[]): (TranscriptEntry | ToolEntry[])[] {
@@ -308,8 +370,14 @@ function Entry({
         <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
           <span>{t('request', { no: entry.no })}</span>
           <ReasoningSummary call={entry} open={entry.open} />
-          {entry.directives.length > 0 ? (
-            <Badge>{t('withInstructions', { count: entry.directives.length })}</Badge>
+          {/* The person's instructions and an advisor's advice, each said as what it is. */}
+          {instructions(entry) > 0 ? (
+            <Badge>{t('withInstructions', { count: instructions(entry) })}</Badge>
+          ) : null}
+          {entry.directives.length > instructions(entry) ? (
+            <Badge>
+              {t('withAdvice', { count: entry.directives.length - instructions(entry) })}
+            </Badge>
           ) : null}
         </p>
       );

@@ -120,6 +120,8 @@ interface Setup {
   live?: boolean;
   /** Saved Teams a `reference` Team node reads. */
   corrals?: DefinitionSource;
+  /** Admission gates in place of the defaults. */
+  admission?: ConstructorParameters<typeof Coordinator>[0]['admission'];
 }
 
 function setup(options: Setup = {}) {
@@ -172,6 +174,7 @@ function setup(options: Setup = {}) {
     ids: new SequentialIdFactory(),
     agents,
     ...(options.corrals ? { corrals: options.corrals } : {}),
+    ...(options.admission ? { admission: options.admission } : {}),
     ...(options.workspaceRoots ? { workspaceRoots: () => options.workspaceRoots ?? [] } : {}),
     ...(options.files ? { files: options.files } : {}),
     ...(options.harnesses ? { harnesses: options.harnesses } : {}),
@@ -1036,6 +1039,10 @@ describe('the advisor’s own record', () => {
     const s = setup({
       turns: { writer: 1 },
       advisor: { beforeReply: () => hold.wait() },
+      // The editor still works: more than the last review is left, so the run is cancelled.
+      work: async (_turn, input) => {
+        if (input.nodeId === 'editor') await hold.wait();
+      },
     });
     await s.wait((p) => Object.values(p.executions).some((e) => e.nodeId === 'advisor'));
     s.coordinator.submit({
@@ -2286,5 +2293,440 @@ describe('a review’s request cap', () => {
     expect(order).toEqual([`end ${reviewId}`, 'refused']);
     expect(s.advisorExecution()?.status).toBe('succeeded');
     expect(s.advisorExecution()?.modelCallIds).toHaveLength(1);
+  });
+});
+
+describe('stopping a run that has only its last review left', () => {
+  /** A second advisor on the writer, beside `advisor`. */
+  const twoAdvisors = () => {
+    const definition = advised({ interval: 1, maxRequestsPerReview: 8 });
+    definition.nodes.push({
+      id: 'advisor_b',
+      type: 'agent',
+      label: 'advisor b',
+      roleId: 'advisor_role',
+      invocation: 'observer',
+      outputName: 'notes',
+      review: { interval: 1, maxRequestsPerReview: 8 },
+    } as CorralDefinition['nodes'][number]);
+    definition.capabilityLinks.push({
+      id: 'watch_b',
+      kind: 'advise',
+      sourceNodeId: 'advisor_b',
+      targetNodeId: 'writer',
+    });
+    return definition;
+  };
+
+  /**
+   * The writer answers twice and the editor once. Each advisor advises in its first review; from
+   * its second it holds a model call open until it is stopped, then reports that call late and
+   * tries to advise again.
+   */
+  function holding(options: Partial<Setup> = {}, release?: Gate) {
+    const stops = new Map<string, Gate>();
+    const stop = (executionId: string) => {
+      const gate = stops.get(executionId) ?? new Gate();
+      stops.set(executionId, gate);
+      return gate;
+    };
+    const held = new Set<string>();
+    const early: ToolOutcome[] = [];
+    const late: string[] = [];
+    const lateObserved: string[] = [];
+    const reviewed: string[] = [];
+    const cancels: string[] = [];
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      turns: { writer: 2 },
+      ...options,
+      handle: (handle, input) =>
+        input.assignment.kind !== 'advisor'
+          ? handle
+          : {
+              ...handle,
+              cancel: async (reason) => {
+                cancels.push(input.nodeId);
+                stop(input.executionId).open();
+                await handle.cancel(reason);
+              },
+            },
+      advisor: {
+        script: async (input, host) => {
+          for (let n = 1; ; n++) {
+            const review = await host.nextReview?.();
+            if (!review) return { outcome: 'succeeded' };
+            reviewed.push(`${input.nodeId} ${n}`);
+            if (n === 1) {
+              await call(host, `${input.nodeId} reviewed once`);
+              early.push(
+                await host.invokeTool({
+                  name: 'advise',
+                  args: {
+                    severity: 'concern',
+                    note: `${input.nodeId}: the first claim has no source.`,
+                  },
+                }),
+              );
+              continue;
+            }
+            const permit = await host.prepareModelRequest(undefined);
+            await host.modelRequestDispatched?.(permit.modelCallId);
+            held.add(input.nodeId);
+            await stop(input.executionId).wait();
+            // The advisor's own end, held when the test holds it.
+            await release?.wait();
+            lateObserved.push(
+              await host
+                .observe({
+                  kind: 'model_completed',
+                  modelCallId: permit.modelCallId,
+                  text: 'a late answer',
+                  usage: { inputTokens: 10, outputTokens: 5 },
+                })
+                .then(
+                  () => 'observed',
+                  () => 'refused',
+                ),
+            );
+            late.push(
+              await host
+                .invokeTool({
+                  name: 'advise',
+                  args: { severity: 'concern', note: 'A late concern.' },
+                })
+                .then(
+                  (o) => (o.ok ? 'advised' : o.error.code),
+                  () => 'refused',
+                ),
+            );
+            return { outcome: 'cancelled' };
+          }
+        },
+      },
+    });
+    const stopRun = (commandId = 'stop') =>
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId,
+        runId: s.runId,
+        type: 'cancel',
+        payload: { scope: { kind: 'run' }, reason: 'stop' },
+      });
+    /** Every advisor holds its last review and the flow has reached its end. */
+    const lastReviewOnly = (nodes = ['advisor']) =>
+      s.wait(
+        (p) =>
+          nodes.every((n) => held.has(n)) &&
+          Object.values(p.executions).every(
+            (e) =>
+              ['advisor', 'advisor_b'].includes(e.nodeId) ||
+              ['succeeded', 'failed', 'cancelled'].includes(e.status),
+          ),
+        'only the last review left',
+      );
+    const advisorsOf = () =>
+      Object.values(s.projection().executions).filter((e) => e.nodeId.startsWith('advisor'));
+    const runCancelling = () =>
+      s.events().some((e) => e.type === 'run.state_changed' && e.payload.to === 'cancelling');
+    return {
+      s,
+      stopRun,
+      lastReviewOnly,
+      advisorsOf,
+      runCancelling,
+      early,
+      late,
+      lateObserved,
+      reviewed,
+      cancels,
+      held,
+    };
+  }
+
+  it('stops only the advisors: the run ends as it would have, with the advice it had', async () => {
+    const h = holding();
+    await h.lastReviewOnly();
+    const receipt = h.stopRun();
+    expect(receipt.status).toBe('accepted');
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(h.s.projection().output).not.toBeNull();
+    expect(h.runCancelling()).toBe(false);
+    expect(h.advisorsOf().map((e) => e.status)).toEqual(['cancelled']);
+    for (const nodeId of ['writer', 'editor'])
+      expect(h.s.executionOf(nodeId)?.status).toBe('succeeded');
+    // The advice of the first review stays; the stop takes nothing back.
+    expect(h.early.map((o) => o.ok)).toEqual([true]);
+    expect(Object.values(h.s.projection().advice ?? {})).toHaveLength(1);
+    // The stop is confirmed once, with the advisor's end, and its receipt says so.
+    const confirmed = h.s.events().filter((e) => e.type === 'cancel.confirmed');
+    expect(confirmed.map((e) => e.commandId)).toEqual(['stop']);
+    expect(h.stopRun().status).toBe('applied');
+  });
+
+  /** Each confirmation, after the settlements it names, and the advisor's settlement among them. */
+  const confirmations = (h: ReturnType<typeof holding>) => {
+    const events = h.s.events();
+    const advisor = h.s.advisorExecution()?.executionId;
+    const settled = events.find(
+      (e) => e.type === 'execution.settled' && e.payload.executionId === advisor,
+    );
+    return events
+      .filter((e) => e.type === 'cancel.confirmed')
+      .map((e) => ({
+        commandId: e.commandId,
+        afterTheAdvisor: settled !== undefined && e.runSeq > settled.runSeq,
+        namesTheAdvisor:
+          e.type === 'cancel.confirmed' &&
+          settled !== undefined &&
+          e.payload.settlementRefs.includes(settled.eventId),
+      }));
+  };
+  const resend = (h: ReturnType<typeof holding>, commandId: string) => h.stopRun(commandId).status;
+
+  it('a second stop while the advisor still stops is confirmed only once the advisor has ended', async () => {
+    const release = new Gate();
+    const h = holding({}, release);
+    await h.lastReviewOnly();
+    h.stopRun('stop');
+    await h.s.wait(
+      (p) => p.executions[h.s.advisorExecution()?.executionId ?? '']?.status === 'cancelling',
+      'the advisor to stop',
+    );
+    h.stopRun('stop_again');
+    await idle();
+    expect(h.s.events().some((e) => e.type === 'cancel.confirmed')).toBe(false);
+    expect(resend(h, 'stop_again')).not.toBe('applied');
+    release.open();
+    await h.s.ended();
+    await idle();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(confirmations(h)).toEqual([
+      { commandId: 'stop', afterTheAdvisor: true, namesTheAdvisor: true },
+      { commandId: 'stop_again', afterTheAdvisor: true, namesTheAdvisor: true },
+    ]);
+    expect(resend(h, 'stop_again')).toBe('applied');
+  });
+
+  it('a stop while the advisor alone is being cancelled is confirmed only once it has ended', async () => {
+    const release = new Gate();
+    const h = holding({}, release);
+    await h.lastReviewOnly();
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_advisor',
+      runId: h.s.runId,
+      type: 'cancel',
+      payload: {
+        scope: { kind: 'execution', executionId: h.s.advisorExecution()?.executionId ?? '' },
+        reason: 'not needed',
+      },
+    });
+    h.stopRun('stop');
+    await idle();
+    expect(h.s.events().some((e) => e.type === 'cancel.confirmed')).toBe(false);
+    expect(resend(h, 'stop')).not.toBe('applied');
+    release.open();
+    await h.s.ended();
+    await idle();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(confirmations(h)).toEqual([
+      { commandId: 'stop_advisor', afterTheAdvisor: true, namesTheAdvisor: true },
+      { commandId: 'stop', afterTheAdvisor: true, namesTheAdvisor: true },
+    ]);
+    expect(h.cancels).toEqual(['advisor']);
+  });
+
+  it('a stop once the advisors have ended, with the run not yet over, cancels the run', async () => {
+    // Nothing is left to stop but the run itself: the stop is as it is in a run without advisors.
+    let h: ReturnType<typeof holding> | null = null;
+    let atStop: { live: number; status: string } | null = null;
+    class StopAfterAdvisors extends InMemoryRunStore {
+      override appendEvents(runId: string, events: readonly RunEvent[]) {
+        super.appendEvents(runId, events);
+        const advisor = h?.s.advisorExecution()?.executionId;
+        if (
+          atStop === null &&
+          events.some((e) => e.type === 'execution.settled' && e.payload.executionId === advisor)
+        )
+          void Promise.resolve().then(() => {
+            if (!h) return;
+            const p = h.s.projection();
+            atStop = {
+              live: Object.values(p.executions).filter(
+                (e) => !['succeeded', 'failed', 'cancelled'].includes(e.status),
+              ).length,
+              status: p.status,
+            };
+            h.stopRun('stop_late');
+          });
+      }
+    }
+    h = holding({ store: new StopAfterAdvisors() });
+    await h.lastReviewOnly();
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_advisor',
+      runId: h.s.runId,
+      type: 'cancel',
+      payload: {
+        scope: { kind: 'execution', executionId: h.s.advisorExecution()?.executionId ?? '' },
+        reason: 'not needed',
+      },
+    });
+    await h.s.ended();
+    expect(atStop).toEqual({ live: 0, status: 'running' });
+    expect(h.s.projection().status).toBe('cancelled');
+    expect(h.s.projection().output).toBeNull();
+  });
+
+  it('a call that finishes after the stop starts no review, and the advice after it is refused', async () => {
+    const h = holding();
+    await h.lastReviewOnly();
+    h.stopRun();
+    await h.s.ended();
+    // The stopped advisor's own end waits for nothing more it sends.
+    await until(() => h.late.length > 0, 'the late advice');
+    expect(h.reviewed).toEqual(['advisor 1', 'advisor 2']);
+    expect(h.lateObserved).toEqual(['observed']);
+    expect(h.late).toEqual(['refused']);
+    expect(Object.values(h.s.projection().advice ?? {})).toHaveLength(1);
+    expect(h.s.projection().status).toBe('succeeded');
+  });
+
+  it('two advisors in their last reviews both stop, and the run ends as it would have', async () => {
+    const h = holding({ definition: twoAdvisors() });
+    await h.lastReviewOnly(['advisor', 'advisor_b']);
+    h.stopRun();
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(h.advisorsOf().map((e) => e.status)).toEqual(['cancelled', 'cancelled']);
+    expect(h.runCancelling()).toBe(false);
+  });
+
+  it('the same stop again gets its receipt; another stop while the advisors stop cancels nothing', async () => {
+    const h = holding();
+    await h.lastReviewOnly();
+    const first = h.stopRun('stop');
+    const again = h.stopRun('stop');
+    const another = h.stopRun('stop_again');
+    expect(again).toEqual(first);
+    expect(another.status).not.toBe('rejected');
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(h.runCancelling()).toBe(false);
+    expect(h.cancels).toEqual(['advisor']);
+    expect(h.s.events().filter((e) => e.type === 'cancel.requested')).toHaveLength(2);
+  });
+
+  it('between two roles, with only the advisor alive, the stop cancels the run, as before', async () => {
+    // The stop comes the moment the writer has ended, before the editor starts.
+    let h: ReturnType<typeof holding> | null = null;
+    let atStop: string[] | null = null;
+    class StopBetween extends InMemoryRunStore {
+      override appendEvents(runId: string, events: readonly RunEvent[]) {
+        super.appendEvents(runId, events);
+        const writer = h?.s.executionOf('writer')?.executionId;
+        if (
+          atStop === null &&
+          events.some((e) => e.type === 'execution.settled' && e.payload.executionId === writer)
+        )
+          void Promise.resolve().then(() => {
+            if (!h) return;
+            atStop = Object.values(h.s.projection().executions)
+              .filter((e) => !['succeeded', 'failed', 'cancelled'].includes(e.status))
+              .map((e) => e.nodeId);
+            h.stopRun();
+          });
+      }
+    }
+    h = holding({ store: new StopBetween() });
+    await h.s.ended();
+    expect(atStop).toEqual(['advisor']);
+    expect(h.s.projection().status).toBe('cancelled');
+    expect(h.s.executionOf('editor')).toBeUndefined();
+  });
+
+  it('a role still working: the stop cancels the run, as before', async () => {
+    const editing = new Gate();
+    const h = holding({
+      work: async (_turn, input) => {
+        if (input.nodeId === 'editor') await editing.wait();
+      },
+    });
+    await h.s.wait(
+      (p) =>
+        h.held.has('advisor') &&
+        p.executions[h.s.executionOf('editor')?.executionId ?? ''] !== undefined,
+      'the editor to start while the advisor holds',
+    );
+    h.stopRun();
+    editing.open();
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('cancelled');
+    expect(h.runCancelling()).toBe(true);
+  });
+
+  it('a person asked for something at the end: the stop cancels the run, as before', async () => {
+    // The advisor's second request waits for the person.
+    const ask = {
+      id: 'ask_for_the_advisor',
+      version: 1,
+      check: ({ input, projection }: { input: AgentStartInput; projection: RunProjection }) =>
+        input.assignment.kind === 'advisor' &&
+        Object.values(projection.modelCalls).some((c) => c.executionId === input.executionId)
+          ? {
+              kind: 'require_approval' as const,
+              approval: 'user_action' as const,
+              limit: { kind: 'no_progress' as const, used: 6, max: 6 },
+            }
+          : { kind: 'allow' as const },
+    };
+    const h = holding({
+      admission: { gates: { 'model.request': [...DEFAULT_GATES['model.request'], ask] } },
+    });
+    await h.s.wait(
+      (p) =>
+        Object.values(p.approvals).some((a) => a.status === 'pending') &&
+        p.executions[h.s.executionOf('editor')?.executionId ?? '']?.status === 'succeeded',
+      'the approval at the end',
+    );
+    h.stopRun();
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('cancelled');
+  });
+
+  it('stopping the advisor alone in its last review is as before', async () => {
+    const h = holding();
+    await h.lastReviewOnly();
+    const advisor = h.s.advisorExecution()?.executionId ?? '';
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'stop_advisor',
+      runId: h.s.runId,
+      type: 'cancel',
+      payload: { scope: { kind: 'execution', executionId: advisor }, reason: 'not needed' },
+    });
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('succeeded');
+    expect(h.advisorsOf().map((e) => e.status)).toEqual(['cancelled']);
+    expect(h.runCancelling()).toBe(false);
+  });
+
+  it('a paused run in its last review: the stop cancels the run, as before', async () => {
+    const h = holding();
+    await h.lastReviewOnly();
+    h.s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'pause',
+      runId: h.s.runId,
+      type: 'pause',
+      payload: { scope: 'run' },
+    });
+    await h.s.wait((p) => p.status === 'pausing' || p.status === 'paused', 'the pause');
+    h.stopRun();
+    await h.s.ended();
+    expect(h.s.projection().status).toBe('cancelled');
   });
 });

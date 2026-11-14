@@ -530,6 +530,33 @@ export function unansweredAttention(model: ChatWidgetModel | null) {
 }
 
 /** The context in the activity bar's panel: the share of the window, and compaction. */
+/** Whether the activity panel has a context section: something measured, or something to do. */
+export function activityContextShown(model: ChatWidgetModel | null | undefined): boolean {
+  if (!model?.runId) return false;
+  const { context, compaction } = model;
+  return Boolean(
+    context.percent != null ||
+      context.tokens != null ||
+      compaction?.phase ||
+      (compaction && !compaction.reason),
+  );
+}
+
+/** Whether the activity panel has a plan section: a plan to read, or plans to choose between. */
+export function activityPlanShown(model: ChatWidgetModel | null | undefined): boolean {
+  if (!model?.runId) return false;
+  return model.plan.status.state !== 'hidden' || Boolean(planOwnerChoice(model));
+}
+
+/** The plan's owner is chosen on the plan's heading: several plans, a choice made, or one hidden. */
+function planOwnerChoice(model: ChatWidgetModel) {
+  return (
+    model.plan.multiple ||
+    !model.plan.auto ||
+    (model.plan.status.state === 'hidden' && model.plan.choices.length > 0)
+  );
+}
+
 export function ActivityContext({ model }: { model: ChatWidgetModel }) {
   const t = useTranslations('Widgets');
   const tr = useTranslations('RunStatus');
@@ -542,7 +569,7 @@ export function ActivityContext({ model }: { model: ChatWidgetModel }) {
   const running = phase === 'queued' || phase === 'started';
   const compactable = Boolean(compaction && !compaction.reason);
   // Nothing measured and nothing to do: no section.
-  if (context.percent == null && context.tokens == null && !compactable && !phase) return null;
+  if (!activityContextShown(model)) return null;
   return (
     <section
       aria-label={t('context')}
@@ -716,27 +743,22 @@ export function ComposerPlan({
       ) : null}
     </>
   );
-  const owner =
-    model.plan.multiple ||
-    !model.plan.auto ||
-    (status.state === 'hidden' && model.plan.choices.length > 0) ? (
-      <Select
-        label={t('planOwner')}
-        variant={variant === 'activity' ? 'chip' : 'ghost'}
-        value={model.plan.auto ? 'auto' : (model.plan.selectedKey ?? 'auto')}
-        onValueChange={(value) =>
-          value === 'auto' ? model.plan.follow() : model.plan.choose(value)
-        }
-        options={[
-          { value: 'auto', label: t('follow') },
-          ...model.plan.choices.map((choice) => ({
-            value: choice.key,
-            label: choice.key === 'team' ? t('teamPlan') : choice.label,
-            hint: choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : undefined,
-          })),
-        ]}
-      />
-    ) : null;
+  const owner = planOwnerChoice(model) ? (
+    <Select
+      label={t('planOwner')}
+      variant={variant === 'activity' ? 'chip' : 'ghost'}
+      value={model.plan.auto ? 'auto' : (model.plan.selectedKey ?? 'auto')}
+      onValueChange={(value) => (value === 'auto' ? model.plan.follow() : model.plan.choose(value))}
+      options={[
+        { value: 'auto', label: t('follow') },
+        ...model.plan.choices.map((choice) => ({
+          value: choice.key,
+          label: choice.key === 'team' ? t('teamPlan') : choice.label,
+          hint: choice.lastTeam ? t('teamLast') : choice.status ? ts(choice.status) : undefined,
+        })),
+      ]}
+    />
+  ) : null;
   // In the activity bar's panel the plan is read as it is, under its heading and count.
   if (variant === 'activity')
     return status.state === 'hidden' && !owner ? null : (

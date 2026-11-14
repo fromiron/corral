@@ -1,6 +1,8 @@
 import { ExecutionStatus, type RunEvent } from '@corral/contracts';
 import { pendingInteractions, type RunProjection } from '@corral/core';
 import {
+  AdviceSummary,
+  AdviceText,
   buildTurnProcess,
   ExecutionToolGroup,
   executionViewPresence,
@@ -145,7 +147,7 @@ function Sources({ sources }: { sources: ProcessRow['sources'] }) {
 /** A step's name as the work log shows it on its row. */
 export function useStepName() {
   const t = useTranslations('Turn');
-  return (row: ProcessRow) =>
+  return (row: Exclude<ProcessRow, { kind: 'advice' }>) =>
     row.kind === 'model'
       ? t('request', { no: row.no })
       : row.kind === 'agent'
@@ -153,6 +155,45 @@ export function useStepName() {
         : t.has(`tool.${row.name}`)
           ? t(`tool.${row.name}`)
           : row.name;
+}
+
+/**
+ * An advice in the work it was given to: its line (the advisor · severity · first line · how its
+ * delivery stands, in the words a person's instruction uses) opens to its words.
+ */
+function AdviceStep({
+  row,
+  name,
+  isLast,
+}: {
+  row: Extract<ProcessRow, { kind: 'advice' }>;
+  name: string;
+  isLast: boolean;
+}) {
+  const tm = useTranslations('Sessions.meta');
+  const size = useSize();
+  const [open, setOpen] = useState(false);
+  const id = useId();
+  return (
+    // The step's label names the advisor once; its line under it says the rest.
+    <ThinkingStep
+      icon="message-circle"
+      label={name}
+      status="complete"
+      isLast={isLast}
+      className="turn-process-row"
+    >
+      <AdviceSummary
+        items={[row]}
+        status={<span data-advice-state={row.state}>{tm(row.state)}</span>}
+        open={open}
+        controls={id}
+        onToggle={() => setOpen((value) => !value)}
+        className={size.type.body}
+      />
+      <AdviceText id={id} open={open} items={[row]} nameOf={() => name} />
+    </ThinkingStep>
+  );
 }
 
 /**
@@ -381,6 +422,17 @@ export function TurnProcess({
         <ThinkingStepsContent id={panel} settledOnMount={returning}>
           {process.rows.map((row, index) => {
             const last = index === process.rows.length - 1;
+            if (row.kind === 'advice') {
+              const observer = projection.executions[row.observerExecutionId];
+              return (
+                <AdviceStep
+                  key={`advice:${row.id}`}
+                  row={row}
+                  name={observer ? label(observer.nodeId) : row.observerExecutionId}
+                  isLast={last}
+                />
+              );
+            }
             if (row.kind === 'model') {
               const label = stepName(row);
               // The applied level stays on the row. A judged request also shows its judgement;

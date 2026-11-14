@@ -15,6 +15,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { inboxEntries } from '../workbench/inbox.ts';
 import { notificationDestination } from '../workbench/notifications.ts';
 import { InboxPage, validateInboxSearch } from './InboxPage.tsx';
@@ -183,10 +184,14 @@ async function mount({
   projects = [ALPHA],
   inbox,
   runs = [],
+  executionOpened = async () => undefined,
+  messages = en,
 }: {
   projects?: ProjectSummary[];
   inbox: (projectId: string) => Promise<InboxItemView[]>;
   runs?: RunSummary[];
+  executionOpened?: (runId: string, executionId: string) => Promise<void>;
+  messages?: typeof en;
 }) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const stores = new Map<string, RunFixture>();
@@ -194,7 +199,7 @@ async function mount({
   const services = {
     repository: { listProjects: vi.fn(async () => projects) },
     transport: { listRuns: vi.fn(async () => runs) },
-    workspaces: { inbox: vi.fn(inbox) },
+    workspaces: { inbox: vi.fn(inbox), executionOpened: vi.fn(executionOpened) },
     runFor: vi.fn((runId: string) => {
       let run = stores.get(runId);
       if (!run) {
@@ -217,7 +222,7 @@ async function mount({
   });
   await act(async () =>
     root.render(
-      <IntlProvider locale="en" messages={en} timeZone="UTC">
+      <IntlProvider locale={messages === en ? 'en' : 'ko'} messages={messages} timeZone="UTC">
         <InboxPage />
       </IntlProvider>,
     ),
@@ -1245,4 +1250,105 @@ it('moves focus between an extension’s request and an approval waiting on the 
   await flush();
   await frames();
   expect(document.activeElement).toBe(inputOf(second.requestId));
+});
+
+const adviceV = item('advice', 's_v', 'Compare sources', {
+  runId: 'run_v',
+  executionId: 'exec_v',
+  severity: 'concern',
+  detail: 'The answer cites one source where the brief asks for two.',
+});
+const adviceW = item('advice', 's_w', 'Rewrite intro', {
+  runId: 'run_w',
+  executionId: 'exec_w',
+  severity: 'blocker',
+  detail: '<img src=x onerror="alert(1)"> keeps the old API',
+});
+
+it('lists an advice in the review group by its severity name and its first line, as text', async () => {
+  const { container } = await mount({
+    runs: [runSummary('run_v', 's_v', '2026-11-10T00:00:00Z')],
+    inbox: async () => [adviceV, adviceW, checkD],
+  });
+  const lists = [...container.querySelectorAll<HTMLElement>('[role="list"]')];
+  expect(lists).toHaveLength(1);
+  const heading = document.getElementById(lists[0]?.getAttribute('aria-labelledby') ?? '');
+  expect(heading?.textContent).toBe('Review');
+  // The group's count holds the advice with the other review items.
+  expect(heading?.parentElement?.textContent).toBe('Review3');
+  const line = (title: string) =>
+    [...(lists[0]?.querySelectorAll('[role="listitem"]') ?? [])]
+      .find((row) => row.textContent?.includes(title))
+      ?.querySelector('[data-slot="card-description"]')?.textContent;
+  expect(line('Compare sources')).toBe(
+    'Concern · The answer cites one source where the brief asks for two. · Run #1',
+  );
+  expect(line('Rewrite intro')).toBe('Blocker · <img src=x onerror="alert(1)"> keeps the old API');
+  // The advice is read as text: nothing in it becomes markup.
+  expect(container.querySelector('img')).toBeNull();
+});
+
+it('names a severity by its Korean name too', async () => {
+  const { container } = await mount({ inbox: async () => [adviceV, adviceW], messages: ko });
+  const lines = [...container.querySelectorAll('[data-slot="card-description"]')].map(
+    (line) => line.textContent?.split(' · ')[0],
+  );
+  expect(lines).toEqual(['우려', '중단 권고']);
+});
+
+it('opens an advice’s execution row where a notification would, and only goes there', async () => {
+  const { services, rowButton, detail, click } = await mount({
+    inbox: async () => [adviceV, checkD],
+  });
+  await click(rowButton('Compare sources'));
+  const link = detail()?.querySelector('a');
+  expect([link?.textContent, link?.getAttribute('href')]).toEqual([
+    'Open advice',
+    '/sessions/s_v?advice=run_v',
+  ]);
+  // The link leads where a notification would.
+  expect(link?.getAttribute('href')).toBe(
+    await notificationDestination(adviceV, {
+      getSession: async () => ({ projectId: 'alpha', archivedAt: null }),
+      inbox: async () => [adviceV],
+    }),
+  );
+  link?.addEventListener('click', (event) => event.preventDefault());
+  await click(link);
+  // Going there is not reading it: the server is told only where the advice is read.
+  expect(services.workspaces.executionOpened).not.toHaveBeenCalled();
+  expect(rowButton('Compare sources')).toBeDefined();
+});
+
+it('names an advice by its severity when its first line is empty', async () => {
+  const { container } = await mount({
+    runs: [runSummary('run_v', 's_v', '2026-11-10T00:00:00Z')],
+    inbox: async () => [{ ...adviceV, detail: null }],
+  });
+  expect(container.querySelector('[data-slot="card-description"]')?.textContent).toBe(
+    'Concern · Run #1',
+  );
+});
+
+it('isolates an advice’s first line, so a direction mark in it cannot turn the row around', async () => {
+  const rtl = '\u202Eecivda desrever\u202C';
+  const { container } = await mount({ inbox: async () => [{ ...adviceV, detail: rtl }] });
+  const line = container.querySelector('[data-slot="card-description"]');
+  expect(line?.textContent).toBe(`Concern · ${rtl}`);
+  expect(line?.querySelector('bdi')?.textContent).toBe(rtl);
+});
+
+it('shows a severity this version has no name for as it was recorded', async () => {
+  const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+  try {
+    const { container } = await mount({
+      inbox: async () => [{ ...adviceV, severity: 'critical' as never }],
+    });
+    expect(container.querySelector('[data-slot="card-description"]')?.textContent).toBe(
+      'critical · The answer cites one source where the brief asks for two.',
+    );
+    expect(errors).not.toHaveBeenCalled();
+  } finally {
+    errors.mockRestore();
+  }
 });

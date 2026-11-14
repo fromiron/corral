@@ -6,8 +6,10 @@ import {
   type RunSummary,
 } from '@corral/core';
 import {
+  agentName,
   callLine,
   executionPresence,
+  executionWatching,
   type Presence,
   type RunSessionState,
   type RunSessionStore,
@@ -42,6 +44,21 @@ export interface ActivityRole {
   startedAt: string | null;
 }
 
+/**
+ * An advisor of the run (features/advisor.md "보이는 곳"): it watches the roles and is not one of
+ * them, so it takes no instruction and nothing that counts roles counts it.
+ */
+export interface ActivityAdvisor {
+  id: string;
+  name: string;
+  presence: Presence;
+  /** Resting between reviews, or reviewing; null when its state says otherwise (paused, failed). */
+  review: 'watching' | 'reviewing' | null;
+  /** Its advice that reached their targets; dropped and undelivered advice are not counted. */
+  delivered: number;
+  startedAt: string | null;
+}
+
 /** The first request waiting on the person. */
 export type WaitingItem =
   | {
@@ -72,6 +89,13 @@ export interface ActivityInput {
     roles: number;
   } | null;
   roles: ActivityRole[];
+  /** The run's advisors still watching or reviewing, and those that failed. */
+  advisors?: ActivityAdvisor[];
+  /**
+   * The run's flow has reached its end: no role, task, approval or question is open, so nothing
+   * but its advisors' last reviews keeps it going (features/composer-flow.md "활동 바").
+   */
+  flowEnded?: boolean;
   /** Requests waiting in the tray over the session's runs, and the running run's first. */
   waiting: { count: number; first: WaitingItem | null };
   tray: TrayPlacement;
@@ -86,6 +110,8 @@ export type ClosedLine =
   | { kind: 'waiting'; count: number; item: WaitingItem | null }
   | { kind: 'role'; role: ActivityRole; others: number }
   | { kind: 'target'; role: ActivityRole; stateShown: boolean }
+  /** The flow has reached its end and an advisor's last review keeps the run open. */
+  | { kind: 'advisor'; advisor: ActivityAdvisor }
   | { kind: 'summary'; stateShown: boolean }
   | { kind: 'none' };
 
@@ -101,8 +127,9 @@ export function roleSeen(input: Pick<ActivityInput, 'run' | 'visible'>, role: { 
 
 /**
  * The closed line: the first that holds of (1) a waiting request whose card is measured
- * off-screen, (2) a working role whose row is off-screen, (3) the join target's activity and
- * (4) the run's summary. A lost link comes before all of them: what follows may be stale.
+ * off-screen, (2) a working role whose row is off-screen, (3) the join target's activity, (4) an
+ * advisor's last review once the flow has reached its end (why the run has not ended) and (5) the
+ * run's summary. A pause between steps, or for a person, is no last review. A lost link comes before all of them: what follows may be stale.
  */
 export function closedLine(input: ActivityInput): ClosedLine {
   if (input.connection !== 'ok') return { kind: 'disconnected', reason: input.connection };
@@ -122,8 +149,20 @@ export function closedLine(input: ActivityInput): ClosedLine {
     const named = away.find((role) => role.id === input.target) ?? away[0];
     if (named) return { kind: 'role', role: named, others: away.length - 1 };
     const target = input.roles.find((role) => role.id === (input.target ?? run.lead));
-    if (target && (target.activity || !roleSeen(input, target)))
-      return { kind: 'target', role: target, stateShown: !roleSeen(input, target) };
+    const targetSeen = Boolean(target && roleSeen(input, target));
+    // A role's own row on screen says its state's detail beside the state (presence.md): the
+    // line says only work the row does not. The run row says the run's state, not the lead's
+    // detail, so it does not count here.
+    const rowSays = Boolean(target?.presence.detail && input.visible.has(`execution:${target.id}`));
+    const said = target?.activity && !rowSays;
+    if (target && (said || !targetSeen))
+      return { kind: 'target', role: target, stateShown: !targetSeen };
+    // Only a review is a last review: a watching advisor waits for work that will not come, and a
+    // failed one holds nothing up (its row says it failed).
+    const reviewing = input.flowEnded
+      ? input.advisors?.find((advisor) => advisor.review === 'reviewing')
+      : undefined;
+    if (reviewing) return { kind: 'advisor', advisor: reviewing };
   }
   return { kind: 'summary', stateShown: !input.visible.has(`run:${run.runId}`) };
 }
@@ -260,8 +299,9 @@ function rolesOf(
       approval.status === 'pending' && approval.tool ? [approval.tool.toolCallId] : [],
     ),
   );
+  // An advisor is not one of the roles: it has its own row (`advisorsOf`).
   const open = currentAgentExecutions(projection).filter(
-    (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+    (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status) && !execution.advisor,
   );
   const nameOf = (execution: (typeof open)[number]) =>
     definition?.nodes.find((item) => item.id === execution.nodeId)?.label ?? execution.nodeId;
@@ -301,14 +341,81 @@ function rolesOf(
   });
 }
 
-/** How many of the running run's current executions are still open; null until its record is read. */
+/**
+ * The run's advisors that watch or review, and those that failed (features/advisor.md "보이는
+ * 곳"): an ended advisor has nothing left to say, a failed one says it on its row. Each counts the
+ * advice its node gave that reached a target, over its attempts.
+ */
+function advisorsOf(
+  projection: RunProjection,
+  definition: RunSessionState['definition'],
+  events: readonly RunEvent[],
+  advisorWord: string,
+): ActivityAdvisor[] {
+  const times = executionTimes(events);
+  const delivered = new Map<string, number>();
+  for (const advice of Object.values(projection.advice ?? {})) {
+    const directive = advice.directiveId ? projection.directives[advice.directiveId] : undefined;
+    const node = projection.executions[advice.observerExecutionId]?.nodeId;
+    if (directive?.status === 'delivered' && node)
+      delivered.set(node, (delivered.get(node) ?? 0) + 1);
+  }
+  return currentAgentExecutions(projection)
+    .filter(
+      (execution) =>
+        execution.advisor &&
+        (!TERMINAL_EXECUTION_STATUSES.has(execution.status) || execution.status === 'failed'),
+    )
+    .map((execution) => {
+      const presence = executionPresence({ status: execution.status, observer: true });
+      return {
+        id: execution.executionId,
+        name: agentName(definition, execution.nodeId, advisorWord),
+        presence,
+        review: executionWatching(execution)
+          ? 'watching'
+          : presence.kind === 'working' || presence.kind === 'starting'
+            ? 'reviewing'
+            : null,
+        delivered: delivered.get(execution.nodeId) ?? 0,
+        startedAt: times.get(execution.executionId)?.first ?? null,
+      };
+    });
+}
+
+/**
+ * Whether the run's flow has reached its end: it runs, nothing waits on a person, and no task but
+ * an advisor's is open (a task with no execution yet is the flow's next step). The projection
+ * records no end of the flow itself; this is what it says of one.
+ */
+function flowEnded(projection: RunProjection, waiting: number): boolean {
+  if (projection.status !== 'running' || waiting > 0) return false;
+  const advisors = new Set(
+    Object.values(projection.executions).flatMap((execution) =>
+      execution.advisor ? [execution.taskId] : [],
+    ),
+  );
+  const openTask = Object.values(projection.tasks).some(
+    (task) => !advisors.has(task.taskId) && !ENDED_TASKS.has(task.status),
+  );
+  const openRole = Object.values(projection.executions).some(
+    (execution) => !execution.advisor && !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+  );
+  return !openTask && !openRole;
+}
+const ENDED_TASKS = new Set(['completed', 'failed', 'cancelled']);
+
+/**
+ * How many of the running run's current executions are still open; null until its record is read.
+ * An advisor is not counted: with its last review alone left, Stop stops the run without asking.
+ */
 export function useActiveExecutionCount(runId: string | null): number | null {
   const { runFor } = useServices();
   const store = runId ? runFor(runId) : EMPTY_STORE;
   return useStore(store, (state) =>
     runId && state.runId === runId && state.projection?.runId === runId
       ? currentAgentExecutions(state.projection).filter(
-          (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status),
+          (execution) => !TERMINAL_EXECUTION_STATUSES.has(execution.status) && !execution.advisor,
         ).length
       : null,
   );
@@ -354,6 +461,7 @@ export function useActivity({
   const ta = useTranslations('Approvals');
   const tw = useTranslations('Widgets');
   const tp = useTranslations('Presence');
+  const tadv = useTranslations('Advice');
   const model = useChatWidget();
   const connection = useSessionConnection();
   const tray = usePendingTray();
@@ -387,6 +495,11 @@ export function useActivity({
           )
         : [],
     [projection, state.definition, state.events, tt, tp],
+  );
+  const advisorWord = tadv('advisor');
+  const advisors = useMemo(
+    () => (projection ? advisorsOf(projection, state.definition, state.events, advisorWord) : []),
+    [projection, state.definition, state.events, advisorWord],
   );
   const interactions: InteractionView[] = useMemo(
     () => (projection ? pendingInteractions(state.events, projection) : []),
@@ -504,6 +617,10 @@ export function useActivity({
     connection: connection?.lost ? 'lost' : recordLost ? 'record' : 'ok',
     run,
     roles,
+    advisors,
+    flowEnded: projection
+      ? flowEnded(projection, Math.max(tray.waiting, interactions.length))
+      : false,
     waiting: { count: Math.max(tray.waiting, interactions.length), first: firstItem },
     tray: tray.placement,
     visible,
@@ -531,7 +648,8 @@ export function useActivity({
   );
   return {
     input,
-    line: closedLine(shown === visible ? input : { ...input, visible: shown, roles: said }),
+    // Open, the advisors' rows say their reviews: the line does not.
+    line: closedLine(open ? { ...input, visible: shown, roles: said, advisors: [] } : input),
     store,
     projection,
     sending: Boolean(runId && state.runId === runId && state.sending),

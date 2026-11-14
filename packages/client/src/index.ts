@@ -3122,6 +3122,13 @@ export class WorkspacesApi {
   inbox(projectId: string): Promise<InboxItemView[]> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/inbox`);
   }
+  /** The person opened this execution row; its unread advice leaves the inbox (inbox.md). */
+  async executionOpened(runId: string, executionId: string): Promise<void> {
+    await this.send(
+      `/runs/${encodeURIComponent(runId)}/executions/${encodeURIComponent(executionId)}/opened`,
+      'POST',
+    );
+  }
   /** Each unarchived session's latest recorded check, decision and applying; read only. */
   sessionEvidence(projectId: string): Promise<SessionEvidenceView[]> {
     return this.send(`/projects/${encodeURIComponent(projectId)}/session-evidence`);
@@ -3178,13 +3185,18 @@ export interface InboxItemView {
     | 'check_failed'
     | 'unreviewed'
     | 'recipe_stopped'
-    | 'lsp_proposal';
+    | 'lsp_proposal'
+    | 'advice';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;
   detail: string | null;
   /** Present only for an uncertain terminal's read-only recovery link. */
   terminalId?: string;
+  /** `advice` only: the execution row the advice was for, which the item opens. */
+  executionId?: string;
+  /** `advice` only; `detail` is the advice's first line. */
+  severity?: import('@corral/contracts').AdviceSeverity;
 }
 
 /** A session's latest recorded check, decision and applying, without text, paths or output. */

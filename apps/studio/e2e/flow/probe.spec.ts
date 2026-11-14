@@ -82,6 +82,9 @@ test('items are followed by value across node swaps; vanished values are lost', 
   const b = result.items.find((item) => item.id === 'data-chat-item=b');
   expect(b?.maxViewportShiftXPx).toBe(12);
   expect(b?.maxViewportShiftYPx).toBe(5);
+  // Moved on the frames after the swap; a never moved.
+  expect(b?.framesMoved).toBeGreaterThan(0);
+  expect(result.items.find((item) => item.id === 'data-chat-item=a')?.framesMoved).toBe(0);
   expect(result.lost).toEqual(['item data-chat-item=c']);
   expect(result.samples.tracked).toEqual({ item: 3, row: 0, part: 1 });
   expect(result.items.find((item) => item.kind === 'part')?.id).toBe(
@@ -140,6 +143,43 @@ test('elements sharing a value are tracked one by one', async ({ page: tab }) =>
   expect(shift('data-chat-item=a/data-chat-part=body#2')).toBe(30);
   expect(result.samples.tracked.part).toBe(2);
   expect(result.samples.duplicateIds).toBe(1);
+  expect(result.duplicated).toEqual(['part data-chat-item=a/data-chat-part=body']);
+});
+
+test('a value shared only in the middle of an interval counts as a duplicate', async ({
+  page: tab,
+}) => {
+  await tab.setContent(page);
+  const probe = createProbe(tab);
+  await probe.start('shared-later');
+  // A second item with b's value comes and goes again before stop().
+  await tab.evaluate(async () => {
+    const copy = document.querySelector('[data-chat-item="b"]')?.cloneNode(true) as HTMLElement;
+    document.querySelector('ol')?.append(copy);
+    await new Promise((done) => requestAnimationFrame(() => requestAnimationFrame(done)));
+    copy.remove();
+  });
+  const result = await probe.stop();
+  expect(result.samples.duplicateIds).toBe(1);
+  expect(result.duplicated).toEqual(['item data-chat-item=b']);
+});
+
+test('the tail gap is measured from the last block the tail selector names', async ({
+  page: tab,
+}) => {
+  await tab.setContent(page);
+  const probe = createProbe(tab, { tailSelector: '[data-chat-item], [data-pending-tray]' });
+  await probe.start('tray');
+  // A block after the last item grows; the items do not move.
+  await tab.evaluate(() => {
+    const tray = document.createElement('div');
+    tray.setAttribute('data-pending-tray', '');
+    tray.style.height = '30px';
+    document.querySelector('ol')?.append(tray);
+  });
+  const result = await probe.stop();
+  expect(result.maxTailGapChangePx).toBe(30);
+  expect(result.maxContainerShiftPx).toBe(0);
 });
 
 /** A page whose `moving` element shifts by 4px every 50ms, for `forMs` (or for good). */
@@ -150,7 +190,10 @@ function movingPage(moving: string, forMs?: number) {
     <div data-testid="chat-timeline">
       <div data-chat-item="a"><div data-chat-part="body">a</div></div>
     </div>
-    <nav><a data-sidebar-index="0" data-session-kind="chat" href="#">row</a></nav>
+    <nav>
+      <a data-sidebar-index="0" href="#">project</a>
+      <a data-session-row="s1" href="#">session</a>
+    </nav>
     <div data-testid="chat-composer"><textarea></textarea></div>
     <script>
       const element = document.querySelector('${moving}');
@@ -168,6 +211,11 @@ const brief = { stillMs: 300, timeoutMs: 1_500 };
 
 test('waitForStill: a sidebar row still moving keeps it waiting', async ({ page: tab }) => {
   await tab.setContent(movingPage('[data-sidebar-index]'));
+  await expect(waitForStill(tab, brief)).rejects.toThrow(/did not settle/);
+});
+
+test('waitForStill: a session row still moving keeps it waiting', async ({ page: tab }) => {
+  await tab.setContent(movingPage('[data-session-row]'));
   await expect(waitForStill(tab, brief)).rejects.toThrow(/did not settle/);
 });
 

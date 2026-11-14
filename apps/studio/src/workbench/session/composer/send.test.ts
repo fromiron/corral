@@ -208,6 +208,27 @@ describe('composer send paths', () => {
     });
   });
 
+  it('a refused new request is recorded with its reason, and the refusal says so', async () => {
+    const h = harness();
+    h.startAuto.mockResolvedValueOnce({
+      runId: null,
+      receipt: {
+        commandId: 'cmd_fixed',
+        accepted: false,
+        error: { code: 'TARGET_NOT_FOUND', message: 'no such model profile: writer' },
+      },
+      autoRoute: null,
+    } as never);
+    await sendRequest(h.deps, input());
+    expect(h.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ state: 'refused', detail: 'no such model profile: writer' }),
+    );
+    expect(h.deps.setRefusal).toHaveBeenLastCalledWith(
+      expect.objectContaining({ message: 'no such model profile: writer', recorded: true }),
+    );
+  });
+
   it('retries a lost new request with the same command and the same start body', async () => {
     const h = harness();
     h.startAuto.mockRejectedValueOnce(new Error('connection reset'));
@@ -330,10 +351,12 @@ describe('composer send paths', () => {
       'session',
       expect.objectContaining({ state: 'refused', detail: 'The execution ended', refusal: error }),
     );
+    // Its message is in the conversation and says why: the composer does not say it again.
     expect(h.deps.setRefusal).toHaveBeenLastCalledWith({
       message: 'The execution ended',
       code: 'TARGET_ENDED',
       owner: 'runtime',
+      recorded: true,
     });
     expect(h.deps.clearDraft).not.toHaveBeenCalled();
   });

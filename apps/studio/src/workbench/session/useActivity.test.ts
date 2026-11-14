@@ -1,6 +1,11 @@
 import { executionPresence, runPresence } from '@corral/react';
 import { describe, expect, it } from 'vitest';
-import { type ActivityInput, type ActivityRole, closedLine } from './useActivity.ts';
+import {
+  type ActivityAdvisor,
+  type ActivityInput,
+  type ActivityRole,
+  closedLine,
+} from './useActivity.ts';
 
 // The activity bar's closed line (features/composer-flow.md "활동 바"): the first that holds of
 // an off-screen waiting request, an off-screen working role, the join target's activity and the
@@ -111,6 +116,56 @@ describe('closedLine', () => {
     expect(line).toMatchObject({ stateShown: false });
   });
 
+  // presence.md "한 화면에 한 번": a role's row on screen says its state's detail beside the state.
+  it.each([
+    ['waiting_children', 'Waiting for agents'],
+    ['waiting_message', 'Waiting for a reply'],
+  ] as const)(
+    'does not repeat the detail (%s) of a target whose row says it, and says the summary',
+    (status, detail) => {
+      const waiting: ActivityRole = {
+        ...role('exec_research', 'Researcher', detail),
+        presence: executionPresence({ status }),
+      };
+      const roles = [team[0] as ActivityRole, waiting];
+      const seen = closedLine(
+        input({
+          roles,
+          visible: new Set(['run:run_a', 'execution:exec_research']),
+          target: 'exec_research',
+        }),
+      );
+      expect(seen).toEqual({ kind: 'summary', stateShown: false });
+      // Off-screen, its row says nothing: the line says the detail as before.
+      const away = closedLine(
+        input({ roles, visible: new Set(['run:run_a']), target: 'exec_research' }),
+      );
+      expect(away).toMatchObject({ kind: 'role', role: { id: 'exec_research' } });
+    },
+  );
+
+  it('still says the lead’s detail: the run row on screen says the run’s state, not its', () => {
+    const lead: ActivityRole = {
+      ...role('exec_lead', 'Implementer', 'Waiting for agents'),
+      presence: executionPresence({ status: 'waiting_children' }),
+    };
+    const line = closedLine(input({ roles: [lead], visible: new Set(['run:run_a']) }));
+    expect(line).toMatchObject({ kind: 'target', role: { id: 'exec_lead' }, stateShown: false });
+  });
+
+  it('still says a target’s real work its row does not say', () => {
+    const line = closedLine(
+      input({
+        visible: new Set(['run:run_a', 'execution:exec_research', 'execution:exec_review']),
+        target: 'exec_research',
+      }),
+    );
+    expect(line).toMatchObject({
+      kind: 'target',
+      role: { id: 'exec_research', activity: 'Read file' },
+    });
+  });
+
   it('says a single off-screen role as its activity', () => {
     const single = [role('exec_lead', 'Corral')];
     const line = closedLine(
@@ -160,5 +215,63 @@ describe('closedLine', () => {
       kind: 'disconnected',
       reason: 'record',
     });
+  });
+});
+
+describe('closedLine and the advisor', () => {
+  const advisor = (failed = false): ActivityAdvisor => ({
+    id: 'exec_advisor',
+    name: 'Advisor',
+    presence: executionPresence({ status: failed ? 'failed' : 'active' }),
+    review: failed ? null : 'reviewing',
+    delivered: 0,
+    startedAt: '2026-11-13T00:00:00.000Z',
+  });
+
+  it('says the advisor’s last review once the run’s flow has reached its end and it reviews', () => {
+    const line = closedLine(input({ roles: [], advisors: [advisor()], flowEnded: true }));
+    expect(line).toEqual({ kind: 'advisor', advisor: advisor() });
+  });
+
+  it('says no last review while the flow only pauses between steps, or while it watches', () => {
+    const between = closedLine(
+      input({ roles: [], advisors: [advisor()], visible: new Set(['run:run_a']) }),
+    );
+    expect(between).toEqual({ kind: 'summary', stateShown: false });
+    const watching = { ...advisor(), presence: executionPresence({ status: 'waiting_message' }) };
+    expect(
+      closedLine(
+        input({
+          roles: [],
+          advisors: [{ ...watching, review: 'watching' }],
+          flowEnded: true,
+          visible: new Set(['run:run_a']),
+        }),
+      ),
+    ).toEqual({ kind: 'summary', stateShown: false });
+  });
+
+  it('does not take the advisor for a role while a role is open', () => {
+    const [lead] = team;
+    if (!lead) throw new Error('no lead');
+    // The lead works off screen with an advisor watching: one role, said alone.
+    expect(closedLine(input({ roles: [lead], advisors: [advisor()], flowEnded: true }))).toEqual({
+      kind: 'role',
+      role: lead,
+      others: 0,
+    });
+  });
+
+  it('leaves a failed advisor to its row: the run goes on, and the line says its summary', () => {
+    expect(
+      closedLine(
+        input({
+          roles: [],
+          advisors: [advisor(true)],
+          flowEnded: true,
+          visible: new Set(['run:run_a']),
+        }),
+      ),
+    ).toEqual({ kind: 'summary', stateShown: false });
   });
 });

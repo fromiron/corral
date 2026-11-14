@@ -19,7 +19,7 @@ import type { ProfileInfo } from '../../useModels.ts';
 // small popover to turn it on or off and choose its model from the conversation's model list.
 // The setting has no name of its own: the screen calls it Advisor once, in the popover.
 
-const OPEN_ADVISOR = 'corral:open-advisor';
+export const OPEN_ADVISOR = 'corral:open-advisor';
 
 /** Opens the advisor control, from wherever its refusal is said. */
 export function openAdvisorControl() {

@@ -345,4 +345,21 @@ describe('targets read from the run projection', () => {
   it('names an execution by its node id while the definition is not read yet', () => {
     expect(targetsOf(projection(), null).targets[0]?.label).toBe('writer · #1');
   });
+
+  it('an advisor takes no instruction: it is no join target (features/advisor.md)', () => {
+    const value = projection();
+    value.executionOrder = [...value.executionOrder, 'exec_advisor'];
+    value.executions.exec_advisor = {
+      ...value.executions.exec_writer,
+      executionId: 'exec_advisor',
+      nodeId: 'writer',
+      taskId: 'task_advisor',
+      status: 'waiting_message',
+      advisor: true,
+    } as never;
+    const targets = targetsOf(value, definition() as never).targets;
+    expect(targets.map((item) => item.id)).not.toContain('exec_advisor');
+    // Nor does it make another of a role's name need its place to be told apart.
+    expect(targets.map((item) => item.label)).toEqual(['Writer · #1', 'Review', 'Writer · #5']);
+  });
 });

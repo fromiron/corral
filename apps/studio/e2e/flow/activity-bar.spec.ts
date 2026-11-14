@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
+import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { templateForWorkspace } from '../../src/demo/templates.ts';
 import { expect, type Harness, test } from '../server/harness.ts';
 import {
@@ -98,6 +99,25 @@ function writtenOnScreen(page: Page, word: string) {
     }
     return count;
   }, word);
+}
+
+/** How many times visible text on screen holds `words`, in any text node. */
+function saidOnScreen(page: Page, words: string) {
+  return page.evaluate((words) => {
+    let count = 0;
+    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const parent = node.parentElement;
+      const text = node.textContent ?? '';
+      if (!parent || !text.includes(words)) continue;
+      if (parent.closest('.sr-only, [inert], [aria-hidden="true"]')) continue;
+      if (!parent.checkVisibility({ opacityProperty: true, visibilityProperty: true })) continue;
+      const box = parent.getBoundingClientRect();
+      if (box.width && box.height && box.bottom > 0 && box.top < innerHeight)
+        count += text.split(words).length - 1;
+    }
+    return count;
+  }, words);
 }
 
 /** The largest shift of the conversation items alone. */
@@ -308,6 +328,21 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
       .toBeGreaterThanOrEqual(3);
     await waitForStill(page);
     await noDuplicates(page, 'team');
+    // The work log open, its role rows say what each role waits for beside its state; the
+    // line does not say it again (presence.md "한 화면에 한 번").
+    const head = page.locator('[data-chat-part="head"] button[aria-expanded]').last();
+    await head.click();
+    await expect(head).toHaveAttribute('aria-expanded', 'true');
+    await waitForStill(page);
+    const details: Record<string, number> = {};
+    for (const words of Object.values(en.Presence.detail))
+      details[words] = await saidOnScreen(page, words);
+    record('team-details', { details, closed: (await activityLine(page).innerText()).trim() });
+    for (const [words, count] of Object.entries(details))
+      expect.soft(count, `"${words}" said on screen`).toBeLessThanOrEqual(1);
+    await head.click();
+    await expect(head).toHaveAttribute('aria-expanded', 'false');
+    await waitForStill(page);
     const visible = Object.keys((await countVisibleLabels(page)).labels);
     const closed = (await activityLine(page).innerText()).trim();
 

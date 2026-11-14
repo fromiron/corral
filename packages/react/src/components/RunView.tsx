@@ -1,5 +1,5 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
-import type { RunProjection } from '@corral/core';
+import { isSessionAdvisor, type RunProjection } from '@corral/core';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -12,9 +12,11 @@ import {
   cn,
   fontWeights,
   formatClock,
+  KitBadge,
   Select,
 } from '../design-kit/index.ts';
 import { useIcon } from '../design-kit/lib/icon-context.tsx';
+import { useAgentName } from '../run/advisor.ts';
 import type { ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import {
@@ -24,6 +26,7 @@ import {
 } from '../run/flow.ts';
 import { executionHandoffs } from '../run/handoffs.ts';
 import { executionIntervals } from '../run/history.ts';
+import { executionWatching } from '../run/presence.ts';
 import { projectionPresence } from '../run/projectionPresence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
 import { requestOpen } from '../run/transcript.ts';
@@ -319,9 +322,12 @@ export function ExecutionTree({
   const outcomeText = useTranslations('Canvas.nodeStatus.loopOutcome');
   const LoopIcon = useIcon('rotate-ccw');
   const status = usePresenceWord();
+  const presenceText = useTranslations('Presence');
+  const adviceText = useTranslations('Advice');
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const streams = useRunDisplay(session, (s) => s.streams);
   const own = useRoundInspection(projection, selectedExecutionId);
   // The tree's own width sets how wide its cards can be.
@@ -368,7 +374,6 @@ export function ExecutionTree({
   const loopById = new Map(loops.map((loop) => [loop.nodeId, loop]));
   const loopTreeId = (id: string) => `loop-group-${id}`;
   const treeLoop = new Map(loops.map((loop) => [loopTreeId(loop.nodeId), loop]));
-  const nodeDefinition = new Map(definition?.nodes.map((node) => [node.id, node]));
   const iterationOf = new Map(
     projection.executionOrder.map((id) => [id, runFlowExecutionIterationId(projection, id)]),
   );
@@ -392,7 +397,7 @@ export function ExecutionTree({
     }),
   );
   const statusLabel = status;
-  const labelOf = (nodeId: string) => nodeDefinition.get(nodeId)?.label ?? nodeId;
+  const labelOf = nameOf;
   const childrenOf = new Map<string | null, string[]>();
   const addChild = (parent: string | null, id: string) => {
     const children = childrenOf.get(parent) ?? [];
@@ -540,13 +545,27 @@ export function ExecutionTree({
       ];
     });
     const children = (childrenOf.get(id) ?? []).flatMap((child) => node(child) ?? []);
+    // An advisor stands outside the flow: it says so once, by its name, and rests between
+    // reviews watching, not waiting for an answer (features/advisor.md).
+    const watching = executionWatching(execution);
     return {
       id,
       name: labelOf(execution.nodeId),
+      // A team's advisor is its name and the badge; a conversation's advisor is called
+      // "advisor" once, by its name alone (features/advisor.md, 보이는 곳).
+      ...(execution.advisor
+        ? {
+            outsideFlow: true,
+            ...(definition && isSessionAdvisor(definition, execution.nodeId)
+              ? {}
+              : { tag: <KitBadge>{adviceText('advisor')}</KitBadge> }),
+          }
+        : {}),
       model: model?.modelId ?? execution.modelProfile,
       ...(providerMark(model?.provider) ? { logo: providerMark(model?.provider) } : {}),
       status: executionAgentStatus(execution.status),
-      statusLabel: statusLabel(execution.status),
+      statusLabel: watching ? presenceText('detail.watching') : statusLabel(execution.status),
+      statusLabelProps: { 'data-presence-label': `execution:${id}` },
       ...(task ? { task } : {}),
       ...(interval ? { startedAt: Date.parse(interval.startedAt) } : {}),
       ...(interval?.finished ? { endedAt: Date.parse(interval.endedAt) } : {}),
@@ -578,6 +597,7 @@ export function ExecutionTree({
             projection={projection}
             streams={streams}
             compact={compact || priorRound}
+            watching={watching}
           />
         </>
       ),
@@ -595,6 +615,9 @@ export function ExecutionTree({
     name: definition?.name ?? projection.runId,
     status: runAgentStatus(projection.status),
     statusLabel: statusLabel(projection.status),
+    // The run's state is said in words by the header badge alone (workbench.md): the root card
+    // keeps only its mark.
+    statusShown: 'mark',
     selectable: false,
     summaryExcluded: true,
     children: (childrenOf.get(null) ?? []).flatMap((id) => node(id) ?? []),
@@ -646,17 +669,20 @@ function ExecutionDetail({
   projection,
   streams,
   compact,
+  watching = false,
 }: {
   id: string;
   projection: RunProjection;
   streams: Record<string, StreamText>;
   compact: boolean;
+  /** An advisor between reviews: its state already says it watches, so no wait line. */
+  watching?: boolean;
 }) {
   const t = useTranslations('Run');
   const execution = projection.executions[id];
   if (!execution) return null;
   const done = TERMINAL_EXECUTION_STATUSES.has(execution.status);
-  const waiting = execution.waitingOn;
+  const waiting = watching ? null : execution.waitingOn;
   const openCall = execution.modelCallIds.at(-1);
   const lastResponse = openCall ? streams[openCall] : undefined;
   const live =

@@ -169,8 +169,9 @@ export function SendMenu({
 
 /**
  * Where an instruction goes, on the left of the tool line: the target role, which opens the
- * list of executions that can take an instruction now; while a run goes and none can, the one
- * line saying so. Nothing while no run goes, nor while the run's record is being read.
+ * list of executions that can take an instruction now. Nothing while no run goes, while the run's
+ * record is being read, or while no role can take one (the keys already say Next, and Send says
+ * why: `noTargetReason`).
  */
 export function TargetChip({
   situation,
@@ -198,16 +199,8 @@ export function TargetChip({
   if (situation === 'idle') return null;
   // Nothing to say yet, and no room taken from the folder notice, which keeps its width.
   if (loading) return <span aria-hidden="true" data-slot="composer-target-pending" />;
-  if (situation === 'noTarget' || !target)
-    // The reason keeps the room before the folder notice does, and gives way before the keys.
-    return (
-      <span
-        title={tc('targetNone')}
-        className="min-w-0 truncate px-1 text-caption text-muted-foreground sm:min-w-12 sm:max-w-max sm:grow-[100] sm:basis-0"
-      >
-        {tc('targetNone')}
-      </span>
-    );
+  if (noTargetReason({ situation, target, loading })) return null;
+  if (!target) return null;
   const shown = situation === 'awaiting' ? tc('targetAwaiting', { name }) : name;
   // A target with nothing else to choose is a fixed badge; with a choice it opens the list.
   const choosable = targets.some((item) => item.id !== target);
@@ -242,6 +235,19 @@ export function TargetChip({
       </MenuPopup>
     </Menu>
   );
+}
+
+/**
+ * Whether a run goes and no role can take an instruction now: the tool line then holds no target,
+ * and Send's description and tooltip say why.
+ */
+export function noTargetReason(input: {
+  situation: Situation;
+  target: string | null;
+  loading?: boolean;
+}): boolean {
+  if (input.situation === 'idle' || input.loading) return false;
+  return input.situation === 'noTarget' || !input.target;
 }
 
 /** The badge's trigger, where the badge opens a menu. */

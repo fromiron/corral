@@ -1,5 +1,5 @@
 import type { CorralSummary, RunSummary, SessionIntent, WorkSession } from '@corral/core';
-import { Badge, Button } from '@corral/react/design-kit';
+import { Button } from '@corral/react/design-kit';
 import { Square } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -35,19 +35,16 @@ export function ComposerHeader({
 }
 
 /**
- * Below the input: one quiet line of session totals, and a simulation badge where nothing else
- * says the runs are simulated. Why a request cannot be sent now follows as its own alert.
+ * Below the input: one quiet line of session totals. That the runs are simulated is the header's
+ * connection word alone (workbench.md). Why a request cannot be sent now follows as its own alert.
  */
 export function ComposerStatus({
   runs,
-  simulated,
   liveUnavailable,
   reasoningBlocked,
   error,
 }: {
   runs: RunSummary[];
-  /** Runs are simulated and the model chip does not already say so. */
-  simulated: boolean;
   liveUnavailable: boolean;
   reasoningBlocked: boolean;
   error: string | null;
@@ -61,11 +58,6 @@ export function ComposerStatus({
         className="flex min-w-0 items-center gap-2 px-4 pt-1 text-micro text-muted-foreground empty:hidden"
       >
         <ComposerStats runs={runs} />
-        {simulated ? (
-          <Badge data-testid="composer-environment" variant="outline" className="shrink-0">
-            {t('modeMock')}
-          </Badge>
-        ) : null}
       </div>
       {liveUnavailable || reasoningBlocked ? (
         <div className="flex flex-col gap-1 px-4 pt-1 text-caption text-warning">

@@ -263,8 +263,13 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     ).toBeVisible();
     await requestBox(page).fill('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    const refusal = page.getByTestId('refusal').last();
-    await expect(refusal).toHaveAttribute('data-kind', 'terminal');
+    // Said once, on the refused message's meta line; the composer does not say it again.
+    const refusal = page
+      .locator('[data-chat-item]')
+      .filter({ hasText: 'Summarize the fixture' })
+      .getByTestId('entry-status');
+    await expect(refusal).toContainText('A terminal is holding this working copy');
+    await expect(page.getByTestId('refusal')).toHaveCount(0);
     const sidebarSession = page
       .getByTestId('app-sidebar')
       .getByRole('link', { name: /Terminal recovery/ });

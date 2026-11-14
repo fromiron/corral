@@ -294,6 +294,11 @@ export interface Refusal {
   code?: string | undefined;
   owner?: CommandError['owner'];
   network?: boolean;
+  /**
+   * The refused request is in the conversation with its reason: its message's meta line says
+   * why, so the composer does not say it again (features/composer-flow.md).
+   */
+  recorded?: boolean;
 }
 
 export interface SendDeps extends StartDeps, RecordDeps {
@@ -340,10 +345,11 @@ async function refused(
   message: string,
   code?: string,
   owner?: CommandError['owner'],
+  recorded = false,
 ) {
   // A refusal is final for that command; the next attempt is a new command.
   clearPending(deps.commands);
-  deps.setRefusal({ message, code, owner });
+  deps.setRefusal({ message, code, owner, ...(recorded ? { recorded } : {}) });
   await deps.invalidate();
   deps.onChange();
 }
@@ -401,7 +407,13 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         return outcome;
       }
       if (!runId) {
-        await refused(deps, detail ?? deps.messages.failed(''), code, commandError?.owner);
+        await refused(
+          deps,
+          detail ?? deps.messages.failed(''),
+          code,
+          commandError?.owner,
+          Boolean(detail),
+        );
         return outcome;
       }
     } else if (intent === 'queue') {
@@ -453,7 +465,13 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         commandId,
       });
       if (receipt.error) {
-        await refused(deps, receipt.error.message, receipt.error.code, receipt.error.owner);
+        await refused(
+          deps,
+          receipt.error.message,
+          receipt.error.code,
+          receipt.error.owner,
+          Boolean(receipt.error.message),
+        );
         return outcome;
       }
       // An interrupt the target cannot take is lowered to the next request by the runtime

@@ -13,6 +13,7 @@ import type { ChatWidgetModel } from '../widgets/useChatWidgets.tsx';
 import { ComposerActivity } from './ComposerActivity.tsx';
 import { createPendingTrayStore, PendingTrayContext } from './pendingTrayState.ts';
 import { SessionConnectionContext } from './SessionConnection.tsx';
+import { useActiveExecutionCount } from './useActivity.ts';
 import { stubViewport } from './viewport.testing.ts';
 
 // The composer's activity bar (features/composer-flow.md "활동 바", chat-widgets-contract
@@ -225,6 +226,7 @@ async function mount(
   const onPause = vi.fn();
   const onResume = vi.fn();
   let conversation: ReactNode = timeline;
+  let active = ownActive;
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -256,7 +258,7 @@ async function mount(
                 >
                   <ComposerActivity
                     sessionId="session_plan"
-                    ownActive={ownActive}
+                    ownActive={active}
                     target={target}
                     targets={targets as never}
                     onJoin={onJoin}
@@ -304,6 +306,12 @@ async function mount(
     update: async (next: ChatWidgetModel, connectionLost = lost) => {
       fixture.model = next;
       await paint(connectionLost);
+    },
+    /** The session's run ends: no run goes, and the widgets present it as `next`. */
+    end: async (next: ChatWidgetModel) => {
+      active = null;
+      fixture.model = next;
+      await paint(lost);
     },
   };
 }
@@ -1283,4 +1291,461 @@ it("does not take the run's row for a helper whose own row is not in the window"
   );
   expect(scrolled).toEqual([]);
   expect(onViewRun).toHaveBeenCalledExactlyOnceWith('run_plan');
+});
+
+// The advisor (features/advisor.md "보이는 곳", features/composer-flow.md "활동 바"): a row after
+// the roles saying it watches or reviews and how many advice reached their targets. It is not a
+// role: no Join, its View opens its execution in the run record, and nothing that counts roles
+// counts it.
+
+const advisorNode = (id: string, label: string) => ({
+  id,
+  type: 'agent',
+  label,
+  roleId: id,
+  invocation: 'observer',
+});
+
+/** A running run with its roles and advisors, its definition naming them. */
+function advisedRun(
+  executions: Record<string, { node: string; status: string; advisor?: boolean }>,
+  nodes: { id: string; label: string; advisor?: boolean }[],
+) {
+  const projection = teamProjection(executions);
+  for (const [id, { advisor }] of Object.entries(executions))
+    if (advisor) (projection.executions[id] as unknown as { advisor: true }).advisor = true;
+  const definition = {
+    nodes: nodes.map((node) =>
+      node.advisor
+        ? advisorNode(node.id, node.label)
+        : { id: node.id, type: 'agent', label: node.label },
+    ),
+  } as unknown as NonNullable<Parameters<typeof sessionStore>[0]>['definition'];
+  return { projection, definition };
+}
+
+/** An advice its advisor gave, with the directive that carries it. */
+function advise(
+  projection: RunProjection,
+  id: string,
+  observerExecutionId: string,
+  status: string,
+) {
+  projection.advice = {
+    ...projection.advice,
+    [id]: {
+      adviceId: id,
+      observerExecutionId,
+      targetExecutionId: 'exec_lead',
+      severity: 'concern',
+      delivery: 'next_request',
+      directiveId: `directive_${id}`,
+      note: null,
+      acceptedSeq: 1,
+    },
+  };
+  projection.directives[`directive_${id}`] = {
+    directiveId: `directive_${id}`,
+    targetExecutionId: 'exec_lead',
+    text: `Advice ${id}.`,
+    origin: 'advice',
+    delivery: 'next_request',
+    status,
+    commandId: null,
+    acceptedSeq: 1,
+    contextSnapshotId: null,
+    modelCallId: null,
+    reason: null,
+    advice: { adviceId: id, severity: 'concern', observerExecutionId },
+  } as unknown as RunProjection['directives'][string];
+}
+
+const reviewer = [
+  { id: 'lead', label: 'Lead' },
+  { id: 'reviewer', label: 'Reviewer', advisor: true },
+];
+const advisorRow = (view: { panel: () => HTMLElement | null | undefined }, id = 'exec_adv') =>
+  view.panel()?.querySelector<HTMLElement>(`[data-activity-role="${id}"]`);
+
+it('lists the advisor after the roles, watching, with no Join; its View opens its execution in the record', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_adv: { node: 'reviewer', status: 'waiting_message', advisor: true },
+      exec_lead: { node: 'lead', status: 'active' },
+    },
+    reviewer,
+  );
+  // A dropped advice is never counted.
+  projection.suppressedAdvice = [
+    {
+      observerExecutionId: 'exec_adv',
+      targetExecutionId: 'exec_lead',
+      severity: 'nit',
+      reason: 'cap',
+      runSeq: 3,
+    } as unknown as NonNullable<RunProjection['suppressedAdvice']>[number],
+  ];
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const onViewRun = vi.fn();
+  const view = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    onViewRun,
+    // Even offered as a target, the advisor takes no instruction.
+    targets: [{ id: 'exec_lead' }, { id: 'exec_adv' }],
+  });
+  await act(async () => view.toggle()?.click());
+  const rows = [...(view.panel()?.querySelectorAll('[data-activity-role]') ?? [])];
+  expect(rows.map((row) => row.getAttribute('data-activity-role'))).toEqual([
+    'exec_lead',
+    'exec_adv',
+  ]);
+  const row = advisorRow(view);
+  expect(visibleText(row)).toBe(
+    `Reviewer${messages.Presence.detail.watching}${messages.Activity.view}`,
+  );
+  const buttons = [...(row?.querySelectorAll('button') ?? [])].map((button) => button.textContent);
+  expect(buttons).toEqual([messages.Activity.view]);
+  await act(async () => row?.querySelector('button')?.click());
+  expect(onViewRun).toHaveBeenCalledExactlyOnceWith('run_plan', 'exec_adv');
+});
+
+it('says the advisor reviews and how many advice reached their targets; none on the way or undelivered', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  advise(projection, 'a1', 'exec_adv', 'delivered');
+  advise(projection, 'a2', 'exec_adv', 'delivered');
+  advise(projection, 'a3', 'exec_adv', 'queued');
+  advise(projection, 'a4', 'exec_adv', 'expired');
+  advise(projection, 'a5', 'exec_adv', 'not_delivered');
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const row = advisorRow(view);
+  expect(row?.textContent).toContain(messages.Activity.reviewing);
+  expect(row?.textContent).toContain('2 pieces of advice delivered');
+  // Its state is the presence's name, as every row's; on screen the review says it, not twice.
+  expect(visibleText(row)).not.toContain(messages.Presence.state.working);
+  expect(row?.querySelector('.sr-only')?.textContent).toBe(messages.Presence.state.working);
+});
+
+it('counts neither on the line nor among the roles working: one role with its advisor is said alone', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({
+    runId: 'run_plan',
+    projection,
+    definition,
+    events: [{ ...readRequested, executionId: 'exec_lead' } as RunEvent],
+  });
+  projection.toolCalls.call_1 = {
+    toolCallId: 'call_1',
+    executionId: 'exec_lead',
+    name: 'read_file',
+    status: 'started',
+  } as unknown as RunProjection['toolCalls'][string];
+  const view = await mount(live(), { ownActive: ownRun });
+  const text = visibleText(view.line());
+  expect(view.bar()?.dataset.line).toBe('role');
+  expect(text).toContain(`${messages.Turn.tool.read_file} · src/session.ts`);
+  // One role: not named, not counted with the advisor.
+  expect(text).not.toContain('roles working');
+  expect(text).not.toContain('Lead');
+  expect(text).not.toContain('Reviewer');
+});
+
+it('says on the line that the advisor makes its last review once the roles have ended, and once only when open', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'session_advisor', status: 'active', advisor: true },
+    },
+    [
+      { id: 'lead', label: 'Lead' },
+      { id: 'session_advisor', label: 'Session advisor', advisor: true },
+    ],
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(view.bar()?.dataset.line).toBe('advisor');
+  // The conversation's own advisor is called by the one word.
+  expect(visibleText(view.line())).toContain(
+    messages.Activity.finalReview.replace('{name}', messages.Advice.advisor),
+  );
+  expect(visibleText(view.bar())).not.toContain('Session advisor');
+  await act(async () => view.toggle()?.click());
+  // Open, its row says it: the line does not name it again.
+  expect(visibleText(view.bar()).split(messages.Advice.advisor).length - 1).toBe(1);
+  expect(visibleText(advisorRow(view))).toContain(messages.Activity.reviewing);
+});
+
+it('says a failed advisor on its row and raises no warning on the line: the run goes on', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_adv: { node: 'reviewer', status: 'failed', advisor: true },
+    },
+    reviewer,
+  );
+  projection.effects.effect_adv = {
+    effectId: 'effect_adv',
+    kind: 'model_request',
+    scope: 'exec_adv',
+    epoch: 1,
+    dispatched: true,
+    modelCallId: null,
+    status: 'settled',
+    outcome: 'failed',
+  };
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  // The widgets leave the advisor's own failure out of the conversation's attention
+  // (advisor-attention.test.ts): the line has nothing to warn of.
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(visibleText(view.line())).not.toContain(messages.Widgets.actionFailure);
+  expect(view.line()?.querySelector('.text-warning')).toBeNull();
+  await act(async () => view.toggle()?.click());
+  expect(visibleText(advisorRow(view))).toContain(messages.Presence.state.failed);
+});
+
+it('keeps the warning for a role’s own failure beside an advisor', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_writer: { node: 'writer', status: 'failed' },
+      exec_adv: { node: 'reviewer', status: 'failed', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const failure = { ...noAction, visible: true, hasFailure: true, count: 1, summary: 'failure' };
+  const view = await mount(
+    model(
+      {
+        live: true,
+        action: failure as ChatWidgetModel['action'],
+        failedExecutionId: 'exec_writer',
+        viewed: { latest: false, number: 1, total: 2 },
+      },
+      { runStatus: 'running' },
+    ),
+    { ownActive: ownRun, rowShown: true },
+  );
+  expect(visibleText(view.line())).toContain(messages.Widgets.actionFailure);
+});
+
+it('says a paused run’s advisor paused, not watching', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'paused' },
+      exec_adv: { node: 'reviewer', status: 'paused', advisor: true },
+    },
+    reviewer,
+  );
+  projection.status = 'paused';
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: { ...ownRun, status: 'paused' }, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const row = advisorRow(view);
+  expect(row?.textContent).toContain(messages.Presence.state.paused);
+  expect(row?.textContent).not.toContain(messages.Presence.detail.watching);
+  expect(row?.textContent).not.toContain(messages.Activity.reviewing);
+});
+
+it('gives each of a team’s advisors its own row, name and count', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_rev: { node: 'reviewer', status: 'waiting_message', advisor: true },
+      exec_test: { node: 'tester', status: 'active', advisor: true },
+    },
+    [...reviewer, { id: 'tester', label: 'Tester', advisor: true }],
+  );
+  advise(projection, 'a1', 'exec_rev', 'delivered');
+  advise(projection, 'a2', 'exec_test', 'delivered');
+  advise(projection, 'a3', 'exec_test', 'delivered');
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  expect(visibleText(advisorRow(view, 'exec_rev'))).toContain('Reviewer');
+  expect(visibleText(advisorRow(view, 'exec_rev'))).toContain('1 piece of advice delivered');
+  expect(visibleText(advisorRow(view, 'exec_test'))).toContain('Tester');
+  expect(visibleText(advisorRow(view, 'exec_test'))).toContain('2 pieces of advice delivered');
+  // Two advisors are not two roles: the one role is not named on the line.
+  expect(visibleText(view.line())).not.toContain('roles working');
+});
+
+it('keeps a watching advisor’s mark still, by its shape; only a review turns it', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_rev: { node: 'reviewer', status: 'waiting_message', advisor: true },
+      exec_test: { node: 'tester', status: 'active', advisor: true },
+    },
+    [...reviewer, { id: 'tester', label: 'Tester', advisor: true }],
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  const mark = (id: string) => advisorRow(view, id)?.querySelector('svg');
+  // Watching uses no model request: no spinner, and a mark of its own shape.
+  expect(mark('exec_rev')?.getAttribute('class')).not.toContain('animate-spin');
+  expect(mark('exec_rev')?.innerHTML).not.toBe(mark('exec_test')?.innerHTML);
+  expect(mark('exec_test')?.getAttribute('class')).toContain('animate-spin');
+  // Watching is said beside the state, in the presence's word for it.
+  expect(visibleText(advisorRow(view, 'exec_rev'))).toContain(messages.Presence.detail.watching);
+  // Once every role has ended, the line about the last review turns only while it reviews.
+  const watchingLast = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_rev: { node: 'reviewer', status: 'waiting_message', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', ...watchingLast });
+  const last = await mount(live(), { ownActive: ownRun, rowShown: true });
+  // A watching advisor makes no last review: the line does not say one.
+  expect(last.bar()?.dataset.line).not.toBe('advisor');
+  expect(visibleText(last.line())).not.toContain('final review');
+});
+
+it('says no last review while the flow waits for its next step, a person or a role', async () => {
+  // Writer done, a decision to approve before the editor: the advisor reviewing meanwhile.
+  const waiting = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  waiting.projection.status = 'awaiting_user';
+  waiting.projection.approvals.approval_route = {
+    approvalId: 'approval_route',
+    kind: 'route',
+    status: 'pending',
+  } as unknown as RunProjection['approvals'][string];
+  fixture.store = sessionStore({ runId: 'run_plan', ...waiting });
+  const decision = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(decision.bar()?.dataset.line).not.toBe('advisor');
+  expect(visibleText(decision.line())).not.toContain('final review');
+  // The next step's task is open but has no execution yet.
+  const next = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  next.projection.tasks.task_editor = {
+    taskId: 'task_editor',
+    nodeId: 'editor',
+    status: 'queued',
+    activeExecutionId: null,
+  } as unknown as RunProjection['tasks'][string];
+  fixture.store = sessionStore({ runId: 'run_plan', ...next });
+  const queued = await mount(live(), { ownActive: ownRun, rowShown: true });
+  expect(queued.bar()?.dataset.line).not.toBe('advisor');
+  // Another role still open, waiting for a reply: the flow goes on after the review.
+  const open = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_editor: { node: 'editor', status: 'waiting_message' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  fixture.store = sessionStore({ runId: 'run_plan', ...open });
+  // Its row on screen says it waits; the line has nothing of its own to say of it.
+  const role = await mount(live(), {
+    ownActive: ownRun,
+    rowShown: true,
+    timeline: <span data-presence-label="execution:exec_editor">editor row</span>,
+  });
+  expect(role.bar()?.dataset.line).not.toBe('advisor');
+});
+
+it('offers no panel for an ended run with nothing to show in it, so no empty band is left', async () => {
+  // The panel was open while the run went; the run ends with no plan and nothing measured.
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(live(), { ownActive: ownRun, rowShown: true });
+  await act(async () => view.toggle()?.click());
+  expect(view.panel()).not.toBeNull();
+  await view.end(
+    model(
+      { live: false },
+      { status: { state: 'hidden' } as ChatWidgetModel['plan']['status'], choices: [] },
+    ),
+  );
+  expect(view.toggle()).toBeNull();
+  expect(view.panel()?.closest('[hidden]') ?? null).not.toBeNull();
+});
+
+it('lists no advisor row for a run that has ended', async () => {
+  const { projection, definition } = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'waiting_message', advisor: true },
+    },
+    reviewer,
+  );
+  projection.status = 'succeeded';
+  fixture.store = sessionStore({ runId: 'run_plan', projection, definition });
+  // The conversation presents the ended run; no run of the session goes on.
+  const view = await mount(model());
+  expect(view.bar()?.querySelector('[data-activity-role]')).toBeNull();
+  expect(visibleText(view.bar())).not.toContain('Reviewer');
+});
+
+/** How many executions Stop counts, read as the composer reads it. */
+async function stopCount(projection: RunProjection) {
+  fixture.store = sessionStore({ runId: 'run_plan', projection });
+  let count: number | null | undefined;
+  function Probe() {
+    count = useActiveExecutionCount('run_plan');
+    return null;
+  }
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  await act(async () => root.render(<Probe />));
+  act(() => root.unmount());
+  return count;
+}
+
+it('leaves the advisor out of what Stop counts before it asks', async () => {
+  const one = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  // One role and its advisor: Stop asks nothing.
+  expect(await stopCount(one.projection)).toBe(1);
+  const two = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'active' },
+      exec_writer: { node: 'writer', status: 'active' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  expect(await stopCount(two.projection)).toBe(2);
+  // The advisor's last review alone: Stop stops the run at once.
+  const last = advisedRun(
+    {
+      exec_lead: { node: 'lead', status: 'succeeded' },
+      exec_adv: { node: 'reviewer', status: 'active', advisor: true },
+    },
+    reviewer,
+  );
+  expect(await stopCount(last.projection)).toBe(0);
 });
