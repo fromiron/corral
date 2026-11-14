@@ -495,7 +495,7 @@ it('leaves the detail column empty until an item is chosen', async () => {
   expect(listed.detail()).not.toBeNull();
 
   const clear = await mount({ inbox: async () => [] });
-  expect(clear.container.textContent).toContain('Nothing needs you');
+  expect(clear.container.textContent).toContain('All quiet in the Corral');
 });
 
 it('never brings back a handled item from a reply that was already on its way', async () => {
@@ -798,11 +798,11 @@ it('says the list is loading until the first read settles, and not on later read
       (element) => element.textContent === 'Loading…',
     );
   expect(loading()).toBeDefined();
-  expect(container.textContent).not.toContain('Nothing needs you');
+  expect(container.textContent).not.toContain('All quiet in the Corral');
   await act(async () => replies[0]?.resolve([]));
   await flush();
   expect(loading()).toBeUndefined();
-  expect(container.textContent).toContain('Nothing needs you');
+  expect(container.textContent).toContain('All quiet in the Corral');
   await refocus();
   expect(replies).toHaveLength(2);
   expect(loading()).toBeUndefined();
@@ -811,7 +811,7 @@ it('says the list is loading until the first read settles, and not on later read
 it('shows the empty state and asks again only when the window regains focus', async () => {
   vi.useFakeTimers();
   const { container, services, refocus } = await mount({ inbox: async () => [] });
-  expect(container.textContent).toContain('Nothing needs you');
+  expect(container.textContent).toContain('All quiet in the Corral');
   const reads = services.workspaces.inbox.mock.calls.length;
   expect(reads).toBe(1);
   await act(async () => {

@@ -1532,7 +1532,7 @@ it('the right panel shows what needs the person only while something waits', asy
   const idlePanel = idle.container.querySelector<HTMLElement>('[data-testid="run-side"]');
   expect(idlePanel?.hidden).toBe(false);
   expect(idlePanel?.querySelector('[data-testid="run-needs-you"]')).toBeNull();
-  expect(idlePanel?.textContent).not.toContain('Nothing needs you');
+  expect(idlePanel?.textContent).not.toContain('All quiet in the Corral');
 });
 
 it('answers through the shared run response area, leaving receipts to the run header', async () => {
