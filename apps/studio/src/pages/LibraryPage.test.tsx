@@ -546,6 +546,20 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(router.state.location.search).toMatchObject({ project: 'project_1' });
 });
 
+// The empty Corral list says what belongs there and one line in Corral's voice under it.
+it.each(['en', 'ko'] as const)(
+  'heads an empty Corral list with its title and the one line under it (%s)',
+  async (locale) => {
+    const text = locale === 'ko' ? ko : messages;
+    const { container } = await render('/library/teams?project=project_1', undefined, locale);
+    const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+    const state = panel.querySelector('[data-slot="empty-state"]') as HTMLElement;
+    expect(state.querySelector('b')?.textContent).toBe(text.Workspace.empty);
+    const lines = [...state.querySelectorAll('p')].map((p) => p.textContent);
+    expect(lines).toEqual([text.Workspace.emptyHint]);
+  },
+);
+
 it('shows the eight templates in order with their roles, and marks the ones that change nothing', async () => {
   const { container } = await render('/library/templates?project=project_1');
   const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
