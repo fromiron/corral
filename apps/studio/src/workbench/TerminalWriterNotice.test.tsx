@@ -50,7 +50,7 @@ it('shows current ownership before sending, retains it after input release, and 
         </IntlProvider>,
       ),
     );
-    expect(container.textContent).toContain('A terminal is holding this working copy');
+    expect(container.textContent).toContain('A terminal is holding this Paddock');
     expect(container.querySelector('a')?.getAttribute('href')).toContain('terminal=pty');
     expect(refresh).toHaveBeenCalledWith('session');
     await act(async () =>

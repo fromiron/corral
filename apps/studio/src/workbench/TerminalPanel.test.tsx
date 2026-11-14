@@ -180,7 +180,7 @@ it('explains a startup session failure without exposing the technical code as th
   const document = new DOMParser().parseFromString(html, 'text/html');
   const guidance = document.querySelector('[data-testid="terminal-recovery-guidance"]');
   expect(guidance?.textContent).toContain('did not finish opening its own session');
-  expect(guidance?.textContent).toContain('working copy remains protected');
+  expect(guidance?.textContent).toContain('Paddock remains protected');
   expect(guidance?.textContent).not.toContain('session_not_ready');
   expect(document.querySelector('details')?.open).toBe(false);
 });

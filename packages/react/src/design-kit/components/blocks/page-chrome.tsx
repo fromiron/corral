@@ -114,14 +114,17 @@ export function SectionLabel({ children, count }: { children: ReactNode; count?:
 
 /**
  * An empty list or view: its title says what belongs there; a line under it and one next step
- * at its foot are optional.
+ * at its foot are optional. `titleAction` is drawn right after the title, on its line, outside
+ * it (a term's info icon), so the title still reads as itself.
  */
 export function EmptyState({
   title,
+  titleAction,
   text,
   action,
 }: {
   title: string;
+  titleAction?: ReactNode;
   text?: string | undefined;
   action?: ReactNode;
 }) {
@@ -135,12 +138,24 @@ export function EmptyState({
         'grid justify-items-center gap-1 border border-dashed border-border px-6 py-10 text-center',
       )}
     >
-      <b
-        className={cn(size.type.body, 'text-foreground')}
-        style={{ fontVariationSettings: fontWeights.semibold }}
-      >
-        {title}
-      </b>
+      {titleAction ? (
+        <span className="inline-flex items-center gap-1">
+          <b
+            className={cn(size.type.body, 'text-foreground')}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </b>
+          {titleAction}
+        </span>
+      ) : (
+        <b
+          className={cn(size.type.body, 'text-foreground')}
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {title}
+        </b>
+      )}
       {text ? (
         <p className={cn(size.type.caption, 'm-0 max-w-sm text-muted-foreground')}>{text}</p>
       ) : null}

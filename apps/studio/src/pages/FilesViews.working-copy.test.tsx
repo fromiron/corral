@@ -60,7 +60,7 @@ it('without a copy, the panel is the shared empty view with the one next step in
     expect(frame?.className).toContain('border-dashed');
     const make = frame?.lastElementChild;
     expect(make?.tagName).toBe('BUTTON');
-    expect(make?.textContent).toBe('Make a working copy from main');
+    expect(make?.textContent).toBe('Make a Paddock from main');
   } finally {
     await act(async () => root.unmount());
     container.remove();

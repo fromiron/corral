@@ -157,7 +157,7 @@ export function debugStore(
   };
   const publish = (target: WorkspaceTarget, value: DebugState) => {
     if (!same(value.target, target))
-      throw new Error('The debugger belongs to another working copy.');
+      throw new Error('The debugger belongs to another Paddock.');
     const old = get(target),
       before = old?.state?.session,
       after = value.session;
@@ -275,7 +275,7 @@ export function debugStore(
   };
   const sourceFile = async (target: WorkspaceTarget, path: string, sha256: string) => {
     if (!ResourcePath.safeParse(path).success)
-      throw new Error('The debugger source is not a working-copy file.');
+      throw new Error('The debugger source is not a file in the Paddock.');
     const key = documentKey(target, path);
     if (unsafe(documents.getState().documents[key]))
       throw new Error('Save or discard this draft before using its debugger source.');
