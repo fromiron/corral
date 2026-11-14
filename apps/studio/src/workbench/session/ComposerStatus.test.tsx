@@ -76,9 +76,6 @@ it.each(['en', 'ko'] as const)(
 );
 
 it('the status lead no longer chooses the send or the target', async () => {
-  const line = await render(
-    'en',
-    <ComposerHeader choosingAuto={false} onCancelAuto={() => {}} intent="steer" />,
-  );
+  const line = await render('en', <ComposerHeader choosingAuto={false} onCancelAuto={() => {}} />);
   expect(line).toBe('');
 });

@@ -58,7 +58,7 @@ async function mount() {
   return { container, render, dispose };
 }
 
-it('an unlinked folder says the agent cannot read or change files and offers linking', async () => {
+it('an unlinked folder is an icon button that says the agent cannot read or change files and offers linking', async () => {
   fixture.binding.mockResolvedValue(null);
   fixture.worktree.mockResolvedValue(null);
   const action = vi.fn();
@@ -66,8 +66,10 @@ it('an unlinked folder says the agent cannot read or change files and offers lin
   try {
     await render('one', 'project', '', action);
     const chip = container.querySelector('button');
-    expect(chip?.textContent).toBe('agentNoFiles');
-    expect(chip?.getAttribute('aria-label')).toBe('agentNoFiles. linkFolder');
+    // No folder: the kit icon button alone on the tool line; the sentence is its name and tooltip.
+    expect(chip?.textContent).toBe('');
+    expect(chip?.querySelector('svg')).not.toBeNull();
+    expect(chip?.getAttribute('aria-label')).toBe('agentNoFiles linkFolder.');
     expect(container.querySelectorAll('button')).toHaveLength(1);
     await act(async () => chip?.click());
     expect(action).toHaveBeenCalledOnce();
@@ -83,7 +85,7 @@ it('an untrusted folder offers trust, and a trusted folder without a copy offers
   try {
     await render('one', 'project', '');
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
-      'agentNoFiles. trustFolder',
+      'agentNoFiles trustFolder.',
     );
     fixture.binding.mockResolvedValue({ trusted: true, missing: false });
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
@@ -117,7 +119,7 @@ it('a missing folder offers the folder settings, and a failed lookup says nothin
   try {
     await render('one', 'project', '');
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
-      'agentFolderMissing. checkFolder',
+      'agentFolderMissing checkFolder.',
     );
     fixture.binding.mockRejectedValue(new Error('offline'));
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
@@ -127,7 +129,7 @@ it('a missing folder offers the folder settings, and a failed lookup says nothin
     fixture.worktree.mockResolvedValue(null);
     await render('two', 'project', '');
     expect(container.querySelector('button')?.getAttribute('aria-label')).toBe(
-      'agentNoFiles. linkFolder',
+      'agentNoFiles linkFolder.',
     );
   } finally {
     await dispose();

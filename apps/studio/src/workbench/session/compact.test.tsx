@@ -140,7 +140,6 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
     workspaces: null,
     voice: null,
     startAuto: vi.fn(),
-    startExplain: vi.fn(),
   };
   const container = document.createElement('div');
   document.body.append(container);

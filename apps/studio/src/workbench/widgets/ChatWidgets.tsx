@@ -638,6 +638,12 @@ export function ActivityContext({ model }: { model: ChatWidgetModel }) {
  * The work plan's Todo. In the composer it is the body the one-line status expands, rendered
  * only while open, read only; the steering shell keeps its own toggle.
  */
+/** A bare status whose presence works with no detail beside it. */
+function workingAlone(status: string | null | undefined) {
+  const presence = status ? statusPresence(status) : null;
+  return presence?.kind === 'working' && !presence.detail;
+}
+
 export function ComposerPlan({
   variant = 'composer',
   id,
@@ -709,8 +715,10 @@ export function ComposerPlan({
                   ? 'active'
                   : 'pending',
           }))}
+          // The plan runs while its Run and its owner both work on their own (presence.md): a
+          // detail (waiting for agents or a reply) or any other state is a wait.
           status={
-            model.plan.runStatus === 'running' && selection?.status === 'active'
+            workingAlone(model.plan.runStatus) && workingAlone(selection?.status)
               ? 'running'
               : 'waiting'
           }

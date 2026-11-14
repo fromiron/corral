@@ -344,19 +344,47 @@ it('a run no request names reads like any turn: its status is said once, by the 
       </IntlProvider>,
     ),
   );
-  // The row's head line says the run's state in words (its presence label); the badge is apart.
-  const badges = [
-    ...container.querySelectorAll('[data-presence="succeeded"]:not([data-presence-label])'),
-  ];
-  // Assistive tech still hears the run's status with its turn; nothing shows it a second time.
-  expect(badges).toHaveLength(1);
-  expect(badges[0]?.closest('.sr-only')).not.toBeNull();
+  // The row's head line says the run's state in words (its presence label), and assistive tech
+  // hears it there: no hidden badge says it a second time.
+  const said = [...container.querySelectorAll('[data-presence="succeeded"]')];
+  expect(said).toHaveLength(1);
+  expect(said[0]?.getAttribute('data-presence-label')).toBe('run:run_turn');
+  expect(container.querySelector('.sr-only')?.textContent ?? '').not.toContain('Completed');
+  expect((container.textContent ?? '').split('Completed')).toHaveLength(2);
   // The turn still opens its run record from its process line.
   expect(container.querySelector('[data-testid="turn-run"]')?.textContent).toContain('Run #2');
   // The run has a name here, so assistive tech is never read its internal id.
   const card = container.querySelector('section');
   expect(card?.getAttribute('aria-label')).toBe('Run #2');
   expect(card?.textContent).not.toContain((runs[1] as RunSummary).runId);
+});
+
+it('a run whose record is not read yet is still said with its listed state, once', async () => {
+  fixture.store = sessionStore({ runId: 'run_turn' });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanup.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunCard
+          run={runs[1] as RunSummary}
+          number={2}
+          artifactMetadataVersion="run_turn"
+          onPanel={vi.fn()}
+        />
+      </IntlProvider>,
+    ),
+  );
+  // The row's place holds the state's words for assistive tech until the head line writes them.
+  const place = container.querySelector('[data-presence-label="run:run_turn"]');
+  expect(place?.textContent).toBe('Completed');
+  expect(place?.querySelector('.sr-only')).not.toBeNull();
+  expect((container.textContent ?? '').split('Completed')).toHaveLength(2);
 });
 
 it('a sent message shows its reply quotes as chips alone, and what each chip found is its own', async () => {

@@ -178,7 +178,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     const bar = activityBar(page);
     const count = bar.getByTestId('activity-plan');
     const toggle = bar.locator('[data-activity-toggle]');
-    await expect(count).toContainText('0/7 done');
+    await expect(count).toHaveText('Plan 0/7');
     await expect(bar).toBeVisible();
     await expect(bar.getByRole('link')).toHaveCount(0);
     // The run's record opens from its turn, not from the top bar.
@@ -234,7 +234,7 @@ test('live plans, context, manual collapse and an answer use the primary session
       element.dispatchEvent(new CompositionEvent('compositionstart', { bubbles: true }));
     });
     next.release();
-    await expect(count).toContainText('1/7 done');
+    await expect(count).toHaveText('Plan 1/7');
     expect(await originalInput?.evaluate((element) => element.isConnected)).toBe(true);
     await expect(input).toHaveValue('다음 요청 日本語');
     expect(await input.evaluate((element: HTMLTextAreaElement) => element.selectionStart)).toBe(3);
@@ -254,7 +254,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     later.release();
-    await expect(count).toContainText('2/7 done');
+    await expect(count).toHaveText('Plan 2/7');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     // Verify the unfinished checklist while its operational body is still owned by the live run.
     const liveSnapshot = current(corral);
@@ -287,7 +287,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-    await expect(count).toContainText('2/7 done');
+    await expect(count).toHaveText('Plan 2/7');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(bar).not.toHaveAttribute('data-line', 'waiting');
     await expect(input).toHaveValue('다음 요청 日本語');
@@ -427,7 +427,7 @@ test('inspecting the current result preserves the draft while a newer result rep
   try {
     await send(page, 'Update the layout with a new result.');
     const toggle = activityBar(page).getByTestId('activity-plan');
-    await expect(toggle).toContainText('0/7 done');
+    await expect(toggle).toHaveText('Plan 0/7');
     const activeRunId = current(corral).runId;
     expect(activeRunId).not.toBe(earlierRunId);
     await requestBox(page).fill('Do not replace this draft.');
@@ -513,17 +513,18 @@ test('a finished checklist does not finish its run, and the plan stays one line 
     const plan = page.getByTestId('composer-work-plan');
     const count = activityBar(page).getByTestId('activity-plan');
     const toggle = activityBar(page).locator('[data-activity-toggle]');
-    await expect(count).toContainText('0/7 done');
+    await expect(count).toHaveText('Plan 0/7');
     completePlan.release();
     await expect(count).toContainText('7/7');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(count).toContainText('run still going');
+    // Live with the plan complete, the line says the plan alone; the run row says it goes on.
+    await expect(count).toHaveText('Plan 7/7');
     expect(current(corral).projection.status).toBe('running');
     completeRun.release();
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     await expect(page.getByTestId('chat-result')).toContainText('final result');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
-    await expect(count).toContainText('7/7 done');
+    await expect(count).toHaveText('Plan 7/7');
     await expect(plan.getByRole('listitem')).toHaveCount(0);
     expect(corral.errors).toEqual([]);
   } finally {

@@ -1,43 +1,11 @@
-import type { CorralDefinition, ExecutionStatus, RunEvent } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import {
-  ExecutionToolRows,
-  executionIntervals,
-  executionPresence,
-  executionToolEntries,
-  executionViewPresence,
-  type Presence,
-  PresenceLabel,
-  presenceTextClass,
-  projectionPresence,
-} from '@corral/react';
-import {
-  AgentCard,
-  AgentStatusIcon,
-  AgentSteeringPlan,
-  cn,
-  fontWeights,
-  formatClock,
-} from '@corral/react/design-kit';
+import { type Presence, presenceTextClass, projectionPresence } from '@corral/react';
+import { AgentCard, AgentStatusIcon, AgentSteeringPlan, cn } from '@corral/react/design-kit';
 import { ChevronRight } from '@corral/react/icons';
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import { useTranslations } from 'use-intl';
 
 type PlanItem = { id: string; title: string; status: 'pending' | 'in_progress' | 'completed' };
-
-/** Observed start and end of every execution, from the record (never the wall clock). */
-function useIntervals(events: readonly RunEvent[]) {
-  return useMemo(
-    () =>
-      new Map(
-        executionIntervals(events as RunEvent[]).map((row) => [
-          row.executionId,
-          Date.parse(row.endedAt) - Date.parse(row.startedAt),
-        ]),
-      ),
-    [events],
-  );
-}
 
 const ENDED = new Set<Presence['kind']>(['succeeded', 'failed', 'interrupted', 'cancelled']);
 
@@ -52,7 +20,7 @@ function RunGlyph({ presence }: { presence: Presence }) {
 
 /**
  * The kit's AgentRun plan card, shown only when the planning tool recorded a work plan. Without
- * one there is no card: the activity heads already give each execution's state.
+ * one there is no card.
  */
 export function RunPlanCard({
   projection,
@@ -149,122 +117,4 @@ export function RunPlanStrip({
       {open ? several ? allPlans : <RunPlanCard projection={projection} plan={plan} /> : null}
     </div>
   );
-}
-
-/**
- * Every execution in start order, as the kit's AgentRun activity: a head naming the node, its
- * attempt and round, state and observed time (selecting it opens its details), then the
- * execution's own tool calls as a kit tool-call group.
- */
-export function RunActivity({
-  events,
-  projection,
-  definition,
-  selected,
-  onSelect,
-  onOpenArtifact,
-}: {
-  events: readonly RunEvent[];
-  projection: RunProjection;
-  definition: CorralDefinition;
-  selected: string | undefined;
-  onSelect: (executionId: string) => void;
-  onOpenArtifact?: (artifactVersionId: string) => void;
-}) {
-  const t = useTranslations('RunMonitor');
-  const tp = useTranslations('Presence');
-  const tools = useMemo(() => executionToolEntries(events as RunEvent[]), [events]);
-  const durations = useIntervals(events);
-  const runEnded = ENDED.has(projectionPresence(projection).kind);
-  const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
-  return (
-    <section data-testid="run-activity" aria-label={t('activity')} className="grid gap-4">
-      {executions.map((execution, index) => {
-        const label =
-          definition.nodes.find((node) => node.id === execution.nodeId)?.label ?? execution.nodeId;
-        const round = execution.iterationId
-          ? projection.iterations[execution.iterationId]?.no
-          : null;
-        const own = tools.get(execution.executionId) ?? [];
-        const elapsed = durations.get(execution.executionId);
-        const active = selected === execution.executionId;
-        return (
-          <div key={execution.executionId} data-activity-entry className="grid gap-1.5">
-            <button
-              type="button"
-              data-execution-id={execution.executionId}
-              aria-pressed={active}
-              onClick={() => onSelect(execution.executionId)}
-              className={cn(
-                'flex min-w-0 items-center gap-2 rounded-lg px-1.5 py-1 text-left text-body transition-colors duration-(--duration-fast) hover:bg-hover',
-                'focus-visible:outline-2 focus-visible:outline-[color:var(--focus-ring)] focus-visible:outline-offset-2',
-                active && 'bg-active',
-              )}
-            >
-              <span
-                aria-hidden="true"
-                className="grid size-5 shrink-0 place-items-center rounded-full border border-border text-micro tabular-nums text-muted-foreground"
-              >
-                {index + 1}
-              </span>
-              <span
-                className="min-w-0 truncate"
-                style={{ fontVariationSettings: fontWeights.semibold }}
-              >
-                {label}
-              </span>
-              <span className="shrink-0 text-caption text-muted-foreground">
-                {[
-                  round ? t('iteration', { number: round }) : null,
-                  t('attempt', { number: execution.attemptNo }),
-                ]
-                  .filter(Boolean)
-                  .join(' · ')}
-              </span>
-              <span className="ml-auto inline-flex shrink-0 items-center gap-2">
-                <PresenceLabel
-                  presence={executionViewPresence(execution)}
-                  target={`execution:${execution.executionId}`}
-                />
-                {elapsed !== undefined ? (
-                  <span className="text-caption text-muted-foreground tabular-nums">
-                    {formatClock(elapsed)}
-                  </span>
-                ) : null}
-              </span>
-            </button>
-            {own.length ? (
-              <div className="pl-8">
-                <ExecutionToolRows
-                  tools={own}
-                  {...(onOpenArtifact ? { onOpenArtifact } : {})}
-                  {...toolState(execution.status, runEnded, (presence) => tp(presence.labelKey))}
-                />
-              </div>
-            ) : null}
-          </div>
-        );
-      })}
-    </section>
-  );
-}
-
-/**
- * Unfinished calls of an execution that is not working any more are not animated as running:
- * they wait while the execution waits, and are stopped once it or the run has ended.
- */
-function toolState(
-  status: ExecutionStatus,
-  runEnded: boolean,
-  name: (presence: Presence) => string,
-): { activityState?: { status: 'waiting' | 'stopped'; label: string } } {
-  const presence = executionPresence({ status });
-  // Working on its own (no detail): its calls are running.
-  if (presence.kind === 'working' && !presence.detail && !runEnded) return {};
-  return {
-    activityState: {
-      status: runEnded || ENDED.has(presence.kind) ? 'stopped' : 'waiting',
-      label: name(presence),
-    },
-  };
 }

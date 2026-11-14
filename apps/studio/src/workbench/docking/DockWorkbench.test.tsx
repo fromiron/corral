@@ -43,7 +43,6 @@ async function fixture(
       | 'renderDocument'
       | 'renderGraph'
       | 'graphTitle'
-      | 'controls'
       | 'terminalStatus'
       | 'onActiveContext'
       | 'fileWorkAvailable'
@@ -210,7 +209,6 @@ it('uses the single top conversation tab without remounting the draft or open do
       ) : (
         <span data-testid={view === 'run' ? 'history' : undefined}>{view}</span>
       ),
-    controls: <button type="button">Run controls</button>,
     onActiveContext,
   });
   const draft = f.container.querySelector<HTMLTextAreaElement>('[data-testid="draft"]');
@@ -236,9 +234,6 @@ it('uses the single top conversation tab without remounting the draft or open do
   expect(f.container.querySelectorAll('[data-testid="history"]')).toHaveLength(1);
   expect(draft.value).toBe('keep my draft');
   expect(f.container.querySelector('[data-testid="document"]')).toBe(documentView);
-  expect(
-    f.container.querySelector('.corral-dock-controls')?.closest('[role="tabpanel"]'),
-  ).toBeNull();
   await act(async () => sessionTab(f.container, 'chat')?.click());
   expect(sessionTab(f.container, 'chat')?.getAttribute('aria-selected')).toBe('true');
   expect(f.container.querySelector('[data-testid="draft"]')).toBe(draft);

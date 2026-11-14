@@ -177,7 +177,6 @@ async function mount({
     workspaces: null,
     voice: null,
     startAuto,
-    startExplain: vi.fn(),
   };
   const container = document.createElement('div');
   document.body.append(container);

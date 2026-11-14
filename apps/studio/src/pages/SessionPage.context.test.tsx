@@ -235,7 +235,6 @@ async function mount(
       };
     }),
   };
-  const startExplain = vi.fn();
   // a Corral session's turn starts the conversation lead with the Corral as its team.
   const startAuto = vi.fn(async (_request: unknown, _signal?: AbortSignal) => ({
     runId: 'started',
@@ -295,7 +294,6 @@ async function mount(
     live: false,
     workspaceId: 'host',
     workspaces: null,
-    startExplain,
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -343,7 +341,6 @@ async function mount(
     transport,
     runFor,
     startAuto,
-    startExplain,
     render,
     click,
   };
@@ -470,7 +467,6 @@ it('an explain draft from an earlier version is sent as a next request with its 
     attachments: [captured],
   });
   await f.click('Send');
-  expect(f.startExplain).not.toHaveBeenCalled();
   expect(f.startAuto).toHaveBeenCalledWith(
     expect.objectContaining({ references: [captured], brief: 'Explain this capture' }),
     expect.anything(),

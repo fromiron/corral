@@ -40,7 +40,6 @@ export function composerAvailability({
   autoChoice,
   draft,
   blocked,
-  hasLatest,
   steerTarget,
   loading,
 }: {
@@ -62,7 +61,6 @@ export function composerAvailability({
     missingChips: readonly unknown[];
   };
   blocked: Blocked;
-  hasLatest: boolean;
   steerTarget: string;
   /** The run's record is not read yet, so where Send goes is not known. */
   loading: boolean;
@@ -74,20 +72,16 @@ export function composerAvailability({
   // UX-04: with live models chosen, a role whose model is not connected stops the request
   // before it is sent, with the way to connect it.
   const notReady =
-    runMode === 'live' && (intent === 'next' || intent === 'explain') && profiles
+    runMode === 'live' && intent === 'next' && profiles
       ? roles.filter((r) => !profiles.some((p) => p.profileId === r.profileId && p.available))
       : [];
   // an auto request on a disconnected model is stopped, never simulated instead.
   const autoBlocked =
-    isAuto &&
-    (intent === 'next' || intent === 'explain') &&
-    profiles !== null &&
-    autoNotReady(autoChoice, profiles, runMode);
+    isAuto && intent === 'next' && profiles !== null && autoNotReady(autoChoice, profiles, runMode);
   const autoProfile = profiles?.find((p) => p.profileId === autoChoice.modelProfile);
   const reasoningBlocked =
     isAuto && intent === 'next' && autoReasoningUnsupported(autoChoice, profiles, runMode);
-  const liveUnavailable =
-    runMode === 'live' && !live && (intent === 'next' || intent === 'explain');
+  const liveUnavailable = runMode === 'live' && !live && intent === 'next';
   const savedRequestUnavailable =
     missingTeam ||
     (runMode === 'live' && !live) ||
@@ -110,8 +104,7 @@ export function composerAvailability({
     blocked !== null ||
     missingChipCount > 0 ||
     startItemsOver(intent, draft) > 0 ||
-    (missingTeam && (intent === 'next' || intent === 'explain')) ||
-    (intent === 'explain' && !hasLatest) ||
+    (missingTeam && intent === 'next') ||
     (intent === 'steer' && !steerTarget);
   // Items this intent does not carry share one notice and one wording (#89). Text attachments
   // ride every send; references and images a new or a next request (features/composer-flow.md

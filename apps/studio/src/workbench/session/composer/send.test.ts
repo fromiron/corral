@@ -81,7 +81,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     ok: true as const,
     session,
   }));
-  const startExplain = vi.fn();
   const store = createPendingSessionCommands();
   const pending = { current: null as PendingCommand | null };
   const ids = ['cmd_fixed', 'cmd_second'];
@@ -90,7 +89,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
       mode: 'server',
       live: true,
       startAuto,
-      startExplain,
       transport: { sendCommand },
       repository: { addSessionEntry },
     },
@@ -101,7 +99,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     missingTeam: false,
     messages: {
       selectedTeamMissing: 'team missing',
-      noResult: 'no result',
       failed: (message: string) => `failed: ${message}`,
     },
     commands: {
@@ -116,7 +113,6 @@ function harness(overrides: Partial<SendDeps> = {}) {
     onTitleChange: vi.fn(),
     team: null,
     ownActive: null,
-    latest: null,
     runMode: 'live',
     setBusy: vi.fn(),
     setError: vi.fn(),
@@ -126,7 +122,7 @@ function harness(overrides: Partial<SendDeps> = {}) {
     clearDraft: vi.fn(),
     ...overrides,
   } as unknown as SendDeps;
-  return { deps, startAuto, sendCommand, addSessionEntry, startExplain, store, pending };
+  return { deps, startAuto, sendCommand, addSessionEntry, store, pending };
 }
 
 const input = (overrides: Partial<SendInput> = {}): SendInput => ({
