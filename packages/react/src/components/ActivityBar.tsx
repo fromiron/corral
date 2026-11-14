@@ -499,7 +499,7 @@ export function ActivityBar({
           className="flex max-h-[min(24rem,45dvh)] flex-col gap-3 overflow-y-auto overscroll-contain border-b border-border/60 px-2.5 pt-2.5 pb-3"
         >
           {roles.length ? (
-            <ul aria-label={t('roles')} className="flex flex-col gap-0.5">
+            <ul aria-label={t('roles')} className="@container/roles flex flex-col gap-0.5">
               {roles.map((role) => (
                 <RoleRow key={role.id} role={role} />
               ))}
@@ -520,7 +520,12 @@ function RoleRow({ role }: { role: ActivityBarRole }) {
   return (
     <li data-activity-role={role.id} className="flex min-h-8 min-w-0 items-center gap-2 text-ui">
       <Mark glyph={role.glyph} tone={role.tone} />
-      <span className="shrink-0" style={{ fontVariationSettings: fontWeights.semibold }}>
+      {/* After the activity has given way, the name is what shortens; its whole is the tooltip. */}
+      <span
+        className="min-w-0 truncate"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+        title={role.name}
+      >
         {role.name}
       </span>
       {!role.state ? null : role.stateShown && !role.working ? (
@@ -548,8 +553,11 @@ function RoleRow({ role }: { role: ActivityBarRole }) {
           {t('view')}
         </Button>
       ) : null}
-      {/* One column for joining, so the rows' clocks and buttons line up. */}
-      <span className="flex w-28 shrink-0 justify-end">
+      {/*
+        One column for joining, so the rows' clocks and buttons line up. A panel too narrow for it
+        keeps only what the column holds, so the actions never move with the name's length.
+      */}
+      <span className="flex w-28 shrink-0 justify-end @max-sm/roles:w-auto">
         {role.target ? (
           <span className="flex h-7 items-center gap-1 px-2 text-caption text-muted-foreground">
             <Check aria-hidden="true" className="size-3.5" />
