@@ -199,7 +199,10 @@ test('list filtering is named separately from private text search', async ({ pag
   await expect(palette.getByRole('option')).toHaveCount(1);
   await expect(textSearch).toBeVisible();
   await textSearch.click();
-  const dialog = page.getByRole('dialog', { name: 'Search sessions and results', exact: true });
+  const dialog = page.getByRole('dialog', {
+    name: 'Search conversations and results',
+    exact: true,
+  });
   await expect(dialog.getByRole('textbox', { name: 'Search text' })).toHaveValue(
     'no-match-for-this-filter',
   );

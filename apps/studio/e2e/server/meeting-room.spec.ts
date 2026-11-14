@@ -445,7 +445,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
     return (await response.json()).handoffs;
   };
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
-  await page.getByRole('combobox', { name: 'Target session', exact: true }).click();
+  await page.getByRole('combobox', { name: 'Target conversation', exact: true }).click();
   await page.getByRole('option', { name: targetTitle, exact: true }).click();
   await page.getByRole('button', { name: 'Hand off and start', exact: true }).click();
   await expect.poll(async () => (await handoffs())[0]?.state).toBe('drafted');
@@ -466,7 +466,9 @@ test('handoffs preserve existing input and start work only when requested', asyn
     page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
-  await page.getByRole('textbox', { name: 'New session name', exact: true }).fill('Saved handoff');
+  await page
+    .getByRole('textbox', { name: 'New conversation name', exact: true })
+    .fill('Saved handoff');
   await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
   await expect.poll(async () => (await handoffs()).length).toBe(2);
   expect((await handoffs())[0]).toMatchObject({ state: 'drafted', runId: null });
@@ -474,7 +476,7 @@ test('handoffs preserve existing input and start work only when requested', asyn
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
 
   await page
-    .getByRole('textbox', { name: 'New session name', exact: true })
+    .getByRole('textbox', { name: 'New conversation name', exact: true })
     .fill('Started handoff');
   await page.getByRole('button', { name: 'Hand off and start', exact: true }).click();
   await expect
@@ -572,7 +574,7 @@ test.describe('default simulation', () => {
     await expect.poll(async () => (await meeting(page, id)).decisions?.length).toBe(1);
     await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
     await page
-      .getByRole('textbox', { name: 'New session name', exact: true })
+      .getByRole('textbox', { name: 'New conversation name', exact: true })
       .fill('Simulation handoff');
     await page.getByRole('button', { name: 'Hand off as draft', exact: true }).click();
     await expect

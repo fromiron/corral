@@ -54,10 +54,10 @@ test('archiving keeps the draft and explains that explicit sending keeps the arc
     .getByRole('button', { name: /Actions for/ })
     .click();
   await page.getByRole('menuitem', { name: 'Archive', exact: true }).click();
-  await expect(page.getByText('Sending a message keeps this session archived.')).toBeVisible();
+  await expect(page.getByText('Sending a message keeps this conversation archived.')).toBeVisible();
   await expect(requestBox(page)).toHaveValue('Unsent draft');
-  await page.getByRole('button', { name: 'Restore session', exact: true }).click();
-  await expect(page.getByText('Sending a message keeps this session archived.')).toBeHidden();
+  await page.getByRole('button', { name: 'Restore conversation', exact: true }).click();
+  await expect(page.getByText('Sending a message keeps this conversation archived.')).toBeHidden();
   await expect(requestBox(page)).toHaveValue('Unsent draft');
 });
 
@@ -67,15 +67,15 @@ test('project session list distinguishes and archives empty sessions', async ({ 
   await page.getByRole('button', { name: 'New conversation', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\//);
   await page.goto('/projects/default');
-  // Empty sessions have their own group, collapsed until opened.
-  const empty = page.getByRole('list', { name: 'Empty session', exact: true });
+  // Empty conversations have their own group, collapsed until opened.
+  const empty = page.getByRole('list', { name: 'Empty conversation', exact: true });
   await expect(empty).toBeHidden();
-  await page.locator('summary', { hasText: 'Empty session' }).click();
-  await empty.getByRole('button', { name: /Archive empty session/ }).click();
-  await expect(page.getByRole('button', { name: /Archive empty session/ })).toHaveCount(0);
+  await page.locator('summary', { hasText: 'Empty conversation' }).click();
+  await empty.getByRole('button', { name: /Archive empty conversation/ }).click();
+  await expect(page.getByRole('button', { name: /Archive empty conversation/ })).toHaveCount(0);
   await page.getByRole('button', { name: /Show archived/ }).click();
   // The archived row is the one that can be restored; it repeats no state word.
-  await expect(empty.getByRole('button', { name: /^Restore session: / })).toBeVisible();
+  await expect(empty.getByRole('button', { name: /^Restore conversation: / })).toBeVisible();
 });
 
 test('sidebar session links remain keyboard reachable and row menu returns focus', async ({
@@ -94,14 +94,18 @@ test('sidebar session links remain keyboard reachable and row menu returns focus
   const sidebar = page.getByTestId('app-sidebar');
   const sessionLink = sidebar.locator('a[href^="/sessions/"]').first();
   await expect(sessionLink).toHaveAttribute('tabindex', '0');
-  await expect(sidebar.getByText('Use ↑ and ↓ to move between sessions.')).toBeVisible();
+  await expect(sidebar.getByText('Use ↑ and ↓ to move between conversations.')).toBeVisible();
   const menu = sidebar.getByRole('button', { name: /Actions for/ }).first();
   await menu.click();
-  await expect(page.getByRole('menuitem', { name: 'Rename session', exact: true })).toBeFocused();
+  await expect(
+    page.getByRole('menuitem', { name: 'Rename conversation', exact: true }),
+  ).toBeFocused();
   await page.keyboard.press('Tab');
   await expect(menu).toBeFocused();
   await menu.press('Enter');
-  await expect(page.getByRole('menuitem', { name: 'Rename session', exact: true })).toBeFocused();
+  await expect(
+    page.getByRole('menuitem', { name: 'Rename conversation', exact: true }),
+  ).toBeFocused();
   await page.keyboard.press('Escape');
   await expect(menu).toBeFocused();
   // The row already says what it does, so its tooltip holds only its shortcut (workbench.md:

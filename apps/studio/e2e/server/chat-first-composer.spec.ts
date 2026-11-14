@@ -95,7 +95,7 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   const persisted = await session(page);
   expect(persisted).toMatchObject({ title: prompt, autoTitle: false });
   await expect(
-    page.getByRole('navigation', { name: 'Projects and sessions', exact: true }),
+    page.getByRole('navigation', { name: 'Projects and conversations', exact: true }),
   ).toContainText(prompt);
   // The session tab strip is gone (18bc4e25); the top bar's path names the open session.
   await expect(

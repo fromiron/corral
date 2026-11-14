@@ -348,9 +348,9 @@ export async function panelTab(page: Page, name: string) {
     await expect(sub).toHaveAttribute('aria-selected', 'true');
     return;
   }
-  const views = page.getByRole('tablist', { name: 'Session views', exact: true });
+  const views = page.getByRole('tablist', { name: 'Conversation views', exact: true });
   // A top bar too narrow for the tabs folds them into one menu of the same name.
-  const folded = page.getByRole('combobox', { name: 'Session views', exact: true });
+  const folded = page.getByRole('combobox', { name: 'Conversation views', exact: true });
   await expect(views.or(folded).first()).toBeVisible();
   const primary = name === 'Run' ? 'Runs' : name;
   if (['Conversation', 'Runs', 'Changes'].includes(primary)) {

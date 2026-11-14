@@ -71,7 +71,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await expect(page).toHaveURL(workUrl);
   await expect(
     page
-      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tablist', { name: 'Conversation views' })
       .getByRole('tab', { name: 'Runs', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect(input).toHaveValue('Preserve this follow-up draft');
@@ -114,11 +114,11 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(
     page
-      .getByRole('tablist', { name: 'Session views' })
+      .getByRole('tablist', { name: 'Conversation views' })
       .getByRole('tab', { name: 'Files', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await page
-    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tablist', { name: 'Conversation views' })
     .getByRole('tab', { name: 'Files', exact: true })
     .click();
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
@@ -138,7 +138,7 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await page.getByRole('tab', { name: 'Changes', exact: true }).click();
   await page
-    .getByRole('tablist', { name: 'Session views' })
+    .getByRole('tablist', { name: 'Conversation views' })
     .getByRole('tab', { name: 'Files', exact: true })
     .click();
   // #87: an original-folder file has one read-only preview in Files, kept across panes; the

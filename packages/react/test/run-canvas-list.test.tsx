@@ -166,7 +166,7 @@ it('lists each observed agent once with its model, status, current round and att
   const writer = row('write');
   expect(writer).toHaveTextContent('작성');
   expect(writer).toHaveTextContent('gpt-list');
-  expect(writer).toHaveTextContent('Done');
+  expect(writer).toHaveTextContent('Completed');
   expect(writer).toHaveTextContent('Round 2');
   expect(writer).toHaveTextContent('Attempt 2');
   // The current attempt ran from 09:01:00 to 09:02:05.

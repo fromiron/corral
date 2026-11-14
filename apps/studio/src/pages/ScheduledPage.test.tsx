@@ -432,12 +432,12 @@ it('names the target session by its current title, as it is after Run now, and l
   fixture.services.repository.getSession.mockResolvedValue({
     sessionId: 'session_1',
     projectId: 'project_1',
-    title: 'New session',
+    title: 'New conversation',
   });
   await page();
   await click(button(/Daily project review/));
   await settle();
-  expect(target()?.querySelector('a')?.textContent).toBe('New session');
+  expect(target()?.querySelector('a')?.textContent).toBe('New conversation');
   fixture.api.run.mockImplementationOnce(async () => {
     fixture.services.repository.getSession.mockResolvedValue({
       sessionId: 'session_1',
@@ -451,7 +451,7 @@ it('names the target session by its current title, as it is after Run now, and l
   await settle();
   expect(target()?.textContent).toContain('My project');
   expect(target()?.querySelector('a')?.textContent).toBe('Summarize the README');
-  expect(target()?.textContent).not.toContain('New session');
+  expect(target()?.textContent).not.toContain('New conversation');
 });
 
 it('says plainly when the target session cannot be found, without a link', async () => {
@@ -460,7 +460,7 @@ it('says plainly when the target session cannot be found, without a link', async
   await page();
   await click(button(/Daily project review/));
   await settle();
-  expect(target()?.textContent).toContain('Session not found');
+  expect(target()?.textContent).toContain('Conversation not found');
   expect(target()?.querySelector('a')).toBeNull();
 });
 

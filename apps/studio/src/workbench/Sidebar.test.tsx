@@ -1094,7 +1094,7 @@ function expectElbow(row: HTMLElement, compact: boolean, kind: 'session' | 'empt
   if (clip.endsWith('px') && Math.abs(px(clip) - guide.ulHeight) < 0.01) {
     expect(guide.guideBottom).toBe(titleMiddle);
   }
-  if (kind === 'empty') expect(last.textContent).toContain('No sessions yet.');
+  if (kind === 'empty') expect(last.textContent).toContain('No conversations yet.');
 }
 
 it.each(['default', 'compact'] as const)(

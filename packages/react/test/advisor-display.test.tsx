@@ -444,7 +444,7 @@ describe('counts and usage', () => {
 });
 
 describe('the advisor’s rest in the timeline', () => {
-  it('says a resting advisor watches, and a worker still waits for an answer', () => {
+  it('says a resting advisor watches, and a worker still waits for a reply', () => {
     const rest = advisorRunEvents().at(-1) as RunEvent;
     expect(rest.type).toBe('execution.state_changed');
     expect(said(rest)).toBe('Reviewer: watching');
@@ -454,6 +454,6 @@ describe('the advisor’s rest in the timeline', () => {
       executionId: 'impl_1',
       payload: { ...rest.payload, executionId: 'impl_1' },
     } as RunEvent;
-    expect(said(worker)).toBe('Implementer: waiting for an answer');
+    expect(said(worker)).toBe('Implementer: waiting for a reply');
   });
 });

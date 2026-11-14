@@ -92,7 +92,7 @@ describe('test run controls', () => {
     expect(run).toBeDisabled();
     expect(
       screen.getByText(
-        "Check steps run only in a session's working copy, so this team can't start here.",
+        "Check steps run only in a conversation's working copy, so this team can't start here.",
       ),
     ).toBeInTheDocument();
   });

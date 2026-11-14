@@ -269,7 +269,7 @@ const summaryLabels = {
       'Run command',
       'Shell',
       'Working directory',
-      'Session working-copy root',
+      'Conversation working-copy root',
       'Mode',
       'Foreground',
       'Timeout',

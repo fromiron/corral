@@ -140,7 +140,7 @@ test('selected-run usage and unique result identities survive reload without cha
   }
   // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
   const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
-  expect(totals).toContain('Session total');
+  expect(totals).toContain('Conversation total');
   // The run segment of the top bar's path exists only in run history.
   await panelTab(page, 'Runs');
   await chooseRun(page, 1);

@@ -12,7 +12,7 @@ async function prepare(page: Page, corral: Harness) {
   await page.getByRole('textbox', { name: 'Contents', exact: true }).fill('Use strict TypeScript.');
   await page.getByRole('button', { name: 'Add entry', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Coding style · v1', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: /^Sessions/ }).click();
+  await page.getByRole('tab', { name: /^Conversations/ }).click();
   await newConversation(page);
   await expect(requestBox(page)).toBeVisible();
   await requestBox(page).fill('Review my code');
@@ -65,7 +65,7 @@ test('explicit material selection survives reload and pins the submitted version
     .fill('Use a different convention.');
   await page.getByRole('button', { name: 'Save new version', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Coding style · v2', exact: true })).toBeVisible();
-  // Back to the session from the sidebar (the session tab strip is gone).
+  // Back to the conversation from the sidebar (the session tab strip is gone).
   await page.getByTestId('app-sidebar').locator(`a[href="${sessionPath}?compose=true"]`).click();
   await expect(requestBox(page)).toHaveValue('Review my code');
   corral.fake?.answerWith('The selected instructions were reviewed.');

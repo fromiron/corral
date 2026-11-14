@@ -361,7 +361,7 @@ test('UX-015-04 older results remain reachable after ten runs', async ({ page, c
       timeline(page).getByRole('region', { name: `Run #${index + 1}`, exact: true }),
     ).toContainText('Completed');
     await expect(request(page)).toHaveAccessibleDescription(
-      'Send to: new run in this session · next request',
+      'Send to: new run in this conversation · next request',
     );
   }
   const panel = await openResultsList(page);

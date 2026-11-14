@@ -490,7 +490,7 @@ for (const cancelScope of ['run', 'command'] as const) {
       .toBe(true);
     // At this width the view tabs fold into one menu of the same name (workbench.md 전역 셸과
     // 화면 틀); the keyboard moves through it from Files to Conversation and back.
-    const views = page.getByRole('combobox', { name: 'Session views', exact: true });
+    const views = page.getByRole('combobox', { name: 'Conversation views', exact: true });
     await views.focus();
     await views.press('Enter');
     await expect(page.getByRole('option', { name: /^Files\b/ })).toBeVisible();

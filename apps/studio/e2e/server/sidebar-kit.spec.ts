@@ -135,7 +135,9 @@ test('500 conversations retain source project hierarchy and offscreen keyboard n
   await expect(actions).toBeFocused();
   await expect(last).toHaveCount(0);
   await actions.press('ArrowDown');
-  await expect(page.getByRole('menuitem', { name: 'Rename session', exact: true })).toBeVisible();
+  await expect(
+    page.getByRole('menuitem', { name: 'Rename conversation', exact: true }),
+  ).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(actions).toBeFocused();
   await project.focus();
