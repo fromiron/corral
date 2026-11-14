@@ -5623,7 +5623,6 @@
       "announce": "{count, plural, =0 {} other {확인이 필요한 실행 #개}}",
       "now": "지금"
     },
-    "activity": "활동",
     "runWaiting": "{run} · 응답 대기",
     "respond": "{count, plural, =1 {응답하기} other {응답하기 · #}}",
     "showPanel": "옆 패널 보기",

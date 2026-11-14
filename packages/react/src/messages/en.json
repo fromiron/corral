@@ -5623,7 +5623,6 @@
       "announce": "{count, plural, =0 {} one {# execution needs you} other {# executions need you}}",
       "now": "Now"
     },
-    "activity": "Activity",
     "runWaiting": "{run} · Waiting for you",
     "respond": "{count, plural, =1 {Respond} other {Respond · #}}",
     "showPanel": "Show side panel",

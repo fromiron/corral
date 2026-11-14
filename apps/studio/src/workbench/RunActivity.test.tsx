@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 import { type EventOf, RunEvent } from '@corral/contracts';
 import { applyEvent, emptyProjection } from '@corral/core';
+import { ExecutionToolRows, executionToolEntries } from '@corral/react';
 import { linearCorral } from '@corral/testkit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { RunActivity, RunPlanCard, RunPlanStrip } from './RunActivity.tsx';
+import { RunPlanCard, RunPlanStrip } from './RunActivity.tsx';
 
 const RUN = 'run_activity';
 const START = Date.parse('2026-10-15T00:00:00.000Z');
@@ -139,49 +140,7 @@ function show(node: React.ReactNode) {
   return container;
 }
 
-it('lists every execution in start order with its attempt and only its own tool calls', () => {
-  const { events, projection, definition } = fixture();
-  const container = show(
-    <RunActivity
-      events={events}
-      projection={projection}
-      definition={definition}
-      selected={undefined}
-      onSelect={() => {}}
-    />,
-  );
-  const heads = [...container.querySelectorAll('[data-execution-id]')];
-  expect(heads.map((head) => head.getAttribute('data-execution-id'))).toEqual([
-    'exec_lead',
-    'exec_w1',
-    'exec_w2',
-  ]);
-  expect(heads[2]?.textContent).toContain('writer');
-  expect(heads[2]?.textContent).toContain('Attempt 2');
-  const entries = [...container.querySelectorAll('[data-activity-entry]')];
-  expect(entries[2]?.textContent).toContain('read_source');
-  expect(entries[1]?.textContent).not.toContain('read_source');
-});
-
-it('selects an execution from its head and marks only that one', () => {
-  const { events, projection, definition } = fixture();
-  const onSelect = vi.fn();
-  const container = show(
-    <RunActivity
-      events={events}
-      projection={projection}
-      definition={definition}
-      selected="exec_w2"
-      onSelect={onSelect}
-    />,
-  );
-  const pressed = container.querySelectorAll('[data-execution-id][aria-pressed="true"]');
-  expect([...pressed].map((head) => head.getAttribute('data-execution-id'))).toEqual(['exec_w2']);
-  act(() => container.querySelector<HTMLButtonElement>('[data-execution-id="exec_w1"]')?.click());
-  expect(onSelect).toHaveBeenCalledWith('exec_w1');
-});
-
-it('shows no card without a work plan: the activity heads already give each execution', () => {
+it('shows no card without a work plan', () => {
   const { projection } = fixture();
   const container = show(<RunPlanCard projection={projection} plan={null} />);
   expect(container.textContent).toBe('');
@@ -217,6 +176,9 @@ function call(seq: number, id: string, name: string, ms: number, error: string |
   ] as RunEvent[];
 }
 
+/** The writer's retry's own calls, as the run record's tool rows list them. */
+const toolsOf = (events: RunEvent[]) => executionToolEntries(events).get('exec_w2') ?? [];
+
 function repeated(failed: boolean) {
   const base = fixture();
   const settled = base.events.at(-1) as RunEvent;
@@ -240,31 +202,23 @@ function repeated(failed: boolean) {
 
 it('folds consecutive calls of the same tool into one row, folded unless one failed', () => {
   for (const failed of [false, true]) {
-    const { events, projection, definition } = repeated(failed);
-    const container = show(
-      <RunActivity
-        events={events}
-        projection={projection}
-        definition={definition}
-        selected={undefined}
-        onSelect={() => {}}
-      />,
-    );
-    const entry = [...container.querySelectorAll('[data-activity-entry]')][2];
-    const folds = [...(entry?.querySelectorAll('[data-tool-repeat]') ?? [])];
+    const { events } = repeated(failed);
+    const container = show(<ExecutionToolRows tools={toolsOf(events)} />);
+    const entry = container;
+    const folds = [...entry.querySelectorAll('[data-tool-repeat]')];
     // read_source ×3, then write_draft, then a lone read_source: only the run of three folds.
     expect(folds).toHaveLength(1);
     expect(folds[0]?.textContent).toContain('read_source ×3');
     expect(folds[0]?.querySelector('[aria-expanded]')?.getAttribute('aria-expanded')).toBe(
       String(failed),
     );
-    expect(entry?.textContent).toContain('write_draft');
+    expect(entry.textContent).toContain('write_draft');
     act(() => container.remove());
   }
 });
 
 it('folds a repeated tool once its running call settles', () => {
-  const { events, projection, definition } = repeated(false);
+  const { events, projection } = repeated(false);
   // Up to the third read_source's start: that call is still running.
   const cut = events.findIndex(
     (item) => item.type === 'tool.finished' && item.payload.toolCallId === 'call_3',
@@ -289,13 +243,7 @@ it('folds a repeated tool once its running call settles', () => {
     act(() =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <RunActivity
-            events={list}
-            projection={list.reduce(applyEvent, emptyProjection(RUN))}
-            definition={definition}
-            selected={undefined}
-            onSelect={() => {}}
-          />
+          <ExecutionToolRows tools={toolsOf(list)} />
         </IntlProvider>,
       ),
     );
