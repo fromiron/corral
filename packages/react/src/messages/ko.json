@@ -5448,7 +5448,7 @@
     "serverRequired": "작업 인계는 Corral 서버에 연결했을 때 사용할 수 있습니다.",
     "scopeHint": "채택한 결정과 선택한 근거를 요청서로 넘깁니다. 대상 대화의 기본 Corral은 바뀌지 않습니다.",
     "target": "대상 대화",
-    "newSession": "새 대화",
+    "newSession": "새 대화 만들기",
     "title": "새 대화 이름",
     "execution": "실행 구성",
     "auto": "자동",

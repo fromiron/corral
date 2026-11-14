@@ -5448,7 +5448,7 @@
     "serverRequired": "Work handoff is available when connected to the Corral server.",
     "scopeHint": "This request uses the adopted decision and its selected evidence. The target conversation’s default Corral stays the same.",
     "target": "Target conversation",
-    "newSession": "New conversation",
+    "newSession": "Create new conversation",
     "title": "New conversation name",
     "execution": "Run setup",
     "auto": "Auto",
