@@ -293,10 +293,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(preview).toContainText('notes/team_writer_role.md');
     await preview.getByRole('button', { name: 'Restore Paddock' }).click();
     await expect(
-      checkpoints
-        .getByTestId('checkpoint-restore')
-        .filter({ hasText: 'Paddock' })
-        .first(),
+      checkpoints.getByTestId('checkpoint-restore').filter({ hasText: 'Paddock' }).first(),
     ).toContainText('Restore: Applied');
     await expect(
       checkpoints

@@ -208,9 +208,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('combobox', { name: 'Settings for', exact: true }).click();
     await page.getByRole('option', { name: 'Other project', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`settings=harness&settingsProject=${projectId}`));
-    await expect(page.getByLabel('Harness name', { exact: true })).toHaveValue(
-      'Evidence writer',
-    );
+    await expect(page.getByLabel('Harness name', { exact: true })).toHaveValue('Evidence writer');
     expect(dialogs).toEqual([]);
     let failListOnce = true;
     await page.route('**/api/v1/harness/profile-management', async (route) => {

@@ -265,15 +265,7 @@ const summaries: [string, Record<string, unknown>][] = [
 // The labels each summary shows, in both catalogs, word for word.
 const summaryLabels = {
   en: [
-    [
-      'Run command',
-      'Shell',
-      'Working directory',
-      'Paddock root',
-      'Mode',
-      'Foreground',
-      'Timeout',
-    ],
+    ['Run command', 'Shell', 'Working directory', 'Paddock root', 'Mode', 'Foreground', 'Timeout'],
     ['Run command', 'Mode', 'Service'],
     ['Proposed file content'],
     ['Requested replacements', 'Before', 'After'],

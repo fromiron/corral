@@ -156,8 +156,7 @@ export function debugStore(
     );
   };
   const publish = (target: WorkspaceTarget, value: DebugState) => {
-    if (!same(value.target, target))
-      throw new Error('The debugger belongs to another Paddock.');
+    if (!same(value.target, target)) throw new Error('The debugger belongs to another Paddock.');
     const old = get(target),
       before = old?.state?.session,
       after = value.session;
