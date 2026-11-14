@@ -99,6 +99,9 @@ export function TermHint({ term, className }: { term: TermId; className?: string
           padding="compact"
           // The explanation is read, not worked in: the focus stays on the icon.
           initialFocus={false}
+          // Nor does it hand the focus back when it closes: a focus returned to the icon would open
+          // it again (a tap outside on a touch screen does that).
+          finalFocus={false}
           data-term-popup={meaningId}
           aria-label={t(`${term}.name`)}
           className="text-caption"
@@ -130,7 +133,13 @@ export function TermTooltip({
   const described = [children.props['aria-describedby'], meaningId].filter(Boolean).join(' ');
   return (
     <>
-      <Tooltip content={<TermContent term={term} />} {...(side ? { side } : {})}>
+      <Tooltip
+        content={<TermContent term={term} />}
+        // The kit trims a one-line tooltip to its letters; two lines keep their whole box, or the
+        // second line would hang below the tooltip's edge.
+        className="[text-box:normal]"
+        {...(side ? { side } : {})}
+      >
         {cloneElement(children, { 'aria-describedby': described })}
       </Tooltip>
       <Meaning id={meaningId} term={term} />

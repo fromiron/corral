@@ -136,6 +136,10 @@ export const InTooltip: Story = {
         messages.Terms.advisor.meaning,
       ),
     );
+    // Both lines sit inside the tooltip's box.
+    const tip = box(document.querySelector('[role="tooltip"]'));
+    const meaning = box(document.querySelector('[role="tooltip"] [data-term-meaning]'));
+    await expect(meaning?.bottom).toBeLessThanOrEqual(tip?.bottom ?? 0);
     // The kit's fade ends before the accessibility check reads the colors.
     await new Promise((resolve) => setTimeout(resolve, 500));
   },
