@@ -141,6 +141,12 @@ it.each([
     expect(heading).toBeDefined();
     expect(heading?.contains(hint)).toBe(false);
     expect(heading?.nextElementSibling).toBe(hint);
+    // The empty title may wrap in a narrow pane: its icon stands on the first line
+    // (features/term-hints.md). The Paddock heading is one fixed word.
+    if (copy === null) {
+      expect(hint.classList.contains('my-[calc((1lh-1.5rem)/2)]')).toBe(true);
+      expect(heading?.parentElement?.classList.contains('items-start')).toBe(true);
+    }
   } finally {
     await act(async () => root.unmount());
     container.remove();

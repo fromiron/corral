@@ -33,6 +33,18 @@ it('names the icon after its term and reads the meaning as its description while
   expect(screen.queryByRole('dialog')).toBeNull();
 });
 
+// After a title that may wrap, the icon centres on one line of the row it stands in (the row
+// carries the title's line height and aligns to its start), so it stays on the first line. On one
+// line that is where it stood centred.
+it('stands on the first line of a title that may wrap', () => {
+  const { unmount } = show(<TermHint term="corral" />);
+  expect(hint()).toHaveClass('-my-1');
+  unmount();
+  show(<TermHint term="corral" firstLine />);
+  expect(hint()).toHaveClass('my-[calc((1lh-1.5rem)/2)]');
+  expect(hint()).not.toHaveClass('-my-1');
+});
+
 it('opens on a press, showing the name and its one sentence, and closes on a press outside', async () => {
   const user = userEvent.setup();
   show(<TermHint term="corral" />);

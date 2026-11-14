@@ -139,7 +139,9 @@ export function EmptyState({
       )}
     >
       {titleAction ? (
-        <span className="inline-flex items-center gap-1">
+        // Aligned to its start with the title's line height, so an action centred on one line
+        // stays on the title's first line when the title wraps.
+        <span className={cn(size.type.body, 'inline-flex items-start gap-1')}>
           <b
             className={cn(size.type.body, 'text-foreground')}
             style={{ fontVariationSettings: fontWeights.semibold }}

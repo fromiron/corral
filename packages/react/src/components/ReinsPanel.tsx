@@ -78,7 +78,7 @@ export function ReinsPanel({
           </>
         )}
       </h2>
-      <TermHint term="reins" className="my-[calc((1lh-1.5rem)/2)]" />
+      <TermHint term="reins" firstLine />
     </div>
   );
 

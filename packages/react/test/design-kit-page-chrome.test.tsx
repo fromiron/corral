@@ -29,6 +29,28 @@ it('an empty state may be its title alone', () => {
   expect(container.querySelector('p')).toBeNull();
 });
 
+// features/term-hints.md: a title that wraps keeps its action (a term's icon) on its first line.
+// The title and its action share a row that aligns to its start and carries the title's line
+// height, so the action can centre on one line; a title without an action is drawn as before.
+it('an empty state lines its title action up with the first line of its title', () => {
+  const { container } = render(
+    <EmptyState title="This conversation has no Paddock" titleAction={<button type="button" />} />,
+  );
+  const title = screen.getByText('This conversation has no Paddock');
+  const row = title.parentElement as HTMLElement;
+  expect(row).not.toBe(container.querySelector('[data-slot="empty-state"]'));
+  expect(title.nextElementSibling).toBe(screen.getByRole('button'));
+  expect(row).toHaveClass('items-start', 'leading-[var(--lh-body,20px)]');
+  expect(row).not.toHaveClass('items-center');
+});
+
+it('an empty state without a title action keeps its title a direct child', () => {
+  const { container } = render(<EmptyState title="No Corrals yet" />);
+  expect(screen.getByText('No Corrals yet').parentElement).toBe(
+    container.querySelector('[data-slot="empty-state"]'),
+  );
+});
+
 it('an empty state keeps a line when it has one', () => {
   render(<EmptyState title="Available with the local server" text="Start it to continue." />);
   expect(screen.getByText('Start it to continue.')).toBeVisible();
