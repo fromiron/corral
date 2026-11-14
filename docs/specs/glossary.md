@@ -91,4 +91,6 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
   - Output / 출력: 출력 노드, 실행의 Output 탭, 출력 계약, 검사·프로세스·터미널의 출력.
   - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
   - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
+  - Pane: 국문이 "창"과 "패널"로 갈린다. "창"은 운영체제 창의 이름이기도 하다("창 최대화").
+  - 저장하지 않고 쓰는 자동 구성: 컴포저는 "Auto / 자동", 새 대화 만들기와 대화 메뉴는 "Default chat / 기본 대화"라고 부른다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.

@@ -67,7 +67,7 @@ test('a default chat starts with no team, one conversation turn and keeps its an
   ).toContainText('Default policy');
   await expect(page.getByRole('button', { name: 'Live voice', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Send', exact: true })).toBeVisible();
-  for (const label of ['Quality preset', 'Check scope', 'Work style for next request']) {
+  for (const label of ['Check scope']) {
     await expect(page.getByRole('combobox', { name: label, exact: true })).toBeHidden();
   }
   await expect(

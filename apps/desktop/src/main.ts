@@ -19,7 +19,7 @@ import {
   shell,
   Tray,
 } from 'electron';
-import { type DesktopRun, RunSleepBlocker, runRoute } from './lifecycle.ts';
+import { type DesktopRun, RunSleepBlocker, runRoute, trayRunState } from './lifecycle.ts';
 import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
 import { installStudioMicrophone } from './microphone.ts';
 import { DesktopPreviews } from './preview.ts';
@@ -148,16 +148,7 @@ function refreshTray() {
       { label: ko ? 'Corral 열기' : 'Open Corral', click: showWindow },
       ...desktopRuns.slice(0, 20).map(
         (run): MenuItemConstructorOptions => ({
-          label: `${run.title || (ko ? '실행' : 'Run')} · ${
-            (
-              {
-                running: ko ? '작업 중' : 'Working',
-                paused: ko ? '일시정지됨' : 'Paused',
-                awaiting_user: ko ? '응답 대기' : 'Waiting for you',
-                cancelling: ko ? '중지하는 중' : 'Stopping',
-              } as Record<string, string>
-            )[run.status] ?? (ko ? '시작하는 중' : 'Starting')
-          }`,
+          label: `${run.title || (ko ? '실행' : 'Run')} · ${trayRunState(run.status, ko)}`,
           submenu: [
             {
               label: ko ? '실행 열기' : 'Open run',
