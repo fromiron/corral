@@ -7,6 +7,7 @@ import type { RunSessionStore } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 import { ExecutionSteering } from './ExecutionSteering.tsx';
 import { SettingsPatchPanel } from './SettingsPatchPanel.tsx';
+import { TermHint } from './TermHint.tsx';
 
 export interface SteerTarget {
   executionId: string;
@@ -16,7 +17,7 @@ export interface SteerTarget {
 }
 
 /**
- * Steering one execution, a part of Reins that the screen names by its action. The header always
+ * Steering one execution: the Reins area, titled by the name and its target. The header always
  * says who receives the instruction, when it takes effect and how far it reaches. Directive badges
  * change only on committed events.
  */
@@ -30,6 +31,7 @@ export function ReinsPanel({
   compact?: boolean;
 }) {
   const t = useTranslations('Reins');
+  const name = useTranslations('Terms');
   const inputId = useId();
   const [draft, setDraft] = useState<{
     runId: string | null;
@@ -57,16 +59,31 @@ export function ReinsPanel({
       setDraft((current) => (current?.commandId === recovered.commandId ? null : current));
   }, [recovered]);
 
+  // The area's name, Reins, with its explanation right after the title, beside it rather than in
+  // it, so the heading names only the area (glossary.md, features/term-hints.md).
+  const title = (role: string | null) => (
+    <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
+      <h2
+        id={`${inputId}-heading`}
+        className="min-w-0 text-subtitle"
+        style={{ fontVariationSettings: fontWeights.semibold }}
+      >
+        {role === null ? (
+          name('reins.name')
+        ) : (
+          <>
+            {name('reins.name')} · <span>{role}</span>
+          </>
+        )}
+      </h2>
+      <TermHint term="reins" />
+    </div>
+  );
+
   if (!target) {
     return (
       <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-2">
-        <h2
-          id={`${inputId}-heading`}
-          className="text-subtitle"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('heading')}
-        </h2>
+        {title(null)}
         <p className="text-body text-muted-foreground">{t('noTarget')}</p>
         {compact ? null : <SettingsPatchPanel key={projection?.runId} session={session} />}
       </section>
@@ -206,15 +223,7 @@ export function ReinsPanel({
       </div>
     ) : null;
 
-  const heading = (
-    <h2
-      id={`${inputId}-heading`}
-      className="text-subtitle"
-      style={{ fontVariationSettings: fontWeights.semibold }}
-    >
-      {t('heading')} · <span>{target.nodeLabel}</span>
-    </h2>
-  );
+  const heading = title(target.nodeLabel);
   return (
     <section aria-labelledby={`${inputId}-heading`} className="flex flex-col gap-3">
       {compact ? (

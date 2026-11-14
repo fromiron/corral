@@ -34,9 +34,9 @@ test('a lost command response recovers its receipt without submitting another di
   await input.press('Enter');
   await page.getByRole('button', { name: 'Check receipt and retry safely' }).click();
   await expect(input).toHaveValue('');
-  await expect(
-    page.getByRole('region', { name: /^Give instruction/ }).getByRole('listitem'),
-  ).toHaveCount(1);
+  await expect(page.getByRole('region', { name: /^Reins · / }).getByRole('listitem')).toHaveCount(
+    1,
+  );
   await expect(page.getByTestId('run-output')).toContainText(
     'Recover this instruction exactly once.',
   );

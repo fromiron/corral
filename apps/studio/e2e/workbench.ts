@@ -452,9 +452,9 @@ export async function openActivity(page: Page) {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The run controls in the open activity panel. */
+/** The run controls in the open activity panel: the row named Reins. */
 export const runControls = (page: Page) =>
-  activityBar(page).getByRole('region', { name: 'Run controls', exact: true });
+  activityBar(page).getByRole('region', { name: 'Reins', exact: true });
 
 /**
  * Stops the session's run from the activity panel. Stop asks first only while two or more
