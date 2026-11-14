@@ -10,6 +10,7 @@ import { useRequestOwner } from '../src/components/RequestCard.tsx';
 import { RunCanvas } from '../src/components/RunCanvas.tsx';
 import { EventText } from '../src/components/RunText.tsx';
 import { ExecutionTree } from '../src/components/RunView.tsx';
+import { TaskBoard } from '../src/components/TaskBoard.tsx';
 import { Timeline } from '../src/components/Timeline.tsx';
 import { UsageInspector } from '../src/components/UsageInspector.tsx';
 import en from '../src/messages/en.json' with { type: 'json' };
@@ -20,6 +21,7 @@ import { buildTranscript } from '../src/run/transcript.ts';
 import {
   ADVISOR_RUN,
   advisorDefinition,
+  advisorNodeId,
   advisorRunEvents,
   advisorRunProjection,
   advisorRunSession,
@@ -391,6 +393,53 @@ describe('the advisor a conversation adds', () => {
       ),
     );
     expect(document.querySelector('[data-directive-advice]')?.textContent).toBe('Outrider · 우려');
+  });
+
+  it.each(['en', 'ko'] as const)(
+    'is called “Outrider” in the usage by agent, never by its stored name (%s)',
+    (locale) => {
+      const { container } = render(wrap(<UsageInspector session={session()} />, locale));
+      const row = container.querySelector(
+        `[data-usage-agent="${advisorNodeId({ session: true })}"]`,
+      );
+      expect(row?.textContent).toContain('Outrider');
+      expect(container.textContent).toContain('Outrider');
+      expect(container.textContent).not.toContain('Advisor');
+    },
+  );
+
+  it('is called “Outrider” on the task board, never by its stored name', () => {
+    // The Outrider has a task of its own (features/advisor.md, 계약).
+    const nodeId = advisorNodeId({ session: true });
+    const node = advisorDefinition({ session: true }).nodes.find((item) => item.id === nodeId);
+    const recorded = advisorRunEvents({ session: true });
+    const events = [
+      ...recorded,
+      RunEvent.parse({
+        schemaVersion: '0.1',
+        eventId: 'event_task_advisor',
+        runId: ADVISOR_RUN,
+        runSeq: recorded.length + 1,
+        recordedAt: '2026-11-07T00:00:00.000Z',
+        actor: { kind: 'runtime', id: 'runtime' },
+        causedByEventIds: [],
+        type: 'task.created',
+        payload: {
+          taskId: 'task_advisor',
+          nodeId,
+          roleId: node && 'roleId' in node ? node.roleId : 'role',
+          contract: 'text',
+          dependsOnTaskIds: [],
+        },
+      }),
+    ];
+    const board = session();
+    board.setState({ events, projection: advisorRunProjection(events) });
+    const { container } = render(
+      wrap(<TaskBoard session={board} onOpenArtifact={() => {}} />, 'ko'),
+    );
+    expect(container.textContent).toContain('Outrider');
+    expect(container.textContent).not.toContain('Advisor');
   });
 
   it('is called “advisor” on the relation graph', () => {

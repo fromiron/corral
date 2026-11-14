@@ -1,7 +1,9 @@
 import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import { useMemo } from 'react';
+import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import type { SteerTarget } from '../components/ReinsPanel.tsx';
+import { agentName } from './advisor.ts';
 import type { RunSessionStore } from './session.ts';
 
 /**
@@ -15,6 +17,7 @@ export function useSteerTarget(
 ): SteerTarget | null {
   const projection = useStore(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
+  const advisorWord = useTranslations('Advice')('advisor');
   return useMemo(() => {
     if (!projection) return null;
     const executions = projection.executionOrder.map((id) => projection.executions[id]);
@@ -25,12 +28,11 @@ export function useSteerTarget(
       [...executions].reverse().find((e) => e && !TERMINAL_EXECUTION_STATUSES.has(e.status)) ??
       executions.at(-1);
     if (!execution) return null;
-    const label =
-      definition?.nodes.find((n) => n.id === execution.nodeId)?.label ?? execution.nodeId;
+    const label = agentName(definition, execution.nodeId, advisorWord);
     return {
       executionId: execution.executionId,
       nodeLabel: label,
       finished: TERMINAL_EXECUTION_STATUSES.has(execution.status),
     };
-  }, [projection, definition, chosen]);
+  }, [projection, definition, chosen, advisorWord]);
 }

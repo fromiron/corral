@@ -9,6 +9,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { advisorRunSession } from '../../../../packages/react/src/stories/advisorRunFixture.ts';
 import { ExecutionContext, RunStatusCards } from './RunStatusCards.tsx';
 
 vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'server', workspaces: null }) }));
@@ -222,4 +223,14 @@ it('keeps compaction out of a finished execution’s context line', async () => 
   const line = container.querySelector('[data-testid="execution-context"]');
   expect(line?.textContent).toMatch(/1,?200/);
   expect(line?.textContent).not.toContain(messages.RunStatus.compactNoExecution);
+});
+
+// A conversation's own Outrider is named by the one word, never by its stored name.
+it('names the conversation’s Outrider by the one word in its context line', async () => {
+  const session = advisorRunSession({ session: true });
+  const last = session.getState().projection?.executionOrder.at(-1);
+  expect(session.getState().projection?.executions[last ?? '']?.advisor).toBeTruthy();
+  const container = await showOpen(session);
+  expect(container.textContent).toContain('Outrider');
+  expect(container.textContent).not.toContain('Advisor');
 });

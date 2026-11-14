@@ -9,6 +9,7 @@ import {
   executionAgentStatus,
   executionIntervals,
   executionToolEntries,
+  useAgentName,
   usePresenceWord,
 } from '@corral/react';
 import {
@@ -91,6 +92,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
   const t = useTranslations('RunMonitor');
   const lanesText = useTranslations('RunMonitor.lanes');
   const status = usePresenceWord();
+  const nameOf = useAgentName(definition);
   const format = useFormatter();
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
   // Waiting for the person or paused, the run records nothing new: its axis stops at the last
@@ -142,7 +144,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
     ].filter((id, i, all) => all.indexOf(id) === i && rows.some((row) => row.nodeId === id));
     const agents: LaneAgent[] = order.map((nodeId) => {
       const lane = rows.filter((row) => row.nodeId === nodeId);
-      const name = definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+      const name = nameOf(nodeId);
       const profile = projection?.executions[lane[0]?.executionId ?? '']?.modelProfile;
       const model = profile ? (projection?.modelProfiles[profile]?.modelId ?? profile) : undefined;
       return {
@@ -217,7 +219,7 @@ function AgentTimeline({ events, projection, definition, selected, onSelect }: T
       });
     }
     return { start, end, agents, handoffs };
-  }, [rows, tools, created, authors, events, projection, definition, live, t, status]);
+  }, [rows, tools, created, authors, events, projection, definition, live, t, status, nameOf]);
 
   if (!board) return <p className="p-3 text-body text-muted-foreground">{t('noIntervals')}</p>;
   const calls = rows.find((row) => row.executionId === selected)?.calls ?? [];

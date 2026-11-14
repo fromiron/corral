@@ -35,6 +35,7 @@ import {
   TaskBoard,
   Timeline,
   UsageInspector,
+  useAgentName,
   useRoundInspection,
   useRunDisplay,
   useRunWorkPlan,
@@ -244,6 +245,7 @@ function RunWorkspace({
   const m = useTranslations('RunMonitor');
   const tp = useTranslations('Presence');
   const harness = useTranslations('Harness');
+  const nameOf = useAgentName(definition);
   const { execution, artifact, result } = search;
   const resultOpen = search.view === 'results' || result !== undefined;
   const documentOpen = resultOpen || artifact !== undefined;
@@ -844,7 +846,9 @@ function RunWorkspace({
                     {panel === 'run'
                       ? m('runInfo')
                       : (selectedTarget?.nodeLabel ??
-                        definition.nodes.find((node) => node.id === listedNodeId)?.label ??
+                        (listedNodeId && definition.nodes.some((node) => node.id === listedNodeId)
+                          ? nameOf(listedNodeId)
+                          : null) ??
                         m('details'))}
                   </h2>
                   {panel === 'selection' && execution && projection?.executions[execution] ? (
@@ -1072,6 +1076,7 @@ function RunHeader({
   const t = useTranslations('RunPage');
   const m = useTranslations('RunMonitor');
   const tp = useTranslations('Presence');
+  const nameOf = useAgentName(definition);
   const projection = useRunDisplay(session, (s) => s.projection);
   const events = useRunDisplay(session, (s) => s.events);
   const recipeStopped = useStore(session, (s) =>
@@ -1108,8 +1113,7 @@ function RunHeader({
     !(soleAgent && projection.statusReason.split(': ')[0] === 'execution_failed')
       ? projection.statusReason
       : null;
-  const labelOf = (nodeId: string) =>
-    definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+  const labelOf = nameOf;
   // The path bar names the run by its number; the header is its request.
   const title = request ?? definition.name;
   return (
@@ -1219,9 +1223,8 @@ function RunFacts({
   const format = useFormatter();
   const projection = useRunDisplay(session, (s) => s.projection);
   const savedTeam = useSavedTeam(definition.sourceTeam?.corralId ?? projection?.corralId);
+  const labelOf = useAgentName(definition);
   if (!projection) return null;
-  const labelOf = (nodeId: string) =>
-    definition.nodes.find((n) => n.id === nodeId)?.label ?? nodeId;
   const executions = projection.executionOrder.flatMap((id) => projection.executions[id] ?? []);
   const kinds = executions.map((e) => ({ e, presence: executionViewPresence(e) }));
   const working = [
@@ -1657,7 +1660,7 @@ function NodeExecutions({
   const results = useTranslations('Results');
   const identityPrefix = useId();
   const node = definition.nodes.find((n) => n.id === nodeId);
-  const label = node?.label ?? nodeId;
+  const label = useAgentName(definition)(nodeId);
   const ids = (projection.nodeExecutions[nodeId] ?? []).filter(
     (id) => projection.executions[id]?.nodeId === nodeId,
   );

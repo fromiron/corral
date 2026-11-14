@@ -57,6 +57,7 @@ export function RunView({
   const t = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const startError = useStore(session, (s) => s.startError);
   const definitionError = useStore(session, (s) => s.definitionError);
   const streamError = useStore(session, (s) => s.streamError);
@@ -110,11 +111,7 @@ export function RunView({
           </div>
           {projection.statusReason ? (
             <p className="text-caption text-muted-foreground">
-              {t('reasonPrefix')}{' '}
-              <RunReason
-                code={projection.statusReason}
-                nodeLabel={(id) => definition?.nodes.find((n) => n.id === id)?.label ?? id}
-              />
+              {t('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={nameOf} />
             </p>
           ) : null}
           <ExecutionTree session={session} onSteer={onSteer} />

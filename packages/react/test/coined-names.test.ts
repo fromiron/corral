@@ -125,7 +125,8 @@ function screenText(message: string): string {
 
 describe('the retired screen names', () => {
   it('reads the words of every select and plural branch, but no argument name', () => {
-    const says = (message: string) => RETIRED.some(([, pattern]) => pattern.test(screenText(message)));
+    const says = (message: string) =>
+      RETIRED.some(([, pattern]) => pattern.test(screenText(message)));
     expect(says('{count, plural, one {Advisor} other {Advisors}}')).toBe(true);
     expect(says('{x, select, a {working copy} other {ok}}')).toBe(true);
     expect(says('{n, plural, offset:1 =0 {none} other {# 작업 사본}}')).toBe(true);
