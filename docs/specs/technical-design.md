@@ -462,4 +462,4 @@ MVP 자료는 등록한 text/Markdown와 안전하게 추출한 HTML text다. PD
 
 ### 리소스 관리
 
-스킬·Hook·MCP 관리 화면을 분리한다. 별도 관리 메타데이터와 요청 receipt는 실행 snapshot을 변경하지 않는다. 기본 작업 방식 편집은 profile/default CAS를 원자적으로 반영하며 MCP 연결 시험은 고정 설정·인증·관리 사본에 묶는다.
+스킬·Hook·MCP 관리 화면을 분리한다. 별도 관리 메타데이터와 요청 receipt는 실행 snapshot을 변경하지 않는다. 기본 Harness 편집은 profile/default CAS를 원자적으로 반영하며 MCP 연결 시험은 고정 설정·인증·관리 사본에 묶는다.

@@ -24,7 +24,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 주 대상은 자신만의 LLM 에이전트 팀을 구성하려는 개발자·파워유저다. Bell의 프런트엔드 포트폴리오로서 편집 UX, 실시간 상태 관리, 접근성, 성능, 오류 복구 설계를 드러낸다. 코딩 전용 제품으로 제한하지 않지만, MVP 실사용 시나리오는 조사→작성→검토 하나로 검증한다.
 
-**배포 형태:** 브라우저 Studio + 로컬 Node.js 서버 + SQLite 및 Electron Desktop. 한 Run 안의 병렬 작업과 과거 Run 보관을 지원한다. 모든 시작 입구의 admission, host 전체 모델·worker·process 상한, `(hostId, runId)`별 제어·SSE·사용량·자료 소유를 함께 구현해야 하며, 같은 작업 사본의 동시 writer를 허용한다는 뜻은 아니다.
+**배포 형태:** 브라우저 Studio + 로컬 Node.js 서버 + SQLite 및 Electron Desktop. 한 Run 안의 병렬 작업과 과거 Run 보관을 지원한다. 모든 시작 입구의 admission, host 전체 모델·worker·process 상한, `(hostId, runId)`별 제어·SSE·사용량·자료 소유를 함께 구현해야 하며, 같은 Paddock의 동시 writer를 허용한다는 뜻은 아니다.
 
 **포트폴리오 모드:** 동일한 편집기·상태 투영·Reins를 사용하되 실행 어댑터만 결정론적 mock으로 바꾼 정적 웹 데모를 제공한다. 실제 LLM처럼 가장하지 않으며 `Demo / Simulated agents`를 항상 표시한다.
 
@@ -88,7 +88,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 작업 사본의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 Paddock의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
@@ -134,13 +134,13 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 5.1 노드와 호출
 
-Agent의 `invocation`은 `scheduled`, `callable`, `observer` 중 하나다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. observer는 그래프 순서에 들지 않고 `advise` 관계로 이은 Agent가 일하는 것을 지켜보다가 조언한다([감독](features/advisor.md)). 둘 다 팔레트상 새 노드 종류가 아니라 Agent의 속성이다. Decision은 이름 있는 분기 결과만 내며 임의 JavaScript를 평가하지 않는다. Output은 필수 작업·판정·승인을 검증한 뒤 최종 버전을 확정한다.
+Agent의 `invocation`은 `scheduled`, `callable`, `observer` 중 하나다. callable은 실제 그래프 순서에서 자동 실행하지 않으며, 다른 Agent가 허용된 관계로 호출할 때만 실행한다. observer는 그래프 순서에 들지 않고 `advise` 관계로 이은 Agent가 일하는 것을 지켜보다가 조언한다([Outrider](features/advisor.md)). 둘 다 팔레트상 새 노드 종류가 아니라 Agent의 속성이다. Decision은 이름 있는 분기 결과만 내며 임의 JavaScript를 평가하지 않는다. Output은 필수 작업·판정·승인을 검증한 뒤 최종 버전을 확정한다.
 
 ### 5.2 연결 종류
 
 **Control edge:** 다음 단계 실행을 뜻한다. 노드와 상자의 정해진 포트 사이에 연결한다. 한 포트의 연결이 여럿이면 동시에 실행되는 분기다.
 
-**Capability link:** `delegate`, `question`, `advise`를 허용하는 관계다. `advise`는 감독 Agent가 그 대상을 지켜보고 조언할 수 있다는 뜻이다. 실행 순서를 뜻하지 않는다. 별도 선 모양·핸들·레이어로 표시한다. 실제 호출은 Timeline과 실행 트리에 별도로 나타난다. 허용된 선이 있다는 이유만으로 호출됐다고 표시하지 않는다.
+**Capability link:** `delegate`, `question`, `advise`를 허용하는 관계다. `advise`는 Outrider Agent가 그 대상을 지켜보고 조언할 수 있다는 뜻이다. 실행 순서를 뜻하지 않는다. 별도 선 모양·핸들·레이어로 표시한다. 실제 호출은 Timeline과 실행 트리에 별도로 나타난다. 허용된 선이 있다는 이유만으로 호출됐다고 표시하지 않는다.
 
 이벤트 스트림과 데이터 산출물의 연결을 control edge에 혼합하지 않는다. 입력 바인딩은 해당 노드 속성에서 선택한다. 범용 타입 설계기는 없지만, `text`, `notes`, `draft`, `review` 등 지원 계약의 호환성 검사는 한다.
 
@@ -195,7 +195,7 @@ Task 담당 역할은 한 명이다. 동시에 활성화된 ownerExecutionId도 
 | answer | questionId, responderExecutionId, taskId, body | evidenceRefs | 열린 질문 하나에 최종 답변 하나. 중복은 멱등 처리 |
 | submission | taskId, executionId, artifactVersionIds | comment | 자신이 소유한 작업의 허용 산출물만 제출 |
 
-사람의 지시는 동일한 실행 감사 체계에 남지만 agent answer로 위장하지 않는다. `actor.kind=user`의 별도 command/directive다. 감독의 조언도 answer가 아니며, 문지기를 통과한 것만 출처가 `advice`인 지시가 된다([감독](features/advisor.md)).
+사람의 지시는 동일한 실행 감사 체계에 남지만 agent answer로 위장하지 않는다. `actor.kind=user`의 별도 command/directive다. Outrider의 조언도 answer가 아니며, 문지기를 통과한 것만 출처가 `advice`인 지시가 된다([Outrider](features/advisor.md)).
 
 `question`은 허용 관계를 검사한 뒤 새로운 응답 Task를 만든다. 그 Task는 질문을 보낸 실행의 소유 하위 작업이므로 취소 전파 경계가 명확하다. 대상 역할의 다른 활성 실행에 임의로 대화를 끼워 넣지 않는다. 질문 생성도 spawnCount와 depth에 포함한다. depth는 control graph 깊이가 아니라 **동적으로 생성한 실행 계보**를 센다.
 

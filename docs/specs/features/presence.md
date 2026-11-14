@@ -41,8 +41,8 @@ Run의 표시 상태는 Run의 상태가 정한다. 그 Run의 실행 단위와 
 | 세부 | 조건 | 화면 이름 (KO / EN) |
 |---|---|---|
 | `waiting_agents` | `waiting_children` | 하위 에이전트 대기 / Waiting for agents |
-| `waiting_reply` | 감독이 아닌 실행 단위의 `waiting_message` | 답 대기 / Waiting for a reply |
-| `watching` | [감독](advisor.md) 실행 단위의 `waiting_message` | 지켜보는 중 / Watching |
+| `waiting_reply` | Outrider가 아닌 실행 단위의 `waiting_message` | 답 대기 / Waiting for a reply |
+| `watching` | [Outrider](advisor.md) 실행 단위의 `waiting_message` | 지켜보는 중 / Watching |
 
 `succeeded`인 Run도 세부를 가질 수 있다. [Loop가 소진](team-graph.md#루프-실행)돼 `exhausted`로 나간 뒤 완료된 Run이다: 결과가 통과한 후보가 아니라 Loop의 마지막 후보에서 이어졌다. Loop마다 마지막으로 끝난 회차를 보고, 그것이 소진이면 그 이유가 세부다(그런 Loop가 여럿이면 먼저 돌기 시작한 것). 실패·취소·중단된 Run과 끝나지 않은 Run에는 없다. 실패한 Run은 이유가 말한다.
 
