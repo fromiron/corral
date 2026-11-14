@@ -1079,10 +1079,10 @@ describe('an answer body read that fails while the turn’s record is read', () 
 
   // The record's answer and the end of the wait come in one render: the failure the wait held
   // back is in no render of it, not even one the row's effects then take back.
-  it('the record read with the answer says no failure in any render', async () => {
-    const f = await failedWhileReading();
+  /** Every failure line added to the row while it is watched, in every render. */
+  function watchAlerts(container: HTMLElement) {
     const said: string[] = [];
-    const watch = new MutationObserver((records) => {
+    const take = (records: MutationRecord[]) => {
       for (const record of records)
         for (const node of record.addedNodes)
           if (
@@ -1090,8 +1090,19 @@ describe('an answer body read that fails while the turn’s record is read', () 
             (node.matches('[role="alert"]') || node.querySelector('[role="alert"]'))
           )
             said.push(node.textContent ?? '');
-    });
-    watch.observe(f.container, { childList: true, subtree: true });
+    };
+    const watch = new MutationObserver(take);
+    watch.observe(container, { childList: true, subtree: true });
+    return () => {
+      take(watch.takeRecords());
+      watch.disconnect();
+      return said;
+    };
+  }
+
+  it('the record read with the answer says no failure in any render', async () => {
+    const f = await failedWhileReading();
+    const stop = watchAlerts(f.container);
     fixture.settled = true;
     fixture.turn = {
       runId: RUN,
@@ -1100,9 +1111,40 @@ describe('an answer body read that fails while the turn’s record is read', () 
       artifactVersionId: 'answer',
     } as StoredConversationTurn;
     await f.draw(false);
-    watch.disconnect();
-    expect(said).toEqual([]);
+    expect(stop()).toEqual([]);
     expect(answer(f.container)?.textContent).toContain('The answer body');
+  });
+
+  // A live row hands over to the store its record was read into (useCorralChat.ts): the same
+  // answers asked for again from another store are a new read, so the live store's failure is in
+  // no render of that store; the new store's own failure is said.
+  it('a failure read from the live store is in no render of the store the row moves to', async () => {
+    const f = await failedWhileReading(true);
+    const projection = fixture.store?.getState().projection ?? null;
+    let fail = () => {};
+    const reading = vi.fn(
+      () =>
+        new Promise<void>((done) => {
+          fail = done;
+        }),
+    );
+    const own = sessionStore({
+      runId: RUN,
+      definition: linearCorral(['writer']),
+      projection,
+      artifactTexts: {},
+    });
+    own.setState({ loadArtifact: reading });
+    const stop = watchAlerts(f.container);
+    // The record is read into the row's own store, without the answer: the row stops waiting.
+    fixture.store = own;
+    fixture.settled = true;
+    await f.draw(false);
+    expect(reading).toHaveBeenCalledWith('answer');
+    expect(stop()).toEqual([]);
+    // That store's own read fails: said.
+    await act(async () => fail());
+    expect(alert(f.container)?.textContent).toContain(messages.Desktop.resultUnavailable);
   });
 
   it('says the failure once the record is read without the answer', async () => {
