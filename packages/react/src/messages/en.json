@@ -608,7 +608,6 @@
     "runsHeading": "Runs",
     "runsEmpty": "No runs yet.",
     "runStarted": "Started {time}",
-    "emptyHint": "Round up the roles you want to work with.",
     "readOnly": "Read-only",
     "templateRoles": "Roles",
     "editCopy": "Edit a copy",

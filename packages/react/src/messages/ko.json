@@ -608,7 +608,6 @@
     "runsHeading": "실행 목록",
     "runsEmpty": "아직 실행이 없습니다.",
     "runStarted": "{time} 시작",
-    "emptyHint": "함께 일할 역할을 모아 보세요.",
     "readOnly": "읽기 전용",
     "templateRoles": "역할",
     "editCopy": "사본 편집",
