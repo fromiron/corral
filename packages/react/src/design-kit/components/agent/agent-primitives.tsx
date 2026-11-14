@@ -222,15 +222,21 @@ interface AgentStatusBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, 'c
   label?: ReactNode;
   /** Show the glyph before the word. */
   icon?: boolean;
+  /** Attributes for the element holding the word alone (data attributes, test hooks). */
+  labelProps?: HTMLAttributes<HTMLSpanElement> & Record<`data-${string}`, string | undefined>;
 }
 
 /** A Badge tinted by status (`Running`, `Needs you`, `Failed` …). */
 const AgentStatusBadge = forwardRef<HTMLSpanElement, AgentStatusBadgeProps>(
-  ({ status, label, icon = true, className, ...props }, ref) => (
+  ({ status, label, icon = true, labelProps, className, ...props }, ref) => (
     <Badge ref={ref} color={agentStatusBadgeColor[status]} className={className} {...props}>
       <span className="inline-flex items-center gap-1">
         {icon && <AgentStatusIcon status={status} size={11} />}
-        {label ?? agentStatusLabels[status]}
+        {labelProps ? (
+          <span {...labelProps}>{label ?? agentStatusLabels[status]}</span>
+        ) : (
+          (label ?? agentStatusLabels[status])
+        )}
       </span>
     </Badge>
   ),

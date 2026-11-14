@@ -387,7 +387,7 @@
     "tree": {
       "title": "실행",
       "count": "실행 {count}개",
-      "running": "진행 중 {count}",
+      "running": "작업 중 {count}",
       "needsYou": "확인 필요 {count}",
       "failed": "실패 {count}",
       "needsYouList": "확인이 필요한 실행",

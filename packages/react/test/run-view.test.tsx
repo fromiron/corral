@@ -171,6 +171,22 @@ describe('RunView execution tree', () => {
     expect(screen.getByTestId('run-status')).toHaveTextContent('Working');
   });
 
+  // workbench.md: a state name shows once on a screen. The header badge says the run's state;
+  // the tree's root card does not say it again, and each execution row says its own.
+  it('says the run’s state once, in the header, and each execution’s state on its row', () => {
+    const { container } = renderView();
+    const said = container.querySelectorAll('[data-presence-label="run:run_view"]');
+    expect(said).toHaveLength(1);
+    expect(screen.getByTestId('run-status').contains(said[0] as Node)).toBe(true);
+    const rootCard = container.querySelector('[role="treeitem"] [data-depth="0"]');
+    expect(rootCard).not.toBeNull();
+    expect(rootCard?.textContent).not.toContain(messages.Presence.state.working);
+    for (const row of container.querySelectorAll('[data-execution-id]')) {
+      const id = row.getAttribute('data-execution-id');
+      expect(row.querySelectorAll(`[data-presence-label="execution:${id}"]`)).toHaveLength(1);
+    }
+  });
+
   it('a run a rejection is stopping says the person rejected, not that they asked to cancel', () => {
     const team = definition();
     const reasonOf = (statusReason: string) => {

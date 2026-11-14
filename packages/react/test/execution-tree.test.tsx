@@ -117,6 +117,13 @@ describe('execution card tree', () => {
     expect(onSteer).toHaveBeenCalledWith('exec_first');
   });
 
+  // The tree's count of working executions uses Presence's word for that state.
+  it('counts working executions in Presence’s word', () => {
+    expect(messages.Run.tree.running).toBe(
+      `{count} ${messages.Presence.state.working.toLowerCase()}`,
+    );
+  });
+
   it('keeps the run root unselectable and the waiting links inside their card', () => {
     renderTree();
     expect(screen.queryByRole('button', { name: /^run_tree/ })).toBeNull();
@@ -315,7 +322,9 @@ describe('bounded loop execution tree', () => {
     expect(container.querySelectorAll('[data-execution-id]')).toHaveLength(4);
     expect(screen.getAllByRole('treeitem')).toHaveLength(6);
     expect(screen.getByText('4 executions', { exact: true })).toBeInTheDocument();
-    expect(screen.getByText('1 running', { exact: true })).toBeInTheDocument();
+    expect(
+      screen.getByText(messages.Run.tree.running.replace('{count}', '1'), { exact: true }),
+    ).toBeInTheDocument();
     expect(within(group).getByRole('combobox', { name: 'Round for Revision' })).toBeInTheDocument();
   });
 
