@@ -88,6 +88,8 @@ interface TooltipProps {
   content: ReactNode;
   children: React.ReactElement<{ 'aria-describedby'?: string }>;
   side?: TooltipSide;
+  /** Where along that side it lines up with the trigger. Defaults to centered. */
+  align?: 'start' | 'center' | 'end';
   sideOffset?: number;
   /** Hover delay before this tooltip opens, in ms. Defaults to 200, or to the
    *  ambient TooltipProvider's delayDuration when one is present. */
@@ -149,6 +151,7 @@ function Tooltip({
   content,
   children,
   side = 'top',
+  align = 'center',
   sideOffset = 8,
   delayDuration,
   className,
@@ -215,6 +218,7 @@ function Tooltip({
       <TooltipPrimitive.Portal container={portalContainer ?? undefined}>
         <TooltipPrimitive.Positioner
           side={side}
+          align={align}
           sideOffset={sideOffset}
           className={cn('z-50', contentClassName)}
         >

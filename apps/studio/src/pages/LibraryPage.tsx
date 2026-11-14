@@ -144,11 +144,11 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         >
           <div className="flex flex-wrap items-center justify-between gap-3">
             <TabsList aria-label={t('views')}>
-              {/* The Corral tab explains the term in its tooltip (glossary.md); the list's index
-                  reaches the tab through it. */}
+              {/* The Corral tab explains the term in its tooltip (glossary.md), under the tab and from
+                  its left edge, so it covers neither the page title above nor the sidebar; the list's index reaches the tab through it. */}
               {LIBRARY_VIEWS.map((value) =>
                 value === 'teams' ? (
-                  <TermTooltip key={value} term="corral">
+                  <TermTooltip key={value} term="corral" side="bottom" align="start">
                     <TabItem value={value} label={viewLabel(value)} />
                   </TermTooltip>
                 ) : (

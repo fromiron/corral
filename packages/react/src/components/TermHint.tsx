@@ -131,6 +131,7 @@ export function TermTooltip({
   state,
   closed,
   side,
+  align,
   children,
   ...control
 }: {
@@ -140,6 +141,7 @@ export function TermTooltip({
   /** Kept closed, as while the control's own menu is open. */
   closed?: boolean;
   side?: 'top' | 'bottom' | 'left' | 'right';
+  align?: 'start' | 'center' | 'end';
   children: ReactElement<{ 'aria-describedby'?: string }>;
   [prop: string]: unknown;
 }) {
@@ -155,6 +157,7 @@ export function TermTooltip({
         content={<TermContent term={term} {...(state ? { state } : {})} />}
         {...(closed ? { forceOpen: false } : {})}
         {...(side ? { side } : {})}
+        {...(align ? { align } : {})}
       >
         {cloneElement(children, { ...control, 'aria-describedby': described })}
       </Tooltip>

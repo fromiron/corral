@@ -806,6 +806,9 @@ it.each(['en', 'ko'] as const)(
     const tip = document.querySelector('[role="tooltip"]');
     expect(tip?.querySelector('[data-term-name]')?.textContent).toBe(text.Terms.corral.name);
     expect(tip?.querySelector('[data-term-meaning]')?.textContent).toBe(text.Terms.corral.meaning);
+    // Under the tab, where the row is empty, never over the page's title above it.
+    expect(tip?.getAttribute('data-side')).toBe('bottom');
+    expect(tip?.getAttribute('data-align')).toBe('start');
     // Still the tab it was: its name and what pressing it does.
     expect(corral.textContent).toBe(name);
     await act(async () => corral.click());
