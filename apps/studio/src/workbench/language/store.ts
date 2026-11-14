@@ -525,7 +525,7 @@ export function languageStore(
       return work(target, async (copy) => {
         const inspection = await client.inspectLanguage(target.sessionId, { target, serverId });
         if (languageCopyKey(inspection.target) !== languageCopyKey(target))
-          throw new Error('The language server belongs to another copy');
+          throw new Error('The language server belongs to another Paddock');
         copy.pendingStart = undefined;
         patch(languageCopyKey(target), { inspection });
       });

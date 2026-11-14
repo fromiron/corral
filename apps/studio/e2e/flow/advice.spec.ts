@@ -376,7 +376,7 @@ test('advice lines change only their words, and late advice is written into the 
   await probe.start('advice-tail');
   finalReview.open();
   await expect(tail.locator('[data-advice-line]')).toHaveText(
-    /^Advisor·Blocker·The answer blames the cache/,
+    /^Outrider·Blocker·The answer blames the cache/,
     { timeout: 30_000 },
   );
   await expect.poll(() => projection()?.status, { timeout: 30_000 }).toBe('succeeded');
@@ -570,7 +570,7 @@ test.describe('advice a role never read', () => {
       'not-delivered: line height',
     ).toBeLessThanOrEqual(1);
     const tail = row.locator('[data-chat-part="tail"] [data-advice-line]');
-    await expect(tail).toHaveText(/^Advisor·Concern·The answer never times the login/);
+    await expect(tail).toHaveText(/^Outrider·Concern·The answer never times the login/);
     await expect(row.locator('[data-chat-part="tail"]')).not.toContainText('Name the cache');
     const runId = projection()?.runId as string;
 
