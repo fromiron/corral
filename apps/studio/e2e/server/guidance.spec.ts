@@ -77,12 +77,17 @@ test('file setup remains reachable after a request without a working copy', asyn
   await requestBox(page).fill('Add a comment to example.js.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(page.getByTestId('chat-timeline')).toContainText('Add a comment to example.js.');
-  // One chip in the composer row says it, and nothing above the conversation repeats it.
+  // One icon button in the composer row says it, by its name and tooltip, and nothing above the
+  // conversation repeats it.
   const setup = page.getByRole('button', {
     name: 'The agent cannot read or change files. Link a folder.',
     exact: true,
   });
-  await expect(setup).toHaveText('The agent cannot read or change files.');
+  await expect(setup).toHaveText('');
+  await setup.hover();
+  await expect(page.getByRole('tooltip')).toHaveText(
+    'The agent cannot read or change files. Link a folder.',
+  );
   await expect(page.getByTestId('chat-timeline')).not.toContainText(
     'The agent cannot read or change files.',
   );
