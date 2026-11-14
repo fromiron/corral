@@ -7,6 +7,12 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import {
+  advisorDefinition,
+  advisorRunEvents,
+  advisorRunProjection,
+} from '../../../../packages/react/src/stories/advisorRunFixture.ts';
 import { RunTimeChart } from './RunTimeChart.tsx';
 
 const RUN = 'run_time';
@@ -592,3 +598,34 @@ it('names the selected execution’s timed calls with a bar each, never by ident
   expect(container.textContent).not.toContain('tool_secret_id');
   expect(container.textContent).not.toContain('Observed lifetimes include waiting');
 });
+
+// A conversation's own Outrider has no name of its own: its lane is called by the one word,
+// never by the name stored for the model (features/advisor.md, 보이는 곳).
+it.each(['en', 'ko'] as const)(
+  'names the conversation’s Outrider lane by the one word (%s)',
+  (locale) => {
+    const events = advisorRunEvents({ session: true });
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    roots.push(() => {
+      root.unmount();
+      container.remove();
+    });
+    act(() =>
+      root.render(
+        <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
+          <RunTimeChart
+            events={events}
+            projection={advisorRunProjection(events)}
+            definition={advisorDefinition({ session: true })}
+            selected={undefined}
+            onSelect={() => {}}
+          />
+        </IntlProvider>,
+      ),
+    );
+    expect(container.textContent).toContain('Outrider');
+    expect(container.textContent).not.toContain('Advisor');
+  },
+);

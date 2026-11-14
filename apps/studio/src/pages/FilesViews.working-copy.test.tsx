@@ -86,6 +86,9 @@ it('an open copy card follows creation and removal from another entry point', as
     fixture.copy = { baseCommit: 'a'.repeat(40), missing: false };
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
     expect(container.querySelector('a[href="/sessions/session/review"]')).not.toBeNull();
+    // Under the Paddock's title, the line says where it was made from without naming it again.
+    expect(container.textContent).toContain('Made from commit aaaaaaaa');
+    expect(container.textContent).not.toContain('Paddock from commit');
     fixture.copy = null;
     await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
     expect(container.querySelector('a[href="/sessions/session/review"]')).toBeNull();

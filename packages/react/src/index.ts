@@ -103,6 +103,7 @@ export {
   type DeliveredAdvice,
   deliveredAdvice,
   firstLine,
+  roleName,
   unreadAdviceOf,
   useAgentName,
   useSeverityName,

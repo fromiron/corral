@@ -1277,6 +1277,7 @@ export function CommentsPanel({
   const active = runs.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   const activeRunId = active?.runId;
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
+  const advisorWord = useTranslations('Advice')('advisor');
   const [target, setTarget] = useState('next');
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1287,7 +1288,7 @@ export function CommentsPanel({
     let revision = 0;
     const reload = () => {
       const read = ++revision;
-      void steerTargets(services, activeRunId).then(
+      void steerTargets(services, activeRunId, advisorWord).then(
         (targets) => live && read === revision && setTargets(targets),
         () => live && read === revision && setTargets([]),
       );
@@ -1298,7 +1299,7 @@ export function CommentsPanel({
       live = false;
       clearInterval(timer);
     };
-  }, [services, activeRunId]);
+  }, [services, activeRunId, advisorWord]);
   const drafts = comments.filter((c) => c.state === 'draft');
   const sentComments = comments.filter((c) => c.state !== 'draft');
   const earlier = sentComments.filter(

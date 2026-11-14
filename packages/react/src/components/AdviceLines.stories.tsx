@@ -18,7 +18,7 @@ const session = advisorRunSession();
 const start = session.getState().projection as RunProjection;
 const events = session.getState().events;
 const definition = session.getState().definition;
-const label = (nodeId: string) => agentName(definition, nodeId, 'Advisor');
+const label = (nodeId: string) => agentName(definition, nodeId, 'Outrider');
 
 /** The fixture's concern read, a blocker that cut a response, and a note waiting. */
 const delivered = (() => {

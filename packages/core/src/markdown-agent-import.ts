@@ -274,7 +274,7 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
     const unavailable = required.filter((tool) => !harness.allowedTools.includes(tool));
     if (unavailable.length)
       throw new Error(
-        `The parent work style does not allow the delegation and parent question tools: ${unavailable.join(', ')}.`,
+        `The parent Harness does not allow the delegation and parent question tools: ${unavailable.join(', ')}.`,
       );
   }
   if (work.includes('generate_image') && !parentRole.imageProfile)

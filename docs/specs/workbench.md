@@ -167,12 +167,12 @@
 
 Windows/macOS·실제 IME·스크린리더 검증과 전체 릴리스 판정은 별도다.
 
-## 관리 사본의 수동 파일 변경
+## Paddock의 수동 파일 변경
 
 모델 연결 없이 관리 session 사본의 버전 있는 파일 읽기와 save/create/rename/delete를 제공한다. 현재 대상과 전체 content hash를 확인하고 사용자 작업 receipt를 사용하며 원본·snapshot 읽기 경로는 유지한다. 삭제는 체크포인트의 원래 bytes 포함을 확인한 뒤 수행한다. 정확한 HTTP/type 계약은 [API 계약](api-contract.md)·`packages/contracts/src/workbench.ts`를 따른다. 문서당 단일 모델은 화면 밖에서 유지하고 저장·닫기·복구는 명시적으로 수행한다. mixed/CR 줄바꿈은 원문을 보존한 상태에서 사용자가 LF/CRLF 변환을 선택한 뒤 편집한다.
 
 
-파일 열기의 위치는 출처 하나로 정해진다. 세션 사본의 파일은 내용 종류와 무관하게 도킹 문서 탭으로 열리고 미리보기 가능한 파일의 미리보기도 그 탭에 둔다. 원본 폴더의 파일은 Files 창 안에서 한 번에 하나만 읽기 전용으로 미리 보며 Files 창은 자체 탭 줄을 두지 않는다. 미저장 문서 닫기 확인은 어디서 닫든 같은 질문·같은 세 선택지(계속 편집/변경 버리기/저장 후 닫기)를 쓴다. 프로젝트 지침·메모리(서버 materials 기록)는 폴더 파일이 아니므로 프로젝트의 별도 탭에서 관리한다.
+파일 열기의 위치는 출처 하나로 정해진다. Paddock의 파일은 내용 종류와 무관하게 도킹 문서 탭으로 열리고 미리보기 가능한 파일의 미리보기도 그 탭에 둔다. 원본 폴더의 파일은 Files 창 안에서 한 번에 하나만 읽기 전용으로 미리 보며 Files 창은 자체 탭 줄을 두지 않는다. 미저장 문서 닫기 확인은 어디서 닫든 같은 질문·같은 세 선택지(계속 편집/변경 버리기/저장 후 닫기)를 쓴다. 프로젝트 지침·메모리(서버 materials 기록)는 폴더 파일이 아니므로 프로젝트의 별도 탭에서 관리한다.
 
 파일 목록과 열린 원본 파일은 Paddock이 없을 때 읽기 전용인 이유와 같은 세션의 파일 작업 준비 화면 링크를 표시한다. 링크를 여는 것만으로 폴더를 연결하거나 신뢰·사본 생성하지 않는다. Paddock이 없는 변경 화면은 제목과 다음 행동 하나(폴더 연결, 신뢰 설정, 사본 만들기)만 보인다. 연결하고 신뢰한 폴더에서 사본을 만드는 것은 격리를 고르는 일이며, 그 폴더를 에이전트가 읽는 조건이 아니다. 사본 만들기 버튼이 시작 커밋을 밝히고, 원본 폴더에 커밋하지 않은 변경이 있을 때만 그 변경이 사본에 들어가지 않는다는 한 줄을 더한다.
 
@@ -182,7 +182,7 @@ Windows/macOS·실제 IME·스크린리더 검증과 전체 릴리스 판정은 
 
 ## 사용자 터미널
 
-터미널은 관리 사본에서 모델 연결 없이 실행하는 사용자 PTY다. 기존 명령 기록·Run 제어와 별도로 표시하며, 생성·입력 권한 인계·명시 종료와 불확실 상태 재확인을 제공한다. 화면/설정 이동은 detach이며 프로세스를 종료하지 않는다. 같은 사본의 파일 저장은 터미널 종료 확인 후 다시 가능하다.
+터미널은 Paddock에서 모델 연결 없이 실행하는 사용자 PTY다. 기존 명령 기록·Run 제어와 별도로 표시하며, 생성·입력 권한 인계·명시 종료와 불확실 상태 재확인을 제공한다. 화면/설정 이동은 detach이며 프로세스를 종료하지 않는다. 같은 사본의 파일 저장은 터미널 종료 확인 후 다시 가능하다.
 
 세션 상단에서 현재 화면에 관계없이 터미널을 한 번에 연다. Paddock 생성·변경과 실행 상태 전환은 터미널의 생성 가능 상태를 갱신한다. 같은 세션의 실행 중에는 새 터미널 생성을 막고 실행 종료 후 다시 시도하도록 안내한다. 서버가 확정 거절한 생성은 결과 미확인으로 남기지 않으며, 응답 유실은 원래 요청 ID로 결과를 확인한다.
 
@@ -255,32 +255,32 @@ URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되
 
 ## 읽기 전용 Git 관찰
 
-Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 세션 사본을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.
+Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 Paddock을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.
 
 현재 target·HEAD·semantic index hash가 달라지면 재시도나 대상 교체 대신 새로고침을 요구한다. 읽기는 hooks·filter·fsmonitor·textconv·외부 diff·lazy fetch를 실행하지 않으며 사용자 index와 내부 snapshot refs를 쓰지 않는다. configured filters가 있으면 저장된 원문 비교라는 제한을 표시한다.
 
-같은 Git 창이 신뢰한 프로젝트의 세션 사본에서 파일 단위 stage/unstage와 commit을 한다. 원본 폴더에는 쓰기 조작이 없다. commit은 확인한 staged 목록 그대로 index를 기록하고 unstaged·untracked 변경은 남긴다. 모든 쓰기는 인간 operation receipt로 접수해 공통 예약을 거치며 같은 ID 재요청은 원래 결과를 돌려준다. 응답을 받지 못한 변경은 다시 열 때 같은 ID로 조회하고 새로 보내지 않는다. hook은 "hook 실행"을 켠 commit에서만 저장소 설정대로 실행한다. 작성자·서명은 Git 설정의 허용 키(`user.name`, `user.email`, `commit.gpgsign`, `gpg.format`, `user.signingkey`, `gpg.program`, `gpg.ssh.program`)만 읽고, 서명이 요구됐는데 실패하면 서명 없는 commit을 만들지 않고 거절한다.
+같은 Git 창이 신뢰한 프로젝트의 Paddock에서 파일 단위 stage/unstage와 commit을 한다. 원본 폴더에는 쓰기 조작이 없다. commit은 확인한 staged 목록 그대로 index를 기록하고 unstaged·untracked 변경은 남긴다. 모든 쓰기는 인간 operation receipt로 접수해 공통 예약을 거치며 같은 ID 재요청은 원래 결과를 돌려준다. 응답을 받지 못한 변경은 다시 열 때 같은 ID로 조회하고 새로 보내지 않는다. hook은 "hook 실행"을 켠 commit에서만 저장소 설정대로 실행한다. 작성자·서명은 Git 설정의 허용 키(`user.name`, `user.email`, `commit.gpgsign`, `gpg.format`, `user.signingkey`, `gpg.program`, `gpg.ssh.program`)만 읽고, 서명이 요구됐는데 실패하면 서명 없는 commit을 만들지 않고 거절한다.
 
 "브랜치·원격" 접힘 영역은 detached 사본에 새 branch를 만들어 연결하고, 다른 local branch로 전환하며, fetch·fast-forward 전용 pull·force 없는 push를 같은 receipt 규칙으로 한다. 추적 변경·미저장 문서·활성 writer가 있으면 전환하지 않는다. 원본이나 다른 사본에서 checkout 중인 branch는 Git의 거절을 그대로 보인다. 원격 작업은 신뢰 프로젝트에서 사용자의 credential helper·SSH agent를 쓰며 prompt를 띄우지 않는다. push 응답을 잃으면 원격 ref를 다시 읽어 판정하고 다시 보내지 않는다. force·reset·clean은 없다.
 
 ## Git hunk와 충돌 해결
 
-hunk는 실제 사용자 index의 선택 stage/unstage다. Corral snapshot의 hunk 검토·반영과 구분한다. 관리 사본의 일반 텍스트 수정만 선택할 수 있고 추가·삭제·rename·mode 변경, binary·대용량·filter/줄바꿈 변환·symlink·gitlink 등 안전하게 표현할 수 없는 경우는 이유와 기존 파일 전체 stage/unstage를 유지한다. 선택은 전체 target·HEAD·semantic index hash·작업 파일과 patch/hunk identity에 고정한다. 실제 index lock을 소유한 상태에서 다시 확인한 뒤 준비한 index를 게시하고 결과 index를 읽어 판정한다. 다른 파일의 index 항목과 작업 파일은 변경하지 않으며 다른 Git 프로세스의 lock을 삭제하지 않는다.
+hunk는 실제 사용자 index의 선택 stage/unstage다. Corral snapshot의 hunk 검토·반영과 구분한다. Paddock의 일반 텍스트 수정만 선택할 수 있고 추가·삭제·rename·mode 변경, binary·대용량·filter/줄바꿈 변환·symlink·gitlink 등 안전하게 표현할 수 없는 경우는 이유와 기존 파일 전체 stage/unstage를 유지한다. 선택은 전체 target·HEAD·semantic index hash·작업 파일과 patch/hunk identity에 고정한다. 실제 index lock을 소유한 상태에서 다시 확인한 뒤 준비한 index를 게시하고 결과 index를 읽어 판정한다. 다른 파일의 index 항목과 작업 파일은 변경하지 않으며 다른 Git 프로세스의 lock을 삭제하지 않는다.
 
 충돌 보기의 base/ours/theirs는 Git index의 stage 1/2/3이며 현재 디스크 파일을 별도로 비교한다. 지원되는 텍스트 충돌은 기존 문서 편집기로 열고 hash CAS 저장으로 해결한다. 미저장·저장 결과 미확인·충돌 초안을 자동 저장하거나 덮지 않는다. **충돌 파일의 stage는 파일 전체 stage와 같이 실행 시점의 디스크 내용을 index에 넣는 행동**이다. 화면에서 변경 여부를 다시 읽더라도 그 검사와 Git stage 사이의 외부 파일 쓰기를 원자적으로 잠그지는 않는다. 편집기의 CAS 저장이나 선택 hunk의 정확한 patch 적용과 같은 보장으로 표시하지 않는다.
 
-merge/rebase는 깨끗한 관리 사본의 local branch에서 사람이 선택한 다른 local branch commit을 대상으로 명시 시작한다. target·HEAD/index·작업 파일 hash·선택 branch OID와 sequencer identity를 확인하며 외부 원격 작업은 하지 않는다. continue/abort는 Corral이 시작하거나 이어서 실행한 소유 기록이 있는 지원 상태에만 제공한다. 지원 rebase는 `pick`만 있는 todo/done으로 제한하며 exec·편집 명령·squash/fixup·autostash·update-refs·사용자 지정 전략과 외부 sequencer는 이유를 표시하고 거절한다. Git의 `interactive` 표식 하나만으로 일반 merge-backend rebase를 interactive 작업으로 판정하지 않는다.
+merge/rebase는 깨끗한 Paddock의 local branch에서 사람이 선택한 다른 local branch commit을 대상으로 명시 시작한다. target·HEAD/index·작업 파일 hash·선택 branch OID와 sequencer identity를 확인하며 외부 원격 작업은 하지 않는다. continue/abort는 Corral이 시작하거나 이어서 실행한 소유 기록이 있는 지원 상태에만 제공한다. 지원 rebase는 `pick`만 있는 todo/done으로 제한하며 exec·편집 명령·squash/fixup·autostash·update-refs·사용자 지정 전략과 외부 sequencer는 이유를 표시하고 거절한다. Git의 `interactive` 표식 하나만으로 일반 merge-backend rebase를 interactive 작업으로 판정하지 않는다.
 
 시작·continue는 기존 작성자·서명·명시 hook 실행 정책과 소유 process group을 사용한다. 서명 정책이 맞지 않으면 서명 없이 계속하지 않는다. abort는 되돌릴 HEAD와 영향을 받는 파일을 확인하고 변경 손실에 명시 동의해야 하며 열린 dirty/pending 문서가 있으면 막는다. receipt는 command ID와 요청 내용에 고정하고 중복·응답 유실 때 같은 ID로 상태를 확인한다. 충돌로 멈춘 상태, 완료, 실패, 종료·결과 불확실을 구분하며 process 정리와 Git 재확인이 끝나기 전에 불확실 owner를 해제하지 않는다. 원본 폴더 쓰기·자동 merge·force push·범용 reset/clean은 추가하지 않는다.
 
 ## 개발 task와 Problems
 
-도구 창의 작업 탭은 세션 사본 `package.json`의 scripts를 읽기만 해서 보여 주고, 사람이 누른 script만 소유 process group으로 실행한다. 기본 단독 쓰기 모드에서 실행 중인 task는 사본 writer를 잡으므로 그동안 연 문서는 읽기 전용이고, 그 전에 연 문서의 저장은 거절되며 그 자리에서 task를 멈출 수 있다. 다시 저장·다시 시작은 사람이 누른다. 검사는 task·터미널이 실행 중이어도 그 시점 snapshot에서 돈다. 미리보기 탭의 preview는 Run의 명령과 실행 중인 task를 고를 수 있고 포트의 연결 소유를 확인한다. 열린 preview는 주소, 새로고침, 뷰포트 크기(전체·태블릿·모바일)를 보이고, 연결된 task의 최근 출력을 같은 탭에서 펼친다. 뷰포트 크기는 보기만 바꾸며 preview lease나 task를 다시 시작하지 않는다. Problems 창은 검사·task 출력의 사본 내부 위치를 모아 이전 tree의 결과를 표시하고 문서의 해당 줄을 연다.
+도구 창의 작업 탭은 Paddock `package.json`의 scripts를 읽기만 해서 보여 주고, 사람이 누른 script만 소유 process group으로 실행한다. 기본 단독 쓰기 모드에서 실행 중인 task는 사본 writer를 잡으므로 그동안 연 문서는 읽기 전용이고, 그 전에 연 문서의 저장은 거절되며 그 자리에서 task를 멈출 수 있다. 다시 저장·다시 시작은 사람이 누른다. 검사는 task·터미널이 실행 중이어도 그 시점 snapshot에서 돈다. 미리보기 탭의 preview는 Run의 명령과 실행 중인 task를 고를 수 있고 포트의 연결 소유를 확인한다. 열린 preview는 주소, 새로고침, 뷰포트 크기(전체·태블릿·모바일)를 보이고, 연결된 task의 최근 출력을 같은 탭에서 펼친다. 뷰포트 크기는 보기만 바꾸며 preview lease나 task를 다시 시작하지 않는다. Problems 창은 검사·task 출력의 사본 내부 위치를 모아 이전 tree의 결과를 표시하고 문서의 해당 줄을 연다.
 
 
 ## 공유 개발 모드
 
-B안은 로컬 관리 사본에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·디버깅·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. stage/unstage에는 선택 hunk 조작도 포함하며 각각의 index·patch 재검증을 유지한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, 귀속·검사/검토 유효성 기준을 유지한다.
+B안은 로컬 Paddock에서 사람이 명시적으로 켜는 선택 모드다. 하나의 `development` operation이 writer를 보유하고 문서 변경·명시 task·디버깅·stage/unstage/commit/fetch/push는 그 아래의 비-writer access로 접수한다. stage/unstage에는 선택 hunk 조작도 포함하며 각각의 index·patch 재검증을 유지한다. 개발 서버를 켠 채 저장할 수 있지만 외부 쓰기를 격리하지는 않는다. 기존 hash 충돌·초안 보존, 귀속·검사/검토 유효성 기준을 유지한다.
 
 사본과 작업 창에서 모드를 표시·전환한다. agent writer·터미널·branch 생성/전환·pull·merge/rebase 시작·continue/abort·배포는 공유 모드를 끝내기 전 거절한다. 다른 사람 owner의 종료·미확인 효과가 정리돼야 단독 쓰기로 돌아간다. 읽기 전용 Run과 검사는 각자 고정 snapshot을 사용한다. host 재시작은 uncertain이고 공유를 자동 복원하지 않는다. 일반 서버는 기본 비활성이고 로컬 Desktop sidecar·`corral dev`만 opt-in한다.
 
@@ -297,14 +297,14 @@ Desktop의 실행 중인 개발 앱 미리보기에서 사람이 선택한 요�
 
 등록된 언어 서버를 문서 툴바에서 검토·명시 시작한다. 설치나 자동 실행은 하지 않는다. 현재 실행·종료 신원 검증은 Linux에 한정하며 미지원 host에는 시작을 노출하지 않는다.
 
-같은 관리 사본의 문서들은 하나의 서버와 기존 DocumentStore를 공유한다. 저장하지 않은 내용도 동기화하고, 지원하는 자동완성·정의·참조 이동을 기존 편집기에 연결한다. 언어 세션이 자동으로 파일을 저장하거나 서버의 `workspace/applyEdit`·command 요청을 실행하지 않는다. 사람이 요청한 rename·code action의 텍스트 편집은 아래 별도 제안·검토·명시 적용 경로로 처리한다. 다른 창의 초안이 같은 세션을 덮지 못하며 서버가 바뀌거나 문서 버전이 바뀐 늦은 결과는 무시한다. 서버 실패 뒤에는 초안을 보존하고 명시적으로 종료·재시작한다.
+같은 Paddock의 문서들은 하나의 서버와 기존 DocumentStore를 공유한다. 저장하지 않은 내용도 동기화하고, 지원하는 자동완성·정의·참조 이동을 기존 편집기에 연결한다. 언어 세션이 자동으로 파일을 저장하거나 서버의 `workspace/applyEdit`·command 요청을 실행하지 않는다. 사람이 요청한 rename·code action의 텍스트 편집은 아래 별도 제안·검토·명시 적용 경로로 처리한다. 다른 창의 초안이 같은 세션을 덮지 못하며 서버가 바뀌거나 문서 버전이 바뀐 늦은 결과는 무시한다. 서버 실패 뒤에는 초안을 보존하고 명시적으로 종료·재시작한다.
 
 진단은 기존 Problems에 합친다. 버전이 확정된 현재 진단만 편집기 marker로 표시하고, TypeScript Language Server처럼 버전 없는 push만 제공하는 서버는 “버전 미확인”으로 표시한다. 기존 검사/task 결과의 freshness와 위치 이동은 유지한다. 원본 폴더 편집은 지원하지 않으며 저장된 파일의 다중 파일 refactor는 계약을 따른다.
 
 
 ## 파일 내용 검색
 
-기존 파일 패널에서 이름/내용 모드를 고른다. 내용 검색은 세션 관리 사본의 저장된 파일만 대상으로 하며 미저장 초안을 제외한다. 원본 폴더의 기존 이름 검색과 미리보기는 유지한다.
+기존 파일 패널에서 이름/내용 모드를 고른다. 내용 검색은 Paddock의 저장된 파일만 대상으로 하며 미저장 초안을 제외한다. 원본 폴더의 기존 이름 검색과 미리보기는 유지한다.
 
 파일 검색 행은 창 폭과 별개로 패널의 가용 폭에 맞춘다. 선택기와 입력이 함께 들어가지 않으면 줄을 바꿔 입력을 패널 안에 유지한다. 좁은 입력에서도 긴 검색어를 편집하고 현재 커서 위치를 확인할 수 있다.
 
@@ -316,7 +316,7 @@ Desktop의 실행 중인 개발 앱 미리보기에서 사람이 선택한 요�
 
 ## 다중 파일 교체와 refactor
 
-저장된 관리 사본 파일의 literal replace-all, 언어 서버의 symbol rename·텍스트 편집만 포함하는 code action을 지원한다. 내용 검색과 문서의 언어 도구에서 제안을 만들고 같은 검토 창에서 파일별 before/after diff를 확인한다. proposal은 대상·출처·파일 내용과 hash가 고정된 기록이며, 생성이나 검토만으로 파일을 바꾸지 않는다. 파일 생성·삭제·이동 같은 resource operation과 서버 command가 필요한 action은 실행하지 않고 미지원 이유를 표시한다.
+저장된 Paddock 파일의 literal replace-all, 언어 서버의 symbol rename·텍스트 편집만 포함하는 code action을 지원한다. 내용 검색과 문서의 언어 도구에서 제안을 만들고 같은 검토 창에서 파일별 before/after diff를 확인한다. proposal은 대상·출처·파일 내용과 hash가 고정된 기록이며, 생성이나 검토만으로 파일을 바꾸지 않는다. 파일 생성·삭제·이동 같은 resource operation과 서버 command가 필요한 action은 실행하지 않고 미지원 이유를 표시한다.
 
 언어 제안은 현재 서버 generation·client·설정 revision·fingerprint와 문서 버전에 고정한다. 검토 화면은 적용 대상 문서에 미저장·저장 결과 미확인·충돌 버퍼가 있으면 적용을 막고 자동 저장하거나 초안을 덮지 않는다. 서버도 전체 target·사본 generation·제안 hash·파일별 저장 내용 hash와 언어 출처를 재검증한다. 적용은 공통 사람 writer와 사본별 쓰기 잠금, 기존 파일의 mode·BOM·줄바꿈을 보존하는 원자 교체를 사용한다. 명시 공유 개발에서는 허용된 `document.batch` 효과로 처리하며 agent writer·불확실 owner의 기존 차단을 유지한다.
 
@@ -327,11 +327,11 @@ Desktop의 실행 중인 개발 앱 미리보기에서 사람이 선택한 요�
 
 ## Node·Chromium 디버깅
 
-기존 Paddock·도킹·문서 편집기에 디버깅을 연결한다. 프로젝트 도구 설정에 DAP adapter와 Node 또는 Chromium 구성을 등록하고, 현재 사본·실행 파일·인자·환경 변수 참조·설정 revision·fingerprint를 검토해 명시적으로 시작한다. adapter 설치나 프로젝트 코드 실행을 자동으로 하지 않는다. 현재 실행 가용 범위는 신뢰한 Linux 관리 사본이다. 다른 OS·원격 host의 실행과 설치판 검증은 별도이며 구현 여부와 혼동하지 않는다.
+기존 Paddock·도킹·문서 편집기에 디버깅을 연결한다. 프로젝트 도구 설정에 DAP adapter와 Node 또는 Chromium 구성을 등록하고, 현재 사본·실행 파일·인자·환경 변수 참조·설정 revision·fingerprint를 검토해 명시적으로 시작한다. adapter 설치나 프로젝트 코드 실행을 자동으로 하지 않는다. 현재 실행 가용 범위는 신뢰한 Linux Paddock이다. 다른 OS·원격 host의 실행과 설치판 검증은 별도이며 구현 여부와 혼동하지 않는다.
 
 Node launch는 등록된 사본 내부 프로그램을 실행한다. Chromium launch는 같은 사본의 소유된 preview를 별도 프로필에서 열며 앱 인증 cookie나 개인 브라우저 프로필을 공유하지 않는다. attach는 같은 호스트·사본에서 Corral이 소유한 실행 중인 task와 확인한 포트로 한정한다. 임의 PID·외부 debug port·CDP 주소를 UI에서 전달해 접속하지 않는다. 기본 모드에서는 debug operation이 공통 writer와 process 예약을 사용하고, 명시 공유 개발 모드에서는 허용된 사람 효과로 실행한다.
 
-중단점·정지·계속·step·stack·variables와 명시적인 표현식 평가를 지원한다. 평가는 상태를 바꿀 수 있는 실행 효과이며 자동 watch나 hover로 실행하지 않는다. 명령과 조회는 전체 target·debug generation에 고정한다. 정지 상태의 제어는 현재 revision·정지 세대도 확인하며 stack·variables 조회는 정지 세대를 확인한다. 편집기 중단점은 저장된 파일 hash를 확인하고, source map 결과도 관리 사본 안의 확인된 파일만 탐색한다. 바뀌었거나 가상·외부인 소스를 현재 파일 위치로 표시하지 않으며 미저장 초안을 덮지 않는다. Chromium 최초 페이지 로드 전에 모든 중단점이 설치된다고 보장하지 않는다.
+중단점·정지·계속·step·stack·variables와 명시적인 표현식 평가를 지원한다. 평가는 상태를 바꿀 수 있는 실행 효과이며 자동 watch나 hover로 실행하지 않는다. 명령과 조회는 전체 target·debug generation에 고정한다. 정지 상태의 제어는 현재 revision·정지 세대도 확인하며 stack·variables 조회는 정지 세대를 확인한다. 편집기 중단점은 저장된 파일 hash를 확인하고, source map 결과도 Paddock 안의 확인된 파일만 탐색한다. 바뀌었거나 가상·외부인 소스를 현재 파일 위치로 표시하지 않으며 미저장 초안을 덮지 않는다. Chromium 최초 페이지 로드 전에 모든 중단점이 설치된다고 보장하지 않는다.
 
 패널 닫기는 실행 종료가 아니다. Corral이 시작한 대상은 **중지**, 기존 task에 붙은 디버거는 **연결 해제**로 끝낸다. 연결 해제는 원래 task를 종료하지 않는다. 중복·응답 유실은 원래 command ID의 receipt를 확인하고 자동으로 평가·step·시작을 재실행하지 않는다. adapter 실패나 host 재시작 후 정리가 확인되지 않은 프로세스는 uncertain으로 남으며 소유권과 상한을 임의로 해제하지 않는다.
 

@@ -255,7 +255,7 @@
     "removeCall": "Remove link to {target}",
     "noCallableAgents": "Add an agent and set it to Only when called.",
     "fileTools": "Can change files",
-    "fileToolsHint": "Reads and writes files only in this conversation's Paddock, through Corral's file tools. Without a Paddock the tools are refused.",
+    "fileToolsHint": "Reads and writes files only in a conversation's Paddock, through Corral's file tools. Without a Paddock the tools are refused.",
     "teamDefaults": "For every run of this Corral",
     "advanced": "Advanced",
     "profileSignIn": "sign-in needed",
@@ -2050,7 +2050,7 @@
     "openFolderSettings": "Open Folders & tools",
     "create": "Make a Paddock from {head}",
     "createHint": "{changed, plural, one {Your folder’s # uncommitted change is not included.} other {Your folder’s # uncommitted changes are not included.}}",
-    "ready": "Paddock from commit {commit}",
+    "ready": "Made from commit {commit}",
     "review": "Review changes",
     "remove": "Remove Paddock",
     "removeConfirm": "Its files are deleted. Your original folder and the recorded changes stay. Archiving a conversation never does this.",
@@ -6285,7 +6285,7 @@
     },
     "paddock": {
       "name": "Paddock",
-      "meaning": "A copy of the project kept for this conversation, fenced off so runs can work without touching the source folder."
+      "meaning": "A copy of the project kept for one conversation, fenced off so its runs can work without touching the source folder."
     },
     "outrider": {
       "name": "Outrider",

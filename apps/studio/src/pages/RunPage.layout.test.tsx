@@ -4,6 +4,7 @@ import type {
   ArtifactVersionView,
   CorralRecord,
   ExecutionView,
+  RunProjection,
   RuntimeTransport,
 } from '@corral/core';
 import { applyEvent, emptyProjection } from '@corral/core';
@@ -15,6 +16,12 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import {
+  advisorDefinition,
+  advisorRunEvents,
+  advisorRunProjection,
+} from '../../../../packages/react/src/stories/advisorRunFixture.ts';
 import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
 import { createPendingTrayStore, PendingTrayContext } from '../workbench/session/PendingTray.tsx';
 import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
@@ -185,6 +192,8 @@ async function mount(
   runDefinition?: CorralDefinition,
   /** Beside a session's conversation, which answers what the run waits on. */
   host?: { sessionId: string; respond: () => void },
+  /** A run that already recorded executions, read in a screen language. */
+  recorded?: { projection: RunProjection; locale: 'en' | 'ko' },
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -197,7 +206,7 @@ async function mount(
   );
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const definition = runDefinition ?? linearCorral(agentIds, corralId);
-  const projection = {
+  const projection = recorded?.projection ?? {
     ...emptyProjection('run_layout'),
     corralId,
     status: 'succeeded' as const,
@@ -243,7 +252,11 @@ async function mount(
   const tray = createPendingTrayStore();
   await act(async () =>
     root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider
+        locale={recorded?.locale ?? 'en'}
+        messages={recorded?.locale === 'ko' ? ko : messages}
+        timeZone="UTC"
+      >
         {host ? (
           <PendingTrayContext.Provider value={{ store: tray, respond: host.respond }}>
             <Screen />
@@ -2523,3 +2536,28 @@ it('names the state on the way to respond by the run it is', async () => {
   // Said once: the header has no badge of its own beside the way to respond.
   expect(container.querySelectorAll(`[data-presence-label="run:${runId}"]`)).toHaveLength(1);
 });
+
+// A conversation's own Outrider has no name of its own: the run page calls it by the one word,
+// never by the name stored for the model (features/advisor.md, 보이는 곳).
+it.each(['en', 'ko'] as const)(
+  'names the conversation’s Outrider by the one word in the run facts and its details (%s)',
+  async (locale) => {
+    const events = advisorRunEvents({ session: true });
+    const definition = advisorDefinition({ session: true });
+    const advisor = definition.nodes.find((node) => node.label === 'Advisor');
+    expect(advisor).toBeDefined();
+    const view = await mount(
+      'inline_team',
+      null,
+      { view: 'run', execution: 'advisor_1' },
+      undefined,
+      false,
+      undefined,
+      definition,
+      undefined,
+      { projection: advisorRunProjection(events), locale },
+    );
+    expect(view.container.textContent).toContain('Outrider');
+    expect(view.container.textContent).not.toContain('Advisor');
+  },
+);

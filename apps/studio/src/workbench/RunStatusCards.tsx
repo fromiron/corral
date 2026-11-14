@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { HarnessDetails, type RunSessionStore } from '@corral/react';
+import { agentName, HarnessDetails, type RunSessionStore } from '@corral/react';
 import {
   AccordionContent,
   AccordionItem,
@@ -33,6 +33,7 @@ export function RunStatusCards({
   const t = useTranslations('RunStatus');
   const noInformation = useTranslations('Usage')('noInformation');
   const branchText = useTranslations('MessageBranch');
+  const advisorWord = useTranslations('Advice')('advisor');
   const { mode, workspaces } = useServices();
   const state = useStore(session);
   const [copy, setCopy] = useState<boolean | null>(null);
@@ -134,7 +135,10 @@ export function RunStatusCards({
         <AccordionContent>
           <div className="space-y-2 text-caption">
             <p>
-              {node?.label ?? selected ?? noInformation} · {t('lastRequest')}
+              {node && execution
+                ? agentName(definition, execution.nodeId, advisorWord)
+                : (selected ?? noInformation)}{' '}
+              · {t('lastRequest')}
             </p>
             <p>
               {model?.contextWindow

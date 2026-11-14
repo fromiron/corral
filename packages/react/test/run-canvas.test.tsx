@@ -905,9 +905,15 @@ describe('steer target', () => {
         executionOrder: ['w1'],
       }),
     });
-    const missing = renderHook(() => useSteerTarget(session, 'exec_9999'));
+    // The target is named in the screen language (a conversation's Outrider by its one word).
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        {children}
+      </IntlProvider>
+    );
+    const missing = renderHook(() => useSteerTarget(session, 'exec_9999'), { wrapper });
     expect(missing.result.current).toBeNull();
-    const fallback = renderHook(() => useSteerTarget(session, null));
+    const fallback = renderHook(() => useSteerTarget(session, null), { wrapper });
     expect(fallback.result.current?.executionId).toBe('w1');
   });
 });

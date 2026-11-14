@@ -18,6 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from '../design-kit/index.ts';
+import { useAgentName } from '../run/advisor.ts';
 import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
@@ -41,6 +42,8 @@ export function UsageInspector({
   const headingId = useId();
   const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
+  // A conversation's own Outrider is named by the one word, never by its stored name.
+  const nameOf = useAgentName(definition);
   if (!projection || !definition) return null;
   const totals = usageTotals(projection);
   const limits = projection.limits ?? definition.limits;
@@ -72,11 +75,13 @@ export function UsageInspector({
     if (parts.length === 0) parts.push(estimate.simulated ? t('costSimulated') : t('costNone'));
     return parts.join(' · ');
   };
-  const roleOf = (executionId: string) =>
-    definition.nodes.find((node) => node.id === projection.executions[executionId]?.nodeId)
-      ?.label ?? t('unknownRole');
-  const labelOf = (nodeId: string) =>
-    definition.nodes.find((node) => node.id === nodeId)?.label ?? nodeId;
+  const roleOf = (executionId: string) => {
+    const nodeId = projection.executions[executionId]?.nodeId;
+    return nodeId && definition.nodes.some((node) => node.id === nodeId)
+      ? nameOf(nodeId)
+      : t('unknownRole');
+  };
+  const labelOf = nameOf;
   // Each agent's share, counted as the totals above are, so the rows add up to them.
   const agents = usageByAgent(projection);
   const calls = Object.values(projection.modelCalls);

@@ -5,7 +5,7 @@ import {
   TERMINAL_RUN_STATUSES,
 } from '@corral/contracts';
 import type { RunProjection } from '@corral/core';
-import { executionIntervals } from '@corral/react';
+import { executionIntervals, useAgentName } from '@corral/react';
 import { type AgentStatus, type PlanStep, PlanVsActual } from '@corral/react/design-kit';
 import { useMemo } from 'react';
 import { useTranslations } from 'use-intl';
@@ -41,6 +41,7 @@ export function RunTaskTimeline({
 }) {
   const t = useTranslations('RunMonitor.taskTimeline');
   const status = useTranslations('Status');
+  const nameOf = useAgentName(definition);
   const live = projection ? !TERMINAL_RUN_STATUSES.has(projection.status) : false;
   // Waiting for the person or paused, the axis stops at the last record, as the agent lanes do.
   const held = projection?.status === 'awaiting_user' || projection?.status === 'paused';
@@ -78,7 +79,7 @@ export function RunTaskTimeline({
         (state === 'failed' || state === 'stopped'
           ? ((lastAttempt ? executionEnds.get(lastAttempt) : undefined) ?? lastAt)
           : undefined);
-      const node = definition.nodes.find((entry) => entry.id === task.nodeId)?.label ?? task.nodeId;
+      const node = nameOf(task.nodeId);
       const submitted = [
         ...new Set(
           task.submittedArtifactVersionIds.map((id) => projection.artifacts[id]?.name ?? id),
@@ -97,7 +98,7 @@ export function RunTaskTimeline({
       ];
     });
     return { steps, startedAt, lastAt, attempts };
-  }, [events, projection, definition, live, status]);
+  }, [events, projection, live, status, nameOf]);
   if (!board?.steps.length)
     return <p className="p-3 text-body text-muted-foreground">{t('empty')}</p>;
   return (

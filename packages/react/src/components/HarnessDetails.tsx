@@ -1,12 +1,14 @@
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { fontWeights } from '../design-kit/index.ts';
+import { roleName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 
 /** Committed references and hashes only; previews never stand in for what actually ran. */
 export function HarnessDetails({ session }: { session: RunSessionStore }) {
   const t = useTranslations('Harness');
+  const advisorWord = useTranslations('Advice')('advisor');
   const events = useRunDisplay(session, (s) => s.events);
   const definition = useStore(session, (s) => s.definition);
   const harnesses = events.find((event) => event.type === 'run.started')?.payload.harnesses;
@@ -57,8 +59,8 @@ export function HarnessDetails({ session }: { session: RunSessionStore }) {
         {Object.entries(harnesses ?? {}).map(([roleId, snapshot]) => (
           <section key={roleId} className="flex flex-col gap-1 border-b border-line pb-3">
             <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
-              {definition?.roles.find((role) => role.id === roleId)?.name ?? roleId} ·{' '}
-              {snapshot.binding.profileId} · r{snapshot.binding.revision}
+              {roleName(definition, roleId, advisorWord)} · {snapshot.binding.profileId} · r
+              {snapshot.binding.revision}
             </h3>
             <p className="text-caption">{t(snapshot.policy)}</p>
             {snapshot.layers?.length ? (

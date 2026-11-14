@@ -12,6 +12,7 @@ import {
   type RunCostEstimate,
   type RunSessionState,
   type RunSessionStore,
+  roleName,
   runResults,
   useWorkPlanSnapshot,
 } from '@corral/react';
@@ -290,10 +291,17 @@ function useChatWidgetState(
   ]);
 
   const plans = useMemo(() => planRefs(projection?.workPlans), [projection?.workPlans]);
+  // A conversation's own Outrider is named by the one word, never by its stored name.
+  const advisorWord = useTranslations('Advice')('advisor');
   const executions = useMemo(
     () =>
-      executionFacts(projection?.executions, projection?.executionOrder, view?.definition ?? null),
-    [projection?.executions, projection?.executionOrder, view?.definition],
+      executionFacts(
+        projection?.executions,
+        projection?.executionOrder,
+        view?.definition ?? null,
+        advisorWord,
+      ),
+    [projection?.executions, projection?.executionOrder, view?.definition, advisorWord],
   );
   const [manualKey, setManualKey] = useRemembered<string | null>(
     `corral:work-plan-role:v1:${sessionId}:${presentationRunId ?? 'none'}`,
@@ -685,6 +693,7 @@ function executionFacts(
   executionViews: RunProjection['executions'] | undefined,
   executionOrder: RunProjection['executionOrder'] | undefined,
   definition: RunSessionState['definition'],
+  advisorWord: string,
 ) {
   if (!executionViews) return [];
   return (executionOrder ?? []).flatMap((id) => {
@@ -697,7 +706,7 @@ function executionFacts(
       {
         executionId: id,
         roleId: role?.id ?? execution.nodeId,
-        roleName: role?.name ?? node?.label ?? id,
+        roleName: role ? roleName(definition, role.id, advisorWord) : (node?.label ?? id),
         status: execution.status,
         attemptNo: execution.attemptNo,
         ended: TERMINAL_EXECUTION_STATUSES.has(execution.status),

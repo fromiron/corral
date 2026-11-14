@@ -188,7 +188,7 @@ it('a missing session copy can explicitly switch to an unborn project without cr
     entries: [],
   };
   const gitStatus = vi.fn(async (scope) => {
-    if (scope.kind === 'session') throw new ApiError(404, 'TARGET_NOT_FOUND', 'No Paddock');
+    if (scope.kind === 'session') throw new ApiError(404, 'TARGET_NOT_FOUND', 'No working copy');
     return project;
   });
   const createWorktree = vi.fn();
