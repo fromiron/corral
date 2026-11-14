@@ -28,7 +28,7 @@ import {
   shot,
 } from './scene.ts';
 
-// Scene ④ waiting on the person (docs/plans/unified-flow.md §9; features/composer-flow.md "지금
+// Scene ④ waiting on the person (docs/guides/testing.md "흐름 장면"; features/composer-flow.md "지금
 // 필요한 것", "활동 바"), in the dark theme. A working run asks to run a command: the approval
 // arrives at the timeline's end, once on screen, and Enter decides nothing. Read from above with
 // the card off screen, the activity bar says it and approves it, and the run works on. Then it

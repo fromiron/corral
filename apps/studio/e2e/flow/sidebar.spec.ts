@@ -14,7 +14,7 @@ import {
   shot,
 } from './scene.ts';
 
-// The sidebar scene (docs/plans/unified-flow.md §9; features/presence.md "유예", workbench.md
+// The sidebar scene (docs/guides/testing.md "흐름 장면"; features/presence.md "유예", workbench.md
 // "사이드바"): a session whose run goes has a next request queued. The run ends and the server
 // starts the queued request at once, well inside the two-second grace: the session's sidebar row
 // stays in its group on every frame and does not move. The new run then asks the person a

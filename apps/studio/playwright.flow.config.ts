@@ -1,7 +1,7 @@
 import { defineConfig } from '@playwright/test';
 import base from './playwright.config.ts';
 
-// Scene checks (docs/plans/unified-flow.md §9). Each test starts its own server through the
+// Scene checks (docs/guides/testing.md "흐름 장면"). Each test starts its own server through the
 // E2E harness, so there is no webServer here.
 export default defineConfig({
   ...base,

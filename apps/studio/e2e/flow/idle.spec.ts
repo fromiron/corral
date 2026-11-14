@@ -11,7 +11,7 @@ import {
 import { waitForStill } from './probe.ts';
 import { checkChrome, checkLabels, hold, measure, note, nothingWaiting, shot } from './scene.ts';
 
-// Scene ① idle (docs/plans/unified-flow.md §9): an empty session sends its first request, which
+// Scene ① idle (docs/guides/testing.md "흐름 장면"): an empty session sends its first request, which
 // runs to its end; then, in the session with one finished run, a request is sent by the keyboard,
 // its run starts, its reply streams and it ends. No item or session row already on screen moves,
 // the tail gap holds while the conversation follows its end, the input line does not move, and

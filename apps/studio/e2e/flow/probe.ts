@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 
-// Scene probe (docs/plans/unified-flow.md §9): plain DOM measurement, no app code.
+// Scene probe (docs/guides/testing.md "흐름 장면"): plain DOM measurement, no app code.
 //
 // createProbe(page).start(name) reads a first sample synchronously, then a requestAnimationFrame
 // loop in the page reads one sample per frame until stop(). Only one loop may run per page.
@@ -11,18 +11,18 @@ import type { Page } from '@playwright/test';
 //   sharing a value are told apart by document-order ordinal (`…#2`); every value shared in any
 //   frame of the interval is listed in `duplicated` and counted in `samples.duplicateIds`.
 //   Per element, vertical (Y, top) and horizontal (X, left) shifts on two bases:
-//   container — rect - container rect + scroll offset (§9 "기존 항목 이동", pass ≤ 1px);
-//   viewport — rect on screen (§9 "따라가기" while scrolled up, pass ≤ 1px).
+//   container — rect - container rect + scroll offset (existing items, pass ≤ 1px);
+//   viewport — rect on screen (following, while scrolled up, pass ≤ 1px).
 //   maxContainerShiftPx / maxViewportShiftPx: the largest of both axes over all tracked
 //   elements; null when nothing was tracked.
 // - maxTailGapChangePx: max − min of (composer top − bottom of the current last item, looked up
-//   again every frame) (§9 "따라가기" at the end, pass ≤ 1px). `tailSelector` may name the
+//   again every frame) (following, at the end, pass ≤ 1px). `tailSelector` may name the
 //   timeline's other blocks that can end it (a needed-now tray after the last item).
-// - maxInputBottomChangePx: max − min of the input box's bottom edge on screen (§9 "입력 줄",
+// - maxInputBottomChangePx: max − min of the input box's bottom edge on screen (the input line,
 //   pass 0px).
 //   Both are null with fewer than two samples. `samples` gives frame, tail, input and per-kind
 //   tracked counts.
-// measureChrome() reads the fixed areas once (§9 "고정 영역": top bar + idle composer, column
+// measureChrome() reads the fixed areas once (the fixed areas: top bar + idle composer, column
 // width). countVisibleLabels() counts the `[data-presence-label]` elements actually visible,
 // clipped by scroll containers and the viewport, by attribute value (the target the text speaks
 // of; presence.md "한 화면에 한 번": a value seen twice fails), with their texts and the number

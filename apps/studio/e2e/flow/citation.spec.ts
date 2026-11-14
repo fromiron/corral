@@ -34,7 +34,7 @@ import {
 // alone in one reply, quoted with Alt+Q, sent, and led back to from the sent chip once its row
 // has left the window. The toolbar coming and going and each chip joining the request box move
 // no conversation item more than 1px in its container and the input box's bottom edge not at
-// all (docs/plans/unified-flow.md §9).
+// all (docs/guides/testing.md "흐름 장면").
 // Chromium without caret browsing (F7) has no caret in read-only text, so a script chooses the
 // passage's first character where that caret would stand; Shift+Arrow then chooses the rest, as
 // a keyboard user does.
@@ -877,8 +877,8 @@ test('the quote key bound in settings goes out in an export and comes back, and 
   expect(corral.errors).toEqual([]);
 });
 
-// V2, scene ⑤ (docs/plans/unified-flow.md §9): the final scene with every pass mark of §9
-// "측정" (scene.ts), by the keyboard alone. The conversation is taller than its view; Home on the
+// Scene ⑤ (docs/guides/testing.md "흐름 장면"): the final scene with every pass mark of that
+// section (scene.ts), by the keyboard alone. The conversation is taller than its view; Home on the
 // timeline reaches the reply, a passage is chosen by keys, Alt+Q quotes it twice (the input box's
 // bottom edge holds as the chips join), Enter sends, and the sent chip, reached by the keyboard,
 // leads back to the passage, chosen and marked. Recorded in test-results/flow/report.json.

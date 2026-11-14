@@ -16,7 +16,7 @@ import {
   waitForStill,
 } from './probe.ts';
 
-// Baseline of today's screen (docs/plans/unified-flow.md §9, V1): how far existing items move
+// Baseline of today's screen (docs/guides/testing.md "흐름 장면"): how far existing items move
 // in four transitions. It records; it sets no pass mark on the shifts.
 // Every interval is bounded by held responses: the screen is still when it starts, the action
 // that causes the transition (a click or a release) happens inside it, and it ends once the

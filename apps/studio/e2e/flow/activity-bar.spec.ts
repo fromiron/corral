@@ -30,7 +30,7 @@ import {
 } from './probe.ts';
 
 // The composer's activity bar (docs/specs/features/composer-flow.md "활동 바"), in the scenes of
-// docs/plans/unified-flow.md §9: (①) one height with and without a run, in both themes, the
+// docs/guides/testing.md "흐름 장면": (①) one height with and without a run, in both themes, the
 // fixed areas within their bound and nothing on screen moving as a run starts and ends; (②) a
 // team's roles, none named on the bar while its row is on screen, and the join target chosen
 // from the bar; (④) an approval scrolled off screen, said and decided once, from the bar, never

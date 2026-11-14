@@ -15,7 +15,7 @@ import {
   shot,
 } from './scene.ts';
 
-// Scene ② several roles at once (docs/plans/unified-flow.md §9; features/composer-flow.md "활동
+// Scene ② several roles at once (docs/guides/testing.md "흐름 장면"; features/composer-flow.md "활동
 // 바"): a team whose plan branches to three roles in parallel (the way of
 // e2e/server/team-graph.spec.ts), each role's first reply held, so the three work at once. The
 // closed activity bar names no role whose state is already on screen; opened, it joins a role in

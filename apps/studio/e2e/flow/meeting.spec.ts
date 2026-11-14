@@ -13,7 +13,7 @@ import {
   shot,
 } from './scene.ts';
 
-// Scene ⑦ (docs/plans/unified-flow.md §4.4; features/composer-flow.md "화면 틀", the send
+// Scene ⑦ (features/composer-flow.md "화면 틀", the send
 // table's meeting row; workbench.md "회의"): a meeting is read in the conversation's frame with
 // the conversation's composer. A person's message goes to whoever the meeting picks, the
 // picked participant's answer streams in, and a message for no one is posted with nobody
@@ -962,8 +962,8 @@ test.describe('a meeting stopped', () => {
   });
 });
 
-// V2, the meeting scene (docs/plans/unified-flow.md §9): the final scene with every pass mark of
-// §9 "측정" (scene.ts), by the keyboard. Three participants; a person's message goes to whoever
+// The meeting scene (docs/guides/testing.md "흐름 장면"): the final scene with every pass mark
+// of that section (scene.ts), by the keyboard. Three participants; a person's message goes to whoever
 // the meeting picks and the pick answers; a message for no one is posted with nobody asked; then
 // participants who keep mentioning each other are held after eight mention rounds on a continue
 // card at the end, and Continue lets them go on. The meeting is read in the conversation's frame

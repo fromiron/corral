@@ -117,7 +117,7 @@ function liveExecution(status: 'active' | 'succeeded', mode: 'live' | 'mock' = '
 }
 
 // Compaction is sent from /compact and the activity bar's context detail only
-// (docs/plans/unified-flow.md D15); Run info and the execution's context line show none.
+// (docs/specs/workbench.md); Run info and the execution's context line show none.
 it('offers no compaction in Run info for a live execution that is still running', async () => {
   const sendCommand = vi.fn(async () => ({ status: 'accepted', error: null }));
   const session = createRunSession({ sendCommand } as never);

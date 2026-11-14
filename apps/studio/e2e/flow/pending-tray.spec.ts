@@ -19,7 +19,7 @@ import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 const waitingLine = (page: Page) =>
   page.locator('[data-testid="activity-bar"][data-line="waiting"]');
 
-// Scene ④ (docs/plans/unified-flow.md §4.4): a run waits on an approval and then a question, and
+// Scene ④: a run waits on an approval and then a question, and
 // both are answered in the conversation's needed-now tray (composer-flow.md "지금 필요한 것").
 // The items already in the timeline hold their place within 1px while a card arrives and while
 // it is answered; read from above, a card arriving at the end leaves the reader's place as it

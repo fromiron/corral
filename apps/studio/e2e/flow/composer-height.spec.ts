@@ -9,7 +9,7 @@ import { createProbe, measureChrome, type ShiftResult, waitForStill } from './pr
 // The composer's height changes (docs/specs/features/composer-flow.md, "튐 없는 본문" rule 1):
 // a send starting a run, the run ending, and the input growing and shrinking, at the end and
 // while reading earlier messages. Unlike the baseline, this asserts the pass marks of
-// docs/plans/unified-flow.md §9: existing items move at most 1px in their container, the tail
+// docs/guides/testing.md "흐름 장면": existing items move at most 1px in their container, the tail
 // gap changes at most 1px while following the end, items hold their place on screen within 1px
 // while reading earlier messages, and the input box's bottom edge does not move. The streaming
 // interval is measured and recorded only (the run row's growth is U3's).

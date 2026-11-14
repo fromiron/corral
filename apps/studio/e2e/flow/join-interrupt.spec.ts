@@ -17,7 +17,7 @@ import {
   slowedAsAsked,
 } from './scene.ts';
 
-// Scene ③ join and interrupt (docs/plans/unified-flow.md §9; features/composer-flow.md "전송",
+// Scene ③ join and interrupt (docs/guides/testing.md "흐름 장면"; features/composer-flow.md "전송",
 // "보낸 메시지의 메타 줄"), by the keyboard alone. While a run's response is held, a message sent
 // with the send key waits to join; released, its meta line says it was read. A second message
 // sent with the interrupt key cuts the streaming reply and is delivered; the cut words stay where

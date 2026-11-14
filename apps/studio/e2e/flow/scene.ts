@@ -13,8 +13,8 @@ import {
   waitForStill,
 } from './probe.ts';
 
-// The final scenes of docs/plans/unified-flow.md §9 (V2): one way to measure a transition, check
-// it against the pass marks of §9 "측정", and record it in `test-results/flow/report.json`.
+// The final scenes of docs/guides/testing.md "흐름 장면": one way to measure a transition, check
+// it against the pass marks of that section, and record it in `test-results/flow/report.json`.
 // A scene's interval starts on a still screen, the step that makes the transition happens inside
 // it, and it ends once the screen is still again. Every pass mark is a soft assertion, so one run
 // reports every interval of a scene; any miss still fails the test.
@@ -25,7 +25,7 @@ import {
 const OUT = join(import.meta.dirname, '..', '..', 'test-results', 'flow');
 const REPORT = join(OUT, 'report.json');
 
-/** §9 "측정": the pass marks. */
+/** The pass marks (docs/guides/testing.md "흐름 장면"). */
 export const MARKS = {
   /** Existing conversation items and sidebar session rows, in their container. */
   shiftPx: 1,
@@ -372,7 +372,7 @@ export async function measure(
       lost: result.lost,
       moved: movedInContainer,
       movedOnScreen,
-      // Parts are recorded, not marked: §9 marks the items and rows.
+      // Parts are recorded, not marked: the pass marks are on the items and rows.
       partsMoved: parts,
       ...(options.inputExempt ? { inputExempt: options.inputExempt } : {}),
       ...(at === 'end' && tailExempt ? { tailExempt } : {}),
@@ -409,7 +409,7 @@ export async function checkLabels(page: Page, scene: string, where: string) {
   return labels;
 }
 
-/** The fixed areas on the idle screen (§9 "고정 영역"), checked and recorded. */
+/** The fixed areas on the idle screen (docs/guides/testing.md "흐름 장면"), checked and recorded. */
 export async function checkChrome(
   page: Page,
   scene: string,

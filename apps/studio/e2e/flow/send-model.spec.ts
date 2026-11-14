@@ -4,7 +4,7 @@ import { expect, test } from '../server/harness.ts';
 import { newConversation, requestBox } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
-// Scene ③ (docs/plans/unified-flow.md §4.4, features/composer-flow.md "전송"): while a run goes,
+// Scene ③ (features/composer-flow.md "전송"): while a run goes,
 // the keyboard alone joins, interrupts and queues. A join is read at the model's next request,
 // an interrupt cuts the streaming response and is read by the request after it, and a next
 // request waits in the queue until the server starts it when the run ends. Sending, and the
