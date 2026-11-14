@@ -14,6 +14,7 @@ import {
   Select,
   Textarea,
 } from '../design-kit/index.ts';
+import { agentName } from '../run/advisor.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { ReasoningSelect } from './ReasoningSelect.tsx';
 import { StatusBadge } from './StatusBadge.tsx';
@@ -29,6 +30,8 @@ export function SettingsPatchPanel({
   nodeId?: string;
 }) {
   const t = useTranslations('SettingsPatch');
+  // A conversation's own Outrider is named by the one word, never by its stored name.
+  const advisorWord = useTranslations('Advice')('advisor');
   const id = useId();
   const definition = useStore(session, (s) => s.definition);
   const projection = useStore(session, (s) => s.projection);
@@ -216,7 +219,7 @@ export function SettingsPatchPanel({
                       }}
                       options={nodes.map((candidate) => ({
                         value: candidate.id,
-                        label: `${candidate.label} · ${candidate.id}`,
+                        label: `${agentName(definition, candidate.id, advisorWord)} · ${candidate.id}`,
                       }))}
                     />
                   </>

@@ -13,12 +13,13 @@ import { linearCorral } from '@corral/testkit';
 import { act, type ReactNode, useLayoutEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import {
   advisorDefinition,
+  advisorNodeId,
   advisorRunEvents,
   advisorRunProjection,
 } from '../../../../packages/react/src/stories/advisorRunFixture.ts';
@@ -134,7 +135,14 @@ vi.mock('@corral/react', async (original) => {
           </output>
           {/* The real canvas draws the list rows with the same trigger as the map's nodes. */}
           <output data-testid="graph-display">{display ?? 'map'}</output>
-          {['worker', 'reviewer'].map((id) => (
+          {[
+            'worker',
+            'reviewer',
+            // An Outrider's node, when the run has one, opens its preview the same way.
+            ...definition.nodes
+              .filter((node) => node.type === 'agent' && node.invocation === 'observer')
+              .map((node) => node.id),
+          ].map((id) => (
             <button
               key={id}
               type="button"
@@ -2538,26 +2546,98 @@ it('names the state on the way to respond by the run it is', async () => {
 });
 
 // A conversation's own Outrider has no name of its own: the run page calls it by the one word,
-// never by the name stored for the model (features/advisor.md, 보이는 곳).
-it.each(['en', 'ko'] as const)(
-  'names the conversation’s Outrider by the one word in the run facts and its details (%s)',
-  async (locale) => {
-    const events = advisorRunEvents({ session: true });
-    const definition = advisorDefinition({ session: true });
-    const advisor = definition.nodes.find((node) => node.label === 'Advisor');
-    expect(advisor).toBeDefined();
+// never by the name stored for the model (features/advisor.md, 보이는 곳). The run is one whose
+// Outrider is reviewing now, with more executions than a node's preview lists.
+const workingOutriderRun = () => {
+  const projection = advisorRunProjection(advisorRunEvents({ session: true }));
+  const nodeId = advisorNodeId({ session: true });
+  const first = projection.executions.advisor_1;
+  if (!first) throw new Error('Missing the Outrider execution');
+  const ids = ['advisor_1', 'advisor_2', 'advisor_3', 'advisor_4'];
+  return {
+    ...projection,
+    executions: {
+      ...projection.executions,
+      ...Object.fromEntries(
+        ids.map((id, at) => [
+          id,
+          { ...first, executionId: id, attemptNo: at + 1, status: at === 3 ? 'active' : 'failed' },
+        ]),
+      ),
+    },
+    executionOrder: [...projection.executionOrder.filter((id) => !ids.includes(id)), ...ids],
+    nodeExecutions: { ...projection.nodeExecutions, [nodeId]: ids },
+  } satisfies RunProjection;
+};
+
+// The page's text without the mock canvas's printout of the definition it was given.
+const pageText = (container: HTMLElement) => {
+  const copy = container.cloneNode(true) as HTMLElement;
+  copy.querySelector('[data-testid="layout"]')?.remove();
+  return copy.textContent ?? '';
+};
+
+describe.each(['en', 'ko'] as const)('a conversation’s Outrider on the run page (%s)', (locale) => {
+  const text = locale === 'ko' ? ko : messages;
+  const definition = advisorDefinition({ session: true });
+  const nodeId = advisorNodeId({ session: true });
+
+  it('is named by the one word in the run facts’ working list', async () => {
+    expect(definition.nodes.find((node) => node.id === nodeId)?.label).toBe('Advisor');
     const view = await mount(
       'inline_team',
       null,
-      { view: 'run', execution: 'advisor_1' },
+      {},
       undefined,
       false,
       undefined,
       definition,
       undefined,
-      { projection: advisorRunProjection(events), locale },
+      { projection: workingOutriderRun(), locale },
     );
-    expect(view.container.textContent).toContain('Outrider');
-    expect(view.container.textContent).not.toContain('Advisor');
-  },
-);
+    await act(async () =>
+      [...view.container.querySelectorAll('button')]
+        .find((button) => button.textContent === text.RunMonitor.runInfo)
+        ?.click(),
+    );
+    const prefix = text.RunPage.working.split('{labels}')[0] as string;
+    const line = [...view.container.querySelectorAll('span')].find((span) =>
+      span.textContent?.startsWith(prefix),
+    );
+    expect(line?.textContent).toContain('Outrider');
+    expect(pageText(view.container)).not.toContain('Advisor');
+  });
+
+  it('is named by the one word in its node’s executions and the details heading', async () => {
+    const view = await mount(
+      'inline_team',
+      null,
+      {},
+      undefined,
+      false,
+      undefined,
+      definition,
+      undefined,
+      { projection: workingOutriderRun(), locale },
+    );
+    await act(async () =>
+      view.container.querySelector<HTMLButtonElement>(`[data-testid="select-${nodeId}"]`)?.click(),
+    );
+    const listName = text.RunPage.nodeExecutions.replace('{label}', 'Outrider');
+    const preview = view.container.querySelector('[data-testid="node-preview"]');
+    expect(preview?.querySelector(`section[aria-label="${listName}"]`)).not.toBeNull();
+    const showAll = [...(preview?.querySelectorAll('button') ?? [])].find((button) =>
+      button.textContent?.trim().startsWith(text.RunPage.allExecutions),
+    );
+    expect(showAll).toBeDefined();
+    await act(async () => showAll?.click());
+    expect(view.container.querySelector('[data-testid="node-preview"]')).toBeNull();
+    expect(view.container.querySelector(`section[aria-label="${listName}"]`)).not.toBeNull();
+    expect(
+      [...view.container.querySelectorAll('h2')].some(
+        (heading) => heading.textContent?.trim() === 'Outrider',
+      ),
+    ).toBe(true);
+    expect(pageText(view.container)).not.toContain('Advisor');
+  });
+});
