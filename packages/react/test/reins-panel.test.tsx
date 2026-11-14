@@ -280,6 +280,33 @@ describe('ReinsPanel', () => {
     expect(screen.getByLabelText(messages.Reins.instruction)).toBeInTheDocument();
   });
 
+  // features/term-hints.md: a title that runs to two lines keeps its icon on the first line, at
+  // the height it has on one line. The row sets the heading's line height, and the icon is
+  // centred on that one line from the row's top, not on the whole title.
+  it.each([false, true])(
+    'keeps the icon on the first line of a long title (compact %s)',
+    (compact) => {
+      const long = 'Implementation reviewer for the release candidate branch';
+      render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ReinsPanel
+            session={fakeSession()}
+            target={{ executionId: 'exec_writer', nodeLabel: long, finished: false }}
+            compact={compact}
+          />
+        </IntlProvider>,
+      );
+      const heading = screen.getByRole('heading', { level: 2 });
+      const icon = screen.getByRole('button', { name: 'About Reins' });
+      expect(heading.nextElementSibling).toBe(icon);
+      const row = heading.parentElement as HTMLElement;
+      expect(row).toHaveClass('items-start', 'text-subtitle');
+      expect(row).not.toHaveClass('items-center');
+      expect(icon).toHaveClass('my-[calc((1lh-1.5rem)/2)]');
+      expect(icon).not.toHaveClass('-my-1');
+    },
+  );
+
   it('puts the delivery and scope chips after the icon in the compact form', () => {
     render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">

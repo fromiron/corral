@@ -60,9 +60,11 @@ export function ReinsPanel({
   }, [recovered]);
 
   // The area's name, Reins, with its explanation right after the title, beside it rather than in
-  // it, so the heading names only the area (glossary.md, features/term-hints.md).
+  // it, so the heading names only the area (glossary.md, features/term-hints.md). A long role name
+  // wraps the title: the row takes the heading's line height and the icon centres on one such
+  // line from the top, so it stands on the first line, where it stands on a one-line title.
   const title = (role: string | null) => (
-    <div className="flex min-w-0 flex-nowrap items-center gap-0.5">
+    <div className="flex min-w-0 flex-nowrap items-start gap-0.5 text-subtitle">
       <h2
         id={`${inputId}-heading`}
         className="min-w-0 text-subtitle"
@@ -76,7 +78,7 @@ export function ReinsPanel({
           </>
         )}
       </h2>
-      <TermHint term="reins" />
+      <TermHint term="reins" className="my-[calc((1lh-1.5rem)/2)]" />
     </div>
   );
 
