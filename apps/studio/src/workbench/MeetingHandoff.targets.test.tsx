@@ -120,21 +120,33 @@ it.each([
   },
 );
 
+/** The date and time to the minute, as the app formats it in the provider's zone (UTC). */
+const stamp = (locale: string, iso: string) =>
+  new Intl.DateTimeFormat(locale, {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(new Date(iso));
+
 it.each([
-  ['en', 'New conversation', '2 hours ago', '3 hours ago'],
-  ['ko', '새 대화', '2시간 전', '3시간 전'],
+  ['en', 'New conversation'],
+  ['ko', '새 대화'],
 ] as const)(
-  'same-titled targets add their last activity, a unique title stays bare (%s)',
-  async (locale, untitled, two, three) => {
+  'same-titled targets add their last activity to the minute, a unique title stays bare (%s)',
+  async (locale, untitled) => {
+    // Two hours and some minutes ago both: a relative time would read the same for both.
+    const first = new Date(now.getTime() - 130 * 60_000).toISOString();
+    const second = new Date(now.getTime() - 160 * 60_000).toISOString();
     const options = await targetOptions(locale, [
-      { sessionId: 'a', title: untitled, updatedAt: hoursAgo(2) },
-      { sessionId: 'b', title: untitled, updatedAt: hoursAgo(3) },
+      { sessionId: 'a', title: untitled, updatedAt: first },
+      { sessionId: 'b', title: untitled, updatedAt: second },
       { sessionId: 'c', title: 'Release notes', updatedAt: hoursAgo(4) },
     ]);
     expect(options.slice(1)).toEqual([
-      ['a', `${untitled} · ${two}`],
-      ['b', `${untitled} · ${three}`],
+      ['a', `${untitled} · ${stamp(locale, first)}`],
+      ['b', `${untitled} · ${stamp(locale, second)}`],
       ['c', 'Release notes'],
     ]);
+    expect(options[1]?.[1]).not.toBe(options[2]?.[1]);
   },
 );

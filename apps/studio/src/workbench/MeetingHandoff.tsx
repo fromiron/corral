@@ -11,7 +11,7 @@ import { activeMeetingDecision, type CorralSummary, type WorkSession } from '@co
 import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { newCommandId } from '../sessionActions.ts';
 import { AutoModelMenu } from './AutoModelMenu.tsx';
@@ -25,7 +25,6 @@ import { watchRefresh } from './refresh.ts';
 import { reveal } from './reviewNavigation.ts';
 import { readComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
 import { type ProfileInfo, useModelProfiles } from './useModels.ts';
-import { useSessionAge } from './useSessionAge.ts';
 
 const changed = 'corral:meeting-handoffs-changed';
 const pendingKey = (sessionId: string, versionId: string) =>
@@ -51,14 +50,18 @@ function hasUnsentInput(sessionId: string) {
 }
 /**
  * The project's conversations by title; titles that occur more than once (every untitled
- * conversation is "New conversation") add the last activity the sidebar shows, so they read apart.
+ * conversation is "New conversation") add their last activity's date and time to the minute, so
+ * they read apart.
  */
-function targetOptions(targets: WorkSession[], ago: (iso: string) => string) {
+function targetOptions(targets: WorkSession[], lastActive: (iso: string) => string) {
   const seen = new Map<string, number>();
   for (const item of targets) seen.set(item.title, (seen.get(item.title) ?? 0) + 1);
   return targets.map((item) => ({
     value: item.sessionId,
-    label: (seen.get(item.title) ?? 0) > 1 ? `${item.title} · ${ago(item.updatedAt)}` : item.title,
+    label:
+      (seen.get(item.title) ?? 0) > 1
+        ? `${item.title} · ${lastActive(item.updatedAt)}`
+        : item.title,
   }));
 }
 const failureText = (failure: unknown) =>
@@ -81,7 +84,9 @@ export function MeetingHandoff({
   const [pending, setPending] = useState(() => loadPending(key));
   const [open, setOpen] = useState(!!pending);
   const [targets, setTargets] = useState<WorkSession[]>([]);
-  const ago = useSessionAge();
+  const format = useFormatter();
+  const lastActive = (iso: string) =>
+    format.dateTime(new Date(iso), { dateStyle: 'short', timeStyle: 'short' });
   const [corrals, setCorrals] = useState<CorralSummary[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [target, setTarget] = useState(
@@ -258,7 +263,10 @@ export function MeetingHandoff({
                 value={target}
                 disabled={busy || !!pending}
                 onValueChange={setTarget}
-                options={[{ value: 'new', label: t('newSession') }, ...targetOptions(targets, ago)]}
+                options={[
+                  { value: 'new', label: t('newSession') },
+                  ...targetOptions(targets, lastActive),
+                ]}
               />
             </div>
             {target === 'new' ? (

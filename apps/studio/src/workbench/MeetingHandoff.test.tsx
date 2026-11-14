@@ -15,8 +15,7 @@ const fixture = vi.hoisted(() => ({ services: {} as any }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('use-intl', () => ({
   useTranslations: () => (key: string) => key,
-  useFormatter: () => ({ relativeTime: () => 'ago' }),
-  useNow: () => new Date(),
+  useFormatter: () => ({ dateTime: () => 'time' }),
 }));
 vi.mock('./useModels.ts', () => ({ useModelProfiles: () => null }));
 vi.mock('./AutoModelMenu.tsx', () => ({
