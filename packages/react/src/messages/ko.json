@@ -454,7 +454,7 @@
     },
     "cancelExecution": "선택한 실행 단위 취소",
     "cancelExecutionExplain": "대상: {executionId}와 그 하위 작업. 새 작업을 막고 진행 중인 작업을 정리합니다. 필수 작업은 다시 시작하거나 실행을 취소할 때까지 기다립니다.",
-    "confirmCancelExecution": "선택한 실행 취소 확인",
+    "confirmCancelExecution": "선택한 실행 단위 취소 확인",
     "restart": "새 시도로 작업 다시 시작",
     "restartInstruction": "새 시도에 줄 지시",
     "restartExplain": "이 시도가 끝난 뒤 같은 미완료 작업에 새 실행 단위를 만듭니다. 상위 실행 단위가 아직 이 작업을 기다리는지 Coordinator가 확인합니다.",
@@ -5685,7 +5685,7 @@
     },
     "resultVersions": {
       "name": "결과",
-      "source": "만든 실행",
+      "source": "만든 실행 단위",
       "version": "버전",
       "versionNumber": "v{version}",
       "notKept": "본문 보관 안 함"
