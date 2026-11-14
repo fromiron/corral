@@ -28,6 +28,7 @@ import {
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
 import type { PresenceTone } from '../run/presence.ts';
+import { TermHint } from './TermHint.tsx';
 
 // The composer's one line about the run (features/composer-flow.md "활동 바"): a mark, one line
 // of words and the context at its right end, folding out upward into the roles, the plan, the
@@ -569,13 +570,25 @@ function RoleRow({ role }: { role: ActivityBarRole }) {
   );
 }
 
+/**
+ * The run controls, named Reins (glossary.md): the name and its explanation at the left end, a
+ * quiet label as tall as the buttons at the right end.
+ */
 function Controls({ controls }: { controls: ActivityBarControls }) {
   const t = useTranslations('Activity');
+  const terms = useTranslations('Terms');
+  const nameId = useId();
   return (
     <section
-      aria-label={t('controls')}
-      className="flex flex-wrap items-center justify-end gap-1.5 border-t border-border/60 pt-2.5"
+      aria-labelledby={nameId}
+      className="flex items-center justify-end gap-1.5 border-t border-border/60 pt-2.5"
     >
+      <span className="mr-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-caption text-muted-foreground">
+        <span id={nameId} data-reins-name="">
+          {terms('reins.name')}
+        </span>
+        <TermHint term="reins" />
+      </span>
       {controls.note}
       {controls.paused ? (
         controls.onResume ? (

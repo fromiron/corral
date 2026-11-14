@@ -409,7 +409,6 @@
   },
   "Reins": {
     "executionNumber": "Agent execution {number}",
-    "heading": "Give instruction",
     "noTarget": "Start a run and choose an execution to give an instruction.",
     "target": "Target",
     "delivery": "Delivery",
@@ -6261,7 +6260,6 @@
     "connectionLost": "Connection lost",
     "recordLost": "Run record unavailable",
     "retry": "Retry",
-    "controls": "Run controls",
     "commandUnconfirmed": "Not confirmed: press again to check",
     "reviewing": "Reviewing",
     "adviceDelivered": "{count, plural, one {# piece of advice delivered} other {# pieces of advice delivered}}",
@@ -6284,6 +6282,10 @@
     "advisor": {
       "name": "Advisor",
       "meaning": "A role that watches another role's work and advises it. It does not do the work itself."
+    },
+    "reins": {
+      "name": "Reins",
+      "meaning": "The reins of a run in motion: turn it mid-course, pause it, set it going again or stop it."
     }
   }
 }
