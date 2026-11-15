@@ -201,6 +201,15 @@ it.each([
   expect(name.lastElementChild).toHaveClass('shrink-0');
   // The name shortens first, down to a floor of its first letters; then the words shorten.
   expect(name.firstElementChild).toHaveAttribute('data-floor', 'plan');
+  // The floor: a copy of the name from data-floor, capped at 3em, sizing the grid's minimum.
+  expect(name.firstElementChild).toHaveClass(
+    'grid',
+    'after:content-[attr(data-floor)]',
+    'after:max-w-[3em]',
+    'after:h-0',
+    'after:invisible',
+    'after:whitespace-nowrap',
+  );
   expect(state).toHaveClass('shrink-[0.0001]');
   // Nothing in the role's cell is drawn outside it.
   expect(row.firstElementChild).toHaveClass('overflow-hidden');
