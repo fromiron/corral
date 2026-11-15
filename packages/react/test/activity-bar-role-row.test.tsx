@@ -93,7 +93,9 @@ it.each(['en', 'ko'] as const)(
       expect(name.textContent).toBe(full);
       const [base, place] = [...name.children] as HTMLElement[];
       expect(base?.textContent).toBe('Planner');
-      expect(base).toHaveClass('min-w-0', 'truncate');
+      // The name before the place truncates (inside its floor, NameFloor).
+      expect(base?.querySelector('.truncate')).toHaveClass('min-w-0', 'truncate');
+      expect(base?.querySelector('.truncate')?.textContent).toBe('Planner');
       expect(place?.textContent).toBe(` · #${index + 2}`);
       expect(place).toHaveClass('shrink-0');
       expect(place).not.toHaveClass('truncate');
@@ -165,6 +167,52 @@ it('gives every row the same join place when one row can be joined, the Outrider
       .getAllByRole('button')
       .map((b) => b.textContent),
   ).toEqual([en.Activity.view]);
+});
+
+// A row that writes its state in words: the words shorten with the name, never over the place
+// or View. Their whole is the tooltip; the name never shrinks below its place.
+it.each([
+  ['en', 'Waiting for you'],
+  ['ko', '일시정지하는 중'],
+] as const)('lets written state words shorten with the name (%s)', (locale, words) => {
+  show(
+    [
+      role({
+        id: 'a',
+        name: 'plan · #2',
+        place: ' · #2',
+        working: false,
+        stateShown: true,
+        state: { text: words, target: 'execution:a' },
+        activity: undefined,
+      }),
+    ],
+    locale,
+  );
+  const row = screen.getByRole('listitem');
+  const state = within(row).getByText(words).closest('[title]') as HTMLElement;
+  expect(state).toHaveAttribute('title', words);
+  expect(state).toHaveClass('min-w-0', 'truncate');
+  expect(state).not.toHaveClass('shrink-0');
+  // The name shortens, the place inside it does not; the name's box never gets narrower than
+  // its place (it keeps its automatic minimum).
+  const name = row.querySelector('[title="plan · #2"]') as HTMLElement;
+  expect(name).not.toHaveClass('min-w-0');
+  expect(name.lastElementChild).toHaveClass('shrink-0');
+  // The name shortens first, down to a floor of its first letters; then the words shorten.
+  expect(name.firstElementChild).toHaveAttribute('data-floor', 'plan');
+  expect(state).toHaveClass('shrink-[0.0001]');
+  // Nothing in the role's cell is drawn outside it.
+  expect(row.firstElementChild).toHaveClass('overflow-hidden');
+});
+
+// A place that is not the end of the name is not a place: the row shows the whole name as one.
+it('shows the whole name when the place is not its end', () => {
+  show([role({ id: 'a', name: 'Writer', place: ' · #2' })], 'en');
+  const name = screen.getByText('Writer', { exact: true });
+  expect(name).toHaveAttribute('title', 'Writer');
+  expect(name.children).toHaveLength(0);
+  expect(screen.queryByText(/#2/)).toBeNull();
 });
 
 // The activity leaves the screen when it has no room, never the accessibility tree.

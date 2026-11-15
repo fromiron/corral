@@ -407,6 +407,11 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
         // The name is the row's first titled part; a place, when it has one, is its last part.
         const name = row.querySelector<HTMLElement>('[title]');
         const place = name?.children.length ? (name.lastElementChild as HTMLElement) : null;
+        // The clock (mono digits) and the activity (titled, in its own container).
+        const clock = row.querySelector<HTMLElement>('.font-mono');
+        const activity = row.querySelector<HTMLElement>('[class*="@container/doing"] [title]');
+        const seen = (node: HTMLElement | null) =>
+          !!node && drawn(node) && node.getBoundingClientRect().width > 0;
         return {
           overflows: [...row.querySelectorAll('*')].some(
             (node) => drawn(node) && node.getBoundingClientRect().right > edge,
@@ -415,6 +420,18 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
           view: actions.find((action) => action.text === 'View')?.left ?? null,
           place: place
             ? { text: place.textContent, whole: place.scrollWidth <= place.clientWidth + 0.5 }
+            : null,
+          clockSeen: seen(clock),
+          activity: activity
+            ? {
+                text: activity.textContent,
+                seen: seen(activity),
+                // Still read by assistive technology: laid out, not hidden, not aria-hidden.
+                inTree:
+                  getComputedStyle(activity).display !== 'none' &&
+                  getComputedStyle(activity).visibility !== 'hidden' &&
+                  !activity.closest('[aria-hidden="true"]'),
+              }
             : null,
         };
       }),
@@ -446,15 +463,26 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
   expect(places.length).toBeGreaterThanOrEqual(2);
   for (const place of places) expect(place.whole, place.text ?? '').toBe(true);
   expect(new Set(places.map((place) => place.text)).size).toBe(places.length);
+  // In this narrow panel no row draws its clock, and the lead's activity (it waits for the
+  // agents) is not drawn either, though assistive technology still reads it.
+  for (const row of before) expect(row.clockSeen).toBe(false);
+  const lead = before[0]?.activity;
+  expect(lead?.text).toBeTruthy();
+  expect(lead).toMatchObject({ seen: false, inTree: true });
   // One long name: it ends in an ellipsis, with its whole as the tooltip, and nothing moves.
+  // The name's text is the truncating part of the row's first titled element.
   const name = rows.first().locator('[title]').first();
   await name.evaluate((node) => {
-    const part = node.children.length ? (node.firstElementChild as HTMLElement) : node;
+    const part = (
+      node.matches('.truncate') ? node : node.querySelector('.truncate')
+    ) as HTMLElement;
     part.textContent = 'Implementation reviewer for the release candidate branch';
   });
   expect(
     await name.evaluate((node) => {
-      const part = node.children.length ? (node.firstElementChild as HTMLElement) : node;
+      const part = (
+        node.matches('.truncate') ? node : node.querySelector('.truncate')
+      ) as HTMLElement;
       return part.scrollWidth > part.clientWidth;
     }),
   ).toBe(true);

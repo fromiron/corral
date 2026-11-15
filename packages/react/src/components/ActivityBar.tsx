@@ -561,9 +561,37 @@ function RoleList({ roles }: { roles: ActivityBarRole[] }) {
 }
 
 /**
+ * A name that shortens with an ellipsis but not below its first few letters (3em, or the whole
+ * name when it is shorter), so it never vanishes beside words that stay whole. The floor is an
+ * invisible, zero-height copy of the text capped at 3em (generated content, so the name is in the
+ * DOM once); it sets the grid's smallest width, while the visible text gives up its own.
+ */
+function NameFloor({
+  text,
+  title,
+  semibold = false,
+}: {
+  text: string;
+  title?: string;
+  semibold?: boolean;
+}) {
+  return (
+    <span
+      data-floor={text}
+      className="grid after:invisible after:h-0 after:max-w-[3em] after:overflow-visible after:whitespace-nowrap after:content-[attr(data-floor)]"
+      style={semibold ? { fontVariationSettings: fontWeights.semibold } : undefined}
+    >
+      <span className="min-w-0 truncate" title={title}>
+        {text}
+      </span>
+    </span>
+  );
+}
+
+/**
  * One role's row: one line at any width. Short of room, the activity leaves first, then (in a
- * narrow panel) the clock, then the name shortens; the place that tells same-role rows apart,
- * View and the join place never do.
+ * narrow panel) the clock, then the name shortens to its floor, then written state words do; the
+ * place that tells same-role rows apart, View and the join place never do.
  */
 function RoleRow({
   role,
@@ -581,29 +609,33 @@ function RoleRow({
       data-activity-role={role.id}
       className="col-span-full grid min-h-8 grid-cols-subgrid items-center text-ui"
     >
-      <span className="flex min-w-0 items-center gap-2">
+      {/* Nothing in the role's cell is drawn outside it, over View or the join place. */}
+      <span className="flex min-w-0 items-center gap-2 overflow-hidden">
         <Mark glyph={role.glyph} tone={role.tone} />
-        {/* After the activity has given way, the name is what shortens; its whole is the tooltip. */}
+        {/*
+          After the activity has given way, the name is what shortens, down to its first few
+          letters (NameFloor); then written state words shorten too. Each whole is its tooltip.
+          With a place, the name never gets narrower than its floor and the place, so nothing is
+          drawn over the number.
+        */}
         {place ? (
           <span
-            className="flex min-w-0"
+            className="flex"
             style={{ fontVariationSettings: fontWeights.semibold }}
             title={role.name}
           >
-            <span className="min-w-0 truncate">{role.name.slice(0, -place.length)}</span>
+            <NameFloor text={role.name.slice(0, -place.length)} />
             <span className="shrink-0 whitespace-pre">{place}</span>
           </span>
         ) : (
-          <span
-            className="min-w-0 truncate"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-            title={role.name}
-          >
-            {role.name}
-          </span>
+          <NameFloor text={role.name} title={role.name} semibold />
         )}
         {!role.state ? null : role.stateShown && !role.working ? (
-          <span className="shrink-0 text-muted-foreground">
+          // Shortens only once the name is at its floor (its share before that is nil).
+          <span
+            className="min-w-0 shrink-[0.0001] truncate text-muted-foreground"
+            title={role.state.text}
+          >
             <StateWords state={role.state} />
           </span>
         ) : (
