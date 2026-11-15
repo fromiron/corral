@@ -1299,6 +1299,78 @@ describe('who may give advice', () => {
   });
 });
 
+describe('a person’s instruction', () => {
+  /** The writer holds its second request, so the run and its advisor are still going. */
+  async function held() {
+    const hold = new Gate();
+    const s = setup({
+      definition: advised({ interval: 1, maxRequestsPerReview: 8 }),
+      turns: { writer: 2 },
+      work: async (turn, input) => {
+        if (input.nodeId === 'writer' && turn === 2) await hold.wait();
+      },
+    });
+    await s.wait(
+      (p) =>
+        Object.values(p.executions).find((e) => e.nodeId === 'advisor')?.status ===
+        'waiting_message',
+      'the advisor to rest',
+    );
+    const steer = (commandId: string, targetExecutionId: string) =>
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId,
+        runId: s.runId,
+        type: 'steer',
+        payload: { targetExecutionId, text: 'Look at the 2024 figure.', delivery: 'next_request' },
+      });
+    const directiveEvents = () => s.events().filter((e) => e.type.startsWith('directive.'));
+    return { ...s, hold, steer, directiveEvents };
+  }
+
+  it('a steer to the advisor’s execution is refused and makes no directive', async () => {
+    const s = await held();
+    const advisor = s.advisorExecution()?.executionId ?? '';
+    const receipt = s.steer('steer_advisor', advisor);
+    expect(receipt).toMatchObject({
+      status: 'rejected',
+      error: { code: 'CAPABILITY_DENIED' },
+      target: `execution:${advisor}`,
+    });
+    expect(s.directiveEvents()).toEqual([]);
+    expect(Object.values(s.projection().directives)).toEqual([]);
+    // The refusal is stored: the same command id gets the same receipt and still no directive.
+    expect(s.steer('steer_advisor', advisor)).toEqual(receipt);
+    expect(s.coordinator.getReceipt(s.runId, 'steer_advisor')).toEqual(receipt);
+    expect(s.directiveEvents()).toEqual([]);
+    s.hold.open();
+    await s.ended();
+  });
+
+  it('a steer to the role it watches is still accepted', async () => {
+    const s = await held();
+    const writer = s.executionOf('writer')?.executionId ?? '';
+    const receipt = s.steer('steer_writer', writer);
+    expect(receipt.status).toBe('queued');
+    expect(receipt.error).toBeFalsy();
+    expect(s.directiveEvents().map((e) => e.type)).toContain('directive.accepted');
+    s.hold.open();
+    await s.ended();
+  });
+
+  it('after the run ended, a steer to its advisor is still refused as an advisor’s', async () => {
+    const s = await held();
+    const advisor = s.advisorExecution()?.executionId ?? '';
+    s.hold.open();
+    await s.ended();
+    expect(s.steer('steer_after', advisor)).toMatchObject({
+      status: 'rejected',
+      error: { code: 'CAPABILITY_DENIED' },
+    });
+    expect(s.directiveEvents()).toEqual([]);
+  });
+});
+
 describe('advice and the session queue', () => {
   it('an advice directive its target never read is not carried to the queue', async () => {
     const { carriedDirectives } = await import('../src/index.ts');

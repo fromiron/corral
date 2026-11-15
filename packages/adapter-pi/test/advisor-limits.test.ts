@@ -106,6 +106,8 @@ function runtime(
   onWorkerFrame?: (frame: Frame, advisorId: string | null) => void,
   /** Keeps only this many recent tokens when a compaction runs. */
   keepRecentTokens?: number,
+  /** Holds a frame on its way from a worker to the host until the promise it returns settles. */
+  holdFromWorker?: (frame: Frame, advisorId: string | null) => Promise<void> | undefined,
 ) {
   const faux = createFauxCore({});
   const advisorSeen: TranscriptContext[] = [];
@@ -139,6 +141,14 @@ function runtime(
         fromWorker.push(frame as Frame);
         onWorkerFrame?.(frame as Frame, advisorId);
       });
+      if (holdFromWorker) {
+        const toHost = worker.send.bind(worker);
+        worker.send = (frame) => {
+          const held = holdFromWorker(frame as Frame, advisorId);
+          if (held) void held.then(() => toHost(frame));
+          else toHost(frame);
+        };
+      }
       runWorker(worker, { streamFn: faux.streamSimple, resolveModel: () => faux.getModel() });
       return host;
     },
@@ -252,10 +262,12 @@ describe('the request cap of a review', () => {
     expect(r.toAdvisor()).toContain('review');
   });
 
+  // An Outrider takes no person's instruction (features/advisor.md, 보안): a steer sent while it
+  // prepares a request is refused, never reaches it and takes nothing from its cap.
   for (const cap of [1, 2])
-    it(`a person’s directive while the advisor prepares does not use up a cap of ${cap}`, async () => {
+    it(`a person’s steer while the advisor prepares is refused and never reaches it (cap ${cap})`, async () => {
       let runId = '';
-      let steered = false;
+      let steered: Promise<{ status: string; error?: { code: string } | null }> | null = null;
       const r = runtime(
         [advising('The cheese claim has no source.'), advising('The date is missing.')],
         [
@@ -268,8 +280,7 @@ describe('the request cap of a review', () => {
         (frame, advisorId) => {
           if (steered || frame.type !== 'prepare_request' || frame.executionId !== advisorId)
             return;
-          steered = true;
-          void r.transport.sendCommand({
+          steered = r.transport.sendCommand({
             schemaVersion: '0.1',
             commandId: 'cmd_steer_advisor',
             runId,
@@ -287,12 +298,88 @@ describe('the request cap of a review', () => {
       const final = await waitForProjection(r.transport, runId, settled);
       expect(final.status).toBe('succeeded');
       expect(executionOf(final, 'advisor')?.status).toBe('succeeded');
-      expect(r.fromAdvisor()).toContain('prepare_request:turn');
+      expect(await steered).toMatchObject({
+        status: 'rejected',
+        error: { code: 'CAPABILITY_DENIED' },
+      });
+      expect(Object.values(final.directives).filter((d) => d.origin === 'user')).toEqual([]);
+      expect(r.advisorSeen.map(said).join('\n')).not.toContain('Check the dates too.');
+    });
+
+  // A preparation sent back because its context went stale does not use up the review's cap
+  // (features/advisor.md). The trigger: the plan owner revises the team plan, which is in every
+  // execution's protected context, while an advisor's preparation is on its way to the host. As
+  // many preparations go stale as the cap allows requests, and the review still makes its one.
+  for (const cap of [1, 2])
+    it(`preparations sent back for a stale context do not use up a cap of ${cap}`, async () => {
+      let runId = '';
+      let held = 0;
+      const planRevision = async () =>
+        Object.values((await r.transport.getSnapshot(runId)).projection.workPlans ?? {}).find(
+          (plan) => plan.scope === 'team',
+        )?.revision ?? 0;
+      // The writer revises the team plan once for each held preparation.
+      const revising = (revision: number): FauxResponseStep => {
+        return async () => {
+          await until(() => held > revision);
+          const { projection } = await r.transport.getSnapshot(runId);
+          return fauxAssistantMessage(
+            [
+              fauxToolCall('update_plan', {
+                scope: 'team',
+                expectedRevision: revision,
+                criteriaVersionId: projection.currentCriteriaVersionId,
+                items: [
+                  {
+                    id: 'dates',
+                    title: `Check every date, pass ${revision + 1}`,
+                    status: 'in_progress',
+                  },
+                ],
+              }),
+            ],
+            { stopReason: 'toolUse' },
+          );
+        };
+      };
+      const r = runtime(
+        [advising('The cheese claim has no source.'), advising('The date is missing.')],
+        [
+          writing('Draft: the moon is made of cheese.'),
+          ...Array.from({ length: cap }, (_, revision) => revising(revision)),
+          async (context) => {
+            await until(advisorRests(r, () => runId));
+            return submitting(context);
+          },
+        ],
+        undefined,
+        undefined,
+        (frame, advisorId) => {
+          if (held >= cap || frame.type !== 'prepare_request' || frame.executionId !== advisorId)
+            return;
+          held += 1;
+          const revision = held;
+          // Sent on once the plan changed under it, so the host finds its context stale.
+          return until(async () => (await planRevision()) >= revision, 8000).then(() => undefined);
+        },
+      );
+      const corral = definition(cap);
+      corral.roles[0]?.allowedCollaborationTools.push('update_plan');
+      corral.planOwnerRoleId = corral.roles[0]?.id;
+      const s = await start(r, corral);
+      runId = s.runId;
+      const final = await waitForProjection(r.transport, runId, settled);
+      expect(final.status).toBe('succeeded');
+      expect(executionOf(final, 'advisor')?.status).toBe('succeeded');
+      expect(held).toBe(cap);
+      expect(await planRevision()).toBe(cap);
+      // Each held preparation was sent back, then the review made the request its cap allows,
+      // read the last plan and advised; nothing was refused.
+      expect(r.toAdvisor().filter((frame) => frame === 'reprepare')).toHaveLength(cap);
+      expect(r.advisorSeen[0] && said(r.advisorSeen[0])).toContain(`Check every date, pass ${cap}`);
       expect(r.toAdvisor()).not.toContain('refused');
-      // The first review made as many requests as its cap allows, the directive's included.
-      expect(turnRequests(final, s.events)).toBeGreaterThanOrEqual(cap);
-      if (cap === 2)
-        expect(r.advisorSeen[1] && said(r.advisorSeen[1])).toContain('Check the dates too.');
+      expect(turnRequests(final, s.events)).toBeGreaterThanOrEqual(1);
+      expect(s.events.some((e) => e.type === 'advice.admitted')).toBe(true);
     });
 
   const fatal = () =>

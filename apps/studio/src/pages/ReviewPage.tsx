@@ -510,11 +510,11 @@ export function ReviewContent({
             >
               {/* The page's one place for the Paddock term (glossary.md); in the Changes pane its
                   setup view above is the place. */}
-              <div className="flex items-center gap-1">
+              <div className="flex items-start gap-1 text-subtitle">
                 <h3 className="text-subtitle" style={semibold}>
                   {t('noCopyTitle')}
                 </h3>
-                {!embedded ? <TermHint term="paddock" /> : null}
+                {!embedded ? <TermHint term="paddock" firstLine /> : null}
               </div>
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
@@ -1277,7 +1277,6 @@ export function CommentsPanel({
   const active = runs.find((r) => !TERMINAL_RUN_STATUSES.has(r.status)) ?? null;
   const activeRunId = active?.runId;
   const [targets, setTargets] = useState<{ id: string; label: string }[]>([]);
-  const advisorWord = useTranslations('Advice')('advisor');
   const [target, setTarget] = useState('next');
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -1288,7 +1287,7 @@ export function CommentsPanel({
     let revision = 0;
     const reload = () => {
       const read = ++revision;
-      void steerTargets(services, activeRunId, advisorWord).then(
+      void steerTargets(services, activeRunId).then(
         (targets) => live && read === revision && setTargets(targets),
         () => live && read === revision && setTargets([]),
       );
@@ -1299,7 +1298,7 @@ export function CommentsPanel({
       live = false;
       clearInterval(timer);
     };
-  }, [services, activeRunId, advisorWord]);
+  }, [services, activeRunId]);
   const drafts = comments.filter((c) => c.state === 'draft');
   const sentComments = comments.filter((c) => c.state !== 'draft');
   const earlier = sentComments.filter(

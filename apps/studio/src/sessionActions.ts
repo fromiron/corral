@@ -6,7 +6,7 @@ import {
   TERMINAL_EXECUTION_STATUSES,
 } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
-import { agentName } from '@corral/react';
+import { takesInstruction } from '@corral/react';
 import type { StudioServices } from './services.tsx';
 import { sessionRunMode } from './workbench/autoChoice.ts';
 
@@ -39,12 +39,13 @@ export function conversationRequest(
   };
 }
 
-/** Executions of a run that can still take an instruction, named by their node. */
+/**
+ * Executions of a run that can still take an instruction, named by their node. An Outrider takes
+ * no person's instruction (features/advisor.md), so it is never one.
+ */
 export async function steerTargets(
   services: Pick<StudioServices, 'transport'>,
   runId: string,
-  /** The one word a conversation's own Outrider is called by. */
-  advisorWord: string,
 ): Promise<{ id: string; label: string }[]> {
   const [{ projection }, definition] = await Promise.all([
     services.transport.getSnapshot(runId),
@@ -52,8 +53,8 @@ export async function steerTargets(
   ]);
   return projection.executionOrder.flatMap((id) => {
     const e = projection.executions[id];
-    if (!e || TERMINAL_EXECUTION_STATUSES.has(e.status)) return [];
-    const label = agentName(definition, e.nodeId, advisorWord);
+    if (!takesInstruction(e) || TERMINAL_EXECUTION_STATUSES.has(e.status)) return [];
+    const label = definition?.nodes.find((node) => node.id === e.nodeId)?.label ?? e.nodeId;
     return [{ id, label: `${label} · ${id}` }];
   });
 }

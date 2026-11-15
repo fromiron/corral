@@ -318,6 +318,7 @@ export function ComposerActivity({
           return {
             id: role.id,
             name: role.name,
+            ...(role.place ? { place: role.place } : {}),
             glyph: role.presence.glyph,
             tone: role.presence.tone,
             ...(state ? { state } : {}),

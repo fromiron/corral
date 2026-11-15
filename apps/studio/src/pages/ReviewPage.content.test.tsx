@@ -226,6 +226,11 @@ it.each([
   );
   expect(title?.contains(hint)).toBe(false);
   expect(title?.nextElementSibling).toBe(hint);
+  // A title that wraps keeps its icon on the first line (features/term-hints.md): the row aligns
+  // to its start with the title's line height, and the icon centres on one such line.
+  expect(title?.parentElement?.classList.contains('items-start')).toBe(true);
+  expect(title?.parentElement?.classList.contains('text-subtitle')).toBe(true);
+  expect(hint.classList.contains('my-[calc((1lh-1.5rem)/2)]')).toBe(true);
 });
 
 it('prepares a missing copy through Changes and refreshes the retained review after creation', async () => {

@@ -114,7 +114,7 @@ async function adoptDecision(page: Page, id: string) {
   await expect
     .poll(async () => (await meeting(page, id)).minutes?.[0]?.document?.candidates.length)
     .toBe(1);
-  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, decisions and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   await page.getByRole('button', { name: 'Review and adopt', exact: true }).click();
   await page.locator('textarea[name="goal"]').fill('Measure before releasing');
@@ -237,7 +237,7 @@ test.describe('general chat', () => {
     const conversation = page.getByTestId('chat-timeline');
     // The records panel stays closed until asked for.
     const records = page.getByRole('complementary', {
-      name: 'Minutes, plan and handoff',
+      name: 'Minutes, decisions and handoff',
       exact: true,
     });
     await expect(records).toHaveCount(0);
@@ -404,9 +404,9 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
   // Below 1024px the records open as a drawer on request; a panel left open on a wide screen
   // does not cover the phone's conversation by itself.
-  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, decisions and handoff', exact: true }).click();
   await expect(
-    page.getByRole('dialog', { name: 'Minutes, plan and handoff', exact: true }),
+    page.getByRole('dialog', { name: 'Minutes, decisions and handoff', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Withdraw decision', exact: true }).click();
   await page
@@ -417,7 +417,7 @@ test('minutes retain dissent and only a human adopts or withdraws a decision', a
     .poll(async () => (await meeting(page, id)).decisionWithdrawals?.[0]?.reason)
     .toBe('Need another measurement first');
   await page.reload();
-  await page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }).click();
+  await page.getByRole('button', { name: 'Minutes, decisions and handoff', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Hand off to work', exact: true })).toHaveCount(0);
   expect((await meeting(page, id)).decisions).toHaveLength(1);
   expect(corral.server.coordinator.listRuns()).toHaveLength(3);
@@ -446,8 +446,8 @@ test('handoffs preserve existing input and start work only when requested', asyn
   };
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page.getByRole('combobox', { name: 'Target conversation', exact: true }).click();
-  // An untitled conversation is named "New conversation", like the choice that makes a new one,
-  // so the option is the one whose value is the target session.
+  // The target is the only untitled conversation here, so its option is its bare title; the
+  // value pins it to the target session, apart from "Create new conversation" above it.
   await page
     .getByRole('option', { name: targetTitle, exact: true })
     .and(page.locator(`[data-value="${targetId}"]`))
@@ -465,10 +465,10 @@ test('handoffs preserve existing input and start work only when requested', asyn
   await page.goto(`${corral.server.url}/sessions/${id}`);
   // The records panel was left open here, so it comes back open.
   await expect(
-    page.getByRole('button', { name: 'Minutes, plan and handoff', exact: true }),
+    page.getByRole('button', { name: 'Minutes, decisions and handoff', exact: true }),
   ).toHaveAttribute('aria-pressed', 'true');
   await expect(
-    page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+    page.getByRole('complementary', { name: 'Minutes, decisions and handoff', exact: true }),
   ).toBeVisible();
   await page.getByRole('button', { name: 'Hand off to work', exact: true }).click();
   await page
@@ -613,7 +613,7 @@ test.describe('secretary failure', () => {
     await expect(recovery).toBeVisible();
     // The failure shows outside the records panel, which stays closed.
     await expect(
-      page.getByRole('complementary', { name: 'Minutes, plan and handoff', exact: true }),
+      page.getByRole('complementary', { name: 'Minutes, decisions and handoff', exact: true }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Request minutes again', exact: true }).click();
     await finishReplies(page, id, 2);

@@ -354,7 +354,8 @@ test('② a team: the bar names no role whose row is on screen, and joins from i
     for (const row of await rows.all())
       roles.push({
         id: (await row.getAttribute('data-activity-role')) ?? '',
-        name: (await row.locator(':scope > span').nth(1).innerText()).trim(),
+        // textContent: the name is whole; innerText breaks it at the name's floor.
+        name: ((await row.locator('[data-activity-name]').textContent()) ?? '').trim(),
       });
     const lead = run()
       ? corral.server.coordinator.getSnapshot(run()?.runId ?? '').projection.executionOrder[0]

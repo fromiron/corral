@@ -1049,6 +1049,11 @@ it('tells executions of one role apart as the send menu does, and lists only liv
   expect(name('exec_w2')?.textContent).toContain('writer · #3');
   expect(name('exec_w3')?.textContent).toContain('writer · #4');
   expect(name('exec_lead')?.textContent).not.toContain('#');
+  // The place is its own part at the name's end, whole while the name before it shortens; the
+  // parts joined are the whole name, the tooltip.
+  const named = name('exec_w3')?.querySelector('[title="writer · #4"]');
+  expect([...(named?.children ?? [])].map((part) => part.textContent)).toEqual(['writer', ' · #4']);
+  expect(named?.lastElementChild?.classList.contains('shrink-0')).toBe(true);
   // The buttons say which one.
   const views = [...(name('exec_w3')?.querySelectorAll('button') ?? [])].map((button) =>
     button.getAttribute('aria-label'),
