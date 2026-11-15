@@ -215,6 +215,20 @@ it('shows the whole name when the place is not its end', () => {
   expect(screen.queryByText(/#2/)).toBeNull();
 });
 
+// The element that shows the role's name is marked, so a reader finds it without knowing the row's
+// layout: its text is the whole name as shown, place included, and nothing else.
+it('marks the shown name, with and without a place', () => {
+  show(
+    [role({ id: 'a', name: 'Planner · #2', place: ' · #2' }), role({ id: 'b', name: 'Writer' })],
+    'en',
+  );
+  const names = screen
+    .getAllByRole('listitem')
+    .map((row) => row.querySelectorAll('[data-activity-name]'));
+  expect(names.map((found) => found.length)).toEqual([1, 1]);
+  expect(names.map((found) => found[0]?.textContent)).toEqual(['Planner · #2', 'Writer']);
+});
+
 // The activity leaves the screen when it has no room, never the accessibility tree.
 it('keeps the activity for assistive technology', () => {
   show([role({ id: 'a', name: 'Writer', activity: 'Reading the diff' })], 'en');

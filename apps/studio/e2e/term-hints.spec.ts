@@ -404,9 +404,10 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
             whole: node.scrollWidth <= node.clientWidth + 0.5,
           };
         });
-        // The name is the row's first titled part; a place, when it has one, is its last part.
-        const name = row.querySelector<HTMLElement>('[title]');
-        const place = name?.children.length ? (name.lastElementChild as HTMLElement) : null;
+        // The shown name; a place, when it has one, is its last part after the name's text.
+        const name = row.querySelector<HTMLElement>('[data-activity-name]');
+        const place =
+          name && name.children.length > 1 ? (name.lastElementChild as HTMLElement) : null;
         // The clock (mono digits) and the activity (titled, in its own container).
         const clock = row.querySelector<HTMLElement>('.font-mono');
         const activity = row.querySelector<HTMLElement>('[class*="@container/doing"] [title]');
@@ -470,22 +471,12 @@ test('the open activity panel keeps each role row’s actions whole at 320px', a
   expect(lead?.text).toBeTruthy();
   expect(lead).toMatchObject({ seen: false, inTree: true });
   // One long name: it ends in an ellipsis, with its whole as the tooltip, and nothing moves.
-  // The name's text is the truncating part of the row's first titled element.
-  const name = rows.first().locator('[title]').first();
+  // The name's text is the part of the shown name that shortens.
+  const name = rows.first().locator('[data-activity-name] .truncate').first();
   await name.evaluate((node) => {
-    const part = (
-      node.matches('.truncate') ? node : node.querySelector('.truncate')
-    ) as HTMLElement;
-    part.textContent = 'Implementation reviewer for the release candidate branch';
+    node.textContent = 'Implementation reviewer for the release candidate branch';
   });
-  expect(
-    await name.evaluate((node) => {
-      const part = (
-        node.matches('.truncate') ? node : node.querySelector('.truncate')
-      ) as HTMLElement;
-      return part.scrollWidth > part.clientWidth;
-    }),
-  ).toBe(true);
+  expect(await name.evaluate((node) => node.scrollWidth > node.clientWidth)).toBe(true);
   const after = await measure();
   expect(after[0]?.overflows).toBe(false);
   expect(after[0]?.actions).toEqual(before[0]?.actions);

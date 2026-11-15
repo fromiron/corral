@@ -570,14 +570,18 @@ function NameFloor({
   text,
   title,
   semibold = false,
+  name = false,
 }: {
   text: string;
   title?: string;
   semibold?: boolean;
+  /** It is the role's whole visible name (`data-activity-name`). */
+  name?: boolean;
 }) {
   return (
     <span
       data-floor={text}
+      data-activity-name={name ? '' : undefined}
       className="grid after:invisible after:h-0 after:max-w-[3em] after:overflow-visible after:whitespace-nowrap after:content-[attr(data-floor)]"
       style={semibold ? { fontVariationSettings: fontWeights.semibold } : undefined}
     >
@@ -618,8 +622,10 @@ function RoleRow({
           With a place, the name never gets narrower than its floor and the place, so nothing is
           drawn over the number.
         */}
+        {/* `data-activity-name`: the whole name as shown, place included. */}
         {place ? (
           <span
+            data-activity-name=""
             className="flex"
             style={{ fontVariationSettings: fontWeights.semibold }}
             title={role.name}
@@ -628,7 +634,7 @@ function RoleRow({
             <span className="shrink-0 whitespace-pre">{place}</span>
           </span>
         ) : (
-          <NameFloor text={role.name} title={role.name} semibold />
+          <NameFloor text={role.name} title={role.name} semibold name />
         )}
         {!role.state ? null : role.stateShown && !role.working ? (
           // Shortens only once the name is at its floor (its share before that is nil).
