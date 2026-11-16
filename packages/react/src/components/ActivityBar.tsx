@@ -3,6 +3,7 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
   useCallback,
   useEffect,
   useId,
@@ -12,7 +13,7 @@ import {
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { useControllable } from '../design-kit/hooks/use-controllable.ts';
-import { Check } from '../design-kit/icons.ts';
+import { Check, Pause, Play, Square } from '../design-kit/icons.ts';
 import {
   type AgentStatus,
   AgentStatusIcon,
@@ -28,6 +29,7 @@ import {
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
 import type { PresenceTone } from '../run/presence.ts';
+import { chipClass } from './chip.ts';
 import { TermHint } from './TermHint.tsx';
 
 // The composer's one line about the run (features/composer-flow.md "활동 바"): a mark, one line
@@ -241,6 +243,22 @@ export function decisionsFit({
   return words <= (shown ? room : Math.max(0, room - buttons - gap - SPARE));
 }
 
+/**
+ * The line says nothing besides its mark: no state words, words, parts, clock, action, decision
+ * or warning. Open, such a line holds the Reins controls (features/composer-flow.md "활동 바").
+ */
+export function lineSaysNothing(line: ActivityBarLine) {
+  return (
+    !line.state &&
+    !line.text &&
+    !line.parts &&
+    line.startedAt === undefined &&
+    !line.action &&
+    !line.approval &&
+    !line.warning
+  );
+}
+
 function StateWords({ state, said = true }: { state: ActivityState; said?: boolean }) {
   return (
     <span
@@ -274,6 +292,18 @@ export function ActivityBar({
   const [openState, setOpen] = useControllable(openProp, defaultOpen, onOpenChange);
   const foldable = Boolean(line && (roles.length || plan || context || controls));
   const open = foldable && openState;
+  // Open with a line that says nothing, the Reins controls stand on the line; the panel keeps no
+  // row of its own for them, and folds out only for what else it has.
+  const onLine = Boolean(open && controls && line && lineSaysNothing(line));
+  const panelShown = open && Boolean(roles.length || plan || context || (controls && !onLine));
+  // The Reins control the focus was on as the controls changed place: their new place gives it
+  // back, or the toggle takes it when they went with the panel.
+  const reinsFocus = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    if (reinsFocus.current === null) return;
+    reinsFocus.current = null;
+    toggle.current?.focus();
+  });
   const back = () => toggle.current?.focus();
   const row = useRef<HTMLDivElement>(null);
   const measure = useRef<HTMLSpanElement>(null);
@@ -377,13 +407,19 @@ export function ActivityBar({
       >
         {line ? (
           <>
+            {onLine && controls ? (
+              <Controls controls={controls} onLine take focus={reinsFocus} />
+            ) : null}
+            {/* Holding the Reins controls, the line draws neither its mark nor its words; the
+                words' place stays, so words that come in cross in as they always do. */}
             <span
               className={cn(
                 'flex min-w-0 flex-1 items-center gap-1.5 text-ui transition-none',
                 line.warning ? 'text-warning' : 'text-foreground',
+                onLine && 'hidden',
               )}
             >
-              <Mark glyph={line.glyph} tone={line.tone} />
+              {onLine ? null : <Mark glyph={line.glyph} tone={line.tone} />}
               {/* The words crossfade when they change, and swap at once with reduced motion;
                   the clock and counts tick in place. */}
               <span
@@ -509,7 +545,7 @@ export function ActivityBar({
           </>
         ) : null}
       </div>
-      <Collapse id={panelId} open={open} hideWhenClosed>
+      <Collapse id={panelId} open={panelShown} hideWhenClosed>
         <section
           ref={panel}
           aria-label={t('details')}
@@ -518,7 +554,9 @@ export function ActivityBar({
           {roles.length ? <RoleList roles={roles} /> : null}
           {plan}
           {context}
-          {controls ? <Controls controls={controls} /> : null}
+          {controls && !onLine ? (
+            <Controls controls={controls} take={open} focus={reinsFocus} />
+          ) : null}
         </section>
       </Collapse>
       {announcements}
@@ -699,56 +737,142 @@ function RoleRow({
   );
 }
 
+/** Where the focus on one control goes when it is not there: Pause and Resume share a place. */
+const REINS_FOCUS: Record<string, string[]> = {
+  pause: ['[data-reins-control="pause"]', '[data-reins-control="resume"]'],
+  resume: ['[data-reins-control="resume"]', '[data-reins-control="pause"]'],
+  stop: ['[data-reins-control="stop"]'],
+  hint: ['[data-term-hint]'],
+};
+
+/** Which of the controls an element is, to find the same one in their other place. */
+const reinsControl = (element: HTMLElement) =>
+  element.dataset.reinsControl ?? (element.hasAttribute('data-term-hint') ? 'hint' : '');
+
+/** A Reins control: a small chip, no border and no fill, its icon before its words. */
+function ReinsChip({
+  control,
+  icon: Icon,
+  label,
+  destructive = false,
+  disabled,
+  onClick,
+}: {
+  control: 'pause' | 'resume' | 'stop';
+  icon: typeof Pause;
+  label: string;
+  destructive?: boolean;
+  disabled?: boolean | undefined;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      data-reins-control={control}
+      disabled={disabled}
+      onClick={onClick}
+      className={cn(
+        chipClass,
+        // Above the line's toggle, whose hit area is the whole line.
+        'relative z-10 shrink-0 whitespace-nowrap disabled:pointer-events-none disabled:opacity-50',
+        destructive && 'text-destructive-foreground hover:text-destructive-foreground',
+      )}
+    >
+      <Icon aria-hidden="true" className="size-3 shrink-0" />
+      {label}
+    </button>
+  );
+}
+
 /**
- * The run controls, named Reins (glossary.md): the name and its explanation at the left end, a
- * quiet label as tall as the buttons at the right end.
+ * The run controls, named Reins (glossary.md): the name and its explanation at the left end, the
+ * controls as chips at the right end. As the panel's last row, or on the line itself when it has
+ * nothing else to say (features/composer-flow.md "활동 바"). The focus on one of them as they
+ * change place goes to the same one in the new place (`focus`; `take` while that place is shown).
  */
-function Controls({ controls }: { controls: ActivityBarControls }) {
+function Controls({
+  controls,
+  onLine = false,
+  take,
+  focus,
+}: {
+  controls: ActivityBarControls;
+  onLine?: boolean;
+  /** This place is shown: it takes the focus the controls had in their other place. */
+  take: boolean;
+  focus: RefObject<string | null>;
+}) {
   const t = useTranslations('Activity');
   const terms = useTranslations('Terms');
   const nameId = useId();
+  const group = useRef<HTMLElement>(null);
+  const taking = useRef(take);
+  // Mounted, the controls take the focus they had in their other place; leaving with the focus,
+  // they say which one had it. A layout effect's cleanup runs before the leaving controls are
+  // taken off the page, while the focus is still on them.
+  useLayoutEffect(() => {
+    const element = group.current;
+    const had = focus.current;
+    if (element && had !== null && taking.current) {
+      focus.current = null;
+      const target =
+        (REINS_FOCUS[had] ?? [])
+          .map((selector) => element.querySelector<HTMLElement>(`${selector}:not(:disabled)`))
+          .find(Boolean) ?? element.querySelector<HTMLElement>('button:not(:disabled)');
+      target?.focus();
+    }
+    return () => {
+      const active = document.activeElement;
+      if (element && active instanceof HTMLElement && element.contains(active))
+        focus.current = reinsControl(active);
+    };
+  }, [focus]);
   return (
     <section
+      ref={group}
       aria-labelledby={nameId}
-      className="flex items-center justify-end gap-1.5 border-t border-border/60 pt-2.5"
+      className={cn(
+        'flex items-center justify-end gap-1.5',
+        onLine ? 'min-w-0 flex-1' : 'border-t border-border/60 pt-2.5',
+      )}
     >
       <span className="mr-auto flex shrink-0 items-center gap-0.5 whitespace-nowrap text-caption text-muted-foreground">
         <span id={nameId} data-reins-name="">
           {terms('reins.name')}
         </span>
-        <TermHint term="reins" />
+        <span className="relative z-10 inline-flex">
+          <TermHint term="reins" />
+        </span>
       </span>
       {controls.note}
       {controls.paused ? (
         controls.onResume ? (
-          <Button
-            size="compact"
-            variant="tertiary"
+          <ReinsChip
+            control="resume"
+            icon={Play}
+            label={t('resume')}
             disabled={controls.disabled}
             onClick={controls.onResume}
-          >
-            {t('resume')}
-          </Button>
+          />
         ) : null
       ) : controls.onPause ? (
-        <Button
-          size="compact"
-          variant="tertiary"
+        <ReinsChip
+          control="pause"
+          icon={Pause}
+          label={t('pause')}
           disabled={controls.disabled}
           onClick={controls.onPause}
-        >
-          {t('pause')}
-        </Button>
+        />
       ) : null}
       {controls.onStop ? (
-        <Button
-          size="compact"
-          variant="ghost-destructive"
+        <ReinsChip
+          control="stop"
+          icon={Square}
+          label={t('stop')}
+          destructive
           disabled={controls.stopDisabled ?? controls.disabled}
           onClick={controls.onStop}
-        >
-          {t('stop')}
-        </Button>
+        />
       ) : null}
     </section>
   );
