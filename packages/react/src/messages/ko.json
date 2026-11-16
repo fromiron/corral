@@ -4563,6 +4563,7 @@
     "fileViewer": "파일 뷰어",
     "openFileViewer": "파일 뷰어 열기",
     "closeFileViewer": "파일 뷰어 닫기",
+    "fileViewerSource": "원본 · 읽기 전용",
     "history": "실행 기록",
     "sessionViews": "대화 보기",
     "changedFiles": "변경된 파일 {count}개",

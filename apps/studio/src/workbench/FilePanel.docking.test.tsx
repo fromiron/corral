@@ -5,6 +5,7 @@ import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { FilePanel } from './FilePanel.tsx';
+import { FileViewerRow, useFileViewerPlacement } from './session/FileViewerBeside.tsx';
 
 const fixture = vi.hoisted(() => ({
   target: {
@@ -285,7 +286,8 @@ it('the read-only viewer stays on the original folder even when a session copy i
       await click(container, 'note.txt');
       expect(readFile).toHaveBeenCalledWith({ kind: 'project', id: 'project' }, 'note.txt');
       expect(container.querySelector('[data-source]')?.textContent).toBe('body of note.txt');
-      expect(container.textContent).toContain(messages.Desktop.sourceFolder);
+      // The viewer's head says once that it reads the source; the panel does not say it again.
+      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
       expect(container.textContent).toContain(messages.Files.readOnlyPreview);
       expect(container.querySelector('[data-inline-editor]')).toBeNull();
       expect(
@@ -300,6 +302,211 @@ it('the read-only viewer stays on the original folder even when a session copy i
     },
     true,
   );
+});
+
+const withoutCopy = () =>
+  ({
+    ...sessionFiles,
+    scope: { kind: 'project', id: 'project' },
+    list: { files: [{ path: 'a.md' }], truncated: false },
+    hasCopy: false,
+    copy: null,
+  }) as unknown as typeof sessionFiles;
+const refreshButtons = (container: HTMLElement) =>
+  container.querySelectorAll(`button[aria-label="${messages.Desktop.refreshFiles}"]`);
+
+it('without a Paddock the Files tab says why it is read-only and links to set up file work', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  await panel(
+    () => true,
+    async (container) => {
+      expect(container.textContent).toContain(messages.Files.noCopyReadOnly);
+      const setup = container.querySelector('a[href="/sessions/session?panel=changes"]');
+      expect(setup?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+      expect(
+        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`)?.textContent,
+      ).toContain(messages.Desktop.sourceFolder);
+      expect(refreshButtons(container)).toHaveLength(1);
+    },
+  );
+  fixture.files = sessionFiles;
+});
+
+it('the viewer reads the source without the Paddock notice, its link or the source row', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  await panel(
+    () => true,
+    async (container) => {
+      expect(container.textContent).not.toContain(messages.Files.noCopyReadOnly);
+      expect(container.textContent).not.toContain(messages.Sessions.prepareWorkingCopy);
+      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
+      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
+      expect(container.querySelector('[role="note"]')).toBeNull();
+      // Refresh lives in the viewer's head, which the row gives the panel.
+      expect(refreshButtons(container)).toHaveLength(0);
+    },
+    true,
+  );
+  fixture.files = sessionFiles;
+});
+
+it('in the viewer row the head holds the one refresh and the one close, and nothing below repeats it', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+  const refresh = vi.fn();
+  fixture.files.refresh = refresh;
+  function Viewer() {
+    const viewer = useFileViewerPlacement('project', true, () => {});
+    return (
+      <FileViewerRow
+        viewer={viewer}
+        panel={(head) => (
+          <FilePanel
+            projectId="project"
+            sessionId="session"
+            readOnly
+            onReference={() => {}}
+            head={head}
+          />
+        )}
+      >
+        <textarea aria-label="Request" />
+      </FileViewerRow>
+    );
+  }
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <Viewer />
+        </IntlProvider>,
+      );
+    });
+    const viewer = container.querySelector('aside') as HTMLElement;
+    expect(viewer.hidden).toBe(false);
+    expect(refreshButtons(viewer)).toHaveLength(1);
+    expect(
+      viewer.querySelectorAll(`button[aria-label="${messages.Docking.closeFileViewer}"]`),
+    ).toHaveLength(1);
+    expect(viewer.textContent).toContain(messages.Docking.fileViewerSource);
+    expect(viewer.textContent).not.toContain(messages.Files.noCopyReadOnly);
+    expect(viewer.textContent).not.toContain(messages.Sessions.prepareWorkingCopy);
+    expect(viewer.textContent).not.toContain(messages.Desktop.sourceFolder);
+    await act(async () => {
+      (refreshButtons(viewer)[0] as HTMLButtonElement).click();
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    width.mockRestore();
+    vi.unstubAllGlobals();
+    fixture.files = sessionFiles;
+  }
+});
+
+it('Escape closes the drawer from any of the viewer’s own controls, after a tooltip has closed', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  // No room beside: the viewer opens as a drawer.
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+  let toggle: (open: boolean) => void = () => {};
+  function Viewer() {
+    const [wish, setWish] = useState(false);
+    const viewer = useFileViewerPlacement('project', wish, setWish);
+    toggle = viewer.toggle;
+    return (
+      <FileViewerRow
+        viewer={viewer}
+        panel={(head) => (
+          <FilePanel
+            projectId="project"
+            sessionId="session"
+            readOnly
+            onReference={() => {}}
+            head={head}
+          />
+        )}
+      >
+        <textarea aria-label="Request" />
+      </FileViewerRow>
+    );
+  }
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const open = () => act(async () => toggle(true));
+  const drawn = () => container.querySelector('[data-file-viewer-scrim]') !== null;
+  /** Escape from the focused element, as many times as it takes to close, at most `limit`. */
+  const escapeUntilClosed = async (limit: number) => {
+    let presses = 0;
+    while (drawn() && presses < limit) {
+      presses += 1;
+      await act(async () => {
+        (document.activeElement ?? document.body).dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+      });
+    }
+    return presses;
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <Viewer />
+        </IntlProvider>,
+      );
+    });
+    const viewer = () => container.querySelector('aside') as HTMLElement;
+    // Each control with the presses it takes: refresh's tooltip, opened by the focus, takes the
+    // first press and the next one closes the drawer.
+    const controls: [() => HTMLElement | null, number][] = [
+      [() => refreshButtons(viewer())[0] as HTMLElement, 2],
+      [() => viewer().querySelector(`button[aria-label="${messages.Docking.closeFileViewer}"]`), 1],
+      [() => viewer().querySelector(`input[aria-label="${messages.Desktop.filterFiles}"]`), 1],
+      [() => viewer().querySelector('button[title="a.md"]'), 1],
+    ];
+    for (const [control, presses] of controls) {
+      await open();
+      expect(drawn()).toBe(true);
+      const element = control();
+      expect(element).not.toBeNull();
+      await act(async () => element?.focus());
+      expect(await escapeUntilClosed(2)).toBe(presses);
+      expect(drawn()).toBe(false);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    width.mockRestore();
+    vi.unstubAllGlobals();
+    fixture.files = sessionFiles;
+  }
 });
 
 it.each([false, true])(

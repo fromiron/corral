@@ -4563,6 +4563,7 @@
     "fileViewer": "File viewer",
     "openFileViewer": "Open file viewer",
     "closeFileViewer": "Close file viewer",
+    "fileViewerSource": "Source · read-only",
     "history": "Runs",
     "sessionViews": "Conversation views",
     "changedFiles": "{count, plural, one {# changed file} other {# changed files}}",

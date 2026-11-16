@@ -123,8 +123,9 @@ function WorkSessionPage() {
     `corral:file-viewer:${session.projectId}`,
     false,
   );
+  // The wish is the project's; a drawer belongs to this session only.
   const fileViewer = useFileViewerPlacement(
-    session.projectId,
+    `${session.projectId}:${session.sessionId}`,
     fileViewerWanted,
     rememberFileViewer,
   );
@@ -440,16 +441,17 @@ function WorkSessionPage() {
           <PendingTrayContext.Provider value={trayContext}>
             <FileViewerRow
               viewer={fileViewer}
-              panel={
+              panel={(head) => (
                 <FilePanel
                   key={`${session.projectId}:${session.sessionId}:viewer`}
                   projectId={session.projectId}
                   sessionId={session.sessionId}
                   readOnly
+                  head={head}
                   onReference={handleReference}
                   onAttach={handleAttachment}
                 />
-              }
+              )}
             >
               <DockWorkbench
                 key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
