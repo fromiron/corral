@@ -52,7 +52,13 @@ import {
 } from '../../sessionDraft.ts';
 import { QueueLine } from '../ComposerQueue.tsx';
 import { useSettledAppearance } from '../settle.ts';
-import { ComposerCard, type SendTarget } from './ComposerCard.tsx';
+import {
+  ComposerCard,
+  type ComposerStop,
+  type SendTarget,
+  sendPlaceStop,
+  stopsSendPlace,
+} from './ComposerCard.tsx';
 import { backToInput, menuOpenChange } from './focus.ts';
 import { RecipientChip, type Recipients } from './SendControls.tsx';
 
@@ -278,7 +284,11 @@ export function MeetingSend({
       }
     : undefined;
   // Stop that just took Send's place is not pressed by a second press meant for Send.
-  const stopSettled = useSettledAppearance(Boolean(stop) && !text.trim());
+  const stopSettled = useSettledAppearance(stopsSendPlace(Boolean(stop), text));
+  // While nothing is written and replies run, Send's place stops them, as a conversation's.
+  const sendStop: ComposerStop | null = stop
+    ? { label: t('stopRound'), disabled: stopping || !stopSettled, onStop: stop }
+    : null;
   const toInput = () => backToInput(input);
   const meeting: SendTarget = {
     badge: (
@@ -325,7 +335,8 @@ export function MeetingSend({
           <MeetingActivity
             view={view}
             name={(id) => nameOf(view.config, id, t('secretary'))}
-            onStop={stop}
+            // Stop stands in one place: in the bar only while Send's place is Send.
+            onStop={sendPlaceStop(sendStop, text) ? undefined : stop}
             stopping={stopping}
           />
         }
@@ -343,10 +354,7 @@ export function MeetingSend({
             />
           ) : null
         }
-        // While nothing is written and replies run, Send's place stops them, as a conversation's.
-        stop={
-          stop ? { label: t('stopRound'), disabled: stopping || !stopSettled, onStop: stop } : null
-        }
+        stop={sendStop}
         notices={
           summaryFailed || attachments.length ? (
             <>

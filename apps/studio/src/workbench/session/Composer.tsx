@@ -30,7 +30,13 @@ import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { AdvisorControl, openAdvisorControl } from './composer/AdvisorControl.tsx';
 import { composerAvailability } from './composer/availability.ts';
-import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
+import {
+  ComposerCard,
+  type ComposerStop,
+  type SendTarget,
+  sendPlaceStop,
+  stopsSendPlace,
+} from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
 import {
   AttachMenu,
@@ -430,7 +436,14 @@ function SessionComposer({
   const commandSending = useCommandSending(going?.runId ?? null);
   // Stop comes to Send's place once a send clears the box and the run goes: the press that sent,
   // or the next one on the same place, does not stop it.
-  const stopSettled = useSettledAppearance(Boolean(going) && !text.trim());
+  const stopSettled = useSettledAppearance(stopsSendPlace(Boolean(going), text));
+  const stop: ComposerStop | null = going
+    ? {
+        label: tActivity('stop'),
+        disabled: going.status === 'cancelling' || commandSending || !stopSettled,
+        onStop: stopRun,
+      }
+    : null;
   const queue = useQueuedRequests({
     deps: {
       ...startDeps,
@@ -660,7 +673,8 @@ function SessionComposer({
             chooseTarget(id);
             input.current?.focus();
           }}
-          onStop={stopRun}
+          // Stop stands in one place: among the Reins controls only while Send's place is Send.
+          {...(sendPlaceStop(stop, text) ? {} : { onStop: stopRun })}
           onPause={() => void runCommand(runDeps, 'pause', ownActive?.runId)}
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
@@ -704,15 +718,7 @@ function SessionComposer({
           />
         </>
       }
-      stop={
-        going
-          ? {
-              label: tActivity('stop'),
-              disabled: going.status === 'cancelling' || commandSending || !stopSettled,
-              onStop: stopRun,
-            }
-          : null
-      }
+      stop={stop}
     />
   );
   return (

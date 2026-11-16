@@ -1,5 +1,12 @@
 import type { Locator, Page } from '@playwright/test';
-import { openActivity, panelTab, requestBox, runControls, runGoing } from '../workbench.ts';
+import {
+  openActivity,
+  panelTab,
+  requestBox,
+  runControls,
+  runGoing,
+  sendPlaceStop,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // A held run keeps its controls in the composer's activity bar, never in the top bar, and its
@@ -51,7 +58,9 @@ test.describe('a held run', () => {
     await expect(top.getByRole('button', { name: /Pause|Stop|Cancel whole run/ })).toHaveCount(0);
     await openActivity(page);
     const pause = runControls(page).getByRole('button', { name: 'Pause', exact: true });
-    const stop = runControls(page).getByRole('button', { name: 'Stop', exact: true });
+    // Nothing is written: Stop is Send's place, and only there (composer-flow.md "활동 바").
+    const stop = sendPlaceStop(page);
+    await expect(runControls(page).getByRole('button', { name: 'Stop' })).toHaveCount(0);
     if (process.env.CORRAL_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.CORRAL_SCREENSHOT_DIR}/topbar-390.png` });
     await expect.poll(() => shown(pause)).toBe(true);

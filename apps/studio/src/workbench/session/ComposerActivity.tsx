@@ -64,7 +64,11 @@ export function ComposerActivity({
   /** The executions that take an instruction now. */
   targets: readonly SteerTarget[];
   onJoin: (executionId: string) => void;
-  onStop: () => void;
+  /**
+   * Stop among the run controls; left out while Send's place is Stop, so Stop stands in one
+   * place (composer-flow.md "활동 바").
+   */
+  onStop?: (() => void) | undefined;
   onPause: () => void;
   onResume: () => void;
   /**
@@ -415,7 +419,7 @@ export function ComposerActivity({
                 stopDisabled: status === 'cancelling' || sending,
                 onPause,
                 onResume,
-                onStop,
+                ...(onStop ? { onStop } : {}),
                 note: request ? (
                   <span className="sr-only">{td('activeRunTarget', { request })}</span>
                 ) : null,

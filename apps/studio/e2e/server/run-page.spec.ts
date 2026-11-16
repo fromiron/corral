@@ -5,12 +5,11 @@ import approvalDefinition from '../../../../examples/research-team.corral.json' 
 import {
   activityBar,
   newConversation,
-  openActivity,
   openResult,
   panelTab,
   requestBox,
-  runControls,
   runGoing,
+  sendPlaceStop,
   slash,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -847,9 +846,9 @@ test.describe('cancel recovery', () => {
         )
         .toBe(true);
       await corral.open(`/sessions/${target.sessionId}`);
-      // Two executions work (the lead waits on its team), so Stop asks first.
-      await openActivity(page);
-      await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
+      // Two executions work (the lead waits on its team), so Stop asks first. Nothing is
+      // written, so Stop is Send's place.
+      await sendPlaceStop(page).click();
       const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
       await expect(confirmation).toHaveCount(1);
       await expect(page.getByRole('dialog')).toHaveCount(1);
