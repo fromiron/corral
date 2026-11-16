@@ -119,7 +119,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
       {mode === 'browser' ? <p className="text-body text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
-          <div>
+          <div className="min-w-0">
             <h3>{t('pathLabel')}</h3>
             {path && mode !== 'browser' ? (
               <p className="truncate" title={path}>
@@ -173,7 +173,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
       ) : (
         <>
           <section className="settings-row">
-            <div>
+            <div className="min-w-0 wrap-anywhere">
               <h3>{t('pathLabel')}</h3>
               <p title={binding.path}>{binding.path}</p>
               {binding.missing ? (
