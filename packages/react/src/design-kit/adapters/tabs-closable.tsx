@@ -6,6 +6,7 @@ import {
   type AnimationPlaybackControls,
   animate,
   motion,
+  useMotionValue,
   useReducedMotion,
 } from 'motion/react';
 import {
@@ -20,6 +21,7 @@ import {
   useState,
 } from 'react';
 import { type ItemRect, useFluidHover } from '../hooks/use-fluid-hover.ts';
+import { focusRingInset } from '../lib/focus.ts';
 import { fontWeights } from '../lib/font-weight.ts';
 import { type IconComponent, useIcon } from '../lib/icon-context.tsx';
 import { useShape } from '../lib/shape-context.tsx';
@@ -245,6 +247,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     // the tabs a render after the list changes. A tab focused in between (the host's focus after
     // a close) would keep its old place, so the arrows would start from there. Once the
     // renumbering has run, the focused tab tells the list its place again.
+    const resyncing = useRef(false);
     const resyncFocus = useCallback(() => {
       queueMicrotask(() => {
         const focused = rootRef.current?.ownerDocument.activeElement;
@@ -252,9 +255,16 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
         if (!rootRef.current?.contains(focused)) return;
         const event = new FocusEvent('focusin', { bubbles: true });
         resyncEvents.add(event);
-        focused.dispatchEvent(event);
+        // A tooltip the person dismissed is not reopened by this.
+        resyncing.current = true;
+        try {
+          focused.dispatchEvent(event);
+        } finally {
+          resyncing.current = false;
+        }
       });
     }, []);
+    const refuseOpen = useCallback(() => resyncing.current, []);
 
     useImperativeHandle(
       ref,
@@ -402,6 +412,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     // Room for the trailing controls clear of the fade, once the strip scrolls.
     // biome-ignore lint/correctness/useExhaustiveDependencies: Read again when the stage or the tabs change.
     useLayoutEffect(() => {
+      // The pills and close controls follow a change of stage in this frame, not the next.
+      measureItems();
       const scroller = scrollerRef.current;
       if (scroller) readScrolls();
     }, [compact, signature, selectedId, labelWidths]);
@@ -431,6 +443,25 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     const hoverMoved = useRecentChange(hoveredIndex, TRAVEL_MS);
     const focusMoved = useRecentChange(focusedIndex, TRAVEL_MS);
     const travel = reduce || !selectionMoved ? instant : spring.moderate;
+    // A pill that does not travel is placed in this commit: Motion would apply even a zero-length
+    // move on its next frame, a frame behind its tab.
+    const pillRef = useRef<HTMLDivElement>(null);
+    const pillBox = {
+      left: useMotionValue(0),
+      width: useMotionValue(0),
+      top: useMotionValue(0),
+      height: useMotionValue(0),
+    };
+    const pillTravels = travel !== instant;
+    // biome-ignore lint/correctness/useExhaustiveDependencies: The motion values are stable.
+    useLayoutEffect(() => {
+      const pill = pillRef.current;
+      if (!pill || !selectedRect || pillTravels) return;
+      for (const key of ['left', 'width', 'top', 'height'] as const) {
+        pillBox[key].jump(selectedRect[key]);
+        pill.style[key] = `${selectedRect[key]}px`;
+      }
+    }, [selectedRect, pillTravels]);
     const hoverTravel = reduce || !hoverMoved ? instant : spring.fast;
     const focusTravel = reduce || !focusMoved ? instant : spring.fast;
 
@@ -487,16 +518,21 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                   className="flex min-w-0 flex-1 items-center"
                   onKeyDownCapture={() => {
                     scrollBeforeKey.current = scrollerRef.current?.scrollLeft ?? null;
+                    // Only for a focus this key moves; a key that moves none leaves nothing behind.
+                    setTimeout(() => {
+                      scrollBeforeKey.current = null;
+                    }, 0);
                   }}
                   onFocus={(event: React.FocusEvent<HTMLDivElement>) => {
                     if (resyncEvents.has(event.nativeEvent)) return;
                     const index = indexOf(event.target);
                     if (index === null) return;
                     const tab = event.target as HTMLElement;
+                    const visible = tab.matches(':focus-visible');
                     setFocusedIndex(index);
-                    // A focused tab looks hovered, as in TabsSubtle.
-                    setHoveredIndex(index);
-                    setFocusVisible(tab.matches(':focus-visible'));
+                    // A tab focused from the keyboard looks hovered, as in TabsSubtle.
+                    if (visible) setHoveredIndex(index);
+                    setFocusVisible(visible);
                     const scroller = scrollerRef.current;
                     const before = scrollBeforeKey.current;
                     scrollBeforeKey.current = null;
@@ -513,6 +549,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                   {/* Selected pill */}
                   {selectedRect ? (
                     <motion.div
+                      ref={pillRef}
+                      style={pillBox}
                       aria-hidden="true"
                       className={cn('pointer-events-none absolute bg-active', shape.bg)}
                       initial={false}
@@ -584,7 +622,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                     const iconOnly = compact && !selected;
                     const showsText = !iconOnly || !!tab.shortLabel;
                     const closeInIconSlot =
-                      !selected && showsText && (hoveredIndex === index || focusedIndex === index);
+                      !selected &&
+                      showsText &&
+                      (hoveredIndex === index || (focusedIndex === index && focusVisible));
                     const ids = tabsClosableIds(idPrefix, tab.id);
                     const label = labelWidths[tab.id] ?? 0;
                     const Icon = tab.icon;
@@ -597,6 +637,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                         content={tab.label}
                         side="bottom"
                         escapeThrough
+                        refuseOpen={refuseOpen}
                         forceOpen={iconOnly || tipTab === tab.id ? undefined : false}
                       >
                         <ClosableTab
@@ -737,7 +778,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                 const rect = itemRects[index];
                 const shown =
                   !!rect &&
-                  (selected || (showsText && (hoveredIndex === index || focusedIndex === index)));
+                  (selected ||
+                    (showsText &&
+                      (hoveredIndex === index || (focusedIndex === index && focusVisible))));
                 const left = rect
                   ? selected
                     ? rect.left + rect.width - SELECTED_END - CLOSE
@@ -761,7 +804,10 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                       onClose(tab.id);
                     }}
                     className={cn(
-                      'absolute flex cursor-pointer items-center justify-center text-muted-foreground outline-none',
+                      'absolute flex cursor-pointer items-center justify-center text-muted-foreground',
+                      // Focus moved here by assistive technology still shows.
+                      focusRingInset,
+                      'focus-visible:pointer-events-auto focus-visible:opacity-100',
                       'transition-[color,background-color,opacity] duration-80 hover:bg-active hover:text-foreground',
                       shape.chip,
                       shown ? 'pointer-events-auto opacity-100' : 'pointer-events-none opacity-0',

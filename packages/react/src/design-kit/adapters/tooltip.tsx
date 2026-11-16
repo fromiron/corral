@@ -11,6 +11,7 @@ export function Tooltip({
   content,
   shortcut,
   escapeThrough = false,
+  refuseOpen,
   forceOpen,
   onOpenChange,
   ...props
@@ -19,6 +20,9 @@ export function Tooltip({
   /** Escape closes the tooltip and goes on to whatever else listens for it (a drawer under it):
    *  a tooltip is not something the person opened. */
   escapeThrough?: boolean;
+  /** With escapeThrough: an open asked for while this returns true leaves a dismissed tooltip
+   *  shut (a focus event the host made, not the person). */
+  refuseOpen?: () => boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [dismissed, setDismissed] = useState(false);
@@ -28,7 +32,10 @@ export function Tooltip({
     if (!escapeThrough || !open || forceOpen !== undefined) return;
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== 'Escape' || event.isComposing) return;
-      flushSync(() => setDismissed(true));
+      flushSync(() => {
+        setDismissed(true);
+        setOpen(false);
+      });
     };
     window.addEventListener('keydown', onKey, true);
     return () => window.removeEventListener('keydown', onKey, true);
@@ -40,6 +47,7 @@ export function Tooltip({
       onOpenChange={
         escapeThrough
           ? (next) => {
+              if (next && dismissed && refuseOpen?.()) return;
               setOpen(next);
               if (next) setDismissed(false);
               onOpenChange?.(next);

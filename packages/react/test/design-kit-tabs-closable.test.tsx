@@ -303,7 +303,7 @@ it('renders an empty strip, as after the last close', () => {
 });
 
 // Where the close controls stand needs the tabs' boxes, which jsdom does not lay out: each tab is
-// given a 60px box in a row, and the strip a width.
+// given a 60px box in a row, and the strip a width. Focus there is keyboard focus.
 function withBoxes(stripWidth: number, run: () => void | Promise<void>) {
   const proto = HTMLElement.prototype;
   const saved = (['offsetWidth', 'offsetHeight', 'offsetLeft', 'clientWidth'] as const).map(
@@ -334,7 +334,14 @@ function withBoxes(stripWidth: number, run: () => void | Promise<void>) {
       return this.dataset.slot === 'tabs-closable' ? stripWidth : 0;
     },
   });
+  // jsdom's :focus-visible follows its own heuristics; here a focused tab is keyboard-focused.
+  const matches = Element.prototype.matches;
+  Element.prototype.matches = function (this: Element, selector: string) {
+    if (selector === ':focus-visible') return this === document.activeElement;
+    return matches.call(this, selector);
+  } as typeof matches;
   const restore = () => {
+    Element.prototype.matches = matches;
     for (const [key, descriptor] of saved) {
       if (descriptor) Object.defineProperty(proto, key, descriptor);
       else delete (proto as unknown as Record<string, unknown>)[key];
@@ -405,3 +412,31 @@ it('follows the focused tab to its new place when a tab before it goes', () =>
     await waitFor(() => expect(close('실행 #1').style.left).toBe(`${60 + 10 + 7 - 12}px`));
     expect(close('실행 #1')).toHaveAttribute('data-shown');
   }));
+
+it('shows no close control in the icon place for a focus that is not keyboard focus', () =>
+  withBoxes(1000, async () => {
+    render(<Strip initial="changes" />);
+    await waitFor(() => expect(close('변경')).toHaveAttribute('data-shown'));
+    const files = screen.getByRole('tab', { name: '파일' });
+    const matches = Element.prototype.matches;
+    Element.prototype.matches = function (this: Element, selector: string) {
+      return selector === ':focus-visible' ? false : matches.call(this, selector);
+    } as typeof matches;
+    try {
+      files.focus();
+      await waitFor(() => expect(files).toHaveFocus());
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      expect(close('파일')).not.toHaveAttribute('data-shown');
+      expect(files.querySelector('svg')).not.toHaveClass('opacity-0');
+    } finally {
+      Element.prototype.matches = matches;
+    }
+  }));
+
+it('lets a focused close control show itself and its ring', () => {
+  render(<Strip />);
+  const control = screen.getByRole('button', { name: '변경 닫기' });
+  expect(control).not.toHaveClass('outline-none');
+  expect(control).toHaveClass('focus-visible:opacity-100');
+  expect(control.className).toContain('focus-visible:outline-[color:var(--focus-ring)]');
+});
