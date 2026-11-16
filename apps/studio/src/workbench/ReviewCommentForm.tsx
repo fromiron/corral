@@ -1,10 +1,16 @@
 import type { ReviewCommentView } from '@corral/client';
+import { keepInput, keptInput } from '@corral/react';
 import { Button, Input, Select, Textarea } from '@corral/react/design-kit';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type CommentKind, composeCommentBody, parseCommentBody } from './reviewComments.ts';
 
 type Anchor = Pick<ReviewCommentView, 'side' | 'startLine' | 'endLine' | 'quote'>;
+interface KeptComment {
+  kind: CommentKind;
+  note: string;
+  replacement: string | null;
+}
 /** The line range a comment is about, as the form's own inputs edit it. */
 export interface CommentRange {
   side: Anchor['side'];
@@ -29,11 +35,17 @@ export function ReviewCommentForm({
   anchor,
   path,
   range,
+  keepAs,
   onRange,
   onSubmit,
   onCancel,
 }: {
   anchor: Anchor | null;
+  /**
+   * Where a comment not added yet is kept after the form goes, until a reload: the file's
+   * comparison; the line range is added to it (features/session-panel.md 닫기와 패널 여닫기).
+   */
+  keepAs?: string;
   /** The file the comment is about, named at the head of the form. */
   path?: string;
   range?: CommentRange;
@@ -45,9 +57,33 @@ export function ReviewCommentForm({
   const tf = useTranslations('Files');
   const td = useTranslations('Desktop');
   const id = useId();
-  const [kind, setKind] = useState<CommentKind>('comment');
-  const [note, setNote] = useState('');
-  const [replacement, setReplacement] = useState<string | null>(null);
+  const keepKey =
+    keepAs && range ? `review-comment:${keepAs}:${range.side}:${range.start}-${range.end}` : null;
+  const [kept] = useState(() => (keepKey ? keptInput<KeptComment>(keepKey) : undefined));
+  const [kind, setKind] = useState<CommentKind>(kept?.kind ?? 'comment');
+  const [note, setNote] = useState(kept?.note ?? '');
+  const [replacement, setReplacement] = useState<string | null>(kept?.replacement ?? null);
+  // What is being written is kept under the range it is about now. A range changed while the
+  // form is open takes what is being written along, replacing what was kept there; with nothing
+  // written, what was kept for the new range appears (features/session-panel.md 닫기와 패널 여닫기).
+  const keptAt = useRef<string | null>(null);
+  useEffect(() => {
+    const previous = keptAt.current;
+    keptAt.current = keepKey;
+    const empty = kind === 'comment' && note === '' && replacement === null;
+    if (previous !== null && previous !== keepKey) {
+      keepInput(previous, null);
+      const waiting = empty && keepKey ? keptInput<KeptComment>(keepKey) : undefined;
+      if (waiting) {
+        setKind(waiting.kind);
+        setNote(waiting.note);
+        setReplacement(waiting.replacement);
+        return;
+      }
+    }
+    if (!keepKey) return;
+    keepInput(keepKey, empty ? null : { kind, note, replacement });
+  }, [keepKey, kind, note, replacement]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const noteField = useRef<HTMLTextAreaElement>(null);
@@ -80,6 +116,8 @@ export function ReviewCommentForm({
         void onSubmit({ ...anchor, body })
           .then(
             () => {
+              // Added: nothing is kept for it (the form may be gone already).
+              if (keepKey) keepInput(keepKey, null);
               setNote('');
               setReplacement(null);
               setKind('comment');
@@ -177,7 +215,15 @@ export function ReviewCommentForm({
         <Button type="submit" disabled={busy || !ready || tooLong}>
           {t('addComment')}
         </Button>
-        <Button type="button" variant="ghost" onClick={onCancel}>
+        <Button
+          type="button"
+          variant="ghost"
+          onClick={() => {
+            // Cancelled: what was written is let go.
+            if (keepKey) keepInput(keepKey, null);
+            onCancel();
+          }}
+        >
           {t('cancel')}
         </Button>
       </div>

@@ -19,6 +19,8 @@ export function useSessionRuns(
   // The selection the last answered listing was asked for: a run requested after it may be too
   // new to be listed yet.
   const [listedFor, setListedFor] = useState<string | null>(null);
+  const listed = useRef<string | null>(null);
+  const watchedFor = useRef<string | null>(null);
   // Session reads, numbered as they are asked for: `read` is the number of the latest one that
   // came back and whose session the page shows. A meta line waits for a read asked for after it
   // saw an instruction expire.
@@ -30,6 +32,13 @@ export function useSessionRuns(
   const shown = useRef(0);
   const readsStarted = useCallback(() => readsAsked.current, []);
   const request = `${sessionId}:${selectedRunId ?? ''}`;
+  // A conversation left and entered again (or a listing that failed between) starts unlisted:
+  // the answer kept from before is not one asked for this entry.
+  const [entry, setEntry] = useState(request);
+  if (entry !== request) {
+    setEntry(request);
+    setListedFor(null);
+  }
   const refreshRead = useRef(() => {});
   const refresh = useCallback(() => refreshRead.current(), []);
   const persistedState = canonicalJson([revision, entries]);
@@ -38,8 +47,11 @@ export function useSessionRuns(
   useEffect(() => {
     void selectedRunId;
     const asked = request;
+    // Entered again: nothing listed so far is this entry's.
+    if (watchedFor.current !== asked) listed.current = null;
+    watchedFor.current = asked;
     let knownState = persistedState;
-    const watcher = watchRunList(transport, async (result, current) => {
+    const watcher = watchRunList(transport, async (result, current, _force, repeated) => {
       try {
         if ('error' in result) throw result.error;
         const { runs } = result;
@@ -56,7 +68,12 @@ export function useSessionRuns(
         // Publish run transitions after their request records are revalidated.
         if (!current()) return;
         setAll(runs);
-        setListedFor(asked);
+        // An answer to a listing asked before this request is shown, but it is not its answer:
+        // a request not listed yet asks for one at once rather than waiting for the clock.
+        if (!repeated) {
+          listed.current = asked;
+          setListedFor(asked);
+        } else if (listed.current !== asked) watcher.refresh();
         setLost(false);
       } catch {
         if (current()) setLost(true);
@@ -75,7 +92,7 @@ export function useSessionRuns(
     active,
     refresh,
     lost,
-    listed: listedFor === request,
+    listed: entry === request && listedFor === request,
     sessionReads: { read: shown.current, started: readsStarted },
   };
 }

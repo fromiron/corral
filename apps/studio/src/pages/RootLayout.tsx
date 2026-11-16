@@ -230,12 +230,8 @@ function RootFrame() {
   ]);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const [viewsSlot, setViewsSlot] = useState<HTMLElement | null>(null);
   const [crumbsSlot, setCrumbsSlot] = useState<HTMLElement | null>(null);
-  const topbarSlots = useMemo(
-    () => ({ actions: slot, views: viewsSlot, crumbs: crumbsSlot }),
-    [slot, viewsSlot, crumbsSlot],
-  );
+  const topbarSlots = useMemo(() => ({ actions: slot, crumbs: crumbsSlot }), [slot, crumbsSlot]);
   const openSessionId = /^\/sessions\/([^/]+)/.exec(location.pathname)?.[1];
   useEffect(() => {
     const media = matchMedia('(max-width: 1023px)');
@@ -391,14 +387,9 @@ function RootFrame() {
                     crumbs={setCrumbsSlot}
                   />
                   <div
-                    ref={setViewsSlot}
-                    data-topbar-part="views"
-                    className="app-topbar-views ml-auto flex shrink-0 items-center"
-                  />
-                  <div
                     ref={setSlot}
                     data-topbar-part="actions"
-                    className="app-topbar-actions flex shrink-0 items-center gap-1"
+                    className="app-topbar-actions ml-auto flex shrink-0 items-center gap-1"
                   />
                   <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                     <Button

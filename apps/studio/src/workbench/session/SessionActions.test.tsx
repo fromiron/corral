@@ -80,7 +80,7 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
           <SessionActions
             session={session}
             corrals={[team]}
@@ -109,8 +109,8 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
 });
 
 it.each([
-  [6, 'bar'],
-  [7, 'menu'],
+  [3, 'bar'],
+  [4, 'menu'],
 ] as const)(
   'at tier %i the changes and terminal sit in the %s, and the panel toggle stays in the bar',
   async (tier, place) => {
@@ -138,7 +138,7 @@ it.each([
     await act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
+          <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
             <SessionActions
               session={session}
               corrals={[team]}
@@ -215,7 +215,7 @@ async function mountCriteria(change: Partial<WorkSession> = {}) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
           <SessionMenu
             sessions={[current]}
             runs={[]}

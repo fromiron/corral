@@ -132,7 +132,7 @@ describe('탭', () => {
     expect(result.history).toBe('push');
     // The way carries the result it points at as the tab's own state.
     expect(
-      nextSearch({ panel: 'artifacts' }, result, event, { view: 'results', result: 'res_1' }),
+      nextSearch({ panel: 'artifacts' }, result, { view: 'results', result: 'res_1' }),
     ).toEqual({ panel: 'run', run: 'run_1', view: 'results', result: 'res_1' });
   });
 
@@ -430,7 +430,7 @@ describe('대화를 앞으로 가져오기', () => {
     expect(ids(result.state)).toEqual([files]);
     expect(result.state.selected).toBe('files');
     expect(result.bringForward).toBe(true);
-    expect(nextSearch(search, result, event)).toEqual({ panel: 'files' });
+    expect(nextSearch(search, result)).toEqual({ panel: 'files' });
     expect(result.history).toBe('replace');
   });
 });
@@ -520,7 +520,7 @@ describe('주소와 기억', () => {
     expect(ids(result.state)).toEqual([files]);
     expect(result.state.selected).toBe('files');
     expect(result.bringForward).toBe(true);
-    expect(nextSearch(search, result, event)).toEqual({ panel: 'files', message: 'msg_1' });
+    expect(nextSearch(search, result)).toEqual({ panel: 'files', message: 'msg_1' });
     expect(result.history).toBe('replace');
   });
 
@@ -530,7 +530,7 @@ describe('주소와 기억', () => {
     const event: PanelEvent = { type: 'follow', search, source: 'in-app' };
     const result = reducePanel(before, event, ctx());
     expect(result.state).toBe(before);
-    expect(nextSearch(search, result, event)).toEqual({ compose: true, message: 'msg_1' });
+    expect(nextSearch(search, result)).toEqual({ compose: true, message: 'msg_1' });
   });
 
   it('"실행 #2"로 실행 #2를 열고 파일 링크로 파일을 연 뒤 탭 줄에서 실행 #2를 닫았다 → 뒤로 → 실행 #2가 오른쪽 끝에 다시 열리고 선택된다', () => {

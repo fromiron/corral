@@ -126,7 +126,7 @@ async function mount({ withDock = false } = {}) {
   await act(async () => {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: null, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: null, crumbs: null }}>
           <button type="button" data-testid="opener" onClick={() => openQuickOpen()}>
             open
           </button>

@@ -150,6 +150,7 @@ export function ReviewContent({
   showChecks = true,
   shown = true,
   copyChanged,
+  onAttach: hostAttach,
 }: {
   session: WorkSession;
   search: ReviewSearch;
@@ -168,6 +169,13 @@ export function ReviewContent({
   shown?: boolean;
   /** Changes whenever the copy may have changed outside this view (a run of the session moved). */
   copyChanged?: string | undefined;
+  /**
+   * Where a host takes attachments to its composer: the session screen brings its conversation
+   * forward itself. Without one, this view attaches and goes to the conversation.
+   */
+  onAttach?:
+    | ((attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>)
+    | undefined;
 }) {
   const t = useTranslations('Files');
   const tr = useTranslations('Review');
@@ -187,7 +195,7 @@ export function ReviewContent({
       mounted.current = false;
     };
   }, []);
-  const onAttach = async (attachment: TextAttachment, capture: AttachmentCapture) => {
+  const ownAttach = async (attachment: TextAttachment, capture: AttachmentCapture) => {
     const isCurrent = () =>
       mounted.current &&
       current.current.services === services &&
@@ -209,6 +217,7 @@ export function ReviewContent({
         search: { compose: true },
       });
   };
+  const onAttach = hostAttach ?? ownAttach;
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   // The changes are held with the session and range they were read for: another range starts
@@ -591,6 +600,7 @@ export function ReviewContent({
                   fill
                   path={selected}
                   loadKey={`${session.sessionId}:${scopeKey}:${changes.from}:${changes.to}:${selected}`}
+                  keepAs={`${session.sessionId}:${scopeKey}:${changes.from}:${changes.to}:${selected}`}
                   load={() =>
                     (workspaces as NonNullable<typeof workspaces>).fileVersions(
                       session.sessionId,
@@ -784,6 +794,7 @@ interface LinePick {
 export function FileDiff({
   path,
   loadKey,
+  keepAs,
   load,
   mark,
   comments = [],
@@ -796,6 +807,8 @@ export function FileDiff({
   path: string;
   /** Changes whenever what to load changes. */
   loadKey: string;
+  /** Where a comment not added yet is kept after the review goes (the file in this review). */
+  keepAs?: string;
   load: () => Promise<{ before: FileSideView; after: FileSideView }>;
   mark?: ChangeMark | undefined;
   comments?: ReviewCommentView[];
@@ -899,6 +912,7 @@ export function FileDiff({
         <ReviewCommentForm
           anchor={anchor}
           path={path}
+          {...(keepAs ? { keepAs } : {})}
           range={{
             side: range.side === 'deletions' ? 'before' : 'after',
             start: range.start,

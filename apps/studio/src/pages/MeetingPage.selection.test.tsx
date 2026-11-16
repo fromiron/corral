@@ -174,7 +174,7 @@ async function mount(first: MeetingView, { compact = false } = {}) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: toolbar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: toolbar, crumbs: null }}>
           <MeetingPage
             session={{ sessionId: 'session_1', title: 'Review', revision: 3 } as WorkSession}
           />

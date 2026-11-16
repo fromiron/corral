@@ -75,7 +75,7 @@
 | 대상 | 소유 정보 | 변경 계기 |
 |---|---|---|
 | presentationRunId | 실행 요약 위젯·현재 Todo·활동 표시 | 현재 세션의 확정된 활성 Run. 없으면 마지막 실행 |
-| inspectedRunId / selectedResultId | 실행 화면의 조회 대상 | URL과 사용자 탐색 |
+| 실행 탭의 Run / selectedResultId | 실행 탭이 보이는 실행과 그 안에서 고른 결과 | 탭마다 정해진 Run([세션 패널](features/session-panel.md#탭)), URL과 사용자 탐색 |
 | composerDraft | 다음 본문·모드·모델·추론·첨부·시작 기준 | 사용자 입력·명시 설정 변경 |
 
 과거 결과를 열어도 presentationRunId나 composerDraft를 바꾸지 않는다. 주소가 지난 실행을 가리키고 있어도 대화의 위젯과 활동 표시는 presentationRunId를 따르며, 주소의 실행 선택은 패널의 실행 탭만 가리킨다. 마지막 실행을 보여줄 때는 마지막 실행 기준임을 표시한다. 빈 세션에 과거 컨텍스트를 가져오지 않는다. 다른 세션에만 활성 실행이 있는 경우 현재 세션의 진행 위젯으로 표시하지 않는다. 결과물 위젯의 링크와 개수는 [API의 산출물 수명 계약](api-contract.md)에 따라 현재 본문을 열 수 있는 결과만 포함한다. 해제된 자료의 관계 정보는 실행 흐름에 남는다.

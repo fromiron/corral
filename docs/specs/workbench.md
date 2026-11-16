@@ -209,7 +209,7 @@ Run 상세는 Run ID별 root store를 사용하고 그래프 편집기나 pane�
 
 ## 도킹 배치의 승인 계약
 
-URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되는 문서 pane을 구분한다. workspaceId/project별 versioned layout은 배치 metadata만 저장하며, 잘못된 descriptor는 placeholder로, 손상된 grid는 유효한 문서 참조를 보존하는 기본 배치로 복구한다. 이동·preset·숨김은 문서 닫기나 프로세스 종료가 아니다. preset으로 주 화면을 바꾸면 URL과 복원 대상도 같은 화면으로 갱신하며 기존 문서 선택은 유지한다. 명시 문서 닫기는 기존 저장/버리기/취소를 유지한다.
+URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되는 문서 pane을 구분한다. workspaceId/project별 versioned layout은 배치 metadata만 저장하며, 잘못된 descriptor는 placeholder로, 손상된 grid는 유효한 문서 참조를 보존하는 기본 배치로 복구한다. 이동·preset·숨김은 문서 닫기나 프로세스 종료가 아니다. preset은 파일 탭 안의 창 배치를 바꾸고 기존 문서 선택은 유지한다. 검토 preset은 배치를 바꾼 뒤 [세션 패널](features/session-panel.md)의 변경 탭을 열고, 다른 preset은 파일 창을 앞에 둔다. 배치는 사용자가 도킹에서 한 일(창을 열고 닫고 옮기고 나누고 앞에 두기, preset 고르기)이 있은 뒤부터 저장한다. 저절로 만든 첫 배치와 폭 때문에 바뀐 모습은 저장하지 않으므로, 좁은 패널에서 처음 열기만 했다면 넓은 패널은 넓은 기본 배치로 열린다. 좁은 패널에서 무엇을 했다면 그때의 배치가 저장된다. 명시 문서 닫기는 기존 저장/버리기/취소를 유지한다.
 
 세션 화면의 대화와 그 옆 패널, 패널의 탭(파일 · 변경 · 실행 · 결과)과 그 열고 닫기는 [세션 패널](features/session-panel.md)이 정한다.
 

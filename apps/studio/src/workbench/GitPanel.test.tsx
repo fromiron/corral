@@ -341,6 +341,48 @@ it('a trusted copy stages a row and commits the confirmed staged list with one r
   });
 });
 
+const commitField = (container: HTMLElement) =>
+  container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Git.commitMessage"]');
+async function typeInto(field: HTMLTextAreaElement | HTMLInputElement | null, value: string) {
+  expect(field).not.toBeNull();
+  await act(async () => {
+    const proto = field instanceof HTMLInputElement ? HTMLInputElement : HTMLTextAreaElement;
+    Object.getOwnPropertyDescriptor(proto.prototype, 'value')?.set?.call(field, value);
+    field?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+it('keeps an unsent commit message for its conversation after the screen goes, until a commit lets it go (features/session-panel.md)', async () => {
+  sessionStorage.clear();
+  const workspaces = {
+    gitStatus: vi.fn(async () => status()),
+    binding: vi.fn(async () => ({ trusted: true })),
+    gitChange: vi.fn(async (_session: string, command: { operationId: string; kind: string }) => ({
+      operationId: command.operationId,
+      target: { ...target, kind: undefined },
+      kind: `git.${command.kind}`,
+      state: 'succeeded',
+      result: { kind: 'applied' },
+    })),
+  };
+  const first = await mount(workspaces);
+  await typeInto(commitField(first.container), 'Explain the change');
+  await act(async () => first.root.unmount());
+
+  const again = await mount(workspaces);
+  expect(commitField(again.container)?.value).toBe('Explain the change');
+  // Another conversation and back: still there.
+  await act(async () => again.render('other_session'));
+  await act(async () => again.render('session'));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(commitField(again.container)?.value).toBe('Explain the change');
+  // Committed: it goes.
+  await act(async () => control(again.container, 'Git.commit')[0]?.click());
+  await act(async () => again.root.unmount());
+  const after = await mount(workspaces);
+  expect(commitField(after.container)?.value).toBe('');
+});
+
 it('the linked original and an untrusted copy offer no Git writes', async () => {
   sessionStorage.clear();
   const gitStatus = vi.fn(async () => status());

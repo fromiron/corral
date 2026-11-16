@@ -175,7 +175,6 @@ const sessionFiles = fixture.files;
 async function panel(
   onOpenDocument: () => boolean,
   check: (container: HTMLDivElement) => Promise<void>,
-  readOnly = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -190,7 +189,6 @@ async function panel(
             sessionId="session"
             onReference={() => {}}
             onOpenDocument={onOpenDocument}
-            readOnly={readOnly}
           />
         </IntlProvider>,
       );
@@ -262,47 +260,6 @@ it('an original-folder file previews read-only inside Files, one at a time (#87)
   fixture.files = sessionFiles;
 });
 
-it('the read-only viewer stays on the original folder even when a session copy is available', async () => {
-  fixture.files = sessionFiles;
-  fixture.open.mockClear();
-  readFile.mockClear();
-  fixture.state = {
-    documents: {
-      'canonical-key': {
-        target: fixture.target,
-        path: 'note.txt',
-        file: { content: { kind: 'text', text: 'working copy text' } },
-        dirty: true,
-        pendingSave: null,
-        recoveries: [],
-      },
-    },
-  };
-  const onOpenDocument = vi.fn(() => true);
-  await panel(
-    onOpenDocument,
-    async (container) => {
-      await click(container, 'note.txt');
-      expect(readFile).toHaveBeenCalledWith({ kind: 'project', id: 'project' }, 'note.txt');
-      expect(container.querySelector('[data-source]')?.textContent).toBe('body of note.txt');
-      // The viewer's head says once that it reads the source; the panel does not say it again.
-      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
-      expect(container.textContent).toContain(messages.Files.readOnlyPreview);
-      expect(container.querySelector('[data-inline-editor]')).toBeNull();
-      expect(
-        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`),
-      ).toBeNull();
-      expect(
-        container.querySelector(`select[aria-label="${messages.ContentSearch.mode}"]`),
-      ).toBeNull();
-      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
-      expect(onOpenDocument).not.toHaveBeenCalled();
-      expect(fixture.open).not.toHaveBeenCalled();
-    },
-    true,
-  );
-});
-
 const withoutCopy = () =>
   ({
     ...sessionFiles,
@@ -328,25 +285,6 @@ it('without a Paddock the Files tab says why it is read-only and links to set up
       ).toContain(messages.Desktop.sourceFolder);
       expect(refreshButtons(container)).toHaveLength(1);
     },
-  );
-  fixture.files = sessionFiles;
-});
-
-it('the viewer reads the source without the Paddock notice, its link or the source row', async () => {
-  fixture.files = withoutCopy();
-  fixture.state = { documents: {} };
-  await panel(
-    () => true,
-    async (container) => {
-      expect(container.textContent).not.toContain(messages.Files.noCopyReadOnly);
-      expect(container.textContent).not.toContain(messages.Sessions.prepareWorkingCopy);
-      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
-      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
-      expect(container.querySelector('[role="note"]')).toBeNull();
-      // Refresh lives in the viewer's head, which the row gives the panel.
-      expect(refreshButtons(container)).toHaveLength(0);
-    },
-    true,
   );
   fixture.files = sessionFiles;
 });

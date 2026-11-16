@@ -21,7 +21,6 @@ import { Ellipsis, RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import {
   lazy,
-  type ReactNode,
   Suspense,
   useCallback,
   useEffect,
@@ -110,8 +109,6 @@ export function FilePanel({
   onReference,
   onAttach,
   onOpenDocument,
-  readOnly = false,
-  head,
   runs = noRuns,
 }: {
   projectId: string;
@@ -121,14 +118,6 @@ export function FilePanel({
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
-  /**
-   * The file viewer: browse only the original folder, with inline previews and no document
-   * actions. It always reads the source read-only, so it shows no Paddock notice and no source row;
-   * its head says so once.
-   */
-  readOnly?: boolean;
-  /** The file viewer's head, which takes the panel's refresh. */
-  head?: (refresh: () => void) => ReactNode;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -143,7 +132,7 @@ export function FilePanel({
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
-  const owner = !readOnly && workspaces && mode === 'server' ? documentStore(workspaces) : null;
+  const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
   const { documents } = useSyncExternalStore(
     owner?.subscribe ?? noSubscription,
     owner?.getState ?? emptyDocuments,
@@ -153,18 +142,14 @@ export function FilePanel({
     `corral:file-source:v1:${sessionId}`,
     null,
   );
-  const source = readOnly
-    ? 'project'
-    : savedSource === 'project' || savedSource === 'session'
-      ? savedSource
-      : undefined;
+  const source = savedSource === 'project' || savedSource === 'session' ? savedSource : undefined;
   const { scope, list, hasCopy, copy, loading, error, refresh } = useWorkspaceFiles(
     projectId,
     sessionId,
     source,
   );
   const [saved, setPreview] = useRemembered<string | null>(
-    `corral:file-preview:v1:${sessionId}:${readOnly ? 'project-viewer' : (scope?.kind ?? 'project')}`,
+    `corral:file-preview:v1:${sessionId}:${scope?.kind ?? 'project'}`,
     null,
   );
   const active = typeof saved === 'string' ? saved : null;
@@ -212,7 +197,7 @@ export function FilePanel({
   const expanded = opened.scopeKey === scopeKey ? opened.paths : noPaths;
   // The Results filter: only the session copy has run writes to attribute.
   const [resultsOn, setResultsOn] = useState(false);
-  const resultsAvailable = !readOnly && scope?.kind === 'session';
+  const resultsAvailable = scope?.kind === 'session';
   const results = resultsOn && resultsAvailable;
   const runKey = runs.map((run) => `${run.runId}:${run.status}`).join(',');
   const madeKey = `${scopeKey}:${runKey}`;
@@ -385,7 +370,7 @@ export function FilePanel({
     setPreview(path);
   };
   // Quick open shows a folder, or a source-folder file, here: in its tree, under its source.
-  const reveal = useFileReveal(sessionId, !readOnly);
+  const reveal = useFileReveal(sessionId);
   const [revealed, setRevealed] = useState<{ path: string; seq: number } | null>(null);
   const switching = useRef<{ seq: number; scope: typeof scope } | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Runs once per request, when its source is the one listed.
@@ -651,7 +636,7 @@ export function FilePanel({
       </section>
     ) : null;
   const fileSetup =
-    !readOnly && scope?.kind === 'project' && !hasCopy && !loading ? (
+    scope?.kind === 'project' && !hasCopy && !loading ? (
       <Banner status="info" role="note">
         <BannerTitle>{tf('noCopyReadOnly')}</BannerTitle>
         <BannerActions>
@@ -672,19 +657,16 @@ export function FilePanel({
     ) : null;
   if (!scope && !loading)
     return (
-      <>
-        {head?.(refresh)}
-        <div ref={panel} className="space-y-2 p-3 text-caption text-muted-foreground">
-          {retainedDrafts}
-          {recoveryCandidates}
-          {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
-          {closeDialog}
-          {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
-          <Link {...navigation.link('workspace', projectId)} className="text-primary underline">
-            {t('workspace')}
-          </Link>
-        </div>
-      </>
+      <div ref={panel} className="space-y-2 p-3 text-caption text-muted-foreground">
+        {retainedDrafts}
+        {recoveryCandidates}
+        {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
+        {closeDialog}
+        {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
+        <Link {...navigation.link('workspace', projectId)} className="text-primary underline">
+          {t('workspace')}
+        </Link>
+      </div>
     );
   const currentDocument = documentKey ? documents[documentKey] : undefined;
   const displayContent =
@@ -742,7 +724,6 @@ export function FilePanel({
       className="flex min-h-0 flex-1 flex-col gap-2 [&>:not([role=tree])]:shrink-0"
       data-testid="file-panel"
     >
-      {head?.(refresh)}
       {fileSetup}
       {retainedDrafts}
       {recoveryCandidates}
@@ -753,50 +734,47 @@ export function FilePanel({
       ) : null}
       {/* The head in two rows: where the tree reads from with the panel's own tools, then what
           narrows the tree: the filter, how it matches and the Results filter (in contents
-          mode, which replaces the tree, the content search takes the second row). The viewer
-          always reads the source, and its own head carries refresh, so it has the second only. */}
-      {readOnly ? null : (
-        <div className="flex min-w-0 items-center gap-2">
-          {/* The picker gives up its width (its value truncates) so the tools keep their place. */}
-          <div className="min-w-0">
-            <Select
-              label={t('fileSource')}
-              variant="ghost"
-              className="min-w-0 justify-start"
-              value={scopeKind ?? 'project'}
-              onValueChange={setSource}
-              options={[
-                { value: 'project' as const, label: t('sourceFolder') },
-                ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
-              ]}
-            />
-          </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1">
-            <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label={tq('title')}
-                aria-keyshortcuts={
-                  /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
-                }
-                onClick={openQuickOpen}
-              >
-                <Search />
-              </Button>
-            </Tooltip>
-            <Tooltip content={t('refreshFiles')}>
-              <Button size="icon" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
-                <RefreshCw />
-              </Button>
-            </Tooltip>
-          </div>
+          mode, which replaces the tree, the content search takes the second row). */}
+      <div className="flex min-w-0 items-center gap-2">
+        {/* The picker gives up its width (its value truncates) so the tools keep their place. */}
+        <div className="min-w-0">
+          <Select
+            label={t('fileSource')}
+            variant="ghost"
+            className="min-w-0 justify-start"
+            value={scopeKind ?? 'project'}
+            onValueChange={setSource}
+            options={[
+              { value: 'project' as const, label: t('sourceFolder') },
+              ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
+            ]}
+          />
         </div>
-      )}
-      {readOnly || searchMode === 'names' ? (
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={tq('title')}
+              aria-keyshortcuts={
+                /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
+              }
+              onClick={openQuickOpen}
+            >
+              <Search />
+            </Button>
+          </Tooltip>
+          <Tooltip content={t('refreshFiles')}>
+            <Button size="icon" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
+              <RefreshCw />
+            </Button>
+          </Tooltip>
+        </div>
+      </div>
+      {searchMode === 'names' ? (
         // One row in any width the panel takes: the field gives up its width, never its row.
         <div className="flex min-w-0 items-center gap-2">
-          {readOnly ? null : searchModeControl}
+          {searchModeControl}
           <Input
             aria-label={t('filterFiles')}
             placeholder={t('filterFiles')}
@@ -816,7 +794,7 @@ export function FilePanel({
           ) : null}
         </div>
       ) : null}
-      {!readOnly && searchMode === 'contents' ? (
+      {searchMode === 'contents' ? (
         searchTarget && workspaces && owner && onOpenDocument ? (
           <ContentSearch
             key={JSON.stringify(searchTarget)}
@@ -867,7 +845,7 @@ export function FilePanel({
           </div>
         )
       ) : null}
-      {readOnly || searchMode === 'names' ? (
+      {searchMode === 'names' ? (
         <>
           {results && madeFiles === null ? (
             <p role="alert" className="p-2 text-caption text-danger">

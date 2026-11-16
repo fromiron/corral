@@ -352,6 +352,16 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     // nothing the person chose, so it is not reported.
     const restoring = useRef(false);
     const fileWorkOpened = useRef(false);
+    // The layout is saved once the person has arranged something in the dock (workbench.md
+    // "도킹 배치의 승인 계약"): opening, closing, moving, splitting or fronting a window, a preset,
+    // or a request from outside the dock that opens or fronts one. The first layout the dock
+    // builds and what a width change does to it are not theirs.
+    const arranged = useRef(false);
+    // Set while the dock changes itself (its first build, a width change); cleared after the
+    // layout events those changes queue, which are then not saved.
+    const automatic = useRef(false);
+    // Set while a conversation change re-shows the pane the page names: nothing the person did.
+    const passive = useRef(false);
     const lastSelection = useRef({
       sessionId: props.sessionId,
       selectedPanel: props.selectedPanel,
@@ -417,11 +427,37 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         if (group.model.header.hidden) group.model.header.hidden = false;
       setPanels(api.panels.map((panel) => ({ id: panel.id, title: title(panel) })));
     }
+    /** The person arranged something: from now on the layout is saved. */
+    function arrange() {
+      if (!restoring.current && !passive.current) arranged.current = true;
+    }
+    /** Runs the dock's own change; the layout events it queues are not saved either. */
+    function automatically(change: () => void) {
+      const was = automatic.current;
+      automatic.current = true;
+      try {
+        change();
+      } finally {
+        if (!was)
+          // Dockview reports layout changes in a microtask; this one is queued after them.
+          queueMicrotask(() => {
+            automatic.current = false;
+          });
+      }
+    }
     function saveLayout() {
       const api = apiRef.current;
       const { hostId, projectId } = current.current;
       const key = layoutStorageKey(hostId, projectId);
-      if (!api || !key || !hostId || mutating.current || !fileWorkOpened.current) return;
+      if (
+        !api ||
+        !key ||
+        !hostId ||
+        mutating.current ||
+        !fileWorkOpened.current ||
+        !arranged.current
+      )
+        return;
       try {
         localStorage.setItem(key, serializeLayout(api.toJSON(), hostId, projectId));
       } catch {
@@ -467,6 +503,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       );
     }
     function focus(panel: IDockviewPanel, notify = false) {
+      arrange();
       fileWorkOpened.current = true;
       setHasFileWork(true);
       panel.api.setActive();
@@ -628,6 +665,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               )
             : 'closed';
         if (result === 'closed') {
+          arrange();
           api.removePanel(panel);
           setClosing(null);
           refresh();
@@ -648,6 +686,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function applyPreset(value: DockPreset) {
       const api = apiRef.current;
       if (!api) return;
+      arrange();
       fileWorkOpened.current = true;
       setHasFileWork(true);
       mutating.current = true;
@@ -738,6 +777,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function resize(groupId: string, axis: 'width' | 'height', amount: number) {
       const group = apiRef.current?.groups.find((item) => item.id === groupId);
       if (!group || narrow.current) return;
+      arrange();
       group.api.setSize({
         [axis]: Math.max(120, (axis === 'width' ? group.width : group.height) + amount),
       });
@@ -783,7 +823,15 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       );
       if (refusal) event.preventDefault();
     }
-    function onReady({ api }: DockviewReadyEvent) {
+    function onReady(event: DockviewReadyEvent) {
+      automatically(() => build(event));
+      // A pane the page asked for as the dock was first built (the top bar's terminal before the
+      // 파일 tab had been open) is the person's request; requests the page queued for the dock
+      // (a document from a link or quick open) arrive here and count by themselves.
+      if (arranged.current) saveLayout();
+      current.current.onReady?.();
+    }
+    function build({ api }: DockviewReadyEvent) {
       apiRef.current = api;
       mutating.current = true;
       const { hostId, projectId } = current.current;
@@ -813,6 +861,8 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         setMessage('layoutRecovered');
       }
       if (loaded?.layout) setPreset(null);
+      // A saved layout is one the person arranged.
+      if (loaded?.layout || loaded?.panels.length) arranged.current = true;
       if (loaded?.recovered) setMessage('layoutRecovered');
       const previousActive = api.activePanel;
       // Only relocated primary surfaces leave the old grid; document and tool groups stay.
@@ -841,14 +891,15 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       setCompact(narrow.current);
       if (narrow.current && api.activePanel) api.activePanel.api.maximize();
       restoring.current = true;
+      const requested = current.current.selectedPanel;
       try {
-        openContext(current.current.selectedPanel ?? 'files');
+        openContext(requested ?? 'files');
       } finally {
         restoring.current = false;
       }
+      if (requested && requested !== 'files' && primaryViewFor(requested) === 'files')
+        arranged.current = true;
       setDockApi(api);
-      saveLayout();
-      current.current.onReady?.();
     }
     function measure() {
       const api = apiRef.current;
@@ -858,10 +909,12 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       if (width === 0) return;
       const next = width <= NARROW;
       if (!api || next === narrow.current) return;
-      narrow.current = next;
-      setCompact(next);
-      if (next && api.activePanel) api.activePanel.api.maximize();
-      else if (!next) api.exitMaximizedGroup();
+      automatically(() => {
+        narrow.current = next;
+        setCompact(next);
+        if (next && api.activePanel) api.activePanel.api.maximize();
+        else if (!next) api.exitMaximizedGroup();
+      });
     }
     function onActivePanel(event: { panel?: IDockviewPanel; origin?: string }) {
       if (mutating.current) return;
@@ -876,14 +929,15 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       )
         apiRef.current.exitMaximizedGroup();
       if (event.origin === 'user' && event.panel) {
+        arrange();
         const descriptor = descriptorOf(event.panel);
         current.current.onActiveContext?.(
           descriptor.kind === 'context' ? descriptor.view : 'files',
         );
       }
     }
-    const handlers = useRef({ refresh, saveLayout, allowDrop, measure, onActivePanel });
-    handlers.current = { refresh, saveLayout, allowDrop, measure, onActivePanel };
+    const handlers = useRef({ refresh, saveLayout, allowDrop, measure, onActivePanel, arrange });
+    handlers.current = { refresh, saveLayout, allowDrop, measure, onActivePanel, arrange };
     useEffect(() => {
       if (!dockApi) return;
       apiRef.current = dockApi;
@@ -891,30 +945,52 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       const disposables = [
         dockApi.onDidLayoutChange(() => {
           handlers.current.refresh();
-          handlers.current.saveLayout();
+          // What the dock did to itself is not saved; what the person did saved when they did it.
+          if (!automatic.current) handlers.current.saveLayout();
         }),
         dockApi.onDidActivePanelChange((event) => handlers.current.onActivePanel(event)),
         dockApi.onDidMaximizedGroupChange(() => handlers.current.refresh()),
         dockApi.onDidMovePanel(() => {
-          if (!mutating.current) setPreset(null);
+          if (mutating.current) return;
+          setPreset(null);
+          // Dragged by the person (the dock's own moves run while it mutates).
+          handlers.current.arrange();
+          handlers.current.saveLayout();
         }),
         dockApi.onWillShowOverlay((event) => handlers.current.allowDrop(event)),
         dockApi.onWillDrop((event) => handlers.current.allowDrop(event)),
       ];
       const observer = new ResizeObserver(() => handlers.current.measure());
-      if (host.current) observer.observe(host.current);
+      const element = host.current;
+      if (element) observer.observe(element);
+      // A divider dragged by the person is an arrangement; the dock reports it only as a layout
+      // change.
+      const sash = (event: PointerEvent) => {
+        if (event.target instanceof Element && event.target.closest('.dv-sash'))
+          handlers.current.arrange();
+      };
+      element?.addEventListener('pointerdown', sash, true);
       on.measure();
       on.refresh();
       return () => {
         for (const item of disposables) item.dispose();
         observer.disconnect();
+        element?.removeEventListener('pointerdown', sash, true);
         // refresh() retains the views again if this tree is mounted again.
         for (const release of retention.current.values()) release();
         retention.current.clear();
       };
     }, [dockApi]);
-    const actions = useRef({ openContext, refresh });
-    actions.current = { openContext, refresh };
+    /** True when asking for `view` without revealing it would only show again what is in front. */
+    function inFront(view: DockContextView) {
+      const active = apiRef.current?.activePanel;
+      // The Files route acknowledges the pane in front, whatever it is.
+      if (view === 'files') return Boolean(active);
+      const descriptor = active ? descriptorOf(active) : null;
+      return descriptor?.kind === 'context' && descriptor.view === view;
+    }
+    const actions = useRef({ openContext, refresh, inFront });
+    actions.current = { openContext, refresh, inFront };
     useEffect(() => {
       void t;
       void props.sessionId;
@@ -933,8 +1009,17 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         previous.selectionKey === props.selectionKey
       )
         return;
-      if (props.selectedPanel !== undefined)
-        actions.current.openContext(props.selectedPanel ?? 'files');
+      if (props.selectedPanel === undefined) return;
+      // The page names the pane its address shows. Showing again the pane already in front (the
+      // address rewritten, another conversation, the tab chosen again) is nothing the person
+      // did; a pane the page asks for that is not in front is their request.
+      const view = props.selectedPanel ?? 'files';
+      passive.current = actions.current.inFront(view);
+      try {
+        actions.current.openContext(view);
+      } finally {
+        passive.current = false;
+      }
     }, [props.selectedPanel, props.selectionKey, props.sessionId]);
     useEffect(
       () => props.documentOwner?.subscribe(() => actions.current.refresh()),
@@ -998,14 +1083,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             )
               return;
             const panel = validateSessionSearch(Object.fromEntries(url.searchParams)).panel;
-            // An explicit link opens its pane even when the URL is already selected: a pane of
-            // this dock here, any other in its own panel tab.
-            if (!panel) return;
-            if (primaryViewFor(panel) === 'files') openContext(panel);
-            else {
-              event.preventDefault();
-              current.current.onOpenElsewhere?.(panel);
-            }
+            // An explicit link opens a pane of this dock even when the URL is already selected.
+            // A link to another tab is left to the page: its address names the target (a run, a
+            // view, a review), and the frame opens that tab at it.
+            if (panel && primaryViewFor(panel) === 'files') openContext(panel);
           }}
           onKeyDownCapture={(event) => {
             if (event.key !== 'Delete' && event.key !== 'Backspace') return;

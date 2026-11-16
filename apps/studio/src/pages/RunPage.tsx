@@ -193,7 +193,9 @@ export function RunDetail({
         <p role="status" className="text-body text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
-        {activeRunId === runId && carriesControls ? <RunActions session={session} /> : null}
+        {activeRunId === runId ? (
+          <RunActions session={session} receiptsOnly={!carriesControls} />
+        ) : null}
         {error ? (
           <Button variant="tertiary" onClick={() => void session.getState().open(runId)}>
             {t('retry')}
@@ -1125,9 +1127,9 @@ function RunHeader({
   );
   const carriesControls = useRunHeadCarriesControls();
   if (!projection) return null;
-  // A finished run's head keeps only its receipts that still need confirming (RunActions says
-  // so for a finished run); a run in progress shows its controls only where they stand.
-  const showActions = carriesControls || TERMINAL_RUN_STATUSES.has(projection.status);
+  // A head without the controls (a run in progress while the conversation is operable, or a
+  // finished run) keeps only the run's receipts that still need confirming.
+  const receiptsOnly = !carriesControls;
   // The run's state, as every screen says it (docs/specs/features/presence.md): every open
   // request once, by the order the record holds them.
   const presence = projectionPresence(projection, events);
@@ -1227,7 +1229,7 @@ function RunHeader({
           </div>
         ) : null}
         <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
-          {showActions ? <RunActions session={session} compact narrowIcons /> : null}
+          <RunActions session={session} compact narrowIcons receiptsOnly={receiptsOnly} />
           {trailing}
         </div>
       </div>

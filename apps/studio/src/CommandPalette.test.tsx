@@ -127,6 +127,19 @@ it('searches the current project first and finds another project’s session by 
   expect(options(container).some((text) => text?.includes('Open all projects'))).toBe(false);
 });
 
+it('opens a conversation it finds with neither panel nor compose, so the conversation restores its panel', async () => {
+  const container = await mount({ mode: 'sessions', initialQuery: 'Release checklist' });
+  const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  if (!input) throw new Error('Missing palette input');
+  await act(async () => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/sessions/$sessionId',
+    params: { sessionId: 'here' },
+  });
+});
+
 it('starts on all projects outside a project', async () => {
   const container = await mount({ mode: 'sessions', initialQuery: 'survey', projectId: undefined });
   expect(scopeButton(container, 'All projects').getAttribute('aria-pressed')).toBe('true');

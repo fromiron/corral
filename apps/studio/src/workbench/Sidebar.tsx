@@ -882,9 +882,9 @@ export const Sidebar = memo(function Sidebar({
                                 <Link
                                   to="/sessions/$sessionId"
                                   params={{ sessionId: session.sessionId }}
-                                  search={
-                                    terminal ? { panel: 'terminal', terminal } : { compose: true }
-                                  }
+                                  // A conversation opens as it was left; a terminal to
+                                  // check opens that terminal (features/session-panel.md).
+                                  {...(terminal ? { search: { panel: 'terminal', terminal } } : {})}
                                 />
                               }
                             >

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { SizeScope } from '@corral/react/design-kit';
-import { act, createRef } from 'react';
+import { act, createRef, type RefObject } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
@@ -35,6 +35,8 @@ afterEach(async () => {
   localStorage.clear();
 });
 let laidOutWidth: number | null = null;
+/** The handle of the dock a fixture mounts, reachable while it is being built. */
+let lastRef: RefObject<DockWorkbenchHandle | null> | null = null;
 /** Every observed element, so a test can tell the dock its size changed. */
 const observed: { element: Element; observer: ResizeObserver; callback: ResizeObserverCallback }[] =
   [];
@@ -50,9 +52,9 @@ async function fixture(
       | 'terminalStatus'
       | 'onActiveContext'
       | 'onOpenElsewhere'
+      | 'onReady'
     >
   > = {},
-  topbar: HTMLElement | null = null,
   density?: 'default' | 'compact',
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
@@ -103,15 +105,21 @@ async function fixture(
     container.remove();
   });
   const ref = createRef<DockWorkbenchHandle>();
+  lastRef = ref;
+  // As the session screen does: the selection key carries the whole address, so it changes
+  // with every render the page makes, the frame's own address writes included.
+  let renders = 0;
   const renderSession = async (sessionId: string) =>
     act(async () => {
+      renders += 1;
       const dock = (
-        <TopbarSlotContext.Provider value={{ actions: null, views: topbar, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: null, crumbs: null }}>
           <DockWorkbench
             ref={ref}
             hostId="host"
             projectId="project"
             sessionId={sessionId}
+            selectionKey={`${sessionId}:${renders}`}
             documentOwner={owner}
             renderContext={(view) => <span>{view}</span>}
             renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
@@ -144,11 +152,80 @@ const contextTabs = (container: HTMLElement) =>
   [...container.querySelectorAll<HTMLElement>('.dv-tab[role="tab"]')].map((tab) =>
     tab.getAttribute('aria-label'),
   );
-it('a new dock opens its file tree, carries no conversation pane and saves its layout', async () => {
+it('a new dock opens its file tree and carries no conversation pane; its layout is saved once the person arranges something (workbench.md)', async () => {
   const f = await fixture();
   expect(contextTabs(f.container)).toEqual(['files']);
   expect(contextTabs(f.container)).not.toContain('chat');
+  // The automatic first layout is nothing the person did.
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
+  await act(async () => {
+    f.ref.current?.openDocument({ documentKey: f.key, target, path: 'file.ts' });
+  });
   expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
+});
+
+it('a dock first opened narrow saves nothing, so a later wide dock opens with the wide default arrangement (workbench.md)', async () => {
+  dockWidth(1200);
+  const wide = await fixture();
+  const wideTabs = contextTabs(wide.container);
+  const wideGroups = wide.container.querySelectorAll('.dv-groupview').length;
+  await disposals.pop()?.();
+  localStorage.clear();
+
+  dockWidth(456);
+  await fixture();
+  await act(async () => {});
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
+  await disposals.pop()?.();
+
+  dockWidth(1200);
+  const later = await fixture();
+  expect(contextTabs(later.container)).toEqual(wideTabs);
+  expect(later.container.querySelectorAll('.dv-groupview').length).toBe(wideGroups);
+});
+
+it('a document the page asked for before the dock was built counts as the person arranging it (workbench.md)', async () => {
+  // As the session screen does with a request queued for a dock not built yet: it is handed
+  // over when the dock is ready.
+  const f = await fixture({
+    onReady: () =>
+      lastRef?.current?.openDocument({
+        documentKey: documentKey(target, 'file.ts'),
+        target,
+        path: 'file.ts',
+      }),
+  });
+  expect(f.container.querySelector('[data-testid="document"]')).not.toBeNull();
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
+});
+
+it('a dock first built for a pane the page asked for (the top bar terminal) saves that layout (workbench.md)', async () => {
+  await fixture({ selectedPanel: 'terminal' });
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
+});
+
+it('going to another conversation is not an arrangement: a dock nobody arranged still saves nothing (workbench.md)', async () => {
+  const f = await fixture({ selectedPanel: 'files' });
+  await f.renderSession('next_session');
+  await act(async () => {});
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
+});
+
+it('a request from outside the dock that opens a window counts as the person arranging it; a width change afterwards is not saved (workbench.md)', async () => {
+  dockWidth(1200);
+  const props: Parameters<typeof fixture>[0] = {};
+  const f = await fixture(props);
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
+  // As the top bar's terminal does: the page asks for the pane.
+  props.selectedPanel = 'terminal';
+  await f.renderSession('session');
+  await act(async () => {});
+  const saved = localStorage.getItem(layoutStorageKey('host', 'project') ?? '');
+  expect(saved).not.toBeNull();
+  // The panel narrows: the dock shows one pane, and that is not saved.
+  await resizeDock(456);
+  await act(async () => {});
+  expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBe(saved);
 });
 
 it.each(['files'] as const)(
@@ -755,7 +832,7 @@ it.each([
   async (density, min, max) => {
     dockWidth(1280);
     try {
-      const f = await fixture({}, null, density);
+      const f = await fixture({}, density);
       // Dockview lays the grid out on the frame after it is measured.
       await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
       await act(async () => f.ref.current?.openContext('files'));

@@ -9,7 +9,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { setCommands } from '../../commandRegistry.ts';
+import { runShortcut, setCommands } from '../../commandRegistry.ts';
 import { changePreferences } from '../preferences.ts';
 import { editRequest } from '../RefusalHelp.tsx';
 import { readComposerDraft, writeComposerDraft } from '../sessionDraft.ts';
@@ -36,6 +36,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 vi.mock('../navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  settingsInteractionBlocked: () => false,
 }));
 vi.mock('../useModels.ts', () => ({
   useModelProfiles: () => null,
@@ -1139,6 +1140,32 @@ describe('Stop in Send’s place', () => {
     expect(cancels(f.sendCommand)[0]?.[0]).toMatchObject({ runId: 'run_live', type: 'cancel' });
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
+
+  // composer-flow.md "활동 바": a stop given as a command (the palette, `/stop`, the shortcut)
+  // always asks, though Stop itself would not with one working execution.
+  it.each(['shortcut', 'slash'] as const)(
+    'a stop given as a command (%s) asks with one working execution too, and sends nothing until confirmed',
+    async (way) => {
+      const f = await mount();
+      if (way === 'shortcut') await act(async () => void runShortcut('run.stop'));
+      else {
+        await f.type('/stop');
+        const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+          node.textContent?.includes('/stop'),
+        );
+        expect(option).toBeDefined();
+        await act(async () => {
+          option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        });
+      }
+      expect(cancels(f.sendCommand)).toHaveLength(0);
+      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
+        messages.Reins.cancelRun,
+      );
+      await act(async () => confirmButton()?.click());
+      expect(cancels(f.sendCommand)).toHaveLength(1);
+    },
+  );
 
   it('asks first while two executions work, and sends nothing until confirmed', async () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });

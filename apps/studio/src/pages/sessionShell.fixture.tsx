@@ -45,7 +45,9 @@ export interface ShellWorld {
   services: StudioServices;
   transport: RuntimeTransport;
   /** Every command sent to a run, in order. */
-  commands: { type: string; runId: string }[];
+  commands: { type: string; runId: string; commandId: string }[];
+  /** The next command sent never reaches the run, and its answer is lost on the way. */
+  loseNextAnswer(): void;
   /**
    * Lets the held replies go, once at least one is waiting: the runs waiting on one go on,
    * most to their end. Replies asked for later are held again.
@@ -119,10 +121,15 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
   const inner = new InProcessTransport(coordinator);
   const commands: ShellWorld['commands'] = [];
   let listingHold: Gated<void> | null = null;
+  let loseNext = false;
   const transport: RuntimeTransport = {
     startRun: (request) => inner.startRun(request),
     sendCommand: (command) => {
-      commands.push({ type: command.type, runId: command.runId });
+      commands.push({ type: command.type, runId: command.runId, commandId: command.commandId });
+      if (loseNext) {
+        loseNext = false;
+        return Promise.reject(new Error('Failed to fetch'));
+      }
       return inner.sendCommand(command);
     },
     getReceipt: (...args) => inner.getReceipt(...args),
@@ -197,6 +204,9 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
     services,
     transport,
     commands,
+    loseNextAnswer() {
+      loseNext = true;
+    },
     async releaseReplies() {
       for (let i = 0; i < 200 && replies.waiting === 0; i++)
         await new Promise((resolve) => setTimeout(resolve, 5));

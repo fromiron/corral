@@ -57,6 +57,12 @@ export interface PanelFrameInput {
   runIds: readonly string[] | null;
   /** The conversation is to come forward: what came with it (an address's `respond`). */
   onBringForward?: (search: SessionSearch) => void;
+  /**
+   * A link the person followed (in the app, or from another screen into this conversation)
+   * opened or selected a tab: what it asked for, and the panel before and after. The frame's own
+   * writes, Back and Forward, a restore on entry and a reload are not links.
+   */
+  onOpenedByLink?: (search: SessionSearch, next: PanelState, before: PanelState) => void;
 }
 
 export interface PanelFrame {
@@ -119,20 +125,34 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   // mark from an earlier page (before a reload) is not.
   const [nonce] = useState(() => globalThis.crypto.randomUUID());
   const lastToken = useRef(0);
-  const lastWritten = useRef<string | null>(null);
+  const lastWritten = useRef<{ written: string; token: string } | null>(null);
 
   const write = useCallback(
     (next: SessionSearch, mode: 'push' | 'replace') => {
-      // Written already and not arrived yet: the router is on its way to it.
       const written = JSON.stringify(validateSessionSearch({ ...next }));
-      if (written === lastWritten.current && mode === 'replace') return;
-      lastWritten.current = written;
+      // Written already: the router is on its way to it, or it is there. A write refused on the
+      // way (a settings dialog with unsaved changes the person stays in) is neither, and is
+      // written again (features/session-panel.md 주소와 기억: the frame's address always says
+      // what the panel shows).
+      const before = lastWritten.current;
+      if (before?.written === written && mode === 'replace') {
+        const going = router.state.status === 'pending';
+        const there =
+          (router.history.location.state as LocationState).corralPanelWrite === before.token;
+        if (going || there) return;
+      }
       lastToken.current += 1;
       const token = `${nonce}:${lastToken.current}`;
+      lastWritten.current = { written, token };
       void navigate({
         to: '/sessions/$sessionId',
         params: { sessionId: latest.current.sessionId },
-        search: () => next as never,
+        // What the frame does not read (the settings dialog's `settings`, `settingsProject`)
+        // stays as the address has it (features/session-panel.md 주소와 기억).
+        search: ((previous: Record<string, unknown> | undefined) => {
+          const { tab: _legacy, ...unread } = withoutFrameParams(previous ?? {});
+          return { ...unread, ...next };
+        }) as never,
         replace: mode === 'replace',
         state: ((previous: Record<string, unknown>) => ({
           ...previous,
@@ -142,7 +162,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
         resetScroll: false,
       });
     },
-    [navigate, nonce],
+    [navigate, nonce, router],
   );
 
   const dispatch = useCallback(
@@ -178,6 +198,12 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
           )
         )
           tabStates.current.delete(key);
+      // A closed tab's front goes with its state: opened again, it starts at its own first view.
+      for (const kind of ['files', 'changes'] as const)
+        if (fronts.current[kind] && !result.state.tabs.some((tab) => tab.kind === kind)) {
+          const { [kind]: _gone, ...rest } = fronts.current;
+          fronts.current = rest;
+        }
       // A toggle or a close selects a tab by itself: that tab comes back with its own state.
       const ownState =
         own ??
@@ -185,7 +211,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
           ? tabStates.current.get(result.state.selected)
           : undefined);
       if (result.history) {
-        const target = nextSearch(now.search, result, event, ownState);
+        const target = nextSearch(now.search, result, ownState);
         const current = validateSessionSearch({ ...now.search });
         if (!same(validateSessionSearch({ ...target }), current)) write(target, result.history);
       }
@@ -228,9 +254,19 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     lastWritten.current = null;
     const action = historyActionOf(router.history, locationKey);
     const back = travelled(action);
+    const before = heldRef.current?.sessionId === sessionId ? heldRef.current.state : EMPTY_PANEL;
+    const linked = (result: PanelResult) => {
+      if (search.panel) latest.current.input.onOpenedByLink?.(search, result.state, before);
+    };
     if (heldRef.current?.sessionId !== sessionId) {
       const via: EntryVia = !action ? 'address' : back ? 'history' : outside ? 'address' : 'link';
-      dispatch({ type: 'enter', search, memory: readPanelMemory(deviceStorage(), sessionId), via });
+      const result = dispatch({
+        type: 'enter',
+        search,
+        memory: readPanelMemory(deviceStorage(), sessionId),
+        via,
+      });
+      if (via === 'link') linked(result);
       return;
     }
     // Back and Forward decide before any tag: a travelled entry may carry an old write's mark.
@@ -238,7 +274,10 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     // An entry from outside is never the frame's own write, whatever mark it carries.
     else if (!outside && ownMark?.startsWith(`${nonce}:`)) return;
     else if (same(frameParams(previous.search), frameParams(search))) return;
-    else dispatch({ type: 'follow', search, source: outside ? 'outside' : 'in-app' });
+    else {
+      const result = dispatch({ type: 'follow', search, source: outside ? 'outside' : 'in-app' });
+      if (!outside) linked(result);
+    }
   }, [
     locationKey,
     here,

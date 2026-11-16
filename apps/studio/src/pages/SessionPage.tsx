@@ -16,6 +16,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { setCurrentProject } from '../projects.ts';
 import { sessionRoute } from '../router.tsx';
+import { modalConfirmationOpen } from '../workbench/modalConfirmation.ts';
 import { panelKey, SESSION_PANELS, type SessionPanel } from '../workbench/panels/registry.ts';
 import { type SessionSearch, sessionPanelDescriptor } from '../workbench/panels/routes.ts';
 
@@ -24,7 +25,11 @@ export { Composer } from '../workbench/session/Composer.tsx';
 
 import { useServices } from '../services.tsx';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
-import { AdviceArrival, useAdviceArrivalRequest } from '../workbench/adviceArrival.ts';
+import {
+  AdviceArrival,
+  type AdviceRequest,
+  useAdviceArrivalRequest,
+} from '../workbench/adviceArrival.ts';
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
@@ -43,6 +48,7 @@ import { deviceStorage } from '../workbench/panel/memory.ts';
 import {
   conversationOperable,
   type OpenTab,
+  type PanelState,
   panelOnScreen,
   runPickerVisible,
   toggleAvailable,
@@ -157,6 +163,7 @@ function WorkSessionPage() {
   const [rememberedWidth, setRememberedWidth] = useState(() => readPanelWidth(deviceStorage()));
 
   const [tray] = useState(createPendingTrayStore);
+  const [adviceRequest, setAdviceRequest] = useState<AdviceRequest | null>(null);
   const frame = usePanelFrame({
     sessionId: session.sessionId,
     search,
@@ -165,6 +172,15 @@ function WorkSessionPage() {
     runIds,
     onBringForward: (arrived) => {
       if (arrived.respond) revealPendingTray(tray, session.sessionId);
+      // The frame consumes `advice` from the address as it brings the conversation forward: the
+      // arrival is taken from here, never from a later read of the address.
+      const runId = arrived.advice;
+      if (runId) setAdviceRequest((previous) => ({ runId, n: (previous?.n ?? 0) + 1 }));
+    },
+    // A link that opens or selects a tab is an opening way: the focus goes as open() sends it.
+    onOpenedByLink: (arrived, next, before) => {
+      if (!next.selected || !panelOnScreen(next.presentation)) return;
+      focusOpened(arrived, next, before);
     },
   });
   const { state, ctx, fronts } = frame;
@@ -188,10 +204,16 @@ function WorkSessionPage() {
     )
       opener.current = focused;
   };
+  // The composer's whole-run confirmation is modal: while it is up, nothing the person does to the
+  // panel (an opening way, the palette, the strip, the toggle, its shortcut) changes it. Back and
+  // Forward still go (features/session-panel.md 실행 조작이 서는 곳). The global shortcuts are held
+  // back first (CommandPalette.tsx); this is the second line, for ways that are not shortcuts.
+  const heldByConfirmation = modalConfirmationOpen;
   const open = (
     target: Partial<SessionSearch> & { panel: SessionPanel },
     from: 'way' | 'plus' = 'way',
   ) => {
+    if (heldByConfirmation()) return;
     const { panel, run, ...inner } = target;
     rememberOpener();
     const tab = targetTab({ panel, run }, ctx.runIds);
@@ -200,37 +222,83 @@ function WorkSessionPage() {
       : tab
         ? frame.tabSearch(tabKey(tab))
         : undefined;
-    focusNext.current = 'tab';
     const { state: next } = frame.dispatch(
       { type: 'open', target: { panel, ...(run ? { run } : {}) }, from },
       own,
     );
+    focusOpened({ panel }, next, state);
+  };
+  /** Where the focus goes once a way opened `next`: its tab, or the place inside it it names. */
+  const focusOpened = (target: Partial<SessionSearch>, next: PanelState, before: PanelState) => {
+    // A way that names the terminal or Git puts the focus in the terminal or the commit message
+    // once its tab shows it; without one the focus stays on the tab.
+    if (target.panel === 'terminal') focusTerminal();
+    if (target.panel === 'git')
+      focusPlace('changes', (content) => content.querySelector<HTMLElement>('#git-commit-message'));
+    if (
+      next.presentation !== before.presentation ||
+      next.selected !== before.selected ||
+      next.tabs.length !== before.tabs.length
+    ) {
+      focusNext.current = 'tab';
+      return;
+    }
     // Nothing the focus effect watches changed (the tab was open and selected already): it will
     // not run, so the request is met now rather than left for a later, unrelated change. Focus
     // already inside that tab's content (a way pointing inside it) stays there.
-    if (
-      next.presentation === state.presentation &&
-      next.selected === state.selected &&
-      next.tabs.length === state.tabs.length
-    ) {
-      focusNext.current = null;
-      const inside = next.selected
-        ? document
-            .getElementById(tabsClosableIds(PANEL_ID_PREFIX, next.selected).panel)
-            ?.contains(document.activeElement)
-        : false;
-      if (next.selected && panelOnScreen(next.presentation) && !inside)
-        strip.current?.focusTab(next.selected);
-    }
+    focusNext.current = null;
+    const inside = next.selected
+      ? document
+          .getElementById(tabsClosableIds(PANEL_ID_PREFIX, next.selected).panel)
+          ?.contains(document.activeElement)
+      : false;
+    if (next.selected && panelOnScreen(next.presentation) && !inside)
+      strip.current?.focusTab(next.selected);
   };
+  // A way that names a place inside a tab (the terminal, the commit message) waits for that
+  // place to appear; one wait at a time, gone with a new request, the conversation or the page.
+  const placeWait = useRef<number | null>(null);
+  const stopPlaceWait = useCallback(() => {
+    if (placeWait.current !== null) window.clearTimeout(placeWait.current);
+    placeWait.current = null;
+  }, []);
+  useEffect(() => {
+    void session.sessionId;
+    return stopPlaceWait;
+  }, [session.sessionId, stopPlaceWait]);
+  const focusPlace = (tab: TabKey, find: (content: HTMLElement) => HTMLElement | null) => {
+    stopPlaceWait();
+    let tries = 0;
+    const attempt = () => {
+      placeWait.current = null;
+      const content = document.getElementById(tabsClosableIds(PANEL_ID_PREFIX, tab).panel);
+      const place = content && !content.hidden ? find(content) : null;
+      if (place) {
+        // Only while the focus is still where the opening left it (the tab, the panel, the
+        // page): the person may have gone on meanwhile.
+        const focused = document.activeElement;
+        if (!focused || focused === document.body || side.current?.contains(focused))
+          place.focus({ preventScroll: true });
+      } else if (++tries < 40) placeWait.current = window.setTimeout(attempt, 50);
+    };
+    placeWait.current = window.setTimeout(attempt, 0);
+  };
+  const focusTerminal = () =>
+    focusPlace('files', (content) => {
+      const screen = content.querySelector<HTMLElement>('[data-terminal-screen]');
+      return screen ? (screen.querySelector<HTMLElement>('textarea') ?? screen) : null;
+    });
   const bringForward = () => frame.dispatch({ type: 'bringForward' });
   const showPanel = (patch: Partial<SessionSearch>) => {
     if (patch.panel) open({ ...patch, panel: patch.panel });
     else bringForward();
   };
-  const select = (key: TabKey) =>
+  const select = (key: TabKey) => {
+    if (heldByConfirmation()) return;
     frame.dispatch({ type: 'select', key }, frame.tabSearch(key) ?? {});
+  };
   const close = (key: TabKey) => {
+    if (heldByConfirmation()) return;
     // Focus on the closing tab, on its close control or inside its content is one case: it goes
     // on to the tab selected next, or for a tab not selected to its neighbour in the strip, or to
     // the body's list when none is left. Anywhere else it stays (features/session-panel.md).
@@ -261,14 +329,7 @@ function WorkSessionPage() {
     frame.dispatch({ type: 'close', key });
   };
   const toggle = () => {
-    // The composer's confirmation is modal: while it is up the panel's controls do nothing.
-    // A dialog on its way out (closed, ending its exit) no longer holds the screen.
-    if (
-      document.querySelector(
-        '[data-slot="dialog-popup"]:not([data-closed]), [role="alertdialog"]:not([data-closed])',
-      )
-    )
-      return;
+    if (heldByConfirmation()) return;
     rememberOpener();
     frame.dispatch({ type: 'toggle' });
   };
@@ -307,6 +368,16 @@ function WorkSessionPage() {
     if (was && !onScreen) {
       const focused = document.activeElement;
       if (focused && focused !== document.body && !side.current?.contains(focused)) return;
+      // Withdrawn for want of room, nothing was closed: the focus is handed on in the frame's
+      // order, the input first (features/session-panel.md 접근성).
+      if (presentation === 'withdrawn') {
+        const input = document.querySelector<HTMLTextAreaElement>(
+          '[data-testid="chat-composer"] textarea',
+        );
+        if (input && !input.disabled) input.focus();
+        else document.querySelector<HTMLElement>('.app-sidebar-trigger')?.focus();
+        return;
+      }
       const back =
         opener.current?.isConnected && !side.current?.contains(opener.current)
           ? opener.current
@@ -318,16 +389,29 @@ function WorkSessionPage() {
   // Documents and panes asked for before the 파일 tab's dock is ready wait for it. Readiness is
   // the dock's own: its handle is handed over again on every render, so a null between two
   // handles says nothing about it.
-  const dockQueue = useRef<((handle: DockWorkbenchHandle) => void)[]>([]);
+  // Each waits for this conversation's dock only: one asked here never runs in the next
+  // conversation's.
+  const dockQueue = useRef<{ sessionId: string; action: (handle: DockWorkbenchHandle) => void }[]>(
+    [],
+  );
+  const queuedFor = useRef(session.sessionId);
+  queuedFor.current = session.sessionId;
+  useEffect(() => {
+    void session.sessionId;
+    return () => {
+      dockQueue.current = [];
+    };
+  }, [session.sessionId]);
   const withDock = (action: (handle: DockWorkbenchHandle) => void) => {
     const handle = dock.current;
     if (handle?.ready()) action(handle);
-    else dockQueue.current.push(action);
+    else dockQueue.current.push({ sessionId: session.sessionId, action });
   };
   const flushDock = () => {
     const handle = dock.current;
     if (!handle) return;
-    for (const action of dockQueue.current.splice(0)) action(handle);
+    for (const queued of dockQueue.current.splice(0))
+      if (queued.sessionId === queuedFor.current) queued.action(handle);
   };
 
   const trayContext = useMemo(
@@ -340,12 +424,9 @@ function WorkSessionPage() {
     }),
     [tray, session.sessionId, frame.dispatch],
   );
-  // A link to read an advice brings the conversation, where its run's row holds it, forward;
-  // the address lets the request go, so Back or a reload does not arrive again.
-  const adviceArrival = useAdviceArrivalRequest(search.advice, {
-    open: bringForward,
-    consume: () => frame.writeTab({ advice: undefined }, { replace: true }),
-  });
+  // A link to read an advice: the frame brings the conversation forward and lets the request go
+  // from the address; the run's row holding it takes the arrival.
+  const adviceArrival = useAdviceArrivalRequest(adviceRequest);
   const runStatus = runStatusOf(runs);
   const routeStop = () => {
     const route = stopCommandRoute(state, runStatus, active?.runId ?? null);
@@ -442,7 +523,9 @@ function WorkSessionPage() {
                 ? { scope: search.scope, runId: search.runId, file: search.file }
                 : undefined
             }
-            requestedView={requestedView === 'checks' ? 'checks' : undefined}
+            requestedView={
+              requestedView === 'checks' || requestedView === 'git' ? requestedView : undefined
+            }
             onReviewChange={(review) =>
               frame.writeTab({
                 panel: 'changes',
@@ -453,7 +536,7 @@ function WorkSessionPage() {
               })
             }
             onViewChange={(next) => {
-              const view = next === 'checks' ? 'checks' : 'changes';
+              const view = next === 'checks' || next === 'git' ? next : 'changes';
               frame.writeTab({
                 panel: view,
                 review: undefined,
@@ -575,14 +658,19 @@ function WorkSessionPage() {
         </div>
       );
     if (tab.kind !== 'run') return null;
-    const addressed = selected && search.panel === 'run' && search.run === tab.runId;
+    // The address while it names this tab; otherwise what the address last gave it (a link, Back),
+    // which it keeps while hidden (features/session-panel.md 닫기와 패널 여닫기).
+    const addressed =
+      selected && search.panel === 'run' && search.run === tab.runId
+        ? search
+        : (frame.tabSearch(tabKey(tab)) ?? null);
     return (
       <RunTab
         runId={tab.runId}
         selected={selected}
         carries={runControlPlace(state, runStatus).at === 'run-tab' && selected}
         picker={selected && runPickerVisible(state)}
-        addressed={addressed ? search : null}
+        addressed={addressed}
         runs={runs}
         active={active}
         entries={session.entries}
@@ -664,8 +752,12 @@ function WorkSessionPage() {
                   onChange: setRememberedWidth,
                   onCommit: (px) => writePanelWidth(deviceStorage(), px),
                 }}
-                onEscape={() => frame.dispatch({ type: 'closeDrawer' })}
-                onScrimPress={() => frame.dispatch({ type: 'closeDrawer' })}
+                onEscape={() => {
+                  if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
+                }}
+                onScrimPress={() => {
+                  if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
+                }}
                 main={
                   <AdviceArrival.Provider
                     key={panelKey(services, {
@@ -709,7 +801,9 @@ function WorkSessionPage() {
                     onSelect={select}
                     onClose={close}
                     onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
-                    onMaximize={() => frame.dispatch({ type: 'maximize' })}
+                    onMaximize={() => {
+                      if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
+                    }}
                     renderTab={renderTab}
                   />
                 }
@@ -739,7 +833,7 @@ function RunTab({
   selected: boolean;
   carries: boolean;
   picker: boolean;
-  /** The address, while it names this tab. */
+  /** The address while it names this tab, else what the address last gave it; null if nothing. */
   addressed: SessionSearch | null;
   runs: RunSummary[];
   active: RunSummary | null;

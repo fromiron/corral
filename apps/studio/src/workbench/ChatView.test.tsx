@@ -407,6 +407,55 @@ it('returns to the same search hit after leaving its link and reading elsewhere'
   expect(row.getAttribute('aria-current')).toBe('location');
 });
 
+it.each([
+  ['stays where the person moved it', false],
+  ['goes to the row when it has not moved', true],
+] as const)(
+  'a linked message joining the conversation later: the focus %s',
+  async (_how, still) => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    disposals.push(async () => {
+      await act(async () => root.unmount());
+      container.remove();
+    });
+    const show = async (items: { id: string; content: React.ReactNode }[]) =>
+      act(async () =>
+        root.render(
+          <IntlProvider locale="en" messages={messages} timeZone="UTC">
+            <ChatView
+              sessionId="late-link"
+              messageId="late"
+              items={items}
+              composer={<textarea aria-label="request" />}
+            />
+          </IntlProvider>,
+        ),
+      );
+    await show([{ id: 'first', content: <p>First</p> }]);
+    const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+    // The person goes on typing before the linked message has come.
+    if (!still) await act(async () => input?.focus());
+    await show([
+      { id: 'first', content: <p>First</p> },
+      { id: 'late', content: <p>Late</p> },
+    ]);
+    const row = container.querySelector<HTMLElement>('[data-chat-item="late"]');
+    expect(row).not.toBeNull();
+    expect(document.activeElement).toBe(still ? row : input);
+  },
+);
+
 /**
  * A conversation whose scroll port the test owns, so a send, a growing turn, a composer
  * resizing the port, and a virtual list can be told apart from a person scrolling up.

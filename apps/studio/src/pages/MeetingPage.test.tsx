@@ -251,7 +251,7 @@ async function mount(
   } as WorkSession;
   const render = () =>
     root.render(
-      <TopbarSlotContext.Provider value={{ actions: toolbar, views: null, crumbs: null }}>
+      <TopbarSlotContext.Provider value={{ actions: toolbar, crumbs: null }}>
         <MeetingPage session={session} />
       </TopbarSlotContext.Provider>,
     );

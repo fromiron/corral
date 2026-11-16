@@ -2,10 +2,12 @@ import { emptyProjection } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { StrictMode } from 'react';
 import { IntlProvider } from 'use-intl';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import { ReinsPanel } from '../src/components/ReinsPanel.tsx';
+import { forgetKeptInputs } from '../src/keptInputs.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import type { RunSessionState, RunSessionStore } from '../src/run/session.ts';
 
@@ -42,15 +44,115 @@ function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore 
 function renderPanel(
   session: RunSessionStore,
   target = { executionId: 'exec_0002', nodeLabel: 'Writer', finished: false },
+  strict = false,
 ) {
-  return render(
+  const panel = (
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
       <ReinsPanel session={session} target={target} />
-    </IntlProvider>,
+    </IntlProvider>
   );
+  return render(strict ? <StrictMode>{panel}</StrictMode> : panel);
 }
+const WRITER = { executionId: 'exec_0002', nodeLabel: 'Writer', finished: false };
+
+afterEach(() => forgetKeptInputs());
 
 describe('ReinsPanel', () => {
+  it('keeps an unsent instruction for its execution after the area goes, and only for that execution (features/session-panel.md)', () => {
+    const session = fakeSession();
+    const first = renderPanel(session);
+    fireEvent.change(screen.getByLabelText('Instruction'), { target: { value: 'Cite sources' } });
+    first.unmount();
+
+    const again = renderPanel(session);
+    expect(screen.getByLabelText('Instruction')).toHaveValue('Cite sources');
+    again.unmount();
+
+    renderPanel(session, { executionId: 'exec_other', nodeLabel: 'Reviewer', finished: false });
+    expect(screen.getByLabelText('Instruction')).toHaveValue('');
+  });
+
+  it('lets a kept instruction go once it is sent', async () => {
+    const steer = vi.fn(async () => ({ status: 'queued' }) as never);
+    const session = fakeSession(steer);
+    const first = renderPanel(session);
+    await userEvent.type(screen.getByLabelText('Instruction'), 'Primary sources only.{Enter}');
+    expect(steer).toHaveBeenCalled();
+    first.unmount();
+
+    renderPanel(session);
+    expect(screen.getByLabelText('Instruction')).toHaveValue('');
+  });
+
+  // The area may go before the answer comes (the tab closed, another conversation): what is kept
+  // follows the answer all the same (features/session-panel.md 닫기와 패널 여닫기).
+  it.each([false, true])(
+    'a sent instruction accepted after the area went is not kept as a draft (StrictMode %s)',
+    async (strict) => {
+      let answer: (receipt: never) => void = () => {};
+      const steer = vi.fn(
+        () =>
+          new Promise<never>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const session = fakeSession(steer);
+      const first = renderPanel(session, WRITER, strict);
+      fireEvent.change(screen.getByLabelText('Instruction'), { target: { value: 'Cite sources' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      expect(steer).toHaveBeenCalledTimes(1);
+      first.unmount();
+      await act(async () => answer({ status: 'queued' } as never));
+
+      renderPanel(session, WRITER, strict);
+      expect(screen.getByLabelText('Instruction')).toHaveValue('');
+    },
+  );
+
+  it.each([false, true])(
+    'a sent instruction whose answer is lost after the area went is kept with its command, and sending again retries that command (StrictMode %s)',
+    async (strict) => {
+      let lose: () => void = () => {};
+      const session = fakeSession();
+      const steer = vi.fn(
+        (executionId: string, text: string) =>
+          new Promise<never>((_resolve, reject) => {
+            lose = () => {
+              session.setState({
+                unconfirmedCommands: {
+                  cmd_lost: {
+                    error: 'response lost',
+                    command: {
+                      schemaVersion: '0.1',
+                      commandId: 'cmd_lost',
+                      runId: 'run_0001',
+                      type: 'steer',
+                      payload: { targetExecutionId: executionId, text, delivery: 'next_request' },
+                    },
+                  },
+                },
+              });
+              reject(new Error('response lost'));
+            };
+          }),
+      );
+      const retryCommand = vi.fn(() => new Promise<never>(() => {}));
+      session.setState({ steer, retryCommand } as never);
+      const first = renderPanel(session, WRITER, strict);
+      fireEvent.change(screen.getByLabelText('Instruction'), { target: { value: 'Cite sources' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      first.unmount();
+      await act(async () => lose());
+
+      renderPanel(session, WRITER, strict);
+      expect(screen.getByLabelText('Instruction')).toHaveValue('Cite sources');
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      // The same command, under its first id; never a new one.
+      expect(retryCommand).toHaveBeenCalledWith('cmd_lost');
+      expect(steer).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('compact entry identifies a particular execution of the same node and its scope', () => {
     const session = fakeSession();
     const projection = emptyProjection('run_0001');

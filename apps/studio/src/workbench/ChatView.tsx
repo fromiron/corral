@@ -537,16 +537,28 @@ export function ChatView({
     return { following, held: () => restoreAnchor.current === anchor };
   };
   const jumped = useRef<string | undefined>(undefined);
+  // Where the focus was when the link arrived: the row takes it only if it is still there (the
+  // person may be typing in the composer by the time the row joins).
+  const arrivedAt = useRef<{ messageId: string; focused: Element | null } | null>(null);
   // A linked row may join the items later; `place` reads the current items and list itself.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rerun when the items or list change
   useLayoutEffect(() => {
     if (!messageId) {
       jumped.current = undefined;
+      arrivedAt.current = null;
       return;
     }
+    if (arrivedAt.current?.messageId !== messageId)
+      arrivedAt.current = { messageId, focused: document.activeElement };
     if (jumped.current === messageId) return;
     if (!place.current(messageId, 0)) return;
     jumped.current = messageId;
+    // Going to a message ends there: the focus goes with it (features/session-panel.md 접근성).
+    if (document.activeElement !== arrivedAt.current.focused) return;
+    const row = [...document.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+      (element) => element.dataset.chatItem === messageId,
+    );
+    row?.focus({ preventScroll: true });
   }, [messageId, items, rows]);
   // followEnd only writes refs.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refs only
@@ -781,6 +793,8 @@ export function ChatView({
                     data-chat-item={item.id}
                     data-latest={index === items.length - 1 || undefined}
                     aria-current={item.id === messageId ? 'location' : undefined}
+                    // The linked message takes the focus when the conversation goes to it.
+                    tabIndex={item.id === messageId ? -1 : undefined}
                     // Its own block, so the row's margins belong to its measured size.
                     className={cn(
                       'flow-root transition-none',

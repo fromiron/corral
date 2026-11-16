@@ -192,3 +192,23 @@ it('ignores completion after the last consumer is removed and starts a fresh own
   expect(current).toHaveBeenCalledTimes(1);
   expect(current.mock.calls[0]?.[0]).toEqual({ runs: summary('fresh') });
 });
+
+it('marks the last answer it repeats to a consumer that joins as asked before it joined', async () => {
+  vi.useFakeTimers();
+  let runs = summary('initial');
+  const transport = { listRuns: vi.fn(async () => runs) };
+  const session = vi.fn<Reader>(async () => {});
+  watch(transport, session);
+  await tick();
+  expect(session.mock.calls.at(-1)?.[3]).toBe(false);
+  const later = vi.fn<Reader>(async () => {});
+  watch(transport, later);
+  await tick();
+  // The repeat: the answer to a listing asked before this consumer joined.
+  expect(later.mock.calls.at(-1)?.[0]).toEqual({ runs: summary('initial') });
+  expect(later.mock.calls.at(-1)?.[3]).toBe(true);
+  runs = summary('next');
+  await vi.advanceTimersByTimeAsync(1500);
+  expect(later.mock.calls.at(-1)?.[0]).toEqual({ runs });
+  expect(later.mock.calls.at(-1)?.[3]).toBe(false);
+});

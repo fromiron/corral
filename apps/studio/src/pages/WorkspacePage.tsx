@@ -1329,7 +1329,7 @@ function SessionRow({
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: x.sessionId }}
-        search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
+        {...(terminal ? { search: { panel: 'terminal' as const, terminal } } : {})}
         data-session-kind={x.meeting ? 'meeting' : 'session'}
         className={cn(
           'flex min-w-0 flex-1 items-center rounded-md transition-colors hover:bg-hover',

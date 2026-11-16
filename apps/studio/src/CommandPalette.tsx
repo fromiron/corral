@@ -42,6 +42,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
   SETTINGS_GROUPS,
@@ -53,6 +54,14 @@ import { loadRunIdentities, runIdentity, runIdentityText } from './workbench/run
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 import { bySidebarOrder } from './workbench/sessionOrder.ts';
+
+/**
+ * Global shortcuts and window commands are held back while settings hold the screen or a modal
+ * confirmation is up (features/session-panel.md "실행 조작이 서는 곳").
+ */
+function held(): boolean {
+  return settingsInteractionBlocked() || modalConfirmationOpen();
+}
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
 function typing(event: globalThis.KeyboardEvent): boolean {
@@ -108,11 +117,10 @@ export function CommandLayer({
   }, [restoreFocus]);
   useEffect(() => {
     const show = (event: Event) => {
-      if (!settingsInteractionBlocked())
-        open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
+      if (!held()) open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
     };
     const search = (event: Event) => {
-      if (settingsInteractionBlocked()) return;
+      if (held()) return;
       setPalette(null);
       setSessionSearch((event as CustomEvent<string>).detail ?? '');
     };
@@ -125,7 +133,7 @@ export function CommandLayer({
   }, [open]);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (settingsInteractionBlocked()) return;
+      if (held()) return;
       if (event.isComposing || event.keyCode === 229) return;
       if (help && event.key === 'Escape') {
         event.preventDefault();
@@ -163,7 +171,7 @@ export function CommandLayer({
       const map = Object.fromEntries(
         Object.entries(effectiveShortcuts(bindings)).filter(
           ([id]) =>
-            !settingsInteractionBlocked() &&
+            !held() &&
             !capturing &&
             (!editing || ['palette', 'help', 'composer.focus', 'run.stop'].includes(id)),
         ),
@@ -184,7 +192,7 @@ export function CommandLayer({
   useEffect(
     () =>
       desktop?.onCommand((id) => {
-        if (settingsInteractionBlocked()) return;
+        if (held()) return;
         if (id === 'palette') open('palette');
         else if (id === 'help') open('help');
         else runShortcut(id as ShortcutId);
@@ -482,7 +490,6 @@ export function Palette({
               navigate({
                 to: '/sessions/$sessionId',
                 params: { sessionId: x.sessionId },
-                search: { compose: true },
               }),
           }),
         ),

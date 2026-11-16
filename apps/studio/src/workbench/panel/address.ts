@@ -1,7 +1,7 @@
 // What the session address says about the panel (features/session-panel.md "주소와 기억").
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import type { PanelEvent, PanelResult, PanelState } from './model.ts';
+import type { PanelResult, PanelState } from './model.ts';
 import {
   PANEL_TAB_OF,
   type PanelFronts,
@@ -101,7 +101,7 @@ export const TAB_PARAMS = [
  * caller passes it for a strip choice and for an opening way that points inside a tab.
  * - Restoring on entry drops the other frame parameters; a parameter the frame does not read
  *   (`settings`) is kept.
- * - `respond` and `advice` are consumed; an in-conversation `message` stays.
+ * - `respond` and `advice` are consumed; `message` stays (on entry it is gone to after restoring).
  * - Without `own`, the tab's state in `current` is kept only while the same tab stays selected,
  *   so a clean-up that swaps the run drops the old run's view, result, execution, artifact and
  *   position.
@@ -111,13 +111,12 @@ export const TAB_PARAMS = [
 export function nextSearch(
   current: SessionSearch,
   result: PanelResult,
-  event: PanelEvent,
   own?: SessionSearch,
 ): SessionSearch {
   const { tab: _legacy, ...unread } = withoutFrameParams(current as Record<string, unknown>);
   const rest = unread as SessionSearch;
-  const restored = event.type === 'enter' && readAddress(event.search).kind === 'neither';
-  const message = !restored && current.message ? { message: current.message } : {};
+  // A message to go to stays, on entry too: the conversation is placed at it after restoring.
+  const message = current.message ? { message: current.message } : {};
   const address = result.address;
   if ('compose' in address) return { ...rest, ...message, compose: true };
   const source = own ?? (addressedTab(current) === result.state.selected ? current : {});

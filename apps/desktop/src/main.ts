@@ -682,7 +682,7 @@ function buildMenu() {
             click: command('view.sidebar'),
           },
           {
-            label: say('Toggle side pane', '사이드 패널'),
+            label: say('Show or hide the panel', '패널 여닫기'),
             accelerator: accelerator('view.panel', 'CommandOrControl+Alt+B'),
             click: command('view.panel'),
           },

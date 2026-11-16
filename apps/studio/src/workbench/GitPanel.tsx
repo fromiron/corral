@@ -13,6 +13,7 @@ import {
   type GitWriteResult,
   type WorkspaceTarget,
 } from '@corral/contracts';
+import { keepInput, keptInput } from '@corral/react';
 import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Minus, Plus } from '@corral/react/icons';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -85,7 +86,21 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
   const [busy, setBusy] = useState<Pending | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<Pending | null>(null);
   const [failure, setFailure] = useState<{ key: string; detail?: string } | null>(null);
-  const [message, setMessage] = useState('');
+  // The commit message is kept for this conversation after the screen goes, until a reload or a
+  // commit (features/session-panel.md 닫기와 패널 여닫기); a branch name is not.
+  const messageKey = `git-commit:${sessionId}`;
+  const [typed, setTyped] = useState<{ key: string; text: string }>(() => ({
+    key: messageKey,
+    text: keptInput<string>(messageKey) ?? '',
+  }));
+  const message = typed.key === messageKey ? typed.text : (keptInput<string>(messageKey) ?? '');
+  const setMessage = useCallback(
+    (text: string) => {
+      keepInput(messageKey, text === '' ? null : text);
+      setTyped({ key: messageKey, text });
+    },
+    [messageKey],
+  );
   const [runHooks, setRunHooks] = useState(true);
   const [author, setAuthor] = useState<{ name: string; email: string } | null>(null);
   const context = useRef({ workspaces, sessionId, workspaceId });
@@ -180,7 +195,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       }
       setRevision((value) => value + 1);
     },
-    [sessionId, workspaces],
+    [sessionId, workspaces, setMessage],
   );
   const check = useCallback(
     async (pending: Pending) => {

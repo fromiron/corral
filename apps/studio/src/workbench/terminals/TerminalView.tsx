@@ -70,6 +70,8 @@ export function TerminalView({
     <section
       ref={container}
       tabIndex={-1}
+      // The place an opening way that names the terminal puts the focus (session-panel.md).
+      data-terminal-screen=""
       aria-label={ariaLabel}
       aria-describedby={aria['aria-describedby']}
       className={cn(

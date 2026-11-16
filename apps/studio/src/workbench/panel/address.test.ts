@@ -145,12 +145,16 @@ describe('the whole search the frame writes', () => {
     event: PanelEvent,
     c = ctx(),
     own?: SessionSearch,
-  ) => nextSearch(current, reducePanel(before, event, c), event, own);
+  ) => nextSearch(current, reducePanel(before, event, c), own);
 
-  it('drops the other frame parameters when it restores on entry, keeping the rest', () => {
+  it('drops the other frame parameters when it restores on entry, keeping the rest and the message it goes to', () => {
     const current = { ...settings, message: 'msg_1', view: 'results' } as SessionSearch;
     const event = enter(current, { tabs: [files], selected: 'files', open: true });
-    expect(write(current, EMPTY_PANEL, event)).toEqual({ settings: 'models', panel: 'files' });
+    expect(write(current, EMPTY_PANEL, event)).toEqual({
+      settings: 'models',
+      panel: 'files',
+      message: 'msg_1',
+    });
   });
 
   it('writes the selected tab’s own state on a strip choice, never a one-time request', () => {

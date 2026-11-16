@@ -147,13 +147,13 @@ export function SessionChangesPanel({
   const [remembered, setRemembered] = useState<ReviewSearch | undefined>(reviewSearch);
   if (reviewSearch && reviewSearch !== remembered) setRemembered(reviewSearch);
   const search = reviewSearch ?? remembered ?? {};
-  // The address picks Review or Checks. Without one the view opens on Review, and leaving the
-  // sub-view the address picked returns there, while a sub-view chosen here in the meantime
+  // The address picks Review, Git or Checks. Without one the view opens on Review, and leaving
+  // the sub-view the address picked returns there, while a sub-view chosen here in the meantime
   // stays.
   const entry: ChangesView | null = reviewing
     ? 'review'
-    : requestedView === 'checks'
-      ? 'checks'
+    : requestedView === 'checks' || requestedView === 'git'
+      ? requestedView
       : null;
   const [view, setView] = useState<ChangesView>(entry ?? 'review');
   const [seen, setSeen] = useState(entry);
@@ -265,6 +265,7 @@ export function SessionChangesPanel({
             onSessionChange={onSessionChange}
             shown={visible && shown === 'review'}
             copyChanged={copyChanged}
+            onAttach={onAttach}
           />
         ) : null}
       </TabPanel>

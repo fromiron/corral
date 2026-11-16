@@ -223,7 +223,7 @@
 }
 /*
  * The bar is fitted to its own width (workbench/topbarTier.ts). In its last tiers it wraps: the
- * menu, path and search keep the first row; the page's views and its actions take the second.
+ * menu, path and search keep the first row; the page's actions take the second.
  */
 .app-topbar[data-topbar-rows="2"] {
   flex-wrap: wrap;
@@ -240,14 +240,8 @@
 .app-topbar[data-topbar-rows="2"] > nav {
   flex: 1 1 0;
 }
-.app-topbar[data-topbar-rows="2"] > .app-topbar-views,
 .app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
   order: 2;
-}
-.app-topbar[data-topbar-rows="2"] > .app-topbar-views {
-  margin-left: 0;
-}
-.app-topbar[data-topbar-rows="2"] > .app-topbar-actions {
   margin-left: auto;
 }
 /* Past the last tier nothing more can fold: the actions wrap instead of leaving the bar. */

@@ -796,7 +796,7 @@ it('says on each row only what its group does not', async () => {
   ];
   const { container } = await render();
   const row = (id: string) =>
-    container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] a[href^="/sessions/${id}?"]`);
+    container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] [data-session-row="${id}"] > a`);
   const oneRun = '1 run';
   // Needs attention: why it is there. A session without a run never says it is empty.
   expect(row('A')?.textContent).toMatch(
@@ -884,13 +884,21 @@ function evidenceFixture(read: () => Promise<SessionEvidenceView[]>) {
   return spy;
 }
 const rowOf = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] a[href^="/sessions/${id}?"]`);
+  container.querySelector<HTMLAnchorElement>(`[role="tabpanel"] [data-session-row="${id}"] > a`);
 const panelOf = (container: HTMLElement) =>
   container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
 const retries = (container: HTMLElement) =>
   [...panelOf(container).querySelectorAll('button')].filter(
     (button) => button.textContent === messages.Sessions.retry,
   );
+
+it('a conversation row opens it with neither panel nor compose, so it restores its own panel', async () => {
+  stateFixture(async () => reviewItems());
+  const { container } = await render();
+  const link = rowOf(container, 'A');
+  expect(link).not.toBeNull();
+  expect(new URL(link?.href ?? '', 'http://x').search).toBe('');
+});
 
 it('says Checks passed first on a row whose latest check passed with nothing written since', async () => {
   stateFixture(async () => reviewItems());
