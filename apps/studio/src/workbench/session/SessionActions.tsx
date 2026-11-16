@@ -35,7 +35,7 @@ const sameLines = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((line, index) => line === b[index]);
 
 /**
- * The control a dialog was opened from: for a menu item (this menu's, the path's or another's),
+ * The control a dialog was opened from: for a menu item (this menu's or another's),
  * the trigger of its menu, which stays when the item is gone; else whatever had focus.
  */
 function focusOrigin(): HTMLElement | null {

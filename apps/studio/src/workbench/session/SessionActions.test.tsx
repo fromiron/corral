@@ -284,20 +284,25 @@ const describedError = (field: HTMLElement | null) => {
   return id ? document.getElementById(id)?.textContent : undefined;
 };
 
-it('puts Completion criteria after Rename in the session menu and the path’s session menu', async () => {
+it('puts Completion criteria after Rename in the session menu, and none of the actions in the path’s session menu', async () => {
   const f = await mountCriteria();
   await act(async () => f.actionsMenu?.click());
   const names = menuItems().map(visibleText);
   expect(names.indexOf(criteria.label)).toBe(names.indexOf(messages.Desktop.rename) + 1);
+  // The more menu keeps its actions in this order.
+  const actions = [
+    messages.Desktop.rename,
+    criteria.label,
+    messages.Sessions.pin,
+    messages.Sessions.archive,
+  ];
+  expect(names.filter((name) => actions.includes(name ?? ''))).toEqual(actions);
   await act(async () => f.actionsMenu?.click());
   await settle(10);
   await act(async () => f.pathMenu?.click());
-  expect(menuItems().map(visibleText)).toEqual([
-    messages.Commands.rename,
-    criteria.label,
-    messages.Commands.pin,
-    messages.Commands.archive,
-  ]);
+  // The path's menu only chooses a conversation.
+  expect(menuItems().map(visibleText)).toEqual([]);
+  expect(document.querySelectorAll('[role="menuitemradio"]')).toHaveLength(1);
 });
 
 it('reads the saved criteria and saves the edited lines, trimmed and without blank lines', async () => {
@@ -326,7 +331,7 @@ it('reads the saved criteria and saves the edited lines, trimmed and without bla
 it('clears the criteria by saving an empty list', async () => {
   const f = await mountCriteria();
   f.update.mockResolvedValue({ ok: true, session });
-  await openCriteria(f.pathMenu);
+  await openCriteria(f.actionsMenu);
   await type(criteriaBox(), '\n  \n');
   await act(async () => button(messages.Sessions.save)?.click());
   await settle();
@@ -387,18 +392,14 @@ it('adds a line on Enter, also while composing, and does not save', async () => 
   expect(criteriaBox()).toBeTruthy();
 });
 
-it.each(['actionsMenu', 'pathMenu'] as const)(
-  'returns focus to the menu it was opened from (%s) when it closes',
-  async (opener) => {
-    const f = await mountCriteria();
-    const trigger = f[opener];
-    await openCriteria(trigger);
-    await act(async () => button(messages.Sessions.cancel)?.click());
-    await settle(600);
-    expect(criteriaBox()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  },
-);
+it('returns focus to the menu it was opened from when it closes', async () => {
+  const f = await mountCriteria();
+  await openCriteria(f.actionsMenu);
+  await act(async () => button(messages.Sessions.cancel)?.click());
+  await settle(600);
+  expect(criteriaBox()).toBeNull();
+  expect(document.activeElement).toBe(f.actionsMenu);
+});
 
 // A save refused for its revision reads the session again (docs/specs/workbench.md#세션-완료-기준).
 const stale = {

@@ -215,16 +215,16 @@ it('names the chosen run by its number alone; its request summary is in the menu
   ]);
 });
 
-it('puts this session’s rename, pin and archive above the session list and runs the page’s own actions', async () => {
-  const rename = vi.fn();
-  const pin = vi.fn();
-  const archive = vi.fn();
-  // The session page registers these with its revision checks (session/SessionActions.tsx).
+it('only chooses a session: the page’s session actions are not in the title menu', async () => {
+  const run = vi.fn();
+  // The session page registers these with its revision checks (session/SessionActions.tsx);
+  // they live in the top bar's more menu, not in the path's menu.
   setCommands('session', [
-    { id: 'session:rename', title: 'Rename conversation', group: 'Session', run: rename },
-    { id: 'session:pin', title: 'Pin conversation', group: 'Session', run: pin },
-    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: archive },
-    { id: 'session:review', title: 'Open the review screen', group: 'Session', run: vi.fn() },
+    { id: 'session:rename', title: 'Rename conversation', group: 'Session', run },
+    { id: 'session:criteria', title: 'Completion criteria', group: 'Session', run },
+    { id: 'session:pin', title: 'Pin conversation', group: 'Session', run },
+    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run },
+    { id: 'session:review', title: 'Open the review screen', group: 'Session', run },
   ]);
   try {
     const container = await render(
@@ -245,40 +245,11 @@ it('puts this session’s rename, pin and archive above the session list and run
       ...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]'),
     ];
     expect(rows.map((row) => `${row.getAttribute('role')}:${visibleText(row)}`)).toEqual([
-      'menuitem:Rename conversation',
-      'menuitem:Pin conversation',
-      'menuitem:Archive conversation',
       expect.stringMatching(/^menuitemradio:Session current/),
       expect.stringMatching(/^menuitemradio:Session old/),
     ]);
-    await act(async () => rows[1]?.click());
-    expect(pin).toHaveBeenCalledTimes(1);
-    expect(rename).not.toHaveBeenCalled();
-    expect(archive).not.toHaveBeenCalled();
-  } finally {
-    setCommands('session', null);
-  }
-});
-
-it('shows only the actions the open page offers, as for a meeting', async () => {
-  setCommands('session', [
-    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: vi.fn() },
-  ]);
-  try {
-    const container = await render(
-      <SessionMenu
-        sessions={[session('current', '2026-11-03T00:00:00Z')]}
-        runs={[]}
-        projectId="alpha"
-        sessionId="current"
-        title="Session current"
-        onOpen={vi.fn()}
-      />,
-    );
-    await act(async () => container.querySelector<HTMLElement>('h2 button')?.click());
-    expect(
-      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(visibleText),
-    ).toEqual(['Archive conversation']);
+    expect(document.querySelector('[role="menu"] [role="separator"]')).toBeNull();
+    expect(run).not.toHaveBeenCalled();
   } finally {
     setCommands('session', null);
   }

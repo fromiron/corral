@@ -4,16 +4,13 @@ import {
   Button,
   fontWeights,
   Menu,
-  MenuItem,
   MenuPopup,
   MenuRadioGroup,
   MenuRadioItem,
-  MenuSeparator,
   MenuTrigger,
 } from '@corral/react/design-kit';
 import { ChevronDown } from '@corral/react/icons';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useRegisteredCommands } from '../commandRegistry.ts';
 import { PresenceMark } from './PresenceMark.tsx';
 import { latestSessionRun, listedRunPresence } from './sessionList.ts';
 import { bySidebarOrder } from './sessionOrder.ts';
@@ -23,12 +20,10 @@ import { bySidebarOrder } from './sessionOrder.ts';
 
 const crumb = 'min-w-0 gap-1 px-2';
 
-// The open page registers its own session actions with their revision checks
-// (session/SessionActions.tsx, or MeetingPage for a meeting); the path's menu runs those. A
-// meeting registers no completion criteria.
-const SESSION_ACTIONS = ['session:rename', 'session:criteria', 'session:pin', 'session:archive'];
-
-/** The session segment: the page title, and the project's sessions in sidebar order. */
+/**
+ * The session segment: the page title, and the project's sessions in sidebar order. Its menu only
+ * chooses a session; the session's actions are in the top bar's more menu (SessionActions.tsx).
+ */
 export function SessionMenu({
   sessions,
   runs,
@@ -50,10 +45,6 @@ export function SessionMenu({
   const siblings = sessions
     .filter((session) => session.projectId === projectId && !session.archivedAt)
     .sort(bySidebarOrder);
-  const registered = useRegisteredCommands();
-  const actions = SESSION_ACTIONS.flatMap(
-    (id) => registered.find((command) => command.id === id) ?? [],
-  );
   return (
     // The name a narrowing bar keeps: it is the last thing to shorten (topbarTier.ts).
     <h2 data-crumb="current" className="flex max-w-64 min-w-0">
@@ -77,16 +68,6 @@ export function SessionMenu({
           <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" />
         </MenuTrigger>
         <MenuPopup align="start" aria-label={n('switchSession')} className="max-w-96 min-w-64">
-          {actions.map((command) => (
-            <MenuItem
-              key={command.id}
-              disabled={command.disabled}
-              onClick={() => void command.run()}
-            >
-              {command.title}
-            </MenuItem>
-          ))}
-          {actions.length ? <MenuSeparator /> : null}
           <MenuRadioGroup value={sessionId} onValueChange={(value) => onOpen(String(value))}>
             {siblings.map((session) => {
               const run = latestSessionRun(session, runs);

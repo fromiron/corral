@@ -357,8 +357,9 @@ export function MeetingPage({ session }: { session: WorkSession }) {
 /**
  * The meeting's toolbar in the top bar: the records toggle and the page menu, which leads with
  * the display density like a session's. Rename, pin and archive are the session commands the
- * path's menu also runs; a meeting's revision moves with every message, so each change reads
- * the session just before it and reports a conflict instead of retrying.
+ * command palette also runs (the path's menu only chooses a session); a meeting's revision moves
+ * with every message, so each change reads the session just before it and reports a conflict
+ * instead of retrying.
  */
 function MeetingActions({
   session,
