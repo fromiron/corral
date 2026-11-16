@@ -97,20 +97,20 @@ function Host({
             if (hadFocus) setFocusNext(id === selected ? nextSelected : neighbour);
           }}
           trailing={
-            <>
-              <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
-                <Plus />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-compact"
-                aria-label="넓히기"
-                aria-pressed={maximized}
-                onClick={() => setMaximized((value) => !value)}
-              >
-                <Maximize2 />
-              </Button>
-            </>
+            <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
+              <Plus />
+            </Button>
+          }
+          end={
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label="넓히기"
+              aria-pressed={maximized}
+              onClick={() => setMaximized((value) => !value)}
+            >
+              <Maximize2 />
+            </Button>
           }
         />
       </div>
@@ -299,9 +299,19 @@ function stage(strip: HTMLElement) {
   const box = selected.getBoundingClientRect();
   expect(box.left).toBeGreaterThanOrEqual(view.left);
   expect(box.right).toBeLessThanOrEqual(view.right);
-  // The trailing controls never scroll away.
-  const trailing = within(strip).getByRole('button', { name: '넓히기' }).getBoundingClientRect();
-  expect(trailing.right).toBeLessThanOrEqual(strip.getBoundingClientRect().right);
+  // "+" follows the last tab, or the strip once it scrolls; maximize stands at the far right.
+  // Neither scrolls away.
+  const root = strip.querySelector('[data-slot="tabs-closable"]') as HTMLElement;
+  const rootBox = root.getBoundingClientRect();
+  const plus = within(strip).getByRole('button', { name: '탭 열기' }).getBoundingClientRect();
+  const maximize = within(strip).getByRole('button', { name: '넓히기' }).getBoundingClientRect();
+  const lastTab = (tabs[tabs.length - 1] as HTMLElement).getBoundingClientRect();
+  expect(plus.left).toBeGreaterThanOrEqual(rootBox.left);
+  expect(maximize.right).toBeLessThanOrEqual(rootBox.right);
+  expect(rootBox.right - maximize.right).toBeLessThan(1);
+  expect(maximize.left - plus.right).toBeGreaterThanOrEqual(8);
+  if (scrolls) expect(plus.left - view.right).toBeGreaterThanOrEqual(12);
+  else expect(plus.left - lastTab.right).toBeLessThan(1);
   return { compact, scrolls, cut: others.some((state) => state.cut) };
 }
 

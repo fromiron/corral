@@ -49,6 +49,7 @@ function Strip({
         onClose={onClose}
         closeLabel={(tab) => `${tab.label} 닫기`}
         trailing={<button type="button">더하기</button>}
+        end={<button type="button">넓히기</button>}
       />
       {tabs.map((tab) => (
         <TabsClosablePanel
@@ -233,10 +234,23 @@ it('does not pick a selection when the host removes a tab', () => {
   expect(screen.queryByRole('tab', { selected: true })).toBeNull();
 });
 
-it('keeps the trailing slot outside the tablist', () => {
+it('puts the trailing slot after the tabs and the end slot last, both outside the tablist', () => {
   render(<Strip />);
+  const tablist = screen.getByRole('tablist');
   const more = screen.getByRole('button', { name: '더하기' });
-  expect(screen.getByRole('tablist').contains(more)).toBe(false);
+  const widen = screen.getByRole('button', { name: '넓히기' });
+  expect(tablist.contains(more)).toBe(false);
+  expect(tablist.contains(widen)).toBe(false);
+  expect(more.closest('[data-slot="tabs-closable-trailing"]')).not.toBeNull();
+  expect(widen.closest('[data-slot="tabs-closable-end"]')).not.toBeNull();
+  const follows = (a: Node, b: Node) =>
+    (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
+  expect(follows(tablist, more)).toBe(true);
+  expect(follows(more, widen)).toBe(true);
+  // Both are the strip's own children, after the scroller: neither scrolls with the tabs.
+  const scroller = document.querySelector('[data-slot="tabs-closable-scroller"]') as HTMLElement;
+  expect(scroller.contains(more)).toBe(false);
+  expect(scroller.contains(widen)).toBe(false);
 });
 
 function ClosingHost() {
@@ -317,7 +331,7 @@ function withBoxes(stripWidth: number, run: () => void | Promise<void>) {
   Object.defineProperty(proto, 'clientWidth', {
     configurable: true,
     get(this: HTMLElement) {
-      return this.dataset.slot === 'tabs-closable-scroller' ? stripWidth : 0;
+      return this.dataset.slot === 'tabs-closable' ? stripWidth : 0;
     },
   });
   const restore = () => {

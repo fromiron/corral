@@ -105,22 +105,22 @@ function Host({
                 onClose={() => {}}
                 closeLabel={(tab) => `${tab.label} 닫기`}
                 trailing={
-                  <>
-                    <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
-                      <Plus />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon-compact"
-                      aria-label="넓히기"
-                      aria-pressed={presentation === 'maximized'}
-                      onClick={() =>
-                        setPresentation(presentation === 'maximized' ? 'beside' : 'maximized')
-                      }
-                    >
-                      <Maximize2 />
-                    </Button>
-                  </>
+                  <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
+                    <Plus />
+                  </Button>
+                }
+                end={
+                  <Button
+                    variant="ghost"
+                    size="icon-compact"
+                    aria-label="넓히기"
+                    aria-pressed={presentation === 'maximized'}
+                    onClick={() =>
+                      setPresentation(presentation === 'maximized' ? 'beside' : 'maximized')
+                    }
+                  >
+                    <Maximize2 />
+                  </Button>
                 }
               />
             </div>

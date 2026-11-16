@@ -45,7 +45,8 @@ import { cn } from './utils.ts';
 //   then unselected tabs keep only their icon (and a short label), then the
 //   strip scrolls, fading at its cut edges, with the selected tab in view. A
 //   name not on screen shows in the kit's tooltip.
-// - a trailing slot for host controls that never scrolls away.
+// - a trailing slot right after the last tab (a "+", as a browser's new-tab
+//   button) and an end slot at the far right (maximize); neither scrolls away.
 //
 // The host owns the tabs, the selection and what a close selects next.
 // -----------------------------------------------------------------------------
@@ -77,8 +78,11 @@ export interface TabsClosableProps
   'aria-label': string;
   /** Prefix of the tab and panel ids; see `tabsClosableIds`. */
   idPrefix: string;
-  /** Host controls after the tabs ("+", maximize). */
+  /** Host controls right after the last tab ("+"). Once the strip scrolls they stand right
+   *  after it, clear of its fade. */
   trailing?: ReactNode;
+  /** Host controls at the strip's far right (maximize), after a flexible gap. */
+  end?: ReactNode;
 }
 
 /** The ids a tab and its panel carry, for a host that renders its own panels. */
@@ -136,6 +140,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       'aria-label': ariaLabel,
       idPrefix,
       trailing,
+      end,
       className,
       ...props
     },
@@ -143,6 +148,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
   ) => {
     const rootRef = useRef<HTMLDivElement>(null);
     const scrollerRef = useRef<HTMLDivElement>(null);
+    const trailingRef = useRef<HTMLDivElement>(null);
+    const endRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const measurers = useRef(new Map<string, HTMLSpanElement>());
     const shape = useShape();
@@ -270,18 +277,42 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     const [compact, setCompact] = useState(false);
     const [labelWidths, setLabelWidths] = useState<Record<string, number>>({});
     const [scrolls, setScrolls] = useState(false);
+    // The clearance a scrolling strip adds to the slot after it. The stage and the scroll state
+    // are read as if it were not there: counted, they would hold themselves in place.
+    const clearance = useCallback(() => {
+      const slot = trailingRef.current ?? endRef.current;
+      if (!slot) return 0;
+      const base = slot === trailingRef.current ? 0 : 8;
+      return Math.max(0, Number.parseFloat(getComputedStyle(slot).paddingLeft) - base);
+    }, []);
+    // From the tabs' own width, not the scroll width: a pill or close control still moving from
+    // the last stage's places would count as overflow.
+    const readScrolls = useCallback(() => {
+      const scroller = scrollerRef.current;
+      const container = containerRef.current;
+      if (!scroller || !container) return;
+      const room = scroller.clientWidth - SCROLLER_PAD * 2;
+      setScrolls(container.offsetWidth > room + clearance() + 1);
+    }, [clearance]);
 
     const lastWidth = useRef(0);
     const measure = useCallback(() => {
+      const root = rootRef.current;
       const scroller = scrollerRef.current;
-      if (!scroller) return;
-      const width = scroller.clientWidth - SCROLLER_PAD * 2;
+      if (!root || !scroller) return;
+      // The room the slots leave. The scroller's negative margins and its padding cancel out.
+      const width =
+        root.clientWidth -
+        (trailingRef.current?.offsetWidth ?? 0) -
+        (endRef.current?.offsetWidth ?? 0) +
+        clearance();
       // Unlaid-out (hidden, or no layout engine): keep the last stage.
       if (width <= 0) return;
       // A CSS variable, not state: the strip does not render again for every pixel of a resize.
       scroller.style.setProperty('--tabs-available', `${width}px`);
-      const resized = width !== lastWidth.current;
-      lastWidth.current = width;
+      // The scroller's own width: the clearance that comes and goes with scrolling moves it too.
+      const resized = scroller.clientWidth !== lastWidth.current;
+      lastWidth.current = scroller.clientWidth;
       const widths: Record<string, number> = {};
       let need = 0;
       for (const tab of tabsRef.current) {
@@ -303,10 +334,10 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       });
       // A resize within one stage renders nothing else: whether the strip scrolls, and the
       // selected tab's place in view, follow it here, at once.
-      setScrolls(scroller.scrollWidth > scroller.clientWidth + 1);
+      readScrolls();
       const selected = selectedRef.current ? tabElement(selectedRef.current) : null;
       if (resized && selected) reveal(selected, { instantly: true });
-    }, [tabElement, reveal]);
+    }, [tabElement, reveal, readScrolls, clearance]);
 
     // --- Hover, selection and focus layers (TabsSubtle's) ---------------------
     const isMouseInside = useRef(false);
@@ -338,13 +369,25 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: Runs when the set of tabs changes.
     useLayoutEffect(() => {
-      const scroller = scrollerRef.current;
-      if (!scroller || typeof ResizeObserver === 'undefined') return;
+      const root = rootRef.current;
+      if (!root || typeof ResizeObserver === 'undefined') return;
       const observer = new ResizeObserver(() => measure());
-      observer.observe(scroller);
+      observer.observe(root);
+      if (scrollerRef.current) observer.observe(scrollerRef.current);
+      for (const slot of [trailingRef.current, endRef.current]) if (slot) observer.observe(slot);
       for (const element of measurers.current.values()) observer.observe(element);
       return () => observer.disconnect();
-    }, [measure, idList]);
+    }, [measure, idList, !!trailing, !!end]);
+
+    // Whether the strip scrolls follows its content too, whatever moved it.
+    useLayoutEffect(() => {
+      const scroller = scrollerRef.current;
+      const container = containerRef.current;
+      if (!scroller || !container || typeof ResizeObserver === 'undefined') return;
+      const observer = new ResizeObserver(() => readScrolls());
+      observer.observe(container);
+      return () => observer.disconnect();
+    }, [readScrolls]);
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: Runs when the set of tabs changes.
     useLayoutEffect(() => {
@@ -360,7 +403,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     // biome-ignore lint/correctness/useExhaustiveDependencies: Read again when the stage or the tabs change.
     useLayoutEffect(() => {
       const scroller = scrollerRef.current;
-      if (scroller) setScrolls(scroller.scrollWidth > scroller.clientWidth + 1);
+      if (scroller) readScrolls();
     }, [compact, signature, selectedId, labelWidths]);
 
     // The selected tab in view, after a selection or a change of stage.
@@ -403,7 +446,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
         ref={rootRef}
         data-slot="tabs-closable"
         // Isolated, so its layers stay below the app shell's.
-        className={cn('isolate flex min-w-0 items-center gap-2', className)}
+        className={cn('isolate flex min-w-0 items-center', className)}
         {...props}
       >
         <div
@@ -411,7 +454,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
           data-slot="tabs-closable-scroller"
           className={cn(
             // Negative margins and padding give the focus ring room inside the scroller.
-            'scroll-fade-x scrollbar-hide relative -mx-1 -my-1 min-w-0 flex-1 overflow-x-auto overflow-y-hidden px-1 py-1 [--scroll-fade-size:24px]',
+            'scroll-fade-x scrollbar-hide relative -mx-1 -my-1 min-w-0 flex-initial overflow-x-auto overflow-y-hidden px-1 py-1 [--scroll-fade-size:24px]',
           )}
         >
           {/* biome-ignore lint/a11y/noStaticElementInteractions: Pointer tracking for the hover layer only; the tabs and close buttons own every action. */}
@@ -772,11 +815,27 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
         </div>
         {trailing ? (
           <div
+            ref={trailingRef}
             data-slot="tabs-closable-trailing"
-            // Clear of the fade once the strip scrolls under it.
-            className={cn('flex shrink-0 items-center gap-1', scrolls && 'pl-2')}
+            // Next to the last tab, as the tabs stand to each other; 12px clear of the fade once
+            // the strip scrolls under it (the scroller's 4px margin reaches into this padding).
+            className={cn('flex shrink-0 items-center gap-1', scrolls && 'pl-4')}
           >
             {trailing}
+          </div>
+        ) : null}
+        {end ? (
+          <div
+            ref={endRef}
+            data-slot="tabs-closable-end"
+            // At least 8px from what comes before; 12px clear of the fade when it follows the
+            // scrolling strip directly.
+            className={cn(
+              'ml-auto flex shrink-0 items-center gap-1',
+              scrolls && !trailing ? 'pl-4' : 'pl-2',
+            )}
+          >
+            {end}
           </div>
         ) : null}
       </div>
