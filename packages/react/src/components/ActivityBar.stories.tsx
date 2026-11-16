@@ -287,9 +287,65 @@ export const ReinsInThePanel: Story = {
     const reins = within(panel).getByRole('region', { name: 'Reins' });
     await expect(panel.lastElementChild).toBe(reins);
     const stop = within(reins).getByRole('button', { name: 'Stop' });
+    const pause = within(reins).getByRole('button', { name: 'Pause' });
     await expect(getComputedStyle(stop).borderTopWidth).toBe('0px');
+    // Stop in the destructive tone, Pause in the muted one.
+    await expect(getComputedStyle(stop).color).not.toBe(getComputedStyle(pause).color);
     await userEvent.click(stop);
     await expect(args.controls?.onStop).toHaveBeenCalledOnce();
+    await settled(canvasElement);
+  },
+};
+
+/**
+ * Pausing makes the line speak: the controls go to the panel and the focus goes with them, to
+ * Resume in Pause's place; resuming quiets the line, and the focus comes back to Pause on it.
+ */
+function FocusFollows(props: ActivityBarProps) {
+  const [paused, setPaused] = useState(false);
+  return (
+    <Card
+      {...props}
+      line={
+        paused
+          ? {
+              glyph: 'queued',
+              tone: 'neutral',
+              state: { text: 'Paused', target: 'run:run_story' },
+            }
+          : { glyph: 'running', tone: 'active' }
+      }
+      controls={{ paused, onPause: () => setPaused(true), onResume: () => setPaused(false) }}
+    />
+  );
+}
+
+export const ReinsFocusFollows: Story = {
+  args: {
+    line: { glyph: 'running', tone: 'active' },
+    end: overviewEnd,
+    roles: team.slice(0, 1),
+    defaultOpen: true,
+  },
+  render: (args) => <FocusFollows {...args} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
+    await waitFor(() => expect(panel).toBeVisible());
+    const pause = within(canvas.getByRole('region', { name: 'Reins' })).getByRole('button', {
+      name: 'Pause',
+    });
+    await expect(panel.contains(pause)).toBe(false);
+    pause.focus();
+    await userEvent.keyboard('{Enter}');
+    const resume = within(panel).getByRole('button', { name: 'Resume' });
+    await expect(resume).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    const back = within(canvas.getByRole('region', { name: 'Reins' })).getByRole('button', {
+      name: 'Pause',
+    });
+    await expect(panel.contains(back)).toBe(false);
+    await expect(back).toHaveFocus();
     await settled(canvasElement);
   },
 };

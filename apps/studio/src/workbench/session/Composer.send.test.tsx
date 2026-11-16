@@ -1464,6 +1464,17 @@ describe('one Stop', () => {
     expect(cancels).toHaveLength(1);
   });
 
+  it('while the run’s record is read: Send’s place is Stop with nothing written', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await openBar(f.container);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
   it('keeps Stop in Send’s place for a draft of attachments alone, as Send’s place does', async () => {
     writeComposerDraft('session', {
       text: '',

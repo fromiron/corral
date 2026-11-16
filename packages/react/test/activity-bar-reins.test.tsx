@@ -233,6 +233,28 @@ it.each([
   }
 });
 
+it.each([
+  ['from the line to the panel', QUIET, SPEAKING],
+  ['from the panel to the line', SPEAKING, QUIET],
+] as const)(
+  'gives the focus to the toggle when its control cannot take it after moving %s',
+  (_, before, after) => {
+    // Pressed, Pause waits for the run while the line changes: the new Pause is disabled. The
+    // explanation's icon does not take the focus instead (focused, it would open).
+    const { container, rerender } = render(
+      <Bar line={before} controls={{ paused: false, onPause: vi.fn(), onStop: vi.fn() }} />,
+    );
+    within(reins()).getByRole('button', { name: en.Activity.pause }).focus();
+    rerender(
+      <Bar
+        line={after}
+        controls={{ paused: false, disabled: true, onPause: vi.fn(), onStop: vi.fn() }}
+      />,
+    );
+    expect(document.activeElement).toBe(container.querySelector('[data-activity-toggle]'));
+  },
+);
+
 it('gives the focus to the toggle when the controls it was on fold away', () => {
   const controls = { paused: false, onPause: vi.fn() };
   const { container, rerender } = render(<Bar line={QUIET} controls={controls} />);

@@ -297,7 +297,7 @@ export function ActivityBar({
   const onLine = Boolean(open && controls && line && lineSaysNothing(line));
   const panelShown = open && Boolean(roles.length || plan || context || (controls && !onLine));
   // The Reins control the focus was on as the controls changed place: their new place gives it
-  // back, or the toggle takes it when they went with the panel.
+  // back, or the toggle takes it when they went with the panel or that control cannot take it.
   const reinsFocus = useRef<string | null>(null);
   useLayoutEffect(() => {
     if (reinsFocus.current === null) return;
@@ -813,13 +813,17 @@ function Controls({
   useLayoutEffect(() => {
     const element = group.current;
     const had = focus.current;
-    if (element && had !== null && taking.current) {
+    // The same control, or the one in its place; none that can take it (gone or disabled), and the
+    // bar's toggle does. Not another control in its stead: the explanation's icon would open.
+    const target =
+      element && had !== null && taking.current
+        ? (REINS_FOCUS[had] ?? [])
+            .map((selector) => element.querySelector<HTMLElement>(`${selector}:not(:disabled)`))
+            .find(Boolean)
+        : undefined;
+    if (target) {
       focus.current = null;
-      const target =
-        (REINS_FOCUS[had] ?? [])
-          .map((selector) => element.querySelector<HTMLElement>(`${selector}:not(:disabled)`))
-          .find(Boolean) ?? element.querySelector<HTMLElement>('button:not(:disabled)');
-      target?.focus();
+      target.focus();
     }
     return () => {
       const active = document.activeElement;

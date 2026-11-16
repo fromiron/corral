@@ -675,8 +675,9 @@ test.describe('advice a role never read', () => {
     await expect(page.getByTestId('chat-composer')).not.toContainText('No role takes instructions');
     await waitForStill(page);
     await shot(page, 'final-review-line-1280');
-    // Stop asks nothing: only the review is left to stop. Nothing is written, so Stop is Send's
-    // place.
+    // Stop asks nothing: only the review is left to stop. The panel is open as the run ends;
+    // nothing is written, so Stop is Send's place.
+    await openActivity(page);
     await sendPlaceStop(page).click();
     await expect(page.getByRole('dialog', { name: 'Cancel whole run', exact: true })).toHaveCount(
       0,
