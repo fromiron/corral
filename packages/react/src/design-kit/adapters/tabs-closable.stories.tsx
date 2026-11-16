@@ -1,0 +1,568 @@
+import type { Meta, StoryObj } from '@storybook/react-vite';
+import { File, GitCompare, Maximize2, Package, Play, Plus } from 'lucide-react';
+import { useLayoutEffect, useRef, useState } from 'react';
+import { expect, fireEvent, fn, waitFor, within } from 'storybook/test';
+import { Button } from './button.tsx';
+import {
+  TabsClosable,
+  type TabsClosableHandle,
+  TabsClosablePanel,
+  type TabsClosableTab,
+} from './tabs-closable.tsx';
+
+const sample: TabsClosableTab[] = [
+  { id: 'files', label: '파일', icon: File },
+  { id: 'changes', label: '변경', icon: GitCompare },
+  { id: 'run-1', label: '실행 #1', shortLabel: '#1', icon: Play },
+  { id: 'run-2', label: '실행 #2', shortLabel: '#2', icon: Play },
+  { id: 'run-12', label: '실행 #12', shortLabel: '#12', icon: Play },
+  { id: 'artifacts', label: '결과', icon: Package },
+];
+
+/** Longer names, to show them shrinking before they drop. */
+const longer: TabsClosableTab[] = [
+  { id: 'files', label: '파일 목록', icon: File },
+  { id: 'changes', label: '변경 검토', icon: GitCompare },
+  { id: 'run-1', label: '실행 기록 #1', shortLabel: '#1', icon: Play },
+  { id: 'artifacts', label: '결과 목록', icon: Package },
+];
+
+/** The testing library's pointer has no coordinates; the strip finds the tab under the pointer. */
+function pointAt(element: HTMLElement) {
+  const box = element.getBoundingClientRect();
+  fireEvent.mouseMove(element, {
+    clientX: box.left + box.width / 2,
+    clientY: box.top + box.height / 2,
+  });
+}
+
+/** A host model: closing the selected tab selects its right neighbour, else its left one. */
+function Host({
+  tabs: initialTabs = sample,
+  initial = 'files',
+  width,
+  onClose,
+  testId,
+  controls = false,
+}: {
+  tabs?: TabsClosableTab[];
+  initial?: string;
+  width?: number;
+  onClose?: (id: string) => void;
+  testId?: string;
+  /** Host buttons outside the strip: select the last tab, and render again. */
+  controls?: boolean;
+}) {
+  const [tabs, setTabs] = useState(initialTabs);
+  const [, setRenders] = useState(0);
+  const [selected, setSelected] = useState<string | null>(initial);
+  const [maximized, setMaximized] = useState(false);
+  const strip = useRef<TabsClosableHandle>(null);
+  const root = useRef<HTMLDivElement>(null);
+  const [focusNext, setFocusNext] = useState<string | null>(null);
+  useLayoutEffect(() => {
+    if (focusNext === null) return;
+    strip.current?.focusTab(focusNext);
+    setFocusNext(null);
+  }, [focusNext]);
+  const prefix = testId ?? 'story';
+  return (
+    <div
+      ref={root}
+      data-testid={testId}
+      className="flex flex-col rounded-xl border border-border bg-background"
+      // Story URLs pass the width as text.
+      style={{ width: width === undefined ? undefined : Number(width) }}
+    >
+      <div className="flex h-10 items-center px-2">
+        <TabsClosable
+          ref={strip}
+          className="flex-1"
+          aria-label="패널 탭"
+          idPrefix={prefix}
+          // A fresh array of equal tabs on every render, as a host deriving them would pass.
+          tabs={tabs.map((tab) => ({ ...tab }))}
+          selectedId={selected}
+          onSelect={setSelected}
+          closeLabel={(tab) => `${tab.label} 닫기`}
+          onClose={(id) => {
+            onClose?.(id);
+            const index = tabs.findIndex((tab) => tab.id === id);
+            const rest = tabs.filter((tab) => tab.id !== id);
+            const neighbour = (rest[index] ?? rest[index - 1])?.id ?? null;
+            const hadFocus = root.current?.contains(document.activeElement) ?? false;
+            const nextSelected = id === selected ? neighbour : selected;
+            setTabs(rest);
+            setSelected(nextSelected);
+            if (hadFocus) setFocusNext(id === selected ? nextSelected : neighbour);
+          }}
+          trailing={
+            <>
+              <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
+                <Plus />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon-compact"
+                aria-label="넓히기"
+                aria-pressed={maximized}
+                onClick={() => setMaximized((value) => !value)}
+              >
+                <Maximize2 />
+              </Button>
+            </>
+          }
+        />
+      </div>
+      {controls ? (
+        <div className="flex gap-1 border-t border-border px-2 py-1">
+          <Button
+            size="compact"
+            variant="ghost"
+            onClick={() => setSelected(tabs[tabs.length - 1]?.id ?? null)}
+          >
+            끝 탭
+          </Button>
+          <Button size="compact" variant="ghost" onClick={() => setRenders((n) => n + 1)}>
+            다시 그리기
+          </Button>
+        </div>
+      ) : null}
+      {tabs.map((tab) => (
+        <TabsClosablePanel
+          key={tab.id}
+          idPrefix={prefix}
+          tabId={tab.id}
+          selected={tab.id === selected}
+          className="border-t border-border px-3 py-4 text-ui text-muted-foreground"
+        >
+          {tab.label}
+        </TabsClosablePanel>
+      ))}
+    </div>
+  );
+}
+
+/** Four tabs as the panel has them, and eight with several runs. */
+const four = [sample[0], sample[1], sample[2], sample[5]] as TabsClosableTab[];
+const eight: TabsClosableTab[] = [
+  ...four,
+  ...[2, 3, 4, 5].map((n) => ({
+    id: `run-${n}`,
+    label: `실행 #${n}`,
+    shortLabel: `#${n}`,
+    icon: Play,
+  })),
+];
+
+/** Nine tabs, for a strip that scrolls. */
+const nine: TabsClosableTab[] = [
+  ...sample,
+  ...[3, 4, 5, 6].map((n) => ({
+    id: `run-${n}`,
+    label: `실행 #${n}`,
+    shortLabel: `#${n}`,
+    icon: Play,
+  })),
+];
+
+const meta = {
+  title: 'Design kit/TabsClosable',
+  component: Host,
+  args: { onClose: fn() },
+  argTypes: {
+    tabs: {
+      options: ['four', 'eight', 'nine', 'longer'],
+      mapping: { four, eight, nine, longer },
+      control: 'select',
+    },
+    initial: { control: 'text' },
+    width: { control: 'number' },
+  },
+} satisfies Meta<typeof Host>;
+export default meta;
+type Story = StoryObj<typeof meta>;
+
+export const Keyboard: Story = {
+  args: { width: 640, tabs: sample.slice(0, 4) },
+  play: async ({ canvasElement, userEvent, args }) => {
+    const canvas = within(canvasElement);
+    const tab = (name: string) => canvas.getByRole('tab', { name });
+    tab('파일').focus();
+    await userEvent.keyboard('{ArrowRight}');
+    await expect(tab('변경')).toHaveFocus();
+    await expect(tab('파일')).toHaveAttribute('aria-selected', 'true');
+    await userEvent.keyboard('{Enter}');
+    await expect(tab('변경')).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('tabpanel', { name: '변경' })).toBeVisible();
+    // Delete closes the focused tab; this host selects its right neighbour and focuses it.
+    await userEvent.keyboard('{Delete}');
+    await expect(args.onClose).toHaveBeenCalledWith('changes');
+    await waitFor(() => expect(tab('실행 #1')).toHaveFocus());
+    await expect(tab('실행 #1')).toHaveAttribute('aria-selected', 'true');
+    // An unselected tab closes without moving the selection.
+    await userEvent.keyboard('{ArrowLeft}{Delete}');
+    await expect(args.onClose).toHaveBeenLastCalledWith('files');
+    await expect(tab('실행 #1')).toHaveAttribute('aria-selected', 'true');
+    await expect(canvas.getByRole('button', { name: '실행 #2 닫기' })).toHaveAttribute(
+      'tabindex',
+      '-1',
+    );
+    // Space selects too.
+    await userEvent.keyboard('{ArrowRight} ');
+    await expect(tab('실행 #2')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab('실행 #2')).toHaveFocus();
+  },
+};
+
+/** The selected tab's close control stands after its name; an unselected tab's appears in its
+ *  icon's place on hover, with no shift. */
+export const HoverClose: Story = {
+  args: { width: 640, tabs: sample.slice(0, 3) },
+  play: async ({ canvasElement, userEvent, args }) => {
+    const canvas = within(canvasElement);
+    const changes = canvas.getByRole('tab', { name: '변경' });
+    const close = canvas.getByRole('button', { name: '변경 닫기' });
+    const selectedClose = canvas.getByRole('button', { name: '파일 닫기' });
+    await waitFor(() => expect(getComputedStyle(selectedClose).opacity).toBe('1'));
+    await expect(getComputedStyle(close).opacity).toBe('0');
+    // After the selected tab's name, inside its end, with a 24px hit box.
+    const files = canvas.getByRole('tab', { name: '파일' }).getBoundingClientRect();
+    const name = canvas
+      .getByRole('tab', { name: '파일' })
+      .querySelector('[data-slot="tabs-closable-label"]') as HTMLElement;
+    const selectedBox = selectedClose.getBoundingClientRect();
+    await expect(selectedBox.width).toBe(24);
+    await expect(selectedBox.left).toBeGreaterThanOrEqual(name.getBoundingClientRect().right);
+    await expect(selectedBox.right).toBeLessThanOrEqual(files.right);
+    const before = changes.getBoundingClientRect();
+    pointAt(changes);
+    await waitFor(() => expect(getComputedStyle(close).opacity).toBe('1'));
+    const after = changes.getBoundingClientRect();
+    await expect(after.width).toBe(before.width);
+    await expect(after.left).toBe(before.left);
+    // The control lies over the tab's leading slot, inside the tab.
+    const box = close.getBoundingClientRect();
+    await expect(box.left).toBeGreaterThanOrEqual(after.left);
+    await expect(box.right).toBeLessThan(after.left + after.width / 2 + 12);
+    await expect(box.width).toBe(24);
+    // Moving onto the control keeps it shown, and pressing it closes that tab only.
+    pointAt(close);
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    await expect(getComputedStyle(close).opacity).toBe('1');
+    await userEvent.click(close);
+    await expect(args.onClose).toHaveBeenCalledWith('changes');
+    await expect(canvas.getByRole('tab', { name: '파일' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+    // Beyond the last tab the pointer hovers nothing.
+    const strip = canvasElement.querySelector<HTMLElement>('[data-slot="tabs-closable-scroller"]');
+    const end = (strip as HTMLElement).getBoundingClientRect();
+    const tablist = canvas.getByRole('tablist').parentElement as HTMLElement;
+    fireEvent.mouseLeave(tablist);
+    fireEvent.mouseMove(strip as HTMLElement, { clientX: end.right - 8, clientY: end.top + 14 });
+    await new Promise((resolve) => requestAnimationFrame(resolve));
+    const last = canvas.getByRole('button', { name: '실행 #1 닫기' });
+    await expect(getComputedStyle(last).opacity).toBe('0');
+  },
+};
+
+/** Whether a tab's name is cut short (truncated), and whether it is shown at all. */
+function nameState(tab: HTMLElement) {
+  const name = tab.querySelector<HTMLElement>('[data-slot="tabs-closable-name"]');
+  const label = tab.querySelector<HTMLElement>('[data-slot="tabs-closable-label"]');
+  if (!name || !label) throw new Error('Missing a tab name');
+  const hidden = name.getBoundingClientRect().width <= 1;
+  return { hidden, cut: !hidden && label.scrollWidth > label.clientWidth + 1 };
+}
+
+/** The strip's stage, after checking what holds at every stage. Throws until laid out. */
+function stage(strip: HTMLElement) {
+  const tabs = within(strip).getAllByRole('tab');
+  const selected = tabs.find((tab) => tab.getAttribute('aria-selected') === 'true');
+  if (!selected) throw new Error('Missing the selected tab');
+  const scroller = strip.querySelector<HTMLElement>('[data-slot="tabs-closable-scroller"]');
+  if (!scroller) throw new Error('Missing the scroller');
+  const states = tabs.map(nameState);
+  const others = states.filter((_, index) => tabs[index] !== selected);
+  const compact = others.some((state) => state.hidden);
+  // The selected tab always shows its whole name.
+  expect(nameState(selected)).toEqual({ hidden: false, cut: false });
+  // Names drop together: once one unselected name is gone, all are.
+  if (compact) expect(others.every((state) => state.hidden)).toBe(true);
+  // The strip scrolls only after the names have gone.
+  const scrolls = scroller.scrollWidth > scroller.clientWidth + 1;
+  if (scrolls) expect(compact).toBe(true);
+  // The selected tab is in view.
+  const view = scroller.getBoundingClientRect();
+  const box = selected.getBoundingClientRect();
+  expect(box.left).toBeGreaterThanOrEqual(view.left);
+  expect(box.right).toBeLessThanOrEqual(view.right);
+  // The trailing controls never scroll away.
+  const trailing = within(strip).getByRole('button', { name: '넓히기' }).getBoundingClientRect();
+  expect(trailing.right).toBeLessThanOrEqual(strip.getBoundingClientRect().right);
+  return { compact, scrolls, cut: others.some((state) => state.cut) };
+}
+
+/** The overflow stages at three panel widths, the run tab selected at the end. */
+export const Overflow: Story = {
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <Host testId="wide" width={900} initial="run-12" />
+      <Host testId="medium" width={480} initial="run-12" />
+      <Host testId="narrow" width={360} initial="run-12" />
+      <Host testId="shrink" width={430} tabs={longer} initial="files" />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await document.fonts.ready;
+    // The strips measure again once the fonts are in; read each stage once settled.
+    const settle = (id: string, expected: ReturnType<typeof stage>) =>
+      waitFor(() => expect(stage(canvas.getByTestId(id))).toEqual(expected));
+    await settle('wide', { compact: false, scrolls: false, cut: false });
+    await settle('medium', { compact: true, scrolls: false, cut: false });
+    await settle('narrow', { compact: true, scrolls: true, cut: false });
+    await settle('shrink', { compact: false, scrolls: false, cut: true });
+  },
+};
+
+/** Keyboard focus at either end of a scrolling strip keeps its whole ring in view. */
+export const EdgeFocus: Story = {
+  args: { width: 360, initial: 'run-12', tabs: nine },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    await document.fonts.ready;
+    const scroller = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="tabs-closable-scroller"]',
+    ) as HTMLElement;
+    await waitFor(() => expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth));
+    const ringInView = () =>
+      waitFor(() => {
+        const ring = canvasElement.querySelector('[data-slot="tabs-closable-focus-ring"]');
+        if (!ring) throw new Error('Missing the focus ring');
+        const box = ring.getBoundingClientRect();
+        const view = scroller.getBoundingClientRect();
+        expect(box.left).toBeGreaterThanOrEqual(view.left);
+        expect(box.right).toBeLessThanOrEqual(view.right);
+        expect(box.top).toBeGreaterThanOrEqual(view.top);
+        expect(box.bottom).toBeLessThanOrEqual(view.bottom);
+      });
+    await userEvent.tab();
+    await expect(canvas.getByRole('tab', { name: '실행 #12' })).toHaveFocus();
+    await userEvent.keyboard('{Home}');
+    await expect(canvas.getByRole('tab', { name: '파일' })).toHaveFocus();
+    await ringInView();
+    await userEvent.keyboard('{End}');
+    await expect(canvas.getByRole('tab', { name: '실행 #6' })).toHaveFocus();
+    await ringInView();
+    // From the first tab the arrows wrap to the last one, across the whole strip.
+    await userEvent.keyboard('{Home}');
+    await ringInView();
+    await userEvent.keyboard('{ArrowLeft}');
+    await expect(canvas.getByRole('tab', { name: '실행 #6' })).toHaveFocus();
+    await ringInView();
+    // The focused tab, shrunk to its icon, names itself; axe reads the tooltip once it is in.
+    const tip = await within(canvasElement.ownerDocument.body).findByRole('tooltip');
+    await waitFor(() =>
+      expect(getComputedStyle(tip.firstElementChild as Element).opacity).toBe('1'),
+    );
+  },
+};
+
+/** An unselected tab shrunk to its icon names itself in the kit's tooltip, on keyboard focus
+ *  and on hover; the close control under the pointer names the tab it closes. */
+export const IconOnlyTooltip: Story = {
+  args: { width: 360, initial: 'run-12' },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const page = within(canvasElement.ownerDocument.body);
+    await document.fonts.ready;
+    const run2 = canvas.getByRole('tab', { name: '실행 #2' });
+    await waitFor(() => expect(nameState(run2).hidden).toBe(true));
+    await expect(run2).not.toHaveAttribute('title');
+    await userEvent.tab();
+    await userEvent.keyboard('{ArrowLeft}');
+    await expect(run2).toHaveFocus();
+    const tip = await page.findByRole('tooltip');
+    await expect(tip).toHaveTextContent('실행 #2');
+    await waitFor(() =>
+      expect(getComputedStyle(tip.firstElementChild as Element).opacity).toBe('1'),
+    );
+    // A short label is text: the close control takes the icon's place.
+    await waitFor(() =>
+      expect(getComputedStyle(canvas.getByRole('button', { name: '실행 #2 닫기' })).opacity).toBe(
+        '1',
+      ),
+    );
+    // Escape closes the tooltip and goes on, unhandled, to whatever listens under it.
+    const escapes: boolean[] = [];
+    const listen = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') escapes.push(event.defaultPrevented);
+    };
+    window.addEventListener('keydown', listen);
+    await userEvent.keyboard('{Escape}');
+    window.removeEventListener('keydown', listen);
+    await expect(escapes).toEqual([false]);
+    await waitFor(() => expect(page.queryByRole('tooltip')).toBeNull());
+    await expect(run2).toHaveFocus();
+    // Dismissed only until the focus comes back.
+    await userEvent.keyboard('{ArrowRight}{ArrowLeft}');
+    await expect(run2).toHaveFocus();
+    await waitFor(async () =>
+      expect(await page.findByRole('tooltip')).toHaveTextContent('실행 #2'),
+    );
+    // A tab shrunk to its icon alone shows no close control: a press only selects it.
+    await userEvent.keyboard('{Home}{ArrowRight}');
+    const changes = canvas.getByRole('tab', { name: '변경' });
+    await expect(changes).toHaveFocus();
+    await waitFor(async () => expect(await page.findByRole('tooltip')).toHaveTextContent('변경'));
+    await expect(getComputedStyle(canvas.getByRole('button', { name: '변경 닫기' })).opacity).toBe(
+      '0',
+    );
+    // A tab whose whole name shows has no tooltip.
+    await userEvent.keyboard('{End}{ArrowLeft}');
+    await expect(canvas.getByRole('tab', { name: '실행 #12' })).toHaveFocus();
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    await expect(page.queryByRole('tooltip')).toBeNull();
+    // The close control's tooltip is its accessible name.
+    const close = canvas.getByRole('button', { name: '실행 #12 닫기' });
+    await userEvent.hover(close);
+    const closeTip = await page.findByRole('tooltip');
+    await expect(closeTip).toHaveTextContent('실행 #12 닫기');
+    await userEvent.unhover(close);
+    await waitFor(() => expect(page.queryByRole('tooltip')).toBeNull());
+  },
+};
+
+/** A name cut short in the shrinking stage shows whole in the tooltip. */
+export const CutNameTooltip: Story = {
+  args: { width: 430, tabs: longer, initial: 'files' },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const page = within(canvasElement.ownerDocument.body);
+    await document.fonts.ready;
+    const changes = canvas.getByRole('tab', { name: '변경 검토' });
+    await waitFor(() => expect(nameState(changes).cut).toBe(true));
+    await userEvent.hover(changes);
+    pointAt(changes);
+    const tip = await page.findByRole('tooltip');
+    await expect(tip).toHaveTextContent('변경 검토');
+    await waitFor(() =>
+      expect(getComputedStyle(tip.firstElementChild as Element).opacity).toBe('1'),
+    );
+    // A named tab under the pointer shows its close control in its icon's place.
+    await expect(
+      getComputedStyle(canvas.getByRole('button', { name: '변경 검토 닫기' })).opacity,
+    ).toBe('1');
+    // Escape closes it; the next time the pointer arrives it opens again.
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(page.queryByRole('tooltip')).toBeNull());
+    await userEvent.unhover(changes);
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await userEvent.hover(changes);
+    await waitFor(async () =>
+      expect(await page.findByRole('tooltip')).toHaveTextContent('변경 검토'),
+    );
+    await waitFor(() =>
+      expect(getComputedStyle(page.getByRole('tooltip').firstElementChild as Element).opacity).toBe(
+        '1',
+      ),
+    );
+    await userEvent.unhover(changes);
+    await waitFor(() => expect(page.queryByRole('tooltip')).toBeNull());
+  },
+};
+
+/** A strip narrowed within a stage (a splitter drag) keeps the selected tab in view, and the
+ *  trailing controls clear of the fade once it scrolls. */
+export const Narrowed: Story = {
+  args: { width: 760, tabs: nine, initial: 'run-6', testId: 'narrowed' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await document.fonts.ready;
+    const host = canvas.getByTestId('narrowed');
+    const scroller = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="tabs-closable-scroller"]',
+    ) as HTMLElement;
+    const selected = canvas.getByRole('tab', { name: '실행 #6' });
+    await waitFor(() =>
+      expect(nameState(canvas.getByRole('tab', { name: '변경' })).hidden).toBe(true),
+    );
+    await expect(scroller.scrollWidth).toBeLessThanOrEqual(scroller.clientWidth + 1);
+    host.style.width = '320px';
+    await waitFor(() => {
+      expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth + 1);
+      const view = scroller.getBoundingClientRect();
+      const box = selected.getBoundingClientRect();
+      expect(box.left).toBeGreaterThanOrEqual(view.left);
+      expect(box.right).toBeLessThanOrEqual(view.right);
+      const trailing = canvas.getByRole('button', { name: '탭 열기' }).getBoundingClientRect();
+      expect(trailing.left - view.right).toBeGreaterThanOrEqual(12);
+    });
+  },
+};
+
+/** A selection made elsewhere (the host's) brings the selected tab into view; renders with an
+ *  equal new array of tabs move nothing and reopen no tooltip. */
+export const HostChanges: Story = {
+  args: { width: 360, tabs: nine, initial: 'files', controls: true },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const page = within(canvasElement.ownerDocument.body);
+    await document.fonts.ready;
+    const scroller = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="tabs-closable-scroller"]',
+    ) as HTMLElement;
+    await waitFor(() => expect(scroller.scrollWidth).toBeGreaterThan(scroller.clientWidth));
+    await expect(scroller.scrollLeft).toBe(0);
+    canvas.getByRole('button', { name: '끝 탭' }).click();
+    const last = canvas.getByRole('tab', { name: '실행 #6' });
+    await waitFor(() => expect(last).toHaveAttribute('aria-selected', 'true'));
+    await waitFor(() => {
+      const view = scroller.getBoundingClientRect();
+      const box = last.getBoundingClientRect();
+      expect(box.left).toBeGreaterThanOrEqual(view.left);
+      expect(box.right).toBeLessThanOrEqual(view.right);
+    });
+    // Focus an icon-only tab, let its tooltip open, then dismiss it.
+    last.focus();
+    await userEvent.keyboard('{ArrowLeft}');
+    const run5 = canvas.getByRole('tab', { name: '실행 #5' });
+    await expect(run5).toHaveFocus();
+    await page.findByRole('tooltip');
+    await userEvent.keyboard('{Escape}');
+    await waitFor(() => expect(page.queryByRole('tooltip')).toBeNull());
+    const scrolled = scroller.scrollLeft;
+    const focusins: Event[] = [];
+    const count = (event: Event) => focusins.push(event);
+    canvasElement.addEventListener('focusin', count, true);
+    const again = canvas.getByRole('button', { name: '다시 그리기' });
+    for (let round = 0; round < 5; round++) {
+      again.click();
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+    await new Promise((resolve) => setTimeout(resolve, 700));
+    canvasElement.removeEventListener('focusin', count, true);
+    await expect(focusins).toHaveLength(0);
+    await expect(scroller.scrollLeft).toBe(scrolled);
+    await expect(run5).toHaveFocus();
+    await expect(page.queryByRole('tooltip')).toBeNull();
+    // A vertical wheel scrolls the strip sideways.
+    scroller.scrollLeft = 0;
+    scroller.dispatchEvent(
+      new WheelEvent('wheel', { deltaY: 60, deltaX: 0, bubbles: true, cancelable: true }),
+    );
+    await expect(scroller.scrollLeft).toBeGreaterThan(0);
+  },
+};
+
+/** No play: tabs, width and selection come from the story's args, for looking at it. */
+export const Playground: Story = { args: { tabs: four, width: 480 } };
+
+/** The same strip on the dark theme, where axe reads its contrast. */
+export const Dark: Story = {
+  args: { width: 480, initial: 'run-1' },
+  decorators: [(Story) => <div className="dark bg-background p-3 text-foreground">{Story()}</div>],
+};
