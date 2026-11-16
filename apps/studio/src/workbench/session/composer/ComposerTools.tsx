@@ -183,54 +183,61 @@ export function TeamChoice({
   const router = useRouter();
   const navigate = useNavigate();
   return (
-    <Select
-      variant="chip"
-      label={tc('teamLabel')}
-      value={team ? `corral:${team.corralId}` : teamMode}
-      disabled={disabled}
-      open={open}
-      onOpenChange={onOpenChange}
-      // The choice explains Corral in its tooltip (glossary.md); its open menu speaks for itself.
-      trigger={(control) => (
-        <TermTooltip term="corral" closed={open}>
-          {control}
-        </TermTooltip>
-      )}
-      onValueChange={(value) => {
-        const choice = String(value);
-        if (choice === 'manage')
-          // The library's teams for this project, coming back to this session.
-          void navigate({
-            to: '/library/teams',
-            search: {
-              project: projectId,
-              returnTo: router.state.location.href,
-            },
-          });
-        else if (choice.startsWith('corral:')) onTeam(choice.slice(7));
-        else {
-          onTeamMode(choice === 'auto' ? 'auto' : 'none');
-          if (!isAuto) onTeam('');
-        }
-      }}
-      options={[
-        { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
-        // Corral: the automatic team first, then each saved Corral.
-        {
-          value: 'auto',
-          label: tc('teamAuto'),
-          hint: tc('teamAutoHint'),
-        },
-        // Each saved team names its revision, so the selected one says which it runs.
-        ...corrals.map((corral) => ({
-          value: `corral:${corral.corralId}`,
-          label: corral.name,
-          hint: `r${corral.definitionRevision} · ${tc('teamCorralHint')}`,
-        })),
-        // Creating or editing a Corral happens in the library.
-        { value: 'manage', label: tc('manageCorrals') },
-      ]}
-    />
+    // A saved team's name shares the tool line's squeeze with the model chip and ends in an
+    // ellipsis: the kit Select's field wrapper (its direct child) may shrink with it. The short
+    // choices (none, automatic) keep their size.
+    <span className={team ? 'flex min-w-0 *:min-w-0' : 'flex'}>
+      <Select
+        variant="chip"
+        label={tc('teamLabel')}
+        value={team ? `corral:${team.corralId}` : teamMode}
+        disabled={disabled}
+        open={open}
+        onOpenChange={onOpenChange}
+        // The choice explains Corral in its tooltip (glossary.md); its open menu speaks for itself.
+        // A saved team's whole name is the tooltip's state, beside the term (a cut name stays
+        // readable); the chip's own name stays.
+        trigger={(control) => (
+          <TermTooltip term="corral" closed={open} {...(team ? { state: team.name } : {})}>
+            {control}
+          </TermTooltip>
+        )}
+        onValueChange={(value) => {
+          const choice = String(value);
+          if (choice === 'manage')
+            // The library's teams for this project, coming back to this session.
+            void navigate({
+              to: '/library/teams',
+              search: {
+                project: projectId,
+                returnTo: router.state.location.href,
+              },
+            });
+          else if (choice.startsWith('corral:')) onTeam(choice.slice(7));
+          else {
+            onTeamMode(choice === 'auto' ? 'auto' : 'none');
+            if (!isAuto) onTeam('');
+          }
+        }}
+        options={[
+          { value: 'none', label: tc('teamNone'), hint: tc('teamNoneHint') },
+          // Corral: the automatic team first, then each saved Corral.
+          {
+            value: 'auto',
+            label: tc('teamAuto'),
+            hint: tc('teamAutoHint'),
+          },
+          // Each saved team names its revision, so the selected one says which it runs.
+          ...corrals.map((corral) => ({
+            value: `corral:${corral.corralId}`,
+            label: corral.name,
+            hint: `r${corral.definitionRevision} · ${tc('teamCorralHint')}`,
+          })),
+          // Creating or editing a Corral happens in the library.
+          { value: 'manage', label: tc('manageCorrals') },
+        ]}
+      />
+    </span>
   );
 }
 
