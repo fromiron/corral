@@ -632,11 +632,48 @@ function RunWorkspace({
         >
           <Main
             data-testid="run-column-scroll"
-            hidden={documentOpen || steeringOpen}
+            hidden={steeringOpen && !documentOpen}
             className="min-h-0 flex-1"
           >
             <RunViews
               visible={!documentOpen && !steeringOpen && (wide || !sideShown)}
+              // A result or a step result is read under the view row, Results shown as chosen;
+              // choosing a view, Results included, closes it and shows that view.
+              reading={{
+                view: documentOpen ? 'results' : null,
+                onLeave: () =>
+                  setSearch({ artifact: undefined, result: undefined, view: undefined }),
+                pane: (
+                  <section
+                    ref={documentPane}
+                    tabIndex={-1}
+                    data-testid="run-document"
+                    hidden={!documentOpen}
+                    className="min-h-0 flex-1 overflow-auto p-6 outline-none"
+                    aria-label={m('results')}
+                  >
+                    {documentOpen ? (
+                      artifact ? (
+                        <ArtifactViewer
+                          session={session}
+                          versionId={artifact}
+                          onOpen={openArtifact}
+                          onClose={closeDocument}
+                        />
+                      ) : (
+                        <RunResults
+                          session={session}
+                          headed={false}
+                          embedded
+                          selectedId={result ?? null}
+                          onSelect={(id) => setSearch({ result: id })}
+                          {...(previewUrl ? { previewUrl } : {})}
+                        />
+                      )
+                    ) : null}
+                  </section>
+                ),
+              }}
               views={[
                 {
                   id: 'graph',
@@ -781,37 +818,6 @@ function RunWorkspace({
               ]}
             />
           </Main>
-          <section
-            ref={documentPane}
-            tabIndex={-1}
-            data-testid="run-document"
-            hidden={!documentOpen}
-            className="min-h-0 flex-1 overflow-auto p-6 outline-none"
-            aria-label={m('results')}
-          >
-            <Button variant="ghost" onClick={closeDocument}>
-              {m('backToWork')}
-            </Button>
-            {documentOpen ? (
-              artifact ? (
-                <ArtifactViewer
-                  session={session}
-                  versionId={artifact}
-                  onOpen={openArtifact}
-                  onClose={closeDocument}
-                />
-              ) : (
-                <RunResults
-                  session={session}
-                  headed={false}
-                  embedded
-                  selectedId={result ?? null}
-                  onSelect={(id) => setSearch({ result: id })}
-                  {...(previewUrl ? { previewUrl } : {})}
-                />
-              )
-            ) : null}
-          </section>
           <section
             ref={steeringPane}
             tabIndex={-1}

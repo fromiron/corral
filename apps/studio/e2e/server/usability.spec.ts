@@ -287,9 +287,10 @@ test.describe('long multi-agent output', () => {
     // cannot be loaded (partial results open as the artifact they are). Soft, so the run's own
     // list of every version below is still checked.
     await expect.soft(monitor.getByText('This result could not be loaded.')).toHaveCount(0);
-    await monitor.getByRole('button', { name: 'Back to work', exact: true }).click();
-    // The run's Results view lists every version with the execution that made it.
+    // The run's Results view lists every version with the execution that made it. Chosen in
+    // the view row while the result is read, it leaves the reading for the list.
     const versions = await showResults(page);
+    await expect(monitor.getByTestId('run-document')).toBeHidden();
     const definition = corral.server.coordinator.getRunSnapshot(runId)?.definition;
     for (const artifact of Object.values(projection.artifacts)) {
       const execution = projection.executions[artifact.authorExecutionId];
@@ -320,7 +321,7 @@ test.describe('long multi-agent output', () => {
           exact: true,
         }),
       ).toBeVisible();
-      await monitor.getByRole('button', { name: 'Back to work', exact: true }).click();
+      await showResults(page);
     }
 
     // A failed reload must not claim that completed work has no artifacts.
@@ -403,7 +404,10 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
     observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
   // Versions other than final results are listed in the run's Results view behind it.
-  await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await observer
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   // The record reads what waits; it has no second way to decide.
   await expect(
     observer.getByRole('button', { name: 'Continue with this version', includeHidden: true }),
@@ -412,7 +416,10 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   await expect(
     observer.getByRole('region', { name: 'review · Version 2', exact: true }),
   ).toBeVisible();
-  await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await observer
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await panelTab(page, 'Conversation');
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
