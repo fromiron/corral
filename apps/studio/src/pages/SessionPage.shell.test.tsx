@@ -808,6 +808,8 @@ it('파일 탭에서 터미널이 돌고 있고 저장하지 않은 문서가 �
   await until(() => Boolean(option()));
   await press(option());
   await until(() => Boolean(side()?.querySelector('[data-testid="document-leaf"]')));
+  // Into the dock already on screen, not held until the 파일 tab is built again.
+  expect(side()?.querySelector('[data-testid="document-leaf"]')?.textContent).toBe(server.path);
   // Edited, not saved.
   const docKey = Object.keys(server.documents.getState().documents)[0] as string;
   await until(() => Boolean(server.documents.getState().documents[docKey]?.model));
@@ -839,6 +841,70 @@ it('파일 탭에서 터미널이 돌고 있고 저장하지 않은 문서가 �
   expect(server.terminals.getState().terminals[server.terminalId]?.terminal.state).toBe('running');
   expect(server.terminalCalls).toEqual([]);
 });
+
+/** The pane in front of the 파일 tab's dock: the selected tab of its active group. */
+const dockFront = () =>
+  side()
+    ?.querySelector<HTMLElement>('.dv-active-group [role="tab"][aria-selected="true"]')
+    ?.textContent?.trim() ?? null;
+
+/**
+ * A project whose saved dock arrangement keeps a document in front, beside the tree and the
+ * terminal, and a conversation whose panel is closed with no tab: the next page load builds the
+ * 파일 tab's dock from that arrangement.
+ */
+async function savedDocumentInFront() {
+  const world = await createShellWorld({ server: true, folder: true });
+  const server = world.server as NonNullable<ShellWorld['server']>;
+  const first = await mountShell(world, [`/sessions/${world.sessionId}`]);
+  await press(buttons(messages.Docking.terminal)[0]);
+  await until(() => Boolean(side()?.querySelector('[data-testid="terminal-leaf"]')));
+  await act(async () => {
+    window.dispatchEvent(new Event('corral:quick-open'));
+  });
+  await settle();
+  const option = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((row) =>
+      row.textContent?.includes(server.path),
+    );
+  await until(() => Boolean(option()));
+  await press(option());
+  await until(() => dockFront() === server.path);
+  expect(dockFront()).toBe(server.path);
+  await first.unmount();
+  remember(world.sessionId, [], null, false);
+  return { world, server };
+}
+
+it('저장된 배치에서 문서가 앞에 있고 패널이 닫혀 있으며 이 페이지에서 파일 탭을 연 적이 없다 → 상단의 터미널을 누른다 → 파일 탭이 열리고, 주소는 panel=terminal이며 터미널이 앞에 있다', async () => {
+  const { world } = await savedDocumentInFront();
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  expect(tabNames()).toEqual([]);
+
+  await press(buttons(messages.Docking.terminal)[0]);
+  await until(() => selectedName() === W.files && dockFront() !== null);
+
+  expect(selectedName()).toBe(W.files);
+  expect(search(shell).panel).toBe('terminal');
+  expect(dockFront()).toBe(messages.Docking.terminal);
+  // Settled, not on the way: nothing the dock restored takes the address back later.
+  await settle();
+  expect(search(shell).panel).toBe('terminal');
+  expect(dockFront()).toBe(messages.Docking.terminal);
+});
+
+it.each(['terminal', 'tools'] as const)(
+  '저장된 배치에서 문서가 앞에 있다 → 새 페이지를 panel=%s 주소로 연다 → 파일 탭이 열리고 그 창이 앞에 있으며 주소는 그대로다',
+  async (pane) => {
+    const { world } = await savedDocumentInFront();
+    const shell = await open(world, `/sessions/${world.sessionId}?panel=${pane}`);
+    await until(() => selectedName() === W.files && dockFront() !== null);
+
+    expect(selectedName()).toBe(W.files);
+    expect(search(shell).panel).toBe(pane);
+    expect(dockFront()).toBe(messages.Docking[pane]);
+  },
+);
 
 it('폴더가 연결되고 실행이 있는 대화에서 실행 #1 탭만 열려 있다 → "+"를 누른다 → 목록은 파일 · 변경 · 실행 기록 · 결과 순이고, 결과를 고르면 결과 탭이 열려 선택되고 포커스가 그 탭에 있다', async () => {
   const { world, runId } = await quietRun({ folder: true });

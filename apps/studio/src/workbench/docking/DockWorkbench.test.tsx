@@ -30,10 +30,14 @@ const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   laidOutWidth = null;
+  observed.length = 0;
   vi.unstubAllGlobals();
   localStorage.clear();
 });
 let laidOutWidth: number | null = null;
+/** Every observed element, so a test can tell the dock its size changed. */
+const observed: { element: Element; observer: ResizeObserver; callback: ResizeObserverCallback }[] =
+  [];
 async function fixture(
   props: Partial<
     Pick<
@@ -66,6 +70,11 @@ async function fixture(
       }
       // Only a test that gives the dock a width lays its grid out.
       observe(element: Element) {
+        observed.push({
+          element,
+          observer: this as unknown as ResizeObserver,
+          callback: this.callback,
+        });
         if (laidOutWidth === null) return;
         const contentRect = { width: laidOutWidth, height: 800 } as DOMRectReadOnly;
         this.callback(
@@ -221,6 +230,45 @@ it('removes only a legacy run pane on restore, keeping the tools and the documen
   expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
   expect(restored.closeView).not.toHaveBeenCalled();
 });
+
+it.each([
+  ['unmeasured', null],
+  ['narrow', 456],
+] as const)(
+  'a dock built from a saved arrangement with a document in front reports nothing, then shows the pane the page asks for (%s)',
+  async (_name, width) => {
+    if (width !== null) dockWidth(width);
+    const original = await fixture();
+    await act(async () => {
+      original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
+    });
+    await act(async () => original.ref.current?.openContext('terminal', true));
+    await act(async () => {
+      original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
+    });
+    expect(activePane(original.container)).toContain('file.ts');
+    await disposals.pop()?.();
+
+    const onActiveContext = vi.fn();
+    const props: Parameters<typeof fixture>[0] = { onActiveContext, selectedPanel: null };
+    const restored = await fixture(props);
+    // What the arrangement put in front is not something the person did here.
+    expect(activePane(restored.container)).toContain('file.ts');
+    expect(onActiveContext).not.toHaveBeenCalled();
+
+    // The page's request, arriving after the dock was built, brings its pane forward.
+    props.selectedPanel = 'terminal';
+    await restored.renderSession('session');
+    expect(activePane(restored.container)).toBe('terminal');
+    expect(onActiveContext).not.toHaveBeenCalled();
+    if (width !== null) {
+      // One pane at a time: the terminal alone, with the switcher.
+      expect(restored.container.querySelector('[data-testid="dock-toolbar"]')).not.toBeNull();
+      expect(shownGroups(restored.container)).toBe(1);
+      vi.restoreAllMocks();
+    }
+  },
+);
 
 it.each(['terminal', 'tools'] as const)(
   'an explicit %s link reopens its closed pane even when the selected URL has not changed',
@@ -626,6 +674,76 @@ function dockWidth(width: number) {
     toJSON: () => ({}),
   } as DOMRect);
 }
+
+/** Lays the dock out at a new width, as a shown or hidden panel tab does, and says so. */
+async function resizeDock(width: number) {
+  dockWidth(width);
+  await act(async () => {
+    for (const { element, observer, callback } of observed)
+      callback(
+        [{ target: element, contentRect: { width, height: 800 } } as ResizeObserverEntry],
+        observer,
+      );
+  });
+}
+/** Dock groups on screen: a narrow dock shows one, the others hidden behind it. */
+const shownGroups = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('.dv-groupview')].filter((group) => {
+    for (
+      let view = group.closest('.dv-view');
+      view;
+      view = view.parentElement?.closest('.dv-view') ?? null
+    )
+      if (!view.classList.contains('visible')) return false;
+    return true;
+  }).length;
+
+it('a narrow dock hidden with its panel tab and shown again keeps one pane at a time with its switcher', async () => {
+  const panels = [
+    { id: 'context:files', descriptor: { kind: 'context' as const, view: 'files' as const } },
+    { id: 'context:terminal', descriptor: { kind: 'context' as const, view: 'terminal' as const } },
+  ];
+  localStorage.setItem(
+    layoutStorageKey('host', 'project') ?? '',
+    serializeLayout(createPresetLayout('implementation', panels), 'host', 'project'),
+  );
+  dockWidth(456);
+  try {
+    const f = await fixture({ selectedPanel: 'terminal' });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    const switcher = () => f.container.querySelector('[data-testid="dock-toolbar"]');
+    expect(switcher()).not.toBeNull();
+    expect(shownGroups(f.container)).toBe(1);
+    expect(activePane(f.container)).toBe('terminal');
+
+    // Hidden, the dock measures nothing: what it lays out is what the tab shows when it is back.
+    await resizeDock(0);
+    expect(switcher()).not.toBeNull();
+    expect(shownGroups(f.container)).toBe(1);
+
+    await resizeDock(456);
+    expect(switcher()).not.toBeNull();
+    expect(shownGroups(f.container)).toBe(1);
+    expect(activePane(f.container)).toBe('terminal');
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
+
+it('a dock measured wide when shown again leaves the one-pane layout', async () => {
+  dockWidth(456);
+  try {
+    const f = await fixture({ selectedPanel: 'terminal' });
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(f.container.querySelector('[data-testid="dock-toolbar"]')).not.toBeNull();
+    await resizeDock(0);
+    await resizeDock(1280);
+    expect(f.container.querySelector('[data-testid="dock-toolbar"]')).toBeNull();
+    expect(shownGroups(f.container)).toBeGreaterThan(1);
+  } finally {
+    vi.restoreAllMocks();
+  }
+});
 
 // The tree's column fits its head (where it reads from with its tools, then the filter row) at the
 // interface density: about 260px at compact, 300px at the default size.

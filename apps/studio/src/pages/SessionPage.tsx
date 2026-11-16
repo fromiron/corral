@@ -315,12 +315,13 @@ function WorkSessionPage() {
     }
   }, [presentation, state.selected, state.tabs.length, onScreen, operable]);
 
-  // Documents and panes asked for before the 파일 tab's dock is ready wait for it.
-  const dockReady = useRef(false);
+  // Documents and panes asked for before the 파일 tab's dock is ready wait for it. Readiness is
+  // the dock's own: its handle is handed over again on every render, so a null between two
+  // handles says nothing about it.
   const dockQueue = useRef<((handle: DockWorkbenchHandle) => void)[]>([]);
   const withDock = (action: (handle: DockWorkbenchHandle) => void) => {
     const handle = dock.current;
-    if (handle && dockReady.current) action(handle);
+    if (handle?.ready()) action(handle);
     else dockQueue.current.push(action);
   };
   const flushDock = () => {
@@ -517,7 +518,6 @@ function WorkSessionPage() {
           key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
           ref={(handle) => {
             dock.current = handle;
-            if (!handle) dockReady.current = false;
           }}
           hostId={services.workspaceId}
           projectId={session.projectId}
@@ -527,10 +527,7 @@ function WorkSessionPage() {
           documentOwner={documents}
           terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
           renderContext={renderContext}
-          onReady={() => {
-            dockReady.current = true;
-            flushDock();
-          }}
+          onReady={flushDock}
           onOpenElsewhere={(view) => (view === 'chat' ? bringForward() : open({ panel: view }))}
           renderDocument={(descriptor, _panelId, selection) =>
             documents ? (

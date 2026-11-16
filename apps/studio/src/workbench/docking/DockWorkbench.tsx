@@ -75,6 +75,8 @@ export interface DockOpenDocument {
   path: string;
 }
 export interface DockWorkbenchHandle {
+  /** Whether the dock has built its layout and takes requests. */
+  ready(): boolean;
   openDocument(input: DockOpenDocument, selection?: TextRange): boolean;
   /** `reveal` brings the pane itself to the front even while a document is active. */
   openContext(view: DockContextView, reveal?: boolean): void;
@@ -346,6 +348,9 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     const host = useRef<HTMLDivElement>(null);
     const mutating = useRef(false);
     const narrow = useRef(false);
+    // Set while the dock builds itself from the saved arrangement: what it puts in front then is
+    // nothing the person chose, so it is not reported.
+    const restoring = useRef(false);
     const fileWorkOpened = useRef(false);
     const lastSelection = useRef({
       sessionId: props.sessionId,
@@ -470,7 +475,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       else if (apiRef.current?.hasMaximizedGroup() && !panel.api.isMaximized())
         apiRef.current.exitMaximizedGroup();
       const descriptor = descriptorOf(panel);
-      if (notify || isEditorPanel(descriptor))
+      if (!restoring.current && (notify || isEditorPanel(descriptor)))
         current.current.onActiveContext?.(
           descriptor.kind === 'context' ? descriptor.view : 'files',
         );
@@ -599,6 +604,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       return true;
     }
     useImperativeHandle(ref, () => ({
+      ready: () => apiRef.current !== null,
       openDocument,
       openContext: (view, reveal = false) => openContext(view, reveal),
       openGraph,
@@ -834,7 +840,12 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       narrow.current = width > 0 && width <= NARROW;
       setCompact(narrow.current);
       if (narrow.current && api.activePanel) api.activePanel.api.maximize();
-      openContext(current.current.selectedPanel ?? 'files');
+      restoring.current = true;
+      try {
+        openContext(current.current.selectedPanel ?? 'files');
+      } finally {
+        restoring.current = false;
+      }
       setDockApi(api);
       saveLayout();
       current.current.onReady?.();
@@ -842,7 +853,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function measure() {
       const api = apiRef.current;
       const width = host.current?.getBoundingClientRect().width ?? 0;
-      const next = width > 0 && width <= NARROW;
+      // A hidden dock (its panel tab unselected) measures nothing: it keeps the layout it shows
+      // when it is back, so that layout is on its first frame.
+      if (width === 0) return;
+      const next = width <= NARROW;
       if (!api || next === narrow.current) return;
       narrow.current = next;
       setCompact(next);
