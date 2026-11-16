@@ -1144,9 +1144,12 @@ function reinsRow(panel: HTMLElement | null | undefined) {
   );
 }
 
-/** The panel's run controls, by their words. */
-const control = (view: { panel: () => HTMLElement | null | undefined }, words: string) =>
-  [...(reinsRow(view.panel())?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+/**
+ * The open bar's run controls, by their words: on the line when it says nothing, else the
+ * panel's last row (composer-flow.md "활동 바").
+ */
+const control = (view: { bar: () => HTMLElement | null | undefined }, words: string) =>
+  [...(reinsRow(view.bar())?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
     (button) => button.textContent === words,
   );
 
@@ -1768,6 +1771,37 @@ it('says no last review while the flow waits for its next step, a person or a ro
     timeline: <span data-presence-label="execution:exec_editor">editor row</span>,
   });
   expect(role.bar()?.dataset.line).not.toBe('advisor');
+});
+
+// composer-flow.md "활동 바": open, with the role rows saying everything and the run row on screen,
+// the line has nothing of its own to say: the Reins controls stand on it, and the panel keeps no
+// row for them.
+it('puts the run controls on the open line when the rows say everything', async () => {
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(
+    model(
+      { live: true },
+      {
+        runStatus: 'running',
+        status: { state: 'hidden' } as ChatWidgetModel['plan']['status'],
+        choices: [],
+      },
+    ),
+    { ownActive: ownRun, rowShown: true },
+  );
+  await act(async () => view.toggle()?.click());
+  const reins = reinsRow(view.bar());
+  expect(view.line()?.contains(reins ?? null)).toBe(true);
+  expect(reinsRow(view.panel())).toBeUndefined();
+  // The rows are still in the panel; the line holds the name, Pause, Stop, then the toggle.
+  expect(view.panel()?.querySelector('[data-activity-role="exec_plan"]')).not.toBeNull();
+  expect(control(view, messages.Activity.pause)).toBeDefined();
+  expect(control(view, messages.Activity.stop)).toBeDefined();
+  expect(view.line()?.contains(view.toggle() ?? null)).toBe(true);
+  // Closed, the line has none; they fold away with the panel, out of reach.
+  await act(async () => view.toggle()?.click());
+  expect(reinsRow(view.line())).toBeUndefined();
+  expect(reinsRow(view.bar())?.closest('[inert]')).not.toBeNull();
 });
 
 it('offers no panel for an ended run with nothing to show in it, so no empty band is left', async () => {

@@ -1,12 +1,5 @@
-import { type PresenceKind, statusPresence, usePresenceWord } from '@corral/react';
-import {
-  AgentSteeringPlan,
-  Button,
-  focusRing,
-  fontWeights,
-  Meter,
-  Select,
-} from '@corral/react/design-kit';
+import { chipClass, type PresenceKind, statusPresence, usePresenceWord } from '@corral/react';
+import { AgentSteeringPlan, Button, fontWeights, Meter, Select } from '@corral/react/design-kit';
 import { ArrowRight, ChevronDown, FileDiff } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ComponentProps, type ReactNode, useId, useState } from 'react';
@@ -37,7 +30,10 @@ const CATEGORY_FILL: Record<string, string> = {
   instructions: 'bg-text/75',
   other: 'bg-text/45',
 };
-export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
+
+// The composer's chip control, one definition shared with the activity bar's Reins controls.
+export { chipClass };
+
 const number = (value: number) => value.toLocaleString();
 export const compactNumber = (value: number, locale: string) =>
   formatCount(value, locale, (short) =>

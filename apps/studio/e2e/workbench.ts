@@ -452,17 +452,26 @@ export async function openActivity(page: Page) {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The run controls in the open activity panel: the row named Reins. */
+/**
+ * The run controls of the open activity bar, named Reins: on the bar's line when it has nothing
+ * else to say, else the panel's last row.
+ */
 export const runControls = (page: Page) =>
   activityBar(page).getByRole('region', { name: 'Reins', exact: true });
 
+/** Stop in Send's place: there while the run goes and nothing is written. */
+export const sendPlaceStop = (page: Page) => page.getByTestId('composer-stop');
+
 /**
- * Stops the session's run from the activity panel. Stop asks first only while two or more
- * executions work (composer-flow.md "활동 바"); when it asks, this confirms.
+ * Stops the session's run. Stop stands in one place (composer-flow.md "활동 바"): Send's place
+ * while nothing is written, the open bar's Reins controls while something is. Stop asks first
+ * only while two or more executions work; when it asks, this confirms.
  */
 export async function stopRun(page: Page) {
-  await openActivity(page);
-  await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
+  if ((await requestBox(page).inputValue()).trim()) {
+    await openActivity(page);
+    await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
+  } else await sendPlaceStop(page).click();
   const dialog = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
   const asked = await dialog
     .waitFor({ state: 'visible', timeout: 2_000 })

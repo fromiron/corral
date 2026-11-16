@@ -16,6 +16,7 @@ export { CommandReceipts } from './components/CommandReceipts.tsx';
 export { ContinueDecisions, isContinueDecision } from './components/ContinueDecisions.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
 export { CorralSymbol, CorralWordmark } from './components/CorralLogo.tsx';
+export { chipClass } from './components/chip.ts';
 export { EmptyView, type EmptyViewAction } from './components/EmptyView.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {

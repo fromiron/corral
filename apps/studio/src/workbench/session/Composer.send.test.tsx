@@ -1421,6 +1421,76 @@ describe('the activity bar', () => {
   });
 });
 
+// composer-flow.md "활동 바": Stop stands in one place. While Send's place is Stop (nothing
+// written), the open bar's Reins group has no Stop; once something is written, Send's place is
+// Send and the Reins group carries Stop. Never two, never none.
+describe('one Stop', () => {
+  const openBar = async (container: HTMLElement) =>
+    act(async () => container.querySelector<HTMLButtonElement>('[data-activity-toggle]')?.click());
+  const barButton = (container: HTMLElement, words: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('[data-activity-bar] button')].filter(
+      (button) => button.textContent === words,
+    );
+  const stops = (container: HTMLElement) => ({
+    slot: container.querySelectorAll('[data-testid="composer-stop"]').length,
+    reins: barButton(container, messages.Activity.stop).length,
+  });
+
+  it('has Stop only in Send’s place while nothing is written', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    expect(barButton(f.container, messages.Activity.pause)).toHaveLength(1);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('moves Stop to the Reins group once something is written, and back when it is cleared', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await f.type('Keep going');
+    expect(stops(f.container)).toEqual({ slot: 0, reins: 1 });
+    expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    await f.type('');
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('stops through the same path from the Reins group', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await f.type('Keep going');
+    await act(async () => barButton(f.container, messages.Activity.stop)[0]?.click());
+    const cancels = f.sendCommand.mock.calls.filter(
+      ([command]) => (command as { type?: string }).type === 'cancel',
+    );
+    expect(cancels).toHaveLength(1);
+  });
+
+  it('while the run’s record is read: Send’s place is Stop with nothing written', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await openBar(f.container);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('keeps Stop in Send’s place for a draft of attachments alone, as Send’s place does', async () => {
+    writeComposerDraft('session', {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [NOTE],
+    } as never);
+    const f = await mount();
+    await openBar(f.container);
+    expect(f.container.textContent).toContain(NOTE.name);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+});
+
 // features/composer-flow.md "합류 대상": images and references ride a new request and a next
 // request; a join or an interrupt leaves them in the box with one line.
 const IMAGE: ImageAttachment = {

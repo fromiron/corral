@@ -226,8 +226,9 @@ test('no screen explains one term in two places', async ({ page }) => {
 });
 
 /**
- * The control row's box and the Pause and Stop buttons' boxes: nothing in the row moves when its
- * explanation opens or closes (features/term-hints.md).
+ * The control row's box and the Pause button's box: nothing in the row moves when its
+ * explanation opens or closes (features/term-hints.md). Nothing is written, so Stop is Send's
+ * place and not in the row (composer-flow.md "활동 바").
  */
 async function rowBoxes(row: Locator) {
   const box = async (locator: Locator) => {
@@ -237,7 +238,6 @@ async function rowBoxes(row: Locator) {
   return {
     row: await box(row),
     pause: await box(row.getByRole('button', { name: en.Activity.pause, exact: true })),
-    stop: await box(row.getByRole('button', { name: en.Activity.stop, exact: true })),
   };
 }
 
@@ -268,7 +268,8 @@ test('the open activity panel names its control row Reins, explained once', asyn
       return JSON.stringify(closed) === JSON.stringify(previous);
     })
     .toBe(true);
-  expect(closed.pause && closed.stop).toBeTruthy();
+  expect(closed.pause).toBeTruthy();
+  await expect(row.getByRole('button', { name: en.Activity.stop, exact: true })).toHaveCount(0);
   await icon.hover();
   await expect(popup(page)).toBeVisible();
   await expect(popup(page).locator('[data-term-meaning]')).toHaveText(en.Terms.reins.meaning);
