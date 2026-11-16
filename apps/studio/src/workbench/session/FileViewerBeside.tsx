@@ -68,22 +68,11 @@ export function useFileViewerPlacement(
   const tdock = useTranslations('Docking');
   const openLabel = tdock('openFileViewer');
   const closeLabel = tdock('closeFileViewer');
+  // Giving way or closing hides the viewer: focus inside it would fall to the page, so the top
+  // bar's button takes it. Closing from the bar's own button, or from elsewhere, leaves focus be.
   useLayoutEffect(() => {
-    if (state !== 'away') return;
-    const focused = document.activeElement;
-    if (!(focused instanceof HTMLElement) || !aside.current?.contains(focused)) return;
-    // Focus would fall to the page with the viewer: the top bar's button brings it back. A bar
-    // folded into its more menu has that button in the menu.
-    const buttons = [...(actions?.querySelectorAll<HTMLElement>('button') ?? [])];
-    const target =
-      buttons.find((button) => {
-        const label = button.getAttribute('aria-label');
-        return label === openLabel || label === closeLabel;
-      }) ??
-      buttons.findLast((button) => button.getAttribute('aria-haspopup') === 'menu') ??
-      row.current?.querySelector<HTMLElement>(
-        'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
-      );
+    if (state !== 'away' && state !== 'closed') return;
+    const target = focusOutOfViewer(aside.current, row.current, actions, [openLabel, closeLabel]);
     target?.focus();
   }, [state, actions, openLabel, closeLabel]);
   return {
@@ -98,6 +87,31 @@ export function useFileViewerPlacement(
     row,
     aside,
   };
+}
+
+/**
+ * Where focus inside the hidden viewer goes, or null when focus is not in it: the top bar's viewer
+ * button, found by its labels; in a bar folded into its more menu, that menu; else the work area.
+ */
+function focusOutOfViewer(
+  viewer: HTMLElement | null,
+  row: HTMLElement | null,
+  actions: HTMLElement | null,
+  labels: readonly string[],
+): HTMLElement | null {
+  const focused = document.activeElement;
+  if (!(focused instanceof HTMLElement) || !viewer?.contains(focused)) return null;
+  const buttons = [...(actions?.querySelectorAll<HTMLElement>('button') ?? [])];
+  return (
+    buttons.find((button) => labels.includes(button.getAttribute('aria-label') ?? '')) ??
+    buttons.findLast((button) => button.getAttribute('aria-haspopup') === 'menu') ??
+    [
+      ...(row?.querySelectorAll<HTMLElement>(
+        'button, [href], input, textarea, select, [tabindex]:not([tabindex="-1"])',
+      ) ?? []),
+    ].find((element) => !viewer.contains(element)) ??
+    null
+  );
 }
 
 /** The work area with the viewer beside it, or the viewer in its place. */

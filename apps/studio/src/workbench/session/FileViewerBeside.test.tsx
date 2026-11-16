@@ -337,6 +337,62 @@ it('focus outside the viewer stays where it is when the viewer gives way', async
   expect(document.activeElement).toBe(draft());
 });
 
+/** Focuses and presses, as a person's click or Enter on a focusable button does. */
+const press = (element: HTMLElement | null | undefined) =>
+  act(() => {
+    element?.focus();
+    element?.click();
+  });
+
+it("closing with the viewer's own X from beside moves focus to the top bar button", async () => {
+  await mount({ wanted: { project: true }, width: 1200 });
+  await press(closeInViewer());
+  expect(shown()).toBe('conversation only');
+  expect(document.activeElement).toBe(viewerButton());
+});
+
+it("closing with the viewer's own X while it covers moves focus to the top bar button", async () => {
+  await mount({ width: 800 });
+  await click(viewerButton());
+  expect(shown()).toBe('covering');
+  await press(closeInViewer());
+  expect(shown()).toBe('conversation only');
+  expect(document.activeElement).toBe(viewerButton());
+});
+
+it('closing by a key press from inside the viewer moves focus to the top bar button', async () => {
+  await mount({ wanted: { project: true }, width: 1200 });
+  act(() => aside()?.querySelector('input')?.focus());
+  // The shortcut closes without moving focus first.
+  await click(viewerButton());
+  expect(shown()).toBe('conversation only');
+  expect(document.activeElement).toBe(viewerButton());
+});
+
+it("closing inside a folded bar's viewer moves focus to the more menu", async () => {
+  await mount({ wanted: { project: true }, width: 1200, folded: true });
+  await press(closeInViewer());
+  expect(document.activeElement).toBe(
+    document.querySelector('button[aria-label="Actions for Session"]'),
+  );
+});
+
+it('closing with the top bar button leaves focus on it', async () => {
+  await mount({ wanted: { project: true }, width: 1200 });
+  await press(viewerButton());
+  expect(shown()).toBe('conversation only');
+  expect(document.activeElement).toBe(viewerButton());
+});
+
+it('closing while focus is in the composer leaves focus there', async () => {
+  await mount({ wanted: { project: true }, width: 1200 });
+  act(() => draft()?.focus());
+  // The shortcut closes from wherever focus is.
+  await click(viewerButton());
+  expect(shown()).toBe('conversation only');
+  expect(document.activeElement).toBe(draft());
+});
+
 it('one state per measured width: the same width again changes nothing', async () => {
   const page = await mount({ wanted: { project: true }, width: 1200 });
   const settled = page.commits();
