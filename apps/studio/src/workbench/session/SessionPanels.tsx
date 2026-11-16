@@ -2,7 +2,7 @@ import { ApiError } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunSummary, type WorkSession } from '@corral/core';
-import { runResults } from '@corral/react';
+import { PresenceLabel, runResults } from '@corral/react';
 import { Button, EmptyState } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
@@ -17,6 +17,7 @@ import type { AttachmentCapture } from '../context/bridge.ts';
 import { panelRunId } from '../panelRun.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { summary } from '../runIdentity.ts';
+import { listedRunPresence } from '../sessionList.ts';
 import { TopbarCrumb } from '../TopbarSlot.tsx';
 
 // Side panes of a session: the run detail, its results and its checks.
@@ -24,12 +25,15 @@ import { TopbarCrumb } from '../TopbarSlot.tsx';
 /** Run detail in the side panel: the chosen run (newest by default) with its own views. */
 export function RunPanel({
   runs,
+  active,
   listed,
   entries,
   search,
   setSearch,
 }: {
   runs: RunSummary[];
+  /** The session's run still going, as the composer reads it; null when none goes. */
+  active: RunSummary | null;
   /** The run list has answered for the current selection. */
   listed: boolean;
   /** The session's turns: the request that started a run is its title. */
@@ -40,6 +44,27 @@ export function RunPanel({
   const tw = useTranslations('Workbench');
   const runId = panelRunId(runs, search.run, listed);
   const names = useRunNames(runs, entries);
+  const panel = useRef<HTMLDivElement>(null);
+  // The run the line above a past run's header moved to: its title takes focus once it shows.
+  const arriving = useRef<string | null>(null);
+  useEffect(() => {
+    if (!runId || arriving.current !== runId) return;
+    let frame = 0;
+    let frames = 0;
+    // The run's record may still be opening; its title comes with its header.
+    const look = () => {
+      const title = panel.current?.querySelector<HTMLElement>('[data-run-title]');
+      if (title || ++frames > 60) {
+        arriving.current = null;
+        // Only focus the control left with the past run took to the page.
+        if (document.activeElement === document.body) title?.focus({ preventScroll: true });
+        return;
+      }
+      frame = requestAnimationFrame(look);
+    };
+    frame = requestAnimationFrame(look);
+    return () => cancelAnimationFrame(frame);
+  }, [runId]);
   if (!runId)
     return (
       <div className="grid h-full place-items-center p-6">
@@ -53,28 +78,31 @@ export function RunPanel({
     );
   // A fallback run must not inherit the selection made inside the run that has gone.
   const own = search.run === undefined || search.run === runId;
+  // Another run starts at its own default view, from the path's run menu or the line below.
+  const showRun = (value: string) =>
+    setSearch({
+      run: value,
+      atSeq: undefined,
+      execution: undefined,
+      artifact: undefined,
+      view: undefined,
+      result: undefined,
+    });
+  // While a past run shows and another run of the session goes, the header says which, once
+  // (features/execution-monitor.md). A run still going is not a past run.
+  const shown = runs.find((run) => run.runId === runId);
+  const elsewhere =
+    active && shown && active.runId !== runId && TERMINAL_RUN_STATUSES.has(shown.status)
+      ? active
+      : null;
   return (
-    <div className="flex h-full min-h-0 flex-1 flex-col">
+    <div ref={panel} className="flex h-full min-h-0 flex-1 flex-col">
       {search.panel === 'run' ? (
         <TopbarCrumb>
           <span aria-hidden="true" className="text-muted-foreground/50">
             /
           </span>
-          <RunMenu
-            runs={runs}
-            runId={runId}
-            names={names}
-            onSelect={(value) =>
-              setSearch({
-                run: value,
-                atSeq: undefined,
-                execution: undefined,
-                artifact: undefined,
-                view: undefined,
-                result: undefined,
-              })
-            }
-          />
+          <RunMenu runs={runs} runId={runId} names={names} onSelect={showRun} />
         </TopbarCrumb>
       ) : null}
       <div className="min-h-0 flex-1">
@@ -84,6 +112,18 @@ export function RunPanel({
           runId={runId}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
+          }
+          lead={
+            elsewhere ? (
+              <ActiveRunLine
+                run={elsewhere}
+                number={runs.findIndex((run) => run.runId === elsewhere.runId) + 1}
+                onShowActiveRun={() => {
+                  arriving.current = elsewhere.runId;
+                  showRun(elsewhere.runId);
+                }}
+              />
+            ) : null
           }
           embedded
           search={
@@ -102,6 +142,37 @@ export function RunPanel({
           setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The session's run going, told above a past run's header: its number, its state, and the way to
+ * it. A quiet line, as the header's other one-line states are, not a warning.
+ */
+function ActiveRunLine({
+  run,
+  number,
+  onShowActiveRun,
+}: {
+  run: RunSummary;
+  number: number;
+  onShowActiveRun: () => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const tr = useTranslations('RunPage');
+  return (
+    <div
+      data-testid="run-active-elsewhere"
+      className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+    >
+      <span className="flex min-w-0 items-center gap-2 text-caption text-muted-foreground">
+        <span className="whitespace-nowrap">{tw('runNumber', { number })}</span>
+        <PresenceLabel presence={listedRunPresence(run)} />
+      </span>
+      <Button variant="tertiary" size="compact" className="shrink-0" onClick={onShowActiveRun}>
+        {tr('viewActiveRun')}
+      </Button>
     </div>
   );
 }

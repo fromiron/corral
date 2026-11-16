@@ -39,19 +39,6 @@ const CATEGORY_FILL: Record<string, string> = {
 };
 export const chipClass = `inline-flex min-h-7 pointer-coarse:min-h-11 min-w-0 max-w-full items-center gap-1.5 rounded-full px-2.5 text-caption text-muted-foreground transition-colors hover:bg-subtle hover:text-foreground ${focusRing}`;
 const number = (value: number) => value.toLocaleString();
-/**
- * "Last run" for the newest finished run, whose turn already links it by number; an older one
- * names its position (#72).
- */
-export function viewedLabel(
-  viewed: NonNullable<ChatWidgetModel['viewed']>,
-  t: ReturnType<typeof useTranslations<'Widgets'>>,
-) {
-  if (viewed.latest && viewed.number) return t('lastRun');
-  return viewed.number
-    ? t('selectedRun', { number: viewed.number, total: viewed.total })
-    : t('selectedRunUnordered');
-}
 export const compactNumber = (value: number, locale: string) =>
   formatCount(value, locale, (short) =>
     short >= 1000 ? `${(short / 1000).toFixed(short < 10_000 ? 1 : 0)}k` : number(short),
@@ -162,11 +149,7 @@ export function ContextDetail({ model }: { model: ChatWidgetModel }) {
           </span>
         </div>
         <p className="mt-1.5 break-words text-caption text-muted-foreground">
-          {[
-            model.viewed ? viewedLabel(model.viewed, t) : t('rail'),
-            context.roleLabel,
-            context.modelLabel,
-          ]
+          {[model.lastRun ? t('lastRun') : t('rail'), context.roleLabel, context.modelLabel]
             .filter(Boolean)
             .join(' · ')}
         </p>
@@ -525,7 +508,7 @@ export function unansweredAttention(model: ChatWidgetModel | null) {
   if (!model?.runId || !model.action.visible || model.action.needsUser) return false;
   return !(
     model.action.summary === 'failure' &&
-    (model.action.completedWithFailures || model.viewed?.latest)
+    (model.action.completedWithFailures || model.lastRun)
   );
 }
 

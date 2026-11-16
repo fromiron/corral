@@ -123,9 +123,8 @@ it('adds the count beside the first question and reads a body it does not have y
 const waitingOnQuestion = {
   sessionId: 'session_chat',
   runId: 'run_chat',
-  runNumber: 1,
   live: true,
-  viewed: null,
+  lastRun: false,
   readState: 'ready',
   chips: [],
   tools: [],
@@ -199,7 +198,6 @@ async function dock(tray: PendingTrayStore) {
             onStop={vi.fn()}
             onPause={vi.fn()}
             onResume={vi.fn()}
-            viewingOther={false}
           />
         </PendingTrayContext.Provider>
       </IntlProvider>,

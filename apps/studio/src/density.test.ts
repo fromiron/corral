@@ -146,6 +146,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /ref=\{detailsButton\}/ },
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /run-respond/ },
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /onOpenExecution\(failedExecution\)/ },
+  // The line above a past run's header leads to the run going with the header's own size.
+  { file: 'apps/studio/src/workbench/session/SessionPanels.tsx', near: /onShowActiveRun/ },
   // An approval's decision row: the kit permission card and the kit AgentRun side panel's
   // approval card keep Reject and Approve compact.
   { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /<SizeScope size="compact">/ },

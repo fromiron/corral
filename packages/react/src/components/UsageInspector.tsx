@@ -23,6 +23,7 @@ import { estimateRunCost, type ModelPrices } from '../run/cost.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
 import { usageByAgent } from '../run/usage-by-agent.ts';
+import { reportedInput } from '../run/usage-input.ts';
 
 // Runs have no usage budget (product contract §9): this shows what was used, never a limit.
 
@@ -46,6 +47,8 @@ export function UsageInspector({
   const nameOf = useAgentName(definition);
   if (!projection || !definition) return null;
   const totals = usageTotals(projection);
+  // Read as the Overview's usage detail reads it (chat-widgets-contract.md).
+  const { input, inputUnreported } = reportedInput(projection);
   const limits = projection.limits ?? definition.limits;
   const usd = (micros: number) =>
     format.number(micros / 1_000_000, {
@@ -110,6 +113,26 @@ export function UsageInspector({
           <dd>{t('tokens', { count: totals.outputTokens })}</dd>
           <dt>{t('requests')}</dt>
           <dd>{totals.requests}</dd>
+          {input ? (
+            <>
+              <dt>{t('inputTokens')}</dt>
+              <dd>{t('tokens', { count: input.tokens })}</dd>
+              <dt>{t('cachedInput')}</dt>
+              <dd>
+                {input.cached == null
+                  ? t('cacheNotReported')
+                  : input.cacheShare == null
+                    ? t('tokens', { count: input.cached })
+                    : t('cachedShare', {
+                        tokens: format.number(input.cached),
+                        share: format.number(input.cacheShare, {
+                          style: 'percent',
+                          maximumFractionDigits: 0,
+                        }),
+                      })}
+              </dd>
+            </>
+          ) : null}
           {totals.inFlight > 0 ? (
             <>
               <dt>{t('inFlight')}</dt>
@@ -139,6 +162,15 @@ export function UsageInspector({
             {spawns} / {limits.maxSpawns}
           </dd>
         </dl>
+        {inputUnreported > 0 || (input && input.cached != null && input.cacheUnreported > 0) ? (
+          <div className="flex flex-col gap-1 text-muted-foreground">
+            {/* Calls that did not report a figure, never counted as zero. */}
+            {inputUnreported > 0 ? <p>{t('inputUnreported', { count: inputUnreported })}</p> : null}
+            {input && input.cached != null && input.cacheUnreported > 0 ? (
+              <p>{t('cacheUnreported', { count: input.cacheUnreported })}</p>
+            ) : null}
+          </div>
+        ) : null}
         {prices ? (
           <p data-testid="cost-estimate" className="text-muted-foreground">
             {costText()}

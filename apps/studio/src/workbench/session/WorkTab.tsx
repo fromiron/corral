@@ -62,7 +62,7 @@ export function WorkTab({
   runs,
   active,
   liveRunId,
-  selectedRunId,
+  inspectedRunId,
   onChange,
   sessionReads = NO_READS,
   runsListed = true,
@@ -76,8 +76,10 @@ export function WorkTab({
   corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
+  /** The run the conversation presents while it goes: the conversation follows it. */
   liveRunId: string | null;
-  selectedRunId: string | null;
+  /** The run the run record shows while it is the open tab; null on any other tab. */
+  inspectedRunId: string | null;
   onChange: () => void;
   /** The session reads: the number of the latest one back, and of the latest one asked for. */
   sessionReads?: { read: number; started: () => number };
@@ -243,16 +245,14 @@ export function WorkTab({
           composer={
             <Composer
               key={session.sessionId}
-              // The run view showing the running run asks its own confirmation.
-              runControlsOwnConfirmation={
-                currentSearch.panel === 'run' && selectedRunId === active?.runId
-              }
+              // The run record showing the running run asks its own confirmation; showing any
+              // other run, its header has no Stop, so the composer asks.
+              runControlsOwnConfirmation={Boolean(active) && inspectedRunId === active?.runId}
               session={session}
               team={team}
               corrals={corrals}
               runs={runs}
               active={active}
-              selectedRunId={selectedRunId}
               onViewRun={(run, execution) =>
                 onPanel('run', { run, ...(execution ? { execution } : {}) })
               }

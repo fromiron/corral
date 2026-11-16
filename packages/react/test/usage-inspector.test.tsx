@@ -114,6 +114,66 @@ describe('UsageInspector', () => {
   });
 });
 
+// Run info › Usage reads a run's reported input as the Overview's usage detail does
+// (chat-widgets-contract.md, features/execution-monitor.md): finished calls only, the cache share
+// over calls that reported both, and an unreported figure never counted as zero.
+describe('UsageInspector input and cached input', () => {
+  const reported = (
+    modelCallId: string,
+    inputTokens: number | null,
+    cachedInputTokens: number | null,
+    finished = true,
+  ) =>
+    ({
+      ...call(modelCallId, 10, finished),
+      usage: { outputTokens: 10, inputTokens, cachedInputTokens },
+    }) as RunProjection['modelCalls'][string];
+  const showCalls = (...calls: RunProjection['modelCalls'][string][]) => {
+    const p = emptyProjection('run_input');
+    p.executions.exec_writer = { nodeId: 'writer', status: 'succeeded' } as never;
+    for (const item of calls) p.modelCalls[item.modelCallId] = item;
+    show(p);
+  };
+  const value = (label: string) => screen.getByText(label).nextElementSibling;
+
+  it('sums the reported input of finished calls with its cached part and share', () => {
+    // A call still going is left out: its usage is not final.
+    showCalls(reported('a', 2_000, 1_500), reported('b', 1_000, 0), reported('c', 999, 999, false));
+    expect(value('Reported input tokens')).toHaveTextContent('3,000');
+    expect(value('Cached input')).toHaveTextContent('1,500 (50%)');
+    expect(screen.queryByText(/did not report/)).not.toBeInTheDocument();
+  });
+
+  it('has no input total when no call reported input, and says how many did not', () => {
+    showCalls(reported('a', null, null), reported('b', null, null));
+    expect(screen.queryByText('Reported input tokens')).not.toBeInTheDocument();
+    expect(screen.queryByText('Cached input')).not.toBeInTheDocument();
+    expect(screen.getByText('2 completed calls did not report input tokens')).toBeInTheDocument();
+  });
+
+  it('counts calls that did not report input apart from the known total', () => {
+    showCalls(reported('a', 2_000, 500), reported('b', null, null));
+    expect(value('Reported input tokens')).toHaveTextContent('2,000');
+    expect(value('Cached input')).toHaveTextContent('500 (25%)');
+    expect(screen.getByText('1 completed call did not report input tokens')).toBeInTheDocument();
+  });
+
+  it('says cached input was not reported instead of zero when no call reported it', () => {
+    showCalls(reported('a', 2_000, null), reported('b', 1_000, null));
+    expect(value('Reported input tokens')).toHaveTextContent('3,000');
+    expect(value('Cached input')).toHaveTextContent('Not reported');
+    expect(value('Cached input')).not.toHaveTextContent('0');
+  });
+
+  it('takes the share over the calls that reported both and names the others', () => {
+    showCalls(reported('a', 2_000, 500), reported('b', 1_000, null));
+    expect(value('Reported input tokens')).toHaveTextContent('3,000');
+    // 500 of the 2,000 input of the one call that reported both.
+    expect(value('Cached input')).toHaveTextContent('500 (25%)');
+    expect(screen.getByText('1 call did not report cached input')).toBeInTheDocument();
+  });
+});
+
 // Run-level usage is read in one place, Run info › Usage, with a split by agent that adds up to
 // the run's own totals (docs/specs/features/execution-monitor.md, run-stats.md: unreported usage is
 // no information, never zero).

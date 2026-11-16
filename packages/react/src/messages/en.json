@@ -759,7 +759,8 @@
     "steps": "Steps",
     "forkFailed": "Could not start: {message}",
     "runName": "#{number} · {name}",
-    "sessionLookupFailed": "Could not check which conversation this run belongs to, so it opens on its own page."
+    "sessionLookupFailed": "Could not check which conversation this run belongs to, so it opens on its own page.",
+    "viewActiveRun": "View active run"
   },
   "Timeline": {
     "heading": "Events",
@@ -1063,7 +1064,13 @@
     "reportedOutput": "Reported output",
     "requestCount": "Requests",
     "noInformation": "No information",
-    "outsideAgents": "Outside agent executions"
+    "outsideAgents": "Outside agent executions",
+    "inputTokens": "Reported input tokens",
+    "cachedInput": "Cached input",
+    "cachedShare": "{tokens} ({share})",
+    "cacheNotReported": "Not reported",
+    "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
+    "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -2468,8 +2475,6 @@
       "unavailable": "Unavailable model",
       "onOnly": "On"
     },
-    "viewingOtherRun": "Viewing Run #{viewed} while Run #{active} is active.",
-    "viewActiveRun": "View active run",
     "destination": {
       "next": "Send to: new run in this conversation · next request",
       "queue": "Send to: after the current run in this conversation · next request",
@@ -3897,8 +3902,6 @@
     "contextRefresh": "Previous request, waiting for a new measurement",
     "simulatedNote": "Simulated figure. This is not a provider measurement.",
     "lastRun": "Last run",
-    "selectedRun": "Selected run · Run #{number} of {total}",
-    "selectedRunUnordered": "Selected run",
     "rail": "This run",
     "agentsHeading": "Agents",
     "agents": "{total, plural, one {# agent} other {# agents}}{working, plural, =0 {} other {, # working}}",
@@ -4015,14 +4018,6 @@
       "openChanges": "Open the changes",
       "spent": "Reported output tokens",
       "modelCalls": "Model calls",
-      "inputTokens": "Reported input tokens",
-      "cachedInput": "Cached input",
-      "cachedShare": "{tokens} ({share})",
-      "cacheNotReported": "Not reported",
-      "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
-      "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
-      "runScope": "Selected run · Run #{number}",
-      "selectedRun": "Selected run",
       "simulatedUsage": "Simulation usage; not a provider measurement or bill.",
       "unknownUsage": "{count, plural, one {# request did not report usage} other {# requests did not report usage}}",
       "openRun": "Open the run"
@@ -4620,7 +4615,6 @@
     "tools": "Tasks & preview",
     "openActiveRun": "Open run",
     "activeRunTarget": "Request: {request}",
-    "activeRunNotViewed": "Pause and stop apply to this run, not the one you are viewing.",
     "runDisconnected": "Run connection lost; its state is unconfirmed.",
     "layoutControls": "Arrange panes",
     "savedLayout": "Custom layout",

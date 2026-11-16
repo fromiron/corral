@@ -10,8 +10,8 @@ import {
   actionRequired,
   activityLine,
   presentContext,
+  presentsLastRun,
   usageSummary,
-  viewedRun,
 } from '../../../../apps/studio/src/workbench/widgets/selectors.ts';
 import type { ChatWidgetModel } from '../../../../apps/studio/src/workbench/widgets/useChatWidgets.tsx';
 
@@ -31,8 +31,11 @@ function fixture(live = true): ChatWidgetModel {
     sessionId: 'overview_story_session',
     runId: projection.runId,
     live,
-    viewed: viewedRun({ runIds: [projection.runId], presentationRunId: projection.runId, live }),
-    runNumber: 1,
+    lastRun: presentsLastRun({
+      runIds: [projection.runId],
+      presentationRunId: projection.runId,
+      live,
+    }),
     failedExecutionId: null,
     simulated: true,
     readState: 'ready',
