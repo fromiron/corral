@@ -202,6 +202,8 @@ async function mount(
   host?: { sessionId: string; respond: () => void },
   /** A run that already recorded executions, read in a screen language. */
   recorded?: { projection: RunProjection; locale: 'en' | 'ko' },
+  /** The line a session puts above the header's own. */
+  lead?: ReactNode,
 ) {
   // jsdom has no layout; pointer and resize behavior is checked in the browser.
   vi.stubGlobal(
@@ -249,6 +251,7 @@ async function mount(
         runId={projection.runId}
         {...(request ? { request } : {})}
         {...(host ? { embedded: true, sessionId: host.sessionId } : {})}
+        {...(lead ? { lead } : {})}
         search={selection}
         setSearch={(patch, options) => {
           navigations.push({ patch, options });
@@ -326,6 +329,32 @@ async function populateGraph(run: RunSessionStore, executions: ExecutionView[]) 
     }),
   );
 }
+
+it("puts the session's line above the header's own title row, inside the run header", async () => {
+  const lead = <p data-testid="lead-line">Run #2</p>;
+  const host = { sessionId: 'session_layout', respond: () => {} };
+  const { container } = await mount(
+    'inline_team',
+    null,
+    { view: 'run' },
+    'Past request',
+    false,
+    ['worker'],
+    undefined,
+    host,
+    undefined,
+    lead,
+  );
+  const header = container.querySelector('[data-testid="run-header"]');
+  const line = header?.querySelector('[data-testid="lead-line"]');
+  expect(line).not.toBeNull();
+  // First in the header, before the title and the controls.
+  expect(header?.firstElementChild).toBe(line);
+  const title = header?.querySelector('[data-run-title]') as Node;
+  expect(
+    (line?.compareDocumentPosition(title) ?? 0) & Node.DOCUMENT_POSITION_FOLLOWING,
+  ).toBeTruthy();
+});
 
 it('workspace opens the graph first and keeps the empty inspector closed even on wide screens', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);

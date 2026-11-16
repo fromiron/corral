@@ -128,10 +128,13 @@ export function RunDetail({
   embedded = false,
   sessionId = null,
   request = null,
+  lead = null,
 }: {
   sessionId?: string | null;
   /** The request that started the run, when the caller knows it: the run's title. */
   request?: string | null;
+  /** A line the caller puts above the header's own (a session's run going elsewhere). */
+  lead?: ReactNode;
   runId: string;
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
@@ -207,6 +210,7 @@ export function RunDetail({
       definition={definition}
       sessionId={sessionId ?? (recordSession?.runId === runId ? recordSession.sessionId : null)}
       request={request}
+      lead={lead}
       search={search}
       setSearch={setSearch}
       embedded={embedded}
@@ -230,10 +234,12 @@ function RunWorkspace({
   setSearch,
   embedded,
   request,
+  lead,
   notice,
 }: {
   runId: string;
   request: string | null;
+  lead: ReactNode;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -580,6 +586,7 @@ function RunWorkspace({
         session={session}
         definition={definition}
         request={request}
+        lead={lead}
         waiting={responseShown ? 0 : pending}
         onRespond={() => {
           if (respondElsewhere) {
@@ -1065,6 +1072,7 @@ function RunHeader({
   session,
   definition,
   request,
+  lead,
   trailing,
   waiting = 0,
   onRespond,
@@ -1074,6 +1082,8 @@ function RunHeader({
   session: RunSessionStore;
   definition: CorralDefinition;
   request: string | null;
+  /** One line above the header's own, from the caller. */
+  lead?: ReactNode;
   trailing?: ReactNode;
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
@@ -1132,6 +1142,7 @@ function RunHeader({
       aria-label={t('summary')}
       className="@container/run-head max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-2"
     >
+      {lead}
       {/* One line on a wide header. On a narrow one the title, its state and clock keep the
           first line and the controls take the next, instead of leaving the screen. */}
       <div className="flex min-h-9 min-w-0 items-center gap-x-3 gap-y-1 @max-[44rem]/run-head:flex-wrap">

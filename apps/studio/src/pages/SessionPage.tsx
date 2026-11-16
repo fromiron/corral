@@ -245,6 +245,7 @@ function WorkSessionPage() {
     run: () => (
       <RunPanel
         runs={runs}
+        active={active}
         listed={listed}
         entries={session.entries}
         search={search}
