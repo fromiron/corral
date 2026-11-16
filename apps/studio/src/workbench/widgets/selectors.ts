@@ -926,21 +926,17 @@ export function activityLine(input: {
 }
 
 /**
- * The finished run being looked at, and where it sits among the session's runs (#72 IA-13).
- * Only the newest one is the "last" run; an older choice is a selected run, never relabelled.
+ * Whether the conversation presents the session's last run, ended: the widgets say "last run"
+ * for it (chat-widgets-contract.md 3.1). The conversation presents no other ended run, whatever
+ * the address selects; a run the session does not list yet has no known place and is not called
+ * the last.
  */
-export function viewedRun(input: {
+export function presentsLastRun(input: {
   runIds: readonly string[];
   presentationRunId: string | null;
   live: boolean;
-}): { latest: boolean; number: number; total: number } | null {
-  if (!input.presentationRunId || input.live) return null;
-  const index = input.runIds.indexOf(input.presentationRunId);
-  // A run the session does not list (started elsewhere) has no known order.
-  if (index === -1) return { latest: false, number: 0, total: input.runIds.length };
-  return {
-    latest: index === input.runIds.length - 1,
-    number: index + 1,
-    total: input.runIds.length,
-  };
+}): boolean {
+  return Boolean(
+    input.presentationRunId && !input.live && input.runIds.at(-1) === input.presentationRunId,
+  );
 }

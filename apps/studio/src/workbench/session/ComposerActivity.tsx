@@ -20,7 +20,6 @@ import {
   ComposerPlan,
   RunLink,
   unansweredAttention,
-  viewedLabel,
 } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
@@ -56,7 +55,6 @@ export function ComposerActivity({
   revealRun,
   notice = null,
   request,
-  viewingOther,
 }: {
   sessionId: string;
   /** The session's run still going, or null. */
@@ -83,8 +81,6 @@ export function ComposerActivity({
   notice?: string | null;
   /** The request that started the running run. */
   request?: string;
-  /** Another run than the running one is presented. */
-  viewingOther: boolean;
 }) {
   const t = useTranslations('Activity');
   const tp = useTranslations('Presence');
@@ -123,19 +119,20 @@ export function ComposerActivity({
     plan && model?.plan.selectedChoice?.live && !open
       ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
       : null;
-  const viewed = model?.runId && !run?.live && model.viewed ? viewedLabel(model.viewed, tw) : null;
+  // An ended run it presents is the session's last run, and the line says so.
+  const lastRun = model?.runId && !run?.live && model.lastRun ? tw('lastRun') : null;
   const changes = Boolean(
     model?.runId &&
       model.chips.includes('changes') &&
       (model.changesLabel === 'error' || model.changeFiles !== 0),
   );
   const parts =
-    viewed || counted || changes ? (
+    lastRun || counted || changes ? (
       <>
-        {viewed ? (
+        {lastRun ? (
           // The run's place leaves with the dot after it.
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap @max-2xl/composer-surface:hidden">
-            {viewed}
+            {lastRun}
             {counted || changes ? <MetaDot /> : null}
           </span>
         ) : null}
@@ -419,18 +416,9 @@ export function ComposerActivity({
                 onPause,
                 onResume,
                 onStop,
-                note: (
-                  <>
-                    {request ? (
-                      <span className="sr-only">{td('activeRunTarget', { request })}</span>
-                    ) : null}
-                    {viewingOther ? (
-                      <span role="note" className="sr-only">
-                        {td('activeRunNotViewed')}
-                      </span>
-                    ) : null}
-                  </>
-                ),
+                note: request ? (
+                  <span className="sr-only">{td('activeRunTarget', { request })}</span>
+                ) : null,
               }
             : undefined
         }

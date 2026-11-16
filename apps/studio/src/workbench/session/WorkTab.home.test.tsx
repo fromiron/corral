@@ -5,6 +5,8 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { sessionRunViews } from '../panelRun.ts';
+import { resolveSessionSearch } from '../panels/routes.ts';
 import { SessionChat } from './SessionChat.tsx';
 import type { SessionConnection } from './SessionConnection.tsx';
 import { WorkTab } from './WorkTab.tsx';
@@ -23,15 +25,27 @@ const fixture = vi.hoisted(() => ({
   workspaces: null as object | null,
   access: 'unknown' as 'unknown' | 'unlinked' | 'copy',
   search: {} as Record<string, unknown>,
+  retained: [] as string[],
+  opened: [] as string[],
 }));
 vi.mock('../../services.tsx', async () => {
   const { sessionStore } = await import('../../../../../packages/react/src/stories/fixtures.tsx');
   const store = sessionStore();
+  const open = store.getState().open;
+  store.setState({
+    open: (runId: string) => {
+      fixture.opened.push(runId);
+      return open(runId);
+    },
+  });
   return {
     useServices: () => ({
       runFor: () => store,
       sessionFor: () => store,
-      retainRun: () => () => {},
+      retainRun: (runId: string) => {
+        fixture.retained.push(runId);
+        return () => {};
+      },
       workspaces: fixture.workspaces,
     }),
   };
@@ -40,6 +54,9 @@ vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: nul
 vi.mock('../../router.tsx', () => ({ sessionRoute: { useSearch: () => fixture.search } }));
 vi.mock('../MeetingHandoff.tsx', () => ({ MeetingHandoffLinks: () => null }));
 vi.mock('../WorkFolderNotice.tsx', () => ({ useFolderAccess: () => fixture.access }));
+// The needed-now tray follows every run still going on its own; here only the conversation's
+// following of its presented run is read.
+vi.mock('./PendingTray.tsx', () => ({ PendingTray: () => null }));
 vi.mock('./SessionEntries.tsx', () => ({
   EntryCard: ({ entry }: { entry: SessionEntry }) => <p>{entry.text}</p>,
   RunCard: () => null,
@@ -74,6 +91,8 @@ beforeEach(() => {
   fixture.workspaces = null;
   fixture.access = 'unknown';
   fixture.search = {};
+  fixture.retained = [];
+  fixture.opened = [];
 });
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
@@ -101,12 +120,14 @@ async function show(
   {
     runs = [],
     active = null,
-    selectedRunId = null,
+    liveRunId = null,
+    inspectedRunId = null,
     onPlace,
   }: {
     runs?: RunSummary[];
     active?: RunSummary | null;
-    selectedRunId?: string | null;
+    liveRunId?: string | null;
+    inspectedRunId?: string | null;
     onPlace?: (message: string | undefined) => void;
   } = {},
 ) {
@@ -126,8 +147,8 @@ async function show(
           corrals={[]}
           runs={runs}
           active={active}
-          liveRunId={null}
-          selectedRunId={selectedRunId}
+          liveRunId={liveRunId}
+          inspectedRunId={inspectedRunId}
           onChange={() => {}}
           reference={null}
           onReferenceUsed={() => {}}
@@ -222,7 +243,7 @@ it('the session chat leaves a lost connection to the composer’s activity bar, 
           runs={[]}
           active={null}
           liveRunId={null}
-          selectedRunId={null}
+          inspectedRunId={null}
           onChange={() => {}}
           reference={null}
           onReferenceUsed={() => {}}
@@ -268,21 +289,63 @@ const asked = (runId: string): SessionEntry => ({
 });
 
 it.each([
-  ['the run view shows the running run', { panel: 'run' }, 'run_live', true],
-  ['the run view shows another run', { panel: 'run' }, 'run_old', false],
-  ['no run view is open', {}, 'run_live', false],
+  ['the run tab shows the active run', 'run_live', true],
+  ['the run tab shows a past run while another run is active', 'run_old', false],
+  // The newest run need not be the active one: a run tab with no run of its own shows the newest.
+  ['the run tab shows the newest run, ended, while an older one is active', 'run_new', false],
+  ['no run tab is open', null, false],
 ] as const)(
-  'leaves Stop’s confirmation to the run view only while %s',
-  async (_name, search, selected, owns) => {
-    fixture.search = search;
+  'leaves Stop’s confirmation to the run record only while %s',
+  async (_name, inspected, owns) => {
+    // The raw address says the run tab is open; only the inspected run decides.
+    fixture.search = { panel: 'run' };
     await show(session([asked('run_live')]), {
-      runs: [run('run_old'), run('run_live')],
+      runs: [run('run_old'), run('run_live'), { ...run('run_new'), status: 'succeeded' }],
       active: run('run_live'),
-      selectedRunId: selected,
+      liveRunId: 'run_live',
+      inspectedRunId: inspected,
     });
     expect(fixture.composer.at(-1)?.runControlsOwnConfirmation).toBe(owns);
   },
 );
+
+it.each([
+  ['the remembered view brings back a past run', { run: 'run_old', view: 'run' }, false],
+  ['the remembered view brings back the active run', { run: 'run_live', view: 'run' }, true],
+] as const)(
+  'on a run tab address with no run of its own, where %s, decides by the run the record shows',
+  async (_name, remembered, owns) => {
+    const runs = [run('run_old'), run('run_live')];
+    // The raw router search has no run; the page resolves the remembered one into its search.
+    fixture.search = { panel: 'run' };
+    const views = sessionRunViews(
+      runs,
+      [],
+      resolveSessionSearch({ panel: 'run' }, remembered),
+      true,
+    );
+    await show(session([asked('run_live')]), {
+      runs,
+      active: run('run_live'),
+      liveRunId: views.liveRunId,
+      inspectedRunId: views.inspectedRunId,
+    });
+    expect(fixture.composer.at(-1)?.runControlsOwnConfirmation).toBe(owns);
+  },
+);
+
+it('follows and keeps open the active run while the address selects a past one', async () => {
+  const runs = [{ ...run('run_old'), status: 'succeeded' as const }, run('run_live')];
+  const views = sessionRunViews(runs, [], { run: 'run_old' }, true);
+  await show(session([asked('run_live')]), {
+    runs,
+    active: run('run_live'),
+    liveRunId: views.liveRunId,
+    inspectedRunId: views.inspectedRunId,
+  });
+  expect(fixture.retained).toEqual(['run_live']);
+  expect(fixture.opened).toEqual(['run_live']);
+});
 
 it("brings a run's item into the conversation's window: its request, or the run itself", async () => {
   const onPlace = vi.fn();

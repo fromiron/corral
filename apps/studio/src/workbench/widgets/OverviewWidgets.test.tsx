@@ -59,7 +59,7 @@ function model(patch: Partial<ChatWidgetModel> = {}): ChatWidgetModel {
     sessionId: 'session',
     runId: 'run_overview',
     live: false,
-    viewed: { latest: true, number: 1, total: 1 },
+    lastRun: true,
     simulated: false,
     readState: 'ready',
     retryRead: vi.fn(),
@@ -514,25 +514,24 @@ it('counts only what is not zero', async () => {
   expect(counts).not.toContain('0 working');
 });
 
-it('names no run scope while the last run is shown', async () => {
-  const container = await render(model());
-  expect(container.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
-  const live = await render(model({ live: true, viewed: null, runNumber: 2 } as never));
-  expect(live.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
-});
-
-it('identifies an older selected run without changing its usage or results', async () => {
-  const container = await render(model({ viewed: { latest: false, number: 2, total: 3 } }));
-  expect(container.querySelector('[data-testid="overview-run-scope"]')?.textContent).toBe(
-    'Selected run · Run #2',
-  );
-  const usage = container.querySelector('[data-overview-widget="usage"]');
-  expect(usage?.textContent).toContain('930');
-  expect(usage?.textContent).toContain('output tokens');
-  expect(container.querySelector('[data-overview-widget="results"]')?.textContent).toContain(
-    'draft v1',
-  );
-});
+it.each([
+  ['the last run', { lastRun: true }],
+  ['the run going', { live: true, lastRun: false }],
+] as const)(
+  'speaks of %s with its usage and results, and names no selected run or scope',
+  async (_name, presented) => {
+    // The conversation presents the active run, or the last one, whatever the address selects.
+    const container = await render(model(presented));
+    expect(container.querySelector('[data-testid="overview-run-scope"]')).toBeNull();
+    expect(container.textContent).not.toContain('Selected run');
+    const usage = container.querySelector('[data-overview-widget="usage"]');
+    expect(usage?.textContent).toContain('930');
+    expect(usage?.textContent).toContain('output tokens');
+    expect(container.querySelector('[data-overview-widget="results"]')?.textContent).toContain(
+      'draft v1',
+    );
+  },
+);
 
 it('hides widgets with nothing to say', async () => {
   const projection = emptyProjection('run_overview');

@@ -224,21 +224,11 @@ export function OverviewWidgets({
           )}
         </div>
       ) : (
-        <>
-          {/* Only an older run needs saying; the last or live run is what Overview shows. */}
-          {model.viewed && !model.viewed.latest ? (
-            <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
-              {model.runNumber || model.viewed.number
-                ? t('runScope', { number: model.runNumber ?? model.viewed.number })
-                : t('selectedRun')}
-            </p>
-          ) : null}
-          {overviewWidgets(model).map((widget) => (
-            <div key={widget} data-overview-widget={widget}>
-              <Widget widget={widget} model={model} open={choose} />
-            </div>
-          ))}
-        </>
+        overviewWidgets(model).map((widget) => (
+          <div key={widget} data-overview-widget={widget}>
+            <Widget widget={widget} model={model} open={choose} />
+          </div>
+        ))
       )}
     </section>
   );

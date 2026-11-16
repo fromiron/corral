@@ -2,7 +2,15 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { closeSettings, openFolderSettings, requestBox, slash, stopRun } from '../workbench.ts';
+import {
+  activityBar,
+  closeSettings,
+  openFolderSettings,
+  requestBox,
+  runGoing,
+  slash,
+  stopRun,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('file and line references remain independent and Escape clears only an empty command trigger', async ({
@@ -128,9 +136,10 @@ test.describe('viewed and active execution', () => {
   };
   test.use({ agentReply: { reply: () => 'Deterministic reply', beforeReply: () => reply } });
   // workbench.md: a next request is decided when it is sent, so while Run #2 works it waits behind
-  // it; choosing an instruction and then the next request again keeps the draft, and opening the
-  // active run changes neither the draft nor where it goes.
-  test('shows the historical selection and keeps a next request waiting behind the active run when opening it', async ({
+  // it; choosing an instruction and then the next request again keeps the draft, and visiting the
+  // run record changes neither the draft nor where it goes. The conversation speaks of the active
+  // run although the address still selects Run #1 (chat-widgets-contract.md 3.1).
+  test('speaks of the active run whatever the address selects and keeps a next request waiting behind it', async ({
     page,
     corral,
   }, testInfo) => {
@@ -153,10 +162,16 @@ test.describe('viewed and active execution', () => {
       holdReply();
       await box.fill('Second request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
-      await expect(page.getByTestId('viewed-run-warning')).toContainText(
-        'Viewing Run #1 while Run #2 is active',
+      // The address still selects Run #1; the activity bar follows Run #2 and nothing in the
+      // composer tells of Run #1.
+      await expect(runGoing(page)).toBeVisible();
+      expect(new URL(page.url()).searchParams.get('run')).toBe(first.runId);
+      await expect(page.getByTestId('viewed-run-warning')).toHaveCount(0);
+      await expect(activityBar(page)).not.toContainText('Selected run');
+      await expect(page.getByRole('button', { name: 'View active run', exact: true })).toHaveCount(
+        0,
       );
-      // While Run #2 goes the send key joins it, never the run being viewed.
+      // While Run #2 goes the send key joins it.
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('· Join');
       // `/next` picks a next request once; it waits behind the active run.
@@ -165,10 +180,10 @@ test.describe('viewed and active execution', () => {
       await expect(page.getByTestId('composer-destination')).toHaveText(
         'Send to: after the current run in this conversation · next request',
       );
-      await page.screenshot({ path: testInfo.outputPath('viewed-run-warning.png') });
-      await page.getByRole('button', { name: 'View active run', exact: true }).click();
+      await page.screenshot({ path: testInfo.outputPath('composer-active-run.png') });
+      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
       await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
-      await expect(page.getByTestId('viewed-run-warning')).toHaveCount(0);
+      await expect(runGoing(page)).toBeVisible();
       await expect(box).toHaveValue('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
         'Send to: after the current run in this conversation · next request',
@@ -203,9 +218,7 @@ test.describe('viewed and active execution', () => {
       holdReply();
       await box.fill('Second request');
       await page.getByRole('button', { name: 'Send', exact: true }).click();
-      await expect(page.getByTestId('viewed-run-warning')).toContainText(
-        'Viewing Run #1 while Run #2 is active',
-      );
+      await expect(runGoing(page)).toBeVisible();
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
       await page.getByRole('tab', { name: 'Runs', exact: true }).click();

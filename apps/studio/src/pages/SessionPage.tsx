@@ -33,7 +33,7 @@ import { documentKey, documentStore } from '../workbench/documents/store.ts';
 import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
-import { panelRunId } from '../workbench/panelRun.ts';
+import { panelRunId, sessionRunViews } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { FileViewerRow, useFileViewerPlacement } from '../workbench/session/FileViewerBeside.tsx';
@@ -212,14 +212,13 @@ function WorkSessionPage() {
     (run) => run.sessionId === session.sessionId || linkedRunIds.includes(run.runId),
   );
   const sessionRunIds = sessionRuns.map((run) => run.runId);
-  const presentedRun =
-    sessionRuns.find((run) => run.runId === search.run) ??
-    sessionRuns.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ??
-    sessionRuns.at(-1) ??
-    null;
-  const liveRun =
-    presentedRun && !TERMINAL_RUN_STATUSES.has(presentedRun.status) ? presentedRun : null;
-  const presentationRunId = presentedRun?.runId ?? linkedRunIds.at(-1) ?? null;
+  // What the conversation presents never follows the address's run, which the run record keeps.
+  const { presentationRunId, liveRunId, inspectedRunId } = sessionRunViews(
+    sessionRuns,
+    linkedRunIds,
+    search,
+    listed,
+  );
   const panelViews: Record<
     Exclude<SessionPanel, 'terminal' | 'tools' | 'changes' | 'git'>,
     () => ReactNode
@@ -276,8 +275,8 @@ function WorkSessionPage() {
             corrals={corrals}
             runs={runs}
             active={active}
-            liveRunId={liveRun?.runId ?? null}
-            selectedRunId={presentationRunId}
+            liveRunId={liveRunId}
+            inspectedRunId={inspectedRunId}
             onChange={refresh}
             sessionReads={sessionReads}
             runsListed={listed}
@@ -434,7 +433,7 @@ function WorkSessionPage() {
         <ChatWidgetProvider
           sessionId={session.sessionId}
           presentationRunId={presentationRunId}
-          live={Boolean(liveRun)}
+          live={Boolean(liveRunId)}
           runIds={sessionRunIds}
         >
           <PendingTrayContext.Provider value={trayContext}>

@@ -207,7 +207,6 @@ async function mount({
             corrals={corrals}
             runs={run ? [run] : []}
             active={run}
-            selectedRunId={run?.runId ?? null}
             queued={[]}
             onChange={() => {}}
             reference={null}

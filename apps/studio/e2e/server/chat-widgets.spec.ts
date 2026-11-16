@@ -439,9 +439,12 @@ test('inspecting the current result preserves the draft while a newer result rep
       .click();
     await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(earlierRunId);
     await expect(page.getByTestId('result-body')).toContainText('Earlier result.');
-    await expect(toggle).toHaveCount(0);
+    // The run record shows the earlier run; the conversation's bar keeps the active run's plan
+    // (chat-widgets-contract.md 3.1).
+    await expect(toggle).toHaveText('Plan 0/7');
     expect(current(corral).runId).toBe(activeRunId);
     await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await expect(toggle).toHaveText('Plan 0/7');
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(current(corral).runId).toBe(activeRunId);
     await page
@@ -454,7 +457,8 @@ test('inspecting the current result preserves the draft while a newer result rep
 
     next.release();
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
-    await expect(toggle).toHaveCount(0);
+    // Ended, the run that was active is the last run, and the bar still reads its plan.
+    await expect(toggle).toHaveText(/^Plan \d+\/7$/);
     // A new successful result replaces the old artifact body, not its relation metadata or chat answer.
     await expect
       .poll(

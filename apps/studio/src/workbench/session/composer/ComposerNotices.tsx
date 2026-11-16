@@ -43,8 +43,6 @@ function ConnectModels({ testId, title }: { testId: string; title: string }) {
 export function ComposerNotices({
   sessionId,
   intent,
-  viewingOtherRun,
-  onViewRun,
   blocked,
   onChooseIntent,
   notReady,
@@ -66,9 +64,6 @@ export function ComposerNotices({
 }: {
   sessionId: string;
   intent: SessionIntent;
-  /** The run numbers, while the page shows a run other than the one going. */
-  viewingOtherRun: { viewed: number; active: number; activeRunId: string } | null;
-  onViewRun: ((runId: string) => void) | undefined;
   blocked: Blocked;
   onChooseIntent: (value: SendChoice) => void;
   notReady: RoleModel[];
@@ -111,23 +106,6 @@ export function ComposerNotices({
   return (
     <>
       {intent !== 'steer' ? <TerminalWriterNotice sessionId={sessionId} /> : null}
-      {viewingOtherRun ? (
-        <Banner data-testid="viewed-run-warning" status="warning">
-          <BannerTitle>
-            {tc('viewingOtherRun', {
-              viewed: viewingOtherRun.viewed,
-              active: viewingOtherRun.active,
-            })}
-          </BannerTitle>
-          {onViewRun ? (
-            <BannerActions>
-              <Button variant="secondary" onClick={() => onViewRun(viewingOtherRun.activeRunId)}>
-                {tc('viewActiveRun')}
-              </Button>
-            </BannerActions>
-          ) : null}
-        </Banner>
-      ) : null}
       {blocked ? (
         // A fixed target that cannot take its instruction: the person picks another target in
         // the tool line, or sends this as a next request; it never goes elsewhere by itself.

@@ -128,9 +128,8 @@ function model(change: Partial<ChatWidgetModel> = {}, plan: Partial<ChatWidgetMo
   return {
     sessionId: 'session_plan',
     runId: 'run_plan',
-    runNumber: 1,
     live: false,
-    viewed: null,
+    lastRun: false,
     readState: 'ready',
     chips: [],
     tools: [],
@@ -265,7 +264,6 @@ async function mount(
                     onStop={onStop}
                     onPause={onPause}
                     onResume={onResume}
-                    viewingOther={false}
                     {...(onViewRun ? { onViewRun } : {})}
                     {...(revealRun ? { revealRun } : {})}
                   />
@@ -342,7 +340,7 @@ it("says an ended run's state, place, plan count, step and changes on one line, 
         changeFiles: 2,
         changeLines: 6,
         changesLabel: 'fixed',
-        viewed: { latest: true, number: 1, total: 1 },
+        lastRun: true,
       },
       { selectedChoice: { key: 'exec_plan', label: 'Assistant', live: true } as never },
     ),
@@ -368,9 +366,15 @@ it("says an ended run's state, place, plan count, step and changes on one line, 
   expect(line?.classList.contains('h-8')).toBe(true);
 });
 
-it('names an older run by its place among the session runs', async () => {
-  const view = await mount(model({ viewed: { latest: false, number: 1, total: 2 } }));
-  expect(visibleText(view.line())).toContain('Run #1 of 2');
+it('never names a selected run or its place: an ended run it presents is the last run', async () => {
+  // The conversation presents the active run, or the last one, whatever the address selects.
+  const view = await mount(model({ lastRun: true }));
+  const text = visibleText(view.line());
+  expect(text).toContain(messages.Widgets.lastRun);
+  expect(text).not.toContain('Selected run');
+  expect(text).not.toMatch(/Run #\d+ of \d+/);
+  // Nor does it tell a screen reader that the run controls act on another run than the shown one.
+  expect(view.container.textContent).not.toContain('not the one you are viewing');
 });
 
 it('counts one change and one line in the singular', async () => {
@@ -452,9 +456,7 @@ it('says the plan on the closed line as Plan done/total, resting, live with a st
   };
 
   // Resting: the ended run's place, then the plan by its name.
-  const resting = await mount(
-    model({ viewed: { latest: true, number: 1, total: 1 } }, { status: status(1, false, true) }),
-  );
+  const resting = await mount(model({ lastRun: true }, { status: status(1, false, true) }));
   const restingCount = resting.line()?.querySelector('[data-testid="activity-plan"]');
   expect(restingCount?.textContent).toBe('Plan 1/1');
   expect(visibleText(resting.line())).toContain(`${messages.Widgets.lastRun}·Plan 1/1`);
@@ -723,7 +725,7 @@ it('opens the failed steps of the exact run for a failure no card answers', asyn
       {
         action: failure as ChatWidgetModel['action'],
         failedExecutionId: 'exec_failed',
-        viewed: { latest: false, number: 1, total: 2 },
+        lastRun: false,
       },
       { runStatus: 'failed' },
     ),
@@ -764,7 +766,7 @@ it("leaves a failure to its turn's card while that card is the latest turn", asy
     model(
       {
         action: failure as ChatWidgetModel['action'],
-        viewed: { latest: true, number: 2, total: 2 },
+        lastRun: true,
       },
       { runStatus: 'failed' },
     ),
@@ -784,7 +786,7 @@ it.each([true, false])(
       model({
         action: { ...failure, completedWithFailures: true } as ChatWidgetModel['action'],
         failedExecutionId: 'exec_failed',
-        viewed: { latest, number: 1, total: latest ? 1 : 2 },
+        lastRun: latest,
       }),
     );
     // Only the polite announcement still says it; nothing on screen repeats the turn's line.
@@ -1259,10 +1261,9 @@ it("does not repeat a role's state in its panel row while the role's own row say
 
 it('says which ended run it is only of an ended run', async () => {
   fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
-  const view = await mount(
-    model({ live: true, viewed: { latest: true, number: 1, total: 1 } }, { runStatus: 'running' }),
-    { ownActive: ownRun },
-  );
+  const view = await mount(model({ live: true, lastRun: true }, { runStatus: 'running' }), {
+    ownActive: ownRun,
+  });
   expect(visibleText(view.line())).not.toContain(messages.Widgets.lastRun);
 });
 
@@ -1630,7 +1631,7 @@ it('keeps the warning for a role’s own failure beside an advisor', async () =>
         live: true,
         action: failure as ChatWidgetModel['action'],
         failedExecutionId: 'exec_writer',
-        viewed: { latest: false, number: 1, total: 2 },
+        lastRun: false,
       },
       { runStatus: 'running' },
     ),

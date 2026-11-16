@@ -87,7 +87,6 @@ function SessionComposer({
   corrals,
   runs,
   active,
-  selectedRunId,
   onViewRun,
   revealRun,
   queued,
@@ -106,7 +105,6 @@ function SessionComposer({
   corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
-  selectedRunId: string | null;
   /** Opens a run's record, at one of its executions when given. */
   onViewRun?: (runId: string, executionId?: string) => void;
   /** Brings a run's item into the conversation's window (`null` lets it go); false without one. */
@@ -454,7 +452,6 @@ function SessionComposer({
   };
 
   const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
-  const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
   const destination =
     intent === 'steer'
       ? ownActive && !blocked
@@ -574,16 +571,6 @@ function SessionComposer({
         <ComposerNotices
           sessionId={session.sessionId}
           intent={intent}
-          viewingOtherRun={
-            viewingOtherRun
-              ? {
-                  viewed: runNumber(selectedRunId),
-                  active: runNumber(active.runId),
-                  activeRunId: active.runId,
-                }
-              : null
-          }
-          onViewRun={onViewRun}
           blocked={blocked}
           onChooseIntent={(value) => {
             chooseIntent(value);
@@ -684,7 +671,6 @@ function SessionComposer({
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)
               : undefined
           }
-          viewingOther={Boolean(viewingOtherRun)}
         />
       }
       above={

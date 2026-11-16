@@ -1,3 +1,5 @@
+import { type RunStatus, TERMINAL_RUN_STATUSES } from '@corral/contracts';
+
 /**
  * The run the session's history panel shows: the requested one while the session lists it,
  * otherwise the newest. A run that has gone (a reloaded browser demo, a stale link) falls back to
@@ -12,4 +14,35 @@ export function panelRunId(
   if (!loaded) return requested ?? runs.at(-1)?.runId;
   if (requested && runs.some((run) => run.runId === requested)) return requested;
   return runs.at(-1)?.runId;
+}
+
+export interface SessionRunViews {
+  /** The run the conversation's widgets and activity bar present (chat-widgets-contract.md 3.1). */
+  presentationRunId: string | null;
+  /** The presented run while it goes: the conversation follows and keeps its store open. */
+  liveRunId: string | null;
+  /** The run the run record shows while it is the open tab; null on any other tab. */
+  inspectedRunId: string | null;
+}
+
+/**
+ * The two runs a session page names apart. The conversation presents the active run, else the
+ * last one, whatever the address selects; the address's run is the run record's alone, which
+ * reopens it. `search` is the page's resolved search (the address with the remembered view merged
+ * in), never the raw router search.
+ */
+export function sessionRunViews(
+  runs: readonly { runId: string; status: RunStatus }[],
+  linkedRunIds: readonly string[],
+  search: { panel?: string | undefined; run?: string | undefined },
+  listed: boolean,
+): SessionRunViews {
+  const presented =
+    runs.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ?? runs.at(-1) ?? null;
+  const live = presented && !TERMINAL_RUN_STATUSES.has(presented.status) ? presented : null;
+  return {
+    presentationRunId: presented?.runId ?? linkedRunIds.at(-1) ?? null,
+    liveRunId: live?.runId ?? null,
+    inspectedRunId: search.panel === 'run' ? (panelRunId(runs, search.run, listed) ?? null) : null,
+  };
 }

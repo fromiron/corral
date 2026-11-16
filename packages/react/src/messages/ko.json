@@ -759,7 +759,8 @@
     "steps": "단계",
     "forkFailed": "시작하지 못했습니다: {message}",
     "runName": "#{number} · {name}",
-    "sessionLookupFailed": "이 실행이 속한 대화를 확인하지 못해 단독 화면으로 엽니다."
+    "sessionLookupFailed": "이 실행이 속한 대화를 확인하지 못해 단독 화면으로 엽니다.",
+    "viewActiveRun": "현재 실행 보기"
   },
   "Timeline": {
     "heading": "이벤트",
@@ -2468,8 +2469,6 @@
       "unavailable": "사용할 수 없는 모델",
       "onOnly": "켜짐"
     },
-    "viewingOtherRun": "진행 중: 실행 #{active} · 현재 보는 실행: #{viewed}",
-    "viewActiveRun": "현재 실행 보기",
     "destination": {
       "next": "보낼 대상: 이 대화의 새 실행 · 다음 요청",
       "queue": "보낼 대상: 이 대화의 지금 실행이 끝난 뒤 · 다음 요청",
@@ -3897,8 +3896,6 @@
     "contextRefresh": "이전 요청 기준 · 새 측정 대기",
     "simulatedNote": "시뮬레이션 수치입니다. 실제 모델 측정값이 아닙니다.",
     "lastRun": "마지막 실행",
-    "selectedRun": "선택한 실행 · 실행 #{number} / 총 {total}개",
-    "selectedRunUnordered": "선택한 실행",
     "rail": "이번 실행",
     "agentsHeading": "에이전트",
     "agents": "에이전트 {total}{working, plural, =0 {} other { · 작업 중 #}}",
@@ -4021,8 +4018,6 @@
       "cacheNotReported": "보고 없음",
       "cacheUnreported": "캐시 입력을 보고하지 않은 호출 {count}회",
       "inputUnreported": "완료된 호출 {count}회가 입력 토큰을 보고하지 않았습니다.",
-      "runScope": "선택한 실행 · 실행 #{number}",
-      "selectedRun": "선택한 실행",
       "simulatedUsage": "시뮬레이션 사용량이며 실제 제공자 측정값이나 청구액이 아닙니다.",
       "unknownUsage": "요청 {count}회가 사용량을 보고하지 않았습니다",
       "openRun": "실행 열기"
@@ -4620,7 +4615,6 @@
     "tools": "작업·미리보기",
     "openActiveRun": "실행 보기",
     "activeRunTarget": "요청: {request}",
-    "activeRunNotViewed": "일시정지·중지는 지금 보고 있는 실행이 아니라 이 실행에 적용됩니다.",
     "runDisconnected": "실행 연결이 끊겨 현재 상태를 확인할 수 없습니다.",
     "layoutControls": "창 배치 조정",
     "savedLayout": "사용자 배치",

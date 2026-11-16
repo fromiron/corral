@@ -157,7 +157,6 @@ async function mount(running: RunSummary | null, snapshot = projection()) {
           corrals={[team]}
           runs={running ? [running] : []}
           active={running}
-          selectedRunId={running?.runId ?? null}
           queued={[]}
           onChange={() => {}}
           reference={null}
