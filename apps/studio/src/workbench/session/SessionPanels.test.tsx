@@ -131,13 +131,17 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
     await act(async () => root.unmount());
     container.remove();
   });
-  const render = (next: SessionSearch) =>
+  const render = (
+    next: SessionSearch,
+    listedRuns: RunSummary[] = runs,
+    going: RunSummary | null = active,
+  ) =>
     act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <RunPanel
-            runs={runs}
-            active={active}
+            runs={listedRuns}
+            active={going}
             listed
             entries={[]}
             search={next}
@@ -225,4 +229,30 @@ it.each([
   expect(header?.getAttribute('data-run')).toBe(shown);
   expect(view.line()).toBeNull();
   expect(view.container.textContent).not.toContain(messages.RunPage.viewActiveRun);
+});
+
+it('takes the line away when the run going ends while a past run shows', async () => {
+  const search: SessionSearch = { panel: 'run', run: 'run_past' };
+  const view = await showRunPanel([past, going], going, search);
+  expect(view.line()).not.toBeNull();
+  // The run list reads the active run ended: no run goes, so nothing is told.
+  const ended = { ...going, status: 'succeeded' as const };
+  await view.render(search, [past, ended], null);
+  expect(view.line()).toBeNull();
+  // A run that starts later while the past run still shows is told by its own number.
+  const third = summary('run_third', 'running');
+  await view.render(search, [past, ended, third], third);
+  expect(view.line()?.textContent).toContain('Run #3');
+});
+
+it('sends the same move again on a second press before the run tab has moved', async () => {
+  const view = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' });
+  const button = view.line()?.querySelector('button');
+  await act(async () => {
+    button?.click();
+    button?.click();
+  });
+  // The address patch is the same both times, so the second lands on the same address.
+  expect(view.setSearch).toHaveBeenCalledTimes(2);
+  expect(view.setSearch.mock.calls[0]).toEqual(view.setSearch.mock.calls[1]);
 });
