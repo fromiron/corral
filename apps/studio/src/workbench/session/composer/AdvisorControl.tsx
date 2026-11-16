@@ -96,7 +96,9 @@ export function AdvisorControl({
               aria-label={name}
               disabled={disabled}
               // On, it reads at a glance; off, it only holds its place. Its size never changes.
-              className={on ? 'relative text-emphasis' : 'relative text-muted-foreground'}
+              className={
+                on ? 'relative shrink-0 text-emphasis' : 'relative shrink-0 text-muted-foreground'
+              }
             />
           }
         >

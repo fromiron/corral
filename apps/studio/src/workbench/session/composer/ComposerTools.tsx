@@ -90,7 +90,13 @@ export function AttachMenu({
       <Tooltip content={tc('attachmentActions')}>
         <MenuTrigger
           render={
-            <Button variant="ghost" size="icon-compact" aria-label={tc('attachmentActions')} />
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={tc('attachmentActions')}
+              // Icon buttons on the tool line keep their square; a long name gives way instead.
+              className="shrink-0"
+            />
           }
         >
           <Plus />
@@ -141,6 +147,7 @@ export function WorkFolderEntry({
         size="icon-compact"
         aria-label={td('workFolder')}
         onClick={onWorkFolder}
+        className="shrink-0"
       >
         <FolderOpen />
       </Button>
