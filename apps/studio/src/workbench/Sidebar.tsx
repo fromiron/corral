@@ -78,6 +78,7 @@ import {
   notificationDestination,
 } from './notifications.ts';
 import { PresenceMark } from './PresenceMark.tsx';
+import { navigateFromOutside } from './panel/historyActions.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
@@ -218,7 +219,8 @@ export function useCorralSidebar() {
       })
         .then(async (to) => {
           if (!to || request !== version) return;
-          await navigate({ to });
+          // An OS notification is an address from outside the app (features/session-panel.md).
+          await navigateFromOutside(navigate as never, to);
           if (request !== version || target.kind !== 'decision' || !target.runId) return;
           // Existing compact run views own the response form and its initial focus.
           document.querySelector<HTMLElement>(`[data-run-response="${target.runId}"]`)?.focus();

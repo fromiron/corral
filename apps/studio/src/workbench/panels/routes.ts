@@ -65,19 +65,8 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     out.review = true;
     Object.assign(out, validateReviewSearch(search));
   }
-  if (
-    search.compose === true &&
-    !(
-      out.panel ||
-      out.run ||
-      out.view ||
-      out.execution ||
-      out.artifact ||
-      out.result ||
-      out.atSeq !== undefined
-    )
-  )
-    out.compose = true;
+  // `panel` wins over `compose` (features/session-panel.md 주소와 기억).
+  if (search.compose === true && !out.panel) out.compose = true;
   return out;
 }
 
@@ -137,43 +126,6 @@ export function validateEditorSearch(search: Record<string, unknown>): EditorSea
   };
 }
 
-/** An explicit target cannot inherit another target's remembered selection. */
-export function resolveSessionSearch(url: SessionSearch, remembered: unknown): SessionSearch {
-  // TanStack merges validated fields with raw parent search; normalize that merged view.
-  const selection = validateSessionSearch({ ...url });
-  // A bare session link opens its conversation; tab links carry their explicit view.
-  if (Object.keys(selection).length === 0) return selection;
-  const explicitTarget = Boolean(
-    selection.atSeq !== undefined ||
-      selection.compose ||
-      selection.message ||
-      selection.review ||
-      selection.run ||
-      selection.terminal ||
-      selection.view ||
-      selection.artifact ||
-      selection.result ||
-      selection.execution,
-  );
-  const saved = validateSessionSearch(
-    remembered && typeof remembered === 'object' ? (remembered as Record<string, unknown>) : {},
-  );
-  delete saved.compose;
-  // A request to respond is answered once; a remembered one would answer a later visit.
-  delete saved.respond;
-  delete saved.advice;
-  return validateSessionSearch({
-    ...(!explicitTarget ? saved : {}),
-    ...selection,
-  });
-}
-
-/** The view a session comes back to: none of the one-time requests an address can carry. */
-export function rememberedSessionView(search: SessionSearch): SessionSearch {
-  const { compose: _compose, respond: _respond, advice: _advice, ...view } = search;
-  return view;
-}
-
 export function patchSessionSearch(
   current: SessionSearch,
   patch: Partial<SessionSearch>,
@@ -194,7 +146,7 @@ export function patchSessionSearch(
       : {}),
     ...patch,
     ...('panel' in patch && patch.panel !== 'run' ? { atSeq: undefined } : {}),
-    ...('panel' in patch || 'view' in patch ? { compose: undefined } : {}),
+    ...(patch.panel !== undefined ? { compose: undefined } : {}),
     ...(patch.view === 'results' ? { artifact: undefined } : {}),
   });
 }

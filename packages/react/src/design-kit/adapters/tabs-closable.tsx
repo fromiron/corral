@@ -792,6 +792,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                     tabIndex={-1}
                     aria-label={closeLabel(tab)}
                     data-slot="tabs-closable-close"
+                    // Which tab it closes, for a host that asks where focus stood.
+                    data-tab-id={tab.id}
                     data-place={selected ? 'end' : 'icon'}
                     data-shown={shown ? '' : undefined}
                     // Keeps the focus where it is (the host moves it after the close), and keeps

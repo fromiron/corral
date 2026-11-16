@@ -12,8 +12,6 @@ import {
   MenuSubPopup,
   MenuSubTrigger,
   MenuTrigger,
-  TabPanel,
-  Tabs,
   Tooltip,
   useSize,
 } from '@corral/react/design-kit';
@@ -45,7 +43,7 @@ import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
-import { DockTopBar, type PrimaryView, primaryViewFor } from './DockTopBar.tsx';
+import { DockPaneSwitcher, primaryViewFor } from './DockTopBar.tsx';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -82,11 +80,6 @@ export interface DockWorkbenchHandle {
   openContext(view: DockContextView, reveal?: boolean): void;
   /** Opens this project's saved team graph as a tab, or shows the one already open. */
   openGraph(corralId: string): boolean;
-  /**
-   * Hides every pane but the conversation, or shows them again with `view` active. Hiding
-   * keeps documents, processes and the saved arrangement (#71).
-   */
-  setPanesHidden(hidden: boolean, view?: DockContextView): void;
 }
 export interface DockWorkbenchProps {
   hostId?: string;
@@ -94,9 +87,6 @@ export interface DockWorkbenchProps {
   sessionId: string;
   selectedPanel?: SessionPanel | null;
   selectionKey?: string;
-  fileWorkAvailable?: boolean;
-  /** Files this session changed, shown as a count on the Changes view. */
-  changeCount?: number;
   renderContext(view: DockContextView, requestedView?: DockContextView): ReactNode;
   renderDocument(
     descriptor: DockDocumentDescriptor,
@@ -112,8 +102,13 @@ export interface DockWorkbenchProps {
   subscribeGraphs?(listener: () => void): () => void;
   terminalStatus?: ReactNode;
   onActiveContext?: (view: DockContextView) => void;
-  /** Whether only the conversation is on screen now. */
-  onPanesHiddenChange?: (hidden: boolean) => void;
+  /**
+   * A pane asked for that this dock does not carry (the conversation, Changes, the run
+   * history, Results): the session panel opens it in its own tab.
+   */
+  onOpenElsewhere?: (view: DockContextView) => void;
+  /** The dock can take documents and panes now. */
+  onReady?: () => void;
 }
 type PanelParams = { descriptor: DockPanelDescriptor };
 const groupNames = ['main1', 'main2', 'aux', 'bottom'] as const;
@@ -359,13 +354,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     });
     const retention = useRef(new Map<string, () => void>());
     const [panels, setPanels] = useState<{ id: string; title: string }[]>([]);
-    const [active, setActive] = useState('');
-    const [sessionView, setSessionView] = useState<PrimaryView>('chat');
     const [hasFileWork, setHasFileWork] = useState(false);
-    const [historyVisited, setHistoryVisited] = useState(false);
-    const [changesVisited, setChangesVisited] = useState(false);
-    const [historyView, setHistoryView] = useState<DockContextView>('run');
-    const [changesView, setChangesView] = useState<DockContextView>('changes');
     const [selection, setSelection] = useState<{ panelId: string; range: TextRange } | null>(null);
     const [preset, setPreset] = useState<DockPreset | null>('conversation');
     const [message, setMessage] = useState<string | null>(null);
@@ -422,7 +411,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       for (const group of api.groups)
         if (group.model.header.hidden) group.model.header.hidden = false;
       setPanels(api.panels.map((panel) => ({ id: panel.id, title: title(panel) })));
-      setActive(api.activePanel?.id ?? '');
     }
     function saveLayout() {
       const api = apiRef.current;
@@ -476,7 +464,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function focus(panel: IDockviewPanel, notify = false) {
       fileWorkOpened.current = true;
       setHasFileWork(true);
-      setSessionView('files');
       panel.api.setActive();
       if (narrow.current) panel.api.maximize();
       // A pane chosen while the others are hidden is shown, not activated off screen.
@@ -492,29 +479,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
     function openContext(view: DockContextView, notify = false) {
       const api = apiRef.current;
       if (!api) return;
-      const primary = primaryViewFor(view);
-      if (primary === 'chat') {
-        setSessionView('chat');
-        if (notify) current.current.onActiveContext?.('chat');
-        return;
-      }
-      if (primary === 'run') {
-        setHistoryVisited(true);
-        setHistoryView(view);
-        setSessionView('run');
-        if (notify) current.current.onActiveContext?.(view);
+      // The conversation, Changes and the run history have tabs of their own beside this one.
+      if (primaryViewFor(view) !== 'files') {
+        if (notify) current.current.onOpenElsewhere?.(view);
         return;
       }
       fileWorkOpened.current = true;
       setHasFileWork(true);
-      if (primary === 'changes') {
-        setChangesVisited(true);
-        setChangesView(view);
-        setSessionView('changes');
-        if (notify) current.current.onActiveContext?.(view);
-        saveLayout();
-        return;
-      }
       // The Files route acknowledges an opened document without replacing it with its tree.
       if (view === 'files' && !notify && api.activePanel) {
         focus(api.activePanel);
@@ -627,14 +598,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       saveLayout();
       return true;
     }
-    function setPanesHidden(hidden: boolean, view: DockContextView = 'chat') {
-      openContext(hidden ? 'chat' : view, true);
-    }
     useImperativeHandle(ref, () => ({
       openDocument,
       openContext: (view, reveal = false) => openContext(view, reveal),
       openGraph,
-      setPanesHidden,
     }));
 
     async function closePanel(id: string, choice?: CloseChoice) {
@@ -867,9 +834,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       narrow.current = width > 0 && width <= NARROW;
       setCompact(narrow.current);
       if (narrow.current && api.activePanel) api.activePanel.api.maximize();
-      openContext(current.current.selectedPanel ?? 'chat');
+      openContext(current.current.selectedPanel ?? 'files');
       setDockApi(api);
       saveLayout();
+      current.current.onReady?.();
     }
     function measure() {
       const api = apiRef.current;
@@ -945,11 +913,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
         selectedPanel: props.selectedPanel,
         selectionKey: props.selectionKey,
       };
-      if (previous.sessionId !== props.sessionId) {
-        setHistoryVisited(false);
-        setChangesVisited(false);
-        if (props.selectedPanel === undefined) setSessionView('chat');
-      }
       if (
         previous.sessionId === props.sessionId &&
         previous.selectedPanel === props.selectedPanel &&
@@ -957,7 +920,7 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       )
         return;
       if (props.selectedPanel !== undefined)
-        actions.current.openContext(props.selectedPanel ?? 'chat');
+        actions.current.openContext(props.selectedPanel ?? 'files');
     }, [props.selectedPanel, props.selectionKey, props.sessionId]);
     useEffect(
       () => props.documentOwner?.subscribe(() => actions.current.refresh()),
@@ -967,16 +930,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
       () => props.subscribeGraphs?.(() => actions.current.refresh()),
       [props.subscribeGraphs],
     );
-    useEffect(() => {
-      current.current.onPanesHiddenChange?.(sessionView === 'chat');
-    }, [sessionView]);
-    /** Choosing a session view, from its tab or from the top bar's folded view menu. */
-    const selectView = (value: string) => {
-      if (value === 'files') {
-        openContext('files');
-        current.current.onActiveContext?.('files');
-      } else openContext(value === 'run' || value === 'changes' ? value : 'chat', true);
-    };
     return (
       <RendererContext.Provider
         value={{
@@ -995,7 +948,6 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             split,
             resize,
             step: (direction) => {
-              setSessionView('files');
               if (direction === 'previous')
                 apiRef.current?.activatePrevious({ includePanel: true });
               else apiRef.current?.activateNext({ includePanel: true });
@@ -1032,8 +984,14 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             )
               return;
             const panel = validateSessionSearch(Object.fromEntries(url.searchParams)).panel;
-            // An explicit link opens its pane even when the URL is already selected.
-            if (panel) openContext(panel);
+            // An explicit link opens its pane even when the URL is already selected: a pane of
+            // this dock here, any other in its own panel tab.
+            if (!panel) return;
+            if (primaryViewFor(panel) === 'files') openContext(panel);
+            else {
+              event.preventDefault();
+              current.current.onOpenElsewhere?.(panel);
+            }
           }}
           onKeyDownCapture={(event) => {
             if (event.key !== 'Delete' && event.key !== 'Backspace') return;
@@ -1056,16 +1014,10 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             });
           }}
         >
-          <Tabs value={sessionView} onValueChange={selectView} className="corral-dock-tabs">
-            <DockTopBar
-              sessionView={sessionView}
-              changeCount={props.changeCount}
-              onSelectView={selectView}
-              fileWork={Boolean(props.fileWorkAvailable) || hasFileWork}
-              compact={compact}
-              active={active}
+          {/* A narrow dock shows one pane at a time; its switcher leads the tab's content. */}
+          {compact ? (
+            <DockPaneSwitcher
               panels={panels}
-              openContext={openContext}
               onSelectPane={(id) => {
                 const panel = apiRef.current?.getPanel(id);
                 if (panel) focus(panel, true);
@@ -1073,34 +1025,23 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
                   openContext(id.slice('context:'.length) as DockContextView, true);
               }}
             />
-            {message ? (
-              <p role="status" className="px-3 py-1 text-caption text-muted-foreground">
-                {t(message)}
-              </p>
-            ) : null}
-            <TabPanel value="chat" keepMounted className="corral-dock-session-panel">
-              {props.renderContext('chat')}
-            </TabPanel>
-            <TabPanel value="files" keepMounted className="corral-dock-session-panel">
-              <div className="corral-dock-area" data-size={density}>
-                <DockviewReact
-                  components={components}
-                  defaultTabComponent={DockTab}
-                  rightHeaderActionsComponent={DockHeaderActions}
-                  theme={theme}
-                  onReady={onReady}
-                  disableFloatingGroups
-                  getTabContextMenuItems={() => []}
-                />
-              </div>
-            </TabPanel>
-            <TabPanel value="changes" keepMounted className="corral-dock-session-panel">
-              {changesVisited ? props.renderContext('changes', changesView) : null}
-            </TabPanel>
-            <TabPanel value="run" keepMounted className="corral-dock-session-panel">
-              {historyVisited ? props.renderContext('run', historyView) : null}
-            </TabPanel>
-          </Tabs>
+          ) : null}
+          {message ? (
+            <p role="status" className="px-3 py-1 text-caption text-muted-foreground">
+              {t(message)}
+            </p>
+          ) : null}
+          <div className="corral-dock-area" data-size={density}>
+            <DockviewReact
+              components={components}
+              defaultTabComponent={DockTab}
+              rightHeaderActionsComponent={DockHeaderActions}
+              theme={theme}
+              onReady={onReady}
+              disableFloatingGroups
+              getTabContextMenuItems={() => []}
+            />
+          </div>
         </section>
         <DocumentCloseDialog
           path={closing?.path ?? null}

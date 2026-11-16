@@ -88,8 +88,7 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
             changes={null}
             panel={undefined}
             onPanel={vi.fn()}
-            fileViewerOpen={false}
-            onToggleFileViewer={vi.fn()}
+            panelToggle={{ pressed: false, onToggle: vi.fn() }}
             onEditTeam={() => true}
           />
         </TopbarSlotContext.Provider>
@@ -113,7 +112,7 @@ it.each([
   [6, 'bar'],
   [7, 'menu'],
 ] as const)(
-  'at tier %i the changes, terminal and file viewer sit in the %s',
+  'at tier %i the changes and terminal sit in the %s, and the panel toggle stays in the bar',
   async (tier, place) => {
     fit.tier = tier;
     cleanup.push(async () => {
@@ -135,7 +134,7 @@ it.each([
       container.remove();
     });
     const onPanel = vi.fn();
-    const onToggleFileViewer = vi.fn();
+    const onToggle = vi.fn();
     await act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -147,8 +146,7 @@ it.each([
               changes={[{ path: 'README.md' } as never]}
               panel={undefined}
               onPanel={onPanel}
-              fileViewerOpen={false}
-              onToggleFileViewer={onToggleFileViewer}
+              panelToggle={{ pressed: false, onToggle }}
               onEditTeam={() => true}
             />
           </TopbarSlotContext.Provider>
@@ -161,7 +159,8 @@ it.each([
         (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,
       );
     expect(inBar(messages.Docking.terminal)).toBe(place === 'bar');
-    expect(inBar(messages.Docking.openFileViewer)).toBe(place === 'bar');
+    // The panel's toggle never folds (features/session-panel.md).
+    expect(inBar(messages.SessionPanel.toggle)).toBe(true);
     expect(inBar(changes)).toBe(place === 'bar');
     const menu = bar.querySelector<HTMLElement>(
       `[aria-label="${messages.Desktop.sessionActions.replace('{title}', 'Brief')}"]`,
@@ -173,9 +172,9 @@ it.each([
       );
     // The menu's rows exist either way: the folded tools are what differs.
     expect(item(messages.Desktop.rename)).toBeDefined();
+    expect(item(messages.SessionPanel.toggle)).toBeUndefined();
     if (place === 'bar') {
       expect(item(messages.Docking.terminal)).toBeUndefined();
-      expect(item(messages.Docking.openFileViewer)).toBeUndefined();
       expect(item(changes)).toBeUndefined();
       return;
     }
@@ -185,9 +184,12 @@ it.each([
     await act(async () => menu?.click());
     await act(async () => item(messages.Docking.terminal)?.click());
     expect(onPanel).toHaveBeenLastCalledWith('terminal');
-    await act(async () => menu?.click());
-    await act(async () => item(messages.Docking.openFileViewer)?.click());
-    expect(onToggleFileViewer).toHaveBeenLastCalledWith(true);
+    // The toggle in the bar still does its work while the others are folded.
+    const toggle = [...bar.querySelectorAll<HTMLElement>('button')].find(
+      (button) => button.getAttribute('aria-label') === messages.SessionPanel.toggle,
+    );
+    await act(async () => toggle?.click());
+    expect(onToggle).toHaveBeenCalledTimes(1);
   },
 );
 
@@ -229,8 +231,7 @@ async function mountCriteria(change: Partial<WorkSession> = {}) {
             changes={null}
             panel={undefined}
             onPanel={vi.fn()}
-            fileViewerOpen={false}
-            onToggleFileViewer={vi.fn()}
+            panelToggle={{ pressed: false, onToggle: vi.fn() }}
             onEditTeam={() => true}
           />
         </TopbarSlotContext.Provider>

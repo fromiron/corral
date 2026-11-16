@@ -109,7 +109,11 @@ export {
   useAgentName,
   useSeverityName,
 } from './run/advisor.ts';
-export { useCancelConfirmation } from './run/cancel-confirmation.ts';
+export {
+  askCancelConfirmation,
+  discardCancelConfirmation,
+  useCancelConfirmation,
+} from './run/cancel-confirmation.ts';
 export { type CompareRow, compareRuns } from './run/compare.ts';
 export {
   estimateRunCost,

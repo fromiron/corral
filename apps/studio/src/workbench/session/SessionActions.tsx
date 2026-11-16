@@ -25,6 +25,7 @@ import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { shortcutLabel } from '../../shortcuts.ts';
 import { ChatDensityMenu } from '../ChatView.tsx';
+import { deviceStorage, forgetPanelMemory } from '../panel/memory.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { SessionDeletionDialog } from '../SessionDeletionDialog.tsx';
@@ -51,8 +52,9 @@ function focusOrigin(): HTMLElement | null {
 }
 
 /**
- * The session's own actions, in the top bar: changes, the side panel, and a menu. In the bar's
- * last tier the changes, terminal and side panel fold into the menu (topbarTier.ts).
+ * The session's own actions, in the top bar: changes, the terminal, the panel's toggle and a
+ * menu. In the bar's last tier the changes and terminal fold into the menu (topbarTier.ts); the
+ * toggle never does.
  */
 export function SessionActions({
   session,
@@ -61,8 +63,7 @@ export function SessionActions({
   changes,
   panel,
   onPanel,
-  fileViewerOpen,
-  onToggleFileViewer,
+  panelToggle,
   onEditTeam,
 }: {
   session: WorkSession;
@@ -73,8 +74,11 @@ export function SessionActions({
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
   onPanel: (panel: SessionPanel | undefined) => void;
-  fileViewerOpen: boolean;
-  onToggleFileViewer: (open: boolean) => void;
+  /**
+   * The panel beside the conversation: pressed while it is on screen. Null when the
+   * conversation has no tab open and nothing it could open (features/session-panel.md).
+   */
+  panelToggle: { pressed: boolean; onToggle: () => void } | null;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
@@ -158,15 +162,20 @@ export function SessionActions({
   const { workspaces, terminals } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
+  const tpanel = useTranslations('SessionPanel');
   useRegisterCommands('session', [
-    {
-      id: 'panel:toggle',
-      title: tcmd('togglePanel'),
-      group: panelGroup,
-      shortcutId: 'view.panel',
-      shortcut: shortcutLabel('view.panel'),
-      run: () => onToggleFileViewer(!fileViewerOpen),
-    },
+    ...(panelToggle
+      ? [
+          {
+            id: 'panel:toggle',
+            title: tpanel('toggle'),
+            group: panelGroup,
+            shortcutId: 'view.panel',
+            shortcut: shortcutLabel('view.panel'),
+            run: panelToggle.onToggle,
+          } satisfies AppCommand,
+        ]
+      : []),
     // Every pane from the one catalog: its dock name, its `/` name and the words other screens
     // use for it (#70, #86).
     ...PANE_CATALOG.map(
@@ -268,7 +277,6 @@ export function SessionActions({
       : []),
   ]);
   const changeCount = changes?.length ?? 0;
-  const fileViewerLabel = tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer');
   return (
     // The selected team is read from the composer's chip and this menu's team line, not the bar.
     <TopbarActions>
@@ -301,19 +309,21 @@ export function SessionActions({
           </Button>
         </Tooltip>
       ) : null}
-      {folded ? null : (
-        <Tooltip content={fileViewerLabel} shortcut={shortcutLabel('view.panel')}>
+      {/* The panel's toggle never folds into the menu. */}
+      {panelToggle ? (
+        <Tooltip content={tpanel('toggle')} shortcut={shortcutLabel('view.panel')}>
           <Button
             variant="ghost"
             size="icon-compact"
-            aria-label={fileViewerLabel}
-            aria-pressed={fileViewerOpen}
-            onClick={() => onToggleFileViewer(!fileViewerOpen)}
+            aria-label={tpanel('toggle')}
+            aria-pressed={panelToggle.pressed}
+            data-session-panel-toggle=""
+            onClick={panelToggle.onToggle}
           >
             <PanelRight />
           </Button>
         </Tooltip>
-      )}
+      ) : null}
       <Menu>
         <Tooltip content={td('sessionActions', { title: session.title })}>
           <MenuTrigger
@@ -342,9 +352,6 @@ export function SessionActions({
               {terminals ? (
                 <MenuItem onClick={() => onPanel('terminal')}>{tdock('terminal')}</MenuItem>
               ) : null}
-              <MenuItem onClick={() => onToggleFileViewer(!fileViewerOpen)}>
-                {fileViewerLabel}
-              </MenuItem>
               <MenuSeparator />
             </>
           ) : null}
@@ -426,6 +433,8 @@ export function SessionActions({
         onClose={() => setDeleting(false)}
         onDeleted={() => {
           setDeleting(false);
+          // A deleted conversation's panel is not remembered on this device either.
+          forgetPanelMemory(deviceStorage(), session.sessionId);
           projectsChanged();
           void router.invalidate();
           void navigate({

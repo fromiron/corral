@@ -1,8 +1,6 @@
 import { expect, it } from 'vitest';
 import {
   patchSessionSearch,
-  rememberedSessionView,
-  resolveSessionSearch,
   reviewSessionSearch,
   runSessionSearch,
   sessionPanelDescriptor,
@@ -12,7 +10,7 @@ import {
   validateSessionSearch,
 } from './routes.ts';
 
-it('an advice arrival is read from the address, carried by no other change, and never remembered', () => {
+it('an advice arrival is read from the address and carried by no other change', () => {
   // The route keeps the run a person came to read advice in.
   expect(validateSessionSearch({ advice: 'run_a' })).toEqual({ advice: 'run_a' });
   expect(validateSessionSearch({ advice: '' })).toEqual({});
@@ -22,10 +20,6 @@ it('an advice arrival is read from the address, carried by no other change, and 
     panel: 'files',
     advice: 'run_b',
   });
-  // The view remembered for the session keeps none of the one-time requests.
-  expect(
-    rememberedSessionView({ panel: 'files', advice: 'run_a', respond: true, compose: true }),
-  ).toEqual({ panel: 'files' });
 });
 
 it('Git is a separate session pane and keeps its project/session identity', () => {
@@ -37,63 +31,43 @@ it('Git is a separate session pane and keeps its project/session identity', () =
   });
 });
 
-it('composer and bare session links open the conversation while explicit links retain their target', () => {
-  const remembered = { panel: 'run', run: 'run_old', view: 'run', execution: 'old_call' };
+it('panel wins over compose; compose keeps the closed panel and whatever else the address says', () => {
   const compose = validateSessionSearch({ compose: true });
   expect(compose).toEqual({ compose: true });
   expect(validateSessionSearch({ compose: false })).toEqual({});
-  expect(resolveSessionSearch(compose, remembered)).toEqual({ compose: true });
-  expect(resolveSessionSearch({}, { ...remembered, compose: true })).toEqual({});
-  expect(patchSessionSearch(compose, { panel: 'files' })).toEqual({ panel: 'files' });
-  expect(patchSessionSearch(compose, { panel: undefined })).toEqual({});
-  expect(patchSessionSearch(compose, { view: 'results' })).toEqual({ view: 'results' });
-  expect(patchSessionSearch(compose, { message: 'entry' })).toEqual({
-    compose: true,
-    message: 'entry',
-  });
-});
-
-it('an explicit target in a merged widget link takes precedence over composer focus', () => {
+  // Both present: the address follows `panel` (features/session-panel.md 주소와 기억).
   const destination = { panel: 'run', run: 'run_target', view: 'run' };
   expect(validateSessionSearch({ compose: true, ...destination })).toEqual(destination);
-  expect(
-    resolveSessionSearch({ compose: true, panel: 'run', run: 'run_target', view: 'run' }, {}),
-  ).toEqual(destination);
-  for (const target of [
-    { panel: 'files' },
+  expect(validateSessionSearch({ compose: true, panel: 'files' })).toEqual({ panel: 'files' });
+  // Without `panel` the panel is closed, whatever tab state the address carries along.
+  for (const rest of [
     { run: 'run_target' },
     { view: 'results' },
     { execution: 'exec_target' },
     { artifact: 'artifact_target' },
     { result: 'result_target' },
   ])
-    expect(validateSessionSearch({ compose: true, ...target })).toEqual(target);
+    expect(validateSessionSearch({ compose: true, ...rest })).toEqual({ compose: true, ...rest });
   expect(validateSessionSearch({ compose: true, panel: 'unknown', run: '' })).toEqual({
+    compose: true,
+  });
+  // A patch that names a panel opens it; any other patch leaves the panel closed.
+  expect(patchSessionSearch(compose, { panel: 'files' })).toEqual({ panel: 'files' });
+  expect(patchSessionSearch(compose, { panel: undefined })).toEqual({ compose: true });
+  expect(patchSessionSearch(compose, { message: 'entry' })).toEqual({
+    compose: true,
+    message: 'entry',
+  });
+  expect(patchSessionSearch({ panel: 'files' }, { panel: undefined, compose: true })).toEqual({
     compose: true,
   });
 });
 
-it('existing session links and remembered views keep their current precedence', () => {
-  const remembered = {
-    panel: 'files',
-    run: 'run_old',
-    execution: 'old_call',
-    artifact: 'old_artifact',
-  };
+it('a legacy tab link reads as its panel and a patch keeps the run it names', () => {
   expect(
     validateSessionSearch({ tab: 'run', panel: 'files', run: 'run_a', settings: 'models' }),
   ).toEqual({ panel: 'run', run: 'run_a' });
-  expect(resolveSessionSearch({ panel: 'run', run: 'run_a' }, remembered)).toEqual({
-    panel: 'run',
-    run: 'run_a',
-  });
-  expect(resolveSessionSearch({ panel: 'changes' }, remembered)).toEqual({
-    ...remembered,
-    panel: 'changes',
-  });
-  expect(
-    resolveSessionSearch(validateSessionSearch({ panel: 'unknown', settings: 'general' }), null),
-  ).toEqual({});
+  expect(validateSessionSearch({ panel: 'unknown', settings: 'general' })).toEqual({});
   expect(
     patchSessionSearch(
       { panel: 'run', run: 'run_a', artifact: 'version_a' },
@@ -192,45 +166,15 @@ it('review selectors belong only to the Changes review view and clear when leavi
   ).toEqual({ panel: 'changes', review: true, scope: 'session' });
 });
 
-it('an explicit review target cannot inherit old run/result or review selections', () => {
-  const review = { panel: 'changes' as const, review: true as const, scope: 'session' as const };
-  expect(
-    resolveSessionSearch(review, {
-      panel: 'run',
-      run: 'old_run',
-      result: 'old_version',
-      view: 'results',
-      file: 'old.ts',
-    }),
-  ).toEqual(review);
-  expect(
-    resolveSessionSearch(review, {
-      panel: 'changes',
-      review: true,
-      scope: 'run',
-      runId: 'old_run',
-      file: 'old.ts',
-    }),
-  ).toEqual(review);
-  expect(
-    resolveSessionSearch(
-      { panel: 'files' },
-      { panel: 'changes', review: true, scope: 'run', runId: 'old_run', file: 'old.ts' },
-    ),
-  ).toEqual({ panel: 'files' });
-});
-
-it('persists exact historical sequences in both Run routes and isolates explicit cursors from remembered targets', () => {
+it('persists exact historical sequences in both Run routes', () => {
   for (const atSeq of [0, 7, '7']) {
     expect(validateRunSearch({ atSeq })).toEqual({ atSeq: Number(atSeq) });
-    expect(validateSessionSearch({ run: 'run_history', atSeq, compose: true })).toEqual({
+    expect(validateSessionSearch({ panel: 'run', run: 'run_history', atSeq })).toEqual({
+      panel: 'run',
       run: 'run_history',
       atSeq: Number(atSeq),
     });
   }
-  expect(resolveSessionSearch({ atSeq: 0 }, { run: 'old', execution: 'old_exec' })).toEqual({
-    atSeq: 0,
-  });
   for (const atSeq of [-1, 1.5, '1.5', '', 'no', Number.MAX_SAFE_INTEGER + 1]) {
     expect(validateRunSearch({ atSeq })).toEqual({});
   }
@@ -260,13 +204,11 @@ it('switching Runs clears implicit old targets and cursor while preserving expli
   expect(patchSessionSearch(current, { run: 'run_old', view: 'run' }).atSeq).toBe(9);
 });
 
-it('a terminal recovery link overrides remembered terminal and run selections', () => {
-  expect(
-    resolveSessionSearch(
-      { panel: 'terminal', terminal: 'terminal_owner' },
-      { panel: 'run', run: 'old', terminal: 'terminal_other' },
-    ),
-  ).toEqual({ panel: 'terminal', terminal: 'terminal_owner' });
+it('a terminal link keeps its terminal only on the terminal pane', () => {
+  expect(validateSessionSearch({ panel: 'terminal', terminal: 'terminal_owner' })).toEqual({
+    panel: 'terminal',
+    terminal: 'terminal_owner',
+  });
   expect(validateSessionSearch({ panel: 'files', terminal: 'terminal_owner' })).toEqual({
     panel: 'files',
   });
@@ -279,31 +221,7 @@ it('leaving run history clears its cursor while selecting another detail preserv
   expect(patchSessionSearch(history, { execution: 'exec_old' }).atSeq).toBe(9);
 });
 
-it('message search opens its exact conversation without inheriting a saved run or panel', () => {
-  expect(
-    resolveSessionSearch(
-      { message: 'entry_found' },
-      { panel: 'changes', run: 'run_old', atSeq: 4, view: 'results', result: 'old' },
-    ),
-  ).toEqual({ message: 'entry_found' });
-  expect(
-    resolveSessionSearch({ message: 'entry_found' }, { panel: 'run', run: 'run_old' }),
-  ).toEqual({ message: 'entry_found' });
-});
-
-it('a clean session URL never inherits a stored subview while a tab URL retains its target', () => {
-  const remembered = {
-    panel: 'run',
-    run: 'run_old',
-    view: 'results',
-    result: 'answer_old',
-  } as const;
-  expect(resolveSessionSearch({}, remembered)).toEqual({});
-  expect(resolveSessionSearch({}, { panel: 'changes' })).toEqual({});
-  expect(resolveSessionSearch(remembered, {})).toEqual(remembered);
-});
-
-it('a request to respond reaches the run history once and is never remembered or inherited', () => {
+it('a request to respond reaches the run history once and no later change carries it', () => {
   const respond = { panel: 'run', run: 'run_waiting', view: 'run', respond: true } as const;
   expect(validateSessionSearch(respond)).toEqual(respond);
   expect(validateRunSearch({ view: 'run', respond: true })).toEqual({ view: 'run', respond: true });
@@ -330,6 +248,4 @@ it('a request to respond reaches the run history once and is never remembered or
     run: 'run_waiting',
     respond: true,
   });
-  // A remembered request never answers a later visit.
-  expect(resolveSessionSearch({ panel: 'run' }, respond)).not.toHaveProperty('respond');
 });

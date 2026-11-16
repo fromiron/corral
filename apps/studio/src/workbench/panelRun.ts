@@ -21,21 +21,15 @@ export interface SessionRunViews {
   presentationRunId: string | null;
   /** The presented run while it goes: the conversation follows and keeps its store open. */
   liveRunId: string | null;
-  /** The run the run record shows while it is the open tab; null on any other tab. */
-  inspectedRunId: string | null;
 }
 
 /**
- * The two runs a session page names apart. The conversation presents the active run, else the
- * last one, whatever the address selects; the address's run is the run record's alone, which
- * reopens it. `search` is the page's resolved search (the address with the remembered view merged
- * in), never the raw router search.
+ * The run the conversation presents: the active run, else the last one, whatever a run tab
+ * beside it shows.
  */
 export function sessionRunViews(
   runs: readonly { runId: string; status: RunStatus }[],
   linkedRunIds: readonly string[],
-  search: { panel?: string | undefined; run?: string | undefined },
-  listed: boolean,
 ): SessionRunViews {
   const presented =
     runs.findLast((run) => !TERMINAL_RUN_STATUSES.has(run.status)) ?? runs.at(-1) ?? null;
@@ -43,6 +37,5 @@ export function sessionRunViews(
   return {
     presentationRunId: presented?.runId ?? linkedRunIds.at(-1) ?? null,
     liveRunId: live?.runId ?? null,
-    inspectedRunId: search.panel === 'run' ? (panelRunId(runs, search.run, listed) ?? null) : null,
   };
 }

@@ -3,7 +3,7 @@ import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunSummary, type WorkSession } from '@corral/core';
 import { PresenceLabel, runResults } from '@corral/react';
-import { Button, EmptyState } from '@corral/react/design-kit';
+import { Button } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -14,7 +14,6 @@ import { RunDetail } from '../../pages/RunPage.tsx';
 import { useServices } from '../../services.tsx';
 import { RunMenu } from '../Breadcrumbs.tsx';
 import type { AttachmentCapture } from '../context/bridge.ts';
-import { panelRunId } from '../panelRun.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { summary } from '../runIdentity.ts';
 import { listedRunPresence } from '../sessionList.ts';
@@ -22,72 +21,36 @@ import { TopbarCrumb } from '../TopbarSlot.tsx';
 
 // Side panes of a session: the run detail, its results and its checks.
 
-/** Run detail in the side panel: the chosen run (newest by default) with its own views. */
+/**
+ * A run tab's content (features/session-panel.md): one run's record, which never changes run.
+ * The selected tab's views follow the address; an unselected one keeps its own until chosen
+ * again. The path's run menu stands in the top bar only for the selected tab on screen.
+ */
 export function RunPanel({
+  runId,
   runs,
   active,
-  listed,
   entries,
   search,
   setSearch,
+  picker,
+  onOpenRun,
 }: {
+  runId: string;
   runs: RunSummary[];
   /** The session's run still going, as the composer reads it; null when none goes. */
   active: RunSummary | null;
-  /** The run list has answered for the current selection. */
-  listed: boolean;
   /** The session's turns: the request that started a run is its title. */
   entries: WorkSession['entries'];
+  /** This tab's own views: the address's while it is selected. */
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
+  /** The path's run menu shows: this tab is selected and the panel is on screen. */
+  picker: boolean;
+  /** Opens (or selects) another run's tab: the run menu, "현재 실행 보기". */
+  onOpenRun: (runId: string) => void;
 }) {
-  const tw = useTranslations('Workbench');
-  const runId = panelRunId(runs, search.run, listed);
   const names = useRunNames(runs, entries);
-  const panel = useRef<HTMLDivElement>(null);
-  // The run the line above a past run's header moved to: its title takes focus once it shows.
-  const arriving = useRef<string | null>(null);
-  useEffect(() => {
-    if (!runId || arriving.current !== runId) return;
-    let frame = 0;
-    let frames = 0;
-    // The run's record may still be opening; its title comes with its header.
-    const look = () => {
-      const title = panel.current?.querySelector<HTMLElement>('[data-run-title]');
-      if (title || ++frames > 60) {
-        arriving.current = null;
-        // Only focus the control left with the past run took to the page.
-        if (document.activeElement === document.body) title?.focus({ preventScroll: true });
-        return;
-      }
-      frame = requestAnimationFrame(look);
-    };
-    frame = requestAnimationFrame(look);
-    return () => cancelAnimationFrame(frame);
-  }, [runId]);
-  if (!runId)
-    return (
-      <div className="grid h-full place-items-center p-6">
-        <div className="grid justify-items-center gap-3">
-          <EmptyState title={tw('noRuns')} />
-          <Button variant="secondary" onClick={() => setSearch({ panel: undefined })}>
-            {tw('openConversation')}
-          </Button>
-        </div>
-      </div>
-    );
-  // A fallback run must not inherit the selection made inside the run that has gone.
-  const own = search.run === undefined || search.run === runId;
-  // Another run starts at its own default view, from the path's run menu or the line below.
-  const showRun = (value: string) =>
-    setSearch({
-      run: value,
-      atSeq: undefined,
-      execution: undefined,
-      artifact: undefined,
-      view: undefined,
-      result: undefined,
-    });
   // While a past run shows and another run of the session goes, the header says which, once
   // (features/execution-monitor.md). A run still going is not a past run.
   const shown = runs.find((run) => run.runId === runId);
@@ -96,19 +59,19 @@ export function RunPanel({
       ? active
       : null;
   return (
-    <div ref={panel} className="flex h-full min-h-0 flex-1 flex-col">
-      {search.panel === 'run' ? (
+    <div className="flex h-full min-h-0 flex-1 flex-col">
+      {picker ? (
         <TopbarCrumb>
           <span aria-hidden="true" className="text-muted-foreground/50">
             /
           </span>
-          <RunMenu runs={runs} runId={runId} names={names} onSelect={showRun} />
+          <RunMenu runs={runs} runId={runId} names={names} onSelect={onOpenRun} />
         </TopbarCrumb>
       ) : null}
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
-          sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
+          sessionId={shown?.sessionId ?? null}
           runId={runId}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
@@ -118,28 +81,20 @@ export function RunPanel({
               <ActiveRunLine
                 run={elsewhere}
                 number={runs.findIndex((run) => run.runId === elsewhere.runId) + 1}
-                onShowActiveRun={() => {
-                  arriving.current = elsewhere.runId;
-                  showRun(elsewhere.runId);
-                }}
+                onShowActiveRun={() => onOpenRun(elsewhere.runId)}
               />
             ) : null
           }
           embedded
-          search={
-            own
-              ? {
-                  atSeq: search.atSeq,
-                  execution: search.execution,
-                  artifact: search.artifact,
-                  view: search.view ?? (search.result ? 'results' : 'run'),
-                  result: search.result,
-                  // A request to respond goes to the conversation's needed-now tray
-                  // (SessionPage), never to the record beside it.
-                }
-              : { view: 'run' }
-          }
-          setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
+          search={{
+            atSeq: search.atSeq,
+            execution: search.execution,
+            artifact: search.artifact,
+            view: search.view ?? (search.result ? 'results' : 'run'),
+            result: search.result,
+            // A request to respond goes to the conversation's needed-now tray, never here.
+          }}
+          setSearch={(patch, options) => setSearch(patch, options)}
         />
       </div>
     </div>

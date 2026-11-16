@@ -4,6 +4,10 @@ import { IntlProvider } from 'use-intl';
 import { beforeEach, expect, it, vi } from 'vitest';
 import { RunActions } from '../src/components/RunActions.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import {
+  askCancelConfirmation,
+  discardCancelConfirmation,
+} from '../src/run/cancel-confirmation.ts';
 import { projectionWith, sessionStore } from '../src/stories/fixtures.tsx';
 
 beforeEach(() => sessionStorage.clear());
@@ -78,4 +82,16 @@ it('confirmations in multiple surfaces clear together', () => {
   expect(screen.getAllByRole('button', { name: 'Keep running' })).toHaveLength(2);
   fireEvent.click(second.container.querySelectorAll('button')[3] as HTMLButtonElement);
   expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
+});
+
+it('asking and letting go from outside a holder show and clear its confirmation at once, sending nothing', async () => {
+  const shown = mount('outside');
+  await act(async () => {});
+  expect(screen.queryByText(/Cancellation has not been sent/)).toBeNull();
+  act(() => askCancelConfirmation('outside'));
+  expect(screen.getByText(/Cancellation has not been sent/)).toBeTruthy();
+  act(() => discardCancelConfirmation('outside'));
+  expect(screen.queryByText(/Cancellation has not been sent/)).toBeNull();
+  expect(sessionStorage.getItem('corral:cancel-confirmation:outside')).toBeNull();
+  expect(shown.sendCommand).not.toHaveBeenCalled();
 });

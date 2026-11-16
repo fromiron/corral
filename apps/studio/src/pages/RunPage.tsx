@@ -81,6 +81,7 @@ import { projectOfRun, setCurrentProject } from '../projects.ts';
 import { runRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
+import { useRunHeadCarriesControls } from '../workbench/panel/runHeadControls.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
 import type { RunDetailSearch } from '../workbench/panels/routes.ts';
 import { RunPlanStrip } from '../workbench/RunActivity.tsx';
@@ -147,6 +148,8 @@ export function RunDetail({
   const missing = useStore(session, (s) => s.missingRunId === runId);
   const error = useStore(session, (s) => s.streamError ?? s.definitionError);
   const definition = useStore(session, (s) => s.definition);
+  // Beside an operable conversation a run tab's head has no controls: the composer has them.
+  const carriesControls = useRunHeadCarriesControls();
   const [recordSession, setRecordSession] = useState<{
     runId: string;
     sessionId: string | null;
@@ -190,7 +193,7 @@ export function RunDetail({
         <p role="status" className="text-body text-muted-foreground">
           {error ?? (missing ? t('missing') : t('loading'))}
         </p>
-        {activeRunId === runId ? <RunActions session={session} /> : null}
+        {activeRunId === runId && carriesControls ? <RunActions session={session} /> : null}
         {error ? (
           <Button variant="tertiary" onClick={() => void session.getState().open(runId)}>
             {t('retry')}
@@ -1120,7 +1123,11 @@ function RunHeader({
   const recipeStopped = useStore(session, (s) =>
     s.events.some((event) => event.type === 'recipe.stopped'),
   );
+  const carriesControls = useRunHeadCarriesControls();
   if (!projection) return null;
+  // A finished run's head keeps only its receipts that still need confirming (RunActions says
+  // so for a finished run); a run in progress shows its controls only where they stand.
+  const showActions = carriesControls || TERMINAL_RUN_STATUSES.has(projection.status);
   // The run's state, as every screen says it (docs/specs/features/presence.md): every open
   // request once, by the order the record holds them.
   const presence = projectionPresence(projection, events);
@@ -1220,7 +1227,7 @@ function RunHeader({
           </div>
         ) : null}
         <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
-          <RunActions session={session} compact narrowIcons />
+          {showActions ? <RunActions session={session} compact narrowIcons /> : null}
           {trailing}
         </div>
       </div>

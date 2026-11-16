@@ -48,6 +48,7 @@ import {
   withoutSettingsItem,
   workHref,
 } from '../workbench/navigation.ts';
+import { useRecordHistoryActions } from '../workbench/panel/historyActions.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
 import { useSessionJump } from '../workbench/SessionJump.tsx';
@@ -75,6 +76,8 @@ function RootFrame() {
   useShortcutBindings();
   const navigate = useNavigate();
   const router = useRouter();
+  // How each history entry was reached, for the session frame (workbench/panel/historyActions.ts).
+  useRecordHistoryActions();
   const settingsOwner = useRef(crypto.randomUUID()).current;
   const { repository, workspaces, mode } = useServices();
   const [sessionMissing, setSessionMissing] = useState(false);

@@ -153,7 +153,7 @@ async function mount(
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
   mode: 'server' | 'browser' = 'server',
-  runControlsOwnConfirmation = false,
+  conversationInoperable = false,
   {
     session: change,
     ...extra
@@ -303,7 +303,7 @@ async function mount(
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <Composer
-            runControlsOwnConfirmation={runControlsOwnConfirmation}
+            conversationInoperable={conversationInoperable}
             session={session}
             team={team}
             corrals={[team]}

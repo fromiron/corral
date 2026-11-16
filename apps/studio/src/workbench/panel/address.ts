@@ -81,7 +81,7 @@ export function panelAddress(state: PanelState, fronts?: PanelFronts): PanelAddr
 }
 
 /** What a tab writes into the address beside `panel`; respond, advice and message are not. */
-const TAB_PARAMS = [
+export const TAB_PARAMS = [
   'view',
   'result',
   'execution',

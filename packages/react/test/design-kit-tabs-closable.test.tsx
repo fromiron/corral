@@ -110,6 +110,8 @@ it('names each close control after its tab and keeps it out of the tab and the t
   for (const tab of sample) {
     const close = screen.getByRole('button', { name: `${tab.label} 닫기` });
     expect(close).toHaveAttribute('tabindex', '-1');
+    // It says which tab it closes, also when two tabs share a name.
+    expect(close).toHaveAttribute('data-tab-id', tab.id);
     expect(tablist.contains(close)).toBe(false);
   }
   // A tab contains no other control, and its name is only its label.

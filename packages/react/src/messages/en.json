@@ -2667,7 +2667,6 @@
       "panel": "Pane",
       "settings": "Settings"
     },
-    "togglePanel": "Toggle file viewer",
     "openPanel": "Open {panel}",
     "review": "Open the review screen",
     "rename": "Rename conversation",
@@ -4560,12 +4559,7 @@
     "createHeld": "A terminal already holds this Paddock. Stop it first."
   },
   "Docking": {
-    "fileViewer": "File viewer",
-    "openFileViewer": "Open file viewer",
-    "closeFileViewer": "Close file viewer",
-    "fileViewerSource": "Source · read-only",
     "history": "Runs",
-    "sessionViews": "Conversation views",
     "changedFiles": "{count, plural, one {# changed file} other {# changed files}}",
     "title": "Workbench layout",
     "preset": "Layout",
@@ -4626,6 +4620,18 @@
     "size": "Size",
     "waiting": "{count, plural, =1 {Waiting for you} other {Waiting for you ({count})}}",
     "runElapsed": "Elapsed {time}"
+  },
+  "SessionPanel": {
+    "label": "Panel",
+    "tabs": "Panel tabs",
+    "toggle": "Toggle panel",
+    "add": "Open",
+    "maximize": "Maximize panel",
+    "restore": "Restore panel",
+    "close": "Close {name}",
+    "width": "Panel width",
+    "empty": "Nothing is open beside the conversation",
+    "runShort": "#{number}"
   },
   "Context": {
     "previewSource": "Preview capture",

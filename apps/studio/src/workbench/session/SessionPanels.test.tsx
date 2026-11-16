@@ -124,6 +124,7 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   fixture.services = { transport: { getRunDefinition: async () => null } };
   const setSearch = vi.fn();
+  const onOpenRun = vi.fn();
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -131,6 +132,7 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
     await act(async () => root.unmount());
     container.remove();
   });
+  // A run tab holds one run, the one the address names.
   const render = (
     next: SessionSearch,
     listedRuns: RunSummary[] = runs,
@@ -140,12 +142,14 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <RunPanel
+            runId={next.run ?? ''}
             runs={listedRuns}
             active={going}
-            listed
             entries={[]}
             search={next}
             setSearch={setSearch}
+            picker
+            onOpenRun={onOpenRun}
           />
         </IntlProvider>,
       ),
@@ -154,6 +158,7 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
   return {
     container,
     setSearch,
+    onOpenRun,
     render,
     line: () => container.querySelector('[data-testid="run-active-elsewhere"]'),
   };
@@ -185,7 +190,7 @@ it('tells above a past run that another run of the session goes, by its number a
   expect(buttons[0]?.getAttribute('tabindex')).not.toBe('-1');
 });
 
-it('moves the run tab to the active run as the run menu does, resetting the per-run view', async () => {
+it('opens the active run in its own run tab, as the run menu does', async () => {
   const view = await showRunPanel([past, going], going, {
     panel: 'run',
     run: 'run_past',
@@ -197,20 +202,13 @@ it('moves the run tab to the active run as the run menu does, resetting the per-
   });
   const button = view.line()?.querySelector('button');
   await act(async () => button?.click());
-  expect(view.setSearch).toHaveBeenCalledExactlyOnceWith({
-    run: 'run_going',
-    atSeq: undefined,
-    execution: undefined,
-    artifact: undefined,
-    view: undefined,
-    result: undefined,
-  });
-  // The control leaves with the past run; focus goes to the shown run's title, not the page.
+  expect(view.onOpenRun).toHaveBeenCalledExactlyOnceWith('run_going');
+  // The past run's own view is not touched: it stays with that run's tab.
+  expect(view.setSearch).not.toHaveBeenCalled();
+  // Shown in a tab of its own, the active run has no such line (focus goes to that new tab,
+  // which the session frame moves: SessionPage.shell.test.tsx).
   await view.render({ panel: 'run', run: 'run_going' });
-  await act(async () => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
   expect(view.line()).toBeNull();
-  expect(document.activeElement?.hasAttribute('data-run-title')).toBe(true);
-  expect(document.activeElement?.textContent).toBe('run_going');
 });
 
 it.each([
@@ -245,14 +243,14 @@ it('takes the line away when the run going ends while a past run shows', async (
   expect(view.line()?.textContent).toContain('Run #3');
 });
 
-it('sends the same move again on a second press before the run tab has moved', async () => {
+it('asks for the same run tab again on a second press before it has opened', async () => {
   const view = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' });
   const button = view.line()?.querySelector('button');
   await act(async () => {
     button?.click();
     button?.click();
   });
-  // The address patch is the same both times, so the second lands on the same address.
-  expect(view.setSearch).toHaveBeenCalledTimes(2);
-  expect(view.setSearch.mock.calls[0]).toEqual(view.setSearch.mock.calls[1]);
+  // The same run both times: opening an open tab selects it (features/session-panel.md).
+  expect(view.onOpenRun).toHaveBeenCalledTimes(2);
+  expect(view.onOpenRun.mock.calls[0]).toEqual(view.onOpenRun.mock.calls[1]);
 });

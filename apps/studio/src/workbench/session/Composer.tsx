@@ -7,7 +7,7 @@ import {
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { useCancelConfirmation } from '@corral/react';
 import { useRouter } from '@tanstack/react-router';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useRegisterCommands, useRegisteredCommands } from '../../commandRegistry.ts';
 import { useRemembered } from '../../pages/Workbench.tsx';
@@ -17,9 +17,9 @@ import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { sessionRunMode } from '../autoChoice.ts';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
-
 import { removeMention, selectMention } from '../composerMenu.ts';
 import type { FileReference } from '../FilePanel.tsx';
+import { StopCommandContext } from '../panel/runHeadControls.ts';
 import { usePreferences } from '../preferences.ts';
 import { clearSentComposerDraft, readComposerDraft } from '../sessionDraft.ts';
 import { useMentionSearch } from '../useMentionSearch.ts';
@@ -100,7 +100,7 @@ function SessionComposer({
   onSent,
   reference,
   onReferenceUsed,
-  runControlsOwnConfirmation = false,
+  conversationInoperable = false,
   home = false,
   onWorkFolder,
   folderAccess = 'unknown',
@@ -121,8 +121,11 @@ function SessionComposer({
   onSent?: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
-  /** The active session view already has one RunActions confirmation host. */
-  runControlsOwnConfirmation?: boolean;
+  /**
+   * The conversation cannot be operated (the panel is maximized or a drawer): its whole-run
+   * confirmation never shows; the selected run tab's head asks instead.
+   */
+  conversationInoperable?: boolean;
   /** An empty session: the kit home composition offers the saved teams as start suggestions. */
   home?: boolean;
   /** Opens file-work setup; given while the project has no work folder yet. */
@@ -381,7 +384,9 @@ function SessionComposer({
 
   const backToInput = () => backToInputOf(input);
 
+  const routeStop = useContext(StopCommandContext);
   const requestStop = () => {
+    if (routeStop?.()) return;
     setConfirmStop(ownActive !== null);
   };
   // A run command the run refused or whose answer was lost: the activity bar's line says so, where
@@ -769,7 +774,7 @@ function SessionComposer({
         serverMode={mode === 'server'}
       />
       <StopRunDialog
-        open={confirmStop && !runControlsOwnConfirmation}
+        open={confirmStop && !conversationInoperable}
         onOpenChange={setConfirmStop}
         onConfirm={() => {
           if (ownActive) void runCommand(runDeps, 'cancel', ownActive.runId);

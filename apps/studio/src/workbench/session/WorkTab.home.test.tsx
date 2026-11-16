@@ -6,7 +6,6 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionRunViews } from '../panelRun.ts';
-import { resolveSessionSearch } from '../panels/routes.ts';
 import { SessionChat } from './SessionChat.tsx';
 import type { SessionConnection } from './SessionConnection.tsx';
 import { WorkTab } from './WorkTab.tsx';
@@ -16,7 +15,7 @@ type ComposerProps = {
   onWorkFolder?: () => void;
   onFolderAction?: () => void;
   folderAccess?: string;
-  runControlsOwnConfirmation?: boolean;
+  conversationInoperable?: boolean;
   revealRun?: (runId: string | null) => boolean;
 };
 const fixture = vi.hoisted(() => ({
@@ -121,13 +120,13 @@ async function show(
     runs = [],
     active = null,
     liveRunId = null,
-    inspectedRunId = null,
+    conversationInoperable = false,
     onPlace,
   }: {
     runs?: RunSummary[];
     active?: RunSummary | null;
     liveRunId?: string | null;
-    inspectedRunId?: string | null;
+    conversationInoperable?: boolean;
     onPlace?: (message: string | undefined) => void;
   } = {},
 ) {
@@ -148,7 +147,7 @@ async function show(
           runs={runs}
           active={active}
           liveRunId={liveRunId}
-          inspectedRunId={inspectedRunId}
+          conversationInoperable={conversationInoperable}
           onChange={() => {}}
           reference={null}
           onReferenceUsed={() => {}}
@@ -243,7 +242,7 @@ it('the session chat leaves a lost connection to the composer’s activity bar, 
           runs={[]}
           active={null}
           liveRunId={null}
-          inspectedRunId={null}
+          conversationInoperable={false}
           onChange={() => {}}
           reference={null}
           onReferenceUsed={() => {}}
@@ -289,59 +288,30 @@ const asked = (runId: string): SessionEntry => ({
 });
 
 it.each([
-  ['the run tab shows the active run', 'run_live', true],
-  ['the run tab shows a past run while another run is active', 'run_old', false],
-  // The newest run need not be the active one: a run tab with no run of its own shows the newest.
-  ['the run tab shows the newest run, ended, while an older one is active', 'run_new', false],
-  ['no run tab is open', null, false],
+  ['the conversation can be operated', false],
+  ['a maximized panel or a drawer covers the conversation', true],
 ] as const)(
-  'leaves Stop’s confirmation to the run record only while %s',
-  async (_name, inspected, owns) => {
-    // The raw address says the run tab is open; only the inspected run decides.
-    fixture.search = { panel: 'run' };
+  'hands the composer whether the conversation is covered: %s',
+  async (_name, covered) => {
     await show(session([asked('run_live')]), {
-      runs: [run('run_old'), run('run_live'), { ...run('run_new'), status: 'succeeded' }],
+      runs: [run('run_live')],
       active: run('run_live'),
       liveRunId: 'run_live',
-      inspectedRunId: inspected,
+      conversationInoperable: covered,
     });
-    expect(fixture.composer.at(-1)?.runControlsOwnConfirmation).toBe(owns);
+    expect(fixture.composer.at(-1)?.conversationInoperable).toBe(covered);
   },
 );
 
-it.each([
-  ['the remembered view brings back a past run', { run: 'run_old', view: 'run' }, false],
-  ['the remembered view brings back the active run', { run: 'run_live', view: 'run' }, true],
-] as const)(
-  'on a run tab address with no run of its own, where %s, decides by the run the record shows',
-  async (_name, remembered, owns) => {
-    const runs = [run('run_old'), run('run_live')];
-    // The raw router search has no run; the page resolves the remembered one into its search.
-    fixture.search = { panel: 'run' };
-    const views = sessionRunViews(
-      runs,
-      [],
-      resolveSessionSearch({ panel: 'run' }, remembered),
-      true,
-    );
-    await show(session([asked('run_live')]), {
-      runs,
-      active: run('run_live'),
-      liveRunId: views.liveRunId,
-      inspectedRunId: views.inspectedRunId,
-    });
-    expect(fixture.composer.at(-1)?.runControlsOwnConfirmation).toBe(owns);
-  },
-);
-
-it('follows and keeps open the active run while the address selects a past one', async () => {
+it('follows and keeps open the active run while a run tab shows a past one', async () => {
   const runs = [{ ...run('run_old'), status: 'succeeded' as const }, run('run_live')];
-  const views = sessionRunViews(runs, [], { run: 'run_old' }, true);
+  const views = sessionRunViews(runs, []);
+  // The address selects the past run; the conversation does not follow it.
+  fixture.search = { panel: 'run', run: 'run_old' };
   await show(session([asked('run_live')]), {
     runs,
     active: run('run_live'),
     liveRunId: views.liveRunId,
-    inspectedRunId: views.inspectedRunId,
   });
   expect(fixture.retained).toEqual(['run_live']);
   expect(fixture.opened).toEqual(['run_live']);

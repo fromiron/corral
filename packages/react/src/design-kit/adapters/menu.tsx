@@ -29,6 +29,7 @@ import {
   type MenuItemRenderOptions,
   useDropdown,
 } from '../components/ui/menu-item.tsx';
+import type { IconComponent } from '../lib/icon-context.tsx';
 import { cn } from '../lib/utils.ts';
 
 const Menu = KitMenu;
@@ -127,6 +128,7 @@ function sourceRow(element: ReactElement) {
 
 function Row({
   children,
+  icon,
   label,
   index = 0,
   checked,
@@ -134,6 +136,8 @@ function Row({
   renderRow,
 }: {
   children?: ReactNode;
+  /** The row's leading icon, drawn in the kit row's icon column at the row's size. */
+  icon?: IconComponent;
   label?: string;
   index?: number;
   checked?: boolean;
@@ -145,6 +149,7 @@ function Row({
     <DropdownContext.Provider value={{ ...context, renderMenuItem: renderRow }}>
       <KitMenuItem
         index={index}
+        icon={icon}
         label={label ?? labelText(children)}
         labelContent={children}
         checked={checked}
@@ -156,6 +161,7 @@ function Row({
 
 function MenuItem({
   children,
+  icon,
   label,
   index,
   className,
@@ -164,6 +170,8 @@ function MenuItem({
   variant: _variant,
   ...props
 }: MenuPrimitive.Item.Props & {
+  /** A leading icon: the kit row draws it in its own icon column, not inside the label. */
+  icon?: IconComponent;
   index?: number;
   inset?: boolean;
   density?: 'default' | 'touch';
@@ -171,6 +179,7 @@ function MenuItem({
 }) {
   return (
     <Row
+      icon={icon}
       label={label}
       index={index}
       disabled={props.disabled}

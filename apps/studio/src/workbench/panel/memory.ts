@@ -112,3 +112,12 @@ export function forgetPanelMemory(storage: PanelStorage | null, sessionId: strin
     // Nothing to tell: the memory stays until it is overwritten.
   }
 }
+
+/** This device's local storage, or null where it cannot be reached. */
+export function deviceStorage(): PanelStorage | null {
+  try {
+    return globalThis.localStorage ?? null;
+  } catch {
+    return null;
+  }
+}
