@@ -2043,7 +2043,7 @@
     "saveChecks": "Save checks",
     "checksPlaceholder": "Tests = pnpm test",
     "copyHeading": "Paddock",
-    "noFolder": "Link a project source folder on the project page to give this conversation a Paddock.",
+    "noFolder": "Link a project source folder to give this conversation a Paddock.",
     "notTrusted": "Trust the project's repository first.",
     "openTrust": "Open trust settings",
     "openFolderSettings": "Open Folders & tools",

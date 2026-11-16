@@ -2043,7 +2043,7 @@
     "saveChecks": "검사 저장",
     "checksPlaceholder": "테스트 = npm t",
     "copyHeading": "Paddock",
-    "noFolder": "이 대화에 Paddock을 만들려면 프로젝트 화면에서 프로젝트 원본 폴더를 연결하세요.",
+    "noFolder": "이 대화에 Paddock을 만들려면 프로젝트 원본 폴더를 연결하세요.",
     "notTrusted": "먼저 프로젝트 저장소를 신뢰하세요.",
     "openTrust": "신뢰 설정 열기",
     "openFolderSettings": "폴더 및 도구 열기",
