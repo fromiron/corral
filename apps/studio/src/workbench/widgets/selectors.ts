@@ -1,7 +1,13 @@
 /** Pure presentation decisions for the chat widgets. No clock, network, or DOM. */
 import { ExecutionStatus, RunStatus } from '@corral/contracts';
 import { canReadArtifactBody, type RunProjection, usageTotals } from '@corral/core';
-import { executionPresence, type PresenceKind, runPresence } from '@corral/react';
+import {
+  executionPresence,
+  type PresenceKind,
+  reportedInput,
+  runPresence,
+  type UsageInput,
+} from '@corral/react';
 
 export function availableResultLinks(
   projection: RunProjection | null,
@@ -696,20 +702,10 @@ export interface UsageSummary {
   unknown: number;
   /** Output tokens of the latest finished calls with reported usage, oldest first. */
   perCall: number[];
-  /** reported input of finished calls; null when none reported it. */
+  /** Reported input of finished calls; null when none reported it. */
   input: UsageInput | null;
   /** Completed calls without input usage; excluded from the known input total. */
   inputUnreported: number;
-}
-
-export interface UsageInput {
-  tokens: number;
-  /** Reported cached input; null when no finished call reported it. */
-  cached: number | null;
-  /** Cached share of the input of calls that reported both figures. */
-  cacheShare: number | null;
-  /** Finished calls without a cached-input report; never counted as zero. */
-  cacheUnreported: number;
 }
 
 const PER_CALL_BARS = 12;
@@ -726,37 +722,8 @@ export function usageSummary(projection: RunProjection | null): UsageSummary | n
     requests: totals.requests,
     unknown: totals.unknown,
     perCall: perCall.slice(-PER_CALL_BARS),
-    input: usageInput(projection),
-    inputUnreported: Object.values(projection.modelCalls).filter(
-      (call) => call.finished && call.usage?.inputTokens == null,
-    ).length,
-  };
-}
-
-function usageInput(projection: RunProjection): UsageInput | null {
-  const finished = Object.values(projection.modelCalls).filter((call) => call.finished);
-  let tokens = 0;
-  let reportedInput = 0;
-  let cached = 0;
-  let cachedOf = 0;
-  let cacheReported = 0;
-  for (const call of finished) {
-    const input = call.usage?.inputTokens;
-    const cache = call.usage?.cachedInputTokens;
-    if (input == null) continue;
-    tokens += input;
-    reportedInput += 1;
-    if (cache == null) continue;
-    cached += cache;
-    cachedOf += input;
-    cacheReported += 1;
-  }
-  if (!reportedInput) return null;
-  return {
-    tokens,
-    cached: cacheReported ? cached : null,
-    cacheShare: cacheReported && cachedOf ? cached / cachedOf : null,
-    cacheUnreported: finished.filter((call) => call.usage?.cachedInputTokens == null).length,
+    // Read as Run info › Usage reads it: one computation for both.
+    ...reportedInput(projection),
   };
 }
 

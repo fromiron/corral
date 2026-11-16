@@ -202,6 +202,7 @@ export {
   turnSummary,
 } from './run/turn-process.ts';
 export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';
+export { type ReportedInput, reportedInput, type UsageInput } from './run/usage-input.ts';
 export {
   useWorkPlanSnapshot,
   type WorkPlanRef,

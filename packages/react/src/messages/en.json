@@ -1064,7 +1064,13 @@
     "reportedOutput": "Reported output",
     "requestCount": "Requests",
     "noInformation": "No information",
-    "outsideAgents": "Outside agent executions"
+    "outsideAgents": "Outside agent executions",
+    "inputTokens": "Reported input tokens",
+    "cachedInput": "Cached input",
+    "cachedShare": "{tokens} ({share})",
+    "cacheNotReported": "Not reported",
+    "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
+    "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}"
   },
   "SettingsPatch": {
     "heading": "Change settings",
@@ -4012,12 +4018,6 @@
       "openChanges": "Open the changes",
       "spent": "Reported output tokens",
       "modelCalls": "Model calls",
-      "inputTokens": "Reported input tokens",
-      "cachedInput": "Cached input",
-      "cachedShare": "{tokens} ({share})",
-      "cacheNotReported": "Not reported",
-      "cacheUnreported": "{count, plural, one {# call did not report cached input} other {# calls did not report cached input}}",
-      "inputUnreported": "{count, plural, one {# completed call did not report input tokens} other {# completed calls did not report input tokens}}",
       "simulatedUsage": "Simulation usage; not a provider measurement or bill.",
       "unknownUsage": "{count, plural, one {# request did not report usage} other {# requests did not report usage}}",
       "openRun": "Open the run"
