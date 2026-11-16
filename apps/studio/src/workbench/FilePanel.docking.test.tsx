@@ -420,6 +420,95 @@ it('in the viewer row the head holds the one refresh and the one close, and noth
   }
 });
 
+it('Escape closes the drawer from any of the viewer’s own controls, after a tooltip has closed', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  // No room beside: the viewer opens as a drawer.
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+  let toggle: (open: boolean) => void = () => {};
+  function Viewer() {
+    const [wish, setWish] = useState(false);
+    const viewer = useFileViewerPlacement('project', wish, setWish);
+    toggle = viewer.toggle;
+    return (
+      <FileViewerRow
+        viewer={viewer}
+        panel={(head) => (
+          <FilePanel
+            projectId="project"
+            sessionId="session"
+            readOnly
+            onReference={() => {}}
+            head={head}
+          />
+        )}
+      >
+        <textarea aria-label="Request" />
+      </FileViewerRow>
+    );
+  }
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const open = () => act(async () => toggle(true));
+  const drawn = () => container.querySelector('[data-file-viewer-scrim]') !== null;
+  /** Escape from the focused element, as many times as it takes to close, at most `limit`. */
+  const escapeUntilClosed = async (limit: number) => {
+    let presses = 0;
+    while (drawn() && presses < limit) {
+      presses += 1;
+      await act(async () => {
+        (document.activeElement ?? document.body).dispatchEvent(
+          new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+        );
+      });
+    }
+    return presses;
+  };
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <Viewer />
+        </IntlProvider>,
+      );
+    });
+    const viewer = () => container.querySelector('aside') as HTMLElement;
+    // Each control with the presses it takes: refresh's tooltip, opened by the focus, takes the
+    // first press and the next one closes the drawer.
+    const controls: [() => HTMLElement | null, number][] = [
+      [() => refreshButtons(viewer())[0] as HTMLElement, 2],
+      [() => viewer().querySelector(`button[aria-label="${messages.Docking.closeFileViewer}"]`), 1],
+      [() => viewer().querySelector(`input[aria-label="${messages.Desktop.filterFiles}"]`), 1],
+      [() => viewer().querySelector('button[title="a.md"]'), 1],
+    ];
+    for (const [control, presses] of controls) {
+      await open();
+      expect(drawn()).toBe(true);
+      const element = control();
+      expect(element).not.toBeNull();
+      await act(async () => element?.focus());
+      expect(await escapeUntilClosed(2)).toBe(presses);
+      expect(drawn()).toBe(false);
+    }
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    width.mockRestore();
+    vi.unstubAllGlobals();
+    fixture.files = sessionFiles;
+  }
+});
+
 it.each([false, true])(
   'content search offers preparation or selection without creating a copy (exists: %s)',
   async (hasCopy) => {

@@ -123,8 +123,9 @@ function WorkSessionPage() {
     `corral:file-viewer:${session.projectId}`,
     false,
   );
+  // The wish is the project's; a drawer belongs to this session only.
   const fileViewer = useFileViewerPlacement(
-    session.projectId,
+    `${session.projectId}:${session.sessionId}`,
     fileViewerWanted,
     rememberFileViewer,
   );

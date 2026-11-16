@@ -56,7 +56,8 @@ export type FileViewerHead = (refresh: () => void) => ReactNode;
 
 /**
  * Where the viewer is, from the remembered wish and the row's own width (not the window's: the
- * sidebar changes it). `key` names whose wish it is; a drawer belongs to that key only.
+ * sidebar changes it). `key` names where the drawer was opened (the page passes its session); a
+ * drawer belongs to that key only, so another session or project ends it.
  */
 export function useFileViewerPlacement(
   key: string,
