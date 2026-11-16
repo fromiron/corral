@@ -1076,7 +1076,7 @@ it('choosing Results while reading goes to the results list', async () => {
   ).toBeNull();
 });
 
-it('a step result opened from another view closes back to that view, focus on its origin', async () => {
+it('a step result a link opens over another view closes back to that view', async () => {
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
   const { container, navigate } = await mount('inline_team', null, {});
   await act(async () => viewTab(container, 'Workflow')?.click());
@@ -1148,8 +1148,13 @@ it('the reader’s own close returns to the graph and to the node that opened it
     ...(container.querySelector('[data-testid="node-preview"]')?.querySelectorAll('button') ?? []),
   ].find((button) => /Draft/.test(button.textContent ?? ''));
   expect(open).toBeDefined();
-  await act(async () => open?.click());
+  await act(async () => {
+    open?.click();
+    await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+  });
   expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+  // Opening moves focus into the reading under the row.
+  expect(document.activeElement).toBe(container.querySelector('[data-testid="run-document"]'));
   await act(async () => {
     container.querySelector<HTMLButtonElement>('[data-testid="artifact-close"]')?.click();
     await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
@@ -1157,6 +1162,51 @@ it('the reader’s own close returns to the graph and to the node that opened it
   expect(viewTab(container, 'Graph')?.getAttribute('aria-selected')).toBe('true');
   expect(container.querySelector('[data-testid="layout"]')?.closest('[hidden]')).toBeNull();
   expect(document.activeElement).toBe(node);
+});
+
+it('on a narrow page, a view chosen while reading is shown, not the panel the reading covered', async () => {
+  fixture.pending = 1;
+  const { container } = await mount('inline_team', null);
+  await act(async () =>
+    container.querySelector<HTMLButtonElement>('[data-testid="run-respond"]')?.click(),
+  );
+  const column = container.querySelector<HTMLElement>('[data-testid="run-column"]');
+  expect(column?.hidden).toBe(true);
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((el) => el.textContent?.includes('Approval evidence'))
+      ?.click(),
+  );
+  expect(column?.hidden).toBe(false);
+  await act(async () => viewTab(container, 'Graph')?.click());
+  expect(column?.hidden).toBe(false);
+  expect(container.querySelector<HTMLElement>('[data-testid="run-side"]')?.hidden).toBe(true);
+  expect(container.querySelector('[data-testid="layout"]')?.closest('[hidden]')).toBeNull();
+});
+
+it('beside a session’s conversation, a result is read under the run’s view row', async () => {
+  const { container, navigations } = await mount(
+    'inline_team',
+    null,
+    { view: 'results', result: 'artv_result' },
+    undefined,
+    false,
+    ['worker'],
+    undefined,
+    { sessionId: 'session_layout', respond: () => {} },
+  );
+  expect(viewTab(container, 'Results')?.getAttribute('aria-selected')).toBe('true');
+  const reader = container.querySelector<HTMLElement>('[data-testid="run-document"]');
+  expect(reader?.closest('[hidden]')).toBeNull();
+  expect(reader?.textContent).not.toContain('Back to work');
+  await act(async () => viewTab(container, 'Timeline')?.click());
+  expect(navigations.at(-1)?.patch).toMatchObject({
+    result: undefined,
+    artifact: undefined,
+    view: undefined,
+  });
+  expect(reader?.hidden).toBe(true);
+  expect(viewTab(container, 'Timeline')?.getAttribute('aria-selected')).toBe('true');
 });
 
 it('the instruction screen keeps its own Back to work', async () => {

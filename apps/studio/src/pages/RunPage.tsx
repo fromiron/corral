@@ -638,11 +638,23 @@ function RunWorkspace({
             <RunViews
               visible={!documentOpen && !steeringOpen && (wide || !sideShown)}
               // A result or a step result is read under the view row, Results shown as chosen;
-              // choosing a view, Results included, closes it and shows that view.
+              // choosing a view, Results included, closes it and shows that view. Without room
+              // for both, the side the reading covered closes too, so the chosen view shows.
               reading={{
                 view: documentOpen ? 'results' : null,
-                onLeave: () =>
-                  setSearch({ artifact: undefined, result: undefined, view: undefined }),
+                onLeave: () => {
+                  const sideCovered = !wide && panel !== 'closed';
+                  if (sideCovered) {
+                    setListedNodeId(null);
+                    setPanel('closed');
+                  }
+                  setSearch({
+                    artifact: undefined,
+                    result: undefined,
+                    view: undefined,
+                    ...(sideCovered ? { execution: undefined } : {}),
+                  });
+                },
                 pane: (
                   <section
                     ref={documentPane}
