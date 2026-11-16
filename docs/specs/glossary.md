@@ -18,8 +18,9 @@
 | 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
-| 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
-| 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
+| 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭(이 뜻으로) |
+| 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | 패널 |
+| 대화 옆에서 탭을 하나씩 열고 닫는 자리 | Panel / 패널 | 주소 `panel`, [세션 패널](features/session-panel.md) | 창, 도구 패널 |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
 | 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요, Waiting for your answer / 답변을 기다리고 있습니다, 내 답변 대기, 답을 기다리는 중, 사용자를 기다리는 중 |
 | 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
@@ -108,6 +109,6 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
   - Output / 출력: 출력 노드, 실행의 Output 탭, 출력 계약, 검사·프로세스·터미널의 출력.
   - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
   - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
-  - Pane: 국문이 "창"과 "패널"로 갈린다. "창"은 운영체제 창의 이름이기도 하다("창 최대화").
+  - Pane / 창과 Panel / 패널: 메시지에는 아직 "Panel"이 없고, 영문이 Pane인 국문 문구 여럿이 "패널"이라고 부른다(패널 숨기기·보이기, 패널 너비, 작업 패널, 패널 확대, 결과 패널, 옆 패널 보기). "창"은 운영체제 창의 이름이기도 하다("창 최대화").
   - 저장하지 않고 쓰는 자동 구성: 컴포저는 "Auto / 자동", 새 대화 만들기와 대화 메뉴는 "Default chat / 기본 대화"라고 부른다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.
