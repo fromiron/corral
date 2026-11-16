@@ -2,8 +2,6 @@ import type { FileChangeView } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES, type TextAttachmentProvenance } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
-import { Button, fontWeights } from '@corral/react/design-kit';
-import { X } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -38,6 +36,7 @@ import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { panelRunId } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
+import { FileViewerRow, useFileViewerPlacement } from '../workbench/session/FileViewerBeside.tsx';
 import {
   createPendingTrayStore,
   PendingTrayContext,
@@ -120,15 +119,15 @@ function WorkSessionPage() {
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const panel = search.panel;
   const { binding } = useBinding(session.projectId);
-  const [fileViewerOpen, rememberFileViewer] = useRemembered<boolean>(
+  const [fileViewerWanted, rememberFileViewer] = useRemembered<boolean>(
     `corral:file-viewer:${session.projectId}`,
     false,
   );
-  const [fileViewerVisited, setFileViewerVisited] = useState(false);
-  const toggleFileViewer = (open: boolean) => {
-    setFileViewerVisited(true);
-    rememberFileViewer(open);
-  };
+  const fileViewer = useFileViewerPlacement(
+    session.projectId,
+    fileViewerWanted,
+    rememberFileViewer,
+  );
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -399,8 +398,8 @@ function WorkSessionPage() {
         changes={null}
         panel={panel}
         onPanel={(value) => showPanel({ panel: value })}
-        fileViewerOpen={fileViewerOpen}
-        onToggleFileViewer={toggleFileViewer}
+        fileViewerOpen={fileViewer.open}
+        onToggleFileViewer={fileViewer.toggle}
         onEditTeam={(corralId) => dock.current?.openGraph(corralId) ?? false}
       />
       <ArchivedSessionNotice key={session.sessionId} session={session} />
@@ -439,91 +438,67 @@ function WorkSessionPage() {
           runIds={sessionRunIds}
         >
           <PendingTrayContext.Provider value={trayContext}>
-            <div className="flex h-full min-h-0 min-w-0 flex-1">
-              <div
-                className={`flex min-h-0 min-w-0 flex-1 flex-col ${fileViewerOpen ? 'max-lg:hidden' : ''}`}
-              >
-                <DockWorkbench
-                  key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
-                  ref={dock}
-                  hostId={services.workspaceId}
+            <FileViewerRow
+              viewer={fileViewer}
+              panel={
+                <FilePanel
+                  key={`${session.projectId}:${session.sessionId}:viewer`}
                   projectId={session.projectId}
                   sessionId={session.sessionId}
-                  selectedPanel={panel ?? null}
-                  fileWorkAvailable={Boolean(binding)}
-                  changeCount={changes?.length ?? 0}
-                  selectionKey={`${session.sessionId}:${viewKey}`}
-                  documentOwner={documents}
-                  terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
-                  renderContext={renderContext}
-                  renderDocument={(descriptor, _panelId, selection) =>
-                    documents ? (
-                      <DockDocumentPanel
-                        owner={documents}
-                        target={descriptor.target}
-                        path={descriptor.path}
-                        viewId={descriptor.viewId}
-                        revealSelection={selection}
-                        onAttach={
-                          descriptor.target.sessionId === session.sessionId
-                            ? handleAttachment
-                            : undefined
-                        }
-                        onReference={
-                          descriptor.target.sessionId === session.sessionId
-                            ? handleReference
-                            : undefined
-                        }
-                      />
-                    ) : null
-                  }
-                  renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
-                  graphTitle={(corralId) =>
-                    `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
-                      corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
-                    }`
-                  }
-                  subscribeGraphs={subscribeGraphs}
-                  onActiveContext={(view) => {
-                    const next =
-                      view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
-                    if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
-                  }}
+                  readOnly
+                  onReference={handleReference}
+                  onAttach={handleAttachment}
                 />
-              </div>
-              {fileViewerOpen || fileViewerVisited ? (
-                <aside
-                  hidden={!fileViewerOpen}
-                  aria-label={tdock('fileViewer')}
-                  className="min-h-0 w-96 max-w-full shrink-0 overflow-auto border-l border-line p-3 max-lg:w-full"
-                >
-                  <div className="mb-3 flex items-center justify-between gap-2">
-                    <h2
-                      className="text-subtitle"
-                      style={{ fontVariationSettings: fontWeights.semibold }}
-                    >
-                      {tdock('fileViewer')}
-                    </h2>
-                    <Button
-                      variant="ghost"
-                      size="icon-compact"
-                      aria-label={tdock('closeFileViewer')}
-                      onClick={() => toggleFileViewer(false)}
-                    >
-                      <X />
-                    </Button>
-                  </div>
-                  <FilePanel
-                    key={`${session.projectId}:${session.sessionId}:viewer`}
-                    projectId={session.projectId}
-                    sessionId={session.sessionId}
-                    readOnly
-                    onReference={handleReference}
-                    onAttach={handleAttachment}
-                  />
-                </aside>
-              ) : null}
-            </div>
+              }
+            >
+              <DockWorkbench
+                key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
+                ref={dock}
+                hostId={services.workspaceId}
+                projectId={session.projectId}
+                sessionId={session.sessionId}
+                selectedPanel={panel ?? null}
+                fileWorkAvailable={Boolean(binding)}
+                changeCount={changes?.length ?? 0}
+                selectionKey={`${session.sessionId}:${viewKey}`}
+                documentOwner={documents}
+                terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
+                renderContext={renderContext}
+                renderDocument={(descriptor, _panelId, selection) =>
+                  documents ? (
+                    <DockDocumentPanel
+                      owner={documents}
+                      target={descriptor.target}
+                      path={descriptor.path}
+                      viewId={descriptor.viewId}
+                      revealSelection={selection}
+                      onAttach={
+                        descriptor.target.sessionId === session.sessionId
+                          ? handleAttachment
+                          : undefined
+                      }
+                      onReference={
+                        descriptor.target.sessionId === session.sessionId
+                          ? handleReference
+                          : undefined
+                      }
+                    />
+                  ) : null
+                }
+                renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
+                graphTitle={(corralId) =>
+                  `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
+                    corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
+                  }`
+                }
+                subscribeGraphs={subscribeGraphs}
+                onActiveContext={(view) => {
+                  const next =
+                    view === 'chat' ? undefined : SESSION_PANELS.find((value) => value === view);
+                  if ((view === 'chat' || next) && next !== panel) setSearch({ panel: next });
+                }}
+              />
+            </FileViewerRow>
           </PendingTrayContext.Provider>
         </ChatWidgetProvider>
       </SourceNavigationContext.Provider>
