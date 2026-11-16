@@ -468,10 +468,13 @@ export const sendPlaceStop = (page: Page) => page.getByTestId('composer-stop');
  * only while two or more executions work; when it asks, this confirms.
  */
 export async function stopRun(page: Page) {
-  if ((await requestBox(page).inputValue()).trim()) {
-    await openActivity(page);
-    await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
-  } else await sendPlaceStop(page).click();
+  // Something written puts Stop among the open bar's controls. A box read just after a send may
+  // still hold the sent words for a moment, so the press goes to whichever place has Stop then.
+  if ((await requestBox(page).inputValue()).trim()) await openActivity(page);
+  await sendPlaceStop(page)
+    .or(runControls(page).getByRole('button', { name: 'Stop', exact: true }))
+    .first()
+    .click();
   const dialog = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
   const asked = await dialog
     .waitFor({ state: 'visible', timeout: 2_000 })
