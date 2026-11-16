@@ -5,6 +5,7 @@ import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { FilePanel } from './FilePanel.tsx';
+import { FileViewerRow, useFileViewerPlacement } from './session/FileViewerBeside.tsx';
 
 const fixture = vi.hoisted(() => ({
   target: {
@@ -285,7 +286,8 @@ it('the read-only viewer stays on the original folder even when a session copy i
       await click(container, 'note.txt');
       expect(readFile).toHaveBeenCalledWith({ kind: 'project', id: 'project' }, 'note.txt');
       expect(container.querySelector('[data-source]')?.textContent).toBe('body of note.txt');
-      expect(container.textContent).toContain(messages.Desktop.sourceFolder);
+      // The viewer's head says once that it reads the source; the panel does not say it again.
+      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
       expect(container.textContent).toContain(messages.Files.readOnlyPreview);
       expect(container.querySelector('[data-inline-editor]')).toBeNull();
       expect(
@@ -300,6 +302,122 @@ it('the read-only viewer stays on the original folder even when a session copy i
     },
     true,
   );
+});
+
+const withoutCopy = () =>
+  ({
+    ...sessionFiles,
+    scope: { kind: 'project', id: 'project' },
+    list: { files: [{ path: 'a.md' }], truncated: false },
+    hasCopy: false,
+    copy: null,
+  }) as unknown as typeof sessionFiles;
+const refreshButtons = (container: HTMLElement) =>
+  container.querySelectorAll(`button[aria-label="${messages.Desktop.refreshFiles}"]`);
+
+it('without a Paddock the Files tab says why it is read-only and links to set up file work', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  await panel(
+    () => true,
+    async (container) => {
+      expect(container.textContent).toContain(messages.Files.noCopyReadOnly);
+      const setup = container.querySelector('a[href="/sessions/session?panel=changes"]');
+      expect(setup?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+      expect(
+        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`)?.textContent,
+      ).toContain(messages.Desktop.sourceFolder);
+      expect(refreshButtons(container)).toHaveLength(1);
+    },
+  );
+  fixture.files = sessionFiles;
+});
+
+it('the viewer reads the source without the Paddock notice, its link or the source row', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  await panel(
+    () => true,
+    async (container) => {
+      expect(container.textContent).not.toContain(messages.Files.noCopyReadOnly);
+      expect(container.textContent).not.toContain(messages.Sessions.prepareWorkingCopy);
+      expect(container.textContent).not.toContain(messages.Desktop.sourceFolder);
+      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
+      expect(container.querySelector('[role="note"]')).toBeNull();
+      // Refresh lives in the viewer's head, which the row gives the panel.
+      expect(refreshButtons(container)).toHaveLength(0);
+    },
+    true,
+  );
+  fixture.files = sessionFiles;
+});
+
+it('in the viewer row the head holds the one refresh and the one close, and nothing below repeats it', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1200);
+  const refresh = vi.fn();
+  fixture.files.refresh = refresh;
+  function Viewer() {
+    const viewer = useFileViewerPlacement('project', true, () => {});
+    return (
+      <FileViewerRow
+        viewer={viewer}
+        panel={(head) => (
+          <FilePanel
+            projectId="project"
+            sessionId="session"
+            readOnly
+            onReference={() => {}}
+            head={head}
+          />
+        )}
+      >
+        <textarea aria-label="Request" />
+      </FileViewerRow>
+    );
+  }
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <Viewer />
+        </IntlProvider>,
+      );
+    });
+    const viewer = container.querySelector('aside') as HTMLElement;
+    expect(viewer.hidden).toBe(false);
+    expect(refreshButtons(viewer)).toHaveLength(1);
+    expect(
+      viewer.querySelectorAll(`button[aria-label="${messages.Docking.closeFileViewer}"]`),
+    ).toHaveLength(1);
+    expect(viewer.textContent).toContain(messages.Docking.fileViewerSource);
+    expect(viewer.textContent).not.toContain(messages.Files.noCopyReadOnly);
+    expect(viewer.textContent).not.toContain(messages.Sessions.prepareWorkingCopy);
+    expect(viewer.textContent).not.toContain(messages.Desktop.sourceFolder);
+    await act(async () => {
+      (refreshButtons(viewer)[0] as HTMLButtonElement).click();
+    });
+    expect(refresh).toHaveBeenCalledTimes(1);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    width.mockRestore();
+    vi.unstubAllGlobals();
+    fixture.files = sessionFiles;
+  }
 });
 
 it.each([false, true])(

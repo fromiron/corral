@@ -440,16 +440,17 @@ function WorkSessionPage() {
           <PendingTrayContext.Provider value={trayContext}>
             <FileViewerRow
               viewer={fileViewer}
-              panel={
+              panel={(head) => (
                 <FilePanel
                   key={`${session.projectId}:${session.sessionId}:viewer`}
                   projectId={session.projectId}
                   sessionId={session.sessionId}
                   readOnly
+                  head={head}
                   onReference={handleReference}
                   onAttach={handleAttachment}
                 />
-              }
+              )}
             >
               <DockWorkbench
                 key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
