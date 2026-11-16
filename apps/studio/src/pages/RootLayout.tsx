@@ -39,9 +39,13 @@ import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import { NEW_MEETING, NewMeetingHost } from '../workbench/NewMeeting.tsx';
 import {
   SettingsNavigationContext,
+  settingsClosedState,
+  settingsItemOf,
+  settingsOpenState,
   standaloneSettingsLink,
   validateSettingsOverlay,
   withoutSettings,
+  withoutSettingsItem,
   workHref,
 } from '../workbench/navigation.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
@@ -147,19 +151,7 @@ function RootFrame() {
         hash: location.hash,
         replace: true,
         resetScroll: false,
-        state: (previous) => {
-          const {
-            settingsOwner: _owner,
-            settingsOrigin: _origin,
-            settingsOneShot: _oneShot,
-            ...rest
-          } = previous as typeof previous & {
-            settingsOwner?: string;
-            settingsOrigin?: number;
-            settingsOneShot?: boolean;
-          };
-          return rest;
-        },
+        state: settingsClosedState,
       });
     }
   };
@@ -171,7 +163,8 @@ function RootFrame() {
     overlay,
     section: overlay ? overlaySearch.settings : undefined,
     close: overlay ? closeSettings : undefined,
-    link: (section: string, targetProject = entryProjectId) => {
+    item: overlay ? settingsItemOf(location.state) : undefined,
+    link: (section: string, targetProject = entryProjectId, item?: string) => {
       // A screen that cannot hold the dialog (such as Automation) takes the settings address,
       // which the router replaces with the dialog over Projects.
       if (!workHref(location.href))
@@ -186,14 +179,12 @@ function RootFrame() {
         replace: overlay,
         resetScroll: false as const,
         state: (previous: typeof location.state) =>
-          overlay
-            ? previous
-            : {
-                ...previous,
-                settingsOwner,
-                settingsOrigin: previous.__TSR_index,
-                settingsOneShot: Boolean(location.search.newSession || location.search.draft),
-              },
+          settingsOpenState(previous, {
+            overlay,
+            owner: settingsOwner,
+            oneShot: Boolean(location.search.newSession || location.search.draft),
+            item,
+          }),
       };
     },
     selectProject: overlay
@@ -204,7 +195,8 @@ function RootFrame() {
             hash: location.hash,
             replace: true,
             resetScroll: false,
-            state: true,
+            // The chosen resource belongs to the project Manage opened.
+            state: withoutSettingsItem,
           });
         }
       : undefined,

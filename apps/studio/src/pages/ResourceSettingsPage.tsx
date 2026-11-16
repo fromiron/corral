@@ -86,6 +86,21 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
     };
   }, [api, kind, version]);
   const selected = entries.find((entry) => keyOf(entry) === selection);
+  // Manage in the library opens this page to choose one entry (features/library.md): once, after
+  // the first load, and only an exact match, so a package's hash meant for the package list
+  // below never picks one of its entries. The person's own choice wins from then on.
+  const carried = useRef(navigation.item);
+  const chosenRow = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!loaded || !carried.current) return;
+    const item = carried.current;
+    carried.current = undefined;
+    const entry = entries.find((value) => keyOf(value) === item);
+    if (!entry) return;
+    setArchived(Boolean(entry.archivedAt));
+    setSelection(item);
+    requestAnimationFrame(() => chosenRow.current?.scrollIntoView?.({ block: 'nearest' }));
+  }, [loaded, entries]);
   useEffect(() => {
     if (!selection || entries.some((entry) => keyOf(entry) === selection)) return;
     const sameBundle = entries.find((entry) => entry.resourceHash === selection.split(':')[0]);
@@ -190,6 +205,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 {filtered.map((entry) => (
                   <li key={keyOf(entry)}>
                     <Button
+                      ref={selection === keyOf(entry) ? chosenRow : undefined}
                       variant="ghost"
                       aria-pressed={selection === keyOf(entry)}
                       onClick={() => setSelection(keyOf(entry))}

@@ -40,6 +40,11 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
   }>('package-registration');
   const alive = useRef(true);
   const working = useRef(false);
+  // Manage on a package row in the library (features/library.md): packages have no list to
+  // choose from, so the page goes to that package's line and puts focus there, once.
+  const [carried] = useState(navigation.item);
+  const arrived = useRef(false);
+  const carriedItem = useRef<HTMLLIElement>(null);
   useEffect(() => {
     alive.current = true;
     return () => {
@@ -63,6 +68,13 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
       current = false;
     };
   }, [api, revision]);
+
+  useEffect(() => {
+    if (packages === null || arrived.current) return;
+    arrived.current = true;
+    carriedItem.current?.scrollIntoView({ block: 'nearest' });
+    carriedItem.current?.focus({ preventScroll: true });
+  }, [packages]);
 
   const runSettingsTask = useSettingsTask('packages');
   useSettingsForm({ dirty: Boolean(source || review), pending: busy });
@@ -262,7 +274,11 @@ export function PackageManager({ api, onChanged }: { api: HarnessApi; onChanged:
         ) : (
           <ul className="settings-list divide-y divide-line">
             {packages.map((item) => (
-              <li key={item.resource.hash} className="flex flex-col gap-3 p-4">
+              <li
+                key={item.resource.hash}
+                {...(carried === item.resource.hash ? { ref: carriedItem, tabIndex: -1 } : {})}
+                className="flex flex-col gap-3 p-4 outline-none"
+              >
                 <div className="flex flex-wrap items-center gap-2">
                   <span style={{ fontVariationSettings: fontWeights.semibold }}>
                     {item.resource.name} · {item.resource.version}

@@ -349,7 +349,7 @@ export function ResourceTable({
                 variant="ghost"
                 size="compact"
                 aria-label={t('manageNamed', { name: row.name })}
-                render={<Link {...navigation.link(SECTION[group], projectId)} />}
+                render={<Link {...navigation.link(SECTION[group], projectId, row.key)} />}
               >
                 {t('manage')}
               </Button>

@@ -53,6 +53,15 @@ function McpManager({ api, projectId }: { api: HarnessApi; projectId: string }) 
   const active = useRef(true),
     add = useRef<HTMLButtonElement>(null);
   const selected = config?.mcpServers?.find((server) => server.id === selection);
+  // Manage in the library opens this page to choose one server (features/library.md): once,
+  // after the project's config first loads; the person's own choice wins from then on.
+  const carried = useRef(navigation.item);
+  useEffect(() => {
+    if (!loaded || !carried.current) return;
+    const item = carried.current;
+    carried.current = undefined;
+    if (config?.mcpServers?.some((server) => server.id === item)) setSelection(item);
+  }, [loaded, config]);
   const enabledNow = selected
     ? pendingEnabled?.id === selected.id
       ? pendingEnabled.value
