@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {
   SidePanelFrame,
   type SidePanelFrameProps,
@@ -18,6 +18,68 @@ const presentations: SidePanelPresentation[] = [
   'drawer',
   'withdrawn',
 ];
+
+// A browser runs the drawer's slides on the Web Animations API; jsdom has none, so motion takes its
+// frame-loop fallback. This stand-in serves the cases that switch it on, and throws for the rest,
+// which then take that same fallback. Motion checks for `animate` once, so it is in place first.
+class StandInAnimation {
+  playState: AnimationPlayState = 'running';
+  startTime: number | null = null;
+  currentTime: number | null = 0;
+  playbackRate = 1;
+  /** Never called: the page draws no frames for it, as a hidden window does not. */
+  onfinish: (() => void) | null = null;
+  readonly effect = { getComputedTiming: () => ({ duration: 0 }), updateTiming() {} };
+  /** The play state when the slide was cancelled. */
+  cancelledWhile: AnimationPlayState | null = null;
+  readonly keyframes: Keyframe[] | PropertyIndexedKeyframes | null;
+  constructor(keyframes: Keyframe[] | PropertyIndexedKeyframes | null) {
+    this.keyframes = keyframes;
+  }
+  cancel() {
+    this.cancelledWhile ??= this.playState;
+    this.playState = 'idle';
+  }
+  pause() {
+    this.playState = 'paused';
+  }
+  play() {
+    this.playState = 'running';
+  }
+  finish() {}
+  commitStyles() {}
+}
+const waapi = { on: false, started: [] as StandInAnimation[] };
+Object.defineProperty(Element.prototype, 'animate', {
+  configurable: true,
+  writable: true,
+  value(keyframes: Keyframe[] | PropertyIndexedKeyframes | null) {
+    if (!waapi.on) throw new Error('jsdom has no Web Animations');
+    const animation = new StandInAnimation(keyframes);
+    waapi.started.push(animation);
+    return animation;
+  },
+});
+afterAll(() => {
+  delete (Element.prototype as { animate?: unknown }).animate;
+});
+/** The slide motion started on the side, on the stand-in. */
+function slide() {
+  return waapi.started.find(
+    (animation) =>
+      !!animation.keyframes &&
+      !Array.isArray(animation.keyframes) &&
+      'transform' in animation.keyframes,
+  );
+}
+/** Lets motion's frame loop run. */
+async function frames(count: number) {
+  await act(async () => {
+    for (let i = 0; i < count; i += 1) {
+      await new Promise((done) => requestAnimationFrame(() => done(null)));
+    }
+  });
+}
 
 let frameWidth = 1200;
 const resizeCallbacks = new Set<() => void>();
@@ -52,6 +114,8 @@ beforeEach(() => {
   });
 });
 afterEach(() => {
+  waapi.on = false;
+  waapi.started.length = 0;
   globalThis.ResizeObserver = OriginalResizeObserver;
   resizeCallbacks.clear();
   // Restores jsdom's own prototype getter.
@@ -83,6 +147,13 @@ function mainRegion(container: HTMLElement) {
   const main = container.querySelector<HTMLElement>('[data-slot="side-panel-main"]');
   if (!main) throw new Error('Missing the main region');
   return main;
+}
+
+/** The side by its slot: off screen it is out of the accessibility tree. */
+function sideRegion(container: HTMLElement) {
+  const side = container.querySelector<HTMLElement>('[data-slot="side-panel-side"]');
+  if (!side) throw new Error('Missing the side region');
+  return side;
 }
 
 it('takes the main region out of use only in drawer and maximized', () => {
@@ -147,6 +218,78 @@ it('keeps the side mounted while closed unless the host lets it go', async () =>
   expect(screen.queryByText('패널 단추')).toBeNull();
   released.rerender(frame({ presentation: 'beside', keepSideMounted: false }));
   expect(mounts).toEqual({ main: 1, side: 2 });
+});
+
+it('paints nothing of a side that is not on screen, and keeps its width', () => {
+  const view = render(frame({ presentation: 'beside' }));
+  for (const presentation of presentations) {
+    // From beside, so a closing drawer's slide does not stand in for the settled state.
+    view.rerender(frame({ presentation: 'beside' }));
+    view.rerender(frame({ presentation }));
+    const side = sideRegion(view.container);
+    if (presentation === 'closed' || presentation === 'withdrawn') {
+      expect(side.style.visibility, presentation).toBe('hidden');
+      expect(side.style.opacity, presentation).toBe('0');
+      expect(side.style.width, presentation).toBe('400px');
+      expect(side, presentation).toHaveAttribute('inert');
+    } else {
+      expect(side.style.opacity, presentation).toBe('');
+    }
+  }
+});
+
+it('leaves the opacity alone while a drawer slides away', async () => {
+  const view = render(frame({ presentation: 'drawer' }));
+  view.rerender(frame({ presentation: 'closed' }));
+  const side = sideRegion(view.container);
+  expect(side).toHaveAttribute('data-presentation', 'leaving');
+  expect(side.style.opacity).toBe('');
+  await waitFor(() => expect(side).toHaveAttribute('data-presentation', 'closed'));
+  expect(side.style.opacity).toBe('0');
+});
+
+it('paints nothing of a closed side whose content declares itself visible', () => {
+  const view = render(
+    frame({
+      presentation: 'closed',
+      side: (
+        <div className="visible" style={{ visibility: 'visible' }}>
+          독 탭
+        </div>
+      ),
+    }),
+  );
+  // jsdom computes no paint: the rule is held by the side's own opacity, which no descendant undoes.
+  expect(screen.getByText('독 탭').style.visibility).toBe('visible');
+  expect(sideRegion(view.container).style.opacity).toBe('0');
+});
+
+it('leaves no transform on the side after the fallback cuts a slide out short', async () => {
+  waapi.on = true;
+  const view = render(frame({ presentation: 'drawer' }));
+  view.rerender(frame({ presentation: 'closed' }));
+  const side = sideRegion(view.container);
+  // No frame finishes the slide, so the fallback ends it.
+  await waitFor(() => expect(side).toHaveAttribute('data-presentation', 'closed'));
+  await frames(2);
+  expect(slide()?.keyframes).toMatchObject({ transform: ['translateX(0%)', 'translateX(100%)'] });
+  expect(slide()?.cancelledWhile).toBe('running');
+  view.rerender(frame({ presentation: 'beside' }));
+  await frames(2);
+  expect(side.style.transform).toBe('');
+});
+
+it('leaves no transform on the side when a drawer turns beside while sliding in', async () => {
+  waapi.on = true;
+  const view = render(frame({ presentation: 'closed' }));
+  view.rerender(frame({ presentation: 'drawer' }));
+  const side = sideRegion(view.container);
+  await frames(2);
+  expect(slide()?.keyframes).toMatchObject({ transform: ['translateX(100%)', 'translateX(0%)'] });
+  view.rerender(frame({ presentation: 'beside' }));
+  await frames(2);
+  expect(slide()?.cancelledWhile).toBe('running');
+  expect(side.style.transform).toBe('');
 });
 
 it('dims only the main region in a drawer and reports a press on it', () => {

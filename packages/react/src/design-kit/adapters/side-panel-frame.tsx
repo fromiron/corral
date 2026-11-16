@@ -161,7 +161,8 @@ export const SidePanelFrame = forwardRef<HTMLDivElement, SidePanelFrameProps>(
       if (lost) sideElement.current?.focus({ preventScroll: true });
     }, [outOfUse]);
 
-    // The drawer slides in over main when it appears, and out when it closes.
+    // The drawer slides in over main when it appears, and out when it closes. A slide cut short is
+    // cancelled, not stopped: stopping writes its last value to the side on motion's next frame.
     const wasPresentation = useRef(presentation);
     useLayoutEffect(() => {
       const was = wasPresentation.current;
@@ -175,7 +176,7 @@ export const SidePanelFrame = forwardRef<HTMLDivElement, SidePanelFrameProps>(
         element.style.transform = '';
       });
       return () => {
-        controls.stop();
+        controls.cancel();
         element.style.transform = '';
       };
     }, [presentation, reduce]);
@@ -196,7 +197,7 @@ export const SidePanelFrame = forwardRef<HTMLDivElement, SidePanelFrameProps>(
       controls?.then(done);
       return () => {
         clearTimeout(fallback);
-        controls?.stop();
+        controls?.cancel();
         if (element) element.style.transform = '';
       };
     }, [leaving]);
@@ -296,10 +297,12 @@ export const SidePanelFrame = forwardRef<HTMLDivElement, SidePanelFrameProps>(
             tabIndex={-1}
             inert={!shown}
             aria-hidden={leaving ? true : undefined}
+            // Off screen it keeps its width and paints nothing, whatever visibility its content sets.
             style={{
               width: presentation === 'maximized' ? undefined : overlay ? drawerWidth : sideWidth,
               maxWidth: overlay ? '100%' : undefined,
               visibility: shown || leaving ? undefined : 'hidden',
+              opacity: shown || leaving ? undefined : 0,
             }}
             className={cn(
               'flex min-h-0 min-w-0 flex-col bg-background outline-none',
