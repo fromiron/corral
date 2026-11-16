@@ -9,12 +9,36 @@ export interface RunWorkspaceView {
   testId?: string;
 }
 
-/** Primary workspace views mount when visible, then retain their scroll and graph state. */
-export function RunViews({ views, visible }: { views: RunWorkspaceView[]; visible: boolean }) {
+/**
+ * Primary workspace views mount when visible, then retain their scroll and graph state.
+ * A document read in the workspace (`reading`) sits under the view row in the place of the
+ * views' content, the row showing the view it belongs to; choosing any view leaves it.
+ */
+export function RunViews({
+  views,
+  visible,
+  reading,
+}: {
+  views: RunWorkspaceView[];
+  visible: boolean;
+  reading?: {
+    /** The view the row shows as chosen while a document is read; null when none is. */
+    view: string | null;
+    /** The document's pane, kept mounted so focus can move into it as it opens. */
+    pane: ReactNode;
+    /** A view was chosen while the document was read. */
+    onLeave: () => void;
+  };
+}) {
   const t = useTranslations('RunMonitor');
   const [selected, setSelected] = useState('graph');
   const [visited, setVisited] = useState<Set<string>>(() => new Set());
   const viewport = useRef<HTMLDivElement>(null);
+  const readingView = reading?.view ?? null;
+  const choose = (id: string) => {
+    setSelected(id);
+    if (readingView !== null) reading?.onLeave();
+  };
   useLayoutEffect(() => {
     const panel = viewport.current;
     if (!visible || !panel) return;
@@ -31,7 +55,11 @@ export function RunViews({ views, visible }: { views: RunWorkspaceView[]; visibl
     return () => observer.disconnect();
   }, [visible, selected]);
   return (
-    <Tabs value={selected} onValueChange={setSelected} className="flex h-full min-h-0 flex-col">
+    <Tabs
+      value={readingView ?? selected}
+      onValueChange={(value) => choose(String(value))}
+      className="flex h-full min-h-0 flex-col"
+    >
       <div className="shrink-0 border-b border-line px-4 py-2">
         {/* Narrow, the strip scrolls inside itself, by touch and as arrow keys move focus,
             and the kit's edge fade shows there is more beyond the cut. */}
@@ -44,6 +72,9 @@ export function RunViews({ views, visible }: { views: RunWorkspaceView[]; visibl
               key={view.id}
               value={view.id}
               label={view.label}
+              // The view shown as chosen while reading is not a change of value; it still
+              // leaves the document.
+              {...(view.id === readingView ? { onClick: () => choose(view.id) } : {})}
               {...(view.testId ? { 'data-testid': view.testId } : {})}
             />
           ))}
@@ -57,10 +88,13 @@ export function RunViews({ views, visible }: { views: RunWorkspaceView[]; visibl
           keepMounted
           className="min-h-0 flex-1 overflow-auto"
           data-run-workspace-view={view.id}
+          // Spread only while reading: the panel's own prop replaces the tabs' visibility.
+          {...(readingView !== null ? { hidden: true } : {})}
         >
           {visited.has(view.id) ? view.render() : null}
         </TabPanel>
       ))}
+      {reading?.pane}
     </Tabs>
   );
 }

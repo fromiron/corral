@@ -293,8 +293,16 @@ test('switching workspace views and reading a result preserves selection, scroll
   const document = monitor.getByTestId('run-document');
   await expect(document.getByTestId('result-body')).toBeVisible();
   await expect(graph).toBeHidden();
-  await document.getByRole('button', { name: 'Back to work', exact: true }).click();
-  // Back returns to the Results view the result was opened from; the graph kept its state.
+  // The view row stays above the reading, Results shown as chosen; the reader has no way back
+  // of its own.
+  const resultsTab = views.getByRole('tab', { name: 'Results', exact: true });
+  await expect(resultsTab).toHaveAttribute('aria-selected', 'true');
+  await expect(document.getByRole('button', { name: 'Back to work', exact: true })).toHaveCount(0);
+  await resultsTab.click();
+  // Results, chosen again, returns to the list the result was opened from; the graph kept its
+  // state.
+  await expect(document).toBeHidden();
+  expect(new URL(page.url()).searchParams.get('result')).toBeNull();
   await expect(monitor.locator('[data-run-workspace-view="results"]')).toBeVisible();
   await views.getByRole('tab', { name: 'Graph', exact: true }).click();
   await expect(graph).toBeVisible();
@@ -362,7 +370,11 @@ test('a graph preview opens its exact readable result directly and returns to th
   await expect(side).toBeHidden();
   expect(new URL(page.url()).searchParams.get('artifact')).toBe(artifactId);
   expect(new URL(page.url()).searchParams.get('execution')).toBeNull();
-  await document.getByRole('button', { name: 'Back to work', exact: true }).click();
+  // The reader's own close returns to the graph it was opened from and to the node.
+  await document
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(node).toBeFocused();
   await expect(side.getByRole('heading', { name: 'Run info', exact: true })).toBeVisible();
   expect(corral.errors).toEqual([]);
@@ -693,7 +705,8 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   // The run record reads what waits and does not answer it.
   await page
     .getByTestId('run-document')
-    .getByRole('button', { name: 'Back to work', exact: true })
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
     .click();
   await expect(
     page.getByTestId('run-monitor').getByRole('button', { name: 'Continue with this version' }),
@@ -708,7 +721,8 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   ).toBeVisible();
   await page
     .getByTestId('run-document')
-    .getByRole('button', { name: 'Back to work', exact: true })
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
     .click();
   await panelTab(page, 'Conversation');
   const input = requestBox(page);
