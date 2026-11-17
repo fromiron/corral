@@ -60,6 +60,8 @@ export const TerminalDiagnostic = z.strictObject({
   ]),
 });
 export type TerminalDiagnostic = z.infer<typeof TerminalDiagnostic>;
+export const TerminalForeground = z.enum(['idle', 'busy', 'unknown']);
+export type TerminalForeground = z.infer<typeof TerminalForeground>;
 export const TerminalView = z.strictObject({
   terminalId: Identifier,
   target: WorkspaceTarget,
@@ -77,6 +79,12 @@ export const TerminalView = z.strictObject({
   stopped: z.boolean().optional(),
   error: z.string().nullable(),
   diagnostic: TerminalDiagnostic.optional(),
+  /**
+   * Whether the PTY's foreground process group is the shell's own, read when the view is made:
+   * `idle` the shell, `busy` another group the shell started, `unknown` when the host cannot tell.
+   * A background job is not in the foreground. Nothing names the foreground process.
+   */
+  foreground: TerminalForeground,
 });
 export type TerminalView = z.infer<typeof TerminalView>;
 export const TerminalList = z.strictObject({

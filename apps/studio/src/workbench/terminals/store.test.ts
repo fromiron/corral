@@ -36,6 +36,7 @@ function terminal(): TerminalView {
     controller: { attachmentId: 'attachment', generation: 1, acceptedSequence: 0 },
     exitCode: null,
     error: null,
+    foreground: 'idle',
   };
 }
 function setup(options: { wait?: (ms: number) => Promise<void> } = {}) {

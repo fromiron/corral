@@ -329,6 +329,7 @@ function serverParts(sessionId: string, projectId: string) {
     controller: null,
     exitCode: null,
     error: null,
+    foreground: 'idle',
   };
   const terminalCalls: string[] = [];
   const changing = (name: string) => async () => {

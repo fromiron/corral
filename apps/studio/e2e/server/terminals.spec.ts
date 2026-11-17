@@ -71,6 +71,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
     controller: null,
     exitCode: null,
     error: null,
+    foreground: 'unknown',
   };
   const mutations: string[] = [];
   const attention = () =>

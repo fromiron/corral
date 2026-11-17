@@ -27,6 +27,7 @@ const view: TerminalView = {
   controller: { attachmentId: 'attachment', generation: 1, acceptedSequence: 0 },
   exitCode: null,
   error: null,
+  foreground: 'idle',
 };
 const input: TerminalInput = {
   target: view.target,

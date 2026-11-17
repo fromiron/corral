@@ -76,6 +76,7 @@ const terminal: TerminalView = {
   controller: { attachmentId: 'another-view', generation: 1, acceptedSequence: 0 },
   exitCode: null,
   error: null,
+  foreground: 'idle',
 };
 const list: TerminalList = {
   target,
