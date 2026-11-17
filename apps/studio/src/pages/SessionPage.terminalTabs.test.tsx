@@ -208,6 +208,52 @@ async function follow(
   await settle();
 }
 
+const composerInput = () =>
+  document.querySelector<HTMLTextAreaElement>('[data-testid="chat-composer"] textarea');
+const noticeButton = () =>
+  [
+    ...(document
+      .querySelector('[data-testid="terminal-writer-notice"]')
+      ?.querySelectorAll<HTMLElement>('a, button') ?? []),
+  ].find((item) => (item.textContent ?? '').includes(messages.Terminals.openControls)) ?? null;
+
+it('살아 있는 터미널 1의 탭이 패널에서 선택돼 있고 포커스는 컴포저에 있다 → 컴포저 안내의 "터미널 제어 열기" → 포커스가 그 터미널의 입력으로 간다', async () => {
+  const world = await serverWorld();
+  panelHoldsTerminal(world);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => panelSelected() === W.terminal(1) && Boolean(noticeButton()));
+  await act(async () => composerInput()?.focus());
+  await press(noticeButton());
+  await until(() => document.activeElement === inputIn(side()));
+  expect(document.activeElement).toBe(inputIn(side()));
+  expect(dockTabNames()).toEqual([]);
+});
+
+it('살아 있는 터미널 1의 탭이 닫힌 도크에 있다 → "터미널 제어 열기" → 도크가 열려 그 탭이 선택되고 포커스가 그 입력에 있다', async () => {
+  const world = await serverWorld();
+  dockHoldsTerminal(world, false);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => Boolean(noticeButton()));
+  expect(dockState()).toBe('closed');
+  await press(noticeButton());
+  await until(() => document.activeElement === inputIn(dock()));
+  expect(dockState()).toBe('open');
+  expect(dockSelected()).toBe(W.terminal(1));
+  expect(document.activeElement).toBe(inputIn(dock()));
+});
+
+it('살아 있는 터미널 1의 탭이 패널에 있고 파일 탭이 선택돼 있다 → "터미널 제어 열기" → 패널에서 터미널 1 탭이 선택되고 포커스가 그 입력에 있다', async () => {
+  const world = await serverWorld();
+  panelHoldsTerminal(world);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => panelSelected() === W.terminal(1) && Boolean(noticeButton()));
+  await press(tabIn(side(), W.panelTabs, W.files));
+  await press(noticeButton());
+  await until(() => document.activeElement === inputIn(side()));
+  expect(panelSelected()).toBe(W.terminal(1));
+  expect(document.activeElement).toBe(inputIn(side()));
+});
+
 it('패널의 "+" → 터미널, 살아 있는 터미널이 없다 → 첫째 셸로 만들어 패널에 "터미널 1" 탭이 열려 선택되고 포커스는 그 입력에 있으며 도크는 닫힌 채다', async () => {
   const world = await serverWorld({ terminals: [] });
   window.localStorage.setItem(

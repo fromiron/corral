@@ -91,6 +91,7 @@ import {
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
 import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
+import { OpenTerminalContext } from '../workbench/TerminalWriterNotice.tsx';
 import { terminalStore } from '../workbench/terminals/store.ts';
 import { TerminalScreen } from '../workbench/terminals/TerminalScreen.tsx';
 import { useTerminalList } from '../workbench/terminals/useTerminalList.ts';
@@ -874,7 +875,9 @@ function WorkSessionPage() {
   dockAreaRef.current = dockArea;
 
   return (
-    <>
+    <OpenTerminalContext.Provider
+      value={(terminalId) => open({ panel: 'terminal', terminal: terminalId })}
+    >
       {dockArea.endDialog}
       <SessionActions
         session={session}
@@ -1027,7 +1030,7 @@ function WorkSessionPage() {
           </PendingTrayContext.Provider>
         </ChatWidgetProvider>
       </SourceNavigationContext.Provider>
-    </>
+    </OpenTerminalContext.Provider>
   );
 }
 

@@ -1,11 +1,18 @@
 import { Banner, BannerActions, BannerTitle, Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { useEffect } from 'react';
+import { createContext, useContext, useEffect } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { type TerminalStore, terminalStore } from './terminals/store.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
+
+/**
+ * The session page's way to a terminal: its tab wherever it is (the panel, opened by the usual
+ * rules, or the bottom dock), the focus in its input. A link to the address already shown opens
+ * nothing, so without this the notice could not bring a panel tab forward.
+ */
+export const OpenTerminalContext = createContext<((terminalId: string) => void) | null>(null);
 
 /** An observed owner is guidance; the server still decides whether a request may start. */
 export function TerminalWriterNotice({ sessionId }: { sessionId: string }) {
@@ -17,6 +24,7 @@ export function TerminalWriterNotice({ sessionId }: { sessionId: string }) {
 
 function WriterNotice({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
   const t = useTranslations('Terminals');
+  const openTerminal = useContext(OpenTerminalContext);
   const terminal = useStore(store, (state) => {
     const terminals = state.sessions[sessionId]?.list?.terminals;
     return (
@@ -55,6 +63,12 @@ function WriterNotice({ sessionId, store }: { sessionId: string; store: Terminal
               to="/sessions/$sessionId"
               params={{ sessionId }}
               search={{ panel: 'terminal', terminal: terminal.terminalId }}
+              onClick={(event) => {
+                if (!openTerminal || event.defaultPrevented || event.button !== 0) return;
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+                event.preventDefault();
+                openTerminal(terminal.terminalId);
+              }}
             />
           }
         >
