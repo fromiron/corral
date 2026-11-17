@@ -66,6 +66,8 @@ export interface Awaiting {
   readonly newest: 'opening' | 'address' | null;
   /** Terminal tabs restored from memory, left for the terminal list's first answer. */
   readonly terminals: readonly string[];
+  /** 팀 그래프 tabs restored from memory, left for the project's team list. */
+  readonly graphs: readonly string[];
 }
 
 // What is still waiting: null once nothing is.
@@ -73,7 +75,8 @@ function waiting(awaiting: Awaiting): Awaiting | null {
   return awaiting.restored.length > 0 ||
     awaiting.addressRun ||
     awaiting.newest ||
-    awaiting.terminals.length > 0
+    awaiting.terminals.length > 0 ||
+    awaiting.graphs.length > 0
     ? awaiting
     : null;
 }
@@ -395,7 +398,8 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
   if (address.bringForward) next = presented(next, byBringingForward(next.presentation, ctx.room));
   const restored = tabs.flatMap((tab) => (tab.kind === 'run' ? [tab.runId] : []));
   const terminals = tabs.flatMap((tab) => (tab.kind === 'terminal' ? [tab.terminalId] : []));
-  return { ...next, awaiting: waiting({ restored, addressRun, newest, terminals }) };
+  const graphs = tabs.flatMap((tab) => (tab.kind === 'graph' ? [tab.corralId] : []));
+  return { ...next, awaiting: waiting({ restored, addressRun, newest, terminals, graphs }) };
 }
 
 function followed(
@@ -495,6 +499,29 @@ function terminalsAnswered(state: PanelState, terminalIds: readonly string[]): P
   return next;
 }
 
+// The team list's clean-up, once: restored 팀 그래프 tabs of a team the project no longer has
+// are dropped (one the address or a way opened stays, showing why it cannot be read); a dropped
+// selection goes to the first tab left, or the panel closes.
+function graphsAnswered(state: PanelState, corralIds: readonly string[]): PanelState {
+  const awaiting = state.awaiting;
+  if (!awaiting || awaiting.graphs.length === 0) return state;
+  const listed = new Set(corralIds);
+  const gone = new Set(awaiting.graphs.filter((id) => !listed.has(id)));
+  const tabs = state.tabs.filter((tab) => !(tab.kind === 'graph' && gone.has(tab.corralId)));
+  let next: PanelState = {
+    ...state,
+    tabs: tabs.length === state.tabs.length ? state.tabs : tabs,
+    awaiting: waiting({ ...awaiting, graphs: [] }),
+  };
+  if (state.selected !== null && !hasTab(next, state.selected)) {
+    const first = tabs[0];
+    next = first
+      ? { ...next, selected: tabKey(first) }
+      : { ...next, selected: null, presentation: 'closed' };
+  }
+  return next;
+}
+
 // Any of these is the user touching the panel: a pending request for the newest run is dropped.
 const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
   'open',
@@ -521,6 +548,7 @@ function touched(state: PanelState, event: PanelEvent): PanelState {
 function settle(state: PanelState, ctx: PanelContext): PanelState {
   let next = ctx.runIds !== null ? answered(state, ctx.runIds, ctx) : state;
   if (ctx.terminalIds) next = terminalsAnswered(next, ctx.terminalIds);
+  if (ctx.corralIds) next = graphsAnswered(next, ctx.corralIds);
   next = presented(next, byRoom(next.presentation, ctx.room));
   if (next.presentation === 'withdrawn' && next.tabs.length === 0) next = presented(next, 'closed');
   if (panelOnScreen(next.presentation) && next.selected) {

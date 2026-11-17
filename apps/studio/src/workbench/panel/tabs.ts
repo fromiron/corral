@@ -111,6 +111,11 @@ export interface PanelContext {
    */
   readonly terminalIds?: readonly string[] | null | undefined;
   /**
+   * The project's teams as the page read them on entry; null until then. Restored 팀 그래프 tabs
+   * of a team it does not list are dropped once.
+   */
+  readonly corralIds?: readonly string[] | null | undefined;
+  /**
    * The `panel` value of the window or view now in front inside the 파일 and 변경 tabs
    * (`terminal`, `git`, …), so the address written for that tab names it.
    */

@@ -85,13 +85,14 @@ const PLUS_ICONS: Record<PlusItem, (typeof ICONS)[Kind]> = {
 export function usePanelTabName(
   runIds: readonly string[] | null,
   terminalIds?: readonly string[] | null,
+  teamNames: Readonly<Record<string, string>> = {},
 ) {
   const t = useTranslations('Docking');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('SessionPanel');
   return (tab: PanelTab): { label: string; shortLabel?: string } => {
     if (tab.kind === 'document') return { label: tab.path.split('/').at(-1) ?? tab.path };
-    if (tab.kind === 'graph') return { label: t('team') };
+    if (tab.kind === 'graph') return { label: teamNames[tab.corralId] || t('team') };
     if (tab.kind === 'terminal') {
       const index = terminalIds?.indexOf(tab.terminalId) ?? -1;
       if (index < 0) return { label: t('terminal') };
@@ -254,6 +255,7 @@ export function SessionPanelSide({
   onOpenRun,
   onMaximize,
   renderTab,
+  teamNames,
 }: {
   sessionId: string;
   state: PanelState;
@@ -282,10 +284,12 @@ export function SessionPanelSide({
   onOpenRun: (runId: string) => void;
   onMaximize: () => void;
   renderTab: (tab: OpenTab) => ReactNode;
+  /** The project's teams by ID: a 팀 그래프 tab is named by its team. */
+  teamNames?: Readonly<Record<string, string>>;
 }) {
   const t = useTranslations('SessionPanel');
   const tp = useTranslations('Presence');
-  const name = usePanelTabName(ctx.runIds, ctx.terminalIds);
+  const name = usePanelTabName(ctx.runIds, ctx.terminalIds, teamNames);
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);

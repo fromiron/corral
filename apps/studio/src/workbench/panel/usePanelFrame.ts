@@ -72,6 +72,8 @@ export interface PanelFrameInput {
   paddock?: boolean;
   /** The conversation's terminals once the list asked since the entry answered; null until. */
   terminalIds?: readonly string[] | null;
+  /** The project's teams; null until read. */
+  corralIds?: readonly string[] | null;
   /**
    * An address the bottom dock opens arrived (entering or followed, never Back or Forward):
    * `panel=debug`, or `panel=terminal` whose terminal has no tab in the panel. `focus`: it was a
@@ -108,7 +110,15 @@ export interface PanelFrame {
 }
 
 export function usePanelFrame(input: PanelFrameInput): PanelFrame {
-  const { sessionId, workArea, folder, runIds, paddock = false, terminalIds = null } = input;
+  const {
+    sessionId,
+    workArea,
+    folder,
+    runIds,
+    paddock = false,
+    terminalIds = null,
+    corralIds = null,
+  } = input;
   const router = useRouter();
   // The search of this very entry: the route's own search can lag a render behind the location.
   const arrivedKey = useRouterState({ select: (s) => JSON.stringify(s.location.search) });
@@ -132,6 +142,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     runIds,
     paddock,
     terminalIds,
+    corralIds,
     front: fronts.current,
   };
   const [held, setHeld] = useState<{ sessionId: string; state: PanelState } | null>(null);
@@ -344,9 +355,10 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   // The room and the run list reach the model only as context.
   const runKey = runIds === null ? null : runIds.join(',');
   const terminalKey = terminalIds === null ? null : terminalIds.join(',');
+  const corralKey = corralIds === null ? null : corralIds.join(',');
   const contextSeen = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}`;
+    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}|${corralKey}`;
     if (!entered || room === null) {
       contextSeen.current = null;
       return;
@@ -354,11 +366,11 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     if (contextSeen.current === null) {
       contextSeen.current = key;
       // A listing may have answered before the entry: let its clean-up run.
-      if (runKey === null && terminalKey === null) return;
+      if (runKey === null && terminalKey === null && corralKey === null) return;
     } else if (contextSeen.current === key) return;
     contextSeen.current = key;
     dispatch({ type: 'context' });
-  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, dispatch]);
+  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, corralKey, dispatch]);
 
   // The selected tab's own state (and front), as the address carries it.
   useEffect(() => {

@@ -83,6 +83,33 @@ describe('문서 tabs', () => {
 });
 
 describe('팀 그래프 tabs', () => {
+  it('drops restored tabs of a team the project does not list, once, and keeps the rest', () => {
+    const memory = {
+      tabs: [{ kind: 'graph', corralId: 'team_gone' } as PanelTab, files, graph],
+      selected: 'graph:team_gone' as const,
+      open: true,
+    };
+    const result = reducePanel(EMPTY_PANEL, enter({}, memory, 'address'), {
+      ...ctx(),
+      corralIds: ['team_a'],
+    });
+    expect(ids(result.state)).toEqual([files, graph]);
+    expect(result.state.selected).toBe('files');
+    // A later list never drops what the person opened after entering.
+    const later = reducePanel(
+      reducePanel(result.state, way({ panel: 'graph', corral: 'team_new' }), ctx()).state,
+      { type: 'context' },
+      { ...ctx(), corralIds: [] },
+    );
+    expect(ids(later.state)).toEqual([files, graph, { kind: 'graph', corralId: 'team_new' }]);
+  });
+
+  it('keeps restored tabs while the team list is not known (counterexample)', () => {
+    const memory = { tabs: [graph], selected: 'graph:team_a' as const, open: true };
+    const result = reducePanel(EMPTY_PANEL, enter({}, memory, 'address'), ctx());
+    expect(ids(result.state)).toEqual([graph]);
+  });
+
   it('opens one tab per team and writes panel=graph with the team', () => {
     const result = reducePanel(EMPTY_PANEL, way({ panel: 'graph', corral: 'team_a' }), ctx());
     expect(ids(result.state)).toEqual([graph]);

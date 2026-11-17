@@ -155,6 +155,7 @@ function WorkSessionPage() {
   );
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
+  const teamNames = Object.fromEntries(corrals.map((corral) => [corral.corralId, corral.name]));
   const { binding } = useBinding(session.projectId);
   const [pendingReference, setReference] = useState<{
     sessionId: string;
@@ -199,6 +200,7 @@ function WorkSessionPage() {
     runIds,
     paddock: Boolean(terminals && terminalList.value?.list?.target),
     terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
+    corralIds: corrals.map((corral) => corral.corralId),
     onDockAddress: (target, focus) => dockAreaRef.current?.openAddressed(target, focus),
     // The tree shared by the 파일 tab and the tree column is one visit's.
     onEnter: forgetTreeState,
@@ -257,7 +259,7 @@ function WorkSessionPage() {
     from: 'way' | 'plus' = 'way',
   ) => {
     if (heldByConfirmation()) return;
-    const { panel, run, terminal, ...inner } = target;
+    const { panel, run, terminal, corral, ...inner } = target;
     dockAreaRef.current?.cancelPending();
     // The debugger, and a terminal whose tab is not in the panel, open in the bottom dock.
     if (
@@ -269,7 +271,7 @@ function WorkSessionPage() {
       return;
     }
     rememberOpener();
-    const tab = targetTab({ panel, run, terminal }, ctx.runIds);
+    const tab = targetTab({ panel, run, terminal, corral }, ctx.runIds);
     const own = Object.values(inner).some((value) => value !== undefined)
       ? inner
       : tab
@@ -279,7 +281,12 @@ function WorkSessionPage() {
     const { state: next } = frame.dispatch(
       {
         type: 'open',
-        target: { panel, ...(run ? { run } : {}), ...(terminal ? { terminal } : {}) },
+        target: {
+          panel,
+          ...(run ? { run } : {}),
+          ...(terminal ? { terminal } : {}),
+          ...(corral ? { corral } : {}),
+        },
         from,
       },
       own,
@@ -761,6 +768,13 @@ function WorkSessionPage() {
       return changesView(
         changesWindow(selected ? (changesFront ?? fronts.changes) : fronts.changes),
       );
+    // The team editor's own screen, without its trial run (features/canvas.md).
+    if (tab.kind === 'graph')
+      return (
+        <div className="flex min-h-0 flex-1 flex-col">
+          <TeamDesign corralId={tab.corralId} />
+        </div>
+      );
     if (tab.kind === 'tools')
       return (
         <div className="min-h-0 flex-1 overflow-auto">
@@ -890,10 +904,7 @@ function WorkSessionPage() {
         panelToggle={toggleAvailable(state, ctx) ? { pressed: onScreen, onToggle: toggle } : null}
         dockToggle={dockArea.toggle}
         onEditTeam={(corralId) => {
-          open({ panel: 'files' });
-          withDock((handle) => {
-            handle.openGraph(corralId);
-          });
+          open({ panel: 'graph', corral: corralId });
           return true;
         }}
       />
@@ -999,6 +1010,7 @@ function WorkSessionPage() {
                 side={
                   <SessionPanelSide
                     sessionId={session.sessionId}
+                    teamNames={teamNames}
                     state={state}
                     ctx={ctx}
                     strip={strip}
