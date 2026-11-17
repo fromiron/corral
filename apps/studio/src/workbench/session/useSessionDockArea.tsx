@@ -84,8 +84,19 @@ function useMainFloor(main: HTMLElement | null) {
       const timeline = main.querySelector<HTMLElement>('[data-testid="chat-timeline"]');
       const composer = main.querySelector<HTMLElement>('[data-testid="chat-composer"]');
       if (!timeline || !composer) return;
-      // The composer lies over the timeline's bottom edge: the messages end where it starts.
-      const messages = composer.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
+      const view = timeline.closest<HTMLElement>('[data-chat-view]');
+      // An empty conversation centers its first line and the composer in the view: the space
+      // around them is the message area, everything in the view but the composer and the
+      // notices above. Otherwise the composer lies over the timeline's bottom edge: the messages
+      // end where it starts.
+      const messages =
+        view?.hasAttribute('data-empty-centered') && view.contains(composer)
+          ? [...view.children].reduce(
+              (left, child) =>
+                child === timeline ? left : left - child.getBoundingClientRect().height,
+              view.getBoundingClientRect().height,
+            )
+          : composer.getBoundingClientRect().top - timeline.getBoundingClientRect().top;
       if (messages <= 0) return;
       setFloor(Math.round(MESSAGES_MIN_HEIGHT + (box.height - messages)));
     };

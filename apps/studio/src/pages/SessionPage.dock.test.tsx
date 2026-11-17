@@ -656,8 +656,15 @@ it.each([
     vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
       this: Element,
     ) {
-      const top = this.getAttribute('data-testid') === 'chat-composer' ? 500 : 0;
-      return { top, height: 600, width: 600, left: 0, right: 600, bottom: 600 } as DOMRect;
+      // The empty conversation's composer, 100px under 500px of message area; nothing else
+      // in its view (no notices above).
+      const composer = this.getAttribute('data-testid') === 'chat-composer';
+      const top = composer ? 500 : 0;
+      const besideTimeline =
+        this.parentElement?.hasAttribute('data-chat-view') &&
+        this.getAttribute('data-testid') !== 'chat-timeline';
+      const tall = composer ? 100 : besideTimeline ? 0 : 600;
+      return { top, height: tall, width: 600, left: 0, right: 600, bottom: top + tall } as DOMRect;
     });
     const world = await serverWorld({ terminals: ['running'] });
     if (expected === 'tab')

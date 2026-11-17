@@ -61,6 +61,22 @@ async function endByClosing(page: Page, name: string) {
   await expect(dockTab(page, name)).toHaveCount(0);
 }
 
+/**
+ * Makes a terminal from the empty dock's 터미널 row. With more than one shell the row lists them
+ * (features/session-panel.md "+" 목록), and the first is chosen.
+ */
+async function makeTerminalFromDock(page: Page) {
+  const row = bottomDock(page).getByRole('button', { name: 'Terminal', exact: true });
+  await expect(row).toBeVisible();
+  await row.click();
+  const shells = page.getByRole('menu', { name: 'Terminal', exact: true });
+  const listed = await shells
+    .waitFor({ state: 'visible', timeout: 1000 })
+    .then(() => true)
+    .catch(() => false);
+  if (listed) await shells.getByRole('menuitem').first().click();
+}
+
 /** Closes the bottom dock with its button. */
 async function closeDock(page: Page) {
   await dockToggle(page).click();
@@ -224,7 +240,9 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await page.reload();
   await expect(recovery).toContainText('운영체제를 재시작');
   await expect(
-    bottomDock(page).getByRole('tab', { name: '터미널 1', exact: true }),
+    page
+      .getByRole('region', { name: '하단 도크', exact: true })
+      .getByRole('tab', { name: '터미널 1', exact: true }),
   ).toHaveAccessibleDescription('종료 확인 필요');
   await panel.screenshot({ path: test.info().outputPath('terminal-recovery-ko.png') });
   await page.evaluate(() => localStorage.setItem('corral:locale', 'en'));
@@ -275,9 +293,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await openPanelTab(page, 'Changes');
     await page.getByRole('button', { name: /Make a Paddock from/ }).click();
     // The list is read again once the Paddock is made: the dock's body lists 터미널.
-    const terminalRow = bottomDock(page).getByRole('button', { name: 'Terminal', exact: true });
-    await expect(terminalRow).toBeVisible();
-    await terminalRow.click();
+    await makeTerminalFromDock(page);
     await expect(dockTab(page, 'Terminal 1')).toHaveAccessibleDescription('Running');
     const panel = terminalScreen(page);
     const input = panel.getByRole('textbox', { name: 'Terminal output and input' });
@@ -463,4 +479,24 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
   } finally {
     rmSync(original, { recursive: true, force: true });
   }
+});
+
+test('the bottom dock opens at its 240px under an empty conversation, whose centered composer leaves the message area room', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const created = await api(page, '/sessions', 'POST', {
+    projectId: 'default',
+    title: 'Dock room',
+  });
+  await corral.open(`/sessions/${created.session.sessionId as string}`);
+  await expect(page.getByRole('heading', { name: 'What should we work on?' })).toBeVisible();
+  await openDock(page);
+  const dock = bottomDock(page);
+  await expect(dock).toBeVisible();
+  const box = await dock.boundingBox();
+  expect(Math.round(box?.height ?? 0)).toBe(240);
+  // The composer stays whole above it.
+  await expect(requestBox(page)).toBeInViewport();
 });
