@@ -3064,6 +3064,72 @@ describe('a run tab beside the conversation and over it', () => {
     expect(header(container)?.textContent).not.toContain(messages.Presence.state.failed);
   });
 
+  it('heads a run its review recipe stopped with the recipe’s state, its reason said once', async () => {
+    const { container, run } = await mount(
+      'inline_team',
+      null,
+      {},
+      'Summarise the release',
+      false,
+      ['worker'],
+      undefined,
+      beside(),
+    );
+    const recipe = {
+      loopNodeId: 'review_loop',
+      recipeId: 'recipe_1',
+      revision: 1,
+      recipeHash: 'a'.repeat(64),
+      criteriaVersionId: 'criteria_1',
+    };
+    const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+      RunEvent.parse({
+        schemaVersion: '0.1',
+        eventId: `evt_${runSeq}`,
+        runId: 'run_layout',
+        runSeq,
+        recordedAt: '2026-10-26T09:06:00.000Z',
+        actor: { kind: 'runtime', id: 'runtime' },
+        causedByEventIds: [],
+        type,
+        payload,
+      });
+    await act(async () =>
+      run.setState({
+        events: [
+          event(1, 'recipe.evaluated', {
+            ...recipe,
+            iterationId: 'iteration_1',
+            candidateVersionId: 'candidate_1',
+            reviewVersionId: 'review_1',
+            checkReportIds: [],
+            tree: null,
+            verdict: 'revise',
+          }),
+          event(2, 'recipe.stopped', {
+            ...recipe,
+            reason: 'attempt_limit',
+            candidateVersionId: 'candidate_1',
+          }),
+        ],
+      }),
+    );
+    await failRun(run, { reason: 'review_recipe:attempt_limit', executions: false });
+    const panel = header(container)?.querySelector<HTMLElement>('[data-testid="recipe-status"]');
+    expect(panel?.textContent).toContain('Generation attempt limit reached');
+    expect(panel?.textContent).toContain('Revise');
+    // Said once, in the recipe's state: not again as the failure line, nor as its code.
+    expect(endReason(container)).toBeNull();
+    expect(header(container)?.textContent?.split('Generation attempt limit reached')).toHaveLength(
+      2,
+    );
+    expect(header(container)?.textContent).not.toContain('review_recipe');
+    // Beside the conversation the head has no request, no state.
+    expect(container.querySelector('[data-run-title]')).toBeNull();
+    expect(header(container)?.querySelector('[data-testid="run-status"]')).toBeNull();
+    expect(header(container)?.textContent).not.toContain(messages.Presence.state.failed);
+  });
+
   it('keeps a receipt that still needs confirming as the head', async () => {
     const { container, run } = await mount(
       'inline_team',

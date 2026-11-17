@@ -1498,6 +1498,23 @@ it('변경이 있는 실행의 대화에서 활동 바의 변경 칩으로 패�
   expect(chip()).not.toBeNull();
 });
 
+it('자리가 없어 변경 탭이 선택된 패널이 물러남이다 → 변경 탭이 화면에 없으니 활동 바의 변경 칩이 있다', async () => {
+  const { world } = await quietRun({ folder: true });
+  const workspaces = giveCopy(world);
+  workspaces.changes = async () => ({
+    files: [{ path: 'notes.md', status: 'modified', additions: 1, deletions: 0 }],
+    unavailable: false,
+  });
+  const shell = await open(world, `/sessions/${world.sessionId}?panel=changes`, NARROW);
+  expect(presentation()).toBe('withdrawn');
+  expect(search(shell).panel).toBe('changes');
+  const chip = () =>
+    composer()?.querySelector<HTMLElement>('[data-testid="run-changes-chip"]') ?? null;
+  await until(() => Boolean(chip()));
+  expect(chip()).not.toBeNull();
+  expect(presentation()).toBe('withdrawn');
+});
+
 // --- restoring, and what restoring never brings back -------------------------------------------
 
 it('대화 A의 기억은 파일 · 실행 #1 탭과 실행 #1 선택이 있는 열린 패널이다 → 사이드바에서 대화 A를 연다 → 패널이 옆으로 열리고 파일 · 실행 #1 탭이 이 순서로 있으며 실행 #1이 선택돼 있다', async () => {
