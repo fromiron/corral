@@ -474,12 +474,38 @@ export async function closePanel(page: Page) {
   await expect(sessionPanel(page)).toBeHidden();
 }
 
-/** The tab that holds each pane the palette opens. */
+/** The bottom dock under the conversation and the panel (session-panel.md 하단 도크). */
+export const bottomDock = (page: Page) =>
+  page.getByRole('region', { name: 'Bottom dock', exact: true });
+/** The top bar's button that opens and closes the bottom dock. */
+export const dockToggle = (page: Page) =>
+  page.getByRole('button', { name: 'Bottom dock', exact: true });
+
+/** Opens the bottom dock with its button; an open dock is left as it is. */
+export async function openDock(page: Page) {
+  const toggle = dockToggle(page);
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * The terminal tab's screen on screen, in the panel or the bottom dock: one terminal, its ⋯ menu
+ * and what is happening to it now. Its tab says its state.
+ */
+export const terminalScreen = (page: Page) => page.locator('[data-terminal-tab-screen]:visible');
+
+/** Chooses one of the terminal screen's ⋯ actions (Refresh terminals, Release input, …). */
+export async function terminalAction(page: Page, name: string | RegExp) {
+  await terminalScreen(page).getByRole('button', { name: 'Terminal actions', exact: true }).click();
+  await page.getByRole('menuitem', { name }).click();
+}
+
+/** The tab that holds each pane the palette opens; a terminal and the debugger have their own. */
 const PANE_TAB: Record<string, string | RegExp> = {
   Files: 'Files',
-  Terminal: 'Files',
+  Terminal: /^Terminal \d+$/,
   'Tasks & preview': 'Files',
-  Debugger: 'Files',
+  Debugger: 'Debug',
   Changes: 'Changes',
   Git: 'Changes',
   Checks: 'Changes',
@@ -492,6 +518,8 @@ const PANE_TAB: Record<string, string | RegExp> = {
  * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks & preview, Debugger,
  * Changes, Git, Checks, Problems, Results, Run): the tab that holds it opens, or is selected, with
  * that pane in front. The palette is there whatever the panel's state, with or without a folder.
+ * A terminal opens where its tab is (the panel or the bottom dock, made in the dock when it has
+ * none); the debugger opens in the bottom dock.
  */
 export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
   await page.keyboard.press('Control+k');
@@ -503,6 +531,18 @@ export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
     .click();
   await expect(palette).toBeHidden();
   const tab = PANE_TAB[name] as string | RegExp;
+  if (name === 'Terminal') {
+    await expect(terminalScreen(page)).toBeVisible();
+    return;
+  }
+  if (name === 'Debugger') {
+    await expect(
+      bottomDock(page)
+        .getByRole('tablist', { name: 'Bottom dock tabs', exact: true })
+        .getByRole('tab', { name: 'Debug', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    return;
+  }
   await tabSelected(page, tab);
   if (tab === 'Files') {
     // The Files tab's dock: the pane's own tab is the selected one of a group on screen (a narrow

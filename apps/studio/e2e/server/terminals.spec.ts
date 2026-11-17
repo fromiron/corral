@@ -3,8 +3,17 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalView } from '@corral/contracts';
-import type { Locator, Page } from '@playwright/test';
-import { closePanel, lastRunSucceeded, openPanelTab, requestBox } from '../workbench.ts';
+import type { Page } from '@playwright/test';
+import {
+  bottomDock,
+  dockToggle,
+  lastRunSucceeded,
+  openDock,
+  openPanelTab,
+  requestBox,
+  terminalAction,
+  terminalScreen,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function api(page: Page, path: string, method: string, body?: unknown) {
@@ -26,13 +35,36 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
   );
 }
 
-// The writer-hold explanation lives behind the terminal's status help.
-async function expectReleaseHint(page: Page, panel: Locator) {
-  await panel.getByRole('button', { name: 'About this terminal', exact: true }).click();
-  const details = page.getByRole('dialog', { name: 'About this terminal', exact: true });
-  await expect(details).toContainText('Stop it to free the Paddock; releasing input does not.');
+// The writer-hold explanation is the ⋯ menu's input row's second line.
+async function expectReleaseHint(page: Page) {
+  await terminalScreen(page).getByRole('button', { name: 'Terminal actions', exact: true }).click();
+  const menu = page.getByRole('menu');
+  await expect(menu).toContainText('Stop it to free the Paddock; releasing input does not.');
   await page.keyboard.press('Escape');
-  await expect(details).toBeHidden();
+  await expect(menu).toBeHidden();
+}
+
+/** A terminal's tab in the bottom dock, by its name ("Terminal 1"). */
+const dockTab = (page: Page, name: string) =>
+  bottomDock(page)
+    .getByRole('tablist', { name: 'Bottom dock tabs', exact: true })
+    .getByRole('tab', { name, exact: true });
+
+/** Closes a terminal's tab, which ends the terminal; a dialog asks when a command may be running. */
+async function endByClosing(page: Page, name: string) {
+  await bottomDock(page)
+    .getByRole('button', { name: `Close ${name}`, exact: true })
+    .click();
+  const ask = page.getByRole('dialog', { name: 'End the terminal?', exact: true });
+  if (await ask.isVisible().catch(() => false))
+    await ask.getByRole('button', { name: 'End', exact: true }).click();
+  await expect(dockTab(page, name)).toHaveCount(0);
+}
+
+/** Closes the bottom dock with its button. */
+async function closeDock(page: Page) {
+  await dockToggle(page).click();
+  await expect(dockToggle(page)).toHaveAttribute('aria-pressed', 'false');
 }
 
 test.use({ replyDelayMs: 2000 });
@@ -134,9 +166,10 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   expect(projectInboxRead).toBe(false);
   expect(corral.server.coordinator.listRuns()).toEqual([]);
   await attentionLink.click();
-  await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
-  const panel = page.getByTestId('terminal-panel');
+  // A terminal with no tab opens in the bottom dock; the address goes back to the panel's look.
+  const panel = terminalScreen(page);
   await expect(panel).toBeVisible();
+  await expect(dockTab(page, 'Terminal 1')).toHaveAttribute('aria-selected', 'true');
   await sidebar.getByRole('link', { name: 'Unvisited terminal project', exact: true }).click();
   // The project header counts the item; Needs you lists it (docs/specs/features/inbox.md).
   const summary = page.getByRole('link', { name: '1 pending', exact: true });
@@ -162,15 +195,15 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
     .getByRole('link', { name: 'Open terminal', exact: true });
   await expect(open).toHaveAttribute('href', terminalPath);
   await open.click();
-  await expect(page).toHaveURL(`${corral.server.url}${terminalPath}`);
   await expect(panel).toBeVisible();
   terminal = { ...terminal, state: 'running' };
-  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
-  await closePanel(page);
+  await terminalAction(page, 'Refresh terminals');
+  await closeDock(page);
   const notice = page.getByTestId('terminal-writer-notice');
   await expect(notice).toContainText('A terminal is holding this Paddock');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
-  await expectReleaseHint(page, panel);
+  await expect(panel).toBeVisible();
+  await expectReleaseHint(page);
   terminal = {
     ...terminal,
     state: 'uncertain',
@@ -178,32 +211,33 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
     error: 'Legacy terminal observation is missing',
     diagnostic: { phase: 'recovery', code: 'host_restart_required' },
   };
-  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
+  await terminalAction(page, 'Refresh terminals');
   const recovery = panel.getByTestId('terminal-recovery-guidance');
   await expect(recovery).toContainText('restart its operating system');
   await expect(recovery).toContainText('Restarting only the Corral app is insufficient');
-  await expect(panel.getByRole('button', { name: 'Stop and verify', exact: true })).toBeEnabled();
+  // Closing the tab is what checks termination again; the tab says the state.
+  await expect(dockTab(page, 'Terminal 1')).toHaveAccessibleDescription('Termination unconfirmed');
   await expect(
     panel.getByText('Legacy terminal observation is missing', { exact: true }),
   ).toBeHidden();
   await page.evaluate(() => localStorage.setItem('corral:locale', 'ko'));
   await page.reload();
   await expect(recovery).toContainText('운영체제를 재시작');
-  await expect(panel.getByRole('button', { name: '종료하고 확인', exact: true })).toBeEnabled();
+  await expect(
+    bottomDock(page).getByRole('tab', { name: '터미널 1', exact: true }),
+  ).toHaveAccessibleDescription('종료 확인 필요');
   await panel.screenshot({ path: test.info().outputPath('terminal-recovery-ko.png') });
   await page.evaluate(() => localStorage.setItem('corral:locale', 'en'));
   await page.reload();
-  await expect(
-    page.getByRole('tab').getByRole('img', { name: 'Terminal termination needs confirmation' }),
-  ).toBeVisible();
-  await closePanel(page);
+  await expect(dockTab(page, 'Terminal 1')).toHaveAccessibleDescription('Termination unconfirmed');
+  await closeDock(page);
   await expect(notice).toContainText('termination has not been confirmed');
   await notice.screenshot({ path: test.info().outputPath('terminal-uncertain-notice.png') });
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
   const { diagnostic: _diagnostic, ...ended } = terminal;
   terminal = { ...ended, state: 'exited', exitCode: 0, error: null };
-  await panel.getByRole('button', { name: 'Refresh terminals' }).click();
-  await closePanel(page);
+  await terminalAction(page, 'Refresh terminals');
+  await closeDock(page);
   await expect(notice).toHaveCount(0);
   expect(mutations).toEqual([]);
 });
@@ -232,25 +266,26 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     });
     const sessionId = created.session.sessionId as string;
     await corral.open(`/sessions/${sessionId}`);
-    const openTerminal = page
-      .getByRole('banner')
-      .getByRole('button', { name: 'Terminal', exact: true });
-    await openTerminal.click();
-    const panel = page.getByTestId('terminal-panel');
-    await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeDisabled();
+    // No Paddock yet: the empty dock says so in one line, with the way to set one up.
+    await openDock(page);
+    await expect(bottomDock(page)).toContainText('This conversation has no Paddock');
+    await expect(
+      bottomDock(page).getByRole('button', { name: 'Set up a Paddock', exact: true }),
+    ).toBeVisible();
     await openPanelTab(page, 'Changes');
     await page.getByRole('button', { name: /Make a Paddock from/ }).click();
-    await openTerminal.click();
-    await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeEnabled();
-    await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
-    await expect(panel.getByText('Running', { exact: true })).toBeVisible();
+    // The list is read again once the Paddock is made: the dock's body lists 터미널.
+    const terminalRow = bottomDock(page).getByRole('button', { name: 'Terminal', exact: true });
+    await expect(terminalRow).toBeVisible();
+    await terminalRow.click();
+    await expect(dockTab(page, 'Terminal 1')).toHaveAccessibleDescription('Running');
+    const panel = terminalScreen(page);
     const input = panel.getByRole('textbox', { name: 'Terminal output and input' });
     await input.pressSequentially('sleep 120');
     await input.press('Enter');
-    await panel.getByRole('button', { name: 'Release input', exact: true }).click();
-    await expectReleaseHint(page, panel);
-    await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
-    await closePanel(page);
+    await terminalAction(page, /Release input/);
+    await expectReleaseHint(page);
+    await closeDock(page);
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
       'A terminal is holding this Paddock',
     );
@@ -281,23 +316,25 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(refusal).toContainText('A terminal is holding this Paddock');
     await expect(refusal.getByText(/working copy terminal writer/)).not.toBeVisible();
     await refusal.getByRole('link', { name: 'Open terminal controls' }).click();
-    await panel.getByRole('button', { name: 'Stop terminal', exact: true }).click();
-    await expect(panel.getByText('Stopped', { exact: true })).toBeVisible();
+    await expect(panel).toBeVisible();
+    // Closing its tab ends the terminal; `sleep 120` is running, so it asks first.
+    await endByClosing(page, 'Terminal 1');
     await expect(sidebarSession).toBeVisible();
-    await expect(panel.getByText('Exit code 0', { exact: true })).toHaveCount(0);
-    await closePanel(page);
+    await closeDock(page);
     await expect(page.getByTestId('terminal-writer-notice')).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
-    await openTerminal.click();
-    await expect(
-      panel.getByText('Wait for the current Run to finish, then create a terminal.'),
-    ).toBeVisible();
-    await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeDisabled();
-    await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeEnabled({
-      timeout: 20000,
-    });
-    await closePanel(page);
+    // While the run goes, the empty dock's 터미널 row is unusable and says why; it becomes usable
+    // when the run ends, and makes nothing by itself.
+    await openDock(page);
+    const blocked = bottomDock(page).getByRole('button', { name: /^Terminal/ });
+    await expect(blocked).toContainText(
+      'Wait for the current Run to finish, then create a terminal.',
+    );
+    await expect(blocked).toHaveAttribute('aria-disabled', 'true');
+    await expect(blocked).not.toHaveAttribute('aria-disabled', 'true', { timeout: 20000 });
+    await expect(dockTab(page, 'Terminal 2')).toHaveCount(0);
+    await closeDock(page);
     await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
     await expect(sidebarSession).toBeVisible();
     await expect(
@@ -332,11 +369,15 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
     });
     const sessionId = created.session.sessionId as string;
     await api(page, `/sessions/${sessionId}/worktree`, 'POST');
+    // panel=terminal with no live terminal makes one in the bottom dock.
     await corral.open(`/sessions/${sessionId}?panel=terminal`);
-    const panel = page.getByTestId('terminal-panel');
-    await panel.getByRole('button', { name: 'New terminal', exact: true }).click();
-    await expect(panel.getByRole('button', { name: 'Release input', exact: true })).toBeVisible();
-    const indicator = page.getByRole('tab').getByRole('img', { name: 'Terminal running' });
+    const panel = terminalScreen(page);
+    await expect(panel).toBeVisible();
+    await panel.getByRole('button', { name: 'Terminal actions', exact: true }).click();
+    await expect(page.getByRole('menuitem', { name: /Release input/ })).toBeVisible();
+    await page.keyboard.press('Escape');
+    const indicator = dockTab(page, 'Terminal 1');
+    await expect(indicator).toHaveAccessibleDescription('Running');
     await expect(indicator).toBeInViewport();
     const terminalList = await api(page, `/sessions/${sessionId}/terminals`, 'GET');
     const terminalId = terminalList.terminals[0].terminalId as string;
@@ -410,13 +451,15 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
         }
       })
       .toBe('continued');
-    await panel.getByRole('button', { name: 'Stop terminal', exact: true }).click();
-    await expect(panel.getByText('Stopped', { exact: true })).toBeVisible();
+    // Closing its tab ends the terminal (asking if a command may still run).
+    await endByClosing(page, 'Terminal 1');
     await expect(indicator).toHaveCount(0);
     await corral.restart();
-    await corral.open(`/sessions/${sessionId}?panel=terminal`);
-    await expect(panel).toContainText('This terminal has ended; you can create a new terminal.');
-    await expect(panel).not.toContainText('Stop this terminal before creating another');
+    // After the restart the ended terminal holds nothing: opening the dock makes a new one.
+    await corral.open(`/sessions/${sessionId}`);
+    await openDock(page);
+    await expect(dockTab(page, 'Terminal 2')).toHaveAccessibleDescription('Running');
+    await expect(bottomDock(page)).not.toContainText('Stop this terminal before creating another');
   } finally {
     rmSync(original, { recursive: true, force: true });
   }

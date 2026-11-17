@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
-import { maximizePanel, newConversation, panelToggle } from '../workbench.ts';
+import { dockToggle, maximizePanel, newConversation, openDock, panelToggle } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -201,7 +201,8 @@ test('line navigation reveals the selection above the bottom dock', async ({
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   const editorPanel = page.getByTestId('dock-document-panel');
   await expect(editorPanel.locator('.monaco-editor')).toBeVisible();
-  await page.getByRole('banner').getByRole('button', { name: 'Terminal', exact: true }).click();
+  // The bottom dock under the conversation and the panel: the editor's lines must clear it.
+  await openDock(page);
   const expectLine = async (line: number) => {
     const selected = editorPanel.locator('.view-line').filter({ hasText: `Line ${line}:` });
     await expect
@@ -256,7 +257,8 @@ test('line navigation reveals the selection above the bottom dock', async ({
     await expect(goTo).toBeHidden();
   }
   await page.screenshot({ path: testInfo.outputPath('editor-with-bottom-dock.png') });
-  await page.getByRole('button', { name: 'Close pane: Terminal', exact: true }).click();
+  await dockToggle(page).click();
+  await expect(dockToggle(page)).toHaveAttribute('aria-pressed', 'false');
   await goToLine(9);
   await expectLine(9);
 });
