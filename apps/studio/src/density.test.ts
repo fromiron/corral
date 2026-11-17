@@ -45,7 +45,8 @@ const panels: Record<string, string[]> = {
   ],
   dock: [
     'apps/studio/src/workbench/WorkbenchToolsPanel.tsx',
-    'apps/studio/src/workbench/TerminalPanel.tsx',
+    'apps/studio/src/workbench/terminals/TerminalScreen.tsx',
+    'apps/studio/src/workbench/terminals/EndTerminalDialog.tsx',
     'apps/studio/src/workbench/WorkbenchTasks.tsx',
     'apps/studio/src/workbench/DeploymentTasks.tsx',
     'apps/studio/src/workbench/PreviewView.tsx',

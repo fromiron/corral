@@ -170,7 +170,9 @@ it('⋯ holds input control, attach selection, refresh and the move, named for w
   await press(more(container));
   const expected = [T.claim, T.attachSelection, T.refresh, messages.Terminals.moveToPanel];
   expect(rows()).toHaveLength(expected.length);
-  rows().forEach((text, index) => expect(text).toContain(expected[index]));
+  rows().forEach((text, index) => {
+    expect(text).toContain(expected[index]);
+  });
   await press(row(T.claim));
   expect(store.claim).toHaveBeenCalledWith('terminal', false);
   await press(more(container));

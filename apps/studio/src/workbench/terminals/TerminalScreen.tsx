@@ -163,7 +163,7 @@ export function TerminalScreen({
         <Menu>
           <Tooltip content={t('actions')}>
             <MenuTrigger
-              render={<Button variant="ghost" size="icon-compact" aria-label={t('actions')} />}
+              render={<Button variant="ghost" size="icon" aria-label={t('actions')} />}
             >
               <Ellipsis />
             </MenuTrigger>
@@ -203,7 +203,6 @@ export function TerminalScreen({
             <span aria-hidden="true">·</span>
             <Button
               variant="link"
-              size="compact"
               disabled={entry.busy}
               onClick={() => run(() => store.reconnect(terminalId))}
             >
