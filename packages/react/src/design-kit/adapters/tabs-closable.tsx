@@ -382,7 +382,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     const [dropLine, setDropLine] = useState<{ slot: number; x: number } | null>(null);
     const [announcement, setAnnouncement] = useState('');
     const drag = useRef<TabDrag | null>(null);
-    // The click a drag ends with selects nothing.
+    // The pointer's click a drag ends with selects nothing.
     const swallowClick = useRef(false);
     // A keyboard move sent to the host, said once it lands.
     const pendingMove = useRef<{ id: string; to: number } | null>(null);
@@ -1006,7 +1006,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                             if (drag.current?.pointerId === event.pointerId) endDrag(false);
                           }}
                           onClickCapture={(event: React.MouseEvent<HTMLElement>) => {
-                            if (!swallowClick.current) return;
+                            // Only a pointer's click: Enter and Space click with no detail, and a
+                            // pointer's click on a tab follows a press on it, which clears this.
+                            if (!swallowClick.current || event.detail === 0) return;
                             swallowClick.current = false;
                             event.preventDefault();
                             event.stopPropagation();

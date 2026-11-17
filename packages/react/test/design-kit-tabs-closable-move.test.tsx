@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { Bug, File, GitCompare, Terminal } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -276,7 +277,8 @@ it('clears the other strip’s line on Escape and on a drop outside any strip, a
   expect(fireEvent.keyDown(term, { key: 'Escape' })).toBe(false);
   expect(lineIn('B')).toBeNull();
   fireEvent.pointerUp(term, at(110, 120));
-  fireEvent.click(term);
+  // The release's own click selects nothing.
+  fireEvent.click(term, { detail: 1 });
   fireEvent.pointerDown(term, at(150, 20));
   fireEvent.pointerMove(term, at(110, 120));
   expect(lineIn('B')).not.toBeNull();
@@ -378,4 +380,19 @@ it('ends a drag on Escape without closing the drawer the strip is in', () => {
   fireEvent.keyDown(term, { key: 'Escape' });
   expect(onEscape).toHaveBeenCalledTimes(1);
   view.unmount();
+});
+
+it('lets the source strip’s next keyboard choice through after a tab moved out', async () => {
+  const spies = { A: spiesFor(), B: spiesFor() };
+  render(<Pair spies={spies} />);
+  const user = userEvent.setup();
+  const term = tabIn('A', 'term-1');
+  fireEvent.pointerDown(term, at(150, 20));
+  fireEvent.pointerMove(term, at(110, 120));
+  fireEvent.pointerUp(term, at(110, 120));
+  expect(spies.B.onMoveIn).toHaveBeenCalledTimes(1);
+  // The moved tab is gone from this strip, so its release clicked nothing here.
+  tabIn('A', 'changes').focus();
+  await user.keyboard('{Enter}');
+  expect(spies.A.onSelect).toHaveBeenCalledExactlyOnceWith('changes');
 });

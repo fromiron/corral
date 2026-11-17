@@ -745,13 +745,28 @@ describe('reordering by drag', () => {
     expect(dropLine(view.container)).toBeNull();
     expect(names()).toEqual(['files', 'run-1', 'changes']);
     expect(screen.getByRole('tab', { name: '변경' })).not.toHaveAttribute('data-dragging');
-    // The click that ends a drag selects nothing; the next press does.
-    fireEvent.click(screen.getByRole('tab', { name: '변경' }));
+    // The pointer's click that ends a drag selects nothing; the next press does.
+    fireEvent.click(screen.getByRole('tab', { name: '변경' }), { detail: 1 });
     expect(onSelect).not.toHaveBeenCalled();
     fireEvent.pointerDown(screen.getByRole('tab', { name: '변경' }), at(250));
     fireEvent.pointerUp(screen.getByRole('tab', { name: '변경' }), at(250));
-    fireEvent.click(screen.getByRole('tab', { name: '변경' }));
+    fireEvent.click(screen.getByRole('tab', { name: '변경' }), { detail: 1 });
     expect(onSelect).toHaveBeenCalledExactlyOnceWith('changes');
+  });
+
+  it('lets a keyboard choice through after a drag whose release brought no click', async () => {
+    const onSelect = vi.fn();
+    render(<Reorderable onSelect={onSelect} />);
+    const user = userEvent.setup();
+    const changes = screen.getByRole('tab', { name: '변경' });
+    fireEvent.pointerDown(changes, at(150));
+    fireEvent.pointerMove(changes, at(290));
+    fireEvent.keyDown(changes, { key: 'Escape' });
+    // Let go off the tab: no click reaches it.
+    fireEvent.pointerUp(changes, at(290));
+    screen.getByRole('tab', { name: '실행 #1' }).focus();
+    await user.keyboard('{Enter}');
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('run-1');
   });
 
   it('treats a press that moves less than the threshold as a press', () => {
