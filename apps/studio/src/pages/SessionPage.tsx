@@ -34,7 +34,12 @@ import { type AttachmentCapture, appendComposerAttachment } from '../workbench/c
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
 import type { DockContextView } from '../workbench/docking/layout.ts';
-import { documentStore } from '../workbench/documents/store.ts';
+import { DocumentCloseDialog } from '../workbench/documents/DocumentCloseDialog.tsx';
+import {
+  type CloseChoice,
+  type DocumentStore,
+  documentStore,
+} from '../workbench/documents/store.ts';
 import {
   FilePanel,
   type FileReference,
@@ -245,6 +250,20 @@ function WorkSessionPage() {
   const documentKeys = useRef(new Map<TabKey, string>());
   // The place inside a file the last way to it named, for its tab to show.
   const [reveal, setReveal] = useState<{ sessionId: string; key: TabKey; range: TextRange }>();
+  // A 문서 tab with changes not saved asking before it closes, and what its answer is doing.
+  const [closing, setClosing] = useState<{
+    sessionId: string;
+    key: TabKey;
+    buffer: string;
+    path: string;
+    busy: boolean;
+    failed: boolean;
+  } | null>(null);
+  // The dialog closed because its tab did: the focus goes on as the tab's close sends it.
+  const closedByDialog = useRef(false);
+  // The tab last asked about, for the focus once the dialog is gone.
+  const askedTab = useRef<TabKey | null>(null);
+  if (closing) askedTab.current = closing.key;
   // A file refused for the 20 문서 tab limit: the panel says why until one of them closes.
   const [limited, setLimited] = useState<string | null>(null);
   // The bottom dock's part, made further down: what an address the dock opens is handed to.
@@ -470,20 +489,49 @@ function WorkSessionPage() {
       );
       return;
     }
-    // A 문서 tab's buffer decides: one with changes not saved keeps its tab for now.
+    // A 문서 tab's buffer decides: one with changes not saved asks first (features/session-panel.md
+    // 문서 탭); the tab stays while it asks.
     if (key.startsWith('document:copy:') && documents) {
       const buffer = documentKeys.current.get(key);
       const path = key.slice('document:copy:'.length);
       if (buffer) {
-        const focused = document.activeElement;
         const from = session.sessionId;
-        void documents.closeView(buffer, documentViewId(session.sessionId, path)).then((result) => {
-          if (result === 'closed' && sessionNow.current === from) closeTab(key, focused);
+        void documents.closeView(buffer, documentViewId(from, path)).then((result) => {
+          if (sessionNow.current !== from) return;
+          if (result === 'closed') closeTab(key, tabElement(key));
+          else if (result === 'confirm')
+            setClosing({ sessionId: from, key, buffer, path, busy: false, failed: false });
         });
         return;
       }
     }
     closeTab(key);
+  };
+  const tabElement = (key: TabKey) =>
+    document.getElementById(tabsClosableIds(PANEL_ID_PREFIX, key).tab);
+  /** The close confirmation's answer: keep editing, save and close, or discard and close. */
+  const chooseClosing = async (choice: CloseChoice) => {
+    const asked = closing;
+    if (!asked || !documents) return;
+    if (choice === 'cancel') return setClosing(null);
+    setClosing({ ...asked, busy: true, failed: false });
+    let result: Awaited<ReturnType<DocumentStore['closeView']>> | 'error';
+    try {
+      result = await documents.closeView(
+        asked.buffer,
+        documentViewId(asked.sessionId, asked.path),
+        choice,
+      );
+    } catch {
+      result = 'error';
+    }
+    if (sessionNow.current !== asked.sessionId) return;
+    if (result === 'closed') {
+      closedByDialog.current = true;
+      setClosing(null);
+      closeTab(asked.key, tabElement(asked.key));
+    } else if (result === 'cancelled') setClosing(null);
+    else setClosing({ ...asked, busy: false, failed: true });
   };
   /** Takes a tab out of the strip, the focus going on as a close sends it; ends nothing. */
   const closeTab = (key: TabKey, focused: Element | null = document.activeElement): FocusTarget => {
@@ -984,6 +1032,29 @@ function WorkSessionPage() {
         }}
       />
       <ArchivedSessionNotice key={session.sessionId} session={session} />
+      {(() => {
+        const asked = closing?.sessionId === session.sessionId ? closing : null;
+        const entry = asked && documents ? documents.getState().documents[asked.buffer] : undefined;
+        return (
+          <DocumentCloseDialog
+            path={asked ? asked.path.slice(asked.path.lastIndexOf('/') + 1) : null}
+            busy={asked?.busy ?? false}
+            failed={Boolean(asked?.failed || entry?.pendingSave)}
+            saveDisabled={Boolean(entry?.pendingSave && !entry.canRetrySave)}
+            discardDisabled={Boolean(entry?.pendingSave)}
+            // Kept, the tab takes the focus back; closed, its close already sent it on.
+            finalFocus={() => {
+              if (closedByDialog.current) {
+                closedByDialog.current = false;
+                return false;
+              }
+              return (askedTab.current && tabElement(askedTab.current)) ?? false;
+            }}
+            onChoose={(choice) => void chooseClosing(choice)}
+            onDismiss={() => setClosing(null)}
+          />
+        );
+      })()}
       <QuickOpen
         key={`${session.projectId}:${session.sessionId}`}
         projectId={session.projectId}

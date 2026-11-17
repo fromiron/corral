@@ -22,7 +22,7 @@ import {
   Textarea,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, FileDiff } from '@corral/react/icons';
+import { Check, Ellipsis, FileDiff } from '@corral/react/icons';
 import {
   lazy,
   type ReactNode,
@@ -276,6 +276,8 @@ export function DocumentPanel({
         ? ''
         : t('unknownContent');
   const saveState = entry.saving ? 'saving' : pending ? 'pending' : entry.dirty ? 'dirty' : 'saved';
+  // An editable document with nothing to save says so in Save's place (workbench.md 파일과 문서 탭).
+  const savedInPlace = !readOnlyTarget && entry.file.writable && !entry.conflict;
   const languageSession = languageCopy?.state?.session;
   const referenceNote = !onReference
     ? t('otherSessionReference')
@@ -289,7 +291,7 @@ export function DocumentPanel({
       <span role="status" className="inline-flex min-w-0 shrink items-center">
         {saveState === 'dirty' ? (
           <UnsavedMark label={t('dirty')} />
-        ) : (
+        ) : saveState === 'saved' && savedInPlace ? null : (
           <span
             className={
               saveState === 'pending' ? 'truncate text-warning' : 'truncate @max-xl/head:sr-only'
@@ -330,14 +332,25 @@ export function DocumentPanel({
           {t('checkSave')}
         </Button>
       ) : null}
-      <Button
-        // While another writer holds the copy, the banner's own actions lead and Save steps back.
-        variant={entry.writerBusy ? 'secondary' : canSave ? 'primary' : 'ghost'}
-        disabled={!canSave}
-        onClick={() => perform(save)}
-      >
-        {t(entry.saving ? 'saving' : pending && entry.canRetrySave ? 'retrySave' : 'save')}
-      </Button>
+      {saveState === 'saved' && savedInPlace ? (
+        // Nothing to save: Save's place says so; a narrow head keeps a check for the words.
+        <span
+          role="status"
+          className="inline-flex shrink-0 items-center gap-1 px-2 text-caption text-muted-foreground"
+        >
+          <Check aria-hidden="true" className="hidden size-4 @max-xl/head:block" />
+          <span className="@max-xl/head:sr-only">{t('saved')}</span>
+        </span>
+      ) : (
+        <Button
+          // While another writer holds the copy, the banner's own actions lead and Save steps back.
+          variant={entry.writerBusy ? 'secondary' : canSave ? 'primary' : 'ghost'}
+          disabled={!canSave}
+          onClick={() => perform(save)}
+        >
+          {t(entry.saving ? 'saving' : pending && entry.canRetrySave ? 'retrySave' : 'save')}
+        </Button>
+      )}
       <Menu>
         <Tooltip content={t('moreActions', { path: entry.path })}>
           <MenuTrigger

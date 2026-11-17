@@ -366,3 +366,78 @@ it('문서 탭이 20개 열려 있다 → 빠른 열기로 다른 파일을 연�
   expect(tabNames()).toHaveLength(19);
   expect(notice()).toBeNull();
 });
+
+/** The fixture's file, opened by its address and changed without saving. */
+async function editedDocument() {
+  const { world: at, server } = await world();
+  await open(at, `/sessions/${at.sessionId}?panel=document&file=${server.path}`);
+  await until(() => leaf() === server.path);
+  const docKey = () => Object.keys(server.documents.getState().documents)[0] as string;
+  await until(() => Boolean(server.documents.getState().documents[docKey()]?.model));
+  await act(async () => {
+    server.documents.getState().documents[docKey()]?.model?.setValue('first line\nedited\n');
+  });
+  await until(() => server.documents.getState().documents[docKey()]?.dirty === true);
+  const buffer = () => server.documents.getState().documents[docKey()];
+  return { at, server, buffer };
+}
+const closeDialog = () =>
+  document.querySelector<HTMLElement>('[role="dialog"], [role="alertdialog"]');
+const dialogButton = (name: string) =>
+  [...(closeDialog()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent === name,
+  ) ?? null;
+async function closeSelected() {
+  const close = side()?.querySelector<HTMLElement>('[data-slot="tabs-closable-close"]');
+  await act(async () => close?.click());
+  await until(() => Boolean(closeDialog()));
+}
+
+it('사본의 문서 탭에 저장하지 않은 변경이 있다 → 그 탭을 닫는다 → 저장할지 묻고 포커스는 "계속 편집"에 있으며 탭은 그대로다; Escape → 대화상자가 닫히고 탭과 초안이 그대로이며 포커스는 그 탭에 있다', async () => {
+  const { server, buffer } = await editedDocument();
+  await closeSelected();
+
+  expect(closeDialog()?.textContent).toContain(
+    messages.Documents.closeTitle.replace('{path}', server.path),
+  );
+  await until(() => document.activeElement === dialogButton(messages.Documents.cancel));
+  expect(document.activeElement).toBe(dialogButton(messages.Documents.cancel));
+  expect(tabNames()).toEqual([server.path]);
+
+  await act(async () => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+  });
+  await until(() => !closeDialog());
+  await settle();
+  expect(closeDialog()).toBeNull();
+  expect(tabNames()).toEqual([server.path]);
+  expect(buffer()?.dirty).toBe(true);
+  await until(() => document.activeElement === tabs()[0]);
+  expect(document.activeElement).toBe(tabs()[0]);
+});
+
+it('닫기 확인이 떠 있다 → "저장하고 닫기"를 고르고 저장이 실패한다 → 대화상자는 닫히지 않고 실패를 알리며 탭과 초안은 그대로다', async () => {
+  const { server, buffer } = await editedDocument();
+  await closeSelected();
+  await act(async () => dialogButton(messages.Documents.saveClose)?.click());
+  await until(() => Boolean(closeDialog()?.querySelector('[role="alert"]')));
+
+  expect(closeDialog()?.querySelector('[role="alert"]')?.textContent).toBe(
+    messages.Documents.closeFailed,
+  );
+  expect(tabNames()).toEqual([server.path]);
+  expect(buffer()?.dirty || Boolean(buffer()?.pendingSave)).toBe(true);
+});
+
+it('닫기 확인이 떠 있다 → "변경 버리기"를 고른다 → 탭이 닫히고 그 초안은 버려진다', async () => {
+  const { buffer } = await editedDocument();
+  await closeSelected();
+  await act(async () => dialogButton(messages.Documents.discard)?.click());
+  await until(() => tabNames().length === 0 && !closeDialog());
+
+  expect(tabNames()).toEqual([]);
+  expect(closeDialog()).toBeNull();
+  expect(buffer()?.dirty ?? false).toBe(false);
+});
