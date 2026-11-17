@@ -1,4 +1,4 @@
-import type { FileListView, FileSideView } from '@corral/client';
+import type { FileListView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import {
@@ -8,34 +8,21 @@ import {
   Button,
   fontWeights,
   Input,
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuTrigger,
   Select,
   Textarea,
   Tooltip,
   useSize,
 } from '@corral/react/design-kit';
-import { Ellipsis, RefreshCw, Search, X } from '@corral/react/icons';
+import { RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import {
-  lazy,
-  Suspense,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
 import { formatChord } from '../shortcuts.ts';
 import { ContentSearch } from './ContentSearch.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
-import { DocumentHeader, publishTreeSource } from './DocumentHeader.tsx';
+import { publishTreeSource } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
@@ -43,16 +30,11 @@ import { type CloseChoice, type DocumentBuffer, documentStore } from './document
 import { FileTree } from './FileTree.tsx';
 import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
 import { fileSourceKey, type TreeState, useTreeState } from './fileTreeState.ts';
-import { LineRangePopover } from './LineRangePopover.tsx';
-import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
 import { runResultFiles } from './runResults.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
-const SourceCode = lazy(() =>
-  import('./PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
-);
 const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
 const noSubscription = () => () => {};
 const emptyDocuments = () => noDocuments;
@@ -101,8 +83,8 @@ export const referenceText = ({ path, start, end }: FileReference) =>
   `@${path.includes(' ') ? JSON.stringify(path) : path}:L${start}${end === start ? '' : `-L${end}`}`;
 
 /**
- * The file browser. Session-copy files open in the dock's document tabs, the one tab
- * strip; an original-folder file shows a single read-only preview here (#87).
+ * The 파일 tab: the folder tree, its head and the recovery cards. A file of the copy opens its
+ * 문서 tab; a file of the source folder opens its read-only 문서 tab.
  */
 export function FilePanel({
   projectId,
@@ -152,11 +134,6 @@ export function FilePanel({
     sessionId,
     source,
   );
-  const [saved, setPreview] = useRemembered<string | null>(
-    `corral:file-preview:v1:${sessionId}:${scope?.kind ?? 'project'}`,
-    null,
-  );
-  const active = typeof saved === 'string' ? saved : null;
   // Opened folders, the filter and the results filter outlast this screen (fileTreeState.ts).
   const [tree, updateTree] = useTreeState(sessionId);
   const { query, searchMode, resultsOn, filterClosed } = tree;
@@ -168,13 +145,10 @@ export function FilePanel({
   const setFilterClosed = (
     next: (closed: TreeState['filterClosed']) => TreeState['filterClosed'],
   ) => updateTree((state) => ({ filterClosed: next(state.filterClosed) }));
-  const [content, setContent] = useState<FileSideView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
-  const [documentKey, setDocumentKey] = useState<string | null>(null);
   const [retainedKey, setRetainedKey] = useState<string | null>(null);
   const [sessionRecoveries, setSessionRecoveries] = useState<RecoveryDraft[]>([]);
   const [recoveryReadError, setRecoveryReadError] = useState(false);
-  const documentKeys = useRef(new Map<string, string>());
   const openEpoch = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Completed reads must not open a dock in another host or session.
   useEffect(
@@ -187,9 +161,6 @@ export function FilePanel({
   const [closing, setClosing] = useState<{ key: string; path: string } | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
   const [closeError, setCloseError] = useState(false);
-  const [range, setRange] = useState({ start: 1, end: 1 });
-  const [referenceOpen, setReferenceOpen] = useState(false);
-  const previewMore = useRef<HTMLButtonElement>(null);
   const refreshRecoveries = useCallback(async () => {
     if (!owner || !workspaceId) return;
     const candidates = await owner.sessionRecoveries({ hostId: workspaceId, projectId, sessionId });
@@ -333,12 +304,7 @@ export function FilePanel({
     if (open && folders.failed.has(path))
       setReads((state) => ({ ...state, failed: toggled(state.failed, path, false) }));
   };
-  const removeTab = (path: string) => {
-    if (active === path) setPreview(null);
-    setTabMessage(null);
-  };
   const scopeKind = scope?.kind;
-  const scopeId = scope?.id;
   // The tree's select names its source; a document head beside it then names only another one.
   useEffect(
     () =>
@@ -366,9 +332,11 @@ export function FilePanel({
         const entry = owner.getState().documents[key];
         // Whatever the file holds, a session-copy file has one home: its document tab.
         if (entry) {
-          if (onOpenDocument({ documentKey: key, target: entry.target, path: entry.path }))
-            removeTab(path);
-          else setTabMessage(td('tabLimit'));
+          setTabMessage(
+            onOpenDocument({ documentKey: key, target: entry.target, path: entry.path })
+              ? null
+              : td('tabLimit'),
+          );
           return;
         }
       } catch (failure) {
@@ -377,13 +345,8 @@ export function FilePanel({
         return;
       }
     }
-    if (onOpenOriginal && scopeKind === 'project') {
-      if (onOpenOriginal(path)) removeTab(path);
-      else setTabMessage(td('tabLimit'));
-      return;
-    }
-    setTabMessage(null);
-    setPreview(path);
+    if (onOpenOriginal && scopeKind === 'project')
+      setTabMessage(onOpenOriginal(path) ? null : td('tabLimit'));
   };
   // Quick open shows a folder, or a source-folder file, here: in its tree, under its source.
   const reveal = useFileReveal(sessionId);
@@ -424,32 +387,16 @@ export function FilePanel({
       (entry.dirty || entry.pendingSave) &&
       (!scope || !currentCopy(entry)),
   );
-  const buffered = (path: string) => {
-    const key = documentKeys.current.get(path);
-    return (
-      (key && currentCopy(documents[key]) ? documents[key] : undefined) ??
-      Object.values(documents)
-        .filter(
-          (entry) =>
-            entry.target.sessionId === sessionId && entry.path === path && currentCopy(entry),
-        )
-        .at(-1)
-    );
-  };
-  const close = async (path: string, choice?: CloseChoice, requestedKey?: string) => {
-    const entry = requestedKey
-      ? documents[requestedKey]
-      : scopeKind === 'session'
-        ? buffered(path)
-        : undefined;
-    if (!entry || !owner) return removeTab(path);
+  /** Closes a kept draft's view (the drafts list, its close dialog). */
+  const close = async (path: string, choice: CloseChoice | undefined, key: string) => {
+    const entry = documents[key];
+    if (!entry || !owner) return;
     setCloseBusy(true);
     setCloseError(false);
     try {
       const result = await owner.closeView(entry.key, fileViewId(sessionId, path), choice);
       if (result === 'closed') {
-        if (currentCopy(entry)) removeTab(path);
-        else setRetainedKey(null);
+        setRetainedKey(null);
         setClosing(null);
         void refreshRecoveries().catch(() => setRecoveryReadError(true));
       } else if (result === 'cancelled') setClosing(null);
@@ -464,60 +411,6 @@ export function FilePanel({
       setCloseBusy(false);
     }
   };
-  useEffect(() => {
-    // A refreshed listing also invalidates the open file's content.
-    void list;
-    const previous =
-      active && scopeKind === 'session' && owner
-        ? Object.values(owner.getState().documents).find(
-            (entry) =>
-              entry.target.sessionId === sessionId &&
-              entry.path === active &&
-              entry.target.bindingId === copy?.bindingId &&
-              entry.target.copyGeneration === copy?.copyGeneration,
-          )
-        : undefined;
-    setContent(previous?.file.content ?? null);
-    setDocumentKey(previous?.key ?? null);
-    setReadError(null);
-    setRange({ start: 1, end: 1 });
-    if (!active || !scopeKind || !scopeId || !workspaces) return;
-    let live = true;
-    if (scopeKind === 'session' && owner) {
-      void owner.open(sessionId, active).then(
-        (key) => {
-          if (!live) return;
-          documentKeys.current.set(active, key);
-          setDocumentKey(key);
-          setContent(owner.getState().documents[key]?.file.content ?? null);
-        },
-        (failure: unknown) => {
-          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
-        },
-      );
-    } else
-      void workspaces.readFile({ kind: scopeKind, id: scopeId }, active).then(
-        (file) => {
-          if (live) setContent(file.content);
-        },
-        (failure: unknown) => {
-          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
-        },
-      );
-    return () => {
-      live = false;
-    };
-  }, [
-    workspaces,
-    owner,
-    sessionId,
-    active,
-    scopeKind,
-    scopeId,
-    list,
-    copy?.bindingId,
-    copy?.copyGeneration,
-  ]);
   const closingEntry = closing ? documents[closing.key] : undefined;
   const closeDialog = (
     <DocumentCloseDialog
@@ -529,11 +422,7 @@ export function FilePanel({
         Boolean(closingEntry?.pendingSave && !closingEntry?.canRetrySave)
       }
       discardDisabled={Boolean(closingEntry?.pendingSave)}
-      finalFocus={() =>
-        panel.current?.querySelector<HTMLElement>('[data-testid="file-preview-pane"] button') ??
-        panel.current?.querySelector<HTMLElement>('button') ??
-        false
-      }
+      finalFocus={() => panel.current?.querySelector<HTMLElement>('button') ?? false}
       onChoose={(choice) => closing && void close(closing.path, choice, closing.key)}
       onDismiss={() => setClosing(null)}
     />
@@ -684,33 +573,6 @@ export function FilePanel({
         </Link>
       </div>
     );
-  const currentDocument = documentKey ? documents[documentKey] : undefined;
-  const displayContent =
-    scopeKind === 'session' && owner ? (currentDocument?.file.content ?? content) : content;
-  const lineCount = displayContent?.kind === 'text' ? displayContent.text.split('\n').length : 1;
-  // Only a session copy without the dock edits in place; the dock owns those documents.
-  const inlineEditor = Boolean(
-    scopeKind === 'session' &&
-      owner &&
-      documentKey &&
-      documents[documentKey] &&
-      (documents[documentKey].file.content.kind === 'text' ||
-        documents[documentKey].dirty ||
-        documents[documentKey].pendingSave ||
-        documents[documentKey].recoveries.length),
-  );
-  const closeButton = (path: string) => (
-    <Tooltip content={t('closeFile', { path })}>
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={t('closeFile', { path })}
-        onClick={() => void close(path)}
-      >
-        <X />
-      </Button>
-    </Tooltip>
-  );
   const searchModeControl = (
     <Select
       label={ts('mode')}
@@ -871,7 +733,7 @@ export function FilePanel({
             <FileTree
               label={tf('tree')}
               rows={treeRows}
-              active={active}
+              active={null}
               onOpen={(path) => void open(path)}
               onToggle={toggleFolder}
               reveal={revealed}
@@ -896,122 +758,10 @@ export function FilePanel({
           {tabMessage}
         </p>
       ) : null}
-      {active ? (
-        <section
-          data-testid="file-preview-pane"
-          aria-label={active}
-          className="flex min-w-0 flex-col overflow-hidden rounded-[var(--panel-radius)] border border-border"
-        >
-          {inlineEditor && owner && documentKey && documents[documentKey] ? (
-            <DocumentPanel
-              key={documentKey}
-              owner={owner}
-              documentKey={documentKey}
-              language={
-                services.mode === 'server' && services.workspaces?.languageState
-                  ? languageStore(services.workspaces, owner)
-                  : undefined
-              }
-              edits={
-                services.mode === 'server' && services.workspaces?.fileEditProposals
-                  ? services.workspaces
-                  : undefined
-              }
-              viewId={fileViewId(sessionId, documents[documentKey].path)}
-              onReference={onReference}
-              onAttach={onAttach}
-              readOnlyTarget={!currentCopy(documents[documentKey])}
-              headExtra={closeButton(active)}
-            />
-          ) : (
-            <>
-              <DocumentHeader
-                path={active}
-                treeSource={scopeKind === 'session' ? 'copy' : 'source'}
-                target={
-                  scopeKind === 'session' && searchTarget
-                    ? { kind: 'copy', target: searchTarget }
-                    : { kind: 'source' }
-                }
-                status={
-                  <span className="truncate @max-xl/head:sr-only">{tf('readOnlyPreview')}</span>
-                }
-                actions={
-                  displayContent?.kind === 'text' ? (
-                    <Menu>
-                      <Tooltip content={te('moreActions', { path: active })}>
-                        <MenuTrigger
-                          ref={previewMore}
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={te('moreActions', { path: active })}
-                            />
-                          }
-                        >
-                          <Ellipsis />
-                        </MenuTrigger>
-                      </Tooltip>
-                      <MenuPopup align="end" className="min-w-48">
-                        <MenuItem
-                          onClick={() => requestAnimationFrame(() => setReferenceOpen(true))}
-                        >
-                          {te('referenceLinesMenu')}
-                        </MenuItem>
-                      </MenuPopup>
-                    </Menu>
-                  ) : null
-                }
-              >
-                {closeButton(active)}
-              </DocumentHeader>
-              {readError ? (
-                <p role="alert" className="px-3 py-2 text-caption text-danger">
-                  {readError}
-                </p>
-              ) : null}
-              {!displayContent && !readError ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">{t('loadingFile')}</p>
-              ) : null}
-              {displayContent?.kind === 'text' ? (
-                <>
-                  <section aria-label={t('fileContent')} className="max-h-[45vh] overflow-auto">
-                    <Suspense
-                      fallback={
-                        <p className="p-3 text-caption text-muted-foreground">{t('loadingFile')}</p>
-                      }
-                    >
-                      <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
-                    </Suspense>
-                  </section>
-                  <LineRangePopover
-                    open={referenceOpen}
-                    onOpenChange={setReferenceOpen}
-                    anchor={previewMore}
-                    action={t('referenceLines')}
-                    range={range}
-                    lineCount={lineCount}
-                    onRange={setRange}
-                    note={t('referencePermission')}
-                    onSubmit={(value) => {
-                      onReference({ path: active, ...value });
-                      setReferenceOpen(false);
-                    }}
-                  />
-                </>
-              ) : displayContent ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">
-                  {displayContent.kind === 'too_large'
-                    ? tf('tooLarge')
-                    : displayContent.kind === 'binary'
-                      ? tf('binary')
-                      : t('fileUnavailable')}
-                </p>
-              ) : null}
-            </>
-          )}
-        </section>
+      {readError ? (
+        <p role="alert" className="text-caption text-danger">
+          {readError}
+        </p>
       ) : null}
       {closeDialog}
     </div>

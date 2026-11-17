@@ -8,6 +8,7 @@ import { SessionMissingView } from './pages/RootLayout.tsx';
 import { StartupFailure } from './pages/StartupFailure.tsx';
 import { createStudioRouter } from './router.tsx';
 import { createStudioServices, ServicesProvider } from './services.tsx';
+import { deviceKeys, forgetRetiredKeys } from './workbench/retiredStorage.ts';
 import { StudioDesignKit } from './workbench/StudioDesignKit.tsx';
 import { applyAppearance } from './workbench/themes/appearance.ts';
 import '@corral/react/fonts.css';
@@ -17,6 +18,8 @@ const root = document.getElementById('root');
 if (!root) throw new Error('missing #root');
 // The saved theme, named or not, is on the root before the first frame React draws.
 applyAppearance();
+// What this device kept for retired screens goes, unread.
+forgetRetiredKeys(deviceKeys());
 if (desktop) document.documentElement.classList.add('desktop-app');
 
 // Pasting a bootstrap link can change only the fragment without rerunning startup.
