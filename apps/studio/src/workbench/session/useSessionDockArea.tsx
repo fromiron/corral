@@ -24,7 +24,7 @@ import { isLive, liveTerminal, terminalCreation } from '../terminals/creation.ts
 import { EndTerminalDialog } from '../terminals/EndTerminalDialog.tsx';
 import type { TerminalStore } from '../terminals/store.ts';
 import type { TerminalList } from '../terminals/useTerminalList.ts';
-import { DOCK_ID_PREFIX, type DockPlus, SessionDock, useCreationReason } from './SessionDock.tsx';
+import { DOCK_ID_PREFIX, type DockPlus, SessionDock } from './SessionDock.tsx';
 import { useSessionDock } from './useSessionDock.ts';
 
 /** Where the focus goes after a close, found once the strip has changed; null leaves it. */
@@ -124,7 +124,6 @@ export function useSessionDockArea(input: DockAreaInput) {
   const t = useTranslations('SessionPanel');
   const tt = useTranslations('Terminals');
   const tf = useTranslations('Files');
-  const reason = useCreationReason();
   const { dock, dispatch } = useSessionDock(sessionId, answer);
   const terminals: readonly TerminalView[] = value?.list?.terminals ?? [];
   const creation = terminalCreation(value, runActive);
