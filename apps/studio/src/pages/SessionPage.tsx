@@ -76,6 +76,7 @@ import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { ChangesTabShownContext } from '../workbench/session/ComposerActivity.tsx';
 import { DocumentTab, documentViewId } from '../workbench/session/DocumentTab.tsx';
 import { documentTabFor } from '../workbench/session/documentTarget.ts';
+import { OriginalDocumentTab } from '../workbench/session/OriginalDocumentTab.tsx';
 import {
   createPendingTrayStore,
   PendingTrayContext,
@@ -276,7 +277,7 @@ function WorkSessionPage() {
     sessionId: session.sessionId,
     projectId: session.projectId,
     hostId: services.workspaceId,
-    workspaces: services.mode === 'server' ? (services.workspaces ?? undefined) : undefined,
+    workspaces: services.workspaces ?? undefined,
     documents,
     entered: frame.entered,
     state,
@@ -645,20 +646,23 @@ function WorkSessionPage() {
    * is refused as unavailable, as a terminal outside the conversation is.
    */
   const openDocument = (
-    request: Pick<OpenDocumentRequest, 'target' | 'path'>,
+    request: Pick<OpenDocumentRequest, 'target' | 'path'> | { source: 'original'; path: string },
     range?: TextRange,
     options: { keepFocus?: boolean } = {},
   ) => {
-    const { target, path } = request;
-    const key = documentTabFor(target, path, {
-      projectId: session.projectId,
-      sessionId: session.sessionId,
-      current: currentCopy.current,
-    });
+    const { path } = request;
+    const original = 'source' in request;
+    const key = original
+      ? (`document:original:${path}` as const)
+      : documentTabFor(request.target, path, {
+          projectId: session.projectId,
+          sessionId: session.sessionId,
+          current: currentCopy.current,
+        });
     if (!key) throw new Error(contextMessages('unavailable'));
-    if (range) setReveal({ sessionId: session.sessionId, key, range });
+    if (range && !original) setReveal({ sessionId: session.sessionId, key, range });
     const kept = document.activeElement;
-    open({ panel: 'document', file: path });
+    open({ panel: 'document', file: path, ...(original ? { target: 'original' as const } : {}) });
     if (options.keepFocus)
       window.setTimeout(() => {
         if (kept instanceof HTMLElement && kept.isConnected) kept.focus({ preventScroll: true });
@@ -684,6 +688,7 @@ function WorkSessionPage() {
         onReference={handleReference}
         onAttach={handleAttachment}
         onOpenDocument={(document, range) => openDocument(document, range)}
+        onOpenOriginal={(path) => openDocument({ source: 'original', path })}
       />
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
@@ -810,6 +815,12 @@ function WorkSessionPage() {
             else documentKeys.current.delete(tabKey(tab));
           }}
           onAttach={handleAttachment}
+          onReference={handleReference}
+        />
+      ) : tab.source === 'original' ? (
+        <OriginalDocumentTab
+          projectId={session.projectId}
+          path={tab.path}
           onReference={handleReference}
         />
       ) : null;
@@ -951,6 +962,11 @@ function WorkSessionPage() {
         sessionId={session.sessionId}
         openDocument={(request) => openDocument(request)}
         showInFiles={(request) => {
+          // A file of the source folder opens its read-only tab; a folder is shown in the tree.
+          if (request.kind === 'file' && request.source === 'project') {
+            openDocument({ source: 'original', path: request.path });
+            return;
+          }
           requestFileReveal(request);
           open({ panel: 'files' });
         }}

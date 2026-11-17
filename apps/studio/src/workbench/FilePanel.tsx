@@ -110,6 +110,7 @@ export function FilePanel({
   onReference,
   onAttach,
   onOpenDocument,
+  onOpenOriginal,
   runs = noRuns,
 }: {
   projectId: string;
@@ -119,6 +120,8 @@ export function FilePanel({
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
+  /** A file of the project's source folder opens its read-only 문서 tab. */
+  onOpenOriginal?: (path: string) => boolean;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -373,6 +376,11 @@ export function FilePanel({
           setReadError(failure instanceof Error ? failure.message : String(failure));
         return;
       }
+    }
+    if (onOpenOriginal && scopeKind === 'project') {
+      if (onOpenOriginal(path)) removeTab(path);
+      else setTabMessage(td('tabLimit'));
+      return;
     }
     setTabMessage(null);
     setPreview(path);

@@ -105,7 +105,7 @@ export interface ServerParts {
   releaseLists(): void;
   /** The one file the working copy holds. */
   path: string;
-  /** The working copy no longer holds the file: the next read of it says it is absent. */
+  /** The working copy and the source folder no longer hold the file: the next read says so. */
   removeFile(path: string): void;
   /** Every later read of the file fails, as a host that cannot read it answers. */
   failRead(path: string): void;
@@ -553,6 +553,15 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     terminals,
     parts: parts as ServerParts,
     prepare(client: object) {
+      // The source folder's files are the demo's; one removed or unreadable reads as the
+      // host answers it (a path that is no file is refused as an invalid request).
+      const host = client as { readFile: (scope: unknown, at: string) => Promise<unknown> };
+      const read = host.readFile.bind(client);
+      host.readFile = async (scope, at) => {
+        if (gone.has(at)) throw new ApiError(400, 'SCHEMA_INVALID', 'the path is not a file');
+        if (unreadable.has(at)) throw new Error('the host could not read the file');
+        return read(scope, at);
+      };
       parts.documents = documentStore(client as never, {
         loadMonaco,
         recovery: {

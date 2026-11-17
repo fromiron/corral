@@ -175,6 +175,7 @@ const sessionFiles = fixture.files;
 async function panel(
   onOpenDocument: () => boolean,
   check: (container: HTMLDivElement) => Promise<void>,
+  onOpenOriginal?: (path: string) => boolean,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -189,6 +190,7 @@ async function panel(
             sessionId="session"
             onReference={() => {}}
             onOpenDocument={onOpenDocument}
+            {...(onOpenOriginal ? { onOpenOriginal } : {})}
           />
         </IntlProvider>,
       );
@@ -233,7 +235,7 @@ it('a session-copy file opens as a document tab whatever it holds, so Files keep
   });
 });
 
-it('an original-folder file previews read-only inside Files, one at a time (#87)', async () => {
+it('an original-folder file opens its read-only 문서 tab and Files keeps no preview of it', async () => {
   fixture.files = {
     ...sessionFiles,
     scope: { kind: 'project', id: 'project' },
@@ -242,21 +244,23 @@ it('an original-folder file previews read-only inside Files, one at a time (#87)
     copy: null,
   } as unknown as typeof sessionFiles;
   fixture.open.mockClear();
+  readFile.mockClear();
   const onOpenDocument = vi.fn(() => true);
-  await panel(onOpenDocument, async (container) => {
-    await click(container, 'a.md');
-    expect(onOpenDocument).not.toHaveBeenCalled();
-    expect(fixture.open).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="tablist"]')).toBeNull();
-    const preview = container.querySelector('[data-testid="file-preview-pane"]');
-    expect(preview?.textContent).toContain('a.md');
-    expect(preview?.textContent).toContain(messages.Files.readOnlyPreview);
-    expect(preview?.querySelector('[data-source]')?.textContent).toBe('body of a.md');
-    await act(async () => {
-      preview?.querySelector<HTMLButtonElement>('button[aria-label="Close a.md"]')?.click();
-    });
-    expect(container.querySelector('[data-testid="file-preview-pane"]')).toBeNull();
-  });
+  const onOpenOriginal = vi.fn(() => true);
+  await panel(
+    onOpenDocument,
+    async (container) => {
+      await click(container, 'a.md');
+      expect(onOpenOriginal).toHaveBeenCalledExactlyOnceWith('a.md');
+      expect(onOpenDocument).not.toHaveBeenCalled();
+      expect(fixture.open).not.toHaveBeenCalled();
+      // The tab reads the file; Files shows nothing of it.
+      expect(readFile).not.toHaveBeenCalled();
+      expect(container.querySelector('[data-testid="file-preview-pane"]')).toBeNull();
+      expect(container.querySelector('[data-source]')).toBeNull();
+    },
+    onOpenOriginal,
+  );
   fixture.files = sessionFiles;
 });
 

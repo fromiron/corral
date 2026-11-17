@@ -28,6 +28,9 @@ import {
 vi.mock('../workbench/DockDocumentPanel.tsx', () => ({
   DockDocumentPanel: ({ path }: { path: string }) => <div data-testid="document-leaf">{path}</div>,
 }));
+vi.mock('../workbench/PierreCode.tsx', () => ({
+  SourceCode: ({ text }: { text: string }) => <pre data-testid="source-code">{text}</pre>,
+}));
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -179,4 +182,88 @@ it('대화의 기억에 사본의 문서 a.ts 탭이 있다 → 그 대화를 �
   expect(reason()).toBeTruthy();
   await settle();
   expect(tabNames()).toEqual(['a.ts']);
+});
+
+const original = (path: string): PanelTab => ({ kind: 'document', source: 'original', path });
+const sourceShown = () => side()?.querySelector('[data-testid="source-code"]')?.textContent ?? null;
+
+it('새 페이지를 panel=document와 file=README.md와 target=original 주소로 연다 → 원본 폴더의 README.md 읽기 전용 탭이 열려 선택되고 그 파일을 보인다', async () => {
+  const { world: at } = await world();
+  const shell = await open(
+    at,
+    `/sessions/${at.sessionId}?panel=document&file=README.md&target=original`,
+  );
+  await until(() => Boolean(sourceShown()));
+
+  expect(tabNames()).toEqual(['README.md']);
+  expect(selectedName()).toBe('README.md');
+  expect(sourceShown()).toContain('# Release notes');
+  expect(side()?.querySelector('[data-testid="document-leaf"]')).toBeNull();
+  const search = shell.router.state.location.search as Record<string, unknown>;
+  expect(search).toMatchObject({ panel: 'document', file: 'README.md', target: 'original' });
+});
+
+it('사본의 README.md 탭이 열려 있다 → 원본 폴더의 README.md 탭을 연다 → 두 탭이 따로 있고 원본 탭은 묻지 않고 닫힌다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [doc('README.md')], 'document:copy:README.md');
+  const shell = await open(
+    at,
+    `/sessions/${at.sessionId}?panel=document&file=README.md&target=original`,
+  );
+  await until(() => tabNames().length === 2 && Boolean(sourceShown()));
+  expect(tabNames()).toEqual(['README.md', 'README.md']);
+
+  const close = side()?.querySelectorAll<HTMLElement>('[data-slot="tabs-closable-close"]')[1];
+  expect(close).toBeTruthy();
+  await act(async () => close?.click());
+  await settle();
+  expect(tabNames()).toEqual(['README.md']);
+  expect(document.querySelector('[role="alertdialog"]')).toBeNull();
+  expect(leaf()).toBe('README.md');
+  expect(shell.router.state.location.search).not.toHaveProperty('target');
+});
+
+it('대화의 기억에 원본 폴더의 README.md와 gone.md 탭이 있고 원본 폴더에 gone.md가 없다 → 그 대화를 연다 → gone.md 탭은 버려지고 README.md 탭은 남는다', async () => {
+  const { world: at, server } = await world();
+  server.removeFile('gone.md');
+  remember(at.sessionId, [original('gone.md'), original('README.md')], 'document:original:gone.md');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 1);
+
+  expect(tabNames()).toEqual(['README.md']);
+  expect(selectedName()).toBe('README.md');
+  await settle();
+  expect(tabNames()).toEqual(['README.md']);
+});
+
+it('대화의 기억에 원본 폴더의 README.md 탭이 있다 → 그 대화를 열고 README.md를 읽지 못한다 → 탭은 남고 읽지 못한 까닭을 보인다', async () => {
+  const { world: at, server } = await world();
+  server.failRead('README.md');
+  remember(at.sessionId, [original('README.md')], 'document:original:README.md');
+  await open(at, `/sessions/${at.sessionId}`);
+  const reason = () => side()?.querySelector('[role="alert"]')?.textContent ?? null;
+  await until(() => Boolean(reason()));
+
+  expect(tabNames()).toEqual(['README.md']);
+  await settle();
+  expect(tabNames()).toEqual(['README.md']);
+});
+
+it('Paddock이 없는 대화에서 빠른 열기로 원본 폴더의 README.md를 고른다 → 파일 탭은 열리지 않고 README.md 읽기 전용 탭이 열려 선택된다', async () => {
+  const at = await createShellWorld({ folder: true });
+  await open(at, `/sessions/${at.sessionId}`);
+  await act(async () => {
+    window.dispatchEvent(new Event('corral:quick-open'));
+  });
+  const option = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+      (row) => row.textContent?.trim() === 'README.md',
+    );
+  await until(() => Boolean(option()));
+  await act(async () => option()?.click());
+  await until(() => Boolean(sourceShown()));
+
+  expect(tabNames()).toEqual(['README.md']);
+  expect(selectedName()).toBe('README.md');
+  expect(sourceShown()).toContain('# Release notes');
 });
