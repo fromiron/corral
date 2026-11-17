@@ -18,8 +18,8 @@
 | 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
-| 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭(이 뜻으로) |
-| 파일 탭 안 도킹 영역의 한 칸(패널의 탭과 하단 도크의 탭은 창이 아니다) | Pane / 창 | `DockView`, `SessionPanel` | 패널, 도크 |
+| 파일 하나를 연 패널의 탭 | 문서 탭 | 패널 `document` | 파일 탭(이 뜻으로), 창 |
+| 저장 팀의 그래프를 고치는 패널의 탭 | 팀 그래프 탭(탭 이름은 팀 이름) | 패널 `graph` | 도킹 탭, 설계 창 |
 | 대화 옆에서 탭을 하나씩 열고 닫는 자리 | Panel / 패널 | 주소 `panel`, [세션 패널](features/session-panel.md) | 창, 도구 패널 |
 | 대화와 패널 아래에서 터미널 탭과 디버그 탭을 여는 자리 | Bottom dock / 하단 도크(자리와 상단 줄의 버튼), Toggle bottom dock / 하단 도크 여닫기(명령 팔레트), Move to bottom dock / 하단 도크로 옮기기 · Move to panel / 패널로 옮기기(터미널의 ⋯ 메뉴) | 주소 없음, 단축키 `view.dock`, [세션 패널](features/session-panel.md#하단-도크) | 패널, 창, 터미널 창, 터미널 버튼 |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
@@ -45,7 +45,8 @@
 | Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
 | 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
 | 사람이 시작한 package script 실행 | Task / 작업 | 메시지 `DevTasks`, operation `task` | 명령(Run이 실행한 명령과 구분) |
-| task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
+| 공유 개발 모드·task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
+| preview lease와 서비스 미리보기를 다루는 패널의 탭 | Preview / 미리보기 | 패널 `preview`, 슬래시 `/preview` | 작업·미리보기 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 | 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 기록의 Reins 영역은 Instruction / 지시를 쓴다), Steer |
