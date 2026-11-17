@@ -42,8 +42,18 @@ export const EMPTY_DOCK: DockState = {
 
 export type DockEvent =
   | { readonly type: 'toggle' }
-  /** Opens or selects a tab; `keepOpen` leaves the dock open or closed as it is. */
-  | { readonly type: 'open'; readonly tab: DockTab; readonly keepOpen?: boolean }
+  /**
+   * Opens or selects a tab; `keepOpen` leaves the dock open or closed as it is; `index` puts a
+   * tab not yet here before the tab at that index (a drag let go there), else at the right end.
+   */
+  | {
+      readonly type: 'open';
+      readonly tab: DockTab;
+      readonly keepOpen?: boolean;
+      readonly index?: number;
+    }
+  /** A tab dragged or moved by key to `toIndex` in the strip; the selection stays. */
+  | { readonly type: 'reorder'; readonly key: DockKey; readonly toIndex: number }
   /** Opens the dock as it is: with no tab, its body's list or line. */
   | { readonly type: 'show' }
   | { readonly type: 'select'; readonly key: DockKey }
@@ -60,10 +70,19 @@ export function reduceDock(state: DockState, event: DockEvent): DockState {
       return state.open ? state : { ...state, open: true };
     case 'open': {
       const key = dockKey(event.tab);
+      const index = event.index ?? state.tabs.length;
       const tabs = state.tabs.some((tab) => dockKey(tab) === key)
         ? state.tabs
-        : [...state.tabs, event.tab];
+        : [...state.tabs.slice(0, index), event.tab, ...state.tabs.slice(index)];
       return { ...state, tabs, selected: key, open: event.keepOpen ? state.open : true };
+    }
+    case 'reorder': {
+      const from = state.tabs.findIndex((tab) => dockKey(tab) === event.key);
+      const to = Math.max(0, Math.min(event.toIndex, state.tabs.length - 1));
+      if (from < 0 || from === to) return state;
+      const tabs = state.tabs.filter((_, index) => index !== from);
+      tabs.splice(to, 0, state.tabs[from] as DockTab);
+      return { ...state, tabs };
     }
     case 'select':
       return state.tabs.some((tab) => dockKey(tab) === event.key)

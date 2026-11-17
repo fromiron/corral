@@ -88,6 +88,25 @@ describe('the bottom dock as data', () => {
     expect(reduceDock(rightmost, { type: 'close', key: 'terminal:t1' }).selected).toBe('debug');
   });
 
+  it('reorders its tabs and takes a tab in at a slot, selected and open', () => {
+    const start = dock({
+      tabs: [terminal('t1'), debug, terminal('t2')],
+      selected: 'debug',
+      open: true,
+    });
+    const moved = reduceDock(start, { type: 'reorder', key: 'terminal:t2', toIndex: 0 });
+    expect(moved.tabs.map(dockKey)).toEqual(['terminal:t2', 'terminal:t1', 'debug']);
+    expect(moved.selected).toBe('debug');
+    expect(reduceDock(start, { type: 'reorder', key: 'terminal:t1', toIndex: 0 })).toBe(start);
+    const taken = reduceDock(dock({ tabs: [debug], selected: 'debug', open: false }), {
+      type: 'open',
+      tab: terminal('t3'),
+      index: 0,
+    });
+    expect(taken).toMatchObject({ selected: 'terminal:t3', open: true });
+    expect(taken.tabs.map(dockKey)).toEqual(['terminal:t3', 'debug']);
+  });
+
   it('keeps a height of at least the minimum', () => {
     expect(reduceDock(dock(), { type: 'height', px: 60 }).height).toBe(DOCK_MIN_HEIGHT);
     expect(reduceDock(dock(), { type: 'height', px: 333 }).height).toBe(333);

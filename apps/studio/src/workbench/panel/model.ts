@@ -139,6 +139,10 @@ export type PanelEvent =
       readonly source: 'in-app' | 'outside';
     }
   | { readonly type: 'history'; readonly search: SessionSearch }
+  /** A tab dragged or moved by key to `toIndex` in the strip; the selection stays. */
+  | { readonly type: 'reorder'; readonly key: TabKey; readonly toIndex: number }
+  /** A terminal's tab dragged in from the bottom dock, let go before the tab at `index`. */
+  | { readonly type: 'moveIn'; readonly terminalId: string; readonly index: number }
   /** The room or the run list in `ctx` changed. */
   | { readonly type: 'context' };
 
@@ -463,6 +467,7 @@ const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
   'closeDrawer',
   'follow',
   'history',
+  'moveIn',
 ]);
 
 function touched(state: PanelState, event: PanelEvent): PanelState {
@@ -515,9 +520,26 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
       return followed(state, event, ctx);
     case 'history':
       return travelled(state, event.search, ctx);
+    case 'reorder':
+      return reordered(state, event.key, event.toIndex);
+    case 'moveIn': {
+      const tab: PanelTab = { kind: 'terminal', terminalId: event.terminalId };
+      const at = opened(state, tab, byOpening(state.presentation, ctx.room));
+      return reordered(at, tabKey(tab), Math.min(event.index, at.tabs.length - 1));
+    }
     case 'context':
       return state;
   }
+}
+
+/** The strip's order with the tab at `toIndex`; the same state when nothing moves. */
+function reordered(state: PanelState, key: TabKey, toIndex: number): PanelState {
+  const from = state.tabs.findIndex((tab) => tabKey(tab) === key);
+  const to = Math.max(0, Math.min(toIndex, state.tabs.length - 1));
+  if (from < 0 || from === to) return state;
+  const tabs = state.tabs.filter((_, index) => index !== from);
+  tabs.splice(to, 0, state.tabs[from] as (typeof state.tabs)[number]);
+  return { ...state, tabs };
 }
 
 // The windows in front of 파일 and 변경: the caller's, with the one an event names on top.

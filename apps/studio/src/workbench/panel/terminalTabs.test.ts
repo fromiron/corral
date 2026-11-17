@@ -277,3 +277,42 @@ describe("the terminal list's clean-up after entry", () => {
     expect(ids(both)).toEqual([terminal('term_1'), files, run('run_1')]);
   });
 });
+
+describe('reordering and moving tabs (탭의 순서와 옮기기)', () => {
+  const changes: PanelTab = { kind: 'changes' };
+  it('moves a tab to the index it lands at, keeps the selection, and pushes no history', () => {
+    const start = panel({
+      tabs: [files, run('run_1'), changes],
+      selected: 'files',
+      presentation: 'beside',
+    });
+    const result = reducePanel(start, { type: 'reorder', key: 'changes', toIndex: 0 }, ctx());
+    expect(ids(result.state)).toEqual([changes, files, run('run_1')]);
+    expect(result.state.selected).toBe('files');
+    expect(result.history).not.toBe('push');
+    // At an end, or to its own place, nothing changes.
+    const same = reducePanel(start, { type: 'reorder', key: 'files', toIndex: 0 }, ctx());
+    expect(same.state).toBe(start);
+    expect(
+      reducePanel(start, { type: 'reorder', key: 'gone' as never, toIndex: 0 }, ctx()).state,
+    ).toBe(start);
+  });
+
+  it("takes a terminal's tab dragged in from the dock at its slot, selected, rewriting the address", () => {
+    const start = panel({
+      tabs: [files, run('run_1')],
+      selected: 'run:run_1',
+      presentation: 'beside',
+    });
+    const result = reducePanel(
+      start,
+      { type: 'moveIn', terminalId: 'term_1', index: 0 },
+      withPaddock(),
+    );
+    expect(ids(result.state)).toEqual([terminal('term_1'), files, run('run_1')]);
+    expect(result.state.selected).toBe('terminal:term_1');
+    expect(result.state.presentation).toBe('beside');
+    expect(result.address).toEqual({ panel: 'terminal', terminal: 'term_1' });
+    expect(result.history).toBe('replace');
+  });
+});
