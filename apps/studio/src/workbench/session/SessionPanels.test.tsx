@@ -16,8 +16,16 @@ vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: nul
 vi.mock('../../pages/ReviewPage.tsx', () => ({ Checks: () => null }));
 // The run record has its own tests; here it shows the line the panel puts above its header.
 vi.mock('../../pages/RunPage.tsx', () => ({
-  RunDetail: ({ runId, lead }: { runId: string; lead?: ReactNode }) => (
-    <section data-testid="run-header" data-run={runId}>
+  RunDetail: ({
+    runId,
+    lead,
+    conversationOperable,
+  }: {
+    runId: string;
+    lead?: ReactNode;
+    conversationOperable?: boolean;
+  }) => (
+    <section data-testid="run-header" data-run={runId} data-operable={String(conversationOperable)}>
       {lead}
       <h2 data-run-title tabIndex={-1}>
         {runId}
@@ -25,8 +33,6 @@ vi.mock('../../pages/RunPage.tsx', () => ({
     </section>
   ),
 }));
-vi.mock('../Breadcrumbs.tsx', () => ({ RunMenu: () => null }));
-vi.mock('../TopbarSlot.tsx', () => ({ TopbarCrumb: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
 }));
@@ -120,7 +126,15 @@ const summary = (runId: string, status: RunSummary['status']): RunSummary => ({
   startedAt: '2026-11-16T00:00:00Z',
 });
 
-async function showRunPanel(runs: RunSummary[], active: RunSummary | null, search: SessionSearch) {
+async function showRunPanel(
+  runs: RunSummary[],
+  active: RunSummary | null,
+  search: SessionSearch,
+  /** The conversation beside the panel can be operated; by default it is covered (maximized). */
+  operable = false,
+  /** The run going has a tab of its own in the strip. */
+  activeTabbed = false,
+) {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   fixture.services = { transport: { getRunDefinition: async () => null } };
   const setSearch = vi.fn();
@@ -148,7 +162,8 @@ async function showRunPanel(runs: RunSummary[], active: RunSummary | null, searc
             entries={[]}
             search={next}
             setSearch={setSearch}
-            picker
+            operable={operable}
+            activeTabbed={activeTabbed}
             onOpenRun={onOpenRun}
           />
         </IntlProvider>,
@@ -253,4 +268,32 @@ it('asks for the same run tab again on a second press before it has opened', asy
   // The same run both times: opening an open tab selects it (features/session-panel.md).
   expect(view.onOpenRun).toHaveBeenCalledTimes(2);
   expect(view.onOpenRun.mock.calls[0]).toEqual(view.onOpenRun.mock.calls[1]);
+});
+
+// execution-monitor.md: beside an operable conversation the run tab does not say what the
+// conversation says; over it, the line stands only while the run going has no tab.
+it('says nothing of the run going while the conversation beside can be operated', async () => {
+  const view = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' }, true);
+  expect(view.line()).toBeNull();
+  expect(view.container.textContent).not.toContain(messages.RunPage.viewActiveRun);
+  // The record is told the conversation can be operated.
+  expect(
+    view.container.querySelector('[data-testid="run-header"]')?.getAttribute('data-operable'),
+  ).toBe('true');
+});
+
+it('over the conversation, tells of the run going only while that run has no tab in the strip', async () => {
+  const tabbed = await showRunPanel(
+    [past, going],
+    going,
+    { panel: 'run', run: 'run_past' },
+    false,
+    true,
+  );
+  expect(tabbed.line()).toBeNull();
+  expect(
+    tabbed.container.querySelector('[data-testid="run-header"]')?.getAttribute('data-operable'),
+  ).toBe('false');
+  const untabbed = await showRunPanel([past, going], going, { panel: 'run', run: 'run_past' });
+  expect(untabbed.line()).not.toBeNull();
 });

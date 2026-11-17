@@ -81,8 +81,6 @@ export function topbarTierFor(available: number, needs: readonly number[]): Topb
 /** The width of a path item when the name may shorten: `em` is its label's font size. */
 const COMFORTABLE_EM = 12.5;
 const MINIMUM_EM = 7.5;
-/** A further path item (the run of a run view) keeps this much of its label. */
-const EXTRA_EM = 4;
 
 function visible(element: Element) {
   const style = getComputedStyle(element);
@@ -111,7 +109,6 @@ function crumbWidth(crumb: HTMLElement, room: PathRoom) {
   let text = label.scrollWidth;
   if (room !== 'full' && kind === 'current')
     text = Math.min(text, (room === 'comfortable' ? COMFORTABLE_EM : MINIMUM_EM) * em);
-  if (room !== 'full' && kind === 'extra') text = Math.min(text, EXTRA_EM * em);
   const limit = Number.parseFloat(getComputedStyle(crumb).maxWidth);
   return limit > 0 ? Math.min(chrome + text, limit) : chrome + text;
 }

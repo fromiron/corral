@@ -27,7 +27,6 @@ import {
   type Presentation,
   panelOnScreen,
   reducePanel,
-  runPickerVisible,
   toggleAvailable,
 } from './model.ts';
 import type { PanelContext, PanelTab } from './tabs.ts';
@@ -1135,14 +1134,5 @@ describe('what the frame shows', () => {
     ['drawer', false],
   ])('the conversation can be operated in %s: %s', (presentation, operable) => {
     expect(conversationOperable(presentation)).toBe(operable);
-  });
-
-  it('shows the run picker only with a run tab selected and the panel on screen', () => {
-    expect(runPickerVisible(withTabs('beside'))).toBe(true);
-    expect(runPickerVisible(withTabs('maximized'))).toBe(true);
-    expect(runPickerVisible(withTabs('drawer'))).toBe(true);
-    expect(runPickerVisible(withTabs('withdrawn'))).toBe(false);
-    expect(runPickerVisible(withTabs('closed'))).toBe(false);
-    expect(runPickerVisible(withTabs('beside', { selected: 'files' }))).toBe(false);
   });
 });

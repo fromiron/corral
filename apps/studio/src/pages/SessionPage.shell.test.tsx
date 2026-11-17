@@ -332,6 +332,8 @@ const answerRunLink = (n: number) => {
   return buttons(W.runNumber(n), conversation).find((button) => !side()?.contains(button));
 };
 const runHeader = () => side()?.querySelector<HTMLElement>('[data-testid="run-header"]') ?? null;
+/** The selected run tab's record, once its run has loaded (beside, its head may be absent). */
+const runRecord = () => side()?.querySelector<HTMLElement>('[data-testid="run-monitor"]') ?? null;
 /** Whether the selected run tab shows its results view (the run screen's results pane). */
 const resultsShown = () => {
   const panel = [...(side()?.querySelectorAll<HTMLElement>('[role="tabpanel"]') ?? [])].find(
@@ -657,9 +659,10 @@ it('패널이 넓힘이고 실행 #1이 대화의 지금 실행이며 실행 단
   expect(selectedName()).toBe(W.runNumber(1));
   expect(pending(runId)).toBe(true);
   expect(composerAsks()).toBe(true);
-  // The tab's run has loaded: its head is drawn, without controls, and the composer still asks.
-  await until(() => Boolean(runHeader()));
-  expect(runHeader()).not.toBeNull();
+  // The tab's run has loaded, its head without controls, and the composer still asks.
+  await until(() => Boolean(runRecord()));
+  expect(runRecord()).not.toBeNull();
+  expect(headCancelButton()).toBeUndefined();
   await settle();
   expect(composerAsks()).toBe(true);
   expect(headAsks()).toBe(false);
@@ -803,13 +806,15 @@ it('실행 #1을 컴포저에서 일시정지했다가 재개했고 그 receipt 
   expect(world.commands.map((command) => command.type)).toEqual(['pause', 'resume']);
   await openRunTab();
   expect(presentation()).toBe('beside');
-  await until(() => Boolean(runHeader()));
+  await until(() => Boolean(runRecord()));
 
-  expect(runHeader()).not.toBeNull();
-  expect(buttons(W.pause, runHeader() as HTMLElement)).toEqual([]);
-  expect(buttons(W.cancelRun, runHeader() as HTMLElement)).toEqual([]);
-  // Applied receipts need no confirmation, so the finished run's head shows none of them.
-  expect(receipts(runHeader())).toEqual([]);
+  expect(runRecord()).not.toBeNull();
+  // Applied receipts need no confirmation and the controls are the composer's: beside, the
+  // finished run's tab has nothing for its head to hold (execution-monitor.md), so it has none.
+  expect(runHeader()).toBeNull();
+  expect(buttons(W.pause, runRecord() as HTMLElement)).toEqual([]);
+  expect(buttons(W.cancelRun, runRecord() as HTMLElement)).toEqual([]);
+  expect(receipts(runRecord())).toEqual([]);
 });
 
 // --- the stop command ---------------------------------------------------------------------------
@@ -876,7 +881,7 @@ it('패널이 넓힘이고 파일 탭이 선택돼 있으며 실행 단위 하�
 const respondButton = () => side()?.querySelector<HTMLElement>('[data-testid="run-respond"]');
 const trayFocused = () => Boolean(document.activeElement?.closest('[data-pending-tray]'));
 
-it('패널이 넓힘이고 응답을 기다리는 실행 #1의 탭이 선택돼 있다 → 탭 머리의 응답하기 → 넓히기가 풀리고 대화의 지금 필요한 것이 보인다', async () => {
+it('패널이 넓힘이고 응답을 기다리는 실행 #1의 탭이 선택돼 있다 → 확인 필요가 읽기로 열리고 그 응답하기를 누른다 → 넓히기가 풀리고 대화의 지금 필요한 것이 보인다', async () => {
   const world = await createShellWorld();
   const runId = await world.startRun({ breakpoints: ['writer'] });
   await world.runReaches(runId, ['awaiting_user']);
@@ -884,9 +889,13 @@ it('패널이 넓힘이고 응답을 기다리는 실행 #1의 탭이 선택돼 
   await openRunTab();
   await press(maximizeButton());
   expect(presentation()).toBe('maximized');
-  await until(() => Boolean(respondButton()));
+  // Maximized, what waits shows to read in the response area, whose Respond is the one way.
+  const areaRespond = () =>
+    side()?.querySelector<HTMLElement>('[data-testid="respond-in-conversation"]') ?? null;
+  await until(() => Boolean(areaRespond()));
+  expect(respondButton()).toBeNull();
 
-  await press(respondButton());
+  await press(areaRespond());
   await until(trayFocused);
 
   expect(presentation()).toBe('beside');
@@ -1347,6 +1356,119 @@ it('"+"의 목록이 열려 있다 → Escape → 목록이 닫히고 포커스�
   expect(presentation()).toBe('beside');
 });
 
+/** A conversation with three runs: two ended, the newest working. */
+async function threeRuns() {
+  const world = await createShellWorld();
+  const ids: string[] = [];
+  for (let i = 0; i < 2; i++) {
+    const runId = await world.startRun();
+    await world.releaseReplies();
+    await world.runReaches(runId, ['succeeded']);
+    ids.push(runId);
+  }
+  const newest = await world.startRun();
+  await world.working(newest, 1);
+  ids.push(newest);
+  return { world, ids };
+}
+/** The run history's rows: the kit draws a row's label twice, once hidden to hold its width. */
+const runRows = () => [
+  ...new Set(
+    [...document.querySelectorAll<HTMLElement>('[data-run-history-row]')].map(
+      (row) => row.closest<HTMLElement>('[role="menuitem"]') ?? row,
+    ),
+  ),
+];
+const runRowNumbers = () =>
+  runRows().map((row) => readText(row)?.match(/#\d+/)?.[0] ?? readText(row));
+
+async function openRunHistory() {
+  await press(buttons(W.add, side())[0]);
+  await until(() => document.querySelectorAll('[role="menuitem"]').length > 0);
+  const history = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => readText(item) === W.runHistory,
+  );
+  await press(history);
+  await until(() => runRows().length > 0);
+}
+
+it('실행이 셋인 대화에서 패널이 옆이고 실행 #1 탭이 선택돼 있다 → "+"를 누르고 실행 기록의 하위 목록을 연다 → 실행 #3 · 실행 #2 · 실행 #1이 이 순서로 각자의 상태 표시와 함께 있고, 상단 경로는 대화 이름에서 끝난다', async () => {
+  const { world, ids } = await threeRuns();
+  remember(world.sessionId, [{ kind: 'run', runId: ids[0] as string }], `run:${ids[0]}`);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.runNumber(1));
+  // The path ends at the conversation's name: no run item after it.
+  const path = document.querySelector('nav [data-crumb="current"]')?.closest('nav');
+  expect(path).not.toBeNull();
+  expect(path?.querySelector('[data-crumb="extra"]')).toBeNull();
+  expect(buttons(W.runNumber(1), path ?? null)).toEqual([]);
+
+  await openRunHistory();
+  expect(runRowNumbers()).toEqual(['#3', '#2', '#1']);
+  for (const row of runRows()) expect(row.querySelector('[role="img"]')).not.toBeNull();
+});
+
+it('실행이 셋인 대화에서 실행 #1 탭이 선택돼 있다 → "+"의 실행 기록에서 실행 #2를 고른다 → 실행 #2 탭이 탭 줄의 오른쪽 끝에 열려 선택되고, 주소는 그 실행으로 바뀌어 쓰이며 기록은 쌓이지 않는다', async () => {
+  const { world, ids } = await threeRuns();
+  remember(world.sessionId, [{ kind: 'run', runId: ids[0] as string }], `run:${ids[0]}`);
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.runNumber(1));
+  const entries = shell.history.length;
+
+  await openRunHistory();
+  const second = runRows().find((row) => readText(row)?.includes('#2'));
+  await press(second);
+  await until(() => selectedName() === W.runNumber(2));
+
+  expect(tabNames()).toEqual([W.runNumber(1), W.runNumber(2)]);
+  expect(search(shell)).toMatchObject({ panel: 'run', run: ids[1] });
+  expect(shell.history.length).toBe(entries);
+});
+
+it('진행 중인 실행의 탭이 열려 있다 → 그 탭의 아이콘 자리에 실행의 상태 표시가 있고, 접근 이름은 "실행 #1"이며 상태는 탭의 설명이다', async () => {
+  const { world, runId } = await quietRun();
+  remember(world.sessionId, [{ kind: 'run', runId }], `run:${runId}`);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() =>
+    Boolean(tabNamed(W.runNumber(1))?.querySelector('[data-slot="tabs-closable-mark"]')),
+  );
+  const tab = tabNamed(W.runNumber(1));
+  expect(tab?.querySelector('[data-slot="tabs-closable-mark"] [data-presence]')).not.toBeNull();
+  expect(tab?.getAttribute('aria-description')).toBe(messages.Presence.state.working);
+});
+
+it('세션 패널이 넓힘이고 지난 실행 #1의 탭이 선택돼 있으며 실행 #2가 진행 중이다 → 실행 #2의 탭이 탭 줄에 있으면 "현재 실행 보기" 줄이 없고, 그 탭을 닫으면 그 줄이 선다', async () => {
+  const world = await createShellWorld();
+  const first = await world.startRun();
+  await world.releaseReplies();
+  await world.runReaches(first, ['succeeded']);
+  const second = await world.startRun();
+  await world.working(second, 1);
+  remember(
+    world.sessionId,
+    [
+      { kind: 'run', runId: first },
+      { kind: 'run', runId: second },
+    ],
+    `run:${first}`,
+  );
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.runNumber(1));
+  await press(maximizeButton());
+  await until(() => presentation() === 'maximized');
+  await until(() => Boolean(runHeader()));
+  const line = () => side()?.querySelector('[data-testid="run-active-elsewhere"]') ?? null;
+  expect(line()).toBeNull();
+
+  const closeSecond = [
+    ...(side()?.querySelectorAll<HTMLElement>('[data-slot="tabs-closable-close"]') ?? []),
+  ].find((control) => control.getAttribute('data-tab-id') === `run:${second}`);
+  await press(closeSecond);
+  await until(() => Boolean(line()));
+  expect(tabNames()).toEqual([W.runNumber(1)]);
+  expect(line()).not.toBeNull();
+});
+
 // --- restoring, and what restoring never brings back -------------------------------------------
 
 it('대화 A의 기억은 파일 · 실행 #1 탭과 실행 #1 선택이 있는 열린 패널이다 → 사이드바에서 대화 A를 연다 → 패널이 옆으로 열리고 파일 · 실행 #1 탭이 이 순서로 있으며 실행 #1이 선택돼 있다', async () => {
@@ -1430,11 +1552,11 @@ it('되살렸지만 아직 고르지 않은 탭은 고를 때까지 그리지 �
   expect(tabNames()).toEqual([W.files, W.runNumber(1)]);
   await settle();
 
-  expect(document.querySelector('[data-testid="run-header"]')).toBeNull();
+  expect(document.querySelector('[data-testid="run-monitor"]')).toBeNull();
 
   await press(tabNamed(W.runNumber(1)));
-  await until(() => Boolean(runHeader()));
-  expect(runHeader()).not.toBeNull();
+  await until(() => Boolean(runRecord()));
+  expect(runRecord()).not.toBeNull();
 });
 
 it('닫았다가 다시 연 실행 탭은 처음 연 것처럼 시작한다', async () => {
@@ -1796,6 +1918,22 @@ const changesViewTab = (name: string) => {
   );
 };
 
+/** The conversation has a copy of its folder (a Paddock) in the folder-only world. */
+function giveCopy(world: ShellWorld) {
+  const workspaces = world.services.workspaces as unknown as Record<string, unknown>;
+  workspaces.worktree = async () => ({
+    sessionId: world.sessionId,
+    bindingId: 'binding',
+    copyGeneration: 1,
+    baseCommit: 'base',
+    createdAt: '2026-11-17T00:00:00Z',
+    removedAt: null,
+    reviewed: false,
+    missing: false,
+  });
+  return workspaces;
+}
+
 async function followGit(shell: MountedShell, world: ShellWorld) {
   await act(async () => {
     void shell.router.navigate({
@@ -1822,6 +1960,8 @@ it('폴더가 연결된 대화에서 이 대화 안의 링크가 panel=git을 �
 it('폴더가 연결되고 스테이징한 것이 있는 대화에서 이 대화 안의 링크가 panel=git을 가리킨다 → 포커스는 커밋 메시지 입력에 있다', async () => {
   gitStaged.on = true;
   const world = await createShellWorld({ folder: true });
+  // Something is staged in the conversation's copy: the copy is there.
+  giveCopy(world);
   const shell = await open(world, `/sessions/${world.sessionId}`);
   await followGit(shell, world);
 

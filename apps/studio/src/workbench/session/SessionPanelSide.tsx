@@ -1,9 +1,13 @@
+import type { RunSummary } from '@corral/core';
 import {
   Button,
   fontWeights,
   Menu,
   MenuItem,
   MenuPopup,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
   TabsClosable,
   type TabsClosableHandle,
@@ -21,7 +25,8 @@ import {
   Plus,
 } from '@corral/react/icons';
 import type { ReactNode, Ref } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
+import { PresenceMark } from '../PresenceMark.tsx';
 import { maximizeAvailable, type OpenTab, type PanelState } from '../panel/model.ts';
 import {
   type PanelContext,
@@ -31,6 +36,7 @@ import {
   type TabKey,
   tabKey,
 } from '../panel/tabs.ts';
+import { listedRunPresence } from '../sessionList.ts';
 
 // The panel beside the conversation (features/session-panel.md): its head — the strip of tabs,
 // "+" after the last one, maximize at the far right — and one panel per open tab. With no tab
@@ -68,31 +74,109 @@ export function usePlusLabel() {
   return (item: PlusItem) => t(item === 'run-history' ? 'history' : item);
 }
 
+/** One run of the "+" list's run history: its state's mark, its number and its request. */
+interface HistoryRun {
+  runId: string;
+  /** The run as the session's run list says it; null if the list does not hold it. */
+  summary: RunSummary | null;
+  /** `#n · request`, or `Run #n` without a request. */
+  name: string;
+}
+
+/**
+ * The conversation's runs as the run history lists them, newest first: each row names the run by
+ * its number and request (`#n · request`, or `Run #n` without one), its mark showing the state,
+ * which the row's name says in words. The rows are the menu's own children, so the kit numbers
+ * them.
+ */
+function useRunHistoryRows(runs: readonly HistoryRun[], onOpenRun: (runId: string) => void) {
+  const presenceText = useTranslations('Presence');
+  const format = useFormatter();
+  return [...runs].reverse().map((run) => {
+    const presence = run.summary ? listedRunPresence(run.summary) : null;
+    return (
+      <MenuItem
+        key={run.runId}
+        label={
+          presence
+            ? format.list([run.name, presenceText(presence.labelKey)], { type: 'unit' })
+            : run.name
+        }
+        onClick={() => onOpenRun(run.runId)}
+      >
+        <span
+          data-run-history-row=""
+          className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2"
+        >
+          <PresenceMark presence={presence} />
+          <span className="truncate">{run.name}</span>
+        </span>
+      </MenuItem>
+    );
+  });
+}
+
+/** The run history's rows, numbered by the run list's order, named as the tabs are. */
+function useHistoryRuns(
+  ctx: PanelContext,
+  runs: readonly RunSummary[],
+  names: Readonly<Record<string, string | null | undefined>>,
+): HistoryRun[] {
+  const tw = useTranslations('Workbench');
+  const tr = useTranslations('RunPage');
+  return (ctx.runIds ?? []).map((runId, index) => {
+    const number = index + 1;
+    const name = names[runId];
+    return {
+      runId,
+      summary: runs.find((run) => run.runId === runId) ?? null,
+      name: name ? tr('runName', { number, name }) : tw('runNumber', { number }),
+    };
+  });
+}
+
+/** The cap on the run history's height: a long history scrolls inside its list. */
+const HISTORY_LIST = 'max-h-[min(320px,var(--available-height))]';
+
 export function SessionPanelSide({
   sessionId,
   state,
   ctx,
   strip,
+  runs,
+  runNames,
   onSelect,
   onClose,
   onPlus,
+  onOpenRun,
   onMaximize,
   renderTab,
 }: {
   sessionId: string;
   state: PanelState;
   ctx: PanelContext;
+  /** The session's runs as its run list says them: their states. */
+  runs: readonly RunSummary[];
+  /** Each run's request summary, or its team's name when nothing was requested. */
+  runNames: Readonly<Record<string, string | null | undefined>>;
   strip: Ref<TabsClosableHandle>;
   onSelect: (key: TabKey) => void;
   onClose: (key: TabKey) => void;
   onPlus: (item: PlusItem) => void;
+  /** A run chosen in the run history: its tab opens or is selected. */
+  onOpenRun: (runId: string) => void;
   onMaximize: () => void;
   renderTab: (tab: OpenTab) => ReactNode;
 }) {
   const t = useTranslations('SessionPanel');
+  const tp = useTranslations('Presence');
   const name = usePanelTabName(ctx.runIds);
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
+  const history = useHistoryRuns(ctx, runs, runNames);
+  const historyRows = useRunHistoryRows(history, onOpenRun);
+  // With one run, the run history opens it; with more, it lists them.
+  const listed = history.length > 1;
   if (state.tabs.length === 0)
     return (
       // The body's first action is this list: no strip, no "+", no maximize.
@@ -107,16 +191,39 @@ export function SessionPanelSide({
           <ul className="flex flex-col gap-1">
             {items.map((item) => {
               const Icon = PLUS_ICONS[item];
+              const content = (
+                <>
+                  <Icon aria-hidden="true" />
+                  {plusLabel(item)}
+                </>
+              );
               return (
                 <li key={item}>
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start gap-2"
-                    onClick={() => onPlus(item)}
-                  >
-                    <Icon aria-hidden="true" />
-                    {plusLabel(item)}
-                  </Button>
+                  {item === 'run-history' && listed ? (
+                    // The same list as "+"'s, in place on its row.
+                    <Menu>
+                      <MenuTrigger
+                        render={<Button variant="ghost" className="w-full justify-start gap-2" />}
+                      >
+                        {content}
+                      </MenuTrigger>
+                      <MenuPopup
+                        align="start"
+                        aria-label={plusLabel(item)}
+                        className={`w-[min(320px,var(--available-width))] ${HISTORY_LIST}`}
+                      >
+                        {historyRows}
+                      </MenuPopup>
+                    </Menu>
+                  ) : (
+                    <Button
+                      variant="ghost"
+                      className="w-full justify-start gap-2"
+                      onClick={() => onPlus(item)}
+                    >
+                      {content}
+                    </Button>
+                  )}
                 </li>
               );
             })}
@@ -124,11 +231,24 @@ export function SessionPanelSide({
         </div>
       </div>
     );
-  const tabs: TabsClosableTab[] = state.tabs.map((tab) => ({
-    id: tabKey(tab),
-    icon: ICONS[tab.kind],
-    ...name(tab),
-  }));
+  const tabs: TabsClosableTab[] = state.tabs.map((tab) => {
+    // A run tab carries its run's state in the icon's place, as the run list says it, except
+    // once the run completed; before the list answers it keeps the run icon.
+    const summary =
+      tab.kind === 'run' && ctx.runIds !== null
+        ? runs.find((run) => run.runId === tab.runId)
+        : undefined;
+    const presence = summary ? listedRunPresence(summary) : null;
+    const marked = presence && presence.kind !== 'succeeded' ? presence : null;
+    return {
+      id: tabKey(tab),
+      icon: ICONS[tab.kind],
+      ...name(tab),
+      ...(marked
+        ? { mark: <PresenceMark presence={marked} />, description: tp(marked.labelKey) }
+        : {}),
+    };
+  });
   const maximized = state.presentation === 'maximized';
   const maximizeLabel = t(maximized ? 'restore' : 'maximize');
   return (
@@ -157,7 +277,17 @@ export function SessionPanelSide({
                 <MenuPopup align="start" className="w-[220px]">
                   {items.map((item) => {
                     const Icon = PLUS_ICONS[item];
-                    return (
+                    return item === 'run-history' && listed ? (
+                      <MenuSub key={item}>
+                        <MenuSubTrigger icon={Icon}>{plusLabel(item)}</MenuSubTrigger>
+                        <MenuSubPopup
+                          aria-label={plusLabel(item)}
+                          className={`w-[min(320px,var(--available-width))] ${HISTORY_LIST}`}
+                        >
+                          {historyRows}
+                        </MenuSubPopup>
+                      </MenuSub>
+                    ) : (
                       <MenuItem key={item} icon={Icon} onClick={() => onPlus(item)}>
                         {plusLabel(item)}
                       </MenuItem>

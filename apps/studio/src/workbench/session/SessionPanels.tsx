@@ -12,19 +12,17 @@ import { useBinding } from '../../pages/FilesViews.tsx';
 import { Checks } from '../../pages/ReviewPage.tsx';
 import { RunDetail } from '../../pages/RunPage.tsx';
 import { useServices } from '../../services.tsx';
-import { RunMenu } from '../Breadcrumbs.tsx';
 import type { AttachmentCapture } from '../context/bridge.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { summary } from '../runIdentity.ts';
 import { listedRunPresence } from '../sessionList.ts';
-import { TopbarCrumb } from '../TopbarSlot.tsx';
 
 // Side panes of a session: the run detail, its results and its checks.
 
 /**
  * A run tab's content (features/session-panel.md): one run's record, which never changes run.
  * The selected tab's views follow the address; an unselected one keeps its own until chosen
- * again. The path's run menu stands in the top bar only for the selected tab on screen.
+ * again.
  */
 export function RunPanel({
   runId,
@@ -33,7 +31,8 @@ export function RunPanel({
   entries,
   search,
   setSearch,
-  picker,
+  operable,
+  activeTabbed,
   onOpenRun,
 }: {
   runId: string;
@@ -45,33 +44,37 @@ export function RunPanel({
   /** This tab's own views: the address's while it is selected. */
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
-  /** The path's run menu shows: this tab is selected and the panel is on screen. */
-  picker: boolean;
-  /** Opens (or selects) another run's tab: the run menu, "현재 실행 보기". */
+  /**
+   * The conversation beside the panel can be operated (beside, closed, withdrawn); false while
+   * the panel covers it (maximized, a drawer).
+   */
+  operable: boolean;
+  /** The session's run going has a tab of its own in the strip. */
+  activeTabbed: boolean;
+  /** Opens (or selects) another run's tab: "현재 실행 보기". */
   onOpenRun: (runId: string) => void;
 }) {
-  const names = useRunNames(runs, entries);
   // While a past run shows and another run of the session goes, the header says which, once
-  // (features/execution-monitor.md). A run still going is not a past run.
+  // (features/execution-monitor.md): only over the conversation, which otherwise says it, and
+  // only while that run has no tab, whose mark otherwise says it. A run still going is not a
+  // past run.
   const shown = runs.find((run) => run.runId === runId);
   const elsewhere =
-    active && shown && active.runId !== runId && TERMINAL_RUN_STATUSES.has(shown.status)
+    !operable &&
+    !activeTabbed &&
+    active &&
+    shown &&
+    active.runId !== runId &&
+    TERMINAL_RUN_STATUSES.has(shown.status)
       ? active
       : null;
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      {picker ? (
-        <TopbarCrumb>
-          <span aria-hidden="true" className="text-muted-foreground/50">
-            /
-          </span>
-          <RunMenu runs={runs} runId={runId} names={names} onSelect={onOpenRun} />
-        </TopbarCrumb>
-      ) : null}
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
           sessionId={shown?.sessionId ?? null}
+          conversationOperable={operable}
           runId={runId}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
@@ -136,7 +139,7 @@ function ActiveRunLine({
  * Each run's name in the run history: the summary of the request that started it, else the name
  * of the team it ran as, read from its pinned definition (never the team's current revision).
  */
-function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries']) {
+export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries']) {
   const { transport } = useServices();
   const requested = new Map(
     entries.flatMap((entry) =>

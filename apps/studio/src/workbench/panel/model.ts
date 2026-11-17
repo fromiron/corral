@@ -176,11 +176,6 @@ export function maximizeAvailable(state: PanelState): boolean {
   );
 }
 
-/** The top bar's run picker shows: a run tab is selected and the panel is on screen. */
-export function runPickerVisible(state: PanelState): boolean {
-  return state.selected?.startsWith('run:') === true && panelOnScreen(state.presentation);
-}
-
 /**
  * The run whose tab head would carry the controls: the selected run tab while the panel is
  * 넓힘 or 서랍. Null otherwise.

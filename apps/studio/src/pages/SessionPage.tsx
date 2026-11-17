@@ -50,7 +50,6 @@ import {
   type OpenTab,
   type PanelState,
   panelOnScreen,
-  runPickerVisible,
   toggleAvailable,
 } from '../workbench/panel/model.ts';
 import { runControlPlace, stopCommandRoute } from '../workbench/panel/runControls.ts';
@@ -83,7 +82,12 @@ import {
 import { SessionActions } from '../workbench/session/SessionActions.tsx';
 import { SessionChat } from '../workbench/session/SessionChat.tsx';
 import { PANEL_ID_PREFIX, SessionPanelSide } from '../workbench/session/SessionPanelSide.tsx';
-import { ArtifactsPanel, ChecksPanel, RunPanel } from '../workbench/session/SessionPanels.tsx';
+import {
+  ArtifactsPanel,
+  ChecksPanel,
+  RunPanel,
+  useRunNames,
+} from '../workbench/session/SessionPanels.tsx';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
@@ -199,6 +203,8 @@ function WorkSessionPage() {
   const { state, ctx, fronts } = frame;
   const operable = conversationOperable(state.presentation);
   const onScreen = panelOnScreen(state.presentation);
+  // Each run's name in the "+" list's run history: its request, else its team.
+  const runNames = useRunNames(runs, session.entries);
 
   // Focus: an opened tab takes it; a panel or drawer leaving with it gives it back.
   const strip = useRef<TabsClosableHandle>(null);
@@ -709,7 +715,10 @@ function WorkSessionPage() {
         runId={tab.runId}
         selected={selected}
         carries={runControlPlace(state, runStatus).at === 'run-tab' && selected}
-        picker={selected && runPickerVisible(state)}
+        operable={operable}
+        activeTabbed={Boolean(
+          active && state.tabs.some((open) => open.kind === 'run' && open.runId === active.runId),
+        )}
         addressed={addressed}
         runs={runs}
         active={active}
@@ -840,7 +849,10 @@ function WorkSessionPage() {
                     strip={strip}
                     onSelect={select}
                     onClose={close}
+                    runs={runs}
+                    runNames={runNames}
                     onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
+                    onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
                     onMaximize={() => {
                       if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
                     }}
@@ -861,7 +873,8 @@ function RunTab({
   runId,
   selected,
   carries,
-  picker,
+  operable,
+  activeTabbed,
   addressed,
   runs,
   active,
@@ -872,7 +885,8 @@ function RunTab({
   runId: string;
   selected: boolean;
   carries: boolean;
-  picker: boolean;
+  operable: boolean;
+  activeTabbed: boolean;
   /** The address while it names this tab, else what the address last gave it; null if nothing. */
   addressed: SessionSearch | null;
   runs: RunSummary[];
@@ -895,7 +909,8 @@ function RunTab({
           setOwn((current) => ({ ...current, ...patch }));
           if (selected) writeTab({ panel: 'run', run: runId, ...patch }, options);
         }}
-        picker={picker}
+        operable={operable}
+        activeTabbed={activeTabbed}
         onOpenRun={onOpenRun}
       />
     </RunHeadControlsContext.Provider>
