@@ -552,3 +552,19 @@ it('keeps the bottom dock’s key from the shell, and passes every other key on'
   detach();
   f.store.dispose();
 });
+
+it("reads a terminal's foreground afresh when asked, and says unknown when the read fails, never the value held before", async () => {
+  const f = setup();
+  await f.store.refresh('session');
+  // Held from the list: idle. A command started since.
+  f.setCurrent({ ...terminal(), foreground: 'busy' });
+  expect(await f.store.readForeground('terminal')).toBe('busy');
+  expect(f.client.read).toHaveBeenCalledExactlyOnceWith('session', 'terminal');
+  f.setCurrent({ ...terminal(), foreground: 'idle' });
+  f.client.read.mockRejectedValueOnce(new Error('gone'));
+  expect(await f.store.readForeground('terminal')).toBe('unknown');
+  // A terminal the store does not hold is not read.
+  expect(await f.store.readForeground('other')).toBe('unknown');
+  expect(f.client.read).toHaveBeenCalledTimes(2);
+  f.store.dispose();
+});
