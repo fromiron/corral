@@ -4,6 +4,7 @@ import { act, type ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { registeredCommands } from '../commandRegistry.ts';
+import { FRESH_TREE, treeState, updateTreeState } from '../workbench/fileTreeState.ts';
 import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
 import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
 import {
@@ -1514,6 +1515,22 @@ it('자리가 없어 변경 탭이 선택된 패널이 물러남이다 → 변�
 });
 
 // --- restoring, and what restoring never brings back -------------------------------------------
+
+it('대화 A의 파일 탭에서 트리를 걸러 보고 있다 → 사이드바에서 대화 B로 갔다가 대화 A로 돌아온다 → 되살린 파일 탭의 트리는 처음 연 것처럼 시작한다', async () => {
+  const world = await createShellWorld({ folder: true });
+  const other = await world.createConversation('Other');
+  const shell = await open(world, `/sessions/${world.sessionId}?panel=files`);
+  await until(() => selectedName() === W.files);
+  await act(async () => updateTreeState(world.sessionId, { query: 'src', resultsOn: true }));
+  expect(treeState(world.sessionId).query).toBe('src');
+
+  await sidebarLink(shell, other);
+  await sidebarLink(shell, world.sessionId);
+  await until(() => selectedName() === W.files);
+
+  expect(tabNames()).toEqual([W.files]);
+  expect(treeState(world.sessionId)).toBe(FRESH_TREE);
+});
 
 it('대화 A의 기억은 파일 · 실행 #1 탭과 실행 #1 선택이 있는 열린 패널이다 → 사이드바에서 대화 A를 연다 → 패널이 옆으로 열리고 파일 · 실행 #1 탭이 이 순서로 있으며 실행 #1이 선택돼 있다', async () => {
   const { world, runId } = await quietRun();

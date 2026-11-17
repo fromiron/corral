@@ -86,6 +86,11 @@ export interface PanelFrameInput {
    * writes, Back and Forward, a restore on entry and a reload are not links.
    */
   onOpenedByLink?: (search: SessionSearch, next: PanelState, before: PanelState) => void;
+  /**
+   * The conversation is being entered, before its tabs are shown: what a tab kept outside its
+   * screen from an earlier visit is to be forgotten (restored tabs start as if first opened).
+   */
+  onEnter?: (sessionId: string) => void;
 }
 
 export interface PanelFrame {
@@ -207,6 +212,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
       if (event.type === 'enter') {
         tabStates.current.clear();
         fronts.current = {};
+        now.input.onEnter?.(now.sessionId);
       } else note(now.search, before);
       const result = reducePanel(before, event, { ...now.ctx, front: fronts.current });
       // In this same update, before any holder renders again: a place that lost its controls

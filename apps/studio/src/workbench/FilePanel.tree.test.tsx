@@ -6,6 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { FilePanel } from './FilePanel.tsx';
+import { forgetTreeState } from './fileTreeState.ts';
 
 const fixture = vi.hoisted(() => ({
   target: {
@@ -288,4 +289,24 @@ it('the Files toolbar and its filter take the interface density', async () => {
   };
   expect(await sizes('default')).toEqual(['icon', 'default']);
   expect(await sizes('compact')).toEqual(['icon-compact', 'compact']);
+});
+
+it('shows the conversation’s opened folders again when its tree comes back, and starts fresh once forgotten', async () => {
+  fixture.state = { documents: {} };
+  fixture.files = {
+    ...fixture.files,
+    list: { files: [file('README.md'), file('src/app.ts')], truncated: false },
+  };
+  const first = await panel();
+  const src = first.container.querySelector<HTMLElement>('[role="treeitem"][title="src"]');
+  await act(async () => src?.focus());
+  await press('ArrowRight');
+  expect(items(first.container)).toEqual(['src', 'src/app.ts', 'README.md']);
+  // The tree's screen goes away within the visit (the 파일 tab becoming the tree column).
+  await roots.pop()?.();
+  const second = await panel();
+  expect(items(second.container)).toEqual(['src', 'src/app.ts', 'README.md']);
+  // Closing the 파일 tab forgets it.
+  await act(async () => forgetTreeState('session'));
+  expect(items(second.container)).toEqual(['src', 'README.md']);
 });

@@ -43,6 +43,7 @@ import type { DockContextView } from '../workbench/docking/layout.ts';
 import { documentKey, documentStore } from '../workbench/documents/store.ts';
 import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
 import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { forgetTreeState } from '../workbench/fileTreeState.ts';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { deviceStorage } from '../workbench/panel/memory.ts';
 import {
@@ -198,6 +199,8 @@ function WorkSessionPage() {
     paddock: Boolean(terminals && terminalList.value?.list?.target),
     terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
     onDockAddress: (target, focus) => dockAreaRef.current?.openAddressed(target, focus),
+    // The tree shared by the 파일 tab and the tree column is one visit's.
+    onEnter: forgetTreeState,
     onBringForward: (arrived) => {
       if (arrived.respond) revealPendingTray(tray, session.sessionId);
       // The frame consumes `advice` from the address as it brings the conversation forward: the
@@ -409,6 +412,8 @@ function WorkSessionPage() {
       focusNext.current = { removed: focused };
     }
     frame.dispatch({ type: 'close', key });
+    // A closed 파일 tab keeps no screen state: opened again, its tree starts fresh.
+    if (key === 'files') forgetTreeState(session.sessionId);
     return target;
   };
   const toggle = () => {

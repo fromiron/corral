@@ -25,6 +25,7 @@ import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { shortcutLabel } from '../../shortcuts.ts';
 import { ChatDensityMenu } from '../ChatView.tsx';
+import { forgetDeletedTree } from '../fileTreeState.ts';
 import { deviceStorage, forgetPanelMemory } from '../panel/memory.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
@@ -474,6 +475,7 @@ export function SessionActions({
           setDeleting(false);
           // A deleted conversation's panel is not remembered on this device either.
           forgetPanelMemory(deviceStorage(), session.sessionId);
+          forgetDeletedTree(deviceStorage(), session.sessionId);
           projectsChanged();
           void router.invalidate();
           void navigate({

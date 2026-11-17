@@ -42,6 +42,7 @@ import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
 import { FileTree } from './FileTree.tsx';
 import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
+import { fileSourceKey, type TreeState, useTreeState } from './fileTreeState.ts';
 import { LineRangePopover } from './LineRangePopover.tsx';
 import { languageStore } from './language/store.ts';
 import { useSettingsNavigation } from './navigation.ts';
@@ -139,7 +140,7 @@ export function FilePanel({
     emptyDocuments,
   );
   const [savedSource, setSource] = useRemembered<'project' | 'session' | null>(
-    `corral:file-source:v1:${sessionId}`,
+    fileSourceKey(sessionId),
     null,
   );
   const source = savedSource === 'project' || savedSource === 'session' ? savedSource : undefined;
@@ -153,8 +154,17 @@ export function FilePanel({
     null,
   );
   const active = typeof saved === 'string' ? saved : null;
-  const [query, setQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'names' | 'contents'>('names');
+  // Opened folders, the filter and the results filter outlast this screen (fileTreeState.ts).
+  const [tree, updateTree] = useTreeState(sessionId);
+  const { query, searchMode, resultsOn, filterClosed } = tree;
+  const setQuery = (next: string) => updateTree({ query: next });
+  const setSearchMode = (next: TreeState['searchMode']) => updateTree({ searchMode: next });
+  const setResultsOn = (next: boolean) => updateTree({ resultsOn: next });
+  const setOpened = (next: (opened: TreeState['opened']) => TreeState['opened']) =>
+    updateTree((state) => ({ opened: next(state.opened) }));
+  const setFilterClosed = (
+    next: (closed: TreeState['filterClosed']) => TreeState['filterClosed'],
+  ) => updateTree((state) => ({ filterClosed: next(state.filterClosed) }));
   const [content, setContent] = useState<FileSideView | null>(null);
   const [readError, setReadError] = useState<string | null>(null);
   const [documentKey, setDocumentKey] = useState<string | null>(null);
@@ -193,10 +203,9 @@ export function FilePanel({
   const [reads, setReads] = useState<FolderReads>(() => freshReads(list, scopeKey));
   const folders =
     reads.base === list && reads.scopeKey === scopeKey ? reads : freshReads(list, scopeKey);
-  const [opened, setOpened] = useState({ scopeKey, paths: noPaths });
+  const opened = tree.opened;
   const expanded = opened.scopeKey === scopeKey ? opened.paths : noPaths;
   // The Results filter: only the session copy has run writes to attribute.
-  const [resultsOn, setResultsOn] = useState(false);
   const resultsAvailable = scope?.kind === 'session';
   const results = resultsOn && resultsAvailable;
   const runKey = runs.map((run) => `${run.runId}:${run.status}`).join(',');
@@ -240,7 +249,6 @@ export function FilePanel({
     return notes;
   }, [results, madeFiles, runs, tw]);
   const filterKey = `${results ? 'results' : ''}:${query}`;
-  const [filterClosed, setFilterClosed] = useState({ key: ':', paths: noPaths });
   const collapsed = filterClosed.key === filterKey ? filterClosed.paths : noPaths;
   const filtering = Boolean(query.trim()) || results;
   const listings = useMemo(
