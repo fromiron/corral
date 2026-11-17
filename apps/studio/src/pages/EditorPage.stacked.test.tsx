@@ -15,7 +15,7 @@ import { editorWorkingCopy } from '../workbench/editorDraft.ts';
 import { EditorPage, TeamDesign } from './EditorPage.tsx';
 
 // The team editor in its two hosts, the route editor and the session's team graph pane, stacks
-// when its own width is under 1040px (docs/specs/features/canvas.md 1, canvas.feature): the
+// when its own width is under 960px (docs/specs/features/canvas.md 1, canvas.feature): the
 // path bar stays above, both drags still land, and the 768px test-run rule still holds.
 
 const fixture = vi.hoisted(() => ({
@@ -253,11 +253,11 @@ const HOSTS: [Host, number][] = [
   ['session', 540],
 ];
 
-describe('team editor hosts: stacked below 1040px', () => {
+describe('team editor hosts: stacked below 960px', () => {
   it.each(['route', 'session'] as const)(
-    '%s: stacks at 1039px of its own width and lays out beside at 1040px, under its path bar',
+    '%s: stacks at 959px of its own width and lays out beside at 960px, under its path bar',
     async (host) => {
-      await mount(host, 1039);
+      await mount(host, 959);
       expect(layoutOf()).toBe('stacked');
       // The path bar stays above; only what is under it scrolls.
       const pathBar = named(document, messages.Editor.save).closest('header') as HTMLElement;
@@ -266,9 +266,9 @@ describe('team editor hosts: stacked below 1040px', () => {
       expect(
         pathBar.compareDocumentPosition(editorRoot()) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
-      resize(1040);
+      resize(960);
       expect(layoutOf()).toBe('beside');
-      resize(1039);
+      resize(959);
       expect(layoutOf()).toBe('stacked');
     },
   );
@@ -324,7 +324,12 @@ describe('team editor hosts: stacked below 1040px', () => {
     expect(shown(sheet())).toBe(true);
   });
 
-  it('route: crossing 1040px either way keeps the selection and the focus', async () => {
+  it('route at 1010px, a 1280px window with the sidebar open, lays out beside', async () => {
+    await mount('route', 1010);
+    expect(layoutOf()).toBe('beside');
+  });
+
+  it('route: crossing 960px either way keeps the selection and the focus', async () => {
     await mount('route', 1200);
     expect(layoutOf()).toBe('beside');
     await click(canvasNode('agent_1'));
