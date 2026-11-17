@@ -112,3 +112,70 @@ export const DragOutside: Story = {
 
 /** No play, for looking at it. */
 export const Playground: Story = {};
+
+/** A conversation above and a dock below: the line is the dock's first pixel. */
+function Rows({ onReset }: { onReset?: () => void }) {
+  const [height, setHeight] = useState(120);
+  return (
+    <div className="flex h-72 w-[480px] max-w-full flex-col overflow-hidden rounded-xl border border-border bg-background text-ui">
+      <div className="min-h-0 flex-1 p-3 text-muted-foreground">대화</div>
+      <Splitter
+        aria-label="도크 높이"
+        orientation="horizontal"
+        side="bottom"
+        value={height}
+        min={80}
+        max={200}
+        onChange={setHeight}
+        onReset={() => {
+          setHeight(120);
+          onReset?.();
+        }}
+      />
+      <div className="shrink-0 p-3 text-muted-foreground" style={{ height }}>
+        도크
+      </div>
+    </div>
+  );
+}
+
+/** ArrowUp grows the dock, ArrowDown shrinks it; a drag goes along y; a double press resets. */
+export const Horizontal: Story = {
+  render: () => <Rows />,
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const splitter = canvas.getByRole('separator', { name: '도크 높이' });
+    await expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+    await expect(getComputedStyle(splitter).cursor).toBe('row-resize');
+    await expect(splitter.getBoundingClientRect().height).toBe(8);
+    const dock = canvas.getByText('도크');
+    // The line is the dock's first pixel: the strip lies over the dock.
+    await expect(Math.round(splitter.getBoundingClientRect().top)).toBe(
+      Math.round(dock.getBoundingClientRect().top),
+    );
+    await userEvent.tab();
+    await expect(splitter).toHaveFocus();
+    await userEvent.keyboard('{ArrowUp}');
+    await expect(splitter).toHaveAttribute('aria-valuenow', '136');
+    await expect(dock.getBoundingClientRect().height).toBe(136);
+    await userEvent.keyboard('{ArrowDown}{ArrowDown}');
+    await expect(splitter).toHaveAttribute('aria-valuenow', '104');
+    const box = splitter.getBoundingClientRect();
+    const at = (clientY: number, buttons = 1) => ({
+      pointerId: 1,
+      button: 0,
+      buttons,
+      clientX: box.left + 40,
+      clientY,
+      bubbles: true,
+    });
+    const y = box.top + box.height / 2;
+    splitter.dispatchEvent(new PointerEvent('pointerdown', at(y)));
+    splitter.dispatchEvent(new PointerEvent('pointermove', at(y - 30)));
+    await waitFor(() => expect(splitter).toHaveAttribute('aria-valuenow', '134'));
+    splitter.dispatchEvent(new PointerEvent('pointerup', at(y - 30, 0)));
+    splitter.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+    await waitFor(() => expect(splitter).toHaveAttribute('aria-valuenow', '120'));
+    splitter.blur();
+  },
+};

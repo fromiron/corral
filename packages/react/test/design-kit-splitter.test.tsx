@@ -277,3 +277,115 @@ it('keeps its values within bounds when the minimum is above the maximum', () =>
   expect(splitter).toHaveAttribute('aria-valuemax', '400');
   expect(splitter).toHaveAttribute('aria-valuenow', '400');
 });
+
+// The bottom dock's height (session-panel S4): a horizontal separator answers ArrowUp and
+// ArrowDown, drags along y, and shows the row-resize cursor; a double press may reset.
+
+function Rows({
+  initial = 240,
+  side = 'bottom',
+  onChange = () => {},
+  onCommit = () => {},
+  onReset,
+}: {
+  initial?: number;
+  side?: 'top' | 'bottom';
+  onChange?: (px: number) => void;
+  onCommit?: (px: number) => void;
+  onReset?: () => void;
+}) {
+  const [height, setHeight] = useState(initial);
+  return (
+    <Splitter
+      aria-label="도크 높이"
+      orientation="horizontal"
+      side={side}
+      value={height}
+      min={120}
+      max={400}
+      onChange={(px) => {
+        setHeight(px);
+        onChange(px);
+      }}
+      onCommit={onCommit}
+      onReset={onReset}
+    />
+  );
+}
+
+it('is a horizontal separator whose ArrowUp grows a panel below it, and ignores the side arrows', () => {
+  const onChange = vi.fn();
+  const onCommit = vi.fn();
+  render(<Rows onChange={onChange} onCommit={onCommit} />);
+  const splitter = screen.getByRole('separator', { name: '도크 높이' });
+  expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+  expect(splitter).toHaveAttribute('aria-valuenow', '240');
+  expect(splitter).toHaveClass('cursor-row-resize');
+  expect(splitter).toHaveClass('h-2');
+  fireEvent.keyDown(splitter, { key: 'ArrowUp' });
+  expect(onChange).toHaveBeenLastCalledWith(256);
+  fireEvent.keyUp(splitter, { key: 'ArrowUp' });
+  expect(onCommit).toHaveBeenLastCalledWith(256);
+  fireEvent.keyDown(splitter, { key: 'ArrowDown' });
+  expect(onChange).toHaveBeenLastCalledWith(240);
+  onChange.mockClear();
+  fireEvent.keyDown(splitter, { key: 'ArrowLeft' });
+  fireEvent.keyDown(splitter, { key: 'ArrowRight' });
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it('mirrors the keys for a panel above it', () => {
+  const onChange = vi.fn();
+  render(<Rows side="top" onChange={onChange} />);
+  const splitter = screen.getByRole('separator', { name: '도크 높이' });
+  fireEvent.keyDown(splitter, { key: 'ArrowDown' });
+  expect(onChange).toHaveBeenLastCalledWith(256);
+});
+
+it('leaves ArrowUp and ArrowDown alone when vertical', () => {
+  const onChange = vi.fn();
+  render(<Host onChange={onChange} />);
+  const splitter = screen.getByRole('separator', { name: '패널 폭' });
+  fireEvent.keyDown(splitter, { key: 'ArrowUp' });
+  fireEvent.keyDown(splitter, { key: 'ArrowDown' });
+  expect(onChange).not.toHaveBeenCalled();
+});
+
+it('resizes a panel below with a drag along y', () => {
+  const onChange = vi.fn();
+  const onCommit = vi.fn();
+  render(<Rows onChange={onChange} onCommit={onCommit} />);
+  const splitter = screen.getByRole('separator', { name: '도크 높이' });
+  stubCapture(splitter);
+  fireEvent.pointerDown(splitter, {
+    pointerId: 1,
+    button: 0,
+    buttons: 1,
+    clientX: 50,
+    clientY: 500,
+  });
+  fireEvent.pointerMove(splitter, { pointerId: 1, buttons: 1, clientX: 90, clientY: 470 });
+  expect(onChange).toHaveBeenLastCalledWith(270);
+  fireEvent.pointerUp(splitter, { pointerId: 1, clientX: 90, clientY: 470 });
+  expect(onCommit).toHaveBeenLastCalledWith(270);
+});
+
+it('resets on a double press only when the host asks for it', () => {
+  const onReset = vi.fn();
+  render(<Rows onReset={onReset} />);
+  fireEvent.doubleClick(screen.getByRole('separator', { name: '도크 높이' }));
+  expect(onReset).toHaveBeenCalledTimes(1);
+  const onResetWide = vi.fn();
+  render(
+    <Splitter
+      aria-label="패널 폭 2"
+      value={400}
+      min={360}
+      max={440}
+      onChange={() => {}}
+      onReset={onResetWide}
+    />,
+  );
+  fireEvent.doubleClick(screen.getByRole('separator', { name: '패널 폭 2' }));
+  expect(onResetWide).toHaveBeenCalledTimes(1);
+});

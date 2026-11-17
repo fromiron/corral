@@ -12,7 +12,7 @@ import {
   useState,
 } from 'react';
 import { exitFallbackMs, spring, tween } from '../lib/springs.ts';
-import { Splitter, type SplitterProps } from './splitter.tsx';
+import { Splitter, type SplitterBaseProps } from './splitter.tsx';
 import { cn } from './utils.ts';
 
 // -----------------------------------------------------------------------------
@@ -50,7 +50,7 @@ export interface SidePanelFrameProps extends Omit<HTMLAttributes<HTMLDivElement>
   keepSideMounted?: boolean;
   /** The splitter shown beside; its value is `sideWidth`. Without it there is none. While it is
    *  dragged the root carries `data-resizing`. */
-  resize?: Omit<SplitterProps, 'value' | 'side'>;
+  resize?: Omit<SplitterBaseProps, 'value'>;
   /** The frame's own width in px, on every change. The first width arrives in a layout effect
    *  after the first render, before paint: a host deciding the presentation from it starts as
    *  if there were no room. */
