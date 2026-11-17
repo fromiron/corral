@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { useEffect } from 'react';
-import { afterAll, afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   SidePanelFrame,
   type SidePanelFrameProps,
@@ -131,16 +131,16 @@ function Counted({ name }: { name: 'main' | 'side' }) {
 }
 
 function frame(props: Partial<SidePanelFrameProps> & { presentation: SidePanelPresentation }) {
-  return (
-    <SidePanelFrame
-      sideLabel="패널"
-      sideWidth={400}
-      drawerWidth={400}
-      main={<Counted name="main" />}
-      side={<Counted name="side" />}
-      {...props}
-    />
-  );
+  const all = {
+    sideLabel: '패널',
+    sideWidth: 400,
+    drawerWidth: 400,
+    main: <Counted name="main" />,
+    side: <Counted name="side" />,
+    ...props,
+  };
+  // A bottom comes with its label and height; `dock()` gives them together.
+  return <SidePanelFrame {...(all as SidePanelFrameProps)} />;
 }
 
 function mainRegion(container: HTMLElement) {
@@ -429,4 +429,254 @@ it('leaves the focus where it is when it was outside the frame', () => {
     ),
   );
   expect(outside).toHaveFocus();
+});
+
+// session-panel S4: a dock under both regions. A drawer and its scrim cover it and take it out of
+// use; a maximized side covers main only. The shown height yields so main keeps its least height.
+
+describe('a bottom region', () => {
+  let frameHeight = 0;
+  beforeEach(() => {
+    frameHeight = 0;
+    Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+      configurable: true,
+      get(this: HTMLElement) {
+        return this.dataset.slot === 'side-panel-frame' ? frameHeight : 0;
+      },
+    });
+  });
+  afterEach(() => {
+    delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  });
+  function resizeHeight(height: number) {
+    frameHeight = height;
+    act(() => {
+      for (const callback of resizeCallbacks) callback();
+    });
+  }
+
+  const dock = (props: Partial<SidePanelFrameProps> & { presentation: SidePanelPresentation }) =>
+    frame({
+      bottom: <button type="button">도크 단추</button>,
+      bottomLabel: '도크',
+      bottomHeight: 240,
+      ...props,
+    } as SidePanelFrameProps);
+  const bottomRegion = (container: HTMLElement) => {
+    const bottom = container.querySelector<HTMLElement>('[data-slot="side-panel-bottom"]');
+    if (!bottom) throw new Error('Missing the bottom region');
+    return bottom;
+  };
+  const bottomArea = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>('[data-slot="side-panel-bottom-area"]');
+
+  it('lays a named region under main and the side, at the host’s height', () => {
+    const view = render(dock({ presentation: 'beside' }));
+    const bottom = screen.getByRole('region', { name: '도크' });
+    expect(bottom).toBe(bottomRegion(view.container));
+    expect(bottom.style.height).toBe('240px');
+    expect(mainRegion(view.container).contains(bottom)).toBe(false);
+    expect(sideRegion(view.container).contains(bottom)).toBe(false);
+    // Under both: main and the side share a row the bottom is not in.
+    const row = mainRegion(view.container).closest('[data-slot="side-panel-row"]');
+    expect(row?.contains(sideRegion(view.container))).toBe(true);
+    expect(row?.contains(bottom)).toBe(false);
+  });
+
+  it('is taken out of use in a drawer only, under the scrim', () => {
+    const view = render(dock({ presentation: 'beside' }));
+    for (const presentation of presentations) {
+      view.rerender(dock({ presentation }));
+      expect(bottomArea(view.container)?.hasAttribute('inert'), presentation).toBe(
+        presentation === 'drawer',
+      );
+    }
+    view.rerender(dock({ presentation: 'drawer' }));
+    const scrim = view.container.querySelector<HTMLElement>('[data-slot="side-panel-scrim"]');
+    const root = view.container.querySelector('[data-slot="side-panel-frame"]');
+    // The scrim lies over main and the bottom, under the drawer.
+    expect(scrim?.parentElement).toBe(root);
+    // Positioned against the frame, so the drawer spans the bottom too.
+    const row = view.container.querySelector<HTMLElement>('[data-slot="side-panel-row"]');
+    expect(row?.classList.contains('relative')).toBe(false);
+    view.rerender(dock({ presentation: 'maximized' }));
+    // Maximized, the side covers main's row only.
+    expect(row?.classList.contains('relative')).toBe(true);
+    expect(mainRegion(view.container)).toHaveAttribute('inert');
+    expect(bottomArea(view.container)).not.toHaveAttribute('inert');
+  });
+
+  it('adds and removes the bottom region without remounting main or the side', () => {
+    mounts.main = 0;
+    mounts.side = 0;
+    const view = render(frame({ presentation: 'beside' }));
+    view.rerender(dock({ presentation: 'beside' }));
+    view.rerender(frame({ presentation: 'beside' }));
+    expect(mounts).toEqual({ main: 1, side: 1 });
+    expect(bottomArea(view.container)).toBeNull();
+  });
+
+  it('yields the shown height so main keeps its least height, leaving the host’s height alone', () => {
+    const onShown = vi.fn();
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    frameHeight = 600;
+    render(
+      dock({
+        presentation: 'beside',
+        bottomHeight: 500,
+        mainMinHeight: 160,
+        onShownBottomHeightChange: onShown,
+        bottomResize: { min: 120, max: 560, onChange, onCommit, 'aria-label': '도크 높이' },
+      }),
+    );
+    const bottom = screen.getByRole('region', { name: '도크' });
+    expect(bottom.style.height).toBe('440px');
+    expect(onShown).toHaveBeenLastCalledWith(440);
+    const splitter = screen.getByRole('separator', { name: '도크 높이' });
+    expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+    expect(splitter).toHaveAttribute('aria-valuenow', '440');
+    expect(splitter).toHaveAttribute('aria-valuemax', '440');
+    resizeHeight(900);
+    expect(bottom.style.height).toBe('500px');
+    expect(onShown).toHaveBeenLastCalledWith(500);
+    expect(screen.getByRole('separator', { name: '도크 높이' })).toHaveAttribute(
+      'aria-valuemax',
+      '560',
+    );
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('hides a bottom yielded to nothing, splitter and all', () => {
+    const onShown = vi.fn();
+    frameHeight = 150;
+    const view = render(
+      dock({
+        presentation: 'beside',
+        mainMinHeight: 160,
+        onShownBottomHeightChange: onShown,
+        bottomResize: { min: 120, max: 560, onChange: () => {}, 'aria-label': '도크 높이' },
+      }),
+    );
+    expect(onShown).toHaveBeenLastCalledWith(0);
+    const bottom = bottomRegion(view.container);
+    expect(bottom).toHaveAttribute('data-state', 'withdrawn');
+    expect(bottom.style.visibility).toBe('hidden');
+    expect(bottom).toHaveAttribute('inert');
+    expect(screen.queryByRole('separator', { name: '도크 높이' })).toBeNull();
+  });
+
+  it('withdraws a bottom that would be shown under its least height, and brings it back when there is room', () => {
+    const onShown = vi.fn();
+    const onWithdrawn = vi.fn();
+    const onChange = vi.fn();
+    const onCommit = vi.fn();
+    frameHeight = 600;
+    const props = {
+      presentation: 'beside' as const,
+      mainMinHeight: 160,
+      bottomMinHeight: 120,
+      onShownBottomHeightChange: onShown,
+      onBottomWithdrawnChange: onWithdrawn,
+      bottomResize: { min: 120, max: 560, onChange, onCommit, 'aria-label': '도크 높이' },
+    };
+    const view = render(dock(props));
+    const bottom = bottomRegion(view.container);
+    expect(bottom).toHaveAttribute('data-state', 'open');
+    expect(bottom.style.height).toBe('240px');
+    expect(onWithdrawn).toHaveBeenLastCalledWith(false);
+    // Exactly its least height: still shown, at that height.
+    resizeHeight(280);
+    expect(bottom).toHaveAttribute('data-state', 'open');
+    expect(bottom.style.height).toBe('120px');
+    expect(onShown).toHaveBeenLastCalledWith(120);
+    expect(screen.getByRole('separator', { name: '도크 높이' })).toHaveAttribute(
+      'aria-valuenow',
+      '120',
+    );
+    // One pixel less: withdrawn, not drawn, at the host's height out of the flow.
+    resizeHeight(279);
+    expect(bottom).toHaveAttribute('data-state', 'withdrawn');
+    expect(bottom.style.visibility).toBe('hidden');
+    expect(bottom.style.height).toBe('240px');
+    expect(bottom.classList.contains('absolute')).toBe(true);
+    expect(bottom).toHaveAttribute('inert');
+    expect(screen.queryByRole('separator', { name: '도크 높이' })).toBeNull();
+    expect(onShown).toHaveBeenLastCalledWith(0);
+    expect(onWithdrawn).toHaveBeenLastCalledWith(true);
+    expect(screen.getByText('도크 단추')).toBeInTheDocument();
+    // Room again: back at the host's height.
+    resizeHeight(600);
+    expect(bottom).toHaveAttribute('data-state', 'open');
+    expect(bottom.style.height).toBe('240px');
+    expect(bottom.style.visibility).toBe('');
+    expect(onShown).toHaveBeenLastCalledWith(240);
+    expect(onWithdrawn).toHaveBeenLastCalledWith(false);
+    expect(screen.getByRole('separator', { name: '도크 높이' })).toBeInTheDocument();
+    expect(onWithdrawn).toHaveBeenCalledTimes(3);
+    expect(onChange).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it('never calls a closed bottom withdrawn, however little room there is', () => {
+    const onWithdrawn = vi.fn();
+    frameHeight = 200;
+    const view = render(
+      dock({
+        presentation: 'beside',
+        bottomOpen: false,
+        mainMinHeight: 160,
+        bottomMinHeight: 120,
+        onBottomWithdrawnChange: onWithdrawn,
+      }),
+    );
+    expect(bottomRegion(view.container)).toHaveAttribute('data-state', 'closed');
+    expect(onWithdrawn).not.toHaveBeenCalledWith(true);
+  });
+
+  it('keeps a closed bottom mounted, hidden and out of the flow at its height', () => {
+    const view = render(dock({ presentation: 'beside', bottomOpen: false }));
+    const bottom = bottomRegion(view.container);
+    expect(bottom.style.visibility).toBe('hidden');
+    expect(bottom.style.height).toBe('240px');
+    expect(bottom).toHaveAttribute('inert');
+    expect(bottom.classList.contains('absolute')).toBe(true);
+    expect(screen.getByText('도크 단추')).toBeInTheDocument();
+  });
+
+  it('moves the focus into the side when the bottom holding it is taken out of use', () => {
+    for (const from of ['beside', 'maximized'] as const) {
+      const view = render(dock({ presentation: from }));
+      screen.getByText('도크 단추').focus();
+      act(() => view.rerender(dock({ presentation: 'drawer' })));
+      expect(screen.getByRole('region', { name: '패널' }), from).toHaveFocus();
+      view.unmount();
+    }
+  });
+
+  it('leaves the focus to the host when a bottom holding it closes', () => {
+    const view = render(dock({ presentation: 'beside' }));
+    screen.getByText('도크 단추').focus();
+    act(() => view.rerender(dock({ presentation: 'beside', bottomOpen: false })));
+    expect(screen.getByRole('region', { name: '패널' })).not.toHaveFocus();
+  });
+
+  it('says on its root while the bottom splitter is dragged', () => {
+    const view = render(
+      dock({
+        presentation: 'beside',
+        bottomResize: { min: 120, max: 400, onChange: () => {}, 'aria-label': '도크 높이' },
+      }),
+    );
+    const root = view.container.querySelector('[data-slot="side-panel-frame"]');
+    const splitter = screen.getByRole('separator', { name: '도크 높이' });
+    splitter.setPointerCapture = () => {};
+    splitter.releasePointerCapture = () => {};
+    fireEvent.pointerDown(splitter, { pointerId: 1, button: 0, buttons: 1, clientY: 500 });
+    fireEvent.pointerMove(splitter, { pointerId: 1, buttons: 1, clientY: 480 });
+    expect(root).toHaveAttribute('data-resizing');
+    fireEvent.pointerUp(splitter, { pointerId: 1, clientY: 480 });
+    expect(root).not.toHaveAttribute('data-resizing');
+  });
 });

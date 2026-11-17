@@ -24,11 +24,18 @@ const presentations: SidePanelPresentation[] = [
 function Host({
   initial = 'beside',
   width = 960,
+  height = 420,
+  dock = false,
+  dockHeight: initialDockHeight = 160,
   onScrimPress,
   onEscape,
 }: {
   initial?: SidePanelPresentation;
   width?: number;
+  height?: number;
+  /** A bottom region (a dock) under the conversation and the panel. */
+  dock?: boolean;
+  dockHeight?: number;
   onScrimPress?: () => void;
   onEscape?: () => void;
 }) {
@@ -36,6 +43,34 @@ function Host({
   const [sideWidth, setSideWidth] = useState(400);
   const [selected, setSelected] = useState('files');
   const [frameWidth, setFrameWidth] = useState(0);
+  const [dockHeight, setDockHeight] = useState(Number(initialDockHeight));
+  const [shownDockHeight, setShownDockHeight] = useState<number | null>(null);
+  const [dockWithdrawn, setDockWithdrawn] = useState(false);
+  const bottom = dock
+    ? {
+        bottom: (
+          <div className="flex min-h-0 flex-1 flex-col p-3 text-ui text-muted-foreground">
+            <input
+              aria-label="터미널 입력"
+              className="h-9 w-full rounded-lg border border-border bg-transparent px-3 text-ui"
+            />
+          </div>
+        ),
+        bottomLabel: '도크',
+        bottomHeight: dockHeight,
+        mainMinHeight: 160,
+        bottomMinHeight: 120,
+        onShownBottomHeightChange: setShownDockHeight,
+        onBottomWithdrawnChange: setDockWithdrawn,
+        bottomResize: {
+          'aria-label': '도크 높이',
+          min: 96,
+          max: 480,
+          onChange: setDockHeight,
+          onReset: () => setDockHeight(160),
+        },
+      }
+    : {};
   return (
     // Story URLs pass the width as text.
     <div className="flex flex-col gap-2" style={{ width: Number(width), maxWidth: '100%' }}>
@@ -52,9 +87,16 @@ function Host({
             {value}
           </Button>
         ))}
+        {dock ? (
+          <output aria-label="보이는 도크 높이" className="ms-auto text-ui text-muted-foreground">
+            {dockWithdrawn ? 'withdrawn' : shownDockHeight}
+          </output>
+        ) : null}
       </div>
       <SidePanelFrame
-        className="h-[420px] rounded-xl border border-border bg-background"
+        {...bottom}
+        className="rounded-xl border border-border bg-background"
+        style={{ height: Number(height) }}
         presentation={presentation}
         sideLabel="패널"
         sideWidth={sideWidth}
@@ -152,6 +194,9 @@ const meta = {
   argTypes: {
     initial: { options: presentations, control: 'select' },
     width: { control: 'number' },
+    height: { control: 'number' },
+    dock: { control: 'boolean' },
+    dockHeight: { control: 'number' },
   },
 } satisfies Meta<typeof Host>;
 export default meta;
@@ -324,6 +369,112 @@ export const KeepsState: Story = {
       within(canvas.getByRole('tabpanel', { name: '파일' })).getByRole('textbox'),
     ).toHaveValue('초안');
     await expect(log.scrollTop).toBe(240);
+  },
+};
+
+/** A dock under both: a drawer and its scrim cover it too; a maximized panel covers the
+ *  conversation only; the dock yields so the conversation keeps 160px. */
+export const WithDock: Story = {
+  args: { dock: true, dockHeight: 160 },
+  play: async ({ canvasElement, userEvent }) => {
+    const { canvas, main, show } = parts(canvasElement);
+    const frame = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="side-panel-frame"]',
+    ) as HTMLElement;
+    const area = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="side-panel-bottom-area"]',
+    ) as HTMLElement;
+    const dock = canvas.getByRole('region', { name: '도크' });
+    const box = (element: Element) => element.getBoundingClientRect();
+    const round = (value: number) => Math.round(value);
+    // Beside: under the conversation and the panel, across the frame.
+    const side = canvas.getByRole('region', { name: '패널' });
+    await expect(round(box(dock).height)).toBe(160);
+    await expect(round(box(dock).width)).toBe(frame.clientWidth);
+    await expect(round(box(side).bottom)).toBe(round(box(dock).top));
+    await expect(round(box(main).bottom)).toBe(round(box(dock).top));
+    // Maximized: the panel covers the conversation, not the dock.
+    await show('maximized');
+    await expect(main).toHaveAttribute('inert');
+    await expect(area).not.toHaveAttribute('inert');
+    await expect(round(box(side).bottom)).toBe(round(box(dock).top));
+    await expect(round(box(side).width)).toBe(frame.clientWidth);
+    // Drawer: the drawer and the scrim reach the frame's foot, over the dock, which is out of use.
+    await show('drawer');
+    const drawer = await canvas.findByRole('region', { name: '패널' });
+    await settled(drawer);
+    await expect(area).toHaveAttribute('inert');
+    const scrim = canvasElement.querySelector('[data-slot="side-panel-scrim"]') as HTMLElement;
+    await expect(round(box(scrim).bottom)).toBe(round(box(frame).bottom) - 1);
+    await expect(round(box(drawer).bottom)).toBe(round(box(frame).bottom) - 1);
+    // A press on the dimmed dock is a press on the scrim.
+    const foot = box(dock);
+    await expect(
+      canvasElement.ownerDocument.elementFromPoint(foot.left + 40, foot.top + foot.height / 2),
+    ).toBe(scrim);
+    await show('beside');
+    await expect(area).not.toHaveAttribute('inert');
+    // Dragging the line up grows the dock until the conversation has 160px left, then it stops.
+    const splitter = canvas.getByRole('separator', { name: '도크 높이' });
+    await expect(splitter).toHaveAttribute('aria-orientation', 'horizontal');
+    const line = box(splitter);
+    const x = line.left + line.width / 2;
+    const y = line.top + line.height / 2;
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: splitter, coords: { clientX: x, clientY: y } },
+      { target: splitter, coords: { clientX: x, clientY: y - 400 } },
+      { keys: '[/MouseLeft]', target: splitter, coords: { clientX: x, clientY: y - 400 } },
+    ]);
+    const room = frame.clientHeight - 160;
+    await waitFor(() => expect(round(box(dock).height)).toBe(room));
+    await expect(round(box(main).height)).toBe(160);
+    await expect(canvas.getByRole('status', { name: '보이는 도크 높이' })).toHaveTextContent(
+      String(room),
+    );
+    // A double press puts it back.
+    await userEvent.dblClick(splitter);
+    await waitFor(() => expect(round(box(dock).height)).toBe(160));
+    splitter.blur();
+  },
+};
+
+/** A dock the host keeps taller than the frame allows: the shown dock yields, the kept one stays. */
+export const DockYields: Story = {
+  args: { dock: true, dockHeight: 400 },
+  play: async ({ canvasElement }) => {
+    const { canvas, main } = parts(canvasElement);
+    const frame = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="side-panel-frame"]',
+    ) as HTMLElement;
+    const dock = canvas.getByRole('region', { name: '도크' });
+    const room = frame.clientHeight - 160;
+    await expect(Math.round(dock.getBoundingClientRect().height)).toBe(room);
+    await expect(Math.round(main.getBoundingClientRect().height)).toBe(160);
+    await expect(canvas.getByRole('status', { name: '보이는 도크 높이' })).toHaveTextContent(
+      String(room),
+    );
+  },
+};
+
+/** A frame too low for the conversation's 160px and the dock's 120px: the dock is withdrawn, and
+ *  comes back at its height when the frame grows. */
+export const DockWithdraws: Story = {
+  args: { dock: true, dockHeight: 200, height: 260 },
+  play: async ({ canvasElement }) => {
+    const { canvas, main } = parts(canvasElement);
+    const frame = canvasElement.querySelector<HTMLElement>(
+      '[data-slot="side-panel-frame"]',
+    ) as HTMLElement;
+    const status = canvas.getByRole('status', { name: '보이는 도크 높이' });
+    await expect(status).toHaveTextContent('withdrawn');
+    await expect(canvas.queryByRole('region', { name: '도크' })).toBeNull();
+    await expect(canvas.queryByRole('separator', { name: '도크 높이' })).toBeNull();
+    await expect(Math.round(main.getBoundingClientRect().height)).toBe(frame.clientHeight);
+    frame.style.height = '600px';
+    await waitFor(() => expect(status).toHaveTextContent('200'));
+    const dock = canvas.getByRole('region', { name: '도크' });
+    await expect(Math.round(dock.getBoundingClientRect().height)).toBe(200);
+    await expect(canvas.getByRole('separator', { name: '도크 높이' })).toBeVisible();
   },
 };
 
