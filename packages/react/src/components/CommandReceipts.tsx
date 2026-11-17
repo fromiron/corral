@@ -9,6 +9,26 @@ import { StatusBadge } from './StatusBadge.tsx';
 /** A command these receipts settled: its result already shows where the person acted. */
 const SETTLED = new Set<ReceiptStatus>(['applied', 'superseded', 'cancelled']);
 
+/**
+ * Whether `CommandReceipts` with `openOnly` has anything to show for `target`: a receipt still
+ * waiting or gone wrong, a command whose answer was lost, or the connection's error.
+ */
+export function useOpenReceipts(session: RunSessionStore, target: string): boolean {
+  return useStore(
+    session,
+    (s) =>
+      s.commandError !== null ||
+      Object.values(s.unconfirmedCommands).some(
+        ({ command }) => target === `run:${command.runId}`,
+      ) ||
+      Object.values(s.receipts).some(
+        (receipt) =>
+          receipt.target === target &&
+          (!SETTLED.has(receipt.status) || receipt.error !== undefined),
+      ),
+  );
+}
+
 /** Receipt state comes from the command record, never the HTTP status or a local click. */
 export function CommandReceipts({
   session,

@@ -18,9 +18,12 @@ export function RunViews({
   views,
   visible,
   reading,
+  trailing,
 }: {
   views: RunWorkspaceView[];
   visible: boolean;
+  /** At the row's end, after the views: the run's own details (Run info). */
+  trailing?: ReactNode;
   reading?: {
     /** The view the row shows as chosen while a document is read; null when none is. */
     view: string | null;
@@ -60,12 +63,15 @@ export function RunViews({
       onValueChange={(value) => choose(String(value))}
       className="flex h-full min-h-0 flex-col"
     >
-      <div className="shrink-0 border-b border-line px-4 py-2">
+      <div
+        data-run-view-row=""
+        className="@container/run-views flex shrink-0 items-center gap-2 border-b border-line px-4 py-2"
+      >
         {/* Narrow, the strip scrolls inside itself, by touch and as arrow keys move focus,
             and the kit's edge fade shows there is more beyond the cut. */}
         <TabsList
           aria-label={t('views')}
-          className="scroll-fade-x scrollbar-hide max-w-full overflow-x-auto"
+          className="scroll-fade-x scrollbar-hide min-w-0 max-w-full overflow-x-auto"
         >
           {views.map((view) => (
             <TabItem
@@ -79,6 +85,7 @@ export function RunViews({
             />
           ))}
         </TabsList>
+        {trailing ? <div className="ml-auto flex shrink-0 items-center">{trailing}</div> : null}
       </div>
       {views.map((view) => (
         <TabPanel

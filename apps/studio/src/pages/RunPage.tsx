@@ -37,6 +37,7 @@ import {
   takesInstruction,
   UsageInspector,
   useAgentName,
+  useOpenReceipts,
   useRoundInspection,
   useRunDisplay,
   useRunWorkPlan,
@@ -130,6 +131,7 @@ export function RunDetail({
   sessionId = null,
   request = null,
   lead = null,
+  conversationOperable,
 }: {
   sessionId?: string | null;
   /** The request that started the run, when the caller knows it: the run's title. */
@@ -140,6 +142,11 @@ export function RunDetail({
   search: RunDetailSearch;
   setSearch: (patch: RunDetailSearch, options?: { replace?: boolean }) => void;
   embedded?: boolean;
+  /**
+   * A session's run tab: whether its conversation can be operated (the panel beside it, closed or
+   * withdrawn) or is covered (maximized, a drawer). Left out on the run's own page.
+   */
+  conversationOperable?: boolean;
 }) {
   const t = useTranslations('RunPage');
   const { runFor, retainRun, transport, repository } = useServices();
@@ -219,6 +226,9 @@ export function RunDetail({
       search={search}
       setSearch={setSearch}
       embedded={embedded}
+      conversation={
+        conversationOperable === undefined ? null : conversationOperable ? 'operable' : 'covered'
+      }
       notice={
         !embedded && lookupFailed === runId ? (
           <p role="alert" className="shrink-0 border-b border-line px-4 py-2 text-caption">
@@ -241,10 +251,13 @@ function RunWorkspace({
   request,
   lead,
   notice,
+  conversation,
 }: {
   runId: string;
   request: string | null;
   lead: ReactNode;
+  /** A session's run tab beside its conversation; null on the run's own page. */
+  conversation: 'operable' | 'covered' | null;
   session: RunSessionStore;
   sessionId: string | null;
   definition: CorralDefinition;
@@ -265,7 +278,7 @@ function RunWorkspace({
   // Beside its session's conversation, the run record only shows what waits: the conversation's
   // needed-now tray is the one place it is answered, and Respond goes there (workbench.md).
   const conversationResponds = useRespondInConversation();
-  const respondElsewhere = embedded && sessionId ? conversationResponds : null;
+  const respondElsewhere = embedded && (sessionId || conversation) ? conversationResponds : null;
   const { previewUrl, workspaces } = useServices();
   const projection = useStore(session, (s) => s.projection);
   const events = useStore(session, (s) => s.events);
@@ -394,8 +407,14 @@ function RunWorkspace({
       )?.type === 'extension.ui_answered',
   );
   const responding = pending > 0 || extensionSaid || extensionReplying;
+  // Beside an operable conversation the response area never shows: the conversation's needed-now
+  // tray answers there (features/execution-monitor.md).
+  const operable = conversation === 'operable';
   const sideShown =
-    !documentOpen && !steeringOpen && panel !== 'closed' && (panel !== 'approval' || responding);
+    !documentOpen &&
+    !steeringOpen &&
+    panel !== 'closed' &&
+    (panel !== 'approval' || (responding && !operable));
   // The response area beside the run is on screen: it is the one way to respond there, so the
   // header's state names the wait without a second Respond.
   const responseShown = sideShown && panel === 'approval' && responding;
@@ -420,38 +439,54 @@ function RunWorkspace({
   useEffect(() => {
     if (panel === 'approval' && !responding) setPanel('closed');
   }, [panel, responding]);
-  // The response area leaves with the last answer; focus that was in it goes to the run's title
-  // instead of falling to the page.
+  // The response area (or the head's Respond) leaves with the last answer; focus that was in it
+  // goes to this record's title, or to its chosen view when the head has none, instead of falling
+  // to the page. Other run tabs' records are mounted too: only this one is looked in.
+  const root = useRef<HTMLDivElement>(null);
   const wasResponding = useRef(responding);
   useEffect(() => {
     const left = wasResponding.current && !responding;
     wasResponding.current = responding;
     if (!left) return;
     const frame = requestAnimationFrame(() => {
-      if (document.activeElement === document.body)
-        document.querySelector<HTMLElement>('[data-run-title]')?.focus({ preventScroll: true });
+      if (document.activeElement !== document.body) return;
+      const record = root.current;
+      (
+        record?.querySelector<HTMLElement>('[data-run-title]') ??
+        record?.querySelector<HTMLElement>('[data-run-view-row] [role="tab"][aria-selected="true"]')
+      )?.focus({ preventScroll: true });
     });
     return () => cancelAnimationFrame(frame);
   }, [responding]);
-  // A new question or approval opens the response area once, only into free space on a wide
-  // page. An item counts as announced only once the area has actually shown it, so one first seen
-  // behind a document, an inspector or a narrow page still opens it when the space frees up.
+  // A new question or approval opens the response area once, only into free space: on the run's
+  // own page when it is wide, in a run tab over the conversation at any width (narrow, the detail
+  // area takes the view row's place), and never beside an operable conversation. An item counts as
+  // announced only once the area has actually shown it, so one first seen behind a document, an
+  // inspector, a narrow page or an operable conversation still opens it when the space frees up.
   const announced = useRef(new Set<string>());
   useEffect(() => {
     const waitingIds = waitingKey.split('|').filter(Boolean);
+    if (operable) return;
     if (panel === 'approval' && sideShown) {
       for (const id of waitingIds) announced.current.add(id);
       return;
     }
     if (
       waitingIds.some((id) => !announced.current.has(id)) &&
-      wide &&
+      (wide || conversation === 'covered') &&
       panel === 'closed' &&
       !documentOpen &&
       !steeringOpen
     )
       setPanel('approval');
-  }, [waitingKey, wide, panel, sideShown, documentOpen, steeringOpen]);
+  }, [waitingKey, wide, panel, sideShown, documentOpen, steeringOpen, operable, conversation]);
+  // The conversation becoming operable closes the response area. That close is not the person's:
+  // what it showed opens it again once the conversation is covered.
+  useEffect(() => {
+    if (!operable || panel !== 'approval') return;
+    for (const id of waitingKey.split('|')) announced.current.delete(id);
+    setPanel('closed');
+  }, [operable, panel, waitingKey]);
   // An explicit request to respond opens the response area whatever the width and moves focus
   // there. It waits until the history says whether anything waits, and is consumed once.
   const historyRead = useStore(session, (s) => s.initialLoadSeq === undefined);
@@ -584,14 +619,34 @@ function RunWorkspace({
       <X />
     </Button>
   );
+  const runInfo = (
+    <Button
+      ref={detailsButton}
+      variant={panel === 'run' && sideShown ? 'secondary' : 'ghost'}
+      size="compact"
+      className="@max-[36rem]/run-views:w-7 @max-[36rem]/run-views:px-0"
+      aria-pressed={panel === 'run' && sideShown}
+      onClick={() => {
+        rememberTrigger();
+        setSteeringOpen(false);
+        setSearch({ artifact: undefined, result: undefined, view: undefined });
+        setDetail('overview');
+        setPanel(panel === 'run' && sideShown ? 'closed' : 'run');
+      }}
+    >
+      <Info aria-hidden="true" className="hidden @max-[36rem]/run-views:inline" />
+      <span className="@max-[36rem]/run-views:sr-only">{m('runInfo')}</span>
+    </Button>
+  );
   return (
-    <div className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
+    <div ref={root} className="@container flex h-full min-h-0 flex-col" data-testid="run-monitor">
       {notice}
       <RunHeader
         session={session}
         definition={definition}
         request={request}
         lead={lead}
+        operable={operable}
         waiting={responseShown ? 0 : pending}
         onRespond={() => {
           if (respondElsewhere) {
@@ -609,25 +664,6 @@ function RunWorkspace({
           chooseExecution(id);
         }}
         onOpenArtifact={(id) => openArtifact(id)}
-        trailing={
-          <Button
-            ref={detailsButton}
-            variant={panel === 'run' && sideShown ? 'secondary' : 'ghost'}
-            size="compact"
-            className="@max-[44rem]/run-head:w-7 @max-[44rem]/run-head:px-0"
-            aria-pressed={panel === 'run' && sideShown}
-            onClick={() => {
-              rememberTrigger();
-              setSteeringOpen(false);
-              setSearch({ artifact: undefined, result: undefined, view: undefined });
-              setDetail('overview');
-              setPanel(panel === 'run' && sideShown ? 'closed' : 'run');
-            }}
-          >
-            <Info aria-hidden="true" className="hidden @max-[44rem]/run-head:inline" />
-            <span className="@max-[44rem]/run-head:sr-only">{m('runInfo')}</span>
-          </Button>
-        }
       />
       <div ref={body} className="flex min-h-0 flex-1">
         <div
@@ -642,6 +678,7 @@ function RunWorkspace({
           >
             <RunViews
               visible={!documentOpen && !steeringOpen && (wide || !sideShown)}
+              trailing={runInfo}
               // A result or a step result is read under the view row, Results shown as chosen;
               // choosing a view, Results included, closes it and shows that view. Without room
               // for both, the side the reading covered closes too, so the chosen view shows.
@@ -1096,7 +1133,7 @@ function RunHeader({
   definition,
   request,
   lead,
-  trailing,
+  operable = false,
   waiting = 0,
   onRespond,
   onOpenExecution,
@@ -1107,7 +1144,12 @@ function RunHeader({
   request: string | null;
   /** One line above the header's own, from the caller. */
   lead?: ReactNode;
-  trailing?: ReactNode;
+  /**
+   * Beside an operable conversation: the head keeps only what the conversation does not say
+   * (Respond, open receipts, a failed run's reason and entry, the recipe's state), and is not there
+   * without any (features/execution-monitor.md).
+   */
+  operable?: boolean;
   /** Questions and approvals waiting for the person; the status becomes the way to them. */
   waiting?: number;
   onRespond?: () => void;
@@ -1126,6 +1168,7 @@ function RunHeader({
     s.events.some((event) => event.type === 'recipe.stopped'),
   );
   const carriesControls = useRunHeadCarriesControls();
+  const receiptsOpen = useOpenReceipts(session, `run:${projection?.runId ?? ''}`);
   if (!projection) return null;
   // A head without the controls (a run in progress while the conversation is operable, or a
   // finished run) keeps only the run's receipts that still need confirming.
@@ -1163,6 +1206,79 @@ function RunHeader({
   const labelOf = nameOf;
   // The path bar names the run by its number; the header is its request.
   const title = request ?? definition.name;
+  const failure =
+    failed && (endReason || (failedExecution && onOpenExecution)) ? (
+      <div className="flex min-w-0 items-center gap-2 @max-[44rem]/run-head:flex-1">
+        {endReason ? (
+          <span
+            data-testid="run-end-reason"
+            className="min-w-0 truncate text-caption text-muted-foreground"
+          >
+            <RunReason code={endReason} nodeLabel={labelOf} />
+          </span>
+        ) : null}
+        {failedExecution && onOpenExecution ? (
+          <Button
+            variant="tertiary"
+            size="compact"
+            className="shrink-0"
+            onClick={() => onOpenExecution(failedExecution)}
+          >
+            {m('openFailure')}
+          </Button>
+        ) : null}
+      </div>
+    ) : null;
+  const recipe =
+    recipeStop && onOpenArtifact ? (
+      <div className="pt-1 pb-2">
+        <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
+      </div>
+    ) : null;
+  // While something waits the state is the way to respond. Beside an operable conversation,
+  // which says the state, Respond keeps its own words only.
+  const respond =
+    waiting > 0 && onRespond ? (
+      <Button
+        variant="warning-outline"
+        size="compact"
+        data-testid="run-respond"
+        className="shrink-0"
+        onClick={onRespond}
+      >
+        {operable ? null : (
+          <>
+            <span data-presence-label={`run:${projection.runId}`}>{tp(presence.labelKey)}</span> ·{' '}
+          </>
+        )}
+        {m('respond', { count: waiting })}
+      </Button>
+    ) : null;
+  if (operable) {
+    // What the conversation's answer row and activity bar say (the request, the state, the clock)
+    // is not said again.
+    if (!respond && !failure && !recipe && !receiptsOpen) return null;
+    return (
+      <section
+        data-testid="run-header"
+        aria-label={t('summary')}
+        className="@container/run-head max-h-[40%] shrink-0 overflow-auto border-b border-line px-4 py-2"
+      >
+        {respond || failure || receiptsOpen ? (
+          <div className="flex min-h-9 min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
+            {respond}
+            {failure}
+            {receiptsOpen ? (
+              <div className={cn('ml-auto flex min-w-0 items-center gap-1', HEAD_ACTIONS)}>
+                <RunActions session={session} compact narrowIcons receiptsOnly />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
+        {recipe}
+      </section>
+    );
+  }
   return (
     <section
       data-testid="run-header"
@@ -1184,19 +1300,7 @@ function RunHeader({
             {title}
           </h2>
           <span aria-live="polite" data-testid="run-status" className="shrink-0">
-            {waiting > 0 && onRespond ? (
-              <Button
-                variant="warning-outline"
-                size="compact"
-                data-testid="run-respond"
-                onClick={onRespond}
-              >
-                <span data-presence-label={`run:${projection.runId}`}>{tp(presence.labelKey)}</span>{' '}
-                · {m('respond', { count: waiting })}
-              </Button>
-            ) : (
-              <PresenceBadge presence={presence} target={`run:${projection.runId}`} />
-            )}
+            {respond ?? <PresenceBadge presence={presence} target={`run:${projection.runId}`} />}
           </span>
           <span className="shrink-0 text-caption text-muted-foreground tabular-nums">
             <RunElapsed
@@ -1206,38 +1310,12 @@ function RunHeader({
             />
           </span>
         </div>
-        {failed && (endReason || (failedExecution && onOpenExecution)) ? (
-          <div className="flex min-w-0 items-center gap-2 @max-[44rem]/run-head:flex-1">
-            {endReason ? (
-              <span
-                data-testid="run-end-reason"
-                className="min-w-0 truncate text-caption text-muted-foreground"
-              >
-                <RunReason code={endReason} nodeLabel={labelOf} />
-              </span>
-            ) : null}
-            {failedExecution && onOpenExecution ? (
-              <Button
-                variant="tertiary"
-                size="compact"
-                className="shrink-0"
-                onClick={() => onOpenExecution(failedExecution)}
-              >
-                {m('openFailure')}
-              </Button>
-            ) : null}
-          </div>
-        ) : null}
+        {failure}
         <div className={cn('ml-auto flex shrink-0 items-center gap-1', HEAD_ACTIONS)}>
           <RunActions session={session} compact narrowIcons receiptsOnly={receiptsOnly} />
-          {trailing}
         </div>
       </div>
-      {recipeStop && onOpenArtifact ? (
-        <div className="pt-1 pb-2">
-          <RecipeStatusPanel session={session} onOpenArtifact={onOpenArtifact} />
-        </div>
-      ) : null}
+      {recipe}
     </section>
   );
 }

@@ -12,7 +12,7 @@ export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
 export { ApprovalPanel, callLine, waitingToolPlan } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
-export { CommandReceipts } from './components/CommandReceipts.tsx';
+export { CommandReceipts, useOpenReceipts } from './components/CommandReceipts.tsx';
 export { ContinueDecisions, isContinueDecision } from './components/ContinueDecisions.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
 export { CorralSymbol, CorralWordmark } from './components/CorralLogo.tsx';
