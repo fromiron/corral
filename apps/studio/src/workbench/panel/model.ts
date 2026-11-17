@@ -29,6 +29,7 @@ import type { SessionSearch } from '../panels/routes.ts';
 import { type PanelAddress, panelAddress, readAddress } from './address.ts';
 import type { PanelMemory } from './memory.ts';
 import {
+  type CopyIdentity,
   PANEL_TAB_OF,
   type PanelContext,
   type PanelFronts,
@@ -68,6 +69,22 @@ export interface Awaiting {
   readonly terminals: readonly string[];
   /** 팀 그래프 tabs restored from memory, left for the project's team list. */
   readonly graphs: readonly string[];
+  /** 문서 tabs restored from memory, each left for its file's first read after entry. */
+  readonly documents: readonly DocumentAwaited[];
+}
+
+/** A restored 문서 tab by its key and the instance it was restored as. */
+export interface DocumentAwaited {
+  readonly key: TabKey;
+  readonly instance: number;
+}
+
+/** What the read after entry found for one restored 문서 tab. */
+export interface DocumentChecked extends DocumentAwaited {
+  /** `drop`: its file is gone, or its copy is not the conversation's Paddock now. */
+  readonly outcome: 'keep' | 'drop';
+  /** It holds a draft not saved, which the 파일 tab's recovery card keeps. */
+  readonly draft: boolean;
 }
 
 // What is still waiting: null once nothing is.
@@ -76,7 +93,8 @@ function waiting(awaiting: Awaiting): Awaiting | null {
     awaiting.addressRun ||
     awaiting.newest ||
     awaiting.terminals.length > 0 ||
-    awaiting.graphs.length > 0
+    awaiting.graphs.length > 0 ||
+    awaiting.documents.length > 0
     ? awaiting
     : null;
 }
@@ -167,6 +185,15 @@ export type PanelEvent =
   | { readonly type: 'reorder'; readonly key: TabKey; readonly toIndex: number }
   /** A terminal's tab dragged in from the bottom dock, let go before the tab at `index`. */
   | { readonly type: 'moveIn'; readonly terminalId: string; readonly index: number }
+  /** A 문서 tab's file was read: the copy it belongs to, stamped on that very tab. */
+  | {
+      readonly type: 'documentCopy';
+      readonly key: TabKey;
+      readonly instance: number;
+      readonly copy: CopyIdentity;
+    }
+  /** The reads after entry of restored 문서 tabs answered (each one once). */
+  | { readonly type: 'documentsChecked'; readonly results: readonly DocumentChecked[] }
   /** The person picked an inner tab inside 작업, or its first read put 미리보기 in front. */
   | { readonly type: 'toolsView'; readonly view: ToolsView }
   /** The room or the run list in `ctx` changed. */
@@ -399,7 +426,13 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
   const restored = tabs.flatMap((tab) => (tab.kind === 'run' ? [tab.runId] : []));
   const terminals = tabs.flatMap((tab) => (tab.kind === 'terminal' ? [tab.terminalId] : []));
   const graphs = tabs.flatMap((tab) => (tab.kind === 'graph' ? [tab.corralId] : []));
-  return { ...next, awaiting: waiting({ restored, addressRun, newest, terminals, graphs }) };
+  const documents = tabs.flatMap((tab) =>
+    tab.kind === 'document' ? [{ key: tabKey(tab), instance: tab.instance }] : [],
+  );
+  return {
+    ...next,
+    awaiting: waiting({ restored, addressRun, newest, terminals, graphs, documents }),
+  };
 }
 
 function followed(
@@ -603,9 +636,66 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
         tabs: state.tabs.map((t, i) => (i === index ? { ...tab, view: event.view } : t)),
       };
     }
+    case 'documentCopy': {
+      const index = state.tabs.findIndex(
+        (tab) => tabKey(tab) === event.key && tab.instance === event.instance,
+      );
+      const tab = state.tabs[index];
+      if (tab?.kind !== 'document' || tab.source !== 'copy') return state;
+      if (
+        tab.copy?.bindingId === event.copy.bindingId &&
+        tab.copy.generation === event.copy.generation
+      )
+        return state;
+      const copy = { bindingId: event.copy.bindingId, generation: event.copy.generation };
+      return { ...state, tabs: state.tabs.map((t, i) => (i === index ? { ...tab, copy } : t)) };
+    }
+    case 'documentsChecked':
+      return documentsChecked(state, event.results);
     case 'context':
       return state;
   }
+}
+
+// The restored 문서 tabs' clean-up: a tab whose file is gone or whose copy is no longer the
+// Paddock is dropped, once, and only as it was restored (not one closed and opened again). A
+// dropped tab's draft stays in the 파일 tab's recovery card: 파일 opens where the first such tab
+// stood when it is not open, selected only when that tab was. A dropped selection otherwise goes
+// to the first tab left, or the panel closes.
+function documentsChecked(state: PanelState, results: readonly DocumentChecked[]): PanelState {
+  const awaiting = state.awaiting;
+  if (!awaiting || awaiting.documents.length === 0) return state;
+  const same = (a: DocumentAwaited, b: DocumentAwaited) =>
+    a.key === b.key && a.instance === b.instance;
+  const answered = results.filter((result) => awaiting.documents.some((d) => same(d, result)));
+  if (answered.length === 0) return state;
+  const dropped = answered.filter((result) => result.outcome === 'drop');
+  const gone = (tab: OpenTab) =>
+    dropped.some((result) => result.key === tabKey(tab) && result.instance === tab.instance);
+  const left = {
+    ...awaiting,
+    documents: awaiting.documents.filter((d) => !answered.some((r) => same(d, r))),
+  };
+  if (dropped.length === 0) return { ...state, awaiting: waiting(left) };
+  const firstDraft = state.tabs.findIndex(
+    (tab) => gone(tab) && dropped.some((r) => r.draft && r.key === tabKey(tab)),
+  );
+  const selectedDraft = dropped.some((r) => r.draft && r.key === state.selected);
+  const hasFiles = state.tabs.some((tab) => tab.kind === 'files');
+  const kept: OpenTab[] = [];
+  let nextInstance = state.nextInstance;
+  state.tabs.forEach((tab, index) => {
+    if (index === firstDraft && !hasFiles)
+      kept.push({ kind: 'files', instance: nextInstance++, seen: false });
+    if (!gone(tab)) kept.push(tab);
+  });
+  let next: PanelState = { ...state, tabs: kept, nextInstance, awaiting: waiting(left) };
+  if (state.selected !== null && !hasTab(next, state.selected)) {
+    const first = kept[0];
+    const selected = selectedDraft ? 'files' : first ? tabKey(first) : null;
+    next = selected ? { ...next, selected } : { ...next, selected: null, presentation: 'closed' };
+  }
+  return next;
 }
 
 /** The strip's order with the tab at `toIndex`; the same state when nothing moves. */
