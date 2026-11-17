@@ -5,6 +5,7 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import { registeredCommands } from '../commandRegistry.ts';
 import { dockMemoryKey, serializeDockMemory } from '../workbench/panel/dock.ts';
 import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -51,6 +52,10 @@ const W = {
   close: (name: string) => messages.SessionPanel.close.replace('{name}', name),
   listFailed: messages.Terminals.listUnread,
   retry: messages.Terminals.retryList,
+  loading: messages.Terminals.loading,
+  createPending: messages.Terminals.createPending,
+  checkCreate: messages.Terminals.checkCreate,
+  retryCreate: messages.Terminals.retryCreate,
 };
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -295,6 +300,81 @@ it('터미널 목록을 읽지 못한다 → 하단 도크 버튼 → 목록 대
   expect(dockLine()).toBeNull();
   expect(terminalListRow()?.getAttribute('aria-disabled')).not.toBe('true');
   expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
+});
+
+it('도크 본문의 터미널 줄로 보낸 만들기의 응답을 잃었다 → 도크를 다시 열면 본문은 그 한 줄과 "생성 결과 확인"이고 포커스는 그 버튼에 있으며, 호스트에 그 요청이 없으면 "기존 생성 요청 다시 시도"가 같은 요청 ID로 다시 보낸다', async () => {
+  const world = await serverWorld({ terminals: [], loseCreate: 'absent' });
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => Boolean(dockLine()?.textContent?.includes(W.createPending)));
+  await press(dockButton());
+  expect(dockState()).toBe('closed');
+  await press(dockButton());
+  await until(() => dockState() === 'open');
+  const check = () => buttons(W.checkCreate, dockLine())[0] ?? null;
+  expect(dockLine()?.textContent).toContain(W.createPending);
+  expect(dockList()).toBeNull();
+  await until(() => document.activeElement === check());
+  expect(document.activeElement).toBe(check());
+  // Nothing new is made while the first creation is unconfirmed.
+  expect(world.server?.createIds).toHaveLength(1);
+  expect(buttons(W.retryCreate, dockLine())).toHaveLength(0);
+
+  await press(check());
+  await until(() => buttons(W.retryCreate, dockLine()).length === 1);
+  await press(buttons(W.retryCreate, dockLine())[0]);
+  await until(() => (world.server?.createIds.length ?? 0) === 2);
+  const [first, again] = world.server?.createIds ?? [];
+  expect(again).toBe(first);
+});
+
+it('만든 터미널 1의 결과를 확인하지 못했다 → "생성 결과 확인"에 호스트가 터미널 1을 돌려준다 → 본문은 목록이 되고 터미널은 더 만들어지지 않는다', async () => {
+  const world = await serverWorld({ terminals: [], loseCreate: 'made' });
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => buttons(W.checkCreate, dockLine()).length === 1);
+  await press(buttons(W.checkCreate, dockLine())[0]);
+  await until(() => Boolean(dockList()));
+  expect(dockLine()).toBeNull();
+  expect(world.server?.createIds).toHaveLength(1);
+  // The list now knows terminal 1: its row selects it rather than making another.
+  await press(terminalListRow());
+  await until(() => dockSelected() === W.terminal(1));
+  expect(world.server?.createIds).toHaveLength(1);
+});
+
+it('대화에 막 들어와 터미널 목록이 아직 답하지 않았다 → 하단 도크 버튼 → 본문이 잠깐 "터미널 여는 중…"이고, 목록이 답하면 살아 있는 터미널 1의 탭이 열리며 새로 만들지 않는다', async () => {
+  const world = await serverWorld({ holdLists: true });
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => dockState() === 'open');
+  expect(dockLine()?.textContent).toContain(W.loading);
+  await act(async () => world.server?.releaseLists());
+  await until(() => dockSelected() === W.terminal(1));
+  expect(dockSelected()).toBe(W.terminal(1));
+  expect(world.server?.created).toEqual([]);
+});
+
+it('터미널 목록을 읽지 못해 도크 본문이 그 한 줄이다 → 그 대화의 Paddock이 없어진다 → 목록을 다시 읽어 본문은 Paddock이 없는 한 줄이 되고, Paddock을 만들면 목록이 되며 터미널은 만들지 않는다', async () => {
+  const world = await serverWorld({ terminals: [] });
+  world.server?.setReadsFail(true);
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => Boolean(dockLine()?.textContent?.includes(W.listFailed)));
+  world.server?.setReadsFail(false);
+  world.server?.setNoCopy(true);
+  await act(async () => {
+    window.dispatchEvent(new Event(WORKSPACE_CHANGED));
+  });
+  await until(() => Boolean(dockLine()?.textContent?.includes(W.noCopy)));
+  expect(buttons(W.makeCopy, dockLine())).toHaveLength(1);
+  world.server?.setNoCopy(false);
+  await act(async () => {
+    window.dispatchEvent(new Event(WORKSPACE_CHANGED));
+  });
+  await until(() => Boolean(dockList()));
+  expect(dockLine()).toBeNull();
   expect(world.server?.created).toEqual([]);
 });
 

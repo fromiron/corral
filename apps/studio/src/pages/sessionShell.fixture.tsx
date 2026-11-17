@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import type { CorralDefinition, FileDocument, TerminalView } from '@corral/contracts';
 import {
   Coordinator,
@@ -95,6 +96,12 @@ export interface ServerParts {
   lists(): number;
   /** Each terminal stop (by ID) the page sent, in order. */
   stops: string[];
+  /** The request ID of each creation the page sent, in order. */
+  createIds: string[];
+  /** Makes (false) or removes (true) the conversation's Paddock, as the next list says it. */
+  setNoCopy(noCopy: boolean): void;
+  /** Lets held terminal lists (`holdLists`) answer, and every later one at once. */
+  releaseLists(): void;
   /** The one file the working copy holds. */
   path: string;
 }
@@ -124,6 +131,13 @@ export interface TerminalOptions {
   noCopy?: boolean;
   /** Creation waits until the returned release is called (see `holdCreate`). */
   holdCreate?: boolean;
+  /**
+   * The first creation's response is lost: the host made the terminal (`made`) or has no such
+   * request (`absent`). A creation sent again under the same request ID goes through.
+   */
+  loseCreate?: 'made' | 'absent';
+  /** Terminal lists wait until `releaseLists` is called. */
+  holdLists?: boolean;
 }
 
 export async function createShellWorld(options: ShellWorldOptions = {}): Promise<ShellWorld> {
@@ -364,9 +378,9 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
   };
   const terminalCalls: string[] = [];
   const listing = () => ({
-    target: options.noCopy ? null : target,
-    available: !options.noCopy,
-    reason: options.noCopy ? 'The managed working copy is unavailable' : null,
+    target: noCopy ? null : target,
+    available: !noCopy,
+    reason: noCopy ? 'The managed working copy is unavailable' : null,
     shells: (options.shells ?? ['bash']).map((id) => ({ id, label: id })),
     terminals: listed.map((item) => structuredClone(item)),
   });
@@ -389,22 +403,33 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
   const stops: string[] = [];
   let readsFail = false;
   let lists = 0;
+  let noCopy = Boolean(options.noCopy);
+  let listHold: Gated<void> | null = options.holdLists ? gated<void>() : null;
+  const createIds: string[] = [];
+  // The lost creation: its request ID and, when the host made it, the terminal it made.
+  let lost: { operationId: string; made: TerminalView | null } | null = null;
   let createHold: Gated<void> | null = null;
   const terminals = {
     attention: async () => [],
     list: async () => {
       lists += 1;
+      if (listHold) await listHold.promise;
       if (readsFail) throw new Error('terminal list unavailable');
       return listing();
     },
     read: async (_session: string, id: string) => {
       reads.push(id);
       if (readsFail) throw new Error('terminal read unavailable');
+      if (lost && id === lost.operationId) {
+        if (!lost.made) throw new ApiError(404, 'UNKNOWN', 'no such creation');
+        return structuredClone(lost.made);
+      }
       return structuredClone(find(id));
     },
     create: async (_session: string, command: { shellId: string; operationId: string }) => {
       terminalCalls.push('create');
       created.push(command.shellId);
+      createIds.push(command.operationId);
       if (options.holdCreate) {
         createHold = gated<void>();
         await createHold.promise;
@@ -416,6 +441,14 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
         shellId: command.shellId,
         state: 'running',
       };
+      if (options.loseCreate && createIds.length === 1) {
+        lost = { operationId: command.operationId, made: null };
+        if (options.loseCreate === 'made') {
+          listed.push(made);
+          lost.made = made;
+        }
+        throw new ApiError(503, 'UNKNOWN', 'the response was lost');
+      }
       listed.push(made);
       return structuredClone(made);
     },
@@ -466,6 +499,14 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     reads,
     lists: () => lists,
     stops,
+    createIds,
+    setNoCopy: (value: boolean) => {
+      noCopy = value;
+    },
+    releaseLists: () => {
+      listHold?.resolve();
+      listHold = null;
+    },
   } as Omit<ServerParts, 'documents'> & { documents?: DocumentStore };
   return {
     workspaces,
