@@ -95,8 +95,8 @@ const words = (element: Element | null | undefined) =>
 const lineOf = (element: Element) => element.closest('[data-slot="receipt-line"]');
 const textOf = (line: Element | null) =>
   line?.querySelector<HTMLElement>('[data-slot="receipt-line-text"]') ?? null;
-const lost = (commandId: string) => ({
-  error: 'response lost',
+const lost = (commandId: string, error = 'response lost') => ({
+  error,
   command: {
     schemaVersion: '0.1' as const,
     runId: 'run_receipts',
@@ -160,19 +160,27 @@ describe('a head of receipts only, one line each', () => {
     expect(line?.querySelector('details')).toBeNull();
   });
 
-  it('keeps a lost response with its same-command retry on one line, the retry named by its words', () => {
+  it('says a lost response once, on its line with the retry, without the browser’s words', () => {
     const retryCommand = vi.fn(async () => ({}) as Receipt);
-    receiptLines({ retryCommand, unconfirmedCommands: { cmd_lost: lost('cmd_lost') } });
+    // A lost response leaves both: the command unconfirmed and the session's connection error.
+    receiptLines({
+      retryCommand,
+      commandError: 'Failed to fetch',
+      unconfirmedCommands: { cmd_lost: lost('cmd_lost', 'Failed to fetch') },
+    });
+    const lines = document.querySelectorAll('[data-slot="receipt-line"]');
+    expect(lines).toHaveLength(1);
     const group = screen.getByRole('group', { name: 'Command receipts' });
     const retry = within(group).getByRole('button', { name: 'Check receipt and retry safely' });
     const line = lineOf(retry);
-    expect(line).not.toBeNull();
-    const text = words(textOf(line));
-    expect(text?.startsWith('Whole-run command ·')).toBe(true);
-    expect(text).toContain('Receipt not confirmed: response lost. Check the run before retrying.');
-    expect(within(line as HTMLElement).getByRole('alert')).toHaveTextContent(
-      'Receipt not confirmed: response lost.',
+    expect(line).toBe(lines[0]);
+    expect(words(textOf(line))).toBe(
+      'Whole-run command · pause · Receipt not confirmed. Check the run before retrying.',
     );
+    expect(document.body.textContent?.match(/not confirmed/g)).toHaveLength(1);
+    expect(document.body.textContent).not.toContain('Failed to fetch');
+    expect(screen.getAllByRole('alert')).toHaveLength(1);
+    expect(lineOf(screen.getByRole('alert'))).toBe(line);
     expect(line?.querySelector('[data-slot="receipt-mark"]')).not.toBeNull();
     // An icon on the line; its words stay its name.
     expect(retry.querySelector('svg')).not.toBeNull();
@@ -181,15 +189,16 @@ describe('a head of receipts only, one line each', () => {
     expect(retryCommand).toHaveBeenCalledWith('cmd_lost');
   });
 
-  it('puts the connection error on a line of its own', () => {
-    receiptLines({ commandError: 'socket closed' });
+  it('puts a connection error with no receipt row on one line, in the product’s words only', () => {
+    receiptLines({ commandError: 'Failed to fetch' });
+    const lines = document.querySelectorAll('[data-slot="receipt-line"]');
+    expect(lines).toHaveLength(1);
     const alert = screen.getByRole('alert');
     const line = lineOf(alert);
-    expect(line).not.toBeNull();
+    expect(line).toBe(lines[0]);
     expect(textOf(line)).toHaveClass('truncate');
-    expect(words(textOf(line))).toBe(
-      'Receipt not confirmed: socket closed. Check the run before retrying.',
-    );
+    expect(words(textOf(line))).toBe('Receipt not confirmed. Check the run before retrying.');
+    expect(document.body.textContent).not.toContain('Failed to fetch');
   });
 
   it('shows a cut line whole in the kit tooltip, and lets the keyboard reach it', async () => {

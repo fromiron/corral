@@ -442,6 +442,7 @@
     "keepRunning": "Keep running",
     "receipts": "Command receipts",
     "connectionUnknown": "Receipt not confirmed: {message}. Check the run before retrying.",
+    "receiptUnconfirmed": "Receipt not confirmed. Check the run before retrying.",
     "retrySameCommand": "Check receipt and retry safely",
     "draftTargetChanged": "This draft belongs to {target}. Choose that execution or explicitly move the draft before sending.",
     "useDraftHere": "Use draft for this execution",

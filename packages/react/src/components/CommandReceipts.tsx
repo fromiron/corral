@@ -85,28 +85,22 @@ export function CommandReceipts({
     const retryWords = t('retrySameCommand');
     return (
       <div className="flex min-w-0 flex-col gap-1 text-caption" aria-live="polite">
-        {error ? (
-          <ReceiptLine
-            words={[
-              { text: t('connectionUnknown', { message: error }), alert: true, tone: 'danger' },
-            ]}
-          />
+        {/* A lost response sets the connection's error too: its row says the loss, once, with
+            the retry. The browser's own words stay off the line. */}
+        {error && lost.length === 0 ? (
+          <ReceiptLine words={[{ text: t('receiptUnconfirmed'), alert: true, tone: 'danger' }]} />
         ) : null}
         {lost.length > 0 || matching.length > 0 ? (
           // biome-ignore lint/a11y/useSemanticElements: a named group of receipt lines, not a form fieldset.
           <div role="group" aria-label={t('receipts')} className="flex min-w-0 flex-col gap-1">
-            {lost.map(({ command, error }) => (
+            {lost.map(({ command }) => (
               <ReceiptLine
                 key={command.commandId}
                 mark={<StatusDot status="delivery_unknown" />}
                 words={[
                   { text: t('receiptRun'), title: command.commandId },
                   { text: command.type },
-                  {
-                    text: t('connectionUnknown', { message: error }),
-                    alert: true,
-                    tone: 'muted',
-                  },
+                  { text: t('receiptUnconfirmed'), alert: true, tone: 'muted' },
                 ]}
                 action={
                   <Tooltip content={retryWords} forceOpen={iconActions ? undefined : false}>

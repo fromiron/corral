@@ -15,12 +15,14 @@ const pause: Receipt = {
   relatedEventIds: [],
 };
 
-/** A whole-run pause waiting for its boundary, and one whose response was lost. */
+/** A whole-run pause waiting for its boundary, and a resume whose response was lost (which sets
+ *  the connection's error too). */
 const session = () =>
   sessionStore({
     runId: 'run_story',
     projection: { ...emptyProjection('run_story'), status: 'pausing' },
     receipts: { cmd_pause: pause },
+    commandError: 'the connection closed',
     unconfirmedCommands: {
       cmd_resume: {
         error: 'the connection closed',
@@ -90,8 +92,10 @@ export const ReceiptLines: Story = {
     await expect(lost).toHaveFocus();
     const tip = await page.findByRole('tooltip');
     await expect(tip).toHaveTextContent(
-      'Receipt not confirmed: the connection closed. Check the run before retrying.',
+      'Whole-run command · resume · Receipt not confirmed. Check the run before retrying.',
     );
+    // The loss is said once, without the browser's words.
+    await expect(head.textContent).not.toContain('the connection closed');
   },
 };
 
