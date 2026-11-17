@@ -4,7 +4,7 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
-import { newConversation } from '../workbench.ts';
+import { maximizePanel, newConversation, panelToggle } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -124,6 +124,9 @@ test('review file choices and expanded original preview remain reachable at narr
   const { sessionId, original, text } = await fixture(page, corral);
   await page.setViewportSize({ width: 636, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}/review`);
+  // No room beside the conversation at this width: the review's tab waits withdrawn, and the
+  // panel's toggle shows it as a drawer.
+  await panelToggle(page).click();
   const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
   const readme = files.getByRole('button', { name: /^README.md/ });
   // Below the three-column width the list folds into its head once a file is open, and the
@@ -152,6 +155,13 @@ test('review file choices and expanded original preview remain reachable at narr
   const apply = parts.getByRole('button', { name: 'Approve and apply to the folder', exact: true });
   for (const width of [967, 1179, 636, 1600]) {
     await page.setViewportSize({ width, height: 757 });
+    // At 967 the sidebar folds away and leaves room, so the drawer becomes the panel beside the
+    // conversation. At 1179 the sidebar is back and takes that room: the panel withdraws, and its
+    // toggle shows it again as a drawer, which stays one at 636 and is beside again at 1600.
+    if (width === 1179) {
+      await expect(panelToggle(page)).toHaveAttribute('aria-pressed', 'false');
+      await panelToggle(page).click();
+    }
     for (const colorScheme of ['light', 'dark'] as const) {
       await page.emulateMedia({ colorScheme });
       await reachable(apply);
@@ -183,6 +193,11 @@ test('line navigation reveals the selection above the bottom dock', async ({
   const { sessionId } = await fixture(page, corral);
   await page.setViewportSize({ width: 1179, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
+  // The editor and a dock under it need the Files tab wider than a narrow dock, which shows one
+  // pane at a time: with the sidebar hidden the panel has room beside the conversation, and
+  // maximized it takes the work area.
+  await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
+  await maximizePanel(page);
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   const editorPanel = page.getByTestId('dock-document-panel');
   await expect(editorPanel.locator('.monaco-editor')).toBeVisible();
@@ -253,6 +268,7 @@ test('filename search keeps the entered filename readable at 636px', async ({
   const { sessionId } = await fixture(page, corral);
   await page.setViewportSize({ width: 636, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
+  await panelToggle(page).click();
   const field = page.getByRole('textbox', { name: 'Filter files', exact: true });
   await field.fill('README.md');
   await expect(page.getByRole('treeitem', { name: 'README.md', exact: true })).toBeVisible();

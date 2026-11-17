@@ -41,7 +41,9 @@ test('sidebar reentry opens the conversation and search highlights its exact mes
     .getByRole('link', { name: /Reentry fixture/ })
     .click();
   await expect(requestBox(page)).toBeVisible();
-  await expect(page).toHaveURL(/compose=true/);
+  // The sidebar's link carries neither panel nor compose: the conversation comes back as it was
+  // left, its Changes tab open beside it (features/session-panel.md 주소와 기억).
+  await expect(page).toHaveURL(/[?&]panel=changes(?:&|$)/);
   await page
     .getByRole('button', {
       name: 'The agent cannot read or change files. Link a folder.',

@@ -15,10 +15,11 @@ import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
 import { promisify } from 'node:util';
 import { _electron, expect } from '@playwright/test';
 import {
+  closePanel,
   closeSettings,
   lastRunSucceeded,
   openFolderSettings,
-  panelTab,
+  openPanelTab,
   requestBox,
   startSession,
   teamFromTemplate,
@@ -237,8 +238,7 @@ try {
   await closeSettings(page);
   await teamFromTemplate(page);
   await startSession(page, 'Native package validation');
-  await panelTab(page, 'Files');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   const workingCopy = page.getByRole('region', { name: 'Paddock' });
   await expect(workingCopy).toBeVisible({ timeout: 30000 });
   const createCopy = workingCopy.getByRole('button', { name: /Make a Paddock from/ });
@@ -248,11 +248,12 @@ try {
       workingCopy.getByRole('link', { name: 'Review changes', exact: true }),
     ).toBeVisible({ timeout: 30000 });
   }
+  await closePanel(page);
   console.log('Native folder picker, trust and real Git working copy are ready.');
   await requestBox(page).fill('Write a brief native package validation note.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 30000 });
-  await page.getByRole('tab', { name: 'Files', exact: true }).click();
+  await openPanelTab(page, 'Files');
   await page.getByRole('button', { name: 'Open index.html', exact: true }).click();
   await page.getByRole('button', { name: 'Open preview', exact: true }).click();
   const staticFrame = page.frameLocator('[data-testid="file-preview-frame"]');
@@ -434,7 +435,7 @@ try {
   await closePalette(restored);
   assert.deepEqual(errors, []);
   // A WebContentsView's blank native parent must not stall the unsaved-edit probe.
-  await panelTab(restored, 'Files');
+  await openPanelTab(restored, 'Files');
   await restored.getByRole('button', { name: 'Open index.html', exact: true }).click();
   await restored.getByRole('button', { name: 'Open preview', exact: true }).click();
   await restored.getByRole('button', { name: 'Open interactive preview', exact: true }).click();

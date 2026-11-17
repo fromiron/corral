@@ -4,13 +4,19 @@ import approvalDefinition from '../../../../examples/research-team.corral.json' 
 };
 import {
   activityBar,
+  closePanel,
+  confirmStop,
+  maximizePanel,
   newConversation,
+  openPanelTab,
   openResult,
-  panelTab,
+  panelToggle,
   requestBox,
   runGoing,
   sendPlaceStop,
+  sessionPanel,
   slash,
+  stopConfirmation,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -86,16 +92,13 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
     .toBe('succeeded');
-  // The run workspace may already exist behind the active conversation tab.
+  // The conversation opens with its panel closed.
   await corral.open(`/sessions/${started.sessionId}`);
-  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await panelTab(page, 'Runs');
+  await expect(panelToggle(page)).toHaveAttribute('aria-pressed', 'false');
+  await openPanelTab(page, 'Runs');
   const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   const nextRunId = await page.evaluate(async ({ sessionId, corralId, definitionRevision }) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     const response = await fetch('/api/v1/runs', {
@@ -120,7 +123,8 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect(activityBar(page)).toContainText('Last run');
   await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Runs');
+  // The newest run's tab opens beside Run #1's.
+  await openPanelTab(page, 'Runs');
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
@@ -155,9 +159,9 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await graph.getByRole('button', { name: /^zoom in$/i }).click();
   await expect(viewport).not.toHaveAttribute('style', initial ?? '');
   const preferred = await viewport.getAttribute('style');
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await expect(graph).toBeHidden();
-  await panelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs');
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   expect(corral.errors).toEqual([]);
@@ -170,7 +174,9 @@ test('live event counts keep event filters, selection and scroll in the primary 
   await page.setViewportSize({ width: 1600, height: 900 });
   const { runId } = await startRun(page, corral, { definition: approvalDefinition });
   await corral.open(`/runs/${runId}`);
-  // The run waits; its record reads the request beside the conversation, whose tray answers it.
+  // Maximized, the run's record has the room for its response area: the run waits, and the record
+  // reads the request and sends the person to the conversation's tray to answer it.
+  await maximizePanel(page);
   await expect(page.getByTestId('run-side').getByTestId('respond-in-conversation')).toBeVisible({
     timeout: 30_000,
   });
@@ -245,6 +251,8 @@ test('switching workspace views and reading a result preserves selection, scroll
 }) => {
   await page.setViewportSize({ width: 1600, height: 500 });
   await finishedRun(page, corral);
+  // Maximized, the record has the room to keep its side beside the view it switches.
+  await maximizePanel(page);
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   await views.getByRole('tab', { name: 'Workflow', exact: true }).click();
@@ -340,6 +348,8 @@ test('a graph preview opens its exact readable result directly and returns to th
   const artifact = artifactId ? projection.artifacts[artifactId] : undefined;
   const execution = artifact ? projection.executions[artifact.authorExecutionId] : undefined;
   if (!artifact || !execution) throw new Error('Output artifact and its author are required');
+  // Maximized, the record has the room to keep Run info beside the graph.
+  await maximizePanel(page);
   const monitor = page.getByTestId('run-monitor');
   const side = monitor.getByTestId('run-side');
   await monitor.getByRole('button', { name: 'Run info', exact: true }).click();
@@ -436,6 +446,8 @@ test.describe('active graph preview', () => {
 
 test('a reload keeps the chosen execution and its selected agent', async ({ page, corral }) => {
   await finishedRun(page, corral);
+  // Maximized, the record has the room to keep the chosen execution beside the graph.
+  await maximizePanel(page);
   await expect(page.getByText('Layout from the saved Corral')).toHaveCount(0);
   await page.getByRole('tab', { name: 'Workflow', exact: true }).click();
   await page
@@ -447,6 +459,8 @@ test('a reload keeps the chosen execution and its selected agent', async ({ page
   const executionId = new URL(page.url()).searchParams.get('execution');
   await page.reload();
   await expect(page).toHaveURL(new RegExp(`execution=${executionId}`));
+  // A reload brings the panel back beside the conversation: maximizing is not remembered.
+  await maximizePanel(page);
   await expect(
     page
       .getByRole('group', { name: 'Run graph', exact: true })
@@ -505,6 +519,9 @@ test('a long multiline request keeps graph, events and run information reachable
     { width: 390, height: 664 },
   ]) {
     await page.setViewportSize(viewport);
+    // At 390 there is no room beside the conversation: the panel withdraws, and its toggle
+    // shows the run's tab as a drawer.
+    if (viewport.width === 390) await panelToggle(page).click();
     await expect(graphTab).toBeInViewport({ ratio: 1 });
     await expect(eventsTab).toBeInViewport({ ratio: 1 });
     await expect(info).toBeInViewport({ ratio: 1 });
@@ -547,7 +564,9 @@ test('an old view-point link opens current state without selecting a missing exe
     page.getByTestId('run-monitor').getByRole('slider', { name: 'View point' }),
   ).toHaveCount(0);
   await expect(page.getByTestId('run-status')).toContainText('Completed');
-  await expect(page.getByRole('alert')).toContainText('exec_9999 is not part of this run');
+  await expect(page.getByTestId('run-monitor').getByRole('alert')).toContainText(
+    'exec_9999 is not part of this run',
+  );
   const side = page.getByTestId('run-side');
   await expect(side.getByRole('button', { name: 'Reins', exact: true })).toHaveCount(0);
   await expect(side.getByRole('button', { name: 'Give instruction', exact: true })).toHaveCount(0);
@@ -609,19 +628,17 @@ test('the activity bar names an approval only once its card is off screen, and l
 });
 
 /**
- * The session screen's main area as a person reads it: the top bar and the workbench, without
- * the sidebar and without screen-reader-only text.
+ * The session screen's main area as a person reads it: the top bar and the work area under it
+ * (the conversation and the panel), without the sidebar and without screen-reader-only text.
  */
 function mainText(page: import('@playwright/test').Page) {
   return page.evaluate(() => {
     const hidden = [...document.querySelectorAll<HTMLElement>('.sr-only')];
     for (const node of hidden) node.style.setProperty('display', 'none', 'important');
-    const text = [
-      document.querySelector<HTMLElement>('[role="banner"], header'),
-      document.querySelector<HTMLElement>('section[aria-label="Workbench layout"]'),
-    ]
-      .map((node) => node?.innerText ?? '')
-      .join('\n');
+    // The top bar and the work area share the column beside the sidebar.
+    const text =
+      document.querySelector<HTMLElement>('[role="banner"], header')?.parentElement?.innerText ??
+      '';
     for (const node of hidden) node.style.removeProperty('display');
     return text;
   });
@@ -710,7 +727,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
   await expect(
     page.getByTestId('run-monitor').getByRole('button', { name: 'Continue with this version' }),
   ).toHaveCount(0);
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await expect(response).toBeVisible();
   await response.getByRole('button', { name: 'review v2', exact: true }).click();
   await expect(
@@ -723,7 +740,7 @@ test('ACTION-01 opens one scoped response host and keeps later typing focus', as
     .getByTestId('artifact-viewer')
     .getByRole('button', { name: 'Close', exact: true })
     .click();
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   const input = requestBox(page);
 
   let releaseApproval!: () => void;
@@ -769,24 +786,21 @@ test('legacy history links resolve current state, Results Back returns to chat, 
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page).not.toHaveURL(/[?&]atSeq=/);
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await expect(page).not.toHaveURL(/atSeq=/);
   await page.getByRole('link', { name: 'Open in Results', exact: true }).first().click();
   await expect(page.getByTestId('result-body')).toBeVisible();
+  // Back returns to the conversation as it was before the link: the panel closed.
   await page.goBack();
-  await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
+  await expect(panelToggle(page)).toHaveAttribute('aria-pressed', 'false');
+  await expect(sessionPanel(page)).toBeHidden();
   await expect(requestBox(page)).toBeVisible();
   await page.evaluate(() =>
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'dark' })),
   );
   await page.emulateMedia({ colorScheme: 'light' });
   await page.reload();
-  const historyTab = page.getByRole('tab', { name: 'Runs', exact: true });
-  await expect(historyTab).toBeVisible();
-  await historyTab.click();
+  await openPanelTab(page, 'Runs');
   const flow = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(flow).toBeVisible();
   await expect(flow).toHaveCSS('color-scheme', 'dark');
@@ -812,7 +826,7 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     localStorage.setItem('corral:workbench:v1', JSON.stringify({ version: 1, theme: 'light' })),
   );
   await page.reload();
-  await page.getByRole('tab', { name: 'Runs', exact: true }).click();
+  await openPanelTab(page, 'Runs');
   await expect(flow).toHaveCSS('color-scheme', 'light');
   const lightSurface = await mark.evaluate((element) => getComputedStyle(element).backgroundColor);
   expect(lightSurface).not.toBe(darkSurface);
@@ -863,12 +877,9 @@ test.describe('cancel recovery', () => {
       // Two executions work (the lead waits on its team), so Stop asks first. Nothing is
       // written, so Stop is Send's place.
       await sendPlaceStop(page).click();
-      const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
-      await expect(confirmation).toHaveCount(1);
+      await expect(stopConfirmation(page)).toHaveCount(1);
       await expect(page.getByRole('dialog')).toHaveCount(1);
-      await confirmation
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await confirmStop(page);
       holdLifecycleReplies = false;
       for (const release of lifecycleReplies.splice(0)) release();
       await expect
@@ -922,15 +933,13 @@ test.describe('cancel recovery', () => {
     // `/stop` always asks first, whatever works.
     await expect(runGoing(page)).toBeVisible();
     await slash(page, 'stop');
-    const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
+    const confirmation = stopConfirmation(page);
     await expect(page.getByRole('dialog')).toHaveCount(1);
-    await expect(confirmation).toContainText('Cancellation has not been sent');
+    await expect(confirmation).toContainText('The stop has not been sent.');
     await page.reload();
     await expect(page.getByRole('dialog')).toHaveCount(1);
-    await expect(confirmation).toContainText('Cancellation has not been sent');
-    await confirmation
-      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-      .click();
+    await expect(confirmation).toContainText('The stop has not been sent.');
+    await confirmStop(page);
     holdLifecycleReplies = false;
     for (const release of lifecycleReplies.splice(0)) release();
     const retry = page.getByRole('button', { name: 'Retry request', exact: true });

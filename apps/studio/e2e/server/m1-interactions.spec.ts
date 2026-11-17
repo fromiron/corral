@@ -1,5 +1,5 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
-import { activityBar, newConversation, openActivity, panelTab, requestBox } from '../workbench.ts';
+import { activityBar, newConversation, openActivity, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true, reasoningApi: true, imageInput: true });
@@ -137,10 +137,8 @@ test('attachments survive settings; the owned plan and question lead to one comp
   ).toBe(true);
   await expect(question).toBeVisible();
   await question.getByRole('button', { name: 'Send answer' }).click();
-  await panelTab(page, 'Conversation');
   await expect(page.getByTestId('chat-result')).toContainText('Attachment verified');
   await expect.poll(() => current().projection.status).toBe('succeeded');
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
   expect(corral.server.coordinator.listRuns()).toHaveLength(1);
   const calls = Object.keys(current().projection.modelCalls).length;
   await page.reload();

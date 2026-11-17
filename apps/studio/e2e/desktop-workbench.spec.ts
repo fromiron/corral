@@ -1,10 +1,14 @@
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import {
+  closePanel,
   lastRunSucceeded,
   newConversation,
-  panelTab,
+  openPane,
+  openPanelTab,
+  panelTabNamed,
   requestBox,
+  selectPanelTab,
   startSession,
   teamFromTemplate,
 } from './workbench.ts';
@@ -56,7 +60,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await input.press('Control+Enter');
   await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
   await input.fill('Preserve this follow-up draft');
-  await panelTab(page, 'Run');
+  await openPanelTab(page, 'Runs');
   const workUrl = page.url();
   const originalInput = await input.elementHandle();
   await input.evaluate((element: HTMLTextAreaElement) => element.setSelectionRange(4, 4));
@@ -69,11 +73,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   await settings.getByRole('button', { name: 'Close settings', exact: true }).click();
   expect(await originalInput?.evaluate((node: HTMLTextAreaElement) => node.selectionStart)).toBe(4);
   await expect(page).toHaveURL(workUrl);
-  await expect(
-    page
-      .getByRole('tablist', { name: 'Conversation views' })
-      .getByRole('tab', { name: 'Runs', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(
     (await new AxeBuilder({ page }).analyze()).violations
@@ -83,7 +83,7 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
         nodes: finding.nodes.map(({ target, failureSummary }) => ({ target, failureSummary })),
       })),
   ).toEqual([]);
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   const before = await composer.boundingBox();
   await page.getByTestId('chat-timeline').evaluate((node) => {
     node.scrollTop = 0;
@@ -92,7 +92,6 @@ test('DW-02/03 settings overlay keeps the same mounted work and draft', async ({
   expect(after?.y).toBe(before?.y);
   expect((after?.y ?? 0) + (after?.height ?? 0)).toBeLessThanOrEqual(800);
   await page.setViewportSize({ width: 390, height: 844 });
-  await panelTab(page, 'Conversation');
   await expect(input).toBeVisible();
   await expect(input).toHaveValue('Preserve this follow-up draft');
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -106,21 +105,14 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
     if (message.text().includes('same key')) keyWarnings.push(message.text());
   });
   await openSession(page);
-  await panelTab(page, 'Files');
+  // Without a folder or a run the panel has no toggle; the palette opens the Files tab.
+  await openPane(page, 'Files');
   await expect(page.getByText('Link a project source folder to browse files.')).toBeVisible();
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('link', { name: 'Folders & tools', exact: true }).click();
   await page.getByRole('button', { name: 'Link the example folder', exact: true }).click();
   await page.getByRole('button', { name: 'Close settings', exact: true }).click();
-  await expect(
-    page
-      .getByRole('tablist', { name: 'Conversation views' })
-      .getByRole('tab', { name: 'Files', exact: true }),
-  ).toHaveAttribute('aria-selected', 'true');
-  await page
-    .getByRole('tablist', { name: 'Conversation views' })
-    .getByRole('tab', { name: 'Files', exact: true })
-    .click();
+  await expect(panelTabNamed(page, 'Files')).toHaveAttribute('aria-selected', 'true');
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
   await expect(
     page
@@ -136,11 +128,8 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
     .click();
   await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
-  await page
-    .getByRole('tablist', { name: 'Conversation views' })
-    .getByRole('tab', { name: 'Files', exact: true })
-    .click();
+  await openPanelTab(page, 'Changes');
+  await selectPanelTab(page, 'Files');
   // #87: an original-folder file has one read-only preview in Files, kept across panes; the
   // dock's document tabs are the only tab strip.
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
@@ -149,7 +138,7 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await page.getByRole('treeitem', { name: 'version.ts', exact: true }).click();
   await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   const request = requestBox(page);
   await request.fill('@version');
   await expect(page.getByRole('listbox', { name: 'References' })).toBeVisible();

@@ -5,11 +5,14 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import {
+  closePanel,
   closeSettings,
   newConversation,
   openFolderSettings,
-  panelTab,
+  openPane,
+  openPanelTab,
   requestBox,
+  selectPanelTab,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -75,13 +78,13 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/')[2];
     if (!sessionId) throw new Error('session did not open');
-    await panelTab(page, 'Files');
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await openPanelTab(page, 'Files');
+    await openPanelTab(page, 'Changes');
     await page
       .getByRole('region', { name: 'Paddock' })
       .getByRole('button', { name: /Make a Paddock from/ })
       .click();
-    await page.getByRole('tab', { name: 'Files', exact: true }).click();
+    await selectPanelTab(page, 'Files');
     await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
       'Paddock',
     );
@@ -224,13 +227,12 @@ test.describe('run-owned previews', () => {
       await expect(page).toHaveURL(/\/sessions\/session_/);
       const sessionId = new URL(page.url()).pathname.split('/')[2];
       if (!sessionId) throw new Error('Session did not open');
-      await panelTab(page, 'Files');
-      await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+      await openPanelTab(page, 'Changes');
       await page
         .getByRole('region', { name: 'Paddock' })
         .getByRole('button', { name: /Make a Paddock from/ })
         .click();
-      await panelTab(page, 'Conversation');
+      await closePanel(page);
       await page
         .getByRole('combobox', { name: 'Permissions for next request', exact: true })
         .click();
@@ -254,7 +256,7 @@ test.describe('run-owned previews', () => {
       expect(lease?.runId).toBeTruthy();
       expect(lease?.state).toBe('ready');
       previewUrl = lease.url;
-      await panelTab(page, 'Tasks & preview');
+      await openPane(page, 'Tasks & preview');
       const previews = page.getByRole('region', { name: 'Open previews', exact: true });
       await expect(previews).toContainText('index.html');
       await previews.getByRole('button', { name: 'Open preview', exact: true }).click();
@@ -267,11 +269,10 @@ test.describe('run-owned previews', () => {
         new RegExp(lease.runId),
       );
       await page.screenshot({ path: testInfo.outputPath('run-owned-preview.png') });
-      await panelTab(page, 'Conversation');
+      await closePanel(page);
       const question = page.getByRole('form', { name: 'Waiting for you' });
       await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
       await question.getByRole('button', { name: 'Send answer' }).click();
-      await panelTab(page, 'Conversation');
       // A no-progress pause may ask before the reply; continue through that visible gate rather
       // than changing limits behind the UI.
       const answer = page.getByTestId('chat-result');

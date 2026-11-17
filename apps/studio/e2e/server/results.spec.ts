@@ -10,10 +10,12 @@ import { reportedInput } from '../../../../packages/react/src/run/usage-input.ts
 import {
   activityLine,
   chooseRun,
+  closePanel,
   lastRunSucceeded,
   newConversation,
+  openPanelTab,
   openResult,
-  panelTab,
+  panelTabNamed,
   requestBox,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -92,7 +94,7 @@ test('a completed run explains failed file steps and opens their reasons', async
     'TARGET_NOT_FOUND: the folder is unavailable',
   );
   // The run record keeps the same reasons on the execution that failed.
-  await panelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs');
   await page
     .getByTestId('run-monitor')
     .getByRole('tablist', { name: 'Run views', exact: true })
@@ -142,12 +144,11 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
   // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
   const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
   expect(totals).toContain('Conversation total');
-  // The run segment of the top bar's path exists only in run history.
-  await panelTab(page, 'Runs');
+  // The run segment of the top bar's path shows while a run tab is selected.
+  await openPanelTab(page, 'Runs');
   await chooseRun(page, 1);
-  await panelTab(page, 'Conversation');
-  // The address selects Run #1; the conversation still speaks of the last run
-  // (chat-widgets-contract.md 3.1), and so it does after a reload.
+  // The address selects Run #1's tab beside the conversation; the conversation still speaks of
+  // the last run (chat-widgets-contract.md 3.1), and so it does after a reload.
   expect(new URL(page.url()).searchParams.get('run')).toBeTruthy();
   await expect(lastRunSucceeded(page)).toContainText('Last run');
   await expect(activityLine(page)).not.toContainText('Selected run');
@@ -173,8 +174,8 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
   // The past run's own usage, its input and cached input with it, reads in its Run info: the
-  // run tab reopens Run #1 after the reload.
-  await panelTab(page, 'Runs');
+  // reload brought back Run #1's tab, selected.
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #1/ })).toBeVisible();
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
@@ -208,7 +209,7 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
     await expect(usage).toContainText(
       `${inputUnreported} completed call${inputUnreported === 1 ? '' : 's'} did not report input tokens`,
     );
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await requestBox(page).fill('@');
   const results = page
     .getByRole('listbox', { name: 'References' })

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
+import { maximizePanel, panelTabNamed } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
@@ -126,7 +127,9 @@ test.describe('extension input during an SDK run', () => {
         await page.goto(
           `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
         );
-        // The record reads the request; the conversation's needed-now tray answers it.
+        // Maximized, the record has the room to read the request; its Respond restores the panel
+        // and the conversation's needed-now tray answers it.
+        await maximizePanel(page);
         const detail = page.getByTestId('run-monitor');
         await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
         await detail.getByTestId('respond-in-conversation').click();
@@ -134,8 +137,8 @@ test.describe('extension input during an SDK run', () => {
         await expect(needsYou).toBeFocused();
         await expect(needsYou.getByText('Continue the test run?', { exact: true })).toBeVisible();
         await needsYou.getByRole('button', { name: 'Confirm', exact: true }).click();
-        // Back in the run's record, the answer stands as received.
-        await page.getByRole('tab', { name: 'Runs', exact: true }).click();
+        // The run's record beside the conversation: the answer stands as received.
+        await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
         await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
         await expect(page.getByTestId('run-status').first()).toContainText('Working');
         release();

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { TerminalView } from '@corral/contracts';
 import type { Locator, Page } from '@playwright/test';
-import { lastRunSucceeded, requestBox } from '../workbench.ts';
+import { closePanel, lastRunSucceeded, openPanelTab, requestBox } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function api(page: Page, path: string, method: string, body?: unknown) {
@@ -165,7 +165,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(panel).toBeVisible();
   terminal = { ...terminal, state: 'running' };
   await panel.getByRole('button', { name: 'Refresh terminals' }).click();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await closePanel(page);
   const notice = page.getByTestId('terminal-writer-notice');
   await expect(notice).toContainText('A terminal is holding this Paddock');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
@@ -195,14 +195,14 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(
     page.getByRole('tab').getByRole('img', { name: 'Terminal termination needs confirmation' }),
   ).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await closePanel(page);
   await expect(notice).toContainText('termination has not been confirmed');
   await notice.screenshot({ path: test.info().outputPath('terminal-uncertain-notice.png') });
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
   const { diagnostic: _diagnostic, ...ended } = terminal;
   terminal = { ...ended, state: 'exited', exitCode: 0, error: null };
   await panel.getByRole('button', { name: 'Refresh terminals' }).click();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await closePanel(page);
   await expect(notice).toHaveCount(0);
   expect(mutations).toEqual([]);
 });
@@ -237,7 +237,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await openTerminal.click();
     const panel = page.getByTestId('terminal-panel');
     await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeDisabled();
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await openPanelTab(page, 'Changes');
     await page.getByRole('button', { name: /Make a Paddock from/ }).click();
     await openTerminal.click();
     await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeEnabled();
@@ -249,7 +249,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await panel.getByRole('button', { name: 'Release input', exact: true }).click();
     await expectReleaseHint(page, panel);
     await expect(panel.getByRole('button', { name: 'Stop terminal', exact: true })).toBeEnabled();
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
       'A terminal is holding this Paddock',
     );
@@ -284,7 +284,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(panel.getByText('Stopped', { exact: true })).toBeVisible();
     await expect(sidebarSession).toBeVisible();
     await expect(panel.getByText('Exit code 0', { exact: true })).toHaveCount(0);
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     await expect(page.getByTestId('terminal-writer-notice')).toHaveCount(0);
     await expect(requestBox(page)).toHaveValue('Summarize the fixture');
     await page.getByRole('button', { name: 'Send', exact: true }).click();
@@ -296,7 +296,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await expect(panel.getByRole('button', { name: 'New terminal', exact: true })).toBeEnabled({
       timeout: 20000,
     });
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
     await expect(sidebarSession).toBeVisible();
     await expect(

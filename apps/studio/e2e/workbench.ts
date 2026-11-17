@@ -336,52 +336,116 @@ export async function slash(page: Page, command: string) {
   await box.press('Enter');
 }
 
-/** Opens an existing session view, or its contextual file pane through the command palette. */
-export async function panelTab(page: Page, name: string) {
-  // Git, Checkpoints and Checks are sub-views of Changes, which opens on Review.
-  if (['Review', 'Git', 'Checkpoints', 'Checks'].includes(name)) {
-    await panelTab(page, 'Changes');
-    const sub = page
-      .getByRole('tablist', { name: 'Changes views', exact: true })
-      .getByRole('tab', { name, exact: true });
-    await sub.click();
-    await expect(sub).toHaveAttribute('aria-selected', 'true');
-    return;
-  }
-  const views = page.getByRole('tablist', { name: 'Conversation views', exact: true });
-  // A top bar too narrow for the tabs folds them into one menu of the same name.
-  const folded = page.getByRole('combobox', { name: 'Conversation views', exact: true });
-  await expect(views.or(folded).first()).toBeVisible();
-  const primary = name === 'Run' ? 'Runs' : name;
-  if (['Conversation', 'Runs', 'Changes'].includes(primary)) {
-    // The chosen view changes what the bar holds (a run view has no run pill), so the tabs may
-    // fold or return once it opens: either way the bar names it as the current view.
-    const chosen = folded
-      .filter({ hasText: primary })
-      .or(views.getByRole('tab', { name: primary, exact: true, selected: true }))
-      .first();
-    if (await folded.isVisible()) {
-      await folded.click();
-      // The menu always offers Conversation; once it is open, the wanted view is there or not.
-      await expect(page.getByRole('option', { name: /^Conversation\b/ })).toBeVisible();
-      // The Changes option may carry its count of changed files.
-      const option = page.getByRole('option', { name: new RegExp(`^${primary}\\b`) });
-      if (await option.count()) {
-        await option.click();
-        await expect(chosen).toBeVisible();
-        return;
-      }
-      await page.keyboard.press('Escape');
-    } else {
-      const tab = views.getByRole('tab', { name: primary, exact: true });
-      if (primary !== 'Changes' || (await tab.count())) {
-        await tab.click();
-        await expect(chosen).toBeVisible();
-        return;
-      }
-    }
-  }
-  // File work may not have a primary tab until first opened. The palette is always reachable.
+// The session screen (features/session-panel.md): the conversation is always on screen, and the
+// panel beside it holds closable tabs (Files, Changes, Run #n, Results) with a "+" list. The
+// panel is closed, beside, maximized, a drawer (no room) or withdrawn.
+
+/** The panel beside the conversation: a region named Panel while it is on screen. */
+export const sessionPanel = (page: Page) =>
+  page.getByRole('region', { name: 'Panel', exact: true });
+
+/** The panel's strip of open tabs. */
+const panelStrip = (page: Page) =>
+  sessionPanel(page).getByRole('tablist', { name: 'Panel tabs', exact: true });
+
+/** One open tab of the panel by its name: Files, Changes, Results, Run #n (Run until known). */
+export const panelTabNamed = (page: Page, name: string | RegExp) =>
+  panelStrip(page).getByRole('tab', typeof name === 'string' ? { name, exact: true } : { name });
+
+/** What the selected tab shows: the panel's tabpanel named after that tab. */
+export const panelContent = (page: Page, name: string | RegExp) =>
+  sessionPanel(page).getByRole(
+    'tabpanel',
+    typeof name === 'string' ? { name, exact: true } : { name },
+  );
+
+/** The top bar's panel toggle: pressed while the panel is on screen (beside, maximized, drawer). */
+export const panelToggle = (page: Page) =>
+  page.getByRole('banner').getByRole('button', { name: 'Show or hide the panel', exact: true });
+
+const RUN_TAB = /^Run( #\d+)?$/;
+/** The tab each item of the "+" list opens. */
+const PLUS_TAB = { Files: 'Files', Changes: 'Changes', Runs: RUN_TAB, Results: 'Results' };
+
+/** Waits until the panel's selected tab is the one named. */
+async function tabSelected(page: Page, name: string | RegExp) {
+  await expect(panelStrip(page).getByRole('tab', { selected: true })).toHaveAccessibleName(name);
+}
+
+/**
+ * Opens a tab from the panel's "+" list: Files, Changes, Runs (the newest run's tab) or Results.
+ * A tab open already is selected. A panel not on screen is opened by its toggle first; an open
+ * panel without tabs offers the same list in its body.
+ */
+export async function openPanelTab(page: Page, item: keyof typeof PLUS_TAB) {
+  const toggle = panelToggle(page);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const panel = sessionPanel(page);
+  // The "+" stands after the last tab, in the strip's own head.
+  const plus = panel
+    .locator('[data-slot="tabs-closable"]')
+    .getByRole('button', { name: 'Open', exact: true });
+  const listed = panel.getByRole('button', { name: item, exact: true });
+  await expect(plus.or(listed).first()).toBeVisible();
+  if (await plus.isVisible()) {
+    await plus.click();
+    await page.getByRole('menuitem', { name: item, exact: true }).click();
+  } else await listed.click();
+  await tabSelected(page, PLUS_TAB[item]);
+}
+
+/** Selects an open tab in the panel's strip. */
+export async function selectPanelTab(page: Page, name: string | RegExp) {
+  const tab = panelTabNamed(page, name);
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * Maximizes the panel with its head's button: the panel takes the work area and the conversation
+ * is hidden behind it. A maximized panel is left as it is.
+ */
+export async function maximizePanel(page: Page) {
+  const restore = sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true });
+  if (!(await restore.isVisible()))
+    await sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }).click();
+  await expect(restore).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * Closes the panel by its toggle, so the conversation has the work area to itself; the tabs stay
+ * for the next open. A panel already off screen (closed, or withdrawn for want of room) is left.
+ */
+export async function closePanel(page: Page) {
+  const toggle = panelToggle(page);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-pressed')) === 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(sessionPanel(page)).toBeHidden();
+}
+
+/** The tab that holds each pane the palette opens. */
+const PANE_TAB: Record<string, string | RegExp> = {
+  Files: 'Files',
+  Terminal: 'Files',
+  'Tasks & preview': 'Files',
+  Debugger: 'Files',
+  Changes: 'Changes',
+  Git: 'Changes',
+  Checks: 'Changes',
+  Problems: 'Changes',
+  Results: 'Results',
+  Run: RUN_TAB,
+};
+
+/**
+ * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks & preview, Debugger,
+ * Changes, Git, Checks, Problems, Results, Run): the tab that holds it opens, or is selected, with
+ * that pane in front. The palette is there whatever the panel's state, with or without a folder.
+ */
+export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill(`Open ${name}`);
@@ -389,6 +453,32 @@ export async function panelTab(page: Page, name: string) {
     .getByRole('option')
     .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
     .click();
+  await expect(palette).toBeHidden();
+  await tabSelected(page, PANE_TAB[name] as string | RegExp);
+}
+
+/** Opens the Changes tab from "+" and one of its views (Review, Git, Checkpoints, Checks). */
+export async function openChangesView(page: Page, view: string) {
+  await openPanelTab(page, 'Changes');
+  const tab = panelContent(page, 'Changes')
+    .getByRole('tablist', { name: 'Changes views', exact: true })
+    .getByRole('tab', { name: view, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * Unfolds the review's file list and returns it. Narrower than its three columns, as in the panel
+ * beside the conversation, the review opens on its first changed file with the list folded into
+ * its head ("2 files"), and folds it again once a file is chosen.
+ */
+export async function showReviewFiles(page: Page) {
+  const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
+  const fold = files.getByRole('button', { name: /^\d+ files?$/ });
+  await expect(fold).toBeVisible();
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  return files;
 }
 
 /**
@@ -475,15 +565,23 @@ export async function stopRun(page: Page) {
     .or(runControls(page).getByRole('button', { name: 'Stop', exact: true }))
     .first()
     .click();
-  const dialog = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
-  const asked = await dialog
+  const asked = await stopConfirmation(page)
     .waitFor({ state: 'visible', timeout: 2_000 })
     .then(() => true)
     .catch(() => false);
-  if (asked)
-    await dialog
-      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-      .click();
+  if (asked) await confirmStop(page);
+}
+
+/**
+ * The whole-run stop's confirmation: the composer's dialog, or a run tab head's popover, both
+ * named Stop the run. Its own answer carries the stop's name too, so it is found inside it.
+ */
+export const stopConfirmation = (page: Page) =>
+  page.getByRole('dialog', { name: 'Stop the run', exact: true });
+
+/** Confirms the whole-run stop the screen is asking about. */
+export async function confirmStop(page: Page) {
+  await stopConfirmation(page).getByRole('button', { name: 'Stop the run', exact: true }).click();
 }
 
 /**

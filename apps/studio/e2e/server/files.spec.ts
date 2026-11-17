@@ -3,13 +3,16 @@ import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
+  closePanel,
   closeSettings,
   openConversationDetails,
   openFolderSettings,
   openLibraryTeams,
+  openPanelTab,
   openProject,
-  panelTab,
+  panelToggle,
   requestBox,
+  showReviewFiles,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -119,7 +122,7 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionPath = new URL(page.url()).pathname;
 
-    await panelTab(page, 'Files');
+    await openPanelTab(page, 'Files');
     await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
     const content = page.getByRole('region', { name: 'File content', exact: true });
     await expect(content.getByText('hello', { exact: true })).toBeVisible();
@@ -127,12 +130,12 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     await page.getByRole('button', { name: 'Refresh files', exact: true }).click();
     await expect(content.getByText('updated outside Corral', { exact: true })).toBeVisible();
     writeFileSync(join(original, 'README.md'), 'hello\n');
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await openPanelTab(page, 'Changes');
 
     const copy = page.getByRole('region', { name: 'Paddock' });
     await copy.getByRole('button', { name: /Make a Paddock from/ }).click();
     await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     await expect(page.getByTestId('pre-run')).toContainText('can change the Paddock');
 
     await requestBox(page).fill('Write the notes');
@@ -154,14 +157,16 @@ test('a session works in its own copy, and its changes are reviewed and checked'
 
     // With changes to read, the Changes view opens on its review (workbench.md: "변경 화면은
     // 검토 보기로 열린다").
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await openPanelTab(page, 'Changes');
     const views = page.getByRole('tablist', { name: 'Changes views', exact: true });
     await expect(views.getByRole('tab', { name: 'Review', exact: true })).toHaveAttribute(
       'aria-selected',
       'true',
     );
     await expect(page).toHaveURL(new URL(`${sessionPath}?panel=changes`, corral.server.url).href);
-    const file = page.getByRole('button', { name: /notes\/team_writer_role\.md/ });
+    const file = (await showReviewFiles(page)).getByRole('button', {
+      name: /notes\/team_writer_role\.md/,
+    });
     await expect(file).toContainText('Added');
     await expect(file).toContainText('Corral');
     await file.click();
@@ -198,20 +203,24 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     const draft = page.getByRole('textbox', { name: 'Comment on line 1' });
     await draft.fill('Start with a title.');
 
-    await page.setViewportSize({ width: 1024, height: 800 });
+    // In the panel beside the conversation the review is narrower than its three columns, so it
+    // puts the diff first: the file list folds into its head while a file is read and the
+    // decision area follows, keeping the draft (workbench.md: "중앙 diff를 우선하고
+    // 파일·검사·의견을 재배치하되 초안을 유지한다").
     const diff = page.getByRole('region', { name: 'notes/team_writer_role.md', exact: true });
     await expect
       .poll(async () => (await diff.boundingBox())?.width ?? 0)
       .toBeGreaterThanOrEqual(400);
-    // Narrower than its three columns, the review puts the diff first: the file list folds into
-    // its head while a file is read and the decision area follows, keeping the draft
-    // (workbench.md: "중앙 diff를 우선하고 파일·검사·의견을 재배치하되 초안을 유지한다").
     const fileList = page
       .getByRole('navigation', { name: 'Review changes', exact: true })
       .getByRole('button', { name: '1 file', exact: true });
     await expect(fileList).toBeVisible();
     await expect(decisionArea).toBeVisible();
+    // At 390 there is no room beside the conversation: the panel withdraws, and its toggle shows
+    // the review again as a drawer, which is beside the conversation again at 1280.
     await page.setViewportSize({ width: 390, height: 844 });
+    await expect(panelToggle(page)).toHaveAttribute('aria-pressed', 'false');
+    await panelToggle(page).click();
     await expect
       .poll(() =>
         page.evaluate(

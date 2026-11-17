@@ -1,7 +1,7 @@
 import type { RunEvent } from '@corral/contracts';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
-import { activityBar, activityLine, panelTab, requestBox } from '../workbench.ts';
+import { activityBar, activityLine, closePanel, requestBox } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // Deterministic provider responses exercise the production adapter, Coordinator,
@@ -185,7 +185,7 @@ test('live plans, context, manual collapse and an answer use the primary session
     await page.getByTestId('turn-run').last().click();
     await expect(page).toHaveURL(new RegExp(`run=${current(corral).runId}`));
     await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     // A new plan is one line: its count and current step. The person expands it.
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(bar.getByTestId('activity-step')).toContainText(titles[0] ?? '');
@@ -283,10 +283,8 @@ test('live plans, context, manual collapse and an answer use the primary session
     await expect(question).toHaveCount(1);
     await question.getByRole('textbox', { name: 'Your answer' }).fill('The compact layout');
     await question.getByRole('button', { name: 'Send answer' }).click();
-    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('ready for review');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
     await expect(count).toHaveText('Plan 2/7');
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
     await expect(bar).not.toHaveAttribute('data-line', 'waiting');
@@ -396,7 +394,6 @@ test.describe('serialized provider context', () => {
     const question = page.getByRole('form', { name: 'Waiting for you' });
     await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
     await question.getByRole('button', { name: 'Send answer' }).click();
-    await panelTab(page, 'Conversation');
     await expect(page.getByTestId('chat-result')).toContainText('recorded provider payload');
     await expect.poll(() => current(corral).projection.status).toBe('succeeded');
     expect(corral.endpoint.models.every((model) => model === 'llama3.2')).toBe(true);
@@ -443,7 +440,7 @@ test('inspecting the current result preserves the draft while a newer result rep
     // (chat-widgets-contract.md 3.1).
     await expect(toggle).toHaveText('Plan 0/7');
     expect(current(corral).runId).toBe(activeRunId);
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     await expect(toggle).toHaveText('Plan 0/7');
     await expect(requestBox(page)).toHaveValue('Do not replace this draft.');
     expect(current(corral).runId).toBe(activeRunId);
@@ -481,7 +478,7 @@ test('inspecting the current result preserves the draft while a newer result rep
     expect(corral.server.coordinator.getConversationTurn(earlierRunId)?.answer).toContain(
       'Earlier result.',
     );
-    await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+    await closePanel(page);
     const earlierAnswer = page.getByTestId('chat-result').filter({ hasText: 'Earlier result.' });
     await expect(earlierAnswer).toBeVisible();
     await expect(

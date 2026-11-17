@@ -2,9 +2,10 @@ import { expect, type Locator, type Page, test } from '@playwright/test';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 import {
   newConversation,
+  openChangesView,
+  openPane,
   openProject,
   openSettings,
-  panelTab,
   projectTab,
   teamFromTemplate,
 } from './workbench.ts';
@@ -68,7 +69,8 @@ test('the Changes pane explains the Paddock after its title, with and without on
   page,
 }) => {
   await openConversation(page);
-  await panelTab(page, 'Changes');
+  // Without a folder or a run the panel has no toggle; the palette opens the Changes tab.
+  await openPane(page, 'Changes');
   const empty = page.getByText(en.Files.noCopyTitle, { exact: true });
   await expect(empty).toBeVisible();
   await explainsAfter(page, empty);
@@ -80,7 +82,7 @@ test('the Changes pane explains the Paddock after its title, with and without on
   await dialog.getByRole('switch', { name: en.Files.trust, exact: true }).click();
   await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
   await page.getByRole('button', { name: /^Make a Paddock from / }).click();
-  await panelTab(page, 'Git');
+  await openChangesView(page, 'Git');
   const title = page.getByRole('heading', { level: 3, name: en.Files.copyHeading, exact: true });
   await expect(title).toBeVisible();
   await explainsAfter(page, title);

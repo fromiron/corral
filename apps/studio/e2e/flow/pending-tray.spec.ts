@@ -7,11 +7,15 @@ import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
 import {
+  closePanel,
   closeSettings,
+  maximizePanel,
   newConversation,
   openFolderSettings,
-  panelTab,
+  openPanelTab,
+  panelTabNamed,
   requestBox,
+  sessionPanel,
 } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
@@ -104,14 +108,14 @@ async function conversationWithWorkingCopy(page: Page, corral: Harness) {
   await closeSettings(page);
   await newConversation(page);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
-  await panelTab(page, 'Files');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   await page
     .getByRole('region', { name: 'Paddock' })
     .getByRole('button', { name: /Make a Paddock from/ })
     .click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
-  await panelTab(page, 'Conversation');
+  // The conversation alone again, so the scene measures it at its own width.
+  await closePanel(page);
   return { sessionId, cleanup: () => rm(original, { recursive: true, force: true }) };
 }
 
@@ -339,22 +343,32 @@ test('a card arriving while the person reads above leaves their place; Respond g
     ).toBeLessThanOrEqual(1);
     await expect(tray(page)).not.toBeInViewport();
 
-    // The run record reads the request and sends the person to the tray to answer it.
-    await panelTab(page, 'Runs');
-    // Its response area offers Respond; the header's pill beside it only says the run waits.
-    const respond = page.getByTestId('run-monitor').getByTestId('respond-in-conversation');
+    // The run record, beside the conversation, says the run waits and sends the person to the
+    // tray to answer it: too narrow there for its response area, its head offers Respond.
+    await openPanelTab(page, 'Runs');
+    const monitor = page.getByTestId('run-monitor');
+    const runTab = panelTabNamed(page, /^Run( #\d+)?$/);
+    // Beside the conversation, Respond leaves the panel and its tab as they are.
+    await monitor.getByTestId('run-respond').click();
+    await expect(runTab).toHaveAttribute('aria-selected', 'true');
+    await expect(sessionPanel(page)).toBeVisible();
+    await expect(tray(page)).toBeFocused();
+    await expect(tray(page)).toBeInViewport();
+    // Maximized, the record has the room to read the request in its response area, which
+    // offers Respond; the head's pill beside it only says the run waits.
+    await maximizePanel(page);
+    const respond = monitor.getByTestId('respond-in-conversation');
     await expect(respond).toBeVisible();
-    await expect(page.getByTestId('run-monitor').getByTestId('run-respond')).toHaveCount(0);
-    // The record reads it; the hidden conversation keeps the one way to answer it.
+    await expect(monitor.getByTestId('run-respond')).toHaveCount(0);
+    // The record reads it; the conversation keeps the one way to answer it.
     expect(await buttonsNamed(page, 'Allow once')).toBe(1);
-    const record = page.getByTestId('run-monitor').locator('[data-approval]');
+    const record = monitor.locator('[data-approval]');
     await expect(record).toContainText('Tool permission');
     await expect(record.locator('[data-approval-action]')).toHaveCount(0);
+    // Its Respond restores the panel beside the conversation, keeps the tab, and goes to the tray.
     await respond.click();
-    await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(sessionPanel(page).getByRole('button', { name: 'Maximize panel' })).toBeVisible();
+    await expect(runTab).toHaveAttribute('aria-selected', 'true');
     await expect(tray(page)).toBeFocused();
     await expect(tray(page)).toBeInViewport();
     await tray(page).getByRole('button', { name: 'Allow once', exact: true }).click();
@@ -428,8 +442,10 @@ const sampleComposer = () => {
   const frames: ComposerFrame[] = [];
   (window as unknown as { composerFrames: ComposerFrame[] }).composerFrames = frames;
   const sample = () => {
+    // Only while it is drawn: a conversation the panel is maximized over keeps its layout, hidden.
     const composer = document.querySelector('[data-testid="chat-composer"]');
-    const height = composer ? composer.getBoundingClientRect().height : null;
+    const drawn = composer?.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    const height = composer && drawn ? composer.getBoundingClientRect().height : null;
     const box = composer?.querySelector('textarea')?.getBoundingClientRect().height ?? 0;
     frames.push({
       notice: Boolean(document.querySelector('[data-testid="activity-bar"][data-line="waiting"]')),
@@ -532,15 +548,21 @@ test('coming back to a conversation whose question is in view brings no notice a
         (element.querySelector('textarea')?.getBoundingClientRect().height ?? 0),
     );
 
-    /** Away to another view and back, every frame sampled from just before leaving. */
+    /**
+     * Away from the conversation (the panel maximized over it) and back, every frame sampled
+     * from the moment it has left: on the way out the panel first opens beside it, which narrows
+     * the composer, a layout of its own. Back, the composer comes as it settles there; back to
+     * the conversation alone, that is where it was before.
+     */
     const roundTrip = async (
       name: string,
       away: () => Promise<void>,
       back: () => Promise<void>,
+      returns: 'alone' | 'beside the panel',
     ) => {
-      await page.evaluate(sampleComposer);
       await away();
       await expect(composer).toBeHidden();
+      await page.evaluate(sampleComposer);
       await waitForStill(page, { stillMs: 600 }).catch(() => undefined);
       await back();
       await expect(form).toBeVisible();
@@ -548,6 +570,9 @@ test('coming back to a conversation whose question is in view brings no notice a
       await expect(tray(page)).toBeInViewport();
       const frames = await composerFrames(page);
       expect(frames.length, `${name}: frames`).toBeGreaterThan(10);
+      const settled = frames.at(-1);
+      if (returns === 'alone')
+        expect([settled?.height, settled?.around], `${name}: settled`).toEqual([height, around]);
       expect(
         frames.filter((frame) => frame.notice),
         `${name}: notice`,
@@ -558,25 +583,32 @@ test('coming back to a conversation whose question is in view brings no notice a
       expect(
         [...new Set(frames.flatMap((frame) => (frame.around ? [frame.around] : [])))],
         `${name}: composer around its request box`,
-      ).toEqual([around]);
+      ).toEqual([settled?.around]);
       expect(
         Math.max(...frames.map((frame) => frame.height ?? 0)),
         `${name}: composer height`,
-      ).toBe(height);
+      ).toBe(settled?.height);
       await expect(waitingLine(page)).toHaveCount(0);
     };
 
-    // The run record in front, then back by the Conversation tab.
+    // The run record in front (its tab maximized over the conversation), then back by closing
+    // the panel.
     await roundTrip(
-      'record, by the tab',
-      () => panelTab(page, 'Runs'),
-      () => panelTab(page, 'Conversation'),
+      'record, by the toggle',
+      async () => {
+        await openPanelTab(page, 'Runs');
+        await maximizePanel(page);
+      },
+      () => closePanel(page),
+      'alone',
     );
-    // The run record in front, then back by its response area's Respond.
+    // The run record in front, then back by its response area's Respond, which restores the
+    // panel beside the conversation.
     await roundTrip(
       'record, by Respond',
       async () => {
-        await panelTab(page, 'Runs');
+        await openPanelTab(page, 'Runs');
+        await maximizePanel(page);
         await expect(
           page.getByTestId('run-monitor').getByTestId('respond-in-conversation'),
         ).toBeVisible();
@@ -585,12 +617,17 @@ test('coming back to a conversation whose question is in view brings no notice a
         await page.getByTestId('run-monitor').getByTestId('respond-in-conversation').click();
         await expect(tray(page)).toBeFocused();
       },
+      'beside the panel',
     );
-    // The files in front, then back by the Conversation tab.
+    // The files in front, then back by closing the panel.
     await roundTrip(
-      'files, by the tab',
-      () => panelTab(page, 'Files'),
-      () => panelTab(page, 'Conversation'),
+      'files, by the toggle',
+      async () => {
+        await openPanelTab(page, 'Files');
+        await maximizePanel(page);
+      },
+      () => closePanel(page),
+      'alone',
     );
 
     await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');

@@ -5,11 +5,18 @@ import { join } from 'node:path';
 import {
   activityBar,
   chooseRun,
+  closePanel,
   closeSettings,
+  confirmStop,
   openFolderSettings,
+  openPanelTab,
+  panelContent,
+  panelTabNamed,
+  panelToggle,
   requestBox,
   runGoing,
   slash,
+  stopConfirmation,
   stopRun,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -52,17 +59,15 @@ test('file and line references remain independent and Escape clears only an empt
       .getByRole('option')
       .filter({ hasText: 'README.md' })
       .click();
-    await page.getByRole('button', { name: 'Open file viewer', exact: true }).click();
+    // The file viewer is the panel's Files tab now.
+    await openPanelTab(page, 'Files');
     await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
     await page.getByRole('button', { name: 'More actions for README.md', exact: true }).click();
     await page.getByRole('menuitem', { name: 'Reference lines…', exact: true }).click();
     const reference = page.getByRole('dialog', { name: 'Reference lines', exact: true });
     await reference.getByLabel('To line', { exact: true }).fill('3');
     await reference.getByRole('button', { name: 'Reference lines', exact: true }).click();
-    await page
-      .getByRole('complementary', { name: 'File viewer', exact: true })
-      .getByRole('button', { name: 'Close file viewer', exact: true })
-      .click();
+    await closePanel(page);
     await box.press('End');
     await box.press('Space');
     await box.press('@');
@@ -157,8 +162,9 @@ test.describe('viewed and active execution', () => {
       await stopRun(page);
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
+      // The address selects Run #1: its tab opens beside the conversation.
       const sessionUrl = new URL(page.url());
-      sessionUrl.searchParams.set('run', first.runId);
+      sessionUrl.search = new URLSearchParams({ panel: 'run', run: first.runId }).toString();
       await page.goto(sessionUrl.href);
       holdReply();
       await box.fill('Second request');
@@ -169,9 +175,9 @@ test.describe('viewed and active execution', () => {
       expect(new URL(page.url()).searchParams.get('run')).toBe(first.runId);
       await expect(page.getByTestId('viewed-run-warning')).toHaveCount(0);
       await expect(activityBar(page)).not.toContainText('Selected run');
-      await expect(page.getByRole('button', { name: 'View active run', exact: true })).toHaveCount(
-        0,
-      );
+      await expect(
+        page.getByTestId('chat-composer').getByRole('button', { name: 'View active run' }),
+      ).toHaveCount(0);
       // While Run #2 goes the send key joins it.
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       await expect(page.getByTestId('composer-destination')).toContainText('· Join');
@@ -182,8 +188,9 @@ test.describe('viewed and active execution', () => {
         'Send to: after the current run in this conversation · next request',
       );
       await page.screenshot({ path: testInfo.outputPath('composer-active-run.png') });
-      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
-      await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+      // The active run's record, then back to the conversation alone.
+      await openPanelTab(page, 'Runs');
+      await closePanel(page);
       await expect(runGoing(page)).toBeVisible();
       await expect(box).toHaveValue('Keep this next request');
       await expect(page.getByTestId('composer-destination')).toHaveText(
@@ -213,8 +220,9 @@ test.describe('viewed and active execution', () => {
       releaseReply();
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('cancelled');
 
+      // Run #1's record beside the conversation.
       const sessionUrl = new URL(page.url());
-      sessionUrl.searchParams.set('run', first.runId);
+      sessionUrl.search = new URLSearchParams({ panel: 'run', run: first.runId }).toString();
       await page.goto(sessionUrl.href);
       holdReply();
       await box.fill('Second request');
@@ -222,7 +230,7 @@ test.describe('viewed and active execution', () => {
       await expect(runGoing(page)).toBeVisible();
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
-      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
+      await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(first.runId);
 
       const cancellations: { runId: string; type: string }[] = [];
@@ -232,13 +240,10 @@ test.describe('viewed and active execution', () => {
         if (command.type === 'cancel') cancellations.push(command);
       });
       await page.keyboard.press('ControlOrMeta+.');
-      const confirmation = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
-      await expect(confirmation).toBeVisible();
+      await expect(stopConfirmation(page)).toBeVisible();
       expect(cancellations).toEqual([]);
       expect(corral.server.coordinator.getSnapshot(second.runId).projection.status).toBe('running');
-      await confirmation
-        .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-        .click();
+      await confirmStop(page);
       await expect
         .poll(() => cancellations.map((command) => command.runId))
         .toEqual([second.runId]);
@@ -278,31 +283,36 @@ test.describe('viewed and active execution', () => {
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
 
-      await page.getByRole('tab', { name: 'Runs', exact: true }).click();
-      const header = page.getByTestId('run-header');
-      const line = header.getByTestId('run-active-elsewhere');
+      await openPanelTab(page, 'Runs');
+      const header = (run: string) => panelContent(page, run).getByTestId('run-header');
+      const line = header('Run #1').getByTestId('run-active-elsewhere');
       // The newest run is the one going: no line while it shows.
       await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
-      await expect(line).toHaveCount(0);
+      await expect(header('Run #2').getByTestId('run-active-elsewhere')).toHaveCount(0);
+      // Choosing Run #1 in the path opens its tab.
       await chooseRun(page, 1);
       await expect(page.getByRole('banner').getByRole('button', { name: /Run #1/ })).toBeVisible();
       await expect(line).toBeVisible();
       await expect(line).toContainText('Run #2');
       await expect(line.getByRole('button')).toHaveCount(1);
-      // On a narrow header the line keeps its control on screen.
+      // On a narrow header the line keeps its control on screen. Without room beside the
+      // conversation the panel withdraws, and its toggle brings it back as a drawer.
       await page.setViewportSize({ width: 390, height: 844 });
+      await panelToggle(page).click();
       await expect(
         line.getByRole('button', { name: 'View active run', exact: true }),
       ).toBeInViewport();
       await page.screenshot({ path: testInfo.outputPath('run-active-elsewhere-narrow.png') });
       await page.setViewportSize({ width: 1280, height: 800 });
+      // The line selects the active run's tab, which takes the focus (features/session-panel.md
+      // 접근성); Run #1's tab stays.
       await line.getByRole('button', { name: 'View active run', exact: true }).click();
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(second.runId);
       await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
-      await expect(line).toHaveCount(0);
-      await expect(header.locator('[data-run-title]')).toBeFocused();
+      await expect(panelTabNamed(page, 'Run #2')).toBeFocused();
+      await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'false');
       // Choosing it changed neither the draft nor where the composer sends.
-      await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+      await closePanel(page);
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');
       expect(corral.errors).toEqual([]);
     } finally {

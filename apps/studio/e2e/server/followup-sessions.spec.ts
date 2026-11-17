@@ -107,9 +107,7 @@ for (const locale of ['en', 'ko'] as const) {
         const row = panel.getByRole('listitem').filter({ hasText: session.title });
         await row.getByRole('button', { name: new RegExp(m.Sessions.restoreSession) }).click();
         await expect(
-          page
-            .getByTestId('app-sidebar')
-            .locator(`a[href="/sessions/${session.sessionId}?compose=true"]`),
+          page.getByTestId('app-sidebar').locator(`a[href="/sessions/${session.sessionId}"]`),
         ).toBeVisible();
         expect((await api(page, `/sessions/${session.sessionId}`)).archivedAt).toBeNull();
       }

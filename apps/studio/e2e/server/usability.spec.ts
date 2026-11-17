@@ -4,12 +4,14 @@ import { type DemoTemplate, templateForWorkspace } from '../../src/demo/template
 import { approvalResearchTeam } from '../../src/demo/testing/approval-team.ts';
 import {
   activityBar,
+  closePanel,
   newConversationFromSidebar,
   openActivity,
   openConversationDetails,
   openLibrary,
   openLibraryTeams,
-  panelTab,
+  openPanelTab,
+  panelContent,
   requestBox,
   runControls,
   selectSessionTeam,
@@ -21,8 +23,8 @@ const request = requestBox;
 const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function openResultsList(page: Page) {
-  await panelTab(page, 'Results');
-  return page.getByRole('tabpanel', { name: 'Runs', exact: true });
+  await openPanelTab(page, 'Results');
+  return panelContent(page, 'Results');
 }
 
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {
@@ -325,7 +327,7 @@ test.describe('long multi-agent output', () => {
     }
 
     // A failed reload must not claim that completed work has no artifacts.
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     await page.route('**/api/v1/runs/*/snapshot', (route) => route.abort());
     await openResultsList(page);
     await page.reload();
@@ -420,7 +422,7 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
     .getByTestId('artifact-viewer')
     .getByRole('button', { name: 'Close', exact: true })
     .click();
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();
