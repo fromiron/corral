@@ -36,6 +36,7 @@ import {
 import {
   effectiveShortcuts,
   LOCAL_KEYS,
+  passesTyping,
   SHORTCUTS,
   type ShortcutId,
   shortcutFor,
@@ -141,11 +142,7 @@ export function CommandLayer({
         return;
       }
       const hit = shortcutFor(event);
-      if (
-        typing(event) &&
-        !['palette', 'help', 'composer.focus', 'run.stop'].includes(hit?.id ?? '')
-      )
-        return;
+      if (typing(event) && !(hit && passesTyping(hit.id, event.target as Element | null))) return;
       if (hit?.id === 'palette') {
         event.preventDefault();
         if (palette) close();
@@ -170,10 +167,7 @@ export function CommandLayer({
         field?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(field?.tagName ?? '');
       const map = Object.fromEntries(
         Object.entries(effectiveShortcuts(bindings)).filter(
-          ([id]) =>
-            !held() &&
-            !capturing &&
-            (!editing || ['palette', 'help', 'composer.focus', 'run.stop'].includes(id)),
+          ([id]) => !held() && !capturing && (!editing || passesTyping(id as ShortcutId, field)),
         ),
       );
       void desktop?.shortcuts(map).catch(() => {});
@@ -838,6 +832,7 @@ const LABEL: Record<ShortcutId, string> = {
   'session.jump': 'sessionJump',
   'view.sidebar': 'viewSidebar',
   'view.panel': 'viewPanel',
+  'view.dock': 'viewDock',
   'composer.focus': 'composerFocus',
   settings: 'settings',
   'nav.back': 'navBack',

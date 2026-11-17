@@ -12,6 +12,7 @@ import {
   type TextAttachmentProvenance,
 } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { shortcutFor } from '../../shortcuts.ts';
 import { WORKSPACE_CHANGED } from '../workspaceEvents.ts';
 import { createXterm, type XtermRuntime } from './xterm.ts';
 
@@ -655,6 +656,8 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
             onExit();
             return false;
           }
+          // The bottom dock's key toggles the dock from here; the shell never gets it.
+          if (shortcutFor(event)?.id === 'view.dock') return false;
           return true;
         });
         patch(id, {});

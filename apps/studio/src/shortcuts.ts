@@ -21,6 +21,7 @@ export type ShortcutId =
   | 'session.jump'
   | 'view.sidebar'
   | 'view.panel'
+  | 'view.dock'
   | 'composer.focus'
   | 'settings'
   | 'nav.back'
@@ -43,6 +44,8 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'session.jump', chord: { mod: true, key: 'Digit' }, web: null },
   { id: 'view.sidebar', chord: { mod: true, key: 'b' } },
   { id: 'view.panel', chord: { mod: true, alt: true, key: 'b' } },
+  // The bottom dock (features/session-panel.md 하단 도크): the same keys in a browser.
+  { id: 'view.dock', chord: { mod: true, key: 'j' } },
   { id: 'composer.focus', chord: { mod: true, key: 'l' } },
   { id: 'settings', chord: { mod: true, key: ',' } },
   { id: 'nav.back', chord: { mod: true, key: '[' } },
@@ -78,6 +81,19 @@ export const LOCAL_KEYS = [
   { id: 'redo', keys: () => formatChord({ mod: true, shift: true, key: 'z' }) },
   { id: 'close', keys: () => 'Esc' },
 ] as const;
+
+/** Shortcuts that work while the focus is in a text field (the composer, an input). */
+const WHILE_TYPING: readonly ShortcutId[] = ['palette', 'help', 'composer.focus', 'run.stop'];
+
+/**
+ * Whether a shortcut acts while the focus is in a text field. The dock's key also acts in a
+ * terminal, whose input is a textarea inside its screen: the dock closes and the shell never
+ * gets the key.
+ */
+export function passesTyping(id: ShortcutId, target: Element | null): boolean {
+  if (WHILE_TYPING.includes(id)) return true;
+  return id === 'view.dock' && Boolean(target?.closest('[data-terminal-screen]'));
+}
 
 export function chordOf(id: ShortcutId): Chord | null {
   return effectiveShortcuts()[id] ?? null;

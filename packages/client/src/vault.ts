@@ -22,6 +22,7 @@ export interface PortableApplication {
       | 'session.jump'
       | 'view.sidebar'
       | 'view.panel'
+      | 'view.dock'
       | 'composer.focus'
       | 'settings'
       | 'nav.back'

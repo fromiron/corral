@@ -1429,6 +1429,7 @@
     "sessionJump": "Go to a conversation in this project",
     "viewSidebar": "Show or hide the sidebar",
     "viewPanel": "Show or hide the panel",
+    "viewDock": "Toggle bottom dock",
     "composerFocus": "Go to the request box",
     "settings": "Settings",
     "navBack": "Back",

@@ -1429,6 +1429,7 @@
     "sessionJump": "이 프로젝트의 대화로 이동",
     "viewSidebar": "사이드바 보이기/숨기기",
     "viewPanel": "패널 여닫기",
+    "viewDock": "하단 도크 여닫기",
     "composerFocus": "요청 입력칸으로 이동",
     "settings": "설정",
     "navBack": "뒤로",

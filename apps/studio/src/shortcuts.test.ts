@@ -1,5 +1,6 @@
+// @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
-import { SHORTCUTS, shortcutFor, shortcutLabel } from './shortcuts.ts';
+import { passesTyping, SHORTCUTS, shortcutFor, shortcutLabel } from './shortcuts.ts';
 
 // Workbench polish P4: one shortcut table; what help shows is what the key handler matches.
 
@@ -51,6 +52,37 @@ describe('shortcut table', () => {
     expect(shortcutFor(press({ key: 'œ', code: 'KeyQ', altKey: true }))?.id).toBe('reply.quote');
     expect(shortcutFor(press({ key: 'q', code: 'KeyQ' }))).toBeNull();
     expect(shortcutLabel('reply.quote')).toBe('Alt+Q');
+  });
+
+  it('toggles the bottom dock with Mod+J, the same in the desktop app and a browser', () => {
+    expect(shortcutFor(press({ key: 'j', code: 'KeyJ', ctrlKey: true }))?.id).toBe('view.dock');
+    expect(shortcutFor(press({ key: 'J', code: 'KeyJ', ctrlKey: true }))?.id).toBe('view.dock');
+    expect(shortcutLabel('view.dock')).toBe('Ctrl+J');
+    (globalThis as { corralDesktop?: unknown }).corralDesktop = {};
+    expect(shortcutFor(press({ key: 'j', code: 'KeyJ', ctrlKey: true }))?.id).toBe('view.dock');
+  });
+
+  it('keeps the dock’s key out of the composer and text fields, but takes it in a terminal', () => {
+    const composer = document.createElement('textarea');
+    const field = document.createElement('input');
+    const screen = document.createElement('div');
+    screen.setAttribute('data-terminal-screen', '');
+    // xterm's own input is a textarea inside the terminal's screen.
+    const terminalInput = document.createElement('textarea');
+    screen.append(terminalInput);
+    document.body.append(composer, field, screen);
+    try {
+      expect(passesTyping('view.dock', composer)).toBe(false);
+      expect(passesTyping('view.dock', field)).toBe(false);
+      expect(passesTyping('view.dock', terminalInput)).toBe(true);
+      // Other keys keep their rule in a terminal: the panel's toggle stays quiet there.
+      expect(passesTyping('view.panel', terminalInput)).toBe(false);
+      expect(passesTyping('palette', composer)).toBe(true);
+    } finally {
+      composer.remove();
+      field.remove();
+      screen.remove();
+    }
   });
 
   it('gives every shortcut a distinct chord', () => {
