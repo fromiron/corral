@@ -173,7 +173,7 @@ it('an index conflict requests explicit refresh without silently changing the ca
   expect(gitDiff).toHaveBeenCalledTimes(1);
 });
 
-it('a missing session copy can explicitly switch to an unborn project without creating a copy', async () => {
+it('without a copy the Git view starts on the original, and Paddock can still be chosen without creating a copy', async () => {
   const project: GitStatus = {
     ...status(),
     target: { kind: 'project', hostId: 'host', projectId: 'project', bindingId: 'binding' },
@@ -192,31 +192,29 @@ it('a missing session copy can explicitly switch to an unborn project without cr
     return project;
   });
   const createWorktree = vi.fn();
-  // Without a copy the session's Git state is not requested at all (no failed request).
   const worktree = vi.fn(async () => null);
   const f = await mount({ gitStatus, createWorktree, worktree });
-  // The copy setup above the view says there is no copy; the Git view says nothing of its own,
-  // and keeps its source picker and refresh.
-  expect(f.container.querySelector('[role="status"]')).toBeNull();
-  expect(f.container.querySelector('[role="alert"]')).toBeNull();
-  expect(f.container.textContent).not.toContain('Git.noSessionCopy');
-  expect(f.container.querySelector('[role=combobox]')).not.toBeNull();
-  expect(
-    [...f.container.querySelectorAll('button')].some((b) => b.textContent === 'Git.refresh'),
-  ).toBe(true);
-  expect(gitStatus).not.toHaveBeenCalled();
+  // The original's state first, not Paddock over an empty view (workbench.md).
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
+  expect(f.container.querySelector('[role=combobox]')?.textContent).toContain('Git.projectSource');
+  expect(f.container.textContent).toContain('Git.unborn');
+  expect(f.container.textContent).toContain('Git.noUpstream');
+  // Paddock is still there to choose: without a copy nothing of it is read, and the copy setup
+  // above the view says so; this view says nothing of its own.
   await act(async () => f.container.querySelector<HTMLButtonElement>('[role=combobox]')?.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
-    (item) => item.textContent === 'Git.projectSource',
+    (item) => item.textContent === 'Git.sessionSource',
   );
   expect(option).toBeDefined();
   await act(async () => option?.focus());
   await act(async () =>
     option?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
-  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
-  expect(f.container.textContent).toContain('Git.unborn');
-  expect(f.container.textContent).toContain('Git.noUpstream');
+  expect(f.container.querySelector('[role=combobox]')?.textContent).toContain('Git.sessionSource');
+  expect(gitStatus).toHaveBeenCalledTimes(1);
+  expect(f.container.querySelector('[role="status"]')).toBeNull();
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Git.unborn');
   expect(createWorktree).not.toHaveBeenCalled();
 });
 
@@ -258,7 +256,7 @@ it('workspace changes refresh an existing copy and trust without losing the draf
   sessionStorage.clear();
   let hasCopy = false;
   let trusted = false;
-  const gitStatus = vi.fn(async () => status());
+  const gitStatus = vi.fn(async (_scope: unknown) => status());
   const binding = vi.fn(async () => ({ trusted }));
   const gitChange = vi.fn(async () => {
     throw new Error('response lost');
@@ -269,8 +267,8 @@ it('workspace changes refresh an existing copy and trust without losing the draf
     gitChange,
     worktree: vi.fn(async () => (hasCopy ? { missing: false } : null)),
   });
-  // No copy: nothing of the session's Git is read or offered.
-  expect(gitStatus).not.toHaveBeenCalled();
+  // No copy: the original's Git is read first; nothing of the session's is read or offered.
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
   expect(control(f.container, 'Git.stage')).toEqual([]);
   hasCopy = true;
   trusted = true;

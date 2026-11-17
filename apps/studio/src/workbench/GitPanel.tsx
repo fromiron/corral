@@ -80,8 +80,13 @@ const FAILURE_KEYS = {
 export function GitPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
-  const [source, setSource] = useState<'session' | 'project'>('session');
+  // The source the person chose; until then a conversation with a copy starts on its Paddock and
+  // one without starts on the original (workbench.md), so nothing reads over an empty view.
+  const [chosen, setSource] = useState<'session' | 'project' | null>(null);
   const [revision, setRevision] = useState(0);
+  const [copied, setCopied] = useState<{ sessionId: string; present: boolean } | null>(null);
+  const hasCopy = copied?.sessionId === sessionId ? copied.present : null;
+  const source = chosen ?? (hasCopy === false ? 'project' : 'session');
   const [trusted, setTrusted] = useState(false);
   const [busy, setBusy] = useState<Pending | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<Pending | null>(null);
@@ -122,6 +127,21 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       live = false;
     };
   }, [workspaces, projectId, revision]);
+  useEffect(() => {
+    void revision;
+    let live = true;
+    if (!workspaces || mode !== 'server' || !workspaceId) {
+      setCopied({ sessionId, present: true });
+      return;
+    }
+    void workspaces.worktree(sessionId).then(
+      (view) => live && setCopied({ sessionId, present: Boolean(view && !view.missing) }),
+      () => live && setCopied({ sessionId, present: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workspaces, workspaceId, mode, sessionId, revision]);
   const settle = useCallback(
     (receipt: GitOperation | GitAdvancedOperation, pending: Pending) => {
       if (context.current.workspaces !== workspaces || context.current.sessionId !== sessionId)
@@ -299,9 +319,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     };
   }, [status, workspaces, sessionId]);
   const id = useId();
+  // Until the copy is known, the source is not: nothing is read yet.
+  const sourceKnown = chosen !== null || hasCopy !== null;
   useEffect(() => {
     let live = true;
     const client = query.client;
+    if (!sourceKnown) return;
     if (!client || query.mode !== 'server' || !query.hostId) {
       setLoaded({ query, data: null, error: true });
       return;
@@ -342,7 +365,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     return () => {
       live = false;
     };
-  }, [query]);
+  }, [query, sourceKnown]);
   const loadKey =
     status && selected
       ? canonicalJson([
