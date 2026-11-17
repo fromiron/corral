@@ -48,6 +48,8 @@
 | 공유 개발 모드·task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
 | 웹 페이지 하나를 여는 패널의 탭 | Browser / 브라우저 | 패널 `browser`, 슬래시 `/browser`, [브라우저 탭](features/browser-tab.md) | 웹뷰, 브라우저 창 |
 | preview lease로 연 브라우저 탭의 페이지 | Preview / 미리보기 | 미리보기 페이지, preview lease | 관리형 미리보기 |
+| 브라우저 탭의 페이지에서 요소를 짚어 단 글과 바꿔 본 스타일 | Annotate / 주석(켜는 버튼), Note / 주석(칸과 칩) | 단축키 `browser.annotate`, 첨부 `annotation.json`, [브라우저 주석](features/browser-annotate.md) | 코멘트, 피드백, 요소 캡처. 코드의 주석(comment)과는 다른 것이다 |
+| 주석을 보내지 않고 번호를 붙여 입력창에 모으는 스위치 | Collect / 모아 두기 | — | 큐, 쌓기 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 | 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 기록의 Reins 영역은 Instruction / 지시를 쓴다), Steer |
