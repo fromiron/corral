@@ -3167,6 +3167,39 @@ describe('a run tab beside the conversation and over it', () => {
     expect(header(container)?.querySelector('h3')).toBeNull();
   });
 
+  it('leaves the head out for a lost instruction to one execution, which its Reins says', async () => {
+    const { container, run } = await mount(
+      'inline_team',
+      null,
+      {},
+      'Summarise the release',
+      false,
+      ['worker'],
+      undefined,
+      beside(),
+    );
+    await waitFor(run, 0);
+    await act(async () =>
+      run.setState({
+        commandError: 'Failed to fetch',
+        unconfirmedCommands: {
+          cmd_steer: {
+            error: 'Failed to fetch',
+            command: {
+              schemaVersion: '0.1',
+              runId: 'run_layout',
+              commandId: 'cmd_steer',
+              type: 'steer',
+              payload: { targetExecutionId: 'exec_1', text: 'Shorter', delivery: 'next_request' },
+            },
+          },
+        },
+      }),
+    );
+    expect(header(container)).toBeNull();
+    expect(container.textContent).not.toContain('Failed to fetch');
+  });
+
   it('puts only Respond in the head for a new approval, opening the response area only once maximized', async () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
     const respond = vi.fn();
