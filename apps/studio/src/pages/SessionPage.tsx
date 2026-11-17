@@ -990,6 +990,14 @@ function WorkSessionPage() {
                     strip={strip}
                     onSelect={select}
                     onClose={close}
+                    onReorder={(key, toIndex) => {
+                      if (!heldByConfirmation()) frame.dispatch({ type: 'reorder', key, toIndex });
+                    }}
+                    // Out by drag into the dock: as a close, ending nothing.
+                    onMoveOut={(key) => closeTab(key)}
+                    onMoveIn={(terminalId, index) =>
+                      frame.dispatch({ type: 'moveIn', terminalId, index })
+                    }
                     runs={runs}
                     runNames={runNames}
                     onPlus={(item) => open(plusTarget(item, ctx), 'plus')}

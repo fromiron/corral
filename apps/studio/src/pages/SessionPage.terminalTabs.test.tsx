@@ -618,3 +618,174 @@ it('대화 A에서 panel=terminal 링크로 패널을 열었다 → 패널이 �
   await until(() => presentation() === 'closed');
   expect(document.activeElement).toBe(toggleButton());
 });
+
+// 탭의 순서와 옮기기: the strips' own drag (pointer events, never an HTML5 drag) and
+// Mod+Shift+←/→. The panel's strip lies at y 0–40 and the dock's at y 100–140; tabs are 100px wide
+// from x 0.
+function layOutStrips() {
+  const original = Element.prototype.getBoundingClientRect;
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+    }) as DOMRect;
+  const tops: Record<string, number> = { [W.panelTabs]: 0, [W.dockTabs]: 100 };
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    const strip = this.closest<HTMLElement>('[data-slot="tabs-closable"]');
+    const label = strip?.querySelector('[role="tablist"]')?.getAttribute('aria-label') ?? '';
+    const top = tops[label];
+    if (top !== undefined && this.getAttribute('role') === 'tab')
+      return box(Number((this as HTMLElement).dataset.fluidHoverIndex) * 100, top + 6, 100, 28);
+    if (top !== undefined && this === strip) return box(0, top, 600, 40);
+    return original.call(this);
+  };
+  cleanups.push(() => {
+    Element.prototype.getBoundingClientRect = original;
+  });
+}
+const at = (x: number, y: number) => ({
+  bubbles: true,
+  cancelable: true,
+  pointerId: 1,
+  pointerType: 'mouse',
+  button: 0,
+  buttons: 1,
+  clientX: x,
+  clientY: y,
+});
+async function drag(tab: HTMLElement | null, from: [number, number], to: [number, number]) {
+  expect(tab, 'the tab to drag is on screen').toBeTruthy();
+  const target = tab as HTMLElement;
+  await act(async () => {
+    target.dispatchEvent(new PointerEvent('pointerdown', at(...from)));
+    target.dispatchEvent(new PointerEvent('pointermove', at(...to)));
+    target.dispatchEvent(new PointerEvent('pointerup', at(...to)));
+  });
+  await settle();
+}
+const historyLength = (shell: MountedShell) => shell.router.history.length;
+
+it('하단 도크의 터미널 1 탭을 패널의 탭 줄로 끌어 파일 탭 앞에 놓는다 → 패널의 파일 탭 앞에 선택돼 있고 같은 터미널이며, 도크는 탭 없이 열린 채 본문에 목록을 보이고, 기록은 쌓이지 않는다', async () => {
+  const world = await serverWorld();
+  window.localStorage.setItem(
+    panelMemoryKey(world.sessionId),
+    serializePanelMemory({ tabs: [{ kind: 'files' }], selected: 'files', open: true }),
+  );
+  dockHoldsTerminal(world);
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await until(() => dockSelected() === W.terminal(1) && panelSelected() === W.files);
+  layOutStrips();
+  const before = historyLength(shell);
+  await drag(tabIn(dock(), W.dockTabs, W.terminal(1)), [50, 120], [10, 20]);
+  await until(() => panelTabNames().length === 2);
+  expect(panelTabNames()).toEqual([W.terminal(1), W.files]);
+  expect(panelSelected()).toBe(W.terminal(1));
+  expect(visiblePanel(side())?.textContent).toContain('terminal_one');
+  expect(dockTabNames()).toEqual([]);
+  expect(dockState()).toBe('open');
+  expect(dock()?.querySelector('[data-dock-list]')).not.toBeNull();
+  expect(server(world).stops).toEqual([]);
+  expect(historyLength(shell)).toBe(before);
+  expect(search(shell).panel).toBe('terminal');
+});
+
+it('패널의 터미널 탭을 도크의 탭 줄로 끌어 놓으면 도크의 그 자리에 선택돼 놓이고, 파일 탭을 도크로 끌어 놓으면 아무것도 바뀌지 않는다', async () => {
+  const world = await serverWorld({ terminals: ['running', 'running'] });
+  panelHoldsTerminal(world);
+  window.localStorage.setItem(
+    dockMemoryKey(world.sessionId),
+    serializeDockMemory({
+      tabs: [{ kind: 'terminal', terminalId: 'terminal_two' }],
+      selected: 'terminal:terminal_two',
+      open: true,
+      height: 240,
+    }),
+  );
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => panelSelected() === W.terminal(1) && dockSelected() === W.terminal(2));
+  layOutStrips();
+  await drag(tabIn(side(), W.panelTabs, W.files), [50, 20], [10, 120]);
+  expect(panelTabNames()).toEqual([W.files, W.terminal(1)]);
+  expect(dockTabNames()).toEqual([W.terminal(2)]);
+  await drag(tabIn(side(), W.panelTabs, W.terminal(1)), [150, 20], [10, 120]);
+  await until(() => dockTabNames().length === 2);
+  expect(dockTabNames()).toEqual([W.terminal(1), W.terminal(2)]);
+  expect(dockSelected()).toBe(W.terminal(1));
+  expect(panelTabNames()).toEqual([W.files]);
+  expect(server(world).stops).toEqual([]);
+});
+
+it('패널의 탭을 끌어 같은 줄의 다른 자리에 놓으면 순서가 바뀌고 선택과 기록은 그대로다; 줄 밖에 놓으면 아무것도 바뀌지 않는다', async () => {
+  const world = await serverWorld();
+  panelHoldsTerminal(world);
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await until(() => panelSelected() === W.terminal(1));
+  layOutStrips();
+  const before = historyLength(shell);
+  await drag(tabIn(side(), W.panelTabs, W.terminal(1)), [150, 20], [10, 20]);
+  await until(() => panelTabNames()[0] === W.terminal(1));
+  expect(panelTabNames()).toEqual([W.terminal(1), W.files]);
+  expect(panelSelected()).toBe(W.terminal(1));
+  expect(historyLength(shell)).toBe(before);
+  // Let go outside any strip: nothing moves.
+  await drag(tabIn(side(), W.panelTabs, W.files), [150, 20], [150, 400]);
+  expect(panelTabNames()).toEqual([W.terminal(1), W.files]);
+  expect(dockTabNames()).toEqual([]);
+});
+
+it.each([
+  ['패널', 'panel'],
+  ['하단 도크', 'dock'],
+] as const)(
+  '%s의 탭에 포커스를 두고 Mod+Shift+← · → → 그 탭이 한 자리 옮겨 가고 포커스는 그 탭에 남으며 낭독기가 새 자리를 알린다; 줄의 끝에서는 옮겨 가지 않는다',
+  async (_where, where) => {
+    const world = await serverWorld({ terminals: ['running', 'running'] });
+    if (where === 'panel') panelHoldsTerminal(world);
+    else
+      window.localStorage.setItem(
+        dockMemoryKey(world.sessionId),
+        serializeDockMemory({
+          tabs: [
+            { kind: 'terminal', terminalId: 'terminal_one' },
+            { kind: 'terminal', terminalId: 'terminal_two' },
+          ],
+          selected: 'terminal:terminal_two',
+          open: true,
+          height: 240,
+        }),
+      );
+    await open(world, `/sessions/${world.sessionId}`);
+    const scope = where === 'panel' ? side : dock;
+    const label = where === 'panel' ? W.panelTabs : W.dockTabs;
+    const names = () => stripTabs(scope(), label).map(tabName);
+    const [firstName, lastName] =
+      where === 'panel' ? [W.files, W.terminal(1)] : [W.terminal(1), W.terminal(2)];
+    await until(() => names().length === 2);
+    const moving = tabIn(scope(), label, lastName) as HTMLElement;
+    await act(async () => moving.focus());
+    await key(moving, { key: 'ArrowLeft', ctrlKey: true, shiftKey: true });
+    await until(() => names()[0] === lastName);
+    expect(names()).toEqual([lastName, firstName]);
+    expect(document.activeElement).toBe(tabIn(scope(), label, lastName));
+    const announcer = scope()?.querySelector('[data-slot="tabs-closable-announcer"]');
+    expect(announcer?.textContent).toBe(
+      messages.SessionPanel.tabPosition
+        .replace('{label}', lastName)
+        .replace('{n}', '1')
+        .replace('{count}', '2'),
+    );
+    // At the strip's start it goes no further.
+    await key(document.activeElement as HTMLElement, {
+      key: 'ArrowLeft',
+      ctrlKey: true,
+      shiftKey: true,
+    });
+    expect(names()).toEqual([lastName, firstName]);
+  },
+);

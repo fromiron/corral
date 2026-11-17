@@ -600,6 +600,14 @@ export function useSessionDockArea(input: DockAreaInput) {
               line={line}
               onSelect={select}
               onClose={close}
+              onReorder={(key, toIndex) => {
+                if (!held()) dispatch({ type: 'reorder', key, toIndex });
+              }}
+              // Out by drag into the panel: as a close of the last tab, the dock stays open.
+              onMoveOut={(key) => dispatch({ type: 'close', key })}
+              onMoveIn={(terminalId, index) =>
+                dispatch({ type: 'open', tab: { kind: 'terminal', terminalId }, index })
+              }
               onTerminal={(shellId) => onPlusTerminal('dock', shellId)}
               onDebug={onDebug}
               renderTab={renderTab}

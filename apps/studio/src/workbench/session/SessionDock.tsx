@@ -26,6 +26,8 @@ import { type DockKey, type DockState, type DockTab, dockKey } from '../panel/do
 import type { CreationBlock } from '../terminals/creation.ts';
 
 export const DOCK_ID_PREFIX = 'session-dock';
+/** The panel's strip and the dock's share it: terminal tabs cross between them by drag. */
+export const TERMINAL_MOVE_GROUP = 'session-terminals';
 
 /** What the dock's "+" lists: the terminal row (usable or not, with its shells) and the debugger. */
 export interface DockPlus {
@@ -201,6 +203,9 @@ export function SessionDock({
   line,
   onSelect,
   onClose,
+  onReorder,
+  onMoveOut,
+  onMoveIn,
   onTerminal,
   onDebug,
   renderTab,
@@ -218,6 +223,12 @@ export function SessionDock({
   line: ReactNode;
   onSelect: (key: DockKey) => void;
   onClose: (key: DockKey) => void;
+  /** A tab dragged, or moved by Mod+Shift+←/→, to `toIndex` in the strip. */
+  onReorder: (key: DockKey, toIndex: number) => void;
+  /** A terminal's tab dragged out into the panel: it leaves as a close, ending nothing. */
+  onMoveOut: (key: DockKey) => void;
+  /** A terminal's tab dragged in from the panel, let go before the tab at `index`. */
+  onMoveIn: (terminalId: string, index: number) => void;
   /** "+" → 터미널: the shell chosen in the submenu, or none. */
   onTerminal: (shellId?: string) => void;
   onDebug: () => void;
@@ -237,7 +248,7 @@ export function SessionDock({
       label,
       ...(tab.kind === 'terminal' ? { shortLabel: label.replace(/^\D+/, '') || label } : {}),
       icon: tab.kind === 'debug' ? Bug : Terminal,
-      ...(tab.kind === 'terminal' ? stateOf(tab.terminalId) : {}),
+      ...(tab.kind === 'terminal' ? { ...stateOf(tab.terminalId), movable: true } : {}),
     };
   });
   const terminalRow = plus.terminal;
@@ -308,6 +319,13 @@ export function SessionDock({
           onClose={(id) => onClose(id as DockKey)}
           closeLabel={(tab) => t('close', { name: tab.label })}
           trailing={plusMenu}
+          onReorder={(id, toIndex) => onReorder(id as DockKey, toIndex)}
+          announceMove={(tab, n, count) => t('tabPosition', { label: tab.label, n, count })}
+          moveGroup={TERMINAL_MOVE_GROUP}
+          onMoveOut={(id) => onMoveOut(id as DockKey)}
+          onMoveIn={(id, index) => {
+            if (id.startsWith('terminal:')) onMoveIn(id.slice('terminal:'.length), index);
+          }}
         />
       </div>
       {dock.tabs.map((tab) => {

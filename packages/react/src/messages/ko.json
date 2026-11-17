@@ -4643,6 +4643,7 @@
     "runShort": "#{number}",
     "dock": "하단 도크",
     "dockToggle": "하단 도크 여닫기",
+    "tabPosition": "{label}: {n}번째 / {count}개",
     "dockTabs": "하단 도크 탭",
     "dockHeight": "하단 도크 높이",
     "terminalTab": "터미널 {number}",

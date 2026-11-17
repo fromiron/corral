@@ -43,6 +43,7 @@ import {
 import { listedRunPresence } from '../sessionList.ts';
 import {
   type DockPlus,
+  TERMINAL_MOVE_GROUP,
   TerminalListRow,
   TerminalPlusItem,
   useTerminalTabState,
@@ -234,6 +235,9 @@ export function SessionPanelSide({
   runNames,
   onSelect,
   onClose,
+  onReorder,
+  onMoveOut,
+  onMoveIn,
   onPlus,
   terminalRow,
   terminals,
@@ -252,6 +256,12 @@ export function SessionPanelSide({
   strip: Ref<TabsClosableHandle>;
   onSelect: (key: TabKey) => void;
   onClose: (key: TabKey) => void;
+  /** A tab dragged, or moved by Mod+Shift+←/→, to `toIndex` in the strip. */
+  onReorder: (key: TabKey, toIndex: number) => void;
+  /** A terminal's tab dragged out into the bottom dock: it leaves as a close, ending nothing. */
+  onMoveOut: (key: TabKey) => void;
+  /** A terminal's tab dragged in from the bottom dock, let go before the tab at `index`. */
+  onMoveIn: (terminalId: string, index: number) => void;
   onPlus: (item: Exclude<PlusItem, 'terminal'>) => void;
   /** The "+" list's 터미널 row: null when the conversation has no Paddock in server mode. */
   terminalRow: DockPlus['terminal'];
@@ -345,7 +355,7 @@ export function SessionPanelSide({
       ...(marked
         ? { mark: <PresenceMark presence={marked} />, description: tp(marked.labelKey) }
         : {}),
-      ...(tab.kind === 'terminal' ? terminalState(tab.terminalId) : {}),
+      ...(tab.kind === 'terminal' ? { ...terminalState(tab.terminalId), movable: true } : {}),
     };
   });
   const maximized = state.presentation === 'maximized';
@@ -363,6 +373,13 @@ export function SessionPanelSide({
           onSelect={(id) => onSelect(id as TabKey)}
           onClose={(id) => onClose(id as TabKey)}
           closeLabel={(tab) => t('close', { name: tab.label })}
+          onReorder={(id, toIndex) => onReorder(id as TabKey, toIndex)}
+          announceMove={(tab, n, count) => t('tabPosition', { label: tab.label, n, count })}
+          moveGroup={TERMINAL_MOVE_GROUP}
+          onMoveOut={(id) => onMoveOut(id as TabKey)}
+          onMoveIn={(id, index) => {
+            if (id.startsWith('terminal:')) onMoveIn(id.slice('terminal:'.length), index);
+          }}
           trailing={
             items.length > 0 ? (
               <Menu>

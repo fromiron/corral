@@ -4643,6 +4643,7 @@
     "runShort": "#{number}",
     "dock": "Bottom dock",
     "dockToggle": "Toggle bottom dock",
+    "tabPosition": "{label}: {n} of {count}",
     "dockTabs": "Bottom dock tabs",
     "dockHeight": "Bottom dock height",
     "terminalTab": "Terminal {number}",

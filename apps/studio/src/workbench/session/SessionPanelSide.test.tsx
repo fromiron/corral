@@ -85,6 +85,9 @@ async function show({
           strip={{ current: null }}
           onSelect={() => {}}
           onClose={() => {}}
+          onReorder={() => {}}
+          onMoveOut={() => {}}
+          onMoveIn={() => {}}
           onPlus={onPlus}
           terminalRow={null}
           terminals={[]}
