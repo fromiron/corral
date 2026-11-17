@@ -133,6 +133,7 @@ function Row({
   index = 0,
   checked,
   disabled,
+  description,
   renderRow,
 }: {
   children?: ReactNode;
@@ -142,6 +143,7 @@ function Row({
   index?: number;
   checked?: boolean;
   disabled?: boolean;
+  description?: ReactNode;
   renderRow: (options: MenuItemRenderOptions) => ReactElement;
 }) {
   const context = useDropdown();
@@ -154,6 +156,7 @@ function Row({
         labelContent={children}
         checked={checked}
         disabled={disabled}
+        description={description}
       />
     </DropdownContext.Provider>
   );
@@ -163,6 +166,7 @@ function MenuItem({
   children,
   icon,
   label,
+  description,
   index,
   className,
   inset: _inset,
@@ -172,6 +176,9 @@ function MenuItem({
 }: MenuPrimitive.Item.Props & {
   /** A leading icon: the kit row draws it in its own icon column, not inside the label. */
   icon?: IconComponent;
+  /** A smaller second line under the label, which the row is described by: why a `disabled` row
+   *  is unavailable. A disabled row stays reachable by the arrows and does nothing when chosen. */
+  description?: ReactNode;
   index?: number;
   inset?: boolean;
   density?: 'default' | 'touch';
@@ -183,6 +190,7 @@ function MenuItem({
       label={label}
       index={index}
       disabled={props.disabled}
+      description={description}
       renderRow={({ element, children: content, label: text }) => (
         <MenuPrimitive.Item
           {...sourceRow(element)}
