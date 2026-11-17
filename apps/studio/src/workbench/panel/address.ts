@@ -10,6 +10,7 @@ import {
   type TabKey,
   tabKey,
   tabPanel,
+  targetTab,
 } from './tabs.ts';
 
 /**
@@ -24,7 +25,14 @@ export type AddressCase =
 
 /** The frame's part of an address: always exactly one of `panel` and `compose`. */
 export type PanelAddress =
-  | { readonly panel: SessionPanel; readonly run?: string; readonly terminal?: string }
+  | {
+      readonly panel: SessionPanel;
+      readonly run?: string;
+      readonly terminal?: string;
+      readonly file?: string;
+      readonly target?: 'original';
+      readonly corral?: string;
+    }
   | { readonly compose: true };
 
 /** The address parameters the frame reads; every other one (`settings`) is left alone. */
@@ -41,6 +49,8 @@ export const FRAME_PARAMS = [
   'scope',
   'runId',
   'file',
+  'target',
+  'corral',
   'message',
   'respond',
   'advice',
@@ -55,17 +65,26 @@ export function readAddress(search: SessionSearch): AddressCase {
   );
   // A request to respond is answered in the conversation and never opens a tab.
   if (search.respond) return { kind: 'neither', bringForward };
-  if (search.panel) {
-    const target: PanelTarget =
-      search.panel === 'run' && search.run
-        ? { panel: 'run', run: search.run }
-        : search.panel === 'terminal' && search.terminal
-          ? { panel: 'terminal', terminal: search.terminal }
-          : { panel: search.panel };
-    return { kind: 'panel', target, bringForward };
-  }
+  const target = panelTarget(search);
+  if (target) return { kind: 'panel', target, bringForward };
   if (search.compose) return { kind: 'compose', bringForward };
   return { kind: 'neither', bringForward };
+}
+
+/** What an address's `panel` and the parameters beside it ask for; null without `panel`. */
+export function panelTarget(search: SessionSearch): PanelTarget | null {
+  const { panel } = search;
+  if (!panel) return null;
+  if (panel === 'run' && search.run) return { panel, run: search.run };
+  if (panel === 'terminal' && search.terminal) return { panel, terminal: search.terminal };
+  if (panel === 'document' && search.file)
+    return {
+      panel,
+      file: search.file,
+      ...(search.target === 'original' ? { source: 'original' as const } : {}),
+    };
+  if (panel === 'graph' && search.corral) return { panel, corral: search.corral };
+  return { panel };
 }
 
 /**
@@ -78,6 +97,13 @@ export function panelAddress(state: PanelState, fronts?: PanelFronts): PanelAddr
   if (state.presentation === 'closed' || !tab) return { compose: true };
   if (tab.kind === 'run') return { panel: 'run', run: tab.runId };
   if (tab.kind === 'terminal') return { panel: 'terminal', terminal: tab.terminalId };
+  if (tab.kind === 'document')
+    return {
+      panel: 'document',
+      file: tab.path,
+      ...(tab.source === 'original' ? { target: 'original' as const } : {}),
+    };
+  if (tab.kind === 'graph') return { panel: 'graph', corral: tab.corralId };
   const front: SessionPanel | undefined =
     tab.kind === 'files' ? fronts?.files : tab.kind === 'changes' ? fronts?.changes : undefined;
   return { panel: front && PANEL_TAB_OF[front] === tab.kind ? front : tabPanel(tab) };
@@ -129,14 +155,13 @@ export function nextSearch(
   return { ...rest, ...inner, ...message, ...address };
 }
 
-// The tab an address names, when it names one exactly.
-function addressedTab(search: SessionSearch): TabKey | null {
-  if (!search.panel) return null;
-  const kind = PANEL_TAB_OF[search.panel];
-  if (kind === null) return null;
-  if (kind === 'run') return search.run ? `run:${search.run}` : null;
-  if (kind === 'terminal') return search.terminal ? `terminal:${search.terminal}` : null;
-  return kind;
+/** The tab an address names, when it names one exactly (not the newest run's). */
+export function addressedTab(search: SessionSearch): TabKey | null {
+  const target = panelTarget(search);
+  if (!target) return null;
+  if (PANEL_TAB_OF[target.panel] === 'run' && !target.run) return null;
+  const tab = targetTab(target, null);
+  return tab ? tabKey(tab) : null;
 }
 
 /** An address without the frame's parameters, keeping the ones the frame does not read. */

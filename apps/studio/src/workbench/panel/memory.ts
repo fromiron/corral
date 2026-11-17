@@ -1,10 +1,12 @@
 // What a conversation remembers of its panel on this device (features/session-panel.md
-// "주소와 기억"): tab kinds, run ids, order, selection and whether the panel was open. Nothing
-// else: no titles, bodies or paths. Storage is passed in; this module never reaches for it.
+// "주소와 기억"): tab kinds and order (a run's or a terminal's ID, a document's source and
+// relative path with its Paddock's binding and generation, a team's ID, 작업's inner tab), the
+// selection and whether the panel was open. Nothing else: no titles, bodies or local paths.
+// Storage is passed in; this module never reaches for it.
 import { Identifier } from '@corral/contracts';
 import { dockMemoryKey } from './dock.ts';
 import { type PanelState, tabOf } from './model.ts';
-import { type PanelTab, type TabKey, tabKey } from './tabs.ts';
+import { type PanelTab, type TabKey, type ToolsView, tabKey } from './tabs.ts';
 
 export interface PanelMemory {
   readonly tabs: readonly PanelTab[];
@@ -33,7 +35,7 @@ export function serializePanelMemory(memory: PanelMemory): string {
   // Built key by key so nothing else can ride along.
   return JSON.stringify({
     v: 1,
-    tabs: memory.tabs.map(tabKey),
+    tabs: memory.tabs.map(entryOf),
     selected: memory.selected,
     open: memory.open,
   });
@@ -70,9 +72,70 @@ export function parsePanelMemory(raw: string | null | undefined): PanelMemory | 
   return { tabs, selected, open: record.open };
 }
 
+/**
+ * A tab as memory holds it: its key, except 작업 (`tools`, or `tools:` and its inner tab) and a
+ * document (an object, so a path is never cut at a separator).
+ */
+type MemoryEntry =
+  | string
+  | {
+      readonly document: string;
+      readonly source: 'original' | 'copy';
+      readonly binding?: string;
+      readonly generation?: number;
+    };
+
+function entryOf(tab: PanelTab): MemoryEntry {
+  if (tab.kind === 'tools') return tab.view ? `tools:${tab.view}` : 'tools';
+  if (tab.kind !== 'document') return tabKey(tab);
+  return tab.copy
+    ? {
+        document: tab.path,
+        source: tab.source,
+        binding: tab.copy.bindingId,
+        generation: tab.copy.generation,
+      }
+    : { document: tab.path, source: tab.source };
+}
+
+const TOOLS_VIEWS: readonly ToolsView[] = ['tasks', 'preview'];
+
+// A relative path inside the folder: never absolute, never climbing out, never empty.
+function relativePath(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return false;
+  if (value.startsWith('/') || value.includes('\0')) return false;
+  return value.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
+}
+
+function parseDocument(entry: Record<string, unknown>): PanelTab | null {
+  const { document: path, source, binding, generation } = entry;
+  if (!relativePath(path) || (source !== 'original' && source !== 'copy')) return null;
+  if (source === 'original' || (binding === undefined && generation === undefined))
+    return { kind: 'document', source, path };
+  if (
+    !Identifier.safeParse(binding).success ||
+    typeof generation !== 'number' ||
+    !Number.isSafeInteger(generation) ||
+    generation < 1
+  )
+    return null;
+  return { kind: 'document', source, path, copy: { bindingId: binding as string, generation } };
+}
+
 function parseTab(entry: unknown): PanelTab | null {
   if (entry === 'files' || entry === 'changes' || entry === 'artifacts') return { kind: entry };
+  if (entry === 'tools') return { kind: 'tools', view: null };
+  if (typeof entry === 'object' && entry !== null && !Array.isArray(entry))
+    return parseDocument(entry as Record<string, unknown>);
   if (typeof entry !== 'string') return null;
+  if (entry.startsWith('tools:')) {
+    const view = TOOLS_VIEWS.find((value) => `tools:${value}` === entry);
+    return view ? { kind: 'tools', view } : null;
+  }
+  if (entry.startsWith('graph:')) {
+    const corralId = entry.slice('graph:'.length);
+    return Identifier.safeParse(corralId).success ? { kind: 'graph', corralId } : null;
+  }
   if (entry.startsWith('terminal:')) {
     const terminalId = entry.slice('terminal:'.length);
     return Identifier.safeParse(terminalId).success ? { kind: 'terminal', terminalId } : null;

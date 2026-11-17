@@ -3,19 +3,58 @@
 import { panelRunId } from '../panelRun.ts';
 import type { SessionPanel } from '../panels/registry.ts';
 
-export type TabKind = 'files' | 'terminal' | 'changes' | 'run' | 'artifacts';
+export type TabKind =
+  | 'files'
+  | 'document'
+  | 'graph'
+  | 'terminal'
+  | 'changes'
+  | 'run'
+  | 'artifacts'
+  | 'tools';
+
+/** Where a document's file is: the project's source folder, or the conversation's Paddock. */
+export type DocumentSource = 'original' | 'copy';
+
+/** The Paddock a copy's document was read from: its binding and generation. */
+export interface CopyIdentity {
+  readonly bindingId: string;
+  readonly generation: number;
+}
+
+/** The inner tab in front inside 작업: its tasks or its previews. */
+export type ToolsView = 'tasks' | 'preview';
 
 /**
- * A tab of the panel. 파일, 변경 and 결과 are one per conversation; 실행 is one per run; 터미널 is
- * one per terminal, and a terminal's tab is in the panel or in the bottom dock, never both.
+ * A tab of the panel. 파일, 변경, 결과 and 작업 are one per conversation; 문서 is one per file (its
+ * source and relative path); 팀 그래프 is one per team; 실행 is one per run; 터미널 is one per
+ * terminal, and a terminal's tab is in the panel or in the bottom dock, never both.
  */
 export type PanelTab =
   | { readonly kind: 'files' | 'changes' | 'artifacts' }
+  | {
+      readonly kind: 'document';
+      readonly source: DocumentSource;
+      readonly path: string;
+      /** A copy's document once its Paddock is known; restore drops it when that Paddock is gone. */
+      readonly copy?: CopyIdentity | undefined;
+    }
+  | { readonly kind: 'graph'; readonly corralId: string }
   | { readonly kind: 'run'; readonly runId: string }
-  | { readonly kind: 'terminal'; readonly terminalId: string };
+  | { readonly kind: 'terminal'; readonly terminalId: string }
+  /** `view`: the inner tab in front; null until something names one or the person picks. */
+  | { readonly kind: 'tools'; readonly view: ToolsView | null };
 
 /** A tab's identity in the strip: two tabs with the same key are the same tab. */
-export type TabKey = 'files' | 'changes' | 'artifacts' | `run:${string}` | `terminal:${string}`;
+export type TabKey =
+  | 'files'
+  | 'changes'
+  | 'artifacts'
+  | 'tools'
+  | `document:${DocumentSource}:${string}`
+  | `graph:${string}`
+  | `run:${string}`
+  | `terminal:${string}`;
 
 /**
  * Every `panel` value names the tab that carries it ("탭" table). `debug` names the bottom dock's
@@ -23,6 +62,8 @@ export type TabKey = 'files' | 'changes' | 'artifacts' | `run:${string}` | `term
  */
 export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind | null>> = {
   files: 'files',
+  document: 'document',
+  graph: 'graph',
   terminal: 'terminal',
   tools: 'files',
   debug: null,
@@ -40,6 +81,12 @@ export interface PanelTarget {
   readonly run?: string | undefined;
   /** For 터미널: the terminal; without one the target names no tab. */
   readonly terminal?: string | undefined;
+  /** For 문서: the file's relative path; without one the target names no tab. */
+  readonly file?: string | undefined;
+  /** For 문서: where the file is; the conversation's Paddock unless it says the source folder. */
+  readonly source?: DocumentSource | undefined;
+  /** For 팀 그래프: the team; without one the target names no tab. */
+  readonly corral?: string | undefined;
 }
 
 /** What the conversation can open now, passed in with every event. */
@@ -78,9 +125,18 @@ export interface PanelFronts {
 export type PlusItem = 'files' | 'terminal' | 'changes' | 'run-history' | 'artifacts';
 
 export function tabKey(tab: PanelTab): TabKey {
-  if (tab.kind === 'run') return `run:${tab.runId}`;
-  if (tab.kind === 'terminal') return `terminal:${tab.terminalId}`;
-  return tab.kind;
+  switch (tab.kind) {
+    case 'run':
+      return `run:${tab.runId}`;
+    case 'terminal':
+      return `terminal:${tab.terminalId}`;
+    case 'document':
+      return `document:${tab.source}:${tab.path}`;
+    case 'graph':
+      return `graph:${tab.corralId}`;
+    default:
+      return tab.kind;
+  }
 }
 
 /** The `panel` value a tab writes when nothing inside it is in front. */
@@ -98,6 +154,12 @@ export function targetTab(target: PanelTarget, runIds: readonly string[] | null)
   if (kind === null) return null;
   if (kind === 'terminal')
     return target.terminal ? { kind: 'terminal', terminalId: target.terminal } : null;
+  if (kind === 'document')
+    return target.file
+      ? { kind: 'document', source: target.source ?? 'copy', path: target.file }
+      : null;
+  if (kind === 'graph') return target.corral ? { kind: 'graph', corralId: target.corral } : null;
+  if (kind === 'tools') return { kind: 'tools', view: null };
   if (kind !== 'run') return { kind };
   const runId = panelRunId(
     (runIds ?? []).map((id) => ({ runId: id })),

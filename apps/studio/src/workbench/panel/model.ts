@@ -36,6 +36,7 @@ import {
   type PanelTarget,
   plusItems,
   type TabKey,
+  type ToolsView,
   tabKey,
   targetTab,
 } from './tabs.ts';
@@ -103,9 +104,29 @@ export const EMPTY_PANEL: PanelState = {
 
 /** A tab's identity without its instance and seen flag. */
 export function tabOf(tab: PanelTab): PanelTab {
-  if (tab.kind === 'run') return { kind: 'run', runId: tab.runId };
-  if (tab.kind === 'terminal') return { kind: 'terminal', terminalId: tab.terminalId };
-  return { kind: tab.kind };
+  switch (tab.kind) {
+    case 'run':
+      return { kind: 'run', runId: tab.runId };
+    case 'terminal':
+      return { kind: 'terminal', terminalId: tab.terminalId };
+    case 'document': {
+      const { source, path, copy } = tab;
+      return copy
+        ? {
+            kind: 'document',
+            source,
+            path,
+            copy: { bindingId: copy.bindingId, generation: copy.generation },
+          }
+        : { kind: 'document', source, path };
+    }
+    case 'graph':
+      return { kind: 'graph', corralId: tab.corralId };
+    case 'tools':
+      return { kind: 'tools', view: tab.view };
+    default:
+      return { kind: tab.kind };
+  }
 }
 
 /**
@@ -143,6 +164,8 @@ export type PanelEvent =
   | { readonly type: 'reorder'; readonly key: TabKey; readonly toIndex: number }
   /** A terminal's tab dragged in from the bottom dock, let go before the tab at `index`. */
   | { readonly type: 'moveIn'; readonly terminalId: string; readonly index: number }
+  /** The person picked an inner tab inside 작업, or its first read put 미리보기 in front. */
+  | { readonly type: 'toolsView'; readonly view: ToolsView }
   /** The room or the run list in `ctx` changed. */
   | { readonly type: 'context' };
 
@@ -236,12 +259,27 @@ function presented(state: PanelState, presentation: Presentation): PanelState {
 
 const hasTab = (state: PanelState, key: TabKey) => state.tabs.some((tab) => tabKey(tab) === key);
 
+/** What an opening says of a tab already open: 작업's inner tab when it names one; else null. */
+function refreshed(open: OpenTab, tab: PanelTab): OpenTab | null {
+  if (open.kind === 'tools' && tab.kind === 'tools' && tab.view !== null && tab.view !== open.view)
+    return { ...open, view: tab.view };
+  return null;
+}
+
 /** Opens a tab at the right end with a new instance, or selects it where it is. */
 function opened(state: PanelState, tab: PanelTab, presentation: Presentation): PanelState {
   const key = tabKey(tab);
-  if (hasTab(state, key)) {
-    if (state.selected === key && state.presentation === presentation) return state;
-    return { ...state, selected: key, presentation };
+  const index = state.tabs.findIndex((open) => tabKey(open) === key);
+  if (index >= 0) {
+    const open = state.tabs[index] as OpenTab;
+    const fresh = refreshed(open, tab);
+    if (!fresh && state.selected === key && state.presentation === presentation) return state;
+    return {
+      ...state,
+      tabs: fresh ? state.tabs.map((t, i) => (i === index ? fresh : t)) : state.tabs,
+      selected: key,
+      presentation,
+    };
   }
   return {
     ...state,
@@ -468,6 +506,7 @@ const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
   'follow',
   'history',
   'moveIn',
+  'toolsView',
 ]);
 
 function touched(state: PanelState, event: PanelEvent): PanelState {
@@ -526,6 +565,15 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
       const tab: PanelTab = { kind: 'terminal', terminalId: event.terminalId };
       const at = opened(state, tab, byOpening(state.presentation, ctx.room));
       return reordered(at, tabKey(tab), Math.min(event.index, at.tabs.length - 1));
+    }
+    case 'toolsView': {
+      const index = state.tabs.findIndex((tab) => tab.kind === 'tools');
+      const tab = state.tabs[index];
+      if (tab?.kind !== 'tools' || tab.view === event.view) return state;
+      return {
+        ...state,
+        tabs: state.tabs.map((t, i) => (i === index ? { ...tab, view: event.view } : t)),
+      };
     }
     case 'context':
       return state;

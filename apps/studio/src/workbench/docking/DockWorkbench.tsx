@@ -41,7 +41,7 @@ import {
 import { useTranslations } from 'use-intl';
 import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
-import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
+import { PANE_CATALOG } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
 import { DockPaneSwitcher, primaryViewFor } from './DockTopBar.tsx';
 import {
@@ -87,7 +87,7 @@ export interface DockWorkbenchProps {
   hostId?: string;
   projectId: string;
   sessionId: string;
-  selectedPanel?: SessionPanel | null;
+  selectedPanel?: DockContextView | null;
   selectionKey?: string;
   renderContext(view: DockContextView, requestedView?: DockContextView): ReactNode;
   renderDocument(
@@ -1086,7 +1086,13 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
             // An explicit link opens a pane of this dock even when the URL is already selected.
             // A link to another tab is left to the page: its address names the target (a run, a
             // view, a review), and the frame opens that tab at it.
-            if (panel && primaryViewFor(panel) === 'files') openContext(panel);
+            if (
+              panel &&
+              panel !== 'document' &&
+              panel !== 'graph' &&
+              primaryViewFor(panel) === 'files'
+            )
+              openContext(panel);
           }}
           onKeyDownCapture={(event) => {
             if (event.key !== 'Delete' && event.key !== 'Backspace') return;

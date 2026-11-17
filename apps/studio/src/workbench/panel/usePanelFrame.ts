@@ -3,7 +3,13 @@ import { discardCancelConfirmation } from '@corral/react';
 import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { patchSessionSearch, type SessionSearch, validateSessionSearch } from '../panels/routes.ts';
-import { nextSearch, readAddress, TAB_PARAMS, withoutFrameParams } from './address.ts';
+import {
+  addressedTab,
+  nextSearch,
+  readAddress,
+  TAB_PARAMS,
+  withoutFrameParams,
+} from './address.ts';
 import { historyActionOf, travelled } from './historyActions.ts';
 import { deviceStorage, readPanelMemory, writePanelMemory } from './memory.ts';
 import {
@@ -138,17 +144,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     const selected = state.selected;
     if (!selected || state.presentation === 'closed' || !search.panel) return;
     const kind = PANEL_TAB_OF[search.panel];
-    const named =
-      kind === 'run'
-        ? search.run
-          ? `run:${search.run}`
-          : null
-        : kind === 'terminal'
-          ? search.terminal
-            ? `terminal:${search.terminal}`
-            : null
-          : kind;
-    if (named !== selected) return;
+    if (addressedTab(search) !== selected) return;
     tabStates.current.set(selected, tabParams(search));
     if (kind === 'files' || kind === 'changes')
       fronts.current = { ...fronts.current, [kind]: search.panel };

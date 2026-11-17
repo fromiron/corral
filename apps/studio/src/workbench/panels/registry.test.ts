@@ -18,8 +18,10 @@ it('view keys retain their target and isolate connected services and projects', 
 
 it('#86 every dock pane is defined once, has a URL panel and a palette entry', async () => {
   const { DOCK_VIEWS, PANE_CATALOG, SESSION_PANELS } = await import('./registry.ts');
-  expect([...DOCK_VIEWS].sort()).toEqual(['chat', ...SESSION_PANELS].sort());
-  expect(PANE_CATALOG.map((entry) => entry.view).sort()).toEqual([...SESSION_PANELS].sort());
+  // A document and a team graph are opened with their file or team, never by name.
+  const named = SESSION_PANELS.filter((panel) => panel !== 'document' && panel !== 'graph');
+  expect([...DOCK_VIEWS].sort()).toEqual(['chat', ...named].sort());
+  expect(PANE_CATALOG.map((entry) => entry.view).sort()).toEqual([...named].sort());
   const slashes = PANE_CATALOG.map((entry) => entry.slash);
   expect(new Set(slashes).size).toBe(slashes.length);
 });

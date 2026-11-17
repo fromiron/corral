@@ -249,3 +249,29 @@ it('a request to respond reaches the run history once and no later change carrie
     respond: true,
   });
 });
+
+it('reads a document’s file and source and a team graph’s team only with their panel', () => {
+  expect(validateSessionSearch({ panel: 'document', file: 'src/a.ts' })).toEqual({
+    panel: 'document',
+    file: 'src/a.ts',
+  });
+  expect(
+    validateSessionSearch({ panel: 'document', file: 'README.md', target: 'original' }),
+  ).toEqual({ panel: 'document', file: 'README.md', target: 'original' });
+  // Any other source is the conversation's Paddock.
+  expect(validateSessionSearch({ panel: 'document', file: 'a.ts', target: 'other' })).toEqual({
+    panel: 'document',
+    file: 'a.ts',
+  });
+  expect(validateSessionSearch({ panel: 'graph', corral: 'team_a' })).toEqual({
+    panel: 'graph',
+    corral: 'team_a',
+  });
+  expect(validateSessionSearch({ panel: 'files', target: 'original', corral: 'team_a' })).toEqual({
+    panel: 'files',
+  });
+  expect(validateSessionSearch({ panel: 'graph', corral: '' })).toEqual({ panel: 'graph' });
+  // Neither has a pane descriptor of its own: their tabs are keyed by their file or team.
+  expect(sessionPanelDescriptor('project', 'session', 'document')).toBeNull();
+  expect(sessionPanelDescriptor('project', 'session', 'graph')).toBeNull();
+});

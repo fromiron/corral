@@ -90,6 +90,8 @@ describe('reading the session address (주소와 기억)', () => {
         'scope',
         'runId',
         'file',
+        'target',
+        'corral',
         'message',
         'respond',
         'advice',

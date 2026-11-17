@@ -17,6 +17,8 @@ describe('the panel tabs (탭)', () => {
     expect(Object.keys(PANEL_TAB_OF).sort()).toEqual([...SESSION_PANELS].sort());
     expect(PANEL_TAB_OF).toEqual({
       files: 'files',
+      document: 'document',
+      graph: 'graph',
       terminal: 'terminal',
       tools: 'files',
       // The bottom dock's debug tab, never the panel's.
@@ -35,6 +37,38 @@ describe('the panel tabs (탭)', () => {
     expect(tabKey({ kind: 'changes' })).toBe('changes');
     expect(tabKey({ kind: 'artifacts' })).toBe('artifacts');
     expect(tabKey(run('run_1'))).toBe('run:run_1');
+  });
+
+  it('keys 문서 by its source and relative path, 팀 그래프 by its team and 작업 once', () => {
+    const copy = { kind: 'document', source: 'copy', path: 'src/a.ts' } as const;
+    expect(tabKey(copy)).toBe('document:copy:src/a.ts');
+    // The Paddock it was read from is not its identity: the same file is one tab.
+    expect(tabKey({ ...copy, copy: { bindingId: 'binding_1', generation: 2 } })).toBe(
+      'document:copy:src/a.ts',
+    );
+    expect(tabKey({ ...copy, source: 'original' })).toBe('document:original:src/a.ts');
+    expect(tabKey({ kind: 'graph', corralId: 'team_a' })).toBe('graph:team_a');
+    expect(tabKey({ kind: 'tools', view: null })).toBe('tools');
+    expect(tabKey({ kind: 'tools', view: 'preview' })).toBe('tools');
+  });
+
+  it('opens a document’s tab only with its file, and a team graph’s only with its team', () => {
+    expect(targetTab({ panel: 'document', file: 'src/a.ts' }, null)).toEqual({
+      kind: 'document',
+      source: 'copy',
+      path: 'src/a.ts',
+    });
+    expect(targetTab({ panel: 'document', file: 'README.md', source: 'original' }, null)).toEqual({
+      kind: 'document',
+      source: 'original',
+      path: 'README.md',
+    });
+    expect(targetTab({ panel: 'document' }, null)).toBeNull();
+    expect(targetTab({ panel: 'graph', corral: 'team_a' }, null)).toEqual({
+      kind: 'graph',
+      corralId: 'team_a',
+    });
+    expect(targetTab({ panel: 'graph' }, null)).toBeNull();
   });
 
   it('writes each tab’s own panel value when nothing inside it is in front', () => {

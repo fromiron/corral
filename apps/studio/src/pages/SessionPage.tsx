@@ -586,8 +586,9 @@ function WorkSessionPage() {
   // What the conversation presents never follows the address's run, which a run tab keeps.
   const { presentationRunId, liveRunId } = sessionRunViews(sessionRuns, linkedRunIds);
   const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind ?? null;
+  // The windows 파일 carries: its tree and 작업.
   const filesFront =
-    search.panel && PANEL_TAB_OF[search.panel] === 'files' ? search.panel : undefined;
+    search.panel === 'files' || search.panel === 'tools' ? search.panel : undefined;
   const changesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'changes' ? search.panel : undefined;
   const panelViews: Record<'files' | 'checks' | 'problems', () => ReactNode> = {
@@ -604,6 +605,9 @@ function WorkSessionPage() {
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
   };
+  // The view in front inside 변경: one of its own, or its first.
+  const changesWindow = (panel: SessionPanel | undefined): DockContextView =>
+    panel === 'git' || panel === 'checks' || panel === 'problems' ? panel : 'changes';
   const changesView = (requestedView: DockContextView) => {
     // Checks are a sub-view of Changes; Problems shows in its place.
     const auxiliary = requestedView === 'problems' ? requestedView : null;
@@ -758,7 +762,7 @@ function WorkSessionPage() {
       );
     if (tab.kind === 'changes')
       return changesView(
-        selected ? (changesFront ?? fronts.changes ?? 'changes') : (fronts.changes ?? 'changes'),
+        changesWindow(selected ? (changesFront ?? fronts.changes) : fronts.changes),
       );
     if (tab.kind === 'artifacts')
       return (

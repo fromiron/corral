@@ -18,13 +18,16 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import {
+  File,
   FileDiff,
   FileText,
   Folder,
   History,
+  ListChecks,
   Maximize2,
   Minimize2,
   Plus,
+  Route,
   Terminal,
 } from '@corral/react/icons';
 import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'react';
@@ -58,6 +61,9 @@ export const PANEL_ID_PREFIX = 'session-panel';
 type Kind = PanelTab['kind'];
 const ICONS = {
   files: Folder,
+  document: File,
+  graph: Route,
+  tools: ListChecks,
   terminal: Terminal,
   changes: FileDiff,
   run: History,
@@ -83,6 +89,8 @@ export function usePanelTabName(
   const tw = useTranslations('Workbench');
   const tp = useTranslations('SessionPanel');
   return (tab: PanelTab): { label: string; shortLabel?: string } => {
+    if (tab.kind === 'document') return { label: tab.path.split('/').at(-1) ?? tab.path };
+    if (tab.kind === 'graph') return { label: t('team') };
     if (tab.kind === 'terminal') {
       const index = terminalIds?.indexOf(tab.terminalId) ?? -1;
       if (index < 0) return { label: t('terminal') };

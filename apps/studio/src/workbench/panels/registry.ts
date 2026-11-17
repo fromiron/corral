@@ -22,6 +22,8 @@ export const SESSION_PANELS = [
   'git',
   'debug',
   'files',
+  'document',
+  'graph',
   'artifacts',
   'checks',
   'problems',
@@ -30,11 +32,16 @@ export const SESSION_PANELS = [
   'tools',
 ] as const;
 export type SessionPanel = (typeof SESSION_PANELS)[number];
+/**
+ * The panes opened by name (the palette's "{tab} 열기", the composer's `/` name). A document and
+ * a team graph are opened with their file or team, never by name.
+ */
+export type NamedPanel = Exclude<SessionPanel, 'document' | 'graph'>;
 
 /** What a person is doing when they open the pane; headings in pane lists (#70 IA-04/11). */
 export type PaneGroup = 'develop' | 'verify' | 'run';
 export interface PaneEntry {
-  view: SessionPanel;
+  view: NamedPanel;
   group: PaneGroup;
   /** The composer's `/` name. */
   slash: string;

@@ -23,6 +23,10 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   panel?: SessionPanel | undefined;
   run?: string | undefined;
   terminal?: string | undefined;
+  /** With `panel=document`: the file is in the project's source folder, not the Paddock. */
+  target?: 'original' | undefined;
+  /** With `panel=graph`: the team. */
+  corral?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -55,6 +59,11 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     out.panel = search.panel as SessionPanel;
   if (search.tab === 'run') out.panel = 'run';
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
+  if (out.panel === 'document' && text(search.file)) {
+    out.file = text(search.file);
+    if (search.target === 'original') out.target = 'original';
+  }
+  if (out.panel === 'graph' && text(search.corral)) out.corral = text(search.corral);
   if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message', 'advice'] as const) {
@@ -160,6 +169,7 @@ export function sessionPanelDescriptor(
   if (!panel) return null;
   if (panel === 'run') return runId ? { kind: 'run', runId } : null;
   // Terminals and running commands are keyed by their own owners, not by the pane.
-  if (panel === 'terminal' || panel === 'tools') return null;
+  if (panel === 'terminal' || panel === 'tools' || panel === 'document' || panel === 'graph')
+    return null;
   return { kind: panel, projectId, sessionId };
 }

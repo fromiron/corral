@@ -11,6 +11,7 @@ import {
   writePanelMemory,
 } from './memory.ts';
 import type { PanelState } from './model.ts';
+import type { PanelTab } from './tabs.ts';
 
 const state: PanelState = panel({
   tabs: [files, run('run_1')],
@@ -181,5 +182,112 @@ describe('writing memory', () => {
     forgetPanelMemory(storage, 'session_a');
     expect(storage.items.size).toBe(0);
     expect(() => forgetPanelMemory(throwing, 'session_a')).not.toThrow();
+  });
+});
+
+describe('remembering documents, team graphs and 작업', () => {
+  const copyDoc: PanelTab = {
+    kind: 'document',
+    source: 'copy',
+    path: 'src/a.ts',
+    copy: { bindingId: 'binding_1', generation: 2 },
+  };
+  const original: PanelTab = { kind: 'document', source: 'original', path: 'README.md' };
+  const graph: PanelTab = { kind: 'graph', corralId: 'team_a' };
+  const tools: PanelTab = { kind: 'tools', view: 'preview' };
+  const opened = panel({
+    tabs: [files, copyDoc, original, graph, tools],
+    selected: 'document:copy:src/a.ts',
+    presentation: 'beside',
+  });
+
+  it('remembers a document’s source, relative path and Paddock, a team, and 작업’s inner tab', () => {
+    const memory = parsePanelMemory(serializePanelMemory(rememberedPanel(opened)));
+    expect(memory).toEqual({
+      tabs: [files, copyDoc, original, graph, tools],
+      selected: 'document:copy:src/a.ts',
+      open: true,
+    });
+  });
+
+  it('writes a document as its own entry, so a path is never cut at a separator', () => {
+    const raw = JSON.parse(serializePanelMemory(rememberedPanel(opened)));
+    expect(raw.tabs).toEqual([
+      'files',
+      { document: 'src/a.ts', source: 'copy', binding: 'binding_1', generation: 2 },
+      { document: 'README.md', source: 'original' },
+      'graph:team_a',
+      'tools:preview',
+    ]);
+    const unpicked = panel({ tabs: [{ kind: 'tools', view: null }] });
+    expect(JSON.parse(serializePanelMemory(rememberedPanel(unpicked))).tabs).toEqual(['tools']);
+    const colon: PanelTab = { kind: 'document', source: 'copy', path: 'a:b/c — d.ts' };
+    const kept = parsePanelMemory(serializePanelMemory(rememberedPanel(panel({ tabs: [colon] }))));
+    expect(kept?.tabs).toEqual([colon]);
+  });
+
+  it('drops a document that is not a relative path inside the folder, or whose Paddock is malformed (counterexample)', () => {
+    const raw = JSON.stringify({
+      v: 1,
+      tabs: [
+        { document: '/etc/passwd', source: 'copy' },
+        { document: '../outside.ts', source: 'copy' },
+        { document: 'src//a.ts', source: 'copy' },
+        { document: '', source: 'original' },
+        { document: 'a.ts', source: 'elsewhere' },
+        { document: 'b.ts', source: 'copy', binding: 'binding_1' },
+        { document: 'c.ts', source: 'copy', binding: 'binding_1', generation: 0 },
+        { document: 'd.ts', source: 'copy', binding: '9 bad', generation: 1 },
+        { document: 'e.ts', source: 'copy' },
+        'tools:elsewhere',
+        'graph:',
+        'document:copy:e.ts',
+      ],
+      selected: null,
+      open: false,
+    });
+    expect(parsePanelMemory(raw)?.tabs).toEqual([
+      { kind: 'document', source: 'copy', path: 'e.ts' },
+    ]);
+  });
+
+  it('keeps the first of a repeated document, and tells a source folder’s file from the copy’s', () => {
+    const raw = JSON.stringify({
+      v: 1,
+      tabs: [
+        { document: 'a.ts', source: 'copy', binding: 'binding_1', generation: 1 },
+        { document: 'a.ts', source: 'copy', binding: 'binding_2', generation: 3 },
+        { document: 'a.ts', source: 'original' },
+        'tools',
+        'tools:tasks',
+      ],
+      selected: 'document:original:a.ts',
+      open: true,
+    });
+    expect(parsePanelMemory(raw)).toEqual({
+      tabs: [
+        {
+          kind: 'document',
+          source: 'copy',
+          path: 'a.ts',
+          copy: { bindingId: 'binding_1', generation: 1 },
+        },
+        { kind: 'document', source: 'original', path: 'a.ts' },
+        { kind: 'tools', view: null },
+      ],
+      selected: 'document:original:a.ts',
+      open: true,
+    });
+  });
+
+  it('forgets a deleted conversation’s documents with the rest of its memory', () => {
+    const storage = memoryStorage();
+    writePanelMemory(storage, 'session_a', opened);
+    writePanelMemory(storage, 'session_b', state);
+    expect(storage.items.get(panelMemoryKey('session_a'))).toContain('src/a.ts');
+    forgetPanelMemory(storage, 'session_a');
+    expect(storage.items.has(panelMemoryKey('session_a'))).toBe(false);
+    expect([...storage.items.values()].some((value) => value.includes('src/a.ts'))).toBe(false);
+    expect(readPanelMemory(storage, 'session_b')).toEqual(rememberedPanel(state));
   });
 });
