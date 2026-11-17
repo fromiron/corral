@@ -49,7 +49,7 @@ const W = {
   maximize: messages.SessionPanel.maximize,
   terminalRow: messages.Docking.terminal,
   close: (name: string) => messages.SessionPanel.close.replace('{name}', name),
-  listFailed: messages.Terminals.actionFailed,
+  listFailed: messages.Terminals.listUnread,
   retry: messages.Terminals.retryList,
 };
 

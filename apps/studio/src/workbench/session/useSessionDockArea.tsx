@@ -502,7 +502,7 @@ export function useSessionDockArea(input: DockAreaInput) {
       if (value?.loading || answer.kind === 'waiting') return <p role="status">{tt('loading')}</p>;
       return (
         <>
-          <p role="status">{reason('listFailed')}</p>
+          <p role="status">{tt('listUnread')}</p>
           <Button variant="tertiary" onClick={() => void retryList()}>
             {tt('retryList')}
           </Button>
