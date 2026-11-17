@@ -20,6 +20,7 @@ import {
 import {
   File,
   FileDiff,
+  FileLock2,
   FileText,
   Folder,
   History,
@@ -372,11 +373,12 @@ export function SessionPanelSide({
     const marked = presence && presence.kind !== 'succeeded' ? presence : null;
     const key = tabKey(tab);
     const save = unsaved[key];
-    // A source-folder document wears the source folder's sign, as its head does.
+    // A source-folder document is a file read only from its source: a locked file, never the
+    // 파일 tab's folder.
     const original = tab.kind === 'document' && tab.source === 'original';
     return {
       id: key,
-      icon: original ? Folder : ICONS[tab.kind],
+      icon: original ? FileLock2 : ICONS[tab.kind],
       ...name(tab),
       ...(tab.kind === 'document' ? { label: documentNames.get(key) ?? name(tab).label } : {}),
       ...(original ? { nameSuffix: t('sourceFolderSuffix') } : {}),

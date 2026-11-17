@@ -281,8 +281,13 @@ it('대화의 기억에 원본 폴더의 README.md 탭이 있다 → 그 대화�
 });
 
 const tabNamedAt = (index: number) => tabs()[index] ?? null;
+/** Which icon a tab draws: its Lucide name (its stroke follows the selection). */
 const iconOf = (tab: HTMLElement | null) =>
-  tab?.querySelector('[data-slot="tabs-closable-icon"]')?.innerHTML ?? null;
+  tab
+    ?.querySelector('[data-slot="tabs-closable-icon"] svg')
+    ?.getAttribute('class')
+    ?.split(' ')
+    .find((name) => name.startsWith('lucide-')) ?? null;
 const markOf = (tab: HTMLElement | null) =>
   tab?.querySelector('[data-slot="tabs-closable-mark"]') ?? null;
 
@@ -298,18 +303,20 @@ it('대화의 기억에 사본의 api/index.ts와 web/index.ts 탭이 있다 →
 
 it('사본의 README.md 탭이 열려 있다 → 원본 폴더의 README.md 탭을 연다 → 원본 탭만 원본 폴더 표시를 달고 두 탭의 접근 이름은 "README.md"와 "README.md, project source folder"다', async () => {
   const { world: at } = await world();
-  remember(at.sessionId, [doc('README.md')], 'document:copy:README.md');
+  remember(at.sessionId, [{ kind: 'files' }, doc('README.md')], 'document:copy:README.md');
   await open(at, `/sessions/${at.sessionId}?panel=document&file=README.md&target=original`);
-  await until(() => tabNames().length === 2);
+  await until(() => tabNames().length === 3);
 
-  expect(tabNames()).toEqual(['README.md', 'README.md']);
-  expect(tabNamedAt(0)?.hasAttribute('aria-label')).toBe(false);
-  expect(tabNamedAt(1)?.getAttribute('aria-label')).toBe(
+  expect(tabNames()).toEqual([W.files, 'README.md', 'README.md']);
+  expect(tabNamedAt(1)?.hasAttribute('aria-label')).toBe(false);
+  expect(tabNamedAt(2)?.getAttribute('aria-label')).toBe(
     `README.md, ${messages.SessionPanel.sourceFolderSuffix}`,
   );
-  expect(iconOf(tabNamedAt(0))).toBeTruthy();
-  expect(iconOf(tabNamedAt(1))).not.toBe(iconOf(tabNamedAt(0)));
-  expect(markOf(tabNamedAt(0))).toBeNull();
+  // Its sign is a file's, never the 파일 tab's folder: two folders side by side would mislead.
+  expect(iconOf(tabNamedAt(1))).toBeTruthy();
+  expect(iconOf(tabNamedAt(2))).not.toBe(iconOf(tabNamedAt(1)));
+  expect(iconOf(tabNamedAt(2))).not.toBe(iconOf(tabNamedAt(0)));
+  expect(markOf(tabNamedAt(1))).toBeNull();
 });
 
 it('주소로 연 사본의 문서를 고치고 저장하지 않았다 → 그 탭은 미저장 표시를 달고 그 뜻을 설명으로 읽히며 이름은 그대로다', async () => {
