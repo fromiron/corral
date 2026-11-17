@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
-import { lastRunSucceeded, maximizePanel, panelTabNamed } from '../workbench.ts';
+import { lastRunSucceeded, maximizePanel, panelTabNamed, restorePanel } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
@@ -137,12 +137,23 @@ test.describe('extension input during an SDK run', () => {
         await expect(needsYou).toBeFocused();
         await expect(needsYou.getByText('Continue the test run?', { exact: true })).toBeVisible();
         await needsYou.getByRole('button', { name: 'Confirm', exact: true }).click();
-        // The run's record beside the conversation: the answer stands as received.
+        // The extension's notice stands in the conversation, where the person answered; the run's
+        // record beside it does not say it again.
         await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
-        await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
+        await expect(needsYou.getByText('Input received.', { exact: false })).toBeVisible();
+        await expect(
+          detail.getByText('Input received.', { exact: false }).filter({ visible: true }),
+        ).toHaveCount(0);
         await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-description', 'Working');
+        // Maximized over the conversation, the record's response area opens once with it.
+        await maximizePanel(page);
+        await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
+        await restorePanel(page);
         release();
         await expect(lastRunSucceeded(page)).toBeVisible();
+        await expect(
+          page.getByText('Input received.', { exact: false }).filter({ visible: true }),
+        ).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       } finally {
         release();
