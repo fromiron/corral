@@ -65,6 +65,8 @@ export interface TeamGraphCanvasProps {
   insetRight?: number;
   /** Shown just under a step or box, by node id (run stats); the row gap leaves room for it. */
   annotations?: ReadonlyMap<string, ReactNode> | undefined;
+  /** In a scrolling column, a plain wheel scrolls the column and only Ctrl or ⌘ zooms. */
+  wheelZoom?: 'always' | 'withModifier';
 }
 
 type Shown = LaidItem & { opacity?: number };
@@ -144,6 +146,7 @@ export function TeamGraphCanvas({
   onDelete,
   insetRight = 0,
   annotations,
+  wheelZoom = 'always',
 }: TeamGraphCanvasProps) {
   const t = useTranslations('TeamEditor');
   const portName = useTranslations('Canvas.ports');
@@ -171,6 +174,7 @@ export function TeamGraphCanvas({
         onSelect({ nodes: [], edge: null });
     },
     canPan: (event) => !event.shiftKey,
+    wheelZoom,
   });
   const toStage = (clientX: number, clientY: number) => {
     const rect = pane.current?.getBoundingClientRect();

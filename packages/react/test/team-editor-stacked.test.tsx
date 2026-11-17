@@ -20,9 +20,9 @@ import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
 import { STEP_DRAG_TYPE } from '../src/team-editor/TeamGraphCanvas.tsx';
 
 // The team editor stacked (docs/specs/features/canvas.md 1): when the host finds the editor
-// narrower than 1040px, the outline, the palette, the canvas and the chosen step's settings sit
-// one under another. jsdom has no layout, so this checks the order, the drags and the keyboard;
-// Layout.stories.tsx checks the geometry in Chromium.
+// narrower than 960px, the outline, the palette, the canvas and the chosen step's settings sit
+// one under another. jsdom has no layout, so this checks the order, the drags, the keyboard, the
+// wheel and the scrolling asked of the editor; Layout.stories.tsx checks the geometry in Chromium.
 
 const m = messages.TeamEditor;
 
@@ -254,5 +254,113 @@ describe('team editor: stacked', () => {
     layout(false);
     expect(document.activeElement).toBe(card);
     expect(card.getAttribute('aria-pressed')).toBe('true');
+  });
+});
+
+/** The canvas's zoom, from its stage. */
+const zoom = () =>
+  Number(
+    /scale\((-?[\d.]+)\)/.exec(
+      (document.querySelector('[data-graph-stage]') as HTMLElement).style.transform,
+    )?.[1],
+  );
+/** A wheel turn over the canvas; whether the canvas took it for itself. */
+function wheel(init: WheelEventInit = {}) {
+  const event = new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: -120, ...init });
+  act(() => {
+    canvas().dispatchEvent(event);
+  });
+  return event.defaultPrevented;
+}
+/** A press, a move and a release on the canvas's empty stage. */
+function dragStage(dx: number, dy: number) {
+  const pointer = (type: string, x: number, y: number) => {
+    const event = new MouseEvent(type, { bubbles: true, cancelable: true, button: 0 });
+    for (const [key, value] of [
+      ['pointerId', 1],
+      ['clientX', x],
+      ['clientY', y],
+    ] as const)
+      Object.defineProperty(event, key, { value });
+    act(() => {
+      canvas().dispatchEvent(event);
+    });
+  };
+  pointer('pointerdown', 10, 10);
+  pointer('pointermove', 10 + dx, 10 + dy);
+  pointer('pointerup', 10 + dx, 10 + dy);
+}
+const stageAt = () =>
+  (document.querySelector('[data-graph-stage]') as HTMLElement).style.transform.split(' scale')[0];
+
+describe('team editor: the wheel over the canvas', () => {
+  it('stacked, a plain wheel is left to the editor to scroll, and Ctrl, ⌘ or a pinch zooms', () => {
+    renderEditor(team(), true);
+    const before = zoom();
+    expect(wheel()).toBe(false);
+    expect(zoom()).toBe(before);
+    expect(wheel({ ctrlKey: true })).toBe(true);
+    expect(zoom()).toBeGreaterThan(before);
+    const zoomed = zoom();
+    expect(wheel({ metaKey: true })).toBe(true);
+    expect(zoom()).toBeGreaterThan(zoomed);
+  });
+
+  it('beside, a plain wheel zooms the canvas as before', () => {
+    renderEditor(team(), false);
+    const before = zoom();
+    expect(wheel()).toBe(true);
+    expect(zoom()).toBeGreaterThan(before);
+  });
+
+  it('stacked, dragging the empty canvas still pans it', () => {
+    renderEditor(team(), true);
+    const before = stageAt();
+    dragStage(40, 30);
+    expect(stageAt()).not.toBe(before);
+  });
+});
+
+describe('team editor: settings opened from outside the canvas', () => {
+  /** The editor's own scrolling, watched; jsdom does not scroll. */
+  function watchScroll() {
+    const root = document.querySelector('[data-layout]') as HTMLElement;
+    const scrollTo = vi.fn();
+    root.scrollTo = scrollTo as unknown as typeof root.scrollTo;
+    return scrollTo;
+  }
+  const settingsTop = () => (sheet().parentElement as HTMLElement).offsetTop;
+  const problems = () => within(outline()).getByRole('button', { name: /problems?$/ });
+
+  it('stacked, an outline row, the team settings and the problem list bring the settings’ top into view', () => {
+    renderEditor(team(), true);
+    const scrollTo = watchScroll();
+    fireEvent.click(outlineRow('B'));
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: settingsTop(), behavior: 'smooth' });
+    fireEvent.click(within(outline()).getByRole('button', { name: m.teamSettings }));
+    expect(scrollTo).toHaveBeenCalledTimes(2);
+    fireEvent.click(problems());
+    expect(scrollTo).toHaveBeenCalledTimes(3);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: settingsTop(), behavior: 'smooth' });
+    // Closing the problem list from the same button opens nothing to show.
+    fireEvent.click(problems());
+    expect(scrollTo).toHaveBeenCalledTimes(3);
+  });
+
+  it('stacked, choosing a card on the canvas leaves the editor where it is', () => {
+    renderEditor(team(), true);
+    const scrollTo = watchScroll();
+    fireEvent.click(canvasNode('agent_1'));
+    expect(sheet()).toBeTruthy();
+    expect(scrollTo).not.toHaveBeenCalled();
+  });
+
+  it('beside, the settings float in view and nothing scrolls', () => {
+    renderEditor(team(), false);
+    const scrollTo = watchScroll();
+    fireEvent.click(outlineRow('B'));
+    fireEvent.click(within(outline()).getByRole('button', { name: m.teamSettings }));
+    expect(scrollTo).not.toHaveBeenCalled();
   });
 });

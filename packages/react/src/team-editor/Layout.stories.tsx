@@ -11,7 +11,7 @@ import { TeamEditor } from './TeamEditor.tsx';
 
 // The team editor's two layouts (docs/specs/features/canvas.md 1 and canvas.feature): the
 // outline beside the canvas with the settings floating over it, or, when the host finds the
-// editor narrower than 1040px, the outline, the palette, the canvas and the settings one under
+// editor narrower than 960px, the outline, the palette, the canvas and the settings one under
 // another, scrolling inside the editor.
 
 const m = messages.TeamEditor;
@@ -146,11 +146,20 @@ export const Stacked: Story = {
     const sheet = await selectStep(canvasElement, 'agent_1');
     await expect(rect(sheet).top).toBeGreaterThanOrEqual(rect(canvas).bottom - 0.5);
     await expect(Math.abs(rect(sheet).left - rect(editor).left)).toBeLessThan(1);
-    // The editor scrolls, and the canvas, which keeps the wheel and touch for zooming and
-    // panning, never fills it, so there is always somewhere to scroll from.
+    // A card chosen on the canvas leaves the editor where it is: the person works on the canvas.
+    await expect(editor.scrollTop).toBe(0);
+    // The editor scrolls, and the canvas, which keeps touch for panning, never fills it, so there
+    // is always somewhere to scroll from. A plain wheel over the canvas is the editor's to
+    // scroll; Ctrl or ⌘ with it, as a pinch sends it, zooms the canvas.
     await expect(getComputedStyle(editor).overflowY).toBe('auto');
     await expect(editor.scrollHeight).toBeGreaterThan(editor.clientHeight);
     await expect(rect(canvas).height).toBeLessThan(editor.clientHeight);
+    const turn = (init: WheelEventInit) =>
+      canvas.dispatchEvent(
+        new WheelEvent('wheel', { bubbles: true, cancelable: true, deltaY: 120, ...init }),
+      );
+    await expect(turn({})).toBe(true);
+    await expect(turn({ ctrlKey: true })).toBe(false);
     // Scrolled to the palette, the settings' head shows under the canvas.
     editor.scrollTop += rect(palette).top - rect(editor).top;
     await expect(rect(sheet).top).toBeLessThan(rect(editor).bottom);
@@ -201,7 +210,7 @@ export const StackedNarrow: Story = {
 
 /**
  * 1200px: the outline beside the canvas, the palette over its top left corner and the settings
- * floating over its right side, leaving the canvas at least 400px.
+ * floating over its right side, leaving the canvas at least 320px.
  */
 export const Beside: Story = {
   args: { width: 1200, stacked: false },
@@ -213,8 +222,41 @@ export const Beside: Story = {
     await expect(rect(palette).bottom).toBeLessThan(rect(canvas).bottom);
     const sheet = await selectStep(canvasElement, 'agent_1');
     await expect(rect(sheet).right).toBeLessThanOrEqual(rect(canvas).right);
-    await expect(rect(sheet).left - rect(canvas).left).toBeGreaterThanOrEqual(400);
+    await expect(rect(sheet).left - rect(canvas).left).toBeGreaterThanOrEqual(320);
     await expect(rect(sheet).top).toBeLessThan(rect(canvas).bottom);
+  },
+};
+
+/** 960px, the narrowest beside: the open settings still leave 320px of the canvas uncovered. */
+export const BesideNarrowest: Story = {
+  args: { width: 960, stacked: false },
+  play: async ({ canvasElement }) => {
+    const { canvas } = regions(canvasElement);
+    const sheet = await selectStep(canvasElement, 'agent_1');
+    await expect(rect(sheet).left - rect(canvas).left).toBeGreaterThanOrEqual(320);
+  },
+};
+
+/**
+ * Settings opened from outside the canvas, from an outline row or the team settings, scroll
+ * into view at their top; the editor cannot scroll past its end, so a short sheet stops there.
+ */
+export const StackedSettingsFromOutline: Story = {
+  play: async ({ canvasElement }) => {
+    const { editor, outline } = regions(canvasElement);
+    await waitFor(() => expect(card(canvasElement, 'agent_2')).toBeTruthy());
+    within(outline).getByRole('button', { name: 'B' }).click();
+    const sheet = await within(canvasElement).findByRole('complementary', { name: m.inspector });
+    await waitFor(() => expect(Math.abs(rect(sheet).top - rect(editor).top)).toBeLessThan(1));
+    editor.scrollTop = 0;
+    within(outline).getByRole('button', { name: m.teamSettings }).click();
+    await waitFor(() => expect(editor.scrollTop).toBeGreaterThan(0));
+    await waitFor(() => {
+      const top = rect(sheet).top - rect(editor).top;
+      const atEnd = editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
+      expect(Math.abs(top) < 1 || (atEnd && top > 0)).toBe(true);
+    });
+    await waitFor(() => expect(getComputedStyle(sheet.parentElement as Element).opacity).toBe('1'));
   },
 };
 

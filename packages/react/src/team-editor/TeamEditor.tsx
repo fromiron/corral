@@ -18,6 +18,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
@@ -114,9 +115,9 @@ export interface TeamEditorProps {
 
 /**
  * The narrowest the editor lays out beside: the 272px outline, the 344px sheet with its 12px
- * margins either side and a canvas of at least 400px uncovered.
+ * margins either side and a canvas of at least 320px uncovered.
  */
-export const TEAM_EDITOR_BESIDE_MIN = 272 + 400 + 12 + 344 + 12;
+export const TEAM_EDITOR_BESIDE_MIN = 272 + 320 + 12 + 344 + 12;
 
 const NONE: TeamSelection = { nodes: [], edge: null };
 const NO_TEAMS: readonly TeamReference[] = [];
@@ -519,15 +520,36 @@ export function TeamEditor({
 
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
   const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
+
+  // Stacked, settings opened from outside the canvas (an outline row, the team settings, the
+  // problem list) scroll into view at their top once drawn. A card chosen on the canvas leaves
+  // the editor where it is: the person is working there, and the settings' head shows below.
+  const scroller = useRef<HTMLDivElement>(null);
+  const settingsBox = useRef<HTMLDivElement>(null);
+  const revealing = useRef(false);
+  const reveal = () => {
+    revealing.current = stacked;
+  };
+  useEffect(() => {
+    if (!revealing.current) return;
+    revealing.current = false;
+    const box = settingsBox.current;
+    if (box)
+      scroller.current?.scrollTo?.({
+        top: box.offsetTop,
+        behavior: reduced ? 'instant' : 'smooth',
+      });
+  });
   // Both layouts are one tree in one order (outline, palette, canvas, settings) with other
   // classes, so changing layout keeps focus, the canvas view and a field's open undo batch.
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div
+      ref={scroller}
       data-layout={stacked ? 'stacked' : 'beside'}
       className={
         stacked
-          ? 'flex h-full min-h-0 flex-col overflow-y-auto'
+          ? 'relative flex h-full min-h-0 flex-col overflow-y-auto'
           : 'grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]'
       }
       onKeyDown={onKeyDown}
@@ -538,17 +560,22 @@ export function TeamEditor({
         diagnostics={diagnostics}
         order={order}
         selection={selection}
-        onSelect={select}
+        onSelect={(next) => {
+          select(next);
+          if (next.nodes.length) reveal();
+        }}
         collapsed={collapsed}
         onToggle={toggle}
         canMove={(nodeId, parentId) => setParent(draft, nodeId, parentId).ok}
         onMove={(nodeId, parentId) => apply(setParent(draft, nodeId, parentId))}
         onAdd={() => openMenu(null)}
         onTeamSettings={() => {
+          if (view !== 'team') reveal();
           setView((current) => (current === 'team' ? null : 'team'));
           setSelection(NONE);
         }}
         onProblems={() => {
+          if (view !== 'problems') reveal();
           setView((current) => (current === 'problems' ? null : 'problems'));
           setSelection(NONE);
         }}
@@ -591,8 +618,9 @@ export function TeamEditor({
           })}
         </div>
         {/* Stacked, the canvas takes 60% of the editor's height and at least 400px, three rows
-            of cards at full size, but always 6rem less than the editor: it keeps the wheel and
-            touch for zooming and panning, so the editor must show something to scroll by. */}
+            of cards at full size, but always 6rem less than the editor: it keeps touch for
+            panning, so the editor must show something to scroll by. A plain wheel over it
+            scrolls the editor; Ctrl or ⌘ with it, or a pinch, zooms. */}
         <div
           className={
             stacked
@@ -616,12 +644,14 @@ export function TeamEditor({
             onDelete={remove}
             insetRight={sheetOpen && !stacked ? 368 : 0}
             annotations={annotations}
+            wheelZoom={stacked ? 'withModifier' : 'always'}
           />
         </div>
         <AnimatePresence>
           {sheetOpen ? (
             <motion.div
               key="sheet"
+              ref={settingsBox}
               className={
                 stacked ? undefined : 'pointer-events-none absolute top-3 right-3 bottom-3'
               }
