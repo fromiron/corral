@@ -7,6 +7,8 @@ import {
   panelWidth,
   parsePanelWidth,
   readPanelWidth,
+  WIDE_PANEL_WIDTH,
+  widePanel,
   writePanelWidth,
 } from './width.ts';
 
@@ -99,5 +101,23 @@ describe('the remembered width', () => {
     expect(writePanelWidth(throwing, 480)).toBe(false);
     expect(readPanelWidth(null)).toBeNull();
     expect(writePanelWidth(null, 480)).toBe(false);
+  });
+});
+
+describe('a wide panel (파일 탭과 트리 열)', () => {
+  it('is 800px or more in whatever state it is: beside, maximized or a drawer', () => {
+    expect(WIDE_PANEL_WIDTH).toBe(800);
+    expect(widePanel('beside', 1800, 800)).toBe(true);
+    expect(widePanel('beside', 1800, 799)).toBe(false);
+    expect(widePanel('maximized', 1200, 400)).toBe(true);
+    expect(widePanel('maximized', 790, 400)).toBe(false);
+    expect(widePanel('drawer', 900, 850)).toBe(true);
+    expect(widePanel('drawer', 600, null)).toBe(false);
+  });
+
+  it('is not wide before the work area is measured, or while it is off screen at its width', () => {
+    expect(widePanel('beside', null, 900)).toBe(false);
+    expect(widePanel('closed', 1800, 900)).toBe(true);
+    expect(widePanel('withdrawn', 800, 900)).toBe(false);
   });
 });

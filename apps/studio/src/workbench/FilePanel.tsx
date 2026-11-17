@@ -15,7 +15,15 @@ import {
 } from '@corral/react/design-kit';
 import { RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useRemembered } from '../pages/Workbench.tsx';
 import { useServices } from '../services.tsx';
@@ -93,6 +101,7 @@ export function FilePanel({
   onAttach,
   onOpenDocument,
   onOpenOriginal,
+  headEnd,
   runs = noRuns,
 }: {
   projectId: string;
@@ -104,6 +113,8 @@ export function FilePanel({
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
   /** A file of the project's source folder opens its read-only 문서 tab. */
   onOpenOriginal?: (path: string) => boolean;
+  /** At the head's end: the tree column's close. */
+  headEnd?: ReactNode;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -563,6 +574,7 @@ export function FilePanel({
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-caption text-muted-foreground">
+        {headEnd ? <div className="flex justify-end">{headEnd}</div> : null}
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -647,6 +659,7 @@ export function FilePanel({
               <RefreshCw />
             </Button>
           </Tooltip>
+          {headEnd}
         </div>
       </div>
       {searchMode === 'names' ? (

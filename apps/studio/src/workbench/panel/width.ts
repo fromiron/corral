@@ -1,5 +1,6 @@
 // The panel's widths (features/session-panel.md "폭", "서랍").
 import type { PanelStorage } from './memory.ts';
+import type { Presentation } from './model.ts';
 
 export const CONVERSATION_MIN_WIDTH = 560;
 export const PANEL_MIN_WIDTH = 360;
@@ -61,4 +62,26 @@ export function writePanelWidth(storage: PanelStorage | null, width: number): bo
   } catch {
     return false;
   }
+}
+
+/** From this width the panel is wide: a 300px tree column beside 500px of document. */
+export const WIDE_PANEL_WIDTH = 800;
+
+/**
+ * The panel is wide (features/session-panel.md 파일 탭과 트리 열) at the width its state gives it:
+ * the work area maximized, the drawer's width as a drawer, else its width beside the conversation.
+ */
+export function widePanel(
+  presentation: Presentation,
+  workArea: number | null,
+  remembered: number | null,
+): boolean {
+  if (workArea === null) return false;
+  const width =
+    presentation === 'maximized'
+      ? workArea
+      : presentation === 'drawer'
+        ? drawerWidth(workArea, remembered)
+        : panelWidth(workArea, remembered);
+  return width >= WIDE_PANEL_WIDTH;
 }

@@ -29,7 +29,7 @@ import {
   type TabKey,
   tabKey,
 } from './tabs.ts';
-import { hasRoom } from './width.ts';
+import { hasRoom, widePanel } from './width.ts';
 
 // The session frame's wiring of the panel model (model.ts) to the router, the history and this
 // device's memory. One state per conversation: the page stays mounted across conversations, and
@@ -65,6 +65,8 @@ export interface PanelFrameInput {
   search: SessionSearch;
   /** The work area's width in px; null until it has been measured. */
   workArea: number | null;
+  /** The app's remembered panel width, which with the work area makes the panel wide or not. */
+  rememberedWidth?: number | null;
   folder: boolean;
   /** The conversation's runs, oldest first, once a listing after the entry answered. */
   runIds: readonly string[] | null;
@@ -136,6 +138,9 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   // The front inside 파일 and 변경: whatever the address last named while that tab was the
   // selected one, kept in one place (here) for this conversation only.
   const fronts = useRef<PanelFronts>({});
+  const [held, setHeld] = useState<{ sessionId: string; state: PanelState } | null>(null);
+  const state = held?.sessionId === sessionId ? held.state : EMPTY_PANEL;
+  const entered = held?.sessionId === sessionId;
   const ctx: PanelContext = {
     room: room ?? false,
     folder,
@@ -144,10 +149,9 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     terminalIds,
     corralIds,
     front: fronts.current,
+    // The panel's width in the state it is in now; a change reaches the model as context.
+    wide: widePanel(state.presentation, workArea, input.rememberedWidth ?? null),
   };
-  const [held, setHeld] = useState<{ sessionId: string; state: PanelState } | null>(null);
-  const state = held?.sessionId === sessionId ? held.state : EMPTY_PANEL;
-  const entered = held?.sessionId === sessionId;
 
   // What the handlers read: always the latest render's.
   const latest = useRef({ sessionId, search, ctx, state, input });
@@ -353,12 +357,13 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   ]);
 
   // The room and the run list reach the model only as context.
+  const wide = Boolean(ctx.wide);
   const runKey = runIds === null ? null : runIds.join(',');
   const terminalKey = terminalIds === null ? null : terminalIds.join(',');
   const corralKey = corralIds === null ? null : corralIds.join(',');
   const contextSeen = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}|${corralKey}`;
+    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}|${corralKey}|${wide}`;
     if (!entered || room === null) {
       contextSeen.current = null;
       return;
@@ -370,7 +375,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     } else if (contextSeen.current === key) return;
     contextSeen.current = key;
     dispatch({ type: 'context' });
-  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, corralKey, dispatch]);
+  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, corralKey, wide, dispatch]);
 
   // The selected tab's own state (and front), as the address carries it.
   useEffect(() => {

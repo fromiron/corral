@@ -2,7 +2,14 @@ import type { TextAttachment, TextRange } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES, type TextAttachmentProvenance } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { askCancelConfirmation } from '@corral/react';
-import { SidePanelFrame, type TabsClosableHandle, tabsClosableIds } from '@corral/react/design-kit';
+import {
+  Button,
+  SidePanelFrame,
+  type TabsClosableHandle,
+  Tooltip,
+  tabsClosableIds,
+} from '@corral/react/design-kit';
+import { X } from '@corral/react/icons';
 import { useRouter } from '@tanstack/react-router';
 import {
   type ReactNode,
@@ -272,6 +279,7 @@ function WorkSessionPage() {
     sessionId: session.sessionId,
     search,
     workArea,
+    rememberedWidth,
     folder: Boolean(binding),
     runIds,
     paddock: Boolean(terminals && terminalList.value?.list?.target),
@@ -755,8 +763,8 @@ function WorkSessionPage() {
   const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind ?? null;
   const changesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'changes' ? search.panel : undefined;
-  const panelViews: Record<'files' | 'checks' | 'problems', () => ReactNode> = {
-    files: () => (
+  const panelViews: Record<'files' | 'checks' | 'problems', (headEnd?: ReactNode) => ReactNode> = {
+    files: (headEnd) => (
       <FilePanel
         projectId={session.projectId}
         sessionId={session.sessionId}
@@ -765,6 +773,7 @@ function WorkSessionPage() {
         onAttach={handleAttachment}
         onOpenDocument={(document, range) => openDocument(document, range)}
         onOpenOriginal={(path) => openDocument({ source: 'original', path })}
+        headEnd={headEnd}
       />
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
@@ -824,14 +833,33 @@ function WorkSessionPage() {
     );
   };
   /** The 파일 tab: the folder tree, filling the tab's height. */
-  const renderFiles = () => {
+  const renderFiles = (column = false) => {
     const target = sessionPanelDescriptor(session.projectId, session.sessionId, 'files', null);
+    const closeFiles = tpanel('close', { name: tdock('files') });
     return (
       <div
         key={target ? panelKey(services, target) : 'files'}
         className="flex h-full min-h-0 flex-col gap-3 p-3"
       >
-        {panelViews.files()}
+        {panelViews.files(
+          // Beside a document the tree is a column: its own close closes 파일, and the focus goes
+          // to the strip's selected document (features/session-panel.md 파일 탭과 트리 열).
+          column ? (
+            <Tooltip content={closeFiles}>
+              <Button
+                size="icon"
+                variant="ghost"
+                aria-label={closeFiles}
+                onClick={() => {
+                  close('files');
+                  focusNext.current = 'tab';
+                }}
+              >
+                <X />
+              </Button>
+            </Tooltip>
+          ) : undefined,
+        )}
       </div>
     );
   };
@@ -859,7 +887,7 @@ function WorkSessionPage() {
         }
       />
     ) : null;
-  const renderTab = (tab: OpenTab) => {
+  const renderTab = (tab: OpenTab, column = false) => {
     const selected = state.selected === tabKey(tab);
     if (tab.kind === 'terminal')
       return renderTerminal(
@@ -868,7 +896,7 @@ function WorkSessionPage() {
         () => dockAreaRef.current?.moveToDock(tab.terminalId),
         () => strip.current?.focusTab(tabKey(tab)),
       );
-    if (tab.kind === 'files') return renderFiles();
+    if (tab.kind === 'files') return renderFiles(column);
     if (tab.kind === 'document')
       return tab.source === 'copy' && documents ? (
         <DocumentTab

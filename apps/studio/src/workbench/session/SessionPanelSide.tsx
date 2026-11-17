@@ -36,7 +36,7 @@ import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
 import { documentTabNames } from '../panel/documentNames.ts';
-import { maximizeAvailable, type OpenTab, type PanelState } from '../panel/model.ts';
+import { maximizeAvailable, type OpenTab, type PanelState, treeColumn } from '../panel/model.ts';
 import {
   type PanelContext,
   type PanelTab,
@@ -287,7 +287,8 @@ export function SessionPanelSide({
   /** A run chosen in the run history: its tab opens or is selected. */
   onOpenRun: (runId: string) => void;
   onMaximize: () => void;
-  renderTab: (tab: OpenTab) => ReactNode;
+  /** A tab's content; `column` asks for 파일 as the tree column beside a document. */
+  renderTab: (tab: OpenTab, column?: boolean) => ReactNode;
   /** The project's teams by ID: a 팀 그래프 tab is named by its team. */
   teamNames?: Readonly<Record<string, string>>;
   /** Why a way opened nothing (the 문서 tab limit), shown under the strip. */
@@ -366,7 +367,18 @@ export function SessionPanelSide({
         </div>
       </div>
     );
-  const tabs: TabsClosableTab[] = state.tabs.map((tab) => {
+  // A wide panel draws 파일 as the tree column beside the selected document, not in the strip
+  // (features/session-panel.md 파일 탭과 트리 열); it leaves the strip once it is not selected.
+  const filesHidden = treeColumn(state, ctx) && state.selected !== 'files';
+  const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind;
+  const column = filesHidden && selectedKind === 'document';
+  const drawn = filesHidden ? state.tabs.filter((tab) => tab.kind !== 'files') : state.tabs;
+  /** The strip's place `index` as a place in the panel's own tab order. */
+  const placeOf = (index: number) => {
+    const at = drawn[index];
+    return at ? state.tabs.indexOf(at) : state.tabs.length;
+  };
+  const tabs: TabsClosableTab[] = drawn.map((tab) => {
     // A run tab carries its run's state in the icon's place, as the run history says it, except
     // once the run completed; before the run list answers it keeps the run icon.
     const presence = tab.kind === 'run' ? presenceOf(tab.runId) : null;
@@ -409,12 +421,14 @@ export function SessionPanelSide({
           onSelect={(id) => onSelect(id as TabKey)}
           onClose={(id) => onClose(id as TabKey)}
           closeLabel={(tab) => t('close', { name: tab.label })}
-          onReorder={(id, toIndex) => onReorder(id as TabKey, toIndex)}
+          onReorder={(id, toIndex) =>
+            onReorder(id as TabKey, Math.min(placeOf(toIndex), state.tabs.length - 1))
+          }
           announceMove={(tab, n, count) => t('tabPosition', { label: tab.label, n, count })}
           moveGroup={TERMINAL_MOVE_GROUP}
           onMoveOut={(id) => onMoveOut(id as TabKey)}
           onMoveIn={(id, index) => {
-            if (id.startsWith('terminal:')) onMoveIn(id.slice('terminal:'.length), index);
+            if (id.startsWith('terminal:')) onMoveIn(id.slice('terminal:'.length), placeOf(index));
           }}
           trailing={
             items.length > 0 ? (
@@ -475,21 +489,41 @@ export function SessionPanelSide({
           {notice}
         </p>
       ) : null}
-      {state.tabs.map((tab) => {
-        const key = tabKey(tab);
-        return (
-          <TabsClosablePanel
-            // A tab closed and opened again is a new instance: it starts fresh.
-            key={`${sessionId}:${tab.instance}`}
-            idPrefix={PANEL_ID_PREFIX}
-            tabId={key}
-            selected={key === state.selected && tab.seen}
-            className="flex min-h-0 flex-1 flex-col"
-          >
-            {renderTab(tab)}
-          </TabsClosablePanel>
-        );
-      })}
+      {/* 파일 comes first in both widths, so the tree is never moved or mounted again as it
+          turns between its tab and the column, and the column comes before the document. */}
+      <div className={`flex min-h-0 flex-1 ${column ? 'flex-row' : 'flex-col'}`}>
+        {[
+          ...state.tabs.filter((tab) => tab.kind === 'files'),
+          ...state.tabs.filter((tab) => tab.kind !== 'files'),
+        ].map((tab) => {
+          const key = tabKey(tab);
+          const asColumn = column && tab.kind === 'files';
+          return (
+            <TabsClosablePanel
+              // A tab closed and opened again is a new instance: it starts fresh.
+              key={`${sessionId}:${tab.instance}`}
+              idPrefix={PANEL_ID_PREFIX}
+              tabId={key}
+              selected={asColumn || (key === state.selected && tab.seen)}
+              className={
+                asColumn
+                  ? 'flex min-h-0 w-[300px] shrink-0 flex-col border-r border-line'
+                  : 'flex min-h-0 min-w-0 flex-1 flex-col'
+              }
+              {...(asColumn
+                ? {
+                    role: 'region',
+                    'aria-label': name(tab).label,
+                    'aria-labelledby': undefined,
+                    tabIndex: undefined,
+                  }
+                : {})}
+            >
+              {renderTab(tab, asColumn)}
+            </TabsClosablePanel>
+          );
+        })}
+      </div>
     </div>
   );
 }
