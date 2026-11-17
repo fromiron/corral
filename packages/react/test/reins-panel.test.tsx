@@ -29,6 +29,7 @@ function fakeSession(steer = vi.fn(async () => ({}) as never)): RunSessionStore 
     receipts: {},
     commandError: null,
     unconfirmedCommands: {},
+    commandTypes: {},
     sendCommand: vi.fn(),
     retryCommand: vi.fn(),
     start: vi.fn(),

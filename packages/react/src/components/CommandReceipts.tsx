@@ -1,35 +1,79 @@
-import type { CommandError, ReceiptStatus } from '@corral/contracts';
+import type {
+  CommandError,
+  Receipt,
+  ReceiptStatus,
+  RunCommand,
+  RunCommandType,
+} from '@corral/contracts';
 import { type ComponentProps, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { RefreshCw } from '../design-kit/icons.ts';
 import { Button, cn, focusRing, fontWeights, Tooltip } from '../design-kit/index.ts';
-import type { RunSessionStore } from '../run/session.ts';
+import type { RunSessionState, RunSessionStore } from '../run/session.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { StatusBadge, StatusDot } from './StatusBadge.tsx';
 
 /** A command these receipts settled: its result already shows where the person acted. */
 const SETTLED = new Set<ReceiptStatus>(['applied', 'superseded', 'cancelled']);
 
+/** A receipt still waiting for its boundary; any other open one went wrong. */
+const WAITING = new Set<ReceiptStatus>(['accepted', 'queued']);
+
+/**
+ * Where a lost response is said, once on the screen: an instruction to one execution in that
+ * execution's Reins, whose send goes again under the same command ID; any other command in its
+ * run's head, with its retry.
+ */
+const lostPlace = (command: RunCommand) =>
+  command.type === 'steer'
+    ? `execution:${command.payload.targetExecutionId}`
+    : `run:${command.runId}`;
+
+/**
+ * What `target` says of lost responses: the lost commands it keeps a row for, with the retry, and
+ * whether the connection's error takes a line of its own. A lost response sets that error too, so
+ * the line stands only where its command belongs and no row says it; an error no lost command
+ * explains stands in the run's head.
+ */
+function losses(
+  state: Pick<RunSessionState, 'commandError' | 'unconfirmedCommands'>,
+  target: string,
+) {
+  const lost = Object.values(state.unconfirmedCommands);
+  const here = lost.filter(({ command }) => lostPlace(command) === target);
+  // An execution's Reins keeps no row: its own field sends the instruction again.
+  const rows = target.startsWith('run:') ? here : [];
+  const line =
+    state.commandError !== null &&
+    rows.length === 0 &&
+    (lost.length === 0 ? target.startsWith('run:') : here.length > 0);
+  return { rows, line };
+}
+
+const isOpen = (receipt: Receipt) => !SETTLED.has(receipt.status) || receipt.error !== undefined;
+
 /**
  * Whether `CommandReceipts` with `openOnly` has anything to show for `target`: a receipt still
  * waiting or gone wrong, a command whose answer was lost, or the connection's error.
  */
 export function useOpenReceipts(session: RunSessionStore, target: string): boolean {
-  return useStore(
-    session,
-    (s) =>
-      s.commandError !== null ||
-      Object.values(s.unconfirmedCommands).some(
-        ({ command }) => target === `run:${command.runId}`,
-      ) ||
-      Object.values(s.receipts).some(
-        (receipt) =>
-          receipt.target === target &&
-          (!SETTLED.has(receipt.status) || receipt.error !== undefined),
-      ),
-  );
+  return useStore(session, (s) => {
+    const { rows, line } = losses(s, target);
+    return (
+      rows.length > 0 ||
+      line ||
+      Object.values(s.receipts).some((receipt) => receipt.target === target && isOpen(receipt))
+    );
+  });
 }
+
+/** A whole-run control's own name, which says it is the run's; other commands have none yet. */
+const NAMES: Partial<Record<RunCommandType, 'pause' | 'resume' | 'cancelRun'>> = {
+  pause: 'pause',
+  resume: 'resume',
+  cancel: 'cancelRun',
+};
 
 /** Receipt state comes from the command record, never the HTTP status or a local click. */
 export function CommandReceipts({
@@ -45,9 +89,9 @@ export function CommandReceipts({
   /** Leaves out settled receipts, keeping those still waiting and those that went wrong. */
   openOnly?: boolean;
   /**
-   * Each receipt on one line (its mark, the command, its state, then the boundary or reason),
-   * cut at the end and whole in the kit tooltip; the group keeps its name but no heading. For a
-   * head that carries nothing else.
+   * Each receipt on one line (its mark, the command's name, then its boundary and state, or
+   * its state and reason), cut at the end and whole in the kit tooltip; the group keeps its name
+   * but no heading. For a head that carries nothing else.
    */
   lines?: boolean;
   /** With `lines`: the retry shows its icon, its words staying its name and tooltip. */
@@ -59,15 +103,15 @@ export function CommandReceipts({
   const failure = useTranslations('Failure');
   const status = useTranslations('Status');
   const receipts = useStore(session, (s) => s.receipts);
-  const error = useStore(session, (s) => s.commandError);
-  const unknown = useStore(session, (s) => s.unconfirmedCommands);
+  const types = useStore(session, (s) => s.commandTypes);
+  const commandError = useStore(session, (s) => s.commandError);
+  const unconfirmedCommands = useStore(session, (s) => s.unconfirmedCommands);
   const pending = useStore(session, (s) => s.pendingCommandIds);
   const matching = Object.values(receipts).filter(
-    (receipt) =>
-      receipt.target === target &&
-      (!openOnly || !SETTLED.has(receipt.status) || receipt.error !== undefined),
+    (receipt) => receipt.target === target && (!openOnly || isOpen(receipt)),
   );
-  const lost = Object.values(unknown).filter(({ command }) => target === `run:${command.runId}`);
+  // Said once, in the product's words: the browser's own words never reach the screen.
+  const { rows: lost, line: errorLine } = losses({ commandError, unconfirmedCommands }, target);
   const retry = (commandId: string) =>
     void session
       .getState()
@@ -82,69 +126,88 @@ export function CommandReceipts({
       ]
         .filter(Boolean)
         .join(' ');
+    /** A whole-run control by its own name; any other command by the generic words. */
+    const nameOf = (type: RunCommandType | undefined, wholeRun: boolean) => {
+      const name = type && wholeRun ? NAMES[type] : undefined;
+      return name ? t(name) : null;
+    };
     const retryWords = t('retrySameCommand');
     return (
       <div className="flex min-w-0 flex-col gap-1 text-caption" aria-live="polite">
-        {/* A lost response sets the connection's error too: its row says the loss, once, with
-            the retry. The browser's own words stay off the line. */}
-        {error && lost.length === 0 ? (
+        {errorLine ? (
           <ReceiptLine words={[{ text: t('receiptUnconfirmed'), alert: true, tone: 'danger' }]} />
         ) : null}
         {lost.length > 0 || matching.length > 0 ? (
           // biome-ignore lint/a11y/useSemanticElements: a named group of receipt lines, not a form fieldset.
           <div role="group" aria-label={t('receipts')} className="flex min-w-0 flex-col gap-1">
-            {lost.map(({ command }) => (
-              <ReceiptLine
-                key={command.commandId}
-                mark={<StatusDot status="delivery_unknown" />}
-                words={[
-                  { text: t('receiptRun'), title: command.commandId },
-                  { text: command.type },
-                  { text: t('receiptUnconfirmed'), alert: true, tone: 'muted' },
-                ]}
-                action={
-                  <Tooltip content={retryWords} forceOpen={iconActions ? undefined : false}>
-                    <Button
-                      type="button"
-                      variant="tertiary"
-                      size={actionSize}
-                      className="shrink-0"
-                      disabled={pending.includes(command.commandId)}
-                      onClick={() => retry(command.commandId)}
-                    >
-                      {iconActions ? (
-                        <>
-                          <RefreshCw aria-hidden="true" />
-                          <span className="sr-only">{retryWords}</span>
-                        </>
-                      ) : (
-                        retryWords
-                      )}
-                    </Button>
-                  </Tooltip>
-                }
-              />
-            ))}
-            {matching.map((receipt) => (
-              <ReceiptLine
-                key={receipt.commandId}
-                testId={`receipt-${receipt.commandId}`}
-                mark={<StatusDot status={receipt.status} />}
-                words={[
-                  {
-                    text: t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution'),
-                    title: receipt.commandId,
-                  },
-                  { text: status.has(receipt.status) ? status(receipt.status) : receipt.status },
-                  {
-                    text: receipt.error
-                      ? reason(receipt.error)
-                      : t(`boundary.${receipt.requestedBoundary}`),
-                    tone: 'muted',
-                  },
-                ]}
-              />
-            ))}
+            {lost.map(({ command }) => {
+              const name = nameOf(
+                command.type,
+                command.type !== 'cancel' || command.payload.scope.kind === 'run',
+              );
+              return (
+                <ReceiptLine
+                  key={command.commandId}
+                  mark={<StatusDot status="delivery_unknown" />}
+                  words={[
+                    ...(name
+                      ? [{ text: name, title: command.commandId }]
+                      : [
+                          { text: t('receiptRun'), title: command.commandId },
+                          { text: command.type },
+                        ]),
+                    { text: t('receiptUnconfirmed'), alert: true, tone: 'muted' as const },
+                  ]}
+                  action={
+                    <Tooltip content={retryWords} forceOpen={iconActions ? undefined : false}>
+                      <Button
+                        type="button"
+                        variant="tertiary"
+                        size={actionSize}
+                        className="shrink-0"
+                        disabled={pending.includes(command.commandId)}
+                        onClick={() => retry(command.commandId)}
+                      >
+                        {iconActions ? (
+                          <>
+                            <RefreshCw aria-hidden="true" />
+                            <span className="sr-only">{retryWords}</span>
+                          </>
+                        ) : (
+                          retryWords
+                        )}
+                      </Button>
+                    </Tooltip>
+                  }
+                />
+              );
+            })}
+            {matching.map((receipt) => {
+              const name = {
+                text:
+                  nameOf(types[receipt.commandId], receipt.target.startsWith('run:')) ??
+                  t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution'),
+                title: receipt.commandId,
+              };
+              const state = status.has(receipt.status) ? status(receipt.status) : receipt.status;
+              const tail = receipt.error
+                ? reason(receipt.error)
+                : t(`boundary.${receipt.requestedBoundary}`);
+              // Waiting, the boundary is the news and leads; gone wrong, the state does.
+              const waiting = WAITING.has(receipt.status) && !receipt.error;
+              return (
+                <ReceiptLine
+                  key={receipt.commandId}
+                  testId={`receipt-${receipt.commandId}`}
+                  mark={<StatusDot status={receipt.status} />}
+                  words={
+                    waiting
+                      ? [name, { text: tail }, { text: state, tone: 'muted' }]
+                      : [name, { text: state }, { text: tail, tone: 'muted' }]
+                  }
+                />
+              );
+            })}
           </div>
         ) : null}
       </div>
@@ -152,21 +215,20 @@ export function CommandReceipts({
   }
   return (
     <div className="flex flex-col gap-1 text-caption" aria-live="polite">
-      {error ? (
+      {errorLine ? (
         <p role="alert" className="text-danger">
-          {t('connectionUnknown', { message: error })}
+          {t('receiptUnconfirmed')}
         </p>
       ) : null}
       {matching.length > 0 ? (
         <h3 style={{ fontVariationSettings: fontWeights.semibold }}>{t('receipts')}</h3>
       ) : null}
-      {lost.map(({ command, error }) => (
+      {lost.map(({ command }) => (
         <div key={command.commandId} className="rounded border border-warning p-2">
           <p title={command.commandId}>
-            {t(command.runId && target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')} ·{' '}
-            {command.type}
+            {t('receiptRun')} · {command.type}
           </p>
-          <p role="alert">{t('connectionUnknown', { message: error })}</p>
+          <p role="alert">{t('receiptUnconfirmed')}</p>
           <Button
             type="button"
             disabled={pending.includes(command.commandId)}

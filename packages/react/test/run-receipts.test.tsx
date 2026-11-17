@@ -1,9 +1,10 @@
-import type { Receipt, ReceiptStatus } from '@corral/contracts';
+import type { Receipt, ReceiptStatus, RunCommand } from '@corral/contracts';
 import { emptyProjection } from '@corral/core';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { CommandReceipts, useOpenReceipts } from '../src/components/CommandReceipts.tsx';
 import { RunActions } from '../src/components/RunActions.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import type { RunSessionState } from '../src/run/session.ts';
@@ -109,7 +110,7 @@ const lost = (commandId: string, error = 'response lost') => ({
 describe('a head of receipts only, one line each', () => {
   afterEach(() => vi.restoreAllMocks());
 
-  it('puts a receipt on one line: its mark, the command, its state and its boundary', () => {
+  it('puts a receipt on one line: its mark, the command, its boundary and its state', () => {
     receiptLines({
       receipts: {
         cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
@@ -121,7 +122,7 @@ describe('a head of receipts only, one line each', () => {
     const text = textOf(line);
     expect(text).toHaveClass('truncate');
     expect(words(text)).toBe(
-      'Whole-run command · Accepted · Boundary: after active work is settled',
+      'Whole-run command · Boundary: after active work is settled · Accepted',
     );
     // One mark, before the words and silent: the state is said in words.
     const marks = line?.querySelectorAll('[data-slot="receipt-mark"]') ?? [];
@@ -160,6 +161,53 @@ describe('a head of receipts only, one line each', () => {
     expect(line?.querySelector('details')).toBeNull();
   });
 
+  it('leads a waiting pause with its own name and its boundary, the state after', () => {
+    receiptLines({
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
+        cmd_resume: receipt('cmd_resume', 'queued', { requestedBoundary: 'next_request' }),
+      },
+      commandTypes: { cmd_pause: 'pause', cmd_resume: 'resume' },
+    });
+    expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_pause'))))).toBe(
+      'Pause run · Boundary: after active work is settled · Accepted',
+    );
+    expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_resume'))))).toBe(
+      'Resume run · Boundary: next model request · Queued',
+    );
+    expect(document.body.textContent).not.toContain('Whole-run command');
+  });
+
+  it('puts the state right after the name of a command that went wrong, before its reason', () => {
+    receiptLines({
+      receipts: {
+        cmd_cancel: receipt('cmd_cancel', 'rejected', {
+          error: { code: 'CAPABILITY_DENIED', message: 'Not allowed.' },
+        }),
+        cmd_expired: receipt('cmd_expired', 'expired', { requestedBoundary: 'safe_boundary' }),
+      },
+      commandTypes: { cmd_cancel: 'cancel', cmd_expired: 'pause' },
+    });
+    expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_cancel'))))).toBe(
+      'Stop the run · Rejected · This operation was not allowed. Check the recorded reason. CAPABILITY_DENIED: Not allowed.',
+    );
+    expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_expired'))))).toBe(
+      'Pause run · Expired · Boundary: after active work is settled',
+    );
+  });
+
+  it('keeps the generic name for a command with no name of its own', () => {
+    receiptLines({
+      receipts: {
+        cmd_approval: receipt('cmd_approval', 'accepted', { requestedBoundary: 'immediate' }),
+      },
+      commandTypes: { cmd_approval: 'resolve_approval' },
+    });
+    expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_approval'))))).toBe(
+      'Whole-run command · Boundary: future admissions immediately · Accepted',
+    );
+  });
+
   it('says a lost response once, on its line with the retry, without the browser’s words', () => {
     const retryCommand = vi.fn(async () => ({}) as Receipt);
     // A lost response leaves both: the command unconfirmed and the session's connection error.
@@ -175,7 +223,7 @@ describe('a head of receipts only, one line each', () => {
     const line = lineOf(retry);
     expect(line).toBe(lines[0]);
     expect(words(textOf(line))).toBe(
-      'Whole-run command · pause · Receipt not confirmed. Check the run before retrying.',
+      'Pause run · Receipt not confirmed. Check the run before retrying.',
     );
     expect(document.body.textContent?.match(/not confirmed/g)).toHaveLength(1);
     expect(document.body.textContent).not.toContain('Failed to fetch');
@@ -224,7 +272,7 @@ describe('a head of receipts only, one line each', () => {
     expect(text).toHaveFocus();
     const tip = await screen.findByRole('tooltip');
     expect(words(tip)).toBe(
-      'Whole-run command · Accepted · Boundary: after active work is settled',
+      'Whole-run command · Boundary: after active work is settled · Accepted',
     );
   });
 
@@ -255,5 +303,148 @@ describe('a head of receipts only, one line each', () => {
     expect(screen.getByRole('heading', { name: 'Command receipts' })).toBeInTheDocument();
     expect(screen.getByText('Boundary: after active work is settled').tagName).toBe('P');
     expect(screen.queryByRole('group', { name: 'Command receipts' })).toBeNull();
+  });
+});
+
+// A lost response is said once on the screen, in the product's words, never the browser's: in the
+// run's head with its retry, or, for an instruction to one execution, in that execution's Reins,
+// whose send goes again under the same ID.
+
+const command = (type: RunCommand['type'], index: number, extra: object = {}) =>
+  ({
+    schemaVersion: '0.1',
+    runId: 'run_receipts',
+    commandId: `cmd_${index}`,
+    type,
+    payload: {},
+    ...extra,
+  }) as unknown as RunCommand;
+const everyCommand: RunCommand[] = [
+  command('pause', 1, { payload: { scope: 'run' } }),
+  command('resume', 2, { payload: { scope: 'run' } }),
+  command('cancel', 3, { payload: { scope: { kind: 'run' }, reason: 'stop' } }),
+  command('cancel', 4, {
+    payload: { scope: { kind: 'execution', executionId: 'exec_1' }, reason: 'x' },
+  }),
+  command('cancel', 5, { payload: { scope: { kind: 'task', taskId: 'task_1' }, reason: 'x' } }),
+  command('steer', 6, {
+    payload: { targetExecutionId: 'exec_1', text: 'Keep it short', delivery: 'next_request' },
+  }),
+  command('compact_context', 7, { payload: { executionId: 'exec_1', attemptNo: 1 } }),
+  command('restart_task', 8, {
+    payload: { taskId: 'task_1', previousExecutionId: 'exec_1', instruction: 'again' },
+  }),
+  command('resolve_approval', 9),
+  command('answer_user', 10),
+  command('answer_extension_ui', 11),
+  command('patch', 12),
+  command('set_breakpoints', 13, { payload: { nodeIds: [] } }),
+  command('submit_advice', 14),
+];
+
+/** The run's head (with or without its controls, one line each or not) and exec_1's Reins. */
+function screenWith(
+  state: Partial<RunSessionState>,
+  head: 'lines' | 'block' | 'controls' = 'lines',
+) {
+  const session = sessionStore({
+    runId: 'run_receipts',
+    projection: { ...emptyProjection('run_receipts'), status: 'running' },
+    ...state,
+  });
+  function Open() {
+    return (
+      <output data-testid="open">{String(useOpenReceipts(session, 'run:run_receipts'))}</output>
+    );
+  }
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <section data-testid="head">
+        {head === 'controls' ? (
+          <RunActions session={session} compact />
+        ) : (
+          <RunActions
+            session={session}
+            compact
+            narrowIcons
+            receiptsOnly
+            receiptLines={head === 'lines'}
+          />
+        )}
+      </section>
+      <section data-testid="reins">
+        <CommandReceipts session={session} target="execution:exec_1" />
+      </section>
+      <Open />
+    </IntlProvider>,
+  );
+  return session;
+}
+const statements = (scope: HTMLElement) => scope.textContent?.match(/not confirmed/g)?.length ?? 0;
+
+describe('a lost response, said once', () => {
+  it.each(['lines', 'block', 'controls'] as const)(
+    'says each lost command once, in its place, in the product’s words (%s head)',
+    (head) => {
+      for (const lostCommand of everyCommand) {
+        cleanup();
+        screenWith(
+          {
+            commandError: 'Failed to fetch',
+            unconfirmedCommands: {
+              [lostCommand.commandId]: { command: lostCommand, error: 'Failed to fetch' },
+            },
+          },
+          head,
+        );
+        const where = lostCommand.type === 'steer' ? 'reins' : 'head';
+        const other = where === 'reins' ? 'head' : 'reins';
+        expect(statements(screen.getByTestId(where)), `${lostCommand.type} in its place`).toBe(1);
+        expect(statements(screen.getByTestId(other)), `${lostCommand.type} elsewhere`).toBe(0);
+        expect(document.body.textContent, lostCommand.type).not.toContain('Failed to fetch');
+        expect(screen.getAllByRole('alert'), lostCommand.type).toHaveLength(1);
+        // The head has a retry for what it says; the Reins sends again from its own field.
+        expect(
+          within(screen.getByTestId('head')).queryAllByRole('button', {
+            name: 'Check receipt and retry safely',
+          }),
+          lostCommand.type,
+        ).toHaveLength(where === 'head' ? 1 : 0);
+        expect(
+          within(screen.getByTestId('reins')).queryAllByRole('button', {
+            name: 'Check receipt and retry safely',
+          }),
+        ).toHaveLength(0);
+        expect(screen.getByTestId('open').textContent, lostCommand.type).toBe(
+          String(where === 'head'),
+        );
+      }
+    },
+  );
+
+  it('adds no row to the run head for a lost instruction to one execution', () => {
+    const steer = everyCommand.find((c) => c.type === 'steer') as RunCommand;
+    screenWith({
+      commandError: 'Failed to fetch',
+      unconfirmedCommands: { [steer.commandId]: { command: steer, error: 'Failed to fetch' } },
+    });
+    const head = screen.getByTestId('head');
+    expect(head.querySelectorAll('[data-slot="receipt-line"]')).toHaveLength(0);
+    expect(within(head).queryByRole('group')).toBeNull();
+    expect(head.textContent).toBe('');
+    expect(screen.getByTestId('open').textContent).toBe('false');
+  });
+
+  it('says a connection error with no lost command once, in the run’s head, in the product’s words', () => {
+    for (const head of ['block', 'controls'] as const) {
+      cleanup();
+      screenWith({ commandError: 'Failed to fetch' }, head);
+      expect(statements(screen.getByTestId('head')), head).toBe(1);
+      expect(statements(screen.getByTestId('reins')), head).toBe(0);
+      expect(screen.getByRole('alert')).toHaveTextContent(
+        'Receipt not confirmed. Check the run before retrying.',
+      );
+      expect(document.body.textContent).not.toContain('Failed to fetch');
+    }
   });
 });

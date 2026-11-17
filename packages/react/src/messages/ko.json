@@ -441,7 +441,6 @@
     "confirmCancelRun": "실행 중지",
     "keepRunning": "계속 실행",
     "receipts": "명령 접수 기록",
-    "connectionUnknown": "접수 여부를 확인하지 못했습니다: {message}. 다시 보내기 전에 실행을 확인하세요.",
     "receiptUnconfirmed": "접수 여부를 확인하지 못했습니다. 다시 보내기 전에 실행을 확인하세요.",
     "retrySameCommand": "접수 확인 후 안전하게 다시 보내기",
     "draftTargetChanged": "이 초안은 {target}의 것입니다. 그 실행 단위를 고르거나, 초안을 옮긴다고 명시한 뒤 보내세요.",

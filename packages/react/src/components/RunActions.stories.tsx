@@ -22,6 +22,7 @@ const session = () =>
     runId: 'run_story',
     projection: { ...emptyProjection('run_story'), status: 'pausing' },
     receipts: { cmd_pause: pause },
+    commandTypes: { cmd_pause: 'pause' },
     commandError: 'the connection closed',
     unconfirmedCommands: {
       cmd_resume: {
@@ -92,7 +93,7 @@ export const ReceiptLines: Story = {
     await expect(lost).toHaveFocus();
     const tip = await page.findByRole('tooltip');
     await expect(tip).toHaveTextContent(
-      'Whole-run command · resume · Receipt not confirmed. Check the run before retrying.',
+      'Resume run · Receipt not confirmed. Check the run before retrying.',
     );
     // The loss is said once, without the browser's words.
     await expect(head.textContent).not.toContain('the connection closed');
