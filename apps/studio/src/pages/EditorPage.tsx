@@ -11,6 +11,7 @@ import {
   RunView,
   type SavedRevision,
   StudioStoresProvider,
+  TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,
   useSteerTarget,
   useStudioStores,
@@ -254,6 +255,9 @@ function Editor({
   const roomBeside = useContainerAtLeast(body, 640 + 320);
   const runBeside = runOpen && !inSession && roomBeside;
   const runInPlace = runOpen && !inSession && !roomBeside;
+  // The editor stacks by its own width, which a test run beside it narrows.
+  const column = useRef<HTMLDivElement>(null);
+  const stacked = !useContainerAtLeast(column, TEAM_EDITOR_BESIDE_MIN);
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
@@ -440,9 +444,10 @@ function Editor({
           className={`grid min-h-0 ${runBeside ? 'grid-cols-[minmax(640px,1fr)_minmax(320px,400px)]' : 'grid-cols-1'}`}
         >
           {/* Too narrow for both, the test run takes the editor's place; the editor keeps its state. */}
-          <div className="grid min-h-0 grid-rows-[minmax(0,1fr)]" hidden={runInPlace}>
+          <div ref={column} className="grid min-h-0 grid-rows-[minmax(0,1fr)]" hidden={runInPlace}>
             <TeamEditor
               editor={editor}
+              stacked={stacked}
               profiles={profiles}
               imageProfiles={imageProfiles}
               teams={teams.references}
