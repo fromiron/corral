@@ -3,22 +3,29 @@
 import { panelRunId } from '../panelRun.ts';
 import type { SessionPanel } from '../panels/registry.ts';
 
-export type TabKind = 'files' | 'changes' | 'run' | 'artifacts';
+export type TabKind = 'files' | 'terminal' | 'changes' | 'run' | 'artifacts';
 
-/** A tab of the panel. 파일, 변경 and 결과 are one per conversation; 실행 is one per run. */
+/**
+ * A tab of the panel. 파일, 변경 and 결과 are one per conversation; 실행 is one per run; 터미널 is
+ * one per terminal, and a terminal's tab is in the panel or in the bottom dock, never both.
+ */
 export type PanelTab =
   | { readonly kind: 'files' | 'changes' | 'artifacts' }
-  | { readonly kind: 'run'; readonly runId: string };
+  | { readonly kind: 'run'; readonly runId: string }
+  | { readonly kind: 'terminal'; readonly terminalId: string };
 
 /** A tab's identity in the strip: two tabs with the same key are the same tab. */
-export type TabKey = 'files' | 'changes' | 'artifacts' | `run:${string}`;
+export type TabKey = 'files' | 'changes' | 'artifacts' | `run:${string}` | `terminal:${string}`;
 
-/** Every `panel` value names the tab that carries it ("탭" table). */
-export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind>> = {
+/**
+ * Every `panel` value names the tab that carries it ("탭" table). `debug` names the bottom dock's
+ * debug tab, never a panel tab.
+ */
+export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind | null>> = {
   files: 'files',
-  terminal: 'files',
+  terminal: 'terminal',
   tools: 'files',
-  debug: 'files',
+  debug: null,
   changes: 'changes',
   git: 'changes',
   checks: 'changes',
@@ -31,6 +38,8 @@ export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind>> = {
 export interface PanelTarget {
   readonly panel: SessionPanel;
   readonly run?: string | undefined;
+  /** For 터미널: the terminal; without one the target names no tab. */
+  readonly terminal?: string | undefined;
 }
 
 /** What the conversation can open now, passed in with every event. */
@@ -45,6 +54,13 @@ export interface PanelContext {
    * never closes anything and never decides that the conversation has no run.
    */
   readonly runIds: readonly string[] | null;
+  /** Server mode with a Paddock: a terminal can be opened (the "+" list's 터미널). */
+  readonly paddock?: boolean | undefined;
+  /**
+   * The conversation's terminals, oldest first, from a listing asked after this entry; null until
+   * it answers, and null when it cannot be read (restored terminal tabs then stay).
+   */
+  readonly terminalIds?: readonly string[] | null | undefined;
   /**
    * The `panel` value of the window or view now in front inside the 파일 and 변경 tabs
    * (`terminal`, `git`, …), so the address written for that tab names it.
@@ -59,10 +75,12 @@ export interface PanelFronts {
 }
 
 /** The "+" list's items, in their order. */
-export type PlusItem = 'files' | 'changes' | 'run-history' | 'artifacts';
+export type PlusItem = 'files' | 'terminal' | 'changes' | 'run-history' | 'artifacts';
 
 export function tabKey(tab: PanelTab): TabKey {
-  return tab.kind === 'run' ? `run:${tab.runId}` : tab.kind;
+  if (tab.kind === 'run') return `run:${tab.runId}`;
+  if (tab.kind === 'terminal') return `terminal:${tab.terminalId}`;
+  return tab.kind;
 }
 
 /** The `panel` value a tab writes when nothing inside it is in front. */
@@ -77,6 +95,9 @@ export function tabPanel(tab: PanelTab): SessionPanel {
  */
 export function targetTab(target: PanelTarget, runIds: readonly string[] | null): PanelTab | null {
   const kind = PANEL_TAB_OF[target.panel];
+  if (kind === null) return null;
+  if (kind === 'terminal')
+    return target.terminal ? { kind: 'terminal', terminalId: target.terminal } : null;
   if (kind !== 'run') return { kind };
   const runId = panelRunId(
     (runIds ?? []).map((id) => ({ runId: id })),
@@ -87,16 +108,25 @@ export function targetTab(target: PanelTarget, runIds: readonly string[] | null)
 }
 
 /** The "+" list: only what can be opened now, in order; run items once the run list is known. */
-export function plusItems(ctx: Pick<PanelContext, 'folder' | 'runIds'>): PlusItem[] {
+export function plusItems(ctx: Pick<PanelContext, 'folder' | 'runIds' | 'paddock'>): PlusItem[] {
   const runs = (ctx.runIds?.length ?? 0) > 0;
   return [
-    ...(ctx.folder ? (['files', 'changes'] as const) : []),
+    ...(ctx.folder ? (['files'] as const) : []),
+    // Kept while a terminal cannot be made: its row is unavailable, not gone.
+    ...(ctx.paddock ? (['terminal'] as const) : []),
+    ...(ctx.folder ? (['changes'] as const) : []),
     ...(runs ? (['run-history', 'artifacts'] as const) : []),
   ];
 }
 
-/** What choosing a "+" item opens; 실행 기록 is the newest run's tab. */
-export function plusTarget(item: PlusItem, ctx: Pick<PanelContext, 'runIds'>): PanelTarget {
+/**
+ * What choosing a "+" item opens; 실행 기록 is the newest run's tab. 터미널 is decided by the
+ * page (a live terminal's tab where it is, or a new terminal), never here.
+ */
+export function plusTarget(
+  item: Exclude<PlusItem, 'terminal'>,
+  ctx: Pick<PanelContext, 'runIds'>,
+): PanelTarget {
   if (item !== 'run-history') return { panel: item };
   const newest = ctx.runIds?.at(-1);
   return newest ? { panel: 'run', run: newest } : { panel: 'run' };

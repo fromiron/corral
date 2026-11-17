@@ -24,7 +24,7 @@ export type AddressCase =
 
 /** The frame's part of an address: always exactly one of `panel` and `compose`. */
 export type PanelAddress =
-  | { readonly panel: SessionPanel; readonly run?: string }
+  | { readonly panel: SessionPanel; readonly run?: string; readonly terminal?: string }
   | { readonly compose: true };
 
 /** The address parameters the frame reads; every other one (`settings`) is left alone. */
@@ -59,7 +59,9 @@ export function readAddress(search: SessionSearch): AddressCase {
     const target: PanelTarget =
       search.panel === 'run' && search.run
         ? { panel: 'run', run: search.run }
-        : { panel: search.panel };
+        : search.panel === 'terminal' && search.terminal
+          ? { panel: 'terminal', terminal: search.terminal }
+          : { panel: search.panel };
     return { kind: 'panel', target, bringForward };
   }
   if (search.compose) return { kind: 'compose', bringForward };
@@ -75,6 +77,7 @@ export function panelAddress(state: PanelState, fronts?: PanelFronts): PanelAddr
   const tab = selectedTab(state);
   if (state.presentation === 'closed' || !tab) return { compose: true };
   if (tab.kind === 'run') return { panel: 'run', run: tab.runId };
+  if (tab.kind === 'terminal') return { panel: 'terminal', terminal: tab.terminalId };
   const front: SessionPanel | undefined =
     tab.kind === 'files' ? fronts?.files : tab.kind === 'changes' ? fronts?.changes : undefined;
   return { panel: front && PANEL_TAB_OF[front] === tab.kind ? front : tabPanel(tab) };
@@ -130,8 +133,10 @@ export function nextSearch(
 function addressedTab(search: SessionSearch): TabKey | null {
   if (!search.panel) return null;
   const kind = PANEL_TAB_OF[search.panel];
-  if (kind !== 'run') return kind;
-  return search.run ? `run:${search.run}` : null;
+  if (kind === null) return null;
+  if (kind === 'run') return search.run ? `run:${search.run}` : null;
+  if (kind === 'terminal') return search.terminal ? `terminal:${search.terminal}` : null;
+  return kind;
 }
 
 /** An address without the frame's parameters, keeping the ones the frame does not read. */

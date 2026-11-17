@@ -3,7 +3,7 @@
 // else: no titles, bodies or paths. Storage is passed in; this module never reaches for it.
 import { Identifier } from '@corral/contracts';
 import { dockMemoryKey } from './dock.ts';
-import type { PanelState } from './model.ts';
+import { type PanelState, tabOf } from './model.ts';
 import { type PanelTab, type TabKey, tabKey } from './tabs.ts';
 
 export interface PanelMemory {
@@ -23,9 +23,7 @@ export const panelMemoryKey = (sessionId: string) => `corral:session-panel:v1:${
 
 export function rememberedPanel(state: PanelState): PanelMemory {
   return {
-    tabs: state.tabs.map((tab) =>
-      tab.kind === 'run' ? { kind: 'run', runId: tab.runId } : { kind: tab.kind },
-    ),
+    tabs: state.tabs.map(tabOf),
     selected: state.selected,
     open: state.presentation !== 'closed',
   };
@@ -74,7 +72,12 @@ export function parsePanelMemory(raw: string | null | undefined): PanelMemory | 
 
 function parseTab(entry: unknown): PanelTab | null {
   if (entry === 'files' || entry === 'changes' || entry === 'artifacts') return { kind: entry };
-  if (typeof entry !== 'string' || !entry.startsWith('run:')) return null;
+  if (typeof entry !== 'string') return null;
+  if (entry.startsWith('terminal:')) {
+    const terminalId = entry.slice('terminal:'.length);
+    return Identifier.safeParse(terminalId).success ? { kind: 'terminal', terminalId } : null;
+  }
+  if (!entry.startsWith('run:')) return null;
   const runId = entry.slice('run:'.length);
   return Identifier.safeParse(runId).success ? { kind: 'run', runId } : null;
 }

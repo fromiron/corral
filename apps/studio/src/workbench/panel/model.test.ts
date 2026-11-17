@@ -45,7 +45,7 @@ describe('opening tabs (여는 길)', () => {
   });
 
   it('selects an open tab without moving it', () => {
-    const { state } = reducePanel(withTabs('beside'), way({ panel: 'terminal' }), ctx());
+    const { state } = reducePanel(withTabs('beside'), way({ panel: 'tools' }), ctx());
     expect(ids(state)).toEqual([files, run('run_1')]);
     expect(state.selected).toBe('files');
   });
@@ -65,7 +65,7 @@ describe('opening tabs (여는 길)', () => {
   it('opens 파일 and 변경 by an opening way even without a folder', () => {
     const { state } = reducePanel(
       EMPTY_PANEL,
-      way({ panel: 'debug' }),
+      way({ panel: 'tools' }),
       ctx({ folder: false, runIds: [] }),
     );
     expect(ids(state)).toEqual([files]);
@@ -879,35 +879,35 @@ describe('what adds a history entry', () => {
   });
 
   it('writes the window an opening way named', () => {
-    expect(reducePanel(EMPTY_PANEL, way({ panel: 'terminal' }), ctx()).address).toEqual({
-      panel: 'terminal',
+    expect(reducePanel(EMPTY_PANEL, way({ panel: 'tools' }), ctx()).address).toEqual({
+      panel: 'tools',
     });
   });
 
   it.each<[string, PanelEvent, PanelContext]>([
-    ['losing room', context, narrow({ front: { files: 'terminal' } })],
+    ['losing room', context, narrow({ front: { files: 'tools' } })],
     [
       'bringing the conversation forward from 넓힘',
       { type: 'bringForward' },
-      ctx({ front: { files: 'terminal' } }),
+      ctx({ front: { files: 'tools' } }),
     ],
     [
       'a followed respond link',
       { type: 'follow', search: { panel: 'run', run: 'run_1', respond: true }, source: 'in-app' },
-      ctx({ front: { files: 'terminal' } }),
+      ctx({ front: { files: 'tools' } }),
     ],
   ])('keeps the window in front of 파일 in the address on %s', (_name, event, c) => {
     const before = panel({ tabs: [files], selected: 'files', presentation: 'maximized' });
-    expect(reducePanel(before, event, c).address).toEqual({ panel: 'terminal' });
+    expect(reducePanel(before, event, c).address).toEqual({ panel: 'tools' });
   });
 
   it('writes each tab’s own window in front when it is chosen', () => {
     const before = panel({ tabs: [files, changes], selected: 'files', presentation: 'beside' });
-    const fronts = ctx({ front: { files: 'terminal', changes: 'git' } });
+    const fronts = ctx({ front: { files: 'tools', changes: 'git' } });
     expect(reducePanel(before, { type: 'select', key: 'changes' }, fronts).address).toEqual({
       panel: 'git',
     });
-    const plain = ctx({ front: { files: 'terminal' } });
+    const plain = ctx({ front: { files: 'tools' } });
     expect(reducePanel(before, { type: 'select', key: 'changes' }, plain).address).toEqual({
       panel: 'changes',
     });

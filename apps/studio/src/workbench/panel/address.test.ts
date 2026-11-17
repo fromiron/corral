@@ -32,7 +32,7 @@ describe('reading the session address (주소와 기억)', () => {
     });
     expect(read({ panel: 'terminal', terminal: 'term_1' })).toEqual({
       kind: 'panel',
-      target: { panel: 'terminal' },
+      target: { panel: 'terminal', terminal: 'term_1' },
       bringForward: false,
     });
   });
@@ -128,9 +128,9 @@ describe('the frame’s part of the address', () => {
   it('writes the window or view in front of 파일 or 변경 only for the selected tab', () => {
     const onFiles = state('beside', { selected: 'files' });
     expect(panelAddress(onFiles)).toEqual({ panel: 'files' });
-    expect(panelAddress(onFiles, { files: 'terminal' })).toEqual({ panel: 'terminal' });
+    expect(panelAddress(onFiles, { files: 'tools' })).toEqual({ panel: 'tools' });
     expect(panelAddress(onFiles, { changes: 'git' })).toEqual({ panel: 'files' });
-    expect(panelAddress(state('beside'), { files: 'terminal' })).toEqual({
+    expect(panelAddress(state('beside'), { files: 'tools' })).toEqual({
       panel: 'run',
       run: 'run_1',
     });

@@ -17,9 +17,10 @@ describe('the panel tabs (탭)', () => {
     expect(Object.keys(PANEL_TAB_OF).sort()).toEqual([...SESSION_PANELS].sort());
     expect(PANEL_TAB_OF).toEqual({
       files: 'files',
-      terminal: 'files',
+      terminal: 'terminal',
       tools: 'files',
-      debug: 'files',
+      // The bottom dock's debug tab, never the panel's.
+      debug: null,
       changes: 'changes',
       git: 'changes',
       checks: 'changes',
@@ -44,7 +45,7 @@ describe('the panel tabs (탭)', () => {
   });
 
   it('opens the tab a window or view belongs to', () => {
-    expect(targetTab({ panel: 'terminal' }, [])).toEqual({ kind: 'files' });
+    expect(targetTab({ panel: 'tools' }, [])).toEqual({ kind: 'files' });
     expect(targetTab({ panel: 'git' }, [])).toEqual({ kind: 'changes' });
     expect(targetTab({ panel: 'artifacts' }, [])).toEqual({ kind: 'artifacts' });
     expect(targetTab({ panel: 'run', run: 'run_1' }, ['run_1', 'run_2'])).toEqual(run('run_1'));

@@ -63,14 +63,31 @@ export interface Awaiting {
    * as soon as the user touches the panel.
    */
   readonly newest: 'opening' | 'address' | null;
+  /** Terminal tabs restored from memory, left for the terminal list's first answer. */
+  readonly terminals: readonly string[];
 }
+
+// What is still waiting: null once nothing is.
+function waiting(awaiting: Awaiting): Awaiting | null {
+  return awaiting.restored.length > 0 ||
+    awaiting.addressRun ||
+    awaiting.newest ||
+    awaiting.terminals.length > 0
+    ? awaiting
+    : null;
+}
+const runsAwaited = (awaiting: Awaiting | null): awaiting is Awaiting =>
+  Boolean(awaiting && (awaiting.restored.length > 0 || awaiting.addressRun || awaiting.newest));
 
 export interface PanelState {
   readonly tabs: readonly OpenTab[];
   /** The selected tab; null exactly when there are no tabs. */
   readonly selected: TabKey | null;
   readonly presentation: Presentation;
-  /** Set on entry until the run list first answers; only these are touched by its clean-up. */
+  /**
+   * Set on entry until the run list and the terminal list first answer; only these are touched by
+   * their clean-ups.
+   */
   readonly awaiting: Awaiting | null;
   /** The instance the next opened tab gets. */
   readonly nextInstance: number;
@@ -86,7 +103,9 @@ export const EMPTY_PANEL: PanelState = {
 
 /** A tab's identity without its instance and seen flag. */
 export function tabOf(tab: PanelTab): PanelTab {
-  return tab.kind === 'run' ? { kind: 'run', runId: tab.runId } : { kind: tab.kind };
+  if (tab.kind === 'run') return { kind: 'run', runId: tab.runId };
+  if (tab.kind === 'terminal') return { kind: 'terminal', terminalId: tab.terminalId };
+  return { kind: tab.kind };
 }
 
 /**
@@ -229,9 +248,22 @@ function opened(state: PanelState, tab: PanelTab, presentation: Presentation): P
   };
 }
 
-// Something can still be opened: a folder, a run, or a run list not answered yet.
+// Something can still be opened: a folder, a terminal, a run, or a run list not answered yet.
 const canOpenMore = (ctx: PanelContext) =>
-  ctx.folder || ctx.runIds === null || ctx.runIds.length > 0;
+  ctx.folder || Boolean(ctx.paddock) || ctx.runIds === null || ctx.runIds.length > 0;
+
+/**
+ * The panel tab an address names. A terminal's tab only when the panel holds it: otherwise the
+ * terminal is the bottom dock's to open (as `debug` always is), and the panel stays as it is.
+ */
+function addressTab(state: PanelState, target: PanelTarget, ctx: PanelContext): PanelTab | null {
+  const tab = targetTab(target, ctx.runIds);
+  if (tab?.kind === 'terminal' && !hasTab(state, tabKey(tab))) return null;
+  return tab;
+}
+// An address the bottom dock opens: the panel reads it as one with neither `panel` nor `compose`.
+const dockBound = (target: PanelTarget) =>
+  PANEL_TAB_OF[target.panel] === null || PANEL_TAB_OF[target.panel] === 'terminal';
 
 function closed(state: PanelState, key: TabKey, ctx: PanelContext): PanelState {
   const index = state.tabs.findIndex((tab) => tabKey(tab) === key);
@@ -289,7 +321,13 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
     awaiting: null,
     nextInstance: tabs.length + 1,
   };
-  const address = readAddress(event.search);
+  const read = readAddress(event.search);
+  const tabNamed = read.kind === 'panel' ? addressTab(base, read.target, ctx) : null;
+  // An address the dock opens, entered with: restored as if it had neither.
+  const address: typeof read =
+    read.kind === 'panel' && !tabNamed && dockBound(read.target)
+      ? { kind: 'neither', bringForward: read.bringForward }
+      : read;
   let next = base;
   let addressRun: string | null = null;
   let newest: Awaiting['newest'] = null;
@@ -314,10 +352,8 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
   }
   if (address.bringForward) next = presented(next, byBringingForward(next.presentation, ctx.room));
   const restored = tabs.flatMap((tab) => (tab.kind === 'run' ? [tab.runId] : []));
-  return {
-    ...next,
-    awaiting: restored.length > 0 || addressRun || newest ? { restored, addressRun, newest } : null,
-  };
+  const terminals = tabs.flatMap((tab) => (tab.kind === 'terminal' ? [tab.terminalId] : []));
+  return { ...next, awaiting: waiting({ restored, addressRun, newest, terminals }) };
 }
 
 function followed(
@@ -329,7 +365,7 @@ function followed(
   let next = state;
   if (address.kind === 'compose') next = presented(state, 'closed');
   else if (address.kind === 'panel') {
-    const tab = targetTab(address.target, ctx.runIds);
+    const tab = addressTab(state, address.target, ctx);
     const presentation =
       event.source === 'in-app' ? byOpening(state.presentation, ctx.room) : byAddress(ctx.room);
     // A run tab that cannot be named (no run, or the list not known) leaves the panel as it is.
@@ -345,7 +381,7 @@ function travelled(state: PanelState, search: SessionSearch, ctx: PanelContext):
   const address = readAddress(search);
   if (address.kind === 'compose') return presented(state, 'closed');
   if (address.kind === 'neither') return state;
-  const tab = targetTab(address.target, ctx.runIds);
+  const tab = addressTab(state, address.target, ctx);
   if (!tab) return state;
   const presentation = state.presentation === 'closed' ? byAddress(ctx.room) : state.presentation;
   return opened(state, tab, presentation);
@@ -356,7 +392,7 @@ function travelled(state: PanelState, search: SessionSearch, ctx: PanelContext):
 // selected; a pending request for the newest run opens its tab.
 function answered(state: PanelState, runIds: readonly string[], ctx: PanelContext): PanelState {
   const awaiting = state.awaiting;
-  if (!awaiting) return state;
+  if (!runsAwaited(awaiting)) return state;
   const listed = new Set(runIds);
   const newestRun = runIds.at(-1);
   const gone = new Set(
@@ -368,7 +404,7 @@ function answered(state: PanelState, runIds: readonly string[], ctx: PanelContex
   let next: PanelState = {
     ...state,
     tabs: tabs.length === state.tabs.length ? state.tabs : tabs,
-    awaiting: null,
+    awaiting: waiting({ ...awaiting, restored: [], addressRun: null, newest: null }),
   };
   if (state.selected !== null && !hasTab(next, state.selected)) {
     const addressSelected =
@@ -395,6 +431,28 @@ function answered(state: PanelState, runIds: readonly string[], ctx: PanelContex
   return next;
 }
 
+// The terminal list's clean-up, once, on its first answer after entry: restored terminal tabs it
+// does not list are dropped; a dropped selection goes to the first tab left, or the panel closes.
+function terminalsAnswered(state: PanelState, terminalIds: readonly string[]): PanelState {
+  const awaiting = state.awaiting;
+  if (!awaiting || awaiting.terminals.length === 0) return state;
+  const listed = new Set(terminalIds);
+  const gone = new Set(awaiting.terminals.filter((id) => !listed.has(id)));
+  const tabs = state.tabs.filter((tab) => !(tab.kind === 'terminal' && gone.has(tab.terminalId)));
+  let next: PanelState = {
+    ...state,
+    tabs: tabs.length === state.tabs.length ? state.tabs : tabs,
+    awaiting: waiting({ ...awaiting, terminals: [] }),
+  };
+  if (state.selected !== null && !hasTab(next, state.selected)) {
+    const first = tabs[0];
+    next = first
+      ? { ...next, selected: tabKey(first) }
+      : { ...next, selected: null, presentation: 'closed' };
+  }
+  return next;
+}
+
 // Any of these is the user touching the panel: a pending request for the newest run is dropped.
 const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
   'open',
@@ -410,11 +468,7 @@ const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
 function touched(state: PanelState, event: PanelEvent): PanelState {
   const awaiting = state.awaiting;
   if (!awaiting?.newest || !TOUCHES.has(event.type)) return state;
-  const rest = { ...awaiting, newest: null };
-  return {
-    ...state,
-    awaiting: rest.restored.length > 0 || rest.addressRun ? rest : null,
-  };
+  return { ...state, awaiting: waiting({ ...awaiting, newest: null }) };
 }
 
 // What holds after every event: the run list's answer is applied once it is known, the room is
@@ -422,6 +476,7 @@ function touched(state: PanelState, event: PanelEvent): PanelState {
 // is seen.
 function settle(state: PanelState, ctx: PanelContext): PanelState {
   let next = ctx.runIds !== null ? answered(state, ctx.runIds, ctx) : state;
+  if (ctx.terminalIds) next = terminalsAnswered(next, ctx.terminalIds);
   next = presented(next, byRoom(next.presentation, ctx.room));
   if (next.presentation === 'withdrawn' && next.tabs.length === 0) next = presented(next, 'closed');
   if (panelOnScreen(next.presentation) && next.selected) {
@@ -438,6 +493,7 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
     case 'enter':
       return entered(event, ctx);
     case 'open': {
+      // A terminal's tab opens here only when the page asks for it by its ID.
       const tab = targetTab(event.target, ctx.runIds);
       return tab ? opened(state, tab, byOpening(state.presentation, ctx.room)) : state;
     }
