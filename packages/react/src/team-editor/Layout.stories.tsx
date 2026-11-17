@@ -159,6 +159,20 @@ export const Stacked: Story = {
 };
 
 /**
+ * A short editor: 60% of its height would leave the canvas too small, so it takes 400px or as
+ * much as leaves 6rem of the editor to scroll by, whichever is less.
+ */
+export const StackedShort: Story = {
+  args: { height: 480 },
+  play: async ({ canvasElement }) => {
+    const { editor, canvas } = regions(canvasElement);
+    await waitFor(() => expect(card(canvasElement, 'agent_1')).toBeTruthy());
+    await expect(rect(canvas).height).toBeGreaterThan(editor.clientHeight * 0.6 + 1);
+    await expect(rect(canvas).height).toBeLessThanOrEqual(editor.clientHeight - 96 + 0.5);
+  },
+};
+
+/**
  * 540px, a panel beside the conversation: the palette wraps inside the width, nothing scrolls
  * sideways, and an outline row dropped on the Loop's row moves the step into the Loop.
  */
