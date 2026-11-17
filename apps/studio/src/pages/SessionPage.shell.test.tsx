@@ -1989,8 +1989,6 @@ it('폴더가 연결된 대화에서 이 대화 안의 링크가 panel=git을 �
 it('폴더가 연결되고 스테이징한 것이 있는 대화에서 이 대화 안의 링크가 panel=git을 가리킨다 → 포커스는 커밋 메시지 입력에 있다', async () => {
   gitStaged.on = true;
   const world = await createShellWorld({ folder: true });
-  // Something is staged in the conversation's copy: the copy is there.
-  giveCopy(world);
   const shell = await open(world, `/sessions/${world.sessionId}`);
   await followGit(shell, world);
 

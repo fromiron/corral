@@ -195,7 +195,16 @@ it('a missing session copy can explicitly switch to an unborn project without cr
   // Without a copy the session's Git state is not requested at all (no failed request).
   const worktree = vi.fn(async () => null);
   const f = await mount({ gitStatus, createWorktree, worktree });
-  expect(f.container.textContent).toContain('Git.noSessionCopy');
+  // The copy setup above the view says there is no copy; the Git view says nothing of its own,
+  // and keeps its source picker and refresh.
+  expect(f.container.querySelector('[role="status"]')).toBeNull();
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Git.noSessionCopy');
+  expect(f.container.querySelector('[role=combobox]')).not.toBeNull();
+  expect(
+    [...f.container.querySelectorAll('button')].some((b) => b.textContent === 'Git.refresh'),
+  ).toBe(true);
+  expect(gitStatus).not.toHaveBeenCalled();
   await act(async () => f.container.querySelector<HTMLButtonElement>('[role=combobox]')?.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
     (item) => item.textContent === 'Git.projectSource',
@@ -260,12 +269,12 @@ it('workspace changes refresh an existing copy and trust without losing the draf
     gitChange,
     worktree: vi.fn(async () => (hasCopy ? { missing: false } : null)),
   });
-  expect(f.container.textContent).toContain('Git.noSessionCopy');
+  // No copy: nothing of the session's Git is read or offered.
   expect(gitStatus).not.toHaveBeenCalled();
+  expect(control(f.container, 'Git.stage')).toEqual([]);
   hasCopy = true;
   trusted = true;
   await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-  expect(f.container.textContent).not.toContain('Git.noSessionCopy');
   expect(gitStatus).toHaveBeenCalledWith({ kind: 'session', id: 'session' });
   expect(control(f.container, 'Git.stage').length).toBeGreaterThan(0);
   const message = f.container.querySelector<HTMLTextAreaElement>(

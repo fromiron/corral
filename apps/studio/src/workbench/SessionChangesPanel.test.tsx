@@ -283,18 +283,3 @@ it('shows the working copy setup once, whichever sub-view is open, while there i
     expect(setups()).toBe(2);
   }
 });
-
-it('without a copy, the Git sub-view is the copy setup alone: the Git view does not say it again', async () => {
-  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
-  const view = await mount();
-  await view.choose('Git.title');
-  // workbench.md: a changes screen without a Paddock shows its title and one next action only.
-  expect(view.container.querySelector('input[aria-label="commit message"]')).toBeNull();
-  // With a copy the Git view is there.
-  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => ({
-    missing: false,
-  }));
-  await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-  for (let i = 0; i < 3; i++) await act(async () => {});
-  expect(view.container.querySelector('input[aria-label="commit message"]')).not.toBeNull();
-});

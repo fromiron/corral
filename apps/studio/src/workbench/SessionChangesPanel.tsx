@@ -270,11 +270,11 @@ export function SessionChangesPanel({
         ) : null}
       </TabPanel>
       <TabPanel value="git" keepMounted className="min-h-0 flex-1 overflow-auto">
-        {/* Without a copy the setup above is the whole view: its title and one next action
-            (workbench.md); the Git view would only say again that there is none. */}
-        {visited.has('git') && !missing ? (
+        {visited.has('git') ? (
           <div className="flex flex-col gap-4 p-3">
-            <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+            {missing ? null : (
+              <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
+            )}
             <GitPanel sessionId={session.sessionId} projectId={session.projectId} />
           </div>
         ) : null}

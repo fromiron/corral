@@ -533,13 +533,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           {t('refresh')}
         </Button>
       </div>
+      {/* Without a copy (`noCopy`) nothing of the session's Git is read and nothing is said here:
+          the copy setup above the view says so (workbench.md), and the source picker leads to the
+          project's Git. */}
       {!result ? (
         <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
-        </p>
-      ) : result.noCopy ? (
-        <p role="status" className="text-caption text-muted-foreground">
-          {t('noSessionCopy')}
         </p>
       ) : result.error ? (
         <p role="alert" className="text-caption text-muted-foreground">
