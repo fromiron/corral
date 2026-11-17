@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { File, GitCompare, Maximize2, Package, Play, Plus } from 'lucide-react';
+import { Bug, File, GitCompare, Maximize2, Package, Play, Plus, Terminal } from 'lucide-react';
 import { useLayoutEffect, useRef, useState } from 'react';
 import { expect, fireEvent, fn, waitFor, within } from 'storybook/test';
 import { Button } from './button.tsx';
@@ -819,6 +819,153 @@ export const ReorderDrag: Story = {
     await expect(line()).toBeNull();
     // A real key puts the page back in keyboard modality for the stories after this one.
     await browser.userEvent.keyboard('{Shift}');
+  },
+};
+
+/** The team editor's step drag type, which its canvas alone accepts (TeamGraphCanvas). */
+const STEP_TYPE = 'application/x-corral-step';
+
+/** The panel's strip and the dock's, sharing a move group, over a canvas that takes only steps. */
+function MoveHost() {
+  type Side = 'panel' | 'dock';
+  const [tabs, setTabs] = useState<Record<Side, TabsClosableTab[]>>({
+    panel: [
+      { id: 'files', label: '파일', icon: File },
+      { id: 'term-1', label: '터미널 1', icon: Terminal, movable: true },
+      { id: 'changes', label: '변경', icon: GitCompare },
+    ],
+    dock: [
+      { id: 'term-2', label: '터미널 2', icon: Terminal, movable: true },
+      { id: 'debug', label: '디버그', icon: Bug },
+    ],
+  });
+  const [canvas, setCanvas] = useState({ entered: 0, dropped: 0 });
+  const strip = (side: Side) => (
+    <div className="flex min-w-0 flex-1 flex-col">
+      <TabsClosable
+        aria-label={side === 'panel' ? '패널 탭' : '도크 탭'}
+        idPrefix={side}
+        tabs={tabs[side]}
+        selectedId={tabs[side][0]?.id ?? null}
+        onSelect={() => {}}
+        onClose={() => {}}
+        closeLabel={(tab) => `${tab.label} 닫기`}
+        onReorder={(id, to) =>
+          setTabs((current) => {
+            const tab = current[side].find((item) => item.id === id) as TabsClosableTab;
+            const rest = current[side].filter((item) => item.id !== id);
+            return { ...current, [side]: [...rest.slice(0, to), tab, ...rest.slice(to)] };
+          })
+        }
+        announceMove={(tab, position, count) => `${tab.label}: ${position}번째 / ${count}개`}
+        moveGroup="terminals"
+        onMoveOut={() => {}}
+        onMoveIn={(id, index, tab) =>
+          setTabs((current) => {
+            const other: Side = side === 'panel' ? 'dock' : 'panel';
+            const into = current[side].filter((item) => item.id !== id);
+            return {
+              ...current,
+              [other]: current[other].filter((item) => item.id !== id),
+              [side]: [...into.slice(0, index), tab, ...into.slice(index)],
+            } as Record<Side, TabsClosableTab[]>;
+          })
+        }
+      />
+      {tabs[side].map((tab) => (
+        <TabsClosablePanel
+          key={tab.id}
+          idPrefix={side}
+          tabId={tab.id}
+          selected={tab.id === tabs[side][0]?.id}
+          className="sr-only"
+        >
+          {tab.label}
+        </TabsClosablePanel>
+      ))}
+    </div>
+  );
+  return (
+    <div className="flex w-[560px] flex-col gap-3">
+      <div className="flex h-10 items-center rounded-xl border border-border px-2">
+        {strip('panel')}
+      </div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: Stands in for the team editor's canvas, a drop target only. */}
+      <div
+        data-testid="canvas"
+        className="flex h-40 items-center justify-center rounded-xl border border-border border-dashed text-ui text-muted-foreground"
+        onDragEnter={(event) => {
+          if (event.dataTransfer.types.includes(STEP_TYPE))
+            setCanvas((value) => ({ ...value, entered: value.entered + 1 }));
+        }}
+        onDragOver={(event) => {
+          if (event.dataTransfer.types.includes(STEP_TYPE)) event.preventDefault();
+        }}
+        onDrop={(event) => {
+          if (!event.dataTransfer.types.includes(STEP_TYPE)) return;
+          event.preventDefault();
+          setCanvas((value) => ({ ...value, dropped: value.dropped + 1 }));
+        }}
+      >
+        <output aria-label="캔버스">
+          {canvas.entered}/{canvas.dropped}
+        </output>
+      </div>
+      {/* biome-ignore lint/a11y/noStaticElementInteractions: Stands in for the team editor's step, an HTML5 drag source only. */}
+      <span
+        draggable
+        className="self-start rounded-md border border-border px-2 py-1 text-ui"
+        onDragStart={(event) => event.dataTransfer.setData(STEP_TYPE, 'step')}
+      >
+        단계
+      </span>
+      <div className="flex h-10 items-center rounded-xl border border-border px-2">
+        {strip('dock')}
+      </div>
+    </div>
+  );
+}
+
+/** A terminal tab moves between the panel's strip and the dock's by a real drag; a tab that is not
+ *  movable stays; the team editor's canvas, which takes a real step drag, never sees a tab drag. */
+export const MoveAcross: Story = {
+  render: () => <MoveHost />,
+  play: async ({ canvasElement }) => {
+    // Chromium's own pointer and HTML5 drags; runs only under the test runner.
+    if ((import.meta as { env?: { MODE?: string } }).env?.MODE !== 'test') return;
+    const { userEvent } = await import('vitest/browser' as string);
+    const canvas = within(canvasElement);
+    const panel = canvas.getByRole('tablist', { name: '패널 탭' });
+    const dock = canvas.getByRole('tablist', { name: '도크 탭' });
+    const ids = (list: HTMLElement) =>
+      within(list)
+        .getAllByRole('tab')
+        .map((tab) => tab.id.replace(/^(panel|dock)-tab-/, ''));
+    const counts = canvas.getByRole('status', { name: '캔버스' });
+    // The canvas takes a step drag: Playwright's drag here is a real HTML5 one.
+    await userEvent.dragAndDrop(canvas.getByText('단계'), canvas.getByTestId('canvas'));
+    await waitFor(() => expect(counts).toHaveTextContent('1/1'));
+    // Onto the dock's first tab's near half: in at 0.
+    const first = within(dock).getByRole('tab', { name: '터미널 2' });
+    await userEvent.dragAndDrop(within(panel).getByRole('tab', { name: '터미널 1' }), first, {
+      targetPosition: { x: 4, y: first.getBoundingClientRect().height / 2 },
+    });
+    await waitFor(() => expect(ids(dock)).toEqual(['term-1', 'term-2', 'debug']));
+    await expect(ids(panel)).toEqual(['files', 'changes']);
+    // A tab that is not movable stays in its strip.
+    await userEvent.dragAndDrop(within(panel).getByRole('tab', { name: '파일' }), first);
+    await expect(ids(panel)).toEqual(['files', 'changes']);
+    await expect(ids(dock)).toEqual(['term-1', 'term-2', 'debug']);
+    // A tab dragged onto the canvas: it hears nothing, and the tab stays.
+    await userEvent.dragAndDrop(
+      within(dock).getByRole('tab', { name: '터미널 1' }),
+      canvas.getByTestId('canvas'),
+    );
+    await expect(counts).toHaveTextContent('1/1');
+    await expect(ids(dock)).toEqual(['term-1', 'term-2', 'debug']);
+    await expect(canvasElement.querySelector('[data-slot="tabs-closable-drop-line"]')).toBeNull();
+    // A real key puts the page back in keyboard modality for the stories after this one.
+    await userEvent.keyboard('{Shift}');
   },
 };
 

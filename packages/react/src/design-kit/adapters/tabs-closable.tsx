@@ -57,6 +57,8 @@ import { cn } from './utils.ts';
 //   shows a still line where it would land; Mod+Shift+arrows (⌘⇧ on a Mac,
 //   Ctrl+Shift elsewhere) move the focused tab one place, said politely. The
 //   drag is the pointer's own, never an HTML5 drag.
+// - moving a tab the host marks movable into another strip of the same move
+//   group (the panel's and the dock's), where the line shows its place.
 //
 // The host owns the tabs, their order, the selection and what a close selects
 // next.
@@ -73,6 +75,8 @@ export interface TabsClosableTab {
   mark?: ReactNode;
   /** The tab's accessible description (the state in words). */
   description?: string;
+  /** May be dragged into another strip of the same `moveGroup` (a terminal). */
+  movable?: boolean;
 }
 
 export interface TabsClosableHandle {
@@ -109,6 +113,13 @@ export interface TabsClosableProps
   /** A tab drag starts (true) or ends (false): a host may switch off pointer events on a native
    *  view the pointer would cross. */
   onTabDragChange?: (dragging: boolean) => void;
+  /** Strips sharing this key take each other's movable tabs by drag. */
+  moveGroup?: string;
+  /** A movable tab of this strip was dropped into another strip of its group. */
+  onMoveOut?: (id: string) => void;
+  /** A movable tab from another strip of the group was dropped here; `index` is the slot it was
+   *  let go in (0 before the first tab). Without it this strip takes no tab in. */
+  onMoveIn?: (id: string, index: number, tab: TabsClosableTab) => void;
 }
 
 /** The ids a tab and its panel carry, for a host that renders its own panels. */
@@ -146,6 +157,35 @@ const DRAG_THRESHOLD = 4;
 /** How far above and below the strip a dragged tab still lands in it. */
 const STRIP_REACH = 12;
 
+/** A strip that takes tabs in from the others of its move group. */
+interface TabStrip {
+  /** Whether a tab let go at this point would land here. */
+  takesAt: (x: number, y: number) => boolean;
+  slotAt: (x: number) => number;
+  showLine: (slot: number | null) => void;
+  receive: (id: string, index: number, tab: TabsClosableTab) => void;
+}
+const moveGroups = new Map<string, Set<TabStrip>>();
+
+/** Whether a point is over a strip, or within its reach above and below. */
+function reaches(root: HTMLElement | null, x: number, y: number) {
+  const box = root?.getBoundingClientRect();
+  return (
+    !!box &&
+    x >= box.left &&
+    x <= box.right &&
+    y >= box.top - STRIP_REACH &&
+    y <= box.bottom + STRIP_REACH
+  );
+}
+
+/** A strip under a drawer, or in a closed or withdrawn region, is out of use. */
+function inUse(root: HTMLElement | null) {
+  if (!root?.isConnected || root.closest('[inert]')) return false;
+  const options = { visibilityProperty: true, checkVisibilityCSS: true } as CheckVisibilityOptions;
+  return root.checkVisibility?.(options) ?? true;
+}
+
 interface TabDrag {
   id: string;
   pointerId: number;
@@ -155,6 +195,11 @@ interface TabDrag {
   started: boolean;
   /** The slot the tab would land in, or null where a drop moves nothing. */
   slot: number | null;
+  /** The move group the tab may leave for, when it is movable. */
+  group: string | null;
+  /** Another strip it would land in, and in which slot. */
+  target: TabStrip | null;
+  targetSlot: number;
   /** Ends the listeners a started drag adds outside the strip. */
   stopListening?: () => void;
 }
@@ -187,6 +232,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       onReorder,
       announceMove,
       onTabDragChange,
+      moveGroup,
+      onMoveOut,
+      onMoveIn,
       className,
       ...props
     },
@@ -327,8 +375,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     );
 
     // --- Reordering --------------------------------------------------------------
-    const latest = useRef({ onReorder, announceMove, onTabDragChange });
-    latest.current = { onReorder, announceMove, onTabDragChange };
+    const latest = useRef({ onReorder, announceMove, onTabDragChange, onMoveOut, onMoveIn });
+    latest.current = { onReorder, announceMove, onTabDragChange, onMoveOut, onMoveIn };
     const [draggingId, setDraggingId] = useState<string | null>(null);
     // The slot a drop would land in, and where its line stands in the tabs' row.
     const [dropLine, setDropLine] = useState<{ slot: number; x: number } | null>(null);
@@ -372,16 +420,38 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       },
       [tabElements],
     );
-    const withinStrip = (x: number, y: number) => {
-      const box = rootRef.current?.getBoundingClientRect();
-      return (
-        !!box &&
-        x >= box.left &&
-        x <= box.right &&
-        y >= box.top - STRIP_REACH &&
-        y <= box.bottom + STRIP_REACH
-      );
-    };
+    const showLine = useCallback(
+      (slot: number | null) =>
+        setDropLine((current) =>
+          slot === null ? null : current?.slot === slot ? current : { slot, x: lineX(slot) },
+        ),
+      [lineX],
+    );
+
+    // This strip in its move group, for a tab dragged from another.
+    const selfStrip = useRef<TabStrip | null>(null);
+    const stripParts = useRef({ slotAt, showLine });
+    stripParts.current = { slotAt, showLine };
+    useEffect(() => {
+      if (!moveGroup) return;
+      const strip: TabStrip = {
+        takesAt: (x, y) =>
+          !!latest.current.onMoveIn && reaches(rootRef.current, x, y) && inUse(rootRef.current),
+        slotAt: (x) => stripParts.current.slotAt(x),
+        showLine: (slot) => stripParts.current.showLine(slot),
+        receive: (id, index, tab) => latest.current.onMoveIn?.(id, index, tab),
+      };
+      const group = moveGroups.get(moveGroup) ?? new Set<TabStrip>();
+      group.add(strip);
+      moveGroups.set(moveGroup, group);
+      selfStrip.current = strip;
+      return () => {
+        group.delete(strip);
+        if (group.size === 0) moveGroups.delete(moveGroup);
+        if (selfStrip.current === strip) selfStrip.current = null;
+        setDropLine(null);
+      };
+    }, [moveGroup]);
 
     const endDrag = useCallback((drop: boolean) => {
       const session = drag.current;
@@ -392,11 +462,23 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       }
       if (!session.started) return;
       session.stopListening?.();
+      session.target?.showLine(null);
       swallowClick.current = true;
       setDraggingId(null);
       setDropLine(null);
       latest.current.onTabDragChange?.(false);
-      if (!drop || session.slot === null) return;
+      if (!drop) return;
+      // Into another strip that is still there: out of this one, into that one, and nothing
+      // closes.
+      const target = session.target;
+      if (target && session.group && moveGroups.get(session.group)?.has(target)) {
+        const tab = tabsRef.current.find((item) => item.id === session.id);
+        if (!tab) return;
+        latest.current.onMoveOut?.(session.id);
+        target.receive(session.id, session.targetSlot, tab);
+        return;
+      }
+      if (session.slot === null) return;
       const from = tabsRef.current.findIndex((tab) => tab.id === session.id);
       const to = reorderIndex(from, session.slot);
       if (from >= 0 && to !== from) latest.current.onReorder?.(session.id, to);
@@ -409,6 +491,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
         drag.current = null;
         if (!session?.started) return;
         session.stopListening?.();
+        session.target?.showLine(null);
         latest.current.onTabDragChange?.(false);
       },
       [],
@@ -440,15 +523,28 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
 
     const followDrag = (session: TabDrag, x: number, y: number) => {
       let slot: number | null = null;
-      if (withinStrip(x, y)) {
-        const from = tabsRef.current.findIndex((tab) => tab.id === session.id);
-        const at = slotAt(x);
-        if (reorderIndex(from, at) !== from) slot = at;
+      let target: TabStrip | null = null;
+      let targetSlot = 0;
+      if (reaches(rootRef.current, x, y)) {
+        if (latest.current.onReorder) {
+          const from = tabsRef.current.findIndex((tab) => tab.id === session.id);
+          const at = slotAt(x);
+          if (reorderIndex(from, at) !== from) slot = at;
+        }
+      } else if (session.group) {
+        for (const strip of moveGroups.get(session.group) ?? []) {
+          if (strip === selfStrip.current || !strip.takesAt(x, y)) continue;
+          target = strip;
+          targetSlot = strip.slotAt(x);
+          break;
+        }
       }
+      if (session.target && session.target !== target) session.target.showLine(null);
+      session.target = target;
+      session.targetSlot = targetSlot;
+      target?.showLine(targetSlot);
       session.slot = slot;
-      setDropLine((current) =>
-        slot === null ? null : current?.slot === slot ? current : { slot, x: lineX(slot) },
-      );
+      showLine(slot);
     };
 
     // biome-ignore lint/correctness/useExhaustiveDependencies: Runs when the set of tabs changes.
@@ -860,9 +956,10 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                           onPointerDown={(event: React.PointerEvent<HTMLElement>) => {
                             swallowClick.current = false;
                             pendingMove.current = null;
+                            const group = moveGroup && tab.movable && onMoveOut ? moveGroup : null;
                             // A touch scrolls the strip.
-                            if (!onReorder || event.button !== 0 || event.pointerType === 'touch')
-                              return;
+                            if (!onReorder && !group) return;
+                            if (event.button !== 0 || event.pointerType === 'touch') return;
                             drag.current = {
                               id: tab.id,
                               pointerId: event.pointerId,
@@ -871,6 +968,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                               element: event.currentTarget,
                               started: false,
                               slot: null,
+                              group,
+                              target: null,
+                              targetSlot: 0,
                             };
                             try {
                               event.currentTarget.setPointerCapture(event.pointerId);
