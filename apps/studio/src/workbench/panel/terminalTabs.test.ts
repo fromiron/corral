@@ -21,6 +21,7 @@ describe('the "+" list\'s 터미널', () => {
       'changes',
       'run-history',
       'artifacts',
+      'tools',
     ]);
     expect(plusItems(ctx())).toEqual(['files', 'changes', 'run-history', 'artifacts']);
   });

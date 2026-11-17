@@ -20,7 +20,9 @@ describe('the panel tabs (탭)', () => {
       document: 'document',
       graph: 'graph',
       terminal: 'terminal',
-      tools: 'files',
+      // 작업 carries the previews until 미리보기 is a tab of its own.
+      tools: 'tools',
+      preview: 'tools',
       // The bottom dock's debug tab, never the panel's.
       debug: null,
       changes: 'changes',
@@ -76,10 +78,14 @@ describe('the panel tabs (탭)', () => {
     expect(tabPanel({ kind: 'changes' })).toBe('changes');
     expect(tabPanel({ kind: 'artifacts' })).toBe('artifacts');
     expect(tabPanel(run('run_1'))).toBe('run');
+    expect(tabPanel({ kind: 'tools', view: null })).toBe('tools');
+    expect(tabPanel({ kind: 'tools', view: 'tasks' })).toBe('tools');
+    expect(tabPanel({ kind: 'tools', view: 'preview' })).toBe('preview');
   });
 
   it('opens the tab a window or view belongs to', () => {
-    expect(targetTab({ panel: 'tools' }, [])).toEqual({ kind: 'files' });
+    expect(targetTab({ panel: 'tools' }, [])).toEqual({ kind: 'tools', view: null });
+    expect(targetTab({ panel: 'preview' }, [])).toEqual({ kind: 'tools', view: 'preview' });
     expect(targetTab({ panel: 'git' }, [])).toEqual({ kind: 'changes' });
     expect(targetTab({ panel: 'artifacts' }, [])).toEqual({ kind: 'artifacts' });
     expect(targetTab({ panel: 'run', run: 'run_1' }, ['run_1', 'run_2'])).toEqual(run('run_1'));
@@ -115,6 +121,19 @@ describe('the "+" list', () => {
     expect(plusItems({ folder: true, runIds: [] })).toEqual(['files', 'changes']);
     expect(plusItems({ folder: false, runIds: ['run_1'] })).toEqual(['run-history', 'artifacts']);
     expect(plusItems({ folder: false, runIds: [] })).toEqual([]);
+  });
+
+  it('lists 작업 last, in a conversation with a Paddock', () => {
+    expect(plusItems({ folder: true, runIds: ['run_1'], paddock: true })).toEqual([
+      'files',
+      'terminal',
+      'changes',
+      'run-history',
+      'artifacts',
+      'tools',
+    ]);
+    expect(plusItems({ folder: true, runIds: [], paddock: false })).toEqual(['files', 'changes']);
+    expect(plusTarget('tools', { runIds: [] })).toEqual({ panel: 'tools' });
   });
 
   it('lists the run items only once the run list is known', () => {

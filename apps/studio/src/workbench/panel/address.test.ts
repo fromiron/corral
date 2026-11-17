@@ -130,9 +130,8 @@ describe('the frame’s part of the address', () => {
   it('writes the window or view in front of 파일 or 변경 only for the selected tab', () => {
     const onFiles = state('beside', { selected: 'files' });
     expect(panelAddress(onFiles)).toEqual({ panel: 'files' });
-    expect(panelAddress(onFiles, { files: 'tools' })).toEqual({ panel: 'tools' });
     expect(panelAddress(onFiles, { changes: 'git' })).toEqual({ panel: 'files' });
-    expect(panelAddress(state('beside'), { files: 'tools' })).toEqual({
+    expect(panelAddress(state('beside'), { changes: 'git' })).toEqual({
       panel: 'run',
       run: 'run_1',
     });

@@ -65,7 +65,9 @@ export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind | null>> = {
   document: 'document',
   graph: 'graph',
   terminal: 'terminal',
-  tools: 'files',
+  // 작업 carries the previews until 미리보기 is a tab of its own: `preview` is its inner tab.
+  tools: 'tools',
+  preview: 'tools',
   debug: null,
   changes: 'changes',
   git: 'changes',
@@ -122,7 +124,7 @@ export interface PanelFronts {
 }
 
 /** The "+" list's items, in their order. */
-export type PlusItem = 'files' | 'terminal' | 'changes' | 'run-history' | 'artifacts';
+export type PlusItem = 'files' | 'terminal' | 'changes' | 'run-history' | 'artifacts' | 'tools';
 
 export function tabKey(tab: PanelTab): TabKey {
   switch (tab.kind) {
@@ -139,8 +141,9 @@ export function tabKey(tab: PanelTab): TabKey {
   }
 }
 
-/** The `panel` value a tab writes when nothing inside it is in front. */
+/** The `panel` value a tab writes when nothing inside it is in front; 작업 writes its inner tab. */
 export function tabPanel(tab: PanelTab): SessionPanel {
+  if (tab.kind === 'tools') return tab.view === 'preview' ? 'preview' : 'tools';
   return tab.kind;
 }
 
@@ -159,7 +162,9 @@ export function targetTab(target: PanelTarget, runIds: readonly string[] | null)
       ? { kind: 'document', source: target.source ?? 'copy', path: target.file }
       : null;
   if (kind === 'graph') return target.corral ? { kind: 'graph', corralId: target.corral } : null;
-  if (kind === 'tools') return { kind: 'tools', view: null };
+  // `panel=tools` leaves the inner tab as it is; `panel=preview` puts 미리보기 in front.
+  if (kind === 'tools')
+    return { kind: 'tools', view: target.panel === 'preview' ? 'preview' : null };
   if (kind !== 'run') return { kind };
   const runId = panelRunId(
     (runIds ?? []).map((id) => ({ runId: id })),
@@ -178,6 +183,7 @@ export function plusItems(ctx: Pick<PanelContext, 'folder' | 'runIds' | 'paddock
     ...(ctx.paddock ? (['terminal'] as const) : []),
     ...(ctx.folder ? (['changes'] as const) : []),
     ...(runs ? (['run-history', 'artifacts'] as const) : []),
+    ...(ctx.paddock ? (['tools'] as const) : []),
   ];
 }
 

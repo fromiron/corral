@@ -1,7 +1,13 @@
 import { Select } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
-import { PANE_CATALOG } from '../panels/registry.ts';
+import { PANE_CATALOG, type PaneEntry } from '../panels/registry.ts';
 import type { DockContextView } from './layout.ts';
+
+/** The catalog's panes the dock can show: 작업 and its 미리보기 are a panel tab of their own. */
+export const DOCK_PANES = PANE_CATALOG.filter(
+  (entry): entry is PaneEntry & { view: Exclude<DockContextView, 'tools'> } =>
+    entry.view !== 'tools' && entry.view !== 'preview',
+);
 
 export type PrimaryView = 'chat' | 'files' | 'changes' | 'run' | 'terminal' | 'debug';
 /**
@@ -33,7 +39,7 @@ export function DockPaneSwitcher({
 }) {
   const t = useTranslations('Docking');
   // Opening a pane lists every pane once, under what it is for (#70 IA-04).
-  const paneOptions = PANE_CATALOG.filter((entry) => primaryViewFor(entry.view) === 'files').map(
+  const paneOptions = DOCK_PANES.filter((entry) => primaryViewFor(entry.view) === 'files').map(
     (entry) => ({
       value: `context:${entry.view}`,
       label: t(entry.view),

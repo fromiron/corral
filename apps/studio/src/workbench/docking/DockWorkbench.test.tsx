@@ -348,7 +348,7 @@ it.each([
 );
 
 it.each(['tools'] as const)(
-  'an explicit %s link reopens its closed pane even when the selected URL has not changed',
+  'an explicit %s link leaves its closed pane closed: 작업 is a panel tab of its own (counterexample)',
   async (selectedPanel) => {
     const f = await fixture({
       selectedPanel,
@@ -420,8 +420,7 @@ it.each(['tools'] as const)(
     });
     expect(contextTabs(f.container)).not.toContain(selectedPanel);
     await act(async () => link?.click());
-    expect(contextTabs(f.container)).toContain(selectedPanel);
-    expect(activePane(f.container)).toBe(selectedPanel);
+    expect(contextTabs(f.container)).not.toContain(selectedPanel);
     expect(f.closeView).not.toHaveBeenCalled();
   },
 );

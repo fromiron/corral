@@ -169,7 +169,13 @@ export function sessionPanelDescriptor(
   if (!panel) return null;
   if (panel === 'run') return runId ? { kind: 'run', runId } : null;
   // Terminals and running commands are keyed by their own owners, not by the pane.
-  if (panel === 'terminal' || panel === 'tools' || panel === 'document' || panel === 'graph')
+  if (
+    panel === 'terminal' ||
+    panel === 'tools' ||
+    panel === 'preview' ||
+    panel === 'document' ||
+    panel === 'graph'
+  )
     return null;
   return { kind: panel, projectId, sessionId };
 }

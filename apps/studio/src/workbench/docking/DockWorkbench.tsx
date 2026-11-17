@@ -41,9 +41,8 @@ import {
 import { useTranslations } from 'use-intl';
 import { DocumentCloseDialog } from '../documents/DocumentCloseDialog.tsx';
 import { type CloseChoice, type DocumentStore, documentKey } from '../documents/store.ts';
-import { PANE_CATALOG } from '../panels/registry.ts';
 import { validateSessionSearch } from '../panels/routes.ts';
-import { DockPaneSwitcher, primaryViewFor } from './DockTopBar.tsx';
+import { DOCK_PANES, DockPaneSwitcher, primaryViewFor } from './DockTopBar.tsx';
 import {
   addDocumentPanel,
   addGraphPanel,
@@ -239,7 +238,7 @@ function DockHeaderActions({
   );
   if (actions.compact) return close;
   const paneGroups = (['develop', 'verify', 'run'] as const).map((name) =>
-    PANE_CATALOG.filter((entry) => entry.group === name),
+    DOCK_PANES.filter((entry) => entry.group === name),
   );
   return (
     <div className="corral-dock-header-actions">
@@ -1090,6 +1089,8 @@ export const DockWorkbench = forwardRef<DockWorkbenchHandle, DockWorkbenchProps>
               panel &&
               panel !== 'document' &&
               panel !== 'graph' &&
+              panel !== 'tools' &&
+              panel !== 'preview' &&
               primaryViewFor(panel) === 'files'
             )
               openContext(panel);

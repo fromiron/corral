@@ -45,7 +45,7 @@ describe('opening tabs (여는 길)', () => {
   });
 
   it('selects an open tab without moving it', () => {
-    const { state } = reducePanel(withTabs('beside'), way({ panel: 'tools' }), ctx());
+    const { state } = reducePanel(withTabs('beside'), way({ panel: 'files' }), ctx());
     expect(ids(state)).toEqual([files, run('run_1')]);
     expect(state.selected).toBe('files');
   });
@@ -65,7 +65,7 @@ describe('opening tabs (여는 길)', () => {
   it('opens 파일 and 변경 by an opening way even without a folder', () => {
     const { state } = reducePanel(
       EMPTY_PANEL,
-      way({ panel: 'tools' }),
+      way({ panel: 'files' }),
       ctx({ folder: false, runIds: [] }),
     );
     expect(ids(state)).toEqual([files]);
@@ -885,29 +885,29 @@ describe('what adds a history entry', () => {
   });
 
   it.each<[string, PanelEvent, PanelContext]>([
-    ['losing room', context, narrow({ front: { files: 'tools' } })],
-    [
-      'bringing the conversation forward from 넓힘',
-      { type: 'bringForward' },
-      ctx({ front: { files: 'tools' } }),
-    ],
+    ['losing room', context, narrow()],
+    ['bringing the conversation forward from 넓힘', { type: 'bringForward' }, ctx()],
     [
       'a followed respond link',
       { type: 'follow', search: { panel: 'run', run: 'run_1', respond: true }, source: 'in-app' },
-      ctx({ front: { files: 'tools' } }),
+      ctx(),
     ],
-  ])('keeps the window in front of 파일 in the address on %s', (_name, event, c) => {
-    const before = panel({ tabs: [files], selected: 'files', presentation: 'maximized' });
-    expect(reducePanel(before, event, c).address).toEqual({ panel: 'tools' });
+  ])('keeps 작업’s inner tab in front in the address on %s', (_name, event, c) => {
+    const before = panel({
+      tabs: [{ kind: 'tools', view: 'preview' }],
+      selected: 'tools',
+      presentation: 'maximized',
+    });
+    expect(reducePanel(before, event, c).address).toEqual({ panel: 'preview' });
   });
 
   it('writes each tab’s own window in front when it is chosen', () => {
     const before = panel({ tabs: [files, changes], selected: 'files', presentation: 'beside' });
-    const fronts = ctx({ front: { files: 'tools', changes: 'git' } });
+    const fronts = ctx({ front: { files: 'files', changes: 'git' } });
     expect(reducePanel(before, { type: 'select', key: 'changes' }, fronts).address).toEqual({
       panel: 'git',
     });
-    const plain = ctx({ front: { files: 'tools' } });
+    const plain = ctx({ front: { files: 'files' } });
     expect(reducePanel(before, { type: 'select', key: 'changes' }, plain).address).toEqual({
       panel: 'changes',
     });

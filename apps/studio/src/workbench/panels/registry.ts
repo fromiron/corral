@@ -30,6 +30,7 @@ export const SESSION_PANELS = [
   'run',
   'terminal',
   'tools',
+  'preview',
 ] as const;
 export type SessionPanel = (typeof SESSION_PANELS)[number];
 /**
@@ -103,7 +104,7 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
   {
     view: 'tools',
     group: 'develop',
-    slash: 'preview',
+    slash: 'tools',
     aliases: [
       'tools',
       'tasks',
@@ -112,18 +113,19 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
       'commands',
       'running',
       'process',
-      'preview',
-      'service',
-      'server',
       '도구',
       '작업',
       '스크립트',
       '명령',
       '실행 중',
       '프로세스',
-      '미리보기',
-      '서버',
     ],
+  },
+  {
+    view: 'preview',
+    group: 'develop',
+    slash: 'preview',
+    aliases: ['preview', 'service', 'server', '미리보기', '서버'],
   },
   {
     view: 'checks',

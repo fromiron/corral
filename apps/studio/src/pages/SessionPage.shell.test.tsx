@@ -1249,14 +1249,15 @@ it('대화 A에서 앱 안의 링크가 폴더가 연결된 다른 대화의 pan
   expect(tabNames()).toEqual([]);
 });
 
-it('저장된 배치에서 문서가 앞에 있다 → 새 페이지를 panel=tools 주소로 연다 → 파일 탭이 열리고 그 창이 앞에 있으며 주소는 그대로다', async () => {
+it('저장된 배치에서 문서가 앞에 있다 → 새 페이지를 panel=tools 주소로 연다 → 파일 탭이 아니라 작업 탭이 열려 선택되고 주소는 그대로다', async () => {
   const { world } = await savedDocumentInFront();
   const shell = await open(world, `/sessions/${world.sessionId}?panel=tools`);
-  await until(() => selectedName() === W.files && dockFront() !== null);
+  await until(() => selectedName() === messages.Docking.tools);
 
-  expect(selectedName()).toBe(W.files);
+  expect(selectedName()).toBe(messages.Docking.tools);
+  expect(tabNames()).toEqual([messages.Docking.tools]);
   expect(search(shell).panel).toBe('tools');
-  expect(dockFront()).toBe(messages.Docking.tools);
+  expect(dockFront()).toBeNull();
 });
 
 it('저장된 배치에서 문서가 앞에 있고 패널은 탭 없이 닫혀 있다 → 새 페이지를 panel=terminal 주소로 연다 → 패널은 기억대로 닫힌 채 터미널은 하단 도크에 열리고, 파일 탭을 열면 그 문서가 앞에 있다', async () => {

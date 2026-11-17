@@ -591,9 +591,7 @@ function WorkSessionPage() {
   // What the conversation presents never follows the address's run, which a run tab keeps.
   const { presentationRunId, liveRunId } = sessionRunViews(sessionRuns, linkedRunIds);
   const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind ?? null;
-  // The windows 파일 carries: its tree and 작업.
-  const filesFront =
-    search.panel === 'files' || search.panel === 'tools' ? search.panel : undefined;
+  const filesFront = search.panel === 'files' ? 'files' : undefined;
   const changesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'changes' ? search.panel : undefined;
   const panelViews: Record<'files' | 'checks' | 'problems', () => ReactNode> = {
@@ -664,14 +662,7 @@ function WorkSessionPage() {
     );
   };
   const renderContext = (view: DockContextView) => {
-    if (view === 'tools')
-      return (
-        <WorkbenchToolsPanel
-          key={session.sessionId}
-          sessionId={session.sessionId}
-          projectId={session.projectId}
-        />
-      );
+    // 작업 is a tab of its own: a dock arrangement saved with it shows nothing in its place.
     if (view !== 'files') return null;
     const target = sessionPanelDescriptor(session.projectId, session.sessionId, view, null);
     return (
@@ -768,6 +759,17 @@ function WorkSessionPage() {
     if (tab.kind === 'changes')
       return changesView(
         changesWindow(selected ? (changesFront ?? fronts.changes) : fronts.changes),
+      );
+    if (tab.kind === 'tools')
+      return (
+        <div className="min-h-0 flex-1 overflow-auto">
+          <WorkbenchToolsPanel
+            sessionId={session.sessionId}
+            projectId={session.projectId}
+            view={tab.view}
+            onViewChange={(view) => frame.dispatch({ type: 'toolsView', view })}
+          />
+        </div>
       );
     if (tab.kind === 'artifacts')
       return (

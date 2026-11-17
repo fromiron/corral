@@ -75,6 +75,7 @@ const PLUS_ICONS: Record<PlusItem, (typeof ICONS)[Kind]> = {
   changes: FileDiff,
   'run-history': History,
   artifacts: FileText,
+  tools: ListChecks,
 };
 
 /**
