@@ -40,7 +40,9 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
 async function expectInputRowAlone(page: Page) {
   await terminalScreen(page).getByRole('button', { name: 'Terminal actions', exact: true }).click();
   const menu = page.getByRole('menu');
-  await expect(menu.getByRole('menuitem', { name: /input/ }).first()).toBeVisible();
+  await expect(
+    menu.getByRole('menuitem', { name: /^(Release input|Take control|Take over input)$/ }),
+  ).toBeVisible();
   await expect(menu).not.toContainText('free the Paddock');
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
@@ -473,9 +475,12 @@ test('a rapid keyboard burst survives a real HTTP 429 with ordered PTY input and
     await endByClosing(page, 'Terminal 1');
     await expect(indicator).toHaveCount(0);
     await corral.restart();
-    // After the restart the ended terminal holds nothing: opening the dock makes a new one.
+    // After the restart the ended terminal holds nothing: the dock opens to its list, whose
+    // 터미널 row makes a new one (the toggle itself makes none).
     await corral.open(`/sessions/${sessionId}`);
     await openDock(page);
+    await expect(dockTab(page, 'Terminal 2')).toHaveCount(0);
+    await makeTerminalFromDock(page);
     await expect(dockTab(page, 'Terminal 2')).toHaveAccessibleDescription('Running');
     await expect(bottomDock(page)).not.toContainText('Stop this terminal before creating another');
   } finally {
