@@ -89,7 +89,7 @@ import {
   RunPanel,
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
-import { useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
+import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
 import { terminalStore } from '../workbench/terminals/store.ts';
 import { TerminalScreen } from '../workbench/terminals/TerminalScreen.tsx';
 import { useTerminalList } from '../workbench/terminals/useTerminalList.ts';
@@ -366,18 +366,19 @@ function WorkSessionPage() {
     // Closing a terminal's tab ends its terminal, as its state says (features/session-panel.md
     // 터미널 탭); the tab goes once that is decided.
     if (key.startsWith('terminal:')) {
-      void dockAreaRef.current?.closeTerminal(key.slice('terminal:'.length), () => closeTab(key));
+      void dockAreaRef.current?.closeTerminal(key.slice('terminal:'.length), (focused) =>
+        closeTab(key, focused),
+      );
       return;
     }
     closeTab(key);
   };
   /** Takes a tab out of the strip, the focus going on as a close sends it; ends nothing. */
-  const closeTab = (key: TabKey) => {
+  const closeTab = (key: TabKey, focused: Element | null = document.activeElement): FocusTarget => {
     const state = panelNow.current;
     // Focus on the closing tab, on its close control or inside its content is one case: it goes
     // on to the tab selected next, or for a tab not selected to its neighbour in the strip, or to
     // the body's list when none is left. Anywhere else it stays (features/session-panel.md).
-    const focused = document.activeElement;
     const keys = state.tabs.map(tabKey);
     const index = keys.indexOf(key);
     const ids = tabsClosableIds(PANEL_ID_PREFIX, key);
@@ -391,17 +392,24 @@ function WorkSessionPage() {
       (document.getElementById(ids.tab)?.contains(focused) ||
         document.getElementById(ids.panel)?.contains(focused) ||
         closeControl === focused);
+    let target: FocusTarget = null;
     if (inClosing) {
       const neighbour = keys[index + 1] ?? keys[index - 1];
-      focusNext.current = {
-        closed:
-          keys.length === 1 ? 'list' : key === state.selected ? 'selected' : (neighbour ?? 'list'),
+      const closed =
+        keys.length === 1 ? 'list' : key === state.selected ? 'selected' : (neighbour ?? 'list');
+      focusNext.current = { closed };
+      target = () => {
+        const next = closed === 'selected' ? panelNow.current.selected : closed;
+        return next && next !== 'list'
+          ? document.getElementById(tabsClosableIds(PANEL_ID_PREFIX, next).tab)
+          : (side.current?.querySelector<HTMLElement>('ul button') ?? null);
       };
     } else if (focused && side.current?.contains(focused)) {
       // A control of the panel (the head's "+" or 넓히기) that the close may take away.
       focusNext.current = { removed: focused };
     }
     frame.dispatch({ type: 'close', key });
+    return target;
   };
   const toggle = () => {
     if (heldByConfirmation()) return;
@@ -986,6 +994,7 @@ function WorkSessionPage() {
                     runNames={runNames}
                     onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
                     terminalRow={dockArea.terminalRow}
+                    terminals={terminalList.value?.list?.terminals ?? []}
                     onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
                     onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
                     onMaximize={() => {

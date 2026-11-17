@@ -27,6 +27,11 @@ import type { TerminalList } from '../terminals/useTerminalList.ts';
 import { DOCK_ID_PREFIX, type DockPlus, SessionDock, useCreationReason } from './SessionDock.tsx';
 import { useSessionDock } from './useSessionDock.ts';
 
+/** Where the focus goes after a close, found once the strip has changed; null leaves it. */
+export type FocusTarget = (() => HTMLElement | null) | null;
+/** Takes a tab out of its strip, handed where the focus was when the close began. */
+export type TabRemoval = (focused: Element | null) => FocusTarget;
+
 /** What the dock reads of the panel's terminal tabs, and what it asks the panel to do. */
 export interface PanelTerminals {
   /** The terminals with a tab in the panel. */
@@ -333,10 +338,19 @@ export function useSessionDockArea(input: DockAreaInput) {
   const [asking, setAsking] = useState<{
     sessionId: string;
     terminalId: string;
-    remove: () => void;
+    remove: TabRemoval;
+    focused: Element | null;
   } | null>(null);
-  const closeTerminal = async (terminalId: string, remove: () => void) => {
-    if (!store) return remove();
+  /**
+   * `remove` takes the tab out of its strip; it is handed where the focus was when the close
+   * began, since a dialog that asks holds the focus meanwhile, and says where the focus goes.
+   */
+  const closeTerminal = async (terminalId: string, remove: TabRemoval) => {
+    const focused = document.activeElement;
+    if (!store) {
+      remove(focused);
+      return;
+    }
     const from = sessionId;
     const state =
       latest.current.value?.list?.terminals.find((item) => item.terminalId === terminalId)?.state ??
@@ -344,14 +358,16 @@ export function useSessionDockArea(input: DockAreaInput) {
     const action = await closingTerminal(state, () => store.readForeground(terminalId));
     if (latest.current.sessionId !== from) return;
     if (action === 'ask') {
-      setAsking({ sessionId: from, terminalId, remove });
+      setAsking({ sessionId: from, terminalId, remove, focused });
       return;
     }
-    remove();
+    remove(focused);
     if (action === 'end' || action === 'recheck') void store.stop(terminalId).catch(() => {});
   };
   // Leaving the conversation drops the question, sending nothing.
   const askingHere = asking?.sessionId === sessionId ? asking : null;
+  // Where the focus goes once the dialog that ended a terminal has closed.
+  const endedFocus = useRef<FocusTarget>(null);
   const endDialog = (
     <EndTerminalDialog
       open={Boolean(askingHere)}
@@ -360,8 +376,13 @@ export function useSessionDockArea(input: DockAreaInput) {
         const ending = askingHere;
         setAsking(null);
         if (!ending || !store) return;
-        ending.remove();
+        endedFocus.current = ending.remove(ending.focused);
         void store.stop(ending.terminalId).catch(() => {});
+      }}
+      afterEnd={() => {
+        const target = endedFocus.current;
+        endedFocus.current = null;
+        return target?.() ?? null;
       }}
     />
   );
@@ -389,24 +410,32 @@ export function useSessionDockArea(input: DockAreaInput) {
     dispatch({ type: 'select', key });
   };
   /** Takes a tab out of the dock, the focus going on as a close sends it. */
-  const dropTab = (key: DockKey) => {
+  const dropTab = (key: DockKey, focused: Element | null = document.activeElement): FocusTarget => {
     const keys = latest.current.dock.tabs.map(dockKey);
     const index = keys.indexOf(key);
-    if (index < 0) return;
-    if (focusInside()) {
-      if (keys.length === 1) focusBody(sessionId);
-      else {
+    if (index < 0) return null;
+    let target: FocusTarget = null;
+    if (focused && region.current?.contains(focused)) {
+      if (keys.length === 1) {
+        focusBody(sessionId);
+        target = () =>
+          region.current?.querySelector<HTMLElement>('[data-dock-body] button') ?? null;
+      } else {
         const next = keys[index + 1] ?? keys[index - 1];
-        if (next) window.setTimeout(() => strip.current?.focusTab(next), 0);
+        if (next) {
+          window.setTimeout(() => strip.current?.focusTab(next), 0);
+          target = () => document.getElementById(tabsClosableIds(DOCK_ID_PREFIX, next).tab);
+        }
       }
     }
     dispatch({ type: 'close', key });
+    return target;
   };
   const close = (key: DockKey) => {
     if (held()) return;
     pending.current = null;
     if (key.startsWith('terminal:'))
-      void closeTerminal(key.slice('terminal:'.length), () => dropTab(key));
+      void closeTerminal(key.slice('terminal:'.length), (focused) => dropTab(key, focused));
     else dropTab(key);
   };
   /** The ⋯ move: the panel's tab of the terminal goes to the dock's right end, selected. */

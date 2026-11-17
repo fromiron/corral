@@ -1,3 +1,4 @@
+import type { TerminalView } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import { type Presence, projectionPresence } from '@corral/react';
 import {
@@ -26,7 +27,7 @@ import {
   Plus,
   Terminal,
 } from '@corral/react/icons';
-import { type ReactNode, type Ref, useCallback, useId, useSyncExternalStore } from 'react';
+import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
@@ -40,7 +41,12 @@ import {
   tabKey,
 } from '../panel/tabs.ts';
 import { listedRunPresence } from '../sessionList.ts';
-import { type DockPlus, TerminalListRow, TerminalPlusItem } from './SessionDock.tsx';
+import {
+  type DockPlus,
+  TerminalListRow,
+  TerminalPlusItem,
+  useTerminalTabState,
+} from './SessionDock.tsx';
 
 // The panel beside the conversation (features/session-panel.md): its head — the strip of tabs,
 // "+" after the last one, maximize at the far right — and one panel per open tab. With no tab
@@ -230,6 +236,7 @@ export function SessionPanelSide({
   onClose,
   onPlus,
   terminalRow,
+  terminals,
   onTerminal,
   onOpenRun,
   onMaximize,
@@ -248,6 +255,8 @@ export function SessionPanelSide({
   onPlus: (item: Exclude<PlusItem, 'terminal'>) => void;
   /** The "+" list's 터미널 row: null when the conversation has no Paddock in server mode. */
   terminalRow: DockPlus['terminal'];
+  /** The conversation's terminals as its list says them: a terminal tab says its state. */
+  terminals: readonly TerminalView[];
   /** "+" → 터미널: the shell chosen in its submenu, or none. */
   onTerminal: (shellId?: string) => void;
   /** A run chosen in the run history: its tab opens or is selected. */
@@ -261,6 +270,7 @@ export function SessionPanelSide({
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
+  const terminalState = useTerminalTabState(terminals);
   const history = useHistoryRuns(ctx, presenceOf, runNames);
   const historyRows = useRunHistoryRows(history, onOpenRun);
   // With one run, the run history opens it; with more, it lists them.
@@ -335,6 +345,7 @@ export function SessionPanelSide({
       ...(marked
         ? { mark: <PresenceMark presence={marked} />, description: tp(marked.labelKey) }
         : {}),
+      ...(tab.kind === 'terminal' ? terminalState(tab.terminalId) : {}),
     };
   });
   const maximized = state.presentation === 'maximized';

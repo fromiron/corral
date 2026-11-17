@@ -313,6 +313,66 @@ it('목록이 idle이라 했어도 닫는 때 다시 읽은 앞쪽 프로세스�
   expect(panelTabNames()).toEqual([W.files]);
 });
 
+it.each([
+  ['패널, 옆에 파일 탭', 'panel'],
+  ['도크, 옆에 터미널 2 탭', 'dock-two'],
+  ['도크의 하나뿐인 탭', 'dock-one'],
+  ['패널, 포커스는 컴포저에', 'composer'],
+] as const)(
+  '%s: 닫는 탭에 포커스를 두고 Delete, "끝내기"로 끝낸다 → 포커스는 닫기의 규칙대로 이어서 선택되는 탭, 남은 탭이 없으면 본문 목록의 첫 줄로 가고, 탭 밖에 있었으면 제자리에 있다',
+  async (_case, where) => {
+    const world = await serverWorld({ terminals: ['running', 'running'] });
+    if (where === 'panel' || where === 'composer') panelHoldsTerminal(world);
+    else
+      window.localStorage.setItem(
+        dockMemoryKey(world.sessionId),
+        serializeDockMemory({
+          tabs:
+            where === 'dock-two'
+              ? [
+                  { kind: 'terminal', terminalId: 'terminal_one' },
+                  { kind: 'terminal', terminalId: 'terminal_two' },
+                ]
+              : [{ kind: 'terminal', terminalId: 'terminal_one' }],
+          selected: 'terminal:terminal_one',
+          open: true,
+          height: 240,
+        }),
+      );
+    const inPanel = where === 'panel' || where === 'composer';
+    const scope = inPanel ? side : dock;
+    const label = inPanel ? W.panelTabs : W.dockTabs;
+    await open(world, `/sessions/${world.sessionId}`);
+    await until(() => selectedIn(scope(), label) === W.terminal(1));
+    server(world).setForeground('terminal_one', 'busy');
+    const closing = tabIn(scope(), label, W.terminal(1)) as HTMLElement;
+    const composer = document.querySelector<HTMLElement>('[data-testid="chat-composer"] textarea');
+    if (where === 'composer') {
+      await act(async () => composer?.focus());
+      expect(document.activeElement).toBe(composer);
+      await press(buttons(W.close(W.terminal(1)), scope())[0]);
+    } else {
+      await act(async () => closing.focus());
+      expect(document.activeElement).toBe(closing);
+      await key(closing, { key: 'Delete' });
+    }
+    await until(() => Boolean(dialog()));
+    await press(buttons(W.end, dialog())[0]);
+
+    await until(() => server(world).stops.length === 1);
+    const expected = () =>
+      where === 'composer'
+        ? composer
+        : where === 'panel'
+          ? tabIn(side(), W.panelTabs, W.files)
+          : where === 'dock-two'
+            ? tabIn(dock(), W.dockTabs, W.terminal(2))
+            : (dock()?.querySelector<HTMLElement>('[data-dock-list] button') ?? null);
+    await until(() => Boolean(expected()) && document.activeElement === expected());
+    expect(document.activeElement).toBe(expected());
+  },
+);
+
 it('다시 읽지 못하면 unknown으로 보고 묻는다', async () => {
   const world = await serverWorld();
   panelHoldsTerminal(world);
@@ -374,6 +434,27 @@ it('패널의 터미널 탭에서 ⋯ → 하단 도크로 옮기기 → 같은 
   expect(dock()?.querySelector('[data-dock-list]')).not.toBeNull();
   await until(() => document.activeElement === inputIn(side()));
   expect(document.activeElement).toBe(inputIn(side()));
+});
+
+it('터미널 탭은 패널에서도 도크에서처럼 그 상태를 아이콘 자리의 표시와 탭의 설명으로 말하고, 접근 이름은 "터미널 n" 그대로다', async () => {
+  const world = await serverWorld();
+  panelHoldsTerminal(world);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => panelSelected() === W.terminal(1));
+  const tab = tabIn(side(), W.panelTabs, W.terminal(1));
+  expect(tab?.getAttribute('aria-description')).toBe(messages.Terminals.state.running);
+  expect(tabName(tab as HTMLElement)).toBe(W.terminal(1));
+  expect(tab?.querySelector('[data-terminal-state="running"]')).not.toBeNull();
+  // The same terminal in the dock says it the same way.
+  await press(buttons(W.actions, visiblePanel(side()))[0]);
+  await press(menuRow(W.toDock));
+  await until(() => dockSelected() === W.terminal(1));
+  expect(tabIn(dock(), W.dockTabs, W.terminal(1))?.getAttribute('aria-description')).toBe(
+    messages.Terminals.state.running,
+  );
+  expect(
+    tabIn(dock(), W.dockTabs, W.terminal(1))?.querySelector('[data-terminal-state="running"]'),
+  ).not.toBeNull();
 });
 
 it('Shift+Escape로 터미널에서 나오면 포커스는 그 탭 줄의 그 터미널 탭으로 간다', async () => {

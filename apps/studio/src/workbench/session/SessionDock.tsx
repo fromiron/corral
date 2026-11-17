@@ -171,6 +171,27 @@ const STATE_COLOR: Record<TerminalView['state'], string> = {
   uncertain: 'var(--warning)',
 };
 
+/**
+ * What a terminal's tab says of its state in either strip: the mark in the icon's place and the
+ * state in words as the tab's description (features/session-panel.md 터미널 탭).
+ */
+export function useTerminalTabState(terminals: readonly TerminalView[]) {
+  const tt = useTranslations('Terminals');
+  return (terminalId: string): Pick<TabsClosableTab, 'mark' | 'description'> => {
+    const view = terminals.find((item) => item.terminalId === terminalId);
+    if (!view) return {};
+    return {
+      mark: (
+        <span data-terminal-state={view.state} className="inline-flex">
+          <LiveDot color={STATE_COLOR[view.state]} live={view.state === 'running'} />
+        </span>
+      ),
+      description:
+        view.state === 'exited' && view.stopped ? tt('stopped') : tt(`state.${view.state}`),
+    };
+  };
+}
+
 export function SessionDock({
   sessionId,
   dock,
@@ -203,34 +224,20 @@ export function SessionDock({
   renderTab: (tab: DockTab) => ReactNode;
 }) {
   const t = useTranslations('SessionPanel');
-  const tt = useTranslations('Terminals');
+  const stateOf = useTerminalTabState(terminals);
   const nameOf = (tab: DockTab) => {
     if (tab.kind === 'debug') return t('debugTab');
     const index = terminals.findIndex((item) => item.terminalId === tab.terminalId);
     return t('terminalTab', { number: index < 0 ? terminals.length + 1 : index + 1 });
   };
   const tabs: TabsClosableTab[] = dock.tabs.map((tab) => {
-    const view =
-      tab.kind === 'terminal'
-        ? terminals.find((item) => item.terminalId === tab.terminalId)
-        : undefined;
     const label = nameOf(tab);
-    const stateText = view
-      ? view.state === 'exited' && view.stopped
-        ? tt('stopped')
-        : tt(`state.${view.state}`)
-      : undefined;
     return {
       id: dockKey(tab),
       label,
       ...(tab.kind === 'terminal' ? { shortLabel: label.replace(/^\D+/, '') || label } : {}),
       icon: tab.kind === 'debug' ? Bug : Terminal,
-      ...(view
-        ? {
-            mark: <LiveDot color={STATE_COLOR[view.state]} live={view.state === 'running'} />,
-            description: stateText,
-          }
-        : {}),
+      ...(tab.kind === 'terminal' ? stateOf(tab.terminalId) : {}),
     };
   });
   const terminalRow = plus.terminal;

@@ -87,6 +87,7 @@ async function show({
           onClose={() => {}}
           onPlus={onPlus}
           terminalRow={null}
+          terminals={[]}
           onTerminal={() => {}}
           onOpenRun={onOpenRun}
           onMaximize={() => {}}
