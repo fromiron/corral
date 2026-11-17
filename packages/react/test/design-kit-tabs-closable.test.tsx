@@ -881,3 +881,50 @@ describe('reordering by drag', () => {
     expect(onDragChange).toHaveBeenCalledTimes(4);
   });
 });
+
+// --- A name suffix (session-panel.md S3: the same file in the source folder and the copy): the tab
+// is named "<label>, <suffix>", while the label is all it shows and all its close control says.
+
+describe('a name suffix', () => {
+  const documents: TabsClosableTab[] = [
+    { id: 'readme-source', label: 'README.md', icon: File, nameSuffix: '프로젝트 원본 폴더' },
+    { id: 'readme-copy', label: 'README.md', icon: File, description: '저장하지 않음' },
+    { id: 'notes', label: 'notes.md', icon: File, nameSuffix: '' },
+  ];
+
+  it('adds the suffix to the tab’s accessible name only', () => {
+    const view = render(<Strip tabs={documents} initial="readme-source" />);
+    const source = view.container.querySelector<HTMLElement>('#panel-tab-readme-source');
+    expect(source).toHaveAccessibleName('README.md, 프로젝트 원본 폴더');
+    expect(screen.getByRole('tab', { name: 'README.md, 프로젝트 원본 폴더' })).toBe(source);
+    // Not on screen: the label slot shows the label, and the suffix is nowhere in the strip.
+    expect(source?.querySelector('[data-slot="tabs-closable-label"]')).toHaveTextContent(
+      /^README\.md$/,
+    );
+    expect(view.container).not.toHaveTextContent('프로젝트 원본 폴더');
+    // The close control says the label only.
+    const closes = screen.getAllByRole('button', { name: 'README.md 닫기' });
+    expect(closes.map((close) => close.getAttribute('data-tab-id'))).toEqual([
+      'readme-source',
+      'readme-copy',
+    ]);
+  });
+
+  it('keeps a suffixed tab’s description, and leaves a tab without one as it was', () => {
+    const tabs: TabsClosableTab[] = [
+      { ...(documents[0] as TabsClosableTab), description: '읽기 전용' },
+      documents[1] as TabsClosableTab,
+      documents[2] as TabsClosableTab,
+    ];
+    const view = render(<Strip tabs={tabs} initial="readme-source" />);
+    const tab = (id: string) => view.container.querySelector<HTMLElement>(`#panel-tab-${id}`);
+    expect(tab('readme-source')).toHaveAccessibleName('README.md, 프로젝트 원본 폴더');
+    expect(tab('readme-source')).toHaveAccessibleDescription('읽기 전용');
+    // No suffix, or an empty one: named by the label, with no aria-label of its own.
+    expect(tab('readme-copy')).toHaveAccessibleName('README.md');
+    expect(tab('readme-copy')).toHaveAccessibleDescription('저장하지 않음');
+    expect(tab('readme-copy')).not.toHaveAttribute('aria-label');
+    expect(tab('notes')).toHaveAccessibleName('notes.md');
+    expect(tab('notes')).not.toHaveAttribute('aria-label');
+  });
+});

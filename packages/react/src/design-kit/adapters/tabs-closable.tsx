@@ -75,6 +75,9 @@ export interface TabsClosableTab {
   mark?: ReactNode;
   /** The tab's accessible description (the state in words). */
   description?: string;
+  /** Added to the tab's accessible name only, after a comma ("README.md, 프로젝트 원본 폴더"):
+   *  never shown, and not in the close control's name or the tooltip. */
+  nameSuffix?: string;
   /** May be dragged into another strip of the same `moveGroup` (a terminal). */
   movable?: boolean;
 }
@@ -945,6 +948,12 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                           aria-controls={ids.panel}
                           aria-keyshortcuts={keyShortcuts}
                           aria-description={tab.description || undefined}
+                          // The name from content is exactly the label (all else is hidden), so
+                          // this extends it exactly; a hidden child would leave the separator to
+                          // layout.
+                          aria-label={
+                            tab.nameSuffix ? `${tab.label}, ${tab.nameSuffix}` : undefined
+                          }
                           data-fluid-hover-index={index}
                           data-selected={selected ? '' : undefined}
                           data-dragging={draggingId === tab.id ? '' : undefined}
