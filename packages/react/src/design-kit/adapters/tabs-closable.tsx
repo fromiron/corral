@@ -20,6 +20,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { useIsMac } from '../components/ui/command-menu.tsx';
 import { type ItemRect, useFluidHover } from '../hooks/use-fluid-hover.ts';
 import { focusRingInset } from '../lib/focus.ts';
 import { fontWeights } from '../lib/font-weight.ts';
@@ -27,6 +28,7 @@ import { type IconComponent, useIcon } from '../lib/icon-context.tsx';
 import { useShape } from '../lib/shape-context.tsx';
 import { useSize } from '../lib/size-context.tsx';
 import { spring, tween } from '../lib/springs.ts';
+import { dropSlot, reorderIndex } from '../lib/tab-drag.ts';
 import { Tooltip } from './tooltip.tsx';
 import { cn } from './utils.ts';
 
@@ -51,8 +53,13 @@ import { cn } from './utils.ts';
 //   button) and an end slot at the far right (maximize); neither scrolls away.
 // - a mark in the icon's place (a run's state), at every stage, and a
 //   description the tab is read with; its name stays its label.
+// - reordering, when the host allows it: a tab dragged past a small threshold
+//   shows a still line where it would land; Mod+Shift+arrows (⌘⇧ on a Mac,
+//   Ctrl+Shift elsewhere) move the focused tab one place, said politely. The
+//   drag is the pointer's own, never an HTML5 drag.
 //
-// The host owns the tabs, the selection and what a close selects next.
+// The host owns the tabs, their order, the selection and what a close selects
+// next.
 // -----------------------------------------------------------------------------
 
 export interface TabsClosableTab {
@@ -92,6 +99,16 @@ export interface TabsClosableProps
   trailing?: ReactNode;
   /** Host controls at the strip's far right (maximize), after a flexible gap. */
   end?: ReactNode;
+  /** Lets a tab be dragged to a new place in the strip, and the focused tab move one place with
+   *  Mod+Shift+←/→. `toIndex` is the index the tab ends up at; the host reorders its tabs, or
+   *  not. */
+  onReorder?: (id: string, toIndex: number) => void;
+  /** What a polite live region says once a keyboard move lands: the tab, its new place counted
+   *  from 1, and the number of tabs. */
+  announceMove?: (tab: TabsClosableTab, position: number, count: number) => string;
+  /** A tab drag starts (true) or ends (false): a host may switch off pointer events on a native
+   *  view the pointer would cross. */
+  onTabDragChange?: (dragging: boolean) => void;
 }
 
 /** The ids a tab and its panel carry, for a host that renders its own panels. */
@@ -124,6 +141,23 @@ const REVEAL = FADE + 4;
 /** How long after a selection, hover or focus change its layer travels; a rect that changes
  *  later (a resize, a remeasure) is followed at once. */
 const TRAVEL_MS = 250;
+/** How far a pressed tab moves, either way, before it is dragged. */
+const DRAG_THRESHOLD = 4;
+/** How far above and below the strip a dragged tab still lands in it. */
+const STRIP_REACH = 12;
+
+interface TabDrag {
+  id: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  element: HTMLElement;
+  started: boolean;
+  /** The slot the tab would land in, or null where a drop moves nothing. */
+  slot: number | null;
+  /** Ends the listeners a started drag adds outside the strip. */
+  stopListening?: () => void;
+}
 
 const semibold = { fontVariationSettings: fontWeights.semibold };
 const instant = { duration: 0 };
@@ -150,6 +184,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       idPrefix,
       trailing,
       end,
+      onReorder,
+      announceMove,
+      onTabDragChange,
       className,
       ...props
     },
@@ -165,6 +202,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     const size = useSize('compact');
     const reduce = useReducedMotion() ?? false;
     const CloseIcon = useIcon('x');
+    const isMac = useIsMac();
 
     // What the tabs are, apart from the array that carries them.
     const idList = tabs.map((tab) => tab.id).join('\u001e');
@@ -287,6 +325,152 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
       }),
       [tabElement, reveal, resyncFocus],
     );
+
+    // --- Reordering --------------------------------------------------------------
+    const latest = useRef({ onReorder, announceMove, onTabDragChange });
+    latest.current = { onReorder, announceMove, onTabDragChange };
+    const [draggingId, setDraggingId] = useState<string | null>(null);
+    // The slot a drop would land in, and where its line stands in the tabs' row.
+    const [dropLine, setDropLine] = useState<{ slot: number; x: number } | null>(null);
+    const [announcement, setAnnouncement] = useState('');
+    const drag = useRef<TabDrag | null>(null);
+    // The click a drag ends with selects nothing.
+    const swallowClick = useRef(false);
+    // A keyboard move sent to the host, said once it lands.
+    const pendingMove = useRef<{ id: string; to: number } | null>(null);
+
+    const tabElements = useCallback(
+      () =>
+        tabsRef.current
+          .map((tab) => tabElement(tab.id))
+          .filter((element): element is HTMLElement => !!element),
+      [tabElement],
+    );
+    const slotAt = useCallback(
+      (x: number) =>
+        dropSlot(
+          tabElements().map((element) => {
+            const box = element.getBoundingClientRect();
+            return box.left + box.width / 2;
+          }),
+          x,
+        ),
+      [tabElements],
+    );
+    // In the tabs' row, so the line scrolls with them.
+    const lineX = useCallback(
+      (slot: number) => {
+        const elements = tabElements();
+        const first = elements[0];
+        const last = elements[elements.length - 1];
+        if (!first || !last) return 0;
+        if (slot <= 0) return first.offsetLeft;
+        if (slot >= elements.length) return last.offsetLeft + last.offsetWidth;
+        const before = elements[slot - 1] as HTMLElement;
+        const after = elements[slot] as HTMLElement;
+        return (before.offsetLeft + before.offsetWidth + after.offsetLeft) / 2;
+      },
+      [tabElements],
+    );
+    const withinStrip = (x: number, y: number) => {
+      const box = rootRef.current?.getBoundingClientRect();
+      return (
+        !!box &&
+        x >= box.left &&
+        x <= box.right &&
+        y >= box.top - STRIP_REACH &&
+        y <= box.bottom + STRIP_REACH
+      );
+    };
+
+    const endDrag = useCallback((drop: boolean) => {
+      const session = drag.current;
+      if (!session) return;
+      drag.current = null;
+      if (session.element.hasPointerCapture?.(session.pointerId)) {
+        session.element.releasePointerCapture(session.pointerId);
+      }
+      if (!session.started) return;
+      session.stopListening?.();
+      swallowClick.current = true;
+      setDraggingId(null);
+      setDropLine(null);
+      latest.current.onTabDragChange?.(false);
+      if (!drop || session.slot === null) return;
+      const from = tabsRef.current.findIndex((tab) => tab.id === session.id);
+      const to = reorderIndex(from, session.slot);
+      if (from >= 0 && to !== from) latest.current.onReorder?.(session.id, to);
+    }, []);
+
+    // A drag cut short by unmounting moves nothing, and says it ended.
+    useEffect(
+      () => () => {
+        const session = drag.current;
+        drag.current = null;
+        if (!session?.started) return;
+        session.stopListening?.();
+        latest.current.onTabDragChange?.(false);
+      },
+      [],
+    );
+
+    const startDrag = (session: TabDrag) => {
+      session.started = true;
+      const view = session.element.ownerDocument.defaultView;
+      view?.getSelection()?.removeAllRanges();
+      // Escape ends the drag and goes no further (a drawer would close on it); no text is
+      // selected on the way.
+      const onKey = (event: KeyboardEvent) => {
+        if (event.key !== 'Escape') return;
+        event.preventDefault();
+        event.stopPropagation();
+        endDrag(false);
+      };
+      const onSelectStart = (event: Event) => event.preventDefault();
+      view?.addEventListener('keydown', onKey, true);
+      view?.addEventListener('selectstart', onSelectStart, true);
+      session.stopListening = () => {
+        view?.removeEventListener('keydown', onKey, true);
+        view?.removeEventListener('selectstart', onSelectStart, true);
+      };
+      setDraggingId(session.id);
+      setTipTab(null);
+      latest.current.onTabDragChange?.(true);
+    };
+
+    const followDrag = (session: TabDrag, x: number, y: number) => {
+      let slot: number | null = null;
+      if (withinStrip(x, y)) {
+        const from = tabsRef.current.findIndex((tab) => tab.id === session.id);
+        const at = slotAt(x);
+        if (reorderIndex(from, at) !== from) slot = at;
+      }
+      session.slot = slot;
+      setDropLine((current) =>
+        slot === null ? null : current?.slot === slot ? current : { slot, x: lineX(slot) },
+      );
+    };
+
+    // biome-ignore lint/correctness/useExhaustiveDependencies: Runs when the set of tabs changes.
+    useLayoutEffect(() => {
+      // A dragged tab the host took away ends its drag.
+      const session = drag.current;
+      if (session && !tabsRef.current.some((tab) => tab.id === session.id)) endDrag(false);
+      // A keyboard move that landed: the tab keeps the focus (moving it in the document may have
+      // dropped it) and its new place is said. Whatever changed first, the move is settled.
+      const pending = pendingMove.current;
+      pendingMove.current = null;
+      if (!pending) return;
+      const at = tabsRef.current.findIndex((tab) => tab.id === pending.id);
+      const tab = tabsRef.current[at];
+      if (at !== pending.to || !tab) return;
+      const element = tabElement(pending.id);
+      if (element) {
+        if (element.ownerDocument.activeElement !== element) element.focus({ preventScroll: true });
+        reveal(element);
+      }
+      setAnnouncement(latest.current.announceMove?.(tab, at + 1, tabsRef.current.length) ?? '');
+    }, [idList, tabElement, reveal, endDrag]);
 
     // --- Overflow stage --------------------------------------------------------
     // Decided from what the stage does not change: the strip's width, each name's natural width
@@ -472,6 +656,10 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
     const hoverTravel = reduce || !hoverMoved ? instant : spring.fast;
     const focusTravel = reduce || !focusMoved ? instant : spring.fast;
 
+    const keyShortcuts = onReorder
+      ? `Delete ${isMac ? 'Meta' : 'Control'}+Shift+ArrowLeft ${isMac ? 'Meta' : 'Control'}+Shift+ArrowRight`
+      : 'Delete';
+
     const indexOf = (element: EventTarget | null) => {
       const attr = (element as HTMLElement | null)
         ?.closest?.('[data-fluid-hover-index]')
@@ -504,6 +692,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
             onMouseMove={(event) => {
               isMouseInside.current = true;
               setMouseInside(true);
+              // The hover pill stays still while a tab is dragged.
+              if (drag.current?.started) return;
               handlers.onMouseMove(event);
             }}
             onMouseLeave={() => {
@@ -647,7 +837,9 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                         side="bottom"
                         escapeThrough
                         refuseOpen={refuseOpen}
-                        forceOpen={iconOnly || tipTab === tab.id ? undefined : false}
+                        forceOpen={
+                          draggingId === null && (iconOnly || tipTab === tab.id) ? undefined : false
+                        }
                       >
                         <ClosableTab
                           index={index}
@@ -655,10 +847,70 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                           value={tab.id}
                           id={ids.tab}
                           aria-controls={ids.panel}
-                          aria-keyshortcuts="Delete"
+                          aria-keyshortcuts={keyShortcuts}
                           aria-description={tab.description || undefined}
                           data-fluid-hover-index={index}
                           data-selected={selected ? '' : undefined}
+                          data-dragging={draggingId === tab.id ? '' : undefined}
+                          // Never an HTML5 drag: other drop targets (the team editor's canvas)
+                          // listen for those.
+                          onDragStart={(event: React.DragEvent<HTMLElement>) =>
+                            event.preventDefault()
+                          }
+                          onPointerDown={(event: React.PointerEvent<HTMLElement>) => {
+                            swallowClick.current = false;
+                            pendingMove.current = null;
+                            // A touch scrolls the strip.
+                            if (!onReorder || event.button !== 0 || event.pointerType === 'touch')
+                              return;
+                            drag.current = {
+                              id: tab.id,
+                              pointerId: event.pointerId,
+                              startX: event.clientX,
+                              startY: event.clientY,
+                              element: event.currentTarget,
+                              started: false,
+                              slot: null,
+                            };
+                            try {
+                              event.currentTarget.setPointerCapture(event.pointerId);
+                            } catch {
+                              // A pointer that is no longer active (a synthetic one) cannot be captured.
+                            }
+                          }}
+                          onPointerMove={(event: React.PointerEvent<HTMLElement>) => {
+                            const session = drag.current;
+                            if (!session || session.pointerId !== event.pointerId) return;
+                            // The release went somewhere this never heard of.
+                            if (event.buttons === 0) {
+                              endDrag(false);
+                              return;
+                            }
+                            if (!session.started) {
+                              const moved = Math.max(
+                                Math.abs(event.clientX - session.startX),
+                                Math.abs(event.clientY - session.startY),
+                              );
+                              if (moved < DRAG_THRESHOLD) return;
+                              startDrag(session);
+                            }
+                            followDrag(session, event.clientX, event.clientY);
+                          }}
+                          onPointerUp={(event: React.PointerEvent<HTMLElement>) => {
+                            if (drag.current?.pointerId === event.pointerId) endDrag(true);
+                          }}
+                          onPointerCancel={(event: React.PointerEvent<HTMLElement>) => {
+                            if (drag.current?.pointerId === event.pointerId) endDrag(false);
+                          }}
+                          onLostPointerCapture={(event: React.PointerEvent<HTMLElement>) => {
+                            if (drag.current?.pointerId === event.pointerId) endDrag(false);
+                          }}
+                          onClickCapture={(event: React.MouseEvent<HTMLElement>) => {
+                            if (!swallowClick.current) return;
+                            swallowClick.current = false;
+                            event.preventDefault();
+                            event.stopPropagation();
+                          }}
                           onPointerEnter={(event: React.PointerEvent<HTMLElement>) =>
                             noteCut(tab.id, event.currentTarget)
                           }
@@ -667,7 +919,18 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                             noteCut(tab.id, event.currentTarget);
                           }}
                           onKeyDown={(event: React.KeyboardEvent<HTMLElement>) => {
-                            if (event.key !== 'Delete' || event.defaultPrevented) return;
+                            if (event.defaultPrevented) return;
+                            if (onReorder && isMoveChord(event, isMac)) {
+                              // The arrows' own focus move is not this chord's.
+                              event.preventDefault();
+                              event.stopPropagation();
+                              const to = index + (event.key === 'ArrowRight' ? 1 : -1);
+                              if (to < 0 || to >= tabs.length) return;
+                              pendingMove.current = { id: tab.id, to };
+                              onReorder(tab.id, to);
+                              return;
+                            }
+                            if (event.key !== 'Delete') return;
                             // A held key closes one tab, and a chord is someone else's.
                             if (event.repeat) return;
                             if (event.altKey || event.ctrlKey || event.metaKey || event.shiftKey)
@@ -686,6 +949,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                           }}
                           className={cn(
                             'relative z-10 flex h-7 min-w-0 cursor-pointer items-center border-none bg-transparent outline-none',
+                            // Dragged, it stays dimmed in its place until the drop.
+                            'data-[dragging]:cursor-grabbing data-[dragging]:opacity-40',
                             shape.bg,
                             size.text,
                           )}
@@ -791,6 +1056,17 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                 </Tabs.List>
               }
             />
+
+            {/* Where a dragged tab would land: a still line between tabs. */}
+            {dropLine ? (
+              <div
+                aria-hidden="true"
+                data-slot="tabs-closable-drop-line"
+                data-at={dropLine.slot}
+                className="pointer-events-none absolute inset-y-1 z-40 w-0.5 rounded-full bg-emphasis"
+                style={{ left: dropLine.x - 1 }}
+              />
+            ) : null}
 
             {/* Close controls: beside the tablist, never inside a tab, out of the tab order. On
                 the selected tab after its name; on an unselected tab that shows text, in its
@@ -910,11 +1186,30 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
             {end}
           </div>
         ) : null}
+        {/* Outside the tablist, there from the start, so the first move is heard. */}
+        {onReorder ? (
+          <div
+            data-slot="tabs-closable-announcer"
+            aria-live="polite"
+            aria-atomic="true"
+            className="sr-only"
+          >
+            {announcement}
+          </div>
+        ) : null}
       </div>
     );
   },
 );
 TabsClosable.displayName = 'TabsClosable';
+
+/** Mod+Shift and a side arrow: ⌘⇧ on a Mac, Ctrl+Shift elsewhere (Alt+Shift switches the input
+ *  language on Windows). */
+function isMoveChord(event: React.KeyboardEvent, isMac: boolean) {
+  if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return false;
+  if (!event.shiftKey || event.altKey) return false;
+  return isMac ? event.metaKey && !event.ctrlKey : event.ctrlKey && !event.metaKey;
+}
 
 type ClosableTabProps = Omit<React.ComponentProps<typeof Tabs.Tab>, 'ref'> & {
   index: number;

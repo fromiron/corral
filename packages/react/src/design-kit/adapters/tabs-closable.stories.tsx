@@ -44,6 +44,7 @@ function Host({
   onClose,
   testId,
   controls = false,
+  reorder = false,
 }: {
   tabs?: TabsClosableTab[];
   initial?: string;
@@ -52,6 +53,8 @@ function Host({
   testId?: string;
   /** Host buttons outside the strip: select the last tab, and render again. */
   controls?: boolean;
+  /** The host lets tabs be dragged and moved with Mod+Shift+arrows. */
+  reorder?: boolean;
 }) {
   const [tabs, setTabs] = useState(initialTabs);
   const [, setRenders] = useState(0);
@@ -96,6 +99,19 @@ function Host({
             setSelected(nextSelected);
             if (hadFocus) setFocusNext(id === selected ? nextSelected : neighbour);
           }}
+          {...(reorder
+            ? {
+                onReorder: (id: string, to: number) =>
+                  setTabs((current) => {
+                    const tab = current.find((item) => item.id === id);
+                    if (!tab) return current;
+                    const rest = current.filter((item) => item.id !== id);
+                    return [...rest.slice(0, to), tab, ...rest.slice(to)];
+                  }),
+                announceMove: (tab: TabsClosableTab, position: number, count: number) =>
+                  `${tab.label}: ${position}번째 / ${count}개`,
+              }
+            : {})}
           trailing={
             <Button variant="ghost" size="icon-compact" aria-label="탭 열기">
               <Plus />
@@ -698,6 +714,111 @@ export const PressFocusNoClose: Story = {
     );
     // A real key puts the page back in keyboard modality for the stories after this one.
     await userEvent.keyboard('{Shift}');
+  },
+};
+
+const order = (canvasElement: HTMLElement) =>
+  within(canvasElement)
+    .getAllByRole('tab')
+    .map((tab) => tab.id.replace('story-tab-', ''));
+
+/** Mod+Shift+arrows move the focused tab; the focus and its ring stay on it, and its place is
+ *  said. */
+export const ReorderKeyboard: Story = {
+  args: { width: 640, tabs: four, initial: 'files', reorder: true },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const changes = canvas.getByRole('tab', { name: '변경' });
+    const announcer = canvasElement.querySelector('[data-slot="tabs-closable-announcer"]');
+    const ring = () =>
+      canvasElement.querySelector<HTMLElement>('[data-slot="tabs-closable-focus-ring"]');
+    await userEvent.tab();
+    await userEvent.keyboard('{ArrowRight}');
+    await expect(changes).toHaveFocus();
+    const chord = (key: string) => `{Control>}{Shift>}{${key}}{/Shift}{/Control}`;
+    for (const [key, expected, said] of [
+      ['ArrowRight', ['files', 'run-1', 'changes', 'artifacts'], '변경: 3번째 / 4개'],
+      ['ArrowRight', ['files', 'run-1', 'artifacts', 'changes'], '변경: 4번째 / 4개'],
+      ['ArrowLeft', ['files', 'run-1', 'changes', 'artifacts'], '변경: 3번째 / 4개'],
+    ] as const) {
+      await userEvent.keyboard(chord(key));
+      await waitFor(() => expect(order(canvasElement)).toEqual(expected));
+      await expect(changes).toHaveFocus();
+      await expect(announcer).toHaveTextContent(said);
+      // The ring follows the tab to its new place.
+      await waitFor(() =>
+        expect(Math.round((ring() as HTMLElement).getBoundingClientRect().left + 2)).toBe(
+          Math.round(changes.getBoundingClientRect().left),
+        ),
+      );
+    }
+    // Nothing was selected.
+    await expect(canvas.getByRole('tab', { name: '파일' })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
+  },
+};
+
+/** A tab dragged past the threshold shows a line where it would land, and lands there; the press
+ *  that ends the drag selects nothing. */
+export const ReorderDrag: Story = {
+  args: { width: 640, tabs: four, initial: 'files', reorder: true },
+  play: async ({ canvasElement, userEvent }) => {
+    const canvas = within(canvasElement);
+    const tab = (name: string) => canvas.getByRole('tab', { name });
+    const line = () =>
+      canvasElement.querySelector<HTMLElement>('[data-slot="tabs-closable-drop-line"]');
+    // Held mid-drag: the line stands in the gap between the two tabs it falls between.
+    const changes = tab('변경');
+    const from = changes.getBoundingClientRect();
+    const run = tab('실행 #1').getBoundingClientRect();
+    const result = tab('결과').getBoundingClientRect();
+    const y = from.top + from.height / 2;
+    await userEvent.pointer([
+      { keys: '[MouseLeft>]', target: changes, coords: { clientX: from.left + 10, clientY: y } },
+      { target: changes, coords: { clientX: result.left + result.width * 0.75, clientY: y } },
+    ]);
+    await expect(changes).toHaveAttribute('data-dragging');
+    await expect(getComputedStyle(changes).opacity).toBe('0.4');
+    const drawn = line() as HTMLElement;
+    await expect(drawn).toHaveAttribute('data-at', '4');
+    const box = drawn.getBoundingClientRect();
+    await expect(Math.abs(box.left + box.width / 2 - result.right)).toBeLessThanOrEqual(1);
+    await userEvent.pointer([
+      { target: changes, coords: { clientX: run.left + run.width * 0.75, clientY: y } },
+    ]);
+    await expect(line()).toHaveAttribute('data-at', '3');
+    await userEvent.pointer([
+      {
+        keys: '[/MouseLeft]',
+        target: changes,
+        coords: { clientX: run.left + run.width * 0.75, clientY: y },
+      },
+    ]);
+    await waitFor(() =>
+      expect(order(canvasElement)).toEqual(['files', 'run-1', 'changes', 'artifacts']),
+    );
+    await expect(line()).toBeNull();
+    await expect(tab('파일')).toHaveAttribute('aria-selected', 'true');
+    // A real drag (Chromium's own pointer, under the test runner only), onto the last tab's far
+    // half: it lands last, selects nothing and selects no text.
+    if ((import.meta as { env?: { MODE?: string } }).env?.MODE !== 'test') return;
+    const browser = await import('vitest/browser' as string);
+    const last = tab('결과');
+    const lastBox = last.getBoundingClientRect();
+    await browser.userEvent.dragAndDrop(tab('파일'), last, {
+      targetPosition: { x: lastBox.width - 4, y: lastBox.height / 2 },
+    });
+    await waitFor(() =>
+      expect(order(canvasElement)).toEqual(['run-1', 'changes', 'artifacts', 'files']),
+    );
+    await expect(tab('파일')).toHaveAttribute('aria-selected', 'true');
+    await expect(tab('변경')).toHaveAttribute('aria-selected', 'false');
+    await expect(canvasElement.ownerDocument.getSelection()?.toString() ?? '').toBe('');
+    await expect(line()).toBeNull();
+    // A real key puts the page back in keyboard modality for the stories after this one.
+    await browser.userEvent.keyboard('{Shift}');
   },
 };
 

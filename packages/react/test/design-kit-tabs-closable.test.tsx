@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { File, GitCompare, Play } from 'lucide-react';
 import { createRef, useLayoutEffect, useRef, useState } from 'react';
-import { expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   TabsClosable,
   type TabsClosableHandle,
@@ -546,3 +546,323 @@ it('gives the mark’s place to the close control on focus, and gives it back af
     await waitFor(() => expect(close('실행 #1')).not.toHaveAttribute('data-shown'));
     expect(drawn()).not.toHaveClass('opacity-0');
   }));
+
+// --- Reordering (session-panel.md S4): a drag within the strip, and Mod+Shift+arrows on a focused
+// tab. The host owns the order; the strip says where a tab is to go.
+
+function moved(tabs: readonly TabsClosableTab[], id: string, to: number) {
+  const tab = tabs.find((item) => item.id === id);
+  if (!tab) return [...tabs];
+  const rest = tabs.filter((item) => item.id !== id);
+  return [...rest.slice(0, to), tab, ...rest.slice(to)];
+}
+
+const placeWords = (tab: TabsClosableTab, position: number, count: number) =>
+  `${tab.label}: ${position}번째 / ${count}개`;
+
+function Reorderable({
+  initial = sample,
+  onReorder = () => {},
+  onSelect = () => {},
+  onDragChange,
+  refuse = false,
+}: {
+  initial?: TabsClosableTab[];
+  onReorder?: (id: string, to: number) => void;
+  onSelect?: (id: string) => void;
+  onDragChange?: (dragging: boolean) => void;
+  refuse?: boolean;
+}) {
+  const [tabs, setTabs] = useState(initial);
+  const [selected, setSelected] = useState(initial[0]?.id ?? null);
+  return (
+    <TabsClosable
+      aria-label="패널"
+      idPrefix="panel"
+      tabs={tabs}
+      selectedId={selected}
+      onSelect={(id) => {
+        setSelected(id);
+        onSelect(id);
+      }}
+      onClose={() => {}}
+      closeLabel={(tab) => `${tab.label} 닫기`}
+      onReorder={(id, to) => {
+        onReorder(id, to);
+        if (!refuse) setTabs((current) => moved(current, id, to));
+      }}
+      announceMove={placeWords}
+      onTabDragChange={onDragChange}
+    />
+  );
+}
+
+/** The tabs' order, by id. */
+const names = () => screen.getAllByRole('tab').map((tab) => tab.id.replace('panel-tab-', ''));
+const announcer = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-slot="tabs-closable-announcer"]');
+const dropLine = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>('[data-slot="tabs-closable-drop-line"]');
+
+describe('reordering by keyboard', () => {
+  it('moves the focused tab one place with Ctrl+Shift+arrows, stopping at the ends, and keeps the focus on it', async () => {
+    const onReorder = vi.fn();
+    const onSelect = vi.fn();
+    const view = render(<Reorderable onReorder={onReorder} onSelect={onSelect} />);
+    const user = userEvent.setup();
+    const changes = screen.getByRole('tab', { name: '변경' });
+    changes.focus();
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}');
+    expect(onReorder).toHaveBeenLastCalledWith('changes', 2);
+    expect(names()).toEqual(['files', 'run-1', 'changes']);
+    expect(screen.getByRole('tab', { name: '변경' })).toHaveFocus();
+    expect(announcer(view.container)).toHaveTextContent('변경: 3번째 / 3개');
+    // At the end: nothing moves, and the focus stays.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}');
+    expect(onReorder).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole('tab', { name: '변경' })).toHaveFocus();
+    await user.keyboard('{Control>}{Shift>}{ArrowLeft}{ArrowLeft}{/Shift}{/Control}');
+    expect(onReorder.mock.calls).toEqual([
+      ['changes', 2],
+      ['changes', 1],
+      ['changes', 0],
+    ]);
+    expect(names()).toEqual(['changes', 'files', 'run-1']);
+    expect(screen.getByRole('tab', { name: '변경' })).toHaveFocus();
+    expect(announcer(view.container)).toHaveTextContent('변경: 1번째 / 3개');
+    await user.keyboard('{Control>}{Shift>}{ArrowLeft}{/Shift}{/Control}');
+    expect(onReorder).toHaveBeenCalledTimes(3);
+    // Nothing was selected, and the arrows go on from the tab's new place.
+    expect(onSelect).not.toHaveBeenCalled();
+    await user.keyboard('{ArrowRight}');
+    expect(screen.getByRole('tab', { name: '파일' })).toHaveFocus();
+  });
+
+  it('leaves other chords alone, and the chord to a strip the host does not let reorder', async () => {
+    const onReorder = vi.fn();
+    const view = render(<Reorderable onReorder={onReorder} />);
+    const user = userEvent.setup();
+    const changes = screen.getByRole('tab', { name: '변경' });
+    expect(changes).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Delete Control+Shift+ArrowLeft Control+Shift+ArrowRight',
+    );
+    changes.focus();
+    // Alt+Shift switches the input language on Windows; ⌘ is the Mac's, not this platform's.
+    await user.keyboard('{Alt>}{Shift>}{ArrowRight}{/Shift}{/Alt}');
+    await user.keyboard('{Meta>}{Shift>}{ArrowRight}{/Shift}{/Meta}');
+    await user.keyboard('{Control>}{ArrowRight}{/Control}');
+    expect(onReorder).not.toHaveBeenCalled();
+    expect(names()).toEqual(['files', 'changes', 'run-1']);
+    view.unmount();
+    // Without onReorder the chord is not the strip's, and there is nothing to say.
+    const plain = render(<Strip />);
+    expect(screen.getByRole('tab', { name: '변경' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Delete',
+    );
+    expect(announcer(plain.container)).toBeNull();
+  });
+
+  it('says nothing when the host refuses the move', async () => {
+    const onReorder = vi.fn();
+    const view = render(<Reorderable onReorder={onReorder} refuse />);
+    const user = userEvent.setup();
+    screen.getByRole('tab', { name: '변경' }).focus();
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}');
+    expect(onReorder).toHaveBeenCalledWith('changes', 2);
+    expect(names()).toEqual(['files', 'changes', 'run-1']);
+    expect(announcer(view.container)).toHaveTextContent('');
+    expect(screen.getByRole('tab', { name: '변경' })).toHaveFocus();
+  });
+
+  it('keeps a polite region outside the tablist from the start', () => {
+    const view = render(<Reorderable />);
+    const region = announcer(view.container);
+    expect(region).toHaveAttribute('aria-live', 'polite');
+    expect(region).toHaveTextContent('');
+    expect(screen.getByRole('tablist').contains(region)).toBe(false);
+  });
+});
+
+/** Tabs 100px wide side by side in a 600px strip 40px high. */
+function stubStripBoxes() {
+  const original = Element.prototype.getBoundingClientRect;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    const element = this as HTMLElement;
+    const box = (left: number, top: number, width: number, height: number) =>
+      ({
+        left,
+        top,
+        width,
+        height,
+        right: left + width,
+        bottom: top + height,
+        x: left,
+        y: top,
+      }) as DOMRect;
+    if (element.getAttribute('role') === 'tab') {
+      return box(Number(element.dataset.fluidHoverIndex) * 100, 6, 100, 28);
+    }
+    if (element.dataset.slot === 'tabs-closable') return box(0, 0, 600, 40);
+    return original.call(this);
+  };
+  return () => {
+    Element.prototype.getBoundingClientRect = original;
+  };
+}
+
+const pointer = { pointerId: 1, pointerType: 'mouse', button: 0, buttons: 1 };
+const at = (x: number, y = 20) => ({ ...pointer, clientX: x, clientY: y });
+
+describe('reordering by drag', () => {
+  let restore = () => {};
+  beforeEach(() => {
+    restore = stubStripBoxes();
+  });
+  afterEach(() => restore());
+
+  it('reorders by a drag past a small threshold to the place the line shows', () => {
+    const onReorder = vi.fn();
+    const onSelect = vi.fn();
+    const onDragChange = vi.fn();
+    const view = render(
+      <Reorderable onReorder={onReorder} onSelect={onSelect} onDragChange={onDragChange} />,
+    );
+    const changes = screen.getByRole('tab', { name: '변경' });
+    fireEvent.pointerDown(changes, at(150));
+    fireEvent.pointerMove(changes, at(152));
+    expect(onDragChange).not.toHaveBeenCalled();
+    expect(changes).not.toHaveAttribute('data-dragging');
+    // Past the threshold: a drag, the tab dimmed, the line after the last tab.
+    fireEvent.pointerMove(changes, at(290));
+    expect(onDragChange).toHaveBeenLastCalledWith(true);
+    expect(changes).toHaveAttribute('data-dragging');
+    expect(dropLine(view.container)).toHaveAttribute('data-at', '3');
+    fireEvent.pointerUp(changes, at(290));
+    expect(onReorder).toHaveBeenCalledExactlyOnceWith('changes', 2);
+    expect(onDragChange).toHaveBeenLastCalledWith(false);
+    expect(dropLine(view.container)).toBeNull();
+    expect(names()).toEqual(['files', 'run-1', 'changes']);
+    expect(screen.getByRole('tab', { name: '변경' })).not.toHaveAttribute('data-dragging');
+    // The click that ends a drag selects nothing; the next press does.
+    fireEvent.click(screen.getByRole('tab', { name: '변경' }));
+    expect(onSelect).not.toHaveBeenCalled();
+    fireEvent.pointerDown(screen.getByRole('tab', { name: '변경' }), at(250));
+    fireEvent.pointerUp(screen.getByRole('tab', { name: '변경' }), at(250));
+    fireEvent.click(screen.getByRole('tab', { name: '변경' }));
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('changes');
+  });
+
+  it('treats a press that moves less than the threshold as a press', () => {
+    const onReorder = vi.fn();
+    const onSelect = vi.fn();
+    const onDragChange = vi.fn();
+    const view = render(
+      <Reorderable onReorder={onReorder} onSelect={onSelect} onDragChange={onDragChange} />,
+    );
+    const changes = screen.getByRole('tab', { name: '변경' });
+    fireEvent.pointerDown(changes, at(150));
+    fireEvent.pointerMove(changes, at(153, 22));
+    fireEvent.pointerUp(changes, at(153, 22));
+    fireEvent.click(changes);
+    expect(onSelect).toHaveBeenCalledExactlyOnceWith('changes');
+    expect(onReorder).not.toHaveBeenCalled();
+    expect(onDragChange).not.toHaveBeenCalled();
+    expect(dropLine(view.container)).toBeNull();
+  });
+
+  it('shows no line and moves nothing over the tab’s own place', () => {
+    const onReorder = vi.fn();
+    const view = render(<Reorderable onReorder={onReorder} />);
+    const changes = screen.getByRole('tab', { name: '변경' });
+    fireEvent.pointerDown(changes, at(150));
+    fireEvent.pointerMove(changes, at(110));
+    expect(dropLine(view.container)).toBeNull();
+    fireEvent.pointerMove(changes, at(190));
+    expect(dropLine(view.container)).toBeNull();
+    fireEvent.pointerMove(changes, at(40));
+    expect(dropLine(view.container)).toHaveAttribute('data-at', '0');
+    fireEvent.pointerMove(changes, at(160));
+    expect(dropLine(view.container)).toBeNull();
+    fireEvent.pointerUp(changes, at(160));
+    expect(onReorder).not.toHaveBeenCalled();
+  });
+
+  it('ends a drag without a move on Escape, which goes no further, on a cancelled pointer, and on a lost capture', () => {
+    for (const end of ['escape', 'cancel', 'lost'] as const) {
+      const onReorder = vi.fn();
+      const onDragChange = vi.fn();
+      const outer = vi.fn();
+      const view = render(
+        // biome-ignore lint/a11y/noStaticElementInteractions: Stands in for a host listening for Escape (a drawer).
+        <div onKeyDown={outer}>
+          <Reorderable onReorder={onReorder} onDragChange={onDragChange} />
+        </div>,
+      );
+      const changes = screen.getByRole('tab', { name: '변경' });
+      changes.focus();
+      fireEvent.pointerDown(changes, at(150));
+      fireEvent.pointerMove(changes, at(290));
+      expect(dropLine(view.container), end).not.toBeNull();
+      if (end === 'escape') {
+        const allowed = fireEvent.keyDown(changes, { key: 'Escape' });
+        expect(allowed, end).toBe(false);
+        expect(outer, end).not.toHaveBeenCalled();
+      } else if (end === 'cancel') fireEvent.pointerCancel(changes, at(290));
+      else fireEvent.lostPointerCapture(changes, { pointerId: 1 });
+      expect(dropLine(view.container), end).toBeNull();
+      expect(onDragChange, end).toHaveBeenLastCalledWith(false);
+      expect(changes, end).not.toHaveAttribute('data-dragging');
+      fireEvent.pointerUp(changes, at(290));
+      expect(onReorder, end).not.toHaveBeenCalled();
+      expect(names(), end).toEqual(['files', 'changes', 'run-1']);
+      view.unmount();
+    }
+  });
+
+  it('never starts a native drag, and a touch does not drag', () => {
+    const onDragChange = vi.fn();
+    const view = render(<Reorderable onDragChange={onDragChange} />);
+    const changes = screen.getByRole('tab', { name: '변경' });
+    expect(changes).not.toHaveAttribute('draggable', 'true');
+    expect(fireEvent.dragStart(changes)).toBe(false);
+    fireEvent.pointerDown(changes, { ...at(150), pointerType: 'touch' });
+    fireEvent.pointerMove(changes, { ...at(290), pointerType: 'touch' });
+    expect(onDragChange).not.toHaveBeenCalled();
+    expect(dropLine(view.container)).toBeNull();
+  });
+
+  it('ends a drag whose tab the host takes away, and a drag cut short by unmounting', () => {
+    const onDragChange = vi.fn();
+    const strip = (tabs: TabsClosableTab[]) => (
+      <TabsClosable
+        aria-label="패널"
+        idPrefix="panel"
+        tabs={tabs}
+        selectedId="files"
+        onSelect={() => {}}
+        onClose={() => {}}
+        closeLabel={(tab) => `${tab.label} 닫기`}
+        onReorder={() => {}}
+        announceMove={placeWords}
+        onTabDragChange={onDragChange}
+      />
+    );
+    const view = render(strip(sample));
+    const changes = screen.getByRole('tab', { name: '변경' });
+    fireEvent.pointerDown(changes, at(150));
+    fireEvent.pointerMove(changes, at(290));
+    expect(onDragChange).toHaveBeenLastCalledWith(true);
+    view.rerender(strip(sample.filter((tab) => tab.id !== 'changes')));
+    expect(onDragChange).toHaveBeenLastCalledWith(false);
+    expect(dropLine(view.container)).toBeNull();
+    const run = screen.getByRole('tab', { name: '실행 #1' });
+    fireEvent.pointerDown(run, at(150));
+    fireEvent.pointerMove(run, at(20));
+    expect(onDragChange).toHaveBeenLastCalledWith(true);
+    view.unmount();
+    expect(onDragChange).toHaveBeenLastCalledWith(false);
+    expect(onDragChange).toHaveBeenCalledTimes(4);
+  });
+});
