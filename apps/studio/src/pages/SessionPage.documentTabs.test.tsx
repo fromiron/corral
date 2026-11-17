@@ -332,3 +332,37 @@ it('주소로 연 사본의 문서를 고치고 저장하지 않았다 → 그 �
   expect(tab()?.hasAttribute('aria-label')).toBe(false);
   expect(markOf(tab())).not.toBeNull();
 });
+
+it('문서 탭이 20개 열려 있다 → 빠른 열기로 다른 파일을 연다 → 새 탭은 열리지 않고 패널에 20개 한도의 안내가 보이며, 문서 탭 하나를 닫으면 안내가 사라진다', async () => {
+  const { world: at, server } = await world();
+  const twenty = Array.from({ length: 20 }, (_, n) => doc(`src/f${n}.ts`));
+  remember(at.sessionId, twenty, 'document:copy:src/f0.ts');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 20);
+  const notice = () =>
+    [...(side()?.querySelectorAll('[role="status"]') ?? [])].find(
+      (node) => node.textContent === messages.Docking.tabLimit,
+    ) ?? null;
+  expect(notice()).toBeNull();
+
+  await act(async () => {
+    window.dispatchEvent(new Event('corral:quick-open'));
+  });
+  const option = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((row) =>
+      row.textContent?.includes(server.path),
+    );
+  await until(() => Boolean(option()));
+  await act(async () => option()?.click());
+  await until(() => Boolean(notice()));
+
+  expect(tabNames()).toHaveLength(20);
+  expect(tabNames()).not.toContain(server.path);
+  expect(notice()).not.toBeNull();
+
+  const close = side()?.querySelector<HTMLElement>('[data-slot="tabs-closable-close"]');
+  await act(async () => close?.click());
+  await until(() => !notice());
+  expect(tabNames()).toHaveLength(19);
+  expect(notice()).toBeNull();
+});

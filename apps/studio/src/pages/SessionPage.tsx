@@ -45,6 +45,8 @@ import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { deviceStorage } from '../workbench/panel/memory.ts';
 import {
   conversationOperable,
+  DOCUMENT_LIMIT,
+  documentLimitReached,
   type OpenTab,
   type PanelState,
   panelOnScreen,
@@ -55,6 +57,7 @@ import { RunHeadControlsContext, StopCommandContext } from '../workbench/panel/r
 import {
   type CopyIdentity,
   PANEL_TAB_OF,
+  type PanelTab,
   plusTarget,
   type TabKey,
   tabKey,
@@ -242,6 +245,8 @@ function WorkSessionPage() {
   const documentKeys = useRef(new Map<TabKey, string>());
   // The place inside a file the last way to it named, for its tab to show.
   const [reveal, setReveal] = useState<{ sessionId: string; key: TabKey; range: TextRange }>();
+  // A file refused for the 20 문서 tab limit: the panel says why until one of them closes.
+  const [limited, setLimited] = useState<string | null>(null);
   // The bottom dock's part, made further down: what an address the dock opens is handed to.
   const dockAreaRef = useRef<ReturnType<typeof useSessionDockArea> | null>(null);
   const frame = usePanelFrame({
@@ -632,6 +637,7 @@ function WorkSessionPage() {
   };
   const contextMessages = useTranslations('Context');
   const tpanel = useTranslations('SessionPanel');
+  const tdock = useTranslations('Docking');
   const [terminalSource, setTerminalSource] =
     useState<Extract<TextAttachmentProvenance, { kind: 'terminal' }>>();
   const handleAttachment = (attachment: TextAttachment, capture: AttachmentCapture) => {
@@ -669,6 +675,19 @@ function WorkSessionPage() {
           current: currentCopy.current,
         });
     if (!key) throw new Error(contextMessages('unavailable'));
+    const wanted: PanelTab = {
+      kind: 'document',
+      source: original ? 'original' : 'copy',
+      path,
+    };
+    if (documentLimitReached(panelNow.current, wanted)) {
+      // No tab opens; the panel says why, shown as the way would have shown the file.
+      setLimited(session.sessionId);
+      if (!options.keepFocus && !panelOnScreen(panelNow.current.presentation))
+        frame.dispatch({ type: 'toggle' });
+      return true;
+    }
+    setLimited(null);
     if (range && !original) setReveal({ sessionId: session.sessionId, key, range });
     const kept = document.activeElement;
     open({ panel: 'document', file: path, ...(original ? { target: 'original' as const } : {}) });
@@ -1071,6 +1090,12 @@ function WorkSessionPage() {
                     sessionId={session.sessionId}
                     teamNames={teamNames}
                     unsaved={unsavedTabs}
+                    notice={
+                      limited === session.sessionId &&
+                      state.tabs.filter((tab) => tab.kind === 'document').length >= DOCUMENT_LIMIT
+                        ? tdock('tabLimit')
+                        : null
+                    }
                     state={state}
                     ctx={ctx}
                     strip={strip}

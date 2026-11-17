@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import { nextSearch } from './address.ts';
 import { changes, ctx, enter, files, ids, panel, way } from './fixtures.ts';
 import { parsePanelMemory, rememberedPanel, serializePanelMemory } from './memory.ts';
-import { EMPTY_PANEL, reducePanel } from './model.ts';
+import { DOCUMENT_LIMIT, documentLimitReached, EMPTY_PANEL, reducePanel } from './model.ts';
 import { type PanelTab, tabKey } from './tabs.ts';
 
 const doc = (path: string, source: 'copy' | 'original' = 'copy'): PanelTab => ({
@@ -84,6 +84,40 @@ describe('문서 tabs', () => {
 
 // The restored 문서 tabs' clean-up (features/session-panel.md 주소와 기억): each is read once
 // after entry; the page reports what it found.
+describe('the 20 문서 tab limit', () => {
+  const twenty = Array.from({ length: 20 }, (_, n) => doc(`src/f${n}.ts`));
+  const full = () =>
+    panel({ tabs: [files, ...twenty], selected: 'files', presentation: 'beside' });
+
+  it('opens no 21st 문서 tab: the panel stays as it was', () => {
+    const before = full();
+    const result = reducePanel(before, way({ panel: 'document', file: 'src/new.ts' }), ctx());
+    expect(result.state).toBe(before);
+    expect(DOCUMENT_LIMIT).toBe(20);
+    expect(documentLimitReached(before, doc('src/new.ts'))).toBe(true);
+  });
+
+  it('still selects an open 문서 tab, and opens other kinds of tab (counterexample)', () => {
+    const before = full();
+    const reopened = reducePanel(before, way({ panel: 'document', file: 'src/f3.ts' }), ctx());
+    expect(reopened.state.selected).toBe('document:copy:src/f3.ts');
+    expect(documentLimitReached(before, doc('src/f3.ts'))).toBe(false);
+    const other = reducePanel(before, way({ panel: 'changes' }), ctx());
+    expect(ids(other.state)).toEqual([files, ...twenty, changes]);
+  });
+
+  it('counts the source folder’s files with the copy’s, and only 문서 tabs', () => {
+    const mixed = panel({
+      tabs: [files, changes, ...twenty.slice(0, 19), doc('README.md', 'original')],
+      selected: 'files',
+      presentation: 'beside',
+    });
+    expect(documentLimitReached(mixed, doc('src/new.ts'))).toBe(true);
+    const nineteen = panel({ tabs: [files, changes, ...twenty.slice(0, 19)], selected: 'files' });
+    expect(documentLimitReached(nineteen, doc('src/new.ts'))).toBe(false);
+  });
+});
+
 describe('restored 문서 tabs', () => {
   const copyA = { bindingId: 'binding_a', generation: 1 };
   const remembered = (tabs: PanelTab[], selected: string) => ({

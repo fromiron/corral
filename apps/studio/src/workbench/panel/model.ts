@@ -297,7 +297,20 @@ function refreshed(open: OpenTab, tab: PanelTab): OpenTab | null {
 }
 
 /** Opens a tab at the right end with a new instance, or selects it where it is. */
+/** A conversation opens at most this many 문서 tabs (workbench.md 파일과 문서 탭). */
+export const DOCUMENT_LIMIT = 20;
+
+/** Opening `tab` would be a 문서 tab past the limit: one more file while 20 are open. */
+export function documentLimitReached(state: Pick<PanelState, 'tabs'>, tab: PanelTab): boolean {
+  if (tab.kind !== 'document') return false;
+  const key = tabKey(tab);
+  if (state.tabs.some((open) => tabKey(open) === key)) return false;
+  return state.tabs.filter((open) => open.kind === 'document').length >= DOCUMENT_LIMIT;
+}
+
 function opened(state: PanelState, tab: PanelTab, presentation: Presentation): PanelState {
+  // A file past the limit opens no tab; the page says why where the person asked for it.
+  if (documentLimitReached(state, tab)) return state;
   const key = tabKey(tab);
   const index = state.tabs.findIndex((open) => tabKey(open) === key);
   if (index >= 0) {

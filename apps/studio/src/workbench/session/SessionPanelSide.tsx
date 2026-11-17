@@ -258,6 +258,7 @@ export function SessionPanelSide({
   renderTab,
   teamNames,
   unsaved = {},
+  notice = null,
 }: {
   sessionId: string;
   state: PanelState;
@@ -288,6 +289,8 @@ export function SessionPanelSide({
   renderTab: (tab: OpenTab) => ReactNode;
   /** The project's teams by ID: a 팀 그래프 tab is named by its team. */
   teamNames?: Readonly<Record<string, string>>;
+  /** Why a way opened nothing (the 문서 tab limit), shown under the strip. */
+  notice?: string | null;
   /** The 문서 and 팀 그래프 tabs with work not saved, or a save whose result is not known. */
   unsaved?: Readonly<Partial<Record<TabKey, 'unsaved' | 'pending'>>>;
 }) {
@@ -465,6 +468,11 @@ export function SessionPanelSide({
           }
         />
       </div>
+      {notice ? (
+        <p role="status" className="shrink-0 px-3 py-1 text-caption text-muted-foreground">
+          {notice}
+        </p>
+      ) : null}
       {state.tabs.map((tab) => {
         const key = tabKey(tab);
         return (
