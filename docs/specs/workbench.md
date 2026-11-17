@@ -253,7 +253,7 @@ URL의 세션/Run 문맥 pane과 full WorkspaceTarget·path·viewId로 유지되
 
 ## 읽기 전용 Git 관찰
 
-Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 Paddock을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.
+Git 패널은 기존 Corral snapshot 변경 검토와 별도로 실제 사용자 HEAD/index/작업 파일을 관찰한다. 원본과 Paddock을 명시적으로 선택하며 패널 진입은 사본을 만들지 않는다. 사본이 없는 대화에서는 원본을 앞에 둔다. staged는 HEAD→index, unstaged는 index→디스크, untracked는 없음→디스크를 비교한다. detached/unborn/shallow, upstream과 앞섬/뒤처짐, rename·binary·미지원 비교를 구분한다.
 
 현재 target·HEAD·semantic index hash가 달라지면 재시도나 대상 교체 대신 새로고침을 요구한다. 읽기는 hooks·filter·fsmonitor·textconv·외부 diff·lazy fetch를 실행하지 않으며 사용자 index와 내부 snapshot refs를 쓰지 않는다. configured filters가 있으면 저장된 원문 비교라는 제한을 표시한다.
 
