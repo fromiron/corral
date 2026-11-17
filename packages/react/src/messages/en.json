@@ -4534,7 +4534,6 @@
     "stopped": "Stopped",
     "stopUnconfirmed": "Stop was attempted, but termination could not be verified. The Paddock remains protected. Check the host process and diagnostic details; do not delete the Paddock to bypass this protection.",
     "writerBusy": "Another operation is using this Paddock. Stop it or wait for it to finish before creating a terminal.",
-    "releaseHint": "Stop it to free the Paddock; releasing input does not.",
     "uncertainTab": "Terminal termination needs confirmation",
     "writerNotice": "A terminal is holding this Paddock. Stop it before sending a request that writes files.",
     "writerUncertainNotice": "Terminal termination has not been confirmed. The Paddock stays reserved until the process is confirmed stopped.",

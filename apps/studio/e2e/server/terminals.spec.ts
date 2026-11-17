@@ -35,11 +35,13 @@ async function api(page: Page, path: string, method: string, body?: unknown) {
   );
 }
 
-// The writer-hold explanation is the ⋯ menu's input row's second line.
-async function expectReleaseHint(page: Page) {
+// The ⋯ menu's input row is one line: a row's second line is only an unavailable row's reason,
+// and the composer's notice is what says the terminal holds the Paddock.
+async function expectInputRowAlone(page: Page) {
   await terminalScreen(page).getByRole('button', { name: 'Terminal actions', exact: true }).click();
   const menu = page.getByRole('menu');
-  await expect(menu).toContainText('Stop it to free the Paddock; releasing input does not.');
+  await expect(menu.getByRole('menuitem', { name: /input/ }).first()).toBeVisible();
+  await expect(menu).not.toContainText('free the Paddock');
   await page.keyboard.press('Escape');
   await expect(menu).toBeHidden();
 }
@@ -219,7 +221,7 @@ test('terminal guidance follows observed active, uncertain and ended ownership w
   await expect(notice).toContainText('A terminal is holding this Paddock');
   await notice.getByRole('link', { name: 'Open terminal controls' }).click();
   await expect(panel).toBeVisible();
-  await expectReleaseHint(page);
+  await expectInputRowAlone(page);
   terminal = {
     ...terminal,
     state: 'uncertain',
@@ -300,7 +302,7 @@ test('terminal ownership explains refusal and explicit stop restores sending wit
     await input.pressSequentially('sleep 120');
     await input.press('Enter');
     await terminalAction(page, /Release input/);
-    await expectReleaseHint(page);
+    await expectInputRowAlone(page);
     await closeDock(page);
     await expect(page.getByTestId('terminal-writer-notice')).toContainText(
       'A terminal is holding this Paddock',

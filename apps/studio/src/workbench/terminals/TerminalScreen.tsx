@@ -140,8 +140,6 @@ export function TerminalScreen({
     entry && current && mayControl && !entry.inputUnknown ? (
       <MenuItem
         disabled={entry.busy}
-        // Input control is not the Paddock's writer: only ending the terminal frees it.
-        description={live ? t('releaseHint') : undefined}
         onClick={() =>
           run(() =>
             entry.controlling

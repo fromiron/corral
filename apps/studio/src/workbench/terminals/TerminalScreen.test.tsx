@@ -180,13 +180,16 @@ it('⋯ holds input control, attach selection, refresh and the move, named for w
   expect(onMove).toHaveBeenCalledTimes(1);
 });
 
-it('says in ⋯ that releasing input does not free the Paddock, and offers take over when another view holds input', async () => {
+it('offers take over in ⋯ when another view holds input, as one line with no explanation under it', async () => {
   const store = fakeStore(
     view({ controller: { attachmentId: 'another', generation: 1, acceptedSequence: 0 } }),
   );
   const container = await mount(store, { move: { to: 'panel', onMove: vi.fn() } });
   await press(more(container));
-  expect(row(T.takeover)?.textContent).toContain(T.releaseHint);
+  // A row's second line is only an unavailable row's reason.
+  expect(row(T.takeover)).not.toBeNull();
+  expect(row(T.takeover)?.querySelector('[data-slot="menu-item-description"]')).toBeNull();
+  expect(row(T.takeover)?.hasAttribute('aria-describedby')).toBe(false);
 });
 
 it('names the move to the bottom dock in the panel', async () => {
