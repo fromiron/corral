@@ -1,6 +1,7 @@
 // The bottom dock's screen (features/session-panel.md 하단 도크): a head with its strip of
-// terminal and debug tabs and the "+" after the last one, then the selected tab, or with no tab
-// the reason line an empty dock shows. What the dock holds is the page's state (panel/dock.ts).
+// terminal and debug tabs and the "+" after the last one, then the selected tab. With no tab
+// there is no head and the body lists what "+" would (or, without a Paddock or a terminal list,
+// says why in one line). What the dock holds is the page's state (panel/dock.ts).
 import type { TerminalView } from '@corral/contracts';
 import {
   Button,
@@ -19,7 +20,7 @@ import {
   Tooltip,
 } from '@corral/react/design-kit';
 import { Bug, Plus, Terminal } from '@corral/react/icons';
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref, useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { type DockKey, type DockState, type DockTab, dockKey } from '../panel/dock.ts';
 import type { CreationBlock } from '../terminals/creation.ts';
@@ -100,6 +101,67 @@ export function TerminalPlusItem({
   );
 }
 
+/**
+ * The 터미널 row of the body's list (a panel or a dock with no tab): the same choices as "+"'s
+ * row, as the list's buttons. Unavailable, it stays focusable and says why on a second line.
+ */
+export function TerminalListRow({
+  row,
+  onTerminal,
+}: {
+  row: NonNullable<DockPlus['terminal']>;
+  onTerminal: (shellId?: string) => void;
+}) {
+  const td = useTranslations('Docking');
+  const tt = useTranslations('Terminals');
+  const reason = useCreationReason();
+  const reasonId = useId();
+  const content = (
+    <>
+      <Terminal aria-hidden="true" />
+      {td('terminal')}
+    </>
+  );
+  if (!row.live && !row.blocked && row.shells.length > 1)
+    return (
+      <Menu>
+        <MenuTrigger render={<Button variant="ghost" className="w-full justify-start gap-2" />}>
+          {content}
+        </MenuTrigger>
+        <MenuPopup align="start" aria-label={tt('chooseShell')}>
+          {row.shells.map((shell) => (
+            <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
+              {shell.label}
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+    );
+  const blocked = !row.live ? row.blocked : null;
+  if (blocked)
+    return (
+      <Button
+        variant="ghost"
+        aria-disabled="true"
+        aria-describedby={reasonId}
+        className="h-auto w-full flex-col items-start gap-0.5 py-1.5"
+      >
+        <span className="flex items-center gap-2 text-muted-foreground">{content}</span>
+        <span
+          id={reasonId}
+          className="text-caption text-muted-foreground whitespace-normal text-left"
+        >
+          {reason(blocked)}
+        </span>
+      </Button>
+    );
+  return (
+    <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => onTerminal()}>
+      {content}
+    </Button>
+  );
+}
+
 const STATE_COLOR: Record<TerminalView['state'], string> = {
   starting: 'var(--emphasis)',
   running: 'var(--emphasis)',
@@ -115,7 +177,7 @@ export function SessionDock({
   strip,
   terminals,
   plus,
-  body,
+  line,
   onSelect,
   onClose,
   onTerminal,
@@ -128,8 +190,11 @@ export function SessionDock({
   /** The conversation's terminals as its list says them, oldest first. */
   terminals: readonly TerminalView[];
   plus: DockPlus;
-  /** With no tab: the reason line and at most one action. */
-  body: ReactNode;
+  /**
+   * With no tab, the one line that stands in place of the list (no Paddock, an unread terminal
+   * list) with its button; null shows the list.
+   */
+  line: ReactNode;
   onSelect: (key: DockKey) => void;
   onClose: (key: DockKey) => void;
   /** "+" → 터미널: the shell chosen in the submenu, or none. */
@@ -189,49 +254,69 @@ export function SessionDock({
         </MenuPopup>
       </Menu>
     ) : null;
+  if (!tabs.length)
+    return (
+      // As the panel with no tab: no head and no "+", the list in the body.
+      <div
+        data-dock-body=""
+        className="flex h-full min-h-0 flex-col overflow-auto border-t border-border px-3 py-2"
+      >
+        {line ? (
+          <div
+            data-dock-line=""
+            className="flex flex-col items-start gap-2 text-caption text-muted-foreground"
+          >
+            {line}
+          </div>
+        ) : (
+          <ul data-dock-list="" className="flex w-[min(320px,100%)] flex-col gap-1">
+            {terminalRow ? (
+              <li>
+                <TerminalListRow row={terminalRow} onTerminal={onTerminal} />
+              </li>
+            ) : null}
+            {plus.debug ? (
+              <li>
+                <Button variant="ghost" className="w-full justify-start gap-2" onClick={onDebug}>
+                  <Bug aria-hidden="true" />
+                  {t('debugTab')}
+                </Button>
+              </li>
+            ) : null}
+          </ul>
+        )}
+      </div>
+    );
   return (
     <div className="flex h-full min-h-0 flex-col border-t border-border">
       <div data-dock-head="" className="flex h-9 shrink-0 items-center border-b border-line px-2">
-        {tabs.length ? (
-          <TabsClosable
-            ref={strip}
-            className="min-w-0 flex-1"
-            aria-label={t('dockTabs')}
-            idPrefix={DOCK_ID_PREFIX}
-            tabs={tabs}
-            selectedId={dock.selected}
-            onSelect={(id) => onSelect(id as DockKey)}
-            onClose={(id) => onClose(id as DockKey)}
-            closeLabel={(tab) => t('close', { name: tab.label })}
-            trailing={plusMenu}
-          />
-        ) : (
-          plusMenu
-        )}
+        <TabsClosable
+          ref={strip}
+          className="min-w-0 flex-1"
+          aria-label={t('dockTabs')}
+          idPrefix={DOCK_ID_PREFIX}
+          tabs={tabs}
+          selectedId={dock.selected}
+          onSelect={(id) => onSelect(id as DockKey)}
+          onClose={(id) => onClose(id as DockKey)}
+          closeLabel={(tab) => t('close', { name: tab.label })}
+          trailing={plusMenu}
+        />
       </div>
-      {tabs.length ? (
-        dock.tabs.map((tab) => {
-          const key = dockKey(tab);
-          return (
-            <TabsClosablePanel
-              key={`${sessionId}:${key}`}
-              idPrefix={DOCK_ID_PREFIX}
-              tabId={key}
-              selected={key === dock.selected}
-              className="flex min-h-0 flex-1 flex-col"
-            >
-              {renderTab(tab)}
-            </TabsClosablePanel>
-          );
-        })
-      ) : (
-        <div
-          data-dock-reason=""
-          className="flex min-h-0 flex-1 flex-col items-start gap-2 overflow-auto px-3 py-2 text-caption text-muted-foreground"
-        >
-          {body}
-        </div>
-      )}
+      {dock.tabs.map((tab) => {
+        const key = dockKey(tab);
+        return (
+          <TabsClosablePanel
+            key={`${sessionId}:${key}`}
+            idPrefix={DOCK_ID_PREFIX}
+            tabId={key}
+            selected={key === dock.selected}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            {renderTab(tab)}
+          </TabsClosablePanel>
+        );
+      })}
     </div>
   );
 }

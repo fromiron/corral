@@ -157,6 +157,14 @@ export function useSessionDockArea(input: DockAreaInput) {
     const focused = document.activeElement;
     return Boolean(focused && region.current?.contains(focused));
   };
+  /** A dock with no tab: the focus goes to its body's first row, or its line's button. */
+  const focusBody = (from: string) => {
+    focusWanted.current = null;
+    window.setTimeout(() => {
+      if (latest.current.sessionId !== from || latest.current.dock.tabs.length) return;
+      region.current?.querySelector<HTMLElement>('[data-dock-body] button')?.focus();
+    }, 0);
+  };
   useLayoutEffect(() => {
     void dock;
     const back = handBack.current;
@@ -217,19 +225,20 @@ export function useSessionDockArea(input: DockAreaInput) {
 
   /** Makes a terminal with `shellId` for a strip and opens its tab there. */
   const create = async (shellId: string, into: 'panel' | 'dock') => {
-    if (!store) return;
+    if (!store) return false;
     const from = sessionId;
     const terminalId = await store.create(from, shellId);
-    if (!terminalId) return;
+    if (!terminalId) return false;
     await store.refresh(from);
     if (into === 'dock') {
       // A late one is the dock's still, but never opens it again (keepOpen).
       dispatch({ type: 'open', tab: { kind: 'terminal', terminalId }, keepOpen: true }, from);
       focusWanted.current = { sessionId: from };
     } else if (latest.current.sessionId === from) latest.current.panel.open(terminalId, 'plus');
+    return true;
   };
 
-  /** An empty dock opened by its toggles: the live terminal, a new one, or the reason line. */
+  /** An empty dock opened by its toggles: the live terminal, a new one, or its body. */
   const openEmpty = async () => {
     const from = sessionId;
     dispatch({ type: 'show' }, from);
@@ -249,7 +258,10 @@ export function useSessionDockArea(input: DockAreaInput) {
     }
     const now = terminalCreation(current, latest.current.runActive);
     const first = now.ok ? now.shells[0] : undefined;
-    if (first) await create(first.id, 'dock');
+    // Nothing opened: the body's list or line, the focus on its first row or its button.
+    if (!first || !(await create(first.id, 'dock'))) {
+      if (latest.current.sessionId === from) focusBody(from);
+    }
   };
 
   // An address that waits for the terminal list (features/session-panel.md 여는 길); anything
@@ -382,7 +394,7 @@ export function useSessionDockArea(input: DockAreaInput) {
     const index = keys.indexOf(key);
     if (index < 0) return;
     if (focusInside()) {
-      if (keys.length === 1) handBack.current = 'opener';
+      if (keys.length === 1) focusBody(sessionId);
       else {
         const next = keys[index + 1] ?? keys[index - 1];
         if (next) window.setTimeout(() => strip.current?.focusTab(next), 0);
@@ -444,26 +456,45 @@ export function useSessionDockArea(input: DockAreaInput) {
     focusWanted.current = { sessionId };
   };
 
-  // The body of a dock with no tab: why no terminal opened, with at most one action.
-  const body = (() => {
+  // A dock with no tab lists what it can open; one line stands in the list's place only without
+  // a Paddock or without the terminal list, each with its one button.
+  const retryList = async () => {
+    if (!store) return;
+    const from = sessionId;
+    const retrying = document.activeElement;
+    await store.refresh(from);
+    // The button goes with the line: the focus it held goes on to the list.
+    if (latest.current.value?.list && retrying instanceof HTMLElement && !retrying.isConnected)
+      focusBody(from);
+  };
+  const line = (() => {
     if (!store) return null;
-    if (value?.loading && !value.pendingCreate) return <p role="status">{tt('loading')}</p>;
-    if (value?.list && !value.list.target)
+    if (!value?.list) {
+      if (value?.loading || answer.kind === 'waiting') return <p role="status">{tt('loading')}</p>;
+      return (
+        <>
+          <p role="status">{reason('listFailed')}</p>
+          <Button variant="tertiary" onClick={() => void retryList()}>
+            {tt('retryList')}
+          </Button>
+        </>
+      );
+    }
+    if (!value.list.target)
       return (
         <>
           <p>{tf('noCopyTitle')}</p>
-          <Button variant="tertiary" size="compact" onClick={openChanges}>
+          <Button variant="tertiary" onClick={openChanges}>
             {tf('makeCopyThere')}
           </Button>
         </>
       );
-    if (value?.pendingCreate)
+    if (value.pendingCreate)
       return (
         <>
           <p role="status">{tt('createPending')}</p>
           <Button
             variant="tertiary"
-            size="compact"
             disabled={value.loading}
             onClick={() => void store.checkCreate(sessionId)}
           >
@@ -472,7 +503,6 @@ export function useSessionDockArea(input: DockAreaInput) {
           {value.canRetryCreate ? (
             <Button
               variant="tertiary"
-              size="compact"
               disabled={value.loading}
               onClick={() => void store.retryCreate(sessionId)}
             >
@@ -481,8 +511,6 @@ export function useSessionDockArea(input: DockAreaInput) {
           ) : null}
         </>
       );
-    if (!creation.ok && creation.reason !== 'createHeld')
-      return <p role="status">{reason(creation.reason)}</p>;
     return null;
   })();
 
@@ -541,7 +569,7 @@ export function useSessionDockArea(input: DockAreaInput) {
               strip={strip}
               terminals={terminals}
               plus={plus}
-              body={body}
+              line={line}
               onSelect={select}
               onClose={close}
               onTerminal={(shellId) => onPlusTerminal('dock', shellId)}

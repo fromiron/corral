@@ -4561,6 +4561,7 @@
     "moveToPanel": "패널로 옮기기",
     "moveToDock": "하단 도크로 옮기기",
     "disconnected": "연결이 끊겼습니다",
+    "retryList": "다시 시도",
     "endTitle": "터미널을 끝내시겠습니까?",
     "endBody": "돌고 있는 명령도 끝납니다.",
     "keepRunning": "그대로 두기",

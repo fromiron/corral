@@ -40,7 +40,7 @@ import {
   tabKey,
 } from '../panel/tabs.ts';
 import { listedRunPresence } from '../sessionList.ts';
-import { type DockPlus, TerminalPlusItem, useCreationReason } from './SessionDock.tsx';
+import { type DockPlus, TerminalListRow, TerminalPlusItem } from './SessionDock.tsx';
 
 // The panel beside the conversation (features/session-panel.md): its head — the strip of tabs,
 // "+" after the last one, maximize at the far right — and one panel per open tab. With no tab
@@ -214,67 +214,6 @@ function useHistoryRuns(
       name: name ? tr('runName', { number, name }) : tw('runNumber', { number }),
     };
   });
-}
-
-/**
- * The 터미널 row of the body's list (a panel with no tab): the same choices as "+"'s row, as the
- * list's buttons. Unavailable, it stays focusable and says why on a second line.
- */
-function TerminalListRow({
-  row,
-  onTerminal,
-}: {
-  row: NonNullable<DockPlus['terminal']>;
-  onTerminal: (shellId?: string) => void;
-}) {
-  const td = useTranslations('Docking');
-  const tt = useTranslations('Terminals');
-  const reason = useCreationReason();
-  const reasonId = useId();
-  const content = (
-    <>
-      <Terminal aria-hidden="true" />
-      {td('terminal')}
-    </>
-  );
-  if (!row.live && !row.blocked && row.shells.length > 1)
-    return (
-      <Menu>
-        <MenuTrigger render={<Button variant="ghost" className="w-full justify-start gap-2" />}>
-          {content}
-        </MenuTrigger>
-        <MenuPopup align="start" aria-label={tt('chooseShell')}>
-          {row.shells.map((shell) => (
-            <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
-              {shell.label}
-            </MenuItem>
-          ))}
-        </MenuPopup>
-      </Menu>
-    );
-  const blocked = !row.live ? row.blocked : null;
-  if (blocked)
-    return (
-      <Button
-        variant="ghost"
-        aria-disabled="true"
-        aria-describedby={reasonId}
-        className="h-auto w-full flex-col items-start gap-0.5 py-1.5"
-      >
-        <span className="flex items-center gap-2 text-muted-foreground">{content}</span>
-        <span
-          id={reasonId}
-          className="text-caption text-muted-foreground whitespace-normal text-left"
-        >
-          {reason(blocked)}
-        </span>
-      </Button>
-    );
-  return (
-    <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => onTerminal()}>
-      {content}
-    </Button>
-  );
 }
 
 /** The cap on the run history's height: a long history scrolls inside its list. */

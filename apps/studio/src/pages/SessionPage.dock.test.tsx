@@ -48,6 +48,9 @@ const W = {
   toggle: messages.SessionPanel.toggle,
   maximize: messages.SessionPanel.maximize,
   terminalRow: messages.Docking.terminal,
+  close: (name: string) => messages.SessionPanel.close.replace('{name}', name),
+  listFailed: messages.Terminals.actionFailed,
+  retry: messages.Terminals.retryList,
 };
 
 const cleanups: (() => Promise<void> | void)[] = [];
@@ -143,6 +146,14 @@ const terminalInput = () =>
   dock()?.querySelector<HTMLElement>('[data-terminal-screen] textarea') ?? null;
 const frame = () => document.querySelector<HTMLElement>('[data-slot="side-panel-frame"]');
 const presentation = () => frame()?.getAttribute('data-presentation') ?? null;
+/** The body of a dock with no tab: its list of what it can open, or its one line. */
+const dockList = () => dock()?.querySelector<HTMLElement>('[data-dock-list]') ?? null;
+const dockLine = () => dock()?.querySelector<HTMLElement>('[data-dock-line]') ?? null;
+/** The body list's 터미널 row (an unavailable one says why after its name). */
+const terminalListRow = () =>
+  [...(dockList()?.querySelectorAll<HTMLElement>('button') ?? [])].find((row) =>
+    spoken(row).trim().startsWith(W.terminalRow),
+  ) ?? null;
 const menuRow = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
     spoken(row).includes(name),
@@ -208,7 +219,7 @@ it('종료 확인이 필요한 터미널이 화면에 없으면 버튼의 점은
   expect(dockButton()?.querySelector('[data-dock-dot]')).toBeNull();
 });
 
-it('Paddock이 없는 대화이고 도크에 탭이 없다 → 버튼 → 탭도 "+"도 없고 한 줄 안내와 버튼 하나, 터미널은 만들지 않는다', async () => {
+it('Paddock이 없는 대화이고 도크에 탭이 없다 → 버튼 → 탭도 "+"도 없고 목록 대신 한 줄 안내와 버튼 하나이며 포커스는 그 버튼에 있고, 터미널은 만들지 않는다', async () => {
   const world = await serverWorld({ terminals: [], noCopy: true });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
@@ -216,38 +227,109 @@ it('Paddock이 없는 대화이고 도크에 탭이 없다 → 버튼 → 탭도
   expect(dockState()).toBe('open');
   expect(dockTabs()).toEqual([]);
   expect(dockPlus()).toBeNull();
-  const body = dock()?.querySelector<HTMLElement>('[data-dock-reason]');
+  expect(dockList()).toBeNull();
+  const body = dockLine();
   expect(body?.textContent).toContain(W.noCopy);
   expect(body?.querySelectorAll('button')).toHaveLength(1);
   expect(buttons(W.makeCopy, body ?? null)).toHaveLength(1);
+  await until(() => document.activeElement === buttons(W.makeCopy, body ?? null)[0]);
+  expect(document.activeElement).toBe(buttons(W.makeCopy, body ?? null)[0]);
   expect(world.server?.created).toEqual([]);
 });
 
-it('살아 있는 터미널이 없고 실행이 진행 중이다 → 버튼 → "+"가 있는 머리와 동작 없는 한 줄, 실행이 끝나도 만들지 않고 "+"의 터미널로 만든다', async () => {
+it('살아 있는 터미널이 없고 실행이 진행 중이다 → 버튼 → 머리에 "+"가 없고 본문 목록의 터미널 줄이 까닭을 둘째 줄로 보이는 쓸 수 없는 줄이며 포커스가 그 줄에 있다; 실행이 끝나도 만들지 않고 그 줄로 만든다', async () => {
   const world = await createShellWorld({ server: { terminals: [] }, folder: true });
   const runId = await world.startRun();
   await world.working(runId, 1);
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
-  await until(() => Boolean(dock()?.querySelector('[data-dock-reason]')));
-  const body = () => dock()?.querySelector<HTMLElement>('[data-dock-reason]');
-  expect(body()?.textContent).toContain(W.runActive);
-  expect(body()?.querySelectorAll('button')).toHaveLength(0);
+  await until(() => Boolean(terminalListRow()));
   expect(dockTabs()).toEqual([]);
-  expect(dockPlus()).not.toBeNull();
+  expect(dockPlus()).toBeNull();
+  // No separate reason line: the row says why.
+  expect(dockLine()).toBeNull();
+  const row = terminalListRow();
+  expect(row?.getAttribute('aria-disabled')).toBe('true');
+  expect(row?.textContent).toContain(W.runActive);
+  await until(() => document.activeElement === terminalListRow());
+  expect(document.activeElement).toBe(terminalListRow());
+  await press(terminalListRow());
   expect(world.server?.created).toEqual([]);
+  expect(dockTabs()).toEqual([]);
   await world.releaseReplies();
   await world.runReaches(runId, ['succeeded']);
   await settle(20);
-  // A run that ends makes no terminal by itself.
+  // A run that ends makes no terminal by itself; the row only becomes usable.
   expect(world.server?.created).toEqual([]);
-  await press(dockPlus());
-  // Once the run list says the run ended, the row can make a terminal.
-  await until(() => menuRow(W.terminalRow)?.getAttribute('aria-disabled') !== 'true');
-  await press(menuRow(W.terminalRow));
+  await until(() => terminalListRow()?.getAttribute('aria-disabled') !== 'true');
+  expect(terminalListRow()?.textContent).not.toContain(W.runActive);
+  await press(terminalListRow());
   await until(() => dockSelected() === W.terminal(1));
   expect(dockSelected()).toBe(W.terminal(1));
   expect(world.server?.created).toEqual(['bash']);
+});
+
+it('터미널 목록을 읽지 못한다 → 하단 도크 버튼 → 목록 대신 읽지 못한 까닭 한 줄과 "다시 시도"이고 포커스는 그 버튼에 있으며, 누를 때만 다시 읽어 읽으면 본문은 목록이 되고 터미널은 만들지 않는다', async () => {
+  const world = await serverWorld({ terminals: [] });
+  world.server?.setReadsFail(true);
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => Boolean(dockLine()));
+  expect(dockState()).toBe('open');
+  expect(dockPlus()).toBeNull();
+  expect(dockList()).toBeNull();
+  expect(dockLine()?.textContent).toContain(W.listFailed);
+  expect(dockLine()?.querySelectorAll('button')).toHaveLength(1);
+  const retry = () => buttons(W.retry, dockLine())[0] ?? null;
+  await until(() => document.activeElement === retry());
+  expect(document.activeElement).toBe(retry());
+  // Nothing reads the list again by itself.
+  const asked = world.server?.lists() ?? 0;
+  await settle(20);
+  expect(world.server?.lists()).toBe(asked);
+
+  world.server?.setReadsFail(false);
+  await press(retry());
+  await until(() => Boolean(terminalListRow()));
+  expect(world.server?.lists()).toBe(asked + 1);
+  expect(dockLine()).toBeNull();
+  expect(terminalListRow()?.getAttribute('aria-disabled')).not.toBe('true');
+  expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
+});
+
+it('도크에 탭이 없고 닫혀 있다 → 명령 팔레트의 "터미널 열기", 터미널 목록을 읽지 못한다 → 도크가 열려 그 한 줄과 "다시 시도"를 보이고, 아무 탭도 열지 않았으므로 포커스는 제자리에 있다', async () => {
+  const world = await serverWorld({ terminals: [] });
+  world.server?.setReadsFail(true);
+  await open(world, `/sessions/${world.sessionId}`);
+  await settle(20);
+  await act(async () => composerInput()?.focus());
+  const command = registeredCommands().find((item) => item.id === 'panel:terminal');
+  await act(async () => void command?.run());
+  await until(() => Boolean(dockLine()));
+  expect(dockState()).toBe('open');
+  expect(buttons(W.retry, dockLine())).toHaveLength(1);
+  expect(dockPlus()).toBeNull();
+  await settle(20);
+  expect(document.activeElement).toBe(composerInput());
+  expect(world.server?.created).toEqual([]);
+});
+
+it('도크의 마지막 탭을 닫는다 → 도크는 열린 채 머리에 "+"가 없고 본문에 목록을 보이며, 포커스는 목록의 첫 줄로 간다', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}`);
+  await press(dockButton());
+  await until(() => dockSelected() === W.terminal(1));
+  // An idle terminal: closing its tab ends it without asking.
+  await press(buttons(W.close(W.terminal(1)), dock())[0]);
+  await until(() => dockTabs().length === 0);
+  expect(dockState()).toBe('open');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
+  expect(dockPlus()).toBeNull();
+  expect(terminalListRow()).not.toBeNull();
+  await until(() => document.activeElement === terminalListRow());
+  expect(document.activeElement).toBe(terminalListRow());
+  expect(world.server?.stops).toEqual(['terminal_one']);
 });
 
 it('도크가 열려 있고 포커스가 터미널 1의 입력에 있다 → Mod+J → 도크가 닫히고, 컴포저에서는 Mod+J가 아무것도 하지 않는다', async () => {
@@ -307,7 +389,7 @@ it('넓힘에서 하단 도크 버튼은 상단 줄에 그대로 있고, 누르�
   expect(presentation()).toBe('maximized');
 });
 
-it('대화의 기억에 도크의 터미널 3 탭이 있고 그 터미널은 목록에 없다 → 들어오면 탭이 버려지고 도크는 숨는다', async () => {
+it('대화의 기억에 도크의 터미널 3 탭이 있고 그 터미널은 목록에 없다 → 들어오면 탭이 버려지고 도크는 닫혀 버튼이 눌리지 않으며, 터미널은 만들어지지 않는다', async () => {
   const world = await serverWorld();
   window.localStorage.setItem(
     dockMemoryKey(world.sessionId),
@@ -320,8 +402,55 @@ it('대화의 기억에 도크의 터미널 3 탭이 있고 그 터미널은 목
   );
   await open(world, `/sessions/${world.sessionId}`);
   await until(() => dockState() === 'closed');
+  await settle(20);
   expect(dockState()).toBe('closed');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('false');
   expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
+});
+
+it('대화의 기억에 탭 없이 열린 도크와 패널의 실행 중인 터미널 1 탭이 있다 → 들어오면 도크는 닫혀 있고, 터미널 1 탭은 패널에 그대로이며, 아무것도 만들거나 끝내지 않는다', async () => {
+  const world = await serverWorld();
+  window.localStorage.setItem(
+    dockMemoryKey(world.sessionId),
+    serializeDockMemory({ tabs: [], selected: null, open: true, height: 240 }),
+  );
+  window.localStorage.setItem(
+    panelMemoryKey(world.sessionId),
+    serializePanelMemory({
+      tabs: [{ kind: 'terminal', terminalId: 'terminal_one' }],
+      selected: 'terminal:terminal_one',
+      open: true,
+    }),
+  );
+  await open(world, `/sessions/${world.sessionId}`);
+  await settle(20);
+  expect(dockState()).toBe('closed');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('false');
+  expect(dockTabs()).toEqual([]);
+  const panelTabs = [
+    ...(document
+      .querySelector(`[data-slot="side-panel-side"] [role="tablist"]`)
+      ?.querySelectorAll<HTMLElement>('[role="tab"]') ?? []),
+  ].map(tabName);
+  expect(panelTabs).toEqual([W.terminal(1)]);
+  expect(world.server?.created).toEqual([]);
+  expect(world.server?.stops).toEqual([]);
+});
+
+it('대화의 기억에 탭 없이 열린 도크가 있고 살아 있는 터미널이 없다 → 들어오면 도크는 닫혀 있고 만들지 않으며, 버튼을 누를 때 기본 셸로 만들어 연다', async () => {
+  const world = await serverWorld({ terminals: [] });
+  window.localStorage.setItem(
+    dockMemoryKey(world.sessionId),
+    serializeDockMemory({ tabs: [], selected: null, open: true, height: 240 }),
+  );
+  await open(world, `/sessions/${world.sessionId}`);
+  await settle(20);
+  expect(dockState()).toBe('closed');
+  expect(world.server?.created).toEqual([]);
+  await press(dockButton());
+  await until(() => dockSelected() === W.terminal(1));
+  expect(world.server?.created).toEqual(['bash']);
 });
 
 it('대화 A의 도크가 열려 있고 대화 B의 도크는 닫혀 있다 → B로 갔다가 A로 돌아오면 같은 탭과 높이로 열려 있다', async () => {

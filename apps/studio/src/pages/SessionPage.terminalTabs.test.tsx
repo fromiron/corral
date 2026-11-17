@@ -369,6 +369,11 @@ it('패널의 터미널 탭에서 ⋯ → 하단 도크로 옮기기 → 같은 
   expect(panelTabNames()).toEqual([W.files, W.terminal(1)]);
   expect(dockTabNames()).toEqual([]);
   expect(server(world).stops).toEqual([]);
+  // Moving the dock's last tab out is closing it: the dock stays open with its list.
+  expect(dockState()).toBe('open');
+  expect(dock()?.querySelector('[data-dock-list]')).not.toBeNull();
+  await until(() => document.activeElement === inputIn(side()));
+  expect(document.activeElement).toBe(inputIn(side()));
 });
 
 it('Shift+Escape로 터미널에서 나오면 포커스는 그 탭 줄의 그 터미널 탭으로 간다', async () => {

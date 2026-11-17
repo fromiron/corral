@@ -1,8 +1,8 @@
 // The bottom dock as plain data and one reducer (features/session-panel.md 하단 도크): its tabs
 // (terminals and the debugger), the selected tab, whether it is open and its height. No screen
 // and no storage: SessionPage dispatches and writes what comes back. What an empty dock shows
-// when it opens (a terminal taken in, a new one, the reason line) is the page's to decide; the
-// model only adds the tab it is given.
+// when it opens (a terminal taken in, a new one, its list) is the page's to decide; the model
+// only adds the tab it is given.
 import { Identifier } from '@corral/contracts';
 import type { PanelStorage } from './memory.ts';
 
@@ -44,7 +44,7 @@ export type DockEvent =
   | { readonly type: 'toggle' }
   /** Opens or selects a tab; `keepOpen` leaves the dock open or closed as it is. */
   | { readonly type: 'open'; readonly tab: DockTab; readonly keepOpen?: boolean }
-  /** Opens the dock without a tab: the reason line. */
+  /** Opens the dock as it is: with no tab, its body's list or line. */
   | { readonly type: 'show' }
   | { readonly type: 'select'; readonly key: DockKey }
   | { readonly type: 'close'; readonly key: DockKey }
@@ -74,7 +74,8 @@ export function reduceDock(state: DockState, event: DockEvent): DockState {
       const index = keys.indexOf(event.key);
       if (index < 0) return state;
       const tabs = state.tabs.filter((_, at) => at !== index);
-      if (tabs.length === 0) return { ...state, tabs, selected: null, open: false };
+      // As the panel's last tab: the dock stays open with its list.
+      if (tabs.length === 0) return { ...state, tabs, selected: null };
       const selected =
         state.selected === event.key
           ? (keys[index + 1] ?? keys[index - 1] ?? null)

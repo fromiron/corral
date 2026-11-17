@@ -4561,6 +4561,7 @@
     "moveToPanel": "Move to panel",
     "moveToDock": "Move to bottom dock",
     "disconnected": "The connection was lost",
+    "retryList": "Try again",
     "endTitle": "End the terminal?",
     "endBody": "The running command ends too.",
     "keepRunning": "Keep running",

@@ -69,7 +69,7 @@ describe('the bottom dock as data', () => {
     expect(added.tabs.map(dockKey)).toEqual(['terminal:t1']);
   });
 
-  it('closes a tab with the panel’s neighbour rule, and hides the dock with its last tab', () => {
+  it('closes a tab with the panel’s neighbour rule, and stays open with its last tab closed', () => {
     const three = dock({
       tabs: [debug, terminal('t1'), terminal('t2')],
       selected: 'terminal:t1',
@@ -78,10 +78,11 @@ describe('the bottom dock as data', () => {
     expect(reduceDock(three, { type: 'close', key: 'terminal:t1' }).selected).toBe('terminal:t2');
     expect(reduceDock(three, { type: 'close', key: 'debug' }).selected).toBe('terminal:t1');
     const last = dock({ tabs: [terminal('t2')], selected: 'terminal:t2', open: true });
+    // As the panel's last tab: the dock stays open and its body lists what it can open.
     expect(reduceDock(last, { type: 'close', key: 'terminal:t2' })).toMatchObject({
       tabs: [],
       selected: null,
-      open: false,
+      open: true,
     });
     const rightmost = dock({ tabs: [debug, terminal('t1')], selected: 'terminal:t1', open: true });
     expect(reduceDock(rightmost, { type: 'close', key: 'terminal:t1' }).selected).toBe('debug');

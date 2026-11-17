@@ -91,6 +91,8 @@ export interface ServerParts {
   setReadsFail(fail: boolean): void;
   /** Each terminal read (by ID) the page asked for, in order. */
   reads: string[];
+  /** How many times the page asked for the conversation's terminal list. */
+  lists(): number;
   /** Each terminal stop (by ID) the page sent, in order. */
   stops: string[];
   /** The one file the working copy holds. */
@@ -386,10 +388,12 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
   const reads: string[] = [];
   const stops: string[] = [];
   let readsFail = false;
+  let lists = 0;
   let createHold: Gated<void> | null = null;
   const terminals = {
     attention: async () => [],
     list: async () => {
+      lists += 1;
       if (readsFail) throw new Error('terminal list unavailable');
       return listing();
     },
@@ -460,6 +464,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       readsFail = fail;
     },
     reads,
+    lists: () => lists,
     stops,
   } as Omit<ServerParts, 'documents'> & { documents?: DocumentStore };
   return {
