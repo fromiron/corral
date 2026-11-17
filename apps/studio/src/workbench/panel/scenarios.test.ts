@@ -91,13 +91,11 @@ describe('탭', () => {
     expect(state.selected).toBe('files');
   });
 
-  it('폴더 없고 실행 없는 대화에서 "Corral 설계 열기"로 파일 탭만 열었다 → 파일 탭을 닫는다 → 닫힘, 여닫기 버튼 없음', () => {
-    const none = ctx({ folder: false, runIds: [] });
-    const { state } = steps(
-      EMPTY_PANEL,
-      [way({ panel: 'files' }), { type: 'close', key: 'files' }],
-      none,
-    );
+  it('폴더 없고 실행 없는 대화에서 "Corral 설계 열기"로 팀 그래프 탭만 열었다 → 팀 그래프 탭을 닫는다 → 닫힘, 여닫기 버튼 없음', () => {
+    const none = { ...ctx({ folder: false, runIds: [] }), corralIds: ['team_a'] };
+    const opened = steps(EMPTY_PANEL, [way({ panel: 'graph', corral: 'team_a' })], none).state;
+    expect(opened.selected).toBe('graph:team_a');
+    const { state } = reducePanel(opened, { type: 'close', key: 'graph:team_a' }, none);
     expect(state.presentation).toBe('closed');
     expect(toggleAvailable(state, none)).toBe(false);
   });

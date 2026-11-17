@@ -17,7 +17,7 @@ import { useTranslations } from 'use-intl';
 import { setCurrentProject } from '../projects.ts';
 import { sessionRoute } from '../router.tsx';
 import { modalConfirmationOpen } from '../workbench/modalConfirmation.ts';
-import { panelKey, SESSION_PANELS, type SessionPanel } from '../workbench/panels/registry.ts';
+import { panelKey, type SessionPanel } from '../workbench/panels/registry.ts';
 import { type SessionSearch, sessionPanelDescriptor } from '../workbench/panels/routes.ts';
 
 export type { SessionPanel } from '../workbench/panels/registry.ts';
@@ -33,16 +33,13 @@ import {
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
-import { DockDocumentPanel } from '../workbench/DockDocumentPanel.tsx';
-import {
-  type DockOpenDocument,
-  DockWorkbench,
-  type DockWorkbenchHandle,
-} from '../workbench/docking/DockWorkbench.tsx';
 import type { DockContextView } from '../workbench/docking/layout.ts';
-import { documentKey, documentStore } from '../workbench/documents/store.ts';
-import { editorCopyDirty, subscribeEditorCopies } from '../workbench/editorDraft.ts';
-import { FilePanel, type FileReference } from '../workbench/FilePanel.tsx';
+import { documentStore } from '../workbench/documents/store.ts';
+import {
+  FilePanel,
+  type FileReference,
+  type OpenDocumentRequest,
+} from '../workbench/FilePanel.tsx';
 import { forgetTreeState } from '../workbench/fileTreeState.ts';
 import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
 import { deviceStorage } from '../workbench/panel/memory.ts';
@@ -56,6 +53,7 @@ import {
 import { runControlPlace, stopCommandRoute } from '../workbench/panel/runControls.ts';
 import { RunHeadControlsContext, StopCommandContext } from '../workbench/panel/runHeadControls.ts';
 import {
+  type CopyIdentity,
   PANEL_TAB_OF,
   plusTarget,
   type TabKey,
@@ -76,6 +74,8 @@ import { sessionRunViews } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
 import { ChangesTabShownContext } from '../workbench/session/ComposerActivity.tsx';
+import { DocumentTab, documentViewId } from '../workbench/session/DocumentTab.tsx';
+import { documentTabFor } from '../workbench/session/documentTarget.ts';
 import {
   createPendingTrayStore,
   PendingTrayContext,
@@ -90,6 +90,7 @@ import {
   RunPanel,
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
+import { useDocumentRestore } from '../workbench/session/useDocumentRestore.ts';
 import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
 import { OpenTerminalContext } from '../workbench/TerminalWriterNotice.tsx';
 import { terminalStore } from '../workbench/terminals/store.ts';
@@ -98,6 +99,7 @@ import { useTerminalList } from '../workbench/terminals/useTerminalList.ts';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
+import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding } from './FilesViews.tsx';
 import { MeetingPage } from './MeetingPage.tsx';
@@ -121,6 +123,45 @@ function namesSelected(target: Partial<SessionSearch>, state: PanelState): boole
   return target.run ? key === `run:${target.run}` : key.startsWith('run:');
 }
 
+/**
+ * The conversation's Paddock as last read: `known` once a read answered, `copy` null without one.
+ * Read on entering the conversation and again when a Paddock is made or removed.
+ */
+function useCurrentCopy(sessionId: string) {
+  const { workspaces, mode } = useServices();
+  const [read, setRead] = useState<{
+    sessionId: string;
+    copy: CopyIdentity | null;
+  } | null>(null);
+  useEffect(() => {
+    if (!workspaces || mode !== 'server') return;
+    let live = true;
+    const ask = () =>
+      void workspaces.worktree(sessionId).then(
+        (copy) => {
+          if (!live) return;
+          setRead({
+            sessionId,
+            copy:
+              copy && !copy.missing && !copy.removedAt
+                ? { bindingId: copy.bindingId, generation: copy.copyGeneration }
+                : null,
+          });
+        },
+        () => {},
+      );
+    ask();
+    window.addEventListener(WORKSPACE_CHANGED, ask);
+    return () => {
+      live = false;
+      window.removeEventListener(WORKSPACE_CHANGED, ask);
+    };
+  }, [workspaces, mode, sessionId]);
+  return read?.sessionId === sessionId
+    ? { known: true as const, copy: read.copy }
+    : { known: false as const, copy: null };
+}
+
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
   useEffect(() => {
@@ -139,7 +180,6 @@ export function SessionPage() {
 
 function WorkSessionPage() {
   const services = useServices();
-  const dock = useRef<DockWorkbenchHandle | null>(null);
   const documents =
     services.mode === 'server' && services.workspaces
       ? documentStore(services.workspaces)
@@ -190,6 +230,16 @@ function WorkSessionPage() {
   const terminals =
     services.mode === 'server' && services.terminals ? terminalStore(services.terminals) : null;
   const terminalList = useTerminalList(session.sessionId, terminals);
+  const sessionNow = useRef(session.sessionId);
+  sessionNow.current = session.sessionId;
+  // The conversation's Paddock as read since entering it: a 문서 tab belongs to it alone.
+  const copyNow = useCurrentCopy(session.sessionId);
+  const currentCopy = useRef(copyNow);
+  currentCopy.current = copyNow;
+  // The buffer each 문서 tab shows, once its file was read (its close asks the buffer).
+  const documentKeys = useRef(new Map<TabKey, string>());
+  // The place inside a file the last way to it named, for its tab to show.
+  const [reveal, setReveal] = useState<{ sessionId: string; key: TabKey; range: TextRange }>();
   // The bottom dock's part, made further down: what an address the dock opens is handed to.
   const dockAreaRef = useRef<ReturnType<typeof useSessionDockArea> | null>(null);
   const frame = usePanelFrame({
@@ -222,6 +272,18 @@ function WorkSessionPage() {
     },
   });
   const { state, ctx, fronts } = frame;
+  useDocumentRestore({
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    hostId: services.workspaceId,
+    workspaces: services.mode === 'server' ? (services.workspaces ?? undefined) : undefined,
+    documents,
+    entered: frame.entered,
+    state,
+    copy: copyNow,
+    dispatch: (event) => frame.dispatch(event),
+    current: () => sessionNow.current,
+  });
   // The panel as it stands now, for the steps that go on after a wait (a terminal's fresh read).
   const panelNow = useRef(state);
   panelNow.current = state;
@@ -259,7 +321,17 @@ function WorkSessionPage() {
     from: 'way' | 'plus' = 'way',
   ) => {
     if (heldByConfirmation()) return;
-    const { panel, run, terminal, corral, ...inner } = target;
+    const { panel, run, terminal, corral, ...rest } = target;
+    // A 문서 tab is named by its file (and its source): they are its identity, not its state.
+    const documentTarget =
+      panel === 'document' && rest.file
+        ? {
+            file: rest.file,
+            ...(rest.target === 'original' ? { source: 'original' as const } : {}),
+          }
+        : {};
+    const { file: _file, target: _source, ...named } = rest;
+    const inner = panel === 'document' ? named : rest;
     dockAreaRef.current?.cancelPending();
     // The debugger, and a terminal whose tab is not in the panel, open in the bottom dock.
     if (
@@ -271,7 +343,7 @@ function WorkSessionPage() {
       return;
     }
     rememberOpener();
-    const tab = targetTab({ panel, run, terminal, corral }, ctx.runIds);
+    const tab = targetTab({ panel, run, terminal, corral, ...documentTarget }, ctx.runIds);
     const own = Object.values(inner).some((value) => value !== undefined)
       ? inner
       : tab
@@ -286,6 +358,7 @@ function WorkSessionPage() {
           ...(run ? { run } : {}),
           ...(terminal ? { terminal } : {}),
           ...(corral ? { corral } : {}),
+          ...documentTarget,
         },
         from,
       },
@@ -381,6 +454,19 @@ function WorkSessionPage() {
         closeTab(key, focused),
       );
       return;
+    }
+    // A 문서 tab's buffer decides: one with changes not saved keeps its tab for now.
+    if (key.startsWith('document:copy:') && documents) {
+      const buffer = documentKeys.current.get(key);
+      const path = key.slice('document:copy:'.length);
+      if (buffer) {
+        const focused = document.activeElement;
+        const from = session.sessionId;
+        void documents.closeView(buffer, documentViewId(session.sessionId, path)).then((result) => {
+          if (result === 'closed' && sessionNow.current === from) closeTab(key, focused);
+        });
+        return;
+      }
     }
     closeTab(key);
   };
@@ -500,34 +586,6 @@ function WorkSessionPage() {
     session.sessionId,
   ]);
 
-  // Documents and panes asked for before the 파일 tab's dock is ready wait for it. Readiness is
-  // the dock's own: its handle is handed over again on every render, so a null between two
-  // handles says nothing about it.
-  // What is queued for the dock is dropped when the conversation changes. A caller that arrives
-  // after its own wait (a document still opening) is not checked here.
-  const dockQueue = useRef<{ sessionId: string; action: (handle: DockWorkbenchHandle) => void }[]>(
-    [],
-  );
-  const queuedFor = useRef(session.sessionId);
-  queuedFor.current = session.sessionId;
-  useEffect(() => {
-    void session.sessionId;
-    return () => {
-      dockQueue.current = [];
-    };
-  }, [session.sessionId]);
-  const withDock = (action: (handle: DockWorkbenchHandle) => void) => {
-    const handle = dock.current;
-    if (handle?.ready()) action(handle);
-    else dockQueue.current.push({ sessionId: session.sessionId, action });
-  };
-  const flushDock = () => {
-    const handle = dock.current;
-    if (!handle) return;
-    for (const queued of dockQueue.current.splice(0))
-      if (queued.sessionId === queuedFor.current) queued.action(handle);
-  };
-
   const trayContext = useMemo(
     () => ({
       store: tray,
@@ -563,12 +621,7 @@ function WorkSessionPage() {
     sessionId: session.sessionId,
   };
   const contextMessages = useTranslations('Context');
-  const tdock = useTranslations('Docking');
   const tpanel = useTranslations('SessionPanel');
-  const subscribeGraphs = useCallback(
-    (listener: () => void) => subscribeEditorCopies(services.repository, listener),
-    [services.repository],
-  );
   const [terminalSource, setTerminalSource] =
     useState<Extract<TextAttachmentProvenance, { kind: 'terminal' }>>();
   const handleAttachment = (attachment: TextAttachment, capture: AttachmentCapture) => {
@@ -586,9 +639,30 @@ function WorkSessionPage() {
     setReference({ sessionId: session.sessionId, value });
     bringForward();
   };
-  const openDocument = (document: DockOpenDocument, range?: TextRange) => {
-    open({ panel: 'files' });
-    withDock((handle) => handle.openDocument(document, range));
+  /**
+   * A way to a file of the conversation's current copy opens its 문서 tab, at `range` when it
+   * names one. A file of another conversation's copy, or of an earlier copy, has no tab here: it
+   * is refused as unavailable, as a terminal outside the conversation is.
+   */
+  const openDocument = (
+    request: Pick<OpenDocumentRequest, 'target' | 'path'>,
+    range?: TextRange,
+    options: { keepFocus?: boolean } = {},
+  ) => {
+    const { target, path } = request;
+    const key = documentTabFor(target, path, {
+      projectId: session.projectId,
+      sessionId: session.sessionId,
+      current: currentCopy.current,
+    });
+    if (!key) throw new Error(contextMessages('unavailable'));
+    if (range) setReveal({ sessionId: session.sessionId, key, range });
+    const kept = document.activeElement;
+    open({ panel: 'document', file: path });
+    if (options.keepFocus)
+      window.setTimeout(() => {
+        if (kept instanceof HTMLElement && kept.isConnected) kept.focus({ preventScroll: true });
+      }, 0);
     return true;
   };
   const linkedRunIds = session.entries.flatMap((entry) => (entry.runId ? [entry.runId] : []));
@@ -599,7 +673,6 @@ function WorkSessionPage() {
   // What the conversation presents never follows the address's run, which a run tab keeps.
   const { presentationRunId, liveRunId } = sessionRunViews(sessionRuns, linkedRunIds);
   const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind ?? null;
-  const filesFront = search.panel === 'files' ? 'files' : undefined;
   const changesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'changes' ? search.panel : undefined;
   const panelViews: Record<'files' | 'checks' | 'problems', () => ReactNode> = {
@@ -610,7 +683,7 @@ function WorkSessionPage() {
         runs={runs}
         onReference={handleReference}
         onAttach={handleAttachment}
-        onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}
+        onOpenDocument={(document, range) => openDocument(document, range)}
       />
     ),
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
@@ -669,17 +742,15 @@ function WorkSessionPage() {
       </div>
     );
   };
-  const renderContext = (view: DockContextView) => {
-    // 작업 is a tab of its own: a dock arrangement saved with it shows nothing in its place.
-    if (view !== 'files') return null;
-    const target = sessionPanelDescriptor(session.projectId, session.sessionId, view, null);
+  /** The 파일 tab: the folder tree, filling the tab's height. */
+  const renderFiles = () => {
+    const target = sessionPanelDescriptor(session.projectId, session.sessionId, 'files', null);
     return (
       <div
-        key={target ? panelKey(services, target) : view}
-        // The folder tree fills the pane's height.
+        key={target ? panelKey(services, target) : 'files'}
         className="flex h-full min-h-0 flex-col gap-3 p-3"
       >
-        {panelViews[view]()}
+        {panelViews.files()}
       </div>
     );
   };
@@ -716,54 +787,32 @@ function WorkSessionPage() {
         () => dockAreaRef.current?.moveToDock(tab.terminalId),
         () => strip.current?.focusTab(tabKey(tab)),
       );
-    if (tab.kind === 'files')
-      return (
-        <DockWorkbench
-          key={`${services.workspaceId ?? services.mode}:${session.projectId}`}
-          ref={(handle) => {
-            dock.current = handle;
-          }}
+    if (tab.kind === 'files') return renderFiles();
+    if (tab.kind === 'document')
+      return tab.source === 'copy' && documents ? (
+        <DocumentTab
+          owner={documents}
           hostId={services.workspaceId}
           projectId={session.projectId}
           sessionId={session.sessionId}
-          {...(selected && onScreen ? { selectedPanel: filesFront ?? null } : {})}
-          selectionKey={`${session.sessionId}:${JSON.stringify(search)}`}
-          documentOwner={documents}
-          renderContext={renderContext}
-          onReady={flushDock}
-          onOpenElsewhere={(view) => (view === 'chat' ? bringForward() : open({ panel: view }))}
-          renderDocument={(descriptor, _panelId, selection) =>
-            documents ? (
-              <DockDocumentPanel
-                owner={documents}
-                target={descriptor.target}
-                path={descriptor.path}
-                viewId={descriptor.viewId}
-                revealSelection={selection}
-                onAttach={
-                  descriptor.target.sessionId === session.sessionId ? handleAttachment : undefined
-                }
-                onReference={
-                  descriptor.target.sessionId === session.sessionId ? handleReference : undefined
-                }
-              />
-            ) : null
+          path={tab.path}
+          copy={tab.copy}
+          reveal={
+            reveal?.sessionId === session.sessionId && reveal.key === tabKey(tab)
+              ? reveal.range
+              : undefined
           }
-          renderGraph={(descriptor) => <TeamDesign corralId={descriptor.corralId} />}
-          graphTitle={(corralId) =>
-            `${editorCopyDirty(services.repository, session.projectId, corralId) ? '● ' : ''}${
-              corrals.find((c) => c.corralId === corralId)?.name ?? tdock('team')
-            }`
+          onCopy={(copy) =>
+            frame.dispatch({ type: 'documentCopy', key: tabKey(tab), instance: tab.instance, copy })
           }
-          subscribeGraphs={subscribeGraphs}
-          onActiveContext={(view) => {
-            const next = SESSION_PANELS.find((value) => value === view);
-            if (!next || PANEL_TAB_OF[next] !== 'files') return;
-            if (state.selected === 'files' && next !== search.panel)
-              frame.writeTab({ panel: next }, { replace: true });
+          onKey={(key) => {
+            if (key) documentKeys.current.set(tabKey(tab), key);
+            else documentKeys.current.delete(tabKey(tab));
           }}
+          onAttach={handleAttachment}
+          onReference={handleReference}
         />
-      );
+      ) : null;
     if (tab.kind === 'changes')
       return changesView(
         changesWindow(selected ? (changesFront ?? fronts.changes) : fronts.changes),
@@ -862,21 +911,8 @@ function WorkSessionPage() {
       // A stack frame opens its document in the panel; the focus stays here to keep stepping.
       <SourceNavigationContext.Provider
         value={{
-          openDocument: (target, path, range) => {
-            const kept = document.activeElement;
-            frame.dispatch(
-              { type: 'open', target: { panel: 'files' }, from: 'way' },
-              frame.tabSearch('files') ?? {},
-            );
-            withDock((handle) => {
-              handle.openDocument({ target, path, documentKey: documentKey(target, path) }, range);
-              window.setTimeout(() => {
-                if (kept instanceof HTMLElement && kept.isConnected)
-                  kept.focus({ preventScroll: true });
-              }, 0);
-            });
-            return true;
-          },
+          openDocument: (target, path, range) =>
+            openDocument({ target, path }, range, { keepFocus: true }),
           openTerminal: () => {},
         }}
       >
@@ -913,17 +949,15 @@ function WorkSessionPage() {
         key={`${session.projectId}:${session.sessionId}`}
         projectId={session.projectId}
         sessionId={session.sessionId}
-        openDocument={openDocument}
+        openDocument={(request) => openDocument(request)}
         showInFiles={(request) => {
           requestFileReveal(request);
           open({ panel: 'files' });
-          withDock((handle) => handle.openContext('files', true));
         }}
       />
       <SourceNavigationContext.Provider
         value={{
-          openDocument: (target, path, range) =>
-            openDocument({ target, path, documentKey: documentKey(target, path) }, range),
+          openDocument: (target, path, range) => openDocument({ target, path }, range),
           openTerminal: (source) => {
             if (
               source.target.sessionId !== session.sessionId ||

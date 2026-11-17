@@ -20,7 +20,8 @@ import { LocaleProvider } from '../locale.tsx';
 import { createStudioRouter } from '../router.tsx';
 import { createRunSessions } from '../runSessions.ts';
 import { ServicesProvider, type StudioServices } from '../services.tsx';
-import { type DocumentStore, documentStore } from '../workbench/documents/store.ts';
+import type { RecoveryDraft } from '../workbench/documents/recovery.ts';
+import { type DocumentStore, documentKey, documentStore } from '../workbench/documents/store.ts';
 import { WorkAreaWidthContext } from '../workbench/panel/workAreaWidth.ts';
 import { StudioDesignKit } from '../workbench/StudioDesignKit.tsx';
 import { type TerminalStore, terminalStore } from '../workbench/terminals/store.ts';
@@ -104,6 +105,15 @@ export interface ServerParts {
   releaseLists(): void;
   /** The one file the working copy holds. */
   path: string;
+  /** The working copy no longer holds the file: the next read of it says it is absent. */
+  removeFile(path: string): void;
+  /** Every later read of the file fails, as a host that cannot read it answers. */
+  failRead(path: string): void;
+  /**
+   * Another window of this browser kept an unsaved draft of the file in this conversation, in
+   * the current copy or in the one `copy` names.
+   */
+  keepDraft(path: string, copy?: { bindingId: string; generation: number }): void;
 }
 
 export interface ShellWorldOptions {
@@ -336,6 +346,9 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     },
   };
   const saves: string[] = [];
+  const gone = new Set<string>();
+  const unreadable = new Set<string>();
+  const kept: RecoveryDraft[] = [];
   const workspaces = {
     worktree: async () => ({
       sessionId,
@@ -348,7 +361,12 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       missing: false,
     }),
     searchFiles: async () => ({ items: [{ path, kind: 'file' as const }], truncated: false }),
-    readDocument: async () => structuredClone(document),
+    readDocument: async (_session: string, at: string): Promise<FileDocument> => {
+      if (unreadable.has(at)) throw new Error('the host could not read the file');
+      return gone.has(at)
+        ? { target, path: at, content: { kind: 'absent' }, version: null, writable: true }
+        : { ...structuredClone(document), path: at };
+    },
     changeDocument: async (_session: string, command: { path: string }) => {
       saves.push(command.path);
       throw new Error('saves are not part of these cases');
@@ -507,6 +525,28 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       listHold?.resolve();
       listHold = null;
     },
+    removeFile: (at: string) => void gone.add(at),
+    failRead: (at: string) => void unreadable.add(at),
+    keepDraft: (at: string, copy?: { bindingId: string; generation: number }) => {
+      const of = copy
+        ? { ...target, bindingId: copy.bindingId, copyGeneration: copy.generation }
+        : target;
+      kept.push({
+        version: 1,
+        id: `draft_${kept.length + 1}`,
+        clientId: 'another_window',
+        documentKey: documentKey(of, at),
+        target: of,
+        path: at,
+        text: 'kept\n',
+        baseText: text,
+        baseHash: null,
+        editVersion: 1,
+        pendingSave: null,
+        formatBlocked: false,
+        updatedAt: 0,
+      });
+    },
   } as Omit<ServerParts, 'documents'> & { documents?: DocumentStore };
   return {
     workspaces,
@@ -517,7 +557,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
         loadMonaco,
         recovery: {
           list: async () => [],
-          listSession: async () => [],
+          listSession: async () => structuredClone(kept),
           write: async (draft) => void drafts.set(draft.id, draft),
           remove: async (draft) => void drafts.delete(draft.id),
           clearSession: async () => drafts.clear(),
