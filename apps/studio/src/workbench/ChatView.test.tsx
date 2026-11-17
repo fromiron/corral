@@ -480,6 +480,66 @@ it.each([
   },
 );
 
+// The activity bar's View goes to a role's row by placing the conversation at the run's request
+// and, once the row is in, letting the place go and focusing the row itself when no control in it
+// takes the focus (ComposerActivity goTo). A row that holds the focus stays focusable when the
+// message it was placed at is let go: a row that stops being focusable drops the focus to the
+// page in a browser (jsdom keeps it, so the row's tabindex is what is checked here).
+it('a linked row holding the focus itself stays focusable when the conversation lets the message go', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const items = [
+    { id: 'first', content: <p>First</p> },
+    { id: 'request', content: <p>Request</p> },
+  ];
+  const show = async (messageId: string | undefined) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ChatView
+            sessionId="view-role"
+            messageId={messageId}
+            items={items}
+            composer={<textarea aria-label="request" />}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await show('request');
+  const row = container.querySelector<HTMLElement>('[data-chat-item="request"]');
+  if (!row) throw new Error('Missing the placed row');
+  // As the activity bar's View does when no control in the row takes the focus.
+  await act(async () => {
+    row.tabIndex = -1;
+    row.focus({ preventScroll: true });
+  });
+  expect(document.activeElement).toBe(row);
+
+  await show(undefined);
+
+  expect(row.getAttribute('tabindex')).toBe('-1');
+  expect(document.activeElement).toBe(row);
+  // Once the focus leaves it, the row is no stop for Tab again: rows do not pile up as stops.
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+  await act(async () => input?.focus());
+  expect(document.activeElement).toBe(input);
+  expect(row.hasAttribute('tabindex')).toBe(false);
+});
+
 /**
  * A conversation whose scroll port the test owns, so a send, a growing turn, a composer
  * resizing the port, and a virtual list can be told apart from a person scrolling up.

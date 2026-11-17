@@ -269,6 +269,8 @@ export function ChatView({
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
   const [focused, setFocused] = useState<string | null>(null);
+  // The row that holds the focus itself (not a control inside it).
+  const [selfFocused, setSelfFocused] = useState<string | null>(null);
   // Rows' last real heights; a hidden or not yet laid out row reads 0 and keeps its last size.
   const sizes = useRef(new Map<string, number>());
   // The timeline is always virtualized, whatever its length: one layout for one row or a
@@ -812,8 +814,10 @@ export function ChatView({
                     data-chat-item={item.id}
                     data-latest={index === items.length - 1 || undefined}
                     aria-current={item.id === messageId ? 'location' : undefined}
-                    // The linked message takes the focus when the conversation goes to it.
-                    tabIndex={item.id === messageId ? -1 : undefined}
+                    // The linked message takes the focus when the conversation goes to it. A row
+                    // holding the focus itself stays focusable after its message is let go (the
+                    // activity bar's View focuses it so), and stops being so once the focus leaves.
+                    tabIndex={item.id === messageId || item.id === selfFocused ? -1 : undefined}
                     // Its own block, so the row's margins belong to its measured size.
                     className={cn(
                       'flow-root transition-none',
@@ -821,8 +825,12 @@ export function ChatView({
                     )}
                     ref={rows.measureElement}
                     style={between > 0 ? { marginTop: between } : undefined}
-                    onFocusCapture={() => setFocused(item.id)}
+                    onFocusCapture={(event) => {
+                      setFocused(item.id);
+                      if (event.target === event.currentTarget) setSelfFocused(item.id);
+                    }}
                     onBlurCapture={(event) => {
+                      if (event.target === event.currentTarget) setSelfFocused(null);
                       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
                     }}
                   >
