@@ -67,6 +67,8 @@ export function ReviewCommentForm({
   // form is open takes what is being written along, replacing what was kept there; with nothing
   // written, what was kept for the new range appears (features/session-panel.md 닫기와 패널 여닫기).
   const keptAt = useRef<string | null>(null);
+  const writing = useRef<KeptComment>({ kind, note, replacement });
+  writing.current = { kind, note, replacement };
   useEffect(() => {
     const previous = keptAt.current;
     keptAt.current = keepKey;
@@ -113,11 +115,20 @@ export function ReviewCommentForm({
         if (busy || !anchor || !ready || tooLong) return;
         setBusy(true);
         setError(null);
+        const sent = writing.current;
+        const same = (value: KeptComment | undefined) =>
+          value?.kind === sent.kind &&
+          value.note === sent.note &&
+          value.replacement === sent.replacement;
         void onSubmit({ ...anchor, body })
           .then(
             () => {
-              // Added: nothing is kept for it (the form may be gone already).
+              // Added: nothing is kept for it (the form may be gone already), under the lines it
+              // was added on, and under the lines picked since if they still hold what was added.
               if (keepKey) keepInput(keepKey, null);
+              const now = keptAt.current;
+              if (now && same(keptInput<KeptComment>(now))) keepInput(now, null);
+              if (!same(writing.current)) return;
               setNote('');
               setReplacement(null);
               setKind('comment');

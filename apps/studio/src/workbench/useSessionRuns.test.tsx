@@ -280,3 +280,54 @@ it('a conversation entered again faster than one listing is not listed with the 
   await act(async () => root.render(<View id="a" />));
   expect(shown.filter((value) => value === 'a:listed')).toEqual([]);
 });
+
+it('a listing the conversation asked for itself counts when it answers, also when the stored session changed while it was on its way', async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const run = (runId: string, startedAt: string) =>
+    ({ runId, sessionId: 'session', status: 'succeeded', startedAt }) as RunSummary;
+  const first = run('first', '2026-10-29T00:00:00Z');
+  const second = run('second', '2026-10-29T00:01:00Z');
+  const answers: ((runs: RunSummary[]) => void)[] = [];
+  fixture.listRuns.mockImplementation(
+    () =>
+      new Promise<RunSummary[]>((resolve) => {
+        answers.push(resolve);
+      }),
+  );
+  fixture.getSession.mockImplementation(async () => ({ revision: 1, entries: [] }));
+  function View({ id, revision }: { id: string; revision: number }) {
+    const value = useSessionRuns(id, undefined, revision, []);
+    return (
+      <p>
+        {value.runs.map((r) => r.runId).join(',')}:{value.listed ? 'listed' : 'waiting'}
+      </p>
+    );
+  }
+  // Another consumer keeps the list alive; its first listing is on its way.
+  const other = createRoot(document.createElement('div'));
+  disposals.push(async () => {
+    await act(async () => other.unmount());
+  });
+  await act(async () => other.render(<View id="elsewhere" revision={1} />));
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+  });
+  await act(async () => root.render(<View id="session" revision={1} />));
+  await act(async () => {
+    answers[0]?.([first]);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  // The conversation's own listing is on its way; the stored session changes meanwhile.
+  expect(fixture.listRuns).toHaveBeenCalledTimes(2);
+  await act(async () => root.render(<View id="session" revision={2} />));
+
+  await act(async () => {
+    answers[1]?.([first, second]);
+    await vi.advanceTimersByTimeAsync(0);
+  });
+  expect(container.textContent).toBe('first,second:listed');
+  expect(fixture.listRuns).toHaveBeenCalledTimes(2);
+});

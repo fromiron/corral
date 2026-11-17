@@ -6,13 +6,14 @@ export function watchRefresh(
 ) {
   let active = true;
   let loading = false;
-  // A refresh asked while a read is out is read once more after it: the read out was asked
-  // before, so it may not answer what the asker needs. Several such asks make one more read.
-  let again: boolean | null = null;
+  // An explicit ask (focus, reconnection, a caller's refresh) made while a read is out is read
+  // once more after it: the read out was asked before, so it may not answer what the asker needs.
+  // Several such asks make one more read. A tick that lands during a read is dropped.
+  let again = false;
   const refresh = async (force = true): Promise<void> => {
     if (!active) return;
     if (loading) {
-      again = Boolean(again) || force;
+      if (force) again = true;
       return;
     }
     loading = true;
@@ -20,11 +21,11 @@ export function watchRefresh(
       await read(() => active, force);
     } finally {
       loading = false;
-    }
-    if (again !== null && active) {
-      const forced = again;
-      again = null;
-      await refresh(forced);
+      // Served whether that read answered or failed; never left for a later ask to double.
+      if (again) {
+        again = false;
+        if (active) void refresh(true).catch(() => {});
+      }
     }
   };
   // Callers render their read errors. A failed read must not stop future refreshes.

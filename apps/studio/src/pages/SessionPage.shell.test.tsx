@@ -3,6 +3,7 @@ import { collaborationCorral } from '@corral/testkit';
 import { act, type ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { registeredCommands } from '../commandRegistry.ts';
 import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
 import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
 import {
@@ -339,9 +340,34 @@ const resultsShown = () => {
   const pane = panel?.querySelector<HTMLElement>('[data-testid="run-document"]');
   return Boolean(pane && !pane.hidden);
 };
-/** Every operable whole-run stop on the screen: the composer's Stop and any run head's cancel. */
+/**
+ * Inside a whole-run confirmation: the head's popover or the composer's dialog. Its own button
+ * carries the stop's name but is the answer to the question, not a second stop.
+ */
+const inConfirmation = (element: HTMLElement) => {
+  const dialog = element.closest('[role="dialog"]');
+  return Boolean(
+    dialog &&
+      (dialog.getAttribute('aria-label') === W.cancelRun ||
+        dialog.textContent?.includes(W.cancelRunExplain)),
+  );
+};
+/** The run controls on the screen (a run head's), where a whole-run stop by that name stands. */
+const runControls = () => [
+  ...document.querySelectorAll<HTMLElement>(`section[aria-label="${messages.Reins.runControls}"]`),
+];
+/**
+ * Every operable whole-run stop on the screen: the composer's Stop and any run head's stop.
+ * A paused step's "Stop the run" answers its approval and is not counted; nor is a
+ * confirmation's own button.
+ */
 const operableStops = () =>
-  [...buttons(W.stop), ...buttons(W.cancelRun)].filter((button) => operable(button));
+  [
+    ...new Set([
+      ...buttons(W.stop),
+      ...runControls().flatMap((controls) => buttons(W.cancelRun, controls)),
+    ]),
+  ].filter((button) => operable(button) && !inConfirmation(button));
 
 /** Whole-run command receipts on the screen, by where they stand. */
 const receipts = (scope: ParentNode | null) => [
@@ -428,7 +454,9 @@ async function openRunTab(n = 1) {
 
 const headCancelButton = () => {
   const header = runHeader();
-  return header ? buttons(W.cancelRun, header)[0] : undefined;
+  return header
+    ? buttons(W.cancelRun, header).find((button) => !inConfirmation(button))
+    : undefined;
 };
 
 /** Presses the run tab head's cancel; the head asks. */
@@ -528,10 +556,12 @@ it('패널이 옆이고 실행 #1의 탭이 선택돼 있으며 실행 단위 �
   await until(() => Boolean(composerStop() && operable(composerStop() as HTMLElement)));
   await press(composerStop());
   await until(composerAsks);
+  await until(() => readText(document.activeElement as Element) === messages.Reins.keepRunning);
 
   expect(composerAsks()).toBe(true);
   expect(headAsks()).toBe(false);
   expect(pending(runId)).toBe(true);
+  expect(readText(document.activeElement as Element)).toBe(messages.Reins.keepRunning);
 });
 
 // --- the head's confirmation loses its place ----------------------------------------------------
@@ -566,6 +596,8 @@ it('패널이 넓힘이고 실행 #1의 탭 머리가 전체 중지 확인을 �
   expect(presentation()).toBe('maximized');
   await headCancel();
   expect(pending(runId)).toBe(true);
+  // The popover's own button carries the stop's name; it is not a second stop.
+  expect(operableStops()).toEqual([headCancelButton()]);
 
   await press(maximizeButton());
 
@@ -792,8 +824,11 @@ it('패널이 넓힘이고 실행 단위 하나가 일하는 진행 중인 실�
 
   await key(document.activeElement ?? window, STOP_KEY);
   await until(headAsks);
+  await until(() => readText(document.activeElement as Element) === messages.Reins.keepRunning);
 
   expect(headAsks()).toBe(true);
+  // execution-monitor.md: wherever the confirmation asks, the first focus is on Keep running.
+  expect(readText(document.activeElement as Element)).toBe(messages.Reins.keepRunning);
   expect(pending(runId)).toBe(true);
   expect(stopDialog.openRenders).toBe(0);
   expect(cancels(world)).toEqual([]);
@@ -1127,6 +1162,38 @@ it('패널이 닫힌 대화에서 이 대화 안의 링크가 panel=run과 실�
   expect(document.activeElement).toBe(input);
 });
 
+it.each([
+  ['패널이 열리고 탭이 있는 대화 A', 'open'],
+  ['패널이 닫혔지만 탭이 있는 대화 A', 'closed'],
+  ['다른 화면', 'screen'],
+] as const)(
+  '%s에서 앱 안의 링크가 다른 대화의 panel=run과 실행 #1을 가리킨다 → 그 링크를 따라간다 → 실행 #1 탭이 열리고 포커스가 그 탭에 있다',
+  async (_from, start) => {
+    const { world, runId } = await quietRun({ folder: true });
+    const other = await world.createConversation('Other');
+    remember(other, [{ kind: 'changes' }], 'changes', start === 'open');
+    const shell = await open(
+      world,
+      start === 'screen' ? `/projects/${world.projectId}` : `/sessions/${other}`,
+    );
+    if (start === 'open') await until(() => selectedName() === W.changes);
+
+    await act(async () => {
+      void shell.router.navigate({
+        to: '/sessions/$sessionId',
+        params: { sessionId: world.sessionId },
+        search: { panel: 'run', run: runId, view: 'run' } as never,
+      });
+    });
+    await settle();
+    await until(() => pathname(shell) === `/sessions/${world.sessionId}`);
+    await until(() => selectedName() === W.runNumber(1));
+    await until(() => document.activeElement === tabNamed(W.runNumber(1)));
+
+    expect(document.activeElement).toBe(tabNamed(W.runNumber(1)));
+  },
+);
+
 it('폴더가 연결된 대화에서 패널이 닫혀 있다 → 이 대화 안의 링크가 panel=terminal을 가리킨다 → 파일 탭이 열리고 포커스는 그 안의 터미널에 있다', async () => {
   const world = await createShellWorld({ server: true, folder: true });
   const shell = await open(world, `/sessions/${world.sessionId}`);
@@ -1139,6 +1206,27 @@ it('폴더가 연결된 대화에서 패널이 닫혀 있다 → 이 대화 안�
     });
   });
   await settle();
+  const terminal = () => side()?.querySelector<HTMLElement>('[data-testid="terminal-leaf"]');
+  await until(() => Boolean(terminal()) && document.activeElement === terminal());
+
+  expect(selectedName()).toBe(W.files);
+  expect(document.activeElement).toBe(terminal());
+});
+
+it('대화 A에서 앱 안의 링크가 폴더가 연결된 다른 대화의 panel=terminal을 가리킨다 → 그 링크를 따라간다 → 파일 탭이 열리고 포커스는 그 안의 터미널에 있다', async () => {
+  const world = await createShellWorld({ server: true, folder: true });
+  const other = await world.createConversation('Other');
+  const shell = await open(world, `/sessions/${other}`);
+  const server = world.server as NonNullable<ShellWorld['server']>;
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: { panel: 'terminal', terminal: server.terminalId } as never,
+    });
+  });
+  await settle();
+  await until(() => pathname(shell) === `/sessions/${world.sessionId}`);
   const terminal = () => side()?.querySelector<HTMLElement>('[data-testid="terminal-leaf"]');
   await until(() => Boolean(terminal()) && document.activeElement === terminal());
 
@@ -2473,7 +2561,7 @@ it('대화 A에서 상단의 터미널을 눌렀고 터미널 화면이 아직 �
   expect(document.activeElement?.closest('[data-testid="terminal-leaf"]') ?? null).toBeNull();
 });
 
-it('패널이 닫힌 대화 A에서 빠른 열기로 문서를 고르고 그 문서가 열리기 전에 파일 탭이 있는 대화 B로 간다 → 늦게 열린 문서는 버려져 B의 파일 탭에 열리지 않는다', async () => {
+it('패널이 닫힌 대화 A에서 빠른 열기로 문서를 고르고 그 문서가 열리기 전에 파일 탭이 있는 대화 B로 간다 → 빠른 열기는 대화가 바뀐 뒤에 열린 문서를 버려, 그 문서는 B의 파일 탭에 열리지 않는다', async () => {
   const world = await createShellWorld({ server: true, folder: true });
   const server = world.server as NonNullable<ShellWorld['server']>;
   const other = await world.createConversation('Other');
@@ -2624,4 +2712,225 @@ it('실행 #1 탭에서 지시를 쓰다 만다 → 탭을 닫고 다시 연다 
   await until(() => pathname(shell) === `/sessions/${world.sessionId}`);
   await settle();
   expect((await instructionField(shell, world, runId)).value).toBe(typed);
+});
+
+const composerInput = () =>
+  document.querySelector<HTMLTextAreaElement>('[data-testid="chat-composer"] textarea');
+
+it.each([
+  ['응답하기를 실은 panel=run 링크', 'respond'],
+  ['실행이 없는 대화의 panel=run 링크', 'no-run'],
+] as const)(
+  '파일 탭이 선택돼 있고 포커스가 입력란에 있다 → %s를 따라간다 → 아무 탭도 열리거나 골라지지 않고 포커스는 입력란에 남는다',
+  async (_link, kind) => {
+    const world =
+      kind === 'respond'
+        ? (await quietRun({ folder: true })).world
+        : await createShellWorld({ folder: true });
+    const runId = kind === 'respond' ? (await world.transport.listRuns())[0]?.runId : undefined;
+    remember(world.sessionId, [{ kind: 'files' }], 'files');
+    const shell = await open(world, `/sessions/${world.sessionId}`);
+    await until(() => selectedName() === W.files);
+    await act(async () => composerInput()?.focus());
+    expect(document.activeElement).toBe(composerInput());
+
+    await act(async () => {
+      void shell.router.navigate({
+        to: '/sessions/$sessionId',
+        params: { sessionId: world.sessionId },
+        search: (kind === 'respond'
+          ? { panel: 'run', run: runId, respond: true }
+          : { panel: 'run' }) as never,
+      });
+    });
+    await settle();
+    await until(() => search(shell).panel === 'files');
+
+    expect(selectedName()).toBe(W.files);
+    expect(document.activeElement).toBe(composerInput());
+  },
+);
+
+it('실행이 없는 대화에서 파일 탭이 선택돼 있고 포커스가 입력란에 있다 → 실행 탭을 여는 길(open, 실행 없음)을 부른다 → 포커스는 입력란에 남는다', async () => {
+  const world = await createShellWorld({ folder: true });
+  remember(world.sessionId, [{ kind: 'files' }], 'files');
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.files);
+  await act(async () => composerInput()?.focus());
+
+  // The command way to the run tab, with no run in the conversation.
+  const command = registeredCommands().find((entry) => entry.id === 'panel:run');
+  expect(command).toBeDefined();
+  await act(async () => {
+    await command?.run();
+  });
+  await settle();
+
+  expect(selectedName()).toBe(W.files);
+  expect(document.activeElement).toBe(composerInput());
+});
+
+it('파일 · 변경 탭이 열려 있고 변경 탭이 선택돼 있으며 포커스가 입력란에 있다 → 설정만 바뀐 주소로 간다 → 포커스는 변경 탭으로 옮겨지지 않는다', async () => {
+  const world = await createShellWorld({ folder: true });
+  remember(world.sessionId, [{ kind: 'files' }, { kind: 'changes' }], 'changes');
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.changes);
+  await until(() => search(shell).panel === 'changes');
+  const shownSearch = { ...search(shell) };
+  await act(async () => composerInput()?.focus());
+  // The settings dialog takes the focus as it opens: the tab is watched for the focus instead.
+  let tabFocused = 0;
+  const watched = tabNamed(W.changes) as HTMLElement;
+  const count = () => {
+    tabFocused += 1;
+  };
+  watched.addEventListener('focus', count);
+
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: { ...shownSearch, settings: 'shortcuts' } as never,
+    });
+  });
+  await settle();
+  watched.removeEventListener('focus', count);
+  expect(search(shell).settings).toBe('shortcuts');
+  expect(tabFocused).toBe(0);
+});
+
+it('대화의 행에서 연 실행 #1 탭이 옆에 있다 → 패널 밖의 링크가 지금 주소 그대로를 가리키고 그것을 따라간다 → 포커스는 탭으로 가지 않고, 그 뒤 패널을 닫으면 포커스는 행의 조작으로 간다', async () => {
+  const { world } = await quietRun();
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await openRunTab();
+  const opener = answerRunLink(1);
+  // The entry shown is the frame's own write: following a link to it makes a new entry.
+  expect(
+    typeof (shell.router.state.location.state as unknown as Record<string, unknown>)
+      .corralPanelWrite,
+  ).toBe('string');
+  const shownSearch = { ...search(shell) };
+  const entries = shell.history.length;
+  const link = document.createElement('a');
+  link.href = '#';
+  link.textContent = 'Same address';
+  main()?.append(link);
+  cleanups.push(() => link.remove());
+  await act(async () => link.focus());
+  let tabFocused = 0;
+  const watched = tabNamed(W.runNumber(1)) as HTMLElement;
+  const count = () => {
+    tabFocused += 1;
+  };
+  watched.addEventListener('focus', count);
+
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: shownSearch as never,
+    });
+  });
+  await settle();
+  watched.removeEventListener('focus', count);
+  expect(shell.history.length).toBe(entries + 1);
+  expect(tabFocused).toBe(0);
+  expect(document.activeElement).toBe(link);
+
+  // The opener is still the row's control: closing with the focus inside goes back to it.
+  await act(async () => watched.focus());
+  await key(watched, TOGGLE_KEY);
+  await until(() => presentation() === 'closed');
+  expect(document.activeElement).toBe(opener);
+});
+
+it('실행 #1 탭을 대화의 행에서 열었다가 닫았다 → 패널 밖의 링크로 다시 연다 → 포커스가 패널 안에 있을 때 패널을 닫으면 포커스는 그 링크로 간다', async () => {
+  const { world, runId } = await quietRun();
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  // An earlier opening, from the answer row's control, still on screen afterwards.
+  await openRunTab();
+  await key(document.activeElement as HTMLElement, TOGGLE_KEY);
+  await until(() => presentation() === 'closed');
+  expect(document.activeElement).toBe(answerRunLink(1));
+
+  // A link outside the panel that keeps the focus after it is followed. (The conversation's own
+  // panel links, in a role's row or a branch, do not appear in this fixture's runs.)
+  const link = document.createElement('a');
+  link.href = `/sessions/${world.sessionId}?panel=run&run=${runId}`;
+  link.textContent = 'Run link';
+  main()?.append(link);
+  cleanups.push(() => link.remove());
+  await act(async () => link.focus());
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: { panel: 'run', run: runId } as never,
+    });
+  });
+  await settle();
+  await until(() => document.activeElement === tabNamed(W.runNumber(1)));
+
+  await key(document.activeElement as HTMLElement, TOGGLE_KEY);
+  await until(() => presentation() === 'closed');
+  expect(document.activeElement).toBe(link);
+});
+
+it('파일 탭의 문서 안의 링크로 실행 #1 탭을 연다(그 전에 파일 탭은 상단의 터미널로 열었다) → 포커스가 패널 안에 있을 때 패널을 닫으면 포커스는 패널 여닫기로 간다', async () => {
+  const world = await createShellWorld({ server: true, folder: true });
+  const server = world.server as NonNullable<ShellWorld['server']>;
+  const runId = await world.startRun();
+  await world.working(runId, 1);
+  documentLink.current = { sessionId: world.sessionId, search: { panel: 'run', run: runId } };
+  await open(world, `/sessions/${world.sessionId}`);
+  await act(async () => {
+    window.dispatchEvent(new Event('corral:quick-open'));
+  });
+  await settle();
+  const option = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="option"]')].find((row) =>
+      row.textContent?.includes(server.path),
+    );
+  await until(() => Boolean(option()));
+  await press(option());
+  await until(() => Boolean(side()?.querySelector('[data-testid="document-link"]')));
+  // An earlier opening from the top bar's control, still on screen afterwards.
+  const terminalButton = buttons(messages.Docking.terminal).find((b) => !side()?.contains(b));
+  await press(terminalButton);
+  await settle();
+
+  await press(side()?.querySelector<HTMLElement>('[data-testid="document-link"]'));
+  await until(() => selectedName() === W.runNumber(1));
+  await until(() => document.activeElement === tabNamed(W.runNumber(1)));
+  await key(document.activeElement as HTMLElement, TOGGLE_KEY);
+  await until(() => presentation() === 'closed');
+
+  expect(document.activeElement).toBe(document.querySelector('[data-session-panel-toggle]'));
+});
+
+it('실행 #1 탭이 선택돼 있고 포커스가 입력란에 있다 → 그 실행에 응답하기를 실은 panel=run 링크를 따라간다 → 탭을 연 것이 아니어서 포커스는 탭으로 가지 않는다', async () => {
+  const { world, runId } = await quietRun();
+  remember(world.sessionId, [{ kind: 'run', runId }], `run:${runId}`);
+  const shell = await open(world, `/sessions/${world.sessionId}`);
+  await until(() => selectedName() === W.runNumber(1));
+  await act(async () => composerInput()?.focus());
+  let tabFocused = 0;
+  const watched = tabNamed(W.runNumber(1)) as HTMLElement;
+  const count = () => {
+    tabFocused += 1;
+  };
+  watched.addEventListener('focus', count);
+
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: { panel: 'run', run: runId, respond: true } as never,
+    });
+  });
+  await settle();
+  watched.removeEventListener('focus', count);
+
+  expect(selectedName()).toBe(W.runNumber(1));
+  expect(tabFocused).toBe(0);
 });

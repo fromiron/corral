@@ -34,6 +34,7 @@
 | 대화의 검사 명령 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
 | 달리는 실행을 다루는 자리(지시, 일시정지·재개·중지, 실행 단위의 취소·다시 시작) | Reins / Reins | `reins`, 메시지 `Reins`, [Reins 상태 계약](features/reins.md) | Run controls / 실행 조작(이름표로), Give instruction / 지시하기(영역의 제목으로. 그 영역을 여는 동작의 이름으로는 쓴다), Steer |
+| Run 전체를 끝내는 조작 | Stop the run / 실행 중지(버튼 자리가 좁으면 Stop / 중지) | 명령 `cancel`(Run 범위) | 실행 전체 취소, 실행 중단, Cancel whole run. 취소 · Cancel은 실행 단위 하나를 끝내는 조작의 이름이다 |
 | 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
 | Corral이 함께 싣는 색 구성 | Built-in theme / 내장 테마 | `builtin:<id>` | 프리셋, 기본 테마(시스템·라이트·다크와 구분) |
 | 이 기기에서 만든 색 구성 | Personal theme / 개인 테마 | `custom:<id>` | 커스텀 테마, 사용자 정의 테마, 내 테마 |

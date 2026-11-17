@@ -479,6 +479,39 @@ it('keeps a comment not added yet after the review goes, for the same file and l
   expect(noteOf(after)?.value).toBe('');
 });
 
+it('a comment added while its lines are changed is kept neither for the lines it was added on nor for the new ones (features/session-panel.md)', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const noteOf = (shown: typeof view) =>
+    shown.container.querySelector<HTMLTextAreaElement>('aside form textarea');
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  await view.click('pick lines 2-3');
+  const note = noteOf(view);
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  // The add waits for its answer; meanwhile the person picks other lines.
+  const real = view.addComment.getMockImplementation();
+  let answer = () => {};
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  view.addComment.mockImplementationOnce(async (...args) => {
+    await answered;
+    return (real as NonNullable<typeof real>)(...args);
+  });
+  await view.click('Review.addComment', area);
+  await view.click('pick line 1');
+  await act(async () => answer());
+  expect(view.addComment).toHaveBeenCalledTimes(1);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const later = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await later.click('pick line 1');
+  expect(noteOf(later)?.value).toBe('');
+  await later.click('pick lines 2-3');
+  expect(noteOf(later)?.value).toBe('');
+});
+
 it('a comment not added yet is kept for the comparison it was written against, not for the same lines of another (features/session-panel.md)', async () => {
   const first = await mount({ search: { scope: 'session', file: 'README.md' } });
   const noteOf = (view: typeof first) =>

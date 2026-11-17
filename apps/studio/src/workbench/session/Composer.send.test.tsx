@@ -1127,6 +1127,42 @@ describe('Stop in Send’s place', () => {
     [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
       (button) => button.textContent === messages.Reins.confirmCancelRun,
     );
+  const keepButton = () =>
+    [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Reins.keepRunning,
+    );
+  /**
+   * What the dialog asks, by its title: the confirm button carries the same words, so the
+   * dialog's text alone would not tell which dialog it is.
+   */
+  const asked = () => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const title = dialog?.getAttribute('aria-labelledby');
+    return title ? document.getElementById(title)?.textContent : undefined;
+  };
+  /** The control the next Tab reaches from `from`, in the dialog's own order. */
+  const nextTab = (from: Element) => {
+    const order = [
+      ...(document
+        .querySelector('[role="dialog"]')
+        ?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]') ??
+        []),
+    ].filter((element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled);
+    return order[order.indexOf(from as HTMLElement) + 1];
+  };
+  /** Waits, a little at a time, until `check` holds (the dialog's focus and exit take a moment). */
+  const until = async (check: () => boolean) => {
+    for (let waited = 0; !check() && waited < 2000; waited += 10)
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  };
+  /** Enter as a browser takes it on a focused button: unless something prevents it, a click. */
+  const enter = async (target: Element) => {
+    await act(async () => {
+      const down = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      if (target.dispatchEvent(down)) (target as HTMLElement).click();
+      target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+    });
+  };
 
   it('stops a run with one working execution at once', async () => {
     const f = await mount();
@@ -1159,21 +1195,65 @@ describe('Stop in Send’s place', () => {
         });
       }
       expect(cancels(f.sendCommand)).toHaveLength(0);
-      expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-        messages.Reins.cancelRun,
-      );
+      expect(asked()).toBe(messages.Reins.cancelRun);
       await act(async () => confirmButton()?.click());
       expect(cancels(f.sendCommand)).toHaveLength(1);
     },
   );
 
+  // execution-monitor.md: wherever the confirmation asks, the first focus is on Keep running.
+  it.each(['stop', 'shortcut', 'slash'] as const)(
+    'asked by %s, it puts the first focus on Keep running, keeps the run on Enter there and sends nothing, with Stop the run one Tab away',
+    async (way) => {
+      const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+      const ask = async () => {
+        if (way === 'stop') await act(async () => stop(f.container)?.click());
+        else if (way === 'shortcut') await act(async () => void runShortcut('run.stop'));
+        else {
+          await f.type('/stop');
+          const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+            node.textContent?.includes('/stop'),
+          );
+          await act(async () => {
+            option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          });
+        }
+        await act(async () => {});
+      };
+      await ask();
+      expect(asked()).toBe(messages.Reins.cancelRun);
+      await until(() => document.activeElement === keepButton());
+      expect(document.activeElement).toBe(keepButton());
+      expect(nextTab(keepButton() as HTMLElement)).toBe(confirmButton());
+
+      await enter(document.activeElement as Element);
+      await until(() => !document.querySelector('[role="dialog"]'));
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(f.sendCommand).not.toHaveBeenCalled();
+      expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+      expect(f.startAuto).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a confirmation that comes back after a reload asks again with the focus on Keep running', async () => {
+    window.sessionStorage.setItem('corral:cancel-confirmation:run_live', 'pending');
+    try {
+      const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+      await act(async () => {});
+      expect(asked()).toBe(messages.Reins.cancelRun);
+      await until(() => document.activeElement === keepButton());
+      expect(document.activeElement).toBe(keepButton());
+      expect(f.sendCommand).not.toHaveBeenCalled();
+    } finally {
+      window.sessionStorage.removeItem('corral:cancel-confirmation:run_live');
+    }
+  });
+
   it('asks first while two executions work, and sends nothing until confirmed', async () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-      messages.Reins.cancelRun,
-    );
+    expect(asked()).toBe(messages.Reins.cancelRun);
   });
 
   it('is not there while nothing runs', async () => {
@@ -1205,9 +1285,7 @@ describe('Stop in Send’s place', () => {
     });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-      messages.Reins.cancelRun,
-    );
+    expect(asked()).toBe(messages.Reins.cancelRun);
   });
 
   it('opens the run’s record before it sends to it', async () => {

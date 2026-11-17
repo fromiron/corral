@@ -153,6 +153,78 @@ describe('ReinsPanel', () => {
     },
   );
 
+  // 지시하기 opened again for that execution before the answer: the new area starts from what is
+  // kept, and the answer settles it there too.
+  it.each([false, true])(
+    'a sent instruction accepted after its area was opened again does not come back as a draft there, and is not sent twice (StrictMode %s)',
+    async (strict) => {
+      let answer: (receipt: never) => void = () => {};
+      const steer = vi.fn(
+        () =>
+          new Promise<never>((resolve) => {
+            answer = resolve;
+          }),
+      );
+      const session = fakeSession(steer);
+      const first = renderPanel(session, WRITER, strict);
+      fireEvent.change(screen.getByLabelText('Instruction'), { target: { value: 'Cite sources' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      first.unmount();
+      renderPanel(session, WRITER, strict);
+      expect(screen.getByLabelText('Instruction')).toHaveValue('Cite sources');
+
+      await act(async () => answer({ status: 'queued' } as never));
+
+      expect(screen.getByLabelText('Instruction')).toHaveValue('');
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      expect(steer).toHaveBeenCalledTimes(1);
+    },
+  );
+
+  it.each([false, true])(
+    'a sent instruction whose answer is lost after its area was opened again is retried there as that same command (StrictMode %s)',
+    async (strict) => {
+      let lose: () => void = () => {};
+      const session = fakeSession();
+      const steer = vi.fn(
+        (executionId: string, text: string) =>
+          new Promise<never>((_resolve, reject) => {
+            lose = () => {
+              session.setState({
+                unconfirmedCommands: {
+                  cmd_lost: {
+                    error: 'response lost',
+                    command: {
+                      schemaVersion: '0.1',
+                      commandId: 'cmd_lost',
+                      runId: 'run_0001',
+                      type: 'steer',
+                      payload: { targetExecutionId: executionId, text, delivery: 'next_request' },
+                    },
+                  },
+                },
+              });
+              reject(new Error('response lost'));
+            };
+          }),
+      );
+      const retryCommand = vi.fn(() => new Promise<never>(() => {}));
+      session.setState({ steer, retryCommand } as never);
+      const first = renderPanel(session, WRITER, strict);
+      fireEvent.change(screen.getByLabelText('Instruction'), { target: { value: 'Cite sources' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      first.unmount();
+      renderPanel(session, WRITER, strict);
+
+      await act(async () => lose());
+
+      expect(screen.getByLabelText('Instruction')).toHaveValue('Cite sources');
+      fireEvent.click(screen.getByRole('button', { name: 'Send' }));
+      expect(retryCommand).toHaveBeenCalledWith('cmd_lost');
+      expect(steer).toHaveBeenCalledTimes(1);
+    },
+  );
+
   it('compact entry identifies a particular execution of the same node and its scope', () => {
     const session = fakeSession();
     const projection = emptyProjection('run_0001');

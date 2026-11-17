@@ -407,12 +407,18 @@ it('returns to the same search hit after leaving its link and reading elsewhere'
   expect(row.getAttribute('aria-current')).toBe('location');
 });
 
+// A linked row read in later takes the focus only if the person has not pressed a key or a
+// pointer since the link arrived; focus the app moved by itself is not the person moving it
+// (features/session-panel.md 접근성).
 it.each([
-  ['stays where the person moved it', false],
-  ['goes to the row when it has not moved', true],
+  ['goes to the row when nothing happened', 'nothing', 'row'],
+  ['goes to the row when only the app moved it', 'app', 'row'],
+  ['goes to the row from the composer when no key was pressed there', 'composer', 'row'],
+  ['stays when the person pressed a key in the composer', 'key', 'input'],
+  ['stays when the person pressed a pointer', 'pointer', 'body'],
 ] as const)(
   'a linked message joining the conversation later: the focus %s',
-  async (_how, still) => {
+  async (_how, between, expected) => {
     vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
     vi.stubGlobal(
       'ResizeObserver',
@@ -429,30 +435,48 @@ it.each([
       await act(async () => root.unmount());
       container.remove();
     });
-    const show = async (items: { id: string; content: React.ReactNode }[]) =>
+    const show = async (
+      items: { id: string; content: React.ReactNode }[],
+      messageId: string | null = 'late',
+    ) =>
       act(async () =>
         root.render(
           <IntlProvider locale="en" messages={messages} timeZone="UTC">
             <ChatView
               sessionId="late-link"
-              messageId="late"
+              messageId={messageId ?? undefined}
               items={items}
               composer={<textarea aria-label="request" />}
             />
           </IntlProvider>,
         ),
       );
-    await show([{ id: 'first', content: <p>First</p> }]);
-    const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
-    // The person goes on typing before the linked message has come.
-    if (!still) await act(async () => input?.focus());
-    await show([
-      { id: 'first', content: <p>First</p> },
-      { id: 'late', content: <p>Late</p> },
-    ]);
+    const first = [{ id: 'first', content: <p>First</p> }];
+    const input = () =>
+      container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+    if (between === 'key' || between === 'composer') {
+      // The person is in the composer when the link arrives, and goes on typing there.
+      await show(first, null);
+      await act(async () => input()?.focus());
+    }
+    await show(first);
+    if (between === 'app') await act(async () => input()?.focus());
+    if (between === 'key')
+      await act(async () => {
+        input()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      });
+    if (between === 'pointer')
+      await act(async () => {
+        container
+          .querySelector('[data-chat-item="first"]')
+          ?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      });
+    await show([...first, { id: 'late', content: <p>Late</p> }]);
     const row = container.querySelector<HTMLElement>('[data-chat-item="late"]');
     expect(row).not.toBeNull();
-    expect(document.activeElement).toBe(still ? row : input);
+    expect(document.activeElement).toBe(
+      expected === 'row' ? row : expected === 'input' ? input() : document.body,
+    );
   },
 );
 

@@ -158,7 +158,7 @@ function refreshTray() {
               },
             },
             {
-              label: ko ? '실행 취소…' : 'Cancel run…',
+              label: ko ? '실행 중지…' : 'Stop the run…',
               enabled: run.status !== 'cancelling',
               click: () => void cancelTrayRun(run),
             },
@@ -179,9 +179,9 @@ async function cancelTrayRun(run: DesktopRun) {
   if (!window || !child?.connected) return;
   const answer = await dialog.showMessageBox(window, {
     type: 'question',
-    message: korean() ? '이 실행을 취소할까요?' : 'Cancel this run?',
+    message: korean() ? '이 실행을 중지할까요?' : 'Stop this run?',
     detail: run.title ?? '',
-    buttons: korean() ? ['계속 실행', '실행 취소'] : ['Keep running', 'Cancel run'],
+    buttons: korean() ? ['계속 실행', '실행 중지'] : ['Keep running', 'Stop the run'],
     defaultId: 0,
     cancelId: 0,
   });

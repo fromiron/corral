@@ -537,24 +537,43 @@ export function ChatView({
     return { following, held: () => restoreAnchor.current === anchor };
   };
   const jumped = useRef<string | undefined>(undefined);
-  // Where the focus was when the link arrived: the row takes it only if it is still there (the
-  // person may be typing in the composer by the time the row joins).
-  const arrivedAt = useRef<{ messageId: string; focused: Element | null } | null>(null);
+  // While a linked row waits to join, a key or a pointer the person presses means they went on
+  // elsewhere: the row then does not take the focus. Focus the app moves by itself does not count
+  // (features/session-panel.md 접근성).
+  const waiting = useRef<{ messageId: string; pressed: boolean; stop: () => void } | null>(null);
+  useEffect(() => () => waiting.current?.stop(), []);
   // A linked row may join the items later; `place` reads the current items and list itself.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rerun when the items or list change
   useLayoutEffect(() => {
     if (!messageId) {
       jumped.current = undefined;
-      arrivedAt.current = null;
+      waiting.current?.stop();
+      waiting.current = null;
       return;
     }
-    if (arrivedAt.current?.messageId !== messageId)
-      arrivedAt.current = { messageId, focused: document.activeElement };
+    if (waiting.current?.messageId !== messageId) {
+      waiting.current?.stop();
+      const wait = { messageId, pressed: false, stop: () => {} };
+      const press = (event: Event) => {
+        if (event instanceof KeyboardEvent && event.repeat) return;
+        wait.pressed = true;
+        wait.stop();
+      };
+      window.addEventListener('keydown', press, true);
+      window.addEventListener('pointerdown', press, true);
+      wait.stop = () => {
+        window.removeEventListener('keydown', press, true);
+        window.removeEventListener('pointerdown', press, true);
+      };
+      waiting.current = wait;
+    }
     if (jumped.current === messageId) return;
     if (!place.current(messageId, 0)) return;
     jumped.current = messageId;
+    const wait = waiting.current;
+    wait.stop();
     // Going to a message ends there: the focus goes with it (features/session-panel.md 접근성).
-    if (document.activeElement !== arrivedAt.current.focused) return;
+    if (wait.pressed) return;
     const row = [...document.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
       (element) => element.dataset.chatItem === messageId,
     );

@@ -18,7 +18,7 @@ type Listener = (result: RunListResult, force: boolean, asked: number) => void;
 
 function createSource(transport: Transport) {
   const listeners = new Set<Listener>();
-  let latest: RunListResult | null = null;
+  let latest: { result: RunListResult; asked: number } | null = null;
   // Listings are numbered as they are asked for: a consumer tells one asked before it joined.
   let asked = 0;
   const watcher = watchRefresh(async (current, force) => {
@@ -31,20 +31,29 @@ function createSource(transport: Transport) {
       result = { error };
     }
     if (!current()) return;
-    latest = result;
+    latest = { result, asked: number };
     for (const listener of listeners) listener(result, force, number);
   }, 1500);
   return { listeners, watcher, latest: () => latest, asked: () => asked };
 }
 
+/**
+ * Where a consumer joined the list: given back to `watchRunList` by the same consumer subscribing
+ * again (its own state changed), so a listing it asked for before that still counts as its own.
+ */
+export interface RunListMark {
+  readonly source: object;
+  readonly joined: number;
+}
+
 const sources = new WeakMap<Transport, ReturnType<typeof createSource>>();
 
 /** One discovery cadence per server connection; consumers retain their own read fences. */
-export function watchRunList(transport: Transport, read: Reader) {
+export function watchRunList(transport: Transport, read: Reader, since?: RunListMark) {
   let source = sources.get(transport);
   // A listing asked before this consumer joined answers it as a repeated one; a new source's
-  // first listing is asked for it.
-  const joined = source?.asked() ?? 0;
+  // first listing is asked for it. Subscribing again to the same list keeps where it joined.
+  const joined = source && since?.source === source ? since.joined : (source?.asked() ?? 0);
   if (!source) {
     source = createSource(transport);
     sources.set(transport, source);
@@ -75,10 +84,15 @@ export function watchRunList(transport: Transport, read: Reader) {
   };
   owner.listeners.add(receive);
   const latest = owner.latest();
-  if (latest) receive(latest, true, joined);
+  if (latest) receive(latest.result, true, latest.asked);
   return {
+    mark: { source: owner, joined } as RunListMark,
     refresh() {
       if (active) owner.watcher.refresh();
+    },
+    /** Asks for a listing of its own, unless one asked since it joined is out or in already. */
+    listOwn() {
+      if (active && owner.asked() <= joined) owner.watcher.refresh();
     },
     dispose() {
       if (!active) return;

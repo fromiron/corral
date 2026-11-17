@@ -100,6 +100,15 @@ import { MeetingPage } from './MeetingPage.tsx';
  * Stores own editing and execution state independently of dock placement.
  */
 /** a meeting has its own chat; every other session keeps the work view. */
+/** Whether the selected tab of `state` is the one a way's target names. */
+function namesSelected(target: Partial<SessionSearch>, state: PanelState): boolean {
+  const key = state.selected;
+  if (!target.panel || !key) return false;
+  const kind = PANEL_TAB_OF[target.panel];
+  if (kind !== 'run') return key === kind;
+  return target.run ? key === `run:${target.run}` : key.startsWith('run:');
+}
+
 export function SessionPage() {
   const { session } = sessionRoute.useLoaderData();
   useEffect(() => {
@@ -177,9 +186,19 @@ function WorkSessionPage() {
       const runId = arrived.advice;
       if (runId) setAdviceRequest((previous) => ({ runId, n: (previous?.n ?? 0) + 1 }));
     },
-    // A link that opens or selects a tab is an opening way: the focus goes as open() sends it.
+    // A link that opens or selects a tab is an opening way: the focus goes as open() sends it,
+    // and closing the panel gives it back to the link, or to the toggle when the link was inside
+    // the panel. A link that opens or selects nothing moves no focus.
     onOpenedByLink: (arrived, next, before) => {
-      if (!next.selected || !panelOnScreen(next.presentation)) return;
+      if (!namesSelected(arrived, next)) return;
+      const focused = document.activeElement;
+      opener.current =
+        focused instanceof HTMLElement &&
+        focused !== document.body &&
+        !side.current?.contains(focused)
+          ? focused
+          : null;
+      if (!panelOnScreen(next.presentation)) return;
       focusOpened(arrived, next, before);
     },
   });
@@ -230,6 +249,8 @@ function WorkSessionPage() {
   };
   /** Where the focus goes once a way opened `next`: its tab, or the place inside it it names. */
   const focusOpened = (target: Partial<SessionSearch>, next: PanelState, before: PanelState) => {
+    // A way that opened or selected nothing it names (a run tab with no run) moves no focus.
+    if (!namesSelected(target, next)) return;
     // A way that names the terminal or Git puts the focus in the terminal or the commit message
     // once its tab shows it; without one the focus stays on the tab.
     if (target.panel === 'terminal') focusTerminal();
@@ -257,17 +278,22 @@ function WorkSessionPage() {
   };
   // A way that names a place inside a tab (the terminal, the commit message) waits for that
   // place to appear; one wait at a time, gone with a new request, the conversation or the page.
-  const placeWait = useRef<number | null>(null);
-  const stopPlaceWait = useCallback(() => {
-    if (placeWait.current !== null) window.clearTimeout(placeWait.current);
+  // Each wait carries its conversation: leaving one ends only its own wait, not one the entry of
+  // the next conversation has just started.
+  const placeWait = useRef<{ sessionId: string; timer: number } | null>(null);
+  const stopPlaceWait = useCallback((sessionId?: string) => {
+    const wait = placeWait.current;
+    if (!wait || (sessionId !== undefined && wait.sessionId !== sessionId)) return;
+    window.clearTimeout(wait.timer);
     placeWait.current = null;
   }, []);
   useEffect(() => {
-    void session.sessionId;
-    return stopPlaceWait;
+    const left = session.sessionId;
+    return () => stopPlaceWait(left);
   }, [session.sessionId, stopPlaceWait]);
   const focusPlace = (tab: TabKey, find: (content: HTMLElement) => HTMLElement | null) => {
     stopPlaceWait();
+    const sessionId = session.sessionId;
     let tries = 0;
     const attempt = () => {
       placeWait.current = null;
@@ -279,9 +305,10 @@ function WorkSessionPage() {
         const focused = document.activeElement;
         if (!focused || focused === document.body || side.current?.contains(focused))
           place.focus({ preventScroll: true });
-      } else if (++tries < 40) placeWait.current = window.setTimeout(attempt, 50);
+      } else if (++tries < 40)
+        placeWait.current = { sessionId, timer: window.setTimeout(attempt, 50) };
     };
-    placeWait.current = window.setTimeout(attempt, 0);
+    placeWait.current = { sessionId, timer: window.setTimeout(attempt, 0) };
   };
   const focusTerminal = () =>
     focusPlace('files', (content) => {
@@ -339,6 +366,9 @@ function WorkSessionPage() {
     // Runs again after an open or a close, whichever of these it changed.
     void presentation;
     void state.tabs.length;
+    // Until the frame has entered this conversation, the state here is not its own (the empty
+    // state of the commit that enters it): a focus asked for waits, and nothing was closed.
+    if (!frame.entered) return;
     const was = shown.current;
     shown.current = onScreen;
     const target = focusNext.current;
@@ -384,13 +414,13 @@ function WorkSessionPage() {
           : document.querySelector<HTMLElement>('[data-session-panel-toggle]');
       back?.focus();
     }
-  }, [presentation, state.selected, state.tabs.length, onScreen, operable]);
+  }, [presentation, state.selected, state.tabs.length, onScreen, operable, frame.entered]);
 
   // Documents and panes asked for before the 파일 tab's dock is ready wait for it. Readiness is
   // the dock's own: its handle is handed over again on every render, so a null between two
   // handles says nothing about it.
-  // Each waits for this conversation's dock only: one asked here never runs in the next
-  // conversation's.
+  // What is queued for the dock is dropped when the conversation changes. A caller that arrives
+  // after its own wait (a document still opening) is not checked here.
   const dockQueue = useRef<{ sessionId: string; action: (handle: DockWorkbenchHandle) => void }[]>(
     [],
   );

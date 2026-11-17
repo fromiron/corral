@@ -3,7 +3,7 @@ import { canonicalJson, type RunSummary, type SessionEntry } from '@corral/core'
 import { useRouter } from '@tanstack/react-router';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useServices } from '../services.tsx';
-import { watchRunList } from './runList.ts';
+import { type RunListMark, watchRunList } from './runList.ts';
 
 /** Discover remote requests even while this tab has no active run. */
 export function useSessionRuns(
@@ -21,6 +21,8 @@ export function useSessionRuns(
   const [listedFor, setListedFor] = useState<string | null>(null);
   const listed = useRef<string | null>(null);
   const watchedFor = useRef<string | null>(null);
+  // Where this entry joined the run list: kept while it subscribes again for its own changes.
+  const joinedAt = useRef<RunListMark | undefined>(undefined);
   // Session reads, numbered as they are asked for: `read` is the number of the latest one that
   // came back and whose session the page shows. A meta line waits for a read asked for after it
   // saw an instruction expire.
@@ -48,37 +50,45 @@ export function useSessionRuns(
     void selectedRunId;
     const asked = request;
     // Entered again: nothing listed so far is this entry's.
-    if (watchedFor.current !== asked) listed.current = null;
+    if (watchedFor.current !== asked) {
+      listed.current = null;
+      joinedAt.current = undefined;
+    }
     watchedFor.current = asked;
     let knownState = persistedState;
-    const watcher = watchRunList(transport, async (result, current, _force, repeated) => {
-      try {
-        if ('error' in result) throw result.error;
-        const { runs } = result;
-        readsAsked.current += 1;
-        const asking = readsAsked.current;
-        const session = await repository.getSession(sessionId);
-        if (!current()) return;
-        const nextState = session ? canonicalJson([session.revision, session.entries]) : null;
-        setAnswered((latest) => (asking > latest.asking ? { asking, state: nextState } : latest));
-        if (nextState && nextState !== knownState) {
-          await router.invalidate();
-          if (current()) knownState = nextState;
+    const watcher = watchRunList(
+      transport,
+      async (result, current, _force, repeated) => {
+        try {
+          if ('error' in result) throw result.error;
+          const { runs } = result;
+          readsAsked.current += 1;
+          const asking = readsAsked.current;
+          const session = await repository.getSession(sessionId);
+          if (!current()) return;
+          const nextState = session ? canonicalJson([session.revision, session.entries]) : null;
+          setAnswered((latest) => (asking > latest.asking ? { asking, state: nextState } : latest));
+          if (nextState && nextState !== knownState) {
+            await router.invalidate();
+            if (current()) knownState = nextState;
+          }
+          // Publish run transitions after their request records are revalidated.
+          if (!current()) return;
+          setAll(runs);
+          // An answer to a listing asked before this request is shown, but it is not its answer:
+          // a request not listed yet asks for one at once rather than waiting for the clock.
+          if (!repeated) {
+            listed.current = asked;
+            setListedFor(asked);
+          } else if (listed.current !== asked) watcher.listOwn();
+          setLost(false);
+        } catch {
+          if (current()) setLost(true);
         }
-        // Publish run transitions after their request records are revalidated.
-        if (!current()) return;
-        setAll(runs);
-        // An answer to a listing asked before this request is shown, but it is not its answer:
-        // a request not listed yet asks for one at once rather than waiting for the clock.
-        if (!repeated) {
-          listed.current = asked;
-          setListedFor(asked);
-        } else if (listed.current !== asked) watcher.refresh();
-        setLost(false);
-      } catch {
-        if (current()) setLost(true);
-      }
-    });
+      },
+      joinedAt.current,
+    );
+    joinedAt.current = watcher.mark;
     refreshRead.current = watcher.refresh;
     return watcher.dispose;
   }, [transport, repository, router, sessionId, selectedRunId, persistedState, request]);

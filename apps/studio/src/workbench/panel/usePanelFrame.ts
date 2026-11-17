@@ -3,7 +3,7 @@ import { discardCancelConfirmation } from '@corral/react';
 import { useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { patchSessionSearch, type SessionSearch, validateSessionSearch } from '../panels/routes.ts';
-import { nextSearch, TAB_PARAMS, withoutFrameParams } from './address.ts';
+import { nextSearch, readAddress, TAB_PARAMS, withoutFrameParams } from './address.ts';
 import { historyActionOf, travelled } from './historyActions.ts';
 import { deviceStorage, readPanelMemory, writePanelMemory } from './memory.ts';
 import {
@@ -255,8 +255,11 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     const action = historyActionOf(router.history, locationKey);
     const back = travelled(action);
     const before = heldRef.current?.sessionId === sessionId ? heldRef.current.state : EMPTY_PANEL;
-    const linked = (result: PanelResult) => {
-      if (search.panel) latest.current.input.onOpenedByLink?.(search, result.state, before);
+    // Only a panel address opens a way to a tab: a request to respond, or an address without
+    // `panel`, opens none.
+    const linked = (state: PanelState) => {
+      if (readAddress(search).kind === 'panel')
+        latest.current.input.onOpenedByLink?.(search, state, before);
     };
     if (heldRef.current?.sessionId !== sessionId) {
       const via: EntryVia = !action ? 'address' : back ? 'history' : outside ? 'address' : 'link';
@@ -266,17 +269,19 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
         memory: readPanelMemory(deviceStorage(), sessionId),
         via,
       });
-      if (via === 'link') linked(result);
+      if (via === 'link') linked(result.state);
       return;
     }
     // Back and Forward decide before any tag: a travelled entry may carry an old write's mark.
     if (back) dispatch({ type: 'history', search });
     // An entry from outside is never the frame's own write, whatever mark it carries.
     else if (!outside && ownMark?.startsWith(`${nonce}:`)) return;
+    // The address shown already (or a change only to what the frame does not read): no way
+    // opened anything, so no focus moves and no opener changes, whoever navigated.
     else if (same(frameParams(previous.search), frameParams(search))) return;
     else {
       const result = dispatch({ type: 'follow', search, source: outside ? 'outside' : 'in-app' });
-      if (!outside) linked(result);
+      if (!outside) linked(result.state);
     }
   }, [
     locationKey,

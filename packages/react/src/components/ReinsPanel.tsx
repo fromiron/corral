@@ -32,6 +32,13 @@ interface Draft {
 const draftKey = (runId: string | null, executionId: string) =>
   `reins:${runId ?? ''}:${executionId}`;
 
+/**
+ * The areas on screen, told when a draft sent from one of them is settled by its answer: an area
+ * opened again for that execution before the answer starts from the same kept draft, and takes
+ * what the answer leaves (nothing, or the draft with its lost command).
+ */
+const settledDrafts = new Set<(sent: Draft, next: Draft | null) => void>();
+
 export function ReinsPanel({
   session,
   target,
@@ -66,8 +73,17 @@ export function ReinsPanel({
   const settle = useCallback((sent: Draft, next: Draft | null) => {
     const key = draftKey(sent.runId, sent.executionId);
     if (keptInput<Draft>(key) === sent) keepInput(key, next);
-    if (current.current === sent) current.current = next;
-    setDraftState((shown) => (shown === sent ? next : shown));
+    for (const area of [...settledDrafts]) area(sent, next);
+  }, []);
+  useEffect(() => {
+    const take = (sent: Draft, next: Draft | null) => {
+      if (current.current === sent) current.current = next;
+      setDraftState((shown) => (shown === sent ? next : shown));
+    };
+    settledDrafts.add(take);
+    return () => {
+      settledDrafts.delete(take);
+    };
   }, []);
   // Pinned to the run and execution it was opened for.
   const [cancelTarget, setCancelTarget] = useState<{
