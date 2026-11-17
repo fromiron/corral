@@ -55,7 +55,7 @@ const project: GitStatus = {
   entries: [],
 };
 
-it('without a copy, says so once in the Git view, and still shows the project’s Git when chosen', async () => {
+it('without a copy, says so once, shows the project’s Git first, and still offers Paddock', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -100,22 +100,24 @@ it('without a copy, says so once in the Git view, and still shows the project’
   const text = () => container.textContent ?? '';
   expect(text().split('no copy yet')).toHaveLength(2);
   expect(text()).not.toContain('Git.noSessionCopy');
-  expect(gitStatus).not.toHaveBeenCalled();
+  // The original's Git first (workbench.md): read without choosing, and no copy is made.
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
+  expect(text()).toContain('Git.unborn');
 
-  // The source picker stays: the project's own Git is one choice away, and no copy is made.
+  // The source picker stays: Paddock is one choice away, and nothing of it is read without a copy.
   const picker = container.querySelector<HTMLButtonElement>('[role=combobox]');
   expect(picker).not.toBeNull();
   await act(async () => picker?.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
-    (item) => item.textContent === 'Git.projectSource',
+    (item) => item.textContent === 'Git.sessionSource',
   );
   await act(async () => option?.focus());
   await act(async () =>
     option?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
   for (let i = 0; i < 3; i++) await act(async () => {});
-  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
-  expect(text()).toContain('Git.unborn');
+  expect(gitStatus).toHaveBeenCalledTimes(1);
+  expect(text()).not.toContain('Git.unborn');
   expect(text().split('no copy yet')).toHaveLength(2);
   expect(createWorktree).not.toHaveBeenCalled();
 });
