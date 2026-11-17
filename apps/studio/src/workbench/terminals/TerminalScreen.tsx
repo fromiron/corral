@@ -162,9 +162,7 @@ export function TerminalScreen({
       <div className="absolute top-1 right-1 z-10">
         <Menu>
           <Tooltip content={t('actions')}>
-            <MenuTrigger
-              render={<Button variant="ghost" size="icon" aria-label={t('actions')} />}
-            >
+            <MenuTrigger render={<Button variant="ghost" size="icon" aria-label={t('actions')} />}>
               <Ellipsis />
             </MenuTrigger>
           </Tooltip>
