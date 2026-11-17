@@ -4298,6 +4298,9 @@ export class WorkspaceService implements FileTools {
   ): Promise<{ path: string; content: FileSide }> {
     const { root } = await this.browseRoot(scope);
     const rel = safeRelative(path);
+    // A file the folder does not hold is not found; a path that is no plain file stays refused.
+    if ((await assertPlainPath(root, rel)) === 'missing')
+      throw new WorkspaceError('TARGET_NOT_FOUND', `${rel} does not exist`);
     const { bytes, size } = await boundedFile(root, rel);
     if (!bytes) return { path: rel, content: { kind: 'too_large', bytes: size } };
     const text = decodeText(bytes);

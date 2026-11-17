@@ -216,3 +216,23 @@ it('returns a bounded generic error without an internal filesystem path', async 
     message: 'the document operation failed',
   });
 });
+
+it('answers a source-folder file that is not there as not found, apart from a path that is no plain file', async () => {
+  const { api, original } = await fixture();
+  mkdirSync(join(original, 'folder'));
+  const refusal = (path: string) =>
+    api.readFile({ kind: 'project', id: 'default' }, path).then(
+      () => null,
+      (error: { status?: number; code?: string }) => ({ status: error.status, code: error.code }),
+    );
+
+  await expect(
+    api.readFile({ kind: 'project', id: 'default' }, 'source.txt'),
+  ).resolves.toMatchObject({
+    content: { kind: 'text' },
+  });
+  expect(await refusal('gone.txt')).toEqual({ status: 404, code: 'TARGET_NOT_FOUND' });
+  expect(await refusal('folder/gone.txt')).toEqual({ status: 404, code: 'TARGET_NOT_FOUND' });
+  // A folder is no file: refused, but not as missing (counterexample).
+  expect(await refusal('folder')).not.toMatchObject({ code: 'TARGET_NOT_FOUND' });
+});
