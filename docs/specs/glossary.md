@@ -19,8 +19,9 @@
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭(이 뜻으로) |
-| 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | 패널 |
+| 파일 탭 안 도킹 영역의 한 칸(패널의 탭과 하단 도크의 탭은 창이 아니다) | Pane / 창 | `DockView`, `SessionPanel` | 패널, 도크 |
 | 대화 옆에서 탭을 하나씩 열고 닫는 자리 | Panel / 패널 | 주소 `panel`, [세션 패널](features/session-panel.md) | 창, 도구 패널 |
+| 대화와 패널 아래에서 터미널 탭과 디버그 탭을 여는 자리 | Bottom dock / 하단 도크 | 주소 없음, [세션 패널](features/session-panel.md#하단-도크) | 패널, 창, 터미널 창 |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
 | 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요, Waiting for your answer / 답변을 기다리고 있습니다, 내 답변 대기, 답을 기다리는 중, 사용자를 기다리는 중 |
 | 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
