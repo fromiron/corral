@@ -113,6 +113,8 @@ export interface PanelState {
   readonly awaiting: Awaiting | null;
   /** The instance the next opened tab gets. */
   readonly nextInstance: number;
+  /** The 문서 tab chosen last, for a wide panel's ways to 파일; never remembered. */
+  readonly lastDocument?: TabKey | null;
 }
 
 export const EMPTY_PANEL: PanelState = {
@@ -350,11 +352,29 @@ function addressTab(state: PanelState, target: PanelTarget, ctx: PanelContext): 
 const dockBound = (target: PanelTarget) =>
   PANEL_TAB_OF[target.panel] === null || PANEL_TAB_OF[target.panel] === 'terminal';
 
+/** The tree is a column beside the 문서 tabs: 파일 is open in a wide panel with a 문서 tab. */
+export function treeColumn(state: Pick<PanelState, 'tabs'>, ctx: PanelContext): boolean {
+  return (
+    Boolean(ctx.wide) &&
+    state.tabs.some((tab) => tab.kind === 'files') &&
+    state.tabs.some((tab) => tab.kind === 'document')
+  );
+}
+
 function closed(state: PanelState, key: TabKey, ctx: PanelContext): PanelState {
   const index = state.tabs.findIndex((tab) => tabKey(tab) === key);
   if (index < 0) return state;
   const tabs = state.tabs.filter((_, i) => i !== index);
-  const neighbour = tabs[index] ?? tabs[index - 1];
+  // A 파일 not drawn in the strip is nobody's neighbour; the last 문서 tab hands back to it.
+  const hidden = treeColumn({ tabs }, ctx);
+  const drawn = (tab: OpenTab | undefined) => (hidden && tab?.kind === 'files' ? undefined : tab);
+  const after = tabs.slice(index).find((tab) => drawn(tab));
+  const before = tabs.slice(0, index).findLast((tab) => drawn(tab));
+  const lastDocument =
+    treeColumn(state, ctx) && !hidden && state.tabs[index]?.kind === 'document'
+      ? tabs.find((tab) => tab.kind === 'files')
+      : undefined;
+  const neighbour = lastDocument ?? after ?? before;
   const selected = state.selected === key ? (neighbour ? tabKey(neighbour) : null) : state.selected;
   if (tabs.length > 0) return { ...state, tabs, selected };
   // The last tab: the panel stays open on its list (넓힘 released), unless nothing can be opened.
@@ -597,12 +617,29 @@ function settle(state: PanelState, ctx: PanelContext): PanelState {
   if (ctx.corralIds) next = graphsAnswered(next, ctx.corralIds);
   next = presented(next, byRoom(next.presentation, ctx.room));
   if (next.presentation === 'withdrawn' && next.tabs.length === 0) next = presented(next, 'closed');
+  next = besideTheTree(next, ctx);
   if (panelOnScreen(next.presentation) && next.selected) {
     const index = next.tabs.findIndex((tab) => tabKey(tab) === next.selected);
     const tab = next.tabs[index];
     if (tab && !tab.seen)
       next = { ...next, tabs: next.tabs.map((t, i) => (i === index ? { ...t, seen: true } : t)) };
   }
+  return next;
+}
+
+// A wide panel draws 파일 as the tree column, never as the selected tab: its ways and its
+// selection go to the 문서 tab chosen last (or the first one); the 문서 tab selected is remembered
+// as the one chosen last.
+function besideTheTree(state: PanelState, ctx: PanelContext): PanelState {
+  let next = state;
+  if (next.selected === 'files' && treeColumn(next, ctx)) {
+    const documents = next.tabs.filter((tab) => tab.kind === 'document');
+    const last = documents.find((tab) => tabKey(tab) === next.lastDocument) ?? documents[0];
+    if (last) next = { ...next, selected: tabKey(last) };
+  }
+  const selected = next.tabs.find((tab) => tabKey(tab) === next.selected);
+  if (selected?.kind === 'document' && next.lastDocument !== next.selected)
+    next = { ...next, lastDocument: next.selected };
   return next;
 }
 

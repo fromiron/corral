@@ -116,6 +116,11 @@ export interface PanelContext {
    */
   readonly corralIds?: readonly string[] | null | undefined;
   /**
+   * The panel is wide (800px or more): the tree is a column beside the 문서 tabs, and 파일 is not
+   * drawn in the strip while one is open (features/session-panel.md 파일 탭과 트리 열).
+   */
+  readonly wide?: boolean | undefined;
+  /**
    * The `panel` value of the window or view now in front inside the 파일 and 변경 tabs
    * (`terminal`, `git`, …), so the address written for that tab names it.
    */
