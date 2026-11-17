@@ -121,9 +121,7 @@ describe('a head of receipts only, one line each', () => {
     expect(line).not.toBeNull();
     const text = textOf(line);
     expect(text).toHaveClass('truncate');
-    expect(words(text)).toBe(
-      'Whole-run command · Boundary: after active work is settled · Accepted',
-    );
+    expect(words(text)).toBe('Command · Boundary: after active work is settled · Accepted');
     // One mark, before the words and silent: the state is said in words.
     const marks = line?.querySelectorAll('[data-slot="receipt-mark"]') ?? [];
     expect(marks).toHaveLength(1);
@@ -155,7 +153,7 @@ describe('a head of receipts only, one line each', () => {
     });
     const line = lineOf(screen.getByTestId('receipt-cmd_rejected'));
     expect(words(textOf(line))).toBe(
-      'Whole-run command · Rejected · This operation was not allowed. Check the recorded reason. CAPABILITY_DENIED: Not allowed.',
+      'Command · Rejected · This operation was not allowed. Check the recorded reason. CAPABILITY_DENIED: Not allowed.',
     );
     expect(line?.querySelector('[data-status="rejected"]')).not.toBeNull();
     expect(line?.querySelector('details')).toBeNull();
@@ -196,7 +194,7 @@ describe('a head of receipts only, one line each', () => {
     );
   });
 
-  it('keeps the generic name for a command with no name of its own', () => {
+  it('names any other command after the generic word, never by its type', () => {
     receiptLines({
       receipts: {
         cmd_approval: receipt('cmd_approval', 'accepted', { requestedBoundary: 'immediate' }),
@@ -204,7 +202,7 @@ describe('a head of receipts only, one line each', () => {
       commandTypes: { cmd_approval: 'resolve_approval' },
     });
     expect(words(textOf(lineOf(screen.getByTestId('receipt-cmd_approval'))))).toBe(
-      'Whole-run command · Boundary: future admissions immediately · Accepted',
+      'Command · Approval decision · Boundary: future admissions immediately · Accepted',
     );
   });
 
@@ -271,9 +269,7 @@ describe('a head of receipts only, one line each', () => {
     await userEvent.tab();
     expect(text).toHaveFocus();
     const tip = await screen.findByRole('tooltip');
-    expect(words(tip)).toBe(
-      'Whole-run command · Boundary: after active work is settled · Accepted',
-    );
+    expect(words(tip)).toBe('Command · Boundary: after active work is settled · Accepted');
   });
 
   it('leaves a line that fits out of the tab order, with no tooltip', async () => {
@@ -446,5 +442,92 @@ describe('a lost response, said once', () => {
       );
       expect(document.body.textContent).not.toContain('Failed to fetch');
     }
+  });
+});
+
+// Every kind of command by a name, never by its type: a whole-run control by its run name, any
+// other after the generic word.
+
+const names: Record<string, string> = {
+  cmd_1: 'Pause run',
+  cmd_2: 'Resume run',
+  cmd_3: 'Stop the run',
+  cmd_4: 'Command · Cancel',
+  cmd_5: 'Command · Cancel',
+  cmd_7: 'Command · Compaction',
+  cmd_8: 'Command · Restart task',
+  cmd_9: 'Command · Approval decision',
+  cmd_10: 'Command · Answer',
+  cmd_11: 'Command · Extension answer',
+  cmd_12: 'Command · Settings change',
+  cmd_13: 'Command · Pause before steps',
+  cmd_14: 'Command · Advice',
+};
+
+describe('a command’s name', () => {
+  it.each(['lines', 'block'] as const)(
+    'names each lost command in the run’s head, with no type and no whole-run word for others (%s)',
+    (head) => {
+      for (const lostCommand of everyCommand.filter((c) => c.type !== 'steer')) {
+        cleanup();
+        screenWith(
+          {
+            unconfirmedCommands: {
+              [lostCommand.commandId]: { command: lostCommand, error: 'Failed to fetch' },
+            },
+          },
+          head,
+        );
+        const text = words(screen.getByTestId('head')) ?? '';
+        const name = names[lostCommand.commandId] as string;
+        expect(text.startsWith(name), `${lostCommand.commandId}: ${text}`).toBe(true);
+        expect(text, lostCommand.commandId).not.toContain(lostCommand.type);
+        expect(text, lostCommand.commandId).not.toContain('Whole-run command');
+      }
+    },
+  );
+
+  it('names a receipt in the titled block by its command', () => {
+    const session = sessionStore({
+      runId: 'run_receipts',
+      projection: { ...emptyProjection('run_receipts'), status: 'running' },
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
+        cmd_patch: receipt('cmd_patch', 'queued'),
+      },
+      commandTypes: { cmd_pause: 'pause', cmd_patch: 'patch' },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunActions session={session} compact />
+      </IntlProvider>,
+    );
+    expect(words(screen.getByTestId('receipt-cmd_pause'))).toContain('Pause run · Accepted');
+    expect(words(screen.getByTestId('receipt-cmd_patch'))).toContain(
+      'Command · Settings change · Queued',
+    );
+    expect(document.body.textContent).not.toContain('Whole-run command');
+  });
+
+  it('names an instruction to one execution in its Reins', () => {
+    const session = sessionStore({
+      runId: 'run_receipts',
+      projection: { ...emptyProjection('run_receipts'), status: 'running' },
+      receipts: {
+        cmd_steer: receipt('cmd_steer', 'queued', {
+          target: 'execution:exec_1',
+          requestedBoundary: 'next_request',
+        }),
+      },
+      commandTypes: { cmd_steer: 'steer' },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <CommandReceipts session={session} target="execution:exec_1" />
+      </IntlProvider>,
+    );
+    expect(words(screen.getByTestId('receipt-cmd_steer'))).toContain(
+      'Command · Instruction · Queued',
+    );
   });
 });

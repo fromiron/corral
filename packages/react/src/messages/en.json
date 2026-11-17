@@ -441,6 +441,19 @@
     "confirmCancelRun": "Stop the run",
     "keepRunning": "Keep running",
     "receipts": "Command receipts",
+    "command": "Command",
+    "commands": {
+      "cancel": "Cancel",
+      "steer": "Instruction",
+      "compact_context": "Compaction",
+      "restart_task": "Restart task",
+      "resolve_approval": "Approval decision",
+      "answer_user": "Answer",
+      "answer_extension_ui": "Extension answer",
+      "patch": "Settings change",
+      "set_breakpoints": "Pause before steps",
+      "submit_advice": "Advice"
+    },
     "receiptUnconfirmed": "Receipt not confirmed. Check the run before retrying.",
     "retrySameCommand": "Check receipt and retry safely",
     "draftTargetChanged": "This draft belongs to {target}. Choose that execution or explicitly move the draft before sending.",
@@ -460,8 +473,6 @@
     "restartExplain": "Creates a new execution for the same unfinished task after this attempt has terminated. The coordinator checks that its parent still waits for it.",
     "requestLink": "Request {request} · Snapshot {snapshot}",
     "produced": "Produced: {versions}",
-    "receiptRun": "Whole-run command",
-    "receiptExecution": "Command to one execution",
     "cancelNotSent": "The stop has not been sent. Confirm below to stop this run.",
     "steering": {
       "pause": "Pause the run",

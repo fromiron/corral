@@ -68,12 +68,25 @@ export function useOpenReceipts(session: RunSessionStore, target: string): boole
   });
 }
 
-/** A whole-run control's own name, which says it is the run's; other commands have none yet. */
-const NAMES: Partial<Record<RunCommandType, 'pause' | 'resume' | 'cancelRun'>> = {
+/** A whole-run control's own name, which says it is the run's. */
+const RUN_NAMES: Partial<Record<RunCommandType, 'pause' | 'resume' | 'cancelRun'>> = {
   pause: 'pause',
   resume: 'resume',
   cancel: 'cancelRun',
 };
+
+/**
+ * A command's name, never its type: a whole-run control by its run name, any other after the
+ * generic word ("Command · Approval decision"). `wholeRun` says a cancel is the run's.
+ */
+function useCommandName() {
+  const t = useTranslations('Reins');
+  return (type: RunCommandType | undefined, wholeRun: boolean): string[] => {
+    const run = type && (type !== 'cancel' || wholeRun) ? RUN_NAMES[type] : undefined;
+    if (run) return [t(run)];
+    return type ? [t('command'), t(`commands.${type}`)] : [t('command')];
+  };
+}
 
 /** Receipt state comes from the command record, never the HTTP status or a local click. */
 export function CommandReceipts({
@@ -102,11 +115,18 @@ export function CommandReceipts({
   const t = useTranslations('Reins');
   const failure = useTranslations('Failure');
   const status = useTranslations('Status');
+  const commandName = useCommandName();
   const receipts = useStore(session, (s) => s.receipts);
   const types = useStore(session, (s) => s.commandTypes);
   const commandError = useStore(session, (s) => s.commandError);
   const unconfirmedCommands = useStore(session, (s) => s.unconfirmedCommands);
   const pending = useStore(session, (s) => s.pendingCommandIds);
+  /** A lost command's name, from the command itself. */
+  const lostName = (command: RunCommand) =>
+    commandName(command.type, command.type !== 'cancel' || command.payload.scope.kind === 'run');
+  /** A receipt's name, from what its command was; its target says whether a cancel was the run's. */
+  const receiptName = (receipt: Receipt) =>
+    commandName(types[receipt.commandId], receipt.target.startsWith('run:'));
   const matching = Object.values(receipts).filter(
     (receipt) => receipt.target === target && (!openOnly || isOpen(receipt)),
   );
@@ -126,11 +146,6 @@ export function CommandReceipts({
       ]
         .filter(Boolean)
         .join(' ');
-    /** A whole-run control by its own name; any other command by the generic words. */
-    const nameOf = (type: RunCommandType | undefined, wholeRun: boolean) => {
-      const name = type && wholeRun ? NAMES[type] : undefined;
-      return name ? t(name) : null;
-    };
     const retryWords = t('retrySameCommand');
     return (
       <div className="flex min-w-0 flex-col gap-1 text-caption" aria-live="polite">
@@ -141,21 +156,12 @@ export function CommandReceipts({
           // biome-ignore lint/a11y/useSemanticElements: a named group of receipt lines, not a form fieldset.
           <div role="group" aria-label={t('receipts')} className="flex min-w-0 flex-col gap-1">
             {lost.map(({ command }) => {
-              const name = nameOf(
-                command.type,
-                command.type !== 'cancel' || command.payload.scope.kind === 'run',
-              );
               return (
                 <ReceiptLine
                   key={command.commandId}
                   mark={<StatusDot status="delivery_unknown" />}
                   words={[
-                    ...(name
-                      ? [{ text: name, title: command.commandId }]
-                      : [
-                          { text: t('receiptRun'), title: command.commandId },
-                          { text: command.type },
-                        ]),
+                    { text: lostName(command).join(' · '), title: command.commandId },
                     { text: t('receiptUnconfirmed'), alert: true, tone: 'muted' as const },
                   ]}
                   action={
@@ -183,12 +189,7 @@ export function CommandReceipts({
               );
             })}
             {matching.map((receipt) => {
-              const name = {
-                text:
-                  nameOf(types[receipt.commandId], receipt.target.startsWith('run:')) ??
-                  t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution'),
-                title: receipt.commandId,
-              };
+              const name = { text: receiptName(receipt).join(' · '), title: receipt.commandId };
               const state = status.has(receipt.status) ? status(receipt.status) : receipt.status;
               const tail = receipt.error
                 ? reason(receipt.error)
@@ -225,9 +226,7 @@ export function CommandReceipts({
       ) : null}
       {lost.map(({ command }) => (
         <div key={command.commandId} className="rounded border border-warning p-2">
-          <p title={command.commandId}>
-            {t('receiptRun')} · {command.type}
-          </p>
+          <p title={command.commandId}>{lostName(command).join(' · ')}</p>
           <p role="alert">{t('receiptUnconfirmed')}</p>
           <Button
             type="button"
@@ -247,10 +246,8 @@ export function CommandReceipts({
         >
           <p>
             {/* UX-08: what the command was for, not its ID (kept in the title for support). */}
-            <span title={receipt.commandId}>
-              {t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')}
-            </span>{' '}
-            · <StatusBadge status={receipt.status} />
+            <span title={receipt.commandId}>{receiptName(receipt).join(' · ')}</span> ·{' '}
+            <StatusBadge status={receipt.status} />
           </p>
           <p className="text-muted-foreground">{t(`boundary.${receipt.requestedBoundary}`)}</p>
           {receipt.error ? (

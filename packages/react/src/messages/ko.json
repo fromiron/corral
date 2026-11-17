@@ -441,6 +441,19 @@
     "confirmCancelRun": "실행 중지",
     "keepRunning": "계속 실행",
     "receipts": "명령 접수 기록",
+    "command": "명령",
+    "commands": {
+      "cancel": "취소",
+      "steer": "지시",
+      "compact_context": "압축",
+      "restart_task": "작업 다시 시작",
+      "resolve_approval": "승인 결정",
+      "answer_user": "답변",
+      "answer_extension_ui": "확장 답변",
+      "patch": "설정 변경",
+      "set_breakpoints": "시작 전에 멈출 단계",
+      "submit_advice": "조언"
+    },
     "receiptUnconfirmed": "접수 여부를 확인하지 못했습니다. 다시 보내기 전에 실행을 확인하세요.",
     "retrySameCommand": "접수 확인 후 안전하게 다시 보내기",
     "draftTargetChanged": "이 초안은 {target}의 것입니다. 그 실행 단위를 고르거나, 초안을 옮긴다고 명시한 뒤 보내세요.",
@@ -460,8 +473,6 @@
     "restartExplain": "이 시도가 끝난 뒤 같은 미완료 작업에 새 실행 단위를 만듭니다. 상위 실행 단위가 아직 이 작업을 기다리는지 Coordinator가 확인합니다.",
     "requestLink": "요청 {request} · 스냅샷 {snapshot}",
     "produced": "만든 버전: {versions}",
-    "receiptRun": "실행 전체 명령",
-    "receiptExecution": "실행 단위 하나에 보낸 명령",
     "cancelNotSent": "아직 중지 요청을 보내지 않았습니다. 이 실행을 중지하려면 아래에서 확인하세요.",
     "steering": {
       "pause": "실행 일시정지",
