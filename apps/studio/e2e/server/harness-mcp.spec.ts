@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { linearCorral } from '@corral/testkit';
 import { oauthFixture } from '../../../server/test/fixtures/mcp-oauth.ts';
+import { lastRunSucceeded } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -139,7 +140,8 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
       return { runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+    // Beside the conversation the record does not say the run's state; the conversation does.
+    await expect(lastRunSucceeded(page)).toBeVisible();
     expect(fixture.mcpCalls).toBe(1);
     await page.goto(`${corral.server.url}/settings/mcp?projectId=default`);
     await page.getByRole('button', { name: /^Local docs/ }).click();

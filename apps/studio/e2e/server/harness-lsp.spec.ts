@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { linearCorral } from '@corral/testkit';
-import { maximizePanel } from '../workbench.ts';
+import { lastRunSucceeded, maximizePanel } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -128,7 +128,8 @@ test('registers and selects a language server, approves an SDK query and trusts 
     await expect(needsYou).toBeFocused();
     await expect(needsYou.getByText('node lsp.mjs', { exact: true })).toBeVisible();
     await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+    // Beside the conversation the record does not say the run's state; the conversation does.
+    await expect(lastRunSucceeded(page)).toBeVisible();
     await page.goto(`${corral.server.url}/settings?section=workspace&projectId=default`);
     await page
       .getByRole('button', { name: 'Review launch for Fixture server', exact: true })

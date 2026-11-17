@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
-import { maximizePanel, panelTabNamed } from '../workbench.ts';
+import { lastRunSucceeded, maximizePanel, panelTabNamed } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
@@ -140,9 +140,9 @@ test.describe('extension input during an SDK run', () => {
         // The run's record beside the conversation: the answer stands as received.
         await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
         await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
-        await expect(page.getByTestId('run-status').first()).toContainText('Working');
+        await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-description', 'Working');
         release();
-        await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+        await expect(lastRunSucceeded(page)).toBeVisible();
         await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       } finally {
         release();

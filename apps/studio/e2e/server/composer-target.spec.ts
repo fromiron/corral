@@ -4,17 +4,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   activityBar,
-  chooseRun,
   closePanel,
   closeSettings,
   confirmStop,
+  maximizePanel,
   openFolderSettings,
   openPanelTab,
   panelContent,
   panelTabNamed,
   panelToggle,
   requestBox,
+  restorePanel,
   runGoing,
+  selectPanelTab,
   slash,
   stopConfirmation,
   stopRun,
@@ -258,7 +260,9 @@ test.describe('viewed and active execution', () => {
   });
 
   // features/execution-monitor.md: while the run record shows a past run and another run of the
-  // session goes, one line above the header names that run and leads to it.
+  // session goes, one line above the header names that run and leads to it, over the
+  // conversation (maximized or a drawer) and only while that run has no tab; beside the
+  // conversation, which says the active run, the record does not.
   test('the run record of a past run names the active run on one line and opens it', async ({
     page,
     corral,
@@ -283,34 +287,45 @@ test.describe('viewed and active execution', () => {
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
 
-      await openPanelTab(page, 'Runs', { run: 2 });
-      const header = (run: string) => panelContent(page, run).getByTestId('run-header');
-      const line = header('Run #1').getByTestId('run-active-elsewhere');
-      // The newest run is the one going: no line while it shows.
-      await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
-      await expect(header('Run #2').getByTestId('run-active-elsewhere')).toHaveCount(0);
-      // Choosing Run #1 in the path opens its tab.
-      await chooseRun(page, 1);
-      await expect(page.getByRole('banner').getByRole('button', { name: /Run #1/ })).toBeVisible();
+      // Run #1 chosen in the "+" list's run history: the active Run #2 has no tab.
+      await openPanelTab(page, 'Runs', { run: 1 });
+      const record = panelContent(page, 'Run #1');
+      const line = record.getByTestId('run-active-elsewhere');
+      await expect(record.getByTestId('run-monitor')).toBeVisible();
+      // The top bar's path ends at the conversation: no run there.
+      await expect(page.getByRole('banner').getByRole('button', { name: /Run #\d/ })).toHaveCount(
+        0,
+      );
+      // Beside the conversation the record does not name the active run.
+      await expect(line).toHaveCount(0);
+      // Maximized over the conversation it does, on one line with one control.
+      await maximizePanel(page);
       await expect(line).toBeVisible();
       await expect(line).toContainText('Run #2');
       await expect(line.getByRole('button')).toHaveCount(1);
       // On a narrow header the line keeps its control on screen. Without room beside the
       // conversation the panel withdraws, and its toggle brings it back as a drawer.
+      await restorePanel(page);
       await page.setViewportSize({ width: 390, height: 844 });
       await panelToggle(page).click();
       await expect(
         line.getByRole('button', { name: 'View active run', exact: true }),
       ).toBeInViewport();
       await page.screenshot({ path: testInfo.outputPath('run-active-elsewhere-narrow.png') });
-      await page.setViewportSize({ width: 1280, height: 800 });
-      // The line selects the active run's tab, which takes the focus (features/session-panel.md
+      // The line opens the active run's tab, which takes the focus (features/session-panel.md
       // 접근성); Run #1's tab stays.
       await line.getByRole('button', { name: 'View active run', exact: true }).click();
       await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(second.runId);
-      await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
       await expect(panelTabNamed(page, 'Run #2')).toBeFocused();
       await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'false');
+      // The active run's own record has no such line.
+      await expect(panelContent(page, 'Run #2').getByTestId('run-monitor')).toBeVisible();
+      await expect(panelContent(page, 'Run #2').getByTestId('run-active-elsewhere')).toHaveCount(0);
+      // With the active run's tab in the strip, Run #1's record no longer names it.
+      await selectPanelTab(page, 'Run #1');
+      await expect(record.getByTestId('run-monitor')).toBeVisible();
+      await expect(line).toHaveCount(0);
+      await page.setViewportSize({ width: 1280, height: 800 });
       // Choosing it changed neither the draft nor where the composer sends.
       await closePanel(page);
       await expect(page.getByTestId('composer-destination')).toContainText('Send to: Run #2');

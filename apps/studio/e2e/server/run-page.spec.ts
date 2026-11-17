@@ -6,12 +6,16 @@ import {
   activityBar,
   closePanel,
   confirmStop,
+  lastRunSucceeded,
   maximizePanel,
   newConversation,
   openPanelTab,
   openResult,
+  panelContent,
+  panelTabNamed,
   panelToggle,
   requestBox,
+  restorePanel,
   runGoing,
   sendPlaceStop,
   sessionPanel,
@@ -69,6 +73,34 @@ async function startRun(
   }, fixture);
 }
 
+/** Starts one more simulated run in the session of a run `startRun` started. */
+async function startAnotherRun(
+  page: import('@playwright/test').Page,
+  started: { sessionId: string; corralId: string; definitionRevision: number },
+  commandId: string,
+) {
+  return page.evaluate(
+    async ({ sessionId, corralId, definitionRevision, commandId }) => {
+      const { csrfToken } = await (await fetch('/api/v1/session')).json();
+      const response = await fetch('/api/v1/runs', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
+        body: JSON.stringify({
+          schemaVersion: '0.1',
+          commandId,
+          sessionId,
+          corralId,
+          definitionRevision,
+          mode: 'mock',
+        }),
+      });
+      if (!response.ok) throw new Error(`run setup: ${response.status}`);
+      return (await response.json()).runId as string;
+    },
+    { ...started, commandId },
+  );
+}
+
 async function finishedRun(
   page: import('@playwright/test').Page,
   corral: { open(path?: string): Promise<void> },
@@ -77,7 +109,8 @@ async function finishedRun(
   await corral.open(`/runs/${runId}`);
   // A session's run opens in that session's run history.
   await expect(page).toHaveURL(new RegExp(`/sessions/${sessionId}\\?.*run=${runId}`));
-  await expect(page.getByTestId('run-status')).toContainText('Completed');
+  // Beside the conversation the record does not say the run's state; the conversation does.
+  await expect(lastRunSucceeded(page)).toBeVisible();
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await expect(page.getByTestId('run-side')).toBeHidden();
   return `/runs/${runId}`;
@@ -99,23 +132,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   const graph = page.getByRole('group', { name: 'Run graph', exact: true });
   await expect(graph).toBeVisible();
   await closePanel(page);
-  const nextRunId = await page.evaluate(async ({ sessionId, corralId, definitionRevision }) => {
-    const { csrfToken } = await (await fetch('/api/v1/session')).json();
-    const response = await fetch('/api/v1/runs', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
-      body: JSON.stringify({
-        schemaVersion: '0.1',
-        commandId: 'run-page-hidden-graph-fit',
-        sessionId,
-        corralId,
-        definitionRevision,
-        mode: 'mock',
-      }),
-    });
-    if (!response.ok) throw new Error(`run setup: ${response.status}`);
-    return (await response.json()).runId as string;
-  }, started);
+  const nextRunId = await startAnotherRun(page, started, 'run-page-hidden-graph-fit');
   await expect
     .poll(() => corral.server.coordinator.getSnapshot(nextRunId).projection.status)
     .toBe('succeeded');
@@ -123,9 +140,9 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect(activityBar(page)).toContainText('Last run');
   await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
-  // The newest run's tab opens beside Run #1's.
+  // The newest run's tab, chosen in the "+" list's run history, opens beside Run #1's.
   await openPanelTab(page, 'Runs', { run: 2 });
-  await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'false');
   await expect(graph).toBeVisible();
   await expect
     .poll(() =>
@@ -164,6 +181,63 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await openPanelTab(page, 'Runs', { run: 2 });
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
+  expect(corral.errors).toEqual([]);
+});
+
+// features/session-panel.md "+" 목록: with more than one run, Runs lists every run, newest first,
+// each with its state; the run chosen opens its tab at the strip's right end, and choosing in "+"
+// rewrites the address without a history entry.
+test('a run chosen from the "+" run history opens its tab without a history entry', async ({
+  page,
+  corral,
+}) => {
+  const started = await startRun(page, corral);
+  const status = (runId: string) => corral.server.coordinator.getSnapshot(runId).projection.status;
+  await expect.poll(() => status(started.runId)).toBe('succeeded');
+  const nextRunId = await startAnotherRun(page, started, 'run-page-run-history');
+  await expect.poll(() => status(nextRunId)).toBe('succeeded');
+  await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
+  await sessionPanel(page).getByRole('button', { name: 'Open', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Runs', exact: true }).click();
+  const runs = page.getByRole('menu', { name: 'Runs', exact: true }).getByRole('menuitem');
+  await expect(runs).toHaveCount(2);
+  await expect(runs.nth(0)).toHaveAccessibleName(/^(?:#2 · .+|Run #2), Completed$/);
+  await expect(runs.nth(1)).toHaveAccessibleName(/^(?:#1 · .+|Run #1), Completed$/);
+  const entries = await page.evaluate(() => window.history.length);
+  await runs.nth(0).click();
+  await expect(panelTabNamed(page, 'Run #2')).toHaveAttribute('aria-selected', 'true');
+  const tabs = sessionPanel(page)
+    .getByRole('tablist', { name: 'Panel tabs', exact: true })
+    .getByRole('tab');
+  await expect(tabs).toHaveCount(2);
+  await expect(tabs.last()).toHaveAccessibleName('Run #2');
+  await expect.poll(() => new URL(page.url()).searchParams.get('run')).toBe(nextRunId);
+  expect(await page.evaluate(() => window.history.length)).toBe(entries);
+  expect(corral.errors).toEqual([]);
+});
+
+// features/execution-monitor.md: beside the conversation, which says the request, the state and
+// the clock, a finished run's tab has no head and starts at its views, Run info at their end;
+// maximized over the conversation the head names the request and the state again.
+test('beside the conversation a run tab starts at its views, and maximized its head names the run', async ({
+  page,
+  corral,
+}) => {
+  await finishedRun(page, corral);
+  const record = panelContent(page, 'Run #1');
+  const views = record.locator('[data-run-view-row]');
+  await expect(views.getByRole('tablist', { name: 'Run views', exact: true })).toBeVisible();
+  await expect(views.getByRole('button', { name: 'Run info', exact: true })).toBeVisible();
+  await expect(record.getByTestId('run-header')).toHaveCount(0);
+  await expect(record.getByRole('heading', { name: definition.name, exact: true })).toHaveCount(0);
+  await maximizePanel(page);
+  const head = record.getByTestId('run-header');
+  await expect(head.getByRole('heading', { name: definition.name, exact: true })).toBeVisible();
+  await expect(head.getByTestId('run-status')).toContainText('Completed');
+  await expect(views.getByRole('button', { name: 'Run info', exact: true })).toBeVisible();
+  await restorePanel(page);
+  await expect(record.getByTestId('run-header')).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });
 
@@ -508,7 +582,7 @@ test('a long multiline request keeps graph, events and run information reachable
     { ...started, request },
   );
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Completed');
+  await expect(lastRunSucceeded(page)).toBeVisible();
   const monitor = page.getByTestId('run-monitor');
   const views = monitor.getByRole('tablist', { name: 'Run views', exact: true });
   const graphTab = views.getByRole('tab', { name: 'Graph', exact: true });
@@ -563,7 +637,10 @@ test('an old view-point link opens current state without selecting a missing exe
   await expect(
     page.getByTestId('run-monitor').getByRole('slider', { name: 'View point' }),
   ).toHaveCount(0);
+  // Over the conversation the record says its state: the current one, not the view point's.
+  await maximizePanel(page);
   await expect(page.getByTestId('run-status')).toContainText('Completed');
+  await restorePanel(page);
   await expect(page.getByTestId('run-monitor').getByRole('alert')).toContainText(
     'exec_9999 is not part of this run',
   );
@@ -783,7 +860,10 @@ test('legacy history links resolve current state, Results Back returns to chat, 
     .poll(() => corral.server.coordinator.getSnapshot(started.runId).projection.status)
     .toBe('succeeded');
   await corral.open(`/sessions/${started.sessionId}?panel=run&run=${started.runId}&atSeq=1`);
+  // Over the conversation the record says its state: the current one, not the old link's.
+  await maximizePanel(page);
   await expect(page.getByTestId('run-status')).toContainText('Completed');
+  await restorePanel(page);
   await expect(page).not.toHaveURL(/[?&]atSeq=/);
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await closePanel(page);

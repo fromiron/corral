@@ -9,7 +9,6 @@ import type { Page } from '@playwright/test';
 import { reportedInput } from '../../../../packages/react/src/run/usage-input.ts';
 import {
   activityLine,
-  chooseRun,
   closePanel,
   lastRunSucceeded,
   newConversation,
@@ -114,6 +113,9 @@ test('a completed run explains failed file steps and opens their reasons', async
   await expect(failure.locator('details')).not.toHaveAttribute('open');
   await failure.getByText('Diagnostics', { exact: true }).click();
   await expect(failure.locator('code')).toHaveText('TARGET_NOT_FOUND: the folder is unavailable');
+  // Run info stands at the end of the view row, which the execution's detail takes the place of
+  // in a record narrower than detail and views side by side: the detail is closed first.
+  await page.getByRole('button', { name: 'Close details', exact: true }).click();
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
   await page.getByRole('button', { name: 'Usage by request' }).click();
@@ -144,9 +146,8 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
   // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
   const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
   expect(totals).toContain('Conversation total');
-  // The run segment of the top bar's path shows while a run tab is selected.
-  await openPanelTab(page, 'Runs', { run: 2 });
-  await chooseRun(page, 1);
+  // Run #1 chosen in the "+" list's run history, which lists both runs.
+  await openPanelTab(page, 'Runs', { run: 1 });
   // The address selects Run #1's tab beside the conversation; the conversation still speaks of
   // the last run (chat-widgets-contract.md 3.1), and so it does after a reload.
   expect(new URL(page.url()).searchParams.get('run')).toBeTruthy();
@@ -176,7 +177,8 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
   // The past run's own usage, its input and cached input with it, reads in its Run info: the
   // reload brought back Run #1's tab, selected.
   await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('banner').getByRole('button', { name: /Run #1/ })).toBeVisible();
+  // The top bar's path ends at the conversation: no run there.
+  await expect(page.getByRole('banner').getByRole('button', { name: /Run #\d/ })).toHaveCount(0);
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
   const usage = page.getByTestId('run-side').getByRole('region', { name: 'Usage', exact: true });
@@ -292,7 +294,8 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     return started.runId as string;
   }, definition);
   await corral.open(`/runs/${runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 15_000 });
+  // Beside the conversation the record does not say the run's state; the conversation does.
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
 }

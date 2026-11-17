@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 
 /** The labels the search helpers use, from a locale's message catalog (English by default). */
@@ -372,38 +372,38 @@ async function tabSelected(page: Page, name: string | RegExp) {
   await expect(panelStrip(page).getByRole('tab', { selected: true })).toHaveAccessibleName(name);
 }
 
+/** A row of the run history: `#n · request`, or `Run #n` without one, then the run's state. */
+const historyRow = (number: number) => new RegExp(`^(?:#${number} · |Run #${number}(?:, |$))`);
+
 /**
- * Waits until the selected tab is the newest run's: a numbered run tab, and no run tab in the
- * strip has a higher number (a run tab whose number is not known yet keeps it waiting). With only
- * one run tab in the strip that alone tells nothing, so a caller that knows the newest run's
- * number names it.
+ * Chooses from the "+" list's Runs (features/session-panel.md "+" 목록). With one run it opens
+ * that run's tab. With more it lists every run, newest first, each named by its number and
+ * request and its state, and the row chosen opens or selects that run's tab; without a number
+ * the newest is chosen, the first row, numbered by how many runs there are.
  */
-async function newestRunSelected(page: Page, run?: number) {
-  await expect
-    .poll(
-      async () => {
-        const snapshot = await panelStrip(page)
-          .ariaSnapshot()
-          .catch(() => '');
-        // A line holding "#" is YAML-quoted: - 'tab "Run #2" [selected]'.
-        const tabs = [...snapshot.matchAll(/- '?tab "(Run(?: #(\d+))?)"(.*)/g)];
-        const newest = Math.max(...tabs.map((tab) => (tab[2] ? Number(tab[2]) : Number.NaN)));
-        const expected = run ?? newest;
-        const selected = tabs.find((tab) => tab[3]?.includes('[selected]'))?.[1];
-        return selected === `Run #${expected}` && newest === expected
-          ? 'the newest run'
-          : `${selected ?? 'no run tab'} selected of ${tabs.map((tab) => tab[1]).join(', ')}`;
-      },
-      { message: `the newest run's tab${run ? ` (Run #${run})` : ''} is selected` },
-    )
-    .toBe('the newest run');
+async function chooseFromRuns(page: Page, entry: Locator, run?: number) {
+  await expect(entry).toBeVisible();
+  const listed = (await entry.getAttribute('aria-haspopup')) !== null;
+  await entry.click();
+  let number = 1;
+  if (listed) {
+    const history = page.getByRole('menu', { name: 'Runs', exact: true });
+    const rows = history.getByRole('menuitem');
+    await expect(rows.first()).toBeVisible();
+    const count = await rows.count();
+    expect(count, 'a run history lists more than one run').toBeGreaterThan(1);
+    await expect(rows.first()).toHaveAccessibleName(historyRow(count));
+    number = run ?? count;
+    await history.getByRole('menuitem', { name: historyRow(number) }).click();
+  } else if (run !== undefined && run !== 1)
+    throw new Error(`Run #${run} asked for, and the conversation has one run`);
+  await tabSelected(page, `Run #${number}`);
 }
 
 /**
- * Opens a tab from the panel's "+" list: Files, Changes, Runs (the newest run's tab; `run` is its
- * number where the caller knows it) or Results. A tab open already is selected. A panel not on
- * screen is opened by its toggle first; an open panel without tabs offers the same list in its
- * body.
+ * Opens a tab from the panel's "+" list: Files, Changes, Runs (one run's tab: `run` names it, the
+ * newest without) or Results. A tab open already is selected. A panel not on screen is opened by
+ * its toggle first; an open panel without tabs offers the same list in its body.
  */
 export async function openPanelTab(
   page: Page,
@@ -422,20 +422,18 @@ export async function openPanelTab(
     .filter({ has: page.getByRole('tablist', { name: 'Panel tabs', exact: true }) });
   const empty = panel.getByText('Nothing is open beside the conversation', { exact: true });
   await expect(head.or(empty)).toBeVisible();
+  let entry: Locator;
   if (await head.isVisible()) {
     await head
       .locator('[data-slot="tabs-closable-trailing"]')
       .getByRole('button', { name: 'Open', exact: true })
       .click();
-    await page.getByRole('menuitem', { name: item, exact: true }).click();
+    entry = page.getByRole('menuitem', { name: item, exact: true });
   } else
-    await empty
-      .locator('..')
-      .getByRole('list')
-      .getByRole('button', { name: item, exact: true })
-      .click();
-  if (item === 'Runs') await newestRunSelected(page, run);
-  else await tabSelected(page, PLUS_TAB[item]);
+    entry = empty.locator('..').getByRole('list').getByRole('button', { name: item, exact: true });
+  if (item === 'Runs') return chooseFromRuns(page, entry, run);
+  await entry.click();
+  await tabSelected(page, PLUS_TAB[item]);
 }
 
 /** Selects an open tab in the panel's strip. */
@@ -454,6 +452,14 @@ export async function maximizePanel(page: Page) {
   if (!(await restore.isVisible()))
     await sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }).click();
   await expect(restore).toHaveAttribute('aria-pressed', 'true');
+}
+
+/** Restores a maximized panel beside the conversation with its head's button. */
+export async function restorePanel(page: Page) {
+  await sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true }).click();
+  await expect(
+    sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'false');
 }
 
 /**
@@ -549,19 +555,6 @@ export async function showReviewFiles(page: Page) {
   if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
   await expect(fold).toHaveAttribute('aria-expanded', 'true');
   return files;
-}
-
-/**
- * Chooses a run of the open session from the run segment of the top bar's path (run history),
- * where each run is named `#N · request`.
- */
-export async function chooseRun(page: Page, number: number) {
-  await page
-    .getByRole('banner')
-    .locator('button[aria-haspopup="menu"]')
-    .filter({ hasText: /#\d+/ })
-    .click();
-  await page.getByRole('menuitemradio', { name: new RegExp(`#${number}\\b`) }).click();
 }
 
 /** Shows the run workspace's Results view: every version the run made. */

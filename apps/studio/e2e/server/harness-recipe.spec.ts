@@ -1,5 +1,5 @@
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
-import { expectTeamSaved, teamNode } from '../workbench.ts';
+import { expectTeamSaved, panelTabNamed, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test('pins a review recipe in the Loop editor and explains its stop in the Run and Inbox', async ({
@@ -69,7 +69,8 @@ test('pins a review recipe in the Loop editor and explains its stop in the Run a
     return (await response.json()).runId;
   }, ids);
   await page.goto(`${corral.server.url}/runs/${runId}?view=run`);
-  await expect(page.getByTestId('run-status').first()).toContainText('Failed');
+  // Beside the conversation the run's tab says its state, in its mark and its description.
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-description', 'Failed');
   await expect(page.getByTestId('recipe-status')).toContainText('Generation attempt limit reached');
   await expect(page.getByTestId('recipe-status')).toContainText('Revise');
   await page.goto(`${corral.server.url}/inbox`);
