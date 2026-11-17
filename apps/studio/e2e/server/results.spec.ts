@@ -145,7 +145,7 @@ test('a past run’s usage reads in its Run info while the conversation keeps th
   const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
   expect(totals).toContain('Conversation total');
   // The run segment of the top bar's path shows while a run tab is selected.
-  await openPanelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs', { run: 2 });
   await chooseRun(page, 1);
   // The address selects Run #1's tab beside the conversation; the conversation still speaks of
   // the last run (chat-widgets-contract.md 3.1), and so it does after a reload.

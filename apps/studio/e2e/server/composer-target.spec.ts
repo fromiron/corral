@@ -189,7 +189,7 @@ test.describe('viewed and active execution', () => {
       );
       await page.screenshot({ path: testInfo.outputPath('composer-active-run.png') });
       // The active run's record, then back to the conversation alone.
-      await openPanelTab(page, 'Runs');
+      await openPanelTab(page, 'Runs', { run: 2 });
       await closePanel(page);
       await expect(runGoing(page)).toBeVisible();
       await expect(box).toHaveValue('Keep this next request');
@@ -283,7 +283,7 @@ test.describe('viewed and active execution', () => {
       const second = corral.server.coordinator.listRuns()[0];
       if (!second || second.runId === first.runId) throw new Error('Active run missing');
 
-      await openPanelTab(page, 'Runs');
+      await openPanelTab(page, 'Runs', { run: 2 });
       const header = (run: string) => panelContent(page, run).getByTestId('run-header');
       const line = header('Run #1').getByTestId('run-active-elsewhere');
       // The newest run is the one going: no line while it shows.

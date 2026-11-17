@@ -373,27 +373,69 @@ async function tabSelected(page: Page, name: string | RegExp) {
 }
 
 /**
- * Opens a tab from the panel's "+" list: Files, Changes, Runs (the newest run's tab) or Results.
- * A tab open already is selected. A panel not on screen is opened by its toggle first; an open
- * panel without tabs offers the same list in its body.
+ * Waits until the selected tab is the newest run's: a numbered run tab, and no run tab in the
+ * strip has a higher number (a run tab whose number is not known yet keeps it waiting). With only
+ * one run tab in the strip that alone tells nothing, so a caller that knows the newest run's
+ * number names it.
  */
-export async function openPanelTab(page: Page, item: keyof typeof PLUS_TAB) {
+async function newestRunSelected(page: Page, run?: number) {
+  await expect
+    .poll(
+      async () => {
+        const snapshot = await panelStrip(page)
+          .ariaSnapshot()
+          .catch(() => '');
+        // A line holding "#" is YAML-quoted: - 'tab "Run #2" [selected]'.
+        const tabs = [...snapshot.matchAll(/- '?tab "(Run(?: #(\d+))?)"(.*)/g)];
+        const newest = Math.max(...tabs.map((tab) => (tab[2] ? Number(tab[2]) : Number.NaN)));
+        const expected = run ?? newest;
+        const selected = tabs.find((tab) => tab[3]?.includes('[selected]'))?.[1];
+        return selected === `Run #${expected}` && newest === expected
+          ? 'the newest run'
+          : `${selected ?? 'no run tab'} selected of ${tabs.map((tab) => tab[1]).join(', ')}`;
+      },
+      { message: `the newest run's tab${run ? ` (Run #${run})` : ''} is selected` },
+    )
+    .toBe('the newest run');
+}
+
+/**
+ * Opens a tab from the panel's "+" list: Files, Changes, Runs (the newest run's tab; `run` is its
+ * number where the caller knows it) or Results. A tab open already is selected. A panel not on
+ * screen is opened by its toggle first; an open panel without tabs offers the same list in its
+ * body.
+ */
+export async function openPanelTab(
+  page: Page,
+  item: keyof typeof PLUS_TAB,
+  { run }: { run?: number } = {},
+) {
   const toggle = panelToggle(page);
   await expect(toggle).toBeVisible();
   if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
   await expect(toggle).toHaveAttribute('aria-pressed', 'true');
   const panel = sessionPanel(page);
-  // The "+" stands after the last tab, in the strip's own head.
-  const plus = panel
+  // The panel shows one of two things, never both: its open tabs, whose head holds the "+" after
+  // the last tab, or no tabs, and then its body leads with the same list under one line.
+  const head = panel
     .locator('[data-slot="tabs-closable"]')
-    .getByRole('button', { name: 'Open', exact: true });
-  const listed = panel.getByRole('button', { name: item, exact: true });
-  await expect(plus.or(listed).first()).toBeVisible();
-  if (await plus.isVisible()) {
-    await plus.click();
+    .filter({ has: page.getByRole('tablist', { name: 'Panel tabs', exact: true }) });
+  const empty = panel.getByText('Nothing is open beside the conversation', { exact: true });
+  await expect(head.or(empty)).toBeVisible();
+  if (await head.isVisible()) {
+    await head
+      .locator('[data-slot="tabs-closable-trailing"]')
+      .getByRole('button', { name: 'Open', exact: true })
+      .click();
     await page.getByRole('menuitem', { name: item, exact: true }).click();
-  } else await listed.click();
-  await tabSelected(page, PLUS_TAB[item]);
+  } else
+    await empty
+      .locator('..')
+      .getByRole('list')
+      .getByRole('button', { name: item, exact: true })
+      .click();
+  if (item === 'Runs') await newestRunSelected(page, run);
+  else await tabSelected(page, PLUS_TAB[item]);
 }
 
 /** Selects an open tab in the panel's strip. */
@@ -454,7 +496,35 @@ export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
     .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
     .click();
   await expect(palette).toBeHidden();
-  await tabSelected(page, PANE_TAB[name] as string | RegExp);
+  const tab = PANE_TAB[name] as string | RegExp;
+  await tabSelected(page, tab);
+  if (tab === 'Files') {
+    // The Files tab's dock: the pane's own tab is the selected one of a group on screen (a narrow
+    // dock shows only the group of the pane in front).
+    await expect(
+      panelContent(page, 'Files')
+        .getByRole('region', { name: 'Workbench layout', exact: true })
+        .getByRole('tab', { name, exact: true, selected: true }),
+    ).toBeVisible();
+  } else if (tab === 'Changes') {
+    // The Changes tab: its views (Review, Git, Checkpoints, Checks), or Problems in their place.
+    // Changes alone names no view: one chosen there in the meantime stays.
+    const changes = panelContent(page, 'Changes');
+    const views = changes.getByRole('tablist', { name: 'Changes views', exact: true });
+    const problems = changes.getByRole('region', { name: 'Problems', exact: true });
+    if (name === 'Problems') {
+      await expect(problems).toBeVisible();
+      await expect(views).toBeHidden();
+    } else {
+      await expect(views).toBeVisible();
+      await expect(problems).toBeHidden();
+      if (name !== 'Changes')
+        await expect(views.getByRole('tab', { name, exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+    }
+  }
 }
 
 /** Opens the Changes tab from "+" and one of its views (Review, Git, Checkpoints, Checks). */

@@ -124,7 +124,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   await expect(page.getByTestId('turn-run').last()).toHaveText('Run #2');
   await expect(graph).toBeHidden();
   // The newest run's tab opens beside Run #1's.
-  await openPanelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs', { run: 2 });
   await expect(page.getByRole('banner').getByRole('button', { name: /Run #2/ })).toBeVisible();
   await expect(graph).toBeVisible();
   await expect
@@ -161,7 +161,7 @@ test('a run completed behind conversation fits its graph when opened and then pr
   const preferred = await viewport.getAttribute('style');
   await closePanel(page);
   await expect(graph).toBeHidden();
-  await openPanelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs', { run: 2 });
   await expect(graph).toBeVisible();
   await expect(viewport).toHaveAttribute('style', preferred ?? '');
   expect(corral.errors).toEqual([]);
