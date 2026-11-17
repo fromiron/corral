@@ -267,3 +267,15 @@ it('Paddock이 없는 대화에서 빠른 열기로 원본 폴더의 README.md�
   expect(selectedName()).toBe('README.md');
   expect(sourceShown()).toContain('# Release notes');
 });
+
+it('대화의 기억에 원본 폴더의 README.md 탭이 있다 → 그 대화를 열고 원본 폴더가 그 읽기를 잘못된 요청으로 거절한다 → 파일이 없다는 답이 아니므로 탭은 남는다 (반례)', async () => {
+  const { world: at, server } = await world();
+  server.refuseRead('README.md');
+  remember(at.sessionId, [original('README.md')], 'document:original:README.md');
+  await open(at, `/sessions/${at.sessionId}`);
+  const reason = () => side()?.querySelector('[role="alert"]')?.textContent ?? null;
+  await until(() => Boolean(reason()));
+  await settle();
+
+  expect(tabNames()).toEqual(['README.md']);
+});

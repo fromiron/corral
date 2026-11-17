@@ -28,13 +28,9 @@ export interface DocumentRestoreInput {
   current: () => string;
 }
 
-/**
- * A source-folder read that says the file is not there: the host refuses a path that is no file
- * as an invalid request, or answers that it was not found.
- */
+/** A source-folder read that says the file is not there; any other refusal keeps the tab. */
 const noFile = (error: unknown) =>
-  error instanceof ApiError &&
-  (error.status === 404 || error.code === 'TARGET_NOT_FOUND' || error.code === 'SCHEMA_INVALID');
+  error instanceof ApiError && (error.status === 404 || error.code === 'TARGET_NOT_FOUND');
 
 export function useDocumentRestore(input: DocumentRestoreInput) {
   const latest = useRef(input);

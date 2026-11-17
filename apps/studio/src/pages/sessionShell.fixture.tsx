@@ -109,6 +109,8 @@ export interface ServerParts {
   removeFile(path: string): void;
   /** Every later read of the file fails, as a host that cannot read it answers. */
   failRead(path: string): void;
+  /** The source folder refuses every later read of the path as an invalid request. */
+  refuseRead(path: string): void;
   /**
    * Another window of this browser kept an unsaved draft of the file in this conversation, in
    * the current copy or in the one `copy` names.
@@ -348,6 +350,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
   const saves: string[] = [];
   const gone = new Set<string>();
   const unreadable = new Set<string>();
+  const refused = new Set<string>();
   const kept: RecoveryDraft[] = [];
   const workspaces = {
     worktree: async () => ({
@@ -527,6 +530,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     },
     removeFile: (at: string) => void gone.add(at),
     failRead: (at: string) => void unreadable.add(at),
+    refuseRead: (at: string) => void refused.add(at),
     keepDraft: (at: string, copy?: { bindingId: string; generation: number }) => {
       const of = copy
         ? { ...target, bindingId: copy.bindingId, copyGeneration: copy.generation }
@@ -553,12 +557,13 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     terminals,
     parts: parts as ServerParts,
     prepare(client: object) {
-      // The source folder's files are the demo's; one removed or unreadable reads as the
-      // host answers it (a path that is no file is refused as an invalid request).
+      // The source folder's files are the demo's; one removed, refused or unreadable reads as
+      // the host answers it.
       const host = client as { readFile: (scope: unknown, at: string) => Promise<unknown> };
       const read = host.readFile.bind(client);
       host.readFile = async (scope, at) => {
-        if (gone.has(at)) throw new ApiError(400, 'SCHEMA_INVALID', 'the path is not a file');
+        if (gone.has(at)) throw new ApiError(404, 'TARGET_NOT_FOUND', 'the file does not exist');
+        if (refused.has(at)) throw new ApiError(400, 'SCHEMA_INVALID', 'the path is not a file');
         if (unreadable.has(at)) throw new Error('the host could not read the file');
         return read(scope, at);
       };
