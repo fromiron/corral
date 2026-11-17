@@ -279,3 +279,56 @@ it('대화의 기억에 원본 폴더의 README.md 탭이 있다 → 그 대화�
 
   expect(tabNames()).toEqual(['README.md']);
 });
+
+const tabNamedAt = (index: number) => tabs()[index] ?? null;
+const iconOf = (tab: HTMLElement | null) =>
+  tab?.querySelector('[data-slot="tabs-closable-icon"]')?.innerHTML ?? null;
+const markOf = (tab: HTMLElement | null) =>
+  tab?.querySelector('[data-slot="tabs-closable-mark"]') ?? null;
+
+it('대화의 기억에 사본의 api/index.ts와 web/index.ts 탭이 있다 → 그 대화를 연다 → 두 탭의 이름과 접근 이름은 "index.ts — api"와 "index.ts — web"이다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [doc('api/index.ts'), doc('web/index.ts')], 'document:copy:api/index.ts');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 2);
+
+  expect(tabNames()).toEqual(['index.ts — api', 'index.ts — web']);
+  for (const tab of tabs()) expect(tab.hasAttribute('aria-label')).toBe(false);
+});
+
+it('사본의 README.md 탭이 열려 있다 → 원본 폴더의 README.md 탭을 연다 → 원본 탭만 원본 폴더 표시를 달고 두 탭의 접근 이름은 "README.md"와 "README.md, project source folder"다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [doc('README.md')], 'document:copy:README.md');
+  await open(at, `/sessions/${at.sessionId}?panel=document&file=README.md&target=original`);
+  await until(() => tabNames().length === 2);
+
+  expect(tabNames()).toEqual(['README.md', 'README.md']);
+  expect(tabNamedAt(0)?.hasAttribute('aria-label')).toBe(false);
+  expect(tabNamedAt(1)?.getAttribute('aria-label')).toBe(
+    `README.md, ${messages.SessionPanel.sourceFolderSuffix}`,
+  );
+  expect(iconOf(tabNamedAt(0))).toBeTruthy();
+  expect(iconOf(tabNamedAt(1))).not.toBe(iconOf(tabNamedAt(0)));
+  expect(markOf(tabNamedAt(0))).toBeNull();
+});
+
+it('주소로 연 사본의 문서를 고치고 저장하지 않았다 → 그 탭은 미저장 표시를 달고 그 뜻을 설명으로 읽히며 이름은 그대로다', async () => {
+  const { world: at, server } = await world();
+  await open(at, `/sessions/${at.sessionId}?panel=document&file=${server.path}`);
+  await until(() => leaf() === server.path);
+  const tab = () => tabNamedAt(0);
+  expect(tab()?.getAttribute('aria-description')).toBeNull();
+  expect(markOf(tab())).toBeNull();
+
+  const docKey = () => Object.keys(server.documents.getState().documents)[0] as string;
+  await until(() => Boolean(server.documents.getState().documents[docKey()]?.model));
+  await act(async () => {
+    server.documents.getState().documents[docKey()]?.model?.setValue('first line\nedited\n');
+  });
+  await until(() => tab()?.getAttribute('aria-description') === messages.Documents.dirty);
+
+  expect(tab()?.getAttribute('aria-description')).toBe(messages.Documents.dirty);
+  expect(tabNames()).toEqual([server.path]);
+  expect(tab()?.hasAttribute('aria-label')).toBe(false);
+  expect(markOf(tab())).not.toBeNull();
+});

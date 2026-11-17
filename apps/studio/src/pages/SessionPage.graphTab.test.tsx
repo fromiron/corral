@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { editorWorkingCopy } from '../workbench/editorDraft.ts';
 import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
 import {
   createShellWorld,
@@ -178,4 +179,24 @@ it('주소가 프로젝트에 없는 팀을 가리킨다 → 그 탭은 버려�
   expect(panelTabs()).toHaveLength(1);
   expect(design()?.textContent).toBe('corral_gone');
   expect(search(shell).corral).toBe('corral_gone');
+});
+
+it('팀 그래프 탭이 열려 있다 → 그 팀의 초안이 저장되지 않은 채 바뀐다 → 탭은 미저장 표시를 달고 그 뜻을 설명으로 읽히며 이름은 팀 이름 그대로다; 저장되면 표시가 사라진다', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}?panel=graph&corral=corral_team`);
+  await until(() => panelSelected() === TEAM);
+  const tab = () => panelTabs()[0] ?? null;
+  expect(tab()?.getAttribute('aria-description')).toBeNull();
+
+  const record = await world.services.repository.get('corral_team');
+  if (!record) throw new Error('the team is missing');
+  const copy = editorWorkingCopy(world.services.repository, record);
+  await act(async () => copy.setState({ saving: true }));
+  await until(() => tab()?.getAttribute('aria-description') === messages.Documents.dirty);
+
+  expect(tab()?.getAttribute('aria-description')).toBe(messages.Documents.dirty);
+  expect(panelTabNames()).toEqual([TEAM]);
+  await act(async () => copy.setState({ saving: false }));
+  await until(() => tab()?.getAttribute('aria-description') === null);
+  expect(tab()?.getAttribute('aria-description')).toBeNull();
 });

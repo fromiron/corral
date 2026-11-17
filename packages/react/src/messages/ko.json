@@ -4632,6 +4632,7 @@
   },
   "SessionPanel": {
     "label": "패널",
+    "sourceFolderSuffix": "프로젝트 원본 폴더",
     "tabs": "패널 탭",
     "toggle": "패널 여닫기",
     "add": "새로 열기",

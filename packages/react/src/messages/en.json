@@ -4632,6 +4632,7 @@
   },
   "SessionPanel": {
     "label": "Panel",
+    "sourceFolderSuffix": "project source folder",
     "tabs": "Panel tabs",
     "toggle": "Show or hide the panel",
     "add": "Open",

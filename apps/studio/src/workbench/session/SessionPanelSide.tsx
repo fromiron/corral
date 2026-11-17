@@ -34,6 +34,7 @@ import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'rea
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
+import { documentTabNames } from '../panel/documentNames.ts';
 import { maximizeAvailable, type OpenTab, type PanelState } from '../panel/model.ts';
 import {
   type PanelContext,
@@ -256,6 +257,7 @@ export function SessionPanelSide({
   onMaximize,
   renderTab,
   teamNames,
+  unsaved = {},
 }: {
   sessionId: string;
   state: PanelState;
@@ -286,10 +288,14 @@ export function SessionPanelSide({
   renderTab: (tab: OpenTab) => ReactNode;
   /** The project's teams by ID: a 팀 그래프 tab is named by its team. */
   teamNames?: Readonly<Record<string, string>>;
+  /** The 문서 and 팀 그래프 tabs with work not saved, or a save whose result is not known. */
+  unsaved?: Readonly<Partial<Record<TabKey, 'unsaved' | 'pending'>>>;
 }) {
   const t = useTranslations('SessionPanel');
   const tp = useTranslations('Presence');
+  const td = useTranslations('Documents');
   const name = usePanelTabName(ctx.runIds, ctx.terminalIds, teamNames);
+  const documentNames = documentTabNames(state.tabs);
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
@@ -361,12 +367,24 @@ export function SessionPanelSide({
     // once the run completed; before the run list answers it keeps the run icon.
     const presence = tab.kind === 'run' ? presenceOf(tab.runId) : null;
     const marked = presence && presence.kind !== 'succeeded' ? presence : null;
+    const key = tabKey(tab);
+    const save = unsaved[key];
+    // A source-folder document wears the source folder's sign, as its head does.
+    const original = tab.kind === 'document' && tab.source === 'original';
     return {
-      id: tabKey(tab),
-      icon: ICONS[tab.kind],
+      id: key,
+      icon: original ? Folder : ICONS[tab.kind],
       ...name(tab),
+      ...(tab.kind === 'document' ? { label: documentNames.get(key) ?? name(tab).label } : {}),
+      ...(original ? { nameSuffix: t('sourceFolderSuffix') } : {}),
       ...(marked
         ? { mark: <PresenceMark presence={marked} />, description: tp(marked.labelKey) }
+        : {}),
+      ...(save
+        ? {
+            mark: <span aria-hidden className="size-1.5 rounded-full bg-emphasis" />,
+            description: td(save === 'pending' ? 'pending' : 'dirty'),
+          }
         : {}),
       ...(tab.kind === 'terminal' ? { ...terminalState(tab.terminalId), movable: true } : {}),
     };

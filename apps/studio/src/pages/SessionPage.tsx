@@ -93,6 +93,7 @@ import {
 } from '../workbench/session/SessionPanels.tsx';
 import { useDocumentRestore } from '../workbench/session/useDocumentRestore.ts';
 import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
+import { useUnsavedTabs } from '../workbench/session/useUnsavedTabs.ts';
 import { OpenTerminalContext } from '../workbench/TerminalWriterNotice.tsx';
 import { terminalStore } from '../workbench/terminals/store.ts';
 import { TerminalScreen } from '../workbench/terminals/TerminalScreen.tsx';
@@ -273,6 +274,14 @@ function WorkSessionPage() {
     },
   });
   const { state, ctx, fronts } = frame;
+  const unsavedTabs = useUnsavedTabs({
+    tabs: state.tabs,
+    documents,
+    repository: services.repository,
+    hostId: services.workspaceId,
+    projectId: session.projectId,
+    sessionId: session.sessionId,
+  });
   useDocumentRestore({
     sessionId: session.sessionId,
     projectId: session.projectId,
@@ -1061,6 +1070,7 @@ function WorkSessionPage() {
                   <SessionPanelSide
                     sessionId={session.sessionId}
                     teamNames={teamNames}
+                    unsaved={unsavedTabs}
                     state={state}
                     ctx={ctx}
                     strip={strip}
