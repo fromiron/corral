@@ -15,6 +15,7 @@ export function RunActions({
   showCancel = true,
   narrowIcons = false,
   receiptsOnly = false,
+  receiptLines = false,
 }: {
   session: RunSessionStore;
   compact?: boolean;
@@ -30,6 +31,11 @@ export function RunActions({
    * (waiting, failed, or with a lost answer and its retry). A finished run in a bar is always so.
    */
   receiptsOnly?: boolean;
+  /**
+   * With `receiptsOnly`, in a head that carries nothing else: each receipt on one line, its
+   * group named but not titled, its retry an icon under `narrowIcons`.
+   */
+  receiptLines?: boolean;
 }) {
   const t = useTranslations('Reins');
   /** A control's words; in a narrow bar its icon stands in and the words stay its name. */
@@ -71,7 +77,16 @@ export function RunActions({
   if (!projection) return null;
   // A finished run in the page header has no controls: only its receipts, if any.
   if (receiptsOnly || (compact && terminal)) {
-    return <CommandReceipts session={session} target={`run:${projection.runId}`} openOnly />;
+    return (
+      <CommandReceipts
+        session={session}
+        target={`run:${projection.runId}`}
+        openOnly
+        lines={receiptsOnly && receiptLines}
+        iconActions={narrowIcons}
+        actionSize={size}
+      />
+    );
   }
   const send = (command: SessionCommand) => {
     void session

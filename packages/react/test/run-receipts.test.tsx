@@ -1,10 +1,12 @@
 import type { Receipt, ReceiptStatus } from '@corral/contracts';
 import { emptyProjection } from '@corral/core';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { RunActions } from '../src/components/RunActions.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import type { RunSessionState } from '../src/run/session.ts';
 import { sessionStore } from '../src/stories/fixtures.tsx';
 
 // docs/specs/features/execution-monitor.md: the run header keeps only receipts that need you.
@@ -67,5 +69,182 @@ describe('run header receipts', () => {
       'receipt-cmd_rejected',
       'receipt-cmd_expired',
     ]);
+  });
+});
+
+// A head that carries only receipts (the run tab beside the conversation, decision 18 of the
+// session panel) keeps each receipt to one line: its mark, the command, its state and the
+// boundary or reason, cut at the end and whole in the kit tooltip.
+
+function receiptLines(state: Partial<RunSessionState>) {
+  const session = sessionStore({
+    runId: 'run_receipts',
+    projection: { ...emptyProjection('run_receipts'), status: 'pausing' },
+    ...state,
+  });
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <RunActions session={session} compact narrowIcons receiptsOnly receiptLines />
+    </IntlProvider>,
+  );
+  return session;
+}
+
+const words = (element: Element | null | undefined) =>
+  element?.textContent?.replace(/\s+/g, ' ').trim();
+const lineOf = (element: Element) => element.closest('[data-slot="receipt-line"]');
+const textOf = (line: Element | null) =>
+  line?.querySelector<HTMLElement>('[data-slot="receipt-line-text"]') ?? null;
+const lost = (commandId: string) => ({
+  error: 'response lost',
+  command: {
+    schemaVersion: '0.1' as const,
+    runId: 'run_receipts',
+    commandId,
+    type: 'pause' as const,
+    payload: { scope: 'run' as const },
+  },
+});
+
+describe('a head of receipts only, one line each', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('puts a receipt on one line: its mark, the command, its state and its boundary', () => {
+    receiptLines({
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
+      },
+    });
+    const row = screen.getByTestId('receipt-cmd_pause');
+    const line = lineOf(row);
+    expect(line).not.toBeNull();
+    const text = textOf(line);
+    expect(text).toHaveClass('truncate');
+    expect(words(text)).toBe(
+      'Whole-run command · Accepted · Boundary: after active work is settled',
+    );
+    // One mark, before the words and silent: the state is said in words.
+    const marks = line?.querySelectorAll('[data-slot="receipt-mark"]') ?? [];
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveAttribute('aria-hidden', 'true');
+    expect(marks[0]?.querySelector('[data-status="accepted"]')).not.toBeNull();
+    expect(line?.querySelectorAll('p')).toHaveLength(0);
+  });
+
+  it('names the group of receipts without a heading on screen', () => {
+    receiptLines({
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted'),
+        cmd_resume: receipt('cmd_resume', 'queued'),
+      },
+    });
+    const group = screen.getByRole('group', { name: 'Command receipts' });
+    expect(within(group).getAllByTestId(/^receipt-/)).toHaveLength(2);
+    expect(screen.queryByRole('heading')).toBeNull();
+    expect(screen.queryByText('Command receipts')).toBeNull();
+  });
+
+  it('says why a rejected command went wrong as its tail, the sentence before the record', () => {
+    receiptLines({
+      receipts: {
+        cmd_rejected: receipt('cmd_rejected', 'rejected', {
+          error: { code: 'CAPABILITY_DENIED', message: 'Not allowed.' },
+        }),
+      },
+    });
+    const line = lineOf(screen.getByTestId('receipt-cmd_rejected'));
+    expect(words(textOf(line))).toBe(
+      'Whole-run command · Rejected · This operation was not allowed. Check the recorded reason. CAPABILITY_DENIED: Not allowed.',
+    );
+    expect(line?.querySelector('[data-status="rejected"]')).not.toBeNull();
+    expect(line?.querySelector('details')).toBeNull();
+  });
+
+  it('keeps a lost response with its same-command retry on one line, the retry named by its words', () => {
+    const retryCommand = vi.fn(async () => ({}) as Receipt);
+    receiptLines({ retryCommand, unconfirmedCommands: { cmd_lost: lost('cmd_lost') } });
+    const group = screen.getByRole('group', { name: 'Command receipts' });
+    const retry = within(group).getByRole('button', { name: 'Check receipt and retry safely' });
+    const line = lineOf(retry);
+    expect(line).not.toBeNull();
+    const text = words(textOf(line));
+    expect(text?.startsWith('Whole-run command ·')).toBe(true);
+    expect(text).toContain('Receipt not confirmed: response lost. Check the run before retrying.');
+    expect(within(line as HTMLElement).getByRole('alert')).toHaveTextContent(
+      'Receipt not confirmed: response lost.',
+    );
+    expect(line?.querySelector('[data-slot="receipt-mark"]')).not.toBeNull();
+    // An icon on the line; its words stay its name.
+    expect(retry.querySelector('svg')).not.toBeNull();
+    expect(retry.querySelector('.sr-only')).toHaveTextContent('Check receipt and retry safely');
+    fireEvent.click(retry);
+    expect(retryCommand).toHaveBeenCalledWith('cmd_lost');
+  });
+
+  it('puts the connection error on a line of its own', () => {
+    receiptLines({ commandError: 'socket closed' });
+    const alert = screen.getByRole('alert');
+    const line = lineOf(alert);
+    expect(line).not.toBeNull();
+    expect(textOf(line)).toHaveClass('truncate');
+    expect(words(textOf(line))).toBe(
+      'Receipt not confirmed: socket closed. Check the run before retrying.',
+    );
+  });
+
+  it('shows a cut line whole in the kit tooltip, and lets the keyboard reach it', async () => {
+    const cut = (element: HTMLElement) => element.dataset.slot === 'receipt-line-text';
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return cut(this) ? 480 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return cut(this) ? 200 : 0;
+    });
+    receiptLines({
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
+      },
+    });
+    const text = textOf(lineOf(screen.getByTestId('receipt-cmd_pause')));
+    expect(text).toHaveAttribute('tabindex', '0');
+    await userEvent.tab();
+    expect(text).toHaveFocus();
+    const tip = await screen.findByRole('tooltip');
+    expect(words(tip)).toBe(
+      'Whole-run command · Accepted · Boundary: after active work is settled',
+    );
+  });
+
+  it('leaves a line that fits out of the tab order, with no tooltip', async () => {
+    receiptLines({ receipts: { cmd_pause: receipt('cmd_pause', 'accepted') } });
+    const text = textOf(lineOf(screen.getByTestId('receipt-cmd_pause')));
+    expect(text).not.toBeNull();
+    expect(text).not.toHaveAttribute('tabindex');
+    await userEvent.tab();
+    expect(text).not.toHaveFocus();
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 300)));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+
+  it('keeps the titled block where the head does not ask for lines', () => {
+    const session = sessionStore({
+      runId: 'run_receipts',
+      projection: { ...emptyProjection('run_receipts'), status: 'succeeded' },
+      receipts: {
+        cmd_pause: receipt('cmd_pause', 'accepted', { requestedBoundary: 'safe_boundary' }),
+      },
+    });
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <RunActions session={session} compact narrowIcons receiptsOnly />
+      </IntlProvider>,
+    );
+    expect(screen.getByRole('heading', { name: 'Command receipts' })).toBeInTheDocument();
+    expect(screen.getByText('Boundary: after active work is settled').tagName).toBe('P');
+    expect(screen.queryByRole('group', { name: 'Command receipts' })).toBeNull();
   });
 });

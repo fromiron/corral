@@ -1,10 +1,12 @@
-import type { ReceiptStatus } from '@corral/contracts';
+import type { CommandError, ReceiptStatus } from '@corral/contracts';
+import { type ComponentProps, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, fontWeights } from '../design-kit/index.ts';
+import { RefreshCw } from '../design-kit/icons.ts';
+import { Button, cn, focusRing, fontWeights, Tooltip } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { FailureNotice } from './FailureNotice.tsx';
-import { StatusBadge } from './StatusBadge.tsx';
+import { StatusBadge, StatusDot } from './StatusBadge.tsx';
 
 /** A command these receipts settled: its result already shows where the person acted. */
 const SETTLED = new Set<ReceiptStatus>(['applied', 'superseded', 'cancelled']);
@@ -34,13 +36,28 @@ export function CommandReceipts({
   session,
   target,
   openOnly = false,
+  lines = false,
+  iconActions = false,
+  actionSize,
 }: {
   session: RunSessionStore;
   target: string;
   /** Leaves out settled receipts, keeping those still waiting and those that went wrong. */
   openOnly?: boolean;
+  /**
+   * Each receipt on one line (its mark, the command, its state, then the boundary or reason),
+   * cut at the end and whole in the kit tooltip; the group keeps its name but no heading. For a
+   * head that carries nothing else.
+   */
+  lines?: boolean;
+  /** With `lines`: the retry shows its icon, its words staying its name and tooltip. */
+  iconActions?: boolean;
+  /** With `lines`: the size of the line's action, the host's own. */
+  actionSize?: ComponentProps<typeof Button>['size'];
 }) {
   const t = useTranslations('Reins');
+  const failure = useTranslations('Failure');
+  const status = useTranslations('Status');
   const receipts = useStore(session, (s) => s.receipts);
   const error = useStore(session, (s) => s.commandError);
   const unknown = useStore(session, (s) => s.unconfirmedCommands);
@@ -50,6 +67,95 @@ export function CommandReceipts({
       receipt.target === target &&
       (!openOnly || !SETTLED.has(receipt.status) || receipt.error !== undefined),
   );
+  const lost = Object.values(unknown).filter(({ command }) => target === `run:${command.runId}`);
+  const retry = (commandId: string) =>
+    void session
+      .getState()
+      .retryCommand(commandId)
+      .catch(() => undefined);
+  if (lines) {
+    // Why a command went wrong: the cause's sentence when it has one, then the record itself.
+    const reason = (error: CommandError) =>
+      [
+        failure.has(`code.${error.code}`) ? failure(`code.${error.code}`) : null,
+        `${error.code}: ${error.message}`,
+      ]
+        .filter(Boolean)
+        .join(' ');
+    const retryWords = t('retrySameCommand');
+    return (
+      <div className="flex min-w-0 flex-col gap-1 text-caption" aria-live="polite">
+        {error ? (
+          <ReceiptLine
+            words={[
+              { text: t('connectionUnknown', { message: error }), alert: true, tone: 'danger' },
+            ]}
+          />
+        ) : null}
+        {lost.length > 0 || matching.length > 0 ? (
+          // biome-ignore lint/a11y/useSemanticElements: a named group of receipt lines, not a form fieldset.
+          <div role="group" aria-label={t('receipts')} className="flex min-w-0 flex-col gap-1">
+            {lost.map(({ command, error }) => (
+              <ReceiptLine
+                key={command.commandId}
+                mark={<StatusDot status="delivery_unknown" />}
+                words={[
+                  { text: t('receiptRun'), title: command.commandId },
+                  { text: command.type },
+                  {
+                    text: t('connectionUnknown', { message: error }),
+                    alert: true,
+                    tone: 'muted',
+                  },
+                ]}
+                action={
+                  <Tooltip content={retryWords} forceOpen={iconActions ? undefined : false}>
+                    <Button
+                      type="button"
+                      variant="tertiary"
+                      size={actionSize}
+                      className="shrink-0"
+                      disabled={pending.includes(command.commandId)}
+                      onClick={() => retry(command.commandId)}
+                    >
+                      {iconActions ? (
+                        <>
+                          <RefreshCw aria-hidden="true" />
+                          <span className="sr-only">{retryWords}</span>
+                        </>
+                      ) : (
+                        retryWords
+                      )}
+                    </Button>
+                  </Tooltip>
+                }
+              />
+            ))}
+            {matching.map((receipt) => (
+              <ReceiptLine
+                key={receipt.commandId}
+                testId={`receipt-${receipt.commandId}`}
+                mark={<StatusDot status={receipt.status} />}
+                words={[
+                  {
+                    text: t(receipt.target.startsWith('run:') ? 'receiptRun' : 'receiptExecution'),
+                    title: receipt.commandId,
+                  },
+                  { text: status.has(receipt.status) ? status(receipt.status) : receipt.status },
+                  {
+                    text: receipt.error
+                      ? reason(receipt.error)
+                      : t(`boundary.${receipt.requestedBoundary}`),
+                    tone: 'muted',
+                  },
+                ]}
+              />
+            ))}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   return (
     <div className="flex flex-col gap-1 text-caption" aria-live="polite">
       {error ? (
@@ -60,30 +166,23 @@ export function CommandReceipts({
       {matching.length > 0 ? (
         <h3 style={{ fontVariationSettings: fontWeights.semibold }}>{t('receipts')}</h3>
       ) : null}
-      {Object.values(unknown)
-        .filter(({ command }) => target === `run:${command.runId}`)
-        .map(({ command, error }) => (
-          <div key={command.commandId} className="rounded border border-warning p-2">
-            <p title={command.commandId}>
-              {t(command.runId && target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')} ·{' '}
-              {command.type}
-            </p>
-            <p role="alert">{t('connectionUnknown', { message: error })}</p>
-            <Button
-              type="button"
-              disabled={pending.includes(command.commandId)}
-              variant="tertiary"
-              onClick={() =>
-                void session
-                  .getState()
-                  .retryCommand(command.commandId)
-                  .catch(() => undefined)
-              }
-            >
-              {t('retrySameCommand')}
-            </Button>
-          </div>
-        ))}
+      {lost.map(({ command, error }) => (
+        <div key={command.commandId} className="rounded border border-warning p-2">
+          <p title={command.commandId}>
+            {t(command.runId && target.startsWith('run:') ? 'receiptRun' : 'receiptExecution')} ·{' '}
+            {command.type}
+          </p>
+          <p role="alert">{t('connectionUnknown', { message: error })}</p>
+          <Button
+            type="button"
+            disabled={pending.includes(command.commandId)}
+            variant="tertiary"
+            onClick={() => retry(command.commandId)}
+          >
+            {t('retrySameCommand')}
+          </Button>
+        </div>
+      ))}
       {matching.map((receipt) => (
         <div
           key={receipt.commandId}
@@ -103,6 +202,86 @@ export function CommandReceipts({
           ) : null}
         </div>
       ))}
+    </div>
+  );
+}
+
+/** A part of a receipt's line: the command, its state, or the tail (boundary or reason). */
+interface LinePart {
+  text: string;
+  /** The command's ID, kept in the title for support while the line is whole. */
+  title?: string;
+  /** The tail is muted; the connection's error, with no mark, keeps the danger tone. */
+  tone?: 'muted' | 'danger';
+  /** Said at once: the response or the connection was lost. */
+  alert?: boolean;
+}
+
+/**
+ * One receipt on one line: its mark, its words cut at the end, and its action. Cut, the words
+ * show whole in the kit tooltip, on hover and on keyboard focus, so they take a tab stop.
+ */
+function ReceiptLine({
+  words,
+  mark,
+  action,
+  testId,
+}: {
+  words: LinePart[];
+  mark?: ReactNode;
+  action?: ReactNode;
+  testId?: string;
+}) {
+  const text = words.map((part) => part.text).join(' · ');
+  const box = useRef<HTMLSpanElement>(null);
+  const [cut, setCut] = useState(false);
+  useLayoutEffect(() => {
+    const element = box.current;
+    if (!element || text === '') return;
+    const measure = () => setCut(element.scrollWidth > element.clientWidth + 1);
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [text]);
+  return (
+    <div data-slot="receipt-line" data-testid={testId} className="flex min-w-0 items-center gap-2">
+      {mark ? (
+        <span data-slot="receipt-mark" aria-hidden="true" className="flex shrink-0 items-center">
+          {mark}
+        </span>
+      ) : null}
+      {/* Mounted whether cut or not, so the live region around it is not redrawn. */}
+      <Tooltip content={text} forceOpen={cut ? undefined : false} className="max-w-xs">
+        <span
+          ref={box}
+          data-slot="receipt-line-text"
+          // Cut short, the line takes a tab stop so the keyboard reaches its whole words.
+          tabIndex={cut ? 0 : undefined}
+          className={cn('min-w-0 truncate', focusRing)}
+        >
+          {words.map((part, index) => (
+            <span key={part.text}>
+              {index > 0 ? ' · ' : null}
+              <span
+                role={part.alert ? 'alert' : undefined}
+                // Cut, the whole line is the tooltip; a second, native one would cover it.
+                title={cut ? undefined : part.title}
+                className={
+                  part.tone === 'muted'
+                    ? 'text-muted-foreground'
+                    : part.tone === 'danger'
+                      ? 'text-danger'
+                      : undefined
+                }
+              >
+                {part.text}
+              </span>
+            </span>
+          ))}
+        </span>
+      </Tooltip>
+      {action}
     </div>
   );
 }
