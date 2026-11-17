@@ -3094,6 +3094,11 @@ describe('a run tab beside the conversation and over it', () => {
     );
     expect(header(container)?.querySelector('[data-testid="receipt-cmd_pause"]')).not.toBeNull();
     expect(container.querySelector('[data-run-title]')).toBeNull();
+    // One line: its group keeps its name, with no heading on screen.
+    const group = header(container)?.querySelector('[role="group"]');
+    expect(group?.getAttribute('aria-label')).toBe(messages.Reins.receipts);
+    expect(group?.querySelector('[data-testid="receipt-cmd_pause"]')).not.toBeNull();
+    expect(header(container)?.querySelector('h3')).toBeNull();
   });
 
   it('puts only Respond in the head for a new approval, opening the response area only once maximized', async () => {
