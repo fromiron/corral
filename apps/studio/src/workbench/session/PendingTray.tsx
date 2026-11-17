@@ -1,6 +1,11 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunSummary } from '@corral/core';
-import { InteractionPanel, RequestRunContext, type RunSessionStore } from '@corral/react';
+import { pendingInteractions, type RunSummary } from '@corral/core';
+import {
+  answeredExtensionNotices,
+  InteractionPanel,
+  RequestRunContext,
+  type RunSessionStore,
+} from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import {
@@ -34,8 +39,8 @@ const REVEAL_WINDOW_MS = 5_000;
 
 /**
  * Each run with something for the tray, `runId:count:notices` joined: how many requests wait, and
- * whether an extension's notice is kept (its text still readable: the run lives, or the text is
- * kept). Empty while there is nothing.
+ * whether an extension left a notice after one of its requests was answered (its text still
+ * readable: the run lives, or the text is kept). Empty while there is nothing.
  */
 function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
   return stores
@@ -43,11 +48,7 @@ function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
       const { events, projection } = store.getState();
       if (projection?.runId !== runId) return [];
       const count = pendingInteractions(events, projection).length;
-      const notices = events.some(
-        (event) =>
-          event.type === 'extension.ui_notified' &&
-          canReadArtifactBody(projection, event.payload.bodyRef),
-      );
+      const notices = answeredExtensionNotices(events, projection).length > 0;
       return count || notices ? [`${runId}:${count}:${notices ? 1 : 0}`] : [];
     })
     .join(',');
@@ -222,7 +223,7 @@ export function PendingTray({
         >
           {count === 0 ? (
             // Nothing waits on this run: only what its extension said, as the record says it.
-            <InteractionPanel session={runFor(runId)} />
+            <InteractionPanel session={runFor(runId)} answeredNoticesOnly />
           ) : (
             <RunResponseArea
               session={runFor(runId)}

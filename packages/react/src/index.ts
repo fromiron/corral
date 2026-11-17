@@ -25,7 +25,7 @@ export {
 } from './components/ExecutionTranscript.tsx';
 export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
-export { InteractionPanel } from './components/InteractionPanel.tsx';
+export { answeredExtensionNotices, InteractionPanel } from './components/InteractionPanel.tsx';
 export { MessageBody } from './components/MessageBody.tsx';
 export {
   ModelSelect,

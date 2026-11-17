@@ -13,6 +13,7 @@ import {
 } from '@corral/core';
 import {
   ArtifactViewer,
+  answeredExtensionNotices,
   ExecutionTranscript,
   ExecutionTree,
   executionViewPresence,
@@ -406,16 +407,11 @@ function RunWorkspace({
           event.type === 'extension.ui_requested' || event.type === 'extension.ui_answered',
       )?.type === 'extension.ui_answered',
   );
-  // In a session's run tab a new notice counts as a new item for the response area, as a question
-  // or an approval does (the conversation says it; over the conversation the area shows it once).
-  // The run's own page keeps opening only for what waits.
+  // In a session's run tab a new notice left after an answered extension request counts as a new
+  // item for the response area, as a question or an approval does (the conversation says it; over
+  // the conversation the area shows it once). The run's own page keeps opening only for what waits.
   const noticeKey = useStore(session, (s) =>
-    s.events
-      .filter(
-        (event) =>
-          event.type === 'extension.ui_notified' &&
-          canReadArtifactBody(s.projection, event.payload.bodyRef),
-      )
+    answeredExtensionNotices(s.events, s.projection)
       .map((event) => event.eventId)
       .join('|'),
   );

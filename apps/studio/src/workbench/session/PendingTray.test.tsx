@@ -1664,6 +1664,54 @@ describe('an extension’s notice after its answered question', () => {
     expect(document.activeElement).toBe(view.elsewhere);
   });
 
+  it('draws nothing for a notice with no answered question before it', async () => {
+    const store = waitingRun('run_a');
+    const projection = store.getState().projection as RunProjection;
+    projection.executions.exec_extension = {
+      ...execution('exec_extension'),
+      status: 'active',
+    };
+    projection.executionOrder.push('exec_extension');
+    projection.status = 'running';
+    store.setState({ projection: { ...projection }, events: [said], artifactTexts: texts });
+    const view = await show(['run_a']);
+    await settleFrames();
+    expect(trayOf(view.container)).toBeNull();
+  });
+
+  it('keeps only what the extension said after the answer, not what it said before the question', async () => {
+    const view = await answeredThenSaid();
+    const earlier = {
+      ...extensionEvent(1, 'extension.ui_notified', {
+        executionId: 'exec_extension',
+        kind: 'notify',
+        key: 'starting',
+        level: 'info',
+        bodyRef: 'notice_extension_0',
+        bodyHash: 'e'.repeat(64),
+      }),
+      eventId: 'event_extension_earlier',
+      runSeq: 0,
+    };
+    await act(async () =>
+      view.store.setState({
+        events: [earlier, asked, answered, said],
+        artifactTexts: {
+          ...texts,
+          notice_extension_0: JSON.stringify({
+            kind: 'notify',
+            key: 'starting',
+            text: 'Starting.',
+            level: 'info',
+          }),
+        },
+      }),
+    );
+    await settleFrames();
+    expect(noticeLines(view.container)).toHaveLength(1);
+    expect(trayOf(view.container)?.textContent).not.toContain('Starting.');
+  });
+
   it('lets the notice go once its text is released', async () => {
     const view = await answeredThenSaid();
     expect(noticeLines(view.container)).toHaveLength(1);

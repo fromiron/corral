@@ -3322,6 +3322,24 @@ describe('an extension’s notice in a run tab', () => {
     expect(side(container)?.hidden).toBe(true);
   });
 
+  it('opens nothing over the conversation for a notice with no answered question before it', async () => {
+    const { container, run, setOperable } = await mount(
+      'inline_team',
+      null,
+      {},
+      undefined,
+      false,
+      ['worker'],
+      undefined,
+      { sessionId: 'session_layout', respond: vi.fn(), operable: true },
+    );
+    await waitFor(run, 0);
+    await act(async () => run.setState({ events: [said] }));
+    expect(side(container)?.hidden).toBe(true);
+    await setOperable(false);
+    expect(side(container)?.hidden).toBe(true);
+  });
+
   it('leaves the run page as it was: a notice alone opens nothing there', async () => {
     vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
     const { container, run } = await mount('inline_team', null, {});
