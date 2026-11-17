@@ -46,7 +46,8 @@
 | 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
 | 사람이 시작한 package script 실행 | Task / 작업 | 메시지 `DevTasks`, operation `task` | 명령(Run이 실행한 명령과 구분) |
 | 공유 개발 모드·task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
-| preview lease와 서비스 미리보기를 다루는 패널의 탭 | Preview / 미리보기 | 패널 `preview`, 슬래시 `/preview` | 작업·미리보기 |
+| 웹 페이지 하나를 여는 패널의 탭 | Browser / 브라우저 | 패널 `browser`, 슬래시 `/browser`, [브라우저 탭](features/browser-tab.md) | 웹뷰, 브라우저 창 |
+| preview lease로 연 브라우저 탭의 페이지 | Preview / 미리보기 | 미리보기 페이지, preview lease | 관리형 미리보기 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 | 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 기록의 Reins 영역은 Instruction / 지시를 쓴다), Steer |
