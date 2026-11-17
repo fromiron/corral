@@ -90,7 +90,9 @@ import {
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
 import { useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
-import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
+import { terminalStore } from '../workbench/terminals/store.ts';
+import { TerminalScreen } from '../workbench/terminals/TerminalScreen.tsx';
+import { useTerminalList } from '../workbench/terminals/useTerminalList.ts';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
@@ -111,6 +113,8 @@ function namesSelected(target: Partial<SessionSearch>, state: PanelState): boole
   const key = state.selected;
   if (!target.panel || !key) return false;
   const kind = PANEL_TAB_OF[target.panel];
+  if (kind === null) return false;
+  if (kind === 'terminal') return target.terminal ? key === `terminal:${target.terminal}` : false;
   if (kind !== 'run') return key === kind;
   return target.run ? key === `run:${target.run}` : key.startsWith('run:');
 }
@@ -179,12 +183,21 @@ function WorkSessionPage() {
 
   const [tray] = useState(createPendingTrayStore);
   const [adviceRequest, setAdviceRequest] = useState<AdviceRequest | null>(null);
+  // The conversation's terminals, read once on entry (features/session-panel.md 터미널 탭).
+  const terminals =
+    services.mode === 'server' && services.terminals ? terminalStore(services.terminals) : null;
+  const terminalList = useTerminalList(session.sessionId, terminals);
+  // The bottom dock's part, made further down: what an address the dock opens is handed to.
+  const dockAreaRef = useRef<ReturnType<typeof useSessionDockArea> | null>(null);
   const frame = usePanelFrame({
     sessionId: session.sessionId,
     search,
     workArea,
     folder: Boolean(binding),
     runIds,
+    paddock: Boolean(terminals && terminalList.value?.list?.target),
+    terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
+    onDockAddress: (target, focus) => dockAreaRef.current?.openAddressed(target, focus),
     onBringForward: (arrived) => {
       if (arrived.respond) revealPendingTray(tray, session.sessionId);
       // The frame consumes `advice` from the address as it brings the conversation forward: the
@@ -203,6 +216,9 @@ function WorkSessionPage() {
     },
   });
   const { state, ctx, fronts } = frame;
+  // The panel as it stands now, for the steps that go on after a wait (a terminal's fresh read).
+  const panelNow = useRef(state);
+  panelNow.current = state;
   const operable = conversationOperable(state.presentation);
   const onScreen = panelOnScreen(state.presentation);
   // Each run's name in the "+" list's run history: its request, else its team.
@@ -237,19 +253,34 @@ function WorkSessionPage() {
     from: 'way' | 'plus' = 'way',
   ) => {
     if (heldByConfirmation()) return;
-    const { panel, run, ...inner } = target;
+    const { panel, run, terminal, ...inner } = target;
+    dockAreaRef.current?.cancelPending();
+    // The debugger, and a terminal whose tab is not in the panel, open in the bottom dock.
+    if (
+      panel === 'debug' ||
+      (panel === 'terminal' &&
+        !(terminal && panelNow.current.tabs.some((tab) => tabKey(tab) === `terminal:${terminal}`)))
+    ) {
+      dockAreaRef.current?.openAddressed({ panel, terminal }, true);
+      return;
+    }
     rememberOpener();
-    const tab = targetTab({ panel, run }, ctx.runIds);
+    const tab = targetTab({ panel, run, terminal }, ctx.runIds);
     const own = Object.values(inner).some((value) => value !== undefined)
       ? inner
       : tab
         ? frame.tabSearch(tabKey(tab))
         : undefined;
+    const before = panelNow.current;
     const { state: next } = frame.dispatch(
-      { type: 'open', target: { panel, ...(run ? { run } : {}) }, from },
+      {
+        type: 'open',
+        target: { panel, ...(run ? { run } : {}), ...(terminal ? { terminal } : {}) },
+        from,
+      },
       own,
     );
-    focusOpened({ panel }, next, state);
+    focusOpened({ panel, terminal }, next, before);
   };
   /** Where the focus goes once a way opened `next`: its tab, or the place inside it it names. */
   const focusOpened = (target: Partial<SessionSearch>, next: PanelState, before: PanelState) => {
@@ -257,7 +288,7 @@ function WorkSessionPage() {
     if (!namesSelected(target, next)) return;
     // A way that names the terminal or Git puts the focus in the terminal or the commit message
     // once its tab shows it; without one the focus stays on the tab.
-    if (target.panel === 'terminal') focusTerminal();
+    if (target.panel === 'terminal' && target.terminal) focusTerminal(target.terminal);
     if (target.panel === 'git')
       focusPlace('changes', (content) => content.querySelector<HTMLElement>('#git-commit-message'));
     if (
@@ -314,8 +345,8 @@ function WorkSessionPage() {
     };
     placeWait.current = { sessionId, timer: window.setTimeout(attempt, 0) };
   };
-  const focusTerminal = () =>
-    focusPlace('files', (content) => {
+  const focusTerminal = (terminalId: string) =>
+    focusPlace(`terminal:${terminalId}`, (content) => {
       const screen = content.querySelector<HTMLElement>('[data-terminal-screen]');
       return screen ? (screen.querySelector<HTMLElement>('textarea') ?? screen) : null;
     });
@@ -326,10 +357,23 @@ function WorkSessionPage() {
   };
   const select = (key: TabKey) => {
     if (heldByConfirmation()) return;
+    dockAreaRef.current?.cancelPending();
     frame.dispatch({ type: 'select', key }, frame.tabSearch(key) ?? {});
   };
   const close = (key: TabKey) => {
     if (heldByConfirmation()) return;
+    dockAreaRef.current?.cancelPending();
+    // Closing a terminal's tab ends its terminal, as its state says (features/session-panel.md
+    // 터미널 탭); the tab goes once that is decided.
+    if (key.startsWith('terminal:')) {
+      void dockAreaRef.current?.closeTerminal(key.slice('terminal:'.length), () => closeTab(key));
+      return;
+    }
+    closeTab(key);
+  };
+  /** Takes a tab out of the strip, the focus going on as a close sends it; ends nothing. */
+  const closeTab = (key: TabKey) => {
+    const state = panelNow.current;
     // Focus on the closing tab, on its close control or inside its content is one case: it goes
     // on to the tab selected next, or for a tab not selected to its neighbour in the strip, or to
     // the body's list when none is left. Anywhere else it stays (features/session-panel.md).
@@ -361,6 +405,7 @@ function WorkSessionPage() {
   };
   const toggle = () => {
     if (heldByConfirmation()) return;
+    dockAreaRef.current?.cancelPending();
     rememberOpener();
     frame.dispatch({ type: 'toggle' });
   };
@@ -532,16 +577,12 @@ function WorkSessionPage() {
   const sessionRunIds = sessionRuns.map((run) => run.runId);
   // What the conversation presents never follows the address's run, which a run tab keeps.
   const { presentationRunId, liveRunId } = sessionRunViews(sessionRuns, linkedRunIds);
-  const selectedKind = state.selected
-    ? state.selected.startsWith('run:')
-      ? 'run'
-      : state.selected
-    : null;
+  const selectedKind = state.tabs.find((tab) => tabKey(tab) === state.selected)?.kind ?? null;
   const filesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'files' ? search.panel : undefined;
   const changesFront =
     search.panel && PANEL_TAB_OF[search.panel] === 'changes' ? search.panel : undefined;
-  const panelViews: Record<'files' | 'debug' | 'checks' | 'problems', () => ReactNode> = {
+  const panelViews: Record<'files' | 'checks' | 'problems', () => ReactNode> = {
     files: () => (
       <FilePanel
         projectId={session.projectId}
@@ -552,7 +593,6 @@ function WorkSessionPage() {
         onOpenDocument={(document, range) => dock.current?.openDocument(document, range) ?? false}
       />
     ),
-    debug: () => <DebuggerPanel sessionId={session.sessionId} projectId={session.projectId} />,
     checks: () => <ChecksPanel session={session} onAttach={handleAttachment} />,
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
   };
@@ -607,20 +647,6 @@ function WorkSessionPage() {
     );
   };
   const renderContext = (view: DockContextView) => {
-    if (view === 'terminal')
-      return (
-        <TerminalPanel
-          terminalId={search.terminal}
-          runActive={sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status))}
-          key={session.sessionId}
-          sessionId={session.sessionId}
-          projectId={session.projectId}
-          onAttach={handleAttachment}
-          revealSource={
-            terminalSource?.target.sessionId === session.sessionId ? terminalSource : undefined
-          }
-        />
-      );
     if (view === 'tools')
       return (
         <WorkbenchToolsPanel
@@ -629,20 +655,51 @@ function WorkSessionPage() {
           projectId={session.projectId}
         />
       );
-    if (view !== 'files' && view !== 'debug') return null;
+    if (view !== 'files') return null;
     const target = sessionPanelDescriptor(session.projectId, session.sessionId, view, null);
     return (
       <div
         key={target ? panelKey(services, target) : view}
         // The folder tree fills the pane's height.
-        className={`flex flex-col gap-3 p-3 ${view === 'files' ? 'h-full min-h-0' : ''}`}
+        className="flex h-full min-h-0 flex-col gap-3 p-3"
       >
         {panelViews[view]()}
       </div>
     );
   };
+  /** A terminal tab's screen, in the panel or the dock; its ⋯ moves it to the other. */
+  const renderTerminal = (
+    terminalId: string,
+    strip: 'panel' | 'dock',
+    move: () => void,
+    exitToTab: () => void,
+  ) =>
+    terminals ? (
+      <TerminalScreen
+        store={terminals}
+        sessionId={session.sessionId}
+        terminalId={terminalId}
+        documents={documents}
+        move={{ to: strip === 'panel' ? 'dock' : 'panel', onMove: move }}
+        onExitToTab={exitToTab}
+        onAttach={handleAttachment}
+        revealSource={
+          terminalSource?.target.sessionId === session.sessionId &&
+          terminalSource.terminalId === terminalId
+            ? terminalSource
+            : undefined
+        }
+      />
+    ) : null;
   const renderTab = (tab: OpenTab) => {
     const selected = state.selected === tabKey(tab);
+    if (tab.kind === 'terminal')
+      return renderTerminal(
+        tab.terminalId,
+        'panel',
+        () => dockAreaRef.current?.moveToDock(tab.terminalId),
+        () => strip.current?.focusTab(tabKey(tab)),
+      );
     if (tab.kind === 'files')
       return (
         <DockWorkbench
@@ -656,7 +713,6 @@ function WorkSessionPage() {
           {...(selected && onScreen ? { selectedPanel: filesFront ?? null } : {})}
           selectionKey={`${session.sessionId}:${JSON.stringify(search)}`}
           documentOwner={documents}
-          terminalStatus={<TerminalActivity sessionId={session.sessionId} />}
           renderContext={renderContext}
           onReady={flushDock}
           onOpenElsewhere={(view) => (view === 'chat' ? bringForward() : open({ panel: view }))}
@@ -734,8 +790,32 @@ function WorkSessionPage() {
   const runActive = sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
   const [mainElement, setMainElement] = useState<HTMLDivElement | null>(null);
   // The bottom dock (features/session-panel.md 하단 도크): its region, button and shortcut.
+  const panelTerminals = state.tabs.flatMap((tab) =>
+    tab.kind === 'terminal' ? [tab.terminalId] : [],
+  );
+  const shownTerminal =
+    onScreen && state.selected?.startsWith('terminal:')
+      ? state.selected.slice('terminal:'.length)
+      : null;
   const dockArea = useSessionDockArea({
     sessionId: session.sessionId,
+    store: terminals,
+    list: terminalList,
+    panel: {
+      terminals: panelTerminals,
+      shown: shownTerminal,
+      open: (terminalId, from) => {
+        if (heldByConfirmation()) return;
+        rememberOpener();
+        const before = panelNow.current;
+        const { state: next } = frame.dispatch(
+          { type: 'open', target: { panel: 'terminal', terminal: terminalId }, from },
+          {},
+        );
+        focusOpened({ panel: 'terminal', terminal: terminalId }, next, before);
+      },
+      remove: (terminalId) => closeTab(`terminal:${terminalId}`),
+    },
     runActive,
     trusted: Boolean(binding?.trusted),
     drawer: state.presentation === 'drawer',
@@ -743,21 +823,7 @@ function WorkSessionPage() {
     held: heldByConfirmation,
     openChanges: () => open({ panel: 'changes' }),
     main: mainElement,
-    renderTerminal: (terminalId) => (
-      <TerminalPanel
-        terminalId={terminalId}
-        runActive={runActive}
-        sessionId={session.sessionId}
-        projectId={session.projectId}
-        onAttach={handleAttachment}
-        revealSource={
-          terminalSource?.target.sessionId === session.sessionId &&
-          terminalSource.terminalId === terminalId
-            ? terminalSource
-            : undefined
-        }
-      />
-    ),
+    renderTerminal,
     renderDebug: () => (
       // A stack frame opens its document in the panel; the focus stays here to keep stepping.
       <SourceNavigationContext.Provider
@@ -786,9 +852,11 @@ function WorkSessionPage() {
       </SourceNavigationContext.Provider>
     ),
   });
+  dockAreaRef.current = dockArea;
 
   return (
     <>
+      {dockArea.endDialog}
       <SessionActions
         session={session}
         corrals={corrals}
@@ -917,6 +985,8 @@ function WorkSessionPage() {
                     runs={runs}
                     runNames={runNames}
                     onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
+                    terminalRow={dockArea.terminalRow}
+                    onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
                     onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
                     onMaximize={() => {
                       if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });

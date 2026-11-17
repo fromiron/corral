@@ -86,6 +86,8 @@ async function show({
           onSelect={() => {}}
           onClose={() => {}}
           onPlus={onPlus}
+          terminalRow={null}
+          onTerminal={() => {}}
           onOpenRun={onOpenRun}
           onMaximize={() => {}}
           renderTab={() => null}

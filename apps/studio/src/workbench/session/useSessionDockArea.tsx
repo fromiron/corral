@@ -1,18 +1,12 @@
-// The bottom dock in the session screen (features/session-panel.md 하단 도크): the region the
-// frame lays under the conversation and the panel, its button in the top bar, its shortcut, and
-// what an empty dock shows when the person opens it. SessionPage hands in what only it knows
-// (the drawer, the run, how a tab's screen is drawn) and spreads what comes back.
+// The bottom dock in the session screen (features/session-panel.md 하단 도크) and the terminals it
+// shares with the panel (터미널 탭): the region the frame lays under the conversation and the
+// panel, its button in the top bar, its shortcut, what an empty dock shows when the person opens
+// it, and where a terminal opens, closes and moves. SessionPage hands in what only it knows (the
+// drawer, the run, the panel's terminal tabs, how a tab's screen is drawn) and spreads what
+// comes back.
 import type { TerminalView } from '@corral/contracts';
 import { Button, type TabsClosableHandle, tabsClosableIds } from '@corral/react/design-kit';
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from 'react';
+import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import {
@@ -23,15 +17,32 @@ import {
   dockKey,
   MESSAGES_MIN_HEIGHT,
 } from '../panel/dock.ts';
+import type { PanelTarget } from '../panel/tabs.ts';
+import { addressedTerminalPlace, plusTerminalPlace } from '../panel/terminalPlace.ts';
+import { closingTerminal } from '../terminals/closing.ts';
 import { isLive, liveTerminal, terminalCreation } from '../terminals/creation.ts';
-import { type TerminalStore, terminalStore } from '../terminals/store.ts';
+import { EndTerminalDialog } from '../terminals/EndTerminalDialog.tsx';
+import type { TerminalStore } from '../terminals/store.ts';
+import type { TerminalList } from '../terminals/useTerminalList.ts';
 import { DOCK_ID_PREFIX, type DockPlus, SessionDock, useCreationReason } from './SessionDock.tsx';
 import { useSessionDock } from './useSessionDock.ts';
 
-const noSubscription = () => () => {};
+/** What the dock reads of the panel's terminal tabs, and what it asks the panel to do. */
+export interface PanelTerminals {
+  /** The terminals with a tab in the panel. */
+  readonly terminals: readonly string[];
+  /** The terminal whose tab is the panel's selected tab while the panel is on screen. */
+  readonly shown: string | null;
+  /** Opens or selects the terminal's tab in the panel (`plus`: without a history entry). */
+  open(terminalId: string, from: 'way' | 'plus'): void;
+  /** Takes the terminal's tab out of the panel as a close does, ending nothing. */
+  remove(terminalId: string): void;
+}
 
 interface DockAreaInput {
   sessionId: string;
+  store: TerminalStore | null;
+  list: TerminalList;
   /** A run of this conversation is going: no new terminal now. */
   runActive: boolean;
   /** The project's binding is trusted: the debugger can run in its Paddock. */
@@ -43,7 +54,14 @@ interface DockAreaInput {
   held: () => boolean;
   /** Where a conversation without a Paddock sets one up: the 변경 tab. */
   openChanges: () => void;
-  renderTerminal: (terminalId: string) => ReactNode;
+  panel: PanelTerminals;
+  /** A terminal tab's screen, in the strip it is in. */
+  renderTerminal: (
+    terminalId: string,
+    strip: 'panel' | 'dock',
+    move: () => void,
+    exitToTab: () => void,
+  ) => ReactNode;
   renderDebug: () => ReactNode;
   /** The conversation's own region, measured for the message area the dock leaves. */
   main: HTMLElement | null;
@@ -94,25 +112,21 @@ function handFocusOn() {
 }
 
 export function useSessionDockArea(input: DockAreaInput) {
-  const { sessionId, runActive, trusted, drawer, closeDrawer, held, openChanges } = input;
+  const { sessionId, store, runActive, trusted, drawer, closeDrawer, held, openChanges, panel } =
+    input;
+  const { value, answer } = input.list;
   const services = useServices();
   const t = useTranslations('SessionPanel');
   const tt = useTranslations('Terminals');
   const tf = useTranslations('Files');
   const reason = useCreationReason();
-  const store: TerminalStore | null =
-    services.mode === 'server' && services.terminals ? terminalStore(services.terminals) : null;
-  const { dock, dispatch, refreshTerminals } = useSessionDock(sessionId, store);
-  const readSession = useCallback(
-    () => (store ? store.getState().sessions[sessionId] : undefined),
-    [store, sessionId],
-  );
-  const value = useSyncExternalStore(store?.subscribe ?? noSubscription, readSession, readSession);
+  const { dock, dispatch } = useSessionDock(sessionId, answer);
   const terminals: readonly TerminalView[] = value?.list?.terminals ?? [];
   const creation = terminalCreation(value, runActive);
   const live = liveTerminal(value);
-  const runActiveNow = useRef(runActive);
-  runActiveNow.current = runActive;
+  // What the steps that wait (a creation, a fresh read, the list) read when they go on.
+  const latest = useRef({ sessionId, runActive, panel, dock, answer, value });
+  latest.current = { sessionId, runActive, panel, dock, answer, value };
 
   // Focus: the person's open goes to the dock's selected tab (a terminal's input); a close or a
   // withdrawal with the focus inside hands it back (features/session-panel.md 접근성).
@@ -120,6 +134,15 @@ export function useSessionDockArea(input: DockAreaInput) {
   const region = useRef<HTMLElement | null>(null);
   const opener = useRef<{ sessionId: string; element: HTMLElement } | null>(null);
   const focusWanted = useRef<{ sessionId: string } | null>(null);
+  // The wait for a terminal's input, which ends with the conversation it was started in.
+  const inputWait = useRef<number | null>(null);
+  useEffect(() => {
+    void sessionId;
+    return () => {
+      if (inputWait.current !== null) window.clearTimeout(inputWait.current);
+      inputWait.current = null;
+    };
+  }, [sessionId]);
   const handBack = useRef<'opener' | 'frame' | null>(null);
   const rememberOpener = () => {
     const focused = document.activeElement;
@@ -158,34 +181,52 @@ export function useSessionDockArea(input: DockAreaInput) {
       return;
     }
     // A terminal's input appears once its screen has attached: wait for it a little.
+    if (inputWait.current !== null) window.clearTimeout(inputWait.current);
     let tries = 0;
     const attempt = () => {
-      const panel = document.getElementById(tabsClosableIds(DOCK_ID_PREFIX, selected).panel);
+      inputWait.current = null;
+      const tabPanel = document.getElementById(tabsClosableIds(DOCK_ID_PREFIX, selected).panel);
       const screen =
-        panel && !panel.hidden ? panel.querySelector<HTMLElement>('[data-terminal-screen]') : null;
+        tabPanel && !tabPanel.hidden
+          ? tabPanel.querySelector<HTMLElement>('[data-terminal-screen]')
+          : null;
       const place = screen ? (screen.querySelector<HTMLElement>('textarea') ?? screen) : null;
       if (place) place.focus({ preventScroll: true });
-      else if (++tries < 40) window.setTimeout(attempt, 50);
+      else if (++tries < 40) inputWait.current = window.setTimeout(attempt, 50);
       else strip.current?.focusTab(selected);
     };
-    window.setTimeout(attempt, 0);
+    inputWait.current = window.setTimeout(attempt, 0);
   }, [dock, sessionId]);
 
-  const openTerminalTab = (terminalId: string, keepOpen = false) =>
+  /** The terminals with a tab in each strip, as they stand now. */
+  const strips = () => ({
+    panel: new Set(latest.current.panel.terminals),
+    dock: new Set(
+      latest.current.dock.tabs.flatMap((tab) => (tab.kind === 'terminal' ? [tab.terminalId] : [])),
+    ),
+  });
+  /** Opens or selects a terminal's tab in the dock and opens the dock (a drawer closes first). */
+  const showInDock = (terminalId: string, focus: boolean, keepOpen = false) => {
+    if (drawer) closeDrawer();
     dispatch(
       { type: 'open', tab: { kind: 'terminal', terminalId }, ...(keepOpen ? { keepOpen } : {}) },
       sessionId,
     );
+    if (focus) focusWanted.current = { sessionId };
+  };
 
-  /** Makes a terminal with `shellId` and opens its tab; a late one leaves the dock as it is. */
-  const create = async (shellId: string) => {
+  /** Makes a terminal with `shellId` for a strip and opens its tab there. */
+  const create = async (shellId: string, into: 'panel' | 'dock') => {
     if (!store) return;
     const from = sessionId;
     const terminalId = await store.create(from, shellId);
     if (!terminalId) return;
     await store.refresh(from);
-    dispatch({ type: 'open', tab: { kind: 'terminal', terminalId }, keepOpen: true }, from);
-    focusWanted.current = { sessionId: from };
+    if (into === 'dock') {
+      // A late one is the dock's still, but never opens it again (keepOpen).
+      dispatch({ type: 'open', tab: { kind: 'terminal', terminalId }, keepOpen: true }, from);
+      focusWanted.current = { sessionId: from };
+    } else if (latest.current.sessionId === from) latest.current.panel.open(terminalId, 'plus');
   };
 
   /** An empty dock opened by its toggles: the live terminal, a new one, or the reason line. */
@@ -194,22 +235,128 @@ export function useSessionDockArea(input: DockAreaInput) {
     dispatch({ type: 'show' }, from);
     let current = store?.getState().sessions[from];
     if (store && !current?.list) {
-      await refreshTerminals();
+      await store.refresh(from);
       current = store.getState().sessions[from];
     }
     const found = liveTerminal(current);
     if (found) {
+      // Its tab comes over from the panel as the ⋯ move would take it.
+      if (latest.current.panel.terminals.includes(found.terminalId))
+        latest.current.panel.remove(found.terminalId);
       dispatch({ type: 'open', tab: { kind: 'terminal', terminalId: found.terminalId } }, from);
       focusWanted.current = { sessionId: from };
       return;
     }
-    const now = terminalCreation(current, runActiveNow.current);
+    const now = terminalCreation(current, latest.current.runActive);
     const first = now.ok ? now.shells[0] : undefined;
-    if (first) await create(first.id);
+    if (first) await create(first.id, 'dock');
   };
+
+  // An address that waits for the terminal list (features/session-panel.md 여는 길); anything
+  // the person does to the panel or the dock meanwhile drops it.
+  const pending = useRef<{ sessionId: string; target: PanelTarget; focus: boolean } | null>(null);
+  const cancelPending = () => {
+    pending.current = null;
+  };
+  const place = (target: PanelTarget, focus: boolean) => {
+    const now = latest.current;
+    const where = addressedTerminalPlace(
+      target.terminal,
+      strips(),
+      now.answer,
+      terminalCreation(now.value, now.runActive).ok,
+    );
+    switch (where.place) {
+      case 'wait':
+        pending.current = { sessionId, target, focus };
+        return;
+      case 'panel':
+        now.panel.open(where.terminalId, 'plus');
+        return;
+      case 'dock':
+        showInDock(where.terminalId, focus);
+        return;
+      case 'create': {
+        if (drawer) closeDrawer();
+        dispatch({ type: 'show' }, sessionId);
+        const first = terminalCreation(now.value, now.runActive);
+        const shell = first.ok ? first.shells[0] : undefined;
+        if (shell) void create(shell.id, 'dock');
+        return;
+      }
+      case 'dockOnly':
+        if (drawer) closeDrawer();
+        dispatch({ type: 'show' }, sessionId);
+        return;
+      case 'none':
+        return;
+    }
+  };
+  /** An opening way or an address the dock opens: `panel=debug`, or a terminal not in the panel. */
+  const openAddressed = (target: PanelTarget, focus: boolean) => {
+    pending.current = null;
+    if (target.panel === 'debug') {
+      if (drawer) closeDrawer();
+      dispatch({ type: 'open', tab: { kind: 'debug' } }, sessionId);
+      if (focus) focusWanted.current = { sessionId };
+      return;
+    }
+    place(target, focus);
+  };
+  const answerKey =
+    answer.kind === 'answered' ? `${answer.ids.join(',')}|${answer.live}` : answer.kind;
+  // place reads the latest render through `latest`.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
+  useEffect(() => {
+    void answerKey;
+    const waiting = pending.current;
+    if (!waiting || waiting.sessionId !== sessionId || latest.current.answer.kind === 'waiting')
+      return;
+    pending.current = null;
+    place(waiting.target, waiting.focus);
+  }, [answerKey, sessionId]);
+
+  // Closing a terminal's tab ends the terminal as its state says (closing.ts): the dialog asks
+  // first when a command may be running, and nothing is sent while it asks.
+  const [asking, setAsking] = useState<{
+    sessionId: string;
+    terminalId: string;
+    remove: () => void;
+  } | null>(null);
+  const closeTerminal = async (terminalId: string, remove: () => void) => {
+    if (!store) return remove();
+    const from = sessionId;
+    const state =
+      latest.current.value?.list?.terminals.find((item) => item.terminalId === terminalId)?.state ??
+      'exited';
+    const action = await closingTerminal(state, () => store.readForeground(terminalId));
+    if (latest.current.sessionId !== from) return;
+    if (action === 'ask') {
+      setAsking({ sessionId: from, terminalId, remove });
+      return;
+    }
+    remove();
+    if (action === 'end' || action === 'recheck') void store.stop(terminalId).catch(() => {});
+  };
+  // Leaving the conversation drops the question, sending nothing.
+  const askingHere = asking?.sessionId === sessionId ? asking : null;
+  const endDialog = (
+    <EndTerminalDialog
+      open={Boolean(askingHere)}
+      onKeep={() => setAsking(null)}
+      onEnd={() => {
+        const ending = askingHere;
+        setAsking(null);
+        if (!ending || !store) return;
+        ending.remove();
+        void store.stop(ending.terminalId).catch(() => {});
+      }}
+    />
+  );
 
   const toggle = () => {
     if (held()) return;
+    pending.current = null;
     if (drawer) closeDrawer();
     if (dock.open) {
       if (focusInside()) handBack.current = 'opener';
@@ -226,25 +373,40 @@ export function useSessionDockArea(input: DockAreaInput) {
 
   const select = (key: DockKey) => {
     if (held()) return;
+    pending.current = null;
     dispatch({ type: 'select', key });
   };
-  const close = (key: DockKey) => {
-    if (held()) return;
-    // Closing a terminal's tab ends it once the terminal tab's close rule is in; until then a dock
-    // tab closes as any tab does, sending nothing.
-    const keys = dock.tabs.map(dockKey);
+  /** Takes a tab out of the dock, the focus going on as a close sends it. */
+  const dropTab = (key: DockKey) => {
+    const keys = latest.current.dock.tabs.map(dockKey);
     const index = keys.indexOf(key);
+    if (index < 0) return;
     if (focusInside()) {
       if (keys.length === 1) handBack.current = 'opener';
       else {
-        const next =
-          key === dock.selected
-            ? (keys[index + 1] ?? keys[index - 1])
-            : (keys[index + 1] ?? keys[index - 1]);
+        const next = keys[index + 1] ?? keys[index - 1];
         if (next) window.setTimeout(() => strip.current?.focusTab(next), 0);
       }
     }
     dispatch({ type: 'close', key });
+  };
+  const close = (key: DockKey) => {
+    if (held()) return;
+    pending.current = null;
+    if (key.startsWith('terminal:'))
+      void closeTerminal(key.slice('terminal:'.length), () => dropTab(key));
+    else dropTab(key);
+  };
+  /** The ⋯ move: the panel's tab of the terminal goes to the dock's right end, selected. */
+  const moveToDock = (terminalId: string) => {
+    if (held()) return;
+    panel.remove(terminalId);
+    showInDock(terminalId, true);
+  };
+  const moveToPanel = (terminalId: string) => {
+    if (held()) return;
+    dispatch({ type: 'close', key: `terminal:${terminalId}` });
+    panel.open(terminalId, 'plus');
   };
 
   const terminalRow: DockPlus['terminal'] =
@@ -263,19 +425,21 @@ export function useSessionDockArea(input: DockAreaInput) {
       services.mode === 'server' &&
       typeof services.workspaces?.debugState === 'function',
   };
-  const onTerminal = (shellId?: string) => {
+  /** "+" → 터미널 in either strip's list: the live terminal's tab where it is, or a new one. */
+  const onPlusTerminal = (from: 'panel' | 'dock', shellId?: string) => {
     if (held()) return;
-    if (live) {
-      openTerminalTab(live.terminalId);
-      focusWanted.current = { sessionId };
-      return;
+    pending.current = null;
+    const where = plusTerminalPlace(from, live?.terminalId ?? null, strips(), creation.ok);
+    if (where.place === 'panel') panel.open(where.terminalId, 'plus');
+    else if (where.place === 'dock') showInDock(where.terminalId, true);
+    else if (where.place === 'create' && creation.ok) {
+      const shell = shellId ?? creation.shells[0]?.id;
+      if (shell) void create(shell, where.strip);
     }
-    if (!creation.ok) return;
-    const shell = shellId ?? creation.shells[0]?.id;
-    if (shell) void create(shell);
   };
   const onDebug = () => {
     if (held()) return;
+    pending.current = null;
     dispatch({ type: 'open', tab: { kind: 'debug' } });
     focusWanted.current = { sessionId };
   };
@@ -305,6 +469,16 @@ export function useSessionDockArea(input: DockAreaInput) {
           >
             {tt('checkCreate')}
           </Button>
+          {value.canRetryCreate ? (
+            <Button
+              variant="tertiary"
+              size="compact"
+              disabled={value.loading}
+              onClick={() => void store.retryCreate(sessionId)}
+            >
+              {tt('retryCreate')}
+            </Button>
+          ) : null}
         </>
       );
     if (!creation.ok && creation.reason !== 'createHeld')
@@ -326,9 +500,12 @@ export function useSessionDockArea(input: DockAreaInput) {
   };
 
   const floor = useMainFloor(input.main);
-  // The button's dot: a running terminal, or one whose end needs confirming, off screen while
-  // the dock is closed (a withdrawn dock is open). Starting and stopping ones have none.
-  const offScreen = dock.open ? [] : terminals.filter(isLive);
+  // The button's dot: a running terminal, or one whose end needs confirming, not on screen while
+  // the dock is closed (a withdrawn dock is open). On screen is the panel's selected tab of a
+  // panel on screen. Starting and stopping ones have none.
+  const offScreen = dock.open
+    ? []
+    : terminals.filter((item) => isLive(item) && item.terminalId !== panel.shown);
   const dot = offScreen.some((item) => item.state === 'uncertain')
     ? ('warning' as const)
     : offScreen.some((item) => item.state === 'running')
@@ -336,10 +513,25 @@ export function useSessionDockArea(input: DockAreaInput) {
       : null;
 
   const renderTab = (tab: DockTab) =>
-    tab.kind === 'terminal' ? input.renderTerminal(tab.terminalId) : input.renderDebug();
+    tab.kind === 'terminal'
+      ? input.renderTerminal(
+          tab.terminalId,
+          'dock',
+          () => moveToPanel(tab.terminalId),
+          () => strip.current?.focusTab(`terminal:${tab.terminalId}`),
+        )
+      : input.renderDebug();
 
   return {
     toggle: store ? { pressed: dock.open, dot, onToggle: toggle } : null,
+    /** The "+" lists' 터미널 row (the panel's and the dock's are one). */
+    terminalRow,
+    onPlusTerminal,
+    closeTerminal,
+    moveToDock,
+    openAddressed,
+    cancelPending,
+    endDialog: store ? endDialog : null,
     frame: store
       ? {
           bottom: (
@@ -352,7 +544,7 @@ export function useSessionDockArea(input: DockAreaInput) {
               body={body}
               onSelect={select}
               onClose={close}
-              onTerminal={onTerminal}
+              onTerminal={(shellId) => onPlusTerminal('dock', shellId)}
               onDebug={onDebug}
               renderTab={renderTab}
             />

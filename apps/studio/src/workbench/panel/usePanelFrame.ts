@@ -15,7 +15,14 @@ import {
   reducePanel,
   runTabHeadRun,
 } from './model.ts';
-import { PANEL_TAB_OF, type PanelContext, type PanelFronts, type TabKey } from './tabs.ts';
+import {
+  PANEL_TAB_OF,
+  type PanelContext,
+  type PanelFronts,
+  type PanelTarget,
+  type TabKey,
+  tabKey,
+} from './tabs.ts';
 import { hasRoom } from './width.ts';
 
 // The session frame's wiring of the panel model (model.ts) to the router, the history and this
@@ -55,6 +62,16 @@ export interface PanelFrameInput {
   folder: boolean;
   /** The conversation's runs, oldest first, once a listing after the entry answered. */
   runIds: readonly string[] | null;
+  /** Server mode with a Paddock: the "+" list has 터미널. */
+  paddock?: boolean;
+  /** The conversation's terminals once the list asked since the entry answered; null until. */
+  terminalIds?: readonly string[] | null;
+  /**
+   * An address the bottom dock opens arrived (entering or followed, never Back or Forward):
+   * `panel=debug`, or `panel=terminal` whose terminal has no tab in the panel. `focus`: it was a
+   * link the person followed in the app.
+   */
+  onDockAddress?: (target: PanelTarget, focus: boolean) => void;
   /** The conversation is to come forward: what came with it (an address's `respond`). */
   onBringForward?: (search: SessionSearch) => void;
   /**
@@ -80,7 +97,7 @@ export interface PanelFrame {
 }
 
 export function usePanelFrame(input: PanelFrameInput): PanelFrame {
-  const { sessionId, workArea, folder, runIds } = input;
+  const { sessionId, workArea, folder, runIds, paddock = false, terminalIds = null } = input;
   const router = useRouter();
   // The search of this very entry: the route's own search can lag a render behind the location.
   const arrivedKey = useRouterState({ select: (s) => JSON.stringify(s.location.search) });
@@ -98,7 +115,14 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   // The front inside 파일 and 변경: whatever the address last named while that tab was the
   // selected one, kept in one place (here) for this conversation only.
   const fronts = useRef<PanelFronts>({});
-  const ctx: PanelContext = { room: room ?? false, folder, runIds, front: fronts.current };
+  const ctx: PanelContext = {
+    room: room ?? false,
+    folder,
+    runIds,
+    paddock,
+    terminalIds,
+    front: fronts.current,
+  };
   const [held, setHeld] = useState<{ sessionId: string; state: PanelState } | null>(null);
   const state = held?.sessionId === sessionId ? held.state : EMPTY_PANEL;
   const entered = held?.sessionId === sessionId;
@@ -113,9 +137,18 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   const note = useCallback((search: SessionSearch, state: PanelState) => {
     const selected = state.selected;
     if (!selected || state.presentation === 'closed' || !search.panel) return;
-    const named = search.panel === 'run' ? (search.run ? `run:${search.run}` : null) : search.panel;
     const kind = PANEL_TAB_OF[search.panel];
-    if (search.panel === 'run' ? named !== selected : kind !== selected) return;
+    const named =
+      kind === 'run'
+        ? search.run
+          ? `run:${search.run}`
+          : null
+        : kind === 'terminal'
+          ? search.terminal
+            ? `terminal:${search.terminal}`
+            : null
+          : kind;
+    if (named !== selected) return;
     tabStates.current.set(selected, tabParams(search));
     if (kind === 'files' || kind === 'changes')
       fronts.current = { ...fronts.current, [kind]: search.panel };
@@ -192,12 +225,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
       if (result.state !== before || event.type === 'enter')
         writePanelMemory(deviceStorage(), now.sessionId, result.state);
       for (const key of [...tabStates.current.keys()])
-        if (
-          !result.state.tabs.some(
-            (tab) => (tab.kind === 'run' ? `run:${tab.runId}` : tab.kind) === key,
-          )
-        )
-          tabStates.current.delete(key);
+        if (!result.state.tabs.some((tab) => tabKey(tab) === key)) tabStates.current.delete(key);
       // A closed tab's front goes with its state: opened again, it starts at its own first view.
       for (const kind of ['files', 'changes'] as const)
         if (fronts.current[kind] && !result.state.tabs.some((tab) => tab.kind === kind)) {
@@ -261,6 +289,19 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
       if (readAddress(search).kind === 'panel')
         latest.current.input.onOpenedByLink?.(search, state, before);
     };
+    // What the dock opens: the panel left it alone (model.ts addressTab).
+    const docked = (state: PanelState, focus: boolean) => {
+      const address = readAddress(search);
+      if (address.kind !== 'panel') return;
+      const { target } = address;
+      const kind = PANEL_TAB_OF[target.panel];
+      const inPanel =
+        kind === 'terminal' &&
+        target.terminal !== undefined &&
+        state.tabs.some((tab) => tabKey(tab) === `terminal:${target.terminal}`);
+      if (kind === null || (kind === 'terminal' && !inPanel))
+        latest.current.input.onDockAddress?.(target, focus);
+    };
     if (heldRef.current?.sessionId !== sessionId) {
       const via: EntryVia = !action ? 'address' : back ? 'history' : outside ? 'address' : 'link';
       const result = dispatch({
@@ -270,6 +311,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
         via,
       });
       if (via === 'link') linked(result.state);
+      if (via !== 'history') docked(result.state, via === 'link');
       return;
     }
     // Back and Forward decide before any tag: a travelled entry may carry an old write's mark.
@@ -282,6 +324,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     else {
       const result = dispatch({ type: 'follow', search, source: outside ? 'outside' : 'in-app' });
       if (!outside) linked(result.state);
+      docked(result.state, !outside);
     }
   }, [
     locationKey,
@@ -298,21 +341,22 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
 
   // The room and the run list reach the model only as context.
   const runKey = runIds === null ? null : runIds.join(',');
+  const terminalKey = terminalIds === null ? null : terminalIds.join(',');
   const contextSeen = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${sessionId}|${room}|${folder}|${runKey}`;
+    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}`;
     if (!entered || room === null) {
       contextSeen.current = null;
       return;
     }
     if (contextSeen.current === null) {
       contextSeen.current = key;
-      // The listing may have answered before the entry: let its clean-up run.
-      if (runKey === null) return;
+      // A listing may have answered before the entry: let its clean-up run.
+      if (runKey === null && terminalKey === null) return;
     } else if (contextSeen.current === key) return;
     contextSeen.current = key;
     dispatch({ type: 'context' });
-  }, [entered, sessionId, room, folder, runKey, dispatch]);
+  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, dispatch]);
 
   // The selected tab's own state (and front), as the address carries it.
   useEffect(() => {

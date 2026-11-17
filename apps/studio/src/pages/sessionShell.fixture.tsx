@@ -85,6 +85,14 @@ export interface ServerParts {
   releaseCreate(): void;
   /** Sets a listed terminal's state, as the host would report it on the next read. */
   setTerminalState(terminalId: string, state: TerminalView['state']): void;
+  /** Sets what a terminal's foreground is now, as the host reads it on the next read or list. */
+  setForeground(terminalId: string, foreground: TerminalView['foreground']): void;
+  /** While set, every terminal read and list fails. */
+  setReadsFail(fail: boolean): void;
+  /** Each terminal read (by ID) the page asked for, in order. */
+  reads: string[];
+  /** Each terminal stop (by ID) the page sent, in order. */
+  stops: string[];
   /** The one file the working copy holds. */
   path: string;
 }
@@ -353,6 +361,13 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     foreground: 'idle',
   };
   const terminalCalls: string[] = [];
+  const listing = () => ({
+    target: options.noCopy ? null : target,
+    available: !options.noCopy,
+    reason: options.noCopy ? 'The managed working copy is unavailable' : null,
+    shells: (options.shells ?? ['bash']).map((id) => ({ id, label: id })),
+    terminals: listed.map((item) => structuredClone(item)),
+  });
   const names = ['terminal_one', 'terminal_two', 'terminal_three', 'terminal_four'];
   const listed: TerminalView[] = (options.terminals ?? ['running']).map((state, index) => ({
     ...structuredClone(view),
@@ -368,17 +383,21 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       return structuredClone(find(id));
     };
   const created: string[] = [];
+  const reads: string[] = [];
+  const stops: string[] = [];
+  let readsFail = false;
   let createHold: Gated<void> | null = null;
   const terminals = {
     attention: async () => [],
-    list: async () => ({
-      target: options.noCopy ? null : target,
-      available: !options.noCopy,
-      reason: options.noCopy ? 'The managed working copy is unavailable' : null,
-      shells: (options.shells ?? ['bash']).map((id) => ({ id, label: id })),
-      terminals: listed.map((item) => structuredClone(item)),
-    }),
-    read: async (_session: string, id: string) => structuredClone(find(id)),
+    list: async () => {
+      if (readsFail) throw new Error('terminal list unavailable');
+      return listing();
+    },
+    read: async (_session: string, id: string) => {
+      reads.push(id);
+      if (readsFail) throw new Error('terminal read unavailable');
+      return structuredClone(find(id));
+    },
     create: async (_session: string, command: { shellId: string; operationId: string }) => {
       terminalCalls.push('create');
       created.push(command.shellId);
@@ -399,7 +418,14 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     control: changing('control'),
     input: changing('input'),
     resize: changing('resize'),
-    stop: changing('stop'),
+    stop: async (_session: string, id: string): Promise<TerminalView> => {
+      terminalCalls.push('stop');
+      stops.push(id);
+      const item = listed.find((entry) => entry.terminalId === id);
+      if (item && item.state !== 'uncertain')
+        Object.assign(item, { state: 'exited', stopped: true });
+      return structuredClone(find(id));
+    },
     subscribe: () => () => {},
   };
   // The page's stores are one per client: made here with an editor model and a recovery store
@@ -426,6 +452,15 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       const item = listed.find((entry) => entry.terminalId === id);
       if (item) item.state = state;
     },
+    setForeground: (id: string, foreground: TerminalView['foreground']) => {
+      const item = listed.find((entry) => entry.terminalId === id);
+      if (item) item.foreground = foreground;
+    },
+    setReadsFail: (fail: boolean) => {
+      readsFail = fail;
+    },
+    reads,
+    stops,
   } as Omit<ServerParts, 'documents'> & { documents?: DocumentStore };
   return {
     workspaces,

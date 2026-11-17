@@ -12,18 +12,15 @@ import {
   writeDockMemory,
 } from '../panel/dock.ts';
 import { deviceStorage } from '../panel/memory.ts';
-import type { TerminalStore } from '../terminals/store.ts';
-import { WORKSPACE_CHANGED } from '../workspaceEvents.ts';
+import type { TerminalListAnswer } from '../panel/terminalPlace.ts';
 
 export interface SessionDock {
   readonly dock: DockState;
   /** Applies an event to this conversation's dock; a dispatch meant for one left is dropped. */
   dispatch(event: DockEvent, sessionId?: string): void;
-  /** The conversation's terminal list, read now: resolves once it answered (or failed). */
-  refreshTerminals(): Promise<void>;
 }
 
-export function useSessionDock(sessionId: string, terminals: TerminalStore | null): SessionDock {
+export function useSessionDock(sessionId: string, answer: TerminalListAnswer): SessionDock {
   const [held, setHeld] = useState(() => ({
     sessionId,
     dock: restoredDock(readDockMemory(deviceStorage(), sessionId)),
@@ -58,34 +55,24 @@ export function useSessionDock(sessionId: string, terminals: TerminalStore | nul
     writeDockMemory(deviceStorage(), sessionId, current.dock);
   }, [current.dock, current.sessionId, sessionId]);
 
-  const refreshTerminals = useCallback(async () => {
-    if (terminals) await terminals.refresh(here.current);
-  }, [terminals]);
   // The list's first answer after entry checks the restored tabs; later answers never do.
+  const checked = useRef<string | null>(null);
+  const answered = answer.kind !== 'waiting';
+  const ids = answer.kind === 'answered' ? answer.ids.join(',') : null;
   useEffect(() => {
-    if (!terminals) {
-      dispatch({ type: 'terminals', ids: null }, sessionId);
-      return;
-    }
-    let live = true;
-    void terminals.refresh(sessionId).then(() => {
-      if (!live) return;
-      const value = terminals.getState().sessions[sessionId];
-      dispatch(
-        {
-          type: 'terminals',
-          ids: value?.list ? value.list.terminals.map((terminal) => terminal.terminalId) : null,
-        },
-        sessionId,
-      );
-    });
-    // A Paddock made or removed changes what the list says.
-    const refresh = () => void terminals.refresh(sessionId);
-    window.addEventListener(WORKSPACE_CHANGED, refresh);
+    if (!answered || checked.current === sessionId) return;
+    checked.current = sessionId;
+    dispatch(
+      { type: 'terminals', ids: ids === null ? null : ids ? ids.split(',') : [] },
+      sessionId,
+    );
+  }, [answered, ids, sessionId, dispatch]);
+  // Leaving the conversation: its next entry checks again.
+  useEffect(() => {
+    const left = sessionId;
     return () => {
-      live = false;
-      window.removeEventListener(WORKSPACE_CHANGED, refresh);
+      if (checked.current === left) checked.current = null;
     };
-  }, [terminals, sessionId, dispatch]);
-  return { dock: current.dock, dispatch, refreshTerminals };
+  }, [sessionId]);
+  return { dock: current.dock, dispatch };
 }

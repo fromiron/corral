@@ -59,6 +59,47 @@ export function useCreationReason() {
     );
 }
 
+/**
+ * The "+" list's 터미널 row, the same in the panel's list and the dock's: a submenu of shells when
+ * a new terminal is made and there are two or more; an unavailable row with its reason when none
+ * can be made and none is live.
+ */
+export function TerminalPlusItem({
+  row,
+  onTerminal,
+}: {
+  row: NonNullable<DockPlus['terminal']>;
+  onTerminal: (shellId?: string) => void;
+}) {
+  const td = useTranslations('Docking');
+  const tt = useTranslations('Terminals');
+  const reason = useCreationReason();
+  if (!row.live && !row.blocked && row.shells.length > 1)
+    return (
+      <MenuSub>
+        <MenuSubTrigger icon={Terminal}>{td('terminal')}</MenuSubTrigger>
+        <MenuSubPopup aria-label={tt('chooseShell')}>
+          {row.shells.map((shell) => (
+            <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
+              {shell.label}
+            </MenuItem>
+          ))}
+        </MenuSubPopup>
+      </MenuSub>
+    );
+  const blocked = !row.live ? row.blocked : null;
+  return (
+    <MenuItem
+      icon={Terminal}
+      disabled={blocked !== null}
+      description={blocked ? reason(blocked) : undefined}
+      onClick={() => onTerminal()}
+    >
+      {td('terminal')}
+    </MenuItem>
+  );
+}
+
 const STATE_COLOR: Record<TerminalView['state'], string> = {
   starting: 'var(--emphasis)',
   running: 'var(--emphasis)',
@@ -98,8 +139,6 @@ export function SessionDock({
 }) {
   const t = useTranslations('SessionPanel');
   const tt = useTranslations('Terminals');
-  const td = useTranslations('Docking');
-  const reason = useCreationReason();
   const nameOf = (tab: DockTab) => {
     if (tab.kind === 'debug') return t('debugTab');
     const index = terminals.findIndex((item) => item.terminalId === tab.terminalId);
@@ -141,31 +180,7 @@ export function SessionDock({
           </MenuTrigger>
         </Tooltip>
         <MenuPopup align="start" className="w-[260px]">
-          {terminalRow ? (
-            !terminalRow.live && !terminalRow.blocked && terminalRow.shells.length > 1 ? (
-              <MenuSub>
-                <MenuSubTrigger icon={Terminal}>{td('terminal')}</MenuSubTrigger>
-                <MenuSubPopup aria-label={tt('chooseShell')}>
-                  {terminalRow.shells.map((shell) => (
-                    <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
-                      {shell.label}
-                    </MenuItem>
-                  ))}
-                </MenuSubPopup>
-              </MenuSub>
-            ) : (
-              <MenuItem
-                icon={Terminal}
-                disabled={!terminalRow.live && terminalRow.blocked !== null}
-                description={
-                  !terminalRow.live && terminalRow.blocked ? reason(terminalRow.blocked) : undefined
-                }
-                onClick={() => onTerminal()}
-              >
-                {td('terminal')}
-              </MenuItem>
-            )
-          ) : null}
+          {terminalRow ? <TerminalPlusItem row={terminalRow} onTerminal={onTerminal} /> : null}
           {plus.debug ? (
             <MenuItem icon={Bug} onClick={onDebug}>
               {t('debugTab')}

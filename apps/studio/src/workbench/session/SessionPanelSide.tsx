@@ -24,8 +24,9 @@ import {
   Maximize2,
   Minimize2,
   Plus,
+  Terminal,
 } from '@corral/react/icons';
-import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'react';
+import { type ReactNode, type Ref, useCallback, useId, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
@@ -39,6 +40,7 @@ import {
   tabKey,
 } from '../panel/tabs.ts';
 import { listedRunPresence } from '../sessionList.ts';
+import { type DockPlus, TerminalPlusItem, useCreationReason } from './SessionDock.tsx';
 
 // The panel beside the conversation (features/session-panel.md): its head — the strip of tabs,
 // "+" after the last one, maximize at the far right — and one panel per open tab. With no tab
@@ -47,20 +49,38 @@ import { listedRunPresence } from '../sessionList.ts';
 export const PANEL_ID_PREFIX = 'session-panel';
 
 type Kind = PanelTab['kind'];
-const ICONS = { files: Folder, changes: FileDiff, run: History, artifacts: FileText } as const;
+const ICONS = {
+  files: Folder,
+  terminal: Terminal,
+  changes: FileDiff,
+  run: History,
+  artifacts: FileText,
+} as const;
 const PLUS_ICONS: Record<PlusItem, (typeof ICONS)[Kind]> = {
   files: Folder,
+  terminal: Terminal,
   changes: FileDiff,
   'run-history': History,
   artifacts: FileText,
 };
 
-/** A tab's name: 실행 #n once the run's number is known, 실행 until then. */
-export function usePanelTabName(runIds: readonly string[] | null) {
+/**
+ * A tab's name: 실행 #n once the run's number is known, 실행 until then; 터미널 n by the order the
+ * conversation's terminals were made in.
+ */
+export function usePanelTabName(
+  runIds: readonly string[] | null,
+  terminalIds?: readonly string[] | null,
+) {
   const t = useTranslations('Docking');
   const tw = useTranslations('Workbench');
   const tp = useTranslations('SessionPanel');
   return (tab: PanelTab): { label: string; shortLabel?: string } => {
+    if (tab.kind === 'terminal') {
+      const index = terminalIds?.indexOf(tab.terminalId) ?? -1;
+      if (index < 0) return { label: t('terminal') };
+      return { label: tp('terminalTab', { number: index + 1 }), shortLabel: String(index + 1) };
+    }
     if (tab.kind !== 'run') return { label: t(tab.kind) };
     const index = runIds?.indexOf(tab.runId) ?? -1;
     if (index < 0) return { label: t('run') };
@@ -196,6 +216,67 @@ function useHistoryRuns(
   });
 }
 
+/**
+ * The 터미널 row of the body's list (a panel with no tab): the same choices as "+"'s row, as the
+ * list's buttons. Unavailable, it stays focusable and says why on a second line.
+ */
+function TerminalListRow({
+  row,
+  onTerminal,
+}: {
+  row: NonNullable<DockPlus['terminal']>;
+  onTerminal: (shellId?: string) => void;
+}) {
+  const td = useTranslations('Docking');
+  const tt = useTranslations('Terminals');
+  const reason = useCreationReason();
+  const reasonId = useId();
+  const content = (
+    <>
+      <Terminal aria-hidden="true" />
+      {td('terminal')}
+    </>
+  );
+  if (!row.live && !row.blocked && row.shells.length > 1)
+    return (
+      <Menu>
+        <MenuTrigger render={<Button variant="ghost" className="w-full justify-start gap-2" />}>
+          {content}
+        </MenuTrigger>
+        <MenuPopup align="start" aria-label={tt('chooseShell')}>
+          {row.shells.map((shell) => (
+            <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
+              {shell.label}
+            </MenuItem>
+          ))}
+        </MenuPopup>
+      </Menu>
+    );
+  const blocked = !row.live ? row.blocked : null;
+  if (blocked)
+    return (
+      <Button
+        variant="ghost"
+        aria-disabled="true"
+        aria-describedby={reasonId}
+        className="h-auto w-full flex-col items-start gap-0.5 py-1.5"
+      >
+        <span className="flex items-center gap-2 text-muted-foreground">{content}</span>
+        <span
+          id={reasonId}
+          className="text-caption text-muted-foreground whitespace-normal text-left"
+        >
+          {reason(blocked)}
+        </span>
+      </Button>
+    );
+  return (
+    <Button variant="ghost" className="w-full justify-start gap-2" onClick={() => onTerminal()}>
+      {content}
+    </Button>
+  );
+}
+
 /** The cap on the run history's height: a long history scrolls inside its list. */
 const HISTORY_LIST = 'max-h-[min(320px,var(--available-height))]';
 
@@ -209,6 +290,8 @@ export function SessionPanelSide({
   onSelect,
   onClose,
   onPlus,
+  terminalRow,
+  onTerminal,
   onOpenRun,
   onMaximize,
   renderTab,
@@ -223,7 +306,11 @@ export function SessionPanelSide({
   strip: Ref<TabsClosableHandle>;
   onSelect: (key: TabKey) => void;
   onClose: (key: TabKey) => void;
-  onPlus: (item: PlusItem) => void;
+  onPlus: (item: Exclude<PlusItem, 'terminal'>) => void;
+  /** The "+" list's 터미널 row: null when the conversation has no Paddock in server mode. */
+  terminalRow: DockPlus['terminal'];
+  /** "+" → 터미널: the shell chosen in its submenu, or none. */
+  onTerminal: (shellId?: string) => void;
   /** A run chosen in the run history: its tab opens or is selected. */
   onOpenRun: (runId: string) => void;
   onMaximize: () => void;
@@ -231,7 +318,7 @@ export function SessionPanelSide({
 }) {
   const t = useTranslations('SessionPanel');
   const tp = useTranslations('Presence');
-  const name = usePanelTabName(ctx.runIds);
+  const name = usePanelTabName(ctx.runIds, ctx.terminalIds);
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
@@ -261,7 +348,11 @@ export function SessionPanelSide({
               );
               return (
                 <li key={item}>
-                  {item === 'run-history' && listed ? (
+                  {item === 'terminal' ? (
+                    terminalRow ? (
+                      <TerminalListRow row={terminalRow} onTerminal={onTerminal} />
+                    ) : null
+                  ) : item === 'run-history' && listed ? (
                     // The same list as "+"'s, in place on its row.
                     <Menu>
                       <MenuTrigger
@@ -335,6 +426,10 @@ export function SessionPanelSide({
                 <MenuPopup align="start" className="w-[220px]">
                   {items.map((item) => {
                     const Icon = PLUS_ICONS[item];
+                    if (item === 'terminal')
+                      return terminalRow ? (
+                        <TerminalPlusItem key={item} row={terminalRow} onTerminal={onTerminal} />
+                      ) : null;
                     return item === 'run-history' && listed ? (
                       <MenuSub key={item}>
                         <MenuSubTrigger icon={Icon}>{plusLabel(item)}</MenuSubTrigger>
