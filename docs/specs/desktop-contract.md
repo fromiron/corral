@@ -9,7 +9,7 @@
 | ABS-01 | 워크트리 명령 실행 | effect intent, 승인, 파일 snapshot, Reins | 임의 명령 계약, OS 셸, process lease, 출력 조회 |
 | ABS-02 | Ask / Accept edits / Auto | tool-policy, PermissionPolicyEditor, 승인 UI | 컴포저 프리셋과 Run snapshot |
 | ABS-03 | Hashline 편집 | read 근거, broker, 원자 쓰기, diff | 태그/ops 엔진과 별도 편집 방식 |
-| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP | preview lease, 분리된 렌더링, 실제 Paddock origin |
+| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP, 세션 패널의 브라우저 탭 | preview lease, 분리된 렌더링, 실제 Paddock origin |
 | ABS-05 | 모델 카탈로그·설정 가져오기·사고 강도 | ModelRegistry, credentials, reasoning | 카탈로그 cache, import preview/commit, capability 대조 |
 | ABS-06 | 동시 세션·Run | Coordinator live Map, Run별 events/사용량 | 다중 실행 admission, host 용량, 사본 경합, UI 구독 |
 | ABS-07 | Windows/macOS 패키지·트레이·업데이트·절전 방지·단축키 | Electron shell, Linux 패키지, commandRegistry | OS별 runtime packaging, update lifecycle, 사용자 바인딩 |
@@ -111,6 +111,8 @@ flowchart LR
 - dev server는 ABS-01의 service process를 사용한다. 임의 localhost 포트를 신뢰하지 않고, 이 lease가 소유한 포트/프로세스와 응답을 검증한다. 외부 script·리디렉션·WS는 명시한 origin 정책을 따른다. HMR에 필요한 WS를 모두 차단한 채 “로컬 앱 지원”으로 표시하지 않는다.
 - 현재 Linux fixture browser의 제약을 origin 문자열 한 줄만 바꿔 제거하지 않는다. launcher, MCP tool policy, proxy/요청 검증, 다운로드·업로드·새 창 정책을 같이 확장한다.
 - 사람이 보는 미리보기와 모델의 browser 도구는 같은 대상 lease를 참조한다. screenshot·검증 결과는 불변 evidence로 저장하며 화면 생성 성공과 실제 동작 성공을 구분한다.
+- Desktop에서 사람이 보는 preview는 세션 패널의 브라우저 탭에 미리보기 페이지로 연다([브라우저 탭](features/browser-tab.md)). 미리보기 페이지는 lease마다 만드는 메모리 partition과 이 절의 lease 정책(origin과 경로 검증, lease 머리글, 권한 거절, 내려받기 차단)을 그대로 쓰고, lease가 끝나거나 그 lease의 마지막 탭이 닫히면 그 저장소를 지운다. lease 밖으로 가는 링크와 새 창은 같은 탭에서 따라가지 않고 일반 페이지의 새 탭으로 연다. 리디렉션은 따르지 않는다.
+- 같은 브라우저 탭의 일반 페이지(아무 http(s) 주소, 프로젝트마다 하나인 영속 저장소)는 이 절의 lease가 아니다. lease 머리글·origin 검증·서비스 소유 확인을 받지 않고, 모델의 browser 도구와 그 Chromium 프로필은 일반 페이지와 그 저장소를 보거나 조작하지 않는다.
 
 **완료:** 실제 Paddock의 HTML 및 로컬 앱을 패널에서 열고, 파일 수정 후 갱신하며, 에이전트가 같은 대상을 관찰·조작·assert할 수 있다. 다른 세션/포트/파일로의 탈출과 종료 후 재사용은 거절한다.
 
@@ -255,7 +257,7 @@ flowchart LR
 | ABS-01 | 임의 명령→실제 사본 변화→출력/exit/readback | 승인 전 실행, duplicate spawn, cwd 교체, 취소 후 자식 잔존, 재시작 자동 replay |
 | ABS-02 | 세 모드의 파일/명령 처리 | Auto로 deny/strict/review-only 우회, 바뀐 인자 승인 재사용 |
 | ABS-03 | 읽은 파일에 PUT/CUT/REM/MV | tag 충돌·stale·unseen line·타 실행 근거·목적지 충돌·부분 쓰기 |
-| ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용 |
+| ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용, 미리보기 페이지에서 일반 페이지로 lease 머리글·저장소가 넘어감, 모델의 browser 도구가 프로젝트의 브라우저 저장소를 봄 |
 | ABS-05 | 네 소스 import→프로필 선택→payload 확인 | credential 노출/실행 참조 실행, 충돌 overwrite, metadata를 capability로 오인 |
 | ABS-06 | reader+writer+다른 사본 writer 병행 | 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
 | ABS-07 | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |

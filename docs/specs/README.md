@@ -14,6 +14,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 프로젝트·세션·컴포저·편집기·Git·터미널 | [workbench.md](workbench.md) |
 | 대화의 입력·전송·활동 바·응답 자리·튐 없는 본문 | [features/composer-flow.md](features/composer-flow.md), [features/presence.md](features/presence.md), [features/reply-citation.md](features/reply-citation.md) |
 | 세션 화면의 틀·패널의 탭·폭·서랍·주소와 기억·실행 조작의 자리 | [features/session-panel.md](features/session-panel.md) |
+| 패널의 브라우저 탭·웹 페이지와 미리보기 페이지·브라우저 저장소·권한·내려받기 | [features/browser-tab.md](features/browser-tab.md) |
 | Outrider 역할과 조언 | [features/advisor.md](features/advisor.md) |
 | 채팅 위젯·현황 카드·Todo | [chat-widgets-contract.md](chat-widgets-contract.md) |
 | Desktop·명령·preview·host·음성 | [desktop-contract.md](desktop-contract.md) |
@@ -25,7 +26,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | HTTP·이벤트·스키마 | [api.md](api.md), [api-contract.md](api-contract.md) |
 | 화면·코드 용어, 용어 설명 | [glossary.md](glossary.md), [features/term-hints.md](features/term-hints.md) |
 | 팀 그래프의 노드·포트·상자·병렬·컴파일 규칙 | [features/team-graph.md](features/team-graph.md) |
-| 기능별 수용 기준 | [features/](features/): [팀 편집기](features/canvas.md), [팀 그래프](features/team-graph.md), [포크와 중단점](features/fork-and-breakpoints.md), [실행 통계](features/run-stats.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [대화 입력 흐름](features/composer-flow.md), [세션 패널](features/session-panel.md), [표시 상태](features/presence.md), [답변 인용](features/reply-citation.md), [Outrider](features/advisor.md), [확인 필요](features/inbox.md), [세션 증거 요약](features/session-evidence.md), [화면 테마](features/themes.md), [모델 연결](features/model-connections.md), [라이브러리](features/library.md), [기능 미리보기](features/feature-preview.md), [파일 경로 검색](features/file-search.md), [추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
+| 기능별 수용 기준 | [features/](features/): [팀 편집기](features/canvas.md), [팀 그래프](features/team-graph.md), [포크와 중단점](features/fork-and-breakpoints.md), [실행 통계](features/run-stats.md), [reins](features/reins.md), [실행 기록 관찰](features/execution-monitor.md), [대화 입력 흐름](features/composer-flow.md), [세션 패널](features/session-panel.md), [브라우저 탭](features/browser-tab.md), [표시 상태](features/presence.md), [답변 인용](features/reply-citation.md), [Outrider](features/advisor.md), [확인 필요](features/inbox.md), [세션 증거 요약](features/session-evidence.md), [화면 테마](features/themes.md), [모델 연결](features/model-connections.md), [라이브러리](features/library.md), [기능 미리보기](features/feature-preview.md), [파일 경로 검색](features/file-search.md), [추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md), [판정 API](features/decision-apis.md), [demo-release](features/demo-release.md), [시나리오 원문](features/mvp.feature) |
 | 디자인 토큰·공용 컴포넌트 | [DESIGN.md](../../DESIGN.md) |
 | 모델 연결·출시·평가 사용법 | [guides/](../guides/) |
 
