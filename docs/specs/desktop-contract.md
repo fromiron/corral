@@ -111,7 +111,7 @@ flowchart LR
 - dev server는 ABS-01의 service process를 사용한다. 임의 localhost 포트를 신뢰하지 않고, 이 lease가 소유한 포트/프로세스와 응답을 검증한다. 외부 script·리디렉션·WS는 명시한 origin 정책을 따른다. HMR에 필요한 WS를 모두 차단한 채 “로컬 앱 지원”으로 표시하지 않는다.
 - 현재 Linux fixture browser의 제약을 origin 문자열 한 줄만 바꿔 제거하지 않는다. launcher, MCP tool policy, proxy/요청 검증, 다운로드·업로드·새 창 정책을 같이 확장한다.
 - 사람이 보는 미리보기와 모델의 browser 도구는 같은 대상 lease를 참조한다. screenshot·검증 결과는 불변 evidence로 저장하며 화면 생성 성공과 실제 동작 성공을 구분한다.
-- Desktop에서 사람이 보는 preview는 세션 패널의 브라우저 탭에 미리보기 페이지로 연다([브라우저 탭](features/browser-tab.md)). 미리보기 페이지는 lease마다 만드는 메모리 partition과 이 절의 lease 정책(origin과 경로 검증, lease 머리글, 권한 거절, 내려받기 차단)을 그대로 쓰고, lease가 끝나거나 그 lease의 마지막 탭이 닫히면 그 저장소를 지운다. lease 밖으로 가는 링크와 새 창은 같은 탭에서 따라가지 않고 일반 페이지의 새 탭으로 연다. 리디렉션은 따르지 않는다.
+- Desktop에서 사람이 보는 preview는 세션 패널의 브라우저 탭에 미리보기 페이지로 연다([브라우저 탭](features/browser-tab.md)). 미리보기 페이지는 미리보기 탭을 열 때마다 새로 만드는 메모리 partition과 이 절의 lease 정책(origin과 경로 검증, lease 머리글, 권한 거절, 내려받기 차단, 새 창 거절, lease 밖으로 가는 이동과 리디렉션 차단)을 지금 그대로 쓰고, 탭이 닫히거나 lease가 끝나면 그 저장소를 지운다.
 - 같은 브라우저 탭의 일반 페이지(아무 http(s) 주소, 프로젝트마다 하나인 영속 저장소)는 이 절의 lease가 아니다. lease 머리글·origin 검증·서비스 소유 확인을 받지 않고, 모델의 browser 도구와 그 Chromium 프로필은 일반 페이지와 그 저장소를 보거나 조작하지 않는다.
 
 **완료:** 실제 Paddock의 HTML 및 로컬 앱을 패널에서 열고, 파일 수정 후 갱신하며, 에이전트가 같은 대상을 관찰·조작·assert할 수 있다. 다른 세션/포트/파일로의 탈출과 종료 후 재사용은 거절한다.
