@@ -180,6 +180,8 @@ export function useSessionDockArea(input: DockAreaInput) {
       region.current?.querySelector<HTMLElement>('[data-dock-body] button')?.focus();
     }, 0);
   };
+  // focusIn reads only refs and the conversation, which the dependencies carry.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: see above
   useLayoutEffect(() => {
     void dock;
     const back = handBack.current;
@@ -194,11 +196,20 @@ export function useSessionDockArea(input: DockAreaInput) {
       } else handFocusOn();
     }
     const wanted = focusWanted.current;
-    if (!wanted || wanted.sessionId !== sessionId || !dock.open || !dock.selected) return;
+    if (!wanted || wanted.sessionId !== sessionId || !dock.open) return;
     focusWanted.current = null;
-    const selected = dock.selected;
-    // After the frame's own focus moves of this change (a drawer closing gives its opener the
-    // focus): the dock's rule wins.
+    focusIn(dock.selected);
+  }, [dock, sessionId]);
+  /**
+   * The person's open: the focus goes to the dock's selected tab (a terminal's input), or to its
+   * body's first row or button with no tab. After the frame's own focus moves of this change (a
+   * drawer closing gives its opener the focus): the dock's rule wins.
+   */
+  function focusIn(selected: DockKey | null) {
+    if (!selected) {
+      focusBody(sessionId);
+      return;
+    }
     if (!selected.startsWith('terminal:')) {
       window.setTimeout(() => strip.current?.focusTab(selected), 0);
       return;
@@ -225,7 +236,7 @@ export function useSessionDockArea(input: DockAreaInput) {
       else strip.current?.focusTab(selected);
     };
     inputWait.current = window.setTimeout(attempt, 0);
-  }, [dock, sessionId]);
+  }
 
   /** The terminals with a tab in each strip, as they stand now. */
   const strips = () => ({
@@ -257,32 +268,6 @@ export function useSessionDockArea(input: DockAreaInput) {
       focusWanted.current = { sessionId: from };
     } else if (latest.current.sessionId === from) latest.current.panel.open(terminalId, 'plus');
     return true;
-  };
-
-  /** An empty dock opened by its toggles: the live terminal, a new one, or its body. */
-  const openEmpty = async () => {
-    const from = sessionId;
-    dispatch({ type: 'show' }, from);
-    let current = store?.getState().sessions[from];
-    if (store && !current?.list) {
-      await store.refresh(from);
-      current = store.getState().sessions[from];
-    }
-    const found = liveTerminal(current);
-    if (found) {
-      // Its tab comes over from the panel as the ⋯ move would take it.
-      if (latest.current.panel.terminals.includes(found.terminalId))
-        latest.current.panel.remove(found.terminalId);
-      dispatch({ type: 'open', tab: { kind: 'terminal', terminalId: found.terminalId } }, from);
-      focusWanted.current = { sessionId: from };
-      return;
-    }
-    const now = terminalCreation(current, latest.current.runActive);
-    const first = now.ok ? now.shells[0] : undefined;
-    // Nothing opened: the body's list or line, the focus on its first row or its button.
-    if (!first || !(await create(first.id, 'dock'))) {
-      if (latest.current.sessionId === from) focusBody(from);
-    }
   };
 
   // An address that waits for the terminal list (features/session-panel.md 여는 길); anything
@@ -408,21 +393,33 @@ export function useSessionDockArea(input: DockAreaInput) {
     />
   );
 
+  // The toggles only show and hide the dock: they never make a terminal or take one in from the
+  // panel, since a live terminal holds the Paddock (features/session-panel.md 하단 도크).
   const toggle = () => {
     if (held()) return;
     pending.current = null;
-    if (drawer) closeDrawer();
+    if (drawer) {
+      // With a drawer up the dock ends on screen: the drawer closes, a closed dock opens and an
+      // open one stays. The dock's rule wins, and the drawer's opener is not this one.
+      closeDrawer();
+      opener.current = null;
+      if (dock.open) {
+        const selected = dock.selected;
+        window.setTimeout(() => focusIn(selected), 0);
+      } else {
+        focusWanted.current = { sessionId };
+        dispatch({ type: 'show' });
+      }
+      return;
+    }
     if (dock.open) {
       if (focusInside()) handBack.current = 'opener';
       dispatch({ type: 'toggle' });
       return;
     }
-    // A drawer closed for the dock: the dock's rule wins, and the drawer's opener is not this one.
-    if (!drawer) rememberOpener();
-    else opener.current = null;
+    rememberOpener();
     focusWanted.current = { sessionId };
-    if (dock.tabs.length) dispatch({ type: 'toggle' });
-    else void openEmpty();
+    dispatch({ type: 'show' });
   };
 
   const select = (key: DockKey) => {
@@ -467,7 +464,8 @@ export function useSessionDockArea(input: DockAreaInput) {
   };
   const moveToPanel = (terminalId: string) => {
     if (held()) return;
-    dispatch({ type: 'close', key: `terminal:${terminalId}` });
+    // As a drag out: the last tab leaving hides the dock.
+    dispatch({ type: 'close', key: `terminal:${terminalId}`, hide: true });
     panel.open(terminalId, 'plus');
   };
 
@@ -625,8 +623,8 @@ export function useSessionDockArea(input: DockAreaInput) {
               onReorder={(key, toIndex) => {
                 if (!held()) dispatch({ type: 'reorder', key, toIndex });
               }}
-              // Out by drag into the panel: as a close of the last tab, the dock stays open.
-              onMoveOut={(key) => dispatch({ type: 'close', key })}
+              // Out by drag into the panel: unlike a close, moving the last tab out hides the dock.
+              onMoveOut={(key) => dispatch({ type: 'close', key, hide: true })}
               onMoveIn={(terminalId, index) =>
                 dispatch({ type: 'open', tab: { kind: 'terminal', terminalId }, index })
               }

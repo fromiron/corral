@@ -186,16 +186,37 @@ const menuRow = (name: string) =>
   [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
     spoken(row).includes(name),
   ) ?? null;
+/**
+ * The dock's toggles only show it: a terminal's tab comes from its body's 터미널 row (the live
+ * terminal where its tab is, or a new one, the first shell if it lists several).
+ */
+async function dockTerminal() {
+  if (dockState() !== 'open') await press(dockButton());
+  await until(() => Boolean(terminalListRow()));
+  await press(terminalListRow());
+  const shell = document.querySelector<HTMLElement>('[role="menu"] [role="menuitem"]');
+  if (shell) await press(shell);
+  await until(() => dockSelected() !== null);
+}
 
-it('Paddock이 있고 터미널이 없으며 도크가 닫혀 있다 → 하단 도크 버튼 → 240px 도크에 새 "터미널 1" 탭이 선택돼 있고 버튼은 눌린 상태다', async () => {
+it('Paddock이 있고 터미널이 없으며 도크가 닫혀 있다 → 하단 도크 버튼 → 240px 도크에 탭도 "+"도 없이 목록만 있고 만들지 않는다; 터미널 줄 → 새 "터미널 1" 탭이 선택된다', async () => {
   const world = await serverWorld({ terminals: [] });
   await open(world, `/sessions/${world.sessionId}`);
   expect(dockState()).toBe('closed');
   expect(dockButton()?.getAttribute('aria-pressed')).toBe('false');
   await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
+  await until(() => Boolean(terminalListRow()));
   expect(dockState()).toBe('open');
   expect(dock()?.style.height).toBe('240px');
+  expect(dockTabs()).toEqual([]);
+  expect(dockPlus()).toBeNull();
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
+  await settle(20);
+  expect(world.server?.created).toEqual([]);
+  await until(() => document.activeElement === terminalListRow());
+  expect(document.activeElement).toBe(terminalListRow());
+  await press(terminalListRow());
+  await until(() => dockSelected() === W.terminal(1));
   expect(dockTabNames()).toEqual([W.terminal(1)]);
   expect(dockSelected()).toBe(W.terminal(1));
   expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
@@ -209,8 +230,7 @@ it('터미널 화면이 붙기 전에 사람이 포커스를 옮겼다 → 화�
   const world = await serverWorld();
   await open(world, `/sessions/${world.sessionId}`);
   screens.hold();
-  await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
+  await dockTerminal();
   // The wait for the input has looked at least once, then the person goes to the composer.
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 80));
@@ -229,21 +249,26 @@ it('터미널 화면이 붙기 전에 사람이 포커스를 옮겼다 → 화�
   expect(document.activeElement).toBe(composerInput());
 });
 
-it('셸이 둘이고 살아 있는 터미널이 없다 → 하단 도크 버튼 → 셸을 묻지 않고 첫째 셸로 만든다', async () => {
+it('셸이 둘이고 살아 있는 터미널이 없다 → 하단 도크 버튼 → 본문에 목록만 있고 만들지 않는다; 터미널 줄 → 셸을 고르는 하위 목록이 열린다', async () => {
   const world = await serverWorld({ terminals: [], shells: ['zsh', 'bash'] });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
-  expect(world.server?.created).toEqual(['zsh']);
-  expect(document.querySelector('[role="menu"]')).toBeNull();
+  await until(() => Boolean(terminalListRow()));
+  await settle(20);
+  expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
+  await press(terminalListRow());
+  await until(() => document.querySelectorAll('[role="menu"] [role="menuitem"]').length === 2);
+  expect(document.querySelectorAll('[role="menu"] [role="menuitem"]')).toHaveLength(2);
+  expect(world.server?.created).toEqual([]);
 });
 
 it('도크에 실행 중인 터미널 1 탭이 있다 → 버튼으로 닫는다 → 명령은 없고 버튼에 실행 중 점이 있어 설명으로 읽힌다', async () => {
   const world = await serverWorld();
   await open(world, `/sessions/${world.sessionId}`);
-  await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
-  // The running terminal was taken in: nothing was created.
+  await dockTerminal();
+  // The running terminal's tab opened: nothing was created.
+  expect(dockSelected()).toBe(W.terminal(1));
   expect(world.server?.created).toEqual([]);
   expect(dockButton()?.getAttribute('aria-description') ?? '').toBe('');
   const calls = [...(world.server?.terminalCalls ?? [])];
@@ -354,6 +379,8 @@ it('도크 본문의 터미널 줄로 보낸 만들기의 응답을 잃었다 �
   const world = await serverWorld({ terminals: [], loseCreate: 'absent' });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
+  await until(() => Boolean(terminalListRow()));
+  await press(terminalListRow());
   await until(() => Boolean(dockLine()?.textContent?.includes(W.createPending)));
   await press(dockButton());
   expect(dockState()).toBe('closed');
@@ -380,6 +407,8 @@ it('만든 터미널 1의 결과를 확인하지 못했다 → "생성 결과 �
   const world = await serverWorld({ terminals: [], loseCreate: 'made' });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
+  await until(() => Boolean(terminalListRow()));
+  await press(terminalListRow());
   await until(() => buttons(W.checkCreate, dockLine()).length === 1);
   await press(buttons(W.checkCreate, dockLine())[0]);
   await until(() => Boolean(dockList()));
@@ -391,13 +420,18 @@ it('만든 터미널 1의 결과를 확인하지 못했다 → "생성 결과 �
   expect(world.server?.createIds).toHaveLength(1);
 });
 
-it('대화에 막 들어와 터미널 목록이 아직 답하지 않았다 → 하단 도크 버튼 → 본문이 잠깐 "터미널 여는 중…"이고, 목록이 답하면 살아 있는 터미널 1의 탭이 열리며 새로 만들지 않는다', async () => {
+it('대화에 막 들어와 터미널 목록이 아직 답하지 않았다 → 하단 도크 버튼 → 본문이 잠깐 "터미널 여는 중…"이고, 목록이 답하면 본문은 목록이 되어 탭은 열리지 않고 만들지 않는다; 터미널 줄 → 터미널 1의 탭이 열린다', async () => {
   const world = await serverWorld({ holdLists: true });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
   await until(() => dockState() === 'open');
   expect(dockLine()?.textContent).toContain(W.loading);
   await act(async () => world.server?.releaseLists());
+  await until(() => Boolean(terminalListRow()));
+  await settle(20);
+  expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
+  await press(terminalListRow());
   await until(() => dockSelected() === W.terminal(1));
   expect(dockSelected()).toBe(W.terminal(1));
   expect(world.server?.created).toEqual([]);
@@ -445,8 +479,7 @@ it('도크에 탭이 없고 닫혀 있다 → 명령 팔레트의 "터미널 열
 it('도크의 마지막 탭을 닫는다 → 도크는 열린 채 머리에 "+"가 없고 본문에 목록을 보이며, 포커스는 목록의 첫 줄로 간다', async () => {
   const world = await serverWorld();
   await open(world, `/sessions/${world.sessionId}`);
-  await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
+  await dockTerminal();
   // An idle terminal: closing its tab ends it without asking.
   await press(buttons(W.close(W.terminal(1)), dock())[0]);
   await until(() => dockTabs().length === 0);
@@ -462,8 +495,9 @@ it('도크의 마지막 탭을 닫는다 → 도크는 열린 채 머리에 "+"�
 it('도크가 열려 있고 포커스가 터미널 1의 입력에 있다 → Mod+J → 도크가 닫히고, 컴포저에서는 Mod+J가 아무것도 하지 않는다', async () => {
   const world = await serverWorld();
   await open(world, `/sessions/${world.sessionId}`);
-  await press(dockButton());
+  await dockTerminal();
   await until(() => document.activeElement === terminalInput());
+  expect(document.activeElement).toBe(terminalInput());
   await key(document.activeElement as HTMLElement, DOCK_KEY);
   expect(dockState()).toBe('closed');
   // The focus left the dock with it: back to what opened it.
@@ -493,7 +527,26 @@ it('자리가 없고 패널이 서랍이며 도크가 닫혀 있다 → 하단 �
   await until(() => dockState() === 'open');
   expect(presentation()).toBe('closed');
   expect(dockState()).toBe('open');
-  // The dock's rule wins over the drawer's: the focus is in the dock's terminal.
+  // The dock's rule wins over the drawer's: the focus is on the dock's list.
+  await until(() => document.activeElement === terminalListRow());
+  expect(document.activeElement).toBe(terminalListRow());
+});
+
+it('자리가 없고 하단 도크가 열린 채 서랍이 그 위를 덮고 있다 → 하단 도크 버튼 → 서랍이 닫히고, 도크는 닫히지 않고 열린 채 보이며 버튼은 눌린 상태다', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}`, NARROW);
+  await dockTerminal();
+  expect(dockState()).toBe('open');
+  await press(buttons(W.toggle).find((button) => button.hasAttribute('aria-pressed')));
+  await until(() => presentation() === 'drawer');
+  expect(dockState()).toBe('open');
+  await press(dockButton());
+  await until(() => presentation() === 'closed');
+  await settle(20);
+  expect(presentation()).toBe('closed');
+  expect(dockState()).toBe('open');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
+  expect(dockSelected()).toBe(W.terminal(1));
   await until(() => document.activeElement === terminalInput());
   expect(document.activeElement).toBe(terminalInput());
 });
@@ -588,7 +641,7 @@ it('대화의 기억에 탭 없이 열린 도크와 패널의 실행 중인 터�
   expect(world.server?.stops).toEqual([]);
 });
 
-it('대화의 기억에 탭 없이 열린 도크가 있고 살아 있는 터미널이 없다 → 들어오면 도크는 닫혀 있고 만들지 않으며, 버튼을 누를 때 기본 셸로 만들어 연다', async () => {
+it('대화의 기억에 탭 없이 열린 도크가 있고 살아 있는 터미널이 없다 → 들어오면 도크는 닫혀 있고 만들지 않으며, 버튼을 눌러도 도크가 열려 목록을 보일 뿐 만들지 않는다', async () => {
   const world = await serverWorld({ terminals: [] });
   window.localStorage.setItem(
     dockMemoryKey(world.sessionId),
@@ -599,8 +652,11 @@ it('대화의 기억에 탭 없이 열린 도크가 있고 살아 있는 터미�
   expect(dockState()).toBe('closed');
   expect(world.server?.created).toEqual([]);
   await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
-  expect(world.server?.created).toEqual(['bash']);
+  await until(() => Boolean(terminalListRow()));
+  await settle(20);
+  expect(dockState()).toBe('open');
+  expect(dockTabs()).toEqual([]);
+  expect(world.server?.created).toEqual([]);
 });
 
 it('대화 A의 도크가 열려 있고 대화 B의 도크는 닫혀 있다 → B로 갔다가 A로 돌아오면 같은 탭과 높이로 열려 있다', async () => {
@@ -641,6 +697,8 @@ it('만드는 동안 도크를 닫았다 → 늦게 만들어진 터미널의 �
   const world = await serverWorld({ terminals: [], holdCreate: true });
   await open(world, `/sessions/${world.sessionId}`);
   await press(dockButton());
+  await until(() => Boolean(terminalListRow()));
+  await press(terminalListRow());
   await until(() => (world.server?.created.length ?? 0) === 1);
   await press(dockButton());
   expect(dockState()).toBe('closed');
@@ -663,8 +721,8 @@ it('신뢰한 Paddock의 도크 "+"에서 디버그를 고르면 디버그 탭�
   workspaces.binding = async () => ({ trusted: true });
   workspaces.debugState = async () => ({ sessions: [] });
   await open(world, `/sessions/${world.sessionId}`);
-  await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
+  await dockTerminal();
+  expect(dockSelected()).toBe(W.terminal(1));
   await press(dockPlus());
   await press(menuRow(W.debug));
   await until(() => dockSelected() === W.debug);

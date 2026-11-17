@@ -429,9 +429,9 @@ it('패널의 터미널 탭에서 ⋯ → 하단 도크로 옮기기 → 같은 
   expect(panelTabNames()).toEqual([W.files, W.terminal(1)]);
   expect(dockTabNames()).toEqual([]);
   expect(server(world).stops).toEqual([]);
-  // Moving the dock's last tab out is closing it: the dock stays open with its list.
-  expect(dockState()).toBe('open');
-  expect(dock()?.querySelector('[data-dock-list]')).not.toBeNull();
+  // Moving the dock's last tab out hides the dock, unlike closing it.
+  expect(dockState()).toBe('closed');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('false');
   await until(() => document.activeElement === inputIn(side()));
   expect(document.activeElement).toBe(inputIn(side()));
 });
@@ -544,14 +544,27 @@ it('panel=terminal은 파일 탭을 열지 않는다: 파일 탭에는 터미널
   expect(side()?.querySelector('[data-testid="terminal-leaf"]') ?? null).toBeNull();
 });
 
-it('탭이 없는 도크를 버튼으로 연다, 살아 있는 터미널의 탭이 패널에 있다 → 그 탭이 도크로 옮겨 오고 끝내지 않는다', async () => {
+it('살아 있는 터미널 1의 탭이 패널에 있고 도크에는 탭이 없다 → Mod+J → 도크가 열려 목록을 보이고 탭은 패널에 그대로이며 만들지 않는다; 도크 본문의 터미널 줄 → 패널에서 터미널 1 탭이 선택되고 옮겨지지 않는다', async () => {
   const world = await serverWorld();
   panelHoldsTerminal(world);
   await open(world, `/sessions/${world.sessionId}`);
   await until(() => panelSelected() === W.terminal(1));
-  await press(dockButton());
-  await until(() => dockSelected() === W.terminal(1));
-  expect(panelTabNames()).toEqual([W.files]);
+  await press(tabIn(side(), W.panelTabs, W.files));
+  await key(document.activeElement ?? document.body, { key: 'j', code: 'KeyJ', ctrlKey: true });
+  await until(() => dockState() === 'open');
+  const row = () =>
+    [...(dock()?.querySelectorAll<HTMLElement>('[data-dock-list] button') ?? [])].find((item) =>
+      (item.textContent ?? '').trim().startsWith(W.terminalRow),
+    ) ?? null;
+  await until(() => Boolean(row()));
+  await settle();
+  expect(dockTabNames()).toEqual([]);
+  expect(panelTabNames()).toEqual([W.files, W.terminal(1)]);
+  expect(server(world).created).toEqual([]);
+  await press(row());
+  await until(() => panelSelected() === W.terminal(1));
+  expect(panelTabNames()).toEqual([W.files, W.terminal(1)]);
+  expect(dockTabNames()).toEqual([]);
   expect(server(world).stops).toEqual([]);
   expect(server(world).created).toEqual([]);
 });
@@ -671,7 +684,7 @@ async function drag(tab: HTMLElement | null, from: [number, number], to: [number
 }
 const historyLength = (shell: MountedShell) => shell.router.history.length;
 
-it('하단 도크의 터미널 1 탭을 패널의 탭 줄로 끌어 파일 탭 앞에 놓는다 → 패널의 파일 탭 앞에 선택돼 있고 같은 터미널이며, 도크는 탭 없이 열린 채 본문에 목록을 보이고, 기록은 쌓이지 않는다', async () => {
+it('하단 도크의 터미널 1 탭을 패널의 탭 줄로 끌어 파일 탭 앞에 놓는다 → 패널의 파일 탭 앞에 선택돼 있고 같은 터미널이며, 도크는 닫혀 버튼이 눌리지 않은 상태이고, 기록은 쌓이지 않는다', async () => {
   const world = await serverWorld();
   window.localStorage.setItem(
     panelMemoryKey(world.sessionId),
@@ -688,8 +701,8 @@ it('하단 도크의 터미널 1 탭을 패널의 탭 줄로 끌어 파일 탭 �
   expect(panelSelected()).toBe(W.terminal(1));
   expect(visiblePanel(side())?.textContent).toContain('terminal_one');
   expect(dockTabNames()).toEqual([]);
-  expect(dockState()).toBe('open');
-  expect(dock()?.querySelector('[data-dock-list]')).not.toBeNull();
+  expect(dockState()).toBe('closed');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('false');
   expect(server(world).stops).toEqual([]);
   expect(historyLength(shell)).toBe(before);
   expect(search(shell).panel).toBe('terminal');

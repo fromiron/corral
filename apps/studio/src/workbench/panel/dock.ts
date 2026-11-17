@@ -57,7 +57,8 @@ export type DockEvent =
   /** Opens the dock as it is: with no tab, its body's list or line. */
   | { readonly type: 'show' }
   | { readonly type: 'select'; readonly key: DockKey }
-  | { readonly type: 'close'; readonly key: DockKey }
+  /** `hide`: a tab moved out to the panel; the last one leaving hides the dock. */
+  | { readonly type: 'close'; readonly key: DockKey; readonly hide?: boolean }
   | { readonly type: 'height'; readonly px: number }
   /** The first terminal list after entry: its terminal ids, or null when it could not be read. */
   | { readonly type: 'terminals'; readonly ids: readonly string[] | null };
@@ -93,8 +94,9 @@ export function reduceDock(state: DockState, event: DockEvent): DockState {
       const index = keys.indexOf(event.key);
       if (index < 0) return state;
       const tabs = state.tabs.filter((_, at) => at !== index);
-      // As the panel's last tab: the dock stays open with its list.
-      if (tabs.length === 0) return { ...state, tabs, selected: null };
+      // As the panel's last tab: the dock stays open with its list, unless the tab moved out.
+      if (tabs.length === 0)
+        return { ...state, tabs, selected: null, open: event.hide ? false : state.open };
       const selected =
         state.selected === event.key
           ? (keys[index + 1] ?? keys[index - 1] ?? null)
