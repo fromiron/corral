@@ -2,6 +2,7 @@
 // "주소와 기억"): tab kinds, run ids, order, selection and whether the panel was open. Nothing
 // else: no titles, bodies or paths. Storage is passed in; this module never reaches for it.
 import { Identifier } from '@corral/contracts';
+import { dockMemoryKey } from './dock.ts';
 import type { PanelState } from './model.ts';
 import { type PanelTab, type TabKey, tabKey } from './tabs.ts';
 
@@ -104,13 +105,14 @@ export function writePanelMemory(
   }
 }
 
-/** Deleting a conversation deletes its memory. */
+/** Deleting a conversation deletes its memory: the panel's and the bottom dock's. */
 export function forgetPanelMemory(storage: PanelStorage | null, sessionId: string): void {
-  try {
-    storage?.removeItem(panelMemoryKey(sessionId));
-  } catch {
-    // Nothing to tell: the memory stays until it is overwritten.
-  }
+  for (const key of [panelMemoryKey(sessionId), dockMemoryKey(sessionId)])
+    try {
+      storage?.removeItem(key);
+    } catch {
+      // Nothing to tell: the memory stays until it is overwritten.
+    }
 }
 
 /** This device's local storage, or null where it cannot be reached. */
