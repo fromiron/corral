@@ -1269,8 +1269,10 @@ function RunHeader({
             {respond}
             {failure}
             {receiptsOpen ? (
-              <div className={cn('ml-auto flex min-w-0 items-center gap-1', HEAD_ACTIONS)}>
-                <RunActions session={session} compact narrowIcons receiptsOnly />
+              // Alone on the row they start at the left; after Respond or the failure they follow
+              // it, and take the next line, cut to its width, when they do not fit beside it.
+              <div className={cn('flex min-w-0 max-w-full items-center gap-1', HEAD_ACTIONS)}>
+                <RunActions session={session} compact narrowIcons receiptsOnly receiptLines />
               </div>
             ) : null}
           </div>
