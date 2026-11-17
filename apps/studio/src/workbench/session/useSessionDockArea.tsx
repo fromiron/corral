@@ -206,8 +206,14 @@ export function useSessionDockArea(input: DockAreaInput) {
     // A terminal's input appears once its screen has attached: wait for it a little.
     if (inputWait.current !== null) window.clearTimeout(inputWait.current);
     let tries = 0;
+    let before: Element | null | undefined;
     const attempt = () => {
       inputWait.current = null;
+      // The person moved the focus while the screen attached: their move wins.
+      const now = document.activeElement;
+      const moved = now && now !== document.body ? now : null;
+      if (before === undefined) before = moved;
+      else if (moved && moved !== before) return;
       const tabPanel = document.getElementById(tabsClosableIds(DOCK_ID_PREFIX, selected).panel);
       const screen =
         tabPanel && !tabPanel.hidden

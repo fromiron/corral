@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { registeredCommands } from '../commandRegistry.ts';
@@ -22,13 +22,35 @@ import {
 // shortcut, its memory and what an empty dock shows when it opens. The terminal list is the
 // fixture's fake host; nothing here runs a shell.
 
+// A screen can be held back, as a real one attaches only once its terminal has loaded.
+const screens = vi.hoisted(() => {
+  const listeners = new Set<() => void>();
+  const value = { held: false };
+  return {
+    value,
+    subscribe: (listener: () => void) => {
+      listeners.add(listener);
+      return () => void listeners.delete(listener);
+    },
+    hold() {
+      value.held = true;
+    },
+    release() {
+      value.held = false;
+      for (const listener of listeners) listener();
+    },
+  };
+});
 vi.mock('../workbench/terminals/TerminalView.tsx', () => ({
-  TerminalView: ({ terminalId }: { terminalId: string }) => (
-    <section data-testid="terminal-leaf" data-terminal-screen="" tabIndex={-1}>
-      <textarea aria-label="terminal input" data-terminal-input={terminalId} />
-      {terminalId}
-    </section>
-  ),
+  TerminalView: ({ terminalId }: { terminalId: string }) => {
+    const held = useSyncExternalStore(screens.subscribe, () => screens.value.held);
+    return held ? null : (
+      <section data-testid="terminal-leaf" data-terminal-screen="" tabIndex={-1}>
+        <textarea aria-label="terminal input" data-terminal-input={terminalId} />
+        {terminalId}
+      </section>
+    );
+  },
 }));
 
 vi.setConfig({ testTimeout: 20_000 });
@@ -64,6 +86,7 @@ beforeEach(() => {
 });
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  screens.release();
   window.localStorage.clear();
   window.sessionStorage.clear();
   vi.unstubAllGlobals();
@@ -180,6 +203,30 @@ it('Paddock이 있고 터미널이 없으며 도크가 닫혀 있다 → 하단 
   // The person opened it: the focus is in the new terminal's input.
   await until(() => document.activeElement === terminalInput());
   expect(document.activeElement).toBe(terminalInput());
+});
+
+it('터미널 화면이 붙기 전에 사람이 포커스를 옮겼다 → 화면이 붙어도 포커스는 옮긴 곳에 남는다', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}`);
+  screens.hold();
+  await press(dockButton());
+  await until(() => dockSelected() === W.terminal(1));
+  // The wait for the input has looked at least once, then the person goes to the composer.
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  });
+  await act(async () => {
+    composerInput()?.focus();
+  });
+  await act(async () => {
+    screens.release();
+  });
+  await until(() => Boolean(terminalInput()));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  });
+  expect(terminalInput()).not.toBeNull();
+  expect(document.activeElement).toBe(composerInput());
 });
 
 it('셸이 둘이고 살아 있는 터미널이 없다 → 하단 도크 버튼 → 셸을 묻지 않고 첫째 셸로 만든다', async () => {
