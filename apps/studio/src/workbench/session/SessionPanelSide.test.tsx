@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
-import type { RunSummary } from '@corral/core';
+import { emptyProjection, type RunSummary, type RuntimeTransport } from '@corral/core';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { createRunSessions } from '../../runSessions.ts';
 import { ctx, panel, run } from '../panel/fixtures.ts';
 import type { PanelState } from '../panel/model.ts';
 import type { PanelContext } from '../panel/tabs.ts';
@@ -12,11 +13,16 @@ import { SessionPanelSide } from './SessionPanelSide.tsx';
 
 // The panel's head and its "+" list (features/session-panel.md 탭, "+" 목록).
 
+// The page's run stores: a run followed live on screen (retained) says its state from there.
+const stores = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
+vi.mock('../../services.tsx', () => ({ useServices: () => stores.services }));
+
 Element.prototype.getAnimations ??= () => [];
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
+  stores.services = {};
 });
 
 const summary = (runId: string, status: RunSummary['status']): RunSummary => ({
@@ -40,6 +46,10 @@ async function show({
   names?: Record<string, string | null>;
 }) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  if (!('liveRun' in stores.services)) {
+    const sessions = createRunSessions({} as RuntimeTransport);
+    stores.services = { liveRun: sessions.liveRun, watchRuns: sessions.watchRuns };
+  }
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
     media: query,
@@ -226,4 +236,109 @@ it('gives a restored run tab no mark and no description before the run list answ
   const [tab] = tabs(view.container);
   expect(tab?.querySelector('[data-slot="tabs-closable-mark"]')).toBeNull();
   expect(tab?.hasAttribute('aria-description')).toBe(false);
+});
+
+// presence.md: one run is one state on a screen. The run list can lag the run itself; a run that
+// is followed live (its record or the conversation holds its store) says its live state.
+describe('a run tab and the run history say the state the run says live', () => {
+  const live = (status: 'running' | 'awaiting_user' | 'succeeded') => {
+    const sessions = createRunSessions({} as RuntimeTransport);
+    stores.services = { liveRun: sessions.liveRun, watchRuns: sessions.watchRuns };
+    const store = sessions.runFor('run_1');
+    const projection = { ...emptyProjection('run_1'), status };
+    store.setState({ runId: 'run_1', projection, events: [] });
+    return {
+      sessions,
+      store,
+      setStatus: (next: typeof status) =>
+        act(async () =>
+          store.setState({ projection: { ...emptyProjection('run_1'), status: next } }),
+        ),
+    };
+  };
+  const mark = (container: HTMLElement, index = 0) =>
+    tabs(container)
+      [index]?.querySelector('[data-slot="tabs-closable-mark"] [data-presence]')
+      ?.getAttribute('data-presence') ?? null;
+  const twoTabs = panel({
+    tabs: [run('run_1'), run('run_2')],
+    selected: 'run:run_1',
+    presentation: 'drawer',
+  });
+  const twoRuns = ctx({ folder: false, runIds: ['run_1', 'run_2'] });
+
+  it('says the run waits for the person while its list still says it works, and follows it back', async () => {
+    const { sessions, setStatus } = live('awaiting_user');
+    sessions.retainRun('run_1');
+    const view = await show({
+      state: twoTabs,
+      context: twoRuns,
+      runs: [summary('run_1', 'running'), summary('run_2', 'failed')],
+    });
+    expect(mark(view.container)).toBe('awaiting_user');
+    expect(tabs(view.container)[0]?.getAttribute('aria-description')).toBe(
+      messages.Presence.state.awaiting_user,
+    );
+    // The run history says the same.
+    await click(plusButton(view.container));
+    await click(rowNamed(messages.Docking.history));
+    expect(runRows()[1]?.getAttribute('aria-label')).toBe(
+      `Run #1, ${messages.Presence.state.awaiting_user}`,
+    );
+    // Back to work: the mark follows.
+    await setStatus('running');
+    expect(mark(view.container)).toBe('working');
+    expect(tabs(view.container)[0]?.getAttribute('aria-description')).toBe(
+      messages.Presence.state.working,
+    );
+  });
+
+  it('takes the live state from the moment the run is followed, and leaves it when no longer', async () => {
+    const { sessions } = live('awaiting_user');
+    const view = await show({
+      state: twoTabs,
+      context: twoRuns,
+      runs: [summary('run_1', 'running'), summary('run_2', 'failed')],
+    });
+    // Not followed: a store left from earlier may be stale, so the list says the state.
+    expect(mark(view.container)).toBe('working');
+    let release = () => {};
+    await act(async () => {
+      release = sessions.retainRun('run_1');
+    });
+    expect(mark(view.container)).toBe('awaiting_user');
+    await act(async () => release());
+    expect(mark(view.container)).toBe('working');
+  });
+
+  it('marks a restored tab never viewed by the run list', async () => {
+    live('running');
+    const view = await show({
+      state: twoTabs,
+      context: twoRuns,
+      runs: [summary('run_1', 'running'), summary('run_2', 'failed')],
+    });
+    expect(mark(view.container, 1)).toBe('failed');
+    expect(tabs(view.container)[1]?.getAttribute('aria-description')).toBe(
+      messages.Presence.state.failed,
+    );
+  });
+
+  it('marks nothing for a run completed live, and nothing before the run list answers', async () => {
+    const { sessions } = live('succeeded');
+    sessions.retainRun('run_1');
+    const completed = await show({
+      state: twoTabs,
+      context: twoRuns,
+      runs: [summary('run_1', 'running'), summary('run_2', 'failed')],
+    });
+    expect(mark(completed.container)).toBeNull();
+    expect(tabs(completed.container)[0]?.hasAttribute('aria-description')).toBe(false);
+    const unanswered = await show({
+      state: twoTabs,
+      context: ctx({ folder: false, runIds: null }),
+      runs: [],
+    });
+    expect(mark(unanswered.container)).toBeNull();
+  });
 });

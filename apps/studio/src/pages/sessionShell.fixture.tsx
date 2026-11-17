@@ -465,6 +465,8 @@ export async function mountShell(
     runFor: runs.runFor,
     sessionFor: runs.sessionFor,
     retainRun: runs.retainRun,
+    liveRun: runs.liveRun,
+    watchRuns: runs.watchRuns,
     disposeRuns: runs.dispose,
   };
   const router = createStudioRouter(services, { runLookupMs: 50 });

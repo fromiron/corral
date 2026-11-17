@@ -60,6 +60,10 @@ export interface StudioServices {
   runFor: (runId: string) => RunSessionStore;
   sessionFor: (sessionId: string) => RunSessionStore;
   retainRun: (runId: string) => () => void;
+  /** The run's store while a view follows it, else null (runSessions.ts). */
+  liveRun?: (runId: string) => RunSessionStore | null;
+  /** Calls the listener after a run starts or stops being followed. */
+  watchRuns?: (listener: () => void) => () => void;
   disposeRuns: () => void;
   editorSessions: Map<string, RunSessionStore>;
   runModes: Record<string, 'mock' | 'live'>;
@@ -183,6 +187,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       runFor: runs.runFor,
       sessionFor: runs.sessionFor,
       retainRun: runs.retainRun,
+      liveRun: runs.liveRun,
+      watchRuns: runs.watchRuns,
       disposeRuns: runs.dispose,
       editorSessions: new Map(),
       runModes: choices.modes,
@@ -247,6 +253,8 @@ export async function createStudioServices(): Promise<StudioServices> {
     runFor: runs.runFor,
     sessionFor: runs.sessionFor,
     retainRun: runs.retainRun,
+    liveRun: runs.liveRun,
+    watchRuns: runs.watchRuns,
     disposeRuns: runs.dispose,
     editorSessions: new Map(),
     runModes: {},

@@ -1,4 +1,5 @@
 import type { RunSummary } from '@corral/core';
+import { type Presence, projectionPresence } from '@corral/react';
 import {
   Button,
   fontWeights,
@@ -24,8 +25,9 @@ import {
   Minimize2,
   Plus,
 } from '@corral/react/icons';
-import type { ReactNode, Ref } from 'react';
+import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
+import { useServices } from '../../services.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
 import { maximizeAvailable, type OpenTab, type PanelState } from '../panel/model.ts';
 import {
@@ -77,8 +79,8 @@ export function usePlusLabel() {
 /** One run of the "+" list's run history: its state's mark, its number and its request. */
 interface HistoryRun {
   runId: string;
-  /** The run as the session's run list says it; null if the list does not hold it. */
-  summary: RunSummary | null;
+  /** The run's state (`useRunPresences`); null if nothing says it yet. */
+  presence: Presence | null;
   /** `#n · request`, or `Run #n` without a request. */
   name: string;
 }
@@ -93,7 +95,7 @@ function useRunHistoryRows(runs: readonly HistoryRun[], onOpenRun: (runId: strin
   const presenceText = useTranslations('Presence');
   const format = useFormatter();
   return [...runs].reverse().map((run) => {
-    const presence = run.summary ? listedRunPresence(run.summary) : null;
+    const { presence } = run;
     return (
       <MenuItem
         key={run.runId}
@@ -116,10 +118,69 @@ function useRunHistoryRows(runs: readonly HistoryRun[], onOpenRun: (runId: strin
   });
 }
 
+/**
+ * Each run's state, one per screen (docs/specs/features/presence.md): while a view follows the
+ * run (its record, the conversation), the state its live store says, which the record's head and
+ * the conversation say too; otherwise the run list's, which can lag the run. Nothing before the
+ * list answers.
+ */
+function useRunPresences(runIds: readonly string[] | null, runs: readonly RunSummary[]) {
+  const { liveRun, watchRuns } = useServices();
+  const key = runIds?.join(',') ?? '';
+  const live = useCallback(
+    (runId: string): Presence | null => {
+      const state = liveRun?.(runId)?.getState();
+      return state?.projection?.runId === runId
+        ? projectionPresence(state.projection, state.events)
+        : null;
+    },
+    [liveRun],
+  );
+  const subscribe = useCallback(
+    (notify: () => void) => {
+      let stops: (() => void)[] = [];
+      // The stores followed now; again whenever a run starts or stops being followed.
+      const follow = () => {
+        for (const stop of stops) stop();
+        stops = (key ? key.split(',') : []).flatMap((runId) => {
+          const store = liveRun?.(runId);
+          return store ? [store.subscribe(notify)] : [];
+        });
+      };
+      follow();
+      const unwatch = watchRuns?.(() => {
+        follow();
+        notify();
+      });
+      return () => {
+        unwatch?.();
+        for (const stop of stops) stop();
+      };
+    },
+    [key, liveRun, watchRuns],
+  );
+  const snapshot = useCallback(
+    () =>
+      (key ? key.split(',') : [])
+        .map((runId) => {
+          const presence = live(runId);
+          return presence ? [presence.kind, presence.need, presence.detail].join('/') : '';
+        })
+        .join('|'),
+    [key, live],
+  );
+  useSyncExternalStore(subscribe, snapshot, snapshot);
+  return (runId: string): Presence | null => {
+    if (runIds === null) return null;
+    const summary = runs.find((run) => run.runId === runId);
+    return live(runId) ?? (summary ? listedRunPresence(summary) : null);
+  };
+}
+
 /** The run history's rows, numbered by the run list's order, named as the tabs are. */
 function useHistoryRuns(
   ctx: PanelContext,
-  runs: readonly RunSummary[],
+  presenceOf: (runId: string) => Presence | null,
   names: Readonly<Record<string, string | null | undefined>>,
 ): HistoryRun[] {
   const tw = useTranslations('Workbench');
@@ -129,7 +190,7 @@ function useHistoryRuns(
     const name = names[runId];
     return {
       runId,
-      summary: runs.find((run) => run.runId === runId) ?? null,
+      presence: presenceOf(runId),
       name: name ? tr('runName', { number, name }) : tw('runNumber', { number }),
     };
   });
@@ -173,7 +234,8 @@ export function SessionPanelSide({
   const name = usePanelTabName(ctx.runIds);
   const plusLabel = usePlusLabel();
   const items = plusItems(ctx);
-  const history = useHistoryRuns(ctx, runs, runNames);
+  const presenceOf = useRunPresences(ctx.runIds, runs);
+  const history = useHistoryRuns(ctx, presenceOf, runNames);
   const historyRows = useRunHistoryRows(history, onOpenRun);
   // With one run, the run history opens it; with more, it lists them.
   const listed = history.length > 1;
@@ -232,13 +294,9 @@ export function SessionPanelSide({
       </div>
     );
   const tabs: TabsClosableTab[] = state.tabs.map((tab) => {
-    // A run tab carries its run's state in the icon's place, as the run list says it, except
-    // once the run completed; before the list answers it keeps the run icon.
-    const summary =
-      tab.kind === 'run' && ctx.runIds !== null
-        ? runs.find((run) => run.runId === tab.runId)
-        : undefined;
-    const presence = summary ? listedRunPresence(summary) : null;
+    // A run tab carries its run's state in the icon's place, as the run history says it, except
+    // once the run completed; before the run list answers it keeps the run icon.
+    const presence = tab.kind === 'run' ? presenceOf(tab.runId) : null;
     const marked = presence && presence.kind !== 'succeeded' ? presence : null;
     return {
       id: tabKey(tab),
