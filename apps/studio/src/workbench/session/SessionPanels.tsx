@@ -151,7 +151,7 @@ export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['e
     .map((run) => run.runId)
     .join(',');
   const [teams, setTeams] = useState<Record<string, string | null>>({});
-  // A pinned definition does not change: each run's is read once while the panel is open.
+  // A pinned definition does not change: each run's is read once while the conversation is open.
   const asked = useRef(new Set<string>());
   const mounted = useRef(true);
   useEffect(
