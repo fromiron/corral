@@ -271,6 +271,17 @@ export function ChatView({
   const [focused, setFocused] = useState<string | null>(null);
   // The row that holds the focus itself (not a control inside it).
   const [selfFocused, setSelfFocused] = useState<string | null>(null);
+  // Kept through the window losing the focus; let go once the focus lands anywhere else.
+  useEffect(() => {
+    if (selfFocused === null) return;
+    const landed = (event: FocusEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[data-chat-item]')?.getAttribute('data-chat-item') !== selfFocused)
+        setSelfFocused(null);
+    };
+    document.addEventListener('focusin', landed);
+    return () => document.removeEventListener('focusin', landed);
+  }, [selfFocused]);
   // Rows' last real heights; a hidden or not yet laid out row reads 0 and keeps its last size.
   const sizes = useRef(new Map<string, number>());
   // The timeline is always virtualized, whatever its length: one layout for one row or a
@@ -830,7 +841,10 @@ export function ChatView({
                       if (event.target === event.currentTarget) setSelfFocused(item.id);
                     }}
                     onBlurCapture={(event) => {
-                      if (event.target === event.currentTarget) setSelfFocused(null);
+                      // The window losing the focus (another app) keeps the row the active
+                      // element: it stays focusable until the focus lands elsewhere.
+                      if (event.target === event.currentTarget && document.hasFocus())
+                        setSelfFocused(null);
                       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
                     }}
                   >

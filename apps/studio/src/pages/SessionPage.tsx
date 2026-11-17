@@ -187,17 +187,11 @@ function WorkSessionPage() {
       if (runId) setAdviceRequest((previous) => ({ runId, n: (previous?.n ?? 0) + 1 }));
     },
     // A link that opens or selects a tab is an opening way: the focus goes as open() sends it,
-    // and closing the panel gives it back to the link, or to the toggle when the link was inside
-    // the panel. A link that opens or selects nothing moves no focus.
+    // and closing the panel gives it back to the link. A link inside the panel opens no panel and
+    // leaves what opened it as it is. A link that opens or selects nothing moves no focus.
     onOpenedByLink: (arrived, next, before) => {
       if (!namesSelected(arrived, next)) return;
-      const focused = document.activeElement;
-      opener.current =
-        focused instanceof HTMLElement &&
-        focused !== document.body &&
-        !side.current?.contains(focused)
-          ? focused
-          : null;
+      rememberOpener();
       if (!panelOnScreen(next.presentation)) return;
       focusOpened(arrived, next, before);
     },
@@ -209,7 +203,9 @@ function WorkSessionPage() {
   // Focus: an opened tab takes it; a panel or drawer leaving with it gives it back.
   const strip = useRef<TabsClosableHandle>(null);
   const side = useRef<HTMLElement | null>(null);
-  const opener = useRef<HTMLElement | null>(null);
+  // What opened the panel, and in which conversation: one opened elsewhere is not this one's
+  // (features/session-panel.md 접근성).
+  const opener = useRef<{ sessionId: string; element: HTMLElement } | null>(null);
   /** Where focus goes after the next change: the selected tab, or a tab or the list after a close. */
   const focusNext = useRef<
     'tab' | { closed: TabKey | 'selected' | 'list' } | { removed: Element } | null
@@ -221,7 +217,7 @@ function WorkSessionPage() {
       focused !== document.body &&
       !side.current?.contains(focused)
     )
-      opener.current = focused;
+      opener.current = { sessionId: session.sessionId, element: focused };
   };
   // The composer's whole-run confirmation is modal: while it is up, nothing the person does to the
   // panel (an opening way, the palette, the strip, the toggle, its shortcut) changes it. Back and
@@ -361,7 +357,12 @@ function WorkSessionPage() {
     frame.dispatch({ type: 'toggle' });
   };
   const presentation = state.presentation;
-  const shown = useRef(onScreen);
+  // Whether the panel was on screen, and in which conversation: entering another conversation is
+  // not closing a panel, so its first state here starts from nothing shown.
+  const shown = useRef<{ sessionId: string; onScreen: boolean }>({
+    sessionId: session.sessionId,
+    onScreen,
+  });
   useLayoutEffect(() => {
     // Runs again after an open or a close, whichever of these it changed.
     void presentation;
@@ -369,8 +370,8 @@ function WorkSessionPage() {
     // Until the frame has entered this conversation, the state here is not its own (the empty
     // state of the commit that enters it): a focus asked for waits, and nothing was closed.
     if (!frame.entered) return;
-    const was = shown.current;
-    shown.current = onScreen;
+    const was = shown.current.sessionId === session.sessionId && shown.current.onScreen;
+    shown.current = { sessionId: session.sessionId, onScreen };
     const target = focusNext.current;
     focusNext.current = null;
     if (target === 'tab' && state.selected && onScreen) {
@@ -408,13 +409,22 @@ function WorkSessionPage() {
         else document.querySelector<HTMLElement>('.app-sidebar-trigger')?.focus();
         return;
       }
+      const own = opener.current?.sessionId === session.sessionId ? opener.current.element : null;
       const back =
-        opener.current?.isConnected && !side.current?.contains(opener.current)
-          ? opener.current
+        own?.isConnected && !side.current?.contains(own)
+          ? own
           : document.querySelector<HTMLElement>('[data-session-panel-toggle]');
       back?.focus();
     }
-  }, [presentation, state.selected, state.tabs.length, onScreen, operable, frame.entered]);
+  }, [
+    presentation,
+    state.selected,
+    state.tabs.length,
+    onScreen,
+    operable,
+    frame.entered,
+    session.sessionId,
+  ]);
 
   // Documents and panes asked for before the 파일 tab's dock is ready wait for it. Readiness is
   // the dock's own: its handle is handed over again on every render, so a null between two

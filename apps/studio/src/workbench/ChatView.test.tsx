@@ -540,6 +540,57 @@ it('a linked row holding the focus itself stays focusable when the conversation 
   expect(row.hasAttribute('tabindex')).toBe(false);
 });
 
+it('a row holding the focus itself stays focusable while the window loses the focus, and stops being so once the focus lands elsewhere', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ChatView
+          sessionId="window-blur"
+          items={[
+            { id: 'first', content: <p>First</p> },
+            { id: 'request', content: <p>Request</p> },
+          ]}
+          composer={<textarea aria-label="request" />}
+        />
+      </IntlProvider>,
+    ),
+  );
+  const row = container.querySelector<HTMLElement>('[data-chat-item="request"]');
+  if (!row) throw new Error('Missing the row');
+  await act(async () => {
+    row.tabIndex = -1;
+    row.focus({ preventScroll: true });
+  });
+
+  // The person switches to another app: the row loses the focus with the document.
+  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+  await act(async () => {
+    row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+  });
+  expect(row.getAttribute('tabindex')).toBe('-1');
+  hasFocus.mockRestore();
+
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+  await act(async () => input?.focus());
+  expect(row.hasAttribute('tabindex')).toBe(false);
+});
+
 /**
  * A conversation whose scroll port the test owns, so a send, a growing turn, a composer
  * resizing the port, and a virtual list can be told apart from a person scrolling up.
