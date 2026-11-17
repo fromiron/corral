@@ -204,3 +204,10 @@ export function plusTarget(
   const newest = ctx.runIds?.at(-1);
   return newest ? { panel: 'run', run: newest } : { panel: 'run' };
 }
+
+/** A relative path inside a folder: never absolute, never climbing out, never empty. */
+export function relativePath(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return false;
+  if (value.startsWith('/') || value.includes('\0')) return false;
+  return value.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
+}

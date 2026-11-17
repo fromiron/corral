@@ -1,3 +1,4 @@
+import { relativePath } from '../panel/tabs.ts';
 import { type PanelDescriptor, SESSION_PANELS, type SessionPanel } from './registry.ts';
 
 export interface RunDetailSearch {
@@ -59,8 +60,8 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     out.panel = search.panel as SessionPanel;
   if (search.tab === 'run') out.panel = 'run';
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
-  if (out.panel === 'document' && text(search.file)) {
-    out.file = text(search.file);
+  if (out.panel === 'document' && relativePath(search.file)) {
+    out.file = search.file;
     if (search.target === 'original') out.target = 'original';
   }
   if (out.panel === 'graph' && text(search.corral)) out.corral = text(search.corral);

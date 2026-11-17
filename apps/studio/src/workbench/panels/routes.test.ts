@@ -263,6 +263,11 @@ it('reads a document’s file and source and a team graph’s team only with the
     panel: 'document',
     file: 'a.ts',
   });
+  // A file is a relative path inside the folder: an absolute or climbing one names no tab.
+  for (const file of ['/etc/hosts', '../a.ts', 'src/../../a.ts', 'src//a.ts', './a.ts', 'src/'])
+    expect(validateSessionSearch({ panel: 'document', file }), file).toEqual({
+      panel: 'document',
+    });
   expect(validateSessionSearch({ panel: 'graph', corral: 'team_a' })).toEqual({
     panel: 'graph',
     corral: 'team_a',
