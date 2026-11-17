@@ -224,4 +224,4 @@ export {
 } from './team/draft.ts';
 export type { Pattern, TeamReference } from './team-editor/commands.ts';
 export { importableRoles } from './team-editor/commands.ts';
-export { TeamEditor } from './team-editor/TeamEditor.tsx';
+export { TEAM_EDITOR_BESIDE_MIN, TeamEditor } from './team-editor/TeamEditor.tsx';

@@ -40,6 +40,8 @@ export interface StructureTreeProps {
   onCommands: () => void;
   /** Which team-wide view the sheet shows, if any. */
   view: 'team' | 'problems' | null;
+  /** A row of the stacked editor's column instead of its left side. */
+  stacked?: boolean;
 }
 
 export function StructureTree({
@@ -57,6 +59,7 @@ export function StructureTree({
   onProblems,
   onCommands,
   view,
+  stacked = false,
 }: StructureTreeProps) {
   const t = useTranslations('TeamEditor');
   const size = useSize();
@@ -173,7 +176,13 @@ export function StructureTree({
 
   return (
     // The team row heads the outline: its name, its problems and the way to add a step.
-    <aside aria-label={t('outline')} className="flex min-h-0 flex-col border-r border-border">
+    <aside
+      aria-label={t('outline')}
+      className={cn(
+        'flex flex-col border-border',
+        stacked ? 'shrink-0 border-b' : 'min-h-0 border-r',
+      )}
+    >
       <div
         className={cn(
           'mx-2 mt-2 mb-1 flex items-center gap-2 rounded-md py-1.5 pr-0.5 pl-2',
@@ -201,10 +210,13 @@ export function StructureTree({
           <Plus />
         </Button>
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      {/* Stacked, a long outline scrolls in itself, so the canvas stays near the top. */}
+      <ul className={cn('overflow-y-auto px-2 pb-2', stacked ? 'max-h-60' : 'min-h-0 flex-1')}>
         {children(null).map((node) => row(node, 0))}
       </ul>
-      <footer className="grid gap-0.5 border-t border-border p-2">
+      <footer
+        className={cn('gap-0.5 border-t border-border p-2', stacked ? 'flex flex-wrap' : 'grid')}
+      >
         <Button
           variant="ghost"
           size="compact"

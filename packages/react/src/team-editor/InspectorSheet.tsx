@@ -56,6 +56,8 @@ export interface InspectorSheetProps {
   notice?: string | null | undefined;
   onSelect: (selection: TeamSelection) => void;
   onClose: () => void;
+  /** A row under the canvas in the stacked editor, at its own height, instead of a floating card. */
+  stacked?: boolean;
 }
 
 export const PATTERNS: readonly Pattern[] = ['reviewLoop', 'checkLoop', 'parallel'];
@@ -140,6 +142,7 @@ export function InspectorSheet({
   notice,
   onSelect,
   onClose,
+  stacked = false,
 }: InspectorSheetProps) {
   const t = useTranslations('TeamEditor');
   const f = useTranslations('TeamEditor.fields');
@@ -427,7 +430,11 @@ export function InspectorSheet({
   return (
     <aside
       aria-label={t('inspector')}
-      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+      className={
+        stacked
+          ? 'flex w-full flex-col border-t border-border'
+          : 'pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg'
+      }
     >
       <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
         {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
@@ -452,7 +459,15 @@ export function InspectorSheet({
           {notice}
         </p>
       ) : null}
-      <div className="grid content-start gap-4 overflow-y-auto p-4">{body}</div>
+      {/* Stacked, the editor scrolls, and the fields keep the kit's narrow measure. */}
+      <div
+        className={cn(
+          'grid content-start gap-4 p-4',
+          stacked ? 'w-full max-w-[720px]' : 'overflow-y-auto',
+        )}
+      >
+        {body}
+      </div>
     </aside>
   );
 }

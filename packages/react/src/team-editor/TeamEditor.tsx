@@ -104,7 +104,19 @@ export interface TeamEditorProps {
   /** Run stats of the saved revision, laid over the canvas while the host shows them. */
   runStats?: { stats: RunStats; definition: CorralDefinition } | null | undefined;
   onOpenRun?: ((runId: string) => void) | undefined;
+  /**
+   * One column, for a host that finds the editor narrower than TEAM_EDITOR_BESIDE_MIN: the
+   * outline, the palette, the canvas and the settings one under another, scrolling inside the
+   * editor (docs/specs/features/canvas.md 1). Changing it keeps the selection and the focus.
+   */
+  stacked?: boolean;
 }
+
+/**
+ * The narrowest the editor lays out beside: the 272px outline, the 344px sheet with its 12px
+ * margins either side and a canvas of at least 400px uncovered.
+ */
+export const TEAM_EDITOR_BESIDE_MIN = 272 + 400 + 12 + 344 + 12;
 
 const NONE: TeamSelection = { nodes: [], edge: null };
 const NO_TEAMS: readonly TeamReference[] = [];
@@ -126,6 +138,7 @@ export function TeamEditor({
   onOpenTeam,
   runStats = null,
   onOpenRun,
+  stacked = false,
 }: TeamEditorProps) {
   const t = useTranslations('TeamEditor');
   const presetText = useTranslations('TeamTemplates.presets');
@@ -506,10 +519,21 @@ export function TeamEditor({
 
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
   const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
+  // Both layouts are one tree in one order (outline, palette, canvas, settings) with other
+  // classes, so changing layout keeps focus, the canvas view and a field's open undo batch.
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
-    <div className="grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]" onKeyDown={onKeyDown}>
+    <div
+      data-layout={stacked ? 'stacked' : 'beside'}
+      className={
+        stacked
+          ? 'flex h-full min-h-0 flex-col overflow-y-auto'
+          : 'grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]'
+      }
+      onKeyDown={onKeyDown}
+    >
       <StructureTree
+        stacked={stacked}
         definition={definition}
         diagnostics={diagnostics}
         order={order}
@@ -531,28 +555,17 @@ export function TeamEditor({
         onCommands={() => openMenu(null)}
         view={view}
       />
-      <div className="relative min-h-0">
-        <TeamGraphCanvas
-          definition={definition}
-          diagnostics={diagnostics}
-          selection={selection}
-          onSelect={select}
-          collapsed={collapsed}
-          onToggle={toggle}
-          dragging={dragging}
-          canPlace={canPlace}
-          onPlace={(kind, where) => apply(placeStep(editor.getState().draft, kind, where))}
-          onRequestAdd={openMenu}
-          canConnect={canConnect}
-          onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
-          onDelete={remove}
-          insetRight={sheetOpen ? 368 : 0}
-          annotations={annotations}
-        />
+      {/* Beside, the palette and the settings float over the canvas; stacked, this box gives
+          way and its parts are rows of the editor's column. */}
+      <div className={stacked ? 'contents' : 'relative min-h-0'}>
         <div
           role="toolbar"
           aria-label={t('palette')}
-          className="absolute top-3 left-3 flex gap-0.5 rounded-xl border border-border bg-card p-1 shadow-sm"
+          className={
+            stacked
+              ? 'flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5'
+              : 'absolute top-3 left-3 z-10 flex gap-0.5 rounded-xl border border-border bg-card p-1 shadow-sm'
+          }
         >
           {ADDABLE.map((kind) => {
             const Icon = KIND_ICON[kind];
@@ -577,21 +590,57 @@ export function TeamEditor({
             );
           })}
         </div>
+        {/* Stacked, the canvas takes 60% of the editor's height and at least 400px, three rows
+            of cards at full size, but always 6rem less than the editor: it keeps the wheel and
+            touch for zooming and panning, so the editor must show something to scroll by. */}
+        <div
+          className={
+            stacked
+              ? 'relative isolate h-[60%] min-h-[min(400px,calc(100%_-_6rem))] shrink-0'
+              : 'relative isolate h-full'
+          }
+        >
+          <TeamGraphCanvas
+            definition={definition}
+            diagnostics={diagnostics}
+            selection={selection}
+            onSelect={select}
+            collapsed={collapsed}
+            onToggle={toggle}
+            dragging={dragging}
+            canPlace={canPlace}
+            onPlace={(kind, where) => apply(placeStep(editor.getState().draft, kind, where))}
+            onRequestAdd={openMenu}
+            canConnect={canConnect}
+            onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
+            onDelete={remove}
+            insetRight={sheetOpen && !stacked ? 368 : 0}
+            annotations={annotations}
+          />
+        </div>
         <AnimatePresence>
           {sheetOpen ? (
             <motion.div
               key="sheet"
-              className="pointer-events-none absolute top-3 right-3 bottom-3"
-              initial={reduced ? { opacity: 0 } : { opacity: 0, x: 24 }}
-              animate={{ opacity: 1, x: 0 }}
+              className={
+                stacked ? undefined : 'pointer-events-none absolute top-3 right-3 bottom-3'
+              }
+              // Beside, it slides in from the side it floats on; stacked, it rises into its row.
+              initial={
+                reduced ? { opacity: 0 } : stacked ? { opacity: 0, y: 8 } : { opacity: 0, x: 24 }
+              }
+              animate={{ opacity: 1, x: 0, y: 0 }}
               exit={
                 reduced
                   ? { opacity: 0, transition: { duration: 0 } }
-                  : { opacity: 0, x: 24, transition: spring.slow.exit }
+                  : stacked
+                    ? { opacity: 0, y: 8, transition: spring.slow.exit }
+                    : { opacity: 0, x: 24, transition: spring.slow.exit }
               }
               transition={reduced ? { duration: 0 } : spring.slow}
             >
               <InspectorSheet
+                stacked={stacked}
                 editor={editor}
                 diagnostics={diagnostics}
                 selection={selection}
