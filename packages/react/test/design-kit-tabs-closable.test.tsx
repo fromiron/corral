@@ -442,3 +442,107 @@ it('lets a focused close control show itself and its ring', () => {
   expect(control).toHaveClass('focus-visible:opacity-100');
   expect(control.className).toContain('focus-visible:outline-[color:var(--focus-ring)]');
 });
+
+// session-panel.md "탭": a run tab carries its state mark in the icon's place, at every stage, and
+// says the state as its description; its name stays "실행 #n".
+
+/** A mark as a host draws one: it would name itself if the strip let it. */
+const mark = (state: string) => (
+  <span role="img" aria-label={state} data-testid={`mark-${state}`}>
+    ●
+  </span>
+);
+const marked: TabsClosableTab[] = [
+  { id: 'files', label: '파일', icon: File },
+  { id: 'changes', label: '변경', icon: GitCompare, mark: mark('대기') },
+  {
+    id: 'run-1',
+    label: '실행 #1',
+    shortLabel: '#1',
+    icon: Play,
+    mark: mark('실패'),
+    description: '실패',
+  },
+];
+const slotOf = (tab: HTMLElement) =>
+  tab.querySelector<HTMLElement>('[data-slot="tabs-closable-icon"]');
+
+it('draws a mark in the icon slot instead of the icon, hidden from assistive technology, and the name stays the label', () => {
+  render(<Strip tabs={marked} />);
+  const run = screen.getByRole('tab', { name: '실행 #1' });
+  const drawn = within(run).getByTestId('mark-실패');
+  expect(slotOf(run)?.contains(drawn)).toBe(true);
+  expect(run.querySelector('.lucide-play')).toBeNull();
+  // The icon's box: the tab does not change width with its state.
+  expect(slotOf(run)?.style.width).toBe('14px');
+  expect(slotOf(run)?.style.height).toBe('14px');
+  expect(drawn.closest('[aria-hidden="true"]')).not.toBeNull();
+  expect(run).toHaveAccessibleName('실행 #1');
+  expect(screen.getByRole('tab', { name: '변경' })).toHaveAccessibleName('변경');
+  // A tab without a mark keeps its icon.
+  expect(screen.getByRole('tab', { name: '파일' }).querySelector('.lucide-file')).not.toBeNull();
+});
+
+it('describes a tab by its description only when it has one', () => {
+  render(<Strip tabs={marked} />);
+  const run = screen.getByRole('tab', { name: '실행 #1' });
+  expect(run).toHaveAccessibleDescription('실패');
+  for (const name of ['파일', '변경']) {
+    const tab = screen.getByRole('tab', { name });
+    expect(tab).not.toHaveAttribute('aria-description');
+    expect(tab).not.toHaveAttribute('aria-describedby');
+  }
+});
+
+it('falls back to the icon in the same slot, at the same width, when the mark goes', () => {
+  const view = render(<Strip tabs={marked} />);
+  const run = screen.getByRole('tab', { name: '실행 #1' });
+  const slot = slotOf(run);
+  expect(within(run).getByTestId('mark-실패')).toBeInTheDocument();
+  view.rerender(
+    <Strip
+      tabs={marked.map((tab) =>
+        tab.id === 'run-1' ? { ...tab, mark: undefined, description: undefined } : tab,
+      )}
+    />,
+  );
+  expect(within(run).queryByTestId('mark-실패')).toBeNull();
+  expect(slotOf(run)).toBe(slot);
+  expect(slot?.querySelector('.lucide-play')).not.toBeNull();
+  expect(slot?.style.width).toBe('14px');
+  expect(run).not.toHaveAttribute('aria-description');
+});
+
+it('keeps the mark, with the run number, on a tab shrunk to its icon', () =>
+  withBoxes(100, async () => {
+    render(<Strip tabs={marked} initial="files" />);
+    const run = screen.getByRole('tab', { name: '실행 #1' });
+    await waitFor(() =>
+      expect(run.querySelector('[data-slot="tabs-closable-name"]')).toHaveClass('sr-only'),
+    );
+    expect(slotOf(run)?.contains(within(run).getByTestId('mark-실패'))).toBe(true);
+    expect(run.querySelector('.lucide-play')).toBeNull();
+    expect(run).toHaveTextContent('#1');
+    expect(run).toHaveAccessibleName('실행 #1');
+    // One without a short label keeps its mark too.
+    const changes = screen.getByRole('tab', { name: '변경' });
+    expect(slotOf(changes)?.contains(within(changes).getByTestId('mark-대기'))).toBe(true);
+  }));
+
+it('gives the mark’s place to the close control on focus, and gives it back after', () =>
+  withBoxes(1000, async () => {
+    render(<Strip tabs={marked} initial="changes" />);
+    await waitFor(() => expect(close('변경')).toHaveAttribute('data-shown'));
+    const run = screen.getByRole('tab', { name: '실행 #1' });
+    const drawn = () =>
+      within(run).getByTestId('mark-실패').closest<HTMLElement>('[data-slot="tabs-closable-mark"]');
+    expect(drawn()).not.toBeNull();
+    expect(drawn()).not.toHaveClass('opacity-0');
+    run.focus();
+    await waitFor(() => expect(close('실행 #1')).toHaveAttribute('data-shown'));
+    expect(close('실행 #1')).toHaveAttribute('data-place', 'icon');
+    expect(drawn()).toHaveClass('opacity-0');
+    screen.getByRole('tab', { name: '파일' }).focus();
+    await waitFor(() => expect(close('실행 #1')).not.toHaveAttribute('data-shown'));
+    expect(drawn()).not.toHaveClass('opacity-0');
+  }));

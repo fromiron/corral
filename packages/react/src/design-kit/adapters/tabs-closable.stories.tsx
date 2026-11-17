@@ -733,6 +733,55 @@ export const DismissedStaysShut: Story = {
   },
 };
 
+/** A state dot in the kit's status colours; a host passes its own mark. */
+const dot = (color: string) => (
+  <span className="size-2 rounded-full" style={{ backgroundColor: `var(${color})` }} />
+);
+const marked: TabsClosableTab[] = [
+  sample[0] as TabsClosableTab,
+  { id: 'run-1', label: '실행 #1', shortLabel: '#1', icon: Play, mark: dot('--warning') },
+  {
+    id: 'run-2',
+    label: '실행 #2',
+    shortLabel: '#2',
+    icon: Play,
+    mark: dot('--destructive'),
+    description: '실패',
+  },
+  { id: 'run-3', label: '실행 #3', shortLabel: '#3', icon: Play },
+];
+
+/** Run tabs carry a mark in the icon's place at every stage, and are read with their state; the
+ *  name stays the label, and the close control still takes that place on hover and focus. */
+export const Marks: Story = {
+  render: () => (
+    <div className="flex flex-col gap-4">
+      <Host testId="marks-wide" width={640} tabs={marked} initial="files" />
+      <Host testId="marks-narrow" width={240} tabs={marked} initial="files" />
+    </div>
+  ),
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await document.fonts.ready;
+    for (const id of ['marks-wide', 'marks-narrow']) {
+      const strip = within(canvas.getByTestId(id));
+      const run2 = strip.getByRole('tab', { name: '실행 #2' });
+      await expect(run2).toHaveAccessibleDescription('실패');
+      await expect(strip.getByRole('tab', { name: '실행 #3' })).not.toHaveAttribute(
+        'aria-description',
+      );
+      const slot = run2.querySelector('[data-slot="tabs-closable-icon"]') as HTMLElement;
+      await expect(slot.querySelector('[data-slot="tabs-closable-mark"]')).not.toBeNull();
+      await expect(slot.querySelector('svg')).toBeNull();
+      await expect(slot.getBoundingClientRect().width).toBe(14);
+    }
+    const narrow = within(canvas.getByTestId('marks-narrow'));
+    await waitFor(() =>
+      expect(nameState(narrow.getByRole('tab', { name: '실행 #2' })).hidden).toBe(true),
+    );
+  },
+};
+
 /** No play: tabs, width and selection come from the story's args, for looking at it. */
 export const Playground: Story = { args: { tabs: four, width: 480 } };
 

@@ -49,6 +49,8 @@ import { cn } from './utils.ts';
 //   name not on screen shows in the kit's tooltip.
 // - a trailing slot right after the last tab (a "+", as a browser's new-tab
 //   button) and an end slot at the far right (maximize); neither scrolls away.
+// - a mark in the icon's place (a run's state), at every stage, and a
+//   description the tab is read with; its name stays its label.
 //
 // The host owns the tabs, the selection and what a close selects next.
 // -----------------------------------------------------------------------------
@@ -59,6 +61,11 @@ export interface TabsClosableTab {
   /** Kept beside the icon when unselected tabs shrink to their icon ("#3"). */
   shortLabel?: string;
   icon: IconComponent;
+  /** Drawn in the icon's place and box instead of the icon, wherever the icon would show (a
+   *  run's state). Hidden from assistive technology: say it with `description`. */
+  mark?: ReactNode;
+  /** The tab's accessible description (the state in words). */
+  description?: string;
 }
 
 export interface TabsClosableHandle {
@@ -628,6 +635,8 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                     const ids = tabsClosableIds(idPrefix, tab.id);
                     const label = labelWidths[tab.id] ?? 0;
                     const Icon = tab.icon;
+                    const marked =
+                      tab.mark !== undefined && tab.mark !== null && tab.mark !== false;
                     return (
                       // A name not on screen (icon only, or cut short) shows in the kit's
                       // tooltip on hover and keyboard focus. The tree stays the same at every
@@ -647,6 +656,7 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                           id={ids.tab}
                           aria-controls={ids.panel}
                           aria-keyshortcuts="Delete"
+                          aria-description={tab.description || undefined}
                           data-fluid-hover-index={index}
                           data-selected={selected ? '' : undefined}
                           onPointerEnter={(event: React.PointerEvent<HTMLElement>) =>
@@ -695,20 +705,34 @@ export const TabsClosable = forwardRef<TabsClosableHandle, TabsClosableProps>(
                                   }),
                           }}
                         >
+                          {/* The icon, or the mark in its box; either gives way to the close control. */}
                           <span
                             aria-hidden="true"
+                            data-slot="tabs-closable-icon"
                             className="relative flex shrink-0 items-center justify-center"
                             style={{ width: ICON, height: ICON }}
                           >
-                            <Icon
-                              size={ICON}
-                              strokeWidth={active ? 2 : 1.5}
-                              className={cn(
-                                'shrink-0 transition-[color,stroke-width,opacity] duration-80',
-                                active ? 'text-foreground' : 'text-muted-foreground',
-                                closeInIconSlot && 'opacity-0',
-                              )}
-                            />
+                            {marked ? (
+                              <span
+                                data-slot="tabs-closable-mark"
+                                className={cn(
+                                  'absolute inset-0 flex items-center justify-center transition-opacity duration-80',
+                                  closeInIconSlot && 'opacity-0',
+                                )}
+                              >
+                                {tab.mark}
+                              </span>
+                            ) : (
+                              <Icon
+                                size={ICON}
+                                strokeWidth={active ? 2 : 1.5}
+                                className={cn(
+                                  'shrink-0 transition-[color,stroke-width,opacity] duration-80',
+                                  active ? 'text-foreground' : 'text-muted-foreground',
+                                  closeInIconSlot && 'opacity-0',
+                                )}
+                              />
+                            )}
                           </span>
                           {/* Stacked: the invisible semibold copy keeps the width when the
                               selection changes the weight. In the compact stage the name stays
