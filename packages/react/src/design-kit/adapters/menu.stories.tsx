@@ -70,6 +70,16 @@ export const UnavailableRow: Story = {
     // A disabled row with no reason is reached too, as before.
     await userEvent.keyboard('{ArrowDown}{ArrowDown}');
     await waitFor(() => expect(page.getByRole('menuitem', { name: '디버그' })).toHaveFocus());
+    // A real press on the row (Chromium's own pointer, under the test runner only) lands on the
+    // list behind it: nothing is chosen and the list stays open.
+    if ((import.meta as { env?: { MODE?: string } }).env?.MODE === 'test') {
+      const browser = await import('vitest/browser' as string);
+      await browser.userEvent.click(terminal, { force: true });
+      await expect(args.onPick).not.toHaveBeenCalled();
+      await expect(page.getByRole('menu')).toBeVisible();
+      // A real key puts the page back in keyboard modality for the stories after this one.
+      await browser.userEvent.keyboard('{Shift}');
+    }
     await userEvent.keyboard('{Escape}');
     await waitFor(() => expect(page.queryByRole('menu')).toBeNull());
   },
