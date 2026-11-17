@@ -368,8 +368,13 @@ export function useSessionDockArea(input: DockAreaInput) {
       return;
     }
     const from = sessionId;
+    // A tab restored before the list answered: what the terminal is comes from the list.
+    if (!store.getState().sessions[from]?.list) await store.refresh(from);
+    if (latest.current.sessionId !== from) return;
     const state =
-      latest.current.value?.list?.terminals.find((item) => item.terminalId === terminalId)?.state ??
+      store
+        .getState()
+        .sessions[from]?.list?.terminals.find((item) => item.terminalId === terminalId)?.state ??
       'exited';
     const action = await closingTerminal(state, () => store.readForeground(terminalId));
     if (latest.current.sessionId !== from) return;

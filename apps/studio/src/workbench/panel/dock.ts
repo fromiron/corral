@@ -114,7 +114,15 @@ export function reduceDock(state: DockState, event: DockEvent): DockState {
           known.has(tab.terminalId),
       );
       const first = tabs[0];
-      if (!first) return { ...state, tabs, selected: null, open: false, unchecked: [] };
+      // Only a dock this clean-up emptied closes: one the person emptied keeps its list.
+      if (!first)
+        return {
+          ...state,
+          tabs,
+          selected: null,
+          open: tabs.length < state.tabs.length ? false : state.open,
+          unchecked: [],
+        };
       const selected =
         state.selected && tabs.some((tab) => dockKey(tab) === state.selected)
           ? state.selected

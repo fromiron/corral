@@ -152,6 +152,21 @@ describe('the bottom dock as data', () => {
     ]);
   });
 
+  it('keeps open a dock the person emptied before the first list answered (counterexample)', () => {
+    const restored = restoredDock({
+      tabs: [terminal('t3')],
+      selected: 'terminal:t3',
+      open: true,
+      height: 240,
+    });
+    const emptied = reduceDock(restored, { type: 'close', key: 'terminal:t3' });
+    expect(reduceDock(emptied, { type: 'terminals', ids: ['t3'] })).toMatchObject({
+      tabs: [],
+      open: true,
+    });
+    expect(reduceDock(emptied, { type: 'terminals', ids: [] })).toMatchObject({ open: true });
+  });
+
   it('restores a dock remembered open with no tabs as closed', () => {
     expect(restoredDock({ tabs: [], selected: null, open: true, height: 300 })).toMatchObject({
       open: false,

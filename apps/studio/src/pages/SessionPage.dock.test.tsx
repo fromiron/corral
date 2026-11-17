@@ -536,6 +536,29 @@ it('대화의 기억에 도크의 터미널 3 탭이 있고 그 터미널은 목
   expect(world.server?.created).toEqual([]);
 });
 
+it('대화의 기억에 도크의 실행 중인 터미널 1 탭이 있다 → 터미널 목록이 답하기 전에 그 탭을 닫는다 → 목록이 답해도 도크는 열린 채 목록을 보이고, 터미널은 끝난다', async () => {
+  const world = await serverWorld({ holdLists: true });
+  window.localStorage.setItem(
+    dockMemoryKey(world.sessionId),
+    serializeDockMemory({
+      tabs: [{ kind: 'terminal', terminalId: 'terminal_one' }],
+      selected: 'terminal:terminal_one',
+      open: true,
+      height: 240,
+    }),
+  );
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => dockTabs().length === 1);
+  await press(buttons(W.close(W.terminal(1)), dock())[0]);
+  await act(async () => world.server?.releaseLists());
+  await until(() => (world.server?.stops.length ?? 0) > 0);
+  await settle(20);
+  expect(dockTabs()).toEqual([]);
+  expect(dockState()).toBe('open');
+  expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
+  expect(world.server?.stops).toEqual(['terminal_one']);
+});
+
 it('대화의 기억에 탭 없이 열린 도크와 패널의 실행 중인 터미널 1 탭이 있다 → 들어오면 도크는 닫혀 있고, 터미널 1 탭은 패널에 그대로이며, 아무것도 만들거나 끝내지 않는다', async () => {
   const world = await serverWorld();
   window.localStorage.setItem(
