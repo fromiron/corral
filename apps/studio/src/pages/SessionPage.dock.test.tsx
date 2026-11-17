@@ -406,55 +406,76 @@ it('도크의 높이는 대화마다 기억되고 주소에는 실리지 않는�
   expect(Object.keys(search).some((name) => name.toLowerCase().includes('dock'))).toBe(false);
 });
 
-it('포커스가 도크의 터미널 입력에 있고 창이 낮아져 도크가 물러난다 → 포커스는 컴포저로 가고, 버튼은 눌린 채 점이 없다', async () => {
-  // The frame is as tall as `height`; main's chrome below the messages is 100px, so the
-  // messages' 160px floor leaves the dock `height - 260`px.
-  let height = 800;
-  // Only the frame's and main's own measures are told of the change.
-  const observers: { targets: Element[]; fire: () => void }[] = [];
-  vi.stubGlobal(
-    'ResizeObserver',
-    class {
-      readonly targets: Element[] = [];
-      readonly callback: () => void;
-      constructor(callback: () => void) {
-        this.callback = callback;
-        observers.push(this as unknown as { targets: Element[]; fire: () => void });
-      }
-      fire() {
-        this.callback();
-      }
-      observe(target: Element) {
-        this.targets.push(target);
-      }
-      unobserve() {}
-      disconnect() {}
-    },
-  );
-  const measured = (target: Element) =>
-    target.getAttribute('data-slot') === 'side-panel-frame' ||
-    target.querySelector('[data-testid="chat-composer"]') !== null;
-  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
-    this: HTMLElement,
-  ) {
-    return this.dataset.slot === 'side-panel-frame' ? height : 0;
-  });
-  vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
-    const top = this.getAttribute('data-testid') === 'chat-composer' ? 500 : 0;
-    return { top, height: 600, width: 600, left: 0, right: 600, bottom: 600 } as DOMRect;
-  });
-  const world = await serverWorld({ terminals: ['running'] });
-  await open(world, `/sessions/${world.sessionId}`);
-  await press(dockButton());
-  await until(() => document.activeElement === terminalInput());
-  expect(dockState()).toBe('open');
-  height = 300;
-  await act(async () => {
-    for (const observer of observers) if (observer.targets.some(measured)) observer.fire();
-  });
-  await until(() => document.activeElement === composerInput());
-  expect(dockState()).toBe('withdrawn');
-  expect(document.activeElement).toBe(composerInput());
-  expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
-  expect(dockButton()?.querySelector('[data-dock-dot]')).toBeNull();
-});
+it.each([
+  ['컴포저를 쓸 수 있다', 'composer'],
+  ['컴포저를 쓸 수 없고 패널에 파일 탭이 선택돼 있다', 'tab'],
+] as const)(
+  '포커스가 도크의 터미널 입력에 있고 %s → 창이 낮아져 도크가 물러난다 → 포커스는 그 순서의 첫 자리로 가고, 버튼은 눌린 채 점이 없다',
+  async (_case, expected) => {
+    // The frame is as tall as `height`; main's chrome below the messages is 100px, so the
+    // messages' 160px floor leaves the dock `height - 260`px.
+    let height = 800;
+    // Only the frame's and main's own measures are told of the change.
+    const observers: { targets: Element[]; fire: () => void }[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        readonly targets: Element[] = [];
+        readonly callback: () => void;
+        constructor(callback: () => void) {
+          this.callback = callback;
+          observers.push(this as unknown as { targets: Element[]; fire: () => void });
+        }
+        fire() {
+          this.callback();
+        }
+        observe(target: Element) {
+          this.targets.push(target);
+        }
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const measured = (target: Element) =>
+      target.getAttribute('data-slot') === 'side-panel-frame' ||
+      target.querySelector('[data-testid="chat-composer"]') !== null;
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockImplementation(function (
+      this: HTMLElement,
+    ) {
+      return this.dataset.slot === 'side-panel-frame' ? height : 0;
+    });
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (
+      this: Element,
+    ) {
+      const top = this.getAttribute('data-testid') === 'chat-composer' ? 500 : 0;
+      return { top, height: 600, width: 600, left: 0, right: 600, bottom: 600 } as DOMRect;
+    });
+    const world = await serverWorld({ terminals: ['running'] });
+    if (expected === 'tab')
+      window.localStorage.setItem(
+        panelMemoryKey(world.sessionId),
+        serializePanelMemory({ tabs: [{ kind: 'files' }], selected: 'files', open: true }),
+      );
+    await open(world, `/sessions/${world.sessionId}`);
+    await press(dockButton());
+    await until(() => document.activeElement === terminalInput());
+    expect(dockState()).toBe('open');
+    // A composer that cannot take input, as while it is held.
+    if (expected === 'tab') (composerInput() as HTMLTextAreaElement).disabled = true;
+    const filesTab = () =>
+      document.querySelector<HTMLElement>(
+        '[data-slot="side-panel-side"] [role="tab"][aria-selected="true"]',
+      );
+    const target = () => (expected === 'composer' ? composerInput() : filesTab());
+    if (expected === 'tab') expect(filesTab()).not.toBeNull();
+    height = 300;
+    await act(async () => {
+      for (const observer of observers) if (observer.targets.some(measured)) observer.fire();
+    });
+    await until(() => document.activeElement === target());
+    expect(dockState()).toBe('withdrawn');
+    expect(document.activeElement).toBe(target());
+    expect(dockButton()?.getAttribute('aria-pressed')).toBe('true');
+    expect(dockButton()?.querySelector('[data-dock-dot]')).toBeNull();
+  },
+);
