@@ -3243,3 +3243,91 @@ describe('a run tab beside the conversation and over it', () => {
     );
   });
 });
+
+// execution-monitor.md: the conversation says what an extension leaves after its question is
+// answered. Beside it the run tab does not; over it a new notice opens the response area once.
+describe('an extension’s notice in a run tab', () => {
+  const target = { requestId: 'request_1', executionId: 'exec_worker', attemptNo: 1 };
+  const hash = 'b'.repeat(64);
+  const event = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `evt_${runSeq}`,
+      runId: 'run_layout',
+      runSeq,
+      recordedAt: '2026-10-26T09:06:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const asked = event(1, 'extension.ui_requested', {
+    ...target,
+    kind: 'confirm',
+    bodyRef: 'prompt_1',
+    bodyHash: hash,
+    deadline: '2026-10-26T09:16:00.000Z',
+  });
+  const answered = event(2, 'extension.ui_answered', {
+    ...target,
+    answerRef: 'answer_1',
+    answerHash: hash,
+  });
+  const said = event(3, 'extension.ui_notified', {
+    executionId: 'exec_worker',
+    kind: 'notify',
+    key: 'notice',
+    level: 'info',
+    bodyRef: 'notice_1',
+    bodyHash: hash,
+  });
+  const close = (container: HTMLElement) =>
+    act(async () =>
+      side(container)?.querySelector<HTMLButtonElement>('[aria-label="Close details"]')?.click(),
+    );
+
+  async function answeredBeside() {
+    const view = await mount('inline_team', null, {}, undefined, false, ['worker'], undefined, {
+      sessionId: 'session_layout',
+      respond: vi.fn(),
+      operable: true,
+    });
+    await act(async () => view.run.setState({ events: [asked, answered] }));
+    await waitFor(view.run, 0);
+    await act(async () => view.run.setState({ events: [asked, answered, said] }));
+    return view;
+  }
+
+  it('is not shown beside the conversation, and opens the response area once maximized', async () => {
+    const { container, setOperable } = await answeredBeside();
+    expect(side(container)?.hidden).toBe(true);
+    await setOperable(false);
+    expect(side(container)?.hidden).toBe(false);
+    expect(side(container)?.querySelector('[data-testid="run-needs-you"]')).not.toBeNull();
+    // Beside again it closes, and that close is not the person's: maximized again, it opens.
+    await setOperable(true);
+    expect(side(container)?.hidden).toBe(true);
+    await setOperable(false);
+    expect(side(container)?.hidden).toBe(false);
+  });
+
+  it('stays closed for the same notice once the person closed it', async () => {
+    const { container, setOperable } = await answeredBeside();
+    await setOperable(false);
+    expect(side(container)?.hidden).toBe(false);
+    await close(container);
+    expect(side(container)?.hidden).toBe(true);
+    await setOperable(true);
+    await setOperable(false);
+    expect(side(container)?.hidden).toBe(true);
+  });
+
+  it('leaves the run page as it was: a notice alone opens nothing there', async () => {
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(1400);
+    const { container, run } = await mount('inline_team', null, {});
+    await act(async () => run.setState({ events: [asked, answered] }));
+    await waitFor(run, 0);
+    await act(async () => run.setState({ events: [asked, answered, said] }));
+    expect(side(container)?.hidden).toBe(true);
+  });
+});

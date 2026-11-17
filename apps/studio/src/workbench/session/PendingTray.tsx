@@ -1,6 +1,6 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { pendingInteractions, type RunSummary } from '@corral/core';
-import { RequestRunContext, type RunSessionStore } from '@corral/react';
+import { canReadArtifactBody, pendingInteractions, type RunSummary } from '@corral/core';
+import { InteractionPanel, RequestRunContext, type RunSessionStore } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import {
@@ -32,14 +32,23 @@ export {
 /** A request to reveal the tray counts this long, so a late one does not move focus later. */
 const REVEAL_WINDOW_MS = 5_000;
 
-/** Each run's waiting count, `runId:count` joined; empty while nothing waits. */
+/**
+ * Each run with something for the tray, `runId:count:notices` joined: how many requests wait, and
+ * whether an extension's notice is kept (its text still readable: the run lives, or the text is
+ * kept). Empty while there is nothing.
+ */
 function waitingOf(stores: readonly (readonly [string, RunSessionStore])[]) {
   return stores
     .flatMap(([runId, store]) => {
       const { events, projection } = store.getState();
-      const count =
-        projection?.runId === runId ? pendingInteractions(events, projection).length : 0;
-      return count ? [`${runId}:${count}`] : [];
+      if (projection?.runId !== runId) return [];
+      const count = pendingInteractions(events, projection).length;
+      const notices = events.some(
+        (event) =>
+          event.type === 'extension.ui_notified' &&
+          canReadArtifactBody(projection, event.payload.bodyRef),
+      );
+      return count || notices ? [`${runId}:${count}:${notices ? 1 : 0}`] : [];
     })
     .join(',');
 }
@@ -94,12 +103,13 @@ export function PendingTray({
   );
   const read = useCallback(() => waitingOf(stores), [stores]);
   const waitingKey = useSyncExternalStore(subscribe, read, read);
-  const waiting = waitingKey
+  const entries = waitingKey
     ? waitingKey.split(',').map((entry) => {
-        const at = entry.lastIndexOf(':');
-        return { runId: entry.slice(0, at), count: Number(entry.slice(at + 1)) };
+        const [notices, count, ...id] = entry.split(':').reverse();
+        return { runId: id.reverse().join(':'), count: Number(count), notices: notices === '1' };
       })
     : [];
+  const waiting = entries.filter((run) => run.count > 0);
   const total = waiting.reduce((sum, run) => sum + run.count, 0);
   // This tray's mark on what it publishes: a tray leaving (another conversation's, replaced by
   // this one) clears only what it wrote itself.
@@ -116,7 +126,9 @@ export function PendingTray({
   );
 
   const root = useRef<HTMLElement>(null);
-  const shown = total > 0;
+  // What waits, and what an extension said after its question was answered: the notice stays in
+  // this place, one line each, after its answered line has gone (workbench.md).
+  const shown = entries.length > 0;
   // Whether the tray is in view: one observer on the conversation's scrolling area, with the
   // composer lying over its bottom edge left out. The composer grows and shrinks with its lines
   // and notices, so a new height makes a new observer with the new margin. Until the observer
@@ -170,7 +182,7 @@ export function PendingTray({
   // focused once it shows and the conversation's view is in front; used once, then cleared.
   const reveal = useStore(tray, (state) => state.reveal);
   useEffect(() => {
-    if (!reveal || reveal.sessionId !== sessionId || !shown) return;
+    if (!reveal || reveal.sessionId !== sessionId || !total) return;
     let frame = 0;
     let tries = 0;
     const attempt = () => {
@@ -186,7 +198,7 @@ export function PendingTray({
     };
     attempt();
     return () => cancelAnimationFrame(frame);
-  }, [reveal, shown, tray, sessionId]);
+  }, [reveal, total, tray, sessionId]);
 
   if (!shown) return null;
   return (
@@ -198,31 +210,36 @@ export function PendingTray({
       aria-label={t('neededNow')}
       className="flex flex-col gap-3 pb-4 outline-none"
     >
-      {waiting.map(({ runId }) => (
+      {entries.map(({ runId, count }) => (
         // With several runs waiting, each card names its run (as the run's row does).
         <RequestRunContext.Provider
           key={runId}
           value={
-            waiting.length > 1
+            entries.length > 1
               ? t('runNumber', { number: runs.findIndex((run) => run.runId === runId) + 1 })
               : null
           }
         >
-          <RunResponseArea
-            session={runFor(runId)}
-            onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
-            policySettingsAction={
-              // A way out of a tool card, quieter than its decisions.
-              <Button
-                variant="ghost"
-                render={
-                  <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
-                }
-              >
-                {trun('permissionSettings')}
-              </Button>
-            }
-          />
+          {count === 0 ? (
+            // Nothing waits on this run: only what its extension said, as the record says it.
+            <InteractionPanel session={runFor(runId)} />
+          ) : (
+            <RunResponseArea
+              session={runFor(runId)}
+              onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
+              policySettingsAction={
+                // A way out of a tool card, quieter than its decisions.
+                <Button
+                  variant="ghost"
+                  render={
+                    <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
+                  }
+                >
+                  {trun('permissionSettings')}
+                </Button>
+              }
+            />
+          )}
         </RequestRunContext.Provider>
       ))}
     </section>

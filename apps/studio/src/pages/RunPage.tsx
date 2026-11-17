@@ -406,6 +406,22 @@ function RunWorkspace({
           event.type === 'extension.ui_requested' || event.type === 'extension.ui_answered',
       )?.type === 'extension.ui_answered',
   );
+  // In a session's run tab a new notice counts as a new item for the response area, as a question
+  // or an approval does (the conversation says it; over the conversation the area shows it once).
+  // The run's own page keeps opening only for what waits.
+  const noticeKey = useStore(session, (s) =>
+    s.events
+      .filter(
+        (event) =>
+          event.type === 'extension.ui_notified' &&
+          canReadArtifactBody(s.projection, event.payload.bodyRef),
+      )
+      .map((event) => event.eventId)
+      .join('|'),
+  );
+  const announcedKey = conversation
+    ? [waitingKey, noticeKey].filter(Boolean).join('|')
+    : waitingKey;
   const responding = pending > 0 || extensionSaid || extensionReplying;
   // Beside an operable conversation the response area never shows: the conversation's needed-now
   // tray answers there (features/execution-monitor.md).
@@ -465,7 +481,7 @@ function RunWorkspace({
   // inspector, a narrow page or an operable conversation still opens it when the space frees up.
   const announced = useRef(new Set<string>());
   useEffect(() => {
-    const waitingIds = waitingKey.split('|').filter(Boolean);
+    const waitingIds = announcedKey.split('|').filter(Boolean);
     if (operable) return;
     if (panel === 'approval' && sideShown) {
       for (const id of waitingIds) announced.current.add(id);
@@ -479,14 +495,14 @@ function RunWorkspace({
       !steeringOpen
     )
       setPanel('approval');
-  }, [waitingKey, wide, panel, sideShown, documentOpen, steeringOpen, operable, conversation]);
+  }, [announcedKey, wide, panel, sideShown, documentOpen, steeringOpen, operable, conversation]);
   // The conversation becoming operable closes the response area. That close is not the person's:
   // what it showed opens it again once the conversation is covered.
   useEffect(() => {
     if (!operable || panel !== 'approval') return;
-    for (const id of waitingKey.split('|')) announced.current.delete(id);
+    for (const id of announcedKey.split('|')) announced.current.delete(id);
     setPanel('closed');
-  }, [operable, panel, waitingKey]);
+  }, [operable, panel, announcedKey]);
   // An explicit request to respond opens the response area whatever the width and moves focus
   // there. It waits until the history says whether anything waits, and is consumed once.
   const historyRead = useStore(session, (s) => s.initialLoadSeq === undefined);
