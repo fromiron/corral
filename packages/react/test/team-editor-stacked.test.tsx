@@ -135,9 +135,13 @@ describe('team editor: stacked', () => {
       expect(follows(regions[i - 1] as Element, regions[i] as Element)).toBe(true);
   });
 
-  it('lays the outline beside the canvas when the host has room', () => {
+  it('lays the outline beside the canvas when the host has room, in the same order for Tab', () => {
     renderEditor(team(), false);
     expect(layoutOf()).toBe('beside');
+    fireEvent.click(canvasNode('agent_1'));
+    const regions = [outline(), palette(), canvas(), sheet()];
+    for (let i = 1; i < regions.length; i++)
+      expect(follows(regions[i - 1] as Element, regions[i] as Element)).toBe(true);
   });
 
   it('puts a palette step dropped on the connection between A and B between them', () => {
@@ -346,6 +350,22 @@ describe('team editor: settings opened from outside the canvas', () => {
     // Closing the problem list from the same button opens nothing to show.
     fireEvent.click(problems());
     expect(scrollTo).toHaveBeenCalledTimes(3);
+  });
+
+  it('stacked, a step chosen from the problem list brings its settings’ top into view', () => {
+    // A rule after B whose branches lead nowhere: problems on the rule.
+    const rule = ok(placeStep(team(), 'rule', { kind: 'after', nodeId: 'agent_2' }));
+    renderEditor(rule.draft, true);
+    fireEvent.click(problems());
+    const scrollTo = watchScroll();
+    const item = within(sheet())
+      .getAllByRole('button')
+      .find((button) => /not connected/.test(button.textContent ?? ''));
+    if (!item) throw new Error('the problem list has no item for the rule');
+    fireEvent.click(item);
+    expect(canvasNode(rule.nodeId).getAttribute('aria-pressed')).toBe('true');
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenLastCalledWith({ top: settingsTop(), behavior: 'smooth' });
   });
 
   it('stacked, choosing a card on the canvas leaves the editor where it is', () => {

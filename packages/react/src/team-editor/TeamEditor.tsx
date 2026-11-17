@@ -683,7 +683,11 @@ export function TeamEditor({
                 onOpenTeam={onOpenTeam}
                 onImportRole={openRoles}
                 notice={notice}
-                onSelect={select}
+                onSelect={(next) => {
+                  // A step chosen from the problem list opens its settings from outside the canvas.
+                  if (view === 'problems' && (next.nodes.length || next.edge)) reveal();
+                  select(next);
+                }}
                 onClose={() => {
                   setView(null);
                   setSelection(NONE);
