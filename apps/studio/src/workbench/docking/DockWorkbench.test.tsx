@@ -199,8 +199,8 @@ it('a document the page asked for before the dock was built counts as the person
   expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
 });
 
-it('a dock first built for a pane the page asked for (the top bar terminal) saves that layout (workbench.md)', async () => {
-  await fixture({ selectedPanel: 'terminal' });
+it('a dock first built for a pane the page asked for (one the page asked for) saves that layout (workbench.md)', async () => {
+  await fixture({ selectedPanel: 'tools' });
   expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).not.toBeNull();
 });
 
@@ -216,8 +216,8 @@ it('a request from outside the dock that opens a window counts as the person arr
   const props: Parameters<typeof fixture>[0] = {};
   const f = await fixture(props);
   expect(localStorage.getItem(layoutStorageKey('host', 'project') ?? '')).toBeNull();
-  // As the top bar's terminal does: the page asks for the pane.
-  props.selectedPanel = 'terminal';
+  // The page asks for the pane.
+  props.selectedPanel = 'tools';
   await f.renderSession('session');
   await act(async () => {});
   const saved = localStorage.getItem(layoutStorageKey('host', 'project') ?? '');
@@ -279,7 +279,7 @@ it('handing a pane elsewhere and changing conversation keep the open document as
 });
 
 it('removes only a legacy run pane on restore, keeping the tools and the document in front', async () => {
-  const original = await fixture({ selectedPanel: 'terminal' });
+  const original = await fixture({ selectedPanel: 'tools' });
   await act(async () => {
     original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
   });
@@ -301,7 +301,7 @@ it('removes only a legacy run pane on restore, keeping the tools and the documen
   localStorage.setItem(storageKey, JSON.stringify(saved));
   const restored = await fixture({ selectedPanel: 'run' });
   expect(contextTabs(restored.container)).not.toContain('run');
-  expect(contextTabs(restored.container)).toContain('terminal');
+  expect(contextTabs(restored.container)).toContain('tools');
   expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
   expect(activePane(restored.container)).toContain('file.ts');
   expect(restored.container.querySelector('[data-testid="document"]')).not.toBeNull();
@@ -319,7 +319,7 @@ it.each([
     await act(async () => {
       original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
     });
-    await act(async () => original.ref.current?.openContext('terminal', true));
+    await act(async () => original.ref.current?.openContext('tools', true));
     await act(async () => {
       original.ref.current?.openDocument({ documentKey: original.key, target, path: 'file.ts' });
     });
@@ -334,12 +334,12 @@ it.each([
     expect(onActiveContext).not.toHaveBeenCalled();
 
     // The page's request, arriving after the dock was built, brings its pane forward.
-    props.selectedPanel = 'terminal';
+    props.selectedPanel = 'tools';
     await restored.renderSession('session');
-    expect(activePane(restored.container)).toBe('terminal');
+    expect(activePane(restored.container)).toBe('tools');
     expect(onActiveContext).not.toHaveBeenCalled();
     if (width !== null) {
-      // One pane at a time: the terminal alone, with the switcher.
+      // One pane at a time: that pane alone, with the switcher.
       expect(restored.container.querySelector('[data-testid="dock-toolbar"]')).not.toBeNull();
       expect(shownGroups(restored.container)).toBe(1);
       vi.restoreAllMocks();
@@ -347,7 +347,7 @@ it.each([
   },
 );
 
-it.each(['terminal', 'tools'] as const)(
+it.each(['tools'] as const)(
   'an explicit %s link reopens its closed pane even when the selected URL has not changed',
   async (selectedPanel) => {
     const f = await fixture({
@@ -708,19 +708,6 @@ it('the review preset hands Changes to its own tab while keeping the selected do
   expect(activePane(restored.container)).toContain('file.ts');
 });
 
-it('keeps the terminal activity indicator on its tab while another pane is active and removes it on stop', async () => {
-  const props: Partial<DockWorkbenchProps> = {
-    terminalStatus: <span role="img" aria-label="Terminal running" />,
-  };
-  const f = await fixture(props);
-  await act(async () => f.ref.current?.openContext('terminal'));
-  await act(async () => f.ref.current?.openContext('files'));
-  expect(f.container.querySelector('[role="tab"] [aria-label="Terminal running"]')).not.toBeNull();
-  props.terminalStatus = null;
-  await f.renderSession('session');
-  expect(f.container.querySelector('[aria-label="Terminal running"]')).toBeNull();
-});
-
 type SavedNode = {
   type: 'leaf' | 'branch';
   size: number;
@@ -778,7 +765,7 @@ const shownGroups = (container: HTMLElement) =>
 it('a narrow dock hidden with its panel tab and shown again keeps one pane at a time with its switcher', async () => {
   const panels = [
     { id: 'context:files', descriptor: { kind: 'context' as const, view: 'files' as const } },
-    { id: 'context:terminal', descriptor: { kind: 'context' as const, view: 'terminal' as const } },
+    { id: 'context:tools', descriptor: { kind: 'context' as const, view: 'tools' as const } },
   ];
   localStorage.setItem(
     layoutStorageKey('host', 'project') ?? '',
@@ -786,12 +773,12 @@ it('a narrow dock hidden with its panel tab and shown again keeps one pane at a 
   );
   dockWidth(456);
   try {
-    const f = await fixture({ selectedPanel: 'terminal' });
+    const f = await fixture({ selectedPanel: 'tools' });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
     const switcher = () => f.container.querySelector('[data-testid="dock-toolbar"]');
     expect(switcher()).not.toBeNull();
     expect(shownGroups(f.container)).toBe(1);
-    expect(activePane(f.container)).toBe('terminal');
+    expect(activePane(f.container)).toBe('tools');
 
     // Hidden, the dock measures nothing: what it lays out is what the tab shows when it is back.
     await resizeDock(0);
@@ -801,7 +788,7 @@ it('a narrow dock hidden with its panel tab and shown again keeps one pane at a 
     await resizeDock(456);
     expect(switcher()).not.toBeNull();
     expect(shownGroups(f.container)).toBe(1);
-    expect(activePane(f.container)).toBe('terminal');
+    expect(activePane(f.container)).toBe('tools');
   } finally {
     vi.restoreAllMocks();
   }
@@ -810,7 +797,7 @@ it('a narrow dock hidden with its panel tab and shown again keeps one pane at a 
 it('a dock measured wide when shown again leaves the one-pane layout', async () => {
   dockWidth(456);
   try {
-    const f = await fixture({ selectedPanel: 'terminal' });
+    const f = await fixture({ selectedPanel: 'tools' });
     await act(async () => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(f.container.querySelector('[data-testid="dock-toolbar"]')).not.toBeNull();
     await resizeDock(0);
@@ -920,7 +907,7 @@ it('a pane shown alone by a narrow dock is never what the project arrangement ke
   // keeps only the grid's nodes and sizes, so a maximized group never reaches other docks.
   const panels = [
     { id: 'context:files', descriptor: { kind: 'context' as const, view: 'files' as const } },
-    { id: 'context:terminal', descriptor: { kind: 'context' as const, view: 'terminal' as const } },
+    { id: 'context:tools', descriptor: { kind: 'context' as const, view: 'tools' as const } },
   ];
   const layout = createPresetLayout('implementation', panels);
   const maximized = { ...layout, grid: { ...layout.grid, maximizedNode: { location: [1] } } };
@@ -937,7 +924,7 @@ it('a pane shown alone by a narrow dock is never what the project arrangement ke
     );
     expect(saved.layout.grid).not.toHaveProperty('maximizedNode');
     expect(savedGroups().flatMap((group) => group.views)).toEqual(
-      expect.arrayContaining(['context:files', 'context:terminal']),
+      expect.arrayContaining(['context:files', 'context:tools']),
     );
   } finally {
     vi.restoreAllMocks();

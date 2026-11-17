@@ -3,10 +3,15 @@ import { useTranslations } from 'use-intl';
 import { PANE_CATALOG } from '../panels/registry.ts';
 import type { DockContextView } from './layout.ts';
 
-export type PrimaryView = 'chat' | 'files' | 'changes' | 'run';
-/** Where a pane is shown: the conversation, the 파일 tab's dock, the 변경 tab or a 실행 tab. */
+export type PrimaryView = 'chat' | 'files' | 'changes' | 'run' | 'terminal' | 'debug';
+/**
+ * Where a pane is shown: the conversation, the 파일 tab's dock, the 변경 tab, a 실행 tab, a
+ * terminal's tab or the bottom dock's debug tab (workbench.md: 터미널과 디버그는 파일 화면에 없다).
+ */
 export function primaryViewFor(view: DockContextView): PrimaryView {
   if (view === 'chat') return 'chat';
+  if (view === 'terminal') return 'terminal';
+  if (view === 'debug') return 'debug';
   if (view === 'run' || view === 'artifacts') return 'run';
   if (view === 'changes' || view === 'git' || view === 'checks' || view === 'problems')
     return 'changes';
