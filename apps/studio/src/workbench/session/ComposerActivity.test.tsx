@@ -10,7 +10,7 @@ import messages from '../../../../../packages/react/src/messages/en.json' with {
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
 import { type ContextCall, presentContext } from '../widgets/selectors.ts';
 import type { ChatWidgetModel } from '../widgets/useChatWidgets.tsx';
-import { ComposerActivity } from './ComposerActivity.tsx';
+import { ChangesTabShownContext, ComposerActivity } from './ComposerActivity.tsx';
 import { createPendingTrayStore, PendingTrayContext } from './pendingTrayState.ts';
 import { SessionConnectionContext } from './SessionConnection.tsx';
 import { useActiveExecutionCount } from './useActivity.ts';
@@ -201,9 +201,12 @@ async function mount(
     target = null,
     targets = [],
     floating = false,
+    changesShown = false,
   }: {
     /** The composer floats over the timeline's bottom edge. */
     floating?: boolean;
+    /** The session panel shows its changes tab (features/composer-flow.md 활동 바, rule 4). */
+    changesShown?: boolean;
     ownActive?: RunSummary | null;
     /** The join target, and the executions that take an instruction now. */
     target?: string | null;
@@ -255,18 +258,20 @@ async function mount(
                   data-testid="chat-composer"
                   {...(floating ? { 'data-composer-surface': 'floating' } : {})}
                 >
-                  <ComposerActivity
-                    sessionId="session_plan"
-                    ownActive={active}
-                    target={target}
-                    targets={targets as never}
-                    onJoin={onJoin}
-                    onStop={onStop}
-                    onPause={onPause}
-                    onResume={onResume}
-                    {...(onViewRun ? { onViewRun } : {})}
-                    {...(revealRun ? { revealRun } : {})}
-                  />
+                  <ChangesTabShownContext.Provider value={changesShown}>
+                    <ComposerActivity
+                      sessionId="session_plan"
+                      ownActive={active}
+                      target={target}
+                      targets={targets as never}
+                      onJoin={onJoin}
+                      onStop={onStop}
+                      onPause={onPause}
+                      onResume={onResume}
+                      {...(onViewRun ? { onViewRun } : {})}
+                      {...(revealRun ? { revealRun } : {})}
+                    />
+                  </ChangesTabShownContext.Provider>
                   <div data-testid="input-surface">
                     <textarea aria-label="Request" />
                   </div>
@@ -386,6 +391,29 @@ it('counts one change and one line in the singular', async () => {
   expect(chip?.textContent).toContain('1 line');
   expect(chip?.textContent).not.toMatch(/1 changes|1 lines/);
 });
+
+// composer-flow.md 활동 바, rule 4: while the changes tab is on screen the change count is on no
+// line; the line reads as it does for a run without changes, with no dot left before or after.
+it.each([
+  ['the last run and the plan', { lastRun: true }, {}],
+  ['the last run alone', { lastRun: true }, { status: { state: 'hidden' } }],
+  ['the plan alone', {}, {}],
+] as const)(
+  'says no change count while the changes tab shows, and leaves no dot behind with %s',
+  async (_name, change, plan) => {
+    const changed = { chips: ['changes'], changeFiles: 2, changeLines: 6, changesLabel: 'fixed' };
+    const shown = await mount(model({ ...changed, ...change } as never, plan as never), {
+      changesShown: true,
+    });
+    expect(shown.line()?.querySelector('[data-testid="run-changes-chip"]')).toBeNull();
+    const said = visibleText(shown.line());
+    const without = await mount(model({ ...change } as never, plan as never));
+    expect(said).toBe(visibleText(without.line()));
+    // Without the tab on screen the chip is there.
+    const hidden = await mount(model({ ...changed, ...change } as never, plan as never));
+    expect(hidden.line()?.querySelector('[data-testid="run-changes-chip"]')).not.toBeNull();
+  },
+);
 
 // chat-widgets-contract: the plan count and the change summary are not cut at wide widths; when
 // the line is short the current step's words go first, then the change summary's line count.

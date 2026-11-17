@@ -74,6 +74,7 @@ import { useGivenWorkAreaWidth } from '../workbench/panel/workAreaWidth.ts';
 import { sessionRunViews } from '../workbench/panelRun.ts';
 import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
 import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
+import { ChangesTabShownContext } from '../workbench/session/ComposerActivity.tsx';
 import {
   createPendingTrayStore,
   PendingTrayContext,
@@ -816,29 +817,34 @@ function WorkSessionPage() {
                     })}
                     value={adviceArrival}
                   >
-                    <SessionChat
-                      key={panelKey(services, {
-                        kind: 'chat',
-                        projectId: session.projectId,
-                        sessionId: session.sessionId,
-                      })}
-                      connection={{ lost, retry: refresh }}
-                      session={session}
-                      team={team}
-                      corrals={corrals}
-                      runs={runs}
-                      active={active}
-                      liveRunId={liveRunId}
-                      conversationInoperable={!operable}
-                      onChange={refresh}
-                      sessionReads={sessionReads}
-                      runsListed={listed}
-                      reference={reference}
-                      onReferenceUsed={() => setReference(null)}
-                      onPanel={(value, run) => open({ ...run, panel: value })}
-                      // The conversation's place only: no history entry, no other view.
-                      onPlace={(message) => frame.writeTab({ message }, { replace: true })}
-                    />
+                    {/* While the changes tab is on screen it says the change count, not the bar. */}
+                    <ChangesTabShownContext.Provider
+                      value={state.selected === 'changes' && onScreen}
+                    >
+                      <SessionChat
+                        key={panelKey(services, {
+                          kind: 'chat',
+                          projectId: session.projectId,
+                          sessionId: session.sessionId,
+                        })}
+                        connection={{ lost, retry: refresh }}
+                        session={session}
+                        team={team}
+                        corrals={corrals}
+                        runs={runs}
+                        active={active}
+                        liveRunId={liveRunId}
+                        conversationInoperable={!operable}
+                        onChange={refresh}
+                        sessionReads={sessionReads}
+                        runsListed={listed}
+                        reference={reference}
+                        onReferenceUsed={() => setReference(null)}
+                        onPanel={(value, run) => open({ ...run, panel: value })}
+                        // The conversation's place only: no history entry, no other view.
+                        onPlace={(message) => frame.writeTab({ message }, { replace: true })}
+                      />
+                    </ChangesTabShownContext.Provider>
                   </AdviceArrival.Provider>
                 }
                 side={

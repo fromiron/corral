@@ -1469,6 +1469,35 @@ it('세션 패널이 넓힘이고 지난 실행 #1의 탭이 선택돼 있으며
   expect(line()).not.toBeNull();
 });
 
+it('변경이 있는 실행의 대화에서 활동 바의 변경 칩으로 패널을 연다 → 변경 탭이 보이는 동안 칩은 없다 → 패널을 닫으면 포커스는 패널 여닫기 버튼으로 간다', async () => {
+  const { world } = await quietRun({ folder: true });
+  // The run changed one file of the conversation's copy.
+  const workspaces = giveCopy(world);
+  workspaces.changes = async () => ({
+    files: [{ path: 'notes.md', status: 'modified', additions: 1, deletions: 0 }],
+    unavailable: false,
+  });
+  await open(world, `/sessions/${world.sessionId}`);
+  const chip = () =>
+    composer()?.querySelector<HTMLElement>('[data-testid="run-changes-chip"]') ?? null;
+  await until(() => Boolean(chip()));
+  expect(chip()).not.toBeNull();
+
+  await press(chip());
+  await until(() => selectedName() === W.changes);
+  expect(presentation()).toBe('beside');
+  await until(() => !chip());
+  expect(chip()).toBeNull();
+
+  await key(document.activeElement ?? document.body, TOGGLE_KEY);
+  await until(() => presentation() === 'closed');
+  expect(presentation()).toBe('closed');
+  expect(document.activeElement).toBe(toggleButton());
+  // Closed, the changes tab is not on screen: the chip is back.
+  await until(() => Boolean(chip()));
+  expect(chip()).not.toBeNull();
+});
+
 // --- restoring, and what restoring never brings back -------------------------------------------
 
 it('대화 A의 기억은 파일 · 실행 #1 탭과 실행 #1 선택이 있는 열린 패널이다 → 사이드바에서 대화 A를 연다 → 패널이 옆으로 열리고 파일 · 실행 #1 탭이 이 순서로 있으며 실행 #1이 선택돼 있다', async () => {
