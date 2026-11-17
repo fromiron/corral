@@ -89,6 +89,7 @@ import {
   RunPanel,
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
+import { useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
 import { TerminalActivity, TerminalPanel } from '../workbench/TerminalPanel.tsx';
 import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
@@ -730,6 +731,61 @@ function WorkSessionPage() {
     );
   };
   const sideWidth = workArea === null ? PANEL_MIN_WIDTH : panelWidth(workArea, rememberedWidth);
+  const runActive = sessionRuns.some((run) => !TERMINAL_RUN_STATUSES.has(run.status));
+  const [mainElement, setMainElement] = useState<HTMLDivElement | null>(null);
+  // The bottom dock (features/session-panel.md 하단 도크): its region, button and shortcut.
+  const dockArea = useSessionDockArea({
+    sessionId: session.sessionId,
+    runActive,
+    trusted: Boolean(binding?.trusted),
+    drawer: state.presentation === 'drawer',
+    closeDrawer: () => frame.dispatch({ type: 'closeDrawer' }),
+    held: heldByConfirmation,
+    openChanges: () => open({ panel: 'changes' }),
+    main: mainElement,
+    renderTerminal: (terminalId) => (
+      <TerminalPanel
+        terminalId={terminalId}
+        runActive={runActive}
+        sessionId={session.sessionId}
+        projectId={session.projectId}
+        onAttach={handleAttachment}
+        revealSource={
+          terminalSource?.target.sessionId === session.sessionId &&
+          terminalSource.terminalId === terminalId
+            ? terminalSource
+            : undefined
+        }
+      />
+    ),
+    renderDebug: () => (
+      // A stack frame opens its document in the panel; the focus stays here to keep stepping.
+      <SourceNavigationContext.Provider
+        value={{
+          openDocument: (target, path, range) => {
+            const kept = document.activeElement;
+            frame.dispatch(
+              { type: 'open', target: { panel: 'files' }, from: 'way' },
+              frame.tabSearch('files') ?? {},
+            );
+            withDock((handle) => {
+              handle.openDocument({ target, path, documentKey: documentKey(target, path) }, range);
+              window.setTimeout(() => {
+                if (kept instanceof HTMLElement && kept.isConnected)
+                  kept.focus({ preventScroll: true });
+              }, 0);
+            });
+            return true;
+          },
+          openTerminal: () => {},
+        }}
+      >
+        <div className="min-h-0 flex-1 overflow-auto p-3">
+          <DebuggerPanel sessionId={session.sessionId} projectId={session.projectId} />
+        </div>
+      </SourceNavigationContext.Provider>
+    ),
+  });
 
   return (
     <>
@@ -742,6 +798,7 @@ function WorkSessionPage() {
         panel={search.panel}
         onPanel={(value) => showPanel({ panel: value })}
         panelToggle={toggleAvailable(state, ctx) ? { pressed: onScreen, onToggle: toggle } : null}
+        dockToggle={dockArea.toggle}
         onEditTeam={(corralId) => {
           open({ panel: 'files' });
           withDock((handle) => {
@@ -795,6 +852,8 @@ function WorkSessionPage() {
                 }
                 onFrameWidthChange={setMeasured}
                 sideRef={side}
+                mainRef={setMainElement}
+                {...dockArea.frame}
                 resize={{
                   'aria-label': tpanel('width'),
                   min: PANEL_MIN_WIDTH,

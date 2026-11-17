@@ -77,8 +77,14 @@ export interface ServerParts {
   terminalCalls: string[];
   /** Every document save sent. */
   saves: string[];
-  /** The conversation's one running terminal. */
+  /** The conversation's first listed terminal (`terminal_one`). */
   terminalId: string;
+  /** What each terminal creation asked for: its shell. */
+  created: string[];
+  /** Releases a held creation (`holdCreate`), once it has been asked for. */
+  releaseCreate(): void;
+  /** Sets a listed terminal's state, as the host would report it on the next read. */
+  setTerminalState(terminalId: string, state: TerminalView['state']): void;
   /** The one file the working copy holds. */
   path: string;
 }
@@ -92,9 +98,22 @@ export interface ShellWorldOptions {
   holds?: (nodeId: string) => boolean;
   /**
    * The local backend's parts the page reaches in server mode, faked: a working copy with one
-   * text file (documents open from quick open), and one running terminal.
+   * text file (documents open from quick open), and one running terminal unless the terminal
+   * options say otherwise.
    */
-  server?: boolean;
+  server?: boolean | TerminalOptions;
+}
+
+/** The faked terminal service: what the conversation's terminal list starts with. */
+export interface TerminalOptions {
+  /** The terminals listed at first (the default: one running terminal, `terminal_one`). */
+  terminals?: TerminalView['state'][];
+  /** The shells the list offers, first first (the default: bash). */
+  shells?: string[];
+  /** The conversation has no Paddock: the list names no target. */
+  noCopy?: boolean;
+  /** Creation waits until the returned release is called (see `holdCreate`). */
+  holdCreate?: boolean;
 }
 
 export async function createShellWorld(options: ShellWorldOptions = {}): Promise<ShellWorld> {
@@ -171,7 +190,9 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
   const call = async (method: DemoWorkspaceMethod, ...args: unknown[]) =>
     (files[method] as unknown as (...a: unknown[]) => unknown).apply(files, args);
   const demo = createDemoWorkspaces(call, repository, transport);
-  const server = options.server ? serverParts(sessionId, projectId) : null;
+  const server = options.server
+    ? serverParts(sessionId, projectId, options.server === true ? {} : options.server)
+    : null;
   const workspaces = server ? { ...demo, ...server.workspaces } : demo;
   if (server) server.prepare(workspaces);
   let started = 0;
@@ -273,7 +294,7 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
 const HOST = 'host';
 
 /** The working copy, its one file, and one running terminal, as the local backend serves them. */
-function serverParts(sessionId: string, projectId: string) {
+function serverParts(sessionId: string, projectId: string, options: TerminalOptions) {
   const target = { hostId: HOST, projectId, bindingId: 'binding', sessionId, copyGeneration: 1 };
   const path = 'notes.md';
   const text = 'first line\n';
@@ -317,7 +338,7 @@ function serverParts(sessionId: string, projectId: string) {
     terminalId,
     target,
     generation: 'generation_one',
-    shellId: 'bash',
+    shellId: options.shells?.[0] ?? 'bash',
     state: 'running',
     initialCols: 80,
     initialRows: 24,
@@ -332,21 +353,49 @@ function serverParts(sessionId: string, projectId: string) {
     foreground: 'idle',
   };
   const terminalCalls: string[] = [];
-  const changing = (name: string) => async () => {
-    terminalCalls.push(name);
-    return structuredClone(view);
-  };
+  const names = ['terminal_one', 'terminal_two', 'terminal_three', 'terminal_four'];
+  const listed: TerminalView[] = (options.terminals ?? ['running']).map((state, index) => ({
+    ...structuredClone(view),
+    terminalId: names[index] ?? `terminal_${index}`,
+    generation: `generation_${index}`,
+    state,
+  }));
+  const find = (id: string) => listed.find((item) => item.terminalId === id) ?? listed[0] ?? view;
+  const changing =
+    (name: string) =>
+    async (_session: string, id: string): Promise<TerminalView> => {
+      terminalCalls.push(name);
+      return structuredClone(find(id));
+    };
+  const created: string[] = [];
+  let createHold: Gated<void> | null = null;
   const terminals = {
     attention: async () => [],
     list: async () => ({
-      target,
-      available: true,
-      reason: null,
-      shells: [{ id: 'bash', label: 'bash' }],
-      terminals: [structuredClone(view)],
+      target: options.noCopy ? null : target,
+      available: !options.noCopy,
+      reason: options.noCopy ? 'The managed working copy is unavailable' : null,
+      shells: (options.shells ?? ['bash']).map((id) => ({ id, label: id })),
+      terminals: listed.map((item) => structuredClone(item)),
     }),
-    read: async () => structuredClone(view),
-    create: changing('create'),
+    read: async (_session: string, id: string) => structuredClone(find(id)),
+    create: async (_session: string, command: { shellId: string; operationId: string }) => {
+      terminalCalls.push('create');
+      created.push(command.shellId);
+      if (options.holdCreate) {
+        createHold = gated<void>();
+        await createHold.promise;
+      }
+      const made: TerminalView = {
+        ...structuredClone(view),
+        terminalId: names[listed.length] ?? command.operationId,
+        generation: `generation_${listed.length}`,
+        shellId: command.shellId,
+        state: 'running',
+      };
+      listed.push(made);
+      return structuredClone(made);
+    },
     control: changing('control'),
     input: changing('input'),
     resize: changing('resize'),
@@ -371,6 +420,12 @@ function serverParts(sessionId: string, projectId: string) {
     saves,
     terminalId,
     path,
+    created,
+    releaseCreate: () => createHold?.resolve(),
+    setTerminalState: (id: string, state: TerminalView['state']) => {
+      const item = listed.find((entry) => entry.terminalId === id);
+      if (item) item.state = state;
+    },
   } as Omit<ServerParts, 'documents'> & { documents?: DocumentStore };
   return {
     workspaces,

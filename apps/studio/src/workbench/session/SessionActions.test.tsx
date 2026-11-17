@@ -112,7 +112,7 @@ it.each([
   [3, 'bar'],
   [4, 'menu'],
 ] as const)(
-  'at tier %i the changes and terminal sit in the %s, and the panel toggle stays in the bar',
+  'at tier %i the changes sit in the %s, and the panel and dock toggles stay in the bar',
   async (tier, place) => {
     fit.tier = tier;
     cleanup.push(async () => {
@@ -135,6 +135,7 @@ it.each([
     });
     const onPanel = vi.fn();
     const onToggle = vi.fn();
+    const onDock = vi.fn();
     await act(async () =>
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
@@ -147,6 +148,7 @@ it.each([
               panel={undefined}
               onPanel={onPanel}
               panelToggle={{ pressed: false, onToggle }}
+              dockToggle={{ pressed: false, dot: null, onToggle: onDock }}
               onEditTeam={() => true}
             />
           </TopbarSlotContext.Provider>
@@ -158,9 +160,11 @@ it.each([
       [...bar.querySelectorAll('button')].some(
         (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,
       );
-    expect(inBar(messages.Docking.terminal)).toBe(place === 'bar');
-    // The panel's toggle never folds (features/session-panel.md).
+    // The panel's and the dock's toggles never fold (features/session-panel.md 화면 틀); the
+    // terminal opens from the dock or "+", not from a top-bar button of its own.
     expect(inBar(messages.SessionPanel.toggle)).toBe(true);
+    expect(inBar(messages.SessionPanel.dock)).toBe(true);
+    expect(inBar(messages.Docking.terminal)).toBe(false);
     expect(inBar(changes)).toBe(place === 'bar');
     const menu = bar.querySelector<HTMLElement>(
       `[aria-label="${messages.Desktop.sessionActions.replace('{title}', 'Brief')}"]`,
@@ -173,23 +177,24 @@ it.each([
     // The menu's rows exist either way: the folded tools are what differs.
     expect(item(messages.Desktop.rename)).toBeDefined();
     expect(item(messages.SessionPanel.toggle)).toBeUndefined();
+    expect(item(messages.SessionPanel.dock)).toBeUndefined();
+    expect(item(messages.Docking.terminal)).toBeUndefined();
     if (place === 'bar') {
-      expect(item(messages.Docking.terminal)).toBeUndefined();
       expect(item(changes)).toBeUndefined();
       return;
     }
     // Folded, each one still does what its button did.
     await act(async () => item(changes)?.click());
     expect(onPanel).toHaveBeenLastCalledWith('changes');
-    await act(async () => menu?.click());
-    await act(async () => item(messages.Docking.terminal)?.click());
-    expect(onPanel).toHaveBeenLastCalledWith('terminal');
-    // The toggle in the bar still does its work while the others are folded.
-    const toggle = [...bar.querySelectorAll<HTMLElement>('button')].find(
-      (button) => button.getAttribute('aria-label') === messages.SessionPanel.toggle,
-    );
-    await act(async () => toggle?.click());
+    // The toggles in the bar still do their work while the others are folded.
+    const button = (name: string) =>
+      [...bar.querySelectorAll<HTMLElement>('button')].find(
+        (candidate) => candidate.getAttribute('aria-label') === name,
+      );
+    await act(async () => button(messages.SessionPanel.toggle)?.click());
     expect(onToggle).toHaveBeenCalledTimes(1);
+    await act(async () => button(messages.SessionPanel.dock)?.click());
+    expect(onDock).toHaveBeenCalledTimes(1);
   },
 );
 

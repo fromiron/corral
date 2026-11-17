@@ -1027,9 +1027,8 @@ it('폴더가 연결되고 파일 · 변경 · 실행 #1 탭이 열려 있으며
 it('파일 탭에서 터미널이 돌고 있고 저장하지 않은 문서가 열려 있다 → 파일 탭을 닫는다 → 터미널은 계속 돌고, 명령은 보내지지 않으며, 파일 탭을 다시 열면 그 문서가 저장하지 않은 내용과 함께 있다', async () => {
   const world = await createShellWorld({ server: true, folder: true });
   const server = world.server as NonNullable<ShellWorld['server']>;
-  await open(world, `/sessions/${world.sessionId}`);
-  // The terminal, from the top bar's button: the 파일 tab with its terminal pane.
-  await press(buttons(messages.Docking.terminal)[0]);
+  // The terminal, from its address: the 파일 tab with its terminal pane.
+  await open(world, `/sessions/${world.sessionId}?panel=terminal`);
   await until(() => selectedName() === W.files);
   await until(() => Boolean(side()?.querySelector('[data-testid="terminal-leaf"]')));
   expect(side()?.querySelector('[data-testid="terminal-leaf"]')?.textContent).toBe(
@@ -1095,8 +1094,7 @@ const dockFront = () =>
 async function savedDocumentInFront() {
   const world = await createShellWorld({ server: true, folder: true });
   const server = world.server as NonNullable<ShellWorld['server']>;
-  const first = await mountShell(world, [`/sessions/${world.sessionId}`]);
-  await press(buttons(messages.Docking.terminal)[0]);
+  const first = await mountShell(world, [`/sessions/${world.sessionId}?panel=terminal`]);
   await until(() => Boolean(side()?.querySelector('[data-testid="terminal-leaf"]')));
   await act(async () => {
     window.dispatchEvent(new Event('corral:quick-open'));
@@ -1241,23 +1239,6 @@ it('대화 A에서 앱 안의 링크가 폴더가 연결된 다른 대화의 pan
 
   expect(selectedName()).toBe(W.files);
   expect(document.activeElement).toBe(terminal());
-});
-
-it('저장된 배치에서 문서가 앞에 있고 패널이 닫혀 있으며 이 페이지에서 파일 탭을 연 적이 없다 → 상단의 터미널을 누른다 → 파일 탭이 열리고, 주소는 panel=terminal이며 터미널이 앞에 있다', async () => {
-  const { world } = await savedDocumentInFront();
-  const shell = await open(world, `/sessions/${world.sessionId}`);
-  expect(tabNames()).toEqual([]);
-
-  await press(buttons(messages.Docking.terminal)[0]);
-  await until(() => selectedName() === W.files && dockFront() !== null);
-
-  expect(selectedName()).toBe(W.files);
-  expect(search(shell).panel).toBe('terminal');
-  expect(dockFront()).toBe(messages.Docking.terminal);
-  // Settled, not on the way: nothing the dock restored takes the address back later.
-  await settle();
-  expect(search(shell).panel).toBe('terminal');
-  expect(dockFront()).toBe(messages.Docking.terminal);
 });
 
 it.each(['terminal', 'tools'] as const)(
@@ -2703,7 +2684,7 @@ it('실행 #1 탭이 옆에 있다 → 주소 쓰기가 한 번 막힌 채 패�
   expect(search(shell)).toEqual({ compose: true });
 });
 
-it('대화 A에서 상단의 터미널을 눌렀고 터미널 화면이 아직 붙지 않았다 → 대화 B로 간다 → 그 기다림은 끝나서 남은 타이머가 없고, 포커스를 가져가지 않는다', async () => {
+it('대화 A에서 앱 안의 panel=terminal 링크를 따라갔고 터미널 화면이 아직 붙지 않았다 → 대화 B로 간다 → 그 기다림은 끝나서 남은 타이머가 없고, 포커스를 가져가지 않는다', async () => {
   // The waits a way leaves for a place inside a tab, watched by the step that makes them.
   const live = new Set<unknown>();
   const realSet = window.setTimeout.bind(window);
@@ -2731,7 +2712,13 @@ it('대화 A에서 상단의 터미널을 눌렀고 터미널 화면이 아직 �
   remember(other, [{ kind: 'files' }], 'files');
   const shell = await open(world, `/sessions/${world.sessionId}`);
   terminalScreen.attached = false;
-  await press(buttons(messages.Docking.terminal)[0]);
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: world.sessionId },
+      search: { panel: 'terminal' } as never,
+    });
+  });
   await until(() => Boolean(side()?.querySelector('[data-testid="terminal-leaf"]')));
   expect(live.size).toBe(1);
 
@@ -2784,17 +2771,6 @@ it('패널이 닫힌 대화 A에서 빠른 열기로 문서를 고르고 그 문
   await settle();
 
   expect(side()?.querySelector('[data-testid="document-leaf"]') ?? null).toBeNull();
-});
-
-it('폴더가 연결된 대화에서 패널이 닫혀 있다 → 상단의 터미널을 누른다 → 파일 탭이 열리고 포커스는 그 안의 터미널에 있다', async () => {
-  const world = await createShellWorld({ server: true, folder: true });
-  await open(world, `/sessions/${world.sessionId}`);
-  await press(buttons(messages.Docking.terminal)[0]);
-  const terminal = () => side()?.querySelector<HTMLElement>('[data-testid="terminal-leaf"]');
-  await until(() => Boolean(terminal()) && document.activeElement === terminal());
-
-  expect(selectedName()).toBe(W.files);
-  expect(document.activeElement).toBe(terminal());
 });
 
 it('실행 #1 탭이 옆에 있고 포커스가 그 탭에 있다 → 창이 좁아져 패널이 물러난다 → 포커스는 대화의 입력란으로 간다', async () => {
@@ -3060,12 +3036,9 @@ it('실행 #1 탭을 대화의 행에서 열었다가 닫았다 → 패널 밖�
   expect(document.activeElement).toBe(link);
 });
 
-it.each([
-  ['상단의 터미널로 다시 앞에 둔 뒤, 그 버튼이 화면에 있다', true, 'terminal'],
-  ['빠른 열기로 열었고 그 목록은 닫혀 사라졌다', false, 'toggle'],
-] as const)(
+it.each([['빠른 열기로 열었고 그 목록은 닫혀 사라졌다']] as const)(
   '파일 탭의 문서 안의 링크로 실행 #1 탭을 연다(패널은 %s) → 패널 안의 링크는 패널을 연 조작을 바꾸지 않아, 포커스가 패널 안에 있을 때 패널을 닫으면 포커스는 그 조작으로, 없으면 여닫기 버튼으로 간다',
-  async (_how, viaTerminal, expected) => {
+  async () => {
     const world = await createShellWorld({ server: true, folder: true });
     const server = world.server as NonNullable<ShellWorld['server']>;
     const runId = await world.startRun();
@@ -3083,12 +3056,6 @@ it.each([
     await until(() => Boolean(option()));
     await press(option());
     await until(() => Boolean(side()?.querySelector('[data-testid="document-link"]')));
-    // The top bar's control opens the 파일 tab's terminal: it is now what opened the panel.
-    const terminalButton = buttons(messages.Docking.terminal).find((b) => !side()?.contains(b));
-    if (viaTerminal) {
-      await press(terminalButton);
-      await settle();
-    }
 
     await press(side()?.querySelector<HTMLElement>('[data-testid="document-link"]'));
     await until(() => selectedName() === W.runNumber(1));
@@ -3096,7 +3063,7 @@ it.each([
     await key(document.activeElement as HTMLElement, TOGGLE_KEY);
     await until(() => presentation() === 'closed');
 
-    expect(document.activeElement).toBe(expected === 'terminal' ? terminalButton : toggleButton());
+    expect(document.activeElement).toBe(toggleButton());
   },
 );
 
@@ -3166,20 +3133,3 @@ it.each([
     expect(document.activeElement).not.toBe(toggleButton());
   },
 );
-
-it('대화 A에서 상단의 터미널로 파일 탭을 열었다 → 패널이 옆에 되살아나는 대화 B로 가서 그 탭에 포커스를 두고 패널을 닫는다 → A에서 연 조작은 B의 것이 아니어서 포커스는 여닫기 버튼으로 간다', async () => {
-  const world = await createShellWorld({ server: true, folder: true });
-  const other = await world.createConversation('Other');
-  remember(other, [{ kind: 'changes' }], 'changes');
-  const shell = await open(world, `/sessions/${world.sessionId}`);
-  await press(buttons(messages.Docking.terminal).find((button) => !side()?.contains(button)));
-  await until(() => selectedName() === W.files);
-
-  await sidebarLink(shell, other);
-  await until(() => selectedName() === W.changes);
-  await act(async () => tabNamed(W.changes)?.focus());
-  await key(tabNamed(W.changes) as HTMLElement, TOGGLE_KEY);
-  await until(() => presentation() === 'closed');
-
-  expect(document.activeElement).toBe(toggleButton());
-});

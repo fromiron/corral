@@ -4630,7 +4630,13 @@
     "close": "{name} 닫기",
     "width": "패널 너비",
     "empty": "옆자리가 비어 있습니다",
-    "runShort": "#{number}"
+    "runShort": "#{number}",
+    "dock": "하단 도크",
+    "dockToggle": "하단 도크 여닫기",
+    "dockTabs": "하단 도크 탭",
+    "dockHeight": "하단 도크 높이",
+    "terminalTab": "터미널 {number}",
+    "debugTab": "디버그"
   },
   "Context": {
     "previewSource": "미리보기 캡처",

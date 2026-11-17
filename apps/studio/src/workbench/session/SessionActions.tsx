@@ -14,7 +14,7 @@ import {
   MenuTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, FileDiff, PanelRight, Terminal } from '@corral/react/icons';
+import { Ellipsis, FileDiff, PanelBottom, PanelRight } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -52,9 +52,9 @@ function focusOrigin(): HTMLElement | null {
 }
 
 /**
- * The session's own actions, in the top bar: changes, the terminal, the panel's toggle and a
- * menu. In the bar's last tier the changes and terminal fold into the menu (topbarTier.ts); the
- * toggle never does.
+ * The session's own actions, in the top bar: changes, the bottom dock's button, the panel's
+ * toggle and a menu. In the bar's last tier the changes fold into the menu (topbarTier.ts); the
+ * two toggles never do.
  */
 export function SessionActions({
   session,
@@ -64,6 +64,7 @@ export function SessionActions({
   panel,
   onPanel,
   panelToggle,
+  dockToggle,
   onEditTeam,
 }: {
   session: WorkSession;
@@ -79,6 +80,16 @@ export function SessionActions({
    * conversation has no tab open and nothing it could open (features/session-panel.md).
    */
   panelToggle: { pressed: boolean; onToggle: () => void } | null;
+  /**
+   * The bottom dock under the conversation and the panel: pressed while it is open (withdrawn
+   * included). Its dot says a running terminal, or one whose end needs confirming, is off
+   * screen while the dock is closed (features/session-panel.md 하단 도크). Null without terminals.
+   */
+  dockToggle?: {
+    pressed: boolean;
+    dot: 'running' | 'warning' | null;
+    onToggle: () => void;
+  } | null;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
@@ -159,10 +170,11 @@ export function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces, terminals } = useServices();
+  const { workspaces } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   const tpanel = useTranslations('SessionPanel');
+  const tterm = useTranslations('Terminals');
   useRegisterCommands('session', [
     ...(panelToggle
       ? [
@@ -173,6 +185,18 @@ export function SessionActions({
             shortcutId: 'view.panel',
             shortcut: shortcutLabel('view.panel'),
             run: panelToggle.onToggle,
+          } satisfies AppCommand,
+        ]
+      : []),
+    ...(dockToggle
+      ? [
+          {
+            id: 'dock:toggle',
+            title: tpanel('dockToggle'),
+            group: panelGroup,
+            shortcutId: 'view.dock',
+            shortcut: shortcutLabel('view.dock'),
+            run: dockToggle.onToggle,
           } satisfies AppCommand,
         ]
       : []),
@@ -297,15 +321,33 @@ export function SessionActions({
           {tw('sessionChangeCount', { count: changeCount })}
         </Button>
       ) : null}
-      {terminals && !folded ? (
-        <Tooltip content={tdock('terminal')}>
+      {/* The bottom dock's button never folds into the menu, in any panel state. */}
+      {dockToggle ? (
+        <Tooltip content={tpanel('dock')} shortcut={shortcutLabel('view.dock')}>
           <Button
             variant="ghost"
             size="icon-compact"
-            aria-label={tdock('terminal')}
-            onClick={() => onPanel('terminal')}
+            aria-label={tpanel('dock')}
+            aria-pressed={dockToggle.pressed}
+            aria-description={
+              dockToggle.dot
+                ? tterm(dockToggle.dot === 'warning' ? 'uncertainTab' : 'runningTab')
+                : undefined
+            }
+            data-session-dock-toggle=""
+            className="relative"
+            onClick={dockToggle.onToggle}
           >
-            <Terminal />
+            <PanelBottom />
+            {dockToggle.dot ? (
+              <span
+                aria-hidden="true"
+                data-dock-dot={dockToggle.dot}
+                className={`absolute top-1 right-1 size-1.5 rounded-full ${
+                  dockToggle.dot === 'warning' ? 'bg-warning' : 'bg-emphasis'
+                }`}
+              />
+            ) : null}
           </Button>
         </Tooltip>
       ) : null}
@@ -348,9 +390,6 @@ export function SessionActions({
                 <MenuItem onClick={() => onPanel(panel === 'changes' ? undefined : 'changes')}>
                   {tw('sessionChangeCount', { count: changeCount })}
                 </MenuItem>
-              ) : null}
-              {terminals ? (
-                <MenuItem onClick={() => onPanel('terminal')}>{tdock('terminal')}</MenuItem>
               ) : null}
               <MenuSeparator />
             </>

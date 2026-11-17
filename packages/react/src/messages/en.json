@@ -4630,7 +4630,13 @@
     "close": "Close {name}",
     "width": "Panel width",
     "empty": "Nothing is open beside the conversation",
-    "runShort": "#{number}"
+    "runShort": "#{number}",
+    "dock": "Bottom dock",
+    "dockToggle": "Toggle bottom dock",
+    "dockTabs": "Bottom dock tabs",
+    "dockHeight": "Bottom dock height",
+    "terminalTab": "Terminal {number}",
+    "debugTab": "Debug"
   },
   "Context": {
     "previewSource": "Preview capture",
