@@ -237,7 +237,8 @@ export interface AnnotationMaterial {
   generation: number;
   pickId: string;
   note: string;
-  element: AnnotateElement;
+  /** With its name tag as the overlay showed it: one line, at most 200 characters. */
+  element: AnnotateElement & { label: string };
   styles: StyleChange[];
   /** Preview pages with the console toggle on; otherwise null. */
   console: { level: string; message: string }[] | null;

@@ -104,6 +104,23 @@ function cleanElement(element: AnnotateElement, lease: LeaseOf): AnnotateElement
   };
 }
 
+/** Longest name tag a note carries. */
+const LABEL_MAX = 200;
+
+/**
+ * The pick's name tag as a note carries it: one line of plain text (a page's class names can hold
+ * control characters), at most 200 characters, never cut inside a character; a tag that keeps
+ * nothing is the element's tag name.
+ */
+function labelOf(pick: Pick, clean: (value: string, max: number) => string): string {
+  let label = '';
+  for (const char of clean(pick.label, Number.POSITIVE_INFINITY).replace(/\p{Cc}/gu, '')) {
+    if (label.length + char.length > LABEL_MAX) break;
+    label += char;
+  }
+  return label || pick.element.tag;
+}
+
 /** What the annotation needs from its tab; BrowserTabs builds it. */
 export interface AnnotationHost {
   readonly tabId: string;
@@ -136,6 +153,8 @@ interface Pick {
   pickId: string;
   generation: number;
   pickedAt: number;
+  /** The name tag the overlay showed for it, as the page made it. */
+  label: string;
   element: AnnotateElement;
 }
 
@@ -499,7 +518,13 @@ export class TabAnnotation {
       const oldest = this.picks.keys().next().value;
       if (oldest) this.picks.delete(oldest);
     }
-    this.picks.set(pickId, { pickId, generation, pickedAt: this.host.now(), element });
+    this.picks.set(pickId, {
+      pickId,
+      generation,
+      pickedAt: this.host.now(),
+      label: typeof found.label === 'string' ? found.label : '',
+      element,
+    });
     return {
       ok: true,
       pick: {
@@ -854,7 +879,7 @@ export class TabAnnotation {
       generation: pick.generation,
       pickId: pick.pickId,
       note: note.text,
-      element: { ...pick.element, bounds },
+      element: { ...pick.element, label: labelOf(pick, clean), bounds },
       styles: note.styles.map((change) => ({
         property: change.property,
         before: clean(change.before, 200),

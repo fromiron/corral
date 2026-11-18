@@ -524,6 +524,8 @@ it("a send: re-checked, its screenshot taken, the material to the app page, and 
       note: '버튼을 더 크게',
       element: expect.objectContaining({
         tag: 'button',
+        // The name tag as the overlay showed it.
+        label: 'button.pay 120×32',
         bounds: { x: 20, y: 30, width: 120, height: 32 },
       }),
       styles: [{ property: 'font-size', before: '14px', after: '18px' }],
@@ -547,6 +549,40 @@ it("a send: re-checked, its screenshot taken, the material to the app page, and 
   });
   // A second answer is late and goes nowhere.
   f.tabs.answerAnnotate('tab-a', submitId, { kind: 'refused' });
+});
+
+it('the name tag a page made goes as one line of plain text, at most 200 characters (반례)', async () => {
+  const label = `button.\u0007pay\u001b[31m\n${'x'.repeat(300)} 120×32`;
+  const { f, page, call, app } = await annotated({ pick: () => found({ label }) });
+  page.capturePage.mockResolvedValueOnce(fakeImage(180, 48, Buffer.from('png')) as never);
+  const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  f.advance(5000);
+  void call('submit', note(pick.pickId));
+  await flush();
+  await flush();
+  const [submitted] = app('annotate-submit') as { material: { element: { label: string } } }[];
+  const sent = submitted?.material.element.label ?? '';
+  expect(sent).toMatch(/^button\.pay\[31mx+$/);
+  expect(sent).toHaveLength(200);
+  // Control characters gone, a nameless one keeps its tag rather than no name at all.
+  const {
+    call: callBare,
+    app: appBare,
+    f: fBare,
+    page: pageBare,
+  } = await annotated({
+    pick: () => found({ label: '\u0000\u0001' }),
+  });
+  pageBare.capturePage.mockResolvedValueOnce(fakeImage(180, 48, Buffer.from('png')) as never);
+  const bare = (await callBare('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  fBare.advance(5000);
+  void callBare('submit', note(bare.pick.pickId));
+  await flush();
+  await flush();
+  const [bareSubmit] = appBare('annotate-submit') as {
+    material: { element: { label: string } };
+  }[];
+  expect(bareSubmit?.material.element.label).toBe('button');
 });
 
 it('a send that would be wrong is refused before it leaves: changed, not visible, input fields, too big, busy', async () => {
