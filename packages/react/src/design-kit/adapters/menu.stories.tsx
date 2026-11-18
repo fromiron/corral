@@ -84,3 +84,59 @@ export const UnavailableRow: Story = {
     await waitFor(() => expect(page.queryByRole('menu')).toBeNull());
   },
 };
+
+/** A row its host draws through its own component (as a "+" list's terminal row is), which the
+ *  popup cannot number. */
+function HostRow({ onPick }: { onPick?: (name: string) => void }) {
+  return (
+    <MenuItem icon={Terminal} onClick={() => onPick?.('터미널')}>
+      터미널
+    </MenuItem>
+  );
+}
+
+function WrappedList({ onPick }: { onPick?: (name: string) => void }) {
+  return (
+    <Menu>
+      <MenuTrigger
+        aria-label="탭 열기"
+        className="inline-flex size-7 items-center justify-center rounded-md hover:bg-active"
+      >
+        <Plus size={14} />
+      </MenuTrigger>
+      <MenuPopup align="start">
+        <MenuItem icon={File} onClick={() => onPick?.('파일')}>
+          파일
+        </MenuItem>
+        <HostRow onPick={onPick} />
+        <MenuItem icon={GitCompare} onClick={() => onPick?.('변경')}>
+          변경
+        </MenuItem>
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+/** Choosing a row chooses that row alone, even beside a row its host draws through its own
+ *  component: the press is never taken for one between rows. */
+export const RowBesideHostRow: Story = {
+  render: (args) => <WrappedList {...args} />,
+  play: async ({ canvasElement, userEvent, args }) => {
+    const page = within(canvasElement.ownerDocument.body);
+    await userEvent.click(within(canvasElement).getByRole('button', { name: '탭 열기' }));
+    const files = await waitFor(() => page.getByRole('menuitem', { name: '파일' }));
+    await userEvent.hover(files);
+    await userEvent.click(files);
+    await expect(args.onPick).toHaveBeenCalledTimes(1);
+    await expect(args.onPick).toHaveBeenCalledWith('파일');
+    await waitFor(() => expect(page.queryByRole('menu')).toBeNull());
+
+    await userEvent.click(within(canvasElement).getByRole('button', { name: '탭 열기' }));
+    const terminal = await waitFor(() => page.getByRole('menuitem', { name: '터미널' }));
+    await userEvent.hover(terminal);
+    await userEvent.click(terminal);
+    await expect(args.onPick).toHaveBeenCalledTimes(2);
+    await expect(args.onPick).toHaveBeenLastCalledWith('터미널');
+    await waitFor(() => expect(page.queryByRole('menu')).toBeNull());
+  },
+};
