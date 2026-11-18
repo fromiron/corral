@@ -45,7 +45,7 @@
 | Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
 | 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
 | 사람이 시작한 package script 실행 | Task / 작업 | 메시지 `DevTasks`, operation `task` | 명령(Run이 실행한 명령과 구분) |
-| 공유 개발 모드·task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
+| task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
 | 웹 페이지 하나를 여는 패널의 탭 | Browser / 브라우저 | 패널 `browser`, 슬래시 `/browser`, [브라우저 탭](features/browser-tab.md) | 웹뷰, 브라우저 창 |
 | preview lease로 연 브라우저 탭의 페이지 | Preview / 미리보기 | 미리보기 페이지, preview lease | 관리형 미리보기 |
 | 브라우저 탭의 페이지에서 요소를 짚어 단 글과 바꿔 본 스타일 | Annotate / 주석(켜는 버튼), Note / 주석(칸과 칩) | 단축키 `browser.annotate`, 첨부 `annotation.json`, [브라우저 주석](features/browser-annotate.md) | 코멘트, 피드백, 요소 캡처. 코드의 주석(comment)과는 다른 것이다 |

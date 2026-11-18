@@ -88,7 +88,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 Paddock의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 공유를 허용하지 않는 서버에서 같은 Paddock의 동시 writer(로컬 host는 [공유 개발 모드](workbench.md#공유-개발-모드)로 사본을 나눠 쓴다)와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
