@@ -29,7 +29,14 @@ export interface PermissionAsk {
   permissions: SitePermission[];
 }
 
+/** A site's HTTP sign-in request, asked in a dialog over its tab. */
+export interface LoginAsk {
+  requestId: string;
+  origin: string;
+}
+
 const NO_ASKS: readonly PermissionAsk[] = [];
+const NO_LOGINS: readonly LoginAsk[] = [];
 const NO_DOWNLOADS: readonly BrowserDownload[] = [];
 
 /** What the page of each browser tab says now, by tab ID; the bodies and the strip read it. */
@@ -39,6 +46,7 @@ export class BrowserPages {
   private readonly focusAsks = new Map<string, number>();
   private readonly pageFocusAsks = new Set<string>();
   private readonly asks = new Map<string, readonly PermissionAsk[]>();
+  private readonly logins = new Map<string, readonly LoginAsk[]>();
   private readonly downloads = new Map<string, BrowserDownload>();
   private readonly downloadLines = new Map<string, readonly BrowserDownload[]>();
   private version = 0;
@@ -58,7 +66,7 @@ export class BrowserPages {
   /** The tab's page is gone (closed, unloaded): its lines go; a later load asks again. */
   drop(tabId: string) {
     this.pageFocusAsks.delete(tabId);
-    const asked = this.asks.delete(tabId);
+    const asked = this.asks.delete(tabId) || this.logins.delete(tabId);
     let lines = false;
     for (const [id, download] of this.downloads)
       if (download.tabId === tabId) {
@@ -73,6 +81,7 @@ export class BrowserPages {
     this.focusAsks.clear();
     this.pageFocusAsks.clear();
     this.asks.clear();
+    this.logins.clear();
     this.downloads.clear();
     this.downloadLines.clear();
     this.changed();
@@ -92,6 +101,25 @@ export class BrowserPages {
     const now = this.asksOf(tabId);
     if (!now.some((open) => open.requestId === requestId)) return;
     this.asks.set(
+      tabId,
+      now.filter((open) => open.requestId !== requestId),
+    );
+    this.changed();
+  }
+  /** The tab's open sign-in requests, oldest first: the dialog asks the first. */
+  loginsOf(tabId: string): readonly LoginAsk[] {
+    return this.logins.get(tabId) ?? NO_LOGINS;
+  }
+  login(tabId: string, login: LoginAsk) {
+    const now = this.loginsOf(tabId);
+    if (now.some((open) => open.requestId === login.requestId)) return;
+    this.logins.set(tabId, [...now, login]);
+    this.changed();
+  }
+  endLogin(tabId: string, requestId: string) {
+    const now = this.loginsOf(tabId);
+    if (!now.some((open) => open.requestId === requestId)) return;
+    this.logins.set(
       tabId,
       now.filter((open) => open.requestId !== requestId),
     );
@@ -202,6 +230,16 @@ export function useBrowserAsks(tabId: string): readonly PermissionAsk[] {
     tabs?.pages.subscribe ?? noSubscribe,
     () => tabs?.pages.asksOf(tabId) ?? NO_ASKS,
     () => NO_ASKS,
+  );
+}
+
+/** The tab's open sign-in requests. */
+export function useBrowserLogins(tabId: string): readonly LoginAsk[] {
+  const tabs = useContext(BrowserTabsContext);
+  return useSyncExternalStore(
+    tabs?.pages.subscribe ?? noSubscribe,
+    () => tabs?.pages.loginsOf(tabId) ?? NO_LOGINS,
+    () => NO_LOGINS,
   );
 }
 
@@ -353,6 +391,13 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
           return;
         case 'permission-ended':
           pages.endAsk(event.tabId, event.requestId);
+          return;
+        case 'login':
+          if (own(event.tabId))
+            pages.login(event.tabId, { requestId: event.requestId, origin: event.origin });
+          return;
+        case 'login-ended':
+          pages.endLogin(event.tabId, event.requestId);
           return;
         case 'download': {
           const { download } = event;

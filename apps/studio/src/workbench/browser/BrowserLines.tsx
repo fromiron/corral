@@ -62,8 +62,10 @@ export function PermissionLines({ bridge, tabId }: { bridge: BrowserBridge; tabI
         >
           {t('allow')}
         </BannerAction>
+        {/* The same weight as 허용, so neither answer is nudged and the order on screen is
+            the focus order (the kit places a stronger action last). */}
         <BannerAction
-          variant="ghost"
+          variant="secondary"
           onClick={() => void bridge.answerPermission(tabId, ask.requestId, false).catch(() => {})}
         >
           {t('deny')}

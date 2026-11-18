@@ -977,6 +977,11 @@ it('일반 페이지가 카메라를 요청한다 → 머리 아래 한 줄이 "
       : 0,
   ).toBeTruthy();
 
+  // 허용 · 거부, the same weight, so what the screen shows first the focus reaches first.
+  const answers = [...(line?.querySelectorAll('button') ?? [])];
+  expect(answers.map((button) => button.textContent?.trim())).toEqual([B.allow, B.deny]);
+  expect(answers[0]?.className).toBe(answers[1]?.className);
+
   await act(async () => buttonNamed(B.allow)?.click());
   await settle();
   expect(bridge.callsTo('answerPermission')).toEqual([['b_one', 'r_1', true]]);
@@ -1161,4 +1166,91 @@ it('미리보기 페이지가 lease 밖으로 가려다 막혔다 → 페이지 
   await act(async () => bridge.setState('b_pre', { blocked: null }));
   await settle();
   expect(line()).toBeNull();
+});
+
+const buttonIn = (root: Element | null, name: string) =>
+  [...(root?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => button.textContent?.trim() === name,
+  ) ?? null;
+
+// --- HTTP sign-in (불러오기와 오류: HTTP 인증) -------------------------------------------------
+
+const loginDialog = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].find((dialog) =>
+    dialog.textContent?.includes(fill(B.signInTitle, { origin: 'https://auth.example' })),
+  ) ?? null;
+const fieldNamed = (name: string) =>
+  [...(loginDialog()?.querySelectorAll<HTMLInputElement>('input') ?? [])].find(
+    (input) =>
+      // The kit draws a field's label twice, once hidden to hold its width.
+      [...(input.labels ?? [])].some((label) => label.textContent?.trim() === name.repeat(2)) ||
+      input.getAttribute('aria-label') === name,
+  ) ?? null;
+
+async function typeInto(input: HTMLInputElement | null, text: string) {
+  await act(async () => {
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set;
+    setter?.call(input, text);
+    input?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+const login = (tabId = 'b_one', requestId = 'l_1') => ({
+  type: 'login' as const,
+  tabId,
+  requestId,
+  origin: 'https://auth.example',
+});
+
+it('사이트가 HTTP 인증을 요구한다 → "Sign in to {origin}" 대화상자가 사용자 이름에 포커스를 두고 뜨고, 로그인은 친 이름과 비밀번호로 답하며 아무 데도 남기지 않는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', 'https://auth.example');
+  await act(async () => bridge.emit(login()));
+  await until(() => Boolean(loginDialog()) && document.activeElement === fieldNamed(B.userName));
+
+  expect(document.activeElement).toBe(fieldNamed(B.userName));
+  expect(fieldNamed(B.password)?.type).toBe('password');
+  const buttons = [...(loginDialog()?.querySelectorAll('button') ?? [])].map((b) =>
+    b.textContent?.trim(),
+  );
+  expect(buttons.indexOf(B.cancel)).toBeLessThan(buttons.indexOf(B.signIn));
+
+  await typeInto(fieldNamed(B.userName), 'ada');
+  await typeInto(fieldNamed(B.password), 'hunter2');
+  await act(async () => fieldNamed(B.password)?.form?.requestSubmit());
+  await settle();
+  expect(bridge.callsTo('answerLogin')).toEqual([
+    ['b_one', 'l_1', { username: 'ada', password: 'hunter2' }],
+  ]);
+  expect(JSON.stringify({ ...window.localStorage, ...window.sessionStorage })).not.toContain(
+    'hunter2',
+  );
+  await act(async () => bridge.emit({ type: 'login-ended', tabId: 'b_one', requestId: 'l_1' }));
+  await until(() => !loginDialog());
+  expect(loginDialog()).toBeNull();
+});
+
+it('로그인 대화상자에서 취소하거나 Escape를 누른다 → null로 답한다(사이트의 401 페이지가 보인다)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', 'https://auth.example');
+  await act(async () => bridge.emit(login('b_one', 'l_1')));
+  await until(() => Boolean(loginDialog()));
+  await act(async () => buttonIn(loginDialog(), B.cancel)?.click());
+  await settle();
+  expect(bridge.callsTo('answerLogin')).toEqual([['b_one', 'l_1', null]]);
+  await act(async () => bridge.emit({ type: 'login-ended', tabId: 'b_one', requestId: 'l_1' }));
+  await until(() => !loginDialog());
+
+  await act(async () => bridge.emit(login('b_one', 'l_2')));
+  await until(() => document.activeElement === fieldNamed(B.userName));
+  await keydown(document.activeElement, { key: 'Escape' });
+  await settle();
+  expect(bridge.callsTo('answerLogin').at(-1)).toEqual(['b_one', 'l_2', null]);
+});
+
+it('다른 대화의 탭이 HTTP 인증을 요구한다 → 이 대화에는 대화상자가 뜨지 않는다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.emit(login('b_elsewhere')));
+  await settle();
+  expect(loginDialog()).toBeNull();
 });

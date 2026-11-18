@@ -26,6 +26,7 @@ import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/br
 import { desktop } from '../../desktop.tsx';
 import { BlockedLine, DownloadLines, PermissionLines } from './BrowserLines.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
+import { LoginDialog } from './LoginDialog.tsx';
 import { focusPageWhenLive, PAGE_ON_SCREEN, PAGE_STILL } from './pageFocus.ts';
 import { usePageStill } from './usePageStill.ts';
 
@@ -303,6 +304,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       {/* Polite news of the page: loading, failing, closing itself, ending. */}
       <PermissionLines bridge={b} tabId={tabId} />
       <DownloadLines bridge={b} tabId={tabId} />
+      <LoginDialog bridge={b} tabId={tabId} visible={visible} />
       <p role="status" className="sr-only">
         {announce(page, t)}
       </p>

@@ -4635,6 +4635,10 @@
     "showInFolder": "Show in folder",
     "cancel": "Cancel",
     "blockedMove": "Blocked a move outside the preview",
+    "signInTitle": "Sign in to {origin}",
+    "userName": "User name",
+    "password": "Password",
+    "signIn": "Sign in",
     "failure": {
       "nameNotResolved": "This site's address couldn't be found",
       "connectionRefused": "The site refused the connection",

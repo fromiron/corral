@@ -4635,6 +4635,10 @@
     "showInFolder": "폴더에서 보기",
     "cancel": "취소",
     "blockedMove": "미리보기 밖으로 가는 이동을 막았습니다",
+    "signInTitle": "{origin}에 로그인",
+    "userName": "사용자 이름",
+    "password": "비밀번호",
+    "signIn": "로그인",
     "failure": {
       "nameNotResolved": "이 사이트의 주소를 찾지 못했습니다",
       "connectionRefused": "사이트가 연결을 거절했습니다",
