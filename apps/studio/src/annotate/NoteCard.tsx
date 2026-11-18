@@ -1,7 +1,18 @@
 // The note beside the picked element (features/browser-annotate.md 주석 칸): its element's name,
-// the note's text, the screenshot and console toggles, collect, and send or add; under them the
-// reason a toggle or add can't be used, and why the last send didn't go.
-import { Button, Elevated, SizeScope, Switch, Textarea, Tooltip } from '@corral/react/design-kit';
+// which opens what the note carries, the note's text, the screenshot and console toggles,
+// collect, and send or add; under them the reason a toggle or add can't be used, and why the last
+// send didn't go.
+import {
+  Button,
+  Elevated,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
+  SizeScope,
+  Switch,
+  Textarea,
+  Tooltip,
+} from '@corral/react/design-kit';
 import { ImageIcon, LoaderCircle, Terminal } from '@corral/react/icons';
 import {
   type CSSProperties,
@@ -12,9 +23,17 @@ import {
   useRef,
 } from 'react';
 import { useTranslations } from 'use-intl';
+// Its own module, not the package's index: the index would bring the app's other components into
+// the overlay's page.
+import {
+  AnnotationContents,
+  type AnnotationContentsProps,
+} from '../../../../packages/react/src/components/AnnotationContents.tsx';
 
 export interface NoteView {
   label: string;
+  /** What the note carries, as its label's popover shows it. */
+  what: Omit<AnnotationContentsProps, 'label'>;
   text: string;
   /** The text can't change: sending, adding, or its answer was lost. */
   locked: boolean;
@@ -35,6 +54,8 @@ export interface NoteView {
 }
 
 export interface NoteActions {
+  /** The label's popover opened or closed. */
+  onWhat(open: boolean): void;
   onText(text: string): void;
   onTextKey(event: KeyboardEvent<HTMLTextAreaElement>): void;
   onShot(): void;
@@ -101,10 +122,23 @@ export function NoteCard({
       >
         {/* The note's controls are the kit composer's slot controls: compact. */}
         <SizeScope size="compact">
-          <div className="flex min-w-0 items-center px-1.5 pt-0.5">
-            <span className="min-w-0 truncate font-mono text-caption text-muted-foreground">
-              {view.label}
-            </span>
+          <div className="flex min-w-0 items-center">
+            <Popover onOpenChange={actions.onWhat}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    className="min-w-0 justify-start px-1.5 font-mono text-caption text-muted-foreground"
+                  />
+                }
+              >
+                <span className="truncate">{view.label}</span>
+              </PopoverTrigger>
+              {/* Over the page like the note, so with the note's edge. */}
+              <PopoverPopup width="md" aria-label={t('what.title')} className="ring-1 ring-border">
+                <AnnotationContents label={view.label} {...view.what} />
+              </PopoverPopup>
+            </Popover>
           </div>
           <Textarea
             ref={text}

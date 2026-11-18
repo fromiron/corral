@@ -43,6 +43,9 @@ import type {
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** One of the note's popups (the kit's, at the end of the page) while it is open. */
+const OPEN_POPUP = '[data-slot="popover-popup"][data-open]';
+
 const ARROWS = {
   ArrowUp: 'up',
   ArrowDown: 'down',
@@ -178,11 +181,18 @@ export function Overlay({
     origin: string;
   } | null>(null);
   const [nudge, setNudge] = useState(0);
+  /** The console a send of the open note would carry, read when its label's popover opens. */
+  const [carried, setCarried] = useState<{
+    noteId: string;
+    console: { level: string; message: string }[] | null;
+  } | null>(null);
   const busyLine = useRef<HTMLDivElement>(null);
   const [busyRect, setBusyRect] = useState<AnnotateRect | null>(null);
   /** Notes closed while their send was out: the answer is still said when it comes. */
   const orphans = useRef(new Map<string, number>());
   const picking = useRef(false);
+  /** The press began while one of the note's popups was open: it only closes that popup. */
+  const closesPopup = useRef(false);
   const lastBox = useRef<AnnotateRect | null>(null);
 
   const hoverOff = note !== null && (written(note) || note.phase !== 'editing');
@@ -354,7 +364,10 @@ export function Overlay({
 
   /** Closes the open note; `release` lets main forget its element (not for a collected one). */
   const close = (current: Note, release: boolean) => {
-    const hadFocus = document.activeElement?.closest('[data-annotate="note"]') !== null;
+    // The note's own popups are the kit's, at the end of the page: focus in one is the note's.
+    const hadFocus =
+      document.activeElement?.closest('[data-annotate="note"], [data-slot="popover-popup"]') !==
+      null;
     if (release) void bridge.release(current.pick.pickId);
     setNote(null);
     lastBox.current = null;
@@ -570,8 +583,19 @@ export function Overlay({
 
   const noteView = (current: Note): NoteView => {
     const blocked = shotBlocked(current);
+    const preview = page?.kind === 'preview';
     return {
       label: current.pick.label,
+      what: {
+        page: { origin: current.pick.page.origin, path: current.pick.page.path },
+        selector: current.pick.element.selector,
+        text: current.pick.element.text,
+        styles: [],
+        console:
+          preview && current.console && carried?.noteId === current.noteId ? carried.console : null,
+        // Taken at the send: here, whether it will be.
+        screenshot: blocked === null && current.shot ? 'included' : 'none',
+      },
       text: current.text,
       locked: current.phase !== 'editing',
       busy: current.phase === 'sending' || current.phase === 'adding',
@@ -586,6 +610,20 @@ export function Overlay({
     };
   };
 
+  /** What a send would carry of the console, read as the label's popover opens. */
+  const readCarried = (open: boolean) => {
+    const current = noteRef.current;
+    if (!open || !current || page?.kind !== 'preview' || !current.console) return;
+    const { noteId } = current;
+    void bridge.consoleFor(current.pick.pickId).then(
+      (console) => {
+        if (noteRef.current?.noteId === noteId) setCarried({ noteId, console });
+      },
+      () => {},
+    );
+  };
+
+  // The kit's popups keep their own Escape (it closes only the popup and goes no further).
   const onNoteKey = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key !== 'Escape' || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
@@ -629,6 +667,9 @@ export function Overlay({
         aria-label={t('area')}
         tabIndex={-1}
         className="absolute inset-0 outline-none"
+        onPointerDown={() => {
+          closesPopup.current = document.querySelector(OPEN_POPUP) !== null;
+        }}
         onPointerMove={(event) => {
           live.current.pointer = { x: event.clientX, y: event.clientY };
           live.current.stale = false;
@@ -639,6 +680,10 @@ export function Overlay({
           setOutline((last) => (last?.from === 'pointer' ? null : last));
         }}
         onClick={(event) => {
+          if (closesPopup.current) {
+            closesPopup.current = false;
+            return;
+          }
           if (event.button !== 0 || ending) return;
           live.current.pointer = { x: event.clientX, y: event.clientY };
           live.current.stale = false;
@@ -740,6 +785,7 @@ export function Overlay({
           }}
           onKeyDown={onNoteKey}
           actions={{
+            onWhat: readCarried,
             onText: (text) => {
               const current = noteRef.current;
               if (current && current.phase === 'editing')
@@ -787,6 +833,7 @@ export function Overlay({
 }
 
 const IDLE = {
+  onWhat() {},
   onText() {},
   onTextKey() {},
   onShot() {},

@@ -854,6 +854,144 @@ describe('스크린샷과 콘솔', () => {
   });
 });
 
+describe('보내는 것 팝오버', () => {
+  // The kit's popups go to the end of the page, outside the overlay's container.
+  const popup = () => document.querySelector<HTMLElement>('[data-slot="popover-popup"]');
+  const row = (term: string) =>
+    [...(popup()?.querySelectorAll('dt') ?? [])].find((dt) => dt.textContent === term)
+      ?.nextElementSibling?.textContent ?? null;
+  const labelButton = (view: Awaited<ReturnType<typeof mount>>) =>
+    [...(view.note()?.querySelectorAll('button') ?? [])].find(
+      (each) => each.textContent?.trim() === 'button.pay 120×32',
+    ) ?? null;
+
+  it('이름표 버튼이 이 주석이 보낼 것을 보이고, 스크린샷 자리에는 토글의 상태가 있다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    const label = labelButton(view);
+    expect(label).not.toBeNull();
+    await view.press(label);
+    expect(popup()?.getAttribute('aria-label')).toBe('What goes with this note');
+    expect(row('Page')).toBe('https://shop.example/cart');
+    expect(row('Element')).toBe('button.pay 120×32');
+    expect(row('Selector')).toBe('body > main:nth-of-type(1) > button:nth-of-type(1)');
+    expect(row('Text')).toBe('Pay');
+    expect(popup()?.textContent).toContain('Screenshot included');
+    // Counterexample: an ordinary page carries no console, so none is read for it.
+    expect(row('Console')).toBeNull();
+    expect(view.of('consoleFor')).toHaveLength(0);
+  });
+
+  it('스크린샷 토글이 꺼져 있거나 쓸 수 없으면 스크린샷 없음이다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(view.button('Include screenshot'));
+    await view.press(labelButton(view));
+    expect(popup()?.textContent).toContain('No screenshot');
+  });
+
+  it('입력 칸이 든 요소는 스크린샷 없음이다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open(notePick({ screenshotAllowed: false }));
+    await view.press(labelButton(view));
+    expect(popup()?.textContent).toContain('No screenshot');
+  });
+
+  it('콘솔은 콘솔 토글이 켜져 있을 때만, 보낼 때와 같은 것을 읽어 보인다', async () => {
+    const view = await mount();
+    await view.start({}, 'preview');
+    await view.open(
+      notePick({ page: { kind: 'preview', origin: 'http://127.0.0.1:5173', path: '/' } }),
+    );
+    await view.press(labelButton(view));
+    // The toggle starts off: nothing is read, nothing is shown.
+    expect(view.of('consoleFor')).toHaveLength(0);
+    expect(row('Console')).toBeNull();
+    await view.key(popup(), { key: 'Escape' });
+    await view.press(view.button('Include console'));
+    await view.press(labelButton(view));
+    expect(view.of('consoleFor').map((call) => call.args[0])).toEqual(['pick_1']);
+    await view.answer(view.waiting('consoleFor'), [
+      { level: 'error', message: 'Uncaught TypeError: x is undefined' },
+    ]);
+    expect(row('Console')).toContain('Uncaught TypeError: x is undefined');
+  });
+
+  it('팝오버 안의 Escape는 팝오버만 닫고 칸은 그대로다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.type('Make it bigger');
+    await view.press(labelButton(view));
+    expect(popup()).not.toBeNull();
+    await view.key(popup(), { key: 'Escape' });
+    expect(view.note()).not.toBeNull();
+    expect(view.textarea()?.value).toBe('Make it bigger');
+    expect(view.of('release')).toHaveLength(0);
+    expect(labelButton(view)?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('팝오버가 열려 있을 때 페이지 자리를 누르면 팝오버만 닫힌다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(labelButton(view));
+    expect(popup()).not.toBeNull();
+    await view.pointer('pointerdown', 600, 400, { button: 0 });
+    await view.pointer('mousedown', 600, 400, { button: 0 });
+    await view.pointer('pointerup', 600, 400, { button: 0 });
+    await view.pointer('mouseup', 600, 400, { button: 0 });
+    await view.pointer('click', 600, 400, { button: 0 });
+    expect(labelButton(view)?.getAttribute('aria-expanded')).toBe('false');
+    // Counterexample: the empty note stays and nothing else is picked.
+    expect(view.of('pick')).toHaveLength(1);
+    expect(view.note()).not.toBeNull();
+    expect(view.of('release')).toHaveLength(0);
+    // The next press is the page area's again.
+    await view.pointer('pointerdown', 600, 400, { button: 0 });
+    await view.pointer('click', 600, 400, { button: 0 });
+    expect(view.of('pick')).toHaveLength(2);
+  });
+
+  it('팝오버에 포커스가 있을 때 이동으로 칸이 닫히면 포커스는 페이지 자리로 간다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(labelButton(view));
+    popup()?.focus();
+    expect(popup()?.contains(document.activeElement)).toBe(true);
+    await view.emit({ type: 'navigated', generation: 2 });
+    expect(view.note()).toBeNull();
+    expect(document.activeElement).toBe(view.surface());
+  });
+
+  it('칸 안의 Tab 순서는 이름표 버튼, 글, 스크린샷 토글, 모아 두기, 보내기다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    const order = [
+      ...(view.note()?.querySelectorAll<HTMLElement>('button, textarea, [role="switch"]') ?? []),
+    ]
+      .filter((each) => each.tabIndex >= 0)
+      .map(
+        (each) =>
+          each.getAttribute('aria-label') ??
+          document.getElementById(each.getAttribute('aria-labelledby') ?? '')?.textContent ??
+          each.textContent?.trim(),
+      );
+    expect(order).toEqual([
+      'button.pay 120×32',
+      'Note on button.pay 120×32',
+      'Include screenshot',
+      'Collect',
+      'Send',
+    ]);
+  });
+});
+
 describe('모아 두기', () => {
   it('켜져 있으면 담기가 주석을 담고, 칸이 닫혀 알리며, 그 요소는 놓지 않는다', async () => {
     const view = await mount();
