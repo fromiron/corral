@@ -137,9 +137,17 @@ export async function capturePreviewSelection(input: {
       selecting = true;
       void (async () => {
         current();
+        // The menu's point is in the view's DIP; the page reads CSS pixels (its zoom between).
+        const zoom = contents.getZoomFactor() || 1;
         const selected: SelectedPreviewElement | null =
           await contents.executeJavaScriptInIsolatedWorld(1001, [
-            { code: observationScript(params.x, params.y, params.menuSourceType === 'keyboard') },
+            {
+              code: observationScript(
+                params.x / zoom,
+                params.y / zoom,
+                params.menuSourceType === 'keyboard',
+              ),
+            },
           ]);
         current();
         if (settled) return;
@@ -158,12 +166,13 @@ export async function capturePreviewSelection(input: {
         if (options.screenshot) {
           if (!selected.screenshotSafe)
             throw new PreviewCaptureFailure('Screenshots containing input fields are not captured');
+          // capturePage takes the view's DIP: the element's CSS box times the page's zoom.
           const bounds = element.bounds;
           const rect = {
-            x: Math.ceil(bounds.x),
-            y: Math.ceil(bounds.y),
-            width: Math.floor(bounds.width),
-            height: Math.floor(bounds.height),
+            x: Math.ceil(bounds.x * zoom),
+            y: Math.ceil(bounds.y * zoom),
+            width: Math.floor(bounds.width * zoom),
+            height: Math.floor(bounds.height * zoom),
           };
           if (rect.width < 1 || rect.height < 1 || rect.width > 2048 || rect.height > 2048)
             throw new PreviewCaptureFailure('Select an area no larger than 2048 pixels');
