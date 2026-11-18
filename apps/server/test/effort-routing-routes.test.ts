@@ -3,7 +3,13 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { EffortRoutingSettings } from '@corral/contracts';
-import { type D1Child, D1Engine, type D1Manifest, LINUX_X64_CPU } from '@corral/local-intelligence';
+import {
+  bundledManifest,
+  type D1Child,
+  D1Engine,
+  type D1Manifest,
+  LINUX_X64_CPU,
+} from '@corral/local-intelligence';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, describe, expect, it } from 'vitest';
 import { decisionApiConsent } from '../src/decision-apis.ts';
@@ -246,7 +252,7 @@ describe('effort routing routes', () => {
 
   it('removes only the Local manifest, keeps Manual + Local, and falls back as unavailable', async () => {
     const s = await start({ install: true });
-    const meeting = join(s.localRoot, '..', 'corral-local-ai-2');
+    const meeting = join(s.localRoot, '..', bundledManifest().release);
     mkdirSync(meeting, { recursive: true });
     writeFileSync(join(meeting, 'keep'), 'meeting');
     const { revision } = (await s.call('/effort-routing')).body;
@@ -270,7 +276,7 @@ describe('effort routing routes', () => {
 
   it('refuses to remove Local while an install is in progress', async () => {
     const s = await start();
-    const meeting = join(s.localRoot, '..', 'corral-local-ai-2');
+    const meeting = join(s.localRoot, '..', bundledManifest().release);
     mkdirSync(meeting, { recursive: true });
     writeFileSync(join(meeting, 'keep'), 'meeting');
     expect((await s.call('/effort-routing/local/install', 'POST')).body.local.install).toBe(

@@ -37,7 +37,7 @@ export function processPort(): Channel {
         if (finishing) return;
         finishing = true;
         process.exitCode = 0;
-        if (process.connected) process.disconnect();
+        if (process.connected) process.disconnect?.();
         // A trusted extension may leave a timer behind; completion still has a bound.
         setTimeout(() => process.exit(0), 1000).unref();
       }),

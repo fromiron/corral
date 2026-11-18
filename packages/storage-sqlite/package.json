@@ -12,12 +12,12 @@
   "dependencies": {
     "@corral/contracts": "workspace:*",
     "@corral/core": "workspace:*",
-    "better-sqlite3": "13.0.3",
+    "better-sqlite3": "13.2.0",
     "zod": "4.6.7"
   },
   "devDependencies": {
     "@corral/testkit": "workspace:*",
     "@types/better-sqlite3": "9.6.0",
-    "@types/node": "24.19.2"
+    "@types/node": "26.6.6"
   }
 }

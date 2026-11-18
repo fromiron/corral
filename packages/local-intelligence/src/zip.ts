@@ -103,8 +103,9 @@ export async function extractZipMember(
     end: start + entry.compressedSize - 1,
     highWaterMark: 1 << 20,
   });
-  const stages = entry.method === 8 ? [source, createInflateRaw(), check] : [source, check];
-  await pipeline([...stages, createWriteStream(target, { mode: 0o600 })], { signal });
+  const transforms = entry.method === 8 ? [createInflateRaw(), check] : [check];
+  const destination = createWriteStream(target, { mode: 0o600 });
+  await pipeline([source, ...transforms, destination], { signal });
   if (written !== expected.size)
     throw new Error(`${member} has ${written} of ${expected.size} bytes`);
   const actual = hash.digest('hex');

@@ -14,12 +14,12 @@
   },
   "devDependencies": {
     "@corral/server": "workspace:*",
-    "@playwright/test": "1.64.1",
-    "@types/node": "24.19.2",
-    "electron": "44.4.5",
-    "electron-builder": "26.15.6",
+    "@playwright/test": "1.65.1",
+    "@types/node": "26.6.6",
+    "electron": "44.11.4",
+    "electron-builder": "26.18.0",
     "typescript": "6.0.3",
-    "vitest": "5.0.4"
+    "vitest": "5.1.1"
   },
   "build": {
     "appId": "app.corral.desktop",
@@ -80,6 +80,6 @@
   },
   "desktopName": "corral.desktop",
   "dependencies": {
-    "electron-updater": "6.8.9"
+    "electron-updater": "6.8.11"
   }
 }
