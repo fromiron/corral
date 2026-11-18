@@ -400,6 +400,29 @@ it('leaving the conversation keeps a download going and its line comes back', ()
   expect(item.cancel).toHaveBeenCalled();
 });
 
+it('a download that stops partway says it was interrupted, and goes on if Chromium resumes it', () => {
+  const f = setup();
+  const a = page(f, 'tab-a', 'project_a', 'https://files.example/');
+  const { item } = download(a.session, a.contents);
+  item.savePath = '/home/person/Downloads/big.iso';
+  item.progress(100);
+  item.interrupt();
+  expect(downloads(f.events).at(-1)).toMatchObject({ state: 'interrupted', receivedBytes: 100 });
+  expect(f.tabs.downloads('tab-a')).toEqual([expect.objectContaining({ state: 'interrupted' })]);
+  item.resume(300);
+  expect(downloads(f.events).at(-1)).toMatchObject({ state: 'progressing', receivedBytes: 300 });
+  // The line's Cancel, and closing the tab, cancel it whether it is moving or stopped.
+  item.interrupt();
+  f.tabs.cancelDownload('id1');
+  expect(item.cancel).toHaveBeenCalled();
+  const other = download(a.session, a.contents, 'b.bin');
+  other.item.savePath = '/home/person/Downloads/b.bin';
+  other.item.progress(1);
+  other.item.interrupt();
+  f.tabs.close('tab-a');
+  expect(other.item.cancel).toHaveBeenCalled();
+});
+
 it("a pop-up's download moves to its opener's tab and survives both tabs", () => {
   const f = setup();
   const a = page(f, 'tab-a', 'project_a', 'https://app.example/');

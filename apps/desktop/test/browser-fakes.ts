@@ -226,13 +226,23 @@ export class FakeItem extends EventEmitter {
     return this.state;
   }
   cancel = vi.fn(() => {
-    if (this.state !== 'progressing') return;
+    if (this.state !== 'progressing' && this.state !== 'interrupted') return;
     this.state = 'cancelled';
     this.emit('done', {}, 'cancelled');
   });
   progress(received: number) {
     this.received = received;
     this.emit('updated', {}, 'progressing');
+  }
+  /** A resumable interruption (a dropped connection): Electron says so in 'updated', not 'done'. */
+  interrupt() {
+    this.state = 'interrupted';
+    this.emit('updated', {}, 'interrupted');
+  }
+  /** Chromium resuming it on its own. */
+  resume(received: number) {
+    this.state = 'progressing';
+    this.progress(received);
   }
   finish() {
     this.received = this.total;

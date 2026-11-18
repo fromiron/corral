@@ -98,6 +98,10 @@ export interface BrowserTabsPorts {
   mac: boolean;
 }
 
+/** Still moving, or stopped where Chromium may resume it ('updated' said interrupted). */
+const unfinished = (download: { state: BrowserDownload['state'] }) =>
+  download.state === 'progressing' || download.state === 'interrupted';
+
 /** The page menu's words (features/browser-tab.md 페이지의 메뉴): Korean, English. */
 const MENU_LABELS: Record<PageMenuItem, [string, string]> = {
   'open-link': ['새 탭에서 링크 열기', 'Open link in new tab'],
@@ -421,7 +425,7 @@ export class BrowserTabs {
     for (const download of this.transfers.values()) {
       if (download.shownOn !== tab.id) continue;
       download.shownOn = null;
-      if (download.startedBy === tab.id && download.state === 'progressing') download.item.cancel();
+      if (download.startedBy === tab.id && unfinished(download)) download.item.cancel();
       else if (download.announced) this.sendDownload(download);
     }
     if (tab.lease) this.endStorage(tab.lease);
@@ -523,7 +527,7 @@ export class BrowserTabs {
 
   cancelDownload(downloadId: string) {
     const download = this.transfers.get(downloadId);
-    if (download?.state === 'progressing') download.item.cancel();
+    if (download && unfinished(download)) download.item.cancel();
   }
 
   showDownload(downloadId: string) {
@@ -736,7 +740,7 @@ export class BrowserTabs {
     for (const other of this.tabs.values())
       if (other.openerTabId === tab.id) other.openerTabId = null;
     for (const [id, download] of this.transfers)
-      if (download.state !== 'progressing' && download.shownOn === null) this.transfers.delete(id);
+      if (!unfinished(download) && download.shownOn === null) this.transfers.delete(id);
   }
 
   private show(tab: Tab, url: string) {
@@ -1279,9 +1283,13 @@ export class BrowserTabs {
       state: 'progressing',
     };
     this.transfers.set(download.id, download);
-    item.on('updated', () => {
-      if (this.transfers.get(download.id) !== download || download.state !== 'progressing') return;
+    // 'interrupted' here is resumable (a dropped connection): the line says so, and goes back
+    // to progressing if Chromium resumes it. Nothing else resumes it.
+    item.on('updated', (_event, state) => {
+      if (this.transfers.get(download.id) !== download) return;
+      if (!unfinished(download)) return;
       if (!item.getSavePath()) return;
+      download.state = state === 'interrupted' ? 'interrupted' : 'progressing';
       download.announced = true;
       this.sendDownload(download);
     });
