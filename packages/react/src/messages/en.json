@@ -4595,6 +4595,7 @@
     "annotateOn": "Annotate on",
     "annotateOff": "Annotate off",
     "noteSource": "Page note",
+    "noteImageLimit": "This conversation has no room for more images.",
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",

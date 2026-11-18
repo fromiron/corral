@@ -4,6 +4,7 @@
 // changed; the send settings are read as the composer would send now. A lost answer keeps the
 // note's command and its frozen request while the note is open, so "다시 보내기" sends the same
 // request under the same ID and uploads nothing again; an accepted or refused send ends it.
+import { ApiError } from '@corral/client';
 import {
   type AnnotationMaterial,
   ImageAttachment,
@@ -64,6 +65,8 @@ export interface NoteSendDeps {
   advisorUnconfirmed: string;
   /** The composer's sentence for an image the server did not take. */
   imageFailed: string;
+  /** The sentence for a conversation whose input images are at the server's limit. */
+  imageLimit: string;
 }
 
 interface KeptNote {
@@ -154,8 +157,9 @@ export function useNoteSender(deps: NoteSendDeps) {
             screenshotBlob(shot.data),
           ),
         );
-      } catch {
-        return { kind: 'refused', reason: now.imageFailed };
+      } catch (error) {
+        const full = error instanceof ApiError && error.code === 'LIMIT_REACHED';
+        return { kind: 'refused', reason: full ? now.imageLimit : now.imageFailed };
       }
       if (image.width !== shot.width || image.height !== shot.height)
         return { kind: 'refused', reason: now.refusalText('other') };

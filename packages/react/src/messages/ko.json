@@ -4595,6 +4595,7 @@
     "annotateOn": "주석 켜짐",
     "annotateOff": "주석 꺼짐",
     "noteSource": "페이지 주석",
+    "noteImageLimit": "이 대화에는 이미지를 더 담을 수 없습니다.",
     "back": "뒤로",
     "forward": "앞으로",
     "reload": "새로 고침",

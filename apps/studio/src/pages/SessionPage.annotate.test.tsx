@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ApiError } from '@corral/client';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
@@ -275,7 +276,7 @@ function host(at: Awaited<ReturnType<typeof world>>) {
   const uploads: string[] = [];
   const answers: (() => Promise<unknown>)[] = [];
   /** The server refuses the next uploads, as the images route does past its checks. */
-  const refuseUploads = { current: false };
+  const refuseUploads = { current: false as false | 'format' | 'limit' };
   at.services.startAuto = (async (request: Started) => {
     started.push(structuredClone(request));
     const next = answers.shift();
@@ -289,7 +290,10 @@ function host(at: Awaited<ReturnType<typeof world>>) {
   at.services.workspaces = {
     ...workspaces,
     uploadImage: async (_sessionId: string, name: string) => {
-      if (refuseUploads.current) throw new Error('Session input images are over their limit.');
+      if (refuseUploads.current === 'limit')
+        throw new ApiError(409, 'LIMIT_REACHED', 'session image storage exceeds 64 MiB');
+      if (refuseUploads.current)
+        throw new ApiError(400, 'SCHEMA_INVALID', 'normalized PNG exceeds 1 MiB');
       uploads.push(name);
       return {
         kind: 'image_attachment' as const,
@@ -418,7 +422,7 @@ it('보낸 주석이 거절된다 → 입력창이 쓰는 까닭의 문장과 �
 it('서버가 스크린샷을 받지 않는다 → 아무것도 보내지 않고 입력창의 이미지 실패 문장으로 거절됐다고 답하며, 스크린샷을 끄고 보내면 스크린샷 없이 보내진다', async () => {
   const bridge = createFakeBrowserBridge();
   const { made: sent } = await livePage(bridge, 'b_one', host);
-  sent.refuseUploads.current = true;
+  sent.refuseUploads.current = 'format';
   await sendNote(bridge, 'submit_1');
   await until(() => answerTo(bridge, 'submit_1') !== undefined);
   // The server's own sentence is not shown: the composer's localized one is.
@@ -439,6 +443,19 @@ it('서버가 스크린샷을 받지 않는다 → 아무것도 보내지 않고
       (reference) => (reference as { kind?: string }).kind === 'image_attachment',
     ),
   ).toEqual([]);
+});
+
+it('대화의 입력 이미지가 서버의 한도에 찼다 → 아무것도 보내지 않고 그 까닭의 문장으로 거절됐다고 답한다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { made: sent } = await livePage(bridge, 'b_one', host);
+  sent.refuseUploads.current = 'limit';
+  await sendNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({
+    kind: 'refused',
+    reason: messages.Browser.noteImageLimit,
+  });
+  expect(sent.started).toEqual([]);
 });
 
 it('다른 lease의 미리보기 페이지라고 하는 주석, 다른 대화의 탭의 주석, 모양이 틀린 주석은 보내지 않는다 (반례)', async () => {

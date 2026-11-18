@@ -389,6 +389,7 @@ function SessionComposer({
   const keyIntent = forKey('send').intent;
   const imagesNow = keyIntent === 'next' || keyIntent === 'queue';
   const tRefusal = useTranslations('Refusal');
+  const tBrowser = useTranslations('Browser');
   const notes = useNoteSender({
     services,
     sessionId: session.sessionId,
@@ -403,6 +404,7 @@ function SessionComposer({
     refusalText: (kind) => tRefusal(kind),
     advisorUnconfirmed: tc('advisor.unconfirmedSend'),
     imageFailed: tc('imageFailed'),
+    imageLimit: tBrowser('noteImageLimit'),
   });
   usePublishComposerAnnotate(
     {
