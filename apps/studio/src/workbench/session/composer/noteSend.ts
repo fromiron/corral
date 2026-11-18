@@ -29,14 +29,16 @@ import {
   sendRequest,
 } from './send.ts';
 
-export interface NoteSendRequest {
+interface NewNoteRequest {
   noteId: string;
   material: AnnotationMaterial;
   /** The key that sent it, or the note's button. */
   via: 'send' | 'interrupt' | 'queue' | 'button';
-  /** "다시 보내기": the note's kept request again. */
-  again: boolean;
+  again: false;
 }
+
+/** Recovery only identifies the command the composer already holds. */
+export type NoteSendRequest = NewNoteRequest | { noteId: string; again: true };
 
 export interface NoteSendDeps {
   services: StudioServices;
@@ -68,8 +70,6 @@ export interface NoteSendDeps {
   imageFailed: string;
   /** The sentence for a conversation whose input images are at the server's limit. */
   imageLimit: string;
-  /** "다시 보내기" with no command kept for the note (the page was reloaded): nothing is sent. */
-  lostNote: string;
 }
 
 type SendSettings = ReturnType<NoteSendDeps['sendDeps']>;
@@ -82,12 +82,13 @@ interface KeptNote {
 
 /** A command slot of the note's own: never the composer's per-conversation one. */
 function noteSlot(sessionId: string): CommandSlot {
+  const commandId = newCommandId();
   const kept = new Map<string, PendingCommand>();
   return {
     sessionId,
     pending: { current: null },
     store: kept,
-    newId: newCommandId,
+    newId: () => commandId,
     sending: { current: false },
   };
 }
@@ -172,7 +173,7 @@ export function createNoteSender(read: () => NoteSendDeps) {
   };
 
   /** The note's request: its text, its attachment and, for a new or next request, its image. */
-  const prepare = async (request: NoteSendRequest): Promise<SendInput | AnnotateOutcome> => {
+  const prepare = async (request: NewNoteRequest): Promise<SendInput | AnnotateOutcome> => {
     const now = read();
     const { material } = request;
     const body = material.note.trim();
@@ -216,13 +217,29 @@ export function createNoteSender(read: () => NoteSendDeps) {
   const sendNote = async (request: NoteSendRequest): Promise<AnnotateOutcome> => {
     const now = read();
     const sessionId = now.sessionId;
-    if (!(await now.advisorConfirmed())) return { kind: 'refused', reason: now.advisorUnconfirmed };
     let note = keptNow().get(request.noteId);
-    if (request.again && !note) return { kind: 'refused', reason: now.lostNote };
-    if (!request.again || !note) {
+    if (!note) {
+      if (request.again) return { kind: 'unconfirmed' };
+      if (!(await now.advisorConfirmed()))
+        return { kind: 'refused', reason: now.advisorUnconfirmed };
       const prepared = await prepare(request);
       if ('kind' in prepared) return prepared;
-      note = { slot: noteSlot(sessionId), input: prepared, settings: now.sendDeps() };
+      const slot = noteSlot(sessionId);
+      if (prepared.intent === 'queue') prepared.queueCommandId = slot.newId();
+      note = { slot, input: prepared, settings: now.sendDeps() };
+    } else if (note.input.queueCommandId) {
+      const commandId = note.input.queueCommandId;
+      // The saved entry may already have left the queue and acquired a run ID.
+      // Its presence is the receipt for this enqueue, whichever state it has now.
+      try {
+        const session = await note.settings.services.repository.getSession(sessionId);
+        if (session?.entries.some((entry) => entry.commandId === commandId)) {
+          keptNow().delete(request.noteId);
+          return { kind: 'accepted' };
+        }
+      } catch {
+        return { kind: 'unconfirmed' };
+      }
     }
     let refusal: Refusal | null = null;
     let error: string | null = null;

@@ -18,7 +18,7 @@ export type CreationBlock =
   | 'createPending'
   /** A live terminal already holds the Paddock. */
   | 'createHeld'
-  /** A run of this conversation is going. */
+  /** A run of this conversation is going on a host without sharing. */
   | 'runActive'
   /** The host offers no terminal here (no trusted Paddock, no shell, not qualified). */
   | 'unavailable';
@@ -39,13 +39,14 @@ export function liveTerminal(value: SessionTerminals | undefined): TerminalView 
 export function terminalCreation(
   value: SessionTerminals | undefined,
   runActive: boolean,
+  sharedDevelopment: boolean,
 ): Creation {
   const list = value?.list;
   if (!list) return { ok: false, reason: value?.error ? 'listFailed' : 'loading' };
   if (!list.target) return { ok: false, reason: 'noCopy' };
   if (value.pendingCreate) return { ok: false, reason: 'createPending' };
   if (list.terminals.some(isLive)) return { ok: false, reason: 'createHeld' };
-  if (runActive) return { ok: false, reason: 'runActive' };
+  if (runActive && !sharedDevelopment) return { ok: false, reason: 'runActive' };
   if (value.loading) return { ok: false, reason: 'loading' };
   if (!list.available || list.shells.length === 0) return { ok: false, reason: 'unavailable' };
   return { ok: true, shells: list.shells };

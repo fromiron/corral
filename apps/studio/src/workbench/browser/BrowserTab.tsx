@@ -19,8 +19,8 @@ import {
 import { ArrowLeft, ArrowRight, Ellipsis, RefreshCw, SquarePen, X } from '@corral/react/icons';
 import {
   type FormEvent,
-  type KeyboardEvent,
   type ReactNode,
+  useCallback,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -81,6 +81,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const page = useBrowserPage(tab.browserId);
   const preview = Boolean(tab.lease);
   const address = useRef<HTMLInputElement>(null);
+  const more = useRef<HTMLButtonElement>(null);
   const area = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   // What the field shows: the page's address until the person edits it.
@@ -113,27 +114,13 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   // The view lies over the page's place while the tab is on screen with a live page; otherwise
   // it is hidden (features/browser-tab.md 앱 화면과 겹칠 때).
   const bridge = tabs?.bridge;
-  useLayoutEffect(() => {
-    const element = area.current;
-    if (!bridge || !element) return;
-    const tabId = tab.browserId;
-    if (!visible || !live) {
-      void bridge.place(tabId, null).catch(() => {});
-      return;
-    }
-    const send = () => {
-      void bridge.place(tabId, viewIn(element.getBoundingClientRect(), narrow)).catch(() => {});
-    };
-    send();
-    const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(send);
-    observer?.observe(element);
-    window.addEventListener('resize', send);
-    return () => {
-      observer?.disconnect();
-      window.removeEventListener('resize', send);
-      void bridge.place(tabId, null).catch(() => {});
-    };
-  }, [bridge, tab.browserId, visible, live, narrow]);
+  const placeView = useCallback(
+    (box: DOMRect | null) => {
+      void bridge?.place(tab.browserId, box ? viewIn(box, narrow) : null).catch(() => {});
+    },
+    [bridge, tab.browserId, narrow],
+  );
+  const { picture, still } = usePageStill(bridge, tab.browserId, visible && live, area, placeView);
 
   // A page's new tab gives its page the focus once that page is live on screen.
   const pages = tabs?.pages;
@@ -142,8 +129,6 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       focusPageWhenLive(bridge, tab.browserId);
   }, [bridge, pages, tab.browserId, visible, live]);
 
-  // While the app covers the page, a picture of it stands in for the view.
-  const { picture, still } = usePageStill(bridge, tab.browserId, visible && live, area);
   // The pictures lie where the view lay: all the place, or its chosen width in the middle.
   const pictureAt = picture
     ? (() => {
@@ -166,6 +151,19 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
     if (!bridge || !element) return;
     const tabId = tab.browserId;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      if (event.key === 'Tab') {
+        if (!live || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey) return;
+        // The DOM handles Tab between the head and its action rows. Only the last button
+        // before the native page needs to pass focus across the view boundary.
+        const actions = element.querySelectorAll<HTMLButtonElement>(
+          '[data-browser-line="permission"] button:enabled, [data-browser-line="download"] button:enabled',
+        );
+        if (event.target === (actions.item(actions.length - 1) ?? more.current)) {
+          event.preventDefault();
+          focusPageWhenLive(bridge, tabId);
+        }
+        return;
+      }
       // The annotation mode's shortcut is heard only here, in its tab (browser-annotate.md 켜고
       // 끄기); a page's press comes back from the desktop with its tab.
       if (shortcutFor(event)?.id === 'browser.annotate') {
@@ -184,7 +182,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
     };
     element.addEventListener('keydown', onKeyDown);
     return () => element.removeEventListener('keydown', onKeyDown);
-  }, [bridge, tab.browserId]);
+  }, [bridge, tab.browserId, live]);
 
   if (!tabs) return null;
   const tabId = tab.browserId;
@@ -224,15 +222,6 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       () => {},
     );
   };
-  // ⋯ is the head's last stop: Tab goes on into a live page.
-  const intoPage = (event: KeyboardEvent) => {
-    if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
-      return;
-    if (!live) return;
-    event.preventDefault();
-    focusPageWhenLive(b, tabId);
-  };
-
   return (
     <div
       ref={root}
@@ -328,9 +317,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
         <Menu>
           <Tooltip content={t('more')}>
             <MenuTrigger
-              render={
-                <Button size="icon" variant="ghost" aria-label={t('more')} onKeyDown={intoPage} />
-              }
+              render={<Button ref={more} size="icon" variant="ghost" aria-label={t('more')} />}
             >
               <Ellipsis />
             </MenuTrigger>

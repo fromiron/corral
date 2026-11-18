@@ -146,15 +146,26 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     const rect = element.getBoundingClientRect();
     return { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
   };
-  const visiblePart = (element: Element) => {
-    const rect = element.getBoundingClientRect();
-    const left = Math.max(0, rect.left);
-    const top = Math.max(0, rect.top);
-    const right = Math.min(innerWidth, rect.right);
-    const bottom = Math.min(innerHeight, rect.bottom);
-    return right > left && bottom > top
-      ? { x: left, y: top, width: right - left, height: bottom - top }
-      : null;
+  // Only picks and sends need a crop. Chromium intersects the viewport and the element's
+  // clipping ancestors, including nested scrollports, in the page's CSS pixels.
+  const visiblePart = (element: Element) =>
+    new Promise<AnnotateRect | null>((resolve) => {
+      const observer = new IntersectionObserver(([entry]) => {
+        observer.disconnect();
+        const rect = entry?.intersectionRect;
+        resolve(
+          rect && rect.width > 0 && rect.height > 0
+            ? { x: rect.x, y: rect.y, width: rect.width, height: rect.height }
+            : null,
+        );
+      });
+      observer.observe(element);
+    });
+  const inViewport = (element: Element) => {
+    const { left, top, right, bottom, width, height } = element.getBoundingClientRect();
+    return (
+      width > 0 && height > 0 && right > 0 && bottom > 0 && left < innerWidth && top < innerHeight
+    );
   };
   const pickable = (element: Element | null | undefined): element is Element =>
     (element instanceof HTMLElement || element instanceof SVGElement) &&
@@ -162,7 +173,7 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     element !== document.body &&
     element !== document.documentElement &&
     !FRAMES.has(element.localName.toLowerCase()) &&
-    visiblePart(element) !== null &&
+    inViewport(element) &&
     getComputedStyle(element).visibility !== 'hidden';
 
   const visibleText = (root: Element, limit: number, nodes: number) => {
@@ -326,9 +337,7 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     }
     return [':root', ...parts].join(' > ');
   };
-  const read = (element: Element, pickId: string) => {
-    const part = visiblePart(element);
-    if (!part) return null;
+  const read = (element: Element, pickId: string, part: AnnotateRect) => {
     const computed = getComputedStyle(element);
     const styles: Record<string, string> = {};
     for (const name of PROPERTIES) styles[name] = computed.getPropertyValue(name).slice(0, 200);
@@ -408,11 +417,13 @@ function agent(op: string, args: Record<string, unknown>): unknown {
           : null
         : pointed(args.x as number, args.y as number);
       if (!element) return null;
-      const result = read(element, args.pickId as string);
-      if (!result) return null;
-      state.picks.set(args.pickId as string, element);
-      state.outline = element;
-      return result;
+      const pickId = args.pickId as string;
+      return visiblePart(element).then((part) => {
+        if (!part) return null;
+        state.picks.set(pickId, element);
+        state.outline = element;
+        return read(element, pickId, part);
+      });
     }
     case 'walk': {
       if (!pickable(state.outline)) {
@@ -485,11 +496,11 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     }
     case 'shot': {
       const element = live(args.pickId as string);
-      const part = element && visiblePart(element);
-      const selector = element && part ? ruleSelector(element) : null;
-      return element && part && selector
-        ? { bounds: part, safe: shotSafe(element, part), selector }
-        : null;
+      if (!element) return null;
+      return visiblePart(element).then((part) => {
+        const selector = part && ruleSelector(element);
+        return part && selector ? { bounds: part, safe: shotSafe(element, part), selector } : null;
+      });
     }
     case 'release':
       state.picks.delete(args.pickId as string);

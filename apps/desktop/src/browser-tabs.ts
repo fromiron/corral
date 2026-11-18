@@ -259,7 +259,12 @@ export class BrowserTabs {
       throw new Error('This browser tab holds another kind of page');
     tab ??= this.newTab(tabId, 'page', project, null);
     const contents = tab.contents ?? this.attach(tab, this.pageView(project));
-    this.show(tab, url);
+    // A typed address may stop or turn into a download without replacing the current document.
+    // Publish the new address only on did-navigate or a main-frame failure.
+    if (tab.page === 'none' || tab.page === 'closed-itself') {
+      tab.title = null;
+      this.show(tab, null);
+    }
     void contents.loadURL(url).catch(() => {
       // A failed load arrives as did-fail-load.
     });
@@ -895,7 +900,7 @@ export class BrowserTabs {
       if (!unfinished(download) && download.shownOn === null) this.transfers.delete(id);
   }
 
-  private show(tab: Tab, url: string) {
+  private show(tab: Tab, url: string | null) {
     tab.page = 'live';
     tab.url = url;
     tab.failure = null;
@@ -955,6 +960,10 @@ export class BrowserTabs {
     contents.on('did-stop-loading', () => {
       if (!live()) return;
       tab.loading = false;
+      if (tab.kind === 'page' && !tab.popup && tab.page === 'live' && tab.url === null) {
+        tab.page = 'none';
+        this.apply(tab);
+      }
       this.emit(tab);
     });
     contents.on('did-start-navigation', (details) => {
@@ -965,7 +974,6 @@ export class BrowserTabs {
       }
       if (!details.isMainFrame || details.isSameDocument) return;
       // A move ends what the old page was asking for, unanswered and unremembered.
-      tab.challenge = null;
       this.endAsks(tab);
       this.endLogins(tab);
       if (tab.blocked && tab.lease && previewRequestAllowed(tab.lease.target, details.url)) {
@@ -975,6 +983,7 @@ export class BrowserTabs {
     });
     contents.on('did-navigate', (_event, url) => {
       if (!live()) return;
+      tab.challenge = null;
       tab.page = 'live';
       tab.failure = null;
       tab.url = url;
@@ -1001,7 +1010,7 @@ export class BrowserTabs {
       if (!live() || !isMainFrame) return;
       const kind = loadFailure(code);
       if (!kind) return;
-      const challenge = tab.challenge?.url === url ? tab.challenge : null;
+      const challenge = kind === 'certificate' && tab.challenge?.url === url ? tab.challenge : null;
       if (!challenge?.id) tab.challenge = null;
       tab.failure = {
         kind,

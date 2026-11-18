@@ -103,25 +103,28 @@ export interface StyleChange {
   after: string;
 }
 
-export interface AnnotateSubmit {
-  /** The overlay's own name for this note; a resend under the same command uses the same one. */
-  noteId: string;
-  pickId: string;
-  /** "보내기" (straight to the conversation) or "담기" (into the composer's chips). */
-  intent: 'send' | 'add';
-  /** At most 4,000 characters. */
-  text: string;
-  styles: StyleChange[];
-  /** Take the element's screenshot at this moment (refused with input fields or past the limit). */
-  screenshot: boolean;
-  /** Preview pages only: the last 20 console messages since the mode or the page began. */
-  console: boolean;
-  /**
-   * Passed through to the app page as given (the send key's meaning, a resend): JSON, at most
-   * 16 KiB. Main does not read it.
-   */
-  extra: unknown;
-}
+export type AnnotateSubmit =
+  /** Recover the original command without reading or capturing the page again. */
+  | { intent: 'retry'; noteId: string }
+  | {
+      /** The overlay's own name for this note; a resend under the same command uses the same one. */
+      noteId: string;
+      pickId: string;
+      /** "보내기" (straight to the conversation) or "담기" (into the composer's chips). */
+      intent: 'send' | 'add';
+      /** At most 4,000 characters. */
+      text: string;
+      styles: StyleChange[];
+      /** Take the element's screenshot at this moment (refused with input fields or past the limit). */
+      screenshot: boolean;
+      /** Preview pages only: the last 20 console messages since the mode or the page began. */
+      console: boolean;
+      /**
+       * Passed through to the app page as given (the send key's meaning): JSON, at most
+       * 16 KiB. Main does not read it.
+       */
+      extra: unknown;
+    };
 
 export type AnnotateSubmitResult =
   /** The app page's answer, passed through as it gave it (accepted, refused, unconfirmed, added). */

@@ -133,7 +133,7 @@ flowchart LR
 
 - 읽기/질문 Run은 고정 입력·tree snapshot을 읽는다. writer가 바꾸는 mutable 파일을 중간 상태로 읽지 않는다.
 - writer 판정은 최종 허용 도구·native extension·shell/service capability로 한다. 자연어 요청이나 셸 명령 추측으로 read-only를 선언하지 않는다.
-- 서로 다른 worktree의 writer는 병행할 수 있다. 공유를 허용하지 않는 서버에서는 같은 worktree에 writer owner가 하나이고, 로컬 host는 [공유 개발 모드](workbench.md#공유-개발-모드)로 사본을 나눠 쓴다. 같은 원본에 대한 merge/review apply에는 별도 원본 저장소 잠금을 적용한다.
+- 서로 다른 worktree의 writer는 병행할 수 있다. 공유를 허용하지 않는 서버에서는 같은 worktree에 writer owner가 하나이고, 로컬 host는 [공유 개발 모드](workbench.md#공유-개발-모드)로 사본을 사람의 작업과 나눠 쓰되 writer Run은 그곳에서도 하나다. 같은 원본에 대한 merge/review apply에는 별도 원본 저장소 잠금을 적용한다.
 - 읽기 Run의 사후 writer 승격은 하지 않는다. 수정 요청은 명시한 새 writer Run으로 시작한다. 이렇게 해야 이미 부여한 읽기/권한을 소급 변경하지 않는다.
 - 시작 검사는 `startRunWithRecovery`, `startRefusal`, auto team, explain, queue, CLI, 예약의 모든 입구에서 같은 admission을 쓴다. 사본 잠금 획득과 실행 예약 사이의 경합을 막는다.
 - host 전체의 모델 요청·resident worker·process 수 상한과 Run별 상한을 함께 적용한다. 현재 Run별 `acquireSlot`만 두면 Run 수만큼 총량이 늘어난다. 공정한 대기와 취소 시 슬롯 반환을 검증한다.
@@ -259,7 +259,7 @@ flowchart LR
 | ABS-03 | 읽은 파일에 PUT/CUT/REM/MV | tag 충돌·stale·unseen line·타 실행 근거·목적지 충돌·부분 쓰기 |
 | ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용, 미리보기 페이지에서 일반 페이지로 lease 머리글·저장소가 넘어감, 모델의 browser 도구가 프로젝트의 브라우저 저장소를 봄 |
 | ABS-05 | 네 소스 import→프로필 선택→payload 확인 | credential 노출/실행 참조 실행, 충돌 overwrite, metadata를 capability로 오인 |
-| ABS-06 | reader+writer+다른 사본 writer 병행 | 공유를 허용하지 않는 서버에서 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
+| ABS-06 | reader+writer+다른 사본 writer 병행 | 로컬 host에서 같은 사본의 두 번째 writer Run, 공유를 허용하지 않는 서버에서 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
 | ABS-07 | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |
 | ABS-08 | 일정 발화 1회→Run→승인→재열람 | 중복 tick/reconnect, DST 중복, 숨은 catch-up, 비활성화 후 늦은 시작 |
 | ABS-09 | clone→연결→명시 자료 참조 | 기존 폴더 덮기, 자동 신뢰/commit, 지침 자동 권한 상승, 과거 context 변경 |

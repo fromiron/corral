@@ -290,8 +290,26 @@ it('살아 있는 터미널의 탭이 도크에 있다 → 패널의 "+" → 터
   expect(server(world).created).toEqual([]);
 });
 
-it('실행이 진행 중이고 살아 있는 터미널이 없다 → 패널 목록의 터미널은 까닭을 둘째 줄로 보이는 쓸 수 없는 줄이고, 고르면 아무 일도 없다', async () => {
+it('공유 개발 모드에서 실행 중에 패널의 터미널을 고르면 새 터미널이 열린다', async () => {
+  const world = await serverWorld({ terminals: [] });
+  world.services.sharedDevelopment = true;
+  const runId = await world.startRun();
+  await world.working(runId, 1);
+  await open(world, `/sessions/${world.sessionId}?panel=files`);
+  await until(() => panelSelected() === W.files);
+  await press(panelPlus());
+  await until(() => Boolean(menuRow(W.terminalRow)));
+  const row = menuRow(W.terminalRow);
+  expect(row?.getAttribute('aria-disabled')).not.toBe('true');
+  await press(row);
+  await until(() => panelSelected() === W.terminal(1));
+  expect(panelSelected()).toBe(W.terminal(1));
+  expect(server(world).created).toEqual(['bash']);
+});
+
+it('단독 쓰기 서버에서 실행이 진행 중이고 살아 있는 터미널이 없다 → 패널 목록의 터미널은 까닭을 둘째 줄로 보이는 쓸 수 없는 줄이고, 고르면 아무 일도 없다', async () => {
   const world = await createShellWorld({ server: { terminals: [] }, folder: true });
+  world.services.sharedDevelopment = false;
   const runId = await world.startRun();
   await world.working(runId, 1);
   window.localStorage.setItem(

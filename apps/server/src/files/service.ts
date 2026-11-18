@@ -32,6 +32,7 @@ import {
   type CheckpointRestore,
   type CheckpointRestorePlan,
   type Clock,
+  type CommandError,
   type CommandExecution,
   CommandPlan,
   CommandReport,
@@ -5982,15 +5983,22 @@ export class WorkspaceService implements FileTools {
    * writes it and no owner is unconfirmed; a server without sharing needs no writer at all.
    */
   hasUnsafeWorktreeOwner(sessionId: string): boolean {
+    return this.unsafeWorktreeOwner(sessionId) !== undefined;
+  }
+
+  /** What holds the copy against a restore, as a refusal names it (api-contract.md 오류). */
+  unsafeWorktreeOwner(sessionId: string): CommandError['owner'] {
     const key = this.worktreeScope(sessionId);
-    if (key === null) return false;
-    if (!this.allowSharedDevelopment) return this.runAccess.writerAt(key) !== undefined;
-    return this.runAccess
-      .ownersAt(key)
-      .some(
-        (owner) =>
-          owner.state === 'uncertain' || (owner.owner_kind === 'run' && owner.writer === 1),
-      );
+    if (key === null) return undefined;
+    const held = !this.allowSharedDevelopment
+      ? this.runAccess.writerAt(key)
+      : this.runAccess
+          .ownersAt(key)
+          .find(
+            (owner) =>
+              owner.state === 'uncertain' || (owner.owner_kind === 'run' && owner.writer === 1),
+          );
+    return held ? this.workspaceAccess.holder(held) : undefined;
   }
 
   prepareRun(runId: string): Promise<void> {

@@ -25,7 +25,7 @@ const material: AnnotationMaterial = {
   screenshot: null,
 };
 
-function harness() {
+function harness(intent: 'next' | 'queue' = 'next') {
   const started: { commandId: string; choice?: unknown }[] = [];
   const answers: (() => Promise<unknown>)[] = [];
   const startAuto = vi.fn(async (request: { commandId: string; choice?: unknown }) => {
@@ -56,9 +56,13 @@ function harness() {
     live: true,
     startAuto,
     transport: { sendCommand: vi.fn() },
-    repository: { addSessionEntry: vi.fn(async () => ({ ok: true, session })) },
+    repository: {
+      getSession: vi.fn(async () => session),
+      addSessionEntry: vi.fn(async () => ({ ok: true, session })),
+    },
     workspaces: { uploadImage },
   };
+  const advisorConfirmed = vi.fn(async () => true);
   const deps = (): NoteSendDeps =>
     ({
       services,
@@ -78,19 +82,20 @@ function harness() {
         invalidate: async () => {},
         onChange: () => {},
       }),
-      how: () => ({ intent: 'next', delivery: null }),
+      how: () => ({ intent, delivery: null }),
       unavailable: () => false,
       steerTarget: () => '',
       permissionMode: () => undefined,
-      advisorConfirmed: async () => true,
+      advisorConfirmed,
       refusalText: (kind: string) => `refusal:${kind}`,
       advisorUnconfirmed: 'advisor',
       imageFailed: 'image failed',
       imageLimit: 'image limit',
-      lostNote: 'lost note',
     }) as unknown as NoteSendDeps;
   return {
     sender: createNoteSender(deps),
+    advisorConfirmed,
+    repository: services.repository,
     started,
     answers,
     uploadImage,
@@ -107,26 +112,69 @@ describe('a note sent at once', () => {
   it('"다시 보내기" after the settings changed goes under the same command, with the settings it first went with', async () => {
     const h = harness();
     h.answers.push(lost());
-    const request = { noteId: 'note_1', material, via: 'send' as const, again: false };
+    const request = { noteId: 'note_1', material, via: 'send' as const, again: false as const };
     expect(await h.sender.sendNote(request)).toEqual({ kind: 'unconfirmed' });
     h.choose('model-b');
-    expect(await h.sender.sendNote({ ...request, again: true })).toEqual({ kind: 'accepted' });
+    h.advisorConfirmed.mockResolvedValue(false);
+    expect(await h.sender.sendNote({ noteId: request.noteId, again: true })).toEqual({
+      kind: 'accepted',
+    });
     expect(h.started).toHaveLength(2);
     expect(h.started[1]?.commandId).toBe(h.started[0]?.commandId);
     expect(h.started[1]?.choice).toEqual(h.started[0]?.choice);
   });
 
+  it('ends recovery on a confirmed refusal and assigns a fresh ID only to the edited note', async () => {
+    const h = harness();
+    h.answers.push(lost(), async () => ({
+      runId: null,
+      receipt: { error: { code: 'LIMIT_REACHED', message: 'Limit' } },
+    }));
+    const request = { noteId: 'note', material, via: 'button', again: false } as const;
+    expect((await h.sender.sendNote(request)).kind).toBe('unconfirmed');
+    expect((await h.sender.sendNote({ noteId: request.noteId, again: true })).kind).toBe('refused');
+    expect(
+      (await h.sender.sendNote({ ...request, material: { ...material, note: 'Edited' } })).kind,
+    ).toBe('accepted');
+    expect(h.started[1]?.commandId).toBe(h.started[0]?.commandId);
+    expect(h.started[2]?.commandId).not.toBe(h.started[0]?.commandId);
+  });
+
+  it('recovers a queued note whose lost receipt arrives after the entry has started', async () => {
+    const h = harness('queue');
+    h.repository.addSessionEntry.mockRejectedValueOnce(new TypeError('response lost'));
+    const first = await h.sender.sendNote({
+      noteId: 'queue-1',
+      material,
+      via: 'queue',
+      again: false,
+    });
+    expect(first.kind).toBe('unconfirmed');
+    const calls = h.repository.addSessionEntry.mock.calls as unknown as [
+      string,
+      { commandId: string },
+    ][];
+    const commandId = calls[0]?.[1].commandId;
+    expect(commandId).toEqual(expect.any(String));
+    h.repository.getSession.mockResolvedValueOnce({
+      entries: [{ commandId, intent: 'queue', state: 'started', runId: 'already-started' }],
+    } as never);
+    expect(await h.sender.sendNote({ noteId: 'queue-1', again: true })).toEqual({
+      kind: 'accepted',
+    });
+    expect(h.repository.addSessionEntry).toHaveBeenCalledTimes(1);
+  });
+
   it('"다시 보내기" with no command kept for the note sends nothing, never under a new command (반례)', async () => {
     const h = harness();
-    const request = { noteId: 'note_1', material, via: 'send' as const, again: true };
-    expect(await h.sender.sendNote(request)).toEqual({ kind: 'refused', reason: 'lost note' });
-    // A closed note forgets its command: sent again, it is the same refusal.
+    const request = { noteId: 'note_1', material, via: 'send' as const, again: true as const };
+    expect(await h.sender.sendNote(request)).toEqual({ kind: 'unconfirmed' });
+    // A closed note forgets its command and a late retry stays unconfirmed.
     h.answers.push(lost());
     await h.sender.sendNote({ ...request, noteId: 'note_2', again: false });
     h.sender.forgetNote('note_2');
     expect(await h.sender.sendNote({ ...request, noteId: 'note_2' })).toEqual({
-      kind: 'refused',
-      reason: 'lost note',
+      kind: 'unconfirmed',
     });
     expect(h.started).toHaveLength(1);
     expect(h.uploadImage).not.toHaveBeenCalled();

@@ -409,7 +409,6 @@ function SessionComposer({
     advisorUnconfirmed: tc('advisor.unconfirmedSend'),
     imageFailed: tc('imageFailed'),
     imageLimit: tBrowser('noteImageLimit'),
-    lostNote: tAnnotate('announce.unconfirmed'),
   });
   const collector = useNoteCollector({
     services,

@@ -497,17 +497,20 @@ const note = (pickId: string, overrides: Record<string, unknown> = {}) => ({
 });
 
 it("a send: re-checked, its screenshot taken, the material to the app page, and the app's answer back", async () => {
-  const { f, page, call, app } = await annotated();
+  const bounds = { x: 20.25, y: 30.25, width: 120, height: 32 };
+  const { f, page, call, app } = await annotated({
+    shot: () => ({ bounds, safe: true, selector: ':root > :nth-child(2) > :nth-child(1)' }),
+  });
   page.zoomFactor = 1.5;
   const png = Buffer.from('a-small-png');
-  page.capturePage.mockResolvedValueOnce(fakeImage(180, 48, png) as never);
+  page.capturePage.mockResolvedValueOnce(fakeImage(179, 47, png) as never);
   const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
   f.advance(5000);
   const sending = call('submit', note(pick.pickId));
   await flush();
   await flush();
-  // The element's part, in the page view's DIP.
-  expect(page.capturePage).toHaveBeenLastCalledWith({ x: 30, y: 45, width: 180, height: 48 });
+  // Only whole DIP inside the crop, even when the clipped edges fall between pixels.
+  expect(page.capturePage).toHaveBeenLastCalledWith({ x: 31, y: 46, width: 179, height: 47 });
   const [submitted] = app('annotate-submit');
   expect(submitted).toEqual({
     type: 'annotate-submit',
@@ -526,15 +529,15 @@ it("a send: re-checked, its screenshot taken, the material to the app page, and 
         tag: 'button',
         // The name tag as the overlay showed it.
         label: 'button.pay 120×32',
-        bounds: { x: 20, y: 30, width: 120, height: 32 },
+        bounds,
       }),
       styles: [{ property: 'font-size', before: '14px', after: '18px' }],
       console: null,
       screenshot: {
         mime: 'image/png',
         data: png.toString('base64'),
-        width: 180,
-        height: 48,
+        width: 179,
+        height: 47,
         sha256: createHash('sha256').update(png).digest('hex'),
       },
     },
@@ -622,6 +625,33 @@ it('a send that would be wrong is refused before it leaves: changed, not visible
   f.advance(1000);
   expect(await busy).toEqual({ kind: 'page-busy' });
   expect(app('annotate-submit')).toEqual([]);
+});
+
+it('resends the note after a lost receipt without reading the element or capturing it again', async () => {
+  const { f, page, calls, call, app } = await annotated();
+  const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  const first = call('submit', note(pick.pickId));
+  await flush();
+  const submitted = app('annotate-submit')[0];
+  if (submitted?.type !== 'annotate-submit') throw new Error('No submit');
+  f.tabs.answerAnnotate('tab-a', submitted.submitId, { kind: 'unconfirmed' });
+  await first;
+  const reads = calls.length;
+  const retry = call('submit', { noteId: 'note-1', intent: 'retry' });
+  await flush();
+  const retried = app('annotate-submit')[1];
+  expect(retried).toEqual({
+    type: 'annotate-submit',
+    tabId: 'tab-a',
+    submitId: expect.any(String),
+    noteId: 'note-1',
+    intent: 'retry',
+  });
+  expect(calls).toHaveLength(reads);
+  expect(page.capturePage).toHaveBeenCalledTimes(1);
+  if (retried?.type !== 'annotate-submit') throw new Error('No retry');
+  f.tabs.answerAnnotate('tab-a', retried.submitId, { kind: 'accepted' });
+  expect(await retry).toEqual({ kind: 'answered', outcome: { kind: 'accepted' } });
 });
 
 it('screenshot off: an element with input fields is sent without one', async () => {

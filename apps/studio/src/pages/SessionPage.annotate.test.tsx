@@ -344,9 +344,9 @@ async function sendNote(
       tabId: 'b_one',
       submitId,
       noteId,
-      intent: 'send',
-      material: made,
-      extra: { via: 'send', again: false, ...extra },
+      ...(extra.again
+        ? { intent: 'retry' }
+        : { intent: 'send', material: made, extra: { via: 'send', ...extra } }),
     } as never),
   );
 }
@@ -588,7 +588,7 @@ it('접수를 확인하지 못한 칸이 주석 모드의 끝으로 닫힌다 �
 
   await sendNote(bridge, 'submit_2', { again: true });
   await until(() => answerTo(bridge, 'submit_2') !== undefined);
-  expect(answerTo(bridge, 'submit_2')).toMatchObject({ kind: 'refused' });
+  expect(answerTo(bridge, 'submit_2')).toEqual({ kind: 'unconfirmed' });
   expect(sent.started).toHaveLength(1);
 });
 

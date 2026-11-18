@@ -19,8 +19,8 @@ type Holder = NonNullable<CommandError['owner']>;
 
 /**
  * Durable copy reservations for Runs and human effects. A server without sharing keeps one writer
- * per copy. A local host shares the copy (workbench.md 공유 개발 모드): owners hold it side by
- * side, and only an owner whose end was never confirmed keeps new ones out until it is settled.
+ * per copy. A local host shares the copy between human operations and one writing Run.
+ * An owner whose end was never confirmed keeps new owners out until it is settled.
  */
 export class WorkspaceAccessStore {
   private readonly db: Db;
@@ -102,7 +102,8 @@ export class WorkspaceAccessStore {
               VALUES(?,?,?,?,?,?,'active',?)`)
             .run(owner.kind, owner.id, sessionId, key, copyGeneration, Number(writer), tree);
         if (this.shares) {
-          const unsettled = this.ownersAt(key).find((access) => access.state === 'uncertain');
+          const owners = this.ownersAt(key);
+          const unsettled = owners.find((access) => access.state === 'uncertain');
           if (unsettled) {
             const holder = this.holder(unsettled);
             throw new ToolRefusal(
@@ -110,6 +111,17 @@ export class WorkspaceAccessStore {
               `${holder.kind === 'operation' ? holder.operationKind : holder.kind} ${holder.id} has not confirmed it ended; the working copy stays protected until it is settled`,
               holder,
             );
+          }
+          if (owner.kind === 'run' && writer) {
+            const writing = owners.find(
+              (access) => access.owner_kind === 'run' && access.writer === 1,
+            );
+            if (writing)
+              throw new ToolRefusal(
+                'RUN_ALREADY_ACTIVE',
+                `run ${writing.owner_id} is already writing this working copy`,
+                this.holder(writing),
+              );
           }
           // Each reader takes its own snapshot of the live copy as it starts.
           insert(null);

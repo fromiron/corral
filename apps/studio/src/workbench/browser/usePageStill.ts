@@ -6,7 +6,7 @@
 // wanted now, so a cover that ends before its picture comes never hides the view, and a hidden
 // view is always shown again. A picture the desktop cannot take (null), or a freeze a newer step
 // won (false), leaves the view live.
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { type RefObject, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import type { BrowserBridge, BrowserStill } from '../../../../desktop/src/browser-bridge.ts';
 import { pageHoldSwitch, watchCover } from './overlap.ts';
 
@@ -33,13 +33,14 @@ export function usePageStill(
   /** The tab is on screen with a live page. */
   active: boolean,
   place: RefObject<HTMLElement | null>,
+  placeView: (box: DOMRect | null) => void,
 ): PageStill {
   const [picture, setPicture] = useState<PageStill['picture']>(null);
   const [still, setStill] = useState(false);
   const covered = useRef(false);
   const run = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!bridge) return;
     let frozen = false;
     // The desktop gave no picture, or a newer step won: the view stays live until uncovered.
@@ -106,27 +107,33 @@ export function usePageStill(
     };
   }, [bridge, tabId, place]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const element = place.current;
     if (!bridge || !active || !element) {
+      placeView(null);
       if (covered.current) {
         covered.current = false;
         run.current?.();
       }
       return;
     }
-    const stop = watchCover(element, (now) => {
-      covered.current = now;
-      run.current?.();
-    });
+    const stop = watchCover(
+      element,
+      (now) => {
+        covered.current = now;
+        run.current?.();
+      },
+      placeView,
+    );
     return () => {
       stop();
+      placeView(null);
       if (covered.current) {
         covered.current = false;
         run.current?.();
       }
     };
-  }, [bridge, active, place]);
+  }, [bridge, active, place, placeView]);
 
   return { picture, still };
 }

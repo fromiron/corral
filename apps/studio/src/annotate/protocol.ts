@@ -31,8 +31,6 @@ export interface AnnotateContext {
 export interface AnnotateSubmitExtra {
   /** The key that sent it (composer-flow.md's three), or the button. */
   via: 'send' | 'interrupt' | 'queue' | 'button';
-  /** "다시 보내기": the same command again, with the ID the app page kept for this note. */
-  again: boolean;
 }
 
 /** The app page's answer to a submit (`answerAnnotate`'s outcome). */

@@ -320,6 +320,25 @@ it('a challenge is dropped when the tab moves on', () => {
   expect(f.tabs.proceedCertificate('tab-a', id)).toBe(false);
 });
 
+it('stopping before leaving a certificate error keeps that page and its open-anyway action', () => {
+  const f = setup();
+  const url = 'https://localhost:8443/';
+  f.tabs.navigate('tab-a', 'project_a', url);
+  const page = view(f, 0).webContents;
+  certificateError(page, url);
+  page.emit('did-fail-load', {}, -202, 'ERR_CERT_AUTHORITY_INVALID', url, true);
+  const id = f.last('tab-a')?.failure?.certificate?.challengeId;
+  expect(id).toBeTruthy();
+  const next = 'https://example.com/slow';
+  f.tabs.navigate('tab-a', 'project_a', next);
+  page.emit('did-start-navigation', { url: next, isMainFrame: true, isSameDocument: false });
+  f.tabs.stop('tab-a');
+  page.emit('did-stop-loading');
+  expect(f.last('tab-a')).toMatchObject({ page: 'failed', url });
+  expect(f.tabs.proceedCertificate('tab-a', id ?? '')).toBe(true);
+  expect(page.loadURL).toHaveBeenLastCalledWith(url);
+});
+
 function login(contents: FakeContents, url: string, isProxy = false) {
   const event = { preventDefault: vi.fn() };
   const callback = vi.fn();

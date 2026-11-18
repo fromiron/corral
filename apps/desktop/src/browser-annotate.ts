@@ -695,7 +695,11 @@ export class TabAnnotation {
     void this.read(mode, 'release', { pickId });
   }
 
-  private async submit(mode: Mode, raw: unknown): Promise<AnnotateSubmitResult> {
+  private readSubmit(raw: unknown) {
+    if (raw !== null && typeof raw === 'object' && 'intent' in raw && raw.intent === 'retry') {
+      const input = exact(raw, ['noteId', 'intent']);
+      return { noteId: id(input.noteId), intent: 'retry' } as const;
+    }
     const input = exact(raw, [
       'noteId',
       'pickId',
@@ -706,7 +710,6 @@ export class TabAnnotation {
       'console',
       'extra',
     ]);
-    const noteId = id(input.noteId);
     const pickId = id(input.pickId);
     if (input.intent !== 'send' && input.intent !== 'add')
       throw new Error('Invalid annotate request');
@@ -720,6 +723,21 @@ export class TabAnnotation {
     const wantConsole = input.console;
     const styles = this.styleChanges(input.styles);
     const extra = jsonWithin(input.extra ?? null, 16 * 1024);
+    return {
+      noteId: id(input.noteId),
+      pickId,
+      intent,
+      text,
+      styles,
+      wantShot,
+      wantConsole,
+      extra,
+    } as const;
+  }
+
+  private async submit(mode: Mode, raw: unknown): Promise<AnnotateSubmitResult> {
+    const note = this.readSubmit(raw);
+    const { noteId } = note;
     if ([...mode.submits].some((entry) => entry.noteId === noteId)) return { kind: 'cancelled' };
     let settle!: (result: AnnotateSubmitResult) => void;
     const answer = new Promise<AnnotateSubmitResult>((resolve) => {
@@ -737,7 +755,18 @@ export class TabAnnotation {
       },
     };
     mode.submits.add(submit);
-    void this.prepare(mode, submit, { pickId, intent, text, styles, wantShot, wantConsole, extra })
+    if (note.intent === 'retry') {
+      submit.submitId = this.host.id();
+      this.host.send({
+        type: 'annotate-submit',
+        tabId: this.host.tabId,
+        submitId: submit.submitId,
+        noteId,
+        intent: 'retry',
+      });
+      return answer;
+    }
+    void this.prepare(mode, submit, note)
       .then((result) => {
         if (result) submit.settle(result);
       })
@@ -809,11 +838,13 @@ export class TabAnnotation {
     if (note.wantShot) {
       if (!safe) return { kind: 'input-fields' };
       const zoom = page.getZoomFactor() || 1;
+      const x = Math.ceil(bounds.x * zoom);
+      const y = Math.ceil(bounds.y * zoom);
       const rect = {
-        x: Math.ceil(bounds.x * zoom),
-        y: Math.ceil(bounds.y * zoom),
-        width: Math.floor(bounds.width * zoom),
-        height: Math.floor(bounds.height * zoom),
+        x,
+        y,
+        width: Math.floor((bounds.x + bounds.width) * zoom) - x,
+        height: Math.floor((bounds.y + bounds.height) * zoom) - y,
       };
       if (rect.width < 1 || rect.height < 1) return { kind: 'not-visible' };
       if (rect.width > 2048 || rect.height > 2048) return { kind: 'image-limit' };

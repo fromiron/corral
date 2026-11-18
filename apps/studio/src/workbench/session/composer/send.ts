@@ -329,6 +329,8 @@ export interface SendInput {
   attachments: TextAttachment[];
   images: ImageAttachment[];
   permissionMode: PermissionMode | undefined;
+  /** A separate note can retry its queue entry after losing its receipt. */
+  queueCommandId?: string;
   /** The draft revision written when this send began. */
   revision: number;
 }
@@ -356,7 +358,7 @@ async function refused(
 
 /** Sends the composer's text as its intent says. */
 export async function sendRequest(deps: SendDeps, input: SendInput): Promise<SendOutcome> {
-  const { services, session, team, ownActive } = deps;
+  const { services, team, ownActive } = deps;
   const { body, intent, delivery, steerTarget, attachments, images, permissionMode } = input;
   const outcome: SendOutcome = { sent: false, lowered: false };
   // Pressing the same send again while it is in flight sends nothing more.
@@ -421,6 +423,7 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         intent,
         text: body,
         state: 'queued',
+        ...(input.queueCommandId ? { commandId: input.queueCommandId } : {}),
         // Started later, it carries what a new request sent now would (session-queue.ts).
         ...(input.references.length ? { references: input.references } : {}),
         ...(attachments.length ? { attachments } : {}),

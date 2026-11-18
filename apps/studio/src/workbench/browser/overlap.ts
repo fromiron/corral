@@ -60,14 +60,15 @@ function popupOver(place: Element): boolean {
   for (const portal of document.querySelectorAll('[data-base-ui-portal]'))
     for (const element of portal.querySelectorAll('[role], [data-slot]'))
       if (meets(element.getBoundingClientRect(), box)) return true;
-  const scrim = document.querySelector('[data-slot="side-panel-scrim"]');
+  // The drawer contains the page. Its own scrim dims the main area underneath the drawer.
+  if (place.closest('[data-slot="side-panel-side"]')) return false;
+  const frame = place.closest('[data-slot="side-panel-frame"]');
+  const scrim = frame?.querySelector('[data-slot="side-panel-scrim"]');
   return Boolean(scrim && meets(scrim.getBoundingClientRect(), box));
 }
 
-const sameBox = (a: Box | null, b: Box) =>
-  Boolean(
-    a && a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height,
-  );
+const sameBox = (a: Box, b: Box) =>
+  a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
 
 /** How long the place must stay put before a move counts as over. */
 const STILL_FOR_MS = 150;
@@ -85,11 +86,16 @@ const nextFrame = (run: () => void) => {
  * Watches one page's place while its tab is on screen with a live page, and says whether the
  * page is covered now. Returns the stop.
  */
-export function watchCover(place: HTMLElement, onChange: (covered: boolean) => void): () => void {
+export function watchCover(
+  place: HTMLElement,
+  onChange: (covered: boolean) => void,
+  onBounds: (box: DOMRect) => void,
+): () => void {
   let covered = false;
   let popup = false;
   let moving = false;
-  let lastBox: Box | null = place.getBoundingClientRect();
+  let lastBox = place.getBoundingClientRect();
+  onBounds(lastBox);
   let movedAt = 0;
   let stopFrame: (() => void) | null = null;
   const tell = () => {
@@ -103,11 +109,18 @@ export function watchCover(place: HTMLElement, onChange: (covered: boolean) => v
     tell();
   };
   // A move: covered at once, and released once the place has kept its box a while.
-  const follow = () => {
+  const measureMove = () => {
     const box = place.getBoundingClientRect();
-    if (!sameBox(lastBox, box)) {
-      lastBox = box;
+    if (sameBox(lastBox, box)) return false;
+    lastBox = box;
+    onBounds(box);
+    return true;
+  };
+  const follow = () => {
+    if (measureMove()) {
       movedAt = performance.now();
+      moving = true;
+      tell();
     }
     if (performance.now() - movedAt < STILL_FOR_MS) {
       stopFrame = nextFrame(follow);
@@ -125,20 +138,18 @@ export function watchCover(place: HTMLElement, onChange: (covered: boolean) => v
     }
     if (!stopFrame) stopFrame = nextFrame(follow);
   };
-  // The size observer's first word is the size it starts with: not a move.
-  let sized = false;
   const resized = () => {
-    const box = place.getBoundingClientRect();
-    if (!sized) {
-      sized = true;
-      lastBox = box;
-      return;
-    }
-    if (!sameBox(lastBox, box)) moved();
+    if (measureMove()) moved();
   };
   const sizes = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(resized);
   sizes?.observe(place);
-  window.addEventListener('resize', moved);
+  // A window resize can change the host zoom even when the page keeps its CSS dimensions.
+  const windowResized = () => {
+    lastBox = place.getBoundingClientRect();
+    onBounds(lastBox);
+    moved();
+  };
+  window.addEventListener('resize', windowResized);
 
   // Popups come and go as the body's portals; each portal's own changes move its popup.
   const portalWatch = new Map<Element, MutationObserver>();
@@ -168,6 +179,12 @@ export function watchCover(place: HTMLElement, onChange: (covered: boolean) => v
     attributes: true,
     attributeFilter: ['data-presentation'],
   });
+  // On reopening a drawer its presentation already changed before this watch began. Its slide
+  // changes only position, so sample the entry once through the same settling window.
+  if (frame?.getAttribute('data-presentation') === 'drawer') {
+    movedAt = performance.now();
+    stopFrame = nextFrame(follow);
+  }
 
   holdListeners.add(tell);
   syncPortals();
@@ -175,7 +192,7 @@ export function watchCover(place: HTMLElement, onChange: (covered: boolean) => v
   return () => {
     holdListeners.delete(tell);
     sizes?.disconnect();
-    window.removeEventListener('resize', moved);
+    window.removeEventListener('resize', windowResized);
     body.disconnect();
     for (const observer of portalWatch.values()) observer.disconnect();
     portalWatch.clear();

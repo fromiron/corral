@@ -631,6 +631,35 @@ it('⋯에서 Tab을 누른다 → 포커스가 페이지로 들어간다; Shift
   expect(bridge.callsTo('focus')).toEqual([['b_one']]);
 });
 
+it('권한 요청과 내려받기가 함께 있으면 Tab은 두 줄의 버튼을 모두 지난 뒤 페이지로 들어간다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => {
+    bridge.emit({
+      type: 'permission',
+      tabId: 'b_one',
+      requestId: 'camera',
+      origin: 'https://a.example',
+      permissions: ['camera'],
+    });
+    bridge.emit({ type: 'download', download: download({}) });
+  });
+
+  const actions = [
+    ...(side()?.querySelectorAll<HTMLButtonElement>('[data-browser-line] button') ?? []),
+  ];
+  expect(actions.map((button) => button.textContent)).toEqual([B.allow, B.deny, B.cancel]);
+  // The DOM handles each intermediate Tab and every Shift+Tab. Only the last forward Tab
+  // needs the desktop bridge to move the focus into the native page.
+  for (const button of [more(), ...actions.slice(0, -1)])
+    expect((await keydown(button, { key: 'Tab' })).prevented).toBe(false);
+  const last = actions.at(-1) ?? null;
+  expect((await keydown(last, { key: 'Tab', shiftKey: true })).prevented).toBe(false);
+  expect(bridge.callsTo('focus')).toEqual([]);
+  expect((await keydown(last, { key: 'Tab' })).prevented).toBe(true);
+  expect(bridge.callsTo('focus')).toEqual([['b_one']]);
+});
+
 it('일반 페이지가 연 새 창의 탭이 선택된다 → 포커스는 그 페이지로 간다', async () => {
   const bridge = createFakeBrowserBridge();
   const { at } = await livePage(bridge);
@@ -675,7 +704,7 @@ it('서랍에 브라우저 탭이 떠 있다 → 페이지에서 Shift+Escape �
 
 const PLACE = { left: 600, top: 100, width: 600, height: 700 };
 /** Boxes as a browser would give them: the page's place, and popups over it (or far from it). */
-function layOut(popups: 'over' | 'far' = 'over') {
+function layOut(popups: 'over' | 'far' = 'over', pageLeft = () => PLACE.left) {
   const original = Element.prototype.getBoundingClientRect;
   const box = (left: number, top: number, width: number, height: number) =>
     ({
@@ -691,7 +720,8 @@ function layOut(popups: 'over' | 'far' = 'over') {
     }) as DOMRect;
   Element.prototype.getBoundingClientRect = function (this: Element) {
     if (this.matches('[data-slot="browser-page"]'))
-      return box(PLACE.left, PLACE.top, PLACE.width, PLACE.height);
+      return box(pageLeft(), PLACE.top, PLACE.width, PLACE.height);
+    if (this.matches('[data-slot="side-panel-scrim"]')) return box(0, 0, 1400, 900);
     // Tooltips stand beside their control, here off the page; menus and dialogs lie over it.
     const tooltip = this.closest('[role="tooltip"]') || this.querySelector('[role="tooltip"]');
     if (this.closest('[data-base-ui-portal]'))
@@ -722,6 +752,51 @@ async function wait(ms: number) {
     await new Promise((resolve) => setTimeout(resolve, ms));
   });
 }
+
+async function reopenAsDrawer(shell: MountedShell) {
+  await shell.setWidth(NARROW);
+  expect(side()?.dataset.presentation).toBe('withdrawn');
+  const toggle = document.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.SessionPanel.toggle}"]`,
+  );
+  await act(async () => toggle?.click());
+  expect(side()?.dataset.presentation).toBe('drawer');
+}
+
+it('서랍 뒤의 어둠은 페이지를 가리지 않고, 서랍 안의 메뉴를 열고 닫으면 살아 있는 페이지가 돌아온다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  const { shell } = await livePage(bridge);
+  await reopenAsDrawer(shell);
+  await wait(250);
+  expect(picture()).toBeNull();
+
+  await openMore();
+  await until(() => Boolean(picture()));
+  expect(picture()).not.toBeNull();
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => !picture());
+  expect(picture()).toBeNull();
+  expect(side()?.dataset.presentation).toBe('drawer');
+});
+
+it('다시 연 서랍이 같은 크기로 미끄러져 들어오면 네이티브 뷰는 멈춘 자리로 옮겨진다', async () => {
+  let left = 836;
+  layOut('far', () => left);
+  const bridge = createFakeBrowserBridge();
+  const { shell } = await livePage(bridge);
+  await reopenAsDrawer(shell);
+  const placement = (x: number) => [
+    'b_one',
+    { x, y: PLACE.top, width: PLACE.width, height: PLACE.height },
+  ];
+  expect(bridge.callsTo('place').at(-1)).toEqual(placement(left));
+  // A drawer slides with a transform; its page receives no resize notification.
+  left = 461;
+  await wait(350);
+  expect(bridge.callsTo('place').at(-1)).toEqual(placement(left));
+});
 
 it('살아 있는 페이지 위로 ⋯ 메뉴를 연다 → 페이지 자리는 그 순간의 그림이고(그림을 칠한 뒤 뷰를 숨긴다), Escape로 닫으면 살아 있는 뷰가 돌아오고 그림은 버린다', async () => {
   layOut();

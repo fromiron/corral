@@ -3,7 +3,9 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { AGENT_MISSING, agentCall, agentScript } from '../src/annotate-agent.ts';
 
 type Rect = [number, number, number, number];
+type ReportIntersection = (entries: { intersectionRect: DOMRect }[]) => void;
 const rects = new Map<Element, Rect>();
+const intersections = new Map<Element, Rect>();
 let atPoint: (x: number, y: number) => Element | null = () => null;
 
 beforeEach(() => {
@@ -26,6 +28,22 @@ beforeEach(() => {
     const [x, y, width, height] = rects.get(this) ?? [0, 0, 0, 0];
     return new DOMRect(x, y, width, height);
   });
+  // jsdom has no layout engine. These rectangles are the browser's painted intersections.
+  vi.stubGlobal(
+    'IntersectionObserver',
+    class {
+      private readonly notify: ReportIntersection;
+      constructor(notify: ReportIntersection) {
+        this.notify = notify;
+      }
+      observe(target: Element) {
+        const clip = intersections.get(target);
+        const intersectionRect = clip ? new DOMRect(...clip) : target.getBoundingClientRect();
+        queueMicrotask(() => this.notify([{ intersectionRect }]));
+      }
+      disconnect() {}
+    },
+  );
   (globalThis as { CSS?: unknown }).CSS = {
     supports: (property: string, value: string) =>
       value.startsWith('var(') ||
@@ -41,6 +59,8 @@ afterEach(() => {
   document.head.replaceChildren();
   document.body.replaceChildren();
   rects.clear();
+  intersections.clear();
+  vi.unstubAllGlobals();
   atPoint = () => null;
   delete (window as { __corralAnnotate?: unknown }).__corralAnnotate;
   delete (window as { __corralAnnotateAgent?: unknown }).__corralAnnotateAgent;
@@ -95,7 +115,7 @@ it('hover names the element under the pointer and refuses the page itself and fr
   expect(call('hover', { x: 1, y: 1 })).toBeNull();
 });
 
-it('a pick reads what a send carries, keeps the element by its id until released', () => {
+it('a pick reads what a send carries, keeps the element by its id until released', async () => {
   page(
     '<form id="f" class="checkout"><label>Card <input id="card" value="4111 1111"></label><textarea>note-secret</textarea><b>Total</b></form><p id="other">Other</p>',
     {
@@ -106,7 +126,7 @@ it('a pick reads what a send carries, keeps the element by its id until released
     },
   );
   atPoint = () => document.getElementById('f');
-  const pick = call('pick', { x: 5, y: 5, pickId: 'g1-p1' });
+  const pick = await call('pick', { x: 5, y: 5, pickId: 'g1-p1' });
   expect(pick).toMatchObject({
     pickId: 'g1-p1',
     label: 'form.checkout 400×200',
@@ -148,11 +168,11 @@ it('a pick reads what a send carries, keeps the element by its id until released
   });
   // A field elsewhere on screen over the element's part also stops the screenshot.
   atPoint = () => document.querySelector('b');
-  const bold = call('pick', { x: 12, y: 52, pickId: 'g1-p2' });
+  const bold = await call('pick', { x: 12, y: 52, pickId: 'g1-p2' });
   expect(bold.screenshotAllowed).toBe(false);
   // Moved below it: no longer over it.
   rects.set(document.getElementById('card') as Element, [10, 100, 200, 30]);
-  expect(call('shot', { pickId: 'g1-p2' })).toEqual({
+  expect(await call('shot', { pickId: 'g1-p2' })).toEqual({
     bounds: { x: 10, y: 50, width: 60, height: 20 },
     safe: true,
     selector: ':root > :nth-child(2) > :nth-child(1) > :nth-child(3)',
@@ -165,11 +185,32 @@ it('a pick reads what a send carries, keeps the element by its id until released
   expect(call('frame', { pointer: null, ids: ['g1-p1'] }).boxes['g1-p1']).toBeNull();
   // Gone from the page: no box, no shot.
   document.querySelector('b')?.remove();
-  expect(call('shot', { pickId: 'g1-p2' })).toBeNull();
-  expect(call('pick', { x: 1, y: 1, pickId: 'g1-p3' })).toBeNull();
+  expect(await call('shot', { pickId: 'g1-p2' })).toBeNull();
+  expect(await call('pick', { x: 1, y: 1, pickId: 'g1-p3' })).toBeNull();
 });
 
-it("fields Corral can't look into stop the screenshot too: a frame's, an open shadow root's", () => {
+it('only the portion visible through the scroller can be captured, checked again at send', async () => {
+  page('<section style="overflow:auto"><button>Item</button></section>', {
+    section: [16, 80, 200, 100],
+    button: [8, 68, 120, 30],
+  });
+  const button = document.querySelector('button');
+  if (!button) throw new Error('missing test button');
+  atPoint = () => button;
+  intersections.set(button, [16, 80, 112, 18]);
+  const pickId = 'item';
+  const pick = await call('pick', { x: 20, y: 85, pickId });
+  expect(pick.element.bounds).toEqual({ x: 16, y: 80, width: 112, height: 18 });
+  intersections.set(button, [16, 80, 112, 6]);
+  expect(await call('shot', { pickId })).toMatchObject({
+    bounds: { x: 16, y: 80, width: 112, height: 6 },
+    safe: true,
+  });
+  intersections.set(button, [0, 0, 0, 0]);
+  expect(await call('shot', { pickId })).toBeNull();
+});
+
+it("fields Corral can't look into stop the screenshot too: a frame's, an open shadow root's", async () => {
   page(
     '<section id="pay"><iframe id="card"></iframe></section><section id="host-box"><x-field id="host"></x-field></section><section id="plain"><input type="hidden" value="csrf">Plain</section>',
     {
@@ -184,17 +225,17 @@ it("fields Corral can't look into stop the screenshot too: a frame's, an open sh
   const inner = document.createElement('input');
   host.attachShadow({ mode: 'open' }).append(inner);
   rects.set(inner, [0, 200, 300, 40]);
-  const shot = (selector: string, pickId: string) => {
+  const shot = async (selector: string, pickId: string) => {
     atPoint = () => document.querySelector(selector);
-    return call('pick', { x: 1, y: 1, pickId }).screenshotAllowed;
+    return (await call('pick', { x: 1, y: 1, pickId })).screenshotAllowed;
   };
-  expect(shot('#pay', 'g1-p1')).toBe(false);
-  expect(shot('#host-box', 'g1-p2')).toBe(false);
+  expect(await shot('#pay', 'g1-p1')).toBe(false);
+  expect(await shot('#host-box', 'g1-p2')).toBe(false);
   // A hidden input shows nothing on screen.
-  expect(shot('#plain', 'g1-p3')).toBe(true);
+  expect(await shot('#plain', 'g1-p3')).toBe(true);
 });
 
-it('the keyboard walks parent, first child and siblings, skipping what cannot be picked', () => {
+it('the keyboard walks parent, first child and siblings, skipping what cannot be picked', async () => {
   page(
     '<section id="s"><div id="a"><span id="a1">a1</span></div><iframe id="frame"></iframe><div id="hidden"></div><div id="c">c</div></section>',
     {
@@ -224,7 +265,7 @@ it('the keyboard walks parent, first child and siblings, skipping what cannot be
   rects.set(document.getElementById('s') as Element, [0, 0, 800, 600]);
   expect(id(call('walk', { direction: 'up' }))).toBe('section');
   // Enter picks the outline.
-  expect(call('pick', { outline: true, pickId: 'g1-p1' })).toMatchObject({
+  expect(await call('pick', { outline: true, pickId: 'g1-p1' })).toMatchObject({
     label: 'section 800×600',
   });
 });
@@ -254,10 +295,10 @@ it('the keys move on from what the pointer last moved onto, and a still pointer 
   expect(call('walk', { direction: 'left' })).toBeNull();
 });
 
-it("the style view opens with the pick's values now and :root's colours and lengths from readable sheets, by name", () => {
+it("the style view opens with the pick's values now and :root's colours and lengths from readable sheets, by name", async () => {
   page('<p id="p">p</p>', { '#p': [0, 0, 100, 20] });
   atPoint = () => document.getElementById('p');
-  call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
+  await call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
   const style = document.createElement('style');
   style.textContent =
     ':root { --space-2: 8px; --brand: #0055ff; --font: Inter } @media (min-width: 1px) { :root { --accent: red } } .x { --not-root: 1px }';
@@ -297,12 +338,12 @@ it("the style view opens with the pick's values now and :root's colours and leng
   expect(call('inspect', { pickId: 'g1-p9' })).toBeNull();
 });
 
-it("a preview rule's selector matches the picked element alone; a value the page refuses is invalid", () => {
+it("a preview rule's selector matches the picked element alone; a value the page refuses is invalid", async () => {
   page('<ul><li>one</li><li class="two">two</li><li>three</li></ul><ul><li>other</li></ul>', {
     '.two': [0, 20, 100, 20],
   });
   atPoint = () => document.querySelector('.two');
-  call('pick', { x: 1, y: 21, pickId: 'g1-p1' });
+  await call('pick', { x: 1, y: 21, pickId: 'g1-p1' });
   const rule = call('rule', { pickId: 'g1-p1', property: 'color', value: 'var(--brand)' });
   const matched = document.querySelectorAll(rule.selector);
   expect(matched).toHaveLength(1);
@@ -349,10 +390,10 @@ it('after the first call a document answers short calls; a new document asks for
   expect(short('probe')).toBe(AGENT_MISSING);
 });
 
-it('mode end forgets the outline and keeps the picks; a same-document move forgets both', () => {
+it('mode end forgets the outline and keeps the picks; a same-document move forgets both', async () => {
   page('<p id="a">a</p>', { '#a': [0, 0, 100, 20] });
   atPoint = () => document.getElementById('a');
-  call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
+  await call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
   call('reset');
   expect(call('frame', { pointer: null, ids: ['g1-p1'] }).boxes['g1-p1']).not.toBeNull();
   atPoint = () => null;
@@ -361,11 +402,11 @@ it('mode end forgets the outline and keeps the picks; a same-document move forge
   expect(call('frame', { pointer: null, ids: ['g1-p1'] }).boxes['g1-p1']).toBeNull();
 });
 
-it('too much to check for fields means no screenshot', () => {
+it('too much to check for fields means no screenshot', async () => {
   page('<section id="s">x</section>', { '#s': [0, 0, 100, 100] });
   const many = document.createElement('div');
   many.innerHTML = '<input>'.repeat(5002);
   document.body.append(many);
   atPoint = () => document.getElementById('s');
-  expect(call('pick', { x: 1, y: 1, pickId: 'g1-p1' }).screenshotAllowed).toBe(false);
+  expect((await call('pick', { x: 1, y: 1, pickId: 'g1-p1' })).screenshotAllowed).toBe(false);
 });

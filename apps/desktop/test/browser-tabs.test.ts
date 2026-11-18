@@ -50,6 +50,38 @@ it('an address that is not http(s) opens nothing and makes no view', () => {
   expect(f.events).toHaveLength(0);
 });
 
+it('stopping a typed navigation keeps the address of the page still on screen', () => {
+  const f = setup();
+  const a = 'https://example.com/a';
+  const b = 'https://example.com/b';
+  f.tabs.navigate('tab-a', 'project_a', a);
+  const page = view(f, 0).webContents;
+  page.commit(a, 'Page A');
+  f.tabs.navigate('tab-a', 'project_a', b);
+  page.emit('did-start-loading');
+  // The response has not arrived. Chromium stops without committing B or reporting a failure.
+  f.tabs.stop('tab-a');
+  page.emit('did-stop-loading');
+  expect(f.last('tab-a')).toMatchObject({ url: a, title: 'Page A', page: 'live', loading: false });
+  expect(f.states('tab-a').some((state) => state.url === b)).toBe(false);
+  // A subsequent navigation that succeeds can land on a redirect's final address.
+  f.tabs.navigate('tab-a', 'project_a', b);
+  page.commit('https://example.com/redirected', 'Page B');
+  expect(f.last('tab-a')).toMatchObject({ url: 'https://example.com/redirected', title: 'Page B' });
+});
+
+it('stopping the first navigation leaves an empty tab with no address to remember', () => {
+  const f = setup();
+  const url = 'https://example.com/slow';
+  f.tabs.navigate('tab-a', 'project_a', url);
+  const page = view(f, 0).webContents;
+  page.emit('did-start-loading');
+  f.tabs.stop('tab-a');
+  page.emit('did-stop-loading');
+  expect(f.last('tab-a')).toMatchObject({ page: 'none', url: null, loading: false, failure: null });
+  expect(f.states('tab-a').some((state) => state.url === url)).toBe(false);
+});
+
 it('the view shows only while placed and live; failures, closing and hiding hide it', () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://example.com/');

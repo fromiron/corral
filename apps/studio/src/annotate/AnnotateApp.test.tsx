@@ -689,7 +689,7 @@ describe('바로 보내기', () => {
         styles: [],
         screenshot: true,
         console: false,
-        extra: { via: 'send', again: false },
+        extra: { via: 'send' },
       },
     ]);
     expect(view.textarea()?.readOnly).toBe(true);
@@ -718,9 +718,7 @@ describe('바로 보내기', () => {
     await view.key(view.textarea(), { key: 'Enter' });
     expect(view.submitted()).toHaveLength(0);
     await view.key(view.textarea(), { key: 'Enter', ctrlKey: true, shiftKey: true });
-    expect(view.submitted()).toMatchObject([
-      { screenshot: false, extra: { via: 'interrupt', again: false } },
-    ]);
+    expect(view.submitted()).toMatchObject([{ screenshot: false, extra: { via: 'interrupt' } }]);
   });
 
   it('보내기는 글이 있어야 하고, 칸의 글이 요청의 글이다', async () => {
@@ -749,7 +747,7 @@ describe('바로 보내기', () => {
     await view.press(view.button('Send'));
     expect(view.submitted().at(-1)).toMatchObject({
       noteId: 'note_1',
-      extra: { via: 'button', again: false },
+      extra: { via: 'button' },
     });
   });
 
@@ -770,11 +768,12 @@ describe('바로 보내기', () => {
     // Counterexample: never sent again by itself.
     expect(view.submitted()).toHaveLength(1);
     await view.press(view.button('Send again'));
-    expect(view.submitted().at(-1)).toMatchObject({
-      noteId: 'note_1',
-      text: 'Make it bigger',
-      extra: { via: 'button', again: true },
-    });
+    expect(view.submitted().at(-1)).toEqual({ intent: 'retry', noteId: 'note_1' });
+    // A lost bridge response on the retry cannot unlock the note for a new send.
+    await view.answer(view.waiting('submit'), { kind: 'page-changed' });
+    expect(view.textarea()?.readOnly).toBe(true);
+    await view.press(view.button('Send again'));
+    expect(view.submitted().at(-1)).toEqual({ intent: 'retry', noteId: 'note_1' });
     await view.answer(view.waiting('submit'), {
       kind: 'answered',
       outcome: { kind: 'accepted' },

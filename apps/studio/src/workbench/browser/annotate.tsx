@@ -219,7 +219,7 @@ function submitExtra(extra: unknown): AnnotateSubmitExtra {
   const via = ['send', 'interrupt', 'queue', 'button'].includes(value.via as string)
     ? (value.via as AnnotateSubmitExtra['via'])
     : 'send';
-  return { via, again: value.again === true };
+  return { via };
 }
 
 /** What the overlay may tell the app page; anything else is dropped. */
@@ -295,7 +295,7 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
         {
           tabId: string;
           noteId: string;
-          intent: 'send' | 'add';
+          intent: 'send' | 'add' | 'retry';
           cancelled: boolean;
           abort: AbortController;
         }
@@ -350,11 +350,13 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
       outcome =
         event.intent === 'add'
           ? { kind: 'not-added', reason: null }
-          : { kind: 'refused', reason: tr('other') };
+          : event.intent === 'retry'
+            ? { kind: 'unconfirmed' }
+            : { kind: 'refused', reason: tr('other') };
     }
     submits.delete(event.submitId);
     void bridge.answerAnnotate(event.tabId, event.submitId, outcome).catch(() => {});
-    if (event.intent !== 'send') return;
+    if (event.intent === 'add') return;
     // The overlay stopped waiting (its note closed, the mode ended): a send says its result
     // here, and a closed note's way to send again under the same command goes with it.
     if (waiting.cancelled) {
@@ -368,7 +370,10 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
       return;
     }
     if (outcome.kind === 'accepted') notes.delete(event.noteId);
-    else if (notes.has(event.noteId) || outcome.kind === 'unconfirmed')
+    else if (
+      notes.get(event.noteId)?.tabId === event.tabId ||
+      (event.intent === 'send' && outcome.kind === 'unconfirmed')
+    )
       noteIn(notes, event.tabId, event.noteId).unconfirmed = outcome.kind === 'unconfirmed';
   };
   const outcomeOf = async (
@@ -377,6 +382,14 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     signal: AbortSignal,
   ): Promise<AnnotateOutcome> => {
     const { ta, tr } = words.current;
+    if (event.intent === 'retry') {
+      if (notes.get(event.noteId)?.tabId !== event.tabId) return { kind: 'unconfirmed' };
+      return (
+        now.composer.get()?.sendNote({ noteId: event.noteId, again: true }) ?? {
+          kind: 'unconfirmed',
+        }
+      );
+    }
     const parsed = AnnotationMaterial.safeParse(event.material);
     if (!parsed.success) return { kind: 'refused', reason: tr('other') };
     const material = parsed.data;
@@ -401,7 +414,7 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
       noteId: event.noteId,
       material,
       via: extra.via,
-      again: extra.again,
+      again: false,
     });
   };
 

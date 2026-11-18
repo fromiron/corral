@@ -311,6 +311,24 @@ describe('a local host shares the Paddock', () => {
 });
 
 describe('a server without sharing keeps the single writer', () => {
+  it.skipIf(process.platform !== 'linux')('refuses a terminal while an agent writes', async () => {
+    const s = await setup(false);
+    s.run('writer');
+    s.service.acquireRun('writer', 's1', true);
+    await expect(
+      s.service.terminals.create('s1', {
+        operationId: 'terminal',
+        target: s.target,
+        shellId: 'bash',
+        cols: 80,
+        rows: 24,
+      }),
+    ).rejects.toMatchObject({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: { kind: 'run', id: 'writer', sessionId: 's1', state: 'active' },
+    });
+  });
+
   it('refuses a writing agent run while a task holds the copy, naming the task', async () => {
     const s = await setup(false);
     await s.task('dev');

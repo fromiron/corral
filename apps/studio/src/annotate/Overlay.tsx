@@ -454,7 +454,12 @@ export function Overlay({
     if (hadFocus || document.activeElement === document.body) focusArea();
   };
 
-  const settle = (noteId: string, attempt: number, result: AnnotateSubmitResult) => {
+  const settle = (
+    noteId: string,
+    attempt: number,
+    result: AnnotateSubmitResult,
+    retry: boolean,
+  ) => {
     const outcome = result.kind === 'answered' ? outcomeOf(result.outcome) : null;
     if (orphans.current.get(noteId) === attempt) {
       orphans.current.delete(noteId);
@@ -482,6 +487,11 @@ export function Overlay({
     )
       return;
     const editing = (failure: string | null) => setNote({ ...current, phase: 'editing', failure });
+    // A failed bridge call during recovery says nothing about the original command.
+    if (retry && (!outcome || (outcome.kind !== 'accepted' && outcome.kind !== 'refused'))) {
+      setNote({ ...current, phase: 'unconfirmed', failure: null });
+      return;
+    }
     if (result.kind === 'cancelled') return;
     if (result.kind !== 'answered') return editing(failureText(result.kind));
     switch (outcome?.kind) {
@@ -531,21 +541,25 @@ export function Overlay({
       failure: null,
       attempt,
     });
-    const extra: AnnotateSubmitExtra = { via, again };
+    const extra: AnnotateSubmitExtra = { via };
     bridge
-      .submit({
-        noteId: current.noteId,
-        pickId: current.pick.pickId,
-        intent,
-        text: current.text,
-        styles: changes(current),
-        screenshot: current.shot && shotBlocked(current) === null && via !== 'interrupt',
-        console: page?.kind === 'preview' && current.console,
-        extra,
-      })
+      .submit(
+        again
+          ? { intent: 'retry', noteId: current.noteId }
+          : {
+              noteId: current.noteId,
+              pickId: current.pick.pickId,
+              intent,
+              text: current.text,
+              styles: changes(current),
+              screenshot: current.shot && shotBlocked(current) === null && via !== 'interrupt',
+              console: page?.kind === 'preview' && current.console,
+              extra,
+            },
+      )
       .then(
-        (result) => settle(current.noteId, attempt, result),
-        () => settle(current.noteId, attempt, { kind: 'page-changed' }),
+        (result) => settle(current.noteId, attempt, result, again),
+        () => settle(current.noteId, attempt, { kind: 'page-changed' }, again),
       );
   };
 

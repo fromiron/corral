@@ -49,7 +49,7 @@ interface DockAreaInput {
   sessionId: string;
   store: TerminalStore | null;
   list: TerminalList;
-  /** A run of this conversation is going: no new terminal now. */
+  /** Whether a run of this conversation is going. */
   runActive: boolean;
   /** The project's binding is trusted: the debugger can run in its Paddock. */
   trusted: boolean;
@@ -140,11 +140,11 @@ export function useSessionDockArea(input: DockAreaInput) {
   const tf = useTranslations('Files');
   const { dock, dispatch } = useSessionDock(sessionId, answer);
   const terminals: readonly TerminalView[] = value?.list?.terminals ?? [];
-  const creation = terminalCreation(value, runActive);
+  const creation = terminalCreation(value, runActive, services.sharedDevelopment === true);
   const live = liveTerminal(value);
   // What the steps that wait (a creation, a fresh read, the list) read when they go on.
-  const latest = useRef({ sessionId, runActive, panel, dock, answer, value });
-  latest.current = { sessionId, runActive, panel, dock, answer, value };
+  const latest = useRef({ sessionId, creation, panel, dock, answer, value });
+  latest.current = { sessionId, creation, panel, dock, answer, value };
 
   // Focus: the person's open goes to the dock's selected tab (a terminal's input); a close or a
   // withdrawal with the focus inside hands it back (features/session-panel.md 접근성).
@@ -281,12 +281,7 @@ export function useSessionDockArea(input: DockAreaInput) {
   };
   const place = (target: PanelTarget, focus: boolean) => {
     const now = latest.current;
-    const where = addressedTerminalPlace(
-      target.terminal,
-      strips(),
-      now.answer,
-      terminalCreation(now.value, now.runActive).ok,
-    );
+    const where = addressedTerminalPlace(target.terminal, strips(), now.answer, now.creation.ok);
     switch (where.place) {
       case 'wait':
         pending.current = { sessionId, target, focus };
@@ -300,8 +295,7 @@ export function useSessionDockArea(input: DockAreaInput) {
       case 'create': {
         if (drawer) closeDrawer();
         dispatch({ type: 'show' }, sessionId);
-        const first = terminalCreation(now.value, now.runActive);
-        const shell = first.ok ? first.shells[0] : undefined;
+        const shell = now.creation.ok ? now.creation.shells[0] : undefined;
         if (shell) void create(shell.id, 'dock');
         return;
       }

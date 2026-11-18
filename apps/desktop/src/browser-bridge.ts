@@ -116,18 +116,19 @@ export type BrowserEvent =
   | { type: 'annotate'; tabId: string; on: boolean }
   /**
    * The overlay's note to send ("보내기") or add ("담기"), re-checked and with its screenshot.
+   * A retry identifies the original command without sending fresh material.
    * Run the composer's path and answer with `answerAnnotate(tabId, submitId, outcome)`; the
    * outcome goes to the overlay as given. `extra` is the overlay's, passed through unread.
    */
-  | {
+  | ({
       type: 'annotate-submit';
       tabId: string;
       submitId: string;
       noteId: string;
-      intent: 'send' | 'add';
-      material: AnnotationMaterial;
-      extra: unknown;
-    }
+    } & (
+      | { intent: 'send' | 'add'; material: AnnotationMaterial; extra: unknown }
+      | { intent: 'retry' }
+    ))
   /**
    * That submit's overlay stopped waiting: Escape while adding, the note closing, or the mode
    * ending. Stop an add; a send already on the composer's path goes on, and the app page says
