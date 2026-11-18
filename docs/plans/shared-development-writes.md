@@ -61,8 +61,11 @@
 
 ## 정하지 않은 것
 
-- 로컬 host가 공유한다는 것을 화면이 알아야 하는가. 명세에서 development 상태를 읽는 줄(`GET /sessions/:id/worktree/development`)도 지웠다. 화면이 공유 여부(로컬 host인지)를 따로 알아야 하면 C · D에서 정한다.
-- `owner.kind`의 이름과 `operationKind` 필드의 모양은 명세(`cb50f479`)에 이렇게 썼고, C에서 계약으로 만들 때 다시 본다.
+- `owner`의 모양(`kind`의 `run` · `task` · `terminal` · `operation`과 `operationKind`)은 C에서 계약을 쓸 때까지 잠정이다(조정자가 정함). 명세(`cb50f479`)에 쓴 것은 그때 계약에 맞춰 다시 본다.
+
+## 정한 것: 화면이 아는 공유 여부 (조정자가 정함, 2026-11-18)
+
+화면은 이 host가 사본을 공유하는지 알아야 한다. 입력란은 터미널이 살아 있으면 늘 `TerminalWriterNotice`를 보이는데(`apps/studio/src/workbench/session/composer/ComposerNotices.tsx:117`, `b753149d`), 공유하는 host에서는 그 경고가 틀리다. 사람의 효과가 거절될 것이라고 미리 말하는 다른 문구도 같다. 그래서 C나 D에서 읽기만 하는 host 능력 하나(이 host가 사본을 공유하는가)를 되살린다. development 상태의 route가 아니라 이미 있는 host나 능력을 읽는 곳에 둔다. 필드 이름은 만드는 이가 정하고, 계약을 쓸 때 API 계약에 적는다. 할 일은 아래 D에 있다.
 
 ## 단계
 
@@ -96,13 +99,15 @@
 - development 모드, 그 상태 · 시작 · 종료의 route와 계약을 지운다(옮기지 않는다).
 - 공유에서 명령의 시작 identity에서 tree를 뺀다. 사람의 검사는 snapshot에서 돌고 쓰는 실행에 막히지 않는다. 복원은 쓰는 에이전트 실행이 없으면 된다.
 - 종료를 확인하지 못한 owner는 그것이 정리될 때까지 새 효과를 막는다. 정리는 owner마다 지금의 길이다.
-- 거절이 사본을 잡은 owner(`run`, `task`, `terminal`, `operation`+`operationKind`)를 싣는다(`packages/contracts`의 오류).
+- 거절이 사본을 잡은 owner(`run`, `task`, `terminal`, `operation`+`operationKind`, 계약을 쓸 때까지 잠정)를 싣는다(`packages/contracts`의 오류).
+- 읽기만 하는 host 능력(이 host가 사본을 공유하는가)을 이미 있는 host나 능력 읽기에 더한다. C에서 하든 D에서 하든 한 번만 한다.
 - 공유를 허용하지 않는 서버의 단독 writer는 그대로다.
 
 ### D. 스튜디오
 
 - 거절 문구가 사본을 잡은 것을 댄다. 다른 실행이면 대기열을 안내하고(그 실행이 끝나면 대기 요청이 시작된다), task · 터미널 · 그 밖의 사람 작업이면 이름만 댄다. `Refusal.busy`는 다른 실행의 경우에만 맞게 고친다.
 - 작업 탭에서 공유 개발 모드를 켜고 끄는 조작과 그 상태 표시를 지운다.
+- host의 공유 여부를 읽고(위 "정한 것: 화면이 아는 공유 여부"), 공유하는 host에서는 거절을 미리 말하는 경고(`TerminalWriterNotice`와 같은 것)를 감춘다. 그 능력의 필드는 만드는 이가 이름을 정해 API 계약에 적는다.
 
 ### E. 미리보기 smoke
 
