@@ -405,3 +405,60 @@ it("clearing a project's data clears storage, cache, sign-ins and answers, then 
   expect(c.contents.reload).not.toHaveBeenCalled();
   expect(preview.reload).not.toHaveBeenCalled();
 });
+
+it('the app page going away unloads every tab and keeps it; Corral quitting closes every tab', async () => {
+  const f = setup();
+  const a = page(f, 'tab-a', 'project_a', 'https://files.example/');
+  const asked = a.session.request(a.contents, 'notifications');
+  const signIn = login(a.contents, 'https://files.example/private');
+  const { item } = download(a.session, a.contents);
+  item.savePath = '/home/person/Downloads/big.iso';
+  item.progress(10);
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  const preview = view(f, f.views.length - 1);
+  const storage = f.sessionOf(preview);
+  let answer!: (value: unknown) => void;
+  f.ports.resolveLease.mockImplementationOnce(
+    () =>
+      new Promise((done) => {
+        answer = done as (value: unknown) => void;
+      }),
+  );
+  const pending = f.tabs.openPreview('tab-q', 'session_1', 'lease_1');
+  await vi.waitFor(() => expect(answer).toBeTypeOf('function'));
+
+  f.tabs.unloadAll();
+  // Nothing a page asked for is left hanging; downloads carry on.
+  expect(asked.answer).toBe(false);
+  expect(signIn.callback).toHaveBeenCalledWith();
+  expect(f.events).toContainEqual({ type: 'permission-ended', tabId: 'tab-a', requestId: 'id1' });
+  expect(f.events).toContainEqual({ type: 'login-ended', tabId: 'tab-a', requestId: 'id2' });
+  expect(item.cancel).not.toHaveBeenCalled();
+  expect(a.contents.isDestroyed()).toBe(true);
+  expect(preview.webContents.isDestroyed()).toBe(true);
+  expect(f.last('tab-a')).toMatchObject({ page: 'none', url: 'https://files.example/' });
+  expect(f.last('tab-p')).toMatchObject({ page: 'none' });
+  // A preview still being resolved when the page went does not open into the new page.
+  answer(structuredClone(f.lease));
+  await expect(pending).rejects.toThrow();
+  const views = f.views.length;
+  // The records stay: the download's line, the preview's storage and its kind.
+  expect(f.tabs.downloads('tab-a')).toEqual([
+    expect.objectContaining({ tabId: 'tab-a', state: 'progressing' }),
+  ]);
+  expect(storage.clearStorageData).not.toHaveBeenCalled();
+  expect(() => f.tabs.navigate('tab-p', 'project_a', 'https://example.com/')).toThrow();
+  expect(f.views).toHaveLength(views);
+
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  expect(f.sessionOf(view(f, f.views.length - 1))).toBe(storage);
+  f.tabs.closeAll();
+  // Every tab goes with its preview storage; the download carries on without a line.
+  expect(view(f, f.views.length - 1).webContents.isDestroyed()).toBe(true);
+  expect(storage.clearStorageData).toHaveBeenCalled();
+  expect(item.cancel).not.toHaveBeenCalled();
+  expect(f.tabs.downloads('tab-a')).toEqual([]);
+  item.progress(20);
+  expect(downloads(f.events).at(-1)).toMatchObject({ tabId: null, receivedBytes: 20 });
+  expect(() => f.tabs.navigate('tab-p', 'project_a', 'https://example.com/')).not.toThrow();
+});

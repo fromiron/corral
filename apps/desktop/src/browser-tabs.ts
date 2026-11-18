@@ -336,6 +336,7 @@ export class BrowserTabs {
       return null; // the view could not be drawn (seen in a hidden window); it stays live
     }
     if (tab.contents !== contents || tab.stillEpoch !== epoch || !this.visible(tab)) return null;
+    if (image.isEmpty()) return null; // nothing drawn yet: the host keeps the live view
     const stillId = this.ports.id();
     tab.stillId = stillId;
     const size = image.getSize();

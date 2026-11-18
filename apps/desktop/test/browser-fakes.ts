@@ -31,6 +31,7 @@ export class FakeContents extends EventEmitter {
   focus = vi.fn();
   setWebRTCIPHandlingPolicy = vi.fn();
   capturePage = vi.fn(async () => ({
+    isEmpty: () => false,
     toDataURL: () => 'data:image/png;base64,still',
     getSize: () => ({ width: 400, height: 300 }),
   }));

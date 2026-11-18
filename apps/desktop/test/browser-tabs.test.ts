@@ -271,13 +271,25 @@ it('the still-image swap: picture first, hide after it is painted, a newer step 
   );
   const pending = f.tabs.still('tab-a');
   f.tabs.thaw('tab-a');
-  finish({ toDataURL: () => 'data:,', getSize: () => ({ width: 1, height: 1 }) });
+  finish({
+    isEmpty: () => false,
+    toDataURL: () => 'data:,',
+    getSize: () => ({ width: 1, height: 1 }),
+  });
   const late = await pending;
   expect(late).toBeNull();
   expect(f.tabs.freeze('tab-a', 'id1')).toBe(false);
   expect(v.visible).toBe(true);
   // A capture that fails leaves the live view as it is.
   v.webContents.capturePage.mockRejectedValueOnce(new Error('UnknownVizError'));
+  expect(await f.tabs.still('tab-a')).toBeNull();
+  expect(v.visible).toBe(true);
+  // So does an empty picture (a view not yet drawn): the host never paints a blank still.
+  v.webContents.capturePage.mockResolvedValueOnce({
+    isEmpty: () => true,
+    toDataURL: () => 'data:image/png;base64,',
+    getSize: () => ({ width: 0, height: 0 }),
+  } as never);
   expect(await f.tabs.still('tab-a')).toBeNull();
   expect(v.visible).toBe(true);
   // A frozen tab stays hidden when placed again, until thawed.
