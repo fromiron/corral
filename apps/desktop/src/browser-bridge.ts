@@ -139,6 +139,12 @@ export interface BrowserStill {
   dataUrl: string;
   width: number;
   height: number;
+  /**
+   * While the annotation mode is on: the overlay's picture (transparent PNG, the page area's
+   * place and size), to paint over the page's (browser-annotate.md 계약: 겹침의 그림). Null when
+   * the mode is off. Memory only, like the page's.
+   */
+  overlay: { dataUrl: string; width: number; height: number } | null;
 }
 
 export interface BrowserBridge {
@@ -173,9 +179,12 @@ export interface BrowserBridge {
   focus(tabId: string): Promise<void>;
   /** Step 1 of the still-image swap: a picture of the live view, which stays live. */
   still(tabId: string): Promise<BrowserStill | null>;
-  /** Step 2, once the picture is painted: hides the live view. False if a newer step won. */
+  /**
+   * Step 2, once the picture is painted: hides the live view (and the annotation overlay, which
+   * takes no input meanwhile). False if a newer step won.
+   */
   freeze(tabId: string, stillId: string): Promise<boolean>;
-  /** Shows the live view again. */
+  /** Shows the live view again, and the overlay as it was (its note, cursor and style view). */
   thaw(tabId: string): Promise<void>;
   answerPermission(tabId: string, requestId: string, allow: boolean): Promise<void>;
   sitePermissions(

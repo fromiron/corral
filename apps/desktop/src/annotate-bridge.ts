@@ -167,7 +167,10 @@ export interface AnnotateBridge {
   >;
   /** Moves the keyboard outline: ↑ parent, ↓ first child, ← · → siblings; none yet: the centre. */
   walk(direction: 'up' | 'down' | 'left' | 'right'): Promise<AnnotateTarget | null>;
-  /** A wheel outside the note field and the style view: the page scrolls. */
+  /**
+   * A wheel outside the note field and the style view: the page scrolls. The DOM event's own
+   * values (Chromium has already made Shift+wheel horizontal); dropped while the page is busy.
+   */
   wheel(event: {
     x: number;
     y: number;
@@ -175,7 +178,6 @@ export interface AnnotateBridge {
     deltaY: number;
     /** DOM WheelEvent.deltaMode: 0 pixels, 1 lines, 2 pages. */
     deltaMode: 0 | 1 | 2;
-    shift: boolean;
   }): void;
   tokens(pickId: string): Promise<AnnotateTokens | null>;
   /** Shows a value on the element at once (null takes it back); refused when not valid. */

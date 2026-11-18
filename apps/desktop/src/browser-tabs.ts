@@ -365,7 +365,13 @@ export class BrowserTabs {
     const stillId = this.ports.id();
     tab.stillId = stillId;
     const size = image.getSize();
-    return { stillId, dataUrl: image.toDataURL(), width: size.width, height: size.height };
+    return {
+      stillId,
+      dataUrl: image.toDataURL(),
+      width: size.width,
+      height: size.height,
+      overlay: null,
+    };
   }
 
   /** Step 2, once the host painted the picture: the live view hides. */

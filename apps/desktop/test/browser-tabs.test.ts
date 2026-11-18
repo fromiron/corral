@@ -331,6 +331,7 @@ it('the still-image swap: picture first, hide after it is painted, a newer step 
     dataUrl: 'data:image/png;base64,still',
     width: 400,
     height: 300,
+    overlay: null, // the annotation mode is off
   });
   expect(v.visible).toBe(true);
   expect(f.tabs.freeze('tab-a', 'id1')).toBe(true);
