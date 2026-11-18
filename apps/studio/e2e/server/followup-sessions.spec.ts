@@ -8,7 +8,7 @@ import type { Page } from '@playwright/test';
 import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { runResults } from '../../../../packages/react/src/run/results.ts';
-import { openTextSearch, panelContent, selectPanelTab } from '../workbench.ts';
+import { openTextSearch } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function api(page: Page, path: string, body?: unknown, method = body ? 'POST' : 'GET') {
@@ -192,13 +192,21 @@ for (const locale of ['en', 'ko'] as const) {
         ).toBeVisible();
         // A source-folder file opens read-only as its own 문서 tab.
         await files.getByRole('treeitem', { name: 'README.md', exact: true }).click();
+        // The workbench helpers name the panel in English; this test runs in both languages.
+        const panel = page.getByRole('region', { name: m.SessionPanel.label, exact: true });
         await expect(
-          panelContent(page, /^README\.md/).getByText('Read-only original contents', {
-            exact: false,
-          }),
+          panel
+            .getByRole('tabpanel', { name: /^README\.md/ })
+            .getByText('Read-only original contents', { exact: false }),
         ).toBeVisible();
         // Narrow, the tree is the Files tab again; wide, it is the column beside the document.
-        if (!(await setup.isVisible())) await selectPanelTab(page, m.Docking.files);
+        if (!(await setup.isVisible())) {
+          const filesTab = panel
+            .getByRole('tablist', { name: m.SessionPanel.tabs, exact: true })
+            .getByRole('tab', { name: m.Docking.files, exact: true });
+          await filesTab.click();
+          await expect(filesTab).toHaveAttribute('aria-selected', 'true');
+        }
         await expect(setup).toBeVisible();
         await setup.click();
         await expect(page).toHaveURL(/panel=changes/);
