@@ -793,3 +793,91 @@ it('서버가 담을 스크린샷을 받지 않는다 → 담지 않고 그 까�
   expect(answerTo(bridge, 'submit_2')).toEqual({ kind: 'added', n: 1 });
   expect(drafted(at.sessionId).images ?? []).toEqual([]);
 });
+
+// --- 주석 칩 (features/browser-annotate.md 모아 두기: 칩, 번호; 보내는 것: 보이는 것) -----------
+
+const buttonNamed = (name: string) =>
+  [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.getAttribute('aria-label') === name,
+  ) ?? null;
+const chipName = (n: number, label = 'button.pay 120×32') =>
+  messages.Browser.noteChip.replace('{n}', String(n)).replace('{label}', label);
+const removeName = (n: number) => messages.Browser.removeNote.replace('{n}', String(n));
+
+it('담은 주석마다 번호와 이름표의 칩이 입력창에 있고, 그 스크린샷과 첨부는 보통 줄에 따로 보이지 않는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', host);
+  await addNote(bridge, 'submit_1', 'note_1');
+  await addNote(bridge, 'submit_2', 'note_2', { ...material('Second'), pickId: 'pick_2' });
+  await until(() => buttonNamed(chipName(2)) !== null);
+  expect(buttonNamed(chipName(1))).not.toBeNull();
+  expect(buttonNamed(chipName(2))).not.toBeNull();
+  expect(buttonNamed(removeName(1))).not.toBeNull();
+  // One chip per note: no source row for its attachment, no image button for its screenshot.
+  const names = [...document.querySelectorAll('button')].map((b) => b.getAttribute('aria-label'));
+  expect(names.some((name) => name?.includes('annotation-1'))).toBe(false);
+  expect(document.body.textContent).not.toContain('annotation-1.png');
+});
+
+it('칩을 빼면 그 주석과 스크린샷이 함께 빠지고, 다른 칩의 번호는 그대로이며, 다음에 담는 주석은 가장 큰 번호 다음이다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at } = await livePage(bridge, 'b_one', host);
+  await modeOn(bridge);
+  await addNote(bridge, 'submit_1', 'note_1');
+  await addNote(bridge, 'submit_2', 'note_2', { ...material('Second'), pickId: 'pick_2' });
+  await until(() => buttonNamed(removeName(1)) !== null);
+  await act(async () => buttonNamed(removeName(1))?.click());
+  await settle();
+  const draft = drafted(at.sessionId);
+  expect(draft.attachments?.map((item) => item.name)).toEqual(['annotation-2.json']);
+  expect(draft.images?.map((image) => image.sha256)).toEqual([`${'f'.repeat(62)}02`]);
+  expect(buttonNamed(chipName(1))).toBeNull();
+  expect(lastContext(bridge)?.markers).toEqual([{ pickId: 'pick_2', n: 2 }]);
+  await addNote(bridge, 'submit_3', 'note_3', { ...material('Third'), pickId: 'pick_3' });
+  await until(() => answerTo(bridge, 'submit_3') !== undefined);
+  expect(answerTo(bridge, 'submit_3')).toEqual({ kind: 'added', n: 3 });
+});
+
+it('칩을 누르면 팝오버가 그 주석이 싣는 것을 보인다: 페이지, 이름표, 선택자, 스타일 차이, 스크린샷의 작은 그림', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', host);
+  await addNote(bridge, 'submit_1');
+  await until(() => buttonNamed(chipName(1)) !== null);
+  await act(async () => buttonNamed(chipName(1))?.click());
+  await until(() => document.querySelector('img[alt]') !== null);
+  const popup = document.querySelector<HTMLElement>(`[role="dialog"][aria-label="${chipName(1)}"]`);
+  expect(popup?.textContent).toContain('https://a.example/');
+  expect(popup?.textContent).toContain('body > button:nth-of-type(1)');
+  expect(popup?.textContent).toContain('font-size');
+  const shot = popup?.querySelector('img');
+  expect(shot?.getAttribute('alt')).toBe(messages.Browser.noteShot.replace('{n}', '1'));
+});
+
+it('이름표가 없는 예전 본문의 칩은 태그 이름으로 부른다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const older = createTextAttachment(
+    'annotation-4.json',
+    'application/json',
+    JSON.stringify({ element: { tag: 'button', selector: 'body > button' } }),
+    {
+      kind: 'page',
+      origin: 'https://a.example',
+      path: '/',
+      pickedAt: '2026-11-18T12:00:00.000Z',
+      generation: 1,
+    },
+  );
+  await livePage(bridge, 'b_one', (world) => {
+    writeComposerDraft(world.sessionId, {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [older],
+    });
+    return host(world);
+  });
+  await until(() => buttonNamed(chipName(4, 'button')) !== null);
+  expect(buttonNamed(chipName(4, 'button'))).not.toBeNull();
+});

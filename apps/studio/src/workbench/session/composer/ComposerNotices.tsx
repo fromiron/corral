@@ -4,6 +4,8 @@ import { X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import type { RefObject } from 'react';
 import { useTranslations } from 'use-intl';
+import { NoteChips } from '../../browser/NoteChips.tsx';
+import { isNote, noteImages } from '../../browser/noteChips.ts';
 import type { Blocked, SendChoice } from '../../composerIntent.ts';
 import { type MentionItem, mentionLabel } from '../../composerMenu.ts';
 import { SourceAttachments } from '../../context/SourceAttachments.tsx';
@@ -102,6 +104,12 @@ export function ComposerNotices({
   const tc = useTranslations('Composer');
   const tr = useTranslations('Refusal');
   const { attachmentEpoch, images, attachments, attachmentsBusy } = draft;
+  // Collected page notes are chips of their own, each holding its screenshot: the plain rows
+  // show the rest, and a change there keeps them.
+  const notes = attachments.filter(isNote);
+  const shots = noteImages(attachments, images);
+  const plainImages = images.filter((image) => !shots.includes(image));
+  const plainAttachments = attachments.filter((item) => !isNote(item));
   const overLimit = startItemsOver(intent, draft);
   return (
     <>
@@ -190,14 +198,25 @@ export function ComposerNotices({
           ))}
         </ul>
       ) : null}
+      <NoteChips
+        sessionId={sessionId}
+        attachments={attachments}
+        images={images}
+        disabled={busy || attachmentsBusy}
+        onChange={(next) => {
+          draft.setAttachments(next.attachments);
+          draft.setImages(next.images);
+        }}
+      />
       <ImageAttachmentPicker
         key={`images:${attachmentEpoch}`}
         inputRef={imageFiles}
         // Images can be added while a run goes: a next request takes them, a join leaves them
         // in the box (features/composer-flow.md "합류 대상").
         sessionId={sessionId}
-        value={images}
-        onChange={draft.setImages}
+        value={plainImages}
+        held={shots.length}
+        onChange={(next) => draft.setImages([...next, ...shots])}
         onBusyChange={draft.setImagesBusy}
         disabled={busy}
       />
@@ -213,8 +232,8 @@ export function ComposerNotices({
         hideList
       />
       <SourceAttachments
-        value={attachments}
-        onChange={draft.setAttachments}
+        value={plainAttachments}
+        onChange={(next) => draft.setAttachments([...next, ...notes])}
         disabled={busy || attachmentsBusy}
       />
       {/* Where Send goes, for assistive tech: the tool line's target and keys show it. */}
