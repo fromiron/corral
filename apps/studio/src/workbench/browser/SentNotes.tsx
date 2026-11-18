@@ -40,6 +40,7 @@ export function SentNotes({
               </summary>
               <div className="mt-2">
                 <AnnotationContents
+                  note={view.note}
                   page={view.page}
                   label={view.label}
                   selector={view.selector}

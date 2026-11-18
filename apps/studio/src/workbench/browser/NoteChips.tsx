@@ -56,6 +56,7 @@ export function NoteChips({
               </PopoverTrigger>
               <PopoverPopup align="start" width="md" aria-label={name}>
                 <AnnotationContents
+                  note={view.note}
                   page={view.page}
                   label={view.label}
                   selector={view.selector}

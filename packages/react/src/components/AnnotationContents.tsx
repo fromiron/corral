@@ -4,14 +4,19 @@ import { ImageIcon } from '../design-kit/icons.ts';
 import { Button } from '../design-kit/index.ts';
 
 // What a page annotation carries (docs/specs/features/browser-annotate.md 보내는 것: 보이는 것),
-// shown the same wherever a person checks it: the overlay note's label popover and the composer's
-// note chip popover. Everything in it came from a page, so it is drawn as text only, each piece
+// shown the same wherever a person checks it: the overlay note's label popover, the composer's
+// note chip popover and a sent request's note. Everything in it came from a page, so it is drawn as text only, each piece
 // isolated so a direction mark in it cannot turn the line around it.
 
 /** Longer than this, the element's text starts folded. */
 const FOLD_AT = 160;
 
 export interface AnnotationContentsProps {
+  /**
+   * The note's written words, shown first where the note is no longer open to edit (a chip, a
+   * sent request); the overlay's own note leaves it out, its words being in the note's field.
+   */
+  note?: string | undefined;
   /** The page as the note carries it: origin and path, nothing else of the address. */
   page: { origin: string; path: string };
   /** The element's name tag (`button.pay 120×32`). */
@@ -30,6 +35,7 @@ export interface AnnotationContentsProps {
 }
 
 export function AnnotationContents({
+  note,
   page,
   label,
   selector,
@@ -43,6 +49,7 @@ export function AnnotationContents({
   const folds = text.length > FOLD_AT || text.split('\n').length > 3;
   return (
     <div className="flex min-w-0 flex-col gap-3 text-caption text-foreground">
+      {note && <bdi className="block min-w-0 whitespace-pre-wrap break-words">{note}</bdi>}
       <dl className="grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5">
         <dt className="text-muted-foreground">{t('page')}</dt>
         <dd className="min-w-0 break-all font-mono">

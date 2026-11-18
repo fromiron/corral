@@ -69,6 +69,8 @@ export function withoutNote(
 export interface NoteView {
   /** A collected note's number; null for one sent at once. */
   n: number | null;
+  /** The note's written words. */
+  note: string;
   label: string;
   page: { origin: string; path: string };
   selector: string;
@@ -109,6 +111,7 @@ export function pageNoteView(item: TextAttachment): NoteView | null {
   const console = Array.isArray(body.console) ? body.console : null;
   return {
     n,
+    note: text(body.note),
     label: text(element.label) || text(element.tag),
     page: { origin: text(page.origin), path: text(page.path) },
     selector: text(element.selector),
