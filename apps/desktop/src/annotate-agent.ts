@@ -55,10 +55,18 @@ export interface AgentCalls {
     args: { pickId: string; property: StyleProperty; value: string };
     result: { selector: string } | 'invalid' | null;
   };
-  /** The pick's part in the page area now, and whether a screenshot of it may be taken. */
-  shot: { args: { pickId: string }; result: { bounds: AnnotateRect; safe: boolean } | null };
+  /**
+   * The pick's part in the page area now, whether a screenshot of it may be taken, and its rule
+   * selector now (positional: it moves when the page inserts siblings before it).
+   */
+  shot: {
+    args: { pickId: string };
+    result: { bounds: AnnotateRect; safe: boolean; selector: string } | null;
+  };
   release: { args: { pickId: string }; result: true };
-  /** The mode ended: forget every pick and the outline. */
+  /** The mode ended: no outline. The picks stay for the markers of the same page. */
+  reset: { args: Record<string, never>; result: true };
+  /** The page moved without a new document (a route by pushState): forget every pick too. */
   clear: { args: Record<string, never>; result: true };
   /** Answers at once: tells main the page's renderer answers again. */
   probe: { args: Record<string, never>; result: true };
@@ -88,6 +96,8 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     hovered: Element | null;
   };
   const host = window as unknown as { __corralAnnotate?: State };
+  // Answers this call from now on, so later calls send only their arguments (agentCall).
+  (window as unknown as { __corralAnnotateAgent?: typeof agent }).__corralAnnotateAgent = agent;
   host.__corralAnnotate ??= { picks: new Map(), outline: null, hovered: null };
   const state = host.__corralAnnotate;
   const FRAMES = new Set([
@@ -238,19 +248,22 @@ function agent(op: string, args: Record<string, unknown>): unknown {
   };
 
   // Fields in the document and in open shadow roots; frames count, since Corral can't see in.
-  const fieldsIn = (root: ParentNode, into: Element[] = []) => {
+  // Null past the budget: too much to check, so no screenshot.
+  const fieldsIn = (root: ParentNode, into: Element[] = [], budget = { left: 100000 }) => {
     for (const element of root.querySelectorAll('*')) {
+      if (--budget.left < 0 || into.length > 5000) return null;
       if (element.matches(FIELDS) || FRAMES.has(element.localName.toLowerCase()))
         into.push(element);
-      if (element.shadowRoot) fieldsIn(element.shadowRoot, into);
-      if (into.length > 5000) break;
+      if (element.shadowRoot && !fieldsIn(element.shadowRoot, into, budget)) return null;
     }
     return into;
   };
   const shotSafe = (element: Element, part: AnnotateRect) => {
     if (element.closest(FIELDS)) return false;
+    const fields = fieldsIn(document);
+    if (!fields) return false;
     const inside = (node: Node) => element === node || element.contains(node);
-    return !fieldsIn(document).some((field) => {
+    return !fields.some((field) => {
       // A field in a shadow root counts where its host is.
       let anchor: Node = field;
       while (anchor.getRootNode() instanceof ShadowRoot)
@@ -451,10 +464,17 @@ function agent(op: string, args: Record<string, unknown>): unknown {
     case 'shot': {
       const element = live(args.pickId as string);
       const part = element && visiblePart(element);
-      return element && part ? { bounds: part, safe: shotSafe(element, part) } : null;
+      const selector = element && part ? ruleSelector(element) : null;
+      return element && part && selector
+        ? { bounds: part, safe: shotSafe(element, part), selector }
+        : null;
     }
     case 'release':
       state.picks.delete(args.pickId as string);
+      return true;
+    case 'reset':
+      state.outline = null;
+      state.hovered = null;
       return true;
     case 'clear':
       state.picks.clear();
@@ -480,8 +500,24 @@ const pickId = (value: unknown) => {
   return value;
 };
 
+/** What `agentCall` answers when this document's world has no agent yet: send `agentScript`. */
+export const AGENT_MISSING = '__corral_annotate_agent_missing__';
+
+/**
+ * The short script for one call to an agent already in this document's world; it answers
+ * AGENT_MISSING when there is none (a new document). Same checks as agentScript.
+ */
+export function agentCall<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['args']): string {
+  const call = JSON.stringify([op, cleanArgs(op, args)]).slice(1, -1);
+  return `typeof __corralAnnotateAgent==='function'?__corralAnnotateAgent(${call}):${JSON.stringify(AGENT_MISSING)}`;
+}
+
 /** The fixed script for one agent call; throws on an operation or argument it doesn't take. */
 export function agentScript<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['args']): string {
+  return `(${agent.toString()})(${JSON.stringify(op)},${JSON.stringify(cleanArgs(op, args))})`;
+}
+
+function cleanArgs<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['args']) {
   const input = args as Record<string, unknown>;
   let clean: Record<string, unknown>;
   switch (op as AgentOp) {
@@ -519,6 +555,7 @@ export function agentScript<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['ar
       clean = { pickId: pickId(input.pickId) };
       break;
     case 'tokens':
+    case 'reset':
     case 'clear':
     case 'probe':
       clean = {};
@@ -526,5 +563,5 @@ export function agentScript<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['ar
     default:
       throw new Error('Unknown annotate operation');
   }
-  return `(${agent.toString()})(${JSON.stringify(op)},${JSON.stringify(clean)})`;
+  return clean;
 }

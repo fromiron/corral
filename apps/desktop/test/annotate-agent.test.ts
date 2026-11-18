@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { agentScript } from '../src/annotate-agent.ts';
+import { AGENT_MISSING, agentCall, agentScript } from '../src/annotate-agent.ts';
 
 type Rect = [number, number, number, number];
 const rects = new Map<Element, Rect>();
@@ -34,6 +34,7 @@ afterEach(() => {
   rects.clear();
   atPoint = () => null;
   delete (window as { __corralAnnotate?: unknown }).__corralAnnotate;
+  delete (window as { __corralAnnotateAgent?: unknown }).__corralAnnotateAgent;
   vi.restoreAllMocks();
 });
 
@@ -143,6 +144,7 @@ it('a pick reads what a send carries, keeps the element by its id until released
   expect(call('shot', { pickId: 'g1-p2' })).toEqual({
     bounds: { x: 10, y: 50, width: 60, height: 20 },
     safe: true,
+    selector: ':root > :nth-child(2) > :nth-child(1) > :nth-child(3)',
   });
   // Not drawn now (display: none): no box to mark.
   rects.set(document.getElementById('f') as Element, [0, 0, 0, 0]);
@@ -315,4 +317,38 @@ it('only fixed operations run, with plain arguments', () => {
   expect(
     agentScript('frame', { pointer: { x: 1, y: 2 }, ids: ['g1-p1'], code: 'alert(1)' } as never),
   ).toMatch(/\)\("frame",\{"pointer":\{"x":1,"y":2\},"ids":\["g1-p1"\]\}\)$/);
+});
+
+it('after the first call a document answers short calls; a new document asks for the agent again', () => {
+  // biome-ignore lint/security/noGlobalEval: Execute only our fixed agent script against the test DOM.
+  const short = (op: string, args: Record<string, unknown> = {}) =>
+    window.eval(agentCall(op as never, args as never));
+  expect(short('probe')).toBe(AGENT_MISSING);
+  expect(call('probe')).toBe(true);
+  expect(short('probe')).toBe(true);
+  expect(agentCall('probe', {} as never).length).toBeLessThan(120);
+  expect(() => agentCall('pick', { pickId: 'x y', x: 1, y: 1 } as never)).toThrow();
+  delete (window as { __corralAnnotateAgent?: unknown }).__corralAnnotateAgent;
+  expect(short('probe')).toBe(AGENT_MISSING);
+});
+
+it('mode end forgets the outline and keeps the picks; a same-document move forgets both', () => {
+  page('<p id="a">a</p>', { '#a': [0, 0, 100, 20] });
+  atPoint = () => document.getElementById('a');
+  call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
+  call('reset');
+  expect(call('frame', { pointer: null, ids: ['g1-p1'] }).boxes['g1-p1']).not.toBeNull();
+  atPoint = () => null;
+  expect(call('walk', { direction: 'up' })).toBeNull(); // the outline went: the centre, nothing there
+  call('clear');
+  expect(call('frame', { pointer: null, ids: ['g1-p1'] }).boxes['g1-p1']).toBeNull();
+});
+
+it('too much to check for fields means no screenshot', () => {
+  page('<section id="s">x</section>', { '#s': [0, 0, 100, 100] });
+  const many = document.createElement('div');
+  many.innerHTML = '<input>'.repeat(5002);
+  document.body.append(many);
+  atPoint = () => document.getElementById('s');
+  expect(call('pick', { x: 1, y: 1, pickId: 'g1-p1' }).screenshotAllowed).toBe(false);
 });
