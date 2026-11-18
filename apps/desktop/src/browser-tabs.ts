@@ -43,6 +43,7 @@ import {
   pageMenu,
   permissionCheck,
   permissionRequest,
+  refuseFullscreen,
   type SitePermission,
   systemBrowserUrl,
   webOrigin,
@@ -279,7 +280,7 @@ export class BrowserTabs {
     lease.target = target;
     if (!lease.session) {
       lease.session = this.ports.session(`corral-preview-${this.ports.id()}`);
-      applyLeaseRules(lease.session, target);
+      applyLeaseRules(lease.session, target, { refuseFullscreen: true });
     }
     const contents = this.attach(
       tab,
@@ -664,6 +665,12 @@ export class BrowserTabs {
       const origin = webOrigin(details.requestingUrl ?? requestingOrigin);
       return !!origin && project.permissions.get(origin, decision.permission) === true;
     });
+    // Fullscreen is refused; telling the documents so makes requestFullscreen() reject at once.
+    session.webRequest.onHeadersReceived(
+      { urls: ['<all_urls>'], types: ['mainFrame', 'subFrame'] },
+      (details, callback) =>
+        callback({ responseHeaders: refuseFullscreen(details.responseHeaders) }),
+    );
     // Device pickers (USB, HID, serial, Bluetooth per page) are refused without asking.
     session.setDevicePermissionHandler(() => false);
     session.on('select-hid-device', (event, _details, callback) => {

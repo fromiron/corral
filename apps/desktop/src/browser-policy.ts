@@ -328,6 +328,22 @@ export function permissionCheck(
   return { kind: GRANTED.has(permission) ? 'grant' : 'deny' };
 }
 
+/**
+ * A page document's response headers with fullscreen not allowed (`Permissions-Policy:
+ * fullscreen=()`, appended after the page's own so it has the last word): requestFullscreen()
+ * then rejects at once, where a refused permission leaves it pending (Electron 44.4.5).
+ */
+export function refuseFullscreen(
+  headers: Record<string, string[]> | undefined,
+): Record<string, string[]> {
+  const out = { ...headers };
+  const name =
+    Object.keys(out).find((key) => key.toLowerCase() === 'permissions-policy') ??
+    'Permissions-Policy';
+  out[name] = [...(out[name] ?? []), 'fullscreen=()'];
+  return out;
+}
+
 /** An item of the page's right-click menu (features/browser-tab.md 페이지의 메뉴). */
 export type PageMenuItem =
   | 'open-link'

@@ -414,13 +414,28 @@ it('a preview page menu has the edit items only', async () => {
   expect(lastMenu(f).labels).toEqual([['복사', '모두 선택']]);
 });
 
-it('fullscreen and screen sharing are refused without asking; the page stays in the tab', () => {
+it('fullscreen and screen sharing are refused without asking; the page stays in the tab', async () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://video.example/');
   const page = view(f, 0).webContents;
   const session = f.sessionOf(view(f, 0));
   expect(session.request(page, 'fullscreen').answer).toBe(false);
   expect(session.request(page, 'display-capture').answer).toBe(false);
+  // Its documents say fullscreen is not allowed, so requestFullscreen() rejects at once
+  // (Chromium leaves a refused request pending); only documents pass through main for it.
+  expect(session.headers?.filter).toEqual({
+    urls: ['<all_urls>'],
+    types: ['mainFrame', 'subFrame'],
+  });
+  expect(session.respond('mainFrame', { 'content-type': ['text/html'] })).toEqual({
+    'content-type': ['text/html'],
+    'Permissions-Policy': ['fullscreen=()'],
+  });
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  const preview = f.sessionOf(view(f, 1));
+  expect(preview.respond('mainFrame', {})?.['Permissions-Policy']).toEqual(['fullscreen=()']);
+  expect(preview.respond('mainFrame', {})?.['Content-Security-Policy']).toHaveLength(1);
+  expect(preview.respond('script', {})?.['Permissions-Policy']).toBeUndefined();
   expect(f.events.some((event) => event.type === 'permission')).toBe(false);
 });
 

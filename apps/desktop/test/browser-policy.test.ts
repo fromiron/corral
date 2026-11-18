@@ -11,6 +11,7 @@ import {
   pageShortcuts,
   permissionCheck,
   permissionRequest,
+  refuseFullscreen,
   SITE_PERMISSIONS,
   systemBrowserUrl,
   zoomLevel,
@@ -364,4 +365,16 @@ it("the page's menu has only what applies there, no Inspect, and edit items only
   // A preview page: the edit items only (its links can carry the lease's private path).
   expect(pageMenu(everything, true)).toEqual([['copy', 'select-all']]);
   expect(pageMenu(spot({ linkURL: 'http://127.0.0.2:4321/key/x' }), true)).toEqual([]);
+});
+
+it('a page document is told fullscreen is not allowed, over its own policy', () => {
+  expect(refuseFullscreen({ 'content-type': ['text/html'] })).toEqual({
+    'content-type': ['text/html'],
+    'Permissions-Policy': ['fullscreen=()'],
+  });
+  // Appended under the page's own header name, so it is the last word on fullscreen.
+  expect(refuseFullscreen({ 'permissions-policy': ['fullscreen=(self), camera=()'] })).toEqual({
+    'permissions-policy': ['fullscreen=(self), camera=()', 'fullscreen=()'],
+  });
+  expect(refuseFullscreen(undefined)).toEqual({ 'Permissions-Policy': ['fullscreen=()'] });
 });

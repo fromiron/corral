@@ -156,13 +156,30 @@ export class FakeSession extends EventEmitter {
   checkHandler: ((...args: unknown[]) => boolean) | null = null;
   deviceHandler: ((...args: unknown[]) => boolean) | null = null;
   webRequestHandlers: string[] = [];
+  /** The last onHeadersReceived: its filter (when given) and listener. */
+  headers: { filter: unknown; listener: (...args: unknown[]) => void } | null = null;
+  /** A response through onHeadersReceived; returns the headers it went on with. */
+  respond(resourceType: string, responseHeaders: Record<string, string[]>) {
+    let out: Record<string, string[]> | undefined;
+    this.headers?.listener(
+      { url: 'https://x.example/', resourceType, responseHeaders },
+      (r: { responseHeaders?: Record<string, string[]> }) => {
+        out = r.responseHeaders;
+      },
+    );
+    return out;
+  }
   clearStorageData = vi.fn(async () => {});
   clearCache = vi.fn(async () => {});
   clearAuthCache = vi.fn(async () => {});
   webRequest = {
     onBeforeRequest: () => this.webRequestHandlers.push('onBeforeRequest'),
     onBeforeSendHeaders: () => this.webRequestHandlers.push('onBeforeSendHeaders'),
-    onHeadersReceived: () => this.webRequestHandlers.push('onHeadersReceived'),
+    onHeadersReceived: (...args: unknown[]) => {
+      this.webRequestHandlers.push('onHeadersReceived');
+      const listener = args.at(-1) as (...rest: unknown[]) => void;
+      this.headers = { filter: args.length > 1 ? args[0] : null, listener };
+    },
   };
   constructor(name: string) {
     super();
