@@ -1,3 +1,5 @@
+import type { WebContents, WebFrameMain } from 'electron';
+import { ANNOTATE_CALLS, jsonWithin } from './annotate-overlay.ts';
 import type { BrowserRect } from './browser-bridge.ts';
 import { pageShortcuts, SITE_PERMISSIONS, type SitePermission } from './browser-policy.ts';
 import type { BrowserTabs } from './browser-tabs.ts';
@@ -112,5 +114,30 @@ export function browserHandlers(
     'browser-capture-preview': (tabId, options) =>
       tabs.capturePreview(token(tabId), previewCaptureOptions(options)),
     'browser-cancel-preview-capture': (tabId) => tabs.cancelPreviewCapture(token(tabId)),
+    'browser-annotate': (tabId, on) => tabs.annotate(token(tabId), flag(on)),
+    'browser-annotate-context': (tabId, context) =>
+      tabs.annotateContext(token(tabId), jsonWithin(context, 64 * 1024)),
+    'browser-answer-annotate': (tabId, submitId, outcome) =>
+      tabs.answerAnnotate(token(tabId), token(submitId), jsonWithin(outcome, 16 * 1024)),
   };
+}
+
+/**
+ * The annotation overlay's calls (annotate-preload.cjs), by channel (`annotate:<name>`). Main
+ * registers them straight on ipcMain: the tab manager accepts only a live overlay's main frame
+ * on its own page, so neither the app page nor a web page can make them.
+ */
+export function annotateHandlers(
+  tabs: BrowserTabs,
+): Record<
+  string,
+  (event: { sender: WebContents; senderFrame: WebFrameMain | null }, ...args: unknown[]) => unknown
+> {
+  return Object.fromEntries(
+    ANNOTATE_CALLS.map((name) => [
+      `annotate:${name}`,
+      (event: { sender: WebContents; senderFrame: WebFrameMain | null }, ...args: unknown[]) =>
+        tabs.fromOverlay(event.sender, event.senderFrame, name, args),
+    ]),
+  );
 }

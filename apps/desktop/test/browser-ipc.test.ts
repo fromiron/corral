@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { expect, it, vi } from 'vitest';
-import { browserHandlers } from '../src/browser-ipc.ts';
+import { ANNOTATE_CALLS } from '../src/annotate-overlay.ts';
+import { annotateHandlers, browserHandlers } from '../src/browser-ipc.ts';
 import type { BrowserTabs } from '../src/browser-tabs.ts';
 
 function fakeTabs() {
@@ -33,6 +34,9 @@ it('valid calls reach the tab manager as typed values', async () => {
   await handlers['browser-answer-login']?.('tab_1', 'request-3', null);
   await handlers['browser-forget-permission']?.('project_1', 'https://a.example', 'camera');
   await handlers['browser-reset']?.('tab_1');
+  await handlers['browser-annotate']?.('tab_1', true);
+  await handlers['browser-annotate-context']?.('tab_1', { locale: 'ko', markers: [1, 2] });
+  await handlers['browser-answer-annotate']?.('tab_1', 'submit-1', { kind: 'accepted' });
   await handlers['browser-set-shortcuts']?.({
     palette: { mod: true, key: 'k' },
     'reply.quote': { alt: true, key: 'q' },
@@ -47,6 +51,9 @@ it('valid calls reach the tab manager as typed values', async () => {
     ['answerLogin', ['tab_1', 'request-3', null]],
     ['forgetPermission', ['project_1', 'https://a.example', 'camera']],
     ['reset', ['tab_1']],
+    ['annotate', ['tab_1', true]],
+    ['annotateContext', ['tab_1', { locale: 'ko', markers: [1, 2] }]],
+    ['answerAnnotate', ['tab_1', 'submit-1', { kind: 'accepted' }]],
     ['setShortcuts', [[{ id: 'palette', key: 'k', mod: true }]]],
   ]);
 });
@@ -73,6 +80,11 @@ it('malformed calls are refused before they reach a page', () => {
     ['browser-set-shortcuts', [{ palette: { mod: true, key: 'Enter' } }]],
     ['browser-set-shortcuts', [[{ id: 'palette', mod: true, key: 'k' }]]],
     ['browser-capture-preview', ['tab_1', { screenshot: 'yes', console: false }]],
+    ['browser-annotate', ['tab_1', 'on']],
+    ['browser-annotate-context', ['tab_1', { big: 'x'.repeat(64 * 1024) }]],
+    ['browser-annotate-context', ['tab_1', { loop: 1n }]],
+    ['browser-answer-annotate', ['tab_1', 'submit 1', {}]],
+    ['browser-answer-annotate', ['tab_1', 'submit-1', { big: 'x'.repeat(16 * 1024) }]],
   ];
   for (const [name, args] of bad) {
     const handler = handlers[name];
@@ -94,4 +106,35 @@ it('a renderer handler never sees the event object', () => {
   const tabs = { reload: vi.fn() } as unknown as BrowserTabs;
   browserHandlers(tabs)['browser-reload']?.('tab_1');
   expect((tabs.reload as ReturnType<typeof vi.fn>).mock.calls).toEqual([['tab_1']]);
+});
+
+it("the overlay's calls go to the tab manager with their sender and frame, each by name", async () => {
+  const seen: unknown[][] = [];
+  const tabs = {
+    fromOverlay: (...args: unknown[]) => {
+      seen.push(args);
+      return 'answer';
+    },
+  } as unknown as BrowserTabs;
+  const handlers = annotateHandlers(tabs);
+  expect(Object.keys(handlers)).toEqual(ANNOTATE_CALLS.map((name) => `annotate:${name}`));
+  const sender = { id: 7 };
+  const frame = { url: 'corral-overlay://overlay/annotate.html' };
+  expect(
+    await handlers['annotate:pick']?.({ sender, senderFrame: frame } as never, { x: 1, y: 2 }),
+  ).toBe('answer');
+  expect(seen).toEqual([[sender, frame, 'pick', [{ x: 1, y: 2 }]]]);
+});
+
+it("the overlay's preload exposes exactly its calls under corralAnnotate, and nothing of the app", () => {
+  const preload = readFileSync(resolve(import.meta.dirname, '../src/annotate-preload.cjs'), 'utf8');
+  const invoked = [...preload.matchAll(/ipcRenderer\.invoke\('annotate:([a-z-]+)'/g)].map(
+    (match) => match[1],
+  );
+  expect(new Set(invoked)).toEqual(new Set(ANNOTATE_CALLS));
+  expect([...preload.matchAll(/ipcRenderer\.on\('([^']+)'/g)].map((match) => match[1])).toEqual([
+    'annotate:event',
+  ]);
+  expect(preload).toMatch(/exposeInMainWorld\(\s*'corralAnnotate'/);
+  expect(preload).not.toMatch(/corralDesktop|desktop:|ipcRenderer\.(send|invoke)\(\s*[a-z]/);
 });

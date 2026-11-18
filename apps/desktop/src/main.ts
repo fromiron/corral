@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -20,7 +20,8 @@ import {
   Tray,
   WebContentsView,
 } from 'electron';
-import { browserHandlers } from './browser-ipc.ts';
+import { OVERLAY_SCHEME } from './annotate-overlay.ts';
+import { annotateHandlers, browserHandlers } from './browser-ipc.ts';
 import { BrowserTabs } from './browser-tabs.ts';
 import { type DesktopRun, RunSleepBlocker, runRoute, trayRunState } from './lifecycle.ts';
 import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
@@ -48,6 +49,8 @@ const dataArg = process.argv.find((arg) => arg.startsWith('--data-dir='))?.slice
 if (dataArg && isAbsolute(dataArg)) app.setPath('userData', dataArg);
 protocol.registerSchemesAsPrivileged([
   { scheme: 'corral', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // The annotation overlay's own files (annotate-overlay.ts), in its own partition only.
+  { scheme: OVERLAY_SCHEME, privileges: { standard: true, secure: true } },
 ]);
 
 const STARTUP = 'corral://startup/';
@@ -682,6 +685,23 @@ function createBrowserTabs() {
       ).popup({ window, ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : {}) });
     },
     copyText: (text) => clipboard.writeText(text),
+    after: (ms, run) => {
+      const timer = setTimeout(run, ms);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    overlayPreload: () => join(import.meta.dirname, 'annotate-preload.cjs'),
+    // The studio's build, as the runtime carries it; annotate-overlay.ts names the files.
+    overlayFile: (path) => {
+      const studio = join(runtime, 'studio');
+      const file = resolve(studio, path);
+      if (!file.startsWith(`${studio}${sep}`)) return null;
+      try {
+        return readFileSync(file);
+      } catch {
+        return null;
+      }
+    },
     korean,
     mac: process.platform === 'darwin',
   });
@@ -1150,6 +1170,8 @@ else {
     });
     browserTabs = createBrowserTabs();
     for (const [name, action] of Object.entries(browserHandlers(browserTabs))) handle(name, action);
+    for (const [channel, action] of Object.entries(annotateHandlers(browserTabs)))
+      ipcMain.handle(channel, action);
     handle('reveal-workspace', () => {
       if (existsSync(saved.workspace)) shell.showItemInFolder(saved.workspace);
     });

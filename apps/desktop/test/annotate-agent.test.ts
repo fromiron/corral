@@ -320,8 +320,8 @@ it('only fixed operations run, with plain arguments', () => {
 });
 
 it('after the first call a document answers short calls; a new document asks for the agent again', () => {
-  // biome-ignore lint/security/noGlobalEval: Execute only our fixed agent script against the test DOM.
   const short = (op: string, args: Record<string, unknown> = {}) =>
+    // biome-ignore lint/security/noGlobalEval: Execute only our fixed agent script against the test DOM.
     window.eval(agentCall(op as never, args as never));
   expect(short('probe')).toBe(AGENT_MISSING);
   expect(call('probe')).toBe(true);

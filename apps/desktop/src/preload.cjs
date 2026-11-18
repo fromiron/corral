@@ -93,6 +93,12 @@ contextBridge.exposeInMainWorld(
         ipcRenderer.invoke('desktop:browser-capture-preview', tabId, options),
       cancelPreviewCapture: (tabId) =>
         ipcRenderer.invoke('desktop:browser-cancel-preview-capture', tabId),
+      // The annotation mode (src/annotate-bridge.ts); the overlay itself has its own preload.
+      annotate: (tabId, on) => ipcRenderer.invoke('desktop:browser-annotate', tabId, on),
+      annotateContext: (tabId, context) =>
+        ipcRenderer.invoke('desktop:browser-annotate-context', tabId, context),
+      answerAnnotate: (tabId, submitId, outcome) =>
+        ipcRenderer.invoke('desktop:browser-answer-annotate', tabId, submitId, outcome),
       onEvent: (callback) => {
         if (typeof callback !== 'function') return () => {};
         const listener = (_event, value) => {

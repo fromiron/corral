@@ -16,9 +16,18 @@ import type {
   View,
   WebContents,
   WebContentsView,
+  WebFrameMain,
   WebPreferences,
   WindowOpenHandlerResponse,
 } from 'electron';
+import {
+  ANNOTATE_CALLS,
+  configureOverlaySession,
+  OVERLAY_ORIGIN,
+  OVERLAY_PARTITION,
+  overlayPreferences,
+} from './annotate-overlay.ts';
+import { TabAnnotation } from './browser-annotate.ts';
 import type {
   BrowserDownload,
   BrowserEvent,
@@ -98,6 +107,12 @@ export interface BrowserTabsPorts {
    */
   popupMenu(groups: { label: string; run: () => void }[][], at?: { x: number; y: number }): void;
   copyText(text: string): void;
+  /** Runs `run` once after `ms`; returns the cancel. */
+  after(ms: number, run: () => void): () => void;
+  /** The annotation overlay's preload (annotate-preload.cjs). */
+  overlayPreload(): string;
+  /** A file of the studio's build for the overlay (`annotate.html`, `assets/…`); null if none. */
+  overlayFile(path: string): Uint8Array | null;
   korean(): boolean;
   mac: boolean;
 }
@@ -189,6 +204,7 @@ interface Tab {
   asks: Ask[];
   logins: Map<string, (username?: string, password?: string) => void>;
   capture: PreviewCaptureSurface | null;
+  annotation: TabAnnotation;
 }
 
 interface Download {
@@ -217,6 +233,9 @@ export class BrowserTabs {
   private readonly transfers = new Map<string, Download>();
   /** "그래도 열기": (partition, host, certificate), until Corral quits. */
   private readonly trusted = new Set<string>();
+  /** The annotation overlays' pages, by contents id, to the tab each belongs to. */
+  private readonly overlays = new Map<number, Tab>();
+  private overlaySession: Session | null = null;
   private shortcuts: readonly PageChord[] = APP_PAGE_SHORTCUTS;
   private generation = 0;
 
@@ -345,7 +364,9 @@ export class BrowserTabs {
 
   focus(tabId: string) {
     const tab = this.tabs.get(tabId);
-    if (tab && this.visible(tab)) tab.contents?.focus();
+    if (!tab || !this.visible(tab)) return;
+    // While annotating, the page area's keyboard is the overlay's.
+    if (!tab.annotation.focus()) tab.contents?.focus();
   }
 
   /** Step 1 of the still-image swap: a picture of the live view, which stays live. */
@@ -355,8 +376,10 @@ export class BrowserTabs {
     if (!tab || !contents || !this.visible(tab)) return null;
     const epoch = ++tab.stillEpoch;
     let image: Awaited<ReturnType<WebContents['capturePage']>>;
+    let overlay: BrowserStill['overlay'];
     try {
-      image = await contents.capturePage();
+      // The overlay over it is pictured too, to be painted as it showed.
+      [image, overlay] = await Promise.all([contents.capturePage(), tab.annotation.picture()]);
     } catch {
       return null; // the view could not be drawn (seen in a hidden window); it stays live
     }
@@ -370,7 +393,7 @@ export class BrowserTabs {
       dataUrl: image.toDataURL(),
       width: size.width,
       height: size.height,
-      overlay: null,
+      overlay,
     };
   }
 
@@ -598,6 +621,46 @@ export class BrowserTabs {
       this.ports.files.write(REMOVED, JSON.stringify([...removed, project.partition]));
   }
 
+  // ---- annotation (browser-annotate.md) ----
+
+  /** The mode on or off over the tab's page; on: false when the tab shows no live page. */
+  annotate(tabId: string, on: boolean): boolean {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return false;
+    if (on) return tab.annotation.turnOn();
+    tab.annotation.turnOff();
+    return false;
+  }
+
+  annotateContext(tabId: string, context: unknown) {
+    this.tabs.get(tabId)?.annotation.setContext(context);
+  }
+
+  answerAnnotate(tabId: string, submitId: string, outcome: unknown) {
+    this.tabs.get(tabId)?.annotation.answer(submitId, outcome);
+  }
+
+  /** A call from an overlay's page: only a live overlay's main frame on its own page. */
+  async fromOverlay(
+    sender: WebContents,
+    frame: WebFrameMain | null | undefined,
+    name: string,
+    args: unknown[],
+  ): Promise<unknown> {
+    const tab = this.overlays.get(sender.id);
+    if (
+      !tab ||
+      tab.annotation.overlay() !== sender ||
+      !frame ||
+      frame !== sender.mainFrame ||
+      !frame.url.startsWith(`${OVERLAY_ORIGIN}/`)
+    )
+      throw new Error('Untrusted annotate request');
+    if (!(ANNOTATE_CALLS as readonly string[]).includes(name))
+      throw new Error('Unknown annotate request');
+    return tab.annotation.call(name, args);
+  }
+
   // ---- element capture on a preview tab ----
 
   async capturePreview(tabId: string, raw: unknown): Promise<PreviewCapture> {
@@ -652,9 +715,63 @@ export class BrowserTabs {
       asks: [],
       logins: new Map(),
       capture: null,
+      annotation: null as unknown as TabAnnotation,
     };
+    tab.annotation = this.annotationOf(tab);
     this.tabs.set(id, tab);
     return tab;
+  }
+
+  private annotationOf(tab: Tab): TabAnnotation {
+    return new TabAnnotation({
+      tabId: tab.id,
+      kind: tab.kind,
+      page: () =>
+        tab.page === 'live' && tab.contents && !tab.contents.isDestroyed() ? tab.contents : null,
+      lease: () => tab.lease,
+      resolveLease: () => {
+        const lease = tab.lease;
+        if (!lease) return Promise.reject(new Error('No lease'));
+        return this.ports.resolveLease(lease.sessionId, lease.leaseId);
+      },
+      rect: () => this.rects.get(tab.id) ?? null,
+      shown: () => this.visible(tab),
+      hostZoom: () => this.ports.hostZoom(),
+      createOverlay: () =>
+        this.ports.createView({
+          session: this.overlayPartition(),
+          webPreferences: overlayPreferences(this.ports.overlayPreload(), this.ports.hostZoom()),
+        }),
+      addView: (view) => this.ports.surface()?.addChildView(view),
+      removeView: (view) => {
+        try {
+          this.ports.surface()?.removeChildView(view);
+        } catch {
+          // The view already left the window.
+        }
+      },
+      send: (event) => {
+        if (this.tabs.get(tab.id) === tab) this.ports.send(event);
+      },
+      key: (event, input) => this.onKey(tab, event, input),
+      focusChanged: (focused) => {
+        tab.focused = focused;
+      },
+      overlayOpened: (contents) => void this.overlays.set(contents.id, tab),
+      overlayClosed: (contents) => void this.overlays.delete(contents.id),
+      now: () => this.ports.now(),
+      id: () => this.ports.id(),
+      after: (ms, run) => this.ports.after(ms, run),
+    });
+  }
+
+  /** The overlays' one in-memory partition, its rules set the first time. */
+  private overlayPartition(): Session {
+    if (!this.overlaySession) {
+      this.overlaySession = this.ports.session(OVERLAY_PARTITION);
+      configureOverlaySession(this.overlaySession, (path) => this.ports.overlayFile(path));
+    }
+    return this.overlaySession;
   }
 
   private pageView(project: Project) {
@@ -754,6 +871,7 @@ export class BrowserTabs {
   }
 
   private detach(tab: Tab) {
+    tab.annotation.end();
     const view = tab.view;
     if (tab.contents) this.byContents.delete(tab.contents.id);
     tab.view = null;
@@ -796,6 +914,7 @@ export class BrowserTabs {
     const rect = this.rects.get(tab.id);
     if (rect) view.setBounds(rect);
     view.setVisible(this.visible(tab));
+    tab.annotation.layout();
   }
 
   private state(tab: Tab): BrowserTabState {
@@ -859,6 +978,7 @@ export class BrowserTabs {
       tab.page = 'live';
       tab.failure = null;
       tab.url = url;
+      tab.annotation.navigated('document', url);
       this.apply(tab);
       this.emit(tab);
     });
@@ -870,7 +990,12 @@ export class BrowserTabs {
     contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!live() || !isMainFrame) return;
       tab.url = url;
+      tab.annotation.navigated('in-page', url);
       this.emit(tab);
+    });
+    contents.on('console-message', (event) => {
+      if (live() && tab.kind === 'preview')
+        tab.annotation.consoleMessage(event.level, event.message);
     });
     contents.on('did-fail-load', (_event, code, _description, url, isMainFrame) => {
       if (!live() || !isMainFrame) return;

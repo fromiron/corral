@@ -7,6 +7,17 @@ import type { BrowserFiles } from '../src/browser-permissions.ts';
 import { BrowserTabs, type BrowserTabsPorts } from '../src/browser-tabs.ts';
 
 let nextContentsId = 1;
+let nextCssKey = 1;
+
+/** A stand-in for a NativeImage from capturePage. */
+export function fakeImage(width = 400, height = 300, png = Buffer.from('png-bytes')) {
+  return {
+    isEmpty: () => false,
+    toDataURL: () => 'data:image/png;base64,still',
+    getSize: () => ({ width, height }),
+    toPNG: () => png,
+  };
+}
 
 export class FakeContents extends EventEmitter {
   id = nextContentsId++;
@@ -14,7 +25,10 @@ export class FakeContents extends EventEmitter {
   title = '';
   destroyed = false;
   zoom = 0;
-  mainFrame = {};
+  zoomFactor = 1;
+  mainFrame: { url: string } = { url: '' };
+  /** Rules put in with insertCSS, by key. */
+  css = new Map<string, string>();
   openHandler: ((details: { url: string }) => Record<string, unknown>) | null = null;
   history = { back: false, forward: false };
   navigationHistory = {
@@ -35,12 +49,25 @@ export class FakeContents extends EventEmitter {
   paste = vi.fn();
   selectAll = vi.fn();
   copyImageAt = vi.fn();
-  capturePage = vi.fn(async () => ({
-    isEmpty: () => false,
-    toDataURL: () => 'data:image/png;base64,still',
-    getSize: () => ({ width: 400, height: 300 }),
-  }));
+  capturePage = vi.fn(async (_rect?: unknown) => fakeImage());
   executeJavaScriptInIsolatedWorld = vi.fn();
+  insertCSS = vi.fn(async (css: string, _options?: unknown) => {
+    const key = `css${nextCssKey++}`;
+    this.css.set(key, css);
+    return key;
+  });
+  removeInsertedCSS = vi.fn(async (key: string) => {
+    this.css.delete(key);
+  });
+  sendInputEvent = vi.fn();
+  setZoomFactor = vi.fn((factor: number) => {
+    this.zoomFactor = factor;
+  });
+  getZoomFactor() {
+    return this.zoomFactor;
+  }
+  /** What main sent this page's renderer (the overlay's events). */
+  send = vi.fn();
   setWindowOpenHandler(handler: (details: { url: string }) => Record<string, unknown>) {
     this.openHandler = handler;
   }
@@ -139,6 +166,7 @@ export class FakeView {
   bounds: unknown = null;
   visible = true;
   init: unknown;
+  setBackgroundColor = vi.fn();
   constructor(init: unknown, contents?: FakeContents) {
     this.init = init;
     this.webContents = contents ?? new FakeContents();
@@ -157,6 +185,17 @@ export class FakeSession extends EventEmitter {
   checkHandler: ((...args: unknown[]) => boolean) | null = null;
   deviceHandler: ((...args: unknown[]) => boolean) | null = null;
   webRequestHandlers: string[] = [];
+  /** The last onBeforeRequest listener. */
+  beforeRequest:
+    | ((details: { url: string }, callback: (r: { cancel?: boolean }) => void) => void)
+    | null = null;
+  /** Custom protocol handlers by scheme. */
+  protocols = new Map<string, (request: { url: string; method: string }) => Response>();
+  protocol = {
+    handle: (scheme: string, handler: (request: { url: string; method: string }) => Response) =>
+      void this.protocols.set(scheme, handler),
+  };
+  setSpellCheckerEnabled = vi.fn();
   /** The last onHeadersReceived: its filter (when given) and listener. */
   headers: { filter: unknown; listener: (...args: unknown[]) => void } | null = null;
   /** A response through onHeadersReceived; returns the headers it went on with. */
@@ -174,7 +213,10 @@ export class FakeSession extends EventEmitter {
   clearCache = vi.fn(async () => {});
   clearAuthCache = vi.fn(async () => {});
   webRequest = {
-    onBeforeRequest: () => this.webRequestHandlers.push('onBeforeRequest'),
+    onBeforeRequest: (...args: unknown[]) => {
+      this.webRequestHandlers.push('onBeforeRequest');
+      this.beforeRequest = args.at(-1) as FakeSession['beforeRequest'];
+    },
     onBeforeSendHeaders: () => this.webRequestHandlers.push('onBeforeSendHeaders'),
     onHeadersReceived: (...args: unknown[]) => {
       this.webRequestHandlers.push('onHeadersReceived');
@@ -285,6 +327,7 @@ export function setup(options: { files?: BrowserFiles; mac?: boolean } = {}) {
   const views: FakeView[] = [];
   const children = new Set<FakeView>();
   const timers: (() => void)[] = [];
+  const later: { at: number; run: () => void; done: boolean }[] = [];
   let time = 10_000;
   let ids = 0;
   const lease = {
@@ -331,6 +374,19 @@ export function setup(options: { files?: BrowserFiles; mac?: boolean } = {}) {
     },
     popupMenu: vi.fn(),
     copyText: vi.fn(),
+    after: (ms: number, run: () => void) => {
+      const entry = { at: time + ms, run, done: false };
+      later.push(entry);
+      return () => {
+        entry.done = true;
+      };
+    },
+    overlayPreload: () => '/app/dist/annotate-preload.cjs',
+    overlayFile: vi.fn((path: string) =>
+      path === 'annotate.html' || path === 'assets/annotate-1.js'
+        ? new TextEncoder().encode(`file:${path}`)
+        : null,
+    ),
     korean: () => true,
     mac: options.mac ?? false,
   } satisfies Record<keyof BrowserTabsPorts, unknown>;
@@ -346,8 +402,13 @@ export function setup(options: { files?: BrowserFiles; mac?: boolean } = {}) {
     children,
     lease,
     sessionOf,
+    /** Time passes; what was due by then runs, in order. */
     advance: (ms: number) => {
       time += ms;
+      for (const entry of later.filter((one) => !one.done && one.at <= time)) {
+        entry.done = true;
+        entry.run();
+      }
     },
     tick: async () => {
       for (const run of [...timers]) run();
