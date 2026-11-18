@@ -189,7 +189,7 @@ export function useComposerDraft({
       setAttachments(draft.attachments ?? []);
       if (request.image !== undefined) setImages(draft.images ?? []);
       request.result = { ok: true };
-      requestAnimationFrame(() => input.current?.focus());
+      if (!request.quiet) requestAnimationFrame(() => input.current?.focus());
     };
     window.addEventListener(COMPOSER_ATTACH, attach);
     return () => window.removeEventListener(COMPOSER_ATTACH, attach);

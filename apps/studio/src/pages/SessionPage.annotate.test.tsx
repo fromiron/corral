@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import { ApiError } from '@corral/client';
+import { createTextAttachment } from '@corral/core';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
@@ -10,6 +11,7 @@ import {
 } from '../workbench/browser/fakeBrowserBridge.ts';
 import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
 import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
+import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
 import {
   createShellWorld,
   mountShell,
@@ -290,7 +292,10 @@ function host(at: Awaited<ReturnType<typeof world>>) {
   const workspaces = at.services.workspaces as NonNullable<typeof at.services.workspaces>;
   at.services.workspaces = {
     ...workspaces,
-    uploadImage: async (_sessionId: string, name: string) => {
+    uploadImage: async (_sessionId: string, name: string, _body: Blob, signal?: AbortSignal) => {
+      if (signal) signals.push(signal);
+      await held.current;
+      if (signal?.aborted) throw new DOMException('Aborted', 'AbortError');
       if (refuseUploads.current === 'limit')
         throw new ApiError(409, 'LIMIT_REACHED', 'session image storage exceeds 64 MiB');
       if (refuseUploads.current)
@@ -302,13 +307,29 @@ function host(at: Awaited<ReturnType<typeof world>>) {
         name,
         mime: 'image/png' as const,
         bytes: 68,
-        sha256: 'e'.repeat(64),
+        sha256:
+          uploads.length === 1
+            ? 'e'.repeat(64)
+            : `${'f'.repeat(62)}${uploads.length.toString(16).padStart(2, '0')}`,
         width: 1,
         height: 1,
       };
     },
   } as never;
-  return { started, uploads, answers, refuseUploads };
+  /** Uploads wait on this while it is set; the signals they were given. */
+  const held = { current: null as Promise<void> | null };
+  const signals: AbortSignal[] = [];
+  const hold = () => {
+    let release = () => {};
+    held.current = new Promise((resolve) => {
+      release = () => {
+        held.current = null;
+        resolve();
+      };
+    });
+    return () => release();
+  };
+  return { started, uploads, answers, refuseUploads, signals, hold };
 }
 async function sendNote(
   bridge: FakeBrowserBridge,
@@ -595,4 +616,180 @@ it('보내는 중인 칸이 주석 모드의 끝으로 닫힌다(취소 없이) 
   const said = `${messages.Annotate.announce.notSent}. ${messages.Refusal.limit}`;
   await until(() => announced() === said);
   expect(announced()).toBe(said);
+});
+
+// --- 모아 두기 (features/browser-annotate.md 모아 두기, 계약: 첨부) -------------------------------
+
+async function addNote(
+  bridge: FakeBrowserBridge,
+  submitId: string,
+  noteId = 'note_1',
+  made: unknown = material(),
+) {
+  await act(async () =>
+    bridge.emit({
+      type: 'annotate-submit',
+      tabId: 'b_one',
+      submitId,
+      noteId,
+      intent: 'add',
+      material: made,
+      extra: { via: 'button', again: false },
+    } as never),
+  );
+}
+const drafted = (sessionId: string) => readComposerDraft(sessionId);
+const lastContext = (bridge: FakeBrowserBridge) => contexts(bridge).at(-1)?.[1];
+
+it('모아 두기로 "담기" → 입력창 초안에 annotation-1.json과 그 스크린샷이 함께 더해지고, 번호 표시가 생기며, 아무것도 보내지 않고 포커스도 옮기지 않는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, made: sent } = await livePage(bridge, 'b_one', host);
+  await act(async () => bridge.emit({ type: 'annotate', tabId: 'b_one', on: true }));
+  // The person is on the page: the tab's annotate button holds focus while the note is added.
+  const focused = annotateButton();
+  await act(async () => focused?.focus());
+  expect(document.activeElement).toBe(focused);
+  await addNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'added', n: 1 });
+  const draft = drafted(at.sessionId);
+  expect(draft.attachments?.map((item) => item.name)).toEqual(['annotation-1.json']);
+  expect(draft.attachments?.[0]?.provenance).toMatchObject({
+    kind: 'page',
+    origin: 'https://a.example',
+    path: '/',
+    screenshotHash: 'e'.repeat(64),
+  });
+  expect(draft.images?.map((image) => image.sha256)).toEqual(['e'.repeat(64)]);
+  expect(sent.started).toEqual([]);
+  await settle();
+  expect(lastContext(bridge)?.markers).toEqual([{ pickId: 'pick_1', n: 1 }]);
+  await act(async () => {
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+  });
+  expect(document.activeElement).toBe(focused);
+});
+
+it('두 주석을 거의 함께 담는다 → 하나씩 담겨 1과 2가 된다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at } = await livePage(bridge, 'b_one', host);
+  await addNote(bridge, 'submit_1', 'note_1');
+  await addNote(bridge, 'submit_2', 'note_2', { ...material('Second'), pickId: 'pick_2' });
+  await until(() => answerTo(bridge, 'submit_2') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'added', n: 1 });
+  expect(answerTo(bridge, 'submit_2')).toEqual({ kind: 'added', n: 2 });
+  expect(drafted(at.sessionId).attachments?.map((item) => item.name)).toEqual([
+    'annotation-1.json',
+    'annotation-2.json',
+  ]);
+});
+
+it('초안의 텍스트 첨부가 다섯이면 담지 않고 그 한도의 문장으로 답한다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const text = (i: number) => createTextAttachment(`notes-${i}.md`, 'text/markdown', String(i));
+  const { at, made: sent } = await livePage(bridge, 'b_one', (world) => {
+    writeComposerDraft(world.sessionId, {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [1, 2, 3, 4, 5].map(text),
+    });
+    return host(world);
+  });
+  await addNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({
+    kind: 'not-added',
+    reason: messages.Annotate.reason.attachments,
+  });
+  expect(sent.uploads).toEqual([]);
+  expect(drafted(at.sessionId).attachments).toHaveLength(5);
+});
+
+it('스크린샷을 넣는데 초안의 이미지가 셋이면 담지 않고 그 한도의 문장으로 답하며, 스크린샷 없이는 담긴다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const picture = (i: number) => ({
+    kind: 'image_attachment' as const,
+    imageId: `image_held_${i}`,
+    name: `held-${i}.png`,
+    mime: 'image/png' as const,
+    bytes: 68,
+    sha256: String(i).repeat(64),
+    width: 1,
+    height: 1,
+  });
+  const { at, made: sent } = await livePage(bridge, 'b_one', (world) => {
+    writeComposerDraft(world.sessionId, {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      images: [1, 2, 3].map(picture),
+    });
+    return host(world);
+  });
+  await addNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({
+    kind: 'not-added',
+    reason: messages.Annotate.reason.images,
+  });
+  expect(sent.uploads).toEqual([]);
+  await addNote(bridge, 'submit_2', 'note_1', { ...material(), screenshot: null });
+  await until(() => answerTo(bridge, 'submit_2') !== undefined);
+  expect(answerTo(bridge, 'submit_2')).toEqual({ kind: 'added', n: 1 });
+  expect(drafted(at.sessionId).images).toHaveLength(3);
+});
+
+it('담는 중에 덧뷰가 기다리기를 멈춘다 → 올리던 스크린샷이 멈추고, 늦게 온 결과도 더하지 않는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, made: sent } = await livePage(bridge, 'b_one', host);
+  const release = sent.hold();
+  await addNote(bridge, 'submit_1');
+  await until(() => sent.signals.length === 1);
+  await act(async () =>
+    bridge.emit({ type: 'annotate-cancel', tabId: 'b_one', submitId: 'submit_1' }),
+  );
+  expect(sent.signals[0]?.aborted).toBe(true);
+  await act(async () => release());
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'not-added', reason: null });
+  expect(drafted(at.sessionId).attachments ?? []).toEqual([]);
+  expect(drafted(at.sessionId).images ?? []).toEqual([]);
+});
+
+it('담는 사이에 입력창에서 보낸다 → 그 주석은 더해지지 않고 "주석을 담지 못했습니다"로 답한다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, made: sent } = await livePage(bridge, 'b_one', host);
+  const release = sent.hold();
+  await addNote(bridge, 'submit_1');
+  await until(() => sent.signals.length === 1);
+  const composer = await typeInComposer('Ship it');
+  await press(composer, { key: 'Enter' });
+  await until(() => sent.started.length === 1);
+  expect(sent.started).toHaveLength(1);
+  await act(async () => release());
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'not-added', reason: null });
+  expect(drafted(at.sessionId).attachments ?? []).toEqual([]);
+});
+
+it('서버가 담을 스크린샷을 받지 않는다 → 담지 않고 그 까닭으로 답하며, 스크린샷을 끄면 담긴다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, made: sent } = await livePage(bridge, 'b_one', host);
+  sent.refuseUploads.current = 'limit';
+  await addNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({
+    kind: 'not-added',
+    reason: messages.Browser.noteImageLimit,
+  });
+  expect(drafted(at.sessionId).attachments ?? []).toEqual([]);
+  await addNote(bridge, 'submit_2', 'note_1', { ...material(), screenshot: null });
+  await until(() => answerTo(bridge, 'submit_2') !== undefined);
+  expect(answerTo(bridge, 'submit_2')).toEqual({ kind: 'added', n: 1 });
+  expect(drafted(at.sessionId).images ?? []).toEqual([]);
 });

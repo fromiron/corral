@@ -24,6 +24,7 @@ import type {
 } from '../../annotate/protocol.ts';
 import { useLocale } from '../../locale.tsx';
 import { usePreferences } from '../preferences.ts';
+import type { NoteAddRequest } from '../session/composer/noteCollect.ts';
 import type { NoteSendRequest } from '../session/composer/noteSend.ts';
 import { appliedAppearance } from '../themes/appearance.ts';
 import { paletteTokens } from '../themes/tokens.ts';
@@ -67,6 +68,8 @@ export interface ComposerAnnotatePort {
   sendNote(request: NoteSendRequest): Promise<AnnotateOutcome>;
   /** The note closed: its kept command goes. */
   forgetNote(noteId: string): void;
+  /** Collects a note into the draft as the next numbered chip, with its screenshot or neither. */
+  addNote(request: NoteAddRequest): Promise<AnnotateOutcome>;
 }
 
 /** One conversation's composer port, held while its composer is mounted. */
@@ -109,6 +112,7 @@ export function usePublishComposerAnnotate(port: ComposerAnnotatePort, key: stri
       state: () => latest.current.state(),
       sendNote: (request) => latest.current.sendNote(request),
       forgetNote: (noteId) => latest.current.forgetNote(noteId),
+      addNote: (request) => latest.current.addNote(request),
     });
     return () => registry.set(null);
   }, [registry]);
@@ -285,7 +289,17 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
 
   /** Submits waiting for their outcome; one the overlay stopped waiting for is said here. */
   const [submits] = useState(
-    () => new Map<string, { tabId: string; noteId: string; cancelled: boolean }>(),
+    () =>
+      new Map<
+        string,
+        {
+          tabId: string;
+          noteId: string;
+          intent: 'send' | 'add';
+          cancelled: boolean;
+          abort: AbortController;
+        }
+      >(),
   );
   /**
    * The open notes the overlay told of, by note: whether something is written in it and whether
@@ -298,7 +312,9 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     const sending = new Set<string>();
     for (const waiting of submits.values())
       if (waiting.tabId === tabId) {
+        // An add stops; a send already on its way goes on and says its result.
         waiting.cancelled = true;
+        if (waiting.intent === 'add') waiting.abort.abort();
         sending.add(waiting.noteId);
       }
     for (const [noteId, note] of [...notes]) {
@@ -319,11 +335,17 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     now: BrowserAnnotateInput,
   ) => {
     const { ta, tr } = words.current;
-    const waiting = { tabId: event.tabId, noteId: event.noteId, cancelled: false };
+    const waiting = {
+      tabId: event.tabId,
+      noteId: event.noteId,
+      intent: event.intent,
+      cancelled: false,
+      abort: new AbortController(),
+    };
     submits.set(event.submitId, waiting);
     let outcome: AnnotateOutcome;
     try {
-      outcome = await outcomeOf(event, now);
+      outcome = await outcomeOf(event, now, waiting.abort.signal);
     } catch {
       outcome =
         event.intent === 'add'
@@ -352,6 +374,7 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
   const outcomeOf = async (
     event: Extract<BrowserEvent, { type: 'annotate-submit' }>,
     now: BrowserAnnotateInput,
+    signal: AbortSignal,
   ): Promise<AnnotateOutcome> => {
     const { ta, tr } = words.current;
     const parsed = AnnotationMaterial.safeParse(event.material);
@@ -368,10 +391,11 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
         ? { kind: 'not-added', reason: ta('failed.pageChanged') }
         : { kind: 'refused', reason: ta('failed.pageChanged') };
     const composerPort = now.composer.get();
-    if (event.intent === 'add' || !composerPort)
-      return event.intent === 'add'
-        ? { kind: 'not-added', reason: null }
-        : { kind: 'refused', reason: tr('other') };
+    if (event.intent === 'add')
+      return composerPort
+        ? composerPort.addNote({ noteId: event.noteId, material, signal })
+        : { kind: 'not-added', reason: null };
+    if (!composerPort) return { kind: 'refused', reason: tr('other') };
     const extra = submitExtra(event.extra);
     return composerPort.sendNote({
       noteId: event.noteId,
@@ -417,7 +441,10 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
       }
       if (event.type === 'annotate-cancel') {
         const waiting = submits.get(event.submitId);
-        if (waiting?.tabId === event.tabId) waiting.cancelled = true;
+        if (waiting?.tabId !== event.tabId) return;
+        // An add stops (its upload too, and a late result adds nothing); a send goes on.
+        waiting.cancelled = true;
+        if (waiting.intent === 'add') waiting.abort.abort();
         return;
       }
       if (event.type === 'annotate-submit') {

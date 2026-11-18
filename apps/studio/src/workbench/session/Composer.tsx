@@ -3,6 +3,7 @@ import {
   IMAGE_MAX_COUNT,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
+  textAttachmentKey,
 } from '@corral/contracts';
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { useCancelConfirmation } from '@corral/react';
@@ -16,6 +17,7 @@ import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { sessionRunMode } from '../autoChoice.ts';
 import { usePublishComposerAnnotate } from '../browser/annotate.tsx';
+import { noteNumber } from '../browser/noteChips.ts';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
 import { removeMention, selectMention } from '../composerMenu.ts';
@@ -57,6 +59,7 @@ import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs
 import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
 import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
+import { useNoteCollector } from './composer/noteCollect.ts';
 import { useNoteSender } from './composer/noteSend.ts';
 import { useQueuedRequests } from './composer/queue.ts';
 import { menuSends, noTargetReason, SendMenu, TargetChip } from './composer/SendControls.tsx';
@@ -408,18 +411,34 @@ function SessionComposer({
     imageLimit: tBrowser('noteImageLimit'),
     lostNote: tAnnotate('announce.unconfirmed'),
   });
+  const collector = useNoteCollector({
+    services,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    attachmentsFull: tAnnotate('reason.attachments'),
+    imagesFull: tAnnotate('reason.images'),
+    imageFailed: tc('imageFailed'),
+    imageLimit: tBrowser('noteImageLimit'),
+  });
+  // Each collected note's marker, by the pick this page remembers it was made from.
+  const markers = attachments.flatMap((item) => {
+    const n = noteNumber(item);
+    const pickId = n === null ? null : collector.pickOf(textAttachmentKey(item));
+    return n !== null && pickId ? [{ pickId, n }] : [];
+  });
   usePublishComposerAnnotate(
     {
       state: () => ({
         textAttachments: attachments.length,
         images: images.length,
         imagesNow,
-        markers: [],
+        markers,
       }),
       sendNote: notes.sendNote,
       forgetNote: notes.forgetNote,
+      addNote: collector.addNote,
     },
-    `${attachments.length}:${images.length}:${imagesNow}`,
+    `${attachments.length}:${images.length}:${imagesNow}:${markers.map((m) => `${m.pickId}=${m.n}`).join(',')}`,
   );
 
   const backToInput = () => backToInputOf(input);
