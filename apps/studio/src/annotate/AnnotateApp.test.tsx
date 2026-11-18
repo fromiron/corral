@@ -1357,6 +1357,33 @@ describe('스타일 바꿔 보기', () => {
     expect(view.of('wheel')).toHaveLength(0);
   });
 
+  it('페이지 자리의 오른쪽 끝에 있는 카드의 보기는 주석 칸의 왼쪽에 서고 카드를 가리지 않는다', async () => {
+    vi.stubGlobal('innerWidth', 1400);
+    vi.stubGlobal('innerHeight', 700);
+    const view = await mount();
+    await view.start();
+    const card = { x: 1000, y: 100, width: 392, height: 200 };
+    await view.open(notePick({ label: 'aside.card 392×200', box: card }), 1100, 150);
+    // The note opened on the card's left.
+    expect(view.note()?.style.left).toBe('668px');
+    view.button('Style')?.focus();
+    await view.press(view.button('Style'));
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    // Right of the note would cover the card; left of it has room.
+    expect(styleView()?.style.left).toBe('320px');
+    // A preview that widens the card moves them by the same rule, and the focus stays.
+    const focused = document.activeElement;
+    await view.tick();
+    await view.answer(view.waiting('frame'), {
+      hover: null,
+      boxes: { pick_1: { x: 700, y: 100, width: 692, height: 200 } },
+      view: { width: 1400, height: 700 },
+    });
+    expect(view.note()?.style.left).toBe('368px');
+    expect(styleView()?.style.left).toBe('20px');
+    expect(document.activeElement).toBe(focused);
+  });
+
   it('페이지 자리가 좁으면 아래 시트이고 칸은 그 위에 붙는다', async () => {
     vi.stubGlobal('innerWidth', 500);
     vi.stubGlobal('innerHeight', 700);

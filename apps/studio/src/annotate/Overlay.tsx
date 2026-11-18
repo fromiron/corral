@@ -416,7 +416,12 @@ export function Overlay({
     sheet && place
       ? sheet.sheet
         ? sheet
-        : stylePlace({ x: place.x, y: place.y, width: place.width, height: cardHeight }, area)
+        : // Clear of the element it changes (its outline), when there is any room for that.
+          stylePlace(
+            { x: place.x, y: place.y, width: place.width, height: cardHeight },
+            area,
+            note ? outlineRect(noteBox(note)) : null,
+          )
       : null;
 
   /** The note leaves: its exit plays from a copy unless reduced motion asks for none. */

@@ -104,13 +104,24 @@ const STYLE_GAP = 8;
 /** The narrow style view's share of the page area's height. */
 const SHEET = 0.45;
 
+/** How much of `b` the rectangle `a` covers. */
+function overlap(a: AnnotateRect, b: AnnotateRect): number {
+  const width = Math.min(a.x + a.width, b.x + b.width) - Math.max(a.x, b.x);
+  const height = Math.min(a.y + a.height, b.y + b.height) - Math.max(a.y, b.y);
+  return width > 0 && height > 0 ? width * height : 0;
+}
+
 /**
- * The style view beside the note, on the side with room (the roomier one, kept inside the page
- * area, when neither has); a page area narrower than 560px gets a bottom sheet instead.
+ * The style view beside the note (features/browser-annotate.md 떠 있는 보기의 자리). It is there to
+ * show its effect on the element, so it first looks for a place that leaves `element` (its
+ * outline) uncovered: the note's side away from the element, then the other side, then beyond
+ * the element (its outside away from the note). When none does, it covers as little of the
+ * element as it can, never the note. A page area narrower than 560px gets a bottom sheet instead.
  */
 export function stylePlace(
   note: AnnotateRect,
   area: Size,
+  element: AnnotateRect | null = null,
 ): { x: number; y: number; width: number; height: number; sheet: boolean } {
   if (area.width < NARROW) {
     const height = Math.round(area.height * SHEET);
@@ -119,20 +130,37 @@ export function stylePlace(
   const width = STYLE_WIDTH;
   const height = Math.min(STYLE_HEIGHT, area.height - EDGE * 2);
   const y = clamp(note.y, EDGE, area.height - EDGE - height);
+  const maxX = area.width - EDGE - width;
+  const at = (x: number) => ({ x, y, width, height, sheet: false });
   const right = note.x + note.width + STYLE_GAP;
   const left = note.x - STYLE_GAP - width;
-  const maxX = area.width - EDGE - width;
-  if (right <= maxX) return { x: right, y, width, height, sheet: false };
-  if (left >= EDGE) return { x: left, y, width, height, sheet: false };
-  const roomRight = area.width - EDGE - right;
-  const roomLeft = note.x - STYLE_GAP - EDGE;
-  return {
-    x: clamp(roomRight >= roomLeft ? right : left, EDGE, maxX),
-    y,
-    width,
-    height,
-    sheet: false,
-  };
+  const centre = (rect: AnnotateRect) => rect.x + rect.width / 2;
+  const elementRight = !!element && centre(element) > centre(note);
+  const beside = elementRight ? [left, right] : [right, left];
+  const fits = (x: number) => x >= EDGE && x <= maxX;
+  const clear = (x: number) => !element || overlap(at(x), element) === 0;
+  for (const x of beside) if (fits(x) && clear(x)) return at(x);
+  const beyond = element
+    ? elementRight
+      ? element.x + element.width + STYLE_GAP
+      : element.x - STYLE_GAP - width
+    : null;
+  if (beyond !== null && fits(beyond) && clear(beyond) && overlap(at(beyond), note) === 0)
+    return at(beyond);
+  // Nothing leaves it uncovered: the place over the least of it, kept off the note.
+  const places = [...beside, ...(beyond === null ? [] : [beyond])].map((x) => clamp(x, EDGE, maxX));
+  const cost = (x: number) => [
+    overlap(at(x), note) > 0 ? 1 : 0,
+    element ? overlap(at(x), element) : 0,
+    overlap(at(x), note),
+  ];
+  let best = places[0] as number;
+  for (const x of places.slice(1)) {
+    const [a, b] = [cost(x), cost(best)];
+    const i = a.findIndex((value, n) => value !== b[n]);
+    if (i >= 0 && (a[i] as number) < (b[i] as number)) best = x;
+  }
+  return at(best);
 }
 
 /**

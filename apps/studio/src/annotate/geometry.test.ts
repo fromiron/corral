@@ -197,6 +197,36 @@ describe('스타일 보기의 자리', () => {
     });
   });
 
+  describe('고른 요소를 가리지 않는 자리를 먼저 찾는다', () => {
+    const wide = { width: 1400, height: 700 };
+
+    it('주석 칸의 양옆에 다 자리가 있으면 요소에서 먼 쪽에 선다', () => {
+      // A card at the right edge, its note on its left: right of the note would cover it.
+      const card = { x: 995, y: 95, width: 402, height: 210 };
+      const beside = { x: 668, y: 100, width: 320, height: 160 };
+      expect(stylePlace(beside, wide, card)).toMatchObject({ x: 320, sheet: false });
+      // Neither side covers it (it is above the note): still the side away from it.
+      const above = { x: 695, y: 45, width: 510, height: 40 };
+      const under = { x: 700, y: 92, width: 320, height: 160 };
+      expect(stylePlace(under, wide, above)).toMatchObject({ x: 352 });
+    });
+
+    it('주석 칸 옆의 자리가 요소를 가리는 쪽뿐이면 요소 너머에 선다', () => {
+      // The note left of a mid-page element; left of the note has no room, right covers it.
+      const element = { x: 395, y: 95, width: 310, height: 210 };
+      const left = { x: 63, y: 100, width: 320, height: 160 };
+      expect(stylePlace(left, wide, element)).toMatchObject({ x: 713 });
+    });
+
+    it('어디에도 들지 않을 때만 요소를 가리고, 주석 칸은 가리지 않으며 되도록 적게 가린다', () => {
+      const narrowish = { width: 1000, height: 700 };
+      const element = { x: 495, y: 95, width: 310, height: 210 };
+      const left = { x: 163, y: 100, width: 320, height: 160 };
+      // Right of the note covers 310px of its width; at the page area's right edge, 153px.
+      expect(stylePlace(left, narrowish, element)).toMatchObject({ x: 652 });
+    });
+  });
+
   it('페이지 자리의 폭이 560px보다 좁으면 높이 45%의 아래 시트이고 주석 칸은 그 위에 붙는다', () => {
     const narrow = { width: 500, height: 700 };
     expect(stylePlace(note, narrow)).toEqual({
