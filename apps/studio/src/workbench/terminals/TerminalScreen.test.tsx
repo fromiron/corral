@@ -250,3 +250,32 @@ it('keeps the lost-input recovery and its two actions', async () => {
     [...container.querySelectorAll('button')].some((b) => b.textContent === T.restartInput),
   ).toBe(true);
 });
+
+// A save refused while this terminal holds the copy is waiting for it; one refused over another
+// holder is not (api-contract.md 오류, `owner`).
+it('says a save is waiting for this terminal only when the refusal names this terminal', async () => {
+  const waiting = (owner: { kind: 'terminal' | 'run'; id: string }) =>
+    ({
+      getState: () => ({
+        documents: {
+          doc: {
+            target,
+            writerBusy: true,
+            writerOwner: { ...owner, sessionId: 'session', state: 'active' },
+          },
+        },
+      }),
+      subscribe: () => () => {},
+    }) as unknown as NonNullable<Parameters<typeof TerminalScreen>[0]['documents']>;
+  const mine = await mount(fakeStore(view()), {
+    documents: waiting({ kind: 'terminal', id: 'terminal' }),
+  });
+  expect(mine.querySelector('[data-testid="terminal-blocking"]')?.textContent).toBe(T.blockingSave);
+  for (const owner of [
+    { kind: 'terminal' as const, id: 'another' },
+    { kind: 'run' as const, id: 'run_1' },
+  ]) {
+    const other = await mount(fakeStore(view()), { documents: waiting(owner) });
+    expect(other.querySelector('[data-testid="terminal-blocking"]')).toBeNull();
+  }
+});

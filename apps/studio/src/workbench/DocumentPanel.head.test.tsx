@@ -284,6 +284,18 @@ it('a save held by another writer is one warning banner, and Save steps back', a
   // Without a held copy, an unsaved document keeps the primary Save.
   const free = await mount(buffer({ dirty: true, text: 'one\ntwo!' }));
   expect(free.button('Save')?.className).toBe(variantClass('primary'));
+  // A refusal that names its holder is told by that holder.
+  const named = await mount(
+    buffer({
+      dirty: true,
+      text: 'one\ntwo!',
+      writerBusy: true,
+      writerOwner: { kind: 'run', id: 'run_1', sessionId: 'session', state: 'uncertain' },
+    }),
+  );
+  expect(
+    named.container.querySelector('[data-slot="banner"][data-status="warning"]')?.textContent,
+  ).toContain(messages.Documents.saveHeld.runUncertain);
 });
 
 it('the reference popover keeps one short hint line', async () => {

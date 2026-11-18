@@ -81,6 +81,76 @@ it('a save held by a running task offers to stop that task, then leaves saving t
   container.remove();
 });
 
+// A refusal that names its holder (api-contract.md 오류) is told by that holder, with only its
+// action: a task's stop, or a terminal's controls. A run or an operation has none.
+it("a save refused over a named holder names it and offers only that holder's action", async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.workspaces = {
+    tasks: vi.fn(async () => ({
+      tasks: [
+        { operationId: 'task_1', script: 'dev', state: 'running' },
+        { operationId: 'task_2', script: 'build', state: 'running' },
+      ],
+    })),
+    stopTask: vi.fn(),
+  };
+  fixture.terminals.list.mockResolvedValue({
+    terminals: [{ state: 'running', target, terminalId: 'term_1' }],
+  });
+  fixture.transport.listRuns.mockResolvedValue([
+    { runId: 'run_1', sessionId: 'session', status: 'running' },
+  ]);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const held = async (owner: Parameters<typeof WriterHeld>[0]['owner']) => {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <WriterHeld target={target} owner={owner} />
+        </IntlProvider>,
+      ),
+    );
+    return {
+      text: container.textContent,
+      actions: [...container.querySelectorAll('button, a')].map(
+        (node) => node.getAttribute('href') ?? node.textContent,
+      ),
+    };
+  };
+  const named = { sessionId: 'session', state: 'active' as const };
+  try {
+    expect(await held({ kind: 'task', id: 'task_2', ...named })).toEqual({
+      text: expect.stringContaining(messages.Documents.saveHeld.heldTask),
+      actions: ['Stop build'],
+    });
+    expect(await held({ kind: 'terminal', id: 'term_1', ...named })).toEqual({
+      text: expect.stringContaining(messages.Documents.saveHeld.terminal),
+      actions: ['/sessions/session?panel=terminal&terminal=term_1'],
+    });
+    expect(await held({ kind: 'run', id: 'run_1', ...named })).toEqual({
+      text: expect.stringContaining(messages.Documents.saveHeld.busy),
+      actions: [],
+    });
+    expect(
+      await held({
+        kind: 'operation',
+        id: 'op_1',
+        sessionId: 'session',
+        state: 'uncertain',
+        operationKind: 'git.pull',
+      }),
+    ).toEqual({
+      text: expect.stringContaining(messages.Documents.saveHeld.operationUncertain),
+      actions: [],
+    });
+    expect(container.textContent).not.toContain(messages.Documents.writerHeld);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 it('offers same-copy terminal and same-session active Run controls without stopping or saving', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.workspaces = { tasks: vi.fn(async () => ({ tasks: [] })), stopTask: vi.fn() };
