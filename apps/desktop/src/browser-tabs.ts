@@ -1200,7 +1200,23 @@ export class BrowserTabs {
           waiting.done(answer);
           return false;
         });
-        if (ask.waiting.length) continue;
+        if (ask.waiting.length) {
+          // Still asking: the line names only what its requests still need, under its request.
+          const needed = [...new Set(ask.waiting.flatMap((waiting) => waiting.permissions))].filter(
+            (entry) => project.permissions.get(origin, entry) === undefined,
+          );
+          if (needed.join() !== ask.permissions.join()) {
+            ask.permissions = needed;
+            this.ports.send({
+              type: 'permission',
+              tabId: tab.id,
+              requestId: ask.requestId,
+              origin,
+              permissions: needed,
+            });
+          }
+          continue;
+        }
         tab.asks = tab.asks.filter((entry) => entry !== ask);
         this.ports.send({ type: 'permission-ended', tabId: tab.id, requestId: ask.requestId });
       }

@@ -154,6 +154,28 @@ it('a combined request asks only what is unanswered and goes through only when a
   ]);
 });
 
+it('a line still asking drops what another line answered, under the same request', () => {
+  const f = setup();
+  const a = page(f, 'tab-a', 'project_a', 'https://meet.example/');
+  const camera = a.session.request(a.contents, 'media', { mediaTypes: ['video'] });
+  const both = a.session.request(a.contents, 'media', { mediaTypes: ['video', 'audio'] });
+  const [first, second] = asks(f.events);
+  expect(first?.permissions).toEqual(['camera']);
+  expect(second?.permissions).toEqual(['camera', 'microphone']);
+  f.tabs.answerPermission('tab-a', first?.requestId ?? '', true);
+  expect(camera.answer).toBe(true);
+  expect(both.answer).toBeUndefined();
+  // The second line now names the microphone only; the host replaces it by its request.
+  expect(asks(f.events).at(-1)).toEqual({ ...second, permissions: ['microphone'] });
+  f.tabs.answerPermission('tab-a', second?.requestId ?? '', true);
+  expect(both.answer).toBe(true);
+  expect(f.events).toContainEqual({
+    type: 'permission-ended',
+    tabId: 'tab-a',
+    requestId: second?.requestId,
+  });
+});
+
 it('device pickers are refused without asking', () => {
   const f = setup();
   const a = page(f, 'tab-a', 'project_a', 'https://iot.example/');

@@ -89,6 +89,10 @@ export type BrowserEvent =
   | { type: 'leave'; tabId: string }
   /** An app shortcut pressed in the page; focus is back in the host. */
   | { type: 'shortcut'; tabId: string; id: string; digit?: number }
+  /**
+   * Ask on the line below the head. A second `permission` with a `requestId` already shown
+   * replaces that line's permissions (another line answered some of them).
+   */
   | {
       type: 'permission';
       tabId: string;
