@@ -94,17 +94,33 @@ it('the person closing a tab unloads its page without asking; leaving only unloa
   expect(f.sessionOf(view(f, 2))).toBe(f.sessionOf(b));
 });
 
-it("a move the page's leave check stops leaves the address on the page that stayed", () => {
+it("a page's leave check (beforeunload) never holds a move, on ordinary and preview pages", async () => {
   const f = setup();
-  f.tabs.navigate('tab-a', 'project_a', 'https://form.example/draft');
+  f.tabs.navigate('tab-a', 'project_a', 'https://shop.example/cart');
   const page = view(f, 0).webContents;
-  page.commit('https://form.example/draft', 'Draft');
-  page.loadURL.mockImplementationOnce(async () => {}); // the page's address changes on commit only
-  f.tabs.navigate('tab-a', 'project_a', 'https://example.org/');
-  expect(f.last('tab-a')?.url).toBe('https://example.org/');
-  // beforeunload held: Electron cancels the move, and nothing commits.
-  page.emit('will-prevent-unload', { preventDefault: vi.fn() });
-  expect(f.last('tab-a')).toMatchObject({ page: 'live', url: 'https://form.example/draft' });
+  page.commit('https://shop.example/cart', 'Cart');
+  // A typed address, Mod+R, back/forward or the page's own move: Electron asks first.
+  for (const move of [
+    () => f.tabs.navigate('tab-a', 'project_a', 'https://other.example/'),
+    () => page.key({ key: 'r', code: 'KeyR', control: true }),
+    () => f.tabs.reload('tab-a'),
+    () => undefined, // location.href = … from the page
+  ]) {
+    move();
+    const held = { preventDefault: vi.fn() };
+    page.emit('will-prevent-unload', held);
+    expect(held.preventDefault).toHaveBeenCalled();
+  }
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  const preview = view(f, 1).webContents;
+  const held = { preventDefault: vi.fn() };
+  preview.emit('will-prevent-unload', held);
+  expect(held.preventDefault).toHaveBeenCalled();
+  // A page that is no longer the tab's has no say either way.
+  f.tabs.close('tab-a');
+  const late = { preventDefault: vi.fn() };
+  page.emit('will-prevent-unload', late);
+  expect(late.preventDefault).not.toHaveBeenCalled();
 });
 
 it('a person-opened tab whose page closes itself stays, and reopens its last address', async () => {

@@ -807,14 +807,10 @@ export class BrowserTabs {
       this.apply(tab);
       this.emit(tab);
     });
-    // The page's beforeunload held a move (an address, Mod+R): Electron cancels it and nothing
-    // commits, so the address goes back to the page that stayed. Closing never asks.
-    contents.on('will-prevent-unload', () => {
-      if (!live()) return;
-      const url = contents.getURL();
-      if (!url || url === tab.url) return;
-      tab.url = url;
-      this.emit(tab);
+    // A page's leave check (beforeunload) is never asked: a typed address, a reload, back or
+    // forward and the page's own moves go through, as closing does (Electron would cancel them).
+    contents.on('will-prevent-unload', (event) => {
+      if (live()) event.preventDefault();
     });
     contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (!live() || !isMainFrame) return;
