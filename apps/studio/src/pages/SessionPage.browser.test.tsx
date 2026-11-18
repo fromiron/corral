@@ -786,16 +786,31 @@ it('다시 연 서랍이 같은 크기로 미끄러져 들어오면 네이티브
   layOut('far', () => left);
   const bridge = createFakeBrowserBridge();
   const { shell } = await livePage(bridge);
-  await reopenAsDrawer(shell);
   const placement = (x: number) => [
     'b_one',
     { x, y: PLACE.top, width: PLACE.width, height: PLACE.height },
   ];
-  expect(bridge.callsTo('place').at(-1)).toEqual(placement(left));
-  // A drawer slides with a transform; its page receives no resize notification.
-  left = 461;
-  await wait(350);
-  expect(bridge.callsTo('place').at(-1)).toEqual(placement(left));
+  // Drive the transform and its observer on the same animation clock. Waiting for act() on a
+  // busy runner must not leave the mock drawer stationary until after its slide would have ended.
+  vi.useFakeTimers({ toFake: ['performance', 'requestAnimationFrame', 'cancelAnimationFrame'] });
+  try {
+    await reopenAsDrawer(shell);
+    expect(bridge.callsTo('place').at(-1)).toEqual(placement(left));
+    for (const x of [650, 461]) {
+      left = x;
+      await act(async () => {
+        vi.advanceTimersToNextFrame();
+      });
+      expect(bridge.callsTo('place').at(-1)).toEqual(placement(x));
+    }
+    // No resize event is sent. Once the slide is over, the view stays at its final position.
+    await act(async () => {
+      vi.advanceTimersByTime(350);
+    });
+    expect(bridge.callsTo('place').at(-1)).toEqual(placement(461));
+  } finally {
+    vi.useRealTimers();
+  }
 });
 
 it('살아 있는 페이지 위로 ⋯ 메뉴를 연다 → 페이지 자리는 그 순간의 그림이고(그림을 칠한 뒤 뷰를 숨긴다), Escape로 닫으면 살아 있는 뷰가 돌아오고 그림은 버린다', async () => {
