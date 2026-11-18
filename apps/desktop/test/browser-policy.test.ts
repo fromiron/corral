@@ -243,10 +243,13 @@ it('permissions: device pickers, fullscreen and screen sharing are refused, the 
     expect(permissionRequest(permission)).toEqual({ kind: 'grant' });
     expect(permissionCheck(permission)).toEqual({ kind: 'grant' });
   }
-  // Chromium asks for any Web MIDI access, SysEx or not.
-  expect(permissionRequest('midi')).toEqual({ kind: 'ask', permissions: ['midi'] });
-  expect(permissionCheck('midi')).toEqual({ kind: 'stored', permission: 'midi' });
-  expect(permissionRequest('midiSysex')).toEqual({ kind: 'ask', permissions: ['midi-sysex'] });
+  // Chromium asks for any Web MIDI access, SysEx or not, as one permission: Electron 44.4.5
+  // requests both as midiSysex and reads either name, so both are the one site answer.
+  for (const name of ['midi', 'midiSysex']) {
+    expect(permissionRequest(name)).toEqual({ kind: 'ask', permissions: ['midi'] });
+    expect(permissionCheck(name)).toEqual({ kind: 'stored', permission: 'midi' });
+  }
+  expect(SITE_PERMISSIONS).not.toContain('midi-sysex');
   expect(permissionRequest('notifications')).toEqual({
     kind: 'ask',
     permissions: ['notifications'],

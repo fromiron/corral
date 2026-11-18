@@ -220,7 +220,6 @@ export type SitePermission =
   | 'clipboard-read'
   | 'open-external'
   | 'midi'
-  | 'midi-sysex'
   | 'idle-detection'
   | 'window-management'
   | 'local-fonts'
@@ -239,7 +238,6 @@ export const SITE_PERMISSIONS: readonly SitePermission[] = [
   'clipboard-read',
   'open-external',
   'midi',
-  'midi-sysex',
   'idle-detection',
   'window-management',
   'local-fonts',
@@ -258,8 +256,9 @@ const ASKED: Record<string, SitePermission> = {
   notifications: 'notifications',
   'clipboard-read': 'clipboard-read',
   openExternal: 'open-external',
+  // One MIDI answer: Electron 44.4.5 requests any MIDI access as midiSysex, reads either name.
   midi: 'midi',
-  midiSysex: 'midi-sysex',
+  midiSysex: 'midi',
   'idle-detection': 'idle-detection',
   'window-management': 'window-management',
   'local-fonts': 'local-fonts',
