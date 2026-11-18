@@ -104,6 +104,56 @@ it('a camera answer covers camera only; a remembered refusal is never asked agai
   ).toBe(true);
 });
 
+it('a combined request asks only what is unanswered and goes through only when all is allowed', () => {
+  const f = setup();
+  const a = page(f, 'tab-a', 'project_a', 'https://meet.example/');
+  const camera = a.session.request(a.contents, 'media', { mediaTypes: ['video'] });
+  f.tabs.answerPermission('tab-a', asks(f.events).at(-1)?.requestId ?? '', true);
+  expect(camera.answer).toBe(true);
+  // Camera allowed earlier: the line names the microphone only.
+  const both = a.session.request(a.contents, 'media', { mediaTypes: ['video', 'audio'] });
+  expect(both.answer).toBeUndefined();
+  expect(asks(f.events).at(-1)).toMatchObject({
+    origin: 'https://meet.example',
+    permissions: ['microphone'],
+  });
+  f.tabs.answerPermission('tab-a', asks(f.events).at(-1)?.requestId ?? '', true);
+  expect(both.answer).toBe(true);
+  expect(f.tabs.sitePermissions('project_a', 'https://meet.example')).toEqual([
+    { permission: 'camera', allow: true },
+    { permission: 'microphone', allow: true },
+  ]);
+  // Each is forgotten on its own; a refusal on the line refuses the whole request.
+  f.tabs.forgetPermission('project_a', 'https://meet.example', 'microphone');
+  expect(f.tabs.sitePermissions('project_a', 'https://meet.example')).toEqual([
+    { permission: 'camera', allow: true },
+  ]);
+  const again = a.session.request(a.contents, 'media', { mediaTypes: ['video', 'audio'] });
+  expect(asks(f.events).at(-1)?.permissions).toEqual(['microphone']);
+  f.tabs.answerPermission('tab-a', asks(f.events).at(-1)?.requestId ?? '', false);
+  expect(again.answer).toBe(false);
+  expect(f.tabs.sitePermissions('project_a', 'https://meet.example')).toEqual([
+    { permission: 'camera', allow: true },
+    { permission: 'microphone', allow: false },
+  ]);
+  // One remembered refusal refuses the request without asking, though the camera is allowed.
+  const count = asks(f.events).length;
+  expect(a.session.request(a.contents, 'media', { mediaTypes: ['video', 'audio'] }).answer).toBe(
+    false,
+  );
+  expect(asks(f.events)).toHaveLength(count);
+  // Neither answered: one line names both, and its one answer is remembered for each.
+  const b = page(f, 'tab-b', 'project_a', 'https://call.example/');
+  const fresh = b.session.request(b.contents, 'media', { mediaTypes: ['video', 'audio'] });
+  expect(asks(f.events).at(-1)?.permissions).toEqual(['camera', 'microphone']);
+  f.tabs.answerPermission('tab-b', asks(f.events).at(-1)?.requestId ?? '', true);
+  expect(fresh.answer).toBe(true);
+  expect(f.tabs.sitePermissions('project_a', 'https://call.example')).toEqual([
+    { permission: 'camera', allow: true },
+    { permission: 'microphone', allow: true },
+  ]);
+});
+
 it('device pickers are refused without asking', () => {
   const f = setup();
   const a = page(f, 'tab-a', 'project_a', 'https://iot.example/');
