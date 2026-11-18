@@ -228,7 +228,23 @@ it('permissions: device pickers, fullscreen and screen sharing are refused, the 
     'something-new',
   ])
     expect(permissionRequest(permission)).toEqual({ kind: 'deny' });
-  expect(permissionRequest('clipboard-sanitized-write')).toEqual({ kind: 'grant' });
+  // What Chromium grants without asking (features/browser-tab.md 계약), and nothing else.
+  for (const permission of [
+    'clipboard-sanitized-write',
+    'background-sync',
+    'background-fetch',
+    'screen-wake-lock',
+    'sensors',
+    'persistent-storage',
+    'mediaKeySystem',
+  ]) {
+    expect(permissionRequest(permission)).toEqual({ kind: 'grant' });
+    expect(permissionCheck(permission)).toEqual({ kind: 'grant' });
+  }
+  // Chromium asks for any Web MIDI access, SysEx or not.
+  expect(permissionRequest('midi')).toEqual({ kind: 'ask', permissions: ['midi'] });
+  expect(permissionCheck('midi')).toEqual({ kind: 'stored', permission: 'midi' });
+  expect(permissionRequest('midiSysex')).toEqual({ kind: 'ask', permissions: ['midi-sysex'] });
   expect(permissionRequest('notifications')).toEqual({
     kind: 'ask',
     permissions: ['notifications'],

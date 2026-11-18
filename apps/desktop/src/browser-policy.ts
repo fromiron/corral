@@ -219,6 +219,7 @@ export type SitePermission =
   | 'notifications'
   | 'clipboard-read'
   | 'open-external'
+  | 'midi'
   | 'midi-sysex'
   | 'idle-detection'
   | 'window-management'
@@ -237,6 +238,7 @@ export const SITE_PERMISSIONS: readonly SitePermission[] = [
   'notifications',
   'clipboard-read',
   'open-external',
+  'midi',
   'midi-sysex',
   'idle-detection',
   'window-management',
@@ -256,6 +258,7 @@ const ASKED: Record<string, SitePermission> = {
   notifications: 'notifications',
   'clipboard-read': 'clipboard-read',
   openExternal: 'open-external',
+  midi: 'midi',
   midiSysex: 'midi-sysex',
   'idle-detection': 'idle-detection',
   'window-management': 'window-management',
@@ -282,7 +285,6 @@ const GRANTED = new Set([
   'background-fetch',
   'screen-wake-lock',
   'sensors',
-  'midi',
   'persistent-storage',
   'mediaKeySystem',
 ]);
