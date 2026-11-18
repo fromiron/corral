@@ -49,6 +49,12 @@ const StyleValue = z.string().max(200);
 
 export const AnnotationElement = z.strictObject({
   tag: z.string().min(1).max(80),
+  /** Its name tag as the overlay shows it (`button.primary 120×32`): plain text, one line. */
+  label: z
+    .string()
+    .min(1)
+    .max(200)
+    .regex(/^[^\p{Cc}]*$/u),
   role: z.string().max(120).nullable(),
   /** nth-of-type steps from body, at most 12. */
   selector: z.string().max(1000),

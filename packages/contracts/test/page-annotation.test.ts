@@ -32,6 +32,7 @@ const styles = {
 };
 const element = {
   tag: 'button',
+  label: 'button.pay 120×32',
   role: null,
   selector: 'body > main:nth-of-type(1) > button:nth-of-type(2)',
   text: 'Pay',
@@ -94,6 +95,21 @@ it('refuses a note whose page carries a query, a fragment or credentials, or who
     }).success,
   ).toBe(false);
   expect(AnnotationMaterial.safeParse({ ...material, extra: 'not allowed' }).success).toBe(false);
+});
+
+it('the element carries its name tag as plain text up to 200 characters, as the overlay shows it (반례)', () => {
+  const { label: _label, ...unnamed } = element;
+  for (const bad of [
+    unnamed,
+    { ...element, label: '' },
+    { ...element, label: 'x'.repeat(201) },
+    { ...element, label: 'button\n120×32' },
+  ])
+    expect(AnnotationMaterial.safeParse({ ...material, element: bad }).success).toBe(false);
+  expect(
+    AnnotationMaterial.safeParse({ ...material, element: { ...element, label: 'x'.repeat(200) } })
+      .success,
+  ).toBe(true);
 });
 
 it('a note body starts with the untrusted warning and has no pick ID, no screenshot bytes and, off a preview console, no console', () => {

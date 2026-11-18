@@ -259,6 +259,7 @@ const material = (note = 'Make the button larger') => ({
   note,
   element: {
     tag: 'button',
+    label: 'button.pay 120×32',
     role: null,
     selector: 'body > button:nth-of-type(1)',
     text: 'Pay',

@@ -95,6 +95,7 @@ const body: PageAnnotation = {
   note: 'Make the button larger',
   element: {
     tag: 'button',
+    label: 'button.pay 120×32',
     role: null,
     selector: 'body > main:nth-of-type(1) > button:nth-of-type(2)',
     text: 'Pay',
