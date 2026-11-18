@@ -739,6 +739,14 @@ CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
 CREATE INDEX workspace_access_writer ON workspace_access(worktree_key)
   WHERE writer=1 AND state IN ('active','uncertain');`,
   },
+  {
+    // The development mode is gone, and nothing settles its owners any more: they are deleted with
+    // the copy access they held.
+    name: '0046_development_mode_removed',
+    sql: `DELETE FROM workspace_access WHERE owner_kind='user'
+  AND owner_id IN (SELECT operation_id FROM workbench_operations WHERE kind='development');
+DELETE FROM workbench_operations WHERE kind='development';`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
