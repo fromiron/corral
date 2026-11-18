@@ -9,6 +9,10 @@ export {
   type ActivityTarget,
 } from './components/ActivityBar.tsx';
 export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
+export {
+  AnnotationContents,
+  type AnnotationContentsProps,
+} from './components/AnnotationContents.tsx';
 export { ApprovalPanel, callLine, waitingToolPlan } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
