@@ -123,6 +123,16 @@ it('Shift+Escape, Mod+R, the zoom keys and app shortcuts are taken from the page
     id: 'session.jump',
     digit: 3,
   });
+  // The annotation mode's Mod+Shift+D: Shift makes the key a capital.
+  expect(
+    pageKey(key({ key: 'D', code: 'KeyD', control: true, shift: true }), chords, false),
+  ).toEqual({ action: 'shortcut', id: 'browser.annotate' });
+  expect(pageKey(key({ key: 'D', code: 'KeyD', meta: true, shift: true }), chords, true)).toEqual({
+    action: 'shortcut',
+    id: 'browser.annotate',
+  });
+  // Counterexample: without Shift, Mod+D stays the page's.
+  expect(pageKey(key({ key: 'd', code: 'KeyD', control: true }), chords, false)).toBeNull();
   // Alt changes the key on a Mac keyboard; the physical key decides then.
   expect(pageKey(key({ key: '∫', code: 'KeyB', meta: true, alt: true }), chords, true)).toEqual({
     action: 'shortcut',

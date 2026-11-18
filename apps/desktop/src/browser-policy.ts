@@ -83,6 +83,7 @@ export const APP_PAGE_SHORTCUTS: readonly PageChord[] = [
   { id: 'nav.back', key: '[', mod: true },
   { id: 'nav.forward', key: ']', mod: true },
   { id: 'run.stop', key: '.', mod: true },
+  { id: 'browser.annotate', key: 'd', mod: true, shift: true },
 ];
 
 /**

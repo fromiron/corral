@@ -94,6 +94,10 @@ it("the studio's whole default map reaches the native menu; a chord the menu can
   expect(() => desktopAccelerators({ ...bindings, 'view.dock': { mod: true, key: 'k' } })).toThrow(
     'Conflicting',
   );
+  // The annotation mode's chord too: it is the browser tab's, never a menu accelerator.
+  expect(() =>
+    desktopAccelerators({ ...bindings, 'browser.annotate': { mod: true, key: 'n' } }),
+  ).toThrow('Conflicting');
   for (const value of [
     { 'view.dock': { mod: 'yes', key: 'j' } },
     { 'reply.quote': { alt: true, key: 'q', extra: true } },

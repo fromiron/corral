@@ -68,7 +68,13 @@ export function desktopCommand(value: unknown): DesktopCommand | null {
  * The studio's shortcuts that have no menu item (apps/studio/src/shortcuts.ts). Their chords are
  * checked and kept clear of the menu's, but never bound here.
  */
-const PAGE_ONLY_SHORTCUTS = ['run.stop', 'session.jump', 'view.dock', 'reply.quote'];
+const PAGE_ONLY_SHORTCUTS = [
+  'run.stop',
+  'session.jump',
+  'view.dock',
+  'reply.quote',
+  'browser.annotate',
+];
 
 /** Validate the renderer's command IDs/chords before they become native accelerators. */
 export function desktopAccelerators(value: unknown): Partial<Record<DesktopCommand, string>> {
