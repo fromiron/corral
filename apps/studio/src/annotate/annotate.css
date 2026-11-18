@@ -26,11 +26,29 @@
   .annotate-pop {
     animation: annotate-pop var(--duration-fast) var(--ease-out-soft) both;
   }
+  /* The note grows from where it was picked (moderate) and goes back the quicker way. */
+  .annotate-grow {
+    animation: annotate-grow var(--duration-moderate) var(--ease-out-soft) both;
+  }
+  .annotate-shrink {
+    animation: annotate-shrink var(--duration-fast) var(--ease-out-soft) both;
+  }
+  /* A press the busy page can't answer draws the eye to the busy line. */
+  .annotate-nudge {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    animation: annotate-nudge var(--duration-slow) var(--ease-out-soft) 2;
+  }
   @media (prefers-reduced-motion: reduce) {
     .annotate-draw,
     .annotate-leave,
-    .annotate-pop {
+    .annotate-pop,
+    .annotate-grow,
+    .annotate-shrink {
       animation: none;
+    }
+    .annotate-nudge {
+      animation-name: annotate-flag;
     }
   }
 }
@@ -54,5 +72,32 @@
   from {
     opacity: 0;
     transform: scale(0.6);
+  }
+}
+
+@keyframes annotate-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes annotate-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes annotate-nudge {
+  50% {
+    outline-color: var(--warning);
+    transform: scale(1.04);
+  }
+}
+
+@keyframes annotate-flag {
+  50% {
+    outline-color: var(--warning);
   }
 }

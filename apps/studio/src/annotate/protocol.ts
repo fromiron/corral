@@ -56,4 +56,10 @@ export type AnnotateMessage =
    * A note closed (sent, discarded, its page gone): the app page forgets its command ID. After
    * the mode ends the app page says a send's result itself (바로 보내기).
    */
-  | { type: 'note-closed'; noteId: string };
+  | { type: 'note-closed'; noteId: string }
+  /**
+   * Whether the open note has something written (text or a changed style), sent whenever that
+   * changes: when the mode ends with a written note open, the app page says
+   * "작성 중인 주석을 버렸습니다", since the overlay may be gone before it could.
+   */
+  | { type: 'note-written'; noteId: string; written: boolean };

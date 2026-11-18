@@ -91,21 +91,38 @@ export function notePlace(
   return { x: maxX, y: sideY, width, side: 'over' };
 }
 
+/** Markers stay this far inside the scroll area: clear of the frame's line and its ring. */
+const MARKER_INSET = 3;
+/** Between the busy line and a marker it pushed down. */
+const AVOID_GAP = 4;
+
 /**
- * Each marker centred on its element's top right corner, kept inside the page area; one that
- * would overlap a marker already placed (in number order) steps 22px left until it doesn't.
+ * Each marker centred on its element's top right corner, kept inside the page's scroll area
+ * (`bounds`: the page area without the page's scrollbars) and clear of the frame; one that would
+ * cover `avoid` (the busy line) goes just under it, and one that would overlap a marker already
+ * placed (in number order) steps 22px left until it doesn't.
  */
 export function markerPlaces(
   markers: { pickId: string; n: number; box: AnnotateRect }[],
-  area: Size,
+  bounds: Size,
+  avoid: AnnotateRect | null = null,
 ): { pickId: string; n: number; x: number; y: number }[] {
   const placed: { pickId: string; n: number; x: number; y: number }[] = [];
   const overlaps = (x: number, y: number) =>
     placed.some((other) => Math.abs(other.x - x) < MARKER && Math.abs(other.y - y) < MARKER);
+  const covers = (x: number, y: number) =>
+    !!avoid &&
+    x < avoid.x + avoid.width &&
+    x + MARKER > avoid.x &&
+    y < avoid.y + avoid.height &&
+    y + MARKER > avoid.y;
+  const minX = MARKER_INSET;
+  const maxX = bounds.width - MARKER - MARKER_INSET;
   for (const { pickId, n, box } of [...markers].sort((a, b) => a.n - b.n)) {
-    let x = clamp(box.x + box.width - MARKER / 2, 0, area.width - MARKER);
-    const y = clamp(box.y - MARKER / 2, 0, area.height - MARKER);
-    while (overlaps(x, y) && x - MARKER_SHIFT >= 0) x -= MARKER_SHIFT;
+    let x = clamp(box.x + box.width - MARKER / 2, minX, maxX);
+    let y = clamp(box.y - MARKER / 2, MARKER_INSET, bounds.height - MARKER - MARKER_INSET);
+    if (avoid && covers(x, y)) y = avoid.y + avoid.height + AVOID_GAP;
+    while (overlaps(x, y) && x - MARKER_SHIFT >= minX) x -= MARKER_SHIFT;
     placed.push({ pickId, n, x, y });
   }
   return placed;

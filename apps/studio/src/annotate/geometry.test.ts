@@ -140,10 +140,29 @@ describe('번호 표시', () => {
     ]);
   });
 
-  it('늘 페이지 자리 안에 있다', () => {
+  it('늘 페이지의 스크롤 영역 안에, 테두리와 스크롤바에서 비켜 있다', () => {
     expect(
       markerPlaces([{ pickId: 'a', n: 1, box: { x: 950, y: -20, width: 100, height: 40 } }], area),
-    ).toEqual([{ pickId: 'a', n: 1, x: 982, y: 0 }]);
+    ).toEqual([{ pickId: 'a', n: 1, x: 979, y: 3 }]);
+    // Counterexample: a 15px page scrollbar; the scroll area is narrower than the page area.
+    expect(
+      markerPlaces([{ pickId: 'a', n: 1, box: { x: 950, y: 100, width: 100, height: 40 } }], {
+        width: 985,
+        height: 700,
+      })[0]?.x,
+    ).toBe(964);
+  });
+
+  it('페이지가 답하지 않는다는 줄에서 비켜 그 아래에 선다', () => {
+    const line = { x: 400, y: 8, width: 200, height: 32 };
+    expect(
+      markerPlaces(
+        [{ pickId: 'a', n: 1, box: { x: 450, y: 10, width: 100, height: 40 } }],
+        area,
+        line,
+      ),
+    ).toEqual([{ pickId: 'a', n: 1, x: 541, y: 44 }]);
+    expect(markerPlaces([{ pickId: 'a', n: 1, box: box(100, 100) }], area, line)[0]?.y).toBe(91);
   });
 });
 
