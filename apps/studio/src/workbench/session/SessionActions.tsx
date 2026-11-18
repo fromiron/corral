@@ -202,12 +202,15 @@ export function SessionActions({
           } satisfies AppCommand,
         ]
       : []),
-    // Every pane from the one catalog: its dock name, its `/` name and the words other screens
+    // Every pane from the one catalog: its tab's name, its `/` name and the words other screens
     // use for it (#70, #86).
     ...PANE_CATALOG.map(
       (entry): AppCommand => ({
         id: `panel:${entry.view}`,
-        title: tcmd('openPanel', { panel: tdock(entry.view) }),
+        // The tab's own name: the debugger opens as the bottom dock's 디버그 tab.
+        title: tcmd('openPanel', {
+          panel: entry.view === 'debug' ? tpanel('debugTab') : tdock(entry.view),
+        }),
         group: panelGroup,
         keywords: [...entry.aliases, entry.slash],
         slash: entry.slash,

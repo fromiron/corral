@@ -823,3 +823,17 @@ it.each([
     expect(dockButton()?.querySelector('[data-dock-dot]')).toBeNull();
   },
 );
+
+it('명령 팔레트의 "{탭 이름} 열기"는 그 탭의 이름을 그대로 쓴다: 하단 도크의 디버그 탭도', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}`);
+  await settle(20);
+  const title = (id: string) => registeredCommands().find((item) => item.id === id)?.title;
+  const opens = (name: string) => messages.Commands.openPanel.replace('{panel}', name);
+
+  expect(title('panel:debug')).toBe(opens(W.debug));
+  expect(title('panel:files')).toBe(opens(messages.Docking.files));
+  expect(title('panel:changes')).toBe(opens(messages.Docking.changes));
+  expect(title('panel:tools')).toBe(opens(messages.Docking.tools));
+  expect(title('panel:artifacts')).toBe(opens(messages.Docking.artifacts));
+});

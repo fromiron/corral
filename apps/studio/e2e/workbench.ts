@@ -505,7 +505,7 @@ const PANE_TAB: Record<string, string | RegExp> = {
   Files: 'Files',
   Terminal: /^Terminal \d+$/,
   'Tasks & preview': 'Files',
-  Debugger: 'Debug',
+  Debug: 'Debug',
   Changes: 'Changes',
   Git: 'Changes',
   Checks: 'Changes',
@@ -515,7 +515,7 @@ const PANE_TAB: Record<string, string | RegExp> = {
 };
 
 /**
- * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks & preview, Debugger,
+ * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks & preview, Debug,
  * Changes, Git, Checks, Problems, Results, Run): the tab that holds it opens, or is selected, with
  * that pane in front. The palette is there whatever the panel's state, with or without a folder.
  * A terminal opens where its tab is (the panel or the bottom dock, made in the dock when it has
@@ -535,7 +535,7 @@ export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
     await expect(terminalScreen(page)).toBeVisible();
     return;
   }
-  if (name === 'Debugger') {
+  if (name === 'Debug') {
     await expect(
       bottomDock(page)
         .getByRole('tablist', { name: 'Bottom dock tabs', exact: true })
