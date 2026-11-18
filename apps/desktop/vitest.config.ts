@@ -1,2 +1,5 @@
 import { defineConfig } from 'vitest/config';
-export default defineConfig({ test: { name: 'desktop', include: ['test/**/*.test.ts'] } });
+import { testTimeout } from '../../vitest.defaults.ts';
+export default defineConfig({
+  test: { testTimeout, name: 'desktop', include: ['test/**/*.test.ts'] },
+});
