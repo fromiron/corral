@@ -4,14 +4,14 @@
 
 명세: [공유 개발 모드](../specs/workbench.md#공유-개발-모드)(이 계획의 중심), [개발 task와 Problems](../specs/workbench.md#개발-task와-problems), [사용자 터미널](../specs/workbench.md#사용자-터미널), [실행과 안전](../specs/execution-and-safety.md), [API 계약](../specs/api-contract.md)(작업 사본의 task · terminal · deployment 줄과 [오류](../specs/api-contract.md#3-오류)의 `owner`).
 
-브랜치는 `feat/session-panel`이다(명세와 같은 브랜치). 코드와 테스트 돌리기는 세션 패널 작업의 전체 E2E 검증이 끝난 뒤에 한다. 단계마다 명세 → 실패하는 테스트 → 구현 순서이고, `pnpm lint`, `pnpm typecheck`, 관련 테스트를 돌린다. 계약 타입을 바꾸면 `pnpm contracts:check`도 돌린다. 개발 중이므로 없어진 데이터 · 형식은 옮기지 않고 지운다.
+브랜치는 `feat/session-panel`이다(명세와 같은 브랜치). 단계마다 명세 → 실패하는 테스트 → 구현 순서이고, `pnpm lint`, `pnpm typecheck`, 관련 테스트를 돌린다. 계약 타입을 바꾸면 `pnpm contracts:check`도 돌린다. 개발 중이므로 없어진 데이터 · 형식은 옮기지 않고 지운다.
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | A | 명세 | 끝(`929f91e0`, `cb50f479`, `56cc32fd`) |
 | B | 빨간 반례 테스트 | 끝(`32afc4fd`) |
-| C | 서버 · core · 계약 코드 | 만들었다(`8a5ca0fd`, `5ca4db5a`). 0046 단계가 진행 중 |
-| D | 스튜디오의 거절 문구와 작업 탭 | 진행 중 |
+| C | 서버 · core · 계약 코드 | 만들었다(`8a5ca0fd`, `5ca4db5a`, `649d611d`) |
+| D | 스튜디오의 거절 문구와 작업 탭 | 진행 중(빨간 테스트 `3e31e69b`) |
 | E | 미리보기 smoke가 초록 | 대기: D 뒤 |
 
 ## 사용자가 정한 것 (2026-11-18)
@@ -108,8 +108,7 @@
 - `GET /health`의 `sharedDevelopment`.
 - development 모드와 그 route, 계약, 클라이언트 호출, 스튜디오의 부분을 지웠다(옮기지 않는다).
 - `workspaceFail`이 거절의 코드를 지킨다.
-
-남은 것: 이미 있는 데이터베이스의 `development` 행을 지우는 0046 단계(진행 중).
+- 마이그레이션 0046 단계(`649d611d`): 이미 있는 데이터베이스에 남은 development 작업과 그것이 잡던 사본 접근을 지운다.
 
 ### D. 스튜디오
 
