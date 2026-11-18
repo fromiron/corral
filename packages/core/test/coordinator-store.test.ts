@@ -349,9 +349,15 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
       sessionId: 'copy_b',
     });
     expect(other.runId).not.toBeNull();
-    await expect(instance.withFileRestore(async () => {}, 'session_alias')).rejects.toThrow(
-      /idle target/,
-    );
+    // A restore already under way for the scope is no holder: the refusal names none.
+    const during = await instance
+      .withFileRestore(async () => {}, 'session_alias')
+      .then(
+        () => null,
+        (error: unknown) => error,
+      );
+    expect(during).toMatchObject({ code: 'RUN_ALREADY_ACTIVE' });
+    expect((during as { owner?: unknown }).owner).toBeUndefined();
     await waitForProjection(transport, other.runId ?? '', settled);
     finish.open();
     await restoring;
@@ -365,6 +371,12 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
   it('a shared copy is restored beside a read-only run, and held while a run writes it', async () => {
     const hold = new Gate();
     let writing = false;
+    const held = {
+      kind: 'run' as const,
+      id: 'run_writer',
+      sessionId: 'copy_a',
+      state: 'active' as const,
+    };
     const { instance, transport } = coordinator({
       gates: [hold],
       files: {
@@ -372,7 +384,7 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
         available: () => false,
         execute: async () => ({}),
         // The copy's owners say which runs write it (workbench.md 공유 개발 모드).
-        hasUnsafeWorktreeOwner: () => writing,
+        unsafeWorktreeOwner: () => (writing ? held : undefined),
         sharedDevelopment: true,
       },
     });
@@ -385,11 +397,35 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
       'restored',
     );
     writing = true;
-    await expect(instance.withFileRestore(async () => 'restored', 'copy_a')).rejects.toThrow(
-      /idle target/,
-    );
+    // The refusal names the holder the copy's owners give (api-contract.md 오류).
+    await expect(instance.withFileRestore(async () => 'restored', 'copy_a')).rejects.toMatchObject({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: held,
+    });
     hold.open();
     await waitForProjection(transport, reading.runId ?? '', settled);
+  });
+  it('a copy without sharing is held by any run in its session, and the refusal names that run', async () => {
+    const hold = new Gate();
+    const { instance, transport } = coordinator({
+      gates: [hold],
+      files: {
+        worktreeScope: (sessionId) => sessionId,
+        available: () => false,
+        execute: async () => ({}),
+      },
+    });
+    const running = await transport.startRun({
+      ...start(linearCorral(['writer']), 'running'),
+      sessionId: 'copy_a',
+    });
+    expect(running.runId).not.toBeNull();
+    await expect(instance.withFileRestore(async () => 'restored', 'copy_a')).rejects.toMatchObject({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: { kind: 'run', id: running.runId, sessionId: 'copy_a', state: 'active' },
+    });
+    hold.open();
+    await waitForProjection(transport, running.runId ?? '', settled);
   });
   it('host model slots stay bounded across runs and wake the next run', async () => {
     const hold = new Gate();

@@ -5,7 +5,8 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { probeServer, RestCorralRepository, WorkspacesApi } from '@corral/client';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import { SCHEMA_VERSION } from '@corral/contracts';
+import { Gate, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
@@ -20,7 +21,7 @@ afterEach(async () => {
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
 /** A trusted session copy with a checkpoint before an edit, and a task running in it. */
-async function setup(shares: boolean) {
+async function setup(shares: boolean, agents = new ScriptedAgentAdapter({ turns: 1 })) {
   const root = mkdtempSync(join(tmpdir(), 'corral-shared-restore-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);
@@ -42,7 +43,7 @@ async function setup(shares: boolean) {
     workspace: join(root, 'workspace'),
     worktreeRoot: join(root, 'copies'),
     bootstrapToken: token,
-    agents: new ScriptedAgentAdapter({ turns: 1 }),
+    agents,
     port: 0,
     allowSharedDevelopment: shares,
   });
@@ -98,7 +99,14 @@ async function setup(shares: boolean) {
     checkpoint.checkpointId,
     checkpoint.manifestHash ?? '',
   );
-  return { workspaces, sessionId, plan, health: await probeServer({ baseUrl: server.url }) };
+  return {
+    workspaces,
+    sessionId,
+    plan,
+    health: await probeServer({ baseUrl: server.url }),
+    call,
+    url: server.url,
+  };
 }
 
 it('restores a checkpoint over HTTP while a task runs, and still refuses a stale expected tree', async () => {
@@ -139,6 +147,61 @@ it('a server without sharing refuses the restore while a task holds the copy, ke
       manifestHash: plan.manifestHash,
       expectedTree: plan.expectedTree,
     }),
-  ).rejects.toMatchObject({ code: 'RUN_ALREADY_ACTIVE' });
+  ).rejects.toMatchObject({
+    code: 'RUN_ALREADY_ACTIVE',
+    // The refusal names what holds the copy (api-contract.md 오류).
+    owner: { kind: 'task', id: 'dev', sessionId, state: 'active' },
+  });
+  await workspaces.stopTask(sessionId, 'dev');
+});
+
+it('a sharing host refuses the restore while an agent run writes the copy, naming the run', async () => {
+  const hold = new Gate();
+  cleanups.push(async () => hold.open());
+  const { workspaces, sessionId, plan, call, url } = await setup(
+    true,
+    new ScriptedAgentAdapter({
+      turns: 1,
+      collaborate: false,
+      appendNotes: false,
+      beforeReply: () => hold.wait(),
+      reply: () => 'Done.',
+    }),
+  );
+  const started = await call(`${url}/api/v1/runs/auto`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      schemaVersion: SCHEMA_VERSION,
+      choice: { modelProfile: 'model-a' },
+      mode: 'mock',
+      team: 'none',
+      commandId: 'cmd_writer',
+      sessionId,
+      brief: 'Edit a.txt',
+    }),
+  });
+  const { runId } = (await started.json()) as { runId: string };
+  expect(runId).toEqual(expect.any(String));
+  const restore = () =>
+    workspaces.restoreCheckpoint(sessionId, {
+      operationId: 'restore_held',
+      checkpointId: plan.checkpointId,
+      manifestHash: plan.manifestHash,
+      expectedTree: plan.expectedTree,
+    });
+  // The run holds the copy as a writer once it has started; the task beside it does not.
+  await expect
+    .poll(() =>
+      restore().then(
+        () => 'restored',
+        (error: { code?: string; owner?: unknown }) => ({ code: error.code, owner: error.owner }),
+      ),
+    )
+    .toEqual({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: { kind: 'run', id: runId, sessionId, state: 'active' },
+    });
+  hold.open();
   await workspaces.stopTask(sessionId, 'dev');
 });
