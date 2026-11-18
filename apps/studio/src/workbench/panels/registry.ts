@@ -1,20 +1,6 @@
-// Every pane a session's dock can show, defined once (#86): the URL `?panel=`, the dock, the
-// command palette and the composer's `/` menu all read these lists, so a pane found in one is
-// found in all of them under the same name.
-export const DOCK_VIEWS = [
-  'chat',
-  'files',
-  'changes',
-  'git',
-  'debug',
-  'artifacts',
-  'checks',
-  'problems',
-  'run',
-  'terminal',
-  'tools',
-] as const;
-export type DockView = (typeof DOCK_VIEWS)[number];
+// Every pane a session can show, defined once (#86): the URL `?panel=`, the panel, the command
+// palette and the composer's `/` menu all read these lists, so a pane found in one is found in
+// all of them under the same name.
 
 /** The conversation is the absence of `?panel=`; every other pane has a URL. */
 export const SESSION_PANELS = [

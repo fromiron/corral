@@ -16,14 +16,10 @@ it('view keys retain their target and isolate connected services and projects', 
   );
 });
 
-it('#86 every dock pane is defined once, has a URL panel and a palette entry', async () => {
-  const { DOCK_VIEWS, PANE_CATALOG, SESSION_PANELS } = await import('./registry.ts');
+it('#86 every pane opened by name is defined once, has a URL panel and a palette entry', async () => {
+  const { PANE_CATALOG, SESSION_PANELS } = await import('./registry.ts');
   // A document and a team graph are opened with their file or team, never by name.
   const named = SESSION_PANELS.filter((panel) => panel !== 'document' && panel !== 'graph');
-  // 미리보기 is never a dock pane: 작업 carries it as an inner tab.
-  expect([...DOCK_VIEWS].sort()).toEqual(
-    ['chat', ...named.filter((panel) => panel !== 'preview')].sort(),
-  );
   expect(PANE_CATALOG.map((entry) => entry.view).sort()).toEqual([...named].sort());
   const slashes = PANE_CATALOG.map((entry) => entry.slash);
   expect(new Set(slashes).size).toBe(slashes.length);
