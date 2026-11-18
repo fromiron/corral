@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import {
   APP_PAGE_SHORTCUTS,
@@ -8,7 +6,6 @@ import {
   isLoopbackHost,
   loadFailure,
   NewWindowActivation,
-  type PageChord,
   pageKey,
   pageShortcuts,
   permissionCheck,
@@ -16,6 +13,7 @@ import {
   systemBrowserUrl,
   zoomLevel,
 } from '../src/browser-policy.ts';
+import { studioDesktopBindings } from './studio-shortcuts.ts';
 
 it('the address field opens only http(s), adds a scheme and drops credentials', () => {
   expect(browserAddress('example.com/docs?token=abc')).toBe('https://example.com/docs?token=abc');
@@ -185,25 +183,8 @@ it('a rebinding from the host replaces the app chords; Mod+R and zoom stay fixed
 });
 
 it("the default app chords are the studio registry's Mod chords, and the whole registry is accepted", () => {
-  const source = readFileSync(
-    resolve(import.meta.dirname, '../../studio/src/shortcuts.ts'),
-    'utf8',
-  );
-  const body = source.slice(source.indexOf('export const SHORTCUTS'));
   // Every entry, as the studio's effectiveShortcuts() hands them over (Alt-only ones too).
-  const bindings: Record<string, Omit<PageChord, 'id'>> = {};
-  for (const match of body
-    .slice(0, body.indexOf('];'))
-    .matchAll(/\{ id: '([^']+)', chord: \{([^}]*)\}/g)) {
-    const chord = match[2] ?? '';
-    const flag = (name: string) => new RegExp(`${name}: true`).test(chord);
-    bindings[match[1] ?? ''] = {
-      key: /key: '([^']+)'/.exec(chord)?.[1] ?? '',
-      ...(flag('mod') ? { mod: true } : {}),
-      ...(flag('shift') ? { shift: true } : {}),
-      ...(flag('alt') ? { alt: true } : {}),
-    };
-  }
+  const bindings = studioDesktopBindings();
   expect(Object.keys(bindings).length).toBeGreaterThan(Object.keys(APP_PAGE_SHORTCUTS).length);
   expect(pageShortcuts(bindings)).toEqual(APP_PAGE_SHORTCUTS);
 });

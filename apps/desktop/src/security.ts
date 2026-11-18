@@ -64,6 +64,12 @@ export function desktopCommand(value: unknown): DesktopCommand | null {
     : null;
 }
 
+/**
+ * The studio's shortcuts that have no menu item (apps/studio/src/shortcuts.ts). Their chords are
+ * checked and kept clear of the menu's, but never bound here.
+ */
+const PAGE_ONLY_SHORTCUTS = ['run.stop', 'session.jump', 'view.dock', 'reply.quote'];
+
 /** Validate the renderer's command IDs/chords before they become native accelerators. */
 export function desktopAccelerators(value: unknown): Partial<Record<DesktopCommand, string>> {
   if (!value || typeof value !== 'object' || Array.isArray(value))
@@ -71,19 +77,22 @@ export function desktopAccelerators(value: unknown): Partial<Record<DesktopComma
   const accelerators: Partial<Record<DesktopCommand, string>> = {};
   const seen = new Set<string>();
   for (const [id, raw] of Object.entries(value)) {
-    if (!desktopCommand(id) && !['run.stop', 'session.jump'].includes(id))
+    if (!desktopCommand(id) && !PAGE_ONLY_SHORTCUTS.includes(id))
       throw new Error('Unknown shortcut command');
     if (!raw || typeof raw !== 'object' || Array.isArray(raw))
       throw new Error('Invalid shortcut chord');
     const chord = raw as Record<string, unknown>;
     if (
       Object.keys(chord).some((key) => !['key', 'mod', 'shift', 'alt'].includes(key)) ||
-      chord.mod !== true ||
+      (chord.mod !== undefined && typeof chord.mod !== 'boolean') ||
       typeof chord.key !== 'string' ||
       (chord.alt !== undefined && typeof chord.alt !== 'boolean') ||
       (chord.shift !== undefined && typeof chord.shift !== 'boolean')
     )
       throw new Error('Invalid shortcut chord');
+    // An Alt-only chord (the reply quote) is the page's own; a native accelerator needs Mod.
+    if (chord.mod !== true && chord.alt === true) continue;
+    if (chord.mod !== true) throw new Error('Invalid shortcut chord');
     if (id === 'session.jump') {
       if (chord.key !== 'Digit') throw new Error('Session jump uses digit keys');
       for (let digit = 1; digit <= 9; digit++) {
