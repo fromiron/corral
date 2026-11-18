@@ -400,6 +400,24 @@ it('right-clicking a page shows the native menu with only what applies, and its 
   expect(page.paste).not.toHaveBeenCalled();
 });
 
+it('a menu opened from the keyboard shows at the focused spot; from the mouse, at the pointer', () => {
+  const f = setup();
+  f.tabs.navigate('tab-a', 'project_a', 'https://shop.example/');
+  f.tabs.place('tab-a', { x: 10, y: 20, width: 400, height: 300 }); // the view at 13, 25
+  const page = view(f, 0).webContents;
+  const field = {
+    isEditable: true,
+    editFlags: { canCut: false, canCopy: false, canPaste: true, canSelectAll: true },
+  };
+  page.rightClick({ ...field, menuSourceType: 'mouse' });
+  expect(f.ports.popupMenu.mock.calls.at(-1)?.[1]).toBeUndefined();
+  // Shift+F10 or the menu key: the spot is the page's, in the window it is the view's place plus it.
+  page.rightClick({ ...field, menuSourceType: 'keyboard', x: 40, y: 30 });
+  expect(f.ports.popupMenu.mock.calls.at(-1)?.[1]).toEqual({ x: 53, y: 55 });
+  page.rightClick({ ...field, menuSourceType: 'longPress', x: 5, y: 6 });
+  expect(f.ports.popupMenu.mock.calls.at(-1)?.[1]).toEqual({ x: 18, y: 31 });
+});
+
 it('a preview page menu has the edit items only', async () => {
   const f = setup();
   await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');

@@ -92,6 +92,7 @@ export class FakeContents extends EventEmitter {
       {
         x: 40,
         y: 30,
+        menuSourceType: 'mouse',
         linkURL: '',
         mediaType: 'none',
         hasImageContents: false,

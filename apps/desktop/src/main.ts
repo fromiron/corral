@@ -672,14 +672,14 @@ function createBrowserTabs() {
       return () => clearInterval(timer);
     },
     // The page's own menu (features/browser-tab.md 페이지의 메뉴), at the pointer.
-    popupMenu: (groups) => {
+    popupMenu: (groups, at) => {
       if (!window || window.isDestroyed()) return;
       Menu.buildFromTemplate(
         groups.flatMap((group, index): MenuItemConstructorOptions[] => [
           ...(index ? [{ type: 'separator' as const }] : []),
           ...group.map(({ label, run }) => ({ label, click: run })),
         ]),
-      ).popup({ window });
+      ).popup({ window, ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : {}) });
     },
     copyText: (text) => clipboard.writeText(text),
     korean,

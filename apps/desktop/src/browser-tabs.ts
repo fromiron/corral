@@ -92,8 +92,11 @@ export interface BrowserTabsPorts {
   id(): string;
   /** Runs `run` every `ms`; returns the stop. */
   every(ms: number, run: () => void): () => void;
-  /** Shows the operating system's menu at the pointer; a separator between groups. */
-  popupMenu(groups: { label: string; run: () => void }[][]): void;
+  /**
+   * Shows the operating system's menu, a separator between groups: at `at` (window
+   * coordinates) when given, otherwise at the pointer.
+   */
+  popupMenu(groups: { label: string; run: () => void }[][], at?: { x: number; y: number }): void;
   copyText(text: string): void;
   korean(): boolean;
   mac: boolean;
@@ -1021,10 +1024,16 @@ export class BrowserTabs {
       else contents.selectAll();
     };
     const korean = this.ports.korean();
+    // Opened from the keyboard (Shift+F10, the menu key) or by touch: at the page's spot, the
+    // focused element's; only a mouse-opened menu goes at the pointer.
+    const rect = this.rects.get(tab.id);
+    const at =
+      params.menuSourceType !== 'mouse' && rect ? { x: rect.x + x, y: rect.y + y } : undefined;
     this.ports.popupMenu(
       groups.map((group) =>
         group.map((item) => ({ label: MENU_LABELS[item][korean ? 0 : 1], run: () => act(item) })),
       ),
+      at,
     );
   }
 
