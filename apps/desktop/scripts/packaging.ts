@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, readdirSync, readlinkSync, statSync } from 'node:fs';
+import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
-export const NODE_VERSION = '24.19.0';
+export const NODE_VERSION = readFileSync(
+  new URL('../../../.node-version', import.meta.url),
+  'utf8',
+).trim();
 
 /** Hoisted runtime packages are physical trees: junctions cannot survive installation moves. */
 export function assertRelocatableRuntime(root: string) {

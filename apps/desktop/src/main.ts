@@ -119,6 +119,7 @@ let origin: string | null = null;
 let status: 'starting' | 'ready' | 'failed' = 'starting';
 let cleanupFailed = false;
 let gitAvailable = false;
+let nodeVersion = '';
 let closing = false;
 let switching = false;
 let allowQuit = false;
@@ -403,6 +404,7 @@ async function stopServer(idleOnly = false) {
 async function startServer() {
   if (!window || child) return;
   status = 'starting';
+  nodeVersion = '';
   origin = null;
   const own = ++generation;
   const fail = () => {
@@ -468,6 +470,7 @@ async function startServer() {
         url?: string;
         bootstrapUrl?: string;
         git?: boolean;
+        node?: string;
       };
       if (message.type === 'failed') {
         clearTimeout(timer);
@@ -490,6 +493,7 @@ async function startServer() {
       clearTimeout(timer);
       origin = url.origin;
       saved.port = Number(url.port);
+      nodeVersion = typeof message.node === 'string' ? message.node : '';
       status = 'ready';
       void pollActivity();
       gitAvailable = message.git === true;
@@ -1081,7 +1085,7 @@ else {
       cleanupFailed,
       gitAvailable,
       workspace: saved.workspace,
-      node: '24.19.0',
+      node: nodeVersion,
     }));
     handle('window', (action) => {
       if (action === 'minimize') window?.minimize();

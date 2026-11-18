@@ -77,8 +77,8 @@ const find = <K extends RunEvent['type']>(
 /** The events view's virtual list measures its box; give it one in jsdom. */
 function sized() {
   const spies = [
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(800),
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800),
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(800),
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800),
   ];
   return () => {
     for (const spy of spies) spy.mockRestore();

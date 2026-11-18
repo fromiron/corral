@@ -242,15 +242,18 @@ export function DiffCode({
               }
             : {}),
         }}
-        renderAnnotation={({ metadata }) => (
-          <p
-            data-testid="inline-comment"
-            className="m-0 border-l-2 border-primary bg-card px-3 py-2 font-sans text-caption"
-          >
-            <CommentBody body={metadata.body} />{' '}
-            <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
-          </p>
-        )}
+        renderAnnotation={(...args) => {
+          const [{ metadata }] = args;
+          return (
+            <p
+              data-testid="inline-comment"
+              className="m-0 border-l-2 border-primary bg-card px-3 py-2 font-sans text-caption"
+            >
+              <CommentBody body={metadata.body} />{' '}
+              <span className="text-muted-foreground">· {t(`commentState.${metadata.state}`)}</span>
+            </p>
+          );
+        }}
       />
     </CodeFrame>
   );

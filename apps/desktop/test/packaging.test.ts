@@ -2,6 +2,7 @@ import {
   cpSync,
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   renameSync,
   rmSync,
   symlinkSync,
@@ -79,6 +80,10 @@ it('launches Windows native and JS pnpm without a command shell', () => {
 });
 
 it('bundles the native runtime for the build host only', () => {
+  const nodeVersion = readFileSync(
+    new URL('../../../.node-version', import.meta.url),
+    'utf8',
+  ).trim();
   expect(runtimeTarget('win32', 'x64')).toEqual({
     platform: 'win32',
     arch: 'x64',
@@ -89,16 +94,20 @@ it('bundles the native runtime for the build host only', () => {
   expect(() => runtimeTarget('freebsd', 'x64')).toThrow('Unsupported');
   expect(() => runtimeTarget('win32', 'ia32')).toThrow('Unsupported');
   expect(() =>
-    assertRuntimeIdentity({ platform: 'linux', arch: 'x64', version: '24.19.0' }, 'win32', 'x64'),
+    assertRuntimeIdentity({ platform: 'linux', arch: 'x64', version: nodeVersion }, 'win32', 'x64'),
   ).toThrow('prepare:runtime');
   expect(() =>
-    assertRuntimeIdentity({ platform: 'win32', arch: 'arm64', version: '24.19.0' }, 'win32', 'x64'),
-  ).toThrow('prepare:runtime');
-  expect(() =>
-    assertRuntimeIdentity({ platform: 'win32', arch: 'x64', version: '22.0.0' }, 'win32', 'x64'),
+    assertRuntimeIdentity(
+      { platform: 'win32', arch: 'arm64', version: nodeVersion },
+      'win32',
+      'x64',
+    ),
   ).toThrow('prepare:runtime');
   expect(() =>
     assertRuntimeIdentity({ platform: 'win32', arch: 'x64', version: '24.19.0' }, 'win32', 'x64'),
+  ).toThrow('prepare:runtime');
+  expect(() =>
+    assertRuntimeIdentity({ platform: 'win32', arch: 'x64', version: nodeVersion }, 'win32', 'x64'),
   ).not.toThrow();
 });
 

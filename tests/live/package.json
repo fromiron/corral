@@ -10,9 +10,9 @@
     "@corral/core": "workspace:*",
     "@corral/server": "workspace:*",
     "@corral/testkit": "workspace:*",
-    "@earendil-works/pi-ai": "1.5.0"
+    "@earendil-works/pi-ai": "1.5.2"
   },
   "devDependencies": {
-    "@types/node": "24.19.2"
+    "@types/node": "26.6.6"
   }
 }
