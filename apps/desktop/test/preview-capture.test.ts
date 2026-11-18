@@ -22,6 +22,10 @@ vi.mock('electron', async () => {
       getSize: () => ({ width: 100, height: 30 }),
       toPNG: () => Buffer.from('png'),
     }));
+    zoom = 1;
+    getZoomFactor() {
+      return this.zoom;
+    }
     setWebRTCIPHandlingPolicy() {}
     setWindowOpenHandler() {}
     focus() {}
@@ -138,6 +142,19 @@ it('captures only the native selection and opted-in console/image, revalidating 
   expect(f.wc.executeJavaScriptInIsolatedWorld.mock.calls[0]?.[0]).toBe(1001);
   expect(f.resolve).toHaveBeenCalledTimes(3);
   expect(f.wc.listenerCount('context-menu')).toBe(0);
+});
+
+it("at a page zoom the menu's point becomes the page's CSS pixels and the element's box the view's DIP", async () => {
+  const f = await setup();
+  f.wc.zoom = 1.5;
+  const pending = f.previews.capture('session', 'lease', { screenshot: true, console: false });
+  await f.ready();
+  f.choose(); // at (20, 30) in the view, as Electron gives the menu's point
+  await pending;
+  const code = f.wc.executeJavaScriptInIsolatedWorld.mock.calls[0]?.[1]?.[0]?.code as string;
+  expect(code.endsWith(`)(${20 / 1.5},${30 / 1.5},false)`)).toBe(true);
+  // The element's CSS box (10, 20, 100×30) on the page zoomed by 1.5.
+  expect(f.wc.capturePage).toHaveBeenCalledWith({ x: 15, y: 30, width: 150, height: 45 });
 });
 
 it('discards a selected result if its lease changes while the DOM read is pending', async () => {

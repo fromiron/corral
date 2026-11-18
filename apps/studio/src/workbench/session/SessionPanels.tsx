@@ -2,8 +2,8 @@ import { ApiError } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { canReadArtifactBody, type RunSummary, type WorkSession } from '@corral/core';
-import { runResults } from '@corral/react';
-import { Button, EmptyState } from '@corral/react/design-kit';
+import { PresenceLabel, runResults } from '@corral/react';
+import { Button } from '@corral/react/design-kit';
 import { FileText } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
@@ -12,96 +12,125 @@ import { useBinding } from '../../pages/FilesViews.tsx';
 import { Checks } from '../../pages/ReviewPage.tsx';
 import { RunDetail } from '../../pages/RunPage.tsx';
 import { useServices } from '../../services.tsx';
-import { RunMenu } from '../Breadcrumbs.tsx';
 import type { AttachmentCapture } from '../context/bridge.ts';
-import { panelRunId } from '../panelRun.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { summary } from '../runIdentity.ts';
-import { TopbarCrumb } from '../TopbarSlot.tsx';
+import { listedRunPresence } from '../sessionList.ts';
 
 // Side panes of a session: the run detail, its results and its checks.
 
-/** Run detail in the side panel: the chosen run (newest by default) with its own views. */
+/**
+ * A run tab's content (features/session-panel.md): one run's record, which never changes run.
+ * The selected tab's views follow the address; an unselected one keeps its own until chosen
+ * again.
+ */
 export function RunPanel({
+  runId,
   runs,
-  listed,
+  active,
   entries,
   search,
   setSearch,
+  operable,
+  activeTabbed,
+  onOpenRun,
 }: {
+  runId: string;
   runs: RunSummary[];
-  /** The run list has answered for the current selection. */
-  listed: boolean;
+  /** The session's run still going, as the composer reads it; null when none goes. */
+  active: RunSummary | null;
   /** The session's turns: the request that started a run is its title. */
   entries: WorkSession['entries'];
+  /** This tab's own views: the address's while it is selected. */
   search: SessionSearch;
   setSearch: (patch: Partial<SessionSearch>, options?: { replace?: boolean }) => void;
+  /**
+   * The conversation beside the panel can be operated (beside, closed, withdrawn); false while
+   * the panel covers it (maximized, a drawer).
+   */
+  operable: boolean;
+  /** The session's run going has a tab of its own in the strip. */
+  activeTabbed: boolean;
+  /** Opens (or selects) another run's tab: "현재 실행 보기". */
+  onOpenRun: (runId: string) => void;
 }) {
-  const tw = useTranslations('Workbench');
-  const runId = panelRunId(runs, search.run, listed);
-  const names = useRunNames(runs, entries);
-  if (!runId)
-    return (
-      <div className="grid h-full place-items-center p-6">
-        <div className="grid justify-items-center gap-3">
-          <EmptyState title={tw('noRuns')} />
-          <Button variant="secondary" onClick={() => setSearch({ panel: undefined })}>
-            {tw('openConversation')}
-          </Button>
-        </div>
-      </div>
-    );
-  // A fallback run must not inherit the selection made inside the run that has gone.
-  const own = search.run === undefined || search.run === runId;
+  // While a past run shows and another run of the session goes, the header says which, once
+  // (features/execution-monitor.md): only over the conversation, which otherwise says it, and
+  // only while that run has no tab, whose mark otherwise says it. A run still going is not a
+  // past run.
+  const shown = runs.find((run) => run.runId === runId);
+  const elsewhere =
+    !operable &&
+    !activeTabbed &&
+    active &&
+    shown &&
+    active.runId !== runId &&
+    TERMINAL_RUN_STATUSES.has(shown.status)
+      ? active
+      : null;
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col">
-      {search.panel === 'run' ? (
-        <TopbarCrumb>
-          <span aria-hidden="true" className="text-muted-foreground/50">
-            /
-          </span>
-          <RunMenu
-            runs={runs}
-            runId={runId}
-            names={names}
-            onSelect={(value) =>
-              setSearch({
-                run: value,
-                atSeq: undefined,
-                execution: undefined,
-                artifact: undefined,
-                view: undefined,
-                result: undefined,
-              })
-            }
-          />
-        </TopbarCrumb>
-      ) : null}
       <div className="min-h-0 flex-1">
         <RunDetail
           key={runId}
-          sessionId={runs.find((run) => run.runId === runId)?.sessionId ?? null}
+          sessionId={shown?.sessionId ?? null}
+          conversationOperable={operable}
           runId={runId}
           request={
             entries.find((entry) => entry.runId === runId && entry.intent !== 'steer')?.text ?? null
           }
-          embedded
-          search={
-            own
-              ? {
-                  atSeq: search.atSeq,
-                  execution: search.execution,
-                  artifact: search.artifact,
-                  view: search.view ?? (search.result ? 'results' : 'run'),
-                  result: search.result,
-                  // A request to respond goes to the conversation's needed-now tray
-                  // (SessionPage), never to the record beside it.
-                }
-              : { view: 'run' }
+          lead={
+            elsewhere ? (
+              <ActiveRunLine
+                run={elsewhere}
+                number={runs.findIndex((run) => run.runId === elsewhere.runId) + 1}
+                onShowActiveRun={() => onOpenRun(elsewhere.runId)}
+              />
+            ) : null
           }
-          setSearch={(patch, options) => setSearch({ run: runId, ...patch }, options)}
+          embedded
+          search={{
+            atSeq: search.atSeq,
+            execution: search.execution,
+            artifact: search.artifact,
+            view: search.view ?? (search.result ? 'results' : 'run'),
+            result: search.result,
+            // A request to respond goes to the conversation's needed-now tray, never here.
+          }}
+          setSearch={(patch, options) => setSearch(patch, options)}
         />
       </div>
+    </div>
+  );
+}
+
+/**
+ * The session's run going, told above a past run's header: its number, its state, and the way to
+ * it. A quiet line, as the header's other one-line states are, not a warning.
+ */
+function ActiveRunLine({
+  run,
+  number,
+  onShowActiveRun,
+}: {
+  run: RunSummary;
+  number: number;
+  onShowActiveRun: () => void;
+}) {
+  const tw = useTranslations('Workbench');
+  const tr = useTranslations('RunPage');
+  return (
+    <div
+      data-testid="run-active-elsewhere"
+      className="flex min-h-7 min-w-0 flex-wrap items-center gap-x-2 gap-y-1"
+    >
+      <span className="flex min-w-0 items-center gap-2 text-caption text-muted-foreground">
+        <span className="whitespace-nowrap">{tw('runNumber', { number })}</span>
+        <PresenceLabel presence={listedRunPresence(run)} />
+      </span>
+      <Button variant="tertiary" size="compact" className="shrink-0" onClick={onShowActiveRun}>
+        {tr('viewActiveRun')}
+      </Button>
     </div>
   );
 }
@@ -110,7 +139,7 @@ export function RunPanel({
  * Each run's name in the run history: the summary of the request that started it, else the name
  * of the team it ran as, read from its pinned definition (never the team's current revision).
  */
-function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries']) {
+export function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries']) {
   const { transport } = useServices();
   const requested = new Map(
     entries.flatMap((entry) =>
@@ -122,7 +151,7 @@ function useRunNames(runs: readonly RunSummary[], entries: WorkSession['entries'
     .map((run) => run.runId)
     .join(',');
   const [teams, setTeams] = useState<Record<string, string | null>>({});
-  // A pinned definition does not change: each run's is read once while the panel is open.
+  // A pinned definition does not change: each run's is read once while the conversation is open.
   const asked = useRef(new Set<string>());
   const mounted = useRef(true);
   useEffect(

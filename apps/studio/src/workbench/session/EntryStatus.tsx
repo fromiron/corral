@@ -12,7 +12,7 @@ import { isValidElement, type ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
-import { editRequest, RefusalActions } from '../RefusalHelp.tsx';
+import { editRequest, RefusalActions, RefusalOwner } from '../RefusalHelp.tsx';
 import { refusalKind } from '../refusal.ts';
 import { openAdvisorControl } from './composer/AdvisorControl.tsx';
 import { entryKind, type SteerMeta } from './entryMeta.ts';
@@ -188,11 +188,7 @@ function RefusalLine({
           <div data-testid="refusal-raw" className="flex flex-col gap-1 text-caption">
             <p className="wrap-anywhere">{message}</p>
             {code ? <code className="text-muted-foreground">{code}</code> : null}
-            {owner ? (
-              <p className="text-muted-foreground">
-                <code>{owner.id}</code> · {owner.state}
-              </p>
-            ) : null}
+            {owner ? <RefusalOwner owner={owner} className="text-muted-foreground" /> : null}
           </div>
         </PopoverPopup>
       </Popover>

@@ -2,14 +2,28 @@ import type { RunSummary, RuntimeTransport } from '@corral/core';
 import { watchRefresh } from './refresh.ts';
 
 type RunListResult = { runs: RunSummary[] } | { error: unknown };
-type Reader = (result: RunListResult, current: () => boolean, force: boolean) => Promise<void>;
+/**
+ * `repeated`: the answer to a listing asked before this consumer joined (the latest one, given
+ * on joining so it has something to show, or one already on its way); it is not an answer asked
+ * for since.
+ */
+type Reader = (
+  result: RunListResult,
+  current: () => boolean,
+  force: boolean,
+  repeated: boolean,
+) => Promise<void>;
 type Transport = Pick<RuntimeTransport, 'listRuns'>;
-type Listener = (result: RunListResult, force: boolean) => void;
+type Listener = (result: RunListResult, force: boolean, asked: number) => void;
 
 function createSource(transport: Transport) {
   const listeners = new Set<Listener>();
-  let latest: RunListResult | null = null;
+  let latest: { result: RunListResult; asked: number } | null = null;
+  // Listings are numbered as they are asked for: a consumer tells one asked before it joined.
+  let asked = 0;
   const watcher = watchRefresh(async (current, force) => {
+    asked += 1;
+    const number = asked;
     let result: RunListResult;
     try {
       result = { runs: await transport.listRuns() };
@@ -17,17 +31,29 @@ function createSource(transport: Transport) {
       result = { error };
     }
     if (!current()) return;
-    latest = result;
-    for (const listener of listeners) listener(result, force);
+    latest = { result, asked: number };
+    for (const listener of listeners) listener(result, force, number);
   }, 1500);
-  return { listeners, watcher, latest: () => latest };
+  return { listeners, watcher, latest: () => latest, asked: () => asked };
+}
+
+/**
+ * Where a consumer joined the list: given back to `watchRunList` by the same consumer subscribing
+ * again (its own state changed), so a listing it asked for before that still counts as its own.
+ */
+export interface RunListMark {
+  readonly source: object;
+  readonly joined: number;
 }
 
 const sources = new WeakMap<Transport, ReturnType<typeof createSource>>();
 
 /** One discovery cadence per server connection; consumers retain their own read fences. */
-export function watchRunList(transport: Transport, read: Reader) {
+export function watchRunList(transport: Transport, read: Reader, since?: RunListMark) {
   let source = sources.get(transport);
+  // A listing asked before this consumer joined answers it as a repeated one; a new source's
+  // first listing is asked for it. Subscribing again to the same list keeps where it joined.
+  const joined = source && since?.source === source ? since.joined : (source?.asked() ?? 0);
   if (!source) {
     source = createSource(transport);
     sources.set(transport, source);
@@ -35,32 +61,38 @@ export function watchRunList(transport: Transport, read: Reader) {
   const owner = source;
   let active = true;
   let loading = false;
-  let pending: { result: RunListResult; force: boolean } | undefined;
+  let pending: { result: RunListResult; force: boolean; repeated: boolean } | undefined;
   const drain = async () => {
     loading = true;
     while (active && pending) {
       const next = pending;
       pending = undefined;
       try {
-        await read(next.result, () => active, next.force);
+        await read(next.result, () => active, next.force, next.repeated);
       } catch {
         // Consumers render their errors; one reader cannot stop discovery or another reader.
       }
     }
     loading = false;
   };
-  const receive: Listener = (result, force) => {
+  const receive = (result: RunListResult, force: boolean, asked: number) => {
     if (!active) return;
+    const repeated = asked <= joined;
     // A slow consumer needs the latest snapshot, not a queue of obsolete full histories.
-    pending = { result, force: force || pending?.force === true };
+    pending = { result, force: force || pending?.force === true, repeated };
     if (!loading) void drain();
   };
   owner.listeners.add(receive);
   const latest = owner.latest();
-  if (latest) receive(latest, true);
+  if (latest) receive(latest.result, true, latest.asked);
   return {
+    mark: { source: owner, joined } as RunListMark,
     refresh() {
       if (active) owner.watcher.refresh();
+    },
+    /** Asks for a listing of its own, unless one asked since it joined is out or in already. */
+    listOwn() {
+      if (active && owner.asked() <= joined) owner.watcher.refresh();
     },
     dispose() {
       if (!active) return;

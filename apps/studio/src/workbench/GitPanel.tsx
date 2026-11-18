@@ -13,6 +13,7 @@ import {
   type GitWriteResult,
   type WorkspaceTarget,
 } from '@corral/contracts';
+import { keepInput, keptInput } from '@corral/react';
 import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { Minus, Plus } from '@corral/react/icons';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -79,13 +80,32 @@ const FAILURE_KEYS = {
 export function GitPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
-  const [source, setSource] = useState<'session' | 'project'>('session');
+  // The source the person chose; until then a conversation with a copy starts on its Paddock and
+  // one without starts on the original (workbench.md), so nothing reads over an empty view.
+  const [chosen, setSource] = useState<'session' | 'project' | null>(null);
   const [revision, setRevision] = useState(0);
+  const [copied, setCopied] = useState<{ sessionId: string; present: boolean } | null>(null);
+  const hasCopy = copied?.sessionId === sessionId ? copied.present : null;
+  const source = chosen ?? (hasCopy === false ? 'project' : 'session');
   const [trusted, setTrusted] = useState(false);
   const [busy, setBusy] = useState<Pending | null>(null);
   const [unconfirmed, setUnconfirmed] = useState<Pending | null>(null);
   const [failure, setFailure] = useState<{ key: string; detail?: string } | null>(null);
-  const [message, setMessage] = useState('');
+  // The commit message is kept for this conversation after the screen goes, until a reload or a
+  // commit (features/session-panel.md 닫기와 패널 여닫기); a branch name is not.
+  const messageKey = `git-commit:${sessionId}`;
+  const [typed, setTyped] = useState<{ key: string; text: string }>(() => ({
+    key: messageKey,
+    text: keptInput<string>(messageKey) ?? '',
+  }));
+  const message = typed.key === messageKey ? typed.text : (keptInput<string>(messageKey) ?? '');
+  const setMessage = useCallback(
+    (text: string) => {
+      keepInput(messageKey, text === '' ? null : text);
+      setTyped({ key: messageKey, text });
+    },
+    [messageKey],
+  );
   const [runHooks, setRunHooks] = useState(true);
   const [author, setAuthor] = useState<{ name: string; email: string } | null>(null);
   const context = useRef({ workspaces, sessionId, workspaceId });
@@ -107,6 +127,21 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       live = false;
     };
   }, [workspaces, projectId, revision]);
+  useEffect(() => {
+    void revision;
+    let live = true;
+    if (!workspaces || mode !== 'server' || !workspaceId) {
+      setCopied({ sessionId, present: true });
+      return;
+    }
+    void workspaces.worktree(sessionId).then(
+      (view) => live && setCopied({ sessionId, present: Boolean(view && !view.missing) }),
+      () => live && setCopied({ sessionId, present: true }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [workspaces, workspaceId, mode, sessionId, revision]);
   const settle = useCallback(
     (receipt: GitOperation | GitAdvancedOperation, pending: Pending) => {
       if (context.current.workspaces !== workspaces || context.current.sessionId !== sessionId)
@@ -180,7 +215,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
       }
       setRevision((value) => value + 1);
     },
-    [sessionId, workspaces],
+    [sessionId, workspaces, setMessage],
   );
   const check = useCallback(
     async (pending: Pending) => {
@@ -284,9 +319,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     };
   }, [status, workspaces, sessionId]);
   const id = useId();
+  // Until the copy is known, the source is not: nothing is read yet.
+  const sourceKnown = chosen !== null || hasCopy !== null;
   useEffect(() => {
     let live = true;
     const client = query.client;
+    if (!sourceKnown) return;
     if (!client || query.mode !== 'server' || !query.hostId) {
       setLoaded({ query, data: null, error: true });
       return;
@@ -327,7 +365,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
     return () => {
       live = false;
     };
-  }, [query]);
+  }, [query, sourceKnown]);
   const loadKey =
     status && selected
       ? canonicalJson([
@@ -518,13 +556,12 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
           {t('refresh')}
         </Button>
       </div>
+      {/* Without a copy (`noCopy`) nothing of the session's Git is read and nothing is said here:
+          the copy setup above the view says so (workbench.md), and the source picker leads to the
+          project's Git. */}
       {!result ? (
         <p role="status" className="text-caption text-muted-foreground">
           {t('loading')}
-        </p>
-      ) : result.noCopy ? (
-        <p role="status" className="text-caption text-muted-foreground">
-          {t('noSessionCopy')}
         </p>
       ) : result.error ? (
         <p role="alert" className="text-caption text-muted-foreground">

@@ -66,7 +66,7 @@ test('explicit material selection survives reload and pins the submitted version
   await page.getByRole('button', { name: 'Save new version', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Coding style · v2', exact: true })).toBeVisible();
   // Back to the conversation from the sidebar (the session tab strip is gone).
-  await page.getByTestId('app-sidebar').locator(`a[href="${sessionPath}?compose=true"]`).click();
+  await page.getByTestId('app-sidebar').locator(`a[href="${sessionPath}"]`).click();
   await expect(requestBox(page)).toHaveValue('Review my code');
   corral.fake?.answerWith('The selected instructions were reviewed.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();

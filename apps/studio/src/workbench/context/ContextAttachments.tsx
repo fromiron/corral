@@ -31,6 +31,7 @@ export interface ContextAttachmentsProps {
 /** Display only: source metadata never resolves to HTML, a URL or executable content. */
 export function AttachmentSource({ source }: { source: TextAttachmentProvenance }) {
   const t = useTranslations('Context');
+  const tb = useTranslations('Browser');
   let label: string;
   switch (source.kind) {
     case 'preview':
@@ -50,6 +51,9 @@ export function AttachmentSource({ source }: { source: TextAttachmentProvenance 
       break;
     case 'reply':
       label = `${t('replySource')} · ${source.runId} · ${source.start}–${source.end}`;
+      break;
+    case 'page':
+      label = `${tb('noteSource')} · ${source.origin}${source.path} · #${source.generation} · ${source.pickedAt}`;
       break;
   }
   return <p className="break-all text-caption text-muted-foreground">{label}</p>;

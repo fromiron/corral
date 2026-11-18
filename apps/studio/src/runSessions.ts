@@ -6,6 +6,12 @@ export function createRunSessions(transport: RuntimeTransport, recovery?: RunRec
   const runs = new Map<string, RunSessionStore>();
   const drafts = new Map<string, RunSessionStore>();
   const references = new Map<string, number>();
+  // Told when a run starts or stops being followed. After the change, never inside a render.
+  const watchers = new Set<() => void>();
+  const changed = () =>
+    queueMicrotask(() => {
+      for (const watcher of [...watchers]) watcher();
+    });
   return {
     runFor(runId: string) {
       let store = runs.get(runId);
@@ -23,8 +29,24 @@ export function createRunSessions(transport: RuntimeTransport, recovery?: RunRec
       }
       return store;
     },
+    /**
+     * The run's store while a view follows it (retained), so its state is the run's own and live;
+     * null otherwise: a store no view holds any more stopped following its run and may be stale.
+     */
+    liveRun(runId: string): RunSessionStore | null {
+      return references.has(runId) ? (runs.get(runId) ?? null) : null;
+    },
+    /** Calls `listener` after a run starts or stops being followed; returns the way to stop. */
+    watchRuns(listener: () => void) {
+      watchers.add(listener);
+      return () => {
+        watchers.delete(listener);
+      };
+    },
     retainRun(runId: string) {
+      const first = !references.has(runId);
       references.set(runId, (references.get(runId) ?? 0) + 1);
+      if (first) changed();
       let released = false;
       return () => {
         if (released) return;
@@ -38,6 +60,7 @@ export function createRunSessions(transport: RuntimeTransport, recovery?: RunRec
           queueMicrotask(() => {
             if (!references.has(runId) && runs.get(runId) === store) store?.getState().dispose();
           });
+          changed();
         }
       };
     },
@@ -46,6 +69,7 @@ export function createRunSessions(transport: RuntimeTransport, recovery?: RunRec
       runs.clear();
       drafts.clear();
       references.clear();
+      watchers.clear();
     },
   };
 }

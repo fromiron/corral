@@ -7,7 +7,7 @@ import {
   type Presence,
 } from '@corral/react';
 import { MetaDot } from '@corral/react/design-kit';
-import { type RefObject, useEffect, useRef, useState } from 'react';
+import { createContext, type RefObject, useContext, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import type { SteerTarget } from '../composerIntent.ts';
 import {
@@ -20,7 +20,6 @@ import {
   ComposerPlan,
   RunLink,
   unansweredAttention,
-  viewedLabel,
 } from '../widgets/ChatWidgets.tsx';
 import { OverviewAccess } from '../widgets/OverviewWidgets.tsx';
 import { revealPendingTray, useRespondInConversation, useTrayStore } from './pendingTrayState.ts';
@@ -28,6 +27,12 @@ import { useLineHold } from './settle.ts';
 import { type ActivityAdvisor, type ActivityRole, roleSeen, useActivity } from './useActivity.ts';
 
 const toMs = (value: string | null | undefined) => (value ? Date.parse(value) : undefined);
+
+/**
+ * The session panel shows its changes tab (selected, the panel beside, maximized or a drawer):
+ * the tab says the change count, so the bar does not (features/composer-flow.md 활동 바, rule 4).
+ */
+export const ChangesTabShownContext = createContext(false);
 
 /**
  * An advisor's mark (features/advisor.md "보이는 곳"): still while it watches, since watching makes
@@ -56,7 +61,6 @@ export function ComposerActivity({
   revealRun,
   notice = null,
   request,
-  viewingOther,
 }: {
   sessionId: string;
   /** The session's run still going, or null. */
@@ -66,7 +70,11 @@ export function ComposerActivity({
   /** The executions that take an instruction now. */
   targets: readonly SteerTarget[];
   onJoin: (executionId: string) => void;
-  onStop: () => void;
+  /**
+   * Stop among the run controls; left out while Send's place is Stop, so Stop stands in one
+   * place (composer-flow.md "활동 바").
+   */
+  onStop?: (() => void) | undefined;
   onPause: () => void;
   onResume: () => void;
   /**
@@ -83,14 +91,13 @@ export function ComposerActivity({
   notice?: string | null;
   /** The request that started the running run. */
   request?: string;
-  /** Another run than the running one is presented. */
-  viewingOther: boolean;
 }) {
   const t = useTranslations('Activity');
   const tp = useTranslations('Presence');
   const tw = useTranslations('Widgets');
   const ta = useTranslations('Approvals');
   const td = useTranslations('Docking');
+  const changesTabShown = useContext(ChangesTabShownContext);
   const anchor = useRef<HTMLDivElement>(null);
   const [open, setOpen] = useState(false);
   const [deciding, setDeciding] = useState(false);
@@ -123,19 +130,22 @@ export function ComposerActivity({
     plan && model?.plan.selectedChoice?.live && !open
       ? (plan.items.find((item) => item.status === 'in_progress')?.title ?? null)
       : null;
-  const viewed = model?.runId && !run?.live && model.viewed ? viewedLabel(model.viewed, tw) : null;
+  // An ended run it presents is the session's last run, and the line says so.
+  const lastRun = model?.runId && !run?.live && model.lastRun ? tw('lastRun') : null;
+  // Left out of the parts, not only the chip, so no dot stays behind for it.
   const changes = Boolean(
-    model?.runId &&
+    !changesTabShown &&
+      model?.runId &&
       model.chips.includes('changes') &&
       (model.changesLabel === 'error' || model.changeFiles !== 0),
   );
   const parts =
-    viewed || counted || changes ? (
+    lastRun || counted || changes ? (
       <>
-        {viewed ? (
+        {lastRun ? (
           // The run's place leaves with the dot after it.
           <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap @max-2xl/composer-surface:hidden">
-            {viewed}
+            {lastRun}
             {counted || changes ? <MetaDot /> : null}
           </span>
         ) : null}
@@ -418,19 +428,10 @@ export function ComposerActivity({
                 stopDisabled: status === 'cancelling' || sending,
                 onPause,
                 onResume,
-                onStop,
-                note: (
-                  <>
-                    {request ? (
-                      <span className="sr-only">{td('activeRunTarget', { request })}</span>
-                    ) : null}
-                    {viewingOther ? (
-                      <span role="note" className="sr-only">
-                        {td('activeRunNotViewed')}
-                      </span>
-                    ) : null}
-                  </>
-                ),
+                ...(onStop ? { onStop } : {}),
+                note: request ? (
+                  <span className="sr-only">{td('activeRunTarget', { request })}</span>
+                ) : null,
               }
             : undefined
         }

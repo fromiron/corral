@@ -195,6 +195,8 @@ export function composerCommands({
       title: tr('cancelRun'),
       group: tc('groupRun'),
       slash: 'stop',
+      // Found by its name in either language and by the word it had before.
+      keywords: ['stop', '중지', 'cancel', '취소'],
       shortcutId: 'run.stop',
       shortcut: shortcutLabel('run.stop'),
       disabled: !ownActive,

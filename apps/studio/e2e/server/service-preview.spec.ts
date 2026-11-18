@@ -6,10 +6,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import {
+  closePanel,
   closeSettings,
   newConversation,
   openFolderSettings,
-  panelTab,
+  openPane,
+  openPanelTab,
   requestBox,
   stopRun,
 } from '../workbench.ts';
@@ -123,13 +125,12 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
     await expect(page).toHaveURL(/\/sessions\/session_/);
     const sessionId = new URL(page.url()).pathname.split('/')[2];
     if (!sessionId) throw new Error('Session did not open');
-    await panelTab(page, 'Files');
-    await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+    await openPanelTab(page, 'Changes');
     await page
       .getByRole('region', { name: 'Paddock' })
       .getByRole('button', { name: /Make a Paddock from/ })
       .click();
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
     await page
       .getByRole('option')
@@ -144,7 +145,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       'Keep the service running?',
       { timeout: 45_000 },
     );
-    await panelTab(page, 'Tasks & preview');
+    await openPane(page, 'Preview');
     const previews = page.getByRole('region', { name: 'Open previews', exact: true });
     await expect(previews).toContainText('Local app');
     await expect(previews.getByRole('link', { name: 'View run', exact: true })).toBeVisible();

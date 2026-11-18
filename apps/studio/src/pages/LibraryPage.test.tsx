@@ -18,7 +18,11 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { setCurrentProject } from '../projects.ts';
-import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import {
+  SettingsNavigationContext,
+  settingsItemOf,
+  settingsOpenState,
+} from '../workbench/navigation.ts';
 import {
   LIBRARY_VIEWS,
   LibraryPage,
@@ -77,10 +81,12 @@ function SettingsBridge({ children }: { children: ReactNode }) {
         projects: [],
         returnTo: location.href,
         search: {},
-        link: (section, projectId) => ({
+        link: (section, projectId, item) => ({
           to: location.pathname,
           search: { ...location.search, settings: section, settingsProject: projectId },
           resetScroll: false,
+          state: (previous) =>
+            settingsOpenState(previous, { overlay: false, owner: 'library', oneShot: false, item }),
         }),
       }}
     >
@@ -418,6 +424,37 @@ it('adds the settings dialog to the current library address from Manage', async 
   expect(new URL(hook?.href ?? '', 'http://x').searchParams.get('settings')).toBe('hooks');
 });
 
+// features/library.md: Manage opens the dialog with that resource chosen. The row's key rides in
+// history state; the address carries only the section and project.
+it('carries the managed row’s key to the dialog, outside the address', async () => {
+  const { container, router } = await render('/library/resources?project=project_1');
+  const open = async (label: string) => {
+    const link = container.querySelector<HTMLAnchorElement>(`a[aria-label="Manage ${label}"]`);
+    expect(link).toBeTruthy();
+    await act(async () => link?.click());
+    await settle();
+    const { location } = router.state;
+    const carried = settingsItemOf(location.state);
+    expect(location.href).not.toContain(encodeURIComponent(String(carried)));
+    expect(Object.values(location.search)).not.toContain(carried);
+    await act(async () => router.history.back());
+    await settle();
+    expect(router.state.location.search).not.toHaveProperty('settings');
+    expect(settingsItemOf(router.state.location.state)).toBeUndefined();
+    return { section: (location.search as { settings?: string }).settings, carried };
+  };
+  expect(await open('Code review')).toEqual({
+    section: 'skills',
+    carried: `${hash(1)}:skills/SKILL.md`,
+  });
+  expect(await open('Notify on finish')).toEqual({
+    section: 'hooks',
+    carried: `${hash(2)}:extensions/hook.ts`,
+  });
+  expect(await open('Local tools')).toEqual({ section: 'mcp', carried: 'mcp_local' });
+  expect(await open('lint-pack')).toEqual({ section: 'hooks', carried: hash(3) });
+});
+
 it('shows a failed group with its failure and a retry while the other groups stay', async () => {
   const packages = vi
     .fn()
@@ -518,7 +555,7 @@ it('lists only the groups that have items or failed, and keeps the others one cl
       projectTools: vi.fn(async () => ({ ...mcp, mcpServers: [] })),
     }),
   };
-  const { container } = await render('/library/resources?project=project_1');
+  const { container, router } = await render('/library/resources?project=project_1');
   expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
   expect(groupOf(container, 'packages')?.textContent).toContain('Could not load Packages.');
   for (const group of ['hooks', 'extensions', 'mcp']) expect(groupOf(container, group)).toBeNull();
@@ -529,6 +566,11 @@ it('lists only the groups that have items or failed, and keeps the others one cl
   expect(new URL(mcpManage?.href ?? '', 'http://x').searchParams.get('settings')).toBe('mcp');
   const hooksManage = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Hooks"]');
   expect(new URL(hooksManage?.href ?? '', 'http://x').searchParams.get('settings')).toBe('hooks');
+  // An empty group's Add opens the section with nothing to choose.
+  await act(async () => hooksManage?.click());
+  await settle();
+  expect(router.state.location.search).toMatchObject({ settings: 'hooks' });
+  expect(settingsItemOf(router.state.location.state)).toBeUndefined();
 });
 
 it('offers New team and Browse templates when the project has no teams', async () => {

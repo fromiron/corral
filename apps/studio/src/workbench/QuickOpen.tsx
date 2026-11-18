@@ -18,6 +18,7 @@ import { useServices } from '../services.tsx';
 import { formatChord } from '../shortcuts.ts';
 import { documentStore } from './documents/store.ts';
 import type { OpenDocumentRequest } from './FilePanel.tsx';
+import { modalConfirmationOpen } from './modalConfirmation.ts';
 import { settingsInteractionBlocked } from './navigation.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
@@ -60,13 +61,13 @@ export function takeFileReveal(seq: number) {
   reveal = null;
   for (const listener of revealListeners) listener();
 }
-export function useFileReveal(sessionId: string, enabled = true) {
+export function useFileReveal(sessionId: string) {
   const pending = useSyncExternalStore(
     subscribeReveal,
     () => reveal,
     () => null,
   );
-  return enabled && pending?.sessionId === sessionId ? pending : null;
+  return pending?.sessionId === sessionId ? pending : null;
 }
 
 type Target = { key: string; source: 'session' | 'project'; scope: FileBrowseScope };
@@ -210,7 +211,7 @@ export function QuickOpen({
       if (!(mac ? event.metaKey : event.ctrlKey) || (mac ? event.ctrlKey : event.metaKey)) return;
       if (event.altKey || event.shiftKey) return;
       if (event.key.toLowerCase() !== 'p' && event.code !== 'KeyP') return;
-      if (settingsInteractionBlocked()) return;
+      if (settingsInteractionBlocked() || modalConfirmationOpen()) return;
       event.preventDefault();
       showRef.current(!openRef.current);
     };

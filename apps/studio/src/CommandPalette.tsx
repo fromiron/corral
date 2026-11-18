@@ -36,12 +36,17 @@ import {
 import {
   effectiveShortcuts,
   LOCAL_KEYS,
+  passesTyping,
   SHORTCUTS,
   type ShortcutId,
   shortcutFor,
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { ANNOTATE_SHORTCUT } from './workbench/browser/annotate.tsx';
+import { holdPages } from './workbench/browser/overlap.ts';
+import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
+import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
   SETTINGS_GROUPS,
@@ -53,6 +58,14 @@ import { loadRunIdentities, runIdentity, runIdentityText } from './workbench/run
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
 import { bySidebarOrder } from './workbench/sessionOrder.ts';
+
+/**
+ * Global shortcuts and window commands are held back while settings hold the screen or a modal
+ * confirmation is up (features/session-panel.md "실행 조작이 서는 곳").
+ */
+function held(): boolean {
+  return settingsInteractionBlocked() || modalConfirmationOpen();
+}
 
 /** True while the user types in a field or composes with an IME: global keys stay quiet. */
 function typing(event: globalThis.KeyboardEvent): boolean {
@@ -92,8 +105,12 @@ export function CommandLayer({
   const [help, setHelp] = useState(false);
   const [sessionSearch, setSessionSearch] = useState<string | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
+  const { browser } = useServices();
+  // The browser tab whose page the palette or help was opened from: the focus goes back there.
+  const pageReturn = useRef<string | null>(null);
   const open = useCallback((which: 'palette' | 'help', request: PaletteRequest = {}) => {
     returnTo.current = document.activeElement as HTMLElement | null;
+    pageReturn.current = null;
     if (which === 'palette') setPalette(request);
     else setHelp(true);
   }, []);
@@ -105,14 +122,16 @@ export function CommandLayer({
     setPalette(null);
     setHelp(false);
     restoreFocus();
-  }, [restoreFocus]);
+    const page = pageReturn.current;
+    pageReturn.current = null;
+    if (page && browser) returnFocusToPage(browser, page, returnTo.current);
+  }, [restoreFocus, browser]);
   useEffect(() => {
     const show = (event: Event) => {
-      if (!settingsInteractionBlocked())
-        open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
+      if (!held()) open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
     };
     const search = (event: Event) => {
-      if (settingsInteractionBlocked()) return;
+      if (held()) return;
       setPalette(null);
       setSessionSearch((event as CustomEvent<string>).detail ?? '');
     };
@@ -125,7 +144,7 @@ export function CommandLayer({
   }, [open]);
   useEffect(() => {
     const onKey = (event: globalThis.KeyboardEvent) => {
-      if (settingsInteractionBlocked()) return;
+      if (held()) return;
       if (event.isComposing || event.keyCode === 229) return;
       if (help && event.key === 'Escape') {
         event.preventDefault();
@@ -133,11 +152,7 @@ export function CommandLayer({
         return;
       }
       const hit = shortcutFor(event);
-      if (
-        typing(event) &&
-        !['palette', 'help', 'composer.focus', 'run.stop'].includes(hit?.id ?? '')
-      )
-        return;
+      if (typing(event) && !(hit && passesTyping(hit.id, event.target as Element | null))) return;
       if (hit?.id === 'palette') {
         event.preventDefault();
         if (palette) close();
@@ -162,10 +177,7 @@ export function CommandLayer({
         field?.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(field?.tagName ?? '');
       const map = Object.fromEntries(
         Object.entries(effectiveShortcuts(bindings)).filter(
-          ([id]) =>
-            !settingsInteractionBlocked() &&
-            !capturing &&
-            (!editing || ['palette', 'help', 'composer.focus', 'run.stop'].includes(id)),
+          ([id]) => !held() && !capturing && (!editing || passesTyping(id as ShortcutId, field)),
         ),
       );
       void desktop?.shortcuts(map).catch(() => {});
@@ -180,11 +192,41 @@ export function CommandLayer({
       window.removeEventListener('corral:shortcut-context', sync);
     };
   }, [bindings]);
+  // A browser tab's page passes the app's shortcuts to the app (features/browser-tab.md 포커스와
+  // 키보드): all of them, as the person bound them, whatever has the focus in the app.
+  useEffect(() => {
+    void browser?.setShortcuts(effectiveShortcuts(bindings)).catch(() => {});
+  }, [browser, bindings]);
+  useEffect(
+    () =>
+      browser?.onEvent((event) => {
+        if (event.type !== 'shortcut' || held()) return;
+        const before = document.activeElement;
+        if (event.id === 'palette' || event.id === 'help') {
+          if (event.id === 'palette' && palette) close();
+          else if (!palette && !help) {
+            open(event.id);
+            pageReturn.current = event.tabId;
+          }
+          return;
+        }
+        // The annotation mode is that tab's: its overlay takes the focus once it shows.
+        if (event.id === 'browser.annotate') {
+          window.dispatchEvent(
+            new CustomEvent(ANNOTATE_SHORTCUT, { detail: { tabId: event.tabId } }),
+          );
+          return;
+        }
+        runShortcut(event.id as ShortcutId, event.digit);
+        returnFocusToPage(browser, event.tabId, before);
+      }),
+    [browser, palette, help, open, close],
+  );
   // The desktop menu asks for commands by name; they run like their shortcuts.
   useEffect(
     () =>
       desktop?.onCommand((id) => {
-        if (settingsInteractionBlocked()) return;
+        if (held()) return;
         if (id === 'palette') open('palette');
         else if (id === 'help') open('help');
         else runShortcut(id as ShortcutId);
@@ -333,6 +375,8 @@ export function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  // Over the whole screen, so over a browser tab's page too: the page is a picture meanwhile.
+  useEffect(() => holdPages(), []);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh]">
       <button
@@ -482,7 +526,6 @@ export function Palette({
               navigate({
                 to: '/sessions/$sessionId',
                 params: { sessionId: x.sessionId },
-                search: { compose: true },
               }),
           }),
         ),
@@ -831,12 +874,14 @@ const LABEL: Record<ShortcutId, string> = {
   'session.jump': 'sessionJump',
   'view.sidebar': 'viewSidebar',
   'view.panel': 'viewPanel',
+  'view.dock': 'viewDock',
   'composer.focus': 'composerFocus',
   settings: 'settings',
   'nav.back': 'navBack',
   'nav.forward': 'navForward',
   'run.stop': 'runStop',
   'reply.quote': 'replyQuote',
+  'browser.annotate': 'browserAnnotate',
 };
 
 /** Every shortcut that works here, from the one table the key handler uses. */
@@ -891,7 +936,13 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
     }
   };
   const { sendKey } = usePreferences();
-  const sessionIds = new Set(['session.new', 'session.jump', 'run.stop', 'reply.quote']);
+  const sessionIds = new Set([
+    'session.new',
+    'session.jump',
+    'run.stop',
+    'reply.quote',
+    'browser.annotate',
+  ]);
   const commands = (session: boolean): [string, string, ShortcutId?][] =>
     SHORTCUTS.flatMap((s) => {
       const keys = shortcutLabel(s.id);

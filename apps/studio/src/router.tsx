@@ -19,7 +19,6 @@ import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { PreviewPage, validatePreviewSearch } from './pages/PreviewPage.tsx';
 import { ProjectsPage } from './pages/ProjectsPage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
-import { ReviewPage } from './pages/ReviewPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { ScheduledPage } from './pages/ScheduledPage.tsx';
@@ -227,12 +226,6 @@ export const reviewRoute = createRoute({
       replace: true,
     });
   },
-  loader: async ({ context, params }) => {
-    const session = await context.services.repository.getSession(params.sessionId);
-    if (!session) throw notFound();
-    return { session };
-  },
-  component: ReviewPage,
 });
 
 export const projectsRoute = createRoute({

@@ -7,14 +7,20 @@ import messages from '../../../../packages/react/src/messages/en.json' with { ty
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { HookSettingsPage } from './ResourceSettingsPage.tsx';
 
-const api = { entries: vi.fn(async (): Promise<unknown[]> => []) };
+const api = {
+  entries: vi.fn(async (): Promise<unknown[]> => []),
+  readEntry: vi.fn(() => new Promise(() => {})),
+  resource: vi.fn(() => new Promise(() => {})),
+  trust: vi.fn(async () => {}),
+};
+const navigation = vi.hoisted(() => ({ item: undefined as string | undefined }));
 vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
 vi.mock('./SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
 vi.mock('../workbench/navigation.ts', () => ({
-  useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  useSettingsNavigation: () => ({ item: navigation.item, link: () => ({ to: '/' }) }),
 }));
 vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
@@ -48,6 +54,8 @@ beforeEach(() => {
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
   vi.unstubAllGlobals();
+  navigation.item = undefined;
+  api.entries.mockImplementation(async () => []);
 });
 
 async function show(locale: 'en' | 'ko' = 'en') {
@@ -58,15 +66,16 @@ async function show(locale: 'en' | 'ko' = 'en') {
     root.unmount();
     container.remove();
   });
-  await act(async () =>
-    root.render(
-      <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
-        <HookSettingsPage />
-      </IntlProvider>,
-    ),
+  const page = () => (
+    <IntlProvider locale={locale} messages={locale === 'ko' ? ko : messages} timeZone="UTC">
+      <HookSettingsPage />
+    </IntlProvider>
   );
+  await act(async () => root.render(page()));
+  rerender = () => act(async () => root.render(page()));
   return container;
 }
+let rerender = async () => {};
 
 const hook = {
   kind: 'extension',
@@ -119,4 +128,71 @@ it('names the Korean row’s sections as places', async () => {
   const container = await show('ko');
   const jumps = [...(container.querySelector('nav')?.querySelectorAll('button') ?? [])];
   expect(jumps.map((button) => button.textContent)).toEqual(['라이브러리', '패키지']);
+});
+
+const second = { ...hook, resourceHash: 'hash_2', name: 'Notify on finish' };
+const archivedHook = {
+  ...hook,
+  resourceHash: 'hash_3',
+  name: 'Old formatter',
+  archivedAt: '2026-11-01T00:00:00.000Z',
+};
+const NAMES = ['Format on save', 'Notify on finish', 'Old formatter'];
+const nameOf = (button: Element) => NAMES.find((name) => button.textContent?.includes(name));
+const pressed = (container: HTMLElement) =>
+  [...container.querySelectorAll('button[aria-pressed="true"]')].map(nameOf);
+const details = (container: HTMLElement) =>
+  container.querySelector(`section[aria-label="${messages.Resources.details}"] h3`)?.textContent;
+// The page's one switch: Show archived items.
+const archivedSwitch = (container: HTMLElement) => container.querySelector('[role="switch"]');
+
+// features/library.md: Manage opens the section with the resource it came from chosen.
+it('chooses the resource Manage carried once the library has loaded', async () => {
+  navigation.item = 'hash_2:extensions/hook.ts';
+  api.entries.mockResolvedValue([hook, second]);
+  const container = await show();
+  expect(pressed(container)).toEqual(['Notify on finish']);
+  expect(details(container)).toBe('Notify on finish');
+});
+
+it('shows archived items to choose an archived resource Manage carried', async () => {
+  navigation.item = 'hash_3:extensions/hook.ts';
+  api.entries.mockResolvedValue([hook, archivedHook]);
+  const container = await show();
+  expect(archivedSwitch(container)?.getAttribute('aria-checked')).toBe('true');
+  expect(pressed(container)).toEqual(['Old formatter']);
+  expect(details(container)).toBe('Old formatter');
+});
+
+it('opens only the section when the carried resource is gone or is a package', async () => {
+  for (const item of ['hash_9:extensions/hook.ts', 'hash_1']) {
+    navigation.item = item;
+    api.entries.mockResolvedValue([hook, second]);
+    const container = await show();
+    expect(pressed(container)).toEqual([]);
+    expect(details(container)).toBeUndefined();
+    expect(archivedSwitch(container)?.getAttribute('aria-checked')).toBe('false');
+    expect(container.querySelector('[role="alert"]')).toBeNull();
+    for (const dispose of cleanup.splice(0)) act(dispose);
+  }
+});
+
+it('follows the person’s own choice after a re-render or a refetch', async () => {
+  navigation.item = 'hash_2:extensions/hook.ts';
+  api.entries.mockResolvedValue([hook, second]);
+  const container = await show();
+  const first = [...container.querySelectorAll('button[aria-pressed]')].find(
+    (button) => nameOf(button) === 'Format on save',
+  );
+  await act(async () => (first as HTMLButtonElement | undefined)?.click());
+  expect(pressed(container)).toEqual(['Format on save']);
+  await rerender();
+  expect(pressed(container)).toEqual(['Format on save']);
+  const trust = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === messages.Harness.trust,
+  );
+  await act(async () => trust?.click());
+  expect(api.trust).toHaveBeenCalled();
+  expect(api.entries.mock.calls.length).toBeGreaterThan(1);
+  expect(pressed(container)).toEqual(['Format on save']);
 });

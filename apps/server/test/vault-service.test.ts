@@ -112,6 +112,24 @@ describe('portable shortcuts', () => {
         .shortcuts,
     ).toEqual({ 'reply.quote': { mod: true, key: 'e' } });
   });
+  it('carries the browser annotation key, rebound with Mod, there and back (browser-annotate.md 켜고 끄기)', async () => {
+    const service = new VaultService({ directory: directory(), adapters: () => ({}) });
+    const target = {
+      ...prefs,
+      shortcuts: { 'browser.annotate': { mod: true as const, shift: true, key: 'e' } },
+    };
+    expect(PortableApplication.parse(target)).toEqual(target);
+    const envelope = await service.capture(['application'], password, target);
+    const preview = await service.preview(envelope, password, prefs);
+    await service.apply(preview.previewId, ['application'], password);
+    expect((await service.pending(password)).application?.target).toEqual(target);
+    expect(() =>
+      PortableApplication.parse({
+        ...prefs,
+        shortcuts: { 'browser.annotate': { alt: true, key: 'e' } },
+      }),
+    ).toThrow();
+  });
 });
 describe('partial apply and stale revisions', () => {
   it('reads both forward and rollback owner receipts when the process loses their journal acknowledgements', async () => {

@@ -35,12 +35,20 @@ export type ErrorCode = z.infer<typeof ErrorCode>;
 export const CommandError = z.strictObject({
   code: ErrorCode,
   message: z.string().min(1),
+  /**
+   * What holds the working copy, when that is why the effect was refused: another run, a task, a
+   * terminal, or another person operation, whose kind `operationKind` carries.
+   */
   owner: z
     .strictObject({
-      kind: z.literal('terminal'),
+      kind: z.enum(['run', 'task', 'terminal', 'operation']),
       id: Identifier,
       sessionId: Identifier,
       state: z.enum(['active', 'uncertain']),
+      operationKind: z.string().min(1).max(64).optional(),
+    })
+    .refine((owner) => (owner.kind === 'operation') === (owner.operationKind !== undefined), {
+      message: 'operationKind names an operation holder only',
     })
     .optional(),
 });

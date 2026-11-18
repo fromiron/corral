@@ -407,6 +407,190 @@ it('returns to the same search hit after leaving its link and reading elsewhere'
   expect(row.getAttribute('aria-current')).toBe('location');
 });
 
+// A linked row read in later takes the focus only if the person has not pressed a key or a
+// pointer since the link arrived; focus the app moved by itself is not the person moving it
+// (features/session-panel.md 접근성).
+it.each([
+  ['goes to the row when nothing happened', 'nothing', 'row'],
+  ['goes to the row when only the app moved it', 'app', 'row'],
+  ['goes to the row from the composer when no key was pressed there', 'composer', 'row'],
+  ['stays when the person pressed a key in the composer', 'key', 'input'],
+  ['stays when the person pressed a pointer', 'pointer', 'body'],
+] as const)(
+  'a linked message joining the conversation later: the focus %s',
+  async (_how, between, expected) => {
+    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    const container = document.createElement('div');
+    document.body.append(container);
+    const root = createRoot(container);
+    disposals.push(async () => {
+      await act(async () => root.unmount());
+      container.remove();
+    });
+    const show = async (
+      items: { id: string; content: React.ReactNode }[],
+      messageId: string | null = 'late',
+    ) =>
+      act(async () =>
+        root.render(
+          <IntlProvider locale="en" messages={messages} timeZone="UTC">
+            <ChatView
+              sessionId="late-link"
+              messageId={messageId ?? undefined}
+              items={items}
+              composer={<textarea aria-label="request" />}
+            />
+          </IntlProvider>,
+        ),
+      );
+    const first = [{ id: 'first', content: <p>First</p> }];
+    const input = () =>
+      container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+    if (between === 'key' || between === 'composer') {
+      // The person is in the composer when the link arrives, and goes on typing there.
+      await show(first, null);
+      await act(async () => input()?.focus());
+    }
+    await show(first);
+    if (between === 'app') await act(async () => input()?.focus());
+    if (between === 'key')
+      await act(async () => {
+        input()?.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+      });
+    if (between === 'pointer')
+      await act(async () => {
+        container
+          .querySelector('[data-chat-item="first"]')
+          ?.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+      });
+    await show([...first, { id: 'late', content: <p>Late</p> }]);
+    const row = container.querySelector<HTMLElement>('[data-chat-item="late"]');
+    expect(row).not.toBeNull();
+    expect(document.activeElement).toBe(
+      expected === 'row' ? row : expected === 'input' ? input() : document.body,
+    );
+  },
+);
+
+// The activity bar's View goes to a role's row by placing the conversation at the run's request
+// and, once the row is in, letting the place go and focusing the row itself when no control in it
+// takes the focus (ComposerActivity goTo). A row that holds the focus stays focusable when the
+// message it was placed at is let go: a row that stops being focusable drops the focus to the
+// page in a browser (jsdom keeps it, so the row's tabindex is what is checked here).
+it('a linked row holding the focus itself stays focusable when the conversation lets the message go', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const items = [
+    { id: 'first', content: <p>First</p> },
+    { id: 'request', content: <p>Request</p> },
+  ];
+  const show = async (messageId: string | undefined) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ChatView
+            sessionId="view-role"
+            messageId={messageId}
+            items={items}
+            composer={<textarea aria-label="request" />}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await show('request');
+  const row = container.querySelector<HTMLElement>('[data-chat-item="request"]');
+  if (!row) throw new Error('Missing the placed row');
+  // As the activity bar's View does when no control in the row takes the focus.
+  await act(async () => {
+    row.tabIndex = -1;
+    row.focus({ preventScroll: true });
+  });
+  expect(document.activeElement).toBe(row);
+
+  await show(undefined);
+
+  expect(row.getAttribute('tabindex')).toBe('-1');
+  expect(document.activeElement).toBe(row);
+  // Once the focus leaves it, the row is no stop for Tab again: rows do not pile up as stops.
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+  await act(async () => input?.focus());
+  expect(document.activeElement).toBe(input);
+  expect(row.hasAttribute('tabindex')).toBe(false);
+});
+
+it('a row holding the focus itself stays focusable while the window loses the focus, and stops being so once the focus lands elsewhere', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ChatView
+          sessionId="window-blur"
+          items={[
+            { id: 'first', content: <p>First</p> },
+            { id: 'request', content: <p>Request</p> },
+          ]}
+          composer={<textarea aria-label="request" />}
+        />
+      </IntlProvider>,
+    ),
+  );
+  const row = container.querySelector<HTMLElement>('[data-chat-item="request"]');
+  if (!row) throw new Error('Missing the row');
+  await act(async () => {
+    row.tabIndex = -1;
+    row.focus({ preventScroll: true });
+  });
+
+  // The person switches to another app: the row loses the focus with the document.
+  const hasFocus = vi.spyOn(document, 'hasFocus').mockReturnValue(false);
+  await act(async () => {
+    row.dispatchEvent(new FocusEvent('focusout', { bubbles: true, relatedTarget: null }));
+  });
+  expect(row.getAttribute('tabindex')).toBe('-1');
+  hasFocus.mockRestore();
+
+  const input = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="request"]');
+  await act(async () => input?.focus());
+  expect(row.hasAttribute('tabindex')).toBe(false);
+});
+
 /**
  * A conversation whose scroll port the test owns, so a send, a growing turn, a composer
  * resizing the port, and a virtual list can be told apart from a person scrolling up.

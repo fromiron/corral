@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { usePreviewTabs } from './browser/previewTabs.tsx';
 
 export const canPreviewFile = (path: string) => /\.(?:html?|png|jpe?g|webp|gif|svg)$/i.test(path);
 
@@ -12,6 +13,9 @@ export const canPreviewFile = (path: string) => /\.(?:html?|png|jpe?g|webp|gif|s
 export function FilePreview({ sessionId, path }: { sessionId: string; path: string }) {
   const t = useTranslations('Preview');
   const { workspaces } = useServices();
+  // Where the desktop's browser tab is, the lease opens in a preview tab; it stays this
+  // preview's, so closing that tab stops nothing and closing this one ends the page there.
+  const tabs = usePreviewTabs();
   const [requested, setRequested] = useState(false);
   const [lease, setLease] = useState<WorkspacePreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -52,10 +56,14 @@ export function FilePreview({ sessionId, path }: { sessionId: string; path: stri
         <span className="min-w-0 flex-1 truncate text-caption" title={path}>
           {path}
         </span>
-        {desktop && lease ? (
+        {(tabs || desktop) && lease ? (
           <Button
             variant="tertiary"
             onClick={() => {
+              if (tabs) {
+                tabs.open(lease.leaseId);
+                return;
+              }
               void desktop
                 ?.openPreview(sessionId, lease.leaseId)
                 .catch((reason: unknown) =>

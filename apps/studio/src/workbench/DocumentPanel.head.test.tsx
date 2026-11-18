@@ -216,20 +216,47 @@ it('the head is one row and leaves no helper sentences on the document', async (
     expect(text).not.toContain(helper);
 });
 
-it('Save follows the unsaved state', async () => {
+it('Save follows the unsaved state: a saved document has "Saved" in its place, a check under 576px', async () => {
   const clean = await mount(buffer());
-  expect(clean.button('Save')?.disabled).toBe(true);
-  expect(clean.container.querySelector('[role="status"]')?.textContent).toBe(
+  expect(clean.button('Save')).toBeUndefined();
+  const saved = [...clean.container.querySelectorAll('[role="status"]')].find(
+    (node) => node.textContent === messages.Documents.saved,
+  );
+  expect(saved).toBeDefined();
+  // Under 576px the words go to assistive technology only and a check takes their place.
+  expect(saved?.querySelector('.\\@max-xl\\/head\\:sr-only')?.textContent).toBe(
     messages.Documents.saved,
   );
+  expect(saved?.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
+  // Said once: the save state is not repeated beside the path.
+  expect(
+    [...clean.container.querySelectorAll('[data-testid="document-header"] *')].filter(
+      (node) => node.childElementCount === 0 && node.textContent === messages.Documents.saved,
+    ),
+  ).toHaveLength(1);
+
   const dirty = await mount(buffer({ dirty: true, text: 'one\ntwo!' }));
   const save = dirty.button('Save');
   expect(save?.disabled).toBe(false);
   expect(dirty.container.querySelector('[role="status"]')?.textContent).toBe(
     messages.Documents.dirty,
   );
+  expect(
+    [...dirty.container.querySelectorAll('[role="status"]')].some(
+      (node) => node.textContent === messages.Documents.saved,
+    ),
+  ).toBe(false);
   await act(async () => save?.click());
   expect(dirty.owner.save).toHaveBeenCalledWith('document');
+});
+
+it('a document that cannot be saved here keeps Save, disabled, in its place (counterexample)', async () => {
+  const view = await mount(
+    buffer({
+      file: { ...buffer().file, writable: false, content: { kind: 'binary', bytes: 3 } },
+    }),
+  );
+  expect(view.button('Save')?.disabled).toBe(true);
 });
 
 /**
@@ -257,6 +284,18 @@ it('a save held by another writer is one warning banner, and Save steps back', a
   // Without a held copy, an unsaved document keeps the primary Save.
   const free = await mount(buffer({ dirty: true, text: 'one\ntwo!' }));
   expect(free.button('Save')?.className).toBe(variantClass('primary'));
+  // A refusal that names its holder is told by that holder.
+  const named = await mount(
+    buffer({
+      dirty: true,
+      text: 'one\ntwo!',
+      writerBusy: true,
+      writerOwner: { kind: 'run', id: 'run_1', sessionId: 'session', state: 'uncertain' },
+    }),
+  );
+  expect(
+    named.container.querySelector('[data-slot="banner"][data-status="warning"]')?.textContent,
+  ).toContain(messages.Documents.saveHeld.runUncertain);
 });
 
 it('the reference popover keeps one short hint line', async () => {

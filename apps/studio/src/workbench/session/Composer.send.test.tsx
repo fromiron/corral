@@ -9,7 +9,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { setCommands } from '../../commandRegistry.ts';
+import { runShortcut, setCommands } from '../../commandRegistry.ts';
 import { changePreferences } from '../preferences.ts';
 import { editRequest } from '../RefusalHelp.tsx';
 import { readComposerDraft, writeComposerDraft } from '../sessionDraft.ts';
@@ -36,6 +36,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 vi.mock('../navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+  settingsInteractionBlocked: () => false,
 }));
 vi.mock('../useModels.ts', () => ({
   useModelProfiles: () => null,
@@ -261,7 +262,6 @@ async function mount({
             corrals={[]}
             runs={run ? [run] : []}
             active={run}
-            selectedRunId={run?.runId ?? null}
             queued={queued}
             onChange={() => {}}
             reference={null}
@@ -1127,6 +1127,42 @@ describe('Stop in Send’s place', () => {
     [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
       (button) => button.textContent === messages.Reins.confirmCancelRun,
     );
+  const keepButton = () =>
+    [...(document.querySelector('[role="dialog"]')?.querySelectorAll('button') ?? [])].find(
+      (button) => button.textContent === messages.Reins.keepRunning,
+    );
+  /**
+   * What the dialog asks, by its title: the confirm button carries the same words, so the
+   * dialog's text alone would not tell which dialog it is.
+   */
+  const asked = () => {
+    const dialog = document.querySelector('[role="dialog"]');
+    const title = dialog?.getAttribute('aria-labelledby');
+    return title ? document.getElementById(title)?.textContent : undefined;
+  };
+  /** The control the next Tab reaches from `from`, in the dialog's own order. */
+  const nextTab = (from: Element) => {
+    const order = [
+      ...(document
+        .querySelector('[role="dialog"]')
+        ?.querySelectorAll<HTMLElement>('button, [href], input, select, textarea, [tabindex]') ??
+        []),
+    ].filter((element) => element.tabIndex >= 0 && !(element as HTMLButtonElement).disabled);
+    return order[order.indexOf(from as HTMLElement) + 1];
+  };
+  /** Waits, a little at a time, until `check` holds (the dialog's focus and exit take a moment). */
+  const until = async (check: () => boolean) => {
+    for (let waited = 0; !check() && waited < 2000; waited += 10)
+      await act(async () => new Promise((resolve) => setTimeout(resolve, 10)));
+  };
+  /** Enter as a browser takes it on a focused button: unless something prevents it, a click. */
+  const enter = async (target: Element) => {
+    await act(async () => {
+      const down = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true });
+      if (target.dispatchEvent(down)) (target as HTMLElement).click();
+      target.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }));
+    });
+  };
 
   it('stops a run with one working execution at once', async () => {
     const f = await mount();
@@ -1141,13 +1177,83 @@ describe('Stop in Send’s place', () => {
     expect(document.querySelector('[role="dialog"]')).toBeNull();
   });
 
+  // composer-flow.md "활동 바": a stop given as a command (the palette, `/stop`, the shortcut)
+  // always asks, though Stop itself would not with one working execution.
+  it.each(['shortcut', 'slash'] as const)(
+    'a stop given as a command (%s) asks with one working execution too, and sends nothing until confirmed',
+    async (way) => {
+      const f = await mount();
+      if (way === 'shortcut') await act(async () => void runShortcut('run.stop'));
+      else {
+        await f.type('/stop');
+        const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+          node.textContent?.includes('/stop'),
+        );
+        expect(option).toBeDefined();
+        await act(async () => {
+          option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+        });
+      }
+      expect(cancels(f.sendCommand)).toHaveLength(0);
+      expect(asked()).toBe(messages.Reins.cancelRun);
+      await act(async () => confirmButton()?.click());
+      expect(cancels(f.sendCommand)).toHaveLength(1);
+    },
+  );
+
+  // execution-monitor.md: wherever the confirmation asks, the first focus is on Keep running.
+  it.each(['stop', 'shortcut', 'slash'] as const)(
+    'asked by %s, it puts the first focus on Keep running, keeps the run on Enter there and sends nothing, with Stop the run one Tab away',
+    async (way) => {
+      const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+      const ask = async () => {
+        if (way === 'stop') await act(async () => stop(f.container)?.click());
+        else if (way === 'shortcut') await act(async () => void runShortcut('run.stop'));
+        else {
+          await f.type('/stop');
+          const option = [...document.querySelectorAll('[role="option"]')].find((node) =>
+            node.textContent?.includes('/stop'),
+          );
+          await act(async () => {
+            option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          });
+        }
+        await act(async () => {});
+      };
+      await ask();
+      expect(asked()).toBe(messages.Reins.cancelRun);
+      await until(() => document.activeElement === keepButton());
+      expect(document.activeElement).toBe(keepButton());
+      expect(nextTab(keepButton() as HTMLElement)).toBe(confirmButton());
+
+      await enter(document.activeElement as Element);
+      await until(() => !document.querySelector('[role="dialog"]'));
+      expect(document.querySelector('[role="dialog"]')).toBeNull();
+      expect(f.sendCommand).not.toHaveBeenCalled();
+      expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+      expect(f.startAuto).not.toHaveBeenCalled();
+    },
+  );
+
+  it('a confirmation that comes back after a reload asks again with the focus on Keep running', async () => {
+    window.sessionStorage.setItem('corral:cancel-confirmation:run_live', 'pending');
+    try {
+      const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
+      await act(async () => {});
+      expect(asked()).toBe(messages.Reins.cancelRun);
+      await until(() => document.activeElement === keepButton());
+      expect(document.activeElement).toBe(keepButton());
+      expect(f.sendCommand).not.toHaveBeenCalled();
+    } finally {
+      window.sessionStorage.removeItem('corral:cancel-confirmation:run_live');
+    }
+  });
+
   it('asks first while two executions work, and sends nothing until confirmed', async () => {
     const f = await mount({ executions: { exec_writer: 'active', exec_review: 'active' } });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-      messages.Reins.cancelRun,
-    );
+    expect(asked()).toBe(messages.Reins.cancelRun);
   });
 
   it('is not there while nothing runs', async () => {
@@ -1179,9 +1285,7 @@ describe('Stop in Send’s place', () => {
     });
     await act(async () => stop(f.container)?.click());
     expect(cancels(f.sendCommand)).toHaveLength(0);
-    expect(document.querySelector('[role="dialog"]')?.textContent).toContain(
-      messages.Reins.cancelRun,
-    );
+    expect(asked()).toBe(messages.Reins.cancelRun);
   });
 
   it('opens the run’s record before it sends to it', async () => {
@@ -1422,6 +1526,76 @@ describe('the activity bar', () => {
   });
 });
 
+// composer-flow.md "활동 바": Stop stands in one place. While Send's place is Stop (nothing
+// written), the open bar's Reins group has no Stop; once something is written, Send's place is
+// Send and the Reins group carries Stop. Never two, never none.
+describe('one Stop', () => {
+  const openBar = async (container: HTMLElement) =>
+    act(async () => container.querySelector<HTMLButtonElement>('[data-activity-toggle]')?.click());
+  const barButton = (container: HTMLElement, words: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>('[data-activity-bar] button')].filter(
+      (button) => button.textContent === words,
+    );
+  const stops = (container: HTMLElement) => ({
+    slot: container.querySelectorAll('[data-testid="composer-stop"]').length,
+    reins: barButton(container, messages.Activity.stop).length,
+  });
+
+  it('has Stop only in Send’s place while nothing is written', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    expect(barButton(f.container, messages.Activity.pause)).toHaveLength(1);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('moves Stop to the Reins group once something is written, and back when it is cleared', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await f.type('Keep going');
+    expect(stops(f.container)).toEqual({ slot: 0, reins: 1 });
+    expect(f.container.querySelector('button[aria-label="Send"]')).not.toBeNull();
+    await f.type('');
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('stops through the same path from the Reins group', async () => {
+    const f = await mount();
+    await openBar(f.container);
+    await f.type('Keep going');
+    await act(async () => barButton(f.container, messages.Activity.stop)[0]?.click());
+    const cancels = f.sendCommand.mock.calls.filter(
+      ([command]) => (command as { type?: string }).type === 'cancel',
+    );
+    expect(cancels).toHaveLength(1);
+  });
+
+  it('while the run’s record is read: Send’s place is Stop with nothing written', async () => {
+    const f = await mount({
+      runState: {
+        runId: 'run_other',
+        projection: projection({ exec_other: 'active' }, 'run_other'),
+      },
+    });
+    await openBar(f.container);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+
+  it('keeps Stop in Send’s place for a draft of attachments alone, as Send’s place does', async () => {
+    writeComposerDraft('session', {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [NOTE],
+    } as never);
+    const f = await mount();
+    await openBar(f.container);
+    expect(f.container.textContent).toContain(NOTE.name);
+    expect(stops(f.container)).toEqual({ slot: 1, reins: 0 });
+  });
+});
+
 // features/composer-flow.md "합류 대상": images and references ride a new request and a next
 // request; a join or an interrupt leaves them in the box with one line.
 const IMAGE: ImageAttachment = {
@@ -1532,6 +1706,48 @@ describe('what a next request carries', () => {
     expect(recorded).not.toHaveProperty('images');
     expect(recorded).not.toHaveProperty('references');
     expect(readComposerDraft('session').images).toEqual([IMAGE]);
+  });
+
+  it('a join with collected page notes sends the notes as text and leaves their screenshots in the box as plain images (browser-annotate.md 모아 두기)', async () => {
+    const note = createTextAttachment(
+      'annotation-1.json',
+      'application/json',
+      JSON.stringify({ element: { tag: 'button', label: 'button.pay 120×32' } }),
+      {
+        kind: 'page',
+        origin: 'https://shop.example',
+        path: '/cart',
+        pickedAt: '2026-11-18T12:00:00.000Z',
+        generation: 2,
+        screenshotHash: IMAGE.sha256,
+      },
+    );
+    writeComposerDraft('session', {
+      text: 'Fix these',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [note],
+      images: [IMAGE],
+    });
+    const f = await mount({ workspaces: { imageUrl: () => '' } });
+    // Held as the note's own: the plain image row does not list it.
+    const removeImage = messages.Composer.removeImage.replace('{name}', IMAGE.name);
+    const named = (name: string) =>
+      [...f.container.querySelectorAll('button')].some(
+        (button) => button.getAttribute('aria-label') === name,
+      );
+    expect(named(removeImage)).toBe(false);
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ attachments: [note] });
+    expect(steerPayload(f.sendCommand)).not.toHaveProperty('images');
+    const left = readComposerDraft('session');
+    expect(left.attachments ?? []).toEqual([]);
+    expect(left.images).toEqual([IMAGE]);
+    // From then on it is an ordinary image in the box.
+    await act(async () => {});
+    expect(named(removeImage)).toBe(true);
   });
 
   it.each([

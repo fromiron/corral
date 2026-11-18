@@ -157,7 +157,7 @@ async function show(
             runs={[]}
             active={null}
             liveRunId={null}
-            selectedRunId={null}
+            conversationInoperable={false}
             onChange={onChange}
             sessionReads={reads}
             runsListed={runsListed}
@@ -338,7 +338,7 @@ it('a request’s run missing from the run list is on its way until two later re
             runs={runs}
             active={null}
             liveRunId={null}
-            selectedRunId={null}
+            conversationInoperable={false}
             onChange={() => {}}
             sessionReads={{ read, started: () => asked }}
             reference={null}

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { usePreviewTabs } from './browser/previewTabs.tsx';
 import { PreviewView } from './PreviewView.tsx';
 
 /** Human and model open the same run-owned lease; source navigation keeps concurrent runs distinct. */
@@ -19,6 +20,9 @@ export function PreviewLeases({
   const t = useTranslations('Preview');
   const format = useFormatter();
   const { workspaces, mode } = useServices();
+  // The desktop's browser tab, else its separate preview window, else an inline frame.
+  const tabs = usePreviewTabs();
+  const interactive = Boolean(tabs || desktop);
   const [leases, setLeases] = useState<WorkspacePreview[]>([]);
   const [opened, setOpened] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -66,12 +70,14 @@ export function PreviewLeases({
               </time>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {desktop || lease.kind === 'static' ? (
+              {interactive || lease.kind === 'static' ? (
                 <Button
                   variant="tertiary"
                   onClick={() => {
                     setError(null);
-                    if (desktop)
+                    if (tabs) {
+                      if (tabs.open(lease.leaseId)) setOpened(lease.leaseId);
+                    } else if (desktop)
                       void desktop.openPreview(sessionId, lease.leaseId).then(
                         () => setOpened(lease.leaseId),
                         (reason: unknown) =>
@@ -80,7 +86,7 @@ export function PreviewLeases({
                     else setOpened(lease.leaseId);
                   }}
                 >
-                  {desktop ? t('openInteractive') : t('open')}
+                  {interactive ? t('openInteractive') : t('open')}
                 </Button>
               ) : (
                 <span className="text-muted-foreground">{t('desktopOnly')}</span>
@@ -112,14 +118,14 @@ export function PreviewLeases({
                 <PreviewView
                   sessionId={sessionId}
                   lease={lease}
-                  inline={!desktop && lease.kind === 'static'}
+                  inline={!interactive && lease.kind === 'static'}
                   output={
                     lease.kind === 'service' && lease.operationId
                       ? { kind: 'command', operationId: lease.operationId }
                       : null
                   }
                 />
-                {!desktop && lease.kind === 'static' ? (
+                {!interactive && lease.kind === 'static' ? (
                   <p className="text-2xs text-muted-foreground">{t('staticOnly')}</p>
                 ) : null}
               </>

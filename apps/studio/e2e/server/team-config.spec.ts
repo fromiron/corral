@@ -1,6 +1,6 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { editorSettings, requestBox, teamNode } from '../workbench.ts';
+import { closePanel, editorSettings, maximizePanel, requestBox, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function call(page: Page, path: string, body?: unknown, method = 'POST') {
@@ -154,6 +154,9 @@ test.describe('saved team roles', () => {
         .getByRole('button', { name: 'Actions for Role refresh', exact: true })
         .click();
       await page.getByRole('menuitem', { name: 'Open Corral design', exact: true }).click();
+      // The design opens in the Files tab beside the conversation; maximized, its canvas has the
+      // room for the step and the settings sheet side by side.
+      await maximizePanel(page);
       await teamNode(page, 'writer').click();
       await editorSettings(page)
         .getByRole('textbox', { name: 'Name', exact: true })
@@ -161,7 +164,7 @@ test.describe('saved team roles', () => {
         .fill(`Writer r${revision}`);
       await page.getByRole('button', { name: 'Save', exact: true }).click();
       await expect(page.getByTestId('revisions')).toContainText(`Version ${revision}`);
-      await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+      await closePanel(page);
       await expect(await teamLine(page, 'Role refresh')).toContainText(`· r${revision}`);
       await page.keyboard.press('Escape');
       await expect(page.getByTestId('models-not-ready')).toContainText(

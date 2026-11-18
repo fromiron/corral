@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 const CHANGED = 'corral:cancel-confirmation-changed';
+const keyOf = (runId: string) => `corral:cancel-confirmation:${runId}`;
 
 function discard(key: string) {
   try {
@@ -11,9 +12,27 @@ function discard(key: string) {
   }
 }
 
+/**
+ * Asks to confirm the run's whole-run cancel from outside a holder (the place that carries the
+ * run's controls, as a press on its Stop would). Every holder of the run follows at once.
+ */
+export function askCancelConfirmation(runId: string): void {
+  try {
+    globalThis.sessionStorage?.setItem(keyOf(runId), 'pending');
+    globalThis.dispatchEvent?.(new Event(CHANGED));
+  } catch {
+    // Storage may be unavailable; the holders keep what they show.
+  }
+}
+
+/** Lets the run's pending confirmation go from outside a holder; nothing is sent. */
+export function discardCancelConfirmation(runId: string): void {
+  discard(keyOf(runId));
+}
+
 /** A pending confirmation is not a command; retain only its Run identity across reloads. */
 export function useCancelConfirmation(runId: string | null, ended = false) {
-  const key = runId ? `corral:cancel-confirmation:${runId}` : null;
+  const key = runId ? keyOf(runId) : null;
   const previousKey = useRef(key);
   const effectVersion = useRef(0);
   const read = () => {

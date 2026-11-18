@@ -7,11 +7,15 @@ import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import { expect, type Harness, test } from '../server/harness.ts';
 import {
+  closePanel,
   closeSettings,
+  maximizePanel,
   newConversation,
   openFolderSettings,
-  panelTab,
+  openPanelTab,
+  panelTabNamed,
   requestBox,
+  sessionPanel,
 } from '../workbench.ts';
 import { createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
@@ -104,14 +108,14 @@ async function conversationWithWorkingCopy(page: Page, corral: Harness) {
   await closeSettings(page);
   await newConversation(page);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
-  await panelTab(page, 'Files');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   await page
     .getByRole('region', { name: 'Paddock' })
     .getByRole('button', { name: /Make a Paddock from/ })
     .click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
-  await panelTab(page, 'Conversation');
+  // The conversation alone again, so the scene measures it at its own width.
+  await closePanel(page);
   return { sessionId, cleanup: () => rm(original, { recursive: true, force: true }) };
 }
 
@@ -339,22 +343,32 @@ test('a card arriving while the person reads above leaves their place; Respond g
     ).toBeLessThanOrEqual(1);
     await expect(tray(page)).not.toBeInViewport();
 
-    // The run record reads the request and sends the person to the tray to answer it.
-    await panelTab(page, 'Runs');
-    // Its response area offers Respond; the header's pill beside it only says the run waits.
-    const respond = page.getByTestId('run-monitor').getByTestId('respond-in-conversation');
+    // The run record, beside the conversation, says the run waits and sends the person to the
+    // tray to answer it: too narrow there for its response area, its head offers Respond.
+    await openPanelTab(page, 'Runs');
+    const monitor = page.getByTestId('run-monitor');
+    const runTab = panelTabNamed(page, /^Run( #\d+)?$/);
+    // Beside the conversation, Respond leaves the panel and its tab as they are.
+    await monitor.getByTestId('run-respond').click();
+    await expect(runTab).toHaveAttribute('aria-selected', 'true');
+    await expect(sessionPanel(page)).toBeVisible();
+    await expect(tray(page)).toBeFocused();
+    await expect(tray(page)).toBeInViewport();
+    // Maximized, the record has the room to read the request in its response area, which
+    // offers Respond; the head's pill beside it only says the run waits.
+    await maximizePanel(page);
+    const respond = monitor.getByTestId('respond-in-conversation');
     await expect(respond).toBeVisible();
-    await expect(page.getByTestId('run-monitor').getByTestId('run-respond')).toHaveCount(0);
-    // The record reads it; the hidden conversation keeps the one way to answer it.
+    await expect(monitor.getByTestId('run-respond')).toHaveCount(0);
+    // The record reads it; the conversation keeps the one way to answer it.
     expect(await buttonsNamed(page, 'Allow once')).toBe(1);
-    const record = page.getByTestId('run-monitor').locator('[data-approval]');
+    const record = monitor.locator('[data-approval]');
     await expect(record).toContainText('Tool permission');
     await expect(record.locator('[data-approval-action]')).toHaveCount(0);
+    // Its Respond restores the panel beside the conversation, keeps the tab, and goes to the tray.
     await respond.click();
-    await expect(page.getByRole('tab', { name: 'Conversation', exact: true })).toHaveAttribute(
-      'aria-selected',
-      'true',
-    );
+    await expect(sessionPanel(page).getByRole('button', { name: 'Maximize panel' })).toBeVisible();
+    await expect(runTab).toHaveAttribute('aria-selected', 'true');
     await expect(tray(page)).toBeFocused();
     await expect(tray(page)).toBeInViewport();
     await tray(page).getByRole('button', { name: 'Allow once', exact: true }).click();
@@ -412,35 +426,72 @@ test('a question out of view is told above the composer, and Respond brings its 
   expect(corral.errors).toEqual([]);
 });
 
+type Box = { top: number; bottom: number; left: number; right: number };
+
 type ComposerFrame = {
   notice: boolean;
   height: number | null;
   /** The composer's height without its request box, which sizes itself to its own lines. */
   around: number | null;
   tray: boolean;
+  /** Where the composer is drawn, and the question card in the tray. */
+  composer: Box | null;
+  question: Box | null;
+  view: { width: number; height: number };
 };
 
 /**
  * Every frame from now on: whether the composer tells of a wait, the composer's height (whole,
- * and around its request box), and whether the tray is there.
+ * and around its request box), whether the tray is there, and where the composer and the
+ * question stand in the viewport.
  */
 const sampleComposer = () => {
   const frames: ComposerFrame[] = [];
   (window as unknown as { composerFrames: ComposerFrame[] }).composerFrames = frames;
+  const boxOf = (element: Element) => {
+    const { top, bottom, left, right } = element.getBoundingClientRect();
+    return { top, bottom, left, right };
+  };
   const sample = () => {
+    // Only while it is drawn: a conversation the panel is maximized over keeps its layout, hidden.
     const composer = document.querySelector('[data-testid="chat-composer"]');
-    const height = composer ? composer.getBoundingClientRect().height : null;
+    const drawn = composer?.checkVisibility({ visibilityProperty: true, opacityProperty: true });
+    const height = composer && drawn ? composer.getBoundingClientRect().height : null;
     const box = composer?.querySelector('textarea')?.getBoundingClientRect().height ?? 0;
+    const question = document.querySelector('[data-pending-tray] [data-question]');
     frames.push({
       notice: Boolean(document.querySelector('[data-testid="activity-bar"][data-line="waiting"]')),
       height,
       around: height ? height - box : null,
       tray: Boolean(document.querySelector('[data-pending-tray]')),
+      composer: composer && drawn ? boxOf(composer) : null,
+      question: question && drawn ? boxOf(question) : null,
+      view: { width: window.innerWidth, height: window.innerHeight },
     });
     requestAnimationFrame(sample);
   };
   requestAnimationFrame(sample);
 };
+
+/**
+ * The frames whose composer, while drawn, reaches past the viewport's edge or covers part of the
+ * question; overlaps within subpixel rounding are left out.
+ */
+const misplaced = (frames: ComposerFrame[]) =>
+  frames.flatMap((frame, index) => {
+    const { composer, question, view } = frame;
+    if (!composer) return [];
+    const outside =
+      composer.top < -0.5 ||
+      composer.left < -0.5 ||
+      composer.bottom > view.height + 0.5 ||
+      composer.right > view.width + 0.5;
+    const covers =
+      question !== null &&
+      Math.min(composer.bottom, question.bottom) - Math.max(composer.top, question.top) > 0.5 &&
+      Math.min(composer.right, question.right) - Math.max(composer.left, question.left) > 0.5;
+    return outside || covers ? [{ index, composer, question, view }] : [];
+  });
 
 const composerFrames = (page: Page) =>
   page.evaluate(() =>
@@ -525,73 +576,123 @@ test('coming back to a conversation whose question is in view brings no notice a
     await waitForStill(page);
     await expect(tray(page)).toBeInViewport();
     const composer = page.getByTestId('chat-composer');
-    const height = (await composer.boundingBox())?.height;
-    const around = await composer.evaluate(
-      (element) =>
-        element.getBoundingClientRect().height -
-        (element.querySelector('textarea')?.getBoundingClientRect().height ?? 0),
-    );
+    /** The composer's size as it stands: width, height, and height around its request box. */
+    const composerSize = () =>
+      composer.evaluate((element) => {
+        const { width, height } = element.getBoundingClientRect();
+        const box = element.querySelector('textarea')?.getBoundingClientRect().height ?? 0;
+        return { width, height, around: height - box };
+      });
+    const alone = await composerSize();
 
-    /** Away to another view and back, every frame sampled from just before leaving. */
+    /**
+     * The panel opened from "+" (beside the conversation, or a tab added to it), maximized over
+     * the conversation, and back, every frame sampled from before the open. Opening beside
+     * narrows the composer, a layout of its own: through it no waiting line shows, the composer
+     * grows no taller than the larger of where it stood and where it settles beside, and it stays
+     * in the viewport, clear of the question. Back, the composer comes as it settles there: back
+     * to the conversation alone, that is where it was at first; back beside the panel, the size
+     * it had beside before it was maximized.
+     */
     const roundTrip = async (
       name: string,
-      away: () => Promise<void>,
+      item: 'Runs' | 'Files',
       back: () => Promise<void>,
+      returns: 'alone' | 'beside the panel',
     ) => {
+      const before = await composerSize();
+      const startsAlone = !(await sessionPanel(page).isVisible());
       await page.evaluate(sampleComposer);
-      await away();
+      await openPanelTab(page, item);
+      // Beside the conversation: the panel on screen, and the composer with it, narrower when the
+      // conversation had the work area to itself.
+      await expect(sessionPanel(page)).toBeVisible();
+      await expect(composer).toBeVisible();
+      await waitForStill(page);
+      const beside = await composerSize();
+      if (startsAlone)
+        expect(beside.width, `${name}: composer narrower beside`).toBeLessThan(before.width - 1);
+      await maximizePanel(page);
       await expect(composer).toBeHidden();
       await waitForStill(page, { stillMs: 600 }).catch(() => undefined);
+      const leaving = (await composerFrames(page)).length;
       await back();
       await expect(form).toBeVisible();
       await waitForStill(page);
       await expect(tray(page)).toBeInViewport();
+      const after = await composerSize();
       const frames = await composerFrames(page);
-      expect(frames.length, `${name}: frames`).toBeGreaterThan(10);
+      const going = frames.slice(0, leaving);
+      const returning = frames.slice(leaving);
+      // The open beside was sampled: frames drawn at the composer's width beside the panel.
+      expect(
+        going.filter(
+          (frame) =>
+            frame.composer &&
+            Math.abs(frame.composer.right - frame.composer.left - beside.width) < 1,
+        ).length,
+        `${name}: frames drawn beside`,
+      ).toBeGreaterThan(10);
+      expect(returning.length, `${name}: frames back`).toBeGreaterThan(10);
       expect(
         frames.filter((frame) => frame.notice),
         `${name}: notice`,
       ).toEqual([]);
-      // While shown, the composer around its request box keeps the one height it settled at (the
-      // request box sizes itself again to its lines when shown, which is the box's own doing),
-      // and the whole composer never grows past where it settled.
       expect(
-        [...new Set(frames.flatMap((frame) => (frame.around ? [frame.around] : [])))],
-        `${name}: composer around its request box`,
-      ).toEqual([around]);
+        misplaced(going),
+        `${name}: composer leaving, off screen or over the question`,
+      ).toEqual([]);
       expect(
-        Math.max(...frames.map((frame) => frame.height ?? 0)),
-        `${name}: composer height`,
-      ).toBe(height);
+        misplaced(returning),
+        `${name}: composer back, off screen or over the question`,
+      ).toEqual([]);
+      // Leaving: the composer never taller than the larger of where it stood and where it settled.
+      expect(
+        Math.max(...going.map((frame) => frame.height ?? 0)),
+        `${name}: composer height leaving`,
+      ).toBeLessThanOrEqual(Math.max(before.height, beside.height));
+      // Back: the composer around its request box keeps the one height it settled at (the request
+      // box sizes itself again to its lines when shown, which is the box's own doing), and the
+      // whole composer never grows past where it settled.
+      expect(
+        [...new Set(returning.flatMap((frame) => (frame.around ? [frame.around] : [])))],
+        `${name}: composer around its request box back`,
+      ).toEqual([after.around]);
+      expect(
+        Math.max(...returning.map((frame) => frame.height ?? 0)),
+        `${name}: composer height back`,
+      ).toBe(after.height);
+      if (returns === 'alone')
+        expect([after.height, after.around], `${name}: settled alone`).toEqual([
+          alone.height,
+          alone.around,
+        ]);
+      else {
+        // Beside again: the size it had beside before the trip, but for subpixel rounding.
+        expect(Math.abs(after.width - beside.width), `${name}: width beside`).toBeLessThan(1);
+        expect(Math.abs(after.height - beside.height), `${name}: height beside`).toBeLessThan(1);
+      }
       await expect(waitingLine(page)).toHaveCount(0);
     };
 
-    // The run record in front, then back by the Conversation tab.
-    await roundTrip(
-      'record, by the tab',
-      () => panelTab(page, 'Runs'),
-      () => panelTab(page, 'Conversation'),
-    );
-    // The run record in front, then back by its response area's Respond.
+    // The run record in front (its tab maximized over the conversation), then back by closing
+    // the panel.
+    await roundTrip('record, by the toggle', 'Runs', () => closePanel(page), 'alone');
+    // The run record in front, then back by its response area's Respond, which restores the
+    // panel beside the conversation.
+    const respond = page.getByTestId('run-monitor').getByTestId('respond-in-conversation');
     await roundTrip(
       'record, by Respond',
+      'Runs',
       async () => {
-        await panelTab(page, 'Runs');
-        await expect(
-          page.getByTestId('run-monitor').getByTestId('respond-in-conversation'),
-        ).toBeVisible();
-      },
-      async () => {
-        await page.getByTestId('run-monitor').getByTestId('respond-in-conversation').click();
+        await expect(respond).toBeVisible();
+        await respond.click();
         await expect(tray(page)).toBeFocused();
       },
+      'beside the panel',
     );
-    // The files in front, then back by the Conversation tab.
-    await roundTrip(
-      'files, by the tab',
-      () => panelTab(page, 'Files'),
-      () => panelTab(page, 'Conversation'),
-    );
+    // The files added beside the run record and in front, then back by closing the panel.
+    await roundTrip('files, by the toggle', 'Files', () => closePanel(page), 'alone');
 
     await form.getByRole('textbox', { name: 'Your answer' }).fill('A table');
     await form.getByRole('button', { name: 'Send answer' }).click();

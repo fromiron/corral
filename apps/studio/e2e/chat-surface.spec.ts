@@ -1,8 +1,11 @@
 import { expect, type Page, test } from '@playwright/test';
 import {
+  closePanel,
   lastRunSucceeded,
+  openPanelTab,
   openResult,
-  panelTab,
+  panelContent,
+  panelTabNamed,
   requestBox,
   startSession,
   teamFromTemplate,
@@ -36,20 +39,18 @@ test('SURFACE-02 narrow summary stays accessible and opening details selects its
   await expect(page.getByTestId('session-summary-popup')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(trigger).toBeFocused();
-  await panelTab(page, 'Runs');
-  await expect(page.getByRole('tab', { name: 'Runs', exact: true })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  );
-  await expect(page.getByTestId('run-monitor')).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  // No room beside the conversation at this width: the run's tab opens in a drawer over it.
+  await openPanelTab(page, 'Runs');
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
+  await expect(panelContent(page, 'Run #1').getByTestId('run-monitor')).toBeVisible();
+  await closePanel(page);
   await expect(requestBox(page)).toBeVisible();
 });
 
 test('RESULT-03 default execution panel offers its actual results', async ({ page }) => {
   await completedConversation(page);
-  await panelTab(page, 'Runs');
-  const monitor = page.getByTestId('run-monitor');
+  await openPanelTab(page, 'Runs');
+  const monitor = panelContent(page, 'Run #1').getByTestId('run-monitor');
   await expect(monitor.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
   const results = monitor.getByRole('navigation', { name: 'Results', exact: true });

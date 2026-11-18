@@ -40,12 +40,13 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/documents/WriterHeld.tsx',
     'apps/studio/src/workbench/language/RefactorActions.tsx',
     'apps/studio/src/workbench/LanguageSupport.tsx',
-    'apps/studio/src/workbench/docking/DockTopBar.tsx',
-    'apps/studio/src/workbench/docking/DockWorkbench.tsx',
+    'apps/studio/src/workbench/session/DocumentTab.tsx',
+    'apps/studio/src/workbench/session/OriginalDocumentTab.tsx',
   ],
   dock: [
     'apps/studio/src/workbench/WorkbenchToolsPanel.tsx',
-    'apps/studio/src/workbench/TerminalPanel.tsx',
+    'apps/studio/src/workbench/terminals/TerminalScreen.tsx',
+    'apps/studio/src/workbench/terminals/EndTerminalDialog.tsx',
     'apps/studio/src/workbench/WorkbenchTasks.tsx',
     'apps/studio/src/workbench/DeploymentTasks.tsx',
     'apps/studio/src/workbench/PreviewView.tsx',
@@ -97,6 +98,12 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/MeetingParticipants.tsx',
     'apps/studio/src/workbench/MeetingDiagnostics.tsx',
   ],
+  // The browser tab's annotation overlay (its own page over the page area).
+  annotate: [
+    'apps/studio/src/annotate/Overlay.tsx',
+    'apps/studio/src/annotate/NoteCard.tsx',
+    'apps/studio/src/annotate/StyleView.tsx',
+  ],
   conversation: [
     'apps/studio/src/workbench/session/Composer.tsx',
     'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
@@ -117,13 +124,13 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/TextAttachments.tsx',
     'apps/studio/src/workbench/ImageAttachments.tsx',
     'apps/studio/src/workbench/context/ContextAttachments.tsx',
+    'apps/studio/src/workbench/browser/NoteChips.tsx',
     'apps/studio/src/workbench/widgets/ChatWidgets.tsx',
     'apps/studio/src/workbench/widgets/OverviewWidgets.tsx',
     'apps/studio/src/workbench/ArchivedSessionNotice.tsx',
     'apps/studio/src/workbench/WorkFolderNotice.tsx',
     'apps/studio/src/workbench/ProjectMaterials.tsx',
     'apps/studio/src/workbench/LiveVoice.tsx',
-    'apps/studio/src/workbench/DevelopmentMode.tsx',
     'apps/studio/src/workbench/TerminalWriterNotice.tsx',
     'packages/react/src/components/CopyTextButton.tsx',
   ],
@@ -146,6 +153,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /ref=\{detailsButton\}/ },
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /run-respond/ },
   { file: 'apps/studio/src/pages/RunPage.tsx', near: /onOpenExecution\(failedExecution\)/ },
+  // The line above a past run's header leads to the run going with the header's own size.
+  { file: 'apps/studio/src/workbench/session/SessionPanels.tsx', near: /onShowActiveRun/ },
   // An approval's decision row: the kit permission card and the kit AgentRun side panel's
   // approval card keep Reject and Approve compact.
   { file: 'packages/react/src/components/ApprovalPanel.tsx', near: /<SizeScope size="compact">/ },
@@ -182,6 +191,12 @@ const keptSmall: { file: string; near: RegExp }[] = [
     near: /'removeReference'/,
   },
   { file: 'apps/studio/src/workbench/TextAttachments.tsx', near: /'removeQuote'/ },
+  // A collected page note's chip among the composer's chips: its opener and its remove.
+  {
+    file: 'apps/studio/src/workbench/browser/NoteChips.tsx',
+    near: /className="min-w-0 gap-1 px-1.5"/,
+  },
+  { file: 'apps/studio/src/workbench/browser/NoteChips.tsx', near: /'removeNote'/ },
   // The request composer's action row: the kit composer's slot controls are compact.
   {
     file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
@@ -193,6 +208,11 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // A sent message's meta line is caption-sized: its text buttons are the kit's smallest quiet
   // ones, like the actions in a run row's line, never controls the size of the composer's.
   { file: 'apps/studio/src/workbench/session/EntryStatus.tsx', near: /<SizeScope size="compact">/ },
+  // The annotation note beside a page's element is a small composer: its controls are the kit
+  // composer's slot controls, compact (its text keeps the body size).
+  { file: 'apps/studio/src/annotate/NoteCard.tsx', near: /<SizeScope size="compact">/ },
+  // Its style view is a part of that note, beside it: the same compact controls.
+  { file: 'apps/studio/src/annotate/StyleView.tsx', near: /<SizeScope size="compact">/ },
   // The copy button over a code block: an icon button inside a field.
   { file: 'packages/react/src/components/CopyTextButton.tsx', near: /code \?/ },
 ];

@@ -29,6 +29,7 @@ import {
   type MenuItemRenderOptions,
   useDropdown,
 } from '../components/ui/menu-item.tsx';
+import type { IconComponent } from '../lib/icon-context.tsx';
 import { cn } from '../lib/utils.ts';
 
 const Menu = KitMenu;
@@ -127,17 +128,22 @@ function sourceRow(element: ReactElement) {
 
 function Row({
   children,
+  icon,
   label,
   index = 0,
   checked,
   disabled,
+  description,
   renderRow,
 }: {
   children?: ReactNode;
+  /** The row's leading icon, drawn in the kit row's icon column at the row's size. */
+  icon?: IconComponent;
   label?: string;
   index?: number;
   checked?: boolean;
   disabled?: boolean;
+  description?: ReactNode;
   renderRow: (options: MenuItemRenderOptions) => ReactElement;
 }) {
   const context = useDropdown();
@@ -145,10 +151,12 @@ function Row({
     <DropdownContext.Provider value={{ ...context, renderMenuItem: renderRow }}>
       <KitMenuItem
         index={index}
+        icon={icon}
         label={label ?? labelText(children)}
         labelContent={children}
         checked={checked}
         disabled={disabled}
+        description={description}
       />
     </DropdownContext.Provider>
   );
@@ -156,7 +164,9 @@ function Row({
 
 function MenuItem({
   children,
+  icon,
   label,
+  description,
   index,
   className,
   inset: _inset,
@@ -164,6 +174,11 @@ function MenuItem({
   variant: _variant,
   ...props
 }: MenuPrimitive.Item.Props & {
+  /** A leading icon: the kit row draws it in its own icon column, not inside the label. */
+  icon?: IconComponent;
+  /** A smaller second line under the label, which the row is described by: why a `disabled` row
+   *  is unavailable. A disabled row stays reachable by the arrows and does nothing when chosen. */
+  description?: ReactNode;
   index?: number;
   inset?: boolean;
   density?: 'default' | 'touch';
@@ -171,9 +186,11 @@ function MenuItem({
 }) {
   return (
     <Row
+      icon={icon}
       label={label}
       index={index}
       disabled={props.disabled}
+      description={description}
       renderRow={({ element, children: content, label: text }) => (
         <MenuPrimitive.Item
           {...sourceRow(element)}

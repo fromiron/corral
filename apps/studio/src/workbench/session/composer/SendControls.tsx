@@ -66,7 +66,9 @@ export function KeyHint({
   return (
     <p
       data-slot="composer-keys"
-      className="m-0 ml-auto flex h-5 min-w-0 shrink flex-wrap content-start items-center justify-end overflow-hidden whitespace-nowrap text-caption text-muted-foreground"
+      // On the one-line tool line it takes only the room left over (basis 0, grows), so where it
+      // cannot show whole it takes no width and the name beside it is not cut for an empty box.
+      className="m-0 ml-auto flex h-5 min-w-0 shrink flex-wrap content-start items-center justify-end overflow-hidden whitespace-nowrap text-caption text-muted-foreground sm:grow sm:basis-0"
     >
       {/* Holds the first line, so a hint that does not fit moves to the hidden next one whole. */}
       <span aria-hidden="true" className="h-5 w-0" />

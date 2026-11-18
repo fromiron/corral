@@ -118,3 +118,40 @@ it('unavailable durable storage prevents sending a command that could not be rec
   await expect(first.getState().steer('execution_one', 'Text')).rejects.toThrow('recovery');
   expect(sendCommand).not.toHaveBeenCalled();
 });
+
+it('remembers what each command it sent or recovered was, by its ID, for its receipt', async () => {
+  const disk = storage();
+  const sendCommand = vi.fn(async (command: RunCommand) => {
+    if (command.type === 'resume') throw new Error('Lost response');
+    return { ...receipt(command), status: 'accepted' } satisfies Receipt;
+  });
+  const transport = {
+    sendCommand,
+    getReceipt: vi.fn(async () => null),
+    getRunDefinition: async () => linearCorral(['writer']),
+    subscribe: vi.fn(() => () => {}),
+  };
+  let next = 0;
+  const ids = ['cmd_pause', 'cmd_resume'];
+  const first = createRunSession(
+    transport as never,
+    () => ids[next++] as string,
+    createRunRecovery(disk, 'host_one'),
+  );
+  first.setState({ runId: 'run_one', projection: emptyProjection('run_one') });
+  await first.getState().sendCommand({ type: 'pause', payload: { scope: 'run' } });
+  await expect(
+    first.getState().sendCommand({ type: 'resume', payload: { scope: 'run' } }),
+  ).rejects.toThrow('Lost response');
+  expect(first.getState().commandTypes).toEqual({ cmd_pause: 'pause', cmd_resume: 'resume' });
+  first.getState().dispose();
+  // Reopened, only the command still unconfirmed is known again.
+  const restored = createRunSession(
+    transport as never,
+    undefined,
+    createRunRecovery(disk, 'host_one'),
+  );
+  await restored.getState().open('run_one');
+  expect(restored.getState().commandTypes).toEqual({ cmd_resume: 'resume' });
+  restored.getState().dispose();
+});

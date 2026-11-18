@@ -51,6 +51,18 @@ export interface ComposerStop {
   onStop: () => void;
 }
 
+/**
+ * Send's place is Stop: the work goes and nothing is written (spaces are nothing). This is the
+ * one rule for it: the card hands the kit input its streaming state and Stop by it, and a place
+ * offers Stop among the Reins controls only while it is not Stop (composer-flow.md "활동 바").
+ * The card gives the kit input no files of its own, so a draft of attachments alone keeps Stop.
+ */
+export const stopsSendPlace = (stoppable: boolean, text: string) => stoppable && !text.trim();
+
+/** The Stop in Send's place now, or null while Send's place is Send. */
+export const sendPlaceStop = (stop: ComposerStop | null | undefined, text: string) =>
+  stop && stopsSendPlace(true, text) ? stop : null;
+
 const noMentions = async () => [];
 const same = (item: MentionItem) => item;
 
@@ -113,7 +125,7 @@ export function ComposerCard({
   stop?: ComposerStop | null;
 }) {
   const framed = activity !== undefined || above !== undefined;
-  const stopping = stop && !text.trim() ? stop : null;
+  const stopping = sendPlaceStop(stop, text);
   const input = (
     <InputMessage
       toolbar="single"

@@ -5,7 +5,7 @@ import {
   DialogPopup,
   DialogTitle,
 } from '@corral/react/design-kit';
-import type { ComponentProps } from 'react';
+import { type ComponentProps, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import type { CloseChoice } from './store.ts';
 
@@ -34,6 +34,7 @@ export function DocumentCloseDialog({
   onDismiss(): void;
 }) {
   const t = useTranslations('Documents');
+  const keep = useRef<HTMLButtonElement>(null);
   return (
     <Dialog
       open={path !== null}
@@ -43,6 +44,8 @@ export function DocumentCloseDialog({
     >
       <DialogPopup
         finalFocus={finalFocus}
+        // Asked, the person keeps editing unless they choose otherwise.
+        initialFocus={keep}
         showCloseButton={false}
         bottomStickOnMobile={false}
         className="flex flex-col gap-4 p-6"
@@ -55,7 +58,7 @@ export function DocumentCloseDialog({
           </p>
         ) : null}
         <div className="flex flex-wrap justify-end gap-2">
-          <Button variant="ghost" disabled={busy} onClick={() => onChoose('cancel')}>
+          <Button ref={keep} variant="ghost" disabled={busy} onClick={() => onChoose('cancel')}>
             {t('cancel')}
           </Button>
           <Button

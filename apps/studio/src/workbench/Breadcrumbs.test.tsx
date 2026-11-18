@@ -6,7 +6,7 @@ import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setCommands } from '../commandRegistry.ts';
-import { RunMenu, SessionMenu } from './Breadcrumbs.tsx';
+import { SessionMenu } from './Breadcrumbs.tsx';
 
 Element.prototype.getAnimations ??= () => [];
 const disposals: (() => Promise<void>)[] = [];
@@ -122,109 +122,16 @@ it('names the current session as the page title and switches within the project 
   expect(onOpen).toHaveBeenCalledWith('pinned');
 });
 
-it('lists the session runs newest first by number and status and selects one', async () => {
-  const onSelect = vi.fn();
-  const container = await render(
-    <RunMenu
-      runs={[
-        run('first', 'current', 'failed', '2026-11-01T00:00:00Z'),
-        run('second', 'current', 'succeeded', '2026-11-02T00:00:00Z'),
-      ]}
-      runId="first"
-      onSelect={onSelect}
-    />,
-  );
-  const trigger = container.querySelector('button');
-  expect(trigger?.textContent).toContain('Run #1');
-  const items = await open(trigger);
-  expect(items.map((item) => item.textContent)).toEqual([
-    expect.stringContaining('Run #2'),
-    expect.stringContaining('Run #1'),
-  ]);
-  expect(
-    items.map((item) => item.querySelector('[role="img"]')?.getAttribute('aria-label')),
-  ).toEqual([messages.Presence.state.succeeded, messages.Presence.state.failed]);
-  for (const item of items) {
-    expect(item.querySelector('[data-presence-label]')).toBeNull();
-    expect(visibleText(item)).not.toMatch(/Completed|Failed/);
-  }
-  expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
-    `Run #2, ${messages.Presence.state.succeeded}`,
-    `Run #1, ${messages.Presence.state.failed}`,
-  ]);
-  expect(items[1]?.getAttribute('aria-checked')).toBe('true');
-  await act(async () => items[0]?.click());
-  expect(onSelect).toHaveBeenCalledWith('second');
-});
-
-it('gives way to the number alone when narrow, never a cut word, and keeps its name', async () => {
-  const container = await render(
-    <RunMenu
-      runs={[run('first', 'current', 'failed', '2026-11-01T00:00:00Z')]}
-      runId="first"
-      onSelect={vi.fn()}
-    />,
-  );
-  const trigger = container.querySelector('button') as HTMLElement;
-  // The name a person hears is the whole label, whatever the bar has room to show.
-  const nameOf = (element: Element): string =>
-    [...element.childNodes]
-      .map((node) => {
-        if (!(node instanceof Element)) return node.textContent ?? '';
-        if (node.getAttribute('aria-hidden') === 'true') return '';
-        const label = node.getAttribute('aria-label');
-        return label ? ` ${label} ` : nameOf(node);
-      })
-      .join('');
-  expect(nameOf(trigger).replace(/\s+/g, ' ').trim()).toBe('Failed Run #1');
-  // The label is the word and the number as two unbreakable parts, the number last: a narrow
-  // label wraps the word away and shows "#1", rather than an ellipsis inside "Run".
-  const label = trigger.querySelector<HTMLElement>('[data-crumb-label]');
-  expect(label?.className).not.toMatch(/\btruncate\b/);
-  const word = label?.querySelector<HTMLElement>('[data-run-word]');
-  const numberPart = label?.querySelector<HTMLElement>('[data-run-number]');
-  expect(word?.textContent?.trim()).toBe('Run');
-  expect(numberPart?.textContent).toBe('#1');
-  expect(word?.className).toMatch(/\bwhitespace-nowrap\b/);
-  expect(numberPart?.className).toMatch(/\bwhitespace-nowrap\b/);
-  expect(label?.className).toMatch(/\bflex-wrap\b/);
-  expect(label?.className).toMatch(/\bcontent-end\b/);
-  expect(word?.compareDocumentPosition(numberPart as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-});
-
-it('names the chosen run by its number alone; its request summary is in the menu', async () => {
-  const container = await render(
-    <RunMenu
-      runs={[
-        run('first', 'current', 'failed', '2026-11-01T00:00:00Z'),
-        run('second', 'current', 'succeeded', '2026-11-02T00:00:00Z'),
-      ]}
-      runId="second"
-      names={{ first: 'Draft the notes', second: 'Research brief' }}
-      onSelect={vi.fn()}
-    />,
-  );
-  const trigger = container.querySelector('button');
-  // The run header below the path carries the request; the path item does not repeat it.
-  expect(trigger?.textContent).toContain('Run #2');
-  expect(trigger?.textContent).not.toContain('Research brief');
-  const items = await open(trigger);
-  expect(items.map((item) => item.textContent)).toEqual([
-    expect.stringContaining('#2 · Research brief'),
-    expect.stringContaining('#1 · Draft the notes'),
-  ]);
-});
-
-it('puts this session’s rename, pin and archive above the session list and runs the page’s own actions', async () => {
-  const rename = vi.fn();
-  const pin = vi.fn();
-  const archive = vi.fn();
-  // The session page registers these with its revision checks (session/SessionActions.tsx).
+it('only chooses a session: the page’s session actions are not in the title menu', async () => {
+  const run = vi.fn();
+  // The session page registers these with its revision checks (session/SessionActions.tsx);
+  // they live in the top bar's more menu, not in the path's menu.
   setCommands('session', [
-    { id: 'session:rename', title: 'Rename conversation', group: 'Session', run: rename },
-    { id: 'session:pin', title: 'Pin conversation', group: 'Session', run: pin },
-    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: archive },
-    { id: 'session:review', title: 'Open the review screen', group: 'Session', run: vi.fn() },
+    { id: 'session:rename', title: 'Rename conversation', group: 'Session', run },
+    { id: 'session:criteria', title: 'Completion criteria', group: 'Session', run },
+    { id: 'session:pin', title: 'Pin conversation', group: 'Session', run },
+    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run },
+    { id: 'session:review', title: 'Open the review screen', group: 'Session', run },
   ]);
   try {
     const container = await render(
@@ -245,40 +152,11 @@ it('puts this session’s rename, pin and archive above the session list and run
       ...document.querySelectorAll<HTMLElement>('[role="menuitem"], [role="menuitemradio"]'),
     ];
     expect(rows.map((row) => `${row.getAttribute('role')}:${visibleText(row)}`)).toEqual([
-      'menuitem:Rename conversation',
-      'menuitem:Pin conversation',
-      'menuitem:Archive conversation',
       expect.stringMatching(/^menuitemradio:Session current/),
       expect.stringMatching(/^menuitemradio:Session old/),
     ]);
-    await act(async () => rows[1]?.click());
-    expect(pin).toHaveBeenCalledTimes(1);
-    expect(rename).not.toHaveBeenCalled();
-    expect(archive).not.toHaveBeenCalled();
-  } finally {
-    setCommands('session', null);
-  }
-});
-
-it('shows only the actions the open page offers, as for a meeting', async () => {
-  setCommands('session', [
-    { id: 'session:archive', title: 'Archive conversation', group: 'Session', run: vi.fn() },
-  ]);
-  try {
-    const container = await render(
-      <SessionMenu
-        sessions={[session('current', '2026-11-03T00:00:00Z')]}
-        runs={[]}
-        projectId="alpha"
-        sessionId="current"
-        title="Session current"
-        onOpen={vi.fn()}
-      />,
-    );
-    await act(async () => container.querySelector<HTMLElement>('h2 button')?.click());
-    expect(
-      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map(visibleText),
-    ).toEqual(['Archive conversation']);
+    expect(document.querySelector('[role="menu"] [role="separator"]')).toBeNull();
+    expect(run).not.toHaveBeenCalled();
   } finally {
     setCommands('session', null);
   }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { canonicalJson } from './canonical-json.ts';
 import { ContentHash } from './harness.ts';
 import { Identifier } from './ids.ts';
+import { PageOrigin, PagePath } from './page-annotation.ts';
 import { PreviewObservationUrl } from './preview-observation.ts';
 import { WorkspaceTarget } from './workbench.ts';
 
@@ -72,6 +73,15 @@ export const TextAttachmentProvenance = z.discriminatedUnion('kind', [
     capturedAt: z.iso.datetime(),
     pageRevision: z.int().min(0),
     sourceRevision: z.null(),
+    screenshotHash: ContentHash.optional(),
+  }),
+  // A note on an ordinary page of the browser tab (features/browser-annotate.md 계약: 첨부).
+  z.strictObject({
+    kind: z.literal('page'),
+    origin: PageOrigin,
+    path: PagePath,
+    pickedAt: z.iso.datetime(),
+    generation: z.int().min(0),
     screenshotHash: ContentHash.optional(),
   }),
   z.strictObject({

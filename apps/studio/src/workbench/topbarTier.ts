@@ -4,25 +4,14 @@
 // every tier.
 
 export const TOPBAR_TIERS = [
-  /** Path, view tabs, the run pill with its clock, Pause and Cancel in words, tools, search. */
+  /** Path, the page's tools and search. */
   'full',
-  /** Pause and Cancel become icon buttons. */
-  'icons',
-  /** The run pill drops its clock. */
-  'no-clock',
-  /** The run pill keeps its state mark and run number only. */
-  'short-pill',
-  /** The view tabs fold into one menu. */
-  'view-menu',
+  /** The current name may shorten to a comfortable length; nothing else changes. */
+  'short-path',
   /** The project is its icon. */
   'project-icon',
-  /** The views and actions take a second row; the tabs return while they fit there. */
+  /** The page's actions take a second row. */
   'two-rows',
-  /**
-   * The second row holds the view menu, the run pill is its mark and "#N", and the page's tools
-   * fold into its menu, so the run and its controls still share that row.
-   */
-  'two-rows-menu',
 ] as const;
 
 export type TopbarTier = (typeof TOPBAR_TIERS)[number];
@@ -32,17 +21,11 @@ export type PathRoom = 'full' | 'comfortable' | 'minimum';
 
 export interface TopbarLayout {
   tier: TopbarTier;
-  actions: 'words' | 'icons';
-  pill: 'full' | 'no-clock' | 'short' | 'number';
-  views: 'tabs' | 'menu';
   project: 'name' | 'icon';
   rows: 1 | 2;
-  /** Where the page's tools (its changes, terminal and side panel) sit: buttons, or its menu. */
-  tools: 'bar' | 'menu';
   /**
-   * Cheap steps (icons, the clock, the pill's words) are taken to show the whole name. Folding
-   * the tabs or the project is taken only once the name would fall below a comfortable length,
-   * and the second row only once it would fall below its readable minimum.
+   * The project folds to its icon only once the name would fall below a comfortable length,
+   * and the second row is taken only once it would fall below its readable minimum.
    */
   path: PathRoom;
 }
@@ -51,16 +34,11 @@ const LAST = TOPBAR_TIERS.length - 1;
 
 export function topbarLayout(index: number): TopbarLayout {
   const at = Math.min(Math.max(0, Math.trunc(index) || 0), LAST);
-  const rows = at >= 6 ? 2 : 1;
   return {
     tier: TOPBAR_TIERS[at] ?? 'full',
-    actions: at >= 1 ? 'icons' : 'words',
-    pill: at === LAST ? 'number' : at >= 3 ? 'short' : at === 2 ? 'no-clock' : 'full',
-    views: at === 4 || at === 5 || at === 7 ? 'menu' : 'tabs',
-    project: at >= 5 ? 'icon' : 'name',
-    rows,
-    tools: at === LAST ? 'menu' : 'bar',
-    path: rows === 2 || at === 5 ? 'minimum' : at >= 3 ? 'comfortable' : 'full',
+    project: at >= 2 ? 'icon' : 'name',
+    rows: at >= 3 ? 2 : 1,
+    path: at >= 2 ? 'minimum' : at === 1 ? 'comfortable' : 'full',
   };
 }
 
@@ -98,8 +76,6 @@ export function topbarTierFor(available: number, needs: readonly number[]): Topb
 /** The width of a path item when the name may shorten: `em` is its label's font size. */
 const COMFORTABLE_EM = 12.5;
 const MINIMUM_EM = 7.5;
-/** A further path item (the run of a run view) keeps this much of its label. */
-const EXTRA_EM = 4;
 
 function visible(element: Element) {
   const style = getComputedStyle(element);
@@ -128,7 +104,6 @@ function crumbWidth(crumb: HTMLElement, room: PathRoom) {
   let text = label.scrollWidth;
   if (room !== 'full' && kind === 'current')
     text = Math.min(text, (room === 'comfortable' ? COMFORTABLE_EM : MINIMUM_EM) * em);
-  if (room !== 'full' && kind === 'extra') text = Math.min(text, EXTRA_EM * em);
   const limit = Number.parseFloat(getComputedStyle(crumb).maxWidth);
   return limit > 0 ? Math.min(chrome + text, limit) : chrome + text;
 }
@@ -138,7 +113,7 @@ function rowWidth(items: readonly number[], gap: number) {
 }
 
 /**
- * The width the bar's content asks for in the layout on screen. Views, actions and buttons are
+ * The width the bar's content asks for in the layout on screen. Actions and buttons are
  * taken as laid out; the path is taken at what its items would be with the room this tier
  * promises, so a squeezed path still reports what it wants.
  */
@@ -151,7 +126,7 @@ export function measureTopbar(bar: HTMLElement, layout: TopbarLayout): number {
     const second = [...bar.children].filter(
       (child): child is HTMLElement =>
         child instanceof HTMLElement &&
-        child.matches('[data-topbar-part="views"], [data-topbar-part="actions"]') &&
+        child.matches('[data-topbar-part="actions"]') &&
         child.childElementCount > 0,
     );
     return (

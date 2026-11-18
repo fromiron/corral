@@ -303,7 +303,14 @@ export interface FileTools {
   releaseRun?(runId: string, terminationConfirmed: boolean): void;
   stopRunServices?(runId: string): Promise<void>;
   worktreeScope?(sessionId: string): string | null;
-  hasUnsafeWorktreeOwner?(sessionId: string): boolean;
+  /**
+   * What makes a copy's restore wait, as a refusal names it, or nothing. With `sharedDevelopment`
+   * it is a writing agent run or an unconfirmed owner, so a read-only run, on its own snapshot,
+   * does not hold a restore; without sharing it is the copy's one writer.
+   */
+  unsafeWorktreeOwner?(sessionId: string): CommandError['owner'];
+  /** This host shares the Paddock (workbench.md 공유 개발 모드). */
+  readonly sharedDevelopment?: boolean;
   planCommand?(input: CommandExecution, cancellation: ToolCancellation): Promise<CommandPlan>;
   runCommand?(
     input: CommandExecution,
@@ -964,22 +971,40 @@ export class Coordinator {
     const key = sessionId ? this.fileScope(sessionId) : null;
     const affected = (candidate: string | null | undefined) =>
       key === null || (candidate != null && this.fileScope(candidate) === key);
-    if (
-      this.storageError ||
-      this.hostTerminationUnconfirmed ||
-      (key === null && !this.admitting) ||
-      (sessionId && this.files?.hasUnsafeWorktreeOwner?.(sessionId)) ||
-      this.restoringFiles ||
-      (key === null ? this.restoringScopes.size > 0 : this.restoringScopes.has(key)) ||
-      [...this.drainingRuns].some((run) => affected(this.store.getRun(run.runId)?.sessionId)) ||
-      this.store
-        .listRuns()
-        .some((run) => affected(run.sessionId) && !TERMINAL_RUN_STATUSES.has(run.status))
-    )
-      throw new ToolRefusal(
+    // A shared copy is restored whenever no agent run writes it: the copy's owners say which do.
+    const shared = key !== null && this.files?.sharedDevelopment === true;
+    const refuse = (owner?: CommandError['owner']) =>
+      new ToolRefusal(
         'RUN_ALREADY_ACTIVE',
         'file recovery requires an idle target with confirmed worker termination',
+        owner,
       );
+    if (this.storageError || this.hostTerminationUnconfirmed || (key === null && !this.admitting))
+      throw refuse();
+    // The refusal names what holds the copy (api-contract.md 오류); a restore already under way
+    // for the scope is no holder and names none.
+    const holder = sessionId ? this.files?.unsafeWorktreeOwner?.(sessionId) : undefined;
+    if (holder) throw refuse(holder);
+    if (
+      this.restoringFiles ||
+      (key === null ? this.restoringScopes.size > 0 : this.restoringScopes.has(key))
+    )
+      throw refuse();
+    // A run in no session names no holder: the owner names the session it holds.
+    const runHolder = (runId: string, runSession: string | null | undefined) =>
+      runSession
+        ? ({ kind: 'run', id: runId, sessionId: runSession, state: 'active' } as const)
+        : undefined;
+    for (const run of this.drainingRuns) {
+      const runSession = this.store.getRun(run.runId)?.sessionId;
+      if (affected(runSession)) throw refuse(runHolder(run.runId, runSession));
+    }
+    if (!shared) {
+      const running = this.store
+        .listRuns()
+        .find((run) => affected(run.sessionId) && !TERMINAL_RUN_STATUSES.has(run.status));
+      if (running) throw refuse(runHolder(running.runId, running.sessionId));
+    }
     if (key === null) this.restoringFiles = true;
     else this.restoringScopes.add(key);
     try {
@@ -1238,8 +1263,12 @@ export class Coordinator {
       return prior.payloadHash === requestHash
         ? { runId: prior.runId, receipt: prior.receipt }
         : { runId: null, receipt: conflict(request.commandId, prior.receipt.runId) };
-    const refuse = (code: CommandError['code'], message: string) => {
-      const receipt = rejected(request.commandId, 'none', { code, message });
+    const refuse = (code: CommandError['code'], message: string, owner?: CommandError['owner']) => {
+      const receipt = rejected(request.commandId, 'none', {
+        code,
+        message,
+        ...(owner ? { owner } : {}),
+      });
       if (code !== 'RUN_ALREADY_ACTIVE')
         this.recordStart({ payloadHash: requestHash, receipt, runId: null });
       return { runId: null, receipt };
@@ -1285,10 +1314,9 @@ export class Coordinator {
         );
       });
     } catch (error) {
-      return refuse(
-        error instanceof ToolRefusal ? error.code : 'CAPABILITY_DENIED',
-        error instanceof ToolRefusal ? error.message : 'runtime checkpoint cannot be restored',
-      );
+      return error instanceof ToolRefusal
+        ? refuse(error.code, error.message, error.owner)
+        : refuse('CAPABILITY_DENIED', 'runtime checkpoint cannot be restored');
     }
   }
 
@@ -1603,6 +1631,7 @@ export class Coordinator {
       const receipt = rejected(request.commandId, 'none', {
         code: error instanceof ToolRefusal ? error.code : 'CAPABILITY_DENIED',
         message: error instanceof ToolRefusal ? error.message : 'the branch could not be prepared',
+        ...(error instanceof ToolRefusal && error.owner ? { owner: error.owner } : {}),
       });
       if (receipt.error?.code !== 'RUN_ALREADY_ACTIVE')
         this.recordStart({ payloadHash: requestHash, receipt, runId: null });

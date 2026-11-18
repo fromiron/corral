@@ -1,5 +1,17 @@
 import type { Locator, Page } from '@playwright/test';
-import { openActivity, panelTab, requestBox, runControls, runGoing } from '../workbench.ts';
+import {
+  closePanel,
+  confirmStop,
+  openActivity,
+  openPanelTab,
+  panelContent,
+  panelToggle,
+  requestBox,
+  runControls,
+  runGoing,
+  sendPlaceStop,
+  stopConfirmation,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 // A held run keeps its controls in the composer's activity bar, never in the top bar, and its
@@ -17,13 +29,14 @@ async function shown(target: Locator) {
   });
 }
 
-async function holdRun(page: Page, corral: Harness) {
+/** Starts a run that holds; its request names the conversation. */
+async function holdRun(page: Page, corral: Harness, request = 'Read the notes and wait') {
   await corral.open('/');
   await page
     .getByRole('main')
     .getByRole('button', { name: 'New conversation', exact: true })
     .click();
-  await requestBox(page).fill('Read the notes and wait');
+  await requestBox(page).fill(request);
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('running');
 }
@@ -48,10 +61,12 @@ test.describe('a held run', () => {
     await expect(runGoing(page)).toBeVisible();
     // The top bar has no run state or run control.
     const top = page.getByRole('banner');
-    await expect(top.getByRole('button', { name: /Pause|Stop|Cancel whole run/ })).toHaveCount(0);
+    await expect(top.getByRole('button', { name: /Pause|Stop/ })).toHaveCount(0);
     await openActivity(page);
     const pause = runControls(page).getByRole('button', { name: 'Pause', exact: true });
-    const stop = runControls(page).getByRole('button', { name: 'Stop', exact: true });
+    // Nothing is written: Stop is Send's place, and only there (composer-flow.md "활동 바").
+    const stop = sendPlaceStop(page);
+    await expect(runControls(page).getByRole('button', { name: 'Stop' })).toHaveCount(0);
     if (process.env.CORRAL_SCREENSHOT_DIR)
       await page.screenshot({ path: `${process.env.CORRAL_SCREENSHOT_DIR}/topbar-390.png` });
     await expect.poll(() => shown(pause)).toBe(true);
@@ -74,13 +89,13 @@ test.describe('a held run', () => {
     // The scripted assistant works with its two helpers, so Stop asks first; keeping the run
     // leaves it running.
     await stop.click();
-    const ask = page.getByRole('dialog', { name: 'Cancel whole run' });
+    const ask = stopConfirmation(page);
     await expect(ask).toBeVisible();
     await ask.getByRole('button', { name: 'Keep running' }).click();
     await expect(ask).toHaveCount(0);
     expect(corral.server.coordinator.listRuns()[0]?.status).toBe('running');
     await stop.click();
-    await ask.getByRole('button', { name: 'Confirm whole run cancellation' }).click();
+    await confirmStop(page);
     await expect
       .poll(() => corral.server.coordinator.listRuns()[0]?.status)
       .toMatch(/^(cancelling|cancelled)$/);
@@ -91,21 +106,20 @@ test.describe('a held run', () => {
     page,
     corral,
   }) => {
-    const tiers = [
-      'full',
-      'icons',
-      'no-clock',
-      'short-pill',
-      'view-menu',
-      'project-icon',
-      'two-rows',
-      'two-rows-menu',
-    ];
+    const tiers = ['full', 'short-path', 'project-icon', 'two-rows'];
     await page.setViewportSize({ width: 1600, height: 800 });
-    await holdRun(page, corral);
+    // The bar holds the path, the session's tools and Search: a name long enough to shorten is
+    // what makes it give way before the narrowest widths.
+    await holdRun(
+      page,
+      corral,
+      'Read the release notes of every package in this project, then wait for my answer',
+    );
     const bar = page.getByRole('banner');
     const name = bar.getByRole('heading', { level: 2 });
     const search = bar.getByRole('button', { name: 'Search', exact: true });
+    // The panel's toggle never folds into the bar's menu (features/session-panel.md 화면 틀).
+    const toggle = panelToggle(page);
     const tier = async () => tiers.indexOf((await bar.getAttribute('data-topbar-tier')) ?? '');
     await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
     // The run's controls stay with the composer, open at every width.
@@ -135,47 +149,37 @@ test.describe('a held run', () => {
       await expect(name, `${width}px`).toContainText(title.slice(0, 8));
       expect((await name.boundingBox())?.width ?? 0, `${width}px`).toBeGreaterThan(80);
       await expect.poll(() => shown(search), { message: `${width}px` }).toBe(true);
+      await expect.poll(() => shown(toggle), { message: `${width}px` }).toBe(true);
       await expect.poll(() => shown(pause), { message: `${width}px` }).toBe(true);
       await expect(bar.getByRole('button', { name: /Pause|Stop/ })).toHaveCount(0);
     }
     // A narrower bar never brings back what a wider one had already given up.
     const byWidth = [...seen].sort((a, b) => b.bar - a.bar).map((entry) => entry.tier);
     expect(byWidth).toEqual([...byWidth].sort((a, b) => a - b));
-    // With the run's pill and controls in the composer, the tiers that only shortened them
-    // (icons, no clock, short pill) give the bar no room of their own, so fewer are seen.
     expect(new Set(byWidth).size).toBeGreaterThanOrEqual(3);
-    await expect(bar).toHaveAttribute('data-topbar-rows', '2');
-    // The second row no longer holds the run, so the view tabs fit there again.
-    await expect(
-      bar.getByRole('tablist', { name: 'Conversation views', exact: true }).getByRole('tab'),
-    ).toHaveCount(2);
-    // A little wider, on one row, the views fold into one menu.
+    // With no room beside the conversation, the toggle still opens the panel: the run's tab
+    // comes as a drawer, and closing it gives the conversation back.
     await page.setViewportSize({ width: 520, height: 800 });
-    await expect(bar).toHaveAttribute('data-topbar-rows', '1');
-    // Folded into one menu, the views still switch, and each panel keeps its name.
-    const views = bar.getByRole('combobox', { name: 'Conversation views', exact: true });
-    await expect(views).toContainText('Conversation');
-    await panelTab(page, 'Runs');
-    await expect(page.getByRole('tabpanel', { name: 'Runs', exact: true })).toBeVisible();
-    await panelTab(page, 'Conversation');
-    await expect(page.getByRole('tabpanel', { name: 'Conversation', exact: true })).toBeVisible();
-    // The chosen view changes what the bar holds, so the bar fits itself again: folded or as
-    // tabs, it names the current view.
-    await expect(
-      views
-        .or(
-          bar
-            .getByRole('tablist', { name: 'Conversation views', exact: true })
-            .getByRole('tab', { selected: true }),
-        )
-        .first(),
-    ).toContainText('Conversation');
+    await openPanelTab(page, 'Runs');
+    await expect(panelContent(page, 'Run #1')).toBeVisible();
+    await closePanel(page);
+    await expect(requestBox(page)).toBeVisible();
     // Room given back returns what was folded.
     await page.setViewportSize({ width: 1600, height: 800 });
     await expect(bar).toHaveAttribute('data-topbar-tier', 'full');
-    await expect(
-      bar.getByRole('tablist', { name: 'Conversation views', exact: true }).getByRole('tab'),
-    ).toHaveCount(2);
+    await expect(toggle).toBeVisible();
+    // The toggle's name shows in its tooltip on hover and on keyboard focus (workbench.md: "주요
+    // 아이콘의 이름은 호버와 키보드 포커스 모두에서 툴팁으로 확인할 수 있다").
+    const named = page.getByRole('tooltip', { name: 'Show or hide the panel' });
+    await toggle.hover();
+    await expect(named).toBeVisible();
+    await page.mouse.move(700, 700);
+    await page.keyboard.press('Tab');
+    await toggle.focus();
+    await expect(named).toBeVisible();
+    await expect(toggle).toHaveAttribute('aria-describedby', /.+/);
+    await page.keyboard.press('Escape');
+    await expect(named).toBeHidden();
     expect(corral.errors).toEqual([]);
   });
 

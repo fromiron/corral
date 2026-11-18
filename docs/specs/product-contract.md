@@ -62,7 +62,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 | Timeline | `RunEvent` | 실행·메시지·개입의 시간순 기록 |
 | Collaboration | `CollaborationMessage` | 질문·답변·제출의 업무상 교환 |
 
-`Wrangle`는 소개 문구의 동사로만 사용한다. UI의 조작에는 `Give instruction`, `Pause`, `Resume`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. 화면에 쓰는 이름과 Corral이 지은 고유한 이름(Corral, Harness, Reins, Paddock, Outrider)은 [용어집](glossary.md)이 정한다. `Reins`는 달리는 실행을 다루는 자리의 이름으로 서고, 그 안의 조작은 위의 라벨을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
+`Wrangle`는 소개 문구의 동사로만 사용한다. UI의 조작에는 `Give instruction`, `Pause`, `Resume`, `Stop`, `Cancel`, `Change settings`, `Approve`, `Reject`처럼 행동이 분명한 라벨을 쓴다. 화면에 쓰는 이름과 Corral이 지은 고유한 이름(Corral, Harness, Reins, Paddock, Outrider)은 [용어집](glossary.md)이 정한다. `Reins`는 달리는 실행을 다루는 자리의 이름으로 서고, 그 안의 조작은 위의 라벨을 쓴다. `Reins mode`처럼 별도의 숨은 조작 모드를 만들지 않는다. `Trough`·`Hitching Post`는 문서/DB/API의 정식 이름으로 채택하지 않는다.
 
 **패키지와 CLI:** 모노레포 내부에서 `@corral/core`, `@corral/react` 등을 사용한다. npm scope, `corral` 실행 파일명, 도메인·상표의 독점 사용 가능 여부는 확인하지 않았다. 내부 패키지는 `private: true`로 시작하며 공개 발행 직전에 충돌을 확인한다. 이 문서는 이름을 확보했다는 의미가 아니다.
 
@@ -88,7 +88,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 3.2 현재 경계와 별도 후속 범위
 
-실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 같은 Paddock의 동시 writer와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
+실행 중 그래프 구조 변경, 임의 역할 생성, 다중 사용자 편집, 과거 산출물 직접 수정, 공유를 허용하지 않는 서버에서 같은 Paddock의 동시 writer(로컬 host는 [공유 개발 모드](workbench.md#공유-개발-모드)로 사본을 사람의 작업과 나눠 쓴다)와 재시작 후 외부 효과 자동 replay는 지원 계약에 포함하지 않는다. 재접속·기록 재열람·checkpoint에서 새 Run 시작과 crash resume은 구별한다. 병렬 분기·Join·여러 Loop·상자 중첩·Team은 정의하고 실행할 수 있다.
 
 일반 명령·service와 Hashline은 승인 범위다. 등록 검사와 일반 명령의 실행 사본, 효과·승인·process lease를 구분하며 미지원 환경의 차단을 유지한다. 세부는 [Desktop 계약](desktop-contract.md)을 따른다.
 
@@ -122,7 +122,7 @@ D&D·협업·Loop·Reins와 Coordinator 소유권은 유지한다. 상세 상태
 
 ### 4.4 Reins UX
 
-제어 패널 상단에 **대상 / 적용 시점 / 영향 범위**를 항상 표시한다. 선택한 실행의 취소를 Run 전체 취소와 같은 위치·문구로 혼동시키지 않는다. 전체 취소는 상단의 고정 동작, 개별 취소는 선택 항목의 조작이다.
+제어 패널 상단에 **대상 / 적용 시점 / 영향 범위**를 항상 표시한다. 선택한 실행의 취소를 Run 전체 중지와 같은 위치·문구로 혼동시키지 않는다([용어집](glossary.md)). 전체 중지는 상단의 고정 동작, 개별 취소는 선택 항목의 조작이다.
 
 예시: `Target: Writer · execution w-02` → `Delivery: next model request` → `Scope: this execution only`.
 
@@ -347,7 +347,7 @@ localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않�
 | AC-09 | 미래 노드 모델·프롬프트 변경이 기존 실행/템플릿을 덮지 않음 | RNS-006, RNS-009 |
 | AC-10 | 상한 증가·감소 시 누적값 유지 및 신규 admission 정책 반영 | RNS-007 |
 | AC-11 | pause 중 신규 실행 없음, resume 이후 정상 계속, 자동 승인 없음 | RNS-003 |
-| AC-12 | 전체 취소가 후손과 backend 도구를 정리하며 종료 전 완료 표시 없음 | RNS-004, SEC-004 |
+| AC-12 | 전체 중지가 후손과 backend 도구를 정리하며 종료 전 완료 표시 없음 | RNS-004, SEC-004 |
 | AC-13 | 개별 취소로 질문자/부모가 무한 대기에 남지 않음 | COL-004, RNS-004 |
 | AC-14 | 조건부 재시작이 새 실행 ID를 사용하고 기존 완료 노드를 재실행하지 않음 | RNS-005 |
 | AC-15 | 중복 명령·승인·늦은 결과·설정 revision 충돌을 올바르게 처리 | DEV-001, RNS-008 |
@@ -357,7 +357,7 @@ localhost만 bind하더라도 임의 웹페이지의 요청을 신뢰하지 않�
 | AC-19 | 키 없는 공개 데모와 키보드/IME·부하 시험 | DEV-005, UX-001, UX-002 |
 | AC-20 | 요구→테스트→태스크 추적과 모든 필수 품질 게이트 통과 | DEV-003, DX-002 |
 
-정상 완료·전체 취소·개별 취소는 각각 독립된 실행으로 검증한다. 하나의 Run이 성공하면서 동시에 중간 취소까지 완성해야 한다는 모순된 수용 기준을 만들지 않는다.
+정상 완료·전체 중지·개별 취소는 각각 독립된 실행으로 검증한다. 하나의 Run이 성공하면서 동시에 중간 취소까지 완성해야 한다는 모순된 수용 기준을 만들지 않는다.
 
 ## 12. CLI와 개발자 경험
 

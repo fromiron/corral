@@ -7,7 +7,7 @@ import {
   UserInputRequest,
   validUserAnswers,
 } from '@corral/contracts';
-import { pendingInteractions, type RunProjection } from '@corral/core';
+import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -38,6 +38,25 @@ import { nextResponseTarget } from './responseFocus.ts';
 export const interactionShown = (events: readonly RunEvent[], projection: RunProjection | null) =>
   pendingInteractions(events, projection).some((item) => item.kind !== 'approval') ||
   events.some((event) => event.type === 'extension.ui_notified');
+
+/**
+ * What an extension left after one of its requests in this run was answered, while its text is
+ * readable: the notices the conversation keeps in the response card's place (workbench.md). A
+ * notice before the first answer, or with no question at all, is not one of them.
+ */
+export function answeredExtensionNotices(
+  events: readonly RunEvent[],
+  projection: RunProjection | null,
+): EventOf<'extension.ui_notified'>[] {
+  const answeredAt = events.find((event) => event.type === 'extension.ui_answered')?.runSeq;
+  if (answeredAt === undefined) return [];
+  return events.filter(
+    (event): event is EventOf<'extension.ui_notified'> =>
+      event.type === 'extension.ui_notified' &&
+      event.runSeq > answeredAt &&
+      canReadArtifactBody(projection, event.payload.bodyRef),
+  );
+}
 
 /** What an answer said, in one line: the options picked and the words written, per question. */
 function answerSummary(requestText: string | undefined, answerText: string | undefined) {
@@ -104,12 +123,15 @@ export function InteractionPanel({
   session,
   action,
   readOnly = false,
+  answeredNoticesOnly = false,
 }: {
   session: RunSessionStore;
   /** A control of the host's frame, at the end of the first row (see ApprovalPanel). */
   action?: ReactNode;
   /** The prompts to read only; another place on the same screen answers them (ApprovalPanel). */
   readOnly?: boolean;
+  /** Only the notices left after an answered extension request (answeredExtensionNotices). */
+  answeredNoticesOnly?: boolean;
 }) {
   const events = useStore(session, (s) => s.events);
   const projection = useStore(session, (s) => s.projection);
@@ -148,14 +170,15 @@ export function InteractionPanel({
   const pending = requests.filter((event) => pendingIds.has(event.payload.requestId));
   const notices = [
     ...new Map(
-      events
-        .filter((event) => event.type === 'extension.ui_notified')
-        .map((event) => [
-          event.payload.kind === 'status'
-            ? `${event.payload.executionId}:${event.payload.key}`
-            : event.eventId,
-          event,
-        ]),
+      (answeredNoticesOnly
+        ? answeredExtensionNotices(events, projection)
+        : events.filter((event) => event.type === 'extension.ui_notified')
+      ).map((event) => [
+        event.payload.kind === 'status'
+          ? `${event.payload.executionId}:${event.payload.key}`
+          : event.eventId,
+        event,
+      ]),
     ).values(),
   ].slice(-8);
   const refs = [

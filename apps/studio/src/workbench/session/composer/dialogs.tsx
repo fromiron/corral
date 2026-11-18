@@ -13,6 +13,7 @@ import {
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
+import { useModalConfirmation } from '../../modalConfirmation.ts';
 import { useSettingsNavigation } from '../../navigation.ts';
 import { ProjectMaterialPicker } from '../../ProjectMaterials.tsx';
 import type { ProfileInfo, RoleModel } from '../../useModels.ts';
@@ -156,6 +157,8 @@ export function StopRunDialog({
   onConfirm: () => void;
 }) {
   const tr = useTranslations('Reins');
+  // While it is up, global shortcuts and the panel's actions are held back.
+  useModalConfirmation(open);
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPopup>

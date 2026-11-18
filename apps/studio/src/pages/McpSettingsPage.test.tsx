@@ -37,8 +37,13 @@ vi.mock('./SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
+const navigation = vi.hoisted(() => ({ item: undefined as string | undefined }));
 vi.mock('../workbench/navigation.ts', () => ({
-  useSettingsNavigation: () => ({ projectId: 'p1', link: () => ({ to: '/' }) }),
+  useSettingsNavigation: () => ({
+    projectId: 'p1',
+    item: navigation.item,
+    link: () => ({ to: '/' }),
+  }),
 }));
 vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
@@ -69,6 +74,8 @@ beforeEach(() => {
 afterEach(() => {
   for (const dispose of cleanup.splice(0)) act(dispose);
   vi.unstubAllGlobals();
+  navigation.item = undefined;
+  api.projectTools.mockImplementation(async () => config([]));
 });
 
 async function open() {
@@ -112,4 +119,37 @@ it('moves focus to the Add above the list once the first saved server replaces t
   expect(container.querySelector('[data-slot="empty-view"]')).toBeNull();
   expect(adds(container)).toHaveLength(1);
   expect(document.activeElement).toBe(adds(container)[0]);
+});
+
+const TWO = config([
+  ...(SAVED.mcpServers ?? []),
+  {
+    id: 'search',
+    name: 'Search',
+    timeoutMs: 30_000,
+    exposure: 'direct',
+    transport: 'stdio',
+    argv: ['search-mcp'],
+  },
+]);
+const pressedServers = (container: HTMLElement) =>
+  [...container.querySelectorAll('button[aria-pressed="true"]')].map((button) =>
+    ['Docs', 'Search'].find((name) => button.textContent?.includes(name)),
+  );
+
+// features/library.md: Manage on an MCP row opens the section with that server chosen.
+it('chooses the server Manage carried once the project’s config has loaded', async () => {
+  navigation.item = 'search';
+  api.projectTools.mockResolvedValue(TWO);
+  const container = await open();
+  expect(pressedServers(container)).toEqual(['Search']);
+  expect(api.mcpUsages).toHaveBeenCalledWith('p1', 'search');
+});
+
+it('opens only the section when the carried server is gone', async () => {
+  navigation.item = 'removed';
+  api.projectTools.mockResolvedValue(TWO);
+  const container = await open();
+  expect(pressedServers(container)).toEqual([]);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });

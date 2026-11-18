@@ -6,6 +6,7 @@ import {
   type HarnessOverrides,
   type Receipt,
   type RunCommand,
+  type RunCommandType,
   type RunEvent,
   type StartFrom,
   type StreamFrame,
@@ -53,6 +54,8 @@ export interface RunSessionState {
   commandError: string | null;
   /** Lost responses retain their exact command across run navigation for safe recovery. */
   unconfirmedCommands: Record<string, { command: RunCommand; error: string }>;
+  /** What each command this view sent or recovered was, by its ID: a receipt does not say. */
+  commandTypes: Record<string, RunCommandType>;
   sendCommand(command: SessionCommand): Promise<Receipt>;
   retryCommand(commandId: string): Promise<Receipt>;
   /** Starts a run; with `saved`, from that saved revision (the local server's way). */
@@ -355,6 +358,7 @@ export function createRunSession(
         streamError: null,
         missingRunId: null,
         receipts: {},
+        commandTypes: {},
         commandError: null,
         pendingCommandIds: [],
       });
@@ -437,7 +441,11 @@ export function createRunSession(
 
     const transmit = async (command: RunCommand, recover = false): Promise<Receipt> => {
       const { commandId, runId } = command;
-      set({ commandError: null, pendingCommandIds: [...get().pendingCommandIds, commandId] });
+      set({
+        commandError: null,
+        pendingCommandIds: [...get().pendingCommandIds, commandId],
+        commandTypes: { ...get().commandTypes, [commandId]: command.type },
+      });
       try {
         recovery?.pending(command);
         const receipt =
@@ -474,12 +482,15 @@ export function createRunSession(
       if (!recovery) return;
       const saved = recovery.commands(runId);
       const unconfirmedCommands = { ...get().unconfirmedCommands };
-      for (const command of saved)
+      const commandTypes = { ...get().commandTypes };
+      for (const command of saved) {
         unconfirmedCommands[command.commandId] = {
           command,
           error: 'Previous response was not confirmed. Checking the host receipt.',
         };
-      set({ unconfirmedCommands });
+        commandTypes[command.commandId] = command.type;
+      }
+      set({ unconfirmedCommands, commandTypes });
       for (const command of saved) {
         try {
           // Reads only. A missing receipt leaves explicit retry to the person.
@@ -515,6 +526,7 @@ export function createRunSession(
       receipts: {},
       commandError: null,
       unconfirmedCommands: {},
+      commandTypes: {},
 
       async start(
         definition,

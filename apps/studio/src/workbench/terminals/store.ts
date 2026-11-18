@@ -5,6 +5,7 @@ import {
   MAX_TERMINAL_QUEUED_INPUT_BYTES,
   TEXT_ATTACHMENT_MAX_BYTES,
   type TerminalCreate,
+  type TerminalForeground,
   type TerminalIdentity,
   type TerminalList,
   type TerminalStreamMessage,
@@ -12,6 +13,7 @@ import {
   type TextAttachmentProvenance,
 } from '@corral/contracts';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { shortcutFor } from '../../shortcuts.ts';
 import { WORKSPACE_CHANGED } from '../workspaceEvents.ts';
 import { createXterm, type XtermRuntime } from './xterm.ts';
 
@@ -57,6 +59,8 @@ export interface TerminalStore
   claim(id: string, takeover?: boolean): Promise<void>;
   release(id: string): Promise<void>;
   stop(id: string): Promise<void>;
+  /** The terminal's foreground read now from the host; `unknown` when it cannot be read. */
+  readForeground(id: string): Promise<TerminalForeground>;
   reconnect(id: string): Promise<void>;
   checkInput(id: string): Promise<void>;
   sendInput(id: string, data: string): void;
@@ -584,6 +588,17 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
       await applying.get(id);
       connect(id);
     },
+    async readForeground(id) {
+      const value = get(id);
+      if (!value) return 'unknown';
+      try {
+        const view = await client.read(value.terminal.target.sessionId, id);
+        upsert(view);
+        return view.foreground;
+      } catch {
+        return 'unknown';
+      }
+    },
     async checkInput(id) {
       const value = get(id);
       if (!value || value.busy) return;
@@ -655,6 +670,8 @@ export function terminalStore(client: TerminalClient, options: Options = {}): Te
             onExit();
             return false;
           }
+          // The bottom dock's key toggles the dock from here; the shell never gets it.
+          if (shortcutFor(event)?.id === 'view.dock') return false;
           return true;
         });
         patch(id, {});

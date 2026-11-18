@@ -620,6 +620,17 @@ it('the one answer’s icon actions sit in the tail, after its values', async ()
   expect(f.container.querySelectorAll('[data-testid="turn-actions"]')).toHaveLength(1);
 });
 
+it('the answer’s result link wears the document mark, not the mark that opens the run record', async () => {
+  const f = await show(answered(running()));
+  const link = part(f.container, 'tail')?.querySelector<HTMLAnchorElement>(
+    `a[aria-label="${messages.Results.openResults}"]`,
+  );
+  expect(link).not.toBeNull();
+  const mark = link?.querySelector('svg')?.getAttribute('class') ?? '';
+  expect(mark).toMatch(/\blucide-file-text\b/);
+  expect(mark).not.toMatch(/\blucide-panel-right\b/);
+});
+
 it('an interrupted output’s copy sits in the tail', async () => {
   const projection = running();
   const f = await show(projection);

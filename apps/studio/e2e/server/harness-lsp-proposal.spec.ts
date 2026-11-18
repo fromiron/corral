@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { linearCorral } from '@corral/testkit';
+import { lastRunSucceeded, maximizePanel } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -119,12 +120,15 @@ test('reviews immutable LSP changes and applies them explicitly to the session c
       { source, definition },
     );
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    // The record beside the conversation reads the request; the conversation's tray answers it.
+    // Maximized, the record has the room to read the request; its Respond restores the panel and
+    // the conversation's tray answers it.
+    await maximizePanel(page);
     await page.getByTestId('run-side').getByTestId('respond-in-conversation').click();
     const needsYou = page.locator('[data-pending-tray]');
     await expect(needsYou).toBeFocused();
     await needsYou.getByRole('button', { name: 'Run this query once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+    // Beside the conversation the record does not say the run's state; the conversation does.
+    await expect(lastRunSucceeded(page)).toBeVisible();
     const before = await page.evaluate(
       async (id) =>
         (await (await fetch(`/api/v1/sessions/${id}/worktree/file?path=main.ts`)).json()).content

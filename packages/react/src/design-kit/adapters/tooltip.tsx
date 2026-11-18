@@ -1,6 +1,7 @@
 'use client';
 
-import type { ComponentProps, ReactNode } from 'react';
+import { type ComponentProps, type ReactNode, useEffect, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Tooltip as KitTooltip } from '../components/ui/tooltip.tsx';
 import { cn } from '../lib/utils.ts';
 
@@ -9,10 +10,50 @@ export { TooltipProvider } from '../components/ui/tooltip.tsx';
 export function Tooltip({
   content,
   shortcut,
+  escapeThrough = false,
+  refuseOpen,
+  forceOpen,
+  onOpenChange,
   ...props
-}: ComponentProps<typeof KitTooltip> & { shortcut?: string }) {
+}: ComponentProps<typeof KitTooltip> & {
+  shortcut?: string;
+  /** Escape closes the tooltip and goes on to whatever else listens for it (a drawer under it):
+   *  a tooltip is not something the person opened. */
+  escapeThrough?: boolean;
+  /** With escapeThrough: an open asked for while this returns true leaves a dismissed tooltip
+   *  shut (a focus event the host made, not the person). */
+  refuseOpen?: () => boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+  // Closed in the capture phase, before the tooltip's own dismissal sees the key: that one would
+  // mark the key handled and stop it.
+  useEffect(() => {
+    if (!escapeThrough || !open || forceOpen !== undefined) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || event.isComposing) return;
+      flushSync(() => {
+        setDismissed(true);
+        setOpen(false);
+      });
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [escapeThrough, open, forceOpen]);
   return (
     <KitTooltip
+      // Without escapeThrough, both pass through untouched.
+      forceOpen={escapeThrough ? (forceOpen ?? (dismissed ? false : undefined)) : forceOpen}
+      onOpenChange={
+        escapeThrough
+          ? (next) => {
+              if (next && dismissed && refuseOpen?.()) return;
+              setOpen(next);
+              if (next) setDismissed(false);
+              onOpenChange?.(next);
+            }
+          : onOpenChange
+      }
       content={
         // Only a shortcut needs a row beside the words. Words alone stay in the tooltip's own
         // flow: inside an inline box, the trim to the first line's letters cut every line after

@@ -14,7 +14,7 @@ import {
   MenuTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
-import { Ellipsis, FileDiff, PanelRight, Terminal } from '@corral/react/icons';
+import { Ellipsis, FileDiff, PanelBottom, PanelRight } from '@corral/react/icons';
 import { useNavigate, useRouter } from '@tanstack/react-router';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -24,18 +24,20 @@ import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { shortcutLabel } from '../../shortcuts.ts';
-import { ChatDensityMenu } from '../ChatView.tsx';
+import { useChatDensityRow } from '../ChatView.tsx';
+import { forgetDeletedTree } from '../fileTreeState.ts';
+import { deviceStorage, forgetPanelMemory } from '../panel/memory.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { SessionDeletionDialog } from '../SessionDeletionDialog.tsx';
-import { TopbarActions, useTopbarLayout } from '../TopbarSlot.tsx';
+import { TopbarActions } from '../TopbarSlot.tsx';
 import { type CriteriaSave, SessionCriteriaDialog } from './SessionCriteriaDialog.tsx';
 
 const sameLines = (a: readonly string[], b: readonly string[]) =>
   a.length === b.length && a.every((line, index) => line === b[index]);
 
 /**
- * The control a dialog was opened from: for a menu item (this menu's, the path's or another's),
+ * The control a dialog was opened from: for a menu item (this menu's or another's),
  * the trigger of its menu, which stays when the item is gone; else whatever had focus.
  */
 function focusOrigin(): HTMLElement | null {
@@ -51,8 +53,9 @@ function focusOrigin(): HTMLElement | null {
 }
 
 /**
- * The session's own actions, in the top bar: changes, the side panel, and a menu. In the bar's
- * last tier the changes, terminal and side panel fold into the menu (topbarTier.ts).
+ * The session's own actions, in the top bar: changes, the bottom dock's button, the panel's
+ * toggle and a menu. In the bar's last tier the changes fold into the menu (topbarTier.ts); the
+ * two toggles never do.
  */
 export function SessionActions({
   session,
@@ -61,8 +64,8 @@ export function SessionActions({
   changes,
   panel,
   onPanel,
-  fileViewerOpen,
-  onToggleFileViewer,
+  panelToggle,
+  dockToggle,
   onEditTeam,
 }: {
   session: WorkSession;
@@ -73,13 +76,27 @@ export function SessionActions({
   changes: FileChangeView[] | null;
   panel: SessionPanel | undefined;
   onPanel: (panel: SessionPanel | undefined) => void;
-  fileViewerOpen: boolean;
-  onToggleFileViewer: (open: boolean) => void;
+  /**
+   * The panel beside the conversation: pressed while it is on screen. Null when the
+   * conversation has no tab open and nothing it could open (features/session-panel.md).
+   */
+  panelToggle: { pressed: boolean; onToggle: () => void } | null;
+  /**
+   * The bottom dock under the conversation and the panel: pressed while it is open (withdrawn
+   * included). Its dot says a running terminal, or one whose end needs confirming, is off
+   * screen while the dock is closed (features/session-panel.md 하단 도크). Null without terminals.
+   */
+  dockToggle?: {
+    pressed: boolean;
+    dot: 'running' | 'warning' | null;
+    onToggle: () => void;
+  } | null;
 }) {
   useShortcutBindings();
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
+  const chatDensityRow = useChatDensityRow();
   const { repository, sessionDeletion } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -98,7 +115,6 @@ export function SessionActions({
     criteriaBase.current = { lines, revision: session.revision };
     setCriteria(lines);
   };
-  const folded = useTopbarLayout().tools === 'menu';
   const update = async (change: {
     corralId?: string | null;
     pinned?: boolean;
@@ -155,24 +171,46 @@ export function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces, terminals } = useServices();
+  const { workspaces, browser } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
+  const tpanel = useTranslations('SessionPanel');
+  const tterm = useTranslations('Terminals');
   useRegisterCommands('session', [
-    {
-      id: 'panel:toggle',
-      title: tcmd('togglePanel'),
-      group: panelGroup,
-      shortcutId: 'view.panel',
-      shortcut: shortcutLabel('view.panel'),
-      run: () => onToggleFileViewer(!fileViewerOpen),
-    },
-    // Every pane from the one catalog: its dock name, its `/` name and the words other screens
+    ...(panelToggle
+      ? [
+          {
+            id: 'panel:toggle',
+            title: tpanel('toggle'),
+            group: panelGroup,
+            shortcutId: 'view.panel',
+            shortcut: shortcutLabel('view.panel'),
+            run: panelToggle.onToggle,
+          } satisfies AppCommand,
+        ]
+      : []),
+    ...(dockToggle
+      ? [
+          {
+            id: 'dock:toggle',
+            title: tpanel('dockToggle'),
+            group: panelGroup,
+            shortcutId: 'view.dock',
+            shortcut: shortcutLabel('view.dock'),
+            run: dockToggle.onToggle,
+          } satisfies AppCommand,
+        ]
+      : []),
+    // Every pane from the one catalog: its tab's name, its `/` name and the words other screens
     // use for it (#70, #86).
-    ...PANE_CATALOG.map(
+    // 브라우저 only where the desktop app's browser tab is (features/browser-tab.md 여는 곳).
+    ...PANE_CATALOG.filter((entry) => entry.view !== 'browser' || browser).map(
       (entry): AppCommand => ({
         id: `panel:${entry.view}`,
-        title: tcmd('openPanel', { panel: tdock(entry.view) }),
+        // The tab's own name: the debugger opens as the bottom dock's 디버그 tab.
+        title: tcmd('openPanel', {
+          panel: entry.view === 'debug' ? tpanel('debugTab') : tdock(entry.view),
+        }),
         group: panelGroup,
         keywords: [...entry.aliases, entry.slash],
         slash: entry.slash,
@@ -268,7 +306,6 @@ export function SessionActions({
       : []),
   ]);
   const changeCount = changes?.length ?? 0;
-  const fileViewerLabel = tdock(fileViewerOpen ? 'closeFileViewer' : 'openFileViewer');
   return (
     // The selected team is read from the composer's chip and this menu's team line, not the bar.
     <TopbarActions>
@@ -277,7 +314,7 @@ export function SessionActions({
           {error}
         </p>
       ) : null}
-      {folded ? null : changeCount > 0 ? (
+      {changeCount > 0 ? (
         <Button
           variant="ghost"
           size="compact"
@@ -289,31 +326,51 @@ export function SessionActions({
           {tw('sessionChangeCount', { count: changeCount })}
         </Button>
       ) : null}
-      {terminals && !folded ? (
-        <Tooltip content={tdock('terminal')}>
+      {/* The bottom dock's button never folds into the menu, in any panel state. */}
+      {dockToggle ? (
+        <Tooltip content={tpanel('dock')} shortcut={shortcutLabel('view.dock')}>
           <Button
             variant="ghost"
             size="icon-compact"
-            aria-label={tdock('terminal')}
-            onClick={() => onPanel('terminal')}
+            aria-label={tpanel('dock')}
+            aria-pressed={dockToggle.pressed}
+            aria-description={
+              dockToggle.dot
+                ? tterm(dockToggle.dot === 'warning' ? 'uncertainTab' : 'runningTab')
+                : undefined
+            }
+            data-session-dock-toggle=""
+            className="relative"
+            onClick={dockToggle.onToggle}
           >
-            <Terminal />
+            <PanelBottom />
+            {dockToggle.dot ? (
+              <span
+                aria-hidden="true"
+                data-dock-dot={dockToggle.dot}
+                className={`absolute top-1 right-1 size-1.5 rounded-full ${
+                  dockToggle.dot === 'warning' ? 'bg-warning' : 'bg-emphasis'
+                }`}
+              />
+            ) : null}
           </Button>
         </Tooltip>
       ) : null}
-      {folded ? null : (
-        <Tooltip content={fileViewerLabel} shortcut={shortcutLabel('view.panel')}>
+      {/* The panel's toggle never folds into the menu. */}
+      {panelToggle ? (
+        <Tooltip content={tpanel('toggle')} shortcut={shortcutLabel('view.panel')}>
           <Button
             variant="ghost"
             size="icon-compact"
-            aria-label={fileViewerLabel}
-            aria-pressed={fileViewerOpen}
-            onClick={() => onToggleFileViewer(!fileViewerOpen)}
+            aria-label={tpanel('toggle')}
+            aria-pressed={panelToggle.pressed}
+            data-session-panel-toggle=""
+            onClick={panelToggle.onToggle}
           >
             <PanelRight />
           </Button>
         </Tooltip>
-      )}
+      ) : null}
       <Menu>
         <Tooltip content={td('sessionActions', { title: session.title })}>
           <MenuTrigger
@@ -330,24 +387,8 @@ export function SessionActions({
         </Tooltip>
         <MenuPopup align="end" className="min-w-52">
           {/* The page's display choice leads its menu. */}
-          <ChatDensityMenu />
+          {chatDensityRow()}
           <MenuSeparator />
-          {folded ? (
-            <>
-              {changeCount > 0 ? (
-                <MenuItem onClick={() => onPanel(panel === 'changes' ? undefined : 'changes')}>
-                  {tw('sessionChangeCount', { count: changeCount })}
-                </MenuItem>
-              ) : null}
-              {terminals ? (
-                <MenuItem onClick={() => onPanel('terminal')}>{tdock('terminal')}</MenuItem>
-              ) : null}
-              <MenuItem onClick={() => onToggleFileViewer(!fileViewerOpen)}>
-                {fileViewerLabel}
-              </MenuItem>
-              <MenuSeparator />
-            </>
-          ) : null}
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuItem onClick={editCriteria}>{t('criteria.label')}</MenuItem>
           <MenuSub>
@@ -426,6 +467,9 @@ export function SessionActions({
         onClose={() => setDeleting(false)}
         onDeleted={() => {
           setDeleting(false);
+          // A deleted conversation's panel is not remembered on this device either.
+          forgetPanelMemory(deviceStorage(), session.sessionId);
+          forgetDeletedTree(deviceStorage(), session.sessionId);
           projectsChanged();
           void router.invalidate();
           void navigate({

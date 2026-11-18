@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { expect, fn, waitFor, within } from 'storybook/test';
 import { AutoModelMenu } from '../../../../apps/studio/src/workbench/AutoModelMenu.tsx';
 import type { ProfileInfo } from '../../../../apps/studio/src/workbench/useModels.ts';
+import { InputMessage } from '../design-kit/components/ui/input-message.tsx';
 
 const profiles: ProfileInfo[] = [
   {
@@ -195,6 +196,52 @@ export const LongNameNarrow: Story = {
     const bounds = trigger.getBoundingClientRect();
     expect(bounds.right).toBeLessThanOrEqual(box.right);
     expect(bounds.height).toBeGreaterThan(28);
+  },
+};
+
+const LONG_NAME =
+  'Provider A · Long model name verification · reasoning-model-with-a-long-name-2026-10';
+
+// composer-flow.md: the one-line tool line keeps its height whatever it holds; a chip's name that
+// does not fit shortens on one line and the whole name is read in a tooltip.
+export const LongNameSingleToolbar: Story = {
+  args: { profiles: [{ ...(profiles[0] as ProfileInfo), label: LONG_NAME }] },
+  render: function SingleToolbar(args) {
+    return (
+      <div className="w-[632px] max-w-full p-3" data-testid="composer-scroll">
+        <InputMessage
+          toolbar="single"
+          value=""
+          onValueChange={() => {}}
+          textareaProps={{ 'aria-label': 'Request' }}
+          leftSlot={
+            <>
+              <button type="button" className="h-7 px-1.5" data-testid="sibling-chip">
+                Team
+              </button>
+              <span className="ml-auto flex min-w-0 items-center gap-1.5">
+                <AutoModelMenu {...args} />
+              </span>
+            </>
+          }
+        />
+      </div>
+    );
+  },
+  play: async ({ canvasElement }) => {
+    // The one-line tool line starts at the `sm` width.
+    expect(window.matchMedia('(min-width: 40rem)').matches).toBe(true);
+    const canvas = within(canvasElement);
+    const trigger = canvas.getByRole('button', { name: 'Model' });
+    const sibling = canvas.getByTestId('sibling-chip').getBoundingClientRect();
+    const box = canvas.getByTestId('composer-scroll').getBoundingClientRect();
+    const bounds = trigger.getBoundingClientRect();
+    expect(bounds.height).toBeLessThanOrEqual(sibling.height);
+    expect(bounds.right).toBeLessThanOrEqual(box.right);
+    const name = trigger.querySelector<HTMLElement>('[data-slot="model-picker-name"]');
+    expect(name?.textContent).toBe(LONG_NAME);
+    expect(name?.title).toBe(LONG_NAME);
+    expect(name?.scrollWidth).toBeGreaterThan(name?.clientWidth ?? 0);
   },
 };
 

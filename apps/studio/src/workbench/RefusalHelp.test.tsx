@@ -70,3 +70,50 @@ it("offers the advisor's control after a refusal of the advisor's model, and onl
   expect(html).toContain(messages.Refusal.chooseAdvisor);
   expect(html).not.toContain(messages.Refusal.connect);
 });
+
+it('a task holding the copy is named, with no queue; another run gets the queue', () => {
+  const render = (owner: { kind: 'run' | 'task'; state: 'active' | 'uncertain' }) =>
+    renderToStaticMarkup(
+      <IntlProvider locale="en" messages={messages}>
+        <RefusalHelp
+          code="RUN_ALREADY_ACTIVE"
+          message="working copy writer holder has not released ownership"
+          owner={{ ...owner, id: 'holder', sessionId: 'session' }}
+          sessionId="session"
+          onQueue={() => {}}
+        />
+      </IntlProvider>,
+    );
+  const task = render({ kind: 'task', state: 'active' });
+  expect(task).toContain('data-kind="heldTask"');
+  expect(task).toContain(messages.Refusal.heldTask);
+  expect(task).not.toContain(messages.Refusal.queue);
+  const run = render({ kind: 'run', state: 'active' });
+  expect(run).toContain('data-kind="busy"');
+  expect(run).toContain(messages.Refusal.queue);
+  const unsettled = render({ kind: 'run', state: 'uncertain' });
+  expect(unsettled).toContain(messages.Refusal.runUncertain);
+  expect(unsettled).not.toContain(messages.Refusal.queue);
+});
+
+it("an operation's kind names it in the diagnostics", () => {
+  const html = renderToStaticMarkup(
+    <IntlProvider locale="en" messages={messages}>
+      <RefusalHelp
+        code="RUN_ALREADY_ACTIVE"
+        message="git.pull op_1 has not confirmed it ended"
+        owner={{
+          kind: 'operation',
+          id: 'op_1',
+          sessionId: 'session',
+          state: 'uncertain',
+          operationKind: 'git.pull',
+        }}
+      />
+    </IntlProvider>,
+  );
+  expect(html).toContain(messages.Refusal.operationUncertain);
+  expect(html).toContain(
+    '<p data-testid="refusal-owner"><code>git.pull</code> · <code>op_1</code> · uncertain</p>',
+  );
+});

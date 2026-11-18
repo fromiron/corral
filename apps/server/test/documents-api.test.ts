@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
@@ -215,4 +215,37 @@ it('returns a bounded generic error without an internal filesystem path', async 
     code: 'STORAGE_UNAVAILABLE',
     message: 'the document operation failed',
   });
+});
+
+it('answers a source-folder file that is not there as not found, apart from a path that is no plain file', async () => {
+  const { api, original } = await fixture();
+  mkdirSync(join(original, 'folder'));
+  const refusal = (path: string) =>
+    api.readFile({ kind: 'project', id: 'default' }, path).then(
+      () => null,
+      (error: { status?: number; code?: string }) => ({ status: error.status, code: error.code }),
+    );
+
+  await expect(
+    api.readFile({ kind: 'project', id: 'default' }, 'source.txt'),
+  ).resolves.toMatchObject({
+    content: { kind: 'text' },
+  });
+  expect(await refusal('gone.txt')).toEqual({ status: 404, code: 'TARGET_NOT_FOUND' });
+  expect(await refusal('folder/gone.txt')).toEqual({ status: 404, code: 'TARGET_NOT_FOUND' });
+  // A folder is no file: refused, but not as missing (counterexample).
+  expect(await refusal('folder')).not.toMatchObject({ code: 'TARGET_NOT_FOUND' });
+});
+
+it('refuses a folder or a symbolic link read as a source-folder file with 403 CAPABILITY_DENIED', async () => {
+  const { api, original } = await fixture();
+  mkdirSync(join(original, 'folder'));
+  symlinkSync(join(original, 'source.txt'), join(original, 'link.txt'));
+  const refusal = (path: string) =>
+    api.readFile({ kind: 'project', id: 'default' }, path).then(
+      () => null,
+      (error: { status?: number; code?: string }) => ({ status: error.status, code: error.code }),
+    );
+  expect(await refusal('folder')).toEqual({ status: 403, code: 'CAPABILITY_DENIED' });
+  expect(await refusal('link.txt')).toEqual({ status: 403, code: 'CAPABILITY_DENIED' });
 });

@@ -113,3 +113,35 @@ it("tells the advisor's model apart from the conversation's", () => {
   // The conversation's own model is not the advisor's.
   expect(refusalKind({ message: 'model-x: no such model profile' })).toBe('profile');
 });
+
+// A refusal over a holder names it (workbench.md 공유 개발 모드, api-contract.md 오류): only
+// another run gets the queue, and an unconfirmed holder is told apart from one at work.
+it('names the holder of the copy, and only another run is busy', () => {
+  const holder = (
+    kind: 'run' | 'task' | 'operation',
+    state: 'active' | 'uncertain' = 'active',
+    operationKind?: string,
+  ) => ({
+    code: 'RUN_ALREADY_ACTIVE',
+    message: 'working copy writer holder has not released ownership',
+    owner: {
+      kind,
+      id: 'holder',
+      sessionId: 'session',
+      state,
+      ...(operationKind ? { operationKind } : {}),
+    },
+  });
+  expect(refusalKind(holder('run'))).toBe('busy');
+  expect(refusalKind(holder('task'))).toBe('heldTask');
+  expect(refusalKind(holder('operation', 'active', 'document.save'))).toBe('heldDocument');
+  expect(refusalKind(holder('operation', 'active', 'git.commit'))).toBe('heldGit');
+  expect(refusalKind(holder('operation', 'active', 'debug'))).toBe('heldDebug');
+  expect(refusalKind(holder('operation', 'active', 'deployment'))).toBe('heldDeployment');
+  expect(refusalKind(holder('operation', 'active', 'language'))).toBe('heldLanguage');
+  expect(refusalKind(holder('operation', 'active', 'something.new'))).toBe('heldOperation');
+  expect(refusalKind(holder('run', 'uncertain'))).toBe('runUncertain');
+  expect(refusalKind(holder('task', 'uncertain'))).toBe('taskUncertain');
+  expect(refusalKind(holder('operation', 'uncertain', 'git.pull'))).toBe('operationUncertain');
+  expect(refusalKind({ ...holder('task'), code: 'RESOURCE_CAPACITY' })).toBe('heldTask');
+});

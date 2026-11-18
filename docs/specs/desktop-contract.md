@@ -9,7 +9,7 @@
 | ABS-01 | 워크트리 명령 실행 | effect intent, 승인, 파일 snapshot, Reins | 임의 명령 계약, OS 셸, process lease, 출력 조회 |
 | ABS-02 | Ask / Accept edits / Auto | tool-policy, PermissionPolicyEditor, 승인 UI | 컴포저 프리셋과 Run snapshot |
 | ABS-03 | Hashline 편집 | read 근거, broker, 원자 쓰기, diff | 태그/ops 엔진과 별도 편집 방식 |
-| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP | preview lease, 분리된 렌더링, 실제 Paddock origin |
+| ABS-04 | 파일·HTML·로컬 앱 미리보기 | FilePanel, diff, 기존 브라우저 MCP, 세션 패널의 브라우저 탭 | preview lease, 분리된 렌더링, 실제 Paddock origin |
 | ABS-05 | 모델 카탈로그·설정 가져오기·사고 강도 | ModelRegistry, credentials, reasoning | 카탈로그 cache, import preview/commit, capability 대조 |
 | ABS-06 | 동시 세션·Run | Coordinator live Map, Run별 events/사용량 | 다중 실행 admission, host 용량, 사본 경합, UI 구독 |
 | ABS-07 | Windows/macOS 패키지·트레이·업데이트·절전 방지·단축키 | Electron shell, Linux 패키지, commandRegistry | OS별 runtime packaging, update lifecycle, 사용자 바인딩 |
@@ -69,7 +69,7 @@ flowchart LR
 6. 환경은 선택한 실행 환경과 필요한 값만 전달한다. provider credentials·Corral DB·bootstrap token을 환경/명령 문자열에 섞지 않는다. secret 환경 참조가 필요하면 서버 설정의 별도 승인된 참조만 받는다.
 7. 임의 셸의 cwd 제한은 OS 파일·네트워크 격리가 아니다. 검증된 sandbox 없는 Windows 실행은 신뢰한 로컬 프로세스 capability로 명시한다. strict profile이 요구한 격리를 몰래 해제하지 않는다. 명령 정규식으로 임의 코드의 안전성을 증명하지 않는다.
 8. 출력은 제한된 chunk/offset 조회와 종료 요약을 제공한다. 대량 출력은 잘림 상태와 보존 정책을 표시한다. 모델에게 끝없는 raw stream을 넣지 않는다.
-9. 장시간 dev server는 별도 `ProcessLease`를 가진 service 실행으로 지원한다. foreground 도구가 종료된 척하고 orphan을 남기지 않는다. 세션의 프로세스 목록에서 종료할 수 있어야 한다. Run 종료 후에도 유지할 service는 사용자가 유지 범위를 명시하고, 쓰기 가능 service는 worktree writer lease를 계속 점유한다.
+9. 장시간 dev server는 별도 `ProcessLease`를 가진 service 실행으로 지원한다. foreground 도구가 종료된 척하고 orphan을 남기지 않는다. 세션의 프로세스 목록에서 종료할 수 있어야 한다. Run 종료 후에도 유지할 service는 사용자가 유지 범위를 명시하고, 쓰기 가능 service는 공유를 허용하지 않는 서버에서 worktree writer lease를 계속 점유한다. 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 돈다.
 
 **완료:** 일반 요청이 실제 사본의 파일을 바꾸고 UI diff에 나타나며, 사용자가 취소하면 grandchildren까지 종료되고 결과 readback이 이를 확인한다. 재시작/중복 제출로 명령이 재실행되지 않는다.
 
@@ -111,6 +111,8 @@ flowchart LR
 - dev server는 ABS-01의 service process를 사용한다. 임의 localhost 포트를 신뢰하지 않고, 이 lease가 소유한 포트/프로세스와 응답을 검증한다. 외부 script·리디렉션·WS는 명시한 origin 정책을 따른다. HMR에 필요한 WS를 모두 차단한 채 “로컬 앱 지원”으로 표시하지 않는다.
 - 현재 Linux fixture browser의 제약을 origin 문자열 한 줄만 바꿔 제거하지 않는다. launcher, MCP tool policy, proxy/요청 검증, 다운로드·업로드·새 창 정책을 같이 확장한다.
 - 사람이 보는 미리보기와 모델의 browser 도구는 같은 대상 lease를 참조한다. screenshot·검증 결과는 불변 evidence로 저장하며 화면 생성 성공과 실제 동작 성공을 구분한다.
+- Desktop에서 사람이 보는 preview는 세션 패널의 브라우저 탭에 미리보기 페이지로 연다([브라우저 탭](features/browser-tab.md)). 미리보기 페이지는 미리보기 탭을 열 때마다 새로 만드는 메모리 partition과 이 절의 lease 정책(origin과 경로 검증, lease 머리글, 권한 거절, 내려받기 차단, 새 창 거절, lease 밖으로 가는 이동과 리디렉션 차단)을 지금 그대로 쓰고, 탭이 닫히거나 lease가 끝나면 그 저장소를 지운다.
+- 같은 브라우저 탭의 일반 페이지(아무 http(s) 주소, 프로젝트마다 하나인 영속 저장소)는 이 절의 lease가 아니다. lease 머리글·origin 검증·서비스 소유 확인을 받지 않고, 모델의 browser 도구와 그 Chromium 프로필은 일반 페이지와 그 저장소를 보거나 조작하지 않는다.
 
 **완료:** 실제 Paddock의 HTML 및 로컬 앱을 패널에서 열고, 파일 수정 후 갱신하며, 에이전트가 같은 대상을 관찰·조작·assert할 수 있다. 다른 세션/포트/파일로의 탈출과 종료 후 재사용은 거절한다.
 
@@ -131,7 +133,7 @@ flowchart LR
 
 - 읽기/질문 Run은 고정 입력·tree snapshot을 읽는다. writer가 바꾸는 mutable 파일을 중간 상태로 읽지 않는다.
 - writer 판정은 최종 허용 도구·native extension·shell/service capability로 한다. 자연어 요청이나 셸 명령 추측으로 read-only를 선언하지 않는다.
-- 서로 다른 worktree의 writer는 병행할 수 있고, 같은 worktree에는 writer owner가 하나다. 같은 원본에 대한 merge/review apply에는 별도 원본 저장소 잠금을 적용한다.
+- 서로 다른 worktree의 writer는 병행할 수 있다. 공유를 허용하지 않는 서버에서는 같은 worktree에 writer owner가 하나이고, 로컬 host는 [공유 개발 모드](workbench.md#공유-개발-모드)로 사본을 사람의 작업과 나눠 쓰되 writer Run은 그곳에서도 하나다. 같은 원본에 대한 merge/review apply에는 별도 원본 저장소 잠금을 적용한다.
 - 읽기 Run의 사후 writer 승격은 하지 않는다. 수정 요청은 명시한 새 writer Run으로 시작한다. 이렇게 해야 이미 부여한 읽기/권한을 소급 변경하지 않는다.
 - 시작 검사는 `startRunWithRecovery`, `startRefusal`, auto team, explain, queue, CLI, 예약의 모든 입구에서 같은 admission을 쓴다. 사본 잠금 획득과 실행 예약 사이의 경합을 막는다.
 - host 전체의 모델 요청·resident worker·process 수 상한과 Run별 상한을 함께 적용한다. 현재 Run별 `acquireSlot`만 두면 Run 수만큼 총량이 늘어난다. 공정한 대기와 취소 시 슬롯 반환을 검증한다.
@@ -139,7 +141,7 @@ flowchart LR
 - busy, queue 자동 시작, sidebar 배지, root active-run 링크, widget plan/context, toast/notification, SSE 재접속과 cursor를 모두 대상별로 바꾼다. 단일 전역 SSE/store에 모든 Run의 projection을 덮어쓰지 않는다.
 - `terminationUnconfirmed`/`restoringFiles` 등의 현재 전역 차단을 점검한다. 사본/실행에 국한된 장애는 그 owner를 격리하고, DB 장애처럼 공통 장애만 전체에 전파한다.
 
-**완료:** A writer + B reader + 다른 사본 C writer가 동시에 진행한다. 같은 사본의 두 번째 writer는 명시 대기/거절된다. B의 승인·취소가 A/C에 작용하지 않고, 각 Run의 산출물·사용량·SSE 재열람이 맞아야 한다.
+**완료:** A writer + B reader + 다른 사본 C writer가 동시에 진행한다. 공유를 허용하지 않는 서버에서 같은 사본의 두 번째 writer는 명시 대기/거절된다. B의 승인·취소가 A/C에 작용하지 않고, 각 Run의 산출물·사용량·SSE 재열람이 맞아야 한다.
 
 ### ABS-07 — 실제 Windows/macOS 앱과 앱 수명
 
@@ -255,9 +257,9 @@ flowchart LR
 | ABS-01 | 임의 명령→실제 사본 변화→출력/exit/readback | 승인 전 실행, duplicate spawn, cwd 교체, 취소 후 자식 잔존, 재시작 자동 replay |
 | ABS-02 | 세 모드의 파일/명령 처리 | Auto로 deny/strict/review-only 우회, 바뀐 인자 승인 재사용 |
 | ABS-03 | 읽은 파일에 PUT/CUT/REM/MV | tag 충돌·stale·unseen line·타 실행 근거·목적지 충돌·부분 쓰기 |
-| ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용 |
+| ABS-04 | HTML/앱 preview→수정 반영→브라우저 assertion | 임의 origin/file, redirect/WS 탈출, 앱 credential 공유, 종료 lease 재사용, 미리보기 페이지에서 일반 페이지로 lease 머리글·저장소가 넘어감, 모델의 browser 도구가 프로젝트의 브라우저 저장소를 봄 |
 | ABS-05 | 네 소스 import→프로필 선택→payload 확인 | credential 노출/실행 참조 실행, 충돌 overwrite, metadata를 capability로 오인 |
-| ABS-06 | reader+writer+다른 사본 writer 병행 | 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
+| ABS-06 | reader+writer+다른 사본 writer 병행 | 로컬 host에서 같은 사본의 두 번째 writer Run, 공유를 허용하지 않는 서버에서 같은 사본 동시 writer, 총 permit 초과, 세션 간 취소/승인/plan 누출 |
 | ABS-07 | OS별 설치→작업→tray/awake→종료/업데이트 | 개발 경로 의존, 활성 작업 중 강제 설치, orphan server, 키보드/IME 회귀 |
 | ABS-08 | 일정 발화 1회→Run→승인→재열람 | 중복 tick/reconnect, DST 중복, 숨은 catch-up, 비활성화 후 늦은 시작 |
 | ABS-09 | clone→연결→명시 자료 참조 | 기존 폴더 덮기, 자동 신뢰/commit, 지침 자동 권한 상승, 과거 context 변경 |

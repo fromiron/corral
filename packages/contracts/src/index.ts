@@ -26,6 +26,7 @@ export * from './meeting.ts';
 export * from './meeting-handoff.ts';
 export * from './model-requests.ts';
 export * from './package-management.ts';
+export * from './page-annotation.ts';
 export type * from './ports.ts';
 export * from './preview-observation.ts';
 export * from './preview-tools.ts';

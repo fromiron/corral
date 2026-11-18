@@ -16,7 +16,6 @@ import {
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
-  DevelopmentStart,
   DocumentCommand,
   EffortRoutingSettings,
   type ErrorCode,
@@ -134,7 +133,7 @@ import { HarnessService } from './harness/service.ts';
 import { SkillQualityService } from './harness/skill-quality.ts';
 import { registerSkillQualityRoutes } from './harness/skill-quality-routes.ts';
 import { createHarnessVaultAdapters } from './harness/vault.ts';
-import { ImageStore } from './images.ts';
+import { ImageRefusal, ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
@@ -550,7 +549,7 @@ async function createCorralServer(
       : {}),
     debugPreview: async (sessionId, leaseId, target, open) => {
       const current = () =>
-        canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
+        canonicalJson(files.workspaceTarget(sessionId)) === canonicalJson(target);
       const lease = previews.list(sessionId).find((item) => item.leaseId === leaseId);
       if (!current() || !lease || lease.runId || lease.state !== 'ready')
         throw new WorkspaceError('REVISION_CONFLICT', 'the managed preview target changed');
@@ -905,6 +904,8 @@ async function createCorralServer(
     backendSessionId,
     live: registry !== null,
     pathEngine: await files.pathEngineStatus(),
+    // Whether this host shares the Paddock (workbench.md 공유 개발 모드).
+    sharedDevelopment: files.sharedDevelopment,
   }));
   // Stored with the workspace so a new loopback port does not reset an explicit choice.
   const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
@@ -2232,8 +2233,7 @@ async function createCorralServer(
   }
   const workspaceFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError) return fail(reply, error.code, error.message);
-    if (error instanceof ToolRefusal)
-      return fail(reply, error.owner ? error.code : 'SCHEMA_INVALID', error.message, error.owner);
+    if (error instanceof ToolRefusal) return fail(reply, error.code, error.message, error.owner);
     // Git's message can name local paths; only the step is reported.
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the folder operation failed');
   };
@@ -2266,16 +2266,15 @@ async function createCorralServer(
     { bodyLimit: IMAGE_MAX_BYTES },
     async (request, reply) => {
       try {
-        const name = ImageAttachment.shape.name.parse(request.query.name);
+        const named = ImageAttachment.shape.name.safeParse(request.query.name);
+        if (!named.success) return fail(reply, 'SCHEMA_INVALID', 'image name is invalid');
+        const name = named.data;
         if (request.headers['content-type'] !== 'image/png' || !Buffer.isBuffer(request.body))
           return fail(reply, 'SCHEMA_INVALID', 'normalized PNG input required');
         return reply.code(201).send(images.put(request.params.sessionId, name, request.body));
-      } catch {
-        return fail(
-          reply,
-          'SCHEMA_INVALID',
-          'image unavailable, invalid, or over its size/dimension/storage limit',
-        );
+      } catch (error) {
+        if (error instanceof ImageRefusal) return fail(reply, error.code, error.message);
+        return fail(reply, 'STORAGE_UNAVAILABLE', 'image could not be stored');
       }
     },
   );
@@ -2731,44 +2730,6 @@ async function createCorralServer(
       if (!input) return reply;
       try {
         return await files.stopLanguage(request.params.sessionId, input);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.get<SessionParams>(
-    '/api/v1/sessions/:sessionId/worktree/development',
-    async (request, reply) => {
-      try {
-        return files.developmentState(request.params.sessionId);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.post<SessionParams>(
-    '/api/v1/sessions/:sessionId/worktree/development',
-    async (request, reply) => {
-      const input = DevelopmentStart.safeParse(request.body);
-      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development request');
-      try {
-        return await files.startDevelopment(request.params.sessionId, input.data);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.post<{ Params: { sessionId: string; operationId: string } }>(
-    '/api/v1/sessions/:sessionId/worktree/development/:operationId/finish',
-    async (request, reply) => {
-      const input = z.strictObject({ target: WorkspaceTarget }).safeParse(request.body);
-      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development target');
-      try {
-        return await files.finishDevelopment(
-          request.params.sessionId,
-          request.params.operationId,
-          input.data.target,
-        );
       } catch (error) {
         return documentFail(reply, error);
       }

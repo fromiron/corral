@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act } from 'react';
+import { act, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -69,7 +69,7 @@ afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
   vi.unstubAllGlobals();
 });
-async function mount() {
+async function mount(props: Partial<ComponentProps<typeof WorkbenchToolsPanel>> = {}) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -80,7 +80,7 @@ async function mount() {
   await act(async () => {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <WorkbenchToolsPanel sessionId="session" projectId="project" />
+        <WorkbenchToolsPanel sessionId="session" projectId="project" {...props} />
       </IntlProvider>,
     );
   });
@@ -141,4 +141,41 @@ it('starts on Preview when a preview is already running as the pane opens', asyn
   expect(selected(container)).toBe(messages.Preview.tab);
   // The tasks stay mounted behind the Preview tab.
   expect(container.querySelector('[data-testid="workbench-tasks"]')).not.toBeNull();
+});
+
+const runningPreview = {
+  leaseId: 'lease_one',
+  sessionId: 'session',
+  runId: 'run_one',
+  kind: 'static',
+  url: 'http://127.0.0.2:4100/index.html',
+  origin: 'http://127.0.0.2:4100',
+  path: 'index.html',
+  state: 'ready',
+  createdAt: '2026-11-10T00:00:00.000Z',
+};
+
+it('in the panel’s 작업 tab, shows the inner tab it is given and tells which one the person picks', async () => {
+  const onViewChange = vi.fn();
+  const container = await mount({ view: 'preview', onViewChange });
+  expect(selected(container)).toBe(messages.Preview.tab);
+  await act(async () => tab(container, messages.DevTasks.title)?.click());
+  expect(onViewChange).toHaveBeenCalledWith('tasks');
+  // The tab is the caller's: until it says so, 미리보기 stays in front.
+  expect(selected(container)).toBe(messages.Preview.tab);
+});
+
+it('in the panel’s 작업 tab nobody has picked, tells that a running preview put 미리보기 in front', async () => {
+  fixture.workspaces.previews.mockImplementation(async () => [runningPreview]);
+  const onViewChange = vi.fn();
+  await mount({ view: null, onViewChange });
+  expect(onViewChange).toHaveBeenCalledWith('preview');
+});
+
+it('in the panel’s 작업 tab the person picked, a running preview changes nothing (counterexample)', async () => {
+  fixture.workspaces.previews.mockImplementation(async () => [runningPreview]);
+  const onViewChange = vi.fn();
+  const container = await mount({ view: 'tasks', onViewChange });
+  expect(onViewChange).not.toHaveBeenCalled();
+  expect(selected(container)).toBe(messages.DevTasks.title);
 });

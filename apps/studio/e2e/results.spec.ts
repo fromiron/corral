@@ -13,8 +13,14 @@ test('a cancelled run keeps what it made as a partial result', async ({ page }) 
   await expect(
     page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' }),
   ).toBeVisible({ timeout: 20_000 });
-  await page.getByRole('button', { name: 'Cancel whole run', exact: true }).click();
-  await page.getByRole('button', { name: 'Confirm whole run cancellation', exact: true }).click();
+  // The approval's reject may carry the same name: the stop is the run controls' own. Its
+  // confirmation stands in the controls under it, Keep running first and focused.
+  const controls = page.getByRole('region', { name: 'Run controls', exact: true });
+  const stop = controls.getByRole('button', { name: 'Stop the run', exact: true });
+  await stop.click();
+  await expect(controls.getByRole('status')).toContainText('The stop has not been sent.');
+  await expect(controls.getByRole('button', { name: 'Keep running', exact: true })).toBeFocused();
+  await stop.last().click();
   await expect(page.getByTestId('run-status')).toContainText('Cancelled', { timeout: 15_000 });
   await page.getByRole('link', { name: 'Open run page' }).click();
 

@@ -6,13 +6,15 @@ import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { usageTotals } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
+import { reportedInput } from '../../../../packages/react/src/run/usage-input.ts';
 import {
   activityLine,
-  chooseRun,
+  closePanel,
   lastRunSucceeded,
   newConversation,
+  openPanelTab,
   openResult,
-  panelTab,
+  panelTabNamed,
   requestBox,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -91,7 +93,7 @@ test('a completed run explains failed file steps and opens their reasons', async
     'TARGET_NOT_FOUND: the folder is unavailable',
   );
   // The run record keeps the same reasons on the execution that failed.
-  await panelTab(page, 'Runs');
+  await openPanelTab(page, 'Runs');
   await page
     .getByTestId('run-monitor')
     .getByRole('tablist', { name: 'Run views', exact: true })
@@ -111,6 +113,9 @@ test('a completed run explains failed file steps and opens their reasons', async
   await expect(failure.locator('details')).not.toHaveAttribute('open');
   await failure.getByText('Diagnostics', { exact: true }).click();
   await expect(failure.locator('code')).toHaveText('TARGET_NOT_FOUND: the folder is unavailable');
+  // Run info stands at the end of the view row, which the execution's detail takes the place of
+  // in a record narrower than detail and views side by side: the detail is closed first.
+  await page.getByRole('button', { name: 'Close details', exact: true }).click();
   await page.getByRole('button', { name: 'Run info', exact: true }).click();
   await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
   await page.getByRole('button', { name: 'Usage by request' }).click();
@@ -121,7 +126,7 @@ test('a completed run explains failed file steps and opens their reasons', async
   expect(corral.errors).toEqual([]);
 });
 
-test('selected-run usage and unique result identities survive reload without changing session totals', async ({
+test('a past run’s usage reads in its Run info while the conversation keeps the last run, through reload and without changing session totals', async ({
   page,
   corral,
 }) => {
@@ -141,30 +146,72 @@ test('selected-run usage and unique result identities survive reload without cha
   // The same reading the comparison below makes: the figures wrap, so the laid-out text differs.
   const totals = (await page.getByTestId('composer-stats').textContent()) ?? '';
   expect(totals).toContain('Conversation total');
-  // The run segment of the top bar's path exists only in run history.
-  await panelTab(page, 'Runs');
-  await chooseRun(page, 1);
-  await panelTab(page, 'Conversation');
-  // The activity bar names the run the conversation shows when it is not the last one.
-  const selected = activityLine(page).getByText('Selected run · Run #1 of 2', { exact: true });
-  await expect(selected).toBeVisible();
+  // Run #1 chosen in the "+" list's run history, which lists both runs.
+  await openPanelTab(page, 'Runs', { run: 1 });
+  // The address selects Run #1's tab beside the conversation; the conversation still speaks of
+  // the last run (chat-widgets-contract.md 3.1), and so it does after a reload.
+  expect(new URL(page.url()).searchParams.get('run')).toBeTruthy();
+  await expect(lastRunSucceeded(page)).toContainText('Last run');
+  await expect(activityLine(page)).not.toContainText('Selected run');
   await page.reload();
-  await expect(selected).toBeVisible();
+  await expect(lastRunSucceeded(page)).toContainText('Last run');
+  await expect(activityLine(page)).not.toContainText('Selected run');
   await expect(page.getByTestId('composer-stats')).toHaveText(totals);
+  const [first, second] = [...corral.server.coordinator.listRuns()].reverse();
+  if (!first || !second) throw new Error('The runs are missing');
+  const { projection } = corral.server.coordinator.getSnapshot(first.runId);
+  const last = corral.server.coordinator.getSnapshot(second.runId).projection;
+  // Overview reads the last run's usage and names no other run's scope.
   await page.getByTestId('session-summary-trigger').click();
   const overview = page.getByTestId('session-summary-popup');
-  await expect(overview.getByTestId('overview-run-scope')).toHaveText('Selected run · Run #1');
-  const first = [...corral.server.coordinator.listRuns()].reverse()[0];
-  if (!first) throw new Error('The first run is missing');
-  const { projection } = corral.server.coordinator.getSnapshot(first.runId);
+  await expect(overview.getByTestId('overview-run-scope')).toHaveCount(0);
+  await expect(overview).not.toContainText('Selected run');
   await expect(overview.locator('[data-overview-widget="usage"]')).toContainText(
-    usageTotals(projection).outputTokens.toLocaleString('en-US'),
+    usageTotals(last).outputTokens.toLocaleString('en-US'),
   );
   await overview.getByRole('button', { name: 'Open Usage details' }).click();
   await expect(page.getByTestId('usage-detail')).toContainText('Reported output tokens');
   await expect(page.getByTestId('usage-detail')).toContainText('Simulation usage');
   await page.keyboard.press('Escape');
   await page.keyboard.press('Escape');
+  // The past run's own usage, its input and cached input with it, reads in its Run info: the
+  // reload brought back Run #1's tab, selected.
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
+  // The top bar's path ends at the conversation: no run there.
+  await expect(page.getByRole('banner').getByRole('button', { name: /Run #\d/ })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Run info', exact: true }).click();
+  await page.getByTestId('run-side').getByRole('tab', { name: 'Usage', exact: true }).click();
+  const usage = page.getByTestId('run-side').getByRole('region', { name: 'Usage', exact: true });
+  const value = (label: string) =>
+    usage
+      .locator('dt', { hasText: new RegExp(`^${label}$`) })
+      .locator('xpath=following-sibling::dd[1]');
+  await expect(value('Output tokens')).toHaveText(
+    usageTotals(projection).outputTokens.toLocaleString('en-US'),
+  );
+  // The same reading as the Overview's usage detail: one computation, read from the record.
+  const { input, inputUnreported } = reportedInput(projection);
+  if (input) {
+    await expect(value('Reported input tokens')).toHaveText(input.tokens.toLocaleString('en-US'));
+    await expect(value('Cached input')).toHaveText(
+      input.cached == null
+        ? 'Not reported'
+        : input.cacheShare == null
+          ? input.cached.toLocaleString('en-US')
+          : `${input.cached.toLocaleString('en-US')} (${new Intl.NumberFormat('en-US', {
+              style: 'percent',
+              maximumFractionDigits: 0,
+            }).format(input.cacheShare)})`,
+    );
+  } else {
+    // No call reported input: no input total of 0.
+    await expect(usage.locator('dt', { hasText: 'Reported input tokens' })).toHaveCount(0);
+  }
+  if (inputUnreported > 0)
+    await expect(usage).toContainText(
+      `${inputUnreported} completed call${inputUnreported === 1 ? '' : 's'} did not report input tokens`,
+    );
+  await closePanel(page);
   await requestBox(page).fill('@');
   const results = page
     .getByRole('listbox', { name: 'References' })
@@ -247,7 +294,8 @@ async function finishedRun(page: Page, corral: { open(path?: string): Promise<vo
     return started.runId as string;
   }, definition);
   await corral.open(`/runs/${runId}`);
-  await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 15_000 });
+  // Beside the conversation the record does not say the run's state; the conversation does.
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 15_000 });
   await expect(page.getByRole('group', { name: 'Run graph', exact: true })).toBeVisible();
   await openResult(page);
 }

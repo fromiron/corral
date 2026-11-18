@@ -1,8 +1,9 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { type KeyboardEvent, useEffect, useId, useState } from 'react';
+import { type KeyboardEvent, useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Button, cn, fontWeights, KitBadge, Textarea } from '../design-kit/index.ts';
+import { keepInput, keptInput } from '../keptInputs.ts';
 import type { RunSessionStore } from '../run/session.ts';
 import { CommandReceipts } from './CommandReceipts.tsx';
 import { ExecutionSteering } from './ExecutionSteering.tsx';
@@ -21,6 +22,23 @@ export interface SteerTarget {
  * says who receives the instruction, when it takes effect and how far it reaches. Directive badges
  * change only on committed events.
  */
+interface Draft {
+  runId: string | null;
+  executionId: string;
+  nodeLabel: string;
+  text: string;
+  commandId?: string;
+}
+const draftKey = (runId: string | null, executionId: string) =>
+  `reins:${runId ?? ''}:${executionId}`;
+
+/**
+ * The areas on screen, told when a draft sent from one of them is settled by its answer: an area
+ * opened again for that execution before the answer starts from the same kept draft, and takes
+ * what the answer leaves (nothing, or the draft with its lost command).
+ */
+const settledDrafts = new Set<(sent: Draft, next: Draft | null) => void>();
+
 export function ReinsPanel({
   session,
   target,
@@ -33,13 +51,40 @@ export function ReinsPanel({
   const t = useTranslations('Reins');
   const name = useTranslations('Terms');
   const inputId = useId();
-  const [draft, setDraft] = useState<{
-    runId: string | null;
-    executionId: string;
-    nodeLabel: string;
-    text: string;
-    commandId?: string;
-  } | null>(null);
+  const [draft, setDraftState] = useState<Draft | null>(() =>
+    target
+      ? (keptInput<Draft>(draftKey(session.getState().runId, target.executionId)) ?? null)
+      : null,
+  );
+  // An unsent instruction is kept for its execution after this area goes, until a reload: opening
+  // 지시하기 for that execution again has it (features/session-panel.md 닫기와 패널 여닫기).
+  // The kept entry is written beside the state, never inside an updater: an answer that arrives
+  // after the area went still settles what is kept.
+  const current = useRef(draft);
+  current.current = draft;
+  const setDraft = useCallback((next: Draft | null) => {
+    const before = current.current;
+    if (before) keepInput(draftKey(before.runId, before.executionId), null);
+    if (next) keepInput(draftKey(next.runId, next.executionId), next);
+    current.current = next;
+    setDraftState(next);
+  }, []);
+  /** Settles a draft sent earlier: what is kept for it, and the area if it still shows it. */
+  const settle = useCallback((sent: Draft, next: Draft | null) => {
+    const key = draftKey(sent.runId, sent.executionId);
+    if (keptInput<Draft>(key) === sent) keepInput(key, next);
+    for (const area of [...settledDrafts]) area(sent, next);
+  }, []);
+  useEffect(() => {
+    const take = (sent: Draft, next: Draft | null) => {
+      if (current.current === sent) current.current = next;
+      setDraftState((shown) => (shown === sent ? next : shown));
+    };
+    settledDrafts.add(take);
+    return () => {
+      settledDrafts.delete(take);
+    };
+  }, []);
   // Pinned to the run and execution it was opened for.
   const [cancelTarget, setCancelTarget] = useState<{
     runId: string | null;
@@ -54,10 +99,17 @@ export function ReinsPanel({
     draft?.commandId ? s.receipts[draft.commandId] : undefined,
   );
   const text = draft?.text ?? '';
+  const targetKey = target ? draftKey(runId, target.executionId) : null;
   useEffect(() => {
-    if (recovered && recovered.status !== 'rejected')
-      setDraft((current) => (current?.commandId === recovered.commandId ? null : current));
-  }, [recovered]);
+    if (!targetKey) return;
+    const kept = keptInput<Draft>(targetKey);
+    if (kept) setDraftState((current) => current ?? kept);
+  }, [targetKey]);
+  useEffect(() => {
+    const shown = current.current;
+    if (recovered && recovered.status !== 'rejected' && shown?.commandId === recovered.commandId)
+      settle(shown, null);
+  }, [recovered, settle]);
 
   // The area's name, Reins, with its explanation right after the title, beside it rather than in
   // it, so the heading names only the area (glossary.md, features/term-hints.md). A long role name
@@ -103,10 +155,22 @@ export function ReinsPanel({
     if (!instruction || pending || !draftMatches || target.finished) return;
     // The view may have moved to another run since this render.
     if (draft && session.getState().runId !== draft.runId) return;
+    // A draft whose answer was lost goes again as that same command, never under a new id.
+    const lost = draft?.commandId
+      ? session.getState().unconfirmedCommands[draft.commandId]
+      : undefined;
+    if (draft && lost) {
+      try {
+        const receipt = await session.getState().retryCommand(lost.command.commandId);
+        if (receipt.status !== 'rejected') settle(draft, null);
+      } catch {
+        // Still lost: the draft keeps its command for the next try.
+      }
+      return;
+    }
     try {
       const receipt = await steer(target.executionId, instruction);
-      if (receipt.status !== 'rejected')
-        setDraft((current) => (current === draft ? null : current));
+      if (receipt.status !== 'rejected' && draft) settle(draft, null);
     } catch {
       const pending = Object.values(session.getState().unconfirmedCommands).find(
         ({ command }) =>
@@ -115,12 +179,7 @@ export function ReinsPanel({
           command.payload.targetExecutionId === draft.executionId &&
           command.payload.text === instruction,
       );
-      if (pending)
-        setDraft((current) =>
-          current && current === draft
-            ? { ...current, commandId: pending.command.commandId }
-            : current,
-        );
+      if (pending && draft) settle(draft, { ...draft, commandId: pending.command.commandId });
     }
   };
 

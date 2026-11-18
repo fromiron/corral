@@ -2,6 +2,7 @@ import { Button } from '@corral/react/design-kit';
 import { FolderOpen } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import type { BrowserBridge } from '../../desktop/src/browser-bridge.ts';
 import type { NotificationTarget } from './workbench/notifications.ts';
 
 interface DesktopInfo {
@@ -44,6 +45,8 @@ interface DesktopBridge extends PreviewBridge {
   badge(count: number): Promise<void>;
   /** Menu commands by name; returns the unsubscribe function. */
   onCommand(callback: (id: string) => void): () => void;
+  /** The session panel's browser tab (features/browser-tab.md); absent in older shells. */
+  browser?: BrowserBridge;
 }
 declare global {
   interface Window {

@@ -224,21 +224,11 @@ export function OverviewWidgets({
           )}
         </div>
       ) : (
-        <>
-          {/* Only an older run needs saying; the last or live run is what Overview shows. */}
-          {model.viewed && !model.viewed.latest ? (
-            <p data-testid="overview-run-scope" className="text-caption text-muted-foreground">
-              {model.runNumber || model.viewed.number
-                ? t('runScope', { number: model.runNumber ?? model.viewed.number })
-                : t('selectedRun')}
-            </p>
-          ) : null}
-          {overviewWidgets(model).map((widget) => (
-            <div key={widget} data-overview-widget={widget}>
-              <Widget widget={widget} model={model} open={choose} />
-            </div>
-          ))}
-        </>
+        overviewWidgets(model).map((widget) => (
+          <div key={widget} data-overview-widget={widget}>
+            <Widget widget={widget} model={model} open={choose} />
+          </div>
+        ))
       )}
     </section>
   );
@@ -451,14 +441,14 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
     [t('modelCalls'), String(usage.requests)],
     ...(usage.input
       ? ([
-          [t('inputTokens'), format.number(usage.input.tokens)],
+          [tb('inputTokens'), format.number(usage.input.tokens)],
           [
-            t('cachedInput'),
+            tb('cachedInput'),
             usage.input.cached == null
-              ? t('cacheNotReported')
+              ? tb('cacheNotReported')
               : usage.input.cacheShare == null
                 ? format.number(usage.input.cached)
-                : t('cachedShare', {
+                : tb('cachedShare', {
                     tokens: format.number(usage.input.cached),
                     share: format.number(usage.input.cacheShare, {
                       style: 'percent',
@@ -482,7 +472,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
       </dl>
       {usage.inputUnreported > 0 ? (
         <p className="text-caption text-muted-foreground">
-          {t('inputUnreported', { count: usage.inputUnreported })}
+          {tb('inputUnreported', { count: usage.inputUnreported })}
         </p>
       ) : null}
       {model.simulated ? (
@@ -493,7 +483,7 @@ function UsageDetail({ model, usage }: { model: ChatWidgetModel; usage: UsageSum
       ) : null}
       {usage.input && usage.input.cached != null && usage.input.cacheUnreported > 0 ? (
         <p className="text-caption text-muted-foreground">
-          {t('cacheUnreported', { count: usage.input.cacheUnreported })}
+          {tb('cacheUnreported', { count: usage.input.cacheUnreported })}
         </p>
       ) : null}
       {costLines.length || cost?.simulated ? (

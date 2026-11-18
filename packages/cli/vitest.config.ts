@@ -1,2 +1,5 @@
 import { defineProject } from 'vitest/config';
-export default defineProject({ test: { name: 'cli', include: ['test/**/*.test.ts'] } });
+import { testTimeout } from '../../vitest.defaults.ts';
+export default defineProject({
+  test: { testTimeout, name: 'cli', include: ['test/**/*.test.ts'] },
+});

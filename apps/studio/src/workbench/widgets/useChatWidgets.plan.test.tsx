@@ -120,7 +120,6 @@ function Probe() {
       onStop={vi.fn()}
       onPause={vi.fn()}
       onResume={vi.fn()}
-      viewingOther={false}
     />
   );
 }

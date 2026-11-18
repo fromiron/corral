@@ -107,9 +107,7 @@ for (const locale of ['en', 'ko'] as const) {
         const row = panel.getByRole('listitem').filter({ hasText: session.title });
         await row.getByRole('button', { name: new RegExp(m.Sessions.restoreSession) }).click();
         await expect(
-          page
-            .getByTestId('app-sidebar')
-            .locator(`a[href="/sessions/${session.sessionId}?compose=true"]`),
+          page.getByTestId('app-sidebar').locator(`a[href="/sessions/${session.sessionId}"]`),
         ).toBeVisible();
         expect((await api(page, `/sessions/${session.sessionId}`)).archivedAt).toBeNull();
       }
@@ -192,10 +190,23 @@ for (const locale of ['en', 'ko'] as const) {
               : 'Paddock이 없어 읽기 전용입니다.',
           ),
         ).toBeVisible();
+        // A source-folder file opens read-only as its own 문서 tab.
         await files.getByRole('treeitem', { name: 'README.md', exact: true }).click();
+        // The workbench helpers name the panel in English; this test runs in both languages.
+        const panel = page.getByRole('region', { name: m.SessionPanel.label, exact: true });
         await expect(
-          files.getByText('Read-only original contents', { exact: false }),
+          panel
+            .getByRole('tabpanel', { name: /^README\.md/ })
+            .getByText('Read-only original contents', { exact: false }),
         ).toBeVisible();
+        // Narrow, the tree is the Files tab again; wide, it is the column beside the document.
+        if (!(await setup.isVisible())) {
+          const filesTab = panel
+            .getByRole('tablist', { name: m.SessionPanel.tabs, exact: true })
+            .getByRole('tab', { name: m.Docking.files, exact: true });
+          await filesTab.click();
+          await expect(filesTab).toHaveAttribute('aria-selected', 'true');
+        }
         await expect(setup).toBeVisible();
         await setup.click();
         await expect(page).toHaveURL(/panel=changes/);

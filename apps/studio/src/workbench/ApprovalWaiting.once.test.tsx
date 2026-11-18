@@ -104,9 +104,8 @@ function waitingModel(): ChatWidgetModel {
   return {
     sessionId: 'session_team',
     runId: 'run_team',
-    runNumber: 1,
     live: true,
-    viewed: null,
+    lastRun: false,
     readState: 'ready',
     chips: [],
     tools: [],
@@ -188,7 +187,6 @@ async function mainArea(
                 onStop={vi.fn()}
                 onPause={vi.fn()}
                 onResume={vi.fn()}
-                viewingOther={false}
               />
             </div>
           </div>

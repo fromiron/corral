@@ -19,7 +19,7 @@ vi.mock('../workbench/useCorralChat.ts', () => ({
 }));
 vi.mock('../workbench/MeetingEvidence.tsx', () => ({ MeetingEvidencePicker: () => null }));
 vi.mock('../workbench/ChatView.tsx', () => ({
-  ChatDensityMenu: () => null,
+  useChatDensityRow: () => () => null,
   ChatView: ({ items, composer, header, children, tray }: any) => (
     <div data-chat-view>
       {header}
@@ -174,7 +174,7 @@ async function mount(first: MeetingView, { compact = false } = {}) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: toolbar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: toolbar, crumbs: null }}>
           <MeetingPage
             session={{ sessionId: 'session_1', title: 'Review', revision: 3 } as WorkSession}
           />
@@ -956,13 +956,26 @@ describe('the meeting’s activity bar', () => {
     expect(rows[1]?.querySelector('button')).toBeNull();
     expect(said(f.container)).not.toContain('Builder');
     expect(line(f.container)?.textContent).not.toContain(ma.waiting.replace('{count}', '2'));
-    // Stop, and no join, no pause.
+    // No join, no pause; with nothing written, Stop is Send's place alone.
     const panel = activity(f.container)?.textContent ?? '';
-    expect(panel).toContain(messages.Activity.stop);
+    expect(panel).not.toContain(messages.Activity.stop);
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).not.toBeNull();
     expect(panel).not.toContain(messages.Activity.join);
     // No row is where an instruction goes.
     expect(panel).not.toContain(messages.Activity.joinTarget);
     expect(panel).not.toContain(messages.Activity.pause);
+    // Something written: Send's place is Send, and Stop is in the bar.
+    const box = f.box();
+    if (!box) throw new Error('the message box');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set?.call(
+        box,
+        'One more thing',
+      );
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(activity(f.container)?.textContent).toContain(messages.Activity.stop);
+    expect(f.container.querySelector('[data-testid="composer-stop"]')).toBeNull();
   });
 
   it('the secretary has its row by name', async () => {

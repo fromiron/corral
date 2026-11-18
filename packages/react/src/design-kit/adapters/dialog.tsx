@@ -2,6 +2,7 @@
 
 import { Dialog as DialogPrimitive } from '@base-ui/react/dialog';
 import type { ComponentProps } from 'react';
+import { useTranslations } from 'use-intl';
 import {
   DialogContent as KitDialogContent,
   DialogDescription as KitDialogDescription,
@@ -27,8 +28,11 @@ function DialogPopup({
   bottomStickOnMobile?: boolean;
   variant?: 'default' | 'media';
 }) {
+  // The ✕ is named in the app's language unless the dialog names it itself.
+  const t = useTranslations('Common');
   return (
     <KitDialogContent
+      closeLabel={t('close')}
       data-slot="dialog-popup"
       className={cn(
         'max-h-[calc(100dvh-2rem)] overflow-y-auto [-webkit-app-region:no-drag]',

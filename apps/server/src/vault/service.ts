@@ -43,12 +43,14 @@ export const PortableApplication = z.strictObject({
       'session.jump': ModChord.optional(),
       'view.sidebar': ModChord.optional(),
       'view.panel': ModChord.optional(),
+      'view.dock': ModChord.optional(),
       'composer.focus': ModChord.optional(),
       settings: ModChord.optional(),
       'nav.back': ModChord.optional(),
       'nav.forward': ModChord.optional(),
       'run.stop': ModChord.optional(),
       'reply.quote': z.union([ModChord, AltChord]).optional(),
+      'browser.annotate': ModChord.optional(),
     })
     .optional(),
 });

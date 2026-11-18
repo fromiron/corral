@@ -47,11 +47,11 @@ import {
   fileChangeSignals,
   type PlanRef,
   presentContext,
+  presentsLastRun,
   runToolRows,
   selectPresentedPlan,
   type UsageSummary,
   usageSummary,
-  viewedRun,
   visibleWidgets,
   widgetReadState,
   workPlanOpen,
@@ -63,10 +63,9 @@ export interface ChatWidgetModel {
   runId: string | null;
   /** The presented run's shown state: the one its row's head shows (presence.md). */
   presence?: Presence | null;
-  runNumber: number | null;
   live: boolean;
-  /** The finished run on screen and its place among the session's runs. */
-  viewed: ReturnType<typeof viewedRun>;
+  /** The presented run is the session's last run, ended (chat-widgets-contract.md 3.1). */
+  lastRun: boolean;
   simulated: boolean;
   readState: 'empty' | 'loading' | 'ready' | 'error';
   retryRead: () => void;
@@ -567,8 +566,7 @@ function useChatWidgetState(
     runId: presentationRunId,
     presence: projection ? projectionPresence(projection, view?.events ?? []) : null,
     live,
-    runNumber: presentationRunId ? runIds.indexOf(presentationRunId) + 1 || null : null,
-    viewed: viewedRun({ runIds, presentationRunId, live }),
+    lastRun: presentsLastRun({ runIds, presentationRunId, live }),
     simulated: Boolean(simulated),
     readState,
     retryRead: retryCurrentRead,

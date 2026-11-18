@@ -16,6 +16,7 @@ import {
   TerminalCreate,
   type TerminalDiagnostic,
   type TerminalEvent,
+  type TerminalForeground,
   TerminalIdentity,
   TerminalInput,
   type TerminalList,
@@ -27,6 +28,7 @@ import {
 import { canonicalJson, ToolRefusal } from '@corral/core';
 import type { IPty, IPtyForkOptions } from 'node-pty';
 import type { WorkbenchOperations } from '../files/workbench-operations.ts';
+import { ptyForeground } from './pty-foreground.ts';
 import {
   cleanupPtyLaunch,
   cleanupPtySession,
@@ -40,16 +42,18 @@ import { commandEnvironment, listShells, type ShellInfo } from './shells.ts';
 
 type Pty = Pick<IPty, 'pid' | 'write' | 'resize' | 'kill' | 'onData' | 'onExit'>;
 type Spawn = (file: string, args: string[], options: IPtyForkOptions) => Pty;
+/** A terminal's view as the host holds and stores it; `foreground` is read only when it is shown. */
+type HeldView = Omit<TerminalView, 'foreground'>;
 type StoredTerminal = {
   kind: 'terminal';
-  terminal: TerminalView;
+  terminal: HeldView;
   identity?: PtySessionIdentity;
   launch?: PtyLaunchEvidence;
   startupDiagnostic?: TerminalDiagnostic;
 };
 type Listener = (event: TerminalStreamMessage) => void;
 type Entry = {
-  view: TerminalView;
+  view: HeldView;
   identity?: PtySessionIdentity;
   launch?: PtyLaunchEvidence;
   startupDiagnostic?: TerminalDiagnostic;
@@ -86,6 +90,8 @@ export interface PtyRuntimeOptions {
   newGeneration?: () => string;
   timers?: Scheduler;
   historyBytes?: number;
+  /** Reads whether the shell holds its PTY's foreground (default: the Linux process table). */
+  foreground?: (shell: PtySessionIdentity) => TerminalForeground;
 }
 
 const hash = (value: unknown) => createHash('sha256').update(canonicalJson(value)).digest('hex');
@@ -142,7 +148,24 @@ export class PtyRuntime {
   }
 
   get(sessionId: string, terminalId: string): TerminalView {
-    return structuredClone(this.entry(sessionId, terminalId).view);
+    return this.present(this.entry(sessionId, terminalId));
+  }
+
+  /**
+   * The view as it is shown, with the shell's foreground read now: only a running shell with an
+   * established identity is read; before and after that the host cannot tell.
+   */
+  private present(entry: Entry): TerminalView {
+    const read = this.options.foreground ?? ptyForeground;
+    let foreground: TerminalForeground = 'unknown';
+    if (entry.view.state === 'running' && entry.identity) {
+      try {
+        foreground = read(entry.identity);
+      } catch {
+        foreground = 'unknown';
+      }
+    }
+    return { ...structuredClone(entry.view), foreground };
   }
 
   async create(sessionId: string, raw: TerminalCreate): Promise<TerminalView> {
@@ -167,7 +190,7 @@ export class PtyRuntime {
         'CAPABILITY_DENIED',
         'the working copy is not available for a terminal writer',
       );
-    const view: TerminalView = {
+    const view: HeldView = {
       terminalId: input.operationId,
       target: input.target,
       generation: (this.options.newGeneration ?? (() => `terminal_${randomUUID()}`))(),
@@ -218,7 +241,7 @@ export class PtyRuntime {
       view.controllerGeneration += 1;
     } else {
       if (view.controller?.attachmentId === input.attachmentId && !input.takeover)
-        return structuredClone(view);
+        return this.present(entry);
       if (view.controller && !input.takeover)
         throw new ToolRefusal('REVISION_CONFLICT', 'another attachment owns the controller');
       view.controllerGeneration += 1;
@@ -229,8 +252,8 @@ export class PtyRuntime {
       };
     }
     entry.lastFrameHash = undefined;
-    this.emit(entry, { type: 'status', terminal: structuredClone(view) });
-    return structuredClone(view);
+    this.emit(entry, { type: 'status', terminal: this.present(entry) });
+    return this.present(entry);
   }
 
   input(sessionId: string, terminalId: string, raw: TerminalInput): TerminalAck {
@@ -265,7 +288,7 @@ export class PtyRuntime {
       await this.settle(entry);
     } else if (entry.view.state === 'starting' || entry.view.state === 'stopping') {
       entry.view.state = 'stopping';
-      this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+      this.emit(entry, { type: 'status', terminal: this.present(entry) });
       await entry.completion;
     }
     return this.get(sessionId, terminalId);
@@ -294,7 +317,7 @@ export class PtyRuntime {
       throw new ToolRefusal('RESOURCE_CAPACITY', 'terminal viewer capacity reached');
     entry.listeners.add(listener);
     return {
-      view: structuredClone(entry.view),
+      view: this.present(entry),
       events: entry.events.filter((event) => event.sequence > cursor.afterSeq),
       close: () => entry.listeners.delete(listener),
     };
@@ -322,7 +345,7 @@ export class PtyRuntime {
     );
   }
 
-  private newEntry(view: TerminalView): Entry {
+  private newEntry(view: HeldView): Entry {
     let resolveCompletion = () => {};
     const completion = new Promise<void>((resolve) => {
       resolveCompletion = resolve;
@@ -408,7 +431,7 @@ export class PtyRuntime {
       entry.view.controller = null;
       entry.view.controllerGeneration += 1;
       entry.view.error = 'Terminal input outcome is unknown; do not resend the previous frame';
-      this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+      this.emit(entry, { type: 'status', terminal: this.present(entry) });
       throw new ToolRefusal('REVISION_CONFLICT', 'terminal frame outcome is unknown');
     }
     controller.acceptedSequence = input.sequence;
@@ -471,7 +494,7 @@ export class PtyRuntime {
       )
         throw new ToolRefusal('REVISION_CONFLICT', 'terminal recovery receipt changed');
     }
-    this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+    this.emit(entry, { type: 'status', terminal: this.present(entry) });
   }
 
   private cleanup(entry: Entry): Promise<boolean> {
@@ -543,7 +566,7 @@ export class PtyRuntime {
       entry.view.state = 'running';
       if (!this.options.operations.updateRunning(input.operationId, this.stored(entry)))
         throw new Error('receipt changed');
-      this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+      this.emit(entry, { type: 'status', terminal: this.present(entry) });
     } catch (error) {
       if (entry.stopped) {
         await this.settle(entry);
@@ -564,7 +587,7 @@ export class PtyRuntime {
     if (entry.settling) return entry.settling;
     entry.view.state = 'stopping';
     entry.view.controller = null;
-    this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+    this.emit(entry, { type: 'status', terminal: this.present(entry) });
     entry.settling = (async () => {
       const confirmed = entry.child ? await this.cleanup(entry).catch(() => false) : true;
       entry.view.state = !confirmed ? 'uncertain' : entry.failed ? 'failed' : 'exited';
@@ -594,13 +617,13 @@ export class PtyRuntime {
         entry.view.error = 'Terminal receipt could not be saved';
         entry.view.diagnostic = { phase: 'cleanup', code: 'receipt_unavailable' };
       }
-      this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+      this.emit(entry, { type: 'status', terminal: this.present(entry) });
       entry.resolveCompletion();
       entry.cancelRetention = (this.options.timers ?? timers).after(5 * 60_000, () => {
         entry.events = [];
         entry.bytes = 0;
         entry.view.replayAvailable = false;
-        this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+        this.emit(entry, { type: 'status', terminal: this.present(entry) });
         entry.listeners.clear();
       });
     })();
@@ -622,7 +645,7 @@ export class PtyRuntime {
       if (entry.bytes > (this.options.historyBytes ?? 4 * 1024 * 1024)) {
         entry.view.replayAvailable = false;
         entry.events = [];
-        this.emit(entry, { type: 'status', terminal: structuredClone(entry.view) });
+        this.emit(entry, { type: 'status', terminal: this.present(entry) });
       } else entry.events.push(event);
     }
     this.emit(entry, event);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { panelRunId } from './panelRun.ts';
+import { panelRunId, sessionRunViews } from './panelRun.ts';
 
 const runs = [{ runId: 'run_old' }, { runId: 'run_new' }];
 
@@ -23,5 +23,39 @@ describe('run shown in the session history panel', () => {
   it('keeps the requested run until the list has loaded', () => {
     expect(panelRunId([], 'run_new', false)).toBe('run_new');
     expect(panelRunId(runs, 'run_started', false)).toBe('run_started');
+  });
+});
+
+describe('the run a session page presents (chat-widgets-contract.md 3.1)', () => {
+  const past = { runId: 'run_past', status: 'succeeded' as const };
+  const going = { runId: 'run_going', status: 'running' as const };
+  const later = { runId: 'run_later', status: 'failed' as const };
+
+  it('presents the active run, which the conversation follows and keeps open', () => {
+    expect(sessionRunViews([past, going], [])).toEqual({
+      presentationRunId: 'run_going',
+      liveRunId: 'run_going',
+    });
+  });
+
+  it('presents the last run when none is active', () => {
+    expect(sessionRunViews([past, later], [])).toEqual({
+      presentationRunId: 'run_later',
+      liveRunId: null,
+    });
+  });
+
+  it('presents the active run even when a later one has ended', () => {
+    expect(sessionRunViews([past, going, later], [])).toEqual({
+      presentationRunId: 'run_going',
+      liveRunId: 'run_going',
+    });
+  });
+
+  it('presents the last run the session names before the run list has it', () => {
+    expect(sessionRunViews([], ['run_named'])).toEqual({
+      presentationRunId: 'run_named',
+      liveRunId: null,
+    });
   });
 });

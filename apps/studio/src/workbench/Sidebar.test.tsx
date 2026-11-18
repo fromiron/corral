@@ -24,14 +24,19 @@ vi.mock('@tanstack/react-router', () => ({
   Link: ({
     to,
     params,
-    search: _search,
+    search,
     ...props
   }: ComponentProps<'a'> & {
     to: string;
     params?: Record<string, string>;
     search?: unknown;
   }) => (
-    <a {...props} href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? key)} />
+    <a
+      {...props}
+      href={to.replace(/\$(\w+)/g, (_match, key: string) => params?.[key] ?? key)}
+      // What the link carries in its search, as the router would write it.
+      data-search={search === undefined ? undefined : JSON.stringify(search)}
+    />
   ),
   useNavigate: () => fixture.navigate,
   useRouter: () => ({ invalidate: vi.fn(async () => {}) }),
@@ -812,6 +817,19 @@ describe('session row presence', () => {
       expect(shape.button).toBe(shapes[0]?.button);
       expect(shape.lines).toEqual(shapes[0]?.lines);
     }
+  });
+
+  it('a conversation row opens it with neither panel nor compose, so it restores its own panel; a terminal to check opens that terminal', async () => {
+    const container = await mount({
+      runs: [run('session_0', 'awaiting_user', first)],
+      terminalAttention: [attention('uncertain_terminal', 'session_1')],
+    });
+    const search = (id: string) => {
+      const value = row(container, id)?.querySelector('a')?.getAttribute('data-search');
+      return value ? JSON.parse(value) : {};
+    };
+    expect(search('session_0')).toEqual({});
+    expect(search('session_1')).toEqual({ panel: 'terminal', terminal: 'session_1_pty' });
   });
 
   it('never writes a session’s state name in the sidebar; its link still names it', async () => {

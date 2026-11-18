@@ -3,14 +3,17 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 import {
+  closePanel,
   closeSettings,
   lastRunSucceeded,
   newConversation,
+  openChangesView,
   openConversationDetails,
   openFolderSettings,
   openLibraryTeams,
+  openPane,
+  openPanelTab,
   openProject,
-  panelTab,
   requestBox,
 } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
@@ -88,7 +91,7 @@ async function startSession(page: Page, team?: string) {
   } else await newConversation(page);
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
-  await panelTab(page, 'Changes');
+  await openPanelTab(page, 'Changes');
   const copy = page.getByRole('region', { name: 'Paddock' });
   await copy.getByRole('button', { name: /Make a Paddock from/ }).click();
   await expect(copy.getByRole('link', { name: 'Review changes' })).toBeVisible();
@@ -118,7 +121,7 @@ async function replaceDocument(page: Page, text: string) {
 }
 
 async function commitAndPush(page: Page, path: string, message: string, branch: string) {
-  await panelTab(page, 'Git');
+  await openChangesView(page, 'Git');
   // The dock tab panel only hosts the pane, so its controls are found by their own names.
   const gitPane = page;
   await gitPane.getByRole('button', { name: 'Refresh', exact: true }).click();
@@ -152,17 +155,19 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
   const copy = copyOf(original, sessionId);
 
   // Edit and save in a document tab.
-  await panelTab(page, 'Files');
+  await openPanelTab(page, 'Files');
   await page.getByRole('treeitem', { name: 'app.js', exact: true }).click();
   await expect(page.getByRole('tab', { name: 'app.js', exact: true })).toBeVisible();
   await replaceDocument(page, 'console.log("two");\n');
   await page.getByRole('button', { name: 'Save', exact: true }).first().click();
+  // In the panel beside the conversation the document head is narrow, where its saved state is
+  // announced but not shown (DocumentPanel's head keeps one line).
   await expect(
     page
       .getByRole('status')
       .filter({ hasText: /^Saved$/ })
       .first(),
-  ).toBeVisible();
+  ).toBeAttached();
   expect(readFileSync(join(copy, 'app.js'), 'utf8')).toBe('console.log("two");\n');
 
   // A development task, started on request and previewed through its own port.
@@ -206,7 +211,7 @@ test('without a model: edit, task, preview, check, review, stage, commit and pus
   });
 
   // Review the change as Git sees it, then stage, commit and push.
-  await panelTab(page, 'Git');
+  await openChangesView(page, 'Git');
   await page.locator('[data-git-side="unstaged"][data-path="app.js"]').click();
   // Review keeps its own first changed file open behind the Git view (workbench.md), so the
   // diff the click opened is the Git view's.
@@ -292,7 +297,7 @@ test('one deterministic agent request changes the copy, and the person commits a
   await expect(page).toHaveURL(/\/edit$/);
   await openProject(page);
   const { sessionId } = await startSession(page, 'Alpha writer');
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await requestBox(page).fill('Write the notes');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 20_000 });
@@ -346,12 +351,12 @@ test('a failed check, a disk conflict, the settings dialog, a bad branch name an
       .filter({ hasText: /^Saved$/ })
       .first(),
   ).toBeAttached();
-  await panelTab(page, 'Problems');
+  await openPane(page, 'Problems');
   await problems.getByRole('button', { name: 'Refresh problems', exact: true }).click();
   await expect(problems.getByText('Outdated', { exact: true })).toBeVisible();
 
   // A change on disk while a draft is open is shown, and the draft is not overwritten.
-  await panelTab(page, 'Files');
+  await openPanelTab(page, 'Files');
   await page.getByRole('tab', { name: 'a.ts', exact: true }).click();
   writeFileSync(join(copy, 'src', 'a.ts'), 'const a = 1;\nconst b: number = 3;\n');
   await replaceDocument(page, 'const a = 1;\nconst b: number = 4;\n');
@@ -366,7 +371,7 @@ test('a failed check, a disk conflict, the settings dialog, a bad branch name an
   );
 
   // The commit message survives a trip through the settings dialog.
-  await panelTab(page, 'Git');
+  await openChangesView(page, 'Git');
   await page.getByRole('button', { name: 'Refresh', exact: true }).click();
   await page.getByRole('button', { name: 'Stage src/a.ts', exact: true }).click();
   await expect(page.locator('[data-git-side="staged"][data-path="src/a.ts"]')).toBeVisible();

@@ -39,11 +39,16 @@ import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
 import { NEW_MEETING, NewMeetingHost } from '../workbench/NewMeeting.tsx';
 import {
   SettingsNavigationContext,
+  settingsClosedState,
+  settingsItemOf,
+  settingsOpenState,
   standaloneSettingsLink,
   validateSettingsOverlay,
   withoutSettings,
+  withoutSettingsItem,
   workHref,
 } from '../workbench/navigation.ts';
+import { useRecordHistoryActions } from '../workbench/panel/historyActions.ts';
 import { changePreferences, usePreferences } from '../workbench/preferences.ts';
 import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
 import { useSessionJump } from '../workbench/SessionJump.tsx';
@@ -71,6 +76,8 @@ function RootFrame() {
   useShortcutBindings();
   const navigate = useNavigate();
   const router = useRouter();
+  // How each history entry was reached, for the session frame (workbench/panel/historyActions.ts).
+  useRecordHistoryActions();
   const settingsOwner = useRef(crypto.randomUUID()).current;
   const { repository, workspaces, mode } = useServices();
   const [sessionMissing, setSessionMissing] = useState(false);
@@ -147,19 +154,7 @@ function RootFrame() {
         hash: location.hash,
         replace: true,
         resetScroll: false,
-        state: (previous) => {
-          const {
-            settingsOwner: _owner,
-            settingsOrigin: _origin,
-            settingsOneShot: _oneShot,
-            ...rest
-          } = previous as typeof previous & {
-            settingsOwner?: string;
-            settingsOrigin?: number;
-            settingsOneShot?: boolean;
-          };
-          return rest;
-        },
+        state: settingsClosedState,
       });
     }
   };
@@ -171,7 +166,8 @@ function RootFrame() {
     overlay,
     section: overlay ? overlaySearch.settings : undefined,
     close: overlay ? closeSettings : undefined,
-    link: (section: string, targetProject = entryProjectId) => {
+    item: overlay ? settingsItemOf(location.state) : undefined,
+    link: (section: string, targetProject = entryProjectId, item?: string) => {
       // A screen that cannot hold the dialog (such as Automation) takes the settings address,
       // which the router replaces with the dialog over Projects.
       if (!workHref(location.href))
@@ -186,14 +182,12 @@ function RootFrame() {
         replace: overlay,
         resetScroll: false as const,
         state: (previous: typeof location.state) =>
-          overlay
-            ? previous
-            : {
-                ...previous,
-                settingsOwner,
-                settingsOrigin: previous.__TSR_index,
-                settingsOneShot: Boolean(location.search.newSession || location.search.draft),
-              },
+          settingsOpenState(previous, {
+            overlay,
+            owner: settingsOwner,
+            oneShot: Boolean(location.search.newSession || location.search.draft),
+            item,
+          }),
       };
     },
     selectProject: overlay
@@ -204,7 +198,8 @@ function RootFrame() {
             hash: location.hash,
             replace: true,
             resetScroll: false,
-            state: true,
+            // The chosen resource belongs to the project Manage opened.
+            state: withoutSettingsItem,
           });
         }
       : undefined,
@@ -235,12 +230,8 @@ function RootFrame() {
   ]);
   const sidebarTrigger = useRef<HTMLButtonElement>(null);
   const [slot, setSlot] = useState<HTMLElement | null>(null);
-  const [viewsSlot, setViewsSlot] = useState<HTMLElement | null>(null);
   const [crumbsSlot, setCrumbsSlot] = useState<HTMLElement | null>(null);
-  const topbarSlots = useMemo(
-    () => ({ actions: slot, views: viewsSlot, crumbs: crumbsSlot }),
-    [slot, viewsSlot, crumbsSlot],
-  );
+  const topbarSlots = useMemo(() => ({ actions: slot, crumbs: crumbsSlot }), [slot, crumbsSlot]);
   const openSessionId = /^\/sessions\/([^/]+)/.exec(location.pathname)?.[1];
   useEffect(() => {
     const media = matchMedia('(max-width: 1023px)');
@@ -396,14 +387,9 @@ function RootFrame() {
                     crumbs={setCrumbsSlot}
                   />
                   <div
-                    ref={setViewsSlot}
-                    data-topbar-part="views"
-                    className="app-topbar-views ml-auto flex shrink-0 items-center"
-                  />
-                  <div
                     ref={setSlot}
                     data-topbar-part="actions"
-                    className="app-topbar-actions flex shrink-0 items-center gap-1"
+                    className="app-topbar-actions ml-auto flex shrink-0 items-center gap-1"
                   />
                   <Tooltip content={tp('button')} shortcut={shortcutLabel('palette')}>
                     <Button

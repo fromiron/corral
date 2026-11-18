@@ -49,6 +49,7 @@ export function sessionStore(state: Partial<RunSessionState> = {}): RunSessionSt
     streamError: null,
     commandError: null,
     unconfirmedCommands: {},
+    commandTypes: {},
     missingRunId: null,
     pendingCommandIds: [],
     receipts: {},

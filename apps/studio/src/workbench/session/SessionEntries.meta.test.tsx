@@ -574,6 +574,31 @@ it('a terminal refusal offers the terminal on the line; the owner is in the raw 
   );
 });
 
+it('an operation holding the copy is named by its kind in the raw words', async () => {
+  const f = await show(
+    request({
+      state: 'refused',
+      runId: null,
+      detail: 'git.pull op_1 has not confirmed it ended',
+      refusal: {
+        code: 'RUN_ALREADY_ACTIVE',
+        message: 'git.pull op_1 has not confirmed it ended',
+        owner: {
+          kind: 'operation',
+          id: 'op_1',
+          sessionId: 'session_meta',
+          state: 'uncertain',
+          operationKind: 'git.pull',
+        },
+      },
+    } as Partial<SessionEntry>),
+  );
+  await act(async () => f.button(messages.Refusal.operationUncertain)?.click());
+  expect(document.body.querySelector('[data-testid="refusal-owner"]')?.textContent).toBe(
+    'git.pull · op_1 · uncertain',
+  );
+});
+
 it('a refused instruction, or a carried request that did not start, offers the edit on the line', async () => {
   const steer = entry({ state: 'refused', detail: 'The run has ended', runId: 'run_live' });
   const f = await show(steer, { record: null });

@@ -1,20 +1,6 @@
-// Every pane a session's dock can show, defined once (#86): the URL `?panel=`, the dock, the
-// command palette and the composer's `/` menu all read these lists, so a pane found in one is
-// found in all of them under the same name.
-export const DOCK_VIEWS = [
-  'chat',
-  'files',
-  'changes',
-  'git',
-  'debug',
-  'artifacts',
-  'checks',
-  'problems',
-  'run',
-  'terminal',
-  'tools',
-] as const;
-export type DockView = (typeof DOCK_VIEWS)[number];
+// Every pane a session can show, defined once (#86): the URL `?panel=`, the panel, the command
+// palette and the composer's `/` menu all read these lists, so a pane found in one is found in
+// all of them under the same name.
 
 /** The conversation is the absence of `?panel=`; every other pane has a URL. */
 export const SESSION_PANELS = [
@@ -22,19 +8,28 @@ export const SESSION_PANELS = [
   'git',
   'debug',
   'files',
+  'document',
+  'graph',
   'artifacts',
   'checks',
   'problems',
   'run',
   'terminal',
   'tools',
+  'preview',
+  'browser',
 ] as const;
 export type SessionPanel = (typeof SESSION_PANELS)[number];
+/**
+ * The panes opened by name (the palette's "{tab} 열기", the composer's `/` name). A document and
+ * a team graph are opened with their file or team, never by name.
+ */
+export type NamedPanel = Exclude<SessionPanel, 'document' | 'graph'>;
 
 /** What a person is doing when they open the pane; headings in pane lists (#70 IA-04/11). */
 export type PaneGroup = 'develop' | 'verify' | 'run';
 export interface PaneEntry {
-  view: SessionPanel;
+  view: NamedPanel;
   group: PaneGroup;
   /** The composer's `/` name. */
   slash: string;
@@ -96,7 +91,7 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
   {
     view: 'tools',
     group: 'develop',
-    slash: 'preview',
+    slash: 'tools',
     aliases: [
       'tools',
       'tasks',
@@ -105,18 +100,25 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
       'commands',
       'running',
       'process',
-      'preview',
-      'service',
-      'server',
       '도구',
       '작업',
       '스크립트',
       '명령',
       '실행 중',
       '프로세스',
-      '미리보기',
-      '서버',
     ],
+  },
+  {
+    view: 'preview',
+    group: 'develop',
+    slash: 'preview',
+    aliases: ['preview', 'service', 'server', '미리보기', '서버'],
+  },
+  {
+    view: 'browser',
+    group: 'develop',
+    slash: 'browser',
+    aliases: ['browser', 'web', 'page', 'website', 'url', '브라우저', '웹', '페이지', '주소'],
   },
   {
     view: 'checks',

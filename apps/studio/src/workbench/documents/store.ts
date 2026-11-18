@@ -1,5 +1,10 @@
 import { ApiError, type WorkspacesApi } from '@corral/client';
-import type { DocumentOperation, FileDocument, WorkspaceTarget } from '@corral/contracts';
+import type {
+  CommandError,
+  DocumentOperation,
+  FileDocument,
+  WorkspaceTarget,
+} from '@corral/contracts';
 import type { editor } from 'monaco-editor';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import { WORKSPACE_CHANGED } from '../workspaceEvents.ts';
@@ -40,6 +45,8 @@ export interface DocumentBuffer {
   error: string | null;
   /** The last save was refused because a task, terminal or Run holds the copy's writer (P15). */
   writerBusy?: boolean;
+  /** What that refusal named as the copy's holder (api-contract.md 오류, `owner`). */
+  writerOwner?: CommandError['owner'];
 }
 
 export type CloseChoice = 'save' | 'discard' | 'cancel';
@@ -275,7 +282,8 @@ export function documentStore(
   const applyFile = (key: string, file: FileDocument, start: DocumentBuffer) => {
     const entry = get(key);
     if (!entry || entry.baseHash !== start.baseHash) return;
-    if (entry.writerBusy && file.writable) patch(key, { writerBusy: false, error: null });
+    if (entry.writerBusy && file.writable)
+      patch(key, { writerBusy: false, writerOwner: undefined, error: null });
     const changed =
       documentKey(file.target, file.path) !== key ||
       (file.version?.sha256 ?? null) !== entry.baseHash;
@@ -464,6 +472,7 @@ export function documentStore(
         canRetrySave: false,
         error: null,
         writerBusy: false,
+        writerOwner: undefined,
       });
       const work = (async () => {
         await persist(key);
@@ -481,6 +490,10 @@ export function documentStore(
             pendingSave: rejected ? null : command,
             error: message(error),
             writerBusy: error instanceof ApiError && error.code === 'RUN_ALREADY_ACTIVE',
+            writerOwner:
+              error instanceof ApiError && error.code === 'RUN_ALREADY_ACTIVE'
+                ? error.owner
+                : undefined,
           });
           await persist(key);
           if (error instanceof ApiError && error.code === 'REVISION_CONFLICT')

@@ -7,7 +7,6 @@ import { useTranslations } from 'use-intl';
 import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
-import { DevelopmentMode } from '../workbench/DevelopmentMode.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
@@ -119,7 +118,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
       {mode === 'browser' ? <p className="text-body text-warning">{t('demoFolder')}</p> : null}
       {!binding ? (
         <form onSubmit={link} className="settings-row">
-          <div>
+          <div className="min-w-0">
             <h3>{t('pathLabel')}</h3>
             {path && mode !== 'browser' ? (
               <p className="truncate" title={path}>
@@ -173,7 +172,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
       ) : (
         <>
           <section className="settings-row">
-            <div>
+            <div className="min-w-0 wrap-anywhere">
               <h3>{t('pathLabel')}</h3>
               <p title={binding.path}>{binding.path}</p>
               {binding.missing ? (
@@ -359,7 +358,6 @@ export function WorkingCopyPanel({
           {t('copyMissing')}
         </p>
       ) : null}
-      {!worktree.missing ? <DevelopmentMode sessionId={sessionId} /> : null}
       <div className="flex flex-wrap items-center gap-2">
         <span className="text-caption text-muted-foreground">
           {t('ready', { commit: worktree.baseCommit.slice(0, 8) })}

@@ -1,5 +1,8 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { expect, it } from 'vitest';
 import { externalUrl, localRoute, trustedSender } from '../src/security.ts';
+import { studioDesktopBindings } from './studio-shortcuts.ts';
 
 it('[DW-07] desktop capabilities accept the app main frame only', () => {
   const origin = 'http://127.0.0.1:4317';
@@ -63,6 +66,51 @@ it('native shortcuts cannot bind unknown commands, edit keys or duplicate chords
     { palette: { mod: true, key: 'k' }, help: { mod: true, key: 'k' } },
   ])
     expect(() => desktopAccelerators(value)).toThrow();
+});
+
+it("the studio's whole default map reaches the native menu; a chord the menu cannot hold is skipped", () => {
+  const bindings = studioDesktopBindings();
+  expect(bindings['reply.quote']).toEqual({ alt: true, key: 'q' });
+  expect(desktopAccelerators(bindings)).toEqual({
+    palette: 'CommandOrControl+K',
+    help: 'CommandOrControl+/',
+    'session.new': 'CommandOrControl+N',
+    'view.sidebar': 'CommandOrControl+B',
+    'view.panel': 'CommandOrControl+Alt+B',
+    'composer.focus': 'CommandOrControl+L',
+    settings: 'CommandOrControl+,',
+    'nav.back': 'CommandOrControl+[',
+    'nav.forward': 'CommandOrControl+]',
+  });
+  // A rebinding next to the Alt-only quote still reaches the menu.
+  expect(
+    desktopAccelerators({
+      ...bindings,
+      'reply.quote': { alt: true, shift: true, key: 'q' },
+      palette: { mod: true, shift: true, key: 'p' },
+    }),
+  ).toMatchObject({ palette: 'CommandOrControl+Shift+P' });
+  // A chord the page keeps for itself still counts against a clash with a menu chord.
+  expect(() => desktopAccelerators({ ...bindings, 'view.dock': { mod: true, key: 'k' } })).toThrow(
+    'Conflicting',
+  );
+  // The annotation mode's chord too: it is the browser tab's, never a menu accelerator.
+  expect(() =>
+    desktopAccelerators({ ...bindings, 'browser.annotate': { mod: true, key: 'n' } }),
+  ).toThrow('Conflicting');
+  for (const value of [
+    { 'view.dock': { mod: 'yes', key: 'j' } },
+    { 'reply.quote': { alt: true, key: 'q', extra: true } },
+  ])
+    expect(() => desktopAccelerators(value)).toThrow();
+});
+
+it('the preload passes on exactly the commands the menu can send', () => {
+  const preload = readFileSync(resolve(import.meta.dirname, '../src/preload.cjs'), 'utf8');
+  const list = /const COMMANDS = new Set\(\[([^\]]*)\]\)/.exec(preload)?.[1] ?? '';
+  const ids = [...list.matchAll(/'([^']+)'/g)].map((match) => match[1]);
+  expect(ids.length).toBeGreaterThan(0);
+  expect(new Set(ids)).toEqual(new Set(DESKTOP_COMMANDS));
 });
 
 it('the theme sets colours only from a boolean', () => {

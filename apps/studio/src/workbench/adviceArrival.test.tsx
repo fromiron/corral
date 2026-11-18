@@ -2,7 +2,12 @@
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { type AdviceArrivalValue, adviceOffset, useAdviceArrivalRequest } from './adviceArrival.ts';
+import {
+  type AdviceArrivalValue,
+  type AdviceRequest,
+  adviceOffset,
+  useAdviceArrivalRequest,
+} from './adviceArrival.ts';
 
 // Arriving to read an advice (features/inbox.md `advice`): the address asks once, the conversation
 // comes to the front and the address lets the request go, and the advice's words are brought
@@ -16,31 +21,33 @@ afterEach(() => {
 });
 
 async function arrive() {
-  const open = vi.fn();
-  const consume = vi.fn();
   let value: AdviceArrivalValue | null = null;
-  let requested: string | undefined;
-  function Probe({ advice }: { advice: string | undefined }) {
-    value = useAdviceArrivalRequest(advice, { open, consume });
+  // What the session frame hands over as it consumes an address's `advice`: the latest request.
+  let requested: AdviceRequest | null = null;
+  let asked = 0;
+  function Probe({ request }: { request: AdviceRequest | null }) {
+    value = useAdviceArrivalRequest(request);
     return null;
   }
   const container = document.createElement('div');
   const root = createRoot(container);
   cleanup.push(() => root.unmount());
+  /** An address asks for `advice`; undefined is a render with no new request. */
   const ask = (advice: string | undefined) => {
-    requested = advice;
-    return act(async () => root.render(<Probe advice={requested} />));
+    if (advice) {
+      asked += 1;
+      requested = { runId: advice, n: asked };
+    }
+    return act(async () => root.render(<Probe request={requested} />));
   };
   await ask(undefined);
-  return { open, consume, ask, value: () => value as AdviceArrivalValue | null };
+  return { ask, value: () => value as AdviceArrivalValue | null };
 }
 
-it('takes a request from the address once: the conversation opens and the address lets it go', async () => {
+it('takes a request from the address once and keeps it after the address lets it go', async () => {
   const f = await arrive();
   expect(f.value()).toBeNull();
   await f.ask('run_a');
-  expect(f.open).toHaveBeenCalledTimes(1);
-  expect(f.consume).toHaveBeenCalledTimes(1);
   expect(f.value()).toMatchObject({ runId: 'run_a', key: 1 });
   // The address no longer asks; the arrival stays until its row has taken it.
   await f.ask(undefined);
@@ -56,7 +63,6 @@ it('arrives again at the same run when asked again, and an old arrival’s end l
   await f.ask(undefined);
   await f.ask('run_a');
   expect(f.value()).toMatchObject({ runId: 'run_a', key: 2 });
-  expect(f.open).toHaveBeenCalledTimes(2);
   await act(async () => first?.done());
   expect(f.value()).toMatchObject({ key: 2 });
 });

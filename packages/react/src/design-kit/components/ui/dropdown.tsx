@@ -93,6 +93,19 @@ interface DropdownProps extends HTMLAttributes<HTMLDivElement> {
   size?: SizeVariant;
 }
 
+/**
+ * The list's click between rows chooses the lit row. A press on a row is never one, even on a row
+ * the list could not number (a host's component drawing a row of its own takes index 0, and
+ * another row registered under it would otherwise be chosen too).
+ */
+function gapClick(onClick: (event: React.MouseEvent) => void) {
+  return (event: React.MouseEvent) => {
+    const row = (event.target as Element | null)?.closest?.('[data-fluid-hover-index]');
+    if (row && event.currentTarget.contains(row)) return;
+    onClick(event);
+  };
+}
+
 const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
   ({ children, checkedIndex, checkedIndices, size, className, ...props }, ref) => {
     const containerRef = useRef<HTMLDivElement>(null);
@@ -124,7 +137,7 @@ const Dropdown = forwardRef<HTMLDivElement, DropdownProps>(
           onMouseEnter={handlers.onMouseEnter}
           onMouseMove={handlers.onMouseMove}
           onMouseLeave={handlers.onMouseLeave}
-          onClick={handlers.onClick}
+          onClick={gapClick(handlers.onClick)}
           onFocus={(e) => {
             const indexAttr = (e.target as HTMLElement)
               .closest('[data-fluid-hover-index]')
@@ -592,7 +605,7 @@ const DropdownContent = forwardRef<HTMLDivElement, DropdownContentProps>(
                     markLitBy('pointer');
                     submenus.onMouseMove(e);
                   }}
-                  onClick={handlers.onClick}
+                  onClick={gapClick(handlers.onClick)}
                   onMouseLeave={(e) => {
                     if (!isOwnEvent(e)) return;
                     submenus.onMouseLeave();

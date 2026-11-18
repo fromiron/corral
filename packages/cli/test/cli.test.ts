@@ -25,6 +25,12 @@ function workspace() {
   directories.push(path);
   return path;
 }
+function studioFixture(cwd: string) {
+  const directory = join(cwd, 'studio');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'index.html'), '<head></head>');
+  return directory;
+}
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true });
 });
@@ -46,9 +52,7 @@ describe('CLI command/query parity', () => {
     if (outputNode?.type === 'output') outputNode.requireApproval = true;
     const path = join(cwd, 'workflow.json');
     writeFileSync(path, JSON.stringify(definition));
-    const staticDir = join(cwd, 'studio');
-    mkdirSync(staticDir);
-    writeFileSync(join(staticDir, 'index.html'), '<head></head>');
+    const staticDir = studioFixture(cwd);
     const owner = await startCorralServer({
       workspace: cwd,
       port: 0,
@@ -120,7 +124,9 @@ describe('CLI command/query parity', () => {
       signal: new AbortController().signal,
     };
     expect(await runCli(['validate', path], io)).toBe(0);
-    expect(await runCli(['run', path, '--demo', '--port', '0'], io)).toBe(0);
+    expect(
+      await runCli(['run', path, '--demo', '--port', '0', '--static', studioFixture(cwd)], io),
+    ).toBe(0);
     expect(output.some((line) => line.includes('succeeded'))).toBe(true);
     const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
     const run = new SqliteRunStore(db).listRuns()[0];
@@ -160,6 +166,8 @@ describe('CLI command/query parity', () => {
           '--watch',
           '--port',
           '0',
+          '--static',
+          studioFixture(cwd),
         ],
         { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
       );

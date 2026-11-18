@@ -23,6 +23,7 @@ function setup(
     capture?: Gate;
     historyBytes?: number;
     captureFails?: boolean;
+    foreground?: () => 'idle' | 'busy' | 'unknown';
   } = {},
 ) {
   const path = mkdtempSync(join(tmpdir(), 'corral-pty-test-'));
@@ -98,6 +99,7 @@ function setup(
     cleanupLaunch,
     newGeneration: () => 'generation_1',
     historyBytes: options.historyBytes,
+    foreground: vi.fn(options.foreground ?? (() => 'idle' as const)),
   };
   const runtime = new PtyRuntime(runtimeOptions);
   cleanups.push(async () => {
@@ -393,6 +395,33 @@ it('restoring an existing owner above the cap keeps new admission blocked after 
     await restarted.close();
     for (const permit of permits) permit.releaseConfirmed();
   }
+});
+
+it('reads the foreground at each view of a running shell, and says unknown before and after it runs', async () => {
+  let foreground: 'idle' | 'busy' | 'unknown' = 'idle';
+  const capture = new Gate();
+  const s = setup({ capture, foreground: () => foreground });
+  const created = await s.runtime.create('session', s.request);
+  await s.spawned.wait();
+  // Starting: the shell's identity is not established, so nothing is read.
+  expect(created.foreground).toBe('unknown');
+  expect(s.runtime.get('session', 'terminal_1').foreground).toBe('unknown');
+  expect(s.runtimeOptions.foreground).not.toHaveBeenCalled();
+  capture.open();
+  await vi.waitFor(() => expect(s.runtime.get('session', 'terminal_1').state).toBe('running'));
+  expect(s.runtime.get('session', 'terminal_1').foreground).toBe('idle');
+  // Read again at each view, never remembered.
+  foreground = 'busy';
+  expect(s.runtime.get('session', 'terminal_1').foreground).toBe('busy');
+  expect((await s.runtime.list('session')).terminals[0]?.foreground).toBe('busy');
+  expect(s.runtimeOptions.foreground).toHaveBeenLastCalledWith(
+    expect.objectContaining({ pid: 123, startTicks: '42' }),
+  );
+  // What the host keeps for the terminal does not carry it.
+  expect(JSON.stringify(s.operations.get('terminal_1'))).not.toContain('foreground');
+  await s.runtime.stop('session', 'terminal_1', s.identity);
+  s.exit();
+  expect(s.runtime.get('session', 'terminal_1').foreground).toBe('unknown');
 });
 
 it('records explicit stop separately from a shell exit code of zero', async () => {

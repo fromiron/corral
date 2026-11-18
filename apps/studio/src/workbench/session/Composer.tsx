@@ -3,11 +3,12 @@ import {
   IMAGE_MAX_COUNT,
   TERMINAL_RUN_STATUSES,
   TEXT_ATTACHMENT_MAX_COUNT,
+  textAttachmentKey,
 } from '@corral/contracts';
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { useCancelConfirmation } from '@corral/react';
 import { useRouter } from '@tanstack/react-router';
-import { useCallback, useEffect, useId, useRef, useState } from 'react';
+import { useCallback, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useRegisterCommands, useRegisteredCommands } from '../../commandRegistry.ts';
 import { useRemembered } from '../../pages/Workbench.tsx';
@@ -15,11 +16,13 @@ import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { sessionRunMode } from '../autoChoice.ts';
+import { usePublishComposerAnnotate } from '../browser/annotate.tsx';
+import { noteNumber } from '../browser/noteChips.ts';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
-
 import { removeMention, selectMention } from '../composerMenu.ts';
 import type { FileReference } from '../FilePanel.tsx';
+import { StopCommandContext } from '../panel/runHeadControls.ts';
 import { usePreferences } from '../preferences.ts';
 import { clearSentComposerDraft, readComposerDraft } from '../sessionDraft.ts';
 import { useMentionSearch } from '../useMentionSearch.ts';
@@ -30,7 +33,13 @@ import { ComposerQueue } from './ComposerQueue.tsx';
 import { ComposerHeader, ComposerStatus, PreRun } from './ComposerStatus.tsx';
 import { AdvisorControl, openAdvisorControl } from './composer/AdvisorControl.tsx';
 import { composerAvailability } from './composer/availability.ts';
-import { ComposerCard, type SendTarget } from './composer/ComposerCard.tsx';
+import {
+  ComposerCard,
+  type ComposerStop,
+  type SendTarget,
+  sendPlaceStop,
+  stopsSendPlace,
+} from './composer/ComposerCard.tsx';
 import { ComposerNotices } from './composer/ComposerNotices.tsx';
 import {
   AttachMenu,
@@ -50,6 +59,8 @@ import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs
 import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
 import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
+import { useNoteCollector } from './composer/noteCollect.ts';
+import { useNoteSender } from './composer/noteSend.ts';
 import { useQueuedRequests } from './composer/queue.ts';
 import { menuSends, noTargetReason, SendMenu, TargetChip } from './composer/SendControls.tsx';
 import {
@@ -87,7 +98,6 @@ function SessionComposer({
   corrals,
   runs,
   active,
-  selectedRunId,
   onViewRun,
   revealRun,
   queued,
@@ -95,7 +105,7 @@ function SessionComposer({
   onSent,
   reference,
   onReferenceUsed,
-  runControlsOwnConfirmation = false,
+  conversationInoperable = false,
   home = false,
   onWorkFolder,
   folderAccess = 'unknown',
@@ -106,7 +116,6 @@ function SessionComposer({
   corrals: CorralSummary[];
   runs: RunSummary[];
   active: RunSummary | null;
-  selectedRunId: string | null;
   /** Opens a run's record, at one of its executions when given. */
   onViewRun?: (runId: string, executionId?: string) => void;
   /** Brings a run's item into the conversation's window (`null` lets it go); false without one. */
@@ -117,8 +126,11 @@ function SessionComposer({
   onSent?: () => void;
   reference: FileReference | null;
   onReferenceUsed: () => void;
-  /** The active session view already has one RunActions confirmation host. */
-  runControlsOwnConfirmation?: boolean;
+  /**
+   * The conversation cannot be operated (the panel is maximized or a drawer): its whole-run
+   * confirmation never shows; the selected run tab's head asks instead.
+   */
+  conversationInoperable?: boolean;
   /** An empty session: the kit home composition offers the saved teams as start suggestions. */
   home?: boolean;
   /** Opens file-work setup; given while the project has no work folder yet. */
@@ -375,9 +387,64 @@ function SessionComposer({
     if (mounted.current) setLowered(outcome.lowered);
   };
 
+  // Browser annotation reads the draft's side (features/browser-annotate.md 계약): its counts
+  // against the limits and whether the send key would carry an image now.
+  const keyIntent = forKey('send').intent;
+  const imagesNow = keyIntent === 'next' || keyIntent === 'queue';
+  const tRefusal = useTranslations('Refusal');
+  const tBrowser = useTranslations('Browser');
+  const tAnnotate = useTranslations('Annotate');
+  const notes = useNoteSender({
+    services,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    sendDeps: () => ({ ...startDeps, team, ownActive, runMode }),
+    how: (role) => forKey(role),
+    unavailable: (sendIntent, explicitQueue) =>
+      Boolean(availableFor(sendIntent, explicitQueue).unavailable),
+    steerTarget: () => steerTarget,
+    permissionMode: () => permissionMode,
+    advisorConfirmed: async () => !advisorUnknown || (await recheckAdvisor()),
+    refusalText: (kind) => tRefusal(kind),
+    advisorUnconfirmed: tc('advisor.unconfirmedSend'),
+    imageFailed: tc('imageFailed'),
+    imageLimit: tBrowser('noteImageLimit'),
+  });
+  const collector = useNoteCollector({
+    services,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    attachmentsFull: tAnnotate('reason.attachments'),
+    imagesFull: tAnnotate('reason.images'),
+    imageFailed: tc('imageFailed'),
+    imageLimit: tBrowser('noteImageLimit'),
+  });
+  // Each collected note's marker, by the pick this page remembers it was made from.
+  const markers = attachments.flatMap((item) => {
+    const n = noteNumber(item);
+    const pickId = n === null ? null : collector.pickOf(textAttachmentKey(item));
+    return n !== null && pickId ? [{ pickId, n }] : [];
+  });
+  usePublishComposerAnnotate(
+    {
+      state: () => ({
+        textAttachments: attachments.length,
+        images: images.length,
+        imagesNow,
+        markers,
+      }),
+      sendNote: notes.sendNote,
+      forgetNote: notes.forgetNote,
+      addNote: collector.addNote,
+    },
+    `${attachments.length}:${images.length}:${imagesNow}:${markers.map((m) => `${m.pickId}=${m.n}`).join(',')}`,
+  );
+
   const backToInput = () => backToInputOf(input);
 
+  const routeStop = useContext(StopCommandContext);
   const requestStop = () => {
+    if (routeStop?.()) return;
     setConfirmStop(ownActive !== null);
   };
   // A run command the run refused or whose answer was lost: the activity bar's line says so, where
@@ -432,7 +499,14 @@ function SessionComposer({
   const commandSending = useCommandSending(going?.runId ?? null);
   // Stop comes to Send's place once a send clears the box and the run goes: the press that sent,
   // or the next one on the same place, does not stop it.
-  const stopSettled = useSettledAppearance(Boolean(going) && !text.trim());
+  const stopSettled = useSettledAppearance(stopsSendPlace(Boolean(going), text));
+  const stop: ComposerStop | null = going
+    ? {
+        label: tActivity('stop'),
+        disabled: going.status === 'cancelling' || commandSending || !stopSettled,
+        onStop: stopRun,
+      }
+    : null;
   const queue = useQueuedRequests({
     deps: {
       ...startDeps,
@@ -454,7 +528,6 @@ function SessionComposer({
   };
 
   const runNumber = (runId: string) => runs.findIndex((run) => run.runId === runId) + 1;
-  const viewingOtherRun = active && selectedRunId && active.runId !== selectedRunId;
   const destination =
     intent === 'steer'
       ? ownActive && !blocked
@@ -574,16 +647,6 @@ function SessionComposer({
         <ComposerNotices
           sessionId={session.sessionId}
           intent={intent}
-          viewingOtherRun={
-            viewingOtherRun
-              ? {
-                  viewed: runNumber(selectedRunId),
-                  active: runNumber(active.runId),
-                  activeRunId: active.runId,
-                }
-              : null
-          }
-          onViewRun={onViewRun}
           blocked={blocked}
           onChooseIntent={(value) => {
             chooseIntent(value);
@@ -673,7 +736,8 @@ function SessionComposer({
             chooseTarget(id);
             input.current?.focus();
           }}
-          onStop={stopRun}
+          // Stop stands in one place: among the Reins controls only while Send's place is Send.
+          {...(sendPlaceStop(stop, text) ? {} : { onStop: stopRun })}
           onPause={() => void runCommand(runDeps, 'pause', ownActive?.runId)}
           onResume={() => void runCommand(runDeps, 'resume', ownActive?.runId)}
           onViewRun={onViewRun}
@@ -684,7 +748,6 @@ function SessionComposer({
               ? session.entries.find((entry) => entry.runId === ownActive.runId)?.text.slice(0, 80)
               : undefined
           }
-          viewingOther={Boolean(viewingOtherRun)}
         />
       }
       above={
@@ -718,15 +781,7 @@ function SessionComposer({
           />
         </>
       }
-      stop={
-        going
-          ? {
-              label: tActivity('stop'),
-              disabled: going.status === 'cancelling' || commandSending || !stopSettled,
-              onStop: stopRun,
-            }
-          : null
-      }
+      stop={stop}
     />
   );
   return (
@@ -777,7 +832,7 @@ function SessionComposer({
         serverMode={mode === 'server'}
       />
       <StopRunDialog
-        open={confirmStop && !runControlsOwnConfirmation}
+        open={confirmStop && !conversationInoperable}
         onOpenChange={setConfirmStop}
         onConfirm={() => {
           if (ownActive) void runCommand(runDeps, 'cancel', ownActive.runId);

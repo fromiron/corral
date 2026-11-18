@@ -2,33 +2,45 @@ import { TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { DevelopmentMode } from './DevelopmentMode.tsx';
 import { PreviewLeases } from './PreviewLeases.tsx';
 import { panelKey } from './panels/registry.ts';
 import { ServicePreview } from './ServicePreview.tsx';
 import { WorkbenchTasks } from './WorkbenchTasks.tsx';
 import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 
-type ToolsTab = 'tasks' | 'preview';
+export type ToolsTab = 'tasks' | 'preview';
 
 /**
- * The tools pane: Tasks (shared development mode, package scripts, copy commands) and Preview
+ * The tools pane: Tasks (package scripts, deployments, copy commands) and Preview
  * (preview leases and the service preview). Both tabs stay mounted, so switching never restarts
- * a task, a lease poll or an open preview.
+ * a task, a lease poll or an open preview. With `onViewChange` the inner tab is the caller's
+ * (the panel's 작업 tab remembers it); `view` null is a tab nobody has picked yet.
  */
 export function WorkbenchToolsPanel({
   sessionId,
   projectId,
+  view,
+  onViewChange,
 }: {
   sessionId: string;
   projectId: string;
+  view?: ToolsTab | null;
+  onViewChange?: (view: ToolsTab) => void;
 }) {
   const services = useServices();
   const td = useTranslations('Docking');
   const tt = useTranslations('DevTasks');
   const tp = useTranslations('Preview');
   // Until the person picks a tab, the first read decides: a running preview opens Preview.
-  const [tab, setTab] = useState<ToolsTab | null>(null);
+  const [own, setOwn] = useState<ToolsTab | null>(null);
+  const tab = onViewChange ? (view ?? null) : own;
+  const latest = useRef(tab);
+  latest.current = tab;
+  const setTab = (next: ToolsTab) => {
+    latest.current = next;
+    if (onViewChange) onViewChange(next);
+    else setOwn(next);
+  };
   const firstRead = useRef(true);
   return (
     <Tabs
@@ -41,7 +53,6 @@ export function WorkbenchToolsPanel({
         <TabItem value="preview" label={tp('tab')} />
       </TabsList>
       <TabPanel value="tasks" keepMounted className="flex min-w-0 flex-col gap-2">
-        <DevelopmentMode sessionId={sessionId} />
         <WorkbenchTasks sessionId={sessionId} projectId={projectId} />
         <WorktreeCommandPanel sessionId={sessionId} />
       </TabPanel>
@@ -52,7 +63,7 @@ export function WorkbenchToolsPanel({
           onRead={(running) => {
             if (!firstRead.current) return;
             firstRead.current = false;
-            if (running) setTab((current) => current ?? 'preview');
+            if (running && latest.current === null) setTab('preview');
           }}
         />
         <ServicePreview

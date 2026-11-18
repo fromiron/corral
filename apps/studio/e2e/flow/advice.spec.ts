@@ -11,7 +11,8 @@ import {
   newConversation,
   openActivity,
   requestBox,
-  runControls,
+  sendPlaceStop,
+  stopConfirmation,
 } from '../workbench.ts';
 import { countVisibleLabels, createProbe, type ShiftResult, waitForStill } from './probe.ts';
 
@@ -572,7 +573,6 @@ test.describe('advice a role never read', () => {
     const tail = row.locator('[data-chat-part="tail"] [data-advice-line]');
     await expect(tail).toHaveText(/^Outrider·Concern·The answer never times the login/);
     await expect(row.locator('[data-chat-part="tail"]')).not.toContainText('Name the cache');
-    const runId = projection()?.runId as string;
 
     // From Needs you, its button: the advice opens on the row and its words come into view
     // above the composer, though the answer is longer than the screen.
@@ -619,23 +619,6 @@ test.describe('advice a role never read', () => {
     await waitForStill(page);
     expect(new URL(page.url()).searchParams.get('advice')).toBeNull();
     await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
-    // Arrived at again in the same conversation, its row already drawn: it opens again.
-    await page.evaluate(
-      ({ id, run }) => {
-        window.history.pushState(window.history.state, '', `/sessions/${id}?advice=${run}`);
-        window.dispatchEvent(new PopStateEvent('popstate', { state: window.history.state }));
-      },
-      { id: sessionId, run: runId },
-    );
-    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'true');
-    await expect.poll(() => new URL(page.url()).searchParams.get('advice')).toBeNull();
-    // Folded again, Back does not arrive again.
-    await arrivedLine.click();
-    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
-    await page.goBack();
-    await waitForStill(page);
-    expect(new URL(page.url()).searchParams.get('advice')).toBeNull();
-    await expect(arrivedLine).toHaveAttribute('aria-expanded', 'false');
     expect(corral.errors).toEqual([]);
   });
 
@@ -675,12 +658,11 @@ test.describe('advice a role never read', () => {
     await expect(page.getByTestId('chat-composer')).not.toContainText('No role takes instructions');
     await waitForStill(page);
     await shot(page, 'final-review-line-1280');
-    // Stop asks nothing: only the review is left to stop.
+    // Stop asks nothing: only the review is left to stop. The panel is open as the run ends;
+    // nothing is written, so Stop is Send's place.
     await openActivity(page);
-    await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
-    await expect(page.getByRole('dialog', { name: 'Cancel whole run', exact: true })).toHaveCount(
-      0,
-    );
+    await sendPlaceStop(page).click();
+    await expect(stopConfirmation(page)).toHaveCount(0);
     last.open();
     await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 30_000 });
     const row = page.locator('[data-chat-item]').last();

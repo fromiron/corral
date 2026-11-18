@@ -11,7 +11,7 @@ import type { RunSessionStore } from '@corral/react';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
@@ -1562,4 +1562,164 @@ it('measures again when the composer grows, so a covered tray reads as out of vi
     ),
   );
   expect(probe()).toBe('false:1');
+});
+
+// workbench.md (캡처한 컨텍스트와 대화 표시 밀도): what an extension says after its question is
+// answered stays in the conversation's response place, one line per notice, while the run lives
+// or the notice's text is kept.
+describe('an extension’s notice after its answered question', () => {
+  const extensionEvent = (runSeq: number, type: string, payload: Record<string, unknown>) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId: `event_extension_${runSeq}`,
+      runId: 'run_a',
+      runSeq,
+      recordedAt: '2026-11-09T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'runtime' },
+      causedByEventIds: [],
+      type,
+      payload,
+    });
+  const target = { requestId: 'extension_1', executionId: 'exec_extension', attemptNo: 1 };
+  const asked = extensionEvent(1, 'extension.ui_requested', {
+    ...target,
+    kind: 'confirm',
+    bodyRef: 'body_extension_1',
+    bodyHash: 'b'.repeat(64),
+    deadline: '2099-11-09T00:01:00.000Z',
+  });
+  const answered = extensionEvent(2, 'extension.ui_answered', {
+    ...target,
+    answerRef: 'answer_extension_1',
+    answerHash: 'c'.repeat(64),
+  });
+  const said = extensionEvent(3, 'extension.ui_notified', {
+    executionId: 'exec_extension',
+    kind: 'notify',
+    key: 'received',
+    level: 'info',
+    bodyRef: 'notice_extension_1',
+    bodyHash: 'd'.repeat(64),
+  });
+  const texts = {
+    body_extension_1: JSON.stringify({
+      kind: 'confirm',
+      title: 'Use the cache?',
+      timeoutMs: 60_000,
+    }),
+    answer_extension_1: JSON.stringify({ value: true }),
+    notice_extension_1: JSON.stringify({
+      kind: 'notify',
+      key: 'received',
+      text: 'Input received.',
+      level: 'info',
+    }),
+  };
+  const line = `${messages.Harness.extensionNotice} · Input received.`;
+  const noticeLines = (container: HTMLElement) =>
+    [...(trayOf(container)?.querySelectorAll('[role="status"]') ?? [])].filter(
+      (element) => element.textContent === line,
+    );
+
+  /** The run asks through its extension; the person answers in the tray; the extension says so. */
+  async function answeredThenSaid() {
+    const store = waitingRun('run_a');
+    const projection = store.getState().projection as RunProjection;
+    projection.executions.exec_extension = execution('exec_extension');
+    projection.executionOrder.push('exec_extension');
+    projection.status = 'awaiting_user';
+    store.setState({ projection: { ...projection }, events: [asked], artifactTexts: texts });
+    const view = await show(['run_a']);
+    expect(trayOf(view.container)?.querySelector('[data-extension="extension_1"]')).not.toBeNull();
+    // The person has moved on to something else on the page.
+    const elsewhere = view.container.parentElement?.querySelector<HTMLInputElement>(
+      'input[aria-label="Elsewhere"]',
+    );
+    elsewhere?.focus();
+    await act(async () =>
+      store.setState({
+        projection: {
+          ...projection,
+          status: 'running',
+          executions: {
+            ...projection.executions,
+            exec_extension: { ...execution('exec_extension'), status: 'active' },
+          },
+        },
+        events: [asked, answered, said],
+      }),
+    );
+    await settleFrames();
+    return { ...view, store, elsewhere };
+  }
+
+  it('shows the notice as one line in the conversation once nothing waits, the answered line gone', async () => {
+    const view = await answeredThenSaid();
+    expect(trayOf(view.container)).not.toBeNull();
+    expect(noticeLines(view.container)).toHaveLength(1);
+    expect(trayOf(view.container)?.querySelector('[data-testid^="answered-"]')).toBeNull();
+    expect(trayOf(view.container)?.querySelector('[data-extension="extension_1"]')).toBeNull();
+    // Nothing waits: the tray says no count, and the focus stays where the person put it.
+    expect(view.tray.getState().waiting).toBe(0);
+    expect(document.activeElement).toBe(view.elsewhere);
+  });
+
+  it('draws nothing for a notice with no answered question before it', async () => {
+    const store = waitingRun('run_a');
+    const projection = store.getState().projection as RunProjection;
+    projection.executions.exec_extension = {
+      ...execution('exec_extension'),
+      status: 'active',
+    };
+    projection.executionOrder.push('exec_extension');
+    projection.status = 'running';
+    store.setState({ projection: { ...projection }, events: [said], artifactTexts: texts });
+    const view = await show(['run_a']);
+    await settleFrames();
+    expect(trayOf(view.container)).toBeNull();
+  });
+
+  it('keeps only what the extension said after the answer, not what it said before the question', async () => {
+    const view = await answeredThenSaid();
+    const earlier = {
+      ...extensionEvent(1, 'extension.ui_notified', {
+        executionId: 'exec_extension',
+        kind: 'notify',
+        key: 'starting',
+        level: 'info',
+        bodyRef: 'notice_extension_0',
+        bodyHash: 'e'.repeat(64),
+      }),
+      eventId: 'event_extension_earlier',
+      runSeq: 0,
+    };
+    await act(async () =>
+      view.store.setState({
+        events: [earlier, asked, answered, said],
+        artifactTexts: {
+          ...texts,
+          notice_extension_0: JSON.stringify({
+            kind: 'notify',
+            key: 'starting',
+            text: 'Starting.',
+            level: 'info',
+          }),
+        },
+      }),
+    );
+    await settleFrames();
+    expect(noticeLines(view.container)).toHaveLength(1);
+    expect(trayOf(view.container)?.textContent).not.toContain('Starting.');
+  });
+
+  it('lets the notice go once its text is released', async () => {
+    const view = await answeredThenSaid();
+    expect(noticeLines(view.container)).toHaveLength(1);
+    const projection = view.store.getState().projection as RunProjection;
+    await act(async () =>
+      view.store.setState({ projection: { ...projection, status: 'succeeded' } }),
+    );
+    await settleFrames();
+    expect(trayOf(view.container)).toBeNull();
+  });
 });

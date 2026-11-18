@@ -9,13 +9,18 @@ export {
   type ActivityTarget,
 } from './components/ActivityBar.tsx';
 export { AdviceSummary, AdviceText } from './components/AdviceLine.tsx';
+export {
+  AnnotationContents,
+  type AnnotationContentsProps,
+} from './components/AnnotationContents.tsx';
 export { ApprovalPanel, callLine, waitingToolPlan } from './components/ApprovalPanel.tsx';
 export { ArtifactViewer, GeneratedImage, ReviewSummary } from './components/ArtifactViewer.tsx';
 export { executionAgentStatus, runAgentStatus } from './components/agentStatus.ts';
-export { CommandReceipts } from './components/CommandReceipts.tsx';
+export { CommandReceipts, useOpenReceipts } from './components/CommandReceipts.tsx';
 export { ContinueDecisions, isContinueDecision } from './components/ContinueDecisions.tsx';
 export { CopyTextButton } from './components/CopyTextButton.tsx';
 export { CorralSymbol, CorralWordmark } from './components/CorralLogo.tsx';
+export { chipClass } from './components/chip.ts';
 export { EmptyView, type EmptyViewAction } from './components/EmptyView.tsx';
 export { ExecutionSteering, type ExecutionSteeringProps } from './components/ExecutionSteering.tsx';
 export {
@@ -24,7 +29,7 @@ export {
 } from './components/ExecutionTranscript.tsx';
 export { FailureNotice } from './components/FailureNotice.tsx';
 export { HarnessDetails } from './components/HarnessDetails.tsx';
-export { InteractionPanel } from './components/InteractionPanel.tsx';
+export { answeredExtensionNotices, InteractionPanel } from './components/InteractionPanel.tsx';
 export { MessageBody } from './components/MessageBody.tsx';
 export {
   ModelSelect,
@@ -88,6 +93,7 @@ export {
   type EditorState,
   type EditorStore,
 } from './editor/store.ts';
+export { forgetKeptInputs, keepInput, keptInput } from './keptInputs.ts';
 export { default as enMessages } from './messages/en.json' with { type: 'json' };
 export { default as koMessages } from './messages/ko.json' with { type: 'json' };
 export {
@@ -108,7 +114,11 @@ export {
   useAgentName,
   useSeverityName,
 } from './run/advisor.ts';
-export { useCancelConfirmation } from './run/cancel-confirmation.ts';
+export {
+  askCancelConfirmation,
+  discardCancelConfirmation,
+  useCancelConfirmation,
+} from './run/cancel-confirmation.ts';
 export { type CompareRow, compareRuns } from './run/compare.ts';
 export {
   estimateRunCost,
@@ -202,6 +212,7 @@ export {
   turnSummary,
 } from './run/turn-process.ts';
 export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';
+export { type ReportedInput, reportedInput, type UsageInput } from './run/usage-input.ts';
 export {
   useWorkPlanSnapshot,
   type WorkPlanRef,
@@ -217,4 +228,4 @@ export {
 } from './team/draft.ts';
 export type { Pattern, TeamReference } from './team-editor/commands.ts';
 export { importableRoles } from './team-editor/commands.ts';
-export { TeamEditor } from './team-editor/TeamEditor.tsx';
+export { TEAM_EDITOR_BESIDE_MIN, TeamEditor } from './team-editor/TeamEditor.tsx';

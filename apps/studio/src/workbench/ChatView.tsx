@@ -17,13 +17,14 @@ import { changePreferences, preferences } from './preferences.ts';
 
 /**
  * How much of each reply the conversation shows; a display preference kept in the page's menu
- * rather than above the messages, so the conversation starts at its first message.
+ * rather than above the messages, so the conversation starts at its first message. It is drawn
+ * as the menu's own row, not through a component of its own, so the menu numbers it in its place.
  */
-export function ChatDensityMenu() {
+export function useChatDensityRow() {
   const t = useTranslations('Desktop');
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
-  return (
-    <MenuSub>
+  return () => (
+    <MenuSub key="chat-density">
       <MenuSubTrigger>
         {t('chatDensity')}
         <span className="ml-auto truncate pl-3 text-caption text-muted-foreground">
@@ -269,6 +270,19 @@ export function ChatView({
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
   const [focused, setFocused] = useState<string | null>(null);
+  // The row that holds the focus itself (not a control inside it).
+  const [selfFocused, setSelfFocused] = useState<string | null>(null);
+  // Kept through the window losing the focus; let go once the focus lands anywhere else.
+  useEffect(() => {
+    if (selfFocused === null) return;
+    const landed = (event: FocusEvent) => {
+      const target = event.target as Element | null;
+      if (target?.closest?.('[data-chat-item]')?.getAttribute('data-chat-item') !== selfFocused)
+        setSelfFocused(null);
+    };
+    document.addEventListener('focusin', landed);
+    return () => document.removeEventListener('focusin', landed);
+  }, [selfFocused]);
   // Rows' last real heights; a hidden or not yet laid out row reads 0 and keeps its last size.
   const sizes = useRef(new Map<string, number>());
   // The timeline is always virtualized, whatever its length: one layout for one row or a
@@ -537,16 +551,47 @@ export function ChatView({
     return { following, held: () => restoreAnchor.current === anchor };
   };
   const jumped = useRef<string | undefined>(undefined);
+  // While a linked row waits to join, a key or a pointer the person presses means they went on
+  // elsewhere: the row then does not take the focus. Focus the app moves by itself does not count
+  // (features/session-panel.md 접근성).
+  const waiting = useRef<{ messageId: string; pressed: boolean; stop: () => void } | null>(null);
+  useEffect(() => () => waiting.current?.stop(), []);
   // A linked row may join the items later; `place` reads the current items and list itself.
   // biome-ignore lint/correctness/useExhaustiveDependencies: rerun when the items or list change
   useLayoutEffect(() => {
     if (!messageId) {
       jumped.current = undefined;
+      waiting.current?.stop();
+      waiting.current = null;
       return;
+    }
+    if (waiting.current?.messageId !== messageId) {
+      waiting.current?.stop();
+      const wait = { messageId, pressed: false, stop: () => {} };
+      const press = (event: Event) => {
+        if (event instanceof KeyboardEvent && event.repeat) return;
+        wait.pressed = true;
+        wait.stop();
+      };
+      window.addEventListener('keydown', press, true);
+      window.addEventListener('pointerdown', press, true);
+      wait.stop = () => {
+        window.removeEventListener('keydown', press, true);
+        window.removeEventListener('pointerdown', press, true);
+      };
+      waiting.current = wait;
     }
     if (jumped.current === messageId) return;
     if (!place.current(messageId, 0)) return;
     jumped.current = messageId;
+    const wait = waiting.current;
+    wait.stop();
+    // Going to a message ends there: the focus goes with it (features/session-panel.md 접근성).
+    if (wait.pressed) return;
+    const row = [...document.querySelectorAll<HTMLElement>('[data-chat-item]')].find(
+      (element) => element.dataset.chatItem === messageId,
+    );
+    row?.focus({ preventScroll: true });
   }, [messageId, items, rows]);
   // followEnd only writes refs.
   // biome-ignore lint/correctness/useExhaustiveDependencies: refs only
@@ -781,6 +826,10 @@ export function ChatView({
                     data-chat-item={item.id}
                     data-latest={index === items.length - 1 || undefined}
                     aria-current={item.id === messageId ? 'location' : undefined}
+                    // The linked message takes the focus when the conversation goes to it. A row
+                    // holding the focus itself stays focusable after its message is let go (the
+                    // activity bar's View focuses it so), and stops being so once the focus leaves.
+                    tabIndex={item.id === messageId || item.id === selfFocused ? -1 : undefined}
                     // Its own block, so the row's margins belong to its measured size.
                     className={cn(
                       'flow-root transition-none',
@@ -788,8 +837,15 @@ export function ChatView({
                     )}
                     ref={rows.measureElement}
                     style={between > 0 ? { marginTop: between } : undefined}
-                    onFocusCapture={() => setFocused(item.id)}
+                    onFocusCapture={(event) => {
+                      setFocused(item.id);
+                      if (event.target === event.currentTarget) setSelfFocused(item.id);
+                    }}
                     onBlurCapture={(event) => {
+                      // The window losing the focus (another app) keeps the row the active
+                      // element: it stays focusable until the focus lands elsewhere.
+                      if (event.target === event.currentTarget && document.hasFocus())
+                        setSelfFocused(null);
                       if (!event.currentTarget.contains(event.relatedTarget)) setFocused(null);
                     }}
                   >

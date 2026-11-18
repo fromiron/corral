@@ -1,6 +1,6 @@
 import { type ChildProcess, fork } from 'node:child_process';
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { isAbsolute, join, resolve } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { isAbsolute, join, resolve, sep } from 'node:path';
 import {
   app,
   BrowserWindow,
@@ -18,11 +18,16 @@ import {
   screen,
   shell,
   Tray,
+  WebContentsView,
 } from 'electron';
+import { OVERLAY_SCHEME } from './annotate-overlay.ts';
+import { annotateHandlers, browserHandlers } from './browser-ipc.ts';
+import { BrowserTabs } from './browser-tabs.ts';
 import { type DesktopRun, RunSleepBlocker, runRoute, trayRunState } from './lifecycle.ts';
 import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
 import { installStudioMicrophone } from './microphone.ts';
 import { DesktopPreviews } from './preview.ts';
+import { withoutPageAddresses } from './quiet-warnings.ts';
 import { RemoteHostController } from './remote-host-controller.ts';
 import {
   type DesktopCommand,
@@ -39,10 +44,13 @@ import { hasWindowUnsavedEdits } from './unsaved.ts';
 import { DesktopUpdater } from './updater.ts';
 
 app.setName('Corral');
+withoutPageAddresses(process);
 const dataArg = process.argv.find((arg) => arg.startsWith('--data-dir='))?.slice(11);
 if (dataArg && isAbsolute(dataArg)) app.setPath('userData', dataArg);
 protocol.registerSchemesAsPrivileged([
   { scheme: 'corral', privileges: { standard: true, secure: true, supportFetchAPI: true } },
+  // The annotation overlay's own files (annotate-overlay.ts), in its own partition only.
+  { scheme: OVERLAY_SCHEME, privileges: { standard: true, secure: true } },
 ]);
 
 const STARTUP = 'corral://startup/';
@@ -118,6 +126,8 @@ let discardEdits = false;
 let generation = 0;
 let tray: Tray | null = null;
 let remoteHosts: RemoteHostController | null = null;
+/** The session panel's browser tabs (features/browser-tab.md); made once the window exists. */
+let browserTabs: BrowserTabs | null = null;
 let updater: DesktopUpdater | null = null;
 let keybindings: Partial<Record<DesktopCommand, string>> | null = null;
 let capturingShortcut = false;
@@ -158,7 +168,7 @@ function refreshTray() {
               },
             },
             {
-              label: ko ? '실행 취소…' : 'Cancel run…',
+              label: ko ? '실행 중지…' : 'Stop the run…',
               enabled: run.status !== 'cancelling',
               click: () => void cancelTrayRun(run),
             },
@@ -179,9 +189,9 @@ async function cancelTrayRun(run: DesktopRun) {
   if (!window || !child?.connected) return;
   const answer = await dialog.showMessageBox(window, {
     type: 'question',
-    message: korean() ? '이 실행을 취소할까요?' : 'Cancel this run?',
+    message: korean() ? '이 실행을 중지할까요?' : 'Stop this run?',
     detail: run.title ?? '',
-    buttons: korean() ? ['계속 실행', '실행 취소'] : ['Keep running', 'Cancel run'],
+    buttons: korean() ? ['계속 실행', '실행 중지'] : ['Keep running', 'Stop the run'],
     defaultId: 0,
     cancelId: 0,
   });
@@ -313,7 +323,10 @@ async function confirmStop(nextWorkspace?: string): Promise<boolean> {
 
 async function stopServer(idleOnly = false) {
   if (cleanupFailed) return false;
-  if (!idleOnly) previews.closeAll();
+  if (!idleOnly) {
+    previews.closeAll();
+    browserTabs?.closeAll();
+  }
   const sidecar = child;
   if (!sidecar || sidecar.exitCode !== null || sidecar.signalCode !== null) return true;
   const stopped = await new Promise<boolean>((done) => {
@@ -381,6 +394,7 @@ async function stopServer(idleOnly = false) {
   generation++;
   origin = null;
   previews.closeAll();
+  browserTabs?.closeAll();
   desktopRuns = [];
   refreshTray();
   return true;
@@ -596,6 +610,103 @@ async function openWorkspaceAt(path: string) {
   }
 }
 
+/** The browser tab manager's Electron side (src/browser-tabs.ts holds the rules). */
+function createBrowserTabs() {
+  const folder = join(app.getPath('userData'), 'browser');
+  const file = (name: string) => {
+    if (!/^[A-Za-z0-9_.-]{1,120}$/.test(name)) throw new Error('Invalid browser file');
+    return join(folder, name);
+  };
+  return new BrowserTabs({
+    surface: () => (window && !window.isDestroyed() ? window.contentView : null),
+    session: (partition) =>
+      partition.startsWith('persist:')
+        ? electronSession.fromPartition(partition)
+        : electronSession.fromPartition(partition, { cache: false }),
+    createView: (init) =>
+      'contents' in init
+        ? new WebContentsView({ webContents: init.contents })
+        : new WebContentsView({
+            webPreferences: { ...init.webPreferences, session: init.session },
+          }),
+    send: (event) => {
+      // Only the app's own page hears about its tabs' pages.
+      if (!window || window.isDestroyed() || !origin) return;
+      try {
+        if (new URL(window.webContents.getURL()).origin !== origin) return;
+      } catch {
+        return;
+      }
+      window.webContents.send('desktop:browser-event', event);
+    },
+    focusHost: () => window?.webContents.focus(),
+    hostZoom: () => (window && !window.isDestroyed() ? window.webContents.getZoomFactor() : 1),
+    openExternal: (url) => void shell.openExternal(url),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+    resolveLease: async (sessionId, leaseId) =>
+      (await sidecarRequest({ type: 'preview-target', sessionId, leaseId })).target,
+    files: {
+      read: (name) => {
+        try {
+          return readFileSync(file(name), 'utf8');
+        } catch {
+          return null;
+        }
+      },
+      write: (name, text) => {
+        mkdirSync(folder, { recursive: true, mode: 0o700 });
+        const path = file(name);
+        writeFileSync(`${path}.tmp`, text, { mode: 0o600 });
+        renameSync(`${path}.tmp`, path);
+      },
+      remove: (name) => rmSync(file(name), { force: true }),
+    },
+    removePartition: (partition) => {
+      const name = partition.replace(/^persist:/, '');
+      if (!/^corral-browser-[0-9a-f]{32}$/.test(name)) throw new Error('Invalid partition');
+      rmSync(join(app.getPath('userData'), 'Partitions', name), { recursive: true, force: true });
+    },
+    hostKey: () => saved.workspace,
+    now: () => Date.now(),
+    id: () => crypto.randomUUID(),
+    every: (ms, run) => {
+      const timer = setInterval(run, ms);
+      timer.unref();
+      return () => clearInterval(timer);
+    },
+    // The page's own menu (features/browser-tab.md 페이지의 메뉴), at the pointer.
+    popupMenu: (groups, at) => {
+      if (!window || window.isDestroyed()) return;
+      Menu.buildFromTemplate(
+        groups.flatMap((group, index): MenuItemConstructorOptions[] => [
+          ...(index ? [{ type: 'separator' as const }] : []),
+          ...group.map(({ label, run }) => ({ label, click: run })),
+        ]),
+      ).popup({ window, ...(at ? { x: Math.round(at.x), y: Math.round(at.y) } : {}) });
+    },
+    copyText: (text) => clipboard.writeText(text),
+    after: (ms, run) => {
+      const timer = setTimeout(run, ms);
+      timer.unref();
+      return () => clearTimeout(timer);
+    },
+    overlayPreload: () => join(import.meta.dirname, 'annotate-preload.cjs'),
+    // The studio's build, as the runtime carries it; annotate-overlay.ts names the files.
+    overlayFile: (path) => {
+      const studio = join(runtime, 'studio');
+      const file = resolve(studio, path);
+      if (!file.startsWith(`${studio}${sep}`)) return null;
+      try {
+        return readFileSync(file);
+      } catch {
+        return null;
+      }
+    },
+    korean,
+    mac: process.platform === 'darwin',
+  });
+}
+
 /** Asks the page to run one of its own commands; the page decides what it does. */
 const command = (id: DesktopCommand) => () => {
   if (window && !window.isDestroyed() && status === 'ready')
@@ -682,7 +793,7 @@ function buildMenu() {
             click: command('view.sidebar'),
           },
           {
-            label: say('Toggle side pane', '사이드 패널'),
+            label: say('Show or hide the panel', '패널 여닫기'),
             accelerator: accelerator('view.panel', 'CommandOrControl+Alt+B'),
             click: command('view.panel'),
           },
@@ -902,6 +1013,7 @@ else {
       if (items.length && window) Menu.buildFromTemplate(items).popup({ window });
     });
     contents.on('render-process-gone', () => {
+      browserTabs?.unloadAll();
       if (closing) return;
       status = 'failed';
       origin = null;
@@ -922,6 +1034,10 @@ else {
         const safe = externalUrl(url);
         if (safe) void shell.openExternal(safe);
       }
+    });
+    // The app page reloading or leaving takes its browser tabs' pages with it.
+    contents.on('did-start-navigation', (details) => {
+      if (details.isMainFrame && !details.isSameDocument) browserTabs?.unloadAll();
     });
     contents.on('did-navigate-in-page', (_event, url, isMainFrame) => {
       if (isMainFrame && origin && new URL(url).origin === origin) {
@@ -1052,6 +1168,10 @@ else {
         throw new Error('Invalid preview identity');
       previews.cancelCapture(sessionId, leaseId);
     });
+    browserTabs = createBrowserTabs();
+    for (const [name, action] of Object.entries(browserHandlers(browserTabs))) handle(name, action);
+    for (const [channel, action] of Object.entries(annotateHandlers(browserTabs)))
+      ipcMain.handle(channel, action);
     handle('reveal-workspace', () => {
       if (existsSync(saved.workspace)) shell.showItemInFolder(saved.workspace);
     });
@@ -1118,6 +1238,7 @@ else {
             return false;
           }
           previews.closeAll();
+          browserTabs?.closeAll();
           await remoteHosts?.dispose();
           remoteHosts = null;
           awake.dispose();

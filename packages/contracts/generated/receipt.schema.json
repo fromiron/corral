@@ -92,7 +92,12 @@
           "properties": {
             "kind": {
               "type": "string",
-              "const": "terminal"
+              "enum": [
+                "run",
+                "task",
+                "terminal",
+                "operation"
+              ]
             },
             "id": {
               "type": "string",
@@ -108,6 +113,11 @@
                 "active",
                 "uncertain"
               ]
+            },
+            "operationKind": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64
             }
           },
           "required": [

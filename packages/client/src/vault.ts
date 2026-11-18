@@ -22,12 +22,14 @@ export interface PortableApplication {
       | 'session.jump'
       | 'view.sidebar'
       | 'view.panel'
+      | 'view.dock'
       | 'composer.focus'
       | 'settings'
       | 'nav.back'
       | 'nav.forward'
       | 'run.stop'
-      | 'reply.quote',
+      | 'reply.quote'
+      | 'browser.annotate',
       {
         key: string;
         mod?: boolean;

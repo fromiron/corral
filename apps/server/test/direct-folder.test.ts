@@ -73,7 +73,7 @@ function database() {
   return db;
 }
 
-async function directFolder() {
+async function directFolder(shares = false) {
   const root = temp();
   const outside = temp();
   writeFileSync(join(outside, 'secret.txt'), 'secret-bytes');
@@ -87,6 +87,7 @@ async function directFolder() {
     clock: new FakeClock(),
     worktreeRoot: join(temp(), 'worktrees'),
     forbidden: [],
+    allowSharedDevelopment: shares,
   });
   await service.bind('default', root);
   await service.configure('default', { trusted: true });
@@ -351,47 +352,54 @@ describe('direct folder file access', () => {
     }
   });
 
-  it('runs one command at a time in the folder, refuses another while one runs, and releases the folder when it ends', async () => {
-    const s = await directFolder();
-    try {
-      s.db
-        .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
-        .run('{"permissionMode":"auto"}', 'run_1');
-      s.service.acquireRun('run_1', 'session_1', true);
-      s.service.acquireRun('run_2', 'session_2', true);
-      const first = command(
-        'run_1',
-        'effect_wait',
-        'while [ ! -f go ]; do sleep 0.02; done; printf first',
-      );
-      const running = s.service.runCommand(
-        first,
-        await s.service.planCommand(first, live()),
-        null,
-        live(),
-      );
-      await until(() => folderWriters(s.db).length === 1);
-      // Another session's command, and the same run's next command, are refused, not queued.
-      for (const next of [
-        command('run_2', 'effect_other', 'printf other'),
-        command('run_1', 'effect_again', 'printf again'),
-      ])
-        await expect(s.service.planCommand(next, live())).rejects.toMatchObject({
-          code: 'RUN_ALREADY_ACTIVE',
-        });
-      writeFileSync(join(s.root, 'go'), '');
-      expect(await running).toMatchObject({ state: 'completed', exitCode: 0 });
-      expect(folderWriters(s.db)).toEqual([]);
-      const next = command('run_2', 'effect_next', 'printf next');
-      expect(
-        await s.service.runCommand(next, await s.service.planCommand(next, live()), null, live()),
-      ).toMatchObject({ state: 'completed', exitCode: 0 });
-      expect(folderWriters(s.db)).toEqual([]);
-    } finally {
-      await s.service.dispose();
-      s.db.close();
-    }
-  });
+  // A local host shares its Paddock, never a linked folder (execution-and-safety.md 직접 모드).
+  it.each([
+    ['a server', false],
+    ['a local host', true],
+  ])(
+    '%s runs one command at a time in the folder, refuses another while one runs, and releases the folder when it ends',
+    async (_host, shares) => {
+      const s = await directFolder(shares);
+      try {
+        s.db
+          .prepare('UPDATE runs SET snapshot_json = ? WHERE id = ?')
+          .run('{"permissionMode":"auto"}', 'run_1');
+        s.service.acquireRun('run_1', 'session_1', true);
+        s.service.acquireRun('run_2', 'session_2', true);
+        const first = command(
+          'run_1',
+          'effect_wait',
+          'while [ ! -f go ]; do sleep 0.02; done; printf first',
+        );
+        const running = s.service.runCommand(
+          first,
+          await s.service.planCommand(first, live()),
+          null,
+          live(),
+        );
+        await until(() => folderWriters(s.db).length === 1);
+        // Another session's command, and the same run's next command, are refused, not queued.
+        for (const next of [
+          command('run_2', 'effect_other', 'printf other'),
+          command('run_1', 'effect_again', 'printf again'),
+        ])
+          await expect(s.service.planCommand(next, live())).rejects.toMatchObject({
+            code: 'RUN_ALREADY_ACTIVE',
+          });
+        writeFileSync(join(s.root, 'go'), '');
+        expect(await running).toMatchObject({ state: 'completed', exitCode: 0 });
+        expect(folderWriters(s.db)).toEqual([]);
+        const next = command('run_2', 'effect_next', 'printf next');
+        expect(
+          await s.service.runCommand(next, await s.service.planCommand(next, live()), null, live()),
+        ).toMatchObject({ state: 'completed', exitCode: 0 });
+        expect(folderWriters(s.db)).toEqual([]);
+      } finally {
+        await s.service.dispose();
+        s.db.close();
+      }
+    },
+  );
 
   it('a cancelled command releases the folder once its end is confirmed', async () => {
     const s = await directFolder();

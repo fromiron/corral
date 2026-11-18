@@ -85,3 +85,87 @@ describe('list screens outside a project', () => {
       expect(workHref(lookalike)).toBeUndefined();
   });
 });
+
+// features/library.md: Manage opens the dialog with the resource chosen. The resource rides in
+// history state, never in the address, and only the dialog entry that Manage opened carries it.
+describe('the resource Manage chooses', () => {
+  it('rides in history state beside the dialog owner, not in the address', async () => {
+    const { settingsOpenState, settingsItemOf } = await import('./navigation.ts');
+    const opened = settingsOpenState(
+      { __TSR_index: 4, key: 'k' },
+      { overlay: false, owner: 'owner_a', oneShot: false, item: 'hash_1:skills/SKILL.md' },
+    );
+    expect(opened).toEqual({
+      __TSR_index: 4,
+      key: 'k',
+      settingsOwner: 'owner_a',
+      settingsOrigin: 4,
+      settingsOneShot: false,
+      settingsItem: 'hash_1:skills/SKILL.md',
+    });
+    expect(settingsItemOf(opened)).toBe('hash_1:skills/SKILL.md');
+    expect(validateSettingsSearch(opened as unknown as Record<string, unknown>)).toEqual({});
+    const { validateSettingsOverlay } = await import('./navigation.ts');
+    expect(
+      validateSettingsOverlay({ settings: 'skills', settingsItem: 'hash_1:skills/SKILL.md' }),
+    ).toEqual({ settings: 'skills' });
+  });
+
+  it('is absent when the link names no resource, as the Add of an empty group does', async () => {
+    const { settingsOpenState, settingsItemOf } = await import('./navigation.ts');
+    const opened = settingsOpenState(
+      { __TSR_index: 1 },
+      { overlay: false, owner: 'owner_a', oneShot: true },
+    );
+    expect(opened).not.toHaveProperty('settingsItem');
+    expect(settingsItemOf(opened)).toBeUndefined();
+  });
+
+  it('does not follow a section change inside the dialog to the other section', async () => {
+    const { settingsOpenState, settingsItemOf } = await import('./navigation.ts');
+    const inDialog = {
+      __TSR_index: 5,
+      settingsOwner: 'owner_a',
+      settingsOrigin: 4,
+      settingsOneShot: false,
+      settingsItem: 'docs',
+    };
+    const switched = settingsOpenState(inDialog, {
+      overlay: true,
+      owner: 'owner_b',
+      oneShot: true,
+    });
+    expect(settingsItemOf(switched)).toBeUndefined();
+    // The dialog keeps the owner it was opened with, so closing still goes back one step.
+    expect(switched).toMatchObject({
+      settingsOwner: 'owner_a',
+      settingsOrigin: 4,
+      settingsOneShot: false,
+    });
+  });
+
+  it('is dropped when the dialog closes or switches project', async () => {
+    const { settingsClosedState, withoutSettingsItem, settingsItemOf } = await import(
+      './navigation.ts'
+    );
+    const inDialog = {
+      __TSR_index: 5,
+      key: 'k',
+      settingsOwner: 'owner_a',
+      settingsOrigin: 4,
+      settingsOneShot: true,
+      settingsItem: 'docs',
+    };
+    expect(settingsClosedState(inDialog)).toEqual({ __TSR_index: 5, key: 'k' });
+    const otherProject = withoutSettingsItem(inDialog);
+    expect(settingsItemOf(otherProject)).toBeUndefined();
+    expect(otherProject).toMatchObject({ settingsOwner: 'owner_a', settingsOrigin: 4 });
+  });
+
+  it('reads only a bounded string', async () => {
+    const { settingsItemOf } = await import('./navigation.ts');
+    for (const settingsItem of [undefined, '', 3, ['docs'], 'x'.repeat(1025)])
+      expect(settingsItemOf({ __TSR_index: 0, settingsItem })).toBeUndefined();
+    expect(settingsItemOf(undefined)).toBeUndefined();
+  });
+});

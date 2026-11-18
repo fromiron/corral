@@ -1170,7 +1170,12 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
           <div
             className={cn(
               'flex flex-wrap items-center justify-between',
-              toolbar === 'single' && 'sm:flex-nowrap',
+              // On one line the model chip may shrink and cuts its name with an ellipsis, so the
+              // line keeps its height; the name keeps its whole text as its tooltip. Narrower
+              // still, the chip clips its own marks at its edge rather than draw them over the
+              // next control.
+              toolbar === 'single' &&
+                'sm:flex-nowrap sm:[&_[data-slot=model-picker-name]]:truncate sm:[&_[data-slot=model-picker-trigger]]:min-w-0 sm:[&_[data-slot=model-picker-trigger]]:overflow-x-clip sm:[&_[data-slot=model-picker]]:min-w-0',
               // Compact scales every button in the row (slots are
               // consumer-authored) down to 24px. The model chip keeps 24px as its least
               // height: a name it cannot fit takes another line instead of being cut.
