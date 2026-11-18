@@ -18,6 +18,6 @@ export function installFakeBrowser(services: StudioServices) {
   window.corralFakeBrowser = bridge;
   const style = document.createElement('style');
   style.textContent =
-    '[data-slot="browser-page"][data-live]{background:var(--color-accent,#d4d4d4)}';
+    '[data-slot="browser-page"][data-live]{background:var(--color-accent)}';
   document.head.append(style);
 }
