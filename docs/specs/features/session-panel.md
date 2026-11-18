@@ -904,6 +904,10 @@ Then 읽기 전용 README.md 탭이 열리고 입력창 초안에 그 줄의 참
 When 트리에서 src/version.ts를 연다
 Then version.ts 탭이 따로 열리고 README.md 탭은 남는다
 
+Given 원본 폴더의 README.md 탭이 열려 있고 그 첫 줄은 "# 옛 제목"이다
+When Corral 밖에서 그 첫 줄을 "# 새 제목"으로 고친 뒤, 파일 탭의 "파일 새로고침"을 누르고 README.md 탭을 고른다
+Then README.md 탭의 첫 줄은 "# 새 제목"이다
+
 Given 사본의 문서 a.ts 탭에서 저장했고 문서 머리가 576px보다 좁다
 Then 저장 버튼의 자리는 체크 아이콘이고 그 접근 이름은 "저장됨"이다
 When a.ts를 다시 고친다
