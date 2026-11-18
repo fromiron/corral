@@ -128,6 +128,16 @@ it('a sent note shows its written note first, as text (반례: markup in the not
   expect(container.querySelector('img')).toBeNull();
 });
 
+it('a note sent at once does not repeat its note, which is the request’s own text: the entry shows it once', async () => {
+  const container = await show({
+    attachments: [note('annotation.json', 'Pay now', 'Make the button larger')],
+    images: [],
+    imageUrl: () => null,
+  });
+  expect(container.textContent).toContain('button.pay 120×32');
+  expect(container.textContent).not.toContain('Make the button larger');
+});
+
 it('attachments that are not page notes show nothing here', async () => {
   const container = await show({
     attachments: [createTextAttachment('notes.md', 'text/markdown', 'plain notes')],
