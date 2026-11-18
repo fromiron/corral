@@ -222,11 +222,6 @@ describe('the whole search the frame writes', () => {
     expect(write(current, waiting, context, ctx())).toEqual({ panel: 'run', run: 'run_2' });
   });
 
-  it('drops a legacy tab parameter so it cannot reopen a tab', () => {
-    const current = { compose: true, tab: 'run' } as SessionSearch;
-    expect(write(current, state('closed'), context)).toEqual({ compose: true });
-  });
-
   it('always writes exactly one of panel and compose, and compose survives validation', () => {
     const cases: [SessionSearch, PanelState, PanelEvent][] = [
       [{ panel: 'run', run: 'run_1', view: 'results' }, state('beside'), { type: 'toggle' }],

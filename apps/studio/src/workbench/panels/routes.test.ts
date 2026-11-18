@@ -63,10 +63,7 @@ it('panel wins over compose; compose keeps the closed panel and whatever else th
   });
 });
 
-it('a legacy tab link reads as its panel and a patch keeps the run it names', () => {
-  expect(
-    validateSessionSearch({ tab: 'run', panel: 'files', run: 'run_a', settings: 'models' }),
-  ).toEqual({ panel: 'run', run: 'run_a' });
+it('an unknown panel reads as none and a patch keeps the run it names', () => {
   expect(validateSessionSearch({ panel: 'unknown', settings: 'general' })).toEqual({});
   expect(
     patchSessionSearch(

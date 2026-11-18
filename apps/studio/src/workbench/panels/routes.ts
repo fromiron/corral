@@ -19,8 +19,6 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   /** A run whose row's unread advice the conversation opens (features/inbox.md `advice`). */
   advice?: string | undefined;
   compose?: true | undefined;
-  /** Old links only (`tab=run`); read into `panel`. */
-  tab?: 'work' | 'team' | 'run' | undefined;
   panel?: SessionPanel | undefined;
   run?: string | undefined;
   terminal?: string | undefined;
@@ -60,7 +58,6 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (atSeq !== undefined) out.atSeq = atSeq;
   if (SESSION_PANELS.includes(search.panel as SessionPanel))
     out.panel = search.panel as SessionPanel;
-  if (search.tab === 'run') out.panel = 'run';
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
   if (out.panel === 'document' && relativePath(search.file)) {
     out.file = search.file;
