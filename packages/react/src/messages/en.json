@@ -4673,6 +4673,69 @@
       "other": "The certificate couldn't be checked."
     }
   },
+  "Annotate": {
+    "area": "Page",
+    "busy": "The page isn't responding",
+    "noteLabel": "Note on {label}",
+    "placeholder": "Write a note",
+    "screenshot": "Include screenshot",
+    "console": "Include console",
+    "collect": "Collect",
+    "send": "Send",
+    "add": "Add",
+    "sending": "Sending",
+    "adding": "Adding",
+    "sendAgain": "Send again",
+    "sentMark": "Sent",
+    "style": "Style",
+    "reason": {
+      "fields": "Screens with input fields aren't captured",
+      "newOnly": "Applies to a new request only",
+      "images": "A request holds up to 3 images",
+      "attachments": "A request holds up to 5 attachments"
+    },
+    "failed": {
+      "pageChanged": "The page changed",
+      "notVisible": "The element isn't on screen",
+      "imageLimit": "The screenshot is over 2,048px or 1 MiB",
+      "notAdded": "Couldn't add the note"
+    },
+    "announce": {
+      "sent": "Note sent",
+      "added": "Added note {n}",
+      "discarded": "Discarded the note you were writing",
+      "notSent": "Couldn't send the note",
+      "unconfirmed": "Couldn't confirm the note arrived. Check the conversation."
+    },
+    "what": {
+      "title": "What goes with this note",
+      "page": "Page",
+      "element": "Element",
+      "selector": "Selector",
+      "text": "Text",
+      "showMore": "Show more",
+      "styles": "Style changes",
+      "console": "Console",
+      "screenshotIncluded": "Screenshot included",
+      "noScreenshot": "No screenshot"
+    },
+    "styleView": {
+      "title": "Style, {label}",
+      "groups": {
+        "text": "Text",
+        "color": "Color and border",
+        "spacing": "Spacing",
+        "layout": "Layout"
+      },
+      "invalid": "This value isn't valid",
+      "changed": "Changed",
+      "reset": "Reset {property}",
+      "resetAll": "Reset all",
+      "tokens": "Page tokens for {property}",
+      "searchTokens": "Search tokens",
+      "noTokenMatch": "No matching tokens"
+    }
+  },
   "SessionPanel": {
     "label": "Panel",
     "sourceFolderSuffix": "project source folder",

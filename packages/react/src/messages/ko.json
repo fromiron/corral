@@ -4673,6 +4673,69 @@
       "other": "인증서를 확인하지 못했습니다."
     }
   },
+  "Annotate": {
+    "area": "페이지",
+    "busy": "페이지가 답하지 않습니다",
+    "noteLabel": "{label}의 주석",
+    "placeholder": "주석 적기",
+    "screenshot": "스크린샷 넣기",
+    "console": "콘솔 넣기",
+    "collect": "모아 두기",
+    "send": "보내기",
+    "add": "담기",
+    "sending": "보내는 중",
+    "adding": "담는 중",
+    "sendAgain": "다시 보내기",
+    "sentMark": "보냄",
+    "style": "스타일",
+    "reason": {
+      "fields": "입력 칸이 든 화면은 찍지 않습니다",
+      "newOnly": "새 요청에만 적용",
+      "images": "이미지는 한 요청에 3개까지입니다",
+      "attachments": "첨부는 한 요청에 5개까지입니다"
+    },
+    "failed": {
+      "pageChanged": "페이지가 바뀌었습니다",
+      "notVisible": "요소가 화면에 보이지 않습니다",
+      "imageLimit": "스크린샷이 2,048px이나 1MiB를 넘습니다",
+      "notAdded": "주석을 담지 못했습니다"
+    },
+    "announce": {
+      "sent": "주석을 보냈습니다",
+      "added": "주석 {n}을 담았습니다",
+      "discarded": "작성 중인 주석을 버렸습니다",
+      "notSent": "주석을 보내지 못했습니다",
+      "unconfirmed": "보낸 주석이 도착했는지 확인하지 못했습니다. 대화에서 확인하세요."
+    },
+    "what": {
+      "title": "이 주석에 실리는 것",
+      "page": "페이지",
+      "element": "요소",
+      "selector": "선택자",
+      "text": "글",
+      "showMore": "더 보기",
+      "styles": "스타일 차이",
+      "console": "콘솔",
+      "screenshotIncluded": "스크린샷을 넣습니다",
+      "noScreenshot": "스크린샷 없음"
+    },
+    "styleView": {
+      "title": "스타일, {label}",
+      "groups": {
+        "text": "글자",
+        "color": "색과 테두리",
+        "spacing": "간격",
+        "layout": "배치"
+      },
+      "invalid": "이 값은 쓸 수 없습니다",
+      "changed": "바뀜",
+      "reset": "{property} 되돌리기",
+      "resetAll": "모두 되돌리기",
+      "tokens": "{property}의 페이지 토큰",
+      "searchTokens": "토큰 찾기",
+      "noTokenMatch": "맞는 토큰이 없습니다"
+    }
+  },
   "SessionPanel": {
     "label": "패널",
     "sourceFolderSuffix": "프로젝트 원본 폴더",
