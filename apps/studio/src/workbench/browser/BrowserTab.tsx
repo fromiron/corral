@@ -8,6 +8,11 @@ import {
   Menu,
   MenuItem,
   MenuPopup,
+  MenuRadioGroup,
+  MenuRadioItem,
+  MenuSub,
+  MenuSubPopup,
+  MenuSubTrigger,
   MenuTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
@@ -25,6 +30,7 @@ import { useTranslations } from 'use-intl';
 import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/browser-bridge.ts';
 import { desktop } from '../../desktop.tsx';
 import { BlockedLine, DownloadLines, PermissionLines } from './BrowserLines.tsx';
+import { ClearDataDialog, SitePermissionsDialog } from './BrowserMenuDialogs.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
 import { LoginDialog } from './LoginDialog.tsx';
 import { focusPageWhenLive, PAGE_ON_SCREEN, PAGE_STILL } from './pageFocus.ts';
@@ -32,6 +38,19 @@ import { usePageStill } from './usePageStill.ts';
 
 const useBrowserT = () => useTranslations('Browser');
 type Translate = ReturnType<typeof useBrowserT>;
+
+/** 보기 폭 of a preview page: the view alone at that width, in the middle of the place. */
+type ViewWidth = 'full' | 'tablet' | 'mobile';
+const VIEW_WIDTHS: Record<Exclude<ViewWidth, 'full'>, number> = { tablet: 768, mobile: 390 };
+
+/** Where the view lies in a place of that box: all of it, or the chosen width in its middle. */
+function viewIn(
+  box: { left: number; top: number; width: number; height: number },
+  width: number | null,
+) {
+  const wide = width === null ? box.width : Math.min(width, box.width);
+  return { x: box.left + (box.width - wide) / 2, y: box.top, width: wide, height: box.height };
+}
 
 const isMac = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
 
@@ -69,6 +88,11 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const live = page?.page === 'live';
   // After 돌아가기 empties the tab, the field keeps the failed address, all of it chosen.
   const chooseAll = useRef(false);
+  const [viewWidth, setViewWidth] = useState<ViewWidth>('full');
+  const narrow = preview && viewWidth !== 'full' ? VIEW_WIDTHS[viewWidth] : null;
+  // What ⋯ opened: the site's permissions (its origin), or the question before clearing data.
+  const [permissionsOf, setPermissionsOf] = useState<string | null>(null);
+  const [clearing, setClearing] = useState(false);
 
   // The address field takes the focus when asked (a new tab, Shift+Escape from the page).
   const asked = tabs?.pages.focusAsked(tab.browserId) ?? 0;
@@ -94,10 +118,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       return;
     }
     const send = () => {
-      const box = element.getBoundingClientRect();
-      void bridge
-        .place(tabId, { x: box.left, y: box.top, width: box.width, height: box.height })
-        .catch(() => {});
+      void bridge.place(tabId, viewIn(element.getBoundingClientRect(), narrow)).catch(() => {});
     };
     send();
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(send);
@@ -108,7 +129,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       window.removeEventListener('resize', send);
       void bridge.place(tabId, null).catch(() => {});
     };
-  }, [bridge, tab.browserId, visible, live]);
+  }, [bridge, tab.browserId, visible, live, narrow]);
 
   // A page's new tab gives its page the focus once that page is live on screen.
   const pages = tabs?.pages;
@@ -119,6 +140,16 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
 
   // While the app covers the page, a picture of it stands in for the view.
   const { picture, still } = usePageStill(bridge, tab.browserId, visible && live, area);
+  // The pictures lie where the view lay: all the place, or its chosen width in the middle.
+  const pictureAt = picture
+    ? (() => {
+        const view = viewIn(
+          { left: 0, top: 0, width: picture.box.width, height: picture.box.height },
+          narrow,
+        );
+        return { left: view.x, width: view.width, height: view.height };
+      })()
+    : undefined;
 
   // The page's keys pressed anywhere in the tab are the page's, never the app's: with no page
   // they do nothing. A listener of the tab's own, so the app's window listener never sees them.
@@ -286,6 +317,40 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
             <MenuItem disabled={!shown} onClick={copy}>
               {t('copyAddress')}
             </MenuItem>
+            {preview ? (
+              <MenuSub>
+                <MenuSubTrigger>{t('viewWidth')}</MenuSubTrigger>
+                <MenuSubPopup>
+                  <MenuRadioGroup
+                    value={viewWidth}
+                    onValueChange={(value) => setViewWidth(value as ViewWidth)}
+                  >
+                    <MenuRadioItem value="full" closeOnClick>
+                      {t('widthFull')}
+                    </MenuRadioItem>
+                    <MenuRadioItem value="tablet" closeOnClick>
+                      {t('widthTablet')}
+                    </MenuRadioItem>
+                    <MenuRadioItem value="mobile" closeOnClick>
+                      {t('widthMobile')}
+                    </MenuRadioItem>
+                  </MenuRadioGroup>
+                </MenuSubPopup>
+              </MenuSub>
+            ) : (
+              <>
+                <MenuItem
+                  disabled={!page?.url}
+                  onClick={() => {
+                    const origin = originOf(page?.url ?? null);
+                    if (origin) setPermissionsOf(origin);
+                  }}
+                >
+                  {t('sitePermissions')}
+                </MenuItem>
+                <MenuItem onClick={() => setClearing(true)}>{t('clearData')}</MenuItem>
+              </>
+            )}
           </MenuPopup>
         </Menu>
         {page?.loading ? (
@@ -325,7 +390,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
             draggable={false}
             onPointerDown={(event) => event.preventDefault()}
             onWheel={(event) => event.preventDefault()}
-            style={{ width: picture.box.width, height: picture.box.height }}
+            style={pictureAt}
             className="absolute top-0 left-0 max-w-none select-none"
           />
         ) : null}
@@ -339,7 +404,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
             draggable={false}
             onPointerDown={(event) => event.preventDefault()}
             onWheel={(event) => event.preventDefault()}
-            style={{ width: picture.box.width, height: picture.box.height }}
+            style={pictureAt}
             className="absolute top-0 left-0 max-w-none select-none"
           />
         ) : null}
@@ -355,8 +420,29 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
         />
       </div>
       <BlockedLine bridge={b} tabId={tabId} blocked={preview ? (page?.blocked ?? null) : null} />
+      <SitePermissionsDialog
+        bridge={b}
+        projectId={tabs.projectId}
+        origin={permissionsOf}
+        onClose={() => setPermissionsOf(null)}
+      />
+      <ClearDataDialog
+        bridge={b}
+        projectId={tabs.projectId}
+        open={clearing}
+        onClose={() => setClearing(false)}
+      />
     </div>
   );
+}
+
+function originOf(url: string | null): string | null {
+  if (!url) return null;
+  try {
+    return new URL(url).origin;
+  } catch {
+    return null;
+  }
 }
 
 function announce(page: BrowserTabState | undefined, t: Translate): string {

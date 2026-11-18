@@ -1254,3 +1254,149 @@ it('다른 대화의 탭이 HTTP 인증을 요구한다 → 이 대화에는 대
   await settle();
   expect(loginDialog()).toBeNull();
 });
+
+// --- ⋯: site permissions, view width, clearing the project's data (머리, 권한, 저장소) ---------
+
+const menuRows = () =>
+  [...document.querySelectorAll<HTMLElement>('[role="menu"] [role^="menuitem"]')].map((row) => row);
+/** A row by its label: the kit draws a row's label twice, and a second line may follow. */
+const menuRow = (label: string) =>
+  menuRows().find((row) => row.textContent?.trim().startsWith(label.repeat(2))) ?? null;
+const rowLabels = () =>
+  menuRows()
+    .filter((row) => row.closest('[role="menu"]') === document.querySelector('[role="menu"]'))
+    .map((row) => {
+      const known = [B.openSystem, B.copyAddress, B.sitePermissions, B.viewWidth, B.clearData];
+      return known.find((label) => row.textContent?.trim().startsWith(label.repeat(2))) ?? '?';
+    });
+const dialogTitled = (title: string) =>
+  [...document.querySelectorAll<HTMLElement>('[role="dialog"], [role="alertdialog"]')].find(
+    (dialog) => dialog.textContent?.includes(title),
+  ) ?? null;
+
+it('일반 페이지의 ⋯ → 시스템 브라우저에서 열기, 주소 복사, 사이트 권한, 이 프로젝트의 브라우저 데이터 지우기 순서이고 보기 폭은 없다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await openMore();
+  expect(rowLabels()).toEqual([B.openSystem, B.copyAddress, B.sitePermissions, B.clearData]);
+});
+
+it('미리보기 페이지의 ⋯ → 시스템 브라우저에서 열기(쓸 수 없음), 주소 복사, 보기 폭이고 사이트 권한과 데이터 지우기는 없다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
+    'browser:b_pre',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => bridge.stateOf('b_pre')?.loading === false);
+  await openMore();
+  expect(rowLabels()).toEqual([B.openSystem, B.copyAddress, B.viewWidth]);
+});
+
+it('⋯의 사이트 권한 → 지금 사이트에 기억한 권한마다 답과 잊기가 있고, 잊으면 그 권한을 잊고 줄이 사라진다', async () => {
+  const bridge = createFakeBrowserBridge();
+  bridge.permissions = [
+    { permission: 'camera', allow: true },
+    { permission: 'notifications', allow: false },
+  ];
+  const { at } = await livePage(bridge, 'b_one', 'https://meet.example');
+  await openMore();
+  await act(async () => menuRow(B.sitePermissions)?.click());
+  await until(() => Boolean(dialogTitled(B.sitePermissions)));
+  await until(() =>
+    (dialogTitled(B.sitePermissions)?.textContent ?? '').includes(B.permission.camera),
+  );
+
+  expect(bridge.callsTo('sitePermissions')).toEqual([[at.projectId, 'https://meet.example']]);
+  const rows = () =>
+    [...(dialogTitled(B.sitePermissions)?.querySelectorAll<HTMLElement>('li') ?? [])].map((row) =>
+      (row.textContent ?? '').replace(/\s+/g, ' ').trim(),
+    );
+  expect(rows()).toHaveLength(2);
+  expect(rows()[0]).toContain(B.permission.camera);
+  expect(rows()[0]).toContain(B.allowed);
+  expect(rows()[1]).toContain(B.permission.notifications);
+  expect(rows()[1]).toContain(B.denied);
+
+  const forget = dialogTitled(B.sitePermissions)?.querySelector<HTMLButtonElement>('li button');
+  await act(async () => forget?.click());
+  await settle();
+  expect(bridge.callsTo('forgetPermission')).toEqual([
+    [at.projectId, 'https://meet.example', 'camera'],
+  ]);
+  expect(rows()).toHaveLength(1);
+  expect(rows()[0]).toContain(B.permission.notifications);
+});
+
+it('미리보기 페이지의 보기 폭에서 모바일 → 페이지의 뷰만 390px로 가운데에 놓고, 전체로 돌리면 자리 전체다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
+    'browser:b_pre',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => bridge.stateOf('b_pre')?.loading === false);
+  await settle();
+  const choose = async (label: string) => {
+    await openMore();
+    await act(async () => {
+      menuRow(B.viewWidth)?.click();
+      menuRow(B.viewWidth)?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+      );
+    });
+    await until(() => Boolean(menuRow(label)));
+    await act(async () => menuRow(label)?.click());
+    await settle();
+  };
+  await choose(B.widthMobile);
+  await until(
+    () => (bridge.callsTo('place').at(-1)?.[1] as { width?: number } | null)?.width === 390,
+  );
+  expect(bridge.callsTo('place').at(-1)).toEqual([
+    'b_pre',
+    { x: PLACE.left + (PLACE.width - 390) / 2, y: PLACE.top, width: 390, height: PLACE.height },
+  ]);
+  expect(bridge.callsTo('openPreview')).toHaveLength(1);
+
+  await choose(B.widthFull);
+  await until(
+    () => (bridge.callsTo('place').at(-1)?.[1] as { width?: number } | null)?.width === PLACE.width,
+  );
+  expect(bridge.callsTo('place').at(-1)).toEqual([
+    'b_pre',
+    { x: PLACE.left, y: PLACE.top, width: PLACE.width, height: PLACE.height },
+  ]);
+});
+
+it('⋯의 이 프로젝트의 브라우저 데이터 지우기 → "Project의 …를 지울까요?" 대화상자가 취소에 포커스를 두고 뜨고, 취소는 아무것도 지우지 않으며 지우기는 그 프로젝트의 데이터를 지운다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at } = await livePage(bridge);
+  const title = fill(B.clearTitle, { project: 'Project' });
+  const openClear = async () => {
+    await openMore();
+    await act(async () => menuRow(B.clearData)?.click());
+    await until(() => Boolean(dialogTitled(title)));
+  };
+  await openClear();
+  expect(dialogTitled(title)?.textContent).toContain(B.clearBody);
+  await until(() => document.activeElement === buttonIn(dialogTitled(title), B.cancel));
+  expect(document.activeElement).toBe(buttonIn(dialogTitled(title), B.cancel));
+  const order = [...(dialogTitled(title)?.querySelectorAll('button') ?? [])]
+    .map((button) => button.textContent?.trim())
+    .filter((text) => text === B.cancel || text === B.clear);
+  expect(order).toEqual([B.cancel, B.clear]);
+  await act(async () => buttonIn(dialogTitled(title), B.cancel)?.click());
+  await until(() => !dialogTitled(title));
+  expect(bridge.callsTo('clearProjectData')).toEqual([]);
+
+  await openClear();
+  await act(async () => buttonIn(dialogTitled(title), B.clear)?.click());
+  await until(() => !dialogTitled(title));
+  expect(bridge.callsTo('clearProjectData')).toEqual([[at.projectId]]);
+});
