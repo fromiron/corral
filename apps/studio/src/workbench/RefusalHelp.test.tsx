@@ -95,3 +95,25 @@ it('a task holding the copy is named, with no queue; another run gets the queue'
   expect(unsettled).toContain(messages.Refusal.runUncertain);
   expect(unsettled).not.toContain(messages.Refusal.queue);
 });
+
+it("an operation's kind names it in the diagnostics", () => {
+  const html = renderToStaticMarkup(
+    <IntlProvider locale="en" messages={messages}>
+      <RefusalHelp
+        code="RUN_ALREADY_ACTIVE"
+        message="git.pull op_1 has not confirmed it ended"
+        owner={{
+          kind: 'operation',
+          id: 'op_1',
+          sessionId: 'session',
+          state: 'uncertain',
+          operationKind: 'git.pull',
+        }}
+      />
+    </IntlProvider>,
+  );
+  expect(html).toContain(messages.Refusal.operationUncertain);
+  expect(html).toContain(
+    '<p data-testid="refusal-owner"><code>git.pull</code> · <code>op_1</code> · uncertain</p>',
+  );
+});

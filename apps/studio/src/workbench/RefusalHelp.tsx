@@ -172,6 +172,26 @@ export function RefusalActions({
   });
 }
 
+/** What holds the copy, in the diagnostics: an operation by its kind, then its ID and state. */
+export function RefusalOwner({
+  owner,
+  className,
+}: {
+  owner: NonNullable<CommandError['owner']>;
+  className?: string;
+}) {
+  return (
+    <p data-testid="refusal-owner" className={className}>
+      {owner.operationKind ? (
+        <>
+          <code>{owner.operationKind}</code> ·{' '}
+        </>
+      ) : null}
+      <code>{owner.id}</code> · {owner.state}
+    </p>
+  );
+}
+
 /**
  * Why a request did not start and what to do about it: a short explanation in the
  * person's language, the runtime's own words kept for detail, and only the actions that help.
@@ -194,11 +214,7 @@ export function RefusalHelp(props: RefusalProps) {
           <p className="text-muted-foreground wrap-anywhere" title={code}>
             {message}
           </p>
-          {owner ? (
-            <p>
-              <code>{owner.id}</code> · {owner.state}
-            </p>
-          ) : null}
+          {owner ? <RefusalOwner owner={owner} /> : null}
         </details>
       ) : (
         <p className="text-muted-foreground wrap-anywhere" title={code}>
