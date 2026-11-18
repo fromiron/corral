@@ -68,16 +68,6 @@ export interface WorkbenchOperation {
   updatedAt: string;
 }
 
-export const DevelopmentStart = z.strictObject({
-  operationId: Identifier,
-  target: WorkspaceTarget,
-});
-export type DevelopmentStart = z.infer<typeof DevelopmentStart>;
-export interface DevelopmentState {
-  target: WorkspaceTarget;
-  available: boolean;
-  operation: WorkbenchOperation | null;
-}
 export interface DocumentMutationIntent {
   path: string;
   baseHash: string | null;

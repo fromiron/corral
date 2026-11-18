@@ -19,8 +19,6 @@ import type {
   DeploymentPlan,
   DeploymentStart,
   DeploymentView,
-  DevelopmentStart,
-  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   EffortRoutingSettings,
@@ -92,7 +90,6 @@ import type {
   TerminalResize,
   TerminalView,
   UserTaskView,
-  WorkspaceTarget,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -121,8 +118,6 @@ export type {
   DeploymentPlan,
   DeploymentStart,
   DeploymentView,
-  DevelopmentStart,
-  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   DocumentVersion,
@@ -620,6 +615,8 @@ export interface ServerHealth {
   /** Whether this server can run real models (signed in or not). */
   live: boolean;
   pathEngine: PathEngineStatus;
+  /** Whether this host shares the Paddock (workbench.md 공유 개발 모드): a local host does. */
+  sharedDevelopment: boolean;
 }
 
 /** The local server, if this page was served by one; null for the in-browser runtime. */
@@ -2614,27 +2611,6 @@ export class WorkspacesApi {
       `/sessions/${encodeURIComponent(sessionId)}/worktree/language/stop`,
       'POST',
       input,
-    );
-  }
-  developmentState(sessionId: string): Promise<DevelopmentState> {
-    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/development`);
-  }
-  startDevelopment(sessionId: string, input: DevelopmentStart): Promise<DevelopmentState> {
-    return this.send(
-      `/sessions/${encodeURIComponent(sessionId)}/worktree/development`,
-      'POST',
-      input,
-    );
-  }
-  finishDevelopment(
-    sessionId: string,
-    operationId: string,
-    target: WorkspaceTarget,
-  ): Promise<DevelopmentState> {
-    return this.send(
-      `/sessions/${encodeURIComponent(sessionId)}/worktree/development/${encodeURIComponent(operationId)}/finish`,
-      'POST',
-      { target },
     );
   }
   deployments(sessionId: string): Promise<DeploymentList> {

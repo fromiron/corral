@@ -159,7 +159,6 @@ it('explicitly starts once, synchronizes a dirty buffer and keeps save/shared mo
       })
     ).result,
   ).toEqual({ kind: 'completion', items: [{ label: 'value', insertText: 'value' }] });
-  await s.service.startDevelopment('s1', { target: s.target, operationId: 'dev' });
   expect(
     await s.service.changeDocument('s1', {
       target: s.target,
@@ -171,9 +170,6 @@ it('explicitly starts once, synchronizes a dirty buffer and keeps save/shared mo
       editVersion: 1,
     }),
   ).toMatchObject({ state: 'succeeded' });
-  expect(await s.service.finishDevelopment('s1', 'dev', s.target)).toMatchObject({
-    operation: null,
-  });
   expect(readFileSync(join(s.original, 'a.ts'), 'utf8')).toBe('const value = 1;\n');
   await s.service.stopLanguage('s1', { target: s.target, generation: s.scope.generation });
   expect(s.connection.close).toHaveBeenCalledTimes(1);

@@ -303,7 +303,13 @@ export interface FileTools {
   releaseRun?(runId: string, terminationConfirmed: boolean): void;
   stopRunServices?(runId: string): Promise<void>;
   worktreeScope?(sessionId: string): string | null;
+  /**
+   * Whether a copy's restore must wait. With `sharedDevelopment` it names the writing agent runs
+   * and unconfirmed owners, so a read-only run, on its own snapshot, does not hold a restore.
+   */
   hasUnsafeWorktreeOwner?(sessionId: string): boolean;
+  /** This host shares the Paddock (workbench.md 공유 개발 모드). */
+  readonly sharedDevelopment?: boolean;
   planCommand?(input: CommandExecution, cancellation: ToolCancellation): Promise<CommandPlan>;
   runCommand?(
     input: CommandExecution,
@@ -964,6 +970,8 @@ export class Coordinator {
     const key = sessionId ? this.fileScope(sessionId) : null;
     const affected = (candidate: string | null | undefined) =>
       key === null || (candidate != null && this.fileScope(candidate) === key);
+    // A shared copy is restored whenever no agent run writes it: the copy's owners say which do.
+    const shared = key !== null && this.files?.sharedDevelopment === true;
     if (
       this.storageError ||
       this.hostTerminationUnconfirmed ||
@@ -972,9 +980,10 @@ export class Coordinator {
       this.restoringFiles ||
       (key === null ? this.restoringScopes.size > 0 : this.restoringScopes.has(key)) ||
       [...this.drainingRuns].some((run) => affected(this.store.getRun(run.runId)?.sessionId)) ||
-      this.store
-        .listRuns()
-        .some((run) => affected(run.sessionId) && !TERMINAL_RUN_STATUSES.has(run.status))
+      (!shared &&
+        this.store
+          .listRuns()
+          .some((run) => affected(run.sessionId) && !TERMINAL_RUN_STATUSES.has(run.status)))
     )
       throw new ToolRefusal(
         'RUN_ALREADY_ACTIVE',

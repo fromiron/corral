@@ -46,8 +46,6 @@ import {
   type DeploymentAction,
   type DeploymentInspect,
   type DeploymentStart,
-  DevelopmentStart,
-  type DevelopmentState,
   DocumentCommand,
   type DocumentMutationIntent,
   type DocumentOperation,
@@ -567,9 +565,13 @@ export class WorkspaceService implements FileTools {
     this.pathEngine = options.pathEngine ?? null;
     this.hostId = options.hostId ?? 'local';
     this.allowSharedDevelopment = options.allowSharedDevelopment === true;
-    this.runAccess = new RunAccessStore(this.db);
-    this.workspaceAccess = new WorkspaceAccessStore(this.db);
-    this.workbenchOperations = new WorkbenchOperations(this.db, options.clock);
+    this.runAccess = new RunAccessStore(this.db, this.allowSharedDevelopment);
+    this.workspaceAccess = new WorkspaceAccessStore(this.db, this.allowSharedDevelopment);
+    this.workbenchOperations = new WorkbenchOperations(
+      this.db,
+      options.clock,
+      this.allowSharedDevelopment,
+    );
     this.workbenchOperations.recover();
     for (const kind of ['git.merge', 'git.rebase', 'git.continue', 'git.abort']) {
       for (const operation of this.workbenchOperations.list(kind)) {
@@ -1452,49 +1454,14 @@ export class WorkspaceService implements FileTools {
     return this.language.stop(sessionId, input);
   }
 
-  developmentState(sessionId: string): DevelopmentState {
-    const { row, binding, target } = this.documentTarget(sessionId);
-    return {
-      target,
-      available: this.allowSharedDevelopment && Boolean(binding.trusted) && !this.disposing,
-      operation: this.workbenchOperations.development(row.worktree_path) ?? null,
-    };
+  /** The session copy's current identity, as a person's effect names it. */
+  workspaceTarget(sessionId: string): WorkspaceTarget {
+    return this.documentTarget(sessionId).target;
   }
 
-  async startDevelopment(sessionId: string, raw: DevelopmentStart): Promise<DevelopmentState> {
-    const input = DevelopmentStart.parse(raw);
-    if (!this.allowSharedDevelopment)
-      throw new WorkspaceError(
-        'CAPABILITY_DENIED',
-        'shared development is not enabled on this host',
-      );
-    const { row } = this.documentTarget(sessionId, input.target, true);
-    return this.lease(row.worktree_path, async () => {
-      this.documentTarget(sessionId, input.target, true);
-      await this.userGitRoot({ kind: 'session', id: sessionId });
-      this.workbenchOperations.admit(
-        {
-          ...input,
-          kind: 'development',
-          requestHash: sha256(Buffer.from(canonicalJson(input))),
-        },
-        row.worktree_path,
-      );
-      return this.developmentState(sessionId);
-    });
-  }
-
-  async finishDevelopment(
-    sessionId: string,
-    operationId: string,
-    target: WorkspaceTarget,
-  ): Promise<DevelopmentState> {
-    const { row } = this.documentTarget(sessionId, target);
-    return this.lease(row.worktree_path, async () => {
-      this.documentTarget(sessionId, target);
-      this.workbenchOperations.finishDevelopment(operationId, target, row.worktree_path);
-      return this.developmentState(sessionId);
-    });
+  /** Whether this host shares the Paddock (workbench.md 공유 개발 모드): a local host does. */
+  get sharedDevelopment(): boolean {
+    return this.allowSharedDevelopment;
   }
 
   private async prepareTerminal(input: TerminalCreate): Promise<string> {
@@ -1526,8 +1493,9 @@ export class WorkspaceService implements FileTools {
         Boolean(current.binding.trusted) &&
         !this.disposing &&
         !this.removingWorktrees.has(sessionId) &&
-        (!this.hasUnsafeWorktreeOwner(sessionId) ||
-          this.workbenchOperations.canShare(target, row.worktree_path));
+        (this.allowSharedDevelopment
+          ? !this.unsettledOwner(sessionId)
+          : !this.hasUnsafeWorktreeOwner(sessionId));
       const kind = await assertPlainPath(row.worktree_path, path);
       if (kind === 'missing')
         return { target, path, content: { kind: 'absent' }, version: null, writable };
@@ -4299,8 +4267,10 @@ export class WorkspaceService implements FileTools {
     const { root } = await this.browseRoot(scope);
     const rel = safeRelative(path);
     // A file the folder does not hold is not found; a path that is no plain file stays refused.
-    if ((await assertPlainPath(root, rel)) === 'missing')
-      throw new WorkspaceError('TARGET_NOT_FOUND', `${rel} does not exist`);
+    const kind = await assertPlainPath(root, rel);
+    if (kind === 'missing') throw new WorkspaceError('TARGET_NOT_FOUND', `${rel} does not exist`);
+    if (kind !== 'file')
+      throw new WorkspaceError('CAPABILITY_DENIED', `${rel} is not a plain file`);
     const { bytes, size } = await boundedFile(root, rel);
     if (!bytes) return { path: rel, content: { kind: 'too_large', bytes: size } };
     const text = decodeText(bytes);
@@ -4844,12 +4814,14 @@ export class WorkspaceService implements FileTools {
         return this.lspProposal(sessionId, id);
       };
       const active = () =>
-        this.hasUnsafeWorktreeOwner(sessionId) ||
-        !!this.db
-          .prepare(
-            "SELECT 1 FROM runs WHERE session_id=? AND status NOT IN ('succeeded','failed','cancelled','interrupted') LIMIT 1",
-          )
-          .get(sessionId);
+        this.allowSharedDevelopment
+          ? this.unsettledOwner(sessionId)
+          : this.hasUnsafeWorktreeOwner(sessionId) ||
+            !!this.db
+              .prepare(
+                "SELECT 1 FROM runs WHERE session_id=? AND status NOT IN ('succeeded','failed','cancelled','interrupted') LIMIT 1",
+              )
+              .get(sessionId);
       if (active())
         throw new WorkspaceError(
           'REVISION_CONFLICT',
@@ -5268,7 +5240,13 @@ export class WorkspaceService implements FileTools {
         .get(found.row.binding_id) as BindingRow | undefined;
       if (!binding?.trusted)
         throw new ToolRefusal('CAPABILITY_DENIED', 'trust the repository before running commands');
-      return { ...found, binding, gitSnapshot: true, folderKey: null };
+      return {
+        ...found,
+        binding,
+        gitSnapshot: true,
+        folderKey: null,
+        shared: this.allowSharedDevelopment,
+      };
     }
     const sessionId = this.sessionOfRun(input.runId);
     const binding = sessionId ? this.bindingOfSession(sessionId) : null;
@@ -5295,6 +5273,7 @@ export class WorkspaceService implements FileTools {
       // A linked folder is not a checkpoint. Do not write Git objects or refs into it.
       gitSnapshot: false,
       folderKey,
+      shared: false,
     };
   }
 
@@ -5315,7 +5294,7 @@ export class WorkspaceService implements FileTools {
 
   /** Caller holds the existing worktree mutex; this does not create a second launch path. */
   private async commandPlanAt(input: CommandExecution): Promise<CommandPlan> {
-    const { row, sessionId, binding } = this.commandContext(input);
+    const { row, sessionId, binding, shared } = this.commandContext(input);
     const request = RunCommandArgs.parse(input.request);
     const cwd = request.cwd && request.cwd !== '.' ? safeRelative(request.cwd) : '.';
     const root = await realpath(row.worktree_path);
@@ -5348,10 +5327,12 @@ export class WorkspaceService implements FileTools {
       timeoutMs: request.timeoutMs ?? 120000,
       mode: request.mode ?? 'foreground',
     };
+    // A shared copy is compared at launch without its tree: a person's save between the plan and
+    // the launch does not fail the command (workbench.md 공유 개발 모드).
     const plan = {
       ...launch,
       operationId,
-      tree: await this.commandTree(root, this.worktree(sessionId) !== null),
+      ...(shared ? {} : { tree: await this.commandTree(root, this.worktree(sessionId) !== null) }),
     };
     const executableHash = sha256(await readFile(shell.executable));
     return CommandPlan.parse({
@@ -5424,6 +5405,8 @@ export class WorkspaceService implements FileTools {
         epoch !== (this.commandEpochs.get(input.runId) ?? 0)
       )
         throw new ToolRefusal('TARGET_TERMINAL', 'command cancelled');
+      // The tree the command starts from: its plan's, or a shared copy's as it launches.
+      const beforeTree = plan.tree ?? (await this.commandTree(row.worktree_path, gitSnapshot));
       if (folderKey && folderOwner) {
         this.assertFolderFree(folderKey);
         this.workspaceAccess.acquire(folderOwner, sessionId, row.worktree_path, true, 1);
@@ -5447,7 +5430,7 @@ export class WorkspaceService implements FileTools {
               effectId: input.effectId,
             }),
             canonicalJson(plan),
-            plan.tree,
+            beforeTree,
             this.clock.nowIso(),
             this.clock.nowIso(),
           );
@@ -5493,7 +5476,7 @@ export class WorkspaceService implements FileTools {
             .run(
               report.state,
               canonicalJson(report),
-              plan.tree,
+              beforeTree,
               this.clock.nowIso(),
               plan.operationId,
             );
@@ -5971,23 +5954,43 @@ export class WorkspaceService implements FileTools {
 
   /**
    * A check copies a snapshot of the tree. A long-lived development task or terminal may keep
-   * writing meanwhile; a Run or a short human change in progress may not.
+   * writing meanwhile; a Run or a short human change in progress may not. A shared copy takes the
+   * snapshot as the check starts, whoever writes (workbench.md 공유 개발 모드); only an owner whose
+   * end was never confirmed holds it.
    */
   private writerBlocksCheck(sessionId: string): boolean {
+    if (this.allowSharedDevelopment) return this.unsettledOwner(sessionId);
     const key = this.worktreeScope(sessionId);
     const writer = key === null ? undefined : this.workspaceAccess.writerAt(key);
     if (!writer) return false;
     if (writer.owner_kind !== 'user') return true;
     const kind = this.workbenchOperations.get(writer.owner_id)?.kind;
+    return writer.state === 'uncertain' || (kind !== 'task' && kind !== 'terminal');
+  }
+
+  /** An owner of the session's copy whose end was never confirmed. */
+  private unsettledOwner(sessionId: string): boolean {
+    const key = this.worktreeScope(sessionId);
     return (
-      writer.state === 'uncertain' ||
-      (kind !== 'task' && kind !== 'terminal' && kind !== 'development')
+      key !== null &&
+      this.workspaceAccess.ownersAt(key).some((owner) => owner.state === 'uncertain')
     );
   }
 
+  /**
+   * Whether the copy may not be restored now. A shared copy is restored whenever no agent run
+   * writes it and no owner is unconfirmed; a server without sharing needs no writer at all.
+   */
   hasUnsafeWorktreeOwner(sessionId: string): boolean {
     const key = this.worktreeScope(sessionId);
-    return key !== null && this.runAccess.writerAt(key) !== undefined;
+    if (key === null) return false;
+    if (!this.allowSharedDevelopment) return this.runAccess.writerAt(key) !== undefined;
+    return this.runAccess
+      .ownersAt(key)
+      .some(
+        (owner) =>
+          owner.state === 'uncertain' || (owner.owner_kind === 'run' && owner.writer === 1),
+      );
   }
 
   prepareRun(runId: string): Promise<void> {
@@ -6002,8 +6005,11 @@ export class WorkspaceService implements FileTools {
       return Promise.reject(new ToolRefusal('TARGET_NOT_FOUND', 'working copy is unavailable'));
     }
     const work = this.lease(row.worktree_path, async () => {
-      const writer = this.runAccess.writerAt(access.worktree_key);
       // A concurrent reader observes the writer's pinned input, never partially written files.
+      // On a shared copy each reader reads its own snapshot of the copy as it starts.
+      const writer = this.allowSharedDevelopment
+        ? undefined
+        : this.runAccess.writerAt(access.worktree_key);
       const tree =
         this.runAccess.get(runId)?.tree ||
         (!access.writer && writer?.tree) ||

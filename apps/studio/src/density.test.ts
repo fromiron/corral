@@ -131,7 +131,6 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/WorkFolderNotice.tsx',
     'apps/studio/src/workbench/ProjectMaterials.tsx',
     'apps/studio/src/workbench/LiveVoice.tsx',
-    'apps/studio/src/workbench/DevelopmentMode.tsx',
     'apps/studio/src/workbench/TerminalWriterNotice.tsx',
     'packages/react/src/components/CopyTextButton.tsx',
   ],

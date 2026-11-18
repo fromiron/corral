@@ -49,7 +49,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`), `pathEngine: {engine: 'fff'｜'builtIn', reason?: 'loadFailed'｜'noBinary'｜'indexCap'｜'callFailed'｜'timeBudget'}`([파일 경로 검색](features/file-search.md)). secret·경로 없음 |
+| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`), `pathEngine: {engine: 'fff'｜'builtIn', reason?: 'loadFailed'｜'noBinary'｜'indexCap'｜'callFailed'｜'timeBudget'}`([파일 경로 검색](features/file-search.md)), `sharedDevelopment`(이 host가 Paddock을 공유하는가: 로컬 host는 true, [공유 개발 모드](workbench.md#공유-개발-모드)). 읽기만 하며 secret·경로 없음 |
 | POST /session | `{token}` | 서버 실행 중 유효한 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 잘못된 token은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
@@ -246,7 +246,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 
 ## 3. 오류
 
-사본을 잡은 것 때문에 거절한 접수는 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 그것을 구조화된 `owner {kind, id, sessionId, state: "active" | "uncertain"}`로 반환한다. `kind`는 `run`(다른 실행), `task`, `terminal`, 그리고 그 밖에 단독 writer를 잡은 사람 작업의 `operation`이다. `operation`은 문서 저장, 디버깅, Git 쓰기, 배포 같은 것이고 `operationKind`에 그 작업의 종류가 실린다. 화면이 owner를 어떻게 대는지는 [Workbench](workbench.md#공유-개발-모드)가 정한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
+사본을 잡은 것 때문에 거절한 접수는 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 그것을 구조화된 `owner {kind, id, sessionId, state: "active" | "uncertain", operationKind?}`로 반환한다. `kind`는 `run`(다른 실행), `task`, `terminal`, 그리고 그 밖의 사람 작업인 `operation`이다. `operation`은 문서 저장, 디버깅, Git 쓰기, 배포, 언어 서버 같은 것이고, `kind`가 `operation`일 때만 `operationKind`에 그 작업 receipt의 종류(`document.save`, `debug`, `git.commit`, `deployment`, `language` 같은 것)가 실린다. 공유를 허용하지 않는 host에서는 단독 writer를, 로컬 host에서는 종료를 확인하지 못해 새 효과를 막는 owner를 댄다([공유 개발 모드](workbench.md#공유-개발-모드)). 화면이 owner를 어떻게 대는지는 [Workbench](workbench.md#공유-개발-모드)가 정한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
 
 | 코드 | HTTP | 의미 |
 |---|---|---|

@@ -275,6 +275,29 @@ describe('a local host shares the Paddock', () => {
     expect(JSON.stringify(report.output)).not.toContain('after the check started');
   });
 
+  it('a read-only run started while an agent writes reads its own snapshot of the copy at its start', async () => {
+    const s = await setup(true);
+    s.run('writer');
+    s.service.acquireRun('writer', 's1', true);
+    await s.service.prepareRun('writer');
+    s.run('reader_before');
+    s.service.acquireRun('reader_before', 's1', false);
+    await s.service.prepareRun('reader_before');
+    expect(await s.service.changeDocument('s1', s.save('between_readers'))).toMatchObject({
+      state: 'succeeded',
+    });
+    s.run('reader_after');
+    s.service.acquireRun('reader_after', 's1', false);
+    await s.service.prepareRun('reader_after');
+    expect((await s.service.readPreviewSnapshot('reader_before', 'a.txt'))?.toString()).toBe(
+      'one\n',
+    );
+    // Not the writer's start tree: the copy as the person's save left it.
+    expect((await s.service.readPreviewSnapshot('reader_after', 'a.txt'))?.toString()).toBe(
+      'two\n',
+    );
+  });
+
   it('restore is unsafe only while an agent writes, not while a task runs', async () => {
     const s = await setup(true);
     await s.task('dev');

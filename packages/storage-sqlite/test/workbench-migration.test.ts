@@ -52,13 +52,6 @@ it('upgrades legacy copy ownership without losing uncertain reservations or its 
     expect(upgraded.prepare('SELECT DISTINCT copy_generation FROM workspace_access').all()).toEqual(
       [{ copy_generation: 1 }],
     );
-    expect(() =>
-      db
-        .prepare(`INSERT INTO workspace_access
-        (owner_kind, owner_id, session_id, worktree_key, copy_generation, writer, state, tree)
-        VALUES ('user', 'human_new', 'session_gone', '/example/gone', 2, 1, 'active', NULL)`)
-        .run(),
-    ).toThrow(/UNIQUE/);
     expect(upgraded.prepare('SELECT COUNT(*) AS count FROM workbench_operations').get()).toEqual({
       count: 0,
     });

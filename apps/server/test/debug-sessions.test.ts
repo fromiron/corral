@@ -226,7 +226,6 @@ async function fixture() {
 it('starts explicitly once, pins breakpoints, deduplicates evaluation and preserves shared saves', async () => {
   const f = await fixture();
   expect(f.launch).not.toHaveBeenCalled();
-  await f.service.startDevelopment('s1', { target: f.target, operationId: 'dev' });
   const [started, duplicate] = await Promise.all([
     f.service.startDebug('s1', f.start),
     f.service.startDebug('s1', f.start),

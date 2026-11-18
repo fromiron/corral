@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { RestCorralRepository, WorkspacesApi } from '@corral/client';
+import { probeServer, RestCorralRepository, WorkspacesApi } from '@corral/client';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
@@ -98,11 +98,13 @@ async function setup(shares: boolean) {
     checkpoint.checkpointId,
     checkpoint.manifestHash ?? '',
   );
-  return { workspaces, sessionId, plan };
+  return { workspaces, sessionId, plan, health: await probeServer({ baseUrl: server.url }) };
 }
 
 it('restores a checkpoint over HTTP while a task runs, and still refuses a stale expected tree', async () => {
-  const { workspaces, sessionId, plan } = await setup(true);
+  const { workspaces, sessionId, plan, health } = await setup(true);
+  // The host says it shares the copy, as the screen reads it (api-contract.md /health).
+  expect(health).toMatchObject({ sharedDevelopment: true });
   expect(
     await workspaces.restoreCheckpoint(sessionId, {
       operationId: 'restore',
@@ -128,7 +130,8 @@ it('restores a checkpoint over HTTP while a task runs, and still refuses a stale
 });
 
 it('a server without sharing refuses the restore while a task holds the copy, keeping the refusal code', async () => {
-  const { workspaces, sessionId, plan } = await setup(false);
+  const { workspaces, sessionId, plan, health } = await setup(false);
+  expect(health).toMatchObject({ sharedDevelopment: false });
   await expect(
     workspaces.restoreCheckpoint(sessionId, {
       operationId: 'restore',

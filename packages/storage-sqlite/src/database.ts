@@ -731,6 +731,14 @@ CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
   CHECK (advisor_json IS NULL OR (json_valid(advisor_json) AND json_type(advisor_json) = 'object'))`);
     },
   },
+  {
+    // A local host shares the Paddock: several owners may hold a copy as writers at once. The
+    // single writer of a server without sharing is kept by admission, not by the index.
+    name: '0045_shared_copy_writers',
+    sql: `DROP INDEX IF EXISTS workspace_access_writer;
+CREATE INDEX workspace_access_writer ON workspace_access(worktree_key)
+  WHERE writer=1 AND state IN ('active','uncertain');`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

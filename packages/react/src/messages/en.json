@@ -4936,17 +4936,6 @@
     "configChanged": "Earlier settings",
     "versionUnknown": "Version unknown"
   },
-  "Development": {
-    "label": "Paddock mode",
-    "blocked": "Stop and reconcile the tasks and unconfirmed changes in this Paddock first.",
-    "strict": "Strict mode",
-    "shared": "Shared development",
-    "uncertain": "Development mode needs recovery",
-    "start": "Start shared development",
-    "finish": "End development mode",
-    "sharedNote": "External changes are possible. Your saves and development tasks share this Paddock; agent writes and terminals are blocked.",
-    "recoveryNote": "The host restarted. Stop and reconcile remaining tasks before ending this mode. Sharing is not active."
-  },
   "Language": {
     "otherWindow": "This language session belongs to another window. Stop it before starting language support here.",
     "label": "Language support",

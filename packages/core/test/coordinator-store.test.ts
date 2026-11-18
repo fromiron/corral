@@ -362,6 +362,35 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
     expect(after.runId).not.toBeNull();
     await waitForProjection(transport, after.runId ?? '', settled);
   });
+  it('a shared copy is restored beside a read-only run, and held while a run writes it', async () => {
+    const hold = new Gate();
+    let writing = false;
+    const { instance, transport } = coordinator({
+      gates: [hold],
+      files: {
+        worktreeScope: (sessionId) => sessionId,
+        available: () => false,
+        execute: async () => ({}),
+        // The copy's owners say which runs write it (workbench.md 공유 개발 모드).
+        hasUnsafeWorktreeOwner: () => writing,
+        sharedDevelopment: true,
+      },
+    });
+    const reading = await transport.startRun({
+      ...start(linearCorral(['reader']), 'reading'),
+      sessionId: 'copy_a',
+    });
+    expect(reading.runId).not.toBeNull();
+    await expect(instance.withFileRestore(async () => 'restored', 'copy_a')).resolves.toBe(
+      'restored',
+    );
+    writing = true;
+    await expect(instance.withFileRestore(async () => 'restored', 'copy_a')).rejects.toThrow(
+      /idle target/,
+    );
+    hold.open();
+    await waitForProjection(transport, reading.runId ?? '', settled);
+  });
   it('host model slots stay bounded across runs and wake the next run', async () => {
     const hold = new Gate();
     const observed: string[] = [];

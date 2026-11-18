@@ -2,7 +2,6 @@ import { TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
 import { useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
-import { DevelopmentMode } from './DevelopmentMode.tsx';
 import { PreviewLeases } from './PreviewLeases.tsx';
 import { panelKey } from './panels/registry.ts';
 import { ServicePreview } from './ServicePreview.tsx';
@@ -12,7 +11,7 @@ import { WorktreeCommandPanel } from './WorktreeCommandPanel.tsx';
 export type ToolsTab = 'tasks' | 'preview';
 
 /**
- * The tools pane: Tasks (shared development mode, package scripts, copy commands) and Preview
+ * The tools pane: Tasks (package scripts, deployments, copy commands) and Preview
  * (preview leases and the service preview). Both tabs stay mounted, so switching never restarts
  * a task, a lease poll or an open preview. With `onViewChange` the inner tab is the caller's
  * (the panel's 작업 tab remembers it); `view` null is a tab nobody has picked yet.
@@ -54,7 +53,6 @@ export function WorkbenchToolsPanel({
         <TabItem value="preview" label={tp('tab')} />
       </TabsList>
       <TabPanel value="tasks" keepMounted className="flex min-w-0 flex-col gap-2">
-        <DevelopmentMode sessionId={sessionId} />
         <WorkbenchTasks sessionId={sessionId} projectId={projectId} />
         <WorktreeCommandPanel sessionId={sessionId} />
       </TabPanel>

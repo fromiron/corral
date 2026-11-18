@@ -8,8 +8,8 @@ export interface RunAccess extends Omit<WorkspaceAccess, 'owner_kind' | 'owner_i
 /** Keeps the Run broker contract while sharing admission with human operations. */
 export class RunAccessStore {
   private readonly access: WorkspaceAccessStore;
-  constructor(db: Db) {
-    this.access = new WorkspaceAccessStore(db);
+  constructor(db: Db, shares = false) {
+    this.access = new WorkspaceAccessStore(db, shares);
   }
 
   recover() {
@@ -33,6 +33,10 @@ export class RunAccessStore {
 
   writerAt(key: string): WorkspaceAccess | undefined {
     return this.access.writerAt(key);
+  }
+
+  ownersAt(key: string): WorkspaceAccess[] {
+    return this.access.ownersAt(key);
   }
 
   acquire(runId: string, sessionId: string, path: string, writer: boolean, copyGeneration: number) {

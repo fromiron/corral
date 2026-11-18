@@ -9,7 +9,6 @@ import { isNote, noteImages } from '../../browser/noteChips.ts';
 import type { Blocked, SendChoice } from '../../composerIntent.ts';
 import { type MentionItem, mentionLabel } from '../../composerMenu.ts';
 import { SourceAttachments } from '../../context/SourceAttachments.tsx';
-import { DevelopmentMode } from '../../DevelopmentMode.tsx';
 import { ImageAttachmentPicker } from '../../ImageAttachments.tsx';
 import { useSettingsNavigation } from '../../navigation.ts';
 import { RefusalHelp } from '../../RefusalHelp.tsx';
@@ -171,9 +170,6 @@ export function ComposerNotices({
         <p role="alert" className="text-caption text-danger">
           {tc('missingReferences', { count: missingChipCount })}
         </p>
-      ) : null}
-      {refusal?.code === 'RUN_ALREADY_ACTIVE' ? (
-        <DevelopmentMode sessionId={sessionId} onlyActive />
       ) : null}
       {chips.length ? (
         <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
