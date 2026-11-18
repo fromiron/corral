@@ -2,6 +2,9 @@
   "Select": {
     "placeholder": "선택…"
   },
+  "Common": {
+    "close": "닫기"
+  },
   "SettingsDialog": {
     "unsaved": "저장하지 않은 설정",
     "unsavedHint": "변경을 저장하고 이동하거나, 버리거나, 계속 편집할 수 있습니다.",

@@ -2,6 +2,9 @@
   "Select": {
     "placeholder": "Select…"
   },
+  "Common": {
+    "close": "Close"
+  },
   "SettingsDialog": {
     "unsaved": "Unsaved settings",
     "unsavedHint": "Save these changes before leaving, discard them, or keep editing.",
