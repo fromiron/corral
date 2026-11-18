@@ -42,7 +42,12 @@ export interface AgentCalls {
   hover: { args: { x: number; y: number }; result: AnnotateTarget | null };
   frame: {
     args: { pointer: { x: number; y: number } | null; ids: string[] };
-    result: { hover: AnnotateTarget | null; boxes: Record<string, AnnotateRect | null> };
+    result: {
+      hover: AnnotateTarget | null;
+      boxes: Record<string, AnnotateRect | null>;
+      /** The scroll area without its scrollbars: the root's client size. */
+      view: { width: number; height: number };
+    };
   };
   pick: {
     args: { x: number; y: number; pickId: string } | { outline: true; pickId: string };
@@ -386,7 +391,15 @@ function agent(op: string, args: Record<string, unknown>): unknown {
         const box = element ? rectOf(element) : null;
         boxes[id] = box && (box.width > 0 || box.height > 0) ? box : null;
       }
-      return { hover: pointer ? hover(pointer.x, pointer.y) : null, boxes };
+      const root = document.documentElement;
+      return {
+        hover: pointer ? hover(pointer.x, pointer.y) : null,
+        boxes,
+        view: {
+          width: Math.min(innerWidth, root.clientWidth || innerWidth),
+          height: Math.min(innerHeight, root.clientHeight || innerHeight),
+        },
+      };
     }
     case 'pick': {
       const element = args.outline

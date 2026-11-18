@@ -9,6 +9,15 @@ let atPoint: (x: number, y: number) => Element | null = () => null;
 beforeEach(() => {
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: 800 });
   Object.defineProperty(window, 'innerHeight', { configurable: true, value: 600 });
+  // A classic 15px scrollbar on the right; none at the bottom.
+  Object.defineProperty(document.documentElement, 'clientWidth', {
+    configurable: true,
+    value: 785,
+  });
+  Object.defineProperty(document.documentElement, 'clientHeight', {
+    configurable: true,
+    value: 600,
+  });
   Object.defineProperty(document, 'elementFromPoint', {
     configurable: true,
     value: (x: number, y: number) => atPoint(x, y),
@@ -134,6 +143,8 @@ it('a pick reads what a send carries, keeps the element by its id until released
   expect(call('frame', { pointer: null, ids: ['g1-p1', 'g1-p9'] })).toEqual({
     hover: null,
     boxes: { 'g1-p1': { x: 0, y: 0, width: 400, height: 200 }, 'g1-p9': null },
+    // The scroll area without the scrollbar: the root's client size.
+    view: { width: 785, height: 600 },
   });
   // A field elsewhere on screen over the element's part also stops the screenshot.
   atPoint = () => document.querySelector('b');

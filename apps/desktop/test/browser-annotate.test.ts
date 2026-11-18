@@ -226,6 +226,7 @@ it('frame reads convert between the overlay and the page, both zooms counted', a
     frame: () => ({
       hover: { label: 'p 100×20', name: null, box: { x: 30, y: 60, width: 100, height: 20 } },
       boxes: { [pickId]: { x: 15, y: 45, width: 60, height: 30 } },
+      view: { width: 500, height: 300 },
     }),
   });
   let pickId = '';
@@ -247,6 +248,8 @@ it('frame reads convert between the overlay and the page, both zooms counted', a
   expect(frame).toEqual({
     hover: { label: 'p 100×20', name: null, box: { x: 36, y: 72, width: 120, height: 24 } },
     boxes: { [pickId]: { x: 18, y: 54, width: 72, height: 36 }, unknown: null },
+    // The page's scroll area, without its scrollbars, in the overlay's pixels.
+    view: { width: 600, height: 360 },
   });
 });
 

@@ -166,6 +166,11 @@ export interface AnnotateBridge {
   frame(input: { pointer: AnnotatePoint | null; track: string[] }): Promise<{
     hover: AnnotateTarget | null;
     boxes: Record<string, AnnotateRect | null>;
+    /**
+     * The page's scroll area without its scrollbars, from the page area's top left: markers
+     * stay inside it, clear of the page's scrollbar.
+     */
+    view: { width: number; height: number };
   } | null>;
   /** Picks the element at a point, or the keyboard outline's ('outline'). */
   pick(

@@ -454,7 +454,12 @@ export class TabAnnotation {
       const box = result.value.boxes[pickId];
       boxes[pickId] = box ? scale.toOverlay(box) : null;
     }
-    return { hover: this.target(result.value.hover, scale), boxes };
+    const view = scale.toOverlay({ x: 0, y: 0, ...result.value.view });
+    return {
+      hover: this.target(result.value.hover, scale),
+      boxes,
+      view: { width: view.width, height: view.height },
+    };
   }
 
   private async pick(
