@@ -86,6 +86,7 @@ export function browserHandlers(
     'browser-back': (tabId) => tabs.back(token(tabId)),
     'browser-forward': (tabId) => tabs.forward(token(tabId)),
     'browser-reopen': (tabId) => tabs.reopen(token(tabId)),
+    'browser-reset': (tabId) => tabs.reset(token(tabId)),
     'browser-zoom': (tabId, value) => tabs.zoom(token(tabId), zoom(value)),
     'browser-focus': (tabId) => tabs.focus(token(tabId)),
     'browser-still': (tabId) => tabs.still(token(tabId)),

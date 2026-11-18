@@ -64,6 +64,7 @@ contextBridge.exposeInMainWorld(
       back: (tabId) => ipcRenderer.invoke('desktop:browser-back', tabId),
       forward: (tabId) => ipcRenderer.invoke('desktop:browser-forward', tabId),
       reopen: (tabId) => ipcRenderer.invoke('desktop:browser-reopen', tabId),
+      reset: (tabId) => ipcRenderer.invoke('desktop:browser-reset', tabId),
       zoom: (tabId, zoom) => ipcRenderer.invoke('desktop:browser-zoom', tabId, zoom),
       focus: (tabId) => ipcRenderer.invoke('desktop:browser-focus', tabId),
       still: (tabId) => ipcRenderer.invoke('desktop:browser-still', tabId),

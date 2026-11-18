@@ -130,6 +130,12 @@ export interface BrowserBridge {
   close(tabId: string): Promise<void>;
   /** The conversation was left: the page unloads, downloads carry on. */
   unload(tabId: string): Promise<void>;
+  /**
+   * An ordinary tab back to an empty new tab (the certificate page's "돌아가기" with no history):
+   * its page goes, with its address, title and history; its kind, project storage, place and
+   * download lines stay. Asks and sign-ins end refused. Rejects on a preview tab.
+   */
+  reset(tabId: string): Promise<void>;
   reload(tabId: string): Promise<void>;
   stop(tabId: string): Promise<void>;
   back(tabId: string): Promise<void>;

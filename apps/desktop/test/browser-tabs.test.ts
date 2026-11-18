@@ -123,6 +123,42 @@ it("a page's leave check (beforeunload) never holds a move, on ordinary and prev
   expect(late.preventDefault).not.toHaveBeenCalled();
 });
 
+it('reset puts an ordinary tab back to an empty new tab: no page, address, title or history', async () => {
+  const f = setup();
+  f.tabs.navigate('tab-a', 'project_a', 'https://shop.example/');
+  f.tabs.place('tab-a', { x: 0, y: 0, width: 400, height: 300 });
+  const first = view(f, 0);
+  first.webContents.commit('https://shop.example/', 'Shop');
+  first.webContents.history.back = true;
+  first.webContents.fail('https://expired.example/', -201);
+  f.tabs.reset('tab-a');
+  expect(first.webContents.isDestroyed()).toBe(true);
+  expect(f.children.has(first)).toBe(false);
+  expect(f.last('tab-a')).toEqual({
+    tabId: 'tab-a',
+    kind: 'page',
+    page: 'none',
+    url: null,
+    title: null,
+    loading: false,
+    canGoBack: false,
+    canGoForward: false,
+    failure: null,
+    blocked: null,
+    pageFocused: false,
+  });
+  // Its storage and kind stay: the next address opens in a fresh page of the same project.
+  f.tabs.navigate('tab-a', 'project_a', 'https://shop.example/again');
+  expect(f.views).toHaveLength(2);
+  expect(f.sessionOf(view(f, 1))).toBe(f.sessionOf(first));
+  expect(view(f, 1).visible).toBe(true);
+  expect(() => f.tabs.navigate('tab-a', 'project_b', 'https://shop.example/')).toThrow();
+  // A preview tab has no empty state of its own; an unknown tab is nothing to reset.
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  expect(() => f.tabs.reset('tab-p')).toThrow();
+  expect(() => f.tabs.reset('tab-none')).not.toThrow();
+});
+
 it('a person-opened tab whose page closes itself stays, and reopens its last address', async () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://app.example/a');

@@ -452,6 +452,24 @@ export class BrowserTabs {
     this.emit(tab);
   }
 
+  /** An ordinary tab back to an empty new tab: no page, address, title or history; its storage stays. */
+  reset(tabId: string) {
+    const tab = this.tabs.get(tabId);
+    if (!tab) return;
+    if (tab.kind !== 'page') throw new Error('Only an ordinary browser tab can be emptied');
+    this.dispose(tab);
+    tab.popup = false;
+    tab.openerTabId = null;
+    tab.page = 'none';
+    tab.url = null;
+    tab.title = null;
+    tab.loading = false;
+    tab.failure = null;
+    tab.blocked = null;
+    tab.focused = false;
+    this.emit(tab);
+  }
+
   /** The app page reloaded or went away: every page unloads. */
   unloadAll() {
     this.generation++;
