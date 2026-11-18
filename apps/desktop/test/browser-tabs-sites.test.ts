@@ -176,6 +176,20 @@ it('a line still asking drops what another line answered, under the same request
   });
 });
 
+it('a legacy screen capture is refused without asking, where camera and microphone are allowed', () => {
+  const f = setup();
+  const a = page(f, 'tab-a', 'project_a', 'https://meet.example/');
+  const both = a.session.request(a.contents, 'media', { mediaTypes: ['video', 'audio'] });
+  f.tabs.answerPermission('tab-a', asks(f.events).at(-1)?.requestId ?? '', true);
+  expect(both.answer).toBe(true);
+  // getUserMedia with chromeMediaSource 'desktop' or 'screen' (any id, desktop audio too)
+  // reaches the handler as media with no device types (Electron 44.4.5).
+  const count = asks(f.events).length;
+  expect(a.session.request(a.contents, 'media', { mediaTypes: [] }).answer).toBe(false);
+  expect(a.session.request(a.contents, 'media', {}).answer).toBe(false);
+  expect(asks(f.events)).toHaveLength(count);
+});
+
 it('device pickers are refused without asking', () => {
   const f = setup();
   const a = page(f, 'tab-a', 'project_a', 'https://iot.example/');

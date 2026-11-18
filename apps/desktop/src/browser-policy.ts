@@ -302,6 +302,8 @@ export function permissionRequest(
     const asked: SitePermission[] = [];
     if (mediaTypes?.includes('video')) asked.push('camera');
     if (mediaTypes?.includes('audio')) asked.push('microphone');
+    // No device type is a legacy screen capture (getUserMedia with chromeMediaSource 'desktop'
+    // or 'screen'): refused like screen sharing, whatever camera and microphone were answered.
     return asked.length ? { kind: 'ask', permissions: asked } : { kind: 'deny' };
   }
   const asked = ASKED[permission];
