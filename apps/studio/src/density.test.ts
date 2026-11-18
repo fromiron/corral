@@ -98,6 +98,8 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/MeetingParticipants.tsx',
     'apps/studio/src/workbench/MeetingDiagnostics.tsx',
   ],
+  // The browser tab's annotation overlay (its own page over the page area).
+  annotate: ['apps/studio/src/annotate/Overlay.tsx', 'apps/studio/src/annotate/NoteCard.tsx'],
   conversation: [
     'apps/studio/src/workbench/session/Composer.tsx',
     'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
@@ -196,6 +198,9 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // A sent message's meta line is caption-sized: its text buttons are the kit's smallest quiet
   // ones, like the actions in a run row's line, never controls the size of the composer's.
   { file: 'apps/studio/src/workbench/session/EntryStatus.tsx', near: /<SizeScope size="compact">/ },
+  // The annotation note beside a page's element is a small composer: its controls are the kit
+  // composer's slot controls, compact (its text keeps the body size).
+  { file: 'apps/studio/src/annotate/NoteCard.tsx', near: /<SizeScope size="compact">/ },
   // The copy button over a code block: an icon button inside a field.
   { file: 'packages/react/src/components/CopyTextButton.tsx', near: /code \?/ },
 ];
