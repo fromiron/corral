@@ -92,16 +92,14 @@ export function createNoteCollector(read: () => NoteCollectDeps) {
     try {
       attachment = noteAttachment(material, `annotation-${n}.json`, provenance);
     } catch {
-      return notAdded(now.attachmentsFull);
+      // Past the counts checked above, a refusal is the body's size: no count sentence fits.
+      return notAdded();
     }
     const result = appendComposerAttachment(capture, attachment, {
       ...(image ? { image } : {}),
       quiet: true,
     });
-    if (!result.ok)
-      return result.reason === 'limit'
-        ? notAdded(image ? now.imagesFull : now.attachmentsFull)
-        : notAdded();
+    if (!result.ok) return notAdded();
     // Added only when the draft holds it now.
     const key = textAttachmentKey(attachment);
     const held = readComposerDraft(now.sessionId).attachments?.some(

@@ -881,3 +881,106 @@ it('이름표가 없는 예전 본문의 칩은 태그 이름으로 부른다', 
   await until(() => buttonNamed(chipName(4, 'button')) !== null);
   expect(buttonNamed(chipName(4, 'button'))).not.toBeNull();
 });
+
+// --- 미리보기 페이지의 주석 (features/browser-annotate.md 일반 페이지와 미리보기 페이지, 계약: 첨부) ----
+
+/** A preview tab of the conversation's ready lease, with the host's side of a send. */
+async function previewPage(bridge: FakeBrowserBridge) {
+  const at = await world(bridge);
+  const workspaces = at.services.workspaces as NonNullable<typeof at.services.workspaces>;
+  at.services.workspaces = {
+    ...workspaces,
+    previews: async (sessionId: string) => [
+      {
+        leaseId: 'lease_1',
+        sessionId,
+        kind: 'service' as const,
+        runId: 'run_dev',
+        url: 'http://127.0.0.2:4100/',
+        origin: 'http://127.0.0.2:4100',
+        path: '/',
+        state: 'ready' as const,
+        createdAt: '2026-11-18T00:00:00Z',
+      },
+    ],
+  } as never;
+  const sent = host(at);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_one', lease: 'lease_1' }],
+    'browser:b_one',
+  );
+  const shell = await mountShell(at, [`/sessions/${at.sessionId}`], { width: WIDE });
+  cleanups.push(() => shell.unmount());
+  await until(() => bridge.stateOf('b_one')?.loading === false);
+  await settle();
+  const made = {
+    ...material(),
+    page: {
+      kind: 'preview' as const,
+      sessionId: at.sessionId,
+      leaseId: 'lease_1',
+      origin: 'http://127.0.0.2:4100',
+      path: '/',
+    },
+    console: [{ level: 'warning', message: 'slow image' }],
+  };
+  return { at, sent, made };
+}
+
+it('미리보기 페이지의 주석을 바로 보낸다 → preview provenance와 콘솔이 실린 annotation.json으로 받아들여진다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, sent, made } = await previewPage(bridge);
+  await sendNote(bridge, 'submit_1', {}, 'note_1', made as never);
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'accepted' });
+  const note = (sent.started[0]?.references ?? []).find(
+    (reference) => (reference as { name?: string }).name === 'annotation.json',
+  ) as { text: string; provenance: Record<string, unknown> } | undefined;
+  expect(note?.provenance).toMatchObject({
+    kind: 'preview',
+    leaseId: 'lease_1',
+    url: 'http://127.0.0.2:4100/',
+    pageRevision: 2,
+    screenshotHash: 'e'.repeat(64),
+    target: { sessionId: at.sessionId, bindingId: 'binding', copyGeneration: 1 },
+  });
+  expect(JSON.parse(note?.text ?? '{}').console).toEqual([
+    { level: 'warning', message: 'slow image' },
+  ]);
+});
+
+it('미리보기 페이지의 주석을 담는다 → preview provenance로 annotation-1.json이 초안에 더해진다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at, made } = await previewPage(bridge);
+  await addNote(bridge, 'submit_1', 'note_1', made);
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'added', n: 1 });
+  const [note] = drafted(at.sessionId).attachments ?? [];
+  expect(note?.name).toBe('annotation-1.json');
+  expect(note?.provenance).toMatchObject({ kind: 'preview', leaseId: 'lease_1' });
+  expect(JSON.parse(note?.text ?? '{}').console).toHaveLength(1);
+});
+
+it('입력창에서 보내면 모은 주석과 그 스크린샷이 그 요청과 함께 가고, 번호 표시가 모두 사라지며 주석 모드는 켜진 채다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { made: sent } = await livePage(bridge, 'b_one', host);
+  await modeOn(bridge);
+  await addNote(bridge, 'submit_1', 'note_1');
+  await addNote(bridge, 'submit_2', 'note_2', { ...material('Second'), pickId: 'pick_2' });
+  await until(() => answerTo(bridge, 'submit_2') !== undefined);
+  await settle();
+  expect(lastContext(bridge)?.markers).toHaveLength(2);
+  const composer = await typeInComposer('Fix both');
+  await press(composer, { key: 'Enter' });
+  await until(() => sent.started.length === 1);
+  const names = (sent.started[0]?.references ?? []).map(
+    (reference) => (reference as { name?: string }).name,
+  );
+  expect(names).toEqual(
+    expect.arrayContaining(['annotation-1.json', 'annotation-2.json', 'annotation-1.png']),
+  );
+  await until(() => lastContext(bridge)?.markers.length === 0);
+  expect(lastContext(bridge)?.markers).toEqual([]);
+  expect(annotateButton()?.getAttribute('aria-pressed')).toBe('true');
+});

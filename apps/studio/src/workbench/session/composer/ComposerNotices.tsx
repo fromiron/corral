@@ -92,6 +92,7 @@ export function ComposerNotices({
     | 'setAttachments'
     | 'setAttachmentsBusy'
     | 'attachmentsBusy'
+    | 'imagesBusy'
     | 'references'
   >;
   imageFiles: RefObject<HTMLInputElement | null>;
@@ -202,7 +203,8 @@ export function ComposerNotices({
         sessionId={sessionId}
         attachments={attachments}
         images={images}
-        disabled={busy || attachmentsBusy}
+        // While an image uploads its row holds the draft's images: a removal waits for it.
+        disabled={busy || attachmentsBusy || draft.imagesBusy}
         onChange={(next) => {
           draft.setAttachments(next.attachments);
           draft.setImages(next.images);
