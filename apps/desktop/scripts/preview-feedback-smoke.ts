@@ -193,13 +193,6 @@ try {
   });
   sessionId = created.session.sessionId;
   await api(`/sessions/${sessionId}/worktree`, 'POST');
-  const development = await api<{ target: Record<string, unknown> }>(
-    `/sessions/${sessionId}/worktree/development`,
-  );
-  await api(`/sessions/${sessionId}/worktree/development`, 'POST', {
-    operationId: 'p20_development',
-    target: development.target,
-  });
 
   phase('preview started from the work tab');
   await page.goto(`${new URL(page.url()).origin}/sessions/${sessionId}?panel=tools`);
