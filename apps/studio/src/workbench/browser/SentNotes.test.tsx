@@ -21,13 +21,13 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-const body = (text = 'Pay now') =>
+const body = (text = 'Pay now', written = 'Make the button larger') =>
   JSON.stringify({
     warning: PAGE_ANNOTATION_WARNING,
     page: { kind: 'page', origin: 'https://shop.example', path: '/cart' },
     pickedAt: '2026-11-18T12:00:00.000Z',
     generation: 2,
-    note: 'Make the button larger',
+    note: written,
     element: {
       tag: 'button',
       label: 'button.pay 120×32',
@@ -40,8 +40,8 @@ const body = (text = 'Pay now') =>
     styles: [{ property: 'font-size', before: '16px', after: '20px' }],
   });
 const SHOT = 'e'.repeat(64);
-const note = (name: string, text?: string) =>
-  createTextAttachment(name, 'application/json', body(text), {
+const note = (name: string, text?: string, written?: string) =>
+  createTextAttachment(name, 'application/json', body(text, written), {
     kind: 'page',
     origin: 'https://shop.example',
     path: '/cart',
@@ -107,6 +107,24 @@ it('collected notes keep their numbers, and a page’s text stays text (반례: 
   );
   expect(container.textContent).toContain('<b>bold</b>');
   expect(container.querySelector('b')).toBeNull();
+  expect(container.querySelector('img')).toBeNull();
+});
+
+it('a sent note shows its written note first, as text (반례: markup in the note makes no element)', async () => {
+  const container = await show({
+    attachments: [
+      note('annotation-1.json', 'Pay now', 'Make the button larger'),
+      note('annotation-2.json', 'Pay now', '<i>tilt</i><img src=x onerror=alert(1)>'),
+    ],
+    images: [],
+    imageUrl: () => null,
+  });
+  const contents = [...container.querySelectorAll('details > div')].map(
+    (each) => each.textContent ?? '',
+  );
+  expect(contents[0]?.startsWith('Make the button larger')).toBe(true);
+  expect(contents[1]?.startsWith('<i>tilt</i><img src=x onerror=alert(1)>')).toBe(true);
+  expect(container.querySelector('i')).toBeNull();
   expect(container.querySelector('img')).toBeNull();
 });
 

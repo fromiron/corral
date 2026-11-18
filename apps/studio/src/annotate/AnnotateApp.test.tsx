@@ -900,6 +900,17 @@ describe('보내는 것 팝오버', () => {
     expect(view.of('consoleFor')).toHaveLength(0);
   });
 
+  it('이름표 버튼의 팝오버는 쓴 주석 글을 빼고 보인다: 글은 칸의 입력에 있다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.type('Make it bigger');
+    await view.press(labelButton(view));
+    expect(popup()?.getAttribute('aria-label')).toBe('What goes with this note');
+    expect(row('Page')).toBe('https://shop.example/cart');
+    expect(popup()?.textContent).not.toContain('Make it bigger');
+  });
+
   it('스크린샷 토글이 꺼져 있거나 쓸 수 없으면 스크린샷 없음이다', async () => {
     const view = await mount();
     await view.start();

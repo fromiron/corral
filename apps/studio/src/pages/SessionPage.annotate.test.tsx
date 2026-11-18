@@ -853,6 +853,30 @@ it('칩을 누르면 팝오버가 그 주석이 싣는 것을 보인다: 페이�
   expect(shot?.getAttribute('alt')).toBe(messages.Browser.noteShot.replace('{n}', '1'));
 });
 
+it('칩의 팝오버는 쓴 주석 글을 먼저, 글 그대로 보인다 (반례: 주석 글의 마크업은 요소가 되지 않는다)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', host);
+  await addNote(bridge, 'submit_1', 'note_1', material('Larger, please'));
+  await addNote(bridge, 'submit_2', 'note_2', {
+    ...material('<b>bold</b><img src=x onerror=alert(1)>'),
+    pickId: 'pick_2',
+  });
+  await until(() => buttonNamed(chipName(2)) !== null);
+  await act(async () => buttonNamed(chipName(1))?.click());
+  const first = () =>
+    document.querySelector<HTMLElement>(`[role="dialog"][aria-label="${chipName(1)}"]`);
+  await until(() => first() !== null);
+  expect(first()?.textContent?.startsWith('Larger, please')).toBe(true);
+  await act(async () => buttonNamed(chipName(2))?.click());
+  const second = () =>
+    document.querySelector<HTMLElement>(`[role="dialog"][aria-label="${chipName(2)}"]`);
+  await until(() => second() !== null);
+  expect(second()?.textContent?.startsWith('<b>bold</b><img src=x onerror=alert(1)>')).toBe(true);
+  expect(second()?.querySelector('b')).toBeNull();
+  expect(second()?.querySelector('img:not([alt])')).toBeNull();
+  expect(second()?.querySelector('img[src="x"]')).toBeNull();
+});
+
 it('이름표가 없는 예전 본문의 칩은 태그 이름으로 부른다', async () => {
   const bridge = createFakeBrowserBridge();
   const older = createTextAttachment(
