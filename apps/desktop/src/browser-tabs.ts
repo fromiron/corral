@@ -1031,7 +1031,10 @@ export class BrowserTabs {
   private onWindowOpen(tab: Tab, details: HandlerDetails): WindowOpenHandlerResponse {
     const lease = tab.lease;
     if (lease) {
-      if (!previewRequestAllowed(lease.target, details.url)) this.block(tab, details.url);
+      // A preview opens no window. The line offers an address outside the lease to the system
+      // browser, so a same-lease or blank window is refused without it.
+      const blank = /^about:blank(?:[?#]|$)/.test(details.url);
+      if (!blank && !previewRequestAllowed(lease.target, details.url)) this.block(tab, details.url);
       return { action: 'deny' };
     }
     const project = tab.project;

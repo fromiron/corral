@@ -498,6 +498,9 @@ it('a preview tab blocks moves off the lease and says so; same-lease windows sta
   expect(f.last('tab-p')?.blocked).toEqual({ url: 'https://other.example/' });
   const before = f.events.length;
   expect(page.open('http://127.0.0.2:4321/key-path/same.html')).toEqual({ action: 'deny' });
+  // A blank window has no address for the system browser either: refused without a line.
+  expect(page.open('about:blank')).toEqual({ action: 'deny' });
+  expect(page.open('about:blank#x')).toEqual({ action: 'deny' });
   expect(f.events.length).toBe(before);
   expect(f.views).toHaveLength(1);
   // A non-web address has no system-browser action.
