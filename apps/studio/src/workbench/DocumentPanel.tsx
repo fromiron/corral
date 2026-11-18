@@ -498,7 +498,7 @@ export function DocumentPanel({
             </Banner>
           ) : null}
           {entry.writerBusy ? (
-            <WriterHeld key={documentKey} target={entry.target} />
+            <WriterHeld key={documentKey} target={entry.target} owner={entry.writerOwner} />
           ) : entry.error || actionError ? (
             <p role="alert" className="text-caption text-danger">
               {entry.error || actionError}

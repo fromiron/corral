@@ -84,12 +84,17 @@ export function TerminalScreen({
     }),
   );
   const loading = useStore(store, (state) => Boolean(state.sessions[sessionId]?.loading));
-  // A save of this session's copy refused while the terminal holds it: the block is happening now.
+  // A save of this session's copy refused while this terminal holds it, as the refusal names it:
+  // the block is happening now.
   const readSavesWaiting = () =>
     Boolean(
       documents &&
         Object.values(documents.getState().documents).some(
-          (document) => document.target.sessionId === sessionId && document.writerBusy,
+          (document) =>
+            document.target.sessionId === sessionId &&
+            document.writerBusy &&
+            document.writerOwner?.kind === 'terminal' &&
+            document.writerOwner.id === terminalId,
         ),
     );
   const savesWaiting = useSyncExternalStore(

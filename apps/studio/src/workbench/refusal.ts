@@ -4,12 +4,8 @@ import type { CommandError } from '@corral/contracts';
 // that command (a new attempt is a new command); a lost answer is not a refusal and is retried
 // with the same command ID so the runtime returns the first receipt instead of a second run.
 
-export type RefusalKind =
-  | 'signin'
-  | 'profile'
-  | 'advisor'
-  | 'image'
-  | 'capability'
+/** What holds the copy, as a refusal's owner names it. */
+export type HolderKind =
   | 'terminal'
   | 'terminalUncertain'
   | 'busy'
@@ -22,7 +18,15 @@ export type RefusalKind =
   | 'heldOperation'
   | 'runUncertain'
   | 'taskUncertain'
-  | 'operationUncertain'
+  | 'operationUncertain';
+
+export type RefusalKind =
+  | 'signin'
+  | 'profile'
+  | 'advisor'
+  | 'image'
+  | 'capability'
+  | HolderKind
   | 'limit'
   | 'reference'
   | 'network'
@@ -57,7 +61,7 @@ export const HOLDER_KINDS = new Set<RefusalKind>([
  * busy and may be queued after; a person's work is named without the queue (workbench.md 공유 개발
  * 모드); an owner whose end is unconfirmed is told apart from one at work.
  */
-function holderKind(owner: NonNullable<CommandError['owner']>): RefusalKind {
+export function holderKind(owner: NonNullable<CommandError['owner']>): HolderKind {
   const unconfirmed = owner.state === 'uncertain';
   switch (owner.kind) {
     case 'run':
