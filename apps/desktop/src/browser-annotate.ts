@@ -393,7 +393,9 @@ export class TabAnnotation {
       return;
     }
     if (mode.ending)
-      return name === 'frame' || name === 'walk' || name === 'inspect' ? null : undefined;
+      return name === 'frame' || name === 'walk' || name === 'inspect' || name === 'console-for'
+        ? null
+        : undefined;
     switch (name) {
       case 'frame':
         return this.frame(mode, args[0]);
@@ -406,6 +408,8 @@ export class TabAnnotation {
         return;
       case 'inspect':
         return this.inspect(mode, args[0]);
+      case 'console-for':
+        return this.consoleFor(mode, id(args[0]));
       case 'preview':
         return this.preview(mode, args[0], args[1], args[2]);
       case 'release':
@@ -856,9 +860,24 @@ export class TabAnnotation {
         before: clean(change.before, 200),
         after: change.after,
       })),
-      console: lease && note.wantConsole ? mode.console.map((entry) => ({ ...entry })) : null,
+      console: note.wantConsole ? this.consoleCarried(mode) : null,
       screenshot,
     };
+  }
+
+  /** The console a send carries now: a preview page's buffer, as kept; none for other pages. */
+  private consoleCarried(mode: Mode): { level: string; message: string }[] | null {
+    return this.host.lease() ? mode.console.map((entry) => ({ ...entry })) : null;
+  }
+
+  /**
+   * What the console toggle would add to a send of this pick now, for the overlay to show before
+   * it goes (the same as `consoleCarried`); null for a pick of another page or none.
+   */
+  private consoleFor(mode: Mode, pickId: string) {
+    const pick = this.picks.get(pickId);
+    if (!pick || pick.generation !== this.generation) return null;
+    return this.consoleCarried(mode);
   }
 
   private styleChanges(raw: unknown): StyleChange[] {

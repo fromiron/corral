@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld(
       ipcRenderer.invoke('annotate:wheel', event).catch(() => {});
     },
     inspect: (pickId) => ipcRenderer.invoke('annotate:inspect', pickId),
+    consoleFor: (pickId) => ipcRenderer.invoke('annotate:console-for', pickId),
     preview: (pickId, property, value) =>
       ipcRenderer.invoke('annotate:preview', pickId, property, value),
     release: (pickId) => ipcRenderer.invoke('annotate:release', pickId),

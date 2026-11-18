@@ -200,6 +200,12 @@ export interface AnnotateBridge {
   inspect(
     pickId: string,
   ): Promise<{ styles: Record<StyleProperty, string>; tokens: AnnotateTokens } | null>;
+  /**
+   * The console messages a send of this pick would carry if its console toggle is on, exactly as
+   * the send would (a preview page's last 20, its token taken out), so the person sees them before
+   * they go. Null on an ordinary page, or for a pick of another page.
+   */
+  consoleFor(pickId: string): Promise<{ level: string; message: string }[] | null>;
   /** Shows a value on the element at once (null takes it back); refused when not valid. */
   preview(
     pickId: string,

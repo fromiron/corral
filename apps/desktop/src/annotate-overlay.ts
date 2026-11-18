@@ -139,6 +139,7 @@ export const ANNOTATE_CALLS = [
   'walk',
   'wheel',
   'inspect',
+  'console-for',
   'preview',
   'release',
   'submit',

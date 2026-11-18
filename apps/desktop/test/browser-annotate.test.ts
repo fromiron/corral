@@ -220,6 +220,12 @@ it("the overlay never moves or opens a window, and its keys are the tab's", asyn
   expect(overlay.reload).not.toHaveBeenCalled();
 });
 
+it("an ordinary page's console is never read: a pick there shows none", async () => {
+  const { call } = await annotated();
+  const picked = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  expect(await call('console-for', picked.pick.pickId)).toBeNull();
+});
+
 it('frame reads convert between the overlay and the page, both zooms counted', async () => {
   const { page, call, calls } = await annotated({
     pick: () => found(),
@@ -626,6 +632,10 @@ it("a preview tab's send: the lease again, the address inside it, the console wh
     path: '/settings',
   });
   expect(pick.element.text).not.toMatch(/lease-token|key-path/);
+  // What the console toggle would add, read before the send: exactly what the send carries.
+  const shown = (await call('console-for', pick.pickId)) as { message: string }[];
+  expect(shown).toHaveLength(20);
+  expect(await call('console-for', 'g9-p9')).toBeNull();
   void call('submit', note(pick.pickId, { console: true, screenshot: false }));
   await flush();
   await flush();
@@ -641,6 +651,7 @@ it("a preview tab's send: the lease again, the address inside it, the console wh
   });
   expect(submitted.material.console).toHaveLength(20);
   expect(submitted.material.console[0]?.message).toBe('line 5 [redacted]');
+  expect(submitted.material.console).toEqual(shown);
   expect(JSON.stringify(submitted)).not.toMatch(/lease-token|key-path/);
   // The lease changed meanwhile: nothing is sent.
   f.ports.resolveLease.mockResolvedValueOnce({
@@ -650,9 +661,11 @@ it("a preview tab's send: the lease again, the address inside it, the console wh
   expect(await call('submit', note(pick.pickId, { noteId: 'note-2', screenshot: false }))).toEqual({
     kind: 'page-changed',
   });
-  // The console starts again with the next page.
+  // The console starts again with the next page; the last page's pick shows none of it.
   page.commit('http://127.0.0.2:4321/key-path/next');
+  expect(await call('console-for', pick.pickId)).toBeNull();
   const again = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  expect(await call('console-for', again.pick.pickId)).toEqual([]);
   void call(
     'submit',
     note(again.pick.pickId, { noteId: 'note-3', console: true, screenshot: false }),

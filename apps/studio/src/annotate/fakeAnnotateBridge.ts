@@ -2,12 +2,12 @@
 // that answers waits until the test answers it.
 import type { AnnotateBridge, AnnotateEvent } from '../../../desktop/src/annotate-bridge.ts';
 
-type Answering = 'frame' | 'pick' | 'walk' | 'inspect' | 'preview' | 'submit';
+type Answering = 'frame' | 'pick' | 'walk' | 'inspect' | 'consoleFor' | 'preview' | 'submit';
 
 export interface FakeCall {
   name: keyof AnnotateBridge;
   args: unknown[];
-  /** Answers a call that waits (frame, pick, walk, inspect, preview, submit). */
+  /** Answers a call that waits (frame, pick, walk, inspect, consoleFor, preview, submit). */
   answer(value: unknown): void;
   answered: boolean;
 }
@@ -46,6 +46,7 @@ export function createFakeAnnotateBridge() {
     pick: waiting('pick'),
     walk: waiting('walk'),
     inspect: waiting('inspect'),
+    consoleFor: waiting('consoleFor'),
     preview: waiting('preview'),
     submit: waiting('submit'),
     wheel: (...args: unknown[]) => {
