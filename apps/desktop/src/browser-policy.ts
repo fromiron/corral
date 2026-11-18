@@ -218,7 +218,6 @@ export type SitePermission =
   | 'geolocation'
   | 'notifications'
   | 'clipboard-read'
-  | 'display-capture'
   | 'open-external'
   | 'midi-sysex'
   | 'idle-detection'
@@ -237,7 +236,6 @@ export const SITE_PERMISSIONS: readonly SitePermission[] = [
   'geolocation',
   'notifications',
   'clipboard-read',
-  'display-capture',
   'open-external',
   'midi-sysex',
   'idle-detection',
@@ -257,7 +255,6 @@ const ASKED: Record<string, SitePermission> = {
   'geolocation-approximate': 'geolocation',
   notifications: 'notifications',
   'clipboard-read': 'clipboard-read',
-  'display-capture': 'display-capture',
   openExternal: 'open-external',
   midiSysex: 'midi-sysex',
   'idle-detection': 'idle-detection',
@@ -276,7 +273,8 @@ const ASKED: Record<string, SitePermission> = {
 
 /**
  * What Chromium grants a site without asking. Everything not asked or granted is refused,
- * including fullscreen and the device pickers (USB, HID, serial).
+ * including fullscreen, screen sharing (`display-capture`) and the device pickers (USB, HID,
+ * serial).
  */
 const GRANTED = new Set([
   'clipboard-sanitized-write',

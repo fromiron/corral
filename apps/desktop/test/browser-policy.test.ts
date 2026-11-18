@@ -10,6 +10,7 @@ import {
   pageShortcuts,
   permissionCheck,
   permissionRequest,
+  SITE_PERMISSIONS,
   systemBrowserUrl,
   zoomLevel,
 } from '../src/browser-policy.ts';
@@ -214,10 +215,11 @@ it('a new window needs a fresh input within 5 s, and one input opens one window'
   expect(gate.take()).toBe(false);
 });
 
-it('permissions: device pickers and fullscreen are refused, the rest asked per site', () => {
+it('permissions: device pickers, fullscreen and screen sharing are refused, the rest asked per site', () => {
   for (const permission of [
     'fullscreen',
     'automatic-fullscreen',
+    'display-capture',
     'keyboardLock',
     'hid',
     'serial',
@@ -257,6 +259,9 @@ it('permissions: device pickers and fullscreen are refused, the rest asked per s
   });
   expect(permissionCheck('hid')).toEqual({ kind: 'deny' });
   expect(permissionCheck('fullscreen')).toEqual({ kind: 'deny' });
+  expect(permissionCheck('display-capture')).toEqual({ kind: 'deny' });
+  // Never asked, so never remembered or shown under site permissions.
+  expect(SITE_PERMISSIONS).not.toContain('display-capture');
 });
 
 it('certificate and load errors are named for people, aborted loads are not errors', () => {

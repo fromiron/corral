@@ -328,12 +328,13 @@ it('the still-image swap: picture first, hide after it is painted, a newer step 
   expect(v.visible).toBe(false);
 });
 
-it('fullscreen is refused and the page stays in the tab', () => {
+it('fullscreen and screen sharing are refused without asking; the page stays in the tab', () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://video.example/');
   const page = view(f, 0).webContents;
   const session = f.sessionOf(view(f, 0));
   expect(session.request(page, 'fullscreen').answer).toBe(false);
+  expect(session.request(page, 'display-capture').answer).toBe(false);
   expect(f.events.some((event) => event.type === 'permission')).toBe(false);
 });
 
