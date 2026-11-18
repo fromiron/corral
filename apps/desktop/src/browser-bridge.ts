@@ -1,6 +1,8 @@
 // The browser tab's bridge between the studio and the desktop main process
 // (docs/specs/features/browser-tab.md). `window.corralDesktop.browser` (preload.cjs) has this
 // shape; main validates every argument again. Types only: the studio may import them.
+
+import type { AnnotationMaterial } from './annotate-bridge.ts';
 import type {
   CertificateReason,
   LoadFailureKind,
@@ -105,7 +107,31 @@ export type BrowserEvent =
   | { type: 'permission-ended'; tabId: string; requestId: string }
   | { type: 'login'; tabId: string; requestId: string; origin: string }
   | { type: 'login-ended'; tabId: string; requestId: string }
-  | { type: 'download'; download: BrowserDownload };
+  | { type: 'download'; download: BrowserDownload }
+  /**
+   * The annotation mode is on or off over this tab's page (browser-annotate.md). Main ends it
+   * itself when the page stops showing: hidden (`place` null), failed, closed itself, crashed,
+   * its lease ended, unloaded or closed.
+   */
+  | { type: 'annotate'; tabId: string; on: boolean }
+  /**
+   * The overlay's note to send ("보내기") or add ("담기"), re-checked and with its screenshot.
+   * Run the composer's path and answer with `answerAnnotate(tabId, submitId, outcome)`; the
+   * outcome goes to the overlay as given. `extra` is the overlay's, passed through unread.
+   */
+  | {
+      type: 'annotate-submit';
+      tabId: string;
+      submitId: string;
+      noteId: string;
+      intent: 'send' | 'add';
+      material: AnnotationMaterial;
+      extra: unknown;
+    }
+  /** The overlay cancelled that submit (Escape while adding, the note closing). */
+  | { type: 'annotate-cancel'; tabId: string; submitId: string }
+  /** A message from the overlay (the collect switch, …), passed through unread. */
+  | { type: 'annotate-message'; tabId: string; message: unknown };
 
 export interface BrowserStill {
   stillId: string;
@@ -183,6 +209,15 @@ export interface BrowserBridge {
       Record<string, { key: string; mod?: boolean; shift?: boolean; alt?: boolean }>
     >,
   ): Promise<void>;
+  /**
+   * Turns the annotation mode on or off over the tab's page. On: true when the overlay is up,
+   * false when the tab shows no live page (no page, failed, closed itself, ended).
+   */
+  annotate(tabId: string, on: boolean): Promise<boolean>;
+  /** The overlay's context (locale, theme, send key, collect, limits, markers): JSON, 64 KiB. */
+  annotateContext(tabId: string, context: unknown): Promise<void>;
+  /** The answer to an `annotate-submit`: JSON, at most 16 KiB; a late or unknown one is dropped. */
+  answerAnnotate(tabId: string, submitId: string, outcome: unknown): Promise<void>;
   /** Element capture on a preview tab (workbench.md "미리보기 요소 피드백"). */
   capturePreview(
     tabId: string,
