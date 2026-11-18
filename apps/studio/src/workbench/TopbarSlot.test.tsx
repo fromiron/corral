@@ -8,7 +8,7 @@ import { TOPBAR_TIERS, type TopbarLayout } from './topbarTier.ts';
 // jsdom lays nothing out: the bar's width and what each tier asks for are given here, as the
 // browser measured them for a session.
 const fixture = vi.hoisted(() => ({
-  needs: [1322, 1063, 763, 517, 366],
+  needs: [1322, 1063, 763, 517],
   measured: [] as string[],
 }));
 vi.mock('./topbarTier.ts', async (original) => {
@@ -27,7 +27,7 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.measured = [];
-  fixture.needs = [1322, 1063, 763, 517, 366];
+  fixture.needs = [1322, 1063, 763, 517];
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
 });
 afterEach(async () => {
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 function Reader() {
   const layout = useTopbarLayout();
-  return <output>{`${layout.project} ${layout.tools}`}</output>;
+  return <output>{`${layout.project} ${layout.rows}`}</output>;
 }
 
 async function mount(barWidth: number) {
@@ -78,12 +78,12 @@ async function mount(barWidth: number) {
 }
 
 it.each([
-  [1440, 'full', '1', 'name bar'],
-  [1184, 'short-path', '1', 'name bar'],
-  [1024, 'project-icon', '1', 'icon bar'],
-  [768, 'project-icon', '1', 'icon bar'],
-  [600, 'two-rows', '2', 'icon bar'],
-  [390, 'two-rows-menu', '2', 'icon menu'],
+  [1440, 'full', '1', 'name 1'],
+  [1184, 'short-path', '1', 'name 1'],
+  [1024, 'project-icon', '1', 'icon 1'],
+  [768, 'project-icon', '1', 'icon 1'],
+  [600, 'two-rows', '2', 'icon 2'],
+  [390, 'two-rows', '2', 'icon 2'],
 ] as const)(
   'a %ipx bar settles at the %s tier before it is painted',
   async (barWidth, tier, rows, reads) => {
@@ -133,5 +133,5 @@ it('shows everything outside a fitted bar', async () => {
     container.remove();
   });
   await act(async () => root.render(<Reader />));
-  expect(container.textContent).toBe('name bar');
+  expect(container.textContent).toBe('name 1');
 });

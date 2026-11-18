@@ -3,7 +3,7 @@ import { stepTopbarTier, TOPBAR_TIERS, topbarLayout, topbarTierFor } from './top
 
 // What each tier asked for in a session (English, default density), measured in the browser
 // before the view tabs and the run pill left the bar; the widths of the tiers that remain.
-const NEEDS = [1322, 1063, 640, 517, 366];
+const NEEDS = [1322, 1063, 640, 517];
 
 it('gives way in the documented order, one thing at a time', () => {
   const layouts = TOPBAR_TIERS.map((_, index) => topbarLayout(index));
@@ -12,19 +12,15 @@ it('gives way in the documented order, one thing at a time', () => {
     'short-path',
     'project-icon',
     'two-rows',
-    'two-rows-menu',
   ]);
-  expect(layouts.map((layout) => layout.project)).toEqual(['name', 'name', 'icon', 'icon', 'icon']);
-  expect(layouts.map((layout) => layout.rows)).toEqual([1, 1, 1, 2, 2]);
-  // Only the last tier folds the page's tools into its menu, so the second row holds.
-  expect(layouts.map((layout) => layout.tools)).toEqual(['bar', 'bar', 'bar', 'bar', 'menu']);
+  expect(layouts.map((layout) => layout.project)).toEqual(['name', 'name', 'icon', 'icon']);
+  expect(layouts.map((layout) => layout.rows)).toEqual([1, 1, 1, 2]);
 });
 
 it('lets the name shorten before the project folds, and keeps a readable one to the last', () => {
   expect(TOPBAR_TIERS.map((_, index) => topbarLayout(index).path)).toEqual([
     'full',
     'comfortable',
-    'minimum',
     'minimum',
     'minimum',
   ]);
@@ -40,8 +36,9 @@ it.each([
   [768, 'project-icon'],
   [900, 'project-icon'],
   [600, 'two-rows'],
-  [390, 'two-rows-menu'],
-  [320, 'two-rows-menu'],
+  // The narrowest widths rest on two rows: nothing folds into the menu (decision 24).
+  [390, 'two-rows'],
+  [320, 'two-rows'],
 ] as const)('a %ipx bar rests at %s', (width, tier) => {
   expect(topbarTierFor(width, NEEDS).tier).toBe(tier);
 });
@@ -49,7 +46,7 @@ it.each([
 it('steps down only when the tier on screen does not fit, and never past the last', () => {
   expect(stepTopbarTier(0, 1000, [1322])).toBe(1);
   expect(stepTopbarTier(0, 1400, [1322])).toBe(0);
-  expect(stepTopbarTier(4, 100, NEEDS)).toBe(4);
+  expect(stepTopbarTier(3, 100, NEEDS)).toBe(3);
 });
 
 it('steps back up when the roomier tier is known to fit, and tries one it has not seen', () => {
@@ -61,5 +58,5 @@ it('steps back up when the roomier tier is known to fit, and tries one it has no
 
 it('treats an out-of-range tier as the nearest one', () => {
   expect(topbarLayout(-3).tier).toBe('full');
-  expect(topbarLayout(99).tier).toBe('two-rows-menu');
+  expect(topbarLayout(99).tier).toBe('two-rows');
 });

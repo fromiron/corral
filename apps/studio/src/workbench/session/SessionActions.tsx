@@ -30,7 +30,7 @@ import { deviceStorage, forgetPanelMemory } from '../panel/memory.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
 import { RenameSessionDialog } from '../RenameSessionDialog.tsx';
 import { SessionDeletionDialog } from '../SessionDeletionDialog.tsx';
-import { TopbarActions, useTopbarLayout } from '../TopbarSlot.tsx';
+import { TopbarActions } from '../TopbarSlot.tsx';
 import { type CriteriaSave, SessionCriteriaDialog } from './SessionCriteriaDialog.tsx';
 
 const sameLines = (a: readonly string[], b: readonly string[]) =>
@@ -115,7 +115,6 @@ export function SessionActions({
     criteriaBase.current = { lines, revision: session.revision };
     setCriteria(lines);
   };
-  const folded = useTopbarLayout().tools === 'menu';
   const update = async (change: {
     corralId?: string | null;
     pinned?: boolean;
@@ -315,7 +314,7 @@ export function SessionActions({
           {error}
         </p>
       ) : null}
-      {folded ? null : changeCount > 0 ? (
+      {changeCount > 0 ? (
         <Button
           variant="ghost"
           size="compact"
@@ -390,16 +389,6 @@ export function SessionActions({
           {/* The page's display choice leads its menu. */}
           {chatDensityRow()}
           <MenuSeparator />
-          {folded ? (
-            <>
-              {changeCount > 0 ? (
-                <MenuItem onClick={() => onPanel(panel === 'changes' ? undefined : 'changes')}>
-                  {tw('sessionChangeCount', { count: changeCount })}
-                </MenuItem>
-              ) : null}
-              <MenuSeparator />
-            </>
-          ) : null}
           <MenuItem onClick={() => setRenaming(session.title)}>{td('rename')}</MenuItem>
           <MenuItem onClick={editCriteria}>{t('criteria.label')}</MenuItem>
           <MenuSub>

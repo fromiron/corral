@@ -245,7 +245,7 @@
   margin-left: auto;
 }
 /* Past the last tier nothing more can fold: the actions wrap instead of leaving the bar. */
-.app-topbar[data-topbar-tier="two-rows-menu"] > .app-topbar-actions {
+.app-topbar[data-topbar-tier="two-rows"] > .app-topbar-actions {
   min-width: 0;
   flex-shrink: 1;
   flex-wrap: wrap;

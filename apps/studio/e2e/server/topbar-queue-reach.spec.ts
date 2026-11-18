@@ -106,7 +106,7 @@ test.describe('a held run', () => {
     page,
     corral,
   }) => {
-    const tiers = ['full', 'short-path', 'project-icon', 'two-rows', 'two-rows-menu'];
+    const tiers = ['full', 'short-path', 'project-icon', 'two-rows'];
     await page.setViewportSize({ width: 1600, height: 800 });
     // The bar holds the path, the session's tools and Search: a name long enough to shorten is
     // what makes it give way before the narrowest widths.

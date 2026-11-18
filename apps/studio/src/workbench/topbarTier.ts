@@ -12,8 +12,6 @@ export const TOPBAR_TIERS = [
   'project-icon',
   /** The page's actions take a second row. */
   'two-rows',
-  /** The page's tools fold into its menu, so the second row holds. */
-  'two-rows-menu',
 ] as const;
 
 export type TopbarTier = (typeof TOPBAR_TIERS)[number];
@@ -25,8 +23,6 @@ export interface TopbarLayout {
   tier: TopbarTier;
   project: 'name' | 'icon';
   rows: 1 | 2;
-  /** Where the page's tools (its changes, terminal and side panel) sit: buttons, or its menu. */
-  tools: 'bar' | 'menu';
   /**
    * The project folds to its icon only once the name would fall below a comfortable length,
    * and the second row is taken only once it would fall below its readable minimum.
@@ -42,7 +38,6 @@ export function topbarLayout(index: number): TopbarLayout {
     tier: TOPBAR_TIERS[at] ?? 'full',
     project: at >= 2 ? 'icon' : 'name',
     rows: at >= 3 ? 2 : 1,
-    tools: at === LAST ? 'menu' : 'bar',
     path: at >= 2 ? 'minimum' : at === 1 ? 'comfortable' : 'full',
   };
 }
