@@ -7,6 +7,7 @@ import {
   loadFailure,
   NewWindowActivation,
   pageKey,
+  pageMenu,
   pageShortcuts,
   permissionCheck,
   permissionRequest,
@@ -302,4 +303,65 @@ it('zoom moves in half levels like the menu roles and stops at Chromium limits',
   expect(zoomLevel(3, 'reset')).toBe(0);
   expect(zoomLevel(100, 'in')).toBeLessThanOrEqual(Math.log(5) / Math.log(1.2));
   expect(zoomLevel(-100, 'out')).toBeGreaterThanOrEqual(Math.log(0.25) / Math.log(1.2));
+});
+
+const spot = (over: Partial<Parameters<typeof pageMenu>[0]> = {}) => ({
+  linkURL: '',
+  mediaType: 'none' as const,
+  hasImageContents: false,
+  isEditable: false,
+  selectionText: '',
+  editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
+  ...over,
+});
+
+it("the page's menu has only what applies there, no Inspect, and edit items only on a preview", () => {
+  const all = { canCut: true, canCopy: true, canPaste: true, canSelectAll: true };
+  // Nothing applies: no menu.
+  expect(pageMenu(spot(), false)).toEqual([]);
+  expect(pageMenu(spot({ editFlags: all }), false)).toEqual([]);
+  // A link; a new tab only for http(s).
+  expect(pageMenu(spot({ linkURL: 'https://shop.example/help' }), false)).toEqual([
+    ['open-link', 'copy-link'],
+  ]);
+  expect(pageMenu(spot({ linkURL: 'mailto:help@shop.example' }), false)).toEqual([['copy-link']]);
+  expect(pageMenu(spot({ linkURL: 'javascript:void(0)' }), false)).toEqual([['copy-link']]);
+  // An empty field: nothing chosen, so no Cut or Copy.
+  expect(
+    pageMenu(
+      spot({
+        isEditable: true,
+        editFlags: { canCut: false, canCopy: false, canPaste: true, canSelectAll: true },
+      }),
+      false,
+    ),
+  ).toEqual([['paste', 'select-all']]);
+  // Chosen text in a field, and on the page, where Cut and Paste never show.
+  expect(pageMenu(spot({ isEditable: true, selectionText: 'abc', editFlags: all }), false)).toEqual(
+    [['cut', 'copy', 'paste', 'select-all']],
+  );
+  expect(pageMenu(spot({ selectionText: 'abc', editFlags: all }), false)).toEqual([
+    ['copy', 'select-all'],
+  ]);
+  // An image once it has a picture; a linked image with chosen text has all three groups.
+  expect(pageMenu(spot({ mediaType: 'image', hasImageContents: true }), false)).toEqual([
+    ['copy-image'],
+  ]);
+  expect(pageMenu(spot({ mediaType: 'image' }), false)).toEqual([]);
+  expect(pageMenu(spot({ mediaType: 'canvas', hasImageContents: true }), false)).toEqual([]);
+  const everything = spot({
+    linkURL: 'https://shop.example/help',
+    mediaType: 'image',
+    hasImageContents: true,
+    selectionText: 'help',
+    editFlags: all,
+  });
+  expect(pageMenu(everything, false)).toEqual([
+    ['open-link', 'copy-link'],
+    ['copy-image'],
+    ['copy', 'select-all'],
+  ]);
+  // A preview page: the edit items only (its links can carry the lease's private path).
+  expect(pageMenu(everything, true)).toEqual([['copy', 'select-all']]);
+  expect(pageMenu(spot({ linkURL: 'http://127.0.0.2:4321/key/x' }), true)).toEqual([]);
 });

@@ -328,6 +328,49 @@ export function permissionCheck(
   return { kind: GRANTED.has(permission) ? 'grant' : 'deny' };
 }
 
+/** An item of the page's right-click menu (features/browser-tab.md 페이지의 메뉴). */
+export type PageMenuItem =
+  | 'open-link'
+  | 'copy-link'
+  | 'copy-image'
+  | 'cut'
+  | 'copy'
+  | 'paste'
+  | 'select-all';
+
+/** What of Electron's `context-menu` params the menu reads. */
+export interface PageMenuSpot {
+  linkURL: string;
+  mediaType: string;
+  hasImageContents: boolean;
+  isEditable: boolean;
+  selectionText: string;
+  editFlags: { canCut: boolean; canCopy: boolean; canPaste: boolean; canSelectAll: boolean };
+}
+
+/**
+ * The page's menu at a spot, in groups (a separator between them); empty means no menu. Only
+ * what applies there: no Inspect, and on a preview page the edit items only.
+ */
+export function pageMenu(spot: PageMenuSpot, preview: boolean): PageMenuItem[][] {
+  const groups: PageMenuItem[][] = [];
+  if (!preview && spot.linkURL) {
+    // A new tab opens http(s) only, as the address field does.
+    groups.push(systemBrowserUrl(spot.linkURL) ? ['open-link', 'copy-link'] : ['copy-link']);
+  }
+  if (!preview && spot.mediaType === 'image' && spot.hasImageContents) groups.push(['copy-image']);
+  const chosen = spot.selectionText !== '';
+  if (spot.isEditable || chosen) {
+    const edit: PageMenuItem[] = [];
+    if (spot.isEditable && chosen && spot.editFlags.canCut) edit.push('cut');
+    if (chosen && spot.editFlags.canCopy) edit.push('copy');
+    if (spot.isEditable && spot.editFlags.canPaste) edit.push('paste');
+    if (spot.editFlags.canSelectAll) edit.push('select-all');
+    if (edit.length) groups.push(edit);
+  }
+  return groups;
+}
+
 export type CertificateReason =
   | 'expired'
   | 'name-mismatch'

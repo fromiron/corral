@@ -328,6 +328,92 @@ it('the still-image swap: picture first, hide after it is painted, a newer step 
   expect(v.visible).toBe(false);
 });
 
+type MenuGroups = { label: string; run: () => void }[][];
+const lastMenu = (f: ReturnType<typeof setup>) => {
+  const groups = f.ports.popupMenu.mock.calls.at(-1)?.[0] as MenuGroups | undefined;
+  if (!groups) throw new Error('no menu');
+  return {
+    labels: groups.map((group) => group.map((item) => item.label)),
+    pick: (label: string) => {
+      const item = groups.flat().find((entry) => entry.label === label);
+      if (!item) throw new Error(`no ${label}`);
+      item.run();
+    },
+  };
+};
+
+it('right-clicking a page shows the native menu with only what applies, and its items act on the page', () => {
+  const f = setup();
+  f.tabs.navigate('tab-a', 'project_a', 'https://shop.example/');
+  const page = view(f, 0).webContents;
+  page.commit('https://shop.example/', 'Shop');
+  page.rightClick({});
+  expect(f.ports.popupMenu).not.toHaveBeenCalled();
+  page.rightClick({ linkURL: 'https://shop.example/help?ref=menu' });
+  expect(lastMenu(f).labels).toEqual([['새 탭에서 링크 열기', '링크 주소 복사']]);
+  lastMenu(f).pick('링크 주소 복사');
+  expect(f.ports.copyText).toHaveBeenCalledWith('https://shop.example/help?ref=menu');
+  lastMenu(f).pick('새 탭에서 링크 열기');
+  // A tab of its own beside this one, in the same project storage, not tied to this page.
+  expect(f.events.at(-1)).toEqual({
+    type: 'open-link',
+    tabId: 'tab-a',
+    projectId: 'project_a',
+    url: 'https://shop.example/help?ref=menu',
+  });
+  expect(f.views).toHaveLength(1);
+  page.rightClick({
+    isEditable: true,
+    editFlags: { canCut: false, canCopy: false, canPaste: true, canSelectAll: true },
+  });
+  expect(lastMenu(f).labels).toEqual([['붙여넣기', '모두 선택']]);
+  lastMenu(f).pick('붙여넣기');
+  expect(page.paste).toHaveBeenCalled();
+  lastMenu(f).pick('모두 선택');
+  expect(page.selectAll).toHaveBeenCalled();
+  page.rightClick({ mediaType: 'image', hasImageContents: true, x: 12, y: 34 });
+  lastMenu(f).pick('이미지 복사');
+  expect(page.copyImageAt).toHaveBeenCalledWith(12, 34);
+  page.rightClick({
+    isEditable: true,
+    selectionText: 'abc',
+    editFlags: { canCut: true, canCopy: true, canPaste: true, canSelectAll: true },
+  });
+  expect(lastMenu(f).labels).toEqual([['잘라내기', '복사', '붙여넣기', '모두 선택']]);
+  lastMenu(f).pick('잘라내기');
+  lastMenu(f).pick('복사');
+  expect(page.cut).toHaveBeenCalled();
+  expect(page.copy).toHaveBeenCalled();
+  // A menu still open when its page goes does nothing.
+  page.rightClick({
+    linkURL: 'https://shop.example/late',
+    isEditable: true,
+    editFlags: { canCut: false, canCopy: false, canPaste: true, canSelectAll: false },
+  });
+  const late = lastMenu(f);
+  const events = f.events.length;
+  page.paste.mockClear();
+  f.tabs.close('tab-a');
+  late.pick('새 탭에서 링크 열기');
+  late.pick('붙여넣기');
+  expect(f.events.slice(events).some((event) => event.type === 'open-link')).toBe(false);
+  expect(page.paste).not.toHaveBeenCalled();
+});
+
+it('a preview page menu has the edit items only', async () => {
+  const f = setup();
+  await f.tabs.openPreview('tab-p', 'session_1', 'lease_1');
+  const page = view(f, 0).webContents;
+  page.rightClick({ linkURL: 'http://127.0.0.2:4321/key-path/next' });
+  expect(f.ports.popupMenu).not.toHaveBeenCalled();
+  page.rightClick({
+    linkURL: 'http://127.0.0.2:4321/key-path/next',
+    selectionText: 'next',
+    editFlags: { canCut: false, canCopy: true, canPaste: false, canSelectAll: true },
+  });
+  expect(lastMenu(f).labels).toEqual([['복사', '모두 선택']]);
+});
+
 it('fullscreen and screen sharing are refused without asking; the page stays in the tab', () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://video.example/');
@@ -466,12 +552,15 @@ it('element capture works on a preview tab and refuses ordinary pages', async ()
     screenshotSafe: true,
   });
   const pending = f.tabs.capturePreview('tab-p', { screenshot: false, console: false });
-  await vi.waitFor(() => expect(page.listenerCount('context-menu')).toBe(1));
+  // The page's menu listens always; the capture adds its own once it is choosing.
+  await vi.waitFor(() => expect(page.listenerCount('context-menu')).toBe(2));
   page.emit(
     'context-menu',
     { preventDefault: vi.fn() },
     { x: 2, y: 2, frame: page.mainFrame, menuSourceType: 'mouse' },
   );
+  // While choosing an element, the right-click is the choice, not the page's menu.
+  expect(f.ports.popupMenu).not.toHaveBeenCalled();
   await expect(pending).resolves.toMatchObject({
     sessionId: 'session_1',
     leaseId: 'lease_1',

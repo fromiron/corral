@@ -30,6 +30,11 @@ export class FakeContents extends EventEmitter {
   stop = vi.fn();
   focus = vi.fn();
   setWebRTCIPHandlingPolicy = vi.fn();
+  cut = vi.fn();
+  copy = vi.fn();
+  paste = vi.fn();
+  selectAll = vi.fn();
+  copyImageAt = vi.fn();
   capturePage = vi.fn(async () => ({
     isEmpty: () => false,
     toDataURL: () => 'data:image/png;base64,still',
@@ -78,6 +83,24 @@ export class FakeContents extends EventEmitter {
   fail(url: string, code: number) {
     this.emit('did-start-navigation', { url, isMainFrame: true, isSameDocument: false });
     this.emit('did-fail-load', {}, code, 'error', url, true, 1, 1);
+  }
+  /** A right-click on the page; returns nothing, the menu goes to ports.popupMenu. */
+  rightClick(params: Record<string, unknown>) {
+    this.emit(
+      'context-menu',
+      { preventDefault: vi.fn() },
+      {
+        x: 40,
+        y: 30,
+        linkURL: '',
+        mediaType: 'none',
+        hasImageContents: false,
+        isEditable: false,
+        selectionText: '',
+        editFlags: { canCut: false, canCopy: false, canPaste: false, canSelectAll: false },
+        ...params,
+      },
+    );
   }
   key(input: Record<string, unknown>) {
     const event = { preventDefault: vi.fn() };
@@ -278,6 +301,8 @@ export function setup(options: { files?: BrowserFiles; mac?: boolean } = {}) {
         if (index >= 0) timers.splice(index, 1);
       };
     },
+    popupMenu: vi.fn(),
+    copyText: vi.fn(),
     korean: () => true,
     mac: options.mac ?? false,
   } satisfies Record<keyof BrowserTabsPorts, unknown>;

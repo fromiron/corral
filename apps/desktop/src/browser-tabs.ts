@@ -5,6 +5,7 @@ import type {
   AuthInfo,
   BrowserWindowConstructorOptions,
   Certificate,
+  ContextMenuParams,
   DownloadItem,
   Event,
   HandlerDetails,
@@ -37,7 +38,9 @@ import {
   loadFailure,
   NewWindowActivation,
   type PageChord,
+  type PageMenuItem,
   pageKey,
+  pageMenu,
   permissionCheck,
   permissionRequest,
   type SitePermission,
@@ -88,9 +91,23 @@ export interface BrowserTabsPorts {
   id(): string;
   /** Runs `run` every `ms`; returns the stop. */
   every(ms: number, run: () => void): () => void;
+  /** Shows the operating system's menu at the pointer; a separator between groups. */
+  popupMenu(groups: { label: string; run: () => void }[][]): void;
+  copyText(text: string): void;
   korean(): boolean;
   mac: boolean;
 }
+
+/** The page menu's words (features/browser-tab.md 페이지의 메뉴): Korean, English. */
+const MENU_LABELS: Record<PageMenuItem, [string, string]> = {
+  'open-link': ['새 탭에서 링크 열기', 'Open link in new tab'],
+  'copy-link': ['링크 주소 복사', 'Copy link address'],
+  'copy-image': ['이미지 복사', 'Copy image'],
+  cut: ['잘라내기', 'Cut'],
+  copy: ['복사', 'Copy'],
+  paste: ['붙여넣기', 'Paste'],
+  'select-all': ['모두 선택', 'Select all'],
+};
 
 /** Both kinds of page: no preload, no Node, sandboxed and isolated; nothing of Corral exposed. */
 const PAGE_PREFERENCES: WebPreferences = {
@@ -870,6 +887,9 @@ export class BrowserTabs {
       callback('');
     });
     contents.setWindowOpenHandler((details) => this.onWindowOpen(tab, details));
+    contents.on('context-menu', (_event, params) => {
+      if (live()) this.onContextMenu(tab, contents, params);
+    });
     if (tab.kind === 'preview') {
       // The lease rules (ABS-04): the page stays on the lease, and Corral says what it blocked.
       contents.on('will-navigate', (event) => {
@@ -967,6 +987,34 @@ export class BrowserTabs {
         else if (tab.contents === contents && !contents.isDestroyed()) contents.reload();
       })
       .catch(() => this.endLease(tab, lease));
+  }
+
+  /** The page's right-click menu; an item picked once its page is gone does nothing. */
+  private onContextMenu(tab: Tab, contents: WebContents, params: ContextMenuParams) {
+    if (tab.capture?.cancel) return; // choosing an element: the right-click is the choice
+    const groups = pageMenu(params, tab.kind === 'preview');
+    if (!groups.length) return;
+    const { linkURL, x, y } = params;
+    const act = (item: PageMenuItem) => {
+      if (tab.contents !== contents || contents.isDestroyed()) return;
+      if (item === 'open-link') {
+        const url = systemBrowserUrl(linkURL);
+        const project = tab.project;
+        if (url && project && this.tabs.get(tab.id) === tab)
+          this.ports.send({ type: 'open-link', tabId: tab.id, projectId: project.projectId, url });
+      } else if (item === 'copy-link') this.ports.copyText(linkURL);
+      else if (item === 'copy-image') contents.copyImageAt(x, y);
+      else if (item === 'cut') contents.cut();
+      else if (item === 'copy') contents.copy();
+      else if (item === 'paste') contents.paste();
+      else contents.selectAll();
+    };
+    const korean = this.ports.korean();
+    this.ports.popupMenu(
+      groups.map((group) =>
+        group.map((item) => ({ label: MENU_LABELS[item][korean ? 0 : 1], run: () => act(item) })),
+      ),
+    );
   }
 
   private onWindowOpen(tab: Tab, details: HandlerDetails): WindowOpenHandlerResponse {
