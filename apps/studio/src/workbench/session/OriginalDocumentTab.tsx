@@ -10,6 +10,7 @@ import { useServices } from '../../services.tsx';
 import { DocumentHeader } from '../DocumentHeader.tsx';
 import type { FileReference } from '../FilePanel.tsx';
 import { LineRangePopover } from '../LineRangePopover.tsx';
+import { onSourceReread } from './sourceReread.ts';
 
 const SourceCode = lazy(() =>
   import('../PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
@@ -39,7 +40,11 @@ export function OriginalDocumentTab({
   const [range, setRange] = useState({ start: 1, end: 1 });
   const [referenceOpen, setReferenceOpen] = useState(false);
   const more = useRef<HTMLButtonElement>(null);
+  // The conversation's tree refreshed: the file is read again (sourceReread.ts).
+  const [again, readAgain] = useState(0);
+  useEffect(() => onSourceReread(sessionId, () => readAgain((n) => n + 1)), [sessionId]);
   useEffect(() => {
+    void again;
     if (!workspaces) return;
     let live = true;
     void workspaces.readFile({ kind: 'project', id: projectId }, path).then(
@@ -58,7 +63,7 @@ export function OriginalDocumentTab({
     return () => {
       live = false;
     };
-  }, [workspaces, projectId, path]);
+  }, [workspaces, projectId, path, again]);
   const content = read.path === path ? read.content : null;
   const failed = read.path === path ? read.failed : null;
   const lineCount = content?.kind === 'text' ? content.text.split('\n').length : 1;

@@ -111,6 +111,8 @@ export interface ServerParts {
   failRead(path: string): void;
   /** The source folder refuses every later read of the path as an invalid request. */
   refuseRead(path: string): void;
+  /** The source folder's file now holds this text, as an edit outside Corral leaves it. */
+  editSource(path: string, text: string): void;
   /**
    * Another window of this browser kept an unsaved draft of the file in this conversation, in
    * the current copy or in the one `copy` names.
@@ -351,6 +353,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
   const gone = new Set<string>();
   const unreadable = new Set<string>();
   const refused = new Set<string>();
+  const edited = new Map<string, string>();
   const kept: RecoveryDraft[] = [];
   const workspaces = {
     worktree: async () => ({
@@ -533,6 +536,7 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
     removeFile: (at: string) => void gone.add(at),
     failRead: (at: string) => void unreadable.add(at),
     refuseRead: (at: string) => void refused.add(at),
+    editSource: (at: string, text: string) => void edited.set(at, text),
     keepDraft: (at: string, copy?: { bindingId: string; generation: number }) => {
       const of = copy
         ? { ...target, bindingId: copy.bindingId, copyGeneration: copy.generation }
@@ -567,7 +571,10 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
         if (gone.has(at)) throw new ApiError(404, 'TARGET_NOT_FOUND', 'the file does not exist');
         if (refused.has(at)) throw new ApiError(400, 'SCHEMA_INVALID', 'the path is not a file');
         if (unreadable.has(at)) throw new Error('the host could not read the file');
-        return read(scope, at);
+        const text = edited.get(at);
+        if (text === undefined) return read(scope, at);
+        const file = (await read(scope, at)) as { content: object };
+        return { ...file, content: { ...file.content, kind: 'text', text } };
       };
       parts.documents = documentStore(client as never, {
         loadMonaco,

@@ -41,6 +41,7 @@ import { fileSourceKey, type TreeState, useTreeState } from './fileTreeState.ts'
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
 import { runResultFiles } from './runResults.ts';
+import { readSourceFilesAgain } from './session/sourceReread.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
 const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
@@ -649,7 +650,16 @@ export function FilePanel({
             </Button>
           </Tooltip>
           <Tooltip content={t('refreshFiles')}>
-            <Button size="icon" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t('refreshFiles')}
+              onClick={() => {
+                refresh();
+                // The conversation's open source-folder 문서 tabs read their files again too.
+                readSourceFilesAgain(sessionId);
+              }}
+            >
               <RefreshCw />
             </Button>
           </Tooltip>

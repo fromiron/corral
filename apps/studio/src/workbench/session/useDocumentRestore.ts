@@ -29,7 +29,7 @@ export interface DocumentRestoreInput {
 }
 
 /** A source-folder read that says the file is not there; any other refusal keeps the tab. */
-const noFile = (error: unknown) =>
+export const noFile = (error: unknown) =>
   error instanceof ApiError && (error.status === 404 || error.code === 'TARGET_NOT_FOUND');
 
 export function useDocumentRestore(input: DocumentRestoreInput) {

@@ -106,6 +106,7 @@ import {
   RunPanel,
   useRunNames,
 } from '../workbench/session/SessionPanels.tsx';
+import { useSourceReread } from '../workbench/session/sourceReread.ts';
 import { useDocumentRestore } from '../workbench/session/useDocumentRestore.ts';
 import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
 import { useUnsavedTabs } from '../workbench/session/useUnsavedTabs.ts';
@@ -337,6 +338,14 @@ function WorkSessionPage() {
     entered: frame.entered,
     state,
     copy: copyNow,
+    dispatch: (event) => frame.dispatch(event),
+    current: () => sessionNow.current,
+  });
+  useSourceReread({
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    workspaces: services.workspaces ?? undefined,
+    state,
     dispatch: (event) => frame.dispatch(event),
     current: () => sessionNow.current,
   });

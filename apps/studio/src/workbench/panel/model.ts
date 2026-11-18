@@ -201,6 +201,8 @@ export type PanelEvent =
     }
   /** The reads after entry of restored 문서 tabs answered (each one once). */
   | { readonly type: 'documentsChecked'; readonly results: readonly DocumentChecked[] }
+  /** The tree's Refresh read the source-folder 문서 tabs again and found these files gone. */
+  | { readonly type: 'sourceFilesGone'; readonly tabs: readonly DocumentAwaited[] }
   /** The person picked an inner tab inside 작업, or its first read put 미리보기 in front. */
   | { readonly type: 'toolsView'; readonly view: ToolsView }
   /** The room or the run list in `ctx` changed. */
@@ -717,6 +719,8 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
     }
     case 'documentsChecked':
       return documentsChecked(state, event.results);
+    case 'sourceFilesGone':
+      return sourceFilesGone(state, event.tabs);
     case 'context':
       return state;
   }
@@ -754,13 +758,32 @@ function documentsChecked(state: PanelState, results: readonly DocumentChecked[]
       kept.push({ kind: 'files', instance: nextInstance++, seen: false });
     if (!gone(tab)) kept.push(tab);
   });
-  let next: PanelState = { ...state, tabs: kept, nextInstance, awaiting: waiting(left) };
-  if (state.selected !== null && !hasTab(next, state.selected)) {
-    const first = kept[0];
-    const selected = selectedDraft ? 'files' : first ? tabKey(first) : null;
-    next = selected ? { ...next, selected } : { ...next, selected: null, presentation: 'closed' };
-  }
-  return next;
+  const next: PanelState = { ...state, tabs: kept, nextInstance, awaiting: waiting(left) };
+  return reselected(state, next, selectedDraft ? 'files' : undefined);
+}
+
+// The tree's Refresh found these source-folder files gone: their 문서 tabs are dropped as a
+// restored tab's missing file is, but only the very tab that was read (not one closed and opened
+// again since).
+function sourceFilesGone(state: PanelState, gone: readonly DocumentAwaited[]): PanelState {
+  const tabs = state.tabs.filter(
+    (tab) =>
+      !(
+        tab.kind === 'document' &&
+        tab.source === 'original' &&
+        gone.some((item) => item.key === tabKey(tab) && item.instance === tab.instance)
+      ),
+  );
+  return tabs.length === state.tabs.length ? state : reselected(state, { ...state, tabs });
+}
+
+// A clean-up dropped the selected tab: `instead` when given, else the first tab left; with no tab
+// left the panel closes.
+function reselected(before: PanelState, next: PanelState, instead?: TabKey): PanelState {
+  if (before.selected === null || hasTab(next, before.selected)) return next;
+  const first = next.tabs[0];
+  const selected = instead ?? (first ? tabKey(first) : null);
+  return selected ? { ...next, selected } : { ...next, selected: null, presentation: 'closed' };
 }
 
 /** The strip's order with the tab at `toIndex`; the same state when nothing moves. */

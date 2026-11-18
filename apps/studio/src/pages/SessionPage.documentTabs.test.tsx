@@ -8,6 +8,7 @@ import {
   serializePanelMemory,
 } from '../workbench/panel/memory.ts';
 import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
+import { PANEL_WIDTH_KEY } from '../workbench/panel/width.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -246,6 +247,90 @@ it('대화의 기억에 원본 폴더의 README.md 탭이 있다 → 그 대화�
 
   expect(tabNames()).toEqual(['README.md']);
   await settle();
+  expect(tabNames()).toEqual(['README.md']);
+});
+
+const refreshFiles = () =>
+  side()?.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Desktop.refreshFiles}"]`,
+  ) ?? null;
+const files: PanelTab = { kind: 'files' };
+/** A 900px panel: the tree is a column beside the selected 문서 tab, so the tab stays on screen. */
+async function openWide(at: ShellWorld, address: string) {
+  window.localStorage.setItem(PANEL_WIDTH_KEY, '900');
+  const shell = await mountShell(at, [address], { width: 1600 });
+  cleanups.push(() => shell.unmount());
+  return shell;
+}
+
+it('원본 폴더의 README.md 탭이 열려 있고 그 첫 줄은 "# 옛 제목"이다 → Corral 밖에서 그 첫 줄을 "# 새 제목"으로 고친 뒤 파일 탭의 "파일 새로고침"을 누른다 → README.md 탭의 첫 줄은 "# 새 제목"이다', async () => {
+  const { world: at, server } = await world();
+  server.editSource('README.md', '# 옛 제목\n');
+  remember(at.sessionId, [files, original('README.md')], 'document:original:README.md');
+  await openWide(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(sourceShown()?.includes('# 옛 제목')) && Boolean(refreshFiles()));
+  expect(refreshFiles()).not.toBeNull();
+
+  server.editSource('README.md', '# 새 제목\n');
+  await act(async () => refreshFiles()?.click());
+  await until(() => Boolean(sourceShown()?.includes('# 새 제목')));
+
+  expect(sourceShown()).toContain('# 새 제목');
+  expect(tabNames()).toEqual(['README.md']);
+});
+
+it('원본 폴더의 gone.md와 README.md 탭이 열려 있고 gone.md를 보고 있다 → Corral 밖에서 gone.md를 지우고 "파일 새로고침"을 누른다 → gone.md 탭은 버려지고 남은 README.md 탭이 선택되며, 기록은 쌓이지 않는다', async () => {
+  const { world: at, server } = await world();
+  remember(
+    at.sessionId,
+    [files, original('gone.md'), original('README.md')],
+    'document:original:gone.md',
+  );
+  const shell = await openWide(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 2 && Boolean(refreshFiles()));
+  await settle();
+  expect(tabNames()).toEqual(['gone.md', 'README.md']);
+  const before = entries(shell);
+
+  server.removeFile('gone.md');
+  await act(async () => refreshFiles()?.click());
+  await until(() => tabNames().length === 1);
+
+  expect(tabNames()).toEqual(['README.md']);
+  expect(selectedName()).toBe('README.md');
+  const search = shell.router.state.location.search as Record<string, unknown>;
+  expect(search).toMatchObject({ panel: 'document', file: 'README.md', target: 'original' });
+  expect(entries(shell)).toBe(before);
+});
+
+it('좁은 패널에서 파일 탭을 보고 있고 원본 폴더의 README.md와 gone.md 탭도 열려 있다 → gone.md를 지우고 "파일 새로고침"을 누른다 → 보이지 않던 gone.md 탭도 버려지고 파일 탭은 선택된 채 남는다', async () => {
+  const { world: at, server } = await world();
+  remember(at.sessionId, [files, original('README.md'), original('gone.md')], 'files');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 3 && Boolean(refreshFiles()));
+  await settle();
+
+  server.removeFile('gone.md');
+  await act(async () => refreshFiles()?.click());
+  await until(() => tabNames().length === 2);
+
+  expect(tabNames()).toEqual([W.files, 'README.md']);
+  expect(selectedName()).toBe(W.files);
+});
+
+it('원본 폴더의 README.md 탭이 열려 있다 → "파일 새로고침"을 누르고 README.md를 읽지 못한다 → 파일이 없다는 답이 아니므로 탭은 남고 읽지 못한 까닭을 보인다 (반례)', async () => {
+  const { world: at, server } = await world();
+  remember(at.sessionId, [files, original('README.md')], 'document:original:README.md');
+  await openWide(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(sourceShown()) && Boolean(refreshFiles()));
+
+  server.failRead('README.md');
+  await act(async () => refreshFiles()?.click());
+  const reason = () => side()?.querySelector('[role="alert"]')?.textContent ?? null;
+  await until(() => Boolean(reason()));
+  await settle();
+
+  expect(reason()).toBeTruthy();
   expect(tabNames()).toEqual(['README.md']);
 });
 

@@ -6,6 +6,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { publishTreeSource } from '../DocumentHeader.tsx';
 import { OriginalDocumentTab } from './OriginalDocumentTab.tsx';
+import { readSourceFilesAgain } from './sourceReread.ts';
 
 Element.prototype.getAnimations ??= () => [];
 
@@ -137,4 +138,21 @@ it('beside a tree that shows the source folder its head does not name the source
     cleanups.push(async () => copy());
   });
   expect(badge(container)).toBe(true);
+});
+
+it("reads the file again when its conversation's tree is refreshed; another conversation's refresh reads nothing", async () => {
+  const { container } = await mount('README.md');
+  expect(host.readFile).toHaveBeenCalledTimes(1);
+  host.readFile.mockImplementationOnce(async (_scope: unknown, path: string) => ({
+    path,
+    content: { kind: 'text', text: 'changed outside Corral\n' } as unknown,
+  }));
+
+  await act(async () => readSourceFilesAgain('other session'));
+  expect(host.readFile).toHaveBeenCalledTimes(1);
+
+  await act(async () => readSourceFilesAgain('session'));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
+  expect(host.readFile).toHaveBeenCalledTimes(2);
+  expect(container.querySelector('[data-source]')?.textContent).toBe('changed outside Corral\n');
 });

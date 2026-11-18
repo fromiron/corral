@@ -7,6 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { FilePanel } from './FilePanel.tsx';
 import { forgetTreeState } from './fileTreeState.ts';
+import { onSourceReread } from './session/sourceReread.ts';
 
 const fixture = vi.hoisted(() => ({
   target: {
@@ -309,4 +310,20 @@ it('shows the conversation’s opened folders again when its tree comes back, an
   // Closing the 파일 tab forgets it.
   await act(async () => forgetTreeState('session'));
   expect(items(second.container)).toEqual(['src', 'README.md']);
+});
+
+it("Refresh files asks the conversation's open source-folder 문서 tabs to read their files again", async () => {
+  const asked = vi.fn();
+  const other = vi.fn();
+  const stop = [onSourceReread('session', asked), onSourceReread('other session', other)];
+  const { container } = await panel();
+  const refresh = container.querySelector<HTMLButtonElement>(
+    `button[aria-label="${messages.Desktop.refreshFiles}"]`,
+  );
+  expect(refresh).not.toBeNull();
+  await act(async () => refresh?.click());
+  for (const end of stop) end();
+
+  expect(asked).toHaveBeenCalledTimes(1);
+  expect(other).not.toHaveBeenCalled();
 });
