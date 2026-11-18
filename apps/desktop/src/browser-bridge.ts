@@ -73,6 +73,13 @@ export type BrowserEvent =
   | { type: 'popup'; tabId: string; openerTabId: string; projectId: string }
   /** A page-opened tab's page closed (itself or by its opener): remove the tab. */
   | { type: 'popup-closed'; tabId: string }
+  /**
+   * "새 탭에서 링크 열기" from the page's menu (not a pop-up: the page opened nothing). Add a
+   * browser tab right beside `tabId` in the same conversation, then `navigate(newTabId,
+   * projectId, url)`: the same project storage, no link to the page. `url` is http(s), without
+   * credentials.
+   */
+  | { type: 'open-link'; tabId: string; projectId: string; url: string }
   /** Shift+Escape in the page: focus is back in the host; move it to the address field. */
   | { type: 'leave'; tabId: string }
   /** An app shortcut pressed in the page; focus is back in the host. */
