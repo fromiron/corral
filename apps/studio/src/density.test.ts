@@ -99,7 +99,11 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/MeetingDiagnostics.tsx',
   ],
   // The browser tab's annotation overlay (its own page over the page area).
-  annotate: ['apps/studio/src/annotate/Overlay.tsx', 'apps/studio/src/annotate/NoteCard.tsx'],
+  annotate: [
+    'apps/studio/src/annotate/Overlay.tsx',
+    'apps/studio/src/annotate/NoteCard.tsx',
+    'apps/studio/src/annotate/StyleView.tsx',
+  ],
   conversation: [
     'apps/studio/src/workbench/session/Composer.tsx',
     'apps/studio/src/workbench/session/composer/ComposerNotices.tsx',
@@ -120,6 +124,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/TextAttachments.tsx',
     'apps/studio/src/workbench/ImageAttachments.tsx',
     'apps/studio/src/workbench/context/ContextAttachments.tsx',
+    'apps/studio/src/workbench/browser/NoteChips.tsx',
     'apps/studio/src/workbench/widgets/ChatWidgets.tsx',
     'apps/studio/src/workbench/widgets/OverviewWidgets.tsx',
     'apps/studio/src/workbench/ArchivedSessionNotice.tsx',
@@ -187,6 +192,12 @@ const keptSmall: { file: string; near: RegExp }[] = [
     near: /'removeReference'/,
   },
   { file: 'apps/studio/src/workbench/TextAttachments.tsx', near: /'removeQuote'/ },
+  // A collected page note's chip among the composer's chips: its opener and its remove.
+  {
+    file: 'apps/studio/src/workbench/browser/NoteChips.tsx',
+    near: /className="min-w-0 gap-1 px-1.5"/,
+  },
+  { file: 'apps/studio/src/workbench/browser/NoteChips.tsx', near: /'removeNote'/ },
   // The request composer's action row: the kit composer's slot controls are compact.
   {
     file: 'apps/studio/src/workbench/session/composer/ComposerTools.tsx',
@@ -201,6 +212,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // The annotation note beside a page's element is a small composer: its controls are the kit
   // composer's slot controls, compact (its text keeps the body size).
   { file: 'apps/studio/src/annotate/NoteCard.tsx', near: /<SizeScope size="compact">/ },
+  // Its style view is a part of that note, beside it: the same compact controls.
+  { file: 'apps/studio/src/annotate/StyleView.tsx', near: /<SizeScope size="compact">/ },
   // The copy button over a code block: an icon button inside a field.
   { file: 'packages/react/src/components/CopyTextButton.tsx', near: /code \?/ },
 ];
