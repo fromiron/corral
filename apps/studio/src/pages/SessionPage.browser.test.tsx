@@ -1381,7 +1381,7 @@ it('미리보기 페이지의 보기 폭에서 모바일 → 페이지의 뷰만
   ]);
 });
 
-it('⋯의 이 프로젝트의 브라우저 데이터 지우기 → "Project의 …를 지울까요?" 대화상자가 취소에 포커스를 두고 뜨고, 취소는 아무것도 지우지 않으며 지우기는 그 프로젝트의 데이터를 지운다', async () => {
+it('⋯의 이 프로젝트의 브라우저 데이터 지우기 → "Project의 …를 지우시겠습니까?" 대화상자가 취소에 포커스를 두고 뜨고, 취소는 아무것도 지우지 않으며 지우기는 그 프로젝트의 데이터를 지운다', async () => {
   const bridge = createFakeBrowserBridge();
   const { at } = await livePage(bridge);
   const title = fill(B.clearTitle, { project: 'Project' });

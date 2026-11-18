@@ -110,7 +110,7 @@ function hostOf(origin: string): string {
 }
 
 /**
- * "{프로젝트}의 브라우저 데이터를 지울까요?": 취소 then 지우기, the focus first on 취소. Clearing
+ * "{프로젝트}의 브라우저 데이터를 지우시겠습니까?": 취소 then 지우기, the focus first on 취소. Clearing
  * empties the project's whole browser storage; the desktop reloads its open ordinary pages.
  */
 export function ClearDataDialog({
