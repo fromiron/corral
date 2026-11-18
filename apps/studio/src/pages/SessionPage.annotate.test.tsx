@@ -519,3 +519,80 @@ it('보내는 중에 덧뷰가 기다리기를 멈춘다(모드의 끝) → 보�
   await until(() => announced() === messages.Annotate.announce.sent);
   expect(announced()).toBe(messages.Annotate.announce.sent);
 });
+
+// --- 주석 모드의 끝 (features/browser-annotate.md 주석 칸이 닫히는 때, 바로 보내기) -----------
+
+async function tell(bridge: FakeBrowserBridge, message: unknown) {
+  await act(async () => bridge.emit({ type: 'annotate-message', tabId: 'b_one', message }));
+}
+async function modeOn(bridge: FakeBrowserBridge) {
+  await act(async () => bridge.emit({ type: 'annotate', tabId: 'b_one', on: true }));
+  await settle();
+}
+async function endMode(bridge: FakeBrowserBridge) {
+  await act(async () => bridge.emit({ type: 'annotate', tabId: 'b_one', on: false }));
+  await settle();
+}
+
+it('주석 모드가 끝날 때 쓴 것이 있는 칸이 열려 있었다 → "작성 중인 주석을 버렸습니다"를 알리고, 쓴 것을 지운 칸은 알리지 않는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await modeOn(bridge);
+  await tell(bridge, { type: 'note-written', noteId: 'note_1', written: true });
+  await endMode(bridge);
+  expect(announced()).toBe(messages.Annotate.announce.discarded);
+
+  await modeOn(bridge);
+  await tell(bridge, { type: 'note-written', noteId: 'note_2', written: true });
+  await tell(bridge, { type: 'note-written', noteId: 'note_2', written: false });
+  await act(async () => document.querySelector('[data-browser-announcer]')?.replaceChildren());
+  await endMode(bridge);
+  expect(announced()).toBe('');
+});
+
+it('접수를 확인하지 못한 칸이 주석 모드의 끝으로 닫힌다 → 확인하지 못했다고 알리고, 그 명령으로 다시 보낼 길도 없어진다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { made: sent } = await livePage(bridge, 'b_one', host);
+  await modeOn(bridge);
+  sent.answers.push(async () => {
+    throw new TypeError('Failed to fetch');
+  });
+  await tell(bridge, { type: 'note-written', noteId: 'note_1', written: true });
+  await sendNote(bridge, 'submit_1');
+  await until(() => answerTo(bridge, 'submit_1') !== undefined);
+  expect(answerTo(bridge, 'submit_1')).toEqual({ kind: 'unconfirmed' });
+  await endMode(bridge);
+  // Not discarded: its result is the one said.
+  expect(announced()).toBe(messages.Annotate.announce.unconfirmed);
+
+  await sendNote(bridge, 'submit_2', { again: true });
+  await until(() => answerTo(bridge, 'submit_2') !== undefined);
+  expect(answerTo(bridge, 'submit_2')).toMatchObject({ kind: 'refused' });
+  expect(sent.started).toHaveLength(1);
+});
+
+it('보내는 중인 칸이 주석 모드의 끝으로 닫힌다(취소 없이) → 보내기는 이어지고, 거절되면 "주석을 보내지 못했습니다"와 까닭을 알린다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { made: sent } = await livePage(bridge, 'b_one', host);
+  await modeOn(bridge);
+  let release = () => {};
+  sent.answers.push(
+    () =>
+      new Promise((resolve) => {
+        release = () =>
+          resolve({
+            runId: null,
+            receipt: { commandId: 'x', error: { code: 'LIMIT_REACHED', message: 'Too large.' } },
+          });
+      }),
+  );
+  await tell(bridge, { type: 'note-written', noteId: 'note_1', written: true });
+  await sendNote(bridge, 'submit_1');
+  await until(() => sent.started.length === 1);
+  await endMode(bridge);
+  expect(announced()).not.toBe(messages.Annotate.announce.discarded);
+  await act(async () => release());
+  const said = `${messages.Annotate.announce.notSent}. ${messages.Refusal.limit}`;
+  await until(() => announced() === said);
+  expect(announced()).toBe(said);
+});

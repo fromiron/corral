@@ -201,6 +201,14 @@ export function useAnnotating(tabId: string): boolean {
 /** A shortcut pressed in a page, which the desktop handed back with its tab. */
 export const ANNOTATE_SHORTCUT = 'corral:browser-annotate';
 
+type OpenNotes = Map<string, { tabId: string; written: boolean; unconfirmed: boolean }>;
+/** The note the overlay told of, made when it first tells. */
+function noteIn(notes: OpenNotes, tabId: string, noteId: string) {
+  const note = notes.get(noteId) ?? { tabId, written: false, unconfirmed: false };
+  notes.set(noteId, note);
+  return note;
+}
+
 /** A submit's `extra`, as the overlay says how it was asked for. */
 function submitExtra(extra: unknown): AnnotateSubmitExtra {
   const value = (extra && typeof extra === 'object' ? extra : {}) as Record<string, unknown>;
@@ -218,6 +226,12 @@ function overlayMessage(message: unknown): AnnotateMessage | null {
     return { type: 'collect', on: value.on };
   if (value.type === 'note-closed' && typeof value.noteId === 'string')
     return { type: 'note-closed', noteId: value.noteId };
+  if (
+    value.type === 'note-written' &&
+    typeof value.noteId === 'string' &&
+    typeof value.written === 'boolean'
+  )
+    return { type: 'note-written', noteId: value.noteId, written: value.written };
   return null;
 }
 
@@ -270,7 +284,34 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
   );
 
   /** Submits waiting for their outcome; one the overlay stopped waiting for is said here. */
-  const [submits] = useState(() => new Map<string, { tabId: string; cancelled: boolean }>());
+  const [submits] = useState(
+    () => new Map<string, { tabId: string; noteId: string; cancelled: boolean }>(),
+  );
+  /**
+   * The open notes the overlay told of, by note: whether something is written in it and whether
+   * its send is unconfirmed, so the mode's end says what became of each (주석 칸이 닫히는 때).
+   */
+  const [notes] = useState((): OpenNotes => new Map());
+  /** The mode ended on a tab: its notes close, and each says what became of it. */
+  const endNotes = (tabId: string, now: BrowserAnnotateInput) => {
+    const { ta } = words.current;
+    const sending = new Set<string>();
+    for (const waiting of submits.values())
+      if (waiting.tabId === tabId) {
+        waiting.cancelled = true;
+        sending.add(waiting.noteId);
+      }
+    for (const [noteId, note] of [...notes]) {
+      if (note.tabId !== tabId) continue;
+      notes.delete(noteId);
+      // A send still on its way says its result when it comes.
+      if (sending.has(noteId)) continue;
+      if (note.unconfirmed) {
+        now.composer.get()?.forgetNote(noteId);
+        annotations.announce(ta('announce.unconfirmed'));
+      } else if (note.written) annotations.announce(ta('announce.discarded'));
+    }
+  };
   /** One answer for every submit, whatever happens on the way. */
   const submit = async (
     bridge: BrowserBridge,
@@ -278,7 +319,7 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     now: BrowserAnnotateInput,
   ) => {
     const { ta, tr } = words.current;
-    const waiting = { tabId: event.tabId, cancelled: false };
+    const waiting = { tabId: event.tabId, noteId: event.noteId, cancelled: false };
     submits.set(event.submitId, waiting);
     let outcome: AnnotateOutcome;
     try {
@@ -291,13 +332,22 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     }
     submits.delete(event.submitId);
     void bridge.answerAnnotate(event.tabId, event.submitId, outcome).catch(() => {});
-    // The overlay stopped waiting (its note closed, the mode ended): a send says its result here.
-    if (waiting.cancelled && event.intent === 'send') {
+    if (event.intent !== 'send') return;
+    // The overlay stopped waiting (its note closed, the mode ended): a send says its result
+    // here, and a closed note's way to send again under the same command goes with it.
+    if (waiting.cancelled) {
       if (outcome.kind === 'accepted') annotations.announce(ta('announce.sent'));
       else if (outcome.kind === 'refused')
-        annotations.announce(`${ta('announce.notSent')} ${outcome.reason}`);
-      else if (outcome.kind === 'unconfirmed') annotations.announce(ta('announce.unconfirmed'));
+        annotations.announce(`${ta('announce.notSent')}. ${outcome.reason}`);
+      else if (outcome.kind === 'unconfirmed') {
+        now.composer.get()?.forgetNote(event.noteId);
+        annotations.announce(ta('announce.unconfirmed'));
+      }
+      return;
     }
+    if (outcome.kind === 'accepted') notes.delete(event.noteId);
+    else if (notes.has(event.noteId) || outcome.kind === 'unconfirmed')
+      noteIn(notes, event.tabId, event.noteId).unconfirmed = outcome.kind === 'unconfirmed';
   };
   const outcomeOf = async (
     event: Extract<BrowserEvent, { type: 'annotate-submit' }>,
@@ -333,6 +383,8 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
 
   const submitNow = useRef(submit);
   submitNow.current = submit;
+  const endNotesNow = useRef(endNotes);
+  endNotesNow.current = endNotes;
 
   // Leaving the conversation: its tabs' modes are over (main ends them as their pages go).
   // biome-ignore lint/correctness/useExhaustiveDependencies: A new conversation starts with no mode on.
@@ -343,7 +395,9 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     return bridge.onEvent((event: BrowserEvent) => {
       const now = latest.current;
       if (event.type === 'annotate') {
-        if (now.owns(event.tabId)) annotations.set(event.tabId, event.on);
+        if (!now.owns(event.tabId)) return;
+        annotations.set(event.tabId, event.on);
+        if (!event.on) endNotesNow.current(event.tabId, now);
         return;
       }
       if (event.type === 'annotate-message') {
@@ -353,7 +407,12 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
           writeCollect(message.on);
           setCollect(message.on);
         }
-        if (message?.type === 'note-closed') now.composer.get()?.forgetNote(message.noteId);
+        if (message?.type === 'note-closed') {
+          notes.delete(message.noteId);
+          now.composer.get()?.forgetNote(message.noteId);
+        }
+        if (message?.type === 'note-written')
+          noteIn(notes, event.tabId, message.noteId).written = message.written;
         return;
       }
       if (event.type === 'annotate-cancel') {
@@ -366,7 +425,7 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
         void submitNow.current(bridge, event, now);
       }
     });
-  }, [bridge, annotations, submits]);
+  }, [bridge, annotations, submits, notes]);
 
   // The context, whole, to every tab in the mode, whenever any part of it changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `mode` and `composerVersion` are the change signals of their stores.
