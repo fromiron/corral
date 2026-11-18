@@ -324,6 +324,20 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
             className="absolute top-0 left-0 max-w-none select-none"
           />
         ) : null}
+        {picture?.overlay ? (
+          // The annotation overlay as it was, over the page's picture, the same size and place.
+          <img
+            data-slot="browser-still-overlay"
+            src={picture.overlay.dataUrl}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            onPointerDown={(event) => event.preventDefault()}
+            onWheel={(event) => event.preventDefault()}
+            style={{ width: picture.box.width, height: picture.box.height }}
+            className="absolute top-0 left-0 max-w-none select-none"
+          />
+        ) : null}
         <PagePlace
           page={page}
           onRetry={act((id) => b.reload(id))}

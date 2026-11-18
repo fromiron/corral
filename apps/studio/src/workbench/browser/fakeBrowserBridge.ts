@@ -29,7 +29,10 @@ export interface FakeBrowserBridge extends BrowserBridge {
   stateOf(tabId: string): BrowserTabState | undefined;
   /** The site permissions `sitePermissions` answers with. */
   permissions: { permission: SitePermission; allow: boolean }[];
-  /** What `still` answers: a picture, or null (the view stays live). */
+  /**
+   * What `still` answers: a picture, with the annotation overlay's (`overlay`) while that mode
+   * is on, or null (the view stays live).
+   */
   stillAnswer: BrowserStill | null;
   /** What `freeze` answers. */
   freezeAnswer: boolean;

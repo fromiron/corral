@@ -1,9 +1,11 @@
 // The swap of a page's live view for a picture of it while the app covers it (features/
 // browser-tab.md 앱 화면과 겹칠 때), in the desktop's two steps: `still()` takes a picture with
 // the view still live; once the picture is painted, `freeze()` hides the view; `thaw()` shows it
-// again. One step at a time, each checking what is wanted now, so a cover that ends before its
-// picture comes never hides the view, and a hidden view is always shown again. A picture the
-// desktop cannot take (null), or a freeze a newer step won (false), leaves the view live.
+// again. While the annotation mode is on, the picture carries the overlay's too, painted over
+// the page's; freeze and thaw cover both views. One step at a time, each checking what is
+// wanted now, so a cover that ends before its picture comes never hides the view, and a hidden
+// view is always shown again. A picture the desktop cannot take (null), or a freeze a newer step
+// won (false), leaves the view live.
 import { type RefObject, useEffect, useRef, useState } from 'react';
 import type { BrowserBridge, BrowserStill } from '../../../../desktop/src/browser-bridge.ts';
 import { pageHoldSwitch, watchCover } from './overlap.ts';

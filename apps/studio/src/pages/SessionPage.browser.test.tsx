@@ -698,7 +698,13 @@ function layOut(popups: 'over' | 'far' = 'over') {
     Element.prototype.getBoundingClientRect = original;
   });
 }
-const STILL = { stillId: 's_1', dataUrl: 'data:image/png;base64,AAAA', width: 1200, height: 1400 };
+const STILL = {
+  stillId: 's_1',
+  dataUrl: 'data:image/png;base64,AAAA',
+  width: 1200,
+  height: 1400,
+  overlay: null,
+};
 const picture = () => place()?.querySelector('img[data-slot="browser-still"]') ?? null;
 const browserBody = () => side()?.querySelector('[data-slot="browser-tab"]') ?? null;
 async function openMore() {
@@ -903,4 +909,30 @@ it('그림으로 바뀐 채 다른 탭을 고른다 → 뷰를 되돌려 둔다 
   await act(async () => tabs()[1]?.click());
   await until(() => bridge.callsTo('thaw').length > 0);
   expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+});
+
+it('주석 모드의 덧뷰가 있는 페이지 위로 ⋯ 메뉴를 연다 → 페이지의 그림 위에 덧뷰의 그림을 겹쳐 깔고, 뷰를 되돌린 뒤 둘 다 버린다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  const overlay = { dataUrl: 'data:image/png;base64,BBBB', width: 1200, height: 1400 };
+  bridge.stillAnswer = { ...STILL, overlay };
+  await livePage(bridge);
+  await openMore();
+  await until(() => bridge.callsTo('freeze').length > 0);
+
+  const pictures = () =>
+    [...(place()?.querySelectorAll<HTMLImageElement>('img[data-slot^="browser-still"]') ?? [])].map(
+      (image) => [image.dataset.slot, image.getAttribute('src'), image.getAttribute('aria-hidden')],
+    );
+  // In this order, the overlay's last: it lies over the page's.
+  expect(pictures()).toEqual([
+    ['browser-still', STILL.dataUrl, 'true'],
+    ['browser-still-overlay', overlay.dataUrl, 'true'],
+  ]);
+  expect(bridge.callsTo('freeze')).toEqual([['b_one', 's_1']]);
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => bridge.callsTo('thaw').length > 0 && pictures().length === 0);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+  expect(pictures()).toEqual([]);
 });
