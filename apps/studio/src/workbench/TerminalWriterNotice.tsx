@@ -14,22 +14,38 @@ import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
  */
 export const OpenTerminalContext = createContext<((terminalId: string) => void) | null>(null);
 
-/** An observed owner is guidance; the server still decides whether a request may start. */
+/**
+ * An observed owner is guidance; the server still decides whether a request may start. A host
+ * that shares the Paddock takes a request beside a running terminal (workbench.md 공유 개발 모드),
+ * so there only a terminal whose end is unconfirmed is told.
+ */
 export function TerminalWriterNotice({ sessionId }: { sessionId: string }) {
-  const { terminals, mode } = useServices();
+  const { terminals, mode, sharedDevelopment = false } = useServices();
   return terminals && mode === 'server' ? (
-    <WriterNotice sessionId={sessionId} store={terminalStore(terminals)} />
+    <WriterNotice
+      sessionId={sessionId}
+      store={terminalStore(terminals)}
+      shared={sharedDevelopment}
+    />
   ) : null;
 }
 
-function WriterNotice({ sessionId, store }: { sessionId: string; store: TerminalStore }) {
+function WriterNotice({
+  sessionId,
+  store,
+  shared,
+}: {
+  sessionId: string;
+  store: TerminalStore;
+  shared: boolean;
+}) {
   const t = useTranslations('Terminals');
   const openTerminal = useContext(OpenTerminalContext);
   const terminal = useStore(store, (state) => {
     const terminals = state.sessions[sessionId]?.list?.terminals;
     return (
       terminals?.find((item) => item.state === 'uncertain') ??
-      terminals?.find((item) => !['exited', 'failed'].includes(item.state))
+      (shared ? undefined : terminals?.find((item) => !['exited', 'failed'].includes(item.state)))
     );
   });
   useEffect(() => {

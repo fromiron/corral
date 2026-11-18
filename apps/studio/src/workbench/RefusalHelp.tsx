@@ -10,7 +10,7 @@ import { Button } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
 import { useSettingsNavigation } from './navigation.ts';
-import { type RefusalKind, refusalKind, terminalOwner } from './refusal.ts';
+import { HOLDER_KINDS, type RefusalKind, refusalKind, terminalOwner } from './refusal.ts';
 
 /** Fired with a request's text to take it back into the request box. */
 export const EDIT_REQUEST = 'corral:edit-request';
@@ -62,8 +62,7 @@ export function refusalActions(
 
 /** The kinds whose runtime words are diagnostics, folded away under the explanation. */
 export const REFUSAL_DIAGNOSTICS = new Set<RefusalKind>([
-  'terminal',
-  'terminalUncertain',
+  ...HOLDER_KINDS,
   'busy',
   'image',
   'capability',

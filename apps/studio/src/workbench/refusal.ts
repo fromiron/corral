@@ -13,6 +13,16 @@ export type RefusalKind =
   | 'terminal'
   | 'terminalUncertain'
   | 'busy'
+  | 'heldTask'
+  | 'heldDocument'
+  | 'heldGit'
+  | 'heldDebug'
+  | 'heldDeployment'
+  | 'heldLanguage'
+  | 'heldOperation'
+  | 'runUncertain'
+  | 'taskUncertain'
+  | 'operationUncertain'
   | 'limit'
   | 'reference'
   | 'network'
@@ -24,6 +34,49 @@ export function terminalOwner(message: string): string | undefined {
       message,
     );
   return match?.[1] ?? match?.[2];
+}
+
+/** The kinds that name what holds the copy. */
+export const HOLDER_KINDS = new Set<RefusalKind>([
+  'terminal',
+  'terminalUncertain',
+  'heldTask',
+  'heldDocument',
+  'heldGit',
+  'heldDebug',
+  'heldDeployment',
+  'heldLanguage',
+  'heldOperation',
+  'runUncertain',
+  'taskUncertain',
+  'operationUncertain',
+]);
+
+/**
+ * What holds the copy, as the refusal's owner names it (api-contract.md 오류): another run is
+ * busy and may be queued after; a person's work is named without the queue (workbench.md 공유 개발
+ * 모드); an owner whose end is unconfirmed is told apart from one at work.
+ */
+function holderKind(owner: NonNullable<CommandError['owner']>): RefusalKind {
+  const unconfirmed = owner.state === 'uncertain';
+  switch (owner.kind) {
+    case 'run':
+      return unconfirmed ? 'runUncertain' : 'busy';
+    case 'terminal':
+      return unconfirmed ? 'terminalUncertain' : 'terminal';
+    case 'task':
+      return unconfirmed ? 'taskUncertain' : 'heldTask';
+    default: {
+      if (unconfirmed) return 'operationUncertain';
+      const operation = owner.operationKind ?? '';
+      if (operation.startsWith('document.')) return 'heldDocument';
+      if (operation.startsWith('git.')) return 'heldGit';
+      if (operation === 'debug') return 'heldDebug';
+      if (operation === 'deployment') return 'heldDeployment';
+      if (operation === 'language') return 'heldLanguage';
+      return 'heldOperation';
+    }
+  }
 }
 
 export function refusalKind({
@@ -39,7 +92,7 @@ export function refusalKind({
 }): RefusalKind {
   if (network) return 'network';
   if (owner && (code === 'RUN_ALREADY_ACTIVE' || code === 'RESOURCE_CAPACITY'))
-    return owner.state === 'uncertain' ? 'terminalUncertain' : 'terminal';
+    return holderKind(owner);
   if (!owner && terminalOwner(message)) return 'terminal';
   // The conversation's advisor's model, whatever its own trouble (features/advisor.md "두는 곳").
   if (message.startsWith('Advisor model ')) return 'advisor';

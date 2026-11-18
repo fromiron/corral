@@ -51,6 +51,11 @@ import { sessionFetch } from './sessionConnection.ts';
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
+  /**
+   * The host shares the Paddock (workbench.md 공유 개발 모드), as `/health` says; a warning that a
+   * request would be refused while something else works in the copy is wrong there.
+   */
+  sharedDevelopment?: boolean;
   /** The server's path search engine now; the browser demo has only the built-in one. */
   pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
@@ -176,6 +181,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     return {
       mode: 'server',
       serverVersion: health.version,
+      sharedDevelopment: health.sharedDevelopment,
       pathEngine: async () => {
         const current = await probeServer(http);
         if (!current) throw new Error('SERVER_UNAVAILABLE');
