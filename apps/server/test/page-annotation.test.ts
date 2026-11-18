@@ -9,8 +9,13 @@ import {
   SCHEMA_VERSION,
   type TextAttachment,
 } from '@corral/contracts';
-import { createTextAttachment, type SessionEntryStart, textAttachmentSource } from '@corral/core';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import {
+  createTextAttachment,
+  type SessionEntryStart,
+  textAttachmentSource,
+  waitForProjection,
+} from '@corral/core';
+import { Gate, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
@@ -33,6 +38,9 @@ const START: SessionEntryStart = {
 };
 
 async function boot() {
+  // A run waits before its reply until the test opens this, so a steer finds it running.
+  const hold = new Gate();
+  cleanup.push(() => hold.open());
   const root = mkdtempSync(join(tmpdir(), 'corral-page-annotation-'));
   cleanup.push(() => rmSync(root, { recursive: true, force: true }));
   const server = await startCorralServer({
@@ -44,6 +52,7 @@ async function boot() {
       turns: 1,
       collaborate: false,
       appendNotes: false,
+      beforeReply: () => hold.wait(),
       reply: () => 'Done.',
     }),
   });
@@ -75,7 +84,7 @@ async function boot() {
   const transport = new HttpSseTransport({ baseUrl: server.url, fetch: call });
   const created = await repository.createSession({ projectId: 'default', title: 'Notes' });
   if (!created.ok) throw new Error(created.message);
-  return { send, repository, transport, sessionId: created.session.sessionId };
+  return { send, repository, transport, hold, sessionId: created.session.sessionId };
 }
 
 const body: PageAnnotation = {
@@ -143,8 +152,62 @@ it('a recorded request whose page note carries a query, a fragment or credential
   expect((await s.repository.getSession(s.sessionId))?.entries).toEqual([]);
 });
 
+/** A running request in the conversation and its execution, for a steer to reach. */
+async function running(s: Awaited<ReturnType<typeof boot>>) {
+  const started = await s.transport.startAuto({
+    ...START,
+    commandId: 'cmd_running',
+    sessionId: s.sessionId,
+    brief: 'First request.',
+  });
+  const runId = started.runId ?? '';
+  const projection = await waitForProjection(
+    s.transport,
+    runId,
+    (p) => Object.keys(p.modelCalls).length > 0,
+  );
+  const steer = (commandId: string, delivery: string, attachment: TextAttachment) =>
+    s.send('POST', `/runs/${runId}/commands`, {
+      schemaVersion: SCHEMA_VERSION,
+      commandId,
+      runId,
+      type: 'steer',
+      payload: {
+        targetExecutionId: projection.executionOrder[0] ?? '',
+        text: 'Make the button larger',
+        delivery,
+        attachments: [attachment],
+      },
+    });
+  return { runId, steer };
+}
+
+it('a join or an interrupt carries its page note to the running request', async () => {
+  const s = await boot();
+  const run = await running(s);
+  for (const [index, delivery] of ['next_request', 'interrupt'].entries()) {
+    const sent = await run.steer(`steer_note_${index}`, delivery, note());
+    expect(sent.status).toBeLessThan(300);
+    expect(sent.body.error ?? null).toBeNull();
+  }
+});
+
+it('a join or an interrupt whose page note carries a query, a fragment or credentials is refused (반례)', async () => {
+  const s = await boot();
+  const run = await running(s);
+  for (const delivery of ['next_request', 'interrupt'])
+    for (const [index, provenance] of BAD.entries()) {
+      const sent = await run.steer(`steer_bad_${delivery}_${index}`, delivery, forged(provenance));
+      expect(sent.status).toBe(400);
+    }
+  // The same steer with a clean page note is taken: the refusals are the provenance's.
+  const clean = await run.steer('steer_clean', 'next_request', note());
+  expect(clean.status).toBeLessThan(300);
+});
+
 it('a started request takes its page note among its references, and the run reads it as attached source data, body and provenance unchanged', async () => {
   const s = await boot();
+  s.hold.open();
   const attachment = note();
   const started = await s.transport.startAuto({
     ...START,
