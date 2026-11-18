@@ -128,7 +128,11 @@ export type BrowserEvent =
       material: AnnotationMaterial;
       extra: unknown;
     }
-  /** The overlay cancelled that submit (Escape while adding, the note closing). */
+  /**
+   * That submit's overlay stopped waiting: Escape while adding, the note closing, or the mode
+   * ending. Stop an add; a send already on the composer's path goes on, and the app page says
+   * its result itself (features/browser-annotate.md 바로 보내기).
+   */
   | { type: 'annotate-cancel'; tabId: string; submitId: string }
   /** A message from the overlay (the collect switch, …), passed through unread. */
   | { type: 'annotate-message'; tabId: string; message: unknown };

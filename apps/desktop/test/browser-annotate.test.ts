@@ -168,6 +168,9 @@ it('overlay URLs name only the overlay page and its assets', () => {
     path: 'assets/annotate-Bx1.js',
     type: 'text/javascript; charset=utf-8',
   });
+  // What the studio's build holds today: scripts, styles and its fonts.
+  for (const name of ['index-1.css', 'Inter-2.woff2', 'Mono-3.ttf'])
+    expect(overlayResource(`corral-overlay://overlay/assets/${name}`), name).not.toBeNull();
   for (const url of [
     'corral-overlay://overlay/assets/%2e%2e/secret.js',
     'corral-overlay://overlay/assets/a/../../x.js',
@@ -809,4 +812,80 @@ it('the focus the host gives back to the page area goes to the overlay while the
   expect(overlay.focus).toHaveBeenCalledTimes(1);
   expect(page.focus).not.toHaveBeenCalled();
   expect(told().at(-1)).toEqual({ type: 'focus' });
+});
+
+it('turned on while the still stands in: the overlay takes the focus once the view shows again', async () => {
+  const f = setup();
+  f.tabs.navigate('tab-a', 'project_a', 'https://example.com/');
+  const page = f.views[0]?.webContents as FakeContents;
+  page.commit('https://example.com/');
+  f.tabs.place('tab-a', { x: 0, y: 0, width: 400, height: 300 });
+  const still = await f.tabs.still('tab-a');
+  f.tabs.freeze('tab-a', still?.stillId as string);
+  expect(f.tabs.annotate('tab-a', true)).toBe(true);
+  const overlay = f.views[1]?.webContents as FakeContents;
+  overlay.emit('did-finish-load');
+  expect(overlay.focus).not.toHaveBeenCalled();
+  f.tabs.thaw('tab-a');
+  expect(overlay.focus).toHaveBeenCalledTimes(1);
+  f.tabs.place('tab-a', { x: 0, y: 0, width: 500, height: 300 });
+  expect(overlay.focus).toHaveBeenCalledTimes(1); // owed once
+});
+
+it('the mode ending at once with the keyboard in the overlay leaves the tab unfocused', async () => {
+  const { f, overlay } = await annotated();
+  overlay.emit('focus');
+  f.tabs.place('tab-a', null);
+  f.tabs.place('tab-a', { x: 10, y: 50, width: 800, height: 600 });
+  expect(f.last('tab-a')?.pageFocused ?? false).toBe(false);
+  expect(
+    (f.tabs as unknown as { tabs: Map<string, { focused: boolean }> }).tabs.get('tab-a')?.focused,
+  ).toBe(false);
+});
+
+it('overlapping previews of one property: the newer value shows and the older call is ok, not a page change', async () => {
+  const answers: ((value: unknown) => void)[] = [];
+  const { page, call } = await annotated({
+    rule: () =>
+      new Promise((done) => {
+        answers.push(done);
+      }),
+  });
+  const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  const older = call('preview', pick.pickId, 'color', 'rgb(1, 1, 1)');
+  await flush();
+  const newer = call('preview', pick.pickId, 'color', 'rgb(2, 2, 2)');
+  await flush();
+  answers.shift()?.({ selector: ':root > :nth-child(2)' });
+  expect(await older).toEqual({ ok: true });
+  await flush();
+  answers.shift()?.({ selector: ':root > :nth-child(2)' });
+  expect(await newer).toEqual({ ok: true });
+  await flush();
+  expect([...page.css.values()]).toEqual([
+    ':root > :nth-child(2):not(#\\#c1):not(#\\#c2):not(#\\#c3) { color: rgb(2, 2, 2) !important; }',
+  ]);
+});
+
+it('at the send a preview that the page moved onto another element is put back on the pick before the shot', async () => {
+  const { page, call, app } = await annotated({
+    rule: () => ({ selector: ':root > :nth-child(2) > :nth-child(1)' }),
+    // The page put a sibling before it: its position is the second child now.
+    shot: () => ({
+      bounds: element.bounds,
+      safe: true,
+      selector: ':root > :nth-child(2) > :nth-child(2)',
+    }),
+  });
+  const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  await call('preview', pick.pickId, 'font-size', '18px');
+  await flush();
+  void call('submit', note(pick.pickId));
+  for (let i = 0; i < 4; i++) await flush();
+  expect([...page.css.values()]).toEqual([
+    ':root > :nth-child(2) > :nth-child(2):not(#\\#c1):not(#\\#c2):not(#\\#c3) { font-size: 18px !important; }',
+  ]);
+  const order = page.insertCSS.mock.invocationCallOrder.at(-1) as number;
+  expect(order).toBeLessThan(page.capturePage.mock.invocationCallOrder.at(-1) as number);
+  expect(app('annotate-submit')).toHaveLength(1);
 });

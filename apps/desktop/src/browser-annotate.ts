@@ -127,6 +127,8 @@ interface Mode {
   /** The app page was told the mode is off. */
   offSent: boolean;
   focused: boolean;
+  /** The overlay loaded while the still stood in: it takes the focus once it shows. */
+  focusOwed: boolean;
   zoom: number;
   styles: Map<string, Map<StyleProperty, Slot>>;
   submits: Set<Submit>;
@@ -212,6 +214,7 @@ export class TabAnnotation {
       ending: null,
       offSent: false,
       focused: false,
+      focusOwed: false,
       zoom: this.host.hostZoom(),
       styles: new Map(),
       submits: new Set(),
@@ -263,6 +266,7 @@ export class TabAnnotation {
     }
     mode.view.setBounds(rect);
     mode.view.setVisible(this.host.shown());
+    if (mode.focusOwed && mode.ready && this.host.shown()) this.focus();
     const zoom = this.host.hostZoom();
     if (zoom !== mode.zoom) {
       mode.zoom = zoom;
@@ -274,6 +278,7 @@ export class TabAnnotation {
   focus(): boolean {
     const mode = this.mode;
     if (!mode || mode.ending) return false;
+    mode.focusOwed = false;
     mode.contents.focus();
     if (mode.ready) this.tell(mode, { type: 'focus' });
     return true;
@@ -543,8 +548,9 @@ export class TabAnnotation {
     if (!styleValueAllowed(rawValue)) return { ok: false, reason: 'invalid' };
     const rule = await this.read(mode, 'rule', { pickId, property: name, value: rawValue });
     if (rule.kind === 'busy') return { ok: false, reason: 'page-busy' };
-    if (!this.same(mode, page, generation) || slot.version !== version)
-      return { ok: false, reason: 'page-changed' };
+    if (!this.same(mode, page, generation)) return { ok: false, reason: 'page-changed' };
+    // A newer value for this property came meanwhile (a dragged swatch): it is the one shown.
+    if (slot.version !== version) return { ok: true };
     if (rule.kind !== 'ok' || !rule.value) return { ok: false, reason: 'page-changed' };
     if (rule.value === 'invalid') return { ok: false, reason: 'invalid' };
     const selector = rule.value.selector;
@@ -559,7 +565,9 @@ export class TabAnnotation {
       name,
       rawValue,
     );
-    return placed === 'ok' ? { ok: true } : { ok: false, reason: placed };
+    return placed === 'ok' || placed === 'superseded'
+      ? { ok: true }
+      : { ok: false, reason: placed };
   }
 
   /** Puts one preview rule in; the slot's earlier rule comes out once the new one is in. */
@@ -572,7 +580,7 @@ export class TabAnnotation {
     selector: string,
     name: StyleProperty,
     value: string,
-  ): Promise<'ok' | 'page-changed' | 'page-busy'> {
+  ): Promise<'ok' | 'superseded' | 'page-changed' | 'page-busy'> {
     let abandoned = false;
     const css = `${selector}${OUTRANK} { ${name}: ${value} !important; }`;
     const result = await this.limited(mode, () => {
@@ -602,11 +610,11 @@ export class TabAnnotation {
       abandoned = true;
       return 'page-busy';
     }
-    if (result.kind !== 'ok' || !this.same(mode, page, generation) || slot.version !== version) {
+    if (result.kind !== 'ok' || !this.same(mode, page, generation)) {
       abandoned = true;
       return 'page-changed';
     }
-    return 'ok';
+    return slot.version === version ? 'ok' : 'superseded';
   }
 
   private release(mode: Mode, pickId: string) {
@@ -726,7 +734,7 @@ export class TabAnnotation {
             name,
             slot.value,
           );
-          if (placed !== 'ok') return { kind: placed };
+          if (placed === 'page-changed' || placed === 'page-busy') return { kind: placed };
         }
     let screenshot: AnnotationMaterial['screenshot'] = null;
     if (note.wantShot) {
@@ -879,6 +887,7 @@ export class TabAnnotation {
       this.tell(mode, { type: 'page', kind: this.host.kind, generation: this.generation });
       if (this.hasContext) this.tell(mode, { type: 'context', context: this.context });
       if (this.host.shown()) this.focus();
+      else mode.focusOwed = true;
     });
     contents.on('did-fail-load', (_event, code, _description, _url, isMainFrame) => {
       if (current() && isMainFrame && code !== -3) this.end();
@@ -927,7 +936,10 @@ export class TabAnnotation {
     this.host.overlayClosed(mode.contents);
     if (!mode.contents.isDestroyed()) mode.contents.close();
     this.sayOff(mode);
-    if (mode.focused && page && this.host.shown()) page.focus();
+    if (!mode.focused) return;
+    // The keyboard was in the overlay: back to the page, or nowhere in this tab.
+    this.host.focusChanged(false);
+    if (page && this.host.shown()) page.focus();
   }
 
   private sayOff(mode: Mode) {
