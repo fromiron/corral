@@ -1242,39 +1242,6 @@ it('대화의 기억에 문서 탭이 있고 패널은 닫혀 있다 → 새 페
   expect(side()?.querySelector('[data-testid="document-leaf"]')?.textContent).toBe(server.path);
 });
 
-const dockSaved = () =>
-  Object.keys(window.localStorage).filter((key) => key.startsWith('corral:docking:v1:'));
-
-it('폴더가 연결되고 저장된 배치가 없는 대화에서 "+"로 파일 탭을 열고 도킹에서는 아무것도 하지 않는다 → 주소가 자리 잡은 뒤에도, 다른 탭을 골랐다가 돌아온 뒤에도 배치는 저장되지 않는다 (workbench.md)', async () => {
-  const world = await createShellWorld({ server: true, folder: true });
-  await world.working(await world.startRun(), 1);
-  await open(world, `/sessions/${world.sessionId}`);
-  await openRunTab();
-  await press(buttons(W.add, side())[0]);
-  await until(() => document.querySelectorAll('[role="menuitem"]').length > 0);
-  const filesItem = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
-    (item) => readText(item) === W.files,
-  );
-  await press(filesItem);
-  await until(() => selectedName() === W.files);
-  await settle();
-  expect(dockSaved()).toEqual([]);
-
-  await press(tabNamed(W.runNumber(1)));
-  await press(tabNamed(W.files));
-  await settle();
-  expect(dockSaved()).toEqual([]);
-});
-
-it('폴더가 연결되고 저장된 배치가 없는 대화의 기억이 파일 탭이다 → 대화에 들어와 도킹에서는 아무것도 하지 않는다 → 배치는 저장되지 않는다 (workbench.md)', async () => {
-  const world = await createShellWorld({ server: true, folder: true });
-  remember(world.sessionId, [{ kind: 'files' }], 'files');
-  await open(world, `/sessions/${world.sessionId}`);
-  await until(() => selectedName() === W.files);
-  await settle();
-  expect(dockSaved()).toEqual([]);
-});
-
 it('폴더가 연결되고 실행이 있는 대화에서 실행 #1 탭만 열려 있다 → "+"를 누른다 → 목록은 파일 · 변경 · 실행 기록 · 결과 순이고, 결과를 고르면 결과 탭이 열려 선택되고 포커스가 그 탭에 있다', async () => {
   const { world, runId } = await quietRun({ folder: true });
   remember(world.sessionId, [{ kind: 'run', runId }], `run:${runId}`);

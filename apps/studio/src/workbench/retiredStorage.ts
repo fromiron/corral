@@ -1,8 +1,8 @@
 // What this device kept for screens Corral no longer has (workbench.md 파일과 문서 탭): each such
 // key is deleted by its name, never read, so nothing in it is ever restored.
 
-/** The key prefixes of retired screens: the source folder's in-pane preview. */
-const RETIRED = ['corral:file-preview:v1:'] as const;
+/** The key prefixes of retired screens: the source folder's in-pane preview, the file dock's layout. */
+const RETIRED = ['corral:file-preview:v1:', 'corral:docking:v1:'] as const;
 
 type KeyStorage = Pick<Storage, 'length' | 'key' | 'removeItem'>;
 

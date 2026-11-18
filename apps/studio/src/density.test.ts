@@ -40,8 +40,8 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/documents/WriterHeld.tsx',
     'apps/studio/src/workbench/language/RefactorActions.tsx',
     'apps/studio/src/workbench/LanguageSupport.tsx',
-    'apps/studio/src/workbench/docking/DockTopBar.tsx',
-    'apps/studio/src/workbench/docking/DockWorkbench.tsx',
+    'apps/studio/src/workbench/session/DocumentTab.tsx',
+    'apps/studio/src/workbench/session/OriginalDocumentTab.tsx',
   ],
   dock: [
     'apps/studio/src/workbench/WorkbenchToolsPanel.tsx',

@@ -40,7 +40,6 @@ import {
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
-import type { DockContextView } from '../workbench/docking/layout.ts';
 import { DocumentCloseDialog } from '../workbench/documents/DocumentCloseDialog.tsx';
 import {
   type CloseChoice,
@@ -131,6 +130,9 @@ import { MeetingPage } from './MeetingPage.tsx';
  */
 /** a meeting has its own chat; every other session keeps the work view. */
 /** Whether the selected tab of `state` is the one a way's target names. */
+/** The views of the 변경 tab: its own, Git, Checks, or Problems in their place. */
+type ChangesView = 'changes' | 'git' | 'checks' | 'problems';
+
 function namesSelected(
   target: Partial<SessionSearch> & { source?: 'original' },
   state: PanelState,
@@ -871,9 +873,9 @@ function WorkSessionPage() {
     problems: () => <ProblemsPanel sessionId={session.sessionId} />,
   };
   // The view in front inside 변경: one of its own, or its first.
-  const changesWindow = (panel: SessionPanel | undefined): DockContextView =>
+  const changesWindow = (panel: SessionPanel | undefined): ChangesView =>
     panel === 'git' || panel === 'checks' || panel === 'problems' ? panel : 'changes';
-  const changesView = (requestedView: DockContextView) => {
+  const changesView = (requestedView: ChangesView) => {
     // Checks are a sub-view of Changes; Problems shows in its place.
     const auxiliary = requestedView === 'problems' ? requestedView : null;
     return (

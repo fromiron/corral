@@ -122,7 +122,6 @@ export function FilePanel({
   const te = useTranslations('Documents');
   // A kept file's row grows with its path: the control height of the interface density is its least.
   const pathRow = useSize().variant === 'compact' ? 'min-h-7' : 'min-h-9';
-  const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
   const tw = useTranslations('Workbench');
   const sessionText = useTranslations('Sessions');
@@ -168,7 +167,6 @@ export function FilePanel({
     },
     [owner, projectId, sessionId],
   );
-  const [tabMessage, setTabMessage] = useState<string | null>(null);
   const [closing, setClosing] = useState<{ key: string; path: string } | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
   const [closeError, setCloseError] = useState(false);
@@ -343,11 +341,8 @@ export function FilePanel({
         const entry = owner.getState().documents[key];
         // Whatever the file holds, a session-copy file has one home: its document tab.
         if (entry) {
-          setTabMessage(
-            onOpenDocument({ documentKey: key, target: entry.target, path: entry.path })
-              ? null
-              : td('tabLimit'),
-          );
+          // The panel says why when no tab opens (its 20 문서 tabs).
+          onOpenDocument({ documentKey: key, target: entry.target, path: entry.path });
           return;
         }
       } catch (failure) {
@@ -356,8 +351,7 @@ export function FilePanel({
         return;
       }
     }
-    if (onOpenOriginal && scopeKind === 'project')
-      setTabMessage(onOpenOriginal(path) ? null : td('tabLimit'));
+    if (onOpenOriginal && scopeKind === 'project') onOpenOriginal(path);
   };
   // Quick open shows a folder, or a source-folder file, here: in its tree, under its source.
   const reveal = useFileReveal(sessionId);
@@ -765,11 +759,6 @@ export function FilePanel({
             </p>
           ) : null}
         </>
-      ) : null}
-      {tabMessage ? (
-        <p role="status" className="text-caption text-muted-foreground">
-          {tabMessage}
-        </p>
       ) : null}
       {readError ? (
         <p role="alert" className="text-caption text-danger">

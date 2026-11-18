@@ -49,3 +49,17 @@ it('leaves a storage that refuses, and no storage, as they are', () => {
   };
   expect(() => forgetRetiredKeys(refusing)).not.toThrow();
 });
+
+it("deletes the file dock's saved layouts without reading them", () => {
+  const kept = { 'corral:panel:v1:session_a': '{}', 'corral:docking:v2:x': '{}' };
+  const device = storage({
+    'corral:docking:v1:["host","project_a"]': '{"grid":{}}',
+    'corral:docking:v1:["host","project_b"]': 'not json',
+    ...kept,
+  });
+
+  forgetRetiredKeys(device);
+
+  expect(Object.fromEntries(device.items)).toEqual(kept);
+  expect(device.reads).toEqual([]);
+});
