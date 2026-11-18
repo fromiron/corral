@@ -35,6 +35,8 @@ export interface NoteView {
   /** What the note carries, as its label's popover shows it. */
   what: Omit<AnnotationContentsProps, 'label'>;
   text: string;
+  /** The style view's toggle: whether it's open, and the view's id; reading while the page answers. */
+  style: { open: boolean; id: string; reading: boolean };
   /** The text can't change: sending, adding, or its answer was lost. */
   locked: boolean;
   /** Sending or adding: the button shows its progress and takes no second press. */
@@ -57,6 +59,7 @@ export interface NoteActions {
   /** The label's popover opened or closed. */
   onWhat(open: boolean): void;
   onText(text: string): void;
+  onStyle(): void;
   onTextKey(event: KeyboardEvent<HTMLTextAreaElement>): void;
   onShot(): void;
   onConsole(): void;
@@ -139,6 +142,20 @@ export function NoteCard({
                 <AnnotationContents label={view.label} {...view.what} />
               </PopoverPopup>
             </Popover>
+            <Button
+              variant="ghost"
+              data-annotate="style-toggle"
+              aria-expanded={view.style.open}
+              aria-controls={view.style.open ? view.style.id : undefined}
+              aria-busy={view.style.reading || undefined}
+              onClick={actions.onStyle}
+              className="ml-auto shrink-0 aria-expanded:bg-[var(--tint)] aria-expanded:text-foreground text-muted-foreground"
+            >
+              {view.style.reading && (
+                <LoaderCircle className="animate-spin motion-reduce:animate-none" />
+              )}
+              {t('style')}
+            </Button>
           </div>
           <Textarea
             ref={text}

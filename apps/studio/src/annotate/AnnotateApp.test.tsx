@@ -29,6 +29,9 @@ beforeEach(() => {
     addListener() {},
     removeListener() {},
   }));
+  // jsdom has no animations or layout: the kit's popups ask for both.
+  Element.prototype.getAnimations ??= () => [];
+  Element.prototype.scrollIntoView ??= () => {};
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -968,7 +971,7 @@ describe('보내는 것 팝오버', () => {
     expect(document.activeElement).toBe(view.surface());
   });
 
-  it('칸 안의 Tab 순서는 이름표 버튼, 글, 스크린샷 토글, 모아 두기, 보내기다', async () => {
+  it('칸 안의 Tab 순서는 이름표 버튼, 스타일, 글, 스크린샷 토글, 모아 두기, 보내기다', async () => {
     const view = await mount();
     await view.start();
     await view.open();
@@ -984,11 +987,336 @@ describe('보내는 것 팝오버', () => {
       );
     expect(order).toEqual([
       'button.pay 120×32',
+      'Style',
       'Note on button.pay 120×32',
       'Include screenshot',
       'Collect',
       'Send',
     ]);
+  });
+});
+
+describe('스타일 바꿔 보기', () => {
+  const computed: Record<StyleProperty, string> = {
+    'font-size': '14px',
+    'font-weight': '400',
+    'line-height': '20px',
+    'letter-spacing': 'normal',
+    'text-align': 'center',
+    color: 'rgb(23, 23, 23)',
+    'background-color': 'rgb(29, 107, 79)',
+    'border-color': 'rgb(23, 23, 23)',
+    'border-width': '0px',
+    'border-style': 'none',
+    'border-radius': '8px',
+    opacity: '1',
+    margin: '0px',
+    padding: '1px 6px',
+    display: 'inline-block',
+    width: '120px',
+    height: '32px',
+    position: 'static',
+  };
+  const tokens = {
+    colors: [
+      { name: '--color-gray-900', value: 'rgb(17, 17, 17)' },
+      { name: '--accent', value: 'rgb(61, 139, 253)' },
+    ],
+    lengths: [{ name: '--radius-md', value: '8px' }],
+  };
+  const styleView = () => document.querySelector<HTMLElement>('[data-annotate="style"]');
+  /** A row's control by its accessible name: the property. */
+  const control = (property: string) => {
+    const label = [...(styleView()?.querySelectorAll('label') ?? [])].find(
+      (each) => each.textContent === property,
+    );
+    if (label?.htmlFor) return document.getElementById(label.htmlFor) as HTMLInputElement | null;
+    return (
+      styleView()?.querySelector<HTMLInputElement>(`[role="combobox"][aria-label="${property}"]`) ??
+      null
+    );
+  };
+  const anywhere = (name: string) =>
+    [...document.querySelectorAll<HTMLButtonElement>('button')].find(
+      (each) => (each.getAttribute('aria-label') ?? each.textContent?.trim()) === name,
+    ) ?? null;
+  const edit = async (input: HTMLInputElement | null, value: string) => {
+    if (!input) throw new Error('No field');
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(input, value);
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  };
+  const previews = (view: Awaited<ReturnType<typeof mount>>) =>
+    view.of('preview').map((call) => call.args);
+
+  async function opened(change: Partial<AnnotateContext> = {}) {
+    const view = await mount();
+    await view.start(change);
+    await view.open();
+    await view.press(view.button('Style'));
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    return view;
+  }
+
+  it('"스타일"이 고른 요소의 스타일 보기를 열고 닫으며, 처음 열 때 한 번 읽는다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    const toggle = view.button('Style');
+    expect(toggle?.getAttribute('aria-expanded')).toBe('false');
+    await view.press(toggle);
+    expect(view.of('inspect').map((call) => call.args[0])).toEqual(['pick_1']);
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    expect(toggle?.getAttribute('aria-expanded')).toBe('true');
+    expect(styleView()?.getAttribute('aria-label')).toBe('Style, button.pay 120×32');
+    expect(toggle?.getAttribute('aria-controls')).toBe(styleView()?.id);
+    expect(
+      [...(styleView()?.querySelectorAll('h3') ?? [])].map((heading) => heading.textContent),
+    ).toEqual(['Text', 'Color and border', 'Spacing', 'Layout']);
+    // Each row starts from the element's computed value, named by its property.
+    expect(control('font-size')?.value).toBe('14px');
+    expect(control('color')?.value).toBe('rgb(23, 23, 23)');
+    expect(control('font-weight')?.textContent).toContain('400');
+    await view.press(toggle);
+    expect(styleView()).toBeNull();
+    await view.press(toggle);
+    expect(styleView()).not.toBeNull();
+    // Counterexample: reopening reads nothing again; "before" is the first opening's.
+    expect(view.of('inspect')).toHaveLength(1);
+  });
+
+  it('읽지 못하면 보기는 열리지 않고 칸 아래에 까닭이 있으며, 다시 누르면 다시 읽는다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(view.button('Style'));
+    await view.answer(view.waiting('inspect'), null);
+    expect(styleView()).toBeNull();
+    expect(view.note()?.querySelector('[data-annotate="failure"]')?.textContent).toBe(
+      'The page changed',
+    );
+    await view.press(view.button('Style'));
+    expect(view.of('inspect')).toHaveLength(2);
+  });
+
+  it('페이지 토큰을 고르면 바로 입히고, 되돌리면 지우며, 보낼 때는 바꾼 차이만 간다', async () => {
+    const view = await opened();
+    await view.press(anywhere('Page tokens for color'));
+    const search = document.querySelector<HTMLInputElement>('input[aria-label="Search tokens"]');
+    await edit(search, 'gray');
+    expect(anywhere('--accent')).toBeNull();
+    await view.press(anywhere('--color-gray-900'));
+    expect(previews(view)).toEqual([['pick_1', 'color', 'var(--color-gray-900)']]);
+    expect(control('color')?.value).toBe('var(--color-gray-900)');
+    await view.answer(view.waiting('preview'), { ok: true });
+    expect(anywhere('Reset color')).not.toBeNull();
+    await view.press(anywhere('Reset color'));
+    expect(previews(view).at(-1)).toEqual(['pick_1', 'color', null]);
+    await view.answer(view.waiting('preview'), { ok: true });
+    expect(control('color')?.value).toBe('rgb(23, 23, 23)');
+    expect(anywhere('Reset color')).toBeNull();
+    await view.press(anywhere('Page tokens for color'));
+    await view.press(anywhere('--color-gray-900'));
+    await view.answer(view.waiting('preview'), { ok: true });
+    await view.type('Make it darker');
+    await view.press(view.button('Send'));
+    expect(view.submitted()[0]).toMatchObject({
+      styles: [{ property: 'color', before: 'rgb(23, 23, 23)', after: 'var(--color-gray-900)' }],
+    });
+  });
+
+  it('토큰은 이름 순이고 그 속성의 종류만 보이며, 맞는 것이 없으면 그렇게 말한다', async () => {
+    const view = await opened();
+    await view.press(anywhere('Page tokens for color'));
+    const names = () =>
+      [...document.querySelectorAll('[data-annotate="token"]')].map((each) =>
+        each.getAttribute('data-name'),
+      );
+    expect(names()).toEqual(['--accent', '--color-gray-900']);
+    await edit(
+      document.querySelector<HTMLInputElement>('input[aria-label="Search tokens"]'),
+      'nothing-like-it',
+    );
+    expect(document.body.textContent).toContain('No matching tokens');
+    // Lengths for a length property; none for one with no tokens of its kind.
+    expect(anywhere('Page tokens for border-radius')).not.toBeNull();
+    expect(anywhere('Page tokens for opacity')).toBeNull();
+  });
+
+  it('쓸 수 없는 값은 줄 아래에 그렇게 말하고, 보내는 차이는 입힌 값이다', async () => {
+    const view = await opened();
+    await edit(control('font-size') as HTMLInputElement, '12qq');
+    expect(previews(view)).toEqual([['pick_1', 'font-size', '12qq']]);
+    await view.answer(view.waiting('preview'), { ok: false, reason: 'invalid' });
+    expect(styleView()?.textContent).toContain("This value isn't valid");
+    await view.type('Smaller');
+    await view.press(view.button('Send'));
+    // Nothing was put on the page, so nothing goes.
+    expect(view.submitted()[0]).toMatchObject({ styles: [] });
+  });
+
+  it('빠르게 바꾸면 기다리는 하나 뒤에 마지막 값만 보낸다', async () => {
+    const view = await opened();
+    const size = control('font-size') as HTMLInputElement;
+    await edit(size, '1');
+    await edit(size, '18');
+    await edit(size, '18p');
+    await edit(size, '18px');
+    expect(previews(view)).toEqual([['pick_1', 'font-size', '1']]);
+    await view.answer(view.waiting('preview'), { ok: true });
+    expect(previews(view)).toEqual([
+      ['pick_1', 'font-size', '1'],
+      ['pick_1', 'font-size', '18px'],
+    ]);
+    await view.answer(view.waiting('preview'), { ok: true });
+    // Back to the first value: Corral's rule comes off.
+    await edit(size, '14px');
+    expect(previews(view).at(-1)).toEqual(['pick_1', 'font-size', null]);
+  });
+
+  it('정해진 값의 속성은 고르는 목록이고, 목록의 Escape는 목록만 닫는다', async () => {
+    const view = await opened();
+    const weight = control('font-weight');
+    await view.press(weight);
+    expect(weight?.getAttribute('aria-expanded')).toBe('true');
+    const options = [...document.querySelectorAll('[role="option"]')].map((each) =>
+      each.textContent?.trim(),
+    );
+    expect(options).toEqual(['100', '200', '300', '400', '500', '600', '700', '800', '900']);
+    await view.key(document.activeElement, { key: 'Escape' });
+    expect(weight?.getAttribute('aria-expanded')).toBe('false');
+    expect(styleView()).not.toBeNull();
+    await view.press(weight);
+    await view.press(
+      [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(
+        (each) => each.textContent?.trim() === '700',
+      ) ?? null,
+    );
+    expect(previews(view)).toEqual([['pick_1', 'font-weight', '700']]);
+  });
+
+  it('스타일만 바꾼 칸은 쓴 것이 있는 칸이다: 보내기는 쓸 수 없고 담기는 쓸 수 있다', async () => {
+    const view = await opened();
+    await edit(control('font-size') as HTMLInputElement, '18px');
+    await view.answer(view.waiting('preview'), { ok: true });
+    expect(view.button('Send')?.disabled).toBe(true);
+    expect(view.told()).toContainEqual({ type: 'note-written', noteId: 'note_1', written: true });
+    // A written note keeps its place: another press picks nothing.
+    await view.pointer('click', 600, 400, { button: 0 });
+    expect(view.of('pick')).toHaveLength(1);
+    await view.press(view.container.querySelector<HTMLElement>('[role="switch"]'));
+    expect(view.button('Add')?.disabled).toBe(false);
+    await view.press(view.button('Add'));
+    expect(view.submitted()[0]).toMatchObject({
+      intent: 'add',
+      text: '',
+      styles: [{ property: 'font-size', before: '14px', after: '18px' }],
+    });
+  });
+
+  it('바꾼 차이는 이름표 팝오버에도 보인다', async () => {
+    const view = await opened();
+    await edit(control('font-size') as HTMLInputElement, '18px');
+    await view.answer(view.waiting('preview'), { ok: true });
+    const label = [...(view.note()?.querySelectorAll('button') ?? [])].find(
+      (each) => each.textContent?.trim() === 'button.pay 120×32',
+    );
+    await view.press(label ?? null);
+    const popup = document.querySelector('[data-slot="popover-popup"]');
+    expect(popup?.textContent).toContain('font-size');
+    expect(popup?.textContent).toContain('18px');
+  });
+
+  it('Escape는 보기를 먼저 닫고 미리 본 스타일은 남으며, 다음 Escape가 칸을 닫는다', async () => {
+    const view = await opened();
+    await edit(control('font-size') as HTMLInputElement, '18px');
+    await view.answer(view.waiting('preview'), { ok: true });
+    await view.key(control('font-size'), { key: 'Escape', isComposing: true });
+    expect(styleView()).not.toBeNull();
+    await view.key(control('font-size'), { key: 'Escape' });
+    expect(styleView()).toBeNull();
+    expect(document.activeElement).toBe(view.button('Style'));
+    expect(view.note()).not.toBeNull();
+    // Closing the view takes nothing off the page.
+    expect(previews(view)).toHaveLength(1);
+    expect(view.of('release')).toHaveLength(0);
+    // From the note's text too, the view is the inner level.
+    await view.press(view.button('Style'));
+    await view.key(view.textarea(), { key: 'Escape' });
+    expect(styleView()).toBeNull();
+    expect(view.note()).not.toBeNull();
+    await view.key(view.textarea(), { key: 'Escape' });
+    expect(view.note()).toBeNull();
+    expect(view.of('release').map((call) => call.args[0])).toEqual(['pick_1']);
+  });
+
+  it('색의 견본은 페이지가 알려 준 토큰의 값이고, 오버레이의 변수로 풀지 않는다', async () => {
+    await opened();
+    // The colour inside the color row's swatch.
+    const swatch = () =>
+      control('color')
+        ?.closest('[data-slot="input-control"]')
+        ?.parentElement?.querySelector<HTMLElement>('[data-annotate="swatch"] span span') ?? null;
+    expect(swatch()?.style.backgroundColor).toBe('rgb(23, 23, 23)');
+    await edit(control('color') as HTMLInputElement, 'var(--color-gray-900)');
+    expect(swatch()?.style.backgroundColor).toBe('rgb(17, 17, 17)');
+    // Counterexample: the overlay has a --background of its own; the page's name isn't it.
+    await edit(control('color') as HTMLInputElement, 'var(--background)');
+    expect(swatch()?.style.backgroundColor).toBe('transparent');
+  });
+
+  it('고르는 목록이 열려 있을 때 페이지 자리를 누르면 목록만 닫힌다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(view.button('Style'));
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    const weight = control('font-weight');
+    await view.press(weight);
+    expect(weight?.getAttribute('aria-expanded')).toBe('true');
+    await view.pointer('pointerdown', 600, 400, { button: 0 });
+    await view.pointer('click', 600, 400, { button: 0 });
+    expect(view.of('pick')).toHaveLength(1);
+    expect(view.note()).not.toBeNull();
+  });
+
+  it('보내는 동안 보기의 값은 고칠 수 없다', async () => {
+    const view = await opened();
+    await view.type('Bigger');
+    await view.press(view.button('Send'));
+    expect(control('font-size')?.disabled).toBe(true);
+    expect(
+      control('font-weight')?.hasAttribute('disabled') ||
+        control('font-weight')?.getAttribute('aria-disabled') === 'true',
+    ).toBe(true);
+  });
+
+  it('보기에 포커스가 있을 때 이동으로 칸이 닫히면 포커스는 페이지 자리로 간다', async () => {
+    const view = await opened();
+    control('font-size')?.focus();
+    await view.emit({ type: 'navigated', generation: 2 });
+    expect(styleView()).toBeNull();
+    expect(document.activeElement).toBe(view.surface());
+  });
+
+  it('보기 위의 휠은 페이지에 가지 않는다', async () => {
+    const view = await opened();
+    await act(async () => {
+      styleView()?.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 100 }));
+    });
+    expect(view.of('wheel')).toHaveLength(0);
+  });
+
+  it('페이지 자리가 좁으면 아래 시트이고 칸은 그 위에 붙는다', async () => {
+    vi.stubGlobal('innerWidth', 500);
+    vi.stubGlobal('innerHeight', 700);
+    await opened();
+    expect(styleView()?.getAttribute('data-sheet')).toBe('true');
+    expect(styleView()?.style.top).toBe('385px');
+    expect(styleView()?.style.height).toBe('315px');
+    // The docked note sits on the sheet (its measured height is 0 here).
+    expect(document.querySelector<HTMLElement>('[data-annotate="note"]')?.style.top).toBe('377px');
   });
 });
 

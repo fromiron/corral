@@ -8,6 +8,7 @@ import {
   type KeyboardEvent,
   useCallback,
   useEffect,
+  useId,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -21,6 +22,9 @@ import type {
   AnnotateRect,
   AnnotateSubmitResult,
   AnnotateTarget,
+  AnnotateTokens,
+  StyleChange,
+  StyleProperty,
 } from '../../../desktop/src/annotate-bridge.ts';
 import { sendKeyRole } from '../workbench/sendKey.ts';
 import type { Frames } from './AnnotateApp.tsx';
@@ -31,6 +35,7 @@ import {
   noteWidth,
   outlineRect,
   type Size,
+  stylePlace,
   tagPlace,
 } from './geometry.ts';
 import { NoteCard, type NoteView } from './NoteCard.tsx';
@@ -40,11 +45,15 @@ import type {
   AnnotateOutcome,
   AnnotateSubmitExtra,
 } from './protocol.ts';
+import { STYLE_GROUPS, type StyleRowView, StyleView } from './StyleView.tsx';
 
 const reducedMotion = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
 
+/** No newer value waits for this property. */
+const NONE = Symbol('none');
+
 /** One of the note's popups (the kit's, at the end of the page) while it is open. */
-const OPEN_POPUP = '[data-slot="popover-popup"][data-open]';
+const OPEN_POPUP = '[data-slot="popover-popup"][data-open], [data-slot="select-popup"][data-open]';
 
 const ARROWS = {
   ArrowUp: 'up',
@@ -55,6 +64,37 @@ const ARROWS = {
 
 /** A 1px ring of the app's background around a line, so it stays visible over any page. */
 const RING = 'shadow-[0_0_0_1px_var(--background),inset_0_0_0_1px_var(--background)]';
+
+/** One property's row in the style view. */
+interface StyleRow {
+  /** As written (or chosen). */
+  value: string;
+  /** What main last put on the page for it (null: Corral's rule is off). */
+  applied: string | null;
+  problem: 'invalid' | 'page-changed' | 'page-busy' | null;
+}
+
+interface NoteStyle {
+  open: boolean;
+  /** The element's computed values when the view first opened, and the page's tokens. */
+  read:
+    | 'reading'
+    | { failed: string }
+    | { before: Record<StyleProperty, string>; tokens: AnnotateTokens };
+  rows: Partial<Record<StyleProperty, StyleRow>>;
+}
+
+const PROPERTIES = STYLE_GROUPS.flatMap((group) => group.properties);
+
+/** What a send carries of the style view: each property Corral changed on the page. */
+function changes(note: Note): StyleChange[] {
+  const read = note.style?.read;
+  if (!read || typeof read !== 'object' || !('before' in read)) return [];
+  return PROPERTIES.flatMap((property) => {
+    const applied = note.style?.rows[property]?.applied;
+    return applied == null ? [] : [{ property, before: read.before[property], after: applied }];
+  });
+}
 
 interface Note {
   noteId: string;
@@ -69,9 +109,12 @@ interface Note {
   failure: string | null;
   /** Names the current submit: an answer to an older one is dropped. */
   attempt: number;
+  /** The style view: null until it first opens. */
+  style: NoteStyle | null;
 }
 
-const written = (note: Note) => note.text.trim() !== '';
+/** Text or a style changed on the page. */
+const written = (note: Note) => note.text.trim() !== '' || changes(note).length > 0;
 
 function useArea(): Size {
   const [area, setArea] = useState<Size>(() => ({
@@ -191,6 +234,13 @@ export function Overlay({
   /** Notes closed while their send was out: the answer is still said when it comes. */
   const orphans = useRef(new Map<string, number>());
   const picking = useRef(false);
+  const styleId = useId();
+  /** Each property's preview: one in flight at a time, and the newest value waiting behind it. */
+  const previewing = useRef(
+    new Map<string, { busy: boolean; next: string | null | typeof NONE }>(),
+  );
+  const busyNow = useRef(busy);
+  busyNow.current = busy;
   /** The press began while one of the note's popups was open: it only closes that popup. */
   const closesPopup = useRef(false);
   const lastBox = useRef<AnnotateRect | null>(null);
@@ -341,9 +391,23 @@ export function Overlay({
     return tracked ?? lastBox.current ?? current.pick.box;
   };
 
+  const styleOpen = note?.style?.open === true;
+  // Narrow, the style view is a sheet along the bottom and the docked note sits on it.
+  const sheet = styleOpen ? stylePlace({ x: 0, y: 0, width: 0, height: 0 }, area) : null;
   const place = note
-    ? notePlace(noteBox(note), { width: noteWidth(area.width), height: cardHeight }, area)
+    ? notePlace(
+        noteBox(note),
+        { width: noteWidth(area.width), height: cardHeight },
+        area,
+        sheet?.sheet ? sheet.height : 0,
+      )
     : null;
+  const stylePlaced =
+    sheet && place
+      ? sheet.sheet
+        ? sheet
+        : stylePlace({ x: place.x, y: place.y, width: place.width, height: cardHeight }, area)
+      : null;
 
   /** The note leaves: its exit plays from a copy unless reduced motion asks for none. */
   const leave = (current: Note, toward: 'origin' | 'sent') => {
@@ -364,10 +428,11 @@ export function Overlay({
 
   /** Closes the open note; `release` lets main forget its element (not for a collected one). */
   const close = (current: Note, release: boolean) => {
-    // The note's own popups are the kit's, at the end of the page: focus in one is the note's.
+    // Its style view and its popups (the kit's, at the end of the page) are the note's too.
     const hadFocus =
-      document.activeElement?.closest('[data-annotate="note"], [data-slot="popover-popup"]') !==
-      null;
+      document.activeElement?.closest(
+        '[data-annotate="note"], [data-annotate="style"], [data-slot="popover-popup"], [data-slot="select-popup"]',
+      ) !== null;
     if (release) void bridge.release(current.pick.pickId);
     setNote(null);
     lastBox.current = null;
@@ -458,7 +523,7 @@ export function Overlay({
         pickId: current.pick.pickId,
         intent,
         text: current.text,
-        styles: [],
+        styles: changes(current),
         screenshot: current.shot && shotBlocked(current) === null && via !== 'interrupt',
         console: page?.kind === 'preview' && current.console,
         extra,
@@ -474,6 +539,10 @@ export function Overlay({
     const current = noteRef.current;
     if (!current) {
       void bridge.end();
+      return;
+    }
+    if (current.style?.open) {
+      closeStyle(current);
       return;
     }
     if (current.phase === 'sending') return;
@@ -548,6 +617,7 @@ export function Overlay({
           phase: 'editing',
           failure: null,
           attempt: 0,
+          style: null,
         });
       },
       () => {
@@ -586,11 +656,16 @@ export function Overlay({
     const preview = page?.kind === 'preview';
     return {
       label: current.pick.label,
+      style: {
+        open: current.style?.open === true,
+        id: styleId,
+        reading: current.style?.read === 'reading',
+      },
       what: {
         page: { origin: current.pick.page.origin, path: current.pick.page.path },
         selector: current.pick.element.selector,
         text: current.pick.element.text,
-        styles: [],
+        styles: changes(current),
         console:
           preview && current.console && carried?.noteId === current.noteId ? carried.console : null,
         // Taken at the send: here, whether it will be.
@@ -605,9 +680,130 @@ export function Overlay({
       console: page?.kind === 'preview' ? current.console : null,
       collect: { on: collect, disabled: current.phase !== 'editing' },
       addBlocked,
-      failure: current.failure,
+      failure:
+        current.failure ??
+        (current.style && typeof current.style.read === 'object' && 'failed' in current.style.read
+          ? current.style.read.failed
+          : null),
       unconfirmed: current.phase === 'unconfirmed' ? lost : null,
     };
+  };
+
+  /** Opens the style view (reading the element's values the first time) or closes it. */
+  const toggleStyle = () => {
+    const current = noteRef.current;
+    if (!current) return;
+    const style = current.style;
+    if (style?.read === 'reading') return;
+    if (style && typeof style.read === 'object' && 'before' in style.read) {
+      setNote({ ...current, style: { ...style, open: !style.open } });
+      return;
+    }
+    const { noteId } = current;
+    setNote({ ...current, style: { open: false, read: 'reading', rows: {} } });
+    const answered = (
+      read: { styles: Record<StyleProperty, string>; tokens: AnnotateTokens } | null,
+    ) => {
+      const now = noteRef.current;
+      if (!now || now.noteId !== noteId || now.style?.read !== 'reading') return;
+      setNote({
+        ...now,
+        style: read
+          ? { open: true, read: { before: read.styles, tokens: read.tokens }, rows: {} }
+          : {
+              open: false,
+              // A page that stopped answering says so; otherwise the element went with it.
+              read: { failed: busyNow.current ? t('busy') : t('failed.pageChanged') },
+              rows: {},
+            },
+      });
+    };
+    void bridge.inspect(current.pick.pickId).then(answered, () => answered(null));
+  };
+
+  /** Escape in the view or its note: the view goes; what it put on the page stays. */
+  const closeStyle = (current: Note) => {
+    if (!current.style) return;
+    const inView = document.activeElement?.closest('[data-annotate="style"]') !== null;
+    setNote({ ...current, style: { ...current.style, open: false } });
+    if (inView)
+      document
+        .querySelector<HTMLElement>('[data-annotate="note"] [data-annotate="style-toggle"]')
+        ?.focus();
+  };
+
+  const setRow = (property: StyleProperty, change: (row: StyleRow) => StyleRow) => {
+    const current = noteRef.current;
+    const style = current?.style;
+    if (!current || !style || typeof style.read !== 'object' || !('before' in style.read)) return;
+    const row = style.rows[property] ?? {
+      value: style.read.before[property],
+      applied: null,
+      problem: null,
+    };
+    setNote({ ...current, style: { ...style, rows: { ...style.rows, [property]: change(row) } } });
+  };
+
+  /** Sends the newest value waiting for a property once the one before it has answered. */
+  const pump = (noteId: string, pickId: string, property: StyleProperty) => {
+    const slot = previewing.current.get(`${noteId} ${property}`);
+    if (!slot || slot.busy || slot.next === NONE) return;
+    const value = slot.next;
+    slot.next = NONE;
+    slot.busy = true;
+    const answered = (
+      result: { ok: true } | { ok: false; reason: 'invalid' | 'page-changed' | 'page-busy' },
+    ) => {
+      slot.busy = false;
+      // A closed note's previews went with it.
+      if (noteRef.current?.noteId !== noteId) return;
+      const newer = slot.next !== NONE;
+      setRow(property, (row) =>
+        result.ok
+          ? { ...row, applied: value, problem: newer ? row.problem : null }
+          : // Main keeps what it put on the page before; the row says why this one isn't there.
+            { ...row, problem: newer ? row.problem : result.reason },
+      );
+      pump(noteId, pickId, property);
+    };
+    void bridge
+      .preview(pickId, property, value)
+      .then(answered, () => answered({ ok: false, reason: 'page-changed' }));
+  };
+
+  /** A row's new value: shown on the page at once; the first value again takes Corral's rule off. */
+  const restyle = (property: StyleProperty, value: string) => {
+    const current = noteRef.current;
+    const read = current?.style?.read;
+    if (current?.phase !== 'editing' || !read || typeof read !== 'object') return;
+    if (!('before' in read)) return;
+    setRow(property, (row) => ({ ...row, value, problem: null }));
+    const key = `${current.noteId} ${property}`;
+    const slot = previewing.current.get(key) ?? { busy: false, next: NONE };
+    previewing.current.set(key, slot);
+    slot.next = value === read.before[property] ? null : value;
+    pump(current.noteId, current.pick.pickId, property);
+  };
+
+  const styleRows = (current: Note): Record<StyleProperty, StyleRowView> | null => {
+    const read = current.style?.read;
+    if (!read || typeof read !== 'object' || !('before' in read)) return null;
+    const problems = {
+      invalid: t('styleView.invalid'),
+      'page-changed': t('failed.pageChanged'),
+      'page-busy': t('busy'),
+    };
+    const rows = {} as Record<StyleProperty, StyleRowView>;
+    for (const property of PROPERTIES) {
+      const row = current.style?.rows[property];
+      const value = row?.value ?? read.before[property];
+      rows[property] = {
+        value,
+        touched: value !== read.before[property] || (row?.applied ?? null) !== null,
+        problem: row?.problem ? problems[row.problem] : null,
+      };
+    }
+    return rows;
   };
 
   /** What a send would carry of the console, read as the label's popover opens. */
@@ -807,9 +1003,44 @@ export function Overlay({
             onSubmit: () => submit('button'),
             onSendAgain: () => submit('button', true),
             onHeight: setCardHeight,
+            onStyle: toggleStyle,
           }}
         />
       )}
+      {note &&
+        stylePlaced &&
+        !ending &&
+        note.style &&
+        typeof note.style.read === 'object' &&
+        'before' in note.style.read && (
+          <StyleView
+            key={`style ${note.noteId}`}
+            id={styleId}
+            label={note.pick.label}
+            place={stylePlaced}
+            tokens={note.style.read.tokens}
+            rows={styleRows(note) as Record<StyleProperty, StyleRowView>}
+            locked={note.phase !== 'editing'}
+            onChange={restyle}
+            onReset={(property) => {
+              const read = noteRef.current?.style?.read;
+              if (read && typeof read === 'object' && 'before' in read)
+                restyle(property, read.before[property]);
+            }}
+            onResetAll={() => {
+              const current = noteRef.current;
+              const rows = current ? styleRows(current) : null;
+              const read = current?.style?.read;
+              if (!rows || !read || typeof read !== 'object' || !('before' in read)) return;
+              for (const property of PROPERTIES)
+                if (rows[property].touched) restyle(property, read.before[property]);
+            }}
+            onClose={() => {
+              const current = noteRef.current;
+              if (current) closeStyle(current);
+            }}
+          />
+        )}
       {sent && !ending && (
         <div
           data-annotate="sent"
@@ -834,6 +1065,7 @@ export function Overlay({
 
 const IDLE = {
   onWhat() {},
+  onStyle() {},
   onText() {},
   onTextKey() {},
   onShot() {},

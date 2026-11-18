@@ -62,6 +62,8 @@ export function notePlace(
   box: AnnotateRect,
   card: Size,
   area: Size,
+  /** A bottom sheet's height (the narrow style view): the docked note sits on it. */
+  bottomInset = 0,
 ): {
   x: number;
   y: number;
@@ -71,7 +73,7 @@ export function notePlace(
   if (area.width < NARROW)
     return {
       x: EDGE,
-      y: area.height - EDGE - card.height,
+      y: area.height - bottomInset - EDGE - card.height,
       width: area.width - EDGE * 2,
       side: 'docked',
     };
@@ -95,6 +97,43 @@ export function notePlace(
 const MARKER_INSET = 3;
 /** Between the busy line and a marker it pushed down. */
 const AVOID_GAP = 4;
+
+const STYLE_WIDTH = 340;
+const STYLE_HEIGHT = 480;
+const STYLE_GAP = 8;
+/** The narrow style view's share of the page area's height. */
+const SHEET = 0.45;
+
+/**
+ * The style view beside the note, on the side with room (the roomier one, kept inside the page
+ * area, when neither has); a page area narrower than 560px gets a bottom sheet instead.
+ */
+export function stylePlace(
+  note: AnnotateRect,
+  area: Size,
+): { x: number; y: number; width: number; height: number; sheet: boolean } {
+  if (area.width < NARROW) {
+    const height = Math.round(area.height * SHEET);
+    return { x: 0, y: area.height - height, width: area.width, height, sheet: true };
+  }
+  const width = STYLE_WIDTH;
+  const height = Math.min(STYLE_HEIGHT, area.height - EDGE * 2);
+  const y = clamp(note.y, EDGE, area.height - EDGE - height);
+  const right = note.x + note.width + STYLE_GAP;
+  const left = note.x - STYLE_GAP - width;
+  const maxX = area.width - EDGE - width;
+  if (right <= maxX) return { x: right, y, width, height, sheet: false };
+  if (left >= EDGE) return { x: left, y, width, height, sheet: false };
+  const roomRight = area.width - EDGE - right;
+  const roomLeft = note.x - STYLE_GAP - EDGE;
+  return {
+    x: clamp(roomRight >= roomLeft ? right : left, EDGE, maxX),
+    y,
+    width,
+    height,
+    sheet: false,
+  };
+}
 
 /**
  * Each marker centred on its element's top right corner, kept inside the page's scroll area

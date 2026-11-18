@@ -33,6 +33,10 @@
   .annotate-shrink {
     animation: annotate-shrink var(--duration-fast) var(--ease-out-soft) both;
   }
+  /* The narrow style view rises from the bottom edge as a sheet (slow). */
+  .annotate-sheet {
+    animation: annotate-rise var(--duration-slow) var(--ease-out-soft) both;
+  }
   /* A press the busy page can't answer draws the eye to the busy line. */
   .annotate-nudge {
     outline: 2px solid transparent;
@@ -44,7 +48,8 @@
     .annotate-leave,
     .annotate-pop,
     .annotate-grow,
-    .annotate-shrink {
+    .annotate-shrink,
+    .annotate-sheet {
       animation: none;
     }
     .annotate-nudge {
@@ -79,6 +84,12 @@
   from {
     opacity: 0;
     transform: scale(0.94);
+  }
+}
+
+@keyframes annotate-rise {
+  from {
+    transform: translateY(100%);
   }
 }
 

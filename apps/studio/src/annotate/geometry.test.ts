@@ -5,6 +5,7 @@ import {
   notePlace,
   noteWidth,
   outlineRect,
+  stylePlace,
   tagPlace,
 } from './geometry.ts';
 
@@ -170,5 +171,43 @@ describe('페이지 자리의 테두리', () => {
   it('주석 버튼에 가까운 오른쪽 위 모서리에서 출발해 페이지 자리를 한 바퀴 돈다', () => {
     // The 2px line sits inside the edge: its middle is 1px in.
     expect(framePath({ width: 400, height: 300 })).toBe('M 399 1 H 1 V 299 H 399 Z');
+  });
+});
+
+describe('스타일 보기의 자리', () => {
+  const note = { x: 312, y: 200, width: 320, height: 160 };
+
+  it('폭 340px, 높이 480px까지의 떠 있는 보기로 주석 칸 옆의 자리가 있는 쪽에 선다', () => {
+    expect(stylePlace(note, area)).toEqual({
+      x: 640,
+      y: 200,
+      width: 340,
+      height: 480,
+      sheet: false,
+    });
+    // No room right of the note: left of it.
+    expect(stylePlace({ ...note, x: 600 }, area)).toMatchObject({ x: 252, sheet: false });
+    // A short page area: as tall as fits, inside it.
+    expect(stylePlace(note, { width: 1000, height: 400 })).toMatchObject({ y: 8, height: 384 });
+  });
+
+  it('어느 쪽에도 자리가 없으면 자리가 더 넓은 쪽에 페이지 자리 안으로 선다', () => {
+    expect(stylePlace({ ...note, x: 100 }, { width: 700, height: 700 })).toMatchObject({
+      x: 352,
+    });
+  });
+
+  it('페이지 자리의 폭이 560px보다 좁으면 높이 45%의 아래 시트이고 주석 칸은 그 위에 붙는다', () => {
+    const narrow = { width: 500, height: 700 };
+    expect(stylePlace(note, narrow)).toEqual({
+      x: 0,
+      y: 385,
+      width: 500,
+      height: 315,
+      sheet: true,
+    });
+    expect(
+      notePlace({ x: 10, y: 10, width: 50, height: 20 }, { width: 484, height: 160 }, narrow, 315),
+    ).toEqual({ x: 8, y: 217, width: 484, side: 'docked' });
   });
 });
