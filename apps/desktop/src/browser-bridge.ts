@@ -62,6 +62,11 @@ export interface BrowserDownload {
   /** The tab whose head shows it; null when that tab is gone (it carries on without a line). */
   tabId: string | null;
   name: string;
+  /**
+   * `interrupted` is not final: a download that stopped partway can go back to `progressing`
+   * when Chromium resumes it. `completed` and `cancelled` are final. No reason is known
+   * (Electron 44.4.5 gives none), so the line says it was interrupted.
+   */
   state: 'progressing' | 'completed' | 'cancelled' | 'interrupted';
   receivedBytes: number;
   totalBytes: number;
