@@ -94,6 +94,19 @@ it('the person closing a tab unloads its page without asking; leaving only unloa
   expect(f.sessionOf(view(f, 2))).toBe(f.sessionOf(b));
 });
 
+it("a move the page's leave check stops leaves the address on the page that stayed", () => {
+  const f = setup();
+  f.tabs.navigate('tab-a', 'project_a', 'https://form.example/draft');
+  const page = view(f, 0).webContents;
+  page.commit('https://form.example/draft', 'Draft');
+  page.loadURL.mockImplementationOnce(async () => {}); // the page's address changes on commit only
+  f.tabs.navigate('tab-a', 'project_a', 'https://example.org/');
+  expect(f.last('tab-a')?.url).toBe('https://example.org/');
+  // beforeunload held: Electron cancels the move, and nothing commits.
+  page.emit('will-prevent-unload', { preventDefault: vi.fn() });
+  expect(f.last('tab-a')).toMatchObject({ page: 'live', url: 'https://form.example/draft' });
+});
+
 it('a person-opened tab whose page closes itself stays, and reopens its last address', async () => {
   const f = setup();
   f.tabs.navigate('tab-a', 'project_a', 'https://app.example/a');
