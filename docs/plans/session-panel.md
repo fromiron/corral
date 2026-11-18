@@ -549,7 +549,7 @@ S2와 함께 아래의 명세와 킷 커밋도 읽는다.
 - S3 명세: `276108bf`, `a3a12072`, `a8c3d8cb`, `406daae4`, `2252480b`, `e48d13cf`, `1dbc443e`, `46141d49`.
 - S4 명세: `9c2be95b`, `8496f2fe`, `1464af63`, `9d2c7ae0`, `7cc325ad`, `4a7a9b54`, `7344d330`, `5e3581e2`, `b0897d07`, `51076924`, `7c8a9558`, `05c46e5d`.
 - S5 명세: `f346ee13`, `a2e19293`, `97b5df72`, `cfbc6027`, `96b01898`, `fd5c9610`, `ae6f1fae`, `1b45b4f6`, `84ea4b61`, `c8fa0358`, `8dcb8ff3`, `77c2aaef`, `05e7e7b1`, `13277ef3`.
-- S6 명세: `960a1236`, `f92ef31d`, `0ff16ab9`, `0b72c828`, `955499d6`, `26798236`, `05024d23`, `0730c323`, `ee237727`, `dc229900`, `f36b7b37`, `e5b97164`, `d6a97175`, `4bfa88fb`, `4d5bc5bc`, `789caca2`, `fd074fb9`, `bd274873`, `0fe57599`.
+- S6 명세: `960a1236`, `f92ef31d`, `0ff16ab9`, `0b72c828`, `955499d6`, `26798236`, `05024d23`, `0730c323`, `ee237727`, `dc229900`, `f36b7b37`, `e5b97164`, `d6a97175`, `4bfa88fb`, `4d5bc5bc`, `789caca2`, `fd074fb9`, `bd274873`, `0fe57599`, `28cde762`, `d79f8afa`, `c3d2cbc6`.
 - S4의 킷: `c9fa6b7d`, `6a383a10`, `dc1b2eff`, `356802cd`, `2c2c471a`, `f86de1b6`, `53087055`, `403d6827`, `eccb9960`.
 - S4 앱: `a082dd4f`, `5769fdf7`, `2e087248`, `3dd173cc`, `ed07c824`, `7931a9cf`, `4257d873`, `18701cd8`, `325929e2`, `afadfdf2`, `62783be0`, `fb6e6812`, `3daa18d4`, `60e80a61`, `18e30c75`, `b30b47cd`, `64272657`, `8b9835d2`, `abdd7a40`, `d1105332`, `5c410d07`, `a52a4f80`, `9c885e90`, `0642fc84`, `ce57dfaf`, `8f00949f`, `694721f7`, `2ec9bcb4`([S4 구현](#s4-구현-리뷰-전)의 기록의 주의를 함께 읽는다).
 - S3 팀 편집기의 쌓기(구현): `0600dcb6`, `5a0ef3af`, `db7a1299`, `f77f7062`, `e59a5559`, `8b9ae8fc`.
@@ -791,9 +791,9 @@ S5를 끝으로 치기 전에 실제 앱을 Xvfb에서 한 번 돌린다: 탭을
 ### S6 데스크톱 메인 쪽
 
 - `142d3403`: 관리자, 덧뷰의 파티션과 프로토콜, 두 preload, 앱 페이지가 부르는 것. 데스크톱 테스트 154개가 지난다.
-- 그 뒤: `d08ca129`(관리자의 뒷손질), `4d059857`(`AnnotatePick.page`, `inspect`), `d7ad4557`(`frame().view`: 스크롤바를 뺀 페이지의 굴림 영역, 번호 표시를 그 안에 두는 데 쓴다), `0aa5904e`(`browser.annotate`를 데스크톱의 단축키와 페이지에서 받는 키에 더함).
+- 그 뒤: `d08ca129`(관리자의 뒷손질), `4d059857`(`AnnotatePick.page`, `inspect`), `d7ad4557`(`frame().view`: 스크롤바를 뺀 페이지의 굴림 영역, 번호 표시를 그 안에 두는 데 쓴다), `0aa5904e`(`browser.annotate`를 데스크톱의 단축키와 페이지에서 받는 키에 더함), `b109c284`(`consoleFor`: 그 고른 것을 콘솔 토글을 켜고 보내면 실릴 콘솔), `1674990e`(보낼 때 메인이 `element.label`을 고른 것의 이름표로 채운다. 미리보기의 토큰을 빼고, 제어 문자를 지우고, 200자에서 자르며, 남는 것이 없으면 요소의 태그 이름이다).
 - 덧뷰 진입점의 뼈대: `7cb5bdc7`(`annotate.html`과 `protocol.ts`). 실제로 이어 돌린 한 번이 지났다.
-- 덧뷰 진입점: `852bed74`(1a, 페이지 자리 위의 그림: 테두리, 가리킴 테두리와 이름표, 번호 표시, 바쁨 줄), `7e147a96`(1b, 주석 칸).
+- 덧뷰 진입점: `852bed74`(1a, 페이지 자리 위의 그림: 테두리, 가리킴 테두리와 이름표, 번호 표시, 바쁨 줄), `7e147a96`(1b, 주석 칸), `e6e53d16`(어느 페이지 위에서나 보이는 주석 칸의 1px 테두리, 덧뷰까지 살피는 밀도 검사), `a6db51a2`(이름표 버튼의 팝오버: `AnnotationContents`, 열 때 `consoleFor`로 읽는 콘솔, 열린 동안 페이지 자리를 누르면 팝오버만 닫힌다), `cffe5091`(스타일 보기). `8f3b082f`는 덧뷰의 이름표 팝오버와 입력창의 칩 팝오버가 함께 그리는 `AnnotationContents`(`packages/react`)다.
 - 실제 Electron에서 확인한 것: 덧뷰의 프로토콜이 모듈 스크립트를 싣는다. 네트워크 fetch는 막힌다. 덧뷰에는 `corralDesktop`, `require`, 쿠키가 없다. 확대 1.5에서 고른 것의 자리는 CSS px로 온다.
 - 아직 확인하지 않은 것: 실제 앱 안의 덧뷰 전체, Shift+휠과 40px의 줄 단위 굴림.
 - [직접 써 보며 확인] 터치패드로 굴릴 때의 부드러움.
@@ -802,11 +802,12 @@ S5를 끝으로 치기 전에 실제 앱을 Xvfb에서 한 번 돌린다: 탭을
 
 ### S6 계약과 앱 페이지 쪽
 
-- 계약: `facc55f7`. 일반 페이지의 provenance 종류 `page`, 데스크톱이 앱 페이지에 넘기는 `AnnotationMaterial`과 그것으로 만드는 첨부 본문 `PageAnnotation`. 명세는 `4bfa88fb`(api-contract의 `POST /sessions/:id/entries` 줄과 [계약](../specs/features/browser-annotate.md#계약)의 첨부).
+- 계약: `facc55f7`. 일반 페이지의 provenance 종류 `page`, 데스크톱이 앱 페이지에 넘기는 `AnnotationMaterial`과 그것으로 만드는 첨부 본문 `PageAnnotation`. 명세는 `4bfa88fb`(api-contract의 `POST /sessions/:id/entries` 줄과 [계약](../specs/features/browser-annotate.md#계약)의 첨부). `83b5266a`는 `AnnotationElement`에 이름표 `label`(한 줄의 보통 글, 1~200자)을 더했다. 명세는 `28cde762`.
 - 서버 쪽 확인: 주석의 서버 쪽 검사는 스튜디오를 만드는 이의 통합 테스트 `465077c9`(`apps/server/test/page-annotation.test.ts`)다. `page`가 든 주석이 항목(`POST /sessions/:id/entries`)과 실행 시작(`POST /runs/auto`)에 받아지고, `path`에 쿼리나 조각, `origin`에 자격 증명이 들면 둘 다 400으로 거절된다. 계약의 스키마가 이미 거절하고 있어 처음 돌린 때 지났다. `steer`는 `6a434d4d`가 같은 테스트에 더했다: 합류(`next_request`)와 끼어들기(`interrupt`) 둘 다 `page` 주석을 받고 같은 것을 400으로 거절한다. `steer`도 같은 `TextAttachments` 스키마를 써서 처음 돌린 때 지났다.
 - 이미지 올리기: `c2f2cf1b`(테스트 `apps/server/test/image-upload-route.test.ts`). `POST /sessions/:id/images`가 api-contract의 그 줄(`4d5bc5bc`, `bd274873`, `0fe57599`)대로 답한다: 이름 · `content-type` · PNG 검사 · 다시 인코딩한 크기는 400 `SCHEMA_INVALID`, 없는 세션은 `TARGET_NOT_FOUND`, 세션의 64 MiB는 `LIMIT_REACHED`, 그 밖의 실패는 `STORAGE_UNAVAILABLE`이다. 보관한 세션도 이제 이미지를 받는다([Workbench](../specs/workbench.md#세션-목록과-검색)를 따른 동작의 바뀜).
 - 앱 페이지의 바로 보내기: `ae632a47`. 주석은 입력창의 보내기 길로 가되 주석마다 제 명령 자리를 가진다. 스크린샷을 올리지 못하면 아무것도 보내지 않고, "다시 보내기"는 같은 명령 ID를 다시 쓴다. `9e00e66d`는 서버가 `LIMIT_REACHED`로 스크린샷을 거절하면 제 문장 `Browser.noteImageLimit`을 보이고, 그 밖의 거절은 입력창의 `imageFailed`를 쓴다. 서버의 글은 보이지 않는다.
 - 앱 페이지: `0ed7f9b1`, 주석을 켜고 끄는 단계. 브라우저 탭 머리의 주석 버튼과 Mod+Shift+D(`browser.annotate`), 데스크톱의 사건을 따르는 모드, 덧뷰에 넘기는 맥락. 그 앞의 `2f2723d9`는 보내기 키의 판단(`sendKeyRole`, `isSendKey`)을 `workbench/sendKey.ts`로 떼어, 덧뷰가 기본 설정 저장소를 들이지 않고 입력창과 같게 키를 읽게 했다.
+- 앱 페이지의 그 뒤: `426d6f7f`("다시 보내기"는 새 명령을 만들지 않는다: 응답을 잃은 주석은 처음 보낸 설정을 그 명령과 함께 지닌다), `cb3e8f83`(모드가 끝나면 열린 주석 칸마다 어떻게 되었는지 알린다).
 - 설정 금고(vault): `7c5e3340`, 보관 내보내기의 이동 가능한 단축키에 `browser.annotate`를 더함. 단축키 ID의 목록은 명세에 없고 코드에만 있다: 서버의 `PortableApplication`(`apps/server/src/vault/service.ts`), `packages/client/src/vault.ts`, `apps/studio/src/shortcuts.ts`. 명세는 단축키 ID를 기능마다 하나씩 적는다.
 
 ### S6 구현 전에 확인할 것
