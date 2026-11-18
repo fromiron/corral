@@ -401,3 +401,25 @@ it('패널 폭이 900px이고 파일 · a.ts 탭이 열려 a.ts가 선택돼 있
 
   expect(column()?.contains(document.activeElement)).toBe(false);
 });
+
+it('패널 폭이 900px이고 a.ts 탭만 열려 있다 → "+"의 파일 → 트리 열이 a.ts 옆에 생기고 포커스는 트리 열로 가며, 다른 줄(터미널)은 함께 골라지지 않는다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [doc('a.ts')], 'document:copy:a.ts');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => leaf() === 'a.ts');
+
+  await choose(button(W.add));
+  const rows = () => [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+  await until(() => rows().length > 0);
+  // Each row of the list is numbered once, in its order: the terminal row too.
+  expect(rows().map((row) => row.getAttribute('data-fluid-hover-index'))).toEqual(
+    rows().map((_, index) => String(index)),
+  );
+  await choose(rows().find((row) => row.getAttribute('aria-label') === W.files) ?? null);
+  await until(() => Boolean(column()?.contains(document.activeElement)));
+  await settle();
+
+  expect(tabNames()).toEqual(['a.ts']);
+  expect(selectedName()).toBe('a.ts');
+  expect(column()?.contains(document.activeElement)).toBe(true);
+});

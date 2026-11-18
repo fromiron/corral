@@ -50,7 +50,7 @@ import {
   type DockPlus,
   TERMINAL_MOVE_GROUP,
   TerminalListRow,
-  TerminalPlusItem,
+  useTerminalPlusRow,
   useTerminalTabState,
 } from './SessionDock.tsx';
 
@@ -305,6 +305,7 @@ export function SessionPanelSide({
   const name = usePanelTabName(ctx.runIds, ctx.terminalIds, teamNames);
   const documentNames = documentTabNames(state.tabs);
   const plusLabel = usePlusLabel();
+  const terminalPlusRow = useTerminalPlusRow();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
   const terminalState = useTerminalTabState(terminals);
@@ -448,9 +449,7 @@ export function SessionPanelSide({
                   {items.map((item) => {
                     const Icon = PLUS_ICONS[item];
                     if (item === 'terminal')
-                      return terminalRow ? (
-                        <TerminalPlusItem key={item} row={terminalRow} onTerminal={onTerminal} />
-                      ) : null;
+                      return terminalRow ? terminalPlusRow(terminalRow, onTerminal) : null;
                     return item === 'run-history' && listed ? (
                       <MenuSub key={item}>
                         <MenuSubTrigger icon={Icon}>{plusLabel(item)}</MenuSubTrigger>

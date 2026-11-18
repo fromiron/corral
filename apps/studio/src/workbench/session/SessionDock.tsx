@@ -65,42 +65,40 @@ export function useCreationReason() {
 /**
  * The "+" list's 터미널 row, the same in the panel's list and the dock's: a submenu of shells when
  * a new terminal is made and there are two or more; an unavailable row with its reason when none
- * can be made and none is live.
+ * can be made and none is live. It is drawn as the list's own row, not through a component of
+ * its own, so the list numbers it in its place.
  */
-export function TerminalPlusItem({
-  row,
-  onTerminal,
-}: {
-  row: NonNullable<DockPlus['terminal']>;
-  onTerminal: (shellId?: string) => void;
-}) {
+export function useTerminalPlusRow() {
   const td = useTranslations('Docking');
   const tt = useTranslations('Terminals');
   const reason = useCreationReason();
-  if (!row.live && !row.blocked && row.shells.length > 1)
+  return (row: NonNullable<DockPlus['terminal']>, onTerminal: (shellId?: string) => void) => {
+    if (!row.live && !row.blocked && row.shells.length > 1)
+      return (
+        <MenuSub key="terminal">
+          <MenuSubTrigger icon={Terminal}>{td('terminal')}</MenuSubTrigger>
+          <MenuSubPopup aria-label={tt('chooseShell')}>
+            {row.shells.map((shell) => (
+              <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
+                {shell.label}
+              </MenuItem>
+            ))}
+          </MenuSubPopup>
+        </MenuSub>
+      );
+    const blocked = !row.live ? row.blocked : null;
     return (
-      <MenuSub>
-        <MenuSubTrigger icon={Terminal}>{td('terminal')}</MenuSubTrigger>
-        <MenuSubPopup aria-label={tt('chooseShell')}>
-          {row.shells.map((shell) => (
-            <MenuItem key={shell.id} onClick={() => onTerminal(shell.id)}>
-              {shell.label}
-            </MenuItem>
-          ))}
-        </MenuSubPopup>
-      </MenuSub>
+      <MenuItem
+        key="terminal"
+        icon={Terminal}
+        disabled={blocked !== null}
+        description={blocked ? reason(blocked) : undefined}
+        onClick={() => onTerminal()}
+      >
+        {td('terminal')}
+      </MenuItem>
     );
-  const blocked = !row.live ? row.blocked : null;
-  return (
-    <MenuItem
-      icon={Terminal}
-      disabled={blocked !== null}
-      description={blocked ? reason(blocked) : undefined}
-      onClick={() => onTerminal()}
-    >
-      {td('terminal')}
-    </MenuItem>
-  );
+  };
 }
 
 /**
@@ -252,6 +250,7 @@ export function SessionDock({
     };
   });
   const terminalRow = plus.terminal;
+  const terminalPlusRow = useTerminalPlusRow();
   const plusMenu =
     terminalRow || plus.debug ? (
       <Menu>
@@ -263,7 +262,7 @@ export function SessionDock({
           </MenuTrigger>
         </Tooltip>
         <MenuPopup align="start" className="w-[260px]">
-          {terminalRow ? <TerminalPlusItem row={terminalRow} onTerminal={onTerminal} /> : null}
+          {terminalRow ? terminalPlusRow(terminalRow, onTerminal) : null}
           {plus.debug ? (
             <MenuItem icon={Bug} onClick={onDebug}>
               {t('debugTab')}
