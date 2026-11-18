@@ -8,6 +8,7 @@
 //   `via: 'history'`) → `enter`, with the address and the conversation's memory;
 // - an opening way ("여는 길", the run picker, "현재 실행 보기", a result chosen in 결과, a link
 //   inside one tab to another) → `open` with `from: 'way'`; the "+" list → `open` `from: 'plus'`;
+//   a stack frame chosen in the debugger → `open` `from: 'debugger'`;
 // - a tab chosen or closed in the strip (close, middle button, Delete) → `select` / `close`;
 // - the toggle button, its palette item and shortcut → `toggle`; the maximize button →
 //   `maximize`; Escape or the dimmed conversation under a drawer → `closeDrawer`;
@@ -170,7 +171,11 @@ export type PanelEvent =
       readonly memory: PanelMemory | null;
       readonly via: EntryVia;
     }
-  | { readonly type: 'open'; readonly target: PanelTarget; readonly from: 'way' | 'plus' }
+  | {
+      readonly type: 'open';
+      readonly target: PanelTarget;
+      readonly from: 'way' | 'plus' | 'debugger';
+    }
   | { readonly type: 'select'; readonly key: TabKey }
   | { readonly type: 'close'; readonly key: TabKey }
   | { readonly type: 'toggle' }
@@ -270,6 +275,12 @@ const byAddress = (room: boolean): Presentation => (room ? 'beside' : 'withdrawn
 function byOpening(presentation: Presentation, room: boolean): Presentation {
   if (presentation === 'closed') return room ? 'beside' : 'drawer';
   if (presentation === 'withdrawn') return 'drawer';
+  return presentation;
+}
+
+// The debugger opening a document: never a drawer, which would cover the dock it steps in.
+function byDebugger(presentation: Presentation, room: boolean): Presentation {
+  if (presentation === 'closed') return room ? 'beside' : 'closed';
   return presentation;
 }
 
@@ -650,7 +661,11 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
     case 'open': {
       // A terminal's tab opens here only when the page asks for it by its ID.
       const tab = targetTab(event.target, ctx.runIds);
-      return tab ? opened(state, tab, byOpening(state.presentation, ctx.room)) : state;
+      const presentation =
+        event.from === 'debugger'
+          ? byDebugger(state.presentation, ctx.room)
+          : byOpening(state.presentation, ctx.room);
+      return tab ? opened(state, tab, presentation) : state;
     }
     case 'select':
       return hasTab(state, event.key) && state.selected !== event.key
@@ -784,7 +799,8 @@ function historyOf(
   ctx: PanelContext,
 ): PanelResult['history'] {
   // Opening or selecting from outside the tab strip adds an entry, even for the tab already
-  // selected: the way may point at something inside it. The frame skips an identical write.
+  // selected: the way may point at something inside it. The frame skips an identical write. The
+  // debugger's frames only rewrite the address: Back goes past them at once.
   if (event.type === 'open' && event.from === 'way')
     return targetTab(event.target, ctx.runIds) ? 'push' : null;
   // An entry waiting for the newest run writes nothing, so the address keeps `panel=run`.

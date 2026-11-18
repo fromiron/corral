@@ -372,7 +372,7 @@ function WorkSessionPage() {
   const heldByConfirmation = modalConfirmationOpen;
   const open = (
     target: Partial<SessionSearch> & { panel: SessionPanel },
-    from: 'way' | 'plus' = 'way',
+    from: 'way' | 'plus' | 'debugger' = 'way',
     place?: 'tree',
   ) => {
     if (heldByConfirmation()) return;
@@ -419,6 +419,11 @@ function WorkSessionPage() {
       },
       own,
     );
+    // The debugger keeps the focus to go on stepping (features/session-panel.md 디버그와 문서).
+    if (from === 'debugger') {
+      focusNext.current = null;
+      return;
+    }
     // Opened from the tree column, which stays beside the document: the focus stays on the row
     // and the opening is said instead (features/session-panel.md 파일 탭과 트리 열).
     if (place === 'tree' && next.selected !== 'files' && treeColumn(next, ctx)) {
@@ -799,7 +804,7 @@ function WorkSessionPage() {
   const openDocument = (
     request: Pick<OpenDocumentRequest, 'target' | 'path'> | { source: 'original'; path: string },
     range?: TextRange,
-    options: { keepFocus?: boolean; place?: 'tree' } = {},
+    options: { from?: 'debugger'; place?: 'tree' } = {},
   ) => {
     const { path } = request;
     const original = 'source' in request;
@@ -819,7 +824,7 @@ function WorkSessionPage() {
     if (documentLimitReached(panelNow.current, wanted)) {
       // No tab opens; the panel says why, shown as the way would have shown the file.
       setLimited(session.sessionId);
-      if (!options.keepFocus && !panelOnScreen(panelNow.current.presentation))
+      if (options.from !== 'debugger' && !panelOnScreen(panelNow.current.presentation))
         frame.dispatch({ type: 'toggle' });
       return true;
     }
@@ -828,10 +833,10 @@ function WorkSessionPage() {
     const kept = document.activeElement;
     open(
       { panel: 'document', file: path, ...(original ? { target: 'original' as const } : {}) },
-      'way',
+      options.from ?? 'way',
       options.place,
     );
-    if (options.keepFocus)
+    if (options.from === 'debugger')
       window.setTimeout(() => {
         if (kept instanceof HTMLElement && kept.isConnected) kept.focus({ preventScroll: true });
       }, 0);
@@ -1114,7 +1119,7 @@ function WorkSessionPage() {
       <SourceNavigationContext.Provider
         value={{
           openDocument: (target, path, range) =>
-            openDocument({ target, path }, range, { keepFocus: true }),
+            openDocument({ target, path }, range, { from: 'debugger' }),
           openTerminal: () => {},
         }}
       >
