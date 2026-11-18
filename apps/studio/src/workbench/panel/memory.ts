@@ -6,7 +6,15 @@
 import { Identifier } from '@corral/contracts';
 import { dockMemoryKey } from './dock.ts';
 import { type PanelState, tabOf } from './model.ts';
-import { type PanelTab, relativePath, type TabKey, type ToolsView, tabKey } from './tabs.ts';
+import {
+  BROWSER_ID,
+  type PanelTab,
+  pageOrigin,
+  relativePath,
+  type TabKey,
+  type ToolsView,
+  tabKey,
+} from './tabs.ts';
 
 export interface PanelMemory {
   readonly tabs: readonly PanelTab[];
@@ -83,10 +91,23 @@ type MemoryEntry =
       readonly source: 'original' | 'copy';
       readonly binding?: string;
       readonly generation?: number;
+    }
+  | {
+      readonly browser: string;
+      readonly lease?: string;
+      readonly origin?: string;
+      readonly path?: string;
     };
 
 function entryOf(tab: PanelTab): MemoryEntry {
   if (tab.kind === 'tools') return tab.view ? `tools:${tab.view}` : 'tools';
+  // A preview page keeps only its lease; an ordinary page its origin and path (browser-tab.md 계약).
+  if (tab.kind === 'browser')
+    return tab.lease
+      ? { browser: tab.browserId, lease: tab.lease }
+      : tab.at
+        ? { browser: tab.browserId, origin: tab.at.origin, path: tab.at.path }
+        : { browser: tab.browserId };
   if (tab.kind !== 'document') return tabKey(tab);
   return tab.copy
     ? {
@@ -115,11 +136,31 @@ function parseDocument(entry: Record<string, unknown>): PanelTab | null {
   return { kind: 'document', source, path, copy: { bindingId: binding as string, generation } };
 }
 
+function parseBrowser(entry: Record<string, unknown>): PanelTab | null {
+  const { browser: browserId, lease, origin, path } = entry;
+  if (typeof browserId !== 'string' || !BROWSER_ID.test(browserId)) return null;
+  if (lease !== undefined)
+    return Identifier.safeParse(lease).success
+      ? { kind: 'browser', browserId, lease: lease as string }
+      : null;
+  if (origin === undefined && path === undefined) return { kind: 'browser', browserId };
+  if (
+    !pageOrigin(origin) ||
+    typeof path !== 'string' ||
+    !path.startsWith('/') ||
+    path.length > 4096
+  )
+    return null;
+  return { kind: 'browser', browserId, at: { origin, path } };
+}
+
 function parseTab(entry: unknown): PanelTab | null {
   if (entry === 'files' || entry === 'changes' || entry === 'artifacts') return { kind: entry };
   if (entry === 'tools') return { kind: 'tools', view: null };
   if (typeof entry === 'object' && entry !== null && !Array.isArray(entry))
-    return parseDocument(entry as Record<string, unknown>);
+    return 'browser' in entry
+      ? parseBrowser(entry as Record<string, unknown>)
+      : parseDocument(entry as Record<string, unknown>);
   if (typeof entry !== 'string') return null;
   if (entry.startsWith('tools:')) {
     const view = TOOLS_VIEWS.find((value) => `tools:${value}` === entry);

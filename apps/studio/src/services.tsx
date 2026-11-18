@@ -95,6 +95,11 @@ export interface StudioServices {
   /** User PTYs exist only on the authenticated host, never in the browser demo. */
   terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
+  /**
+   * The desktop app's browser tab (features/browser-tab.md); null in web mode, in a remote host's
+   * window and in a shell without it.
+   */
+  browser?: import('../../desktop/src/browser-bridge.ts').BrowserBridge | null;
   vault?: import('@corral/client').VaultClient | null;
 }
 
@@ -210,6 +215,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       terminals: new TerminalsApi(http),
       voice: new VoiceApi(http),
       vault: new VaultApi(http),
+      // A remote host's window keeps its separate preview window and has no browser tab.
+      browser: window.corralRemote ? null : (window.corralDesktop?.browser ?? null),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');

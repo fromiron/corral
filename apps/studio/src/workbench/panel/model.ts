@@ -32,6 +32,7 @@ import type { PanelMemory } from './memory.ts';
 import {
   type CopyIdentity,
   PANEL_TAB_OF,
+  type PageAt,
   type PanelContext,
   type PanelFronts,
   type PanelTab,
@@ -72,6 +73,8 @@ export interface Awaiting {
   readonly graphs: readonly string[];
   /** 문서 tabs restored from memory, each left for its file's first read after entry. */
   readonly documents: readonly DocumentAwaited[];
+  /** Preview browser tabs restored from memory (their IDs), left for the lease list's answer. */
+  readonly leases?: readonly string[];
 }
 
 /** A restored 문서 tab by its key and the instance it was restored as. */
@@ -95,7 +98,8 @@ function waiting(awaiting: Awaiting): Awaiting | null {
     awaiting.newest ||
     awaiting.terminals.length > 0 ||
     awaiting.graphs.length > 0 ||
-    awaiting.documents.length > 0
+    awaiting.documents.length > 0 ||
+    (awaiting.leases?.length ?? 0) > 0
     ? awaiting
     : null;
 }
@@ -148,6 +152,13 @@ export function tabOf(tab: PanelTab): PanelTab {
       return { kind: 'graph', corralId: tab.corralId };
     case 'tools':
       return { kind: 'tools', view: tab.view };
+    case 'browser': {
+      const { browserId, lease, at } = tab;
+      if (lease) return { kind: 'browser', browserId, lease };
+      return at
+        ? { kind: 'browser', browserId, at: { origin: at.origin, path: at.path } }
+        : { kind: 'browser', browserId };
+    }
     default:
       return { kind: tab.kind };
   }
@@ -203,6 +214,17 @@ export type PanelEvent =
   | { readonly type: 'documentsChecked'; readonly results: readonly DocumentChecked[] }
   /** The tree's Refresh read the source-folder 문서 tabs again and found these files gone. */
   | { readonly type: 'sourceFilesGone'; readonly tabs: readonly DocumentAwaited[] }
+  /**
+   * A browser tab's page opened a new window (`window.open`): its tab, made by the desktop, at
+   * the strip's end, selected (features/browser-tab.md 새 창과 팝업).
+   */
+  | { readonly type: 'browserPopup'; readonly browserId: string; readonly openerId: string }
+  /** "새 탭에서 링크 열기" on a page: a new tab right beside that page's tab, selected. */
+  | { readonly type: 'browserBeside'; readonly browserId: string; readonly besideId: string }
+  /** A page-opened tab's page closed (itself, or by its opener): the tab goes as a close does. */
+  | { readonly type: 'browserGone'; readonly browserId: string }
+  /** An ordinary page's address changed: kept for memory as its origin and path. */
+  | { readonly type: 'browserAt'; readonly browserId: string; readonly at: PageAt | null }
   /** The person picked an inner tab inside 작업, or its first read put 미리보기 in front. */
   | { readonly type: 'toolsView'; readonly view: ToolsView }
   /** The room or the run list in `ctx` changed. */
@@ -350,20 +372,48 @@ function opened(state: PanelState, tab: PanelTab, presentation: Presentation): P
 
 // Something can still be opened: a folder, a terminal, a run, or a run list not answered yet.
 const canOpenMore = (ctx: PanelContext) =>
-  ctx.folder || Boolean(ctx.paddock) || ctx.runIds === null || ctx.runIds.length > 0;
+  ctx.folder ||
+  Boolean(ctx.paddock) ||
+  Boolean(ctx.browser) ||
+  ctx.runIds === null ||
+  ctx.runIds.length > 0;
 
 /**
  * The panel tab an address names. A terminal's tab only when the panel holds it: otherwise the
  * terminal is the bottom dock's to open (as `debug` always is), and the panel stays as it is.
  */
 function addressTab(state: PanelState, target: PanelTarget, ctx: PanelContext): PanelTab | null {
+  if (PANEL_TAB_OF[target.panel] === 'browser') return browserTab(state, target, ctx);
   const tab = targetTab(target, ctx.runIds);
   if (tab?.kind === 'terminal' && !hasTab(state, tabKey(tab))) return null;
   return tab;
 }
+
+/**
+ * The browser tab a target opens (features/browser-tab.md 여는 곳, 계약): one the conversation
+ * has by its ID (never a new one for an unknown ID), a lease's tab or a new one for it, or a new
+ * tab. Only where the desktop browser is, and a new tab only with the ID the frame made.
+ */
+function browserTab(state: PanelState, target: PanelTarget, ctx: PanelContext): PanelTab | null {
+  if (!ctx.browser) return null;
+  if (target.browser)
+    return hasTab(state, `browser:${target.browser}`)
+      ? { kind: 'browser', browserId: target.browser }
+      : null;
+  if (target.lease) {
+    const open = state.tabs.find((tab) => tab.kind === 'browser' && tab.lease === target.lease);
+    if (open) return tabOf(open);
+  }
+  if (!ctx.newBrowserId || hasTab(state, `browser:${ctx.newBrowserId}`)) return null;
+  return target.lease
+    ? { kind: 'browser', browserId: ctx.newBrowserId, lease: target.lease }
+    : { kind: 'browser', browserId: ctx.newBrowserId };
+}
 // An address the bottom dock opens: the panel reads it as one with neither `panel` nor `compose`.
 const dockBound = (target: PanelTarget) =>
-  PANEL_TAB_OF[target.panel] === null || PANEL_TAB_OF[target.panel] === 'terminal';
+  PANEL_TAB_OF[target.panel] === null ||
+  PANEL_TAB_OF[target.panel] === 'terminal' ||
+  PANEL_TAB_OF[target.panel] === 'browser';
 
 /** The tree is a column beside the 문서 tabs: 파일 is open in a wide panel with a 문서 tab. */
 export function treeColumn(state: Pick<PanelState, 'tabs'>, ctx: PanelContext): boolean {
@@ -420,7 +470,9 @@ function maximized(state: PanelState, ctx: PanelContext): PanelState {
 
 function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): PanelState {
   const memory = event.memory;
-  const tabs: OpenTab[] = (memory?.tabs ?? []).map((tab, i) => ({
+  // No browser tab where the desktop browser is not (web mode, a remote host's window).
+  const kept = (memory?.tabs ?? []).filter((tab) => ctx.browser || tab.kind !== 'browser');
+  const tabs: OpenTab[] = kept.map((tab, i) => ({
     ...tabOf(tab),
     instance: i + 1,
     seen: false,
@@ -454,7 +506,7 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
     const open = event.via !== 'history' && memory?.open === true && tabs.length > 0;
     next = presented(base, open ? byAddress(ctx.room) : 'closed');
   } else if (address.kind === 'panel') {
-    const tab = targetTab(address.target, ctx.runIds);
+    const tab = tabNamed;
     const column = event.via === 'link' ? 'opening' : 'address';
     if (tab) {
       next = opened(
@@ -475,9 +527,12 @@ function entered(event: PanelEvent & { type: 'enter' }, ctx: PanelContext): Pane
   const documents = tabs.flatMap((tab) =>
     tab.kind === 'document' ? [{ key: tabKey(tab), instance: tab.instance }] : [],
   );
+  const leases = tabs.flatMap((tab) =>
+    tab.kind === 'browser' && tab.lease ? [tab.browserId] : [],
+  );
   return {
     ...next,
-    awaiting: waiting({ restored, addressRun, newest, terminals, graphs, documents }),
+    awaiting: waiting({ restored, addressRun, newest, terminals, graphs, documents, leases }),
   };
 }
 
@@ -601,6 +656,31 @@ function graphsAnswered(state: PanelState, corralIds: readonly string[]): PanelS
   return next;
 }
 
+// The preview lease list's clean-up, once, on its first answer after entry: restored preview tabs
+// whose lease it does not list as ready are dropped (browser-tab.md 계약 "되살리기의 정리"); a
+// dropped selection goes to the first tab left, or the panel closes.
+function leasesAnswered(state: PanelState, leaseIds: readonly string[]): PanelState {
+  const awaiting = state.awaiting;
+  if (!awaiting?.leases?.length) return state;
+  const listed = new Set(leaseIds);
+  const restored = new Set(awaiting.leases);
+  const tabs = state.tabs.filter(
+    (tab) =>
+      !(
+        tab.kind === 'browser' &&
+        restored.has(tab.browserId) &&
+        tab.lease &&
+        !listed.has(tab.lease)
+      ),
+  );
+  const next: PanelState = {
+    ...state,
+    tabs: tabs.length === state.tabs.length ? state.tabs : tabs,
+    awaiting: waiting({ ...awaiting, leases: [] }),
+  };
+  return reselected(state, next);
+}
+
 // Any of these is the user touching the panel: a pending request for the newest run is dropped.
 const TOUCHES: ReadonlySet<PanelEvent['type']> = new Set([
   'open',
@@ -628,6 +708,7 @@ function settle(state: PanelState, ctx: PanelContext): PanelState {
   let next = ctx.runIds !== null ? answered(state, ctx.runIds, ctx) : state;
   if (ctx.terminalIds) next = terminalsAnswered(next, ctx.terminalIds);
   if (ctx.corralIds) next = graphsAnswered(next, ctx.corralIds);
+  if (ctx.leaseIds) next = leasesAnswered(next, ctx.leaseIds);
   next = presented(next, byRoom(next.presentation, ctx.room));
   if (next.presentation === 'withdrawn' && next.tabs.length === 0) next = presented(next, 'closed');
   next = besideTheTree(next, ctx);
@@ -662,7 +743,10 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
       return entered(event, ctx);
     case 'open': {
       // A terminal's tab opens here only when the page asks for it by its ID.
-      const tab = targetTab(event.target, ctx.runIds);
+      const tab =
+        PANEL_TAB_OF[event.target.panel] === 'browser'
+          ? browserTab(state, event.target, ctx)
+          : targetTab(event.target, ctx.runIds);
       const presentation =
         event.from === 'debugger'
           ? byDebugger(state.presentation, ctx.room)
@@ -721,6 +805,40 @@ function step(state: PanelState, event: PanelEvent, ctx: PanelContext): PanelSta
       return documentsChecked(state, event.results);
     case 'sourceFilesGone':
       return sourceFilesGone(state, event.tabs);
+    case 'browserPopup':
+    case 'browserBeside': {
+      const from = event.type === 'browserPopup' ? event.openerId : event.besideId;
+      const index = state.tabs.findIndex((tab) => tab.kind === 'browser' && tab.browserId === from);
+      if (index < 0 || !ctx.browser || hasTab(state, `browser:${event.browserId}`)) return state;
+      const tab: OpenTab = {
+        kind: 'browser',
+        browserId: event.browserId,
+        instance: state.nextInstance,
+        seen: false,
+      };
+      const tabs = [...state.tabs];
+      tabs.splice(event.type === 'browserPopup' ? tabs.length : index + 1, 0, tab);
+      return {
+        ...state,
+        tabs,
+        nextInstance: state.nextInstance + 1,
+        selected: tabKey(tab),
+      };
+    }
+    case 'browserGone':
+      return closed(state, `browser:${event.browserId}`, ctx);
+    case 'browserAt': {
+      const index = state.tabs.findIndex(
+        (tab) => tab.kind === 'browser' && tab.browserId === event.browserId,
+      );
+      const tab = state.tabs[index];
+      if (tab?.kind !== 'browser' || tab.lease) return state;
+      const same = tab.at?.origin === event.at?.origin && tab.at?.path === event.at?.path;
+      if (same) return state;
+      const { at: _old, ...rest } = tab;
+      const next: OpenTab = event.at ? { ...rest, at: { ...event.at } } : rest;
+      return { ...state, tabs: state.tabs.map((t, i) => (i === index ? next : t)) };
+    }
     case 'context':
       return state;
   }
@@ -824,8 +942,13 @@ function historyOf(
   // Opening or selecting from outside the tab strip adds an entry, even for the tab already
   // selected: the way may point at something inside it. The frame skips an identical write. The
   // debugger's frames only rewrite the address: Back goes past them at once.
-  if (event.type === 'open' && event.from === 'way')
+  if (event.type === 'open' && event.from === 'way') {
+    // A new browser tab or a lease's tab has no ID before it opens: an entry when one opened.
+    if (PANEL_TAB_OF[event.target.panel] === 'browser') return next === previous ? null : 'push';
     return targetTab(event.target, ctx.runIds) ? 'push' : null;
+  }
+  // A page's address is memory only: the app address never carries it.
+  if (event.type === 'browserAt') return null;
   // An entry waiting for the newest run writes nothing, so the address keeps `panel=run`.
   if (event.type === 'enter') return next.awaiting?.newest ? null : 'replace';
   // These arrive with an address already in history; the frame rewrites it to what it shows.

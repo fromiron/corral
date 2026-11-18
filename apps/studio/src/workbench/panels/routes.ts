@@ -1,4 +1,4 @@
-import { relativePath } from '../panel/tabs.ts';
+import { BROWSER_ID, relativePath } from '../panel/tabs.ts';
 import { type PanelDescriptor, SESSION_PANELS, type SessionPanel } from './registry.ts';
 
 export interface RunDetailSearch {
@@ -28,6 +28,8 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   target?: 'original' | undefined;
   /** With `panel=graph`: the team. */
   corral?: string | undefined;
+  /** With `panel=browser`: the browser tab's ID, never the page's address. */
+  browser?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -65,6 +67,12 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     if (search.target === 'original') out.target = 'original';
   }
   if (out.panel === 'graph' && text(search.corral)) out.corral = text(search.corral);
+  if (
+    out.panel === 'browser' &&
+    typeof search.browser === 'string' &&
+    BROWSER_ID.test(search.browser)
+  )
+    out.browser = search.browser;
   if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message', 'advice'] as const) {
@@ -175,7 +183,8 @@ export function sessionPanelDescriptor(
     panel === 'tools' ||
     panel === 'preview' ||
     panel === 'document' ||
-    panel === 'graph'
+    panel === 'graph' ||
+    panel === 'browser'
   )
     return null;
   return { kind: panel, projectId, sessionId };

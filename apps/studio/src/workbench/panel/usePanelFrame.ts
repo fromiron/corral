@@ -76,6 +76,12 @@ export interface PanelFrameInput {
   terminalIds?: readonly string[] | null;
   /** The project's teams; null until read. */
   corralIds?: readonly string[] | null;
+  /** The desktop app's browser tab is here: the "+" list has 브라우저, `panel=browser` opens. */
+  browser?: boolean;
+  /** The conversation's ready preview leases once a listing after the entry answered. */
+  leaseIds?: readonly string[] | null;
+  /** Makes a browser tab's ID (features/browser-tab.md 계약: meaningless, made on opening). */
+  browserId?: () => string;
   /**
    * An address the bottom dock opens arrived (entering or followed, never Back or Forward):
    * `panel=debug`, or `panel=terminal` whose terminal has no tab in the panel. `focus`: it was a
@@ -120,6 +126,8 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     paddock = false,
     terminalIds = null,
     corralIds = null,
+    browser = false,
+    leaseIds = null,
   } = input;
   const router = useRouter();
   // The search of this very entry: the route's own search can lag a render behind the location.
@@ -148,6 +156,8 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     paddock,
     terminalIds,
     corralIds,
+    browser,
+    leaseIds,
     front: fronts.current,
     // The panel's width in the state it is in now; a change reaches the model as context.
     wide: widePanel(state.presentation, workArea, input.rememberedWidth ?? null),
@@ -229,7 +239,12 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
         fronts.current = {};
         now.input.onEnter?.(now.sessionId);
       } else note(now.search, before);
-      const result = reducePanel(before, event, { ...now.ctx, front: fronts.current });
+      const result = reducePanel(before, event, {
+        ...now.ctx,
+        front: fronts.current,
+        // Every event carries a fresh ID; the model uses it only if the event opens a new tab.
+        newBrowserId: now.ctx.browser ? (now.input.browserId ?? newBrowserId)() : undefined,
+      });
       // In this same update, before any holder renders again: a place that lost its controls
       // never lets another place's confirmation show for a moment.
       if (result.dropHeadConfirmation) {
@@ -361,9 +376,10 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   const runKey = runIds === null ? null : runIds.join(',');
   const terminalKey = terminalIds === null ? null : terminalIds.join(',');
   const corralKey = corralIds === null ? null : corralIds.join(',');
+  const leaseKey = leaseIds === null ? null : leaseIds.join(',');
   const contextSeen = useRef<string | null>(null);
   useEffect(() => {
-    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}|${corralKey}|${wide}`;
+    const key = `${sessionId}|${room}|${folder}|${runKey}|${paddock}|${terminalKey}|${corralKey}|${leaseKey}|${browser}|${wide}`;
     if (!entered || room === null) {
       contextSeen.current = null;
       return;
@@ -371,11 +387,25 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     if (contextSeen.current === null) {
       contextSeen.current = key;
       // A listing may have answered before the entry: let its clean-up run.
-      if (runKey === null && terminalKey === null && corralKey === null) return;
+      if (runKey === null && terminalKey === null && corralKey === null && leaseKey === null)
+        return;
     } else if (contextSeen.current === key) return;
     contextSeen.current = key;
     dispatch({ type: 'context' });
-  }, [entered, sessionId, room, folder, runKey, paddock, terminalKey, corralKey, wide, dispatch]);
+  }, [
+    entered,
+    sessionId,
+    room,
+    folder,
+    runKey,
+    paddock,
+    terminalKey,
+    corralKey,
+    leaseKey,
+    browser,
+    wide,
+    dispatch,
+  ]);
 
   // The selected tab's own state (and front), as the address carries it.
   useEffect(() => {
@@ -401,6 +431,11 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     tabSearch: (key) => tabStates.current.get(key),
     fronts: fronts.current,
   };
+}
+
+/** A browser tab's ID: random, so it says nothing of the page (browser-tab.md 계약). */
+function newBrowserId(): string {
+  return `b_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
 }
 
 function unchanged(state: PanelState): PanelResult {

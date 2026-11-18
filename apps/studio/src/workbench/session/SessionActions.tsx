@@ -172,7 +172,7 @@ export function SessionActions({
   };
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
-  const { workspaces } = useServices();
+  const { workspaces, browser } = useServices();
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   const tpanel = useTranslations('SessionPanel');
@@ -204,7 +204,8 @@ export function SessionActions({
       : []),
     // Every pane from the one catalog: its tab's name, its `/` name and the words other screens
     // use for it (#70, #86).
-    ...PANE_CATALOG.map(
+    // 브라우저 only where the desktop app's browser tab is (features/browser-tab.md 여는 곳).
+    ...PANE_CATALOG.filter((entry) => entry.view !== 'browser' || browser).map(
       (entry): AppCommand => ({
         id: `panel:${entry.view}`,
         // The tab's own name: the debugger opens as the bottom dock's 디버그 tab.

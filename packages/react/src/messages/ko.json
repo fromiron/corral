@@ -4581,6 +4581,7 @@
     "terminal": "터미널",
     "tools": "작업",
     "preview": "미리보기",
+    "browser": "브라우저",
     "activeRunTarget": "요청: {request}",
     "git": "Git",
     "team": "Corral"

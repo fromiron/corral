@@ -11,7 +11,8 @@ export type TabKind =
   | 'changes'
   | 'run'
   | 'artifacts'
-  | 'tools';
+  | 'tools'
+  | 'browser';
 
 /** Where a document's file is: the project's source folder, or the conversation's Paddock. */
 export type DocumentSource = 'original' | 'copy';
@@ -24,6 +25,15 @@ export interface CopyIdentity {
 
 /** The inner tab in front inside 작업: its tasks or its previews. */
 export type ToolsView = 'tasks' | 'preview';
+
+/** An ordinary page's address as memory keeps it: its http(s) origin and path, nothing else. */
+export interface PageAt {
+  readonly origin: string;
+  readonly path: string;
+}
+
+/** A browser tab's ID: made when the tab opens, meaning nothing (features/browser-tab.md 계약). */
+export const BROWSER_ID = /^[A-Za-z0-9_-]{1,80}$/;
 
 /**
  * A tab of the panel. 파일, 변경, 결과 and 작업 are one per conversation; 문서 is one per file (its
@@ -43,7 +53,18 @@ export type PanelTab =
   | { readonly kind: 'run'; readonly runId: string }
   | { readonly kind: 'terminal'; readonly terminalId: string }
   /** `view`: the inner tab in front; null until something names one or the person picks. */
-  | { readonly kind: 'tools'; readonly view: ToolsView | null };
+  | { readonly kind: 'tools'; readonly view: ToolsView | null }
+  /**
+   * One web page (features/browser-tab.md). `lease`: a preview page of that preview lease, fixed
+   * when the tab opens; without it an ordinary page, whose last address is `at` (none yet in a
+   * new tab).
+   */
+  | {
+      readonly kind: 'browser';
+      readonly browserId: string;
+      readonly lease?: string | undefined;
+      readonly at?: PageAt | undefined;
+    };
 
 /** A tab's identity in the strip: two tabs with the same key are the same tab. */
 export type TabKey =
@@ -54,7 +75,8 @@ export type TabKey =
   | `document:${DocumentSource}:${string}`
   | `graph:${string}`
   | `run:${string}`
-  | `terminal:${string}`;
+  | `terminal:${string}`
+  | `browser:${string}`;
 
 /**
  * Every `panel` value names the tab that carries it ("탭" table). `debug` names the bottom dock's
@@ -75,6 +97,7 @@ export const PANEL_TAB_OF: Readonly<Record<SessionPanel, TabKind | null>> = {
   problems: 'changes',
   run: 'run',
   artifacts: 'artifacts',
+  browser: 'browser',
 };
 
 /** What an opening way or an address asks for: a `panel` value and, for 실행, a run. */
@@ -89,6 +112,10 @@ export interface PanelTarget {
   readonly source?: DocumentSource | undefined;
   /** For 팀 그래프: the team; without one the target names no tab. */
   readonly corral?: string | undefined;
+  /** For 브라우저: the tab's ID; without it (and without `lease`) a new tab is asked for. */
+  readonly browser?: string | undefined;
+  /** For 브라우저: a preview lease to open, in its own tab or the one already open for it. */
+  readonly lease?: string | undefined;
 }
 
 /** What the conversation can open now, passed in with every event. */
@@ -125,6 +152,18 @@ export interface PanelContext {
    * (`terminal`, `git`, …), so the address written for that tab names it.
    */
   readonly front?: PanelFronts | undefined;
+  /**
+   * The desktop app's browser tab is here (not web mode, not a remote host's window): the "+"
+   * list ends with 브라우저 and `panel=browser` opens a tab.
+   */
+  readonly browser?: boolean | undefined;
+  /** A fresh ID the frame made for this event, used if the event opens a new browser tab. */
+  readonly newBrowserId?: string | undefined;
+  /**
+   * The conversation's ready preview leases, from a listing asked after this entry; null until it
+   * answers, and null when it cannot be read (restored preview tabs then stay).
+   */
+  readonly leaseIds?: readonly string[] | null | undefined;
 }
 
 /** The window or view in front inside each tab that has them. */
@@ -134,7 +173,14 @@ export interface PanelFronts {
 }
 
 /** The "+" list's items, in their order. */
-export type PlusItem = 'files' | 'terminal' | 'changes' | 'run-history' | 'artifacts' | 'tools';
+export type PlusItem =
+  | 'files'
+  | 'terminal'
+  | 'changes'
+  | 'run-history'
+  | 'artifacts'
+  | 'tools'
+  | 'browser';
 
 export function tabKey(tab: PanelTab): TabKey {
   switch (tab.kind) {
@@ -146,6 +192,8 @@ export function tabKey(tab: PanelTab): TabKey {
       return `document:${tab.source}:${tab.path}`;
     case 'graph':
       return `graph:${tab.corralId}`;
+    case 'browser':
+      return `browser:${tab.browserId}`;
     default:
       return tab.kind;
   }
@@ -172,6 +220,9 @@ export function targetTab(target: PanelTarget, runIds: readonly string[] | null)
       ? { kind: 'document', source: target.source ?? 'copy', path: target.file }
       : null;
   if (kind === 'graph') return target.corral ? { kind: 'graph', corralId: target.corral } : null;
+  // A browser tab is named by its ID; a new tab or a lease's tab is the model's to resolve.
+  if (kind === 'browser')
+    return target.browser ? { kind: 'browser', browserId: target.browser } : null;
   // `panel=tools` leaves the inner tab as it is; `panel=preview` puts 미리보기 in front.
   if (kind === 'tools')
     return { kind: 'tools', view: target.panel === 'preview' ? 'preview' : null };
@@ -185,7 +236,9 @@ export function targetTab(target: PanelTarget, runIds: readonly string[] | null)
 }
 
 /** The "+" list: only what can be opened now, in order; run items once the run list is known. */
-export function plusItems(ctx: Pick<PanelContext, 'folder' | 'runIds' | 'paddock'>): PlusItem[] {
+export function plusItems(
+  ctx: Pick<PanelContext, 'folder' | 'runIds' | 'paddock' | 'browser'>,
+): PlusItem[] {
   const runs = (ctx.runIds?.length ?? 0) > 0;
   return [
     ...(ctx.folder ? (['files'] as const) : []),
@@ -194,6 +247,7 @@ export function plusItems(ctx: Pick<PanelContext, 'folder' | 'runIds' | 'paddock
     ...(ctx.folder ? (['changes'] as const) : []),
     ...(runs ? (['run-history', 'artifacts'] as const) : []),
     ...(ctx.paddock ? (['tools'] as const) : []),
+    ...(ctx.browser ? (['browser'] as const) : []),
   ];
 }
 
@@ -215,4 +269,25 @@ export function relativePath(value: unknown): value is string {
   if (typeof value !== 'string' || value.length === 0 || value.length > 4096) return false;
   if (value.startsWith('/') || value.includes('\0')) return false;
   return value.split('/').every((part) => part !== '' && part !== '.' && part !== '..');
+}
+
+/**
+ * What memory keeps of an ordinary page's address: its origin and path, without the query, the
+ * fragment, a user name or a password. Null for anything but http(s).
+ */
+export function pageAt(url: string): PageAt | null {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return null;
+  }
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+  return { origin: parsed.origin, path: parsed.pathname };
+}
+
+/** A remembered origin is one an http(s) address gives as its own origin. */
+export function pageOrigin(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length > 2048) return false;
+  return pageAt(value)?.origin === value;
 }

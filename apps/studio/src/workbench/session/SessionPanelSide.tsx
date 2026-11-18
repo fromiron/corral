@@ -23,6 +23,7 @@ import {
   FileLock2,
   FileText,
   Folder,
+  Globe,
   History,
   ListChecks,
   Maximize2,
@@ -70,6 +71,7 @@ const ICONS = {
   changes: FileDiff,
   run: History,
   artifacts: FileText,
+  browser: Globe,
 } as const;
 const PLUS_ICONS: Record<PlusItem, (typeof ICONS)[Kind]> = {
   files: Folder,
@@ -78,6 +80,7 @@ const PLUS_ICONS: Record<PlusItem, (typeof ICONS)[Kind]> = {
   'run-history': History,
   artifacts: FileText,
   tools: ListChecks,
+  browser: Globe,
 };
 
 /**

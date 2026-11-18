@@ -32,6 +32,7 @@ export type PanelAddress =
       readonly file?: string;
       readonly target?: 'original';
       readonly corral?: string;
+      readonly browser?: string;
     }
   | { readonly compose: true };
 
@@ -51,6 +52,7 @@ export const FRAME_PARAMS = [
   'file',
   'target',
   'corral',
+  'browser',
   'message',
   'respond',
   'advice',
@@ -84,6 +86,7 @@ export function panelTarget(search: SessionSearch): PanelTarget | null {
       ...(search.target === 'original' ? { source: 'original' as const } : {}),
     };
   if (panel === 'graph' && search.corral) return { panel, corral: search.corral };
+  if (panel === 'browser' && search.browser) return { panel, browser: search.browser };
   return { panel };
 }
 
@@ -104,6 +107,7 @@ export function panelAddress(state: PanelState, fronts?: PanelFronts): PanelAddr
       ...(tab.source === 'original' ? { target: 'original' as const } : {}),
     };
   if (tab.kind === 'graph') return { panel: 'graph', corral: tab.corralId };
+  if (tab.kind === 'browser') return { panel: 'browser', browser: tab.browserId };
   const front: SessionPanel | undefined =
     tab.kind === 'files' ? fronts?.files : tab.kind === 'changes' ? fronts?.changes : undefined;
   return { panel: front && PANEL_TAB_OF[front] === tab.kind ? front : tabPanel(tab) };

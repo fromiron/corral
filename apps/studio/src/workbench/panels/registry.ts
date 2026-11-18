@@ -17,6 +17,7 @@ export const SESSION_PANELS = [
   'terminal',
   'tools',
   'preview',
+  'browser',
 ] as const;
 export type SessionPanel = (typeof SESSION_PANELS)[number];
 /**
@@ -112,6 +113,12 @@ export const PANE_CATALOG: readonly PaneEntry[] = [
     group: 'develop',
     slash: 'preview',
     aliases: ['preview', 'service', 'server', '미리보기', '서버'],
+  },
+  {
+    view: 'browser',
+    group: 'develop',
+    slash: 'browser',
+    aliases: ['browser', 'web', 'page', 'website', 'url', '브라우저', '웹', '페이지', '주소'],
   },
   {
     view: 'checks',

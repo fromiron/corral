@@ -92,6 +92,7 @@ describe('reading the session address (주소와 기억)', () => {
         'file',
         'target',
         'corral',
+        'browser',
         'message',
         'respond',
         'advice',

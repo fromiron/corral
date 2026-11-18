@@ -31,6 +31,7 @@ describe('the panel tabs (탭)', () => {
       problems: 'changes',
       run: 'run',
       artifacts: 'artifacts',
+      browser: 'browser',
     });
   });
 
