@@ -153,11 +153,12 @@ it('keys the page owns are left alone, and IME composition always is', () => {
 });
 
 it('a rebinding from the host replaces the app chords; Mod+R and zoom stay fixed', () => {
-  const chords = pageShortcuts([
-    { id: 'palette', mod: true, key: 'p' },
-    { id: 'view.dock', mod: true, shift: true, key: 'j' },
-    { id: 'reload.hijack', mod: true, key: 'r' },
-  ]);
+  const chords = pageShortcuts({
+    palette: { mod: true, key: 'p' },
+    'view.dock': { mod: true, shift: true, key: 'j' },
+    'reload.hijack': { mod: true, key: 'r' },
+    'reply.quote': { alt: true, key: 'q' },
+  });
   expect(pageKey(key({ key: 'p', code: 'KeyP', control: true }), chords, false)).toEqual({
     action: 'shortcut',
     id: 'palette',
@@ -166,42 +167,45 @@ it('a rebinding from the host replaces the app chords; Mod+R and zoom stay fixed
   expect(pageKey(key({ key: 'r', code: 'KeyR', control: true }), chords, false)).toEqual({
     action: 'reload',
   });
+  // Alt-only chords stay with the page.
+  expect(pageKey(key({ key: 'q', code: 'KeyQ', alt: true }), chords, false)).toBeNull();
+  expect(pageShortcuts({})).toEqual([]);
   for (const value of [
     null,
-    {},
-    [{ id: 'palette', key: 'k' }],
-    [{ id: 'palette', mod: true, key: 'Enter' }],
-    [{ id: 'palette', mod: true, key: 'k', extra: 1 }],
-    [{ id: 'bad id!', mod: true, key: 'k' }],
-    Array.from({ length: 65 }, (_, index) => ({ id: `x${index}`, mod: true, key: 'k' })),
+    [],
+    [{ id: 'palette', mod: true, key: 'k' }],
+    { palette: { mod: true, key: 'Enter' } },
+    { palette: { mod: true, key: 'k', extra: 1 } },
+    { palette: { mod: 'yes', key: 'k' } },
+    { palette: null },
+    { 'bad id!': { mod: true, key: 'k' } },
+    Object.fromEntries(Array.from({ length: 65 }, (_, n) => [`x${n}`, { mod: true, key: 'k' }])),
   ])
     expect(() => pageShortcuts(value)).toThrow();
 });
 
-it('the default app chords match the studio shortcut registry (desktop chords with Mod)', () => {
+it("the default app chords are the studio registry's Mod chords, and the whole registry is accepted", () => {
   const source = readFileSync(
     resolve(import.meta.dirname, '../../studio/src/shortcuts.ts'),
     'utf8',
   );
   const body = source.slice(source.indexOf('export const SHORTCUTS'));
-  const registry: PageChord[] = [];
+  // Every entry, as the studio's effectiveShortcuts() hands them over (Alt-only ones too).
+  const bindings: Record<string, Omit<PageChord, 'id'>> = {};
   for (const match of body
     .slice(0, body.indexOf('];'))
     .matchAll(/\{ id: '([^']+)', chord: \{([^}]*)\}/g)) {
     const chord = match[2] ?? '';
     const flag = (name: string) => new RegExp(`${name}: true`).test(chord);
-    const keyName = /key: '([^']+)'/.exec(chord)?.[1] ?? '';
-    if (!flag('mod')) continue;
-    registry.push({
-      id: match[1] ?? '',
-      key: keyName,
-      mod: true,
+    bindings[match[1] ?? ''] = {
+      key: /key: '([^']+)'/.exec(chord)?.[1] ?? '',
+      ...(flag('mod') ? { mod: true } : {}),
       ...(flag('shift') ? { shift: true } : {}),
       ...(flag('alt') ? { alt: true } : {}),
-    });
+    };
   }
-  expect(registry.length).toBeGreaterThan(8);
-  expect(APP_PAGE_SHORTCUTS).toEqual(registry);
+  expect(Object.keys(bindings).length).toBeGreaterThan(Object.keys(APP_PAGE_SHORTCUTS).length);
+  expect(pageShortcuts(bindings)).toEqual(APP_PAGE_SHORTCUTS);
 });
 
 it('a new window needs a fresh input within 5 s, and one input opens one window', () => {

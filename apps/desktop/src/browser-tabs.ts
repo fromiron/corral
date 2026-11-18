@@ -38,7 +38,6 @@ import {
   NewWindowActivation,
   type PageChord,
   pageKey,
-  pageShortcuts,
   permissionCheck,
   permissionRequest,
   type SitePermission,
@@ -387,8 +386,9 @@ export class BrowserTabs {
     if (contents) contents.setZoomLevel(zoomLevel(contents.getZoomLevel(), zoom));
   }
 
-  setShortcuts(value: unknown) {
-    this.shortcuts = pageShortcuts(value);
+  /** The app chords taken from pages (already validated by browser-ipc's pageShortcuts). */
+  setShortcuts(chords: readonly PageChord[]) {
+    this.shortcuts = chords;
   }
 
   // ---- closing ----

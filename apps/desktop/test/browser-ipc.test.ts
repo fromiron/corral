@@ -32,6 +32,10 @@ it('valid calls reach the tab manager as typed values', async () => {
   await handlers['browser-answer-login']?.('tab_1', 'request-2', { username: 'a', password: 'b' });
   await handlers['browser-answer-login']?.('tab_1', 'request-3', null);
   await handlers['browser-forget-permission']?.('project_1', 'https://a.example', 'camera');
+  await handlers['browser-set-shortcuts']?.({
+    palette: { mod: true, key: 'k' },
+    'reply.quote': { alt: true, key: 'q' },
+  });
   expect(calls).toEqual([
     ['navigate', ['tab_1', 'project_1', 'example.com']],
     ['place', ['tab_1', rect]],
@@ -41,6 +45,7 @@ it('valid calls reach the tab manager as typed values', async () => {
     ['answerLogin', ['tab_1', 'request-2', { username: 'a', password: 'b' }]],
     ['answerLogin', ['tab_1', 'request-3', null]],
     ['forgetPermission', ['project_1', 'https://a.example', 'camera']],
+    ['setShortcuts', [[{ id: 'palette', key: 'k', mod: true }]]],
   ]);
 });
 
@@ -61,7 +66,8 @@ it('malformed calls are refused before they reach a page', () => {
     ['browser-forget-permission', ['project_1', 'https://a.example', 'sudo']],
     ['browser-freeze', ['tab_1', { id: 1 }]],
     ['browser-open-preview', ['tab_1', 'session 1', 'lease_1']],
-    ['browser-set-shortcuts', [[{ id: 'palette', key: 'k' }]]],
+    ['browser-set-shortcuts', [{ palette: { mod: true, key: 'Enter' } }]],
+    ['browser-set-shortcuts', [[{ id: 'palette', mod: true, key: 'k' }]]],
     ['browser-capture-preview', ['tab_1', { screenshot: 'yes', console: false }]],
   ];
   for (const [name, args] of bad) {

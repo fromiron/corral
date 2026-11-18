@@ -152,8 +152,15 @@ export interface BrowserBridge {
   clearProjectData(projectId: string): Promise<void>;
   /** The project was removed from Corral: its tabs close and its browser storage goes. */
   removeProject(projectId: string): Promise<void>;
-  /** The app shortcuts (with their rebindings) to take from pages. */
-  setShortcuts(chords: PageChord[]): Promise<void>;
+  /**
+   * The app shortcuts to take from pages, as `effectiveShortcuts()` gives them (id → chord, the
+   * person's rebindings included). Chords without Mod stay with the page.
+   */
+  setShortcuts(
+    bindings: Partial<
+      Record<string, { key: string; mod?: boolean; shift?: boolean; alt?: boolean }>
+    >,
+  ): Promise<void>;
   /** Element capture on a preview tab (workbench.md "미리보기 요소 피드백"). */
   capturePreview(
     tabId: string,

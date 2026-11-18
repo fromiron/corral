@@ -224,7 +224,7 @@ it('keys: Shift+Escape and app shortcuts go to the host, Mod+R and zoom act on t
   const composing = page.key({ key: 'Escape', shift: true, isComposing: true });
   expect(composing.preventDefault).not.toHaveBeenCalled();
   // The host's rebinding replaces the chords taken from pages.
-  f.tabs.setShortcuts([{ id: 'palette', mod: true, key: 'p' }]);
+  f.tabs.setShortcuts([{ id: 'palette', mod: true, key: 'p' }]); // as browser-ipc parses it
   expect(page.key({ key: 'k', code: 'KeyK', control: true }).preventDefault).not.toHaveBeenCalled();
   expect(page.key({ key: 'p', code: 'KeyP', control: true }).preventDefault).toHaveBeenCalled();
 });

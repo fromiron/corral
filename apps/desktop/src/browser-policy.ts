@@ -85,32 +85,39 @@ export const APP_PAGE_SHORTCUTS: readonly PageChord[] = [
   { id: 'run.stop', key: '.', mod: true },
 ];
 
-/** The host's current app chords (its rebindings), validated. */
+/**
+ * The host's app shortcuts as the studio binds them (`effectiveShortcuts()`: id → chord, its
+ * rebindings included), validated. Chords without Mod (Alt-only ones) stay with the page.
+ */
 export function pageShortcuts(value: unknown): PageChord[] {
-  if (!Array.isArray(value) || value.length > 64) throw new Error('Invalid browser shortcuts');
-  return value.map((raw) => {
-    if (!raw || typeof raw !== 'object' || Array.isArray(raw))
+  if (!value || typeof value !== 'object' || Array.isArray(value))
+    throw new Error('Invalid browser shortcuts');
+  const entries = Object.entries(value);
+  if (entries.length > 64) throw new Error('Invalid browser shortcuts');
+  const chords: PageChord[] = [];
+  for (const [id, raw] of entries) {
+    if (!/^[a-z][a-z.]{0,39}$/.test(id) || !raw || typeof raw !== 'object' || Array.isArray(raw))
       throw new Error('Invalid browser shortcut');
     const chord = raw as Record<string, unknown>;
     if (
-      Object.keys(chord).some((name) => !['id', 'key', 'mod', 'shift', 'alt'].includes(name)) ||
-      typeof chord.id !== 'string' ||
-      !/^[a-z][a-z.]{0,39}$/.test(chord.id) ||
-      chord.mod !== true ||
+      Object.keys(chord).some((name) => !['key', 'mod', 'shift', 'alt'].includes(name)) ||
       typeof chord.key !== 'string' ||
       !/^(?:[a-z0-9,./[\]]|Digit)$/i.test(chord.key) ||
+      (chord.mod !== undefined && typeof chord.mod !== 'boolean') ||
       (chord.shift !== undefined && typeof chord.shift !== 'boolean') ||
       (chord.alt !== undefined && typeof chord.alt !== 'boolean')
     )
       throw new Error('Invalid browser shortcut');
-    return {
-      id: chord.id,
+    if (chord.mod !== true) continue;
+    chords.push({
+      id,
       key: chord.key,
       mod: true,
       ...(chord.shift ? { shift: true } : {}),
       ...(chord.alt ? { alt: true } : {}),
-    };
-  });
+    });
+  }
+  return chords;
 }
 
 export interface PageKeyInput {
