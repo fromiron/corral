@@ -549,7 +549,7 @@ S2와 함께 아래의 명세와 킷 커밋도 읽는다.
 - S3 명세: `276108bf`, `a3a12072`, `a8c3d8cb`, `406daae4`, `2252480b`, `e48d13cf`, `1dbc443e`, `46141d49`.
 - S4 명세: `9c2be95b`, `8496f2fe`, `1464af63`, `9d2c7ae0`, `7cc325ad`, `4a7a9b54`, `7344d330`, `5e3581e2`, `b0897d07`, `51076924`, `7c8a9558`, `05c46e5d`.
 - S5 명세: `f346ee13`, `a2e19293`, `97b5df72`, `cfbc6027`, `96b01898`, `fd5c9610`, `ae6f1fae`, `1b45b4f6`, `84ea4b61`, `c8fa0358`, `8dcb8ff3`, `77c2aaef`, `05e7e7b1`, `13277ef3`.
-- S6 명세: `960a1236`, `f92ef31d`, `0ff16ab9`, `0b72c828`, `955499d6`, `26798236`, `05024d23`, `0730c323`, `ee237727`, `dc229900`, `f36b7b37`, `e5b97164`, `d6a97175`, `4bfa88fb`, `4d5bc5bc`, `789caca2`.
+- S6 명세: `960a1236`, `f92ef31d`, `0ff16ab9`, `0b72c828`, `955499d6`, `26798236`, `05024d23`, `0730c323`, `ee237727`, `dc229900`, `f36b7b37`, `e5b97164`, `d6a97175`, `4bfa88fb`, `4d5bc5bc`, `789caca2`, `fd074fb9`, `bd274873`, `0fe57599`.
 - S4의 킷: `c9fa6b7d`, `6a383a10`, `dc1b2eff`, `356802cd`, `2c2c471a`, `f86de1b6`, `53087055`, `403d6827`, `eccb9960`.
 - S4 앱: `a082dd4f`, `5769fdf7`, `2e087248`, `3dd173cc`, `ed07c824`, `7931a9cf`, `4257d873`, `18701cd8`, `325929e2`, `afadfdf2`, `62783be0`, `fb6e6812`, `3daa18d4`, `60e80a61`, `18e30c75`, `b30b47cd`, `64272657`, `8b9835d2`, `abdd7a40`, `d1105332`, `5c410d07`, `a52a4f80`, `9c885e90`, `0642fc84`, `ce57dfaf`, `8f00949f`, `694721f7`, `2ec9bcb4`([S4 구현](#s4-구현-리뷰-전)의 기록의 주의를 함께 읽는다).
 - S3 팀 편집기의 쌓기(구현): `0600dcb6`, `5a0ef3af`, `db7a1299`, `f77f7062`, `e59a5559`, `8b9ae8fc`.
@@ -804,6 +804,7 @@ S5를 끝으로 치기 전에 실제 앱을 Xvfb에서 한 번 돌린다: 탭을
 
 - 계약: `facc55f7`. 일반 페이지의 provenance 종류 `page`, 데스크톱이 앱 페이지에 넘기는 `AnnotationMaterial`과 그것으로 만드는 첨부 본문 `PageAnnotation`. 명세는 `4bfa88fb`(api-contract의 `POST /sessions/:id/entries` 줄과 [계약](../specs/features/browser-annotate.md#계약)의 첨부).
 - 서버 쪽 확인: 주석의 서버 쪽 검사는 스튜디오를 만드는 이의 통합 테스트 `465077c9`(`apps/server/test/page-annotation.test.ts`)다. `page`가 든 주석이 항목(`POST /sessions/:id/entries`)과 실행 시작(`POST /runs/auto`)에 받아지고, `path`에 쿼리나 조각, `origin`에 자격 증명이 들면 둘 다 400으로 거절된다. 계약의 스키마가 이미 거절하고 있어 처음 돌린 때 지났다. `steer`는 이 테스트에 없다(같은 `TextAttachments` 스키마를 쓴다).
+- [만들 것] 이미지 올리기: `POST /sessions/:id/images`의 코드는 api-contract의 그 줄(`4d5bc5bc`, `bd274873`, `0fe57599`)보다 뒤처져 있다. 지금은 모든 실패가 400 `SCHEMA_INVALID`이고 보관한 세션은 거절한다. 줄은 없는 세션 `TARGET_NOT_FOUND`, 세션의 64 MiB `LIMIT_REACHED`, 저장소 오류 `STORAGE_UNAVAILABLE`이고, 보관한 세션에도 저장한다(동작의 바뀜, [Workbench](../specs/workbench.md#세션-목록과-검색)를 따른다). 만드는 이의 반례 테스트와 고침이 들어오면 이 줄을 지운다. 주석 칸은 그 코드마다 제 문장을 보인다: 형식과 크기는 입력창의 `imageFailed`, 세션의 한도는 따로인 문장(조정자가 만드는 이에게 전함).
 - 앱 페이지: `0ed7f9b1`, 주석을 켜고 끄는 단계. 브라우저 탭 머리의 주석 버튼과 Mod+Shift+D(`browser.annotate`), 데스크톱의 사건을 따르는 모드, 덧뷰에 넘기는 맥락. 그 앞의 `2f2723d9`는 보내기 키의 판단(`sendKeyRole`, `isSendKey`)을 `workbench/sendKey.ts`로 떼어, 덧뷰가 기본 설정 저장소를 들이지 않고 입력창과 같게 키를 읽게 했다.
 - 설정 금고(vault): `7c5e3340`, 보관 내보내기의 이동 가능한 단축키에 `browser.annotate`를 더함. 단축키 ID의 목록은 명세에 없고 코드에만 있다: 서버의 `PortableApplication`(`apps/server/src/vault/service.ts`), `packages/client/src/vault.ts`, `apps/studio/src/shortcuts.ts`. 명세는 단축키 ID를 기능마다 하나씩 적는다.
 
