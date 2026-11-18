@@ -265,7 +265,6 @@ async function mount({
           searches.push(patch);
           setSearch((previous) => ({ ...previous, ...patch }));
         }}
-        embedded
         shown={host.shown}
         copyChanged={host.copyChanged}
         {...(attach ? { onAttach: attach } : {})}

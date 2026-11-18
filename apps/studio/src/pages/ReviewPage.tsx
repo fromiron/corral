@@ -11,7 +11,7 @@ import type {
 } from '@corral/client';
 import { TERMINAL_RUN_STATUSES, type TextAttachment } from '@corral/contracts';
 import type { RunSummary, SessionEntryStart, WorkSession } from '@corral/core';
-import { EmptyView, TermHint } from '@corral/react';
+import { EmptyView } from '@corral/react';
 import {
   Badge,
   Button,
@@ -129,11 +129,9 @@ export function ReviewContent({
   session,
   search,
   onSearch,
-  embedded = false,
   onPrepareCopy,
   onSessionChange,
   rangeSlot,
-  showChecks = true,
   shown = true,
   copyChanged,
   onAttach,
@@ -141,16 +139,13 @@ export function ReviewContent({
   session: WorkSession;
   search: ReviewSearch;
   onSearch: (patch: Partial<ReviewSearch>) => void;
-  embedded?: boolean;
   onPrepareCopy?: () => void;
   onSessionChange?: () => void | Promise<void>;
   /**
    * Where the host's header shows the compare range. A host that gives one owns the view's
-   * header (and its "mark all read" action); without one this view heads itself.
+   * header (and its "mark all read" action); without one this view shows the range itself.
    */
   rangeSlot?: HTMLElement | null;
-  /** False where checks have their own view beside this one. */
-  showChecks?: boolean;
   /** False while a host keeps the view mounted behind another; showing it again reads it again. */
   shown?: boolean;
   /** Changes whenever the copy may have changed outside this view (a run of the session moved). */
@@ -164,7 +159,6 @@ export function ReviewContent({
   const tr = useTranslations('Review');
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Sessions');
-  const reviewedHint = useId();
   const services = useServices();
   const { workspaces, transport, mode } = services;
   const current = useRef({ services, session });
@@ -402,8 +396,6 @@ export function ReviewContent({
           ? t('runChangedNothing')
           : t('nothingChanged')
         : t('chooseFile');
-  const Container = embedded ? 'div' : 'main';
-
   return (
     <WorkbenchLayout
       key={panelKey(services, {
@@ -412,50 +404,14 @@ export function ReviewContent({
         sessionId: session.sessionId,
       })}
       main={
-        <Container
+        <div
           ref={setRoot}
           className="@container/review flex h-full min-h-0 min-w-0 flex-1 flex-col"
         >
           {rangeSlot ? createPortal(range, rangeSlot) : null}
-          {!embedded || rangeSlot === undefined ? (
+          {rangeSlot === undefined ? (
             <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-border px-3 py-2">
-              {!embedded ? (
-                <>
-                  <Link
-                    to="/sessions/$sessionId"
-                    params={{ sessionId: session.sessionId }}
-                    className="text-caption underline"
-                  >
-                    ← {session.title}
-                  </Link>
-                  <h2 className="text-title" style={semibold}>
-                    {t('reviewHeading')}
-                  </h2>
-                </>
-              ) : null}
-              {rangeSlot === undefined ? range : null}
-              {!embedded ? (
-                <>
-                  <Button
-                    variant="tertiary"
-                    onClick={() =>
-                      void workspaces
-                        ?.markReviewed(session.sessionId)
-                        .then(() => setVersion((n) => n + 1))
-                    }
-                    title={t('reviewedNote')}
-                    aria-describedby={reviewedHint}
-                    className="ml-auto"
-                  >
-                    {t('markReviewed')}
-                  </Button>
-                  {/* The baseline always covers the whole current copy (#78 IA-07); the button
-                      names it, so the longer note is its description and tooltip only. */}
-                  <span id={reviewedHint} className="sr-only">
-                    {t('reviewedNote')}
-                  </span>
-                </>
-              ) : null}
+              {range}
             </header>
           ) : null}
           {runsLost ? (
@@ -468,13 +424,11 @@ export function ReviewContent({
               data-testid="review-empty"
               className="mx-auto flex max-w-lg flex-col items-start gap-3 p-8"
             >
-              {/* The page's one place for the Paddock term (glossary.md); in the Changes pane its
-                  setup view above is the place. */}
+              {/* The Paddock term is explained by the Changes tab's setup view above (glossary.md). */}
               <div className="flex items-start gap-1 text-subtitle">
                 <h3 className="text-subtitle" style={semibold}>
                   {t('noCopyTitle')}
                 </h3>
-                {!embedded ? <TermHint term="paddock" firstLine /> : null}
               </div>
               <p className="m-0 text-body text-muted-foreground">{t('noCopyBody')}</p>
               <div className="flex flex-wrap gap-2">
@@ -683,17 +637,6 @@ export function ReviewContent({
                     )}
                   />
                 ) : null}
-                {showChecks ? (
-                  <div className="border-t border-border pt-3">
-                    <Checks
-                      sessionId={session.sessionId}
-                      projectId={session.projectId}
-                      binding={binding ?? null}
-                      changed={version}
-                      onAttach={onAttach}
-                    />
-                  </div>
-                ) : null}
                 <Operations sessionId={session.sessionId} />
               </div>
             </aside>
@@ -709,7 +652,7 @@ export function ReviewContent({
               <div ref={setSendSlot} className="contents" />
             </div>
           ) : null}
-        </Container>
+        </div>
       }
     />
   );

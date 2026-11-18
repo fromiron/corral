@@ -229,7 +229,6 @@ async function mount(
               session={session}
               search={{}}
               onSearch={() => {}}
-              embedded
               onSessionChange={options.onSessionChange}
             />
           ) : (

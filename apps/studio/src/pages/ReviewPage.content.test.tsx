@@ -62,7 +62,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount({ embedded = true, noCopy = false } = {}) {
+async function mount({ noCopy = false } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const session: WorkSession = {
     sessionId: 'session_embedded',
@@ -123,7 +123,6 @@ async function mount({ embedded = true, noCopy = false } = {}) {
           searchChanged(patch);
           setSearch((previous) => ({ ...previous, ...patch }));
         }}
-        embedded
         onPrepareCopy={prepare}
       />
     );
@@ -135,16 +134,7 @@ async function mount({ embedded = true, noCopy = false } = {}) {
     await act(async () => root.unmount());
     container.remove();
   });
-  // Unembedded, the view heads itself: no host gives it a header.
-  await act(async () =>
-    root.render(
-      embedded ? (
-        <Embedded />
-      ) : (
-        <ReviewContent session={session} search={{ scope: 'review' }} onSearch={() => {}} />
-      ),
-    ),
-  );
+  await act(async () => root.render(<Embedded />));
   return {
     container,
     prepare,
@@ -188,34 +178,11 @@ it('selects review files through the Changes tab that holds the review', async (
   }
 });
 
-// glossary.md, "설명이 붙는 용어": on the Changes page without a Paddock, the empty state's
-// title explains the term by one icon right after it. In the Changes pane the pane's own setup
-// view is the place (FilesViews), so the embedded review draws none.
-it.each([
-  [false, 1],
-  [true, 0],
-])('without a Paddock (embedded: %s), draws %i Paddock icon', async (embedded, count) => {
-  const view = await mount({ embedded, noCopy: true });
-  const hints = [...view.container.querySelectorAll<HTMLElement>('[data-term-hint]')];
-  expect(hints).toHaveLength(count);
-  if (!count) return;
-  const hint = hints[0] as HTMLElement;
-  expect(hint.dataset.termHint).toBe('paddock');
-  // The translator here returns its key.
-  expect(hint.getAttribute('aria-label')).toBe('Terms.about');
-  expect(document.getElementById(hint.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
-    'Terms.paddock.meaning',
-  );
-  const title = [...view.container.querySelectorAll('h3')].find(
-    (h3) => h3.textContent === 'Files.noCopyTitle',
-  );
-  expect(title?.contains(hint)).toBe(false);
-  expect(title?.nextElementSibling).toBe(hint);
-  // A title that wraps keeps its icon on the first line (features/term-hints.md): the row aligns
-  // to its start with the title's line height, and the icon centres on one such line.
-  expect(title?.parentElement?.classList.contains('items-start')).toBe(true);
-  expect(title?.parentElement?.classList.contains('text-subtitle')).toBe(true);
-  expect(hint.classList.contains('my-[calc((1lh-1.5rem)/2)]')).toBe(true);
+// glossary.md, "설명이 붙는 용어": in the Changes pane the pane's own setup view is the place
+// for the Paddock term (FilesViews), so the review draws no Paddock icon.
+it('without a Paddock, draws no Paddock icon', async () => {
+  const view = await mount({ noCopy: true });
+  expect(view.container.querySelectorAll('[data-term-hint]')).toHaveLength(0);
 });
 
 it('prepares a missing copy through Changes and refreshes the retained review after creation', async () => {

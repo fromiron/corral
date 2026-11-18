@@ -258,9 +258,7 @@ export function SessionChangesPanel({
             session={session}
             search={search}
             onSearch={(patch) => onReviewChange({ ...search, ...patch })}
-            embedded
             rangeSlot={rangeSlot}
-            showChecks={false}
             onPrepareCopy={() => choose('git')}
             onSessionChange={onSessionChange}
             shown={visible && shown === 'review'}
