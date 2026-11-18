@@ -35,7 +35,7 @@ import {
 } from '@corral/react/design-kit';
 import { Check, ChevronDown, Eye, Info, ListFilter, Plus, Trash2 } from '@corral/react/icons';
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
-import { Link, useNavigate } from '@tanstack/react-router';
+import { Link } from '@tanstack/react-router';
 import {
   lazy,
   type ReactNode,
@@ -52,7 +52,6 @@ import {
 import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
 import { createPendingSessionCommands } from '../pendingCommands.ts';
-import { reviewRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { conversationRequest, newCommandId, steer, steerTargets } from '../sessionActions.ts';
 import {
@@ -62,7 +61,7 @@ import {
   sessionRunMode,
 } from '../workbench/autoChoice.ts';
 import { Checks } from '../workbench/ChecksView.tsx';
-import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
+import type { AttachmentCapture } from '../workbench/context/bridge.ts';
 import {
   integrationDisplayState,
   uniqueFileOperations,
@@ -126,19 +125,6 @@ const scopeFromSearch = (search: { scope?: string; runId?: string }): ReviewScop
       ? { kind: 'review' }
       : { kind: 'session' };
 
-export function ReviewPage() {
-  const { session } = reviewRoute.useLoaderData();
-  const search = reviewRoute.useSearch();
-  const navigate = useNavigate({ from: '/sessions/$sessionId/review' });
-  return (
-    <ReviewContent
-      session={session}
-      search={search}
-      onSearch={(patch) => void navigate({ search: (current) => ({ ...current, ...patch }) })}
-    />
-  );
-}
-
 export function ReviewContent({
   session,
   search,
@@ -150,7 +136,7 @@ export function ReviewContent({
   showChecks = true,
   shown = true,
   copyChanged,
-  onAttach: hostAttach,
+  onAttach,
 }: {
   session: WorkSession;
   search: ReviewSearch;
@@ -169,10 +155,7 @@ export function ReviewContent({
   shown?: boolean;
   /** Changes whenever the copy may have changed outside this view (a run of the session moved). */
   copyChanged?: string | undefined;
-  /**
-   * Where a host takes attachments to its composer: the session screen brings its conversation
-   * forward itself. Without one, this view attaches and goes to the conversation.
-   */
+  /** Where the host takes attachments to its composer; without one, nothing is attached here. */
   onAttach?:
     | ((attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>)
     | undefined;
@@ -181,43 +164,11 @@ export function ReviewContent({
   const tr = useTranslations('Review');
   const tw = useTranslations('Workbench');
   const ts = useTranslations('Sessions');
-  const tc = useTranslations('Context');
   const reviewedHint = useId();
-  const navigate = useNavigate();
   const services = useServices();
   const { workspaces, transport, mode } = services;
-  const mounted = useRef(false);
   const current = useRef({ services, session });
   current.current = { services, session };
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
-  const ownAttach = async (attachment: TextAttachment, capture: AttachmentCapture) => {
-    const isCurrent = () =>
-      mounted.current &&
-      current.current.services === services &&
-      current.current.session.sessionId === session.sessionId &&
-      current.current.session.projectId === session.projectId;
-    if (
-      !isCurrent() ||
-      capture.target.hostId !== services.workspaceId ||
-      capture.target.projectId !== session.projectId ||
-      capture.target.sessionId !== session.sessionId
-    )
-      throw new Error(tc('attachFailed'));
-    const result = appendComposerAttachment(capture, attachment);
-    if (!result.ok) throw new Error(tc('attachFailed'));
-    if (isCurrent())
-      await navigate({
-        to: '/sessions/$sessionId',
-        params: { sessionId: session.sessionId },
-        search: { compose: true },
-      });
-  };
-  const onAttach = hostAttach ?? ownAttach;
   const scope = scopeFromSearch(search);
   const scopeKey = scope.kind === 'run' ? `run:${scope.runId}` : scope.kind;
   // The changes are held with the session and range they were read for: another range starts

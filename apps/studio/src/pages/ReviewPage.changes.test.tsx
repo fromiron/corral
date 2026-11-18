@@ -18,7 +18,6 @@ const fixture = vi.hoisted(() => ({
   navigations: [] as unknown[],
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ reviewRoute: {} }));
 vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({
