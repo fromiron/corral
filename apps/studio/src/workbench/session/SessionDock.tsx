@@ -22,6 +22,7 @@ import {
 import { Bug, Plus, Terminal } from '@corral/react/icons';
 import { type ReactNode, type Ref, useId } from 'react';
 import { useTranslations } from 'use-intl';
+import { usePageHoldSwitch } from '../browser/usePageStill.ts';
 import { type DockKey, type DockState, type DockTab, dockKey } from '../panel/dock.ts';
 import type { CreationBlock } from '../terminals/creation.ts';
 
@@ -234,6 +235,8 @@ export function SessionDock({
 }) {
   const t = useTranslations('SessionPanel');
   const stateOf = useTerminalTabState(terminals);
+  // A tab dragged out of the dock may cross a browser tab's page: the page is a picture meanwhile.
+  const tabDrag = usePageHoldSwitch();
   const nameOf = (tab: DockTab) => {
     if (tab.kind === 'debug') return t('debugTab');
     const index = terminals.findIndex((item) => item.terminalId === tab.terminalId);
@@ -319,6 +322,7 @@ export function SessionDock({
           closeLabel={(tab) => t('close', { name: tab.label })}
           trailing={plusMenu}
           onReorder={(id, toIndex) => onReorder(id as DockKey, toIndex)}
+          onTabDragChange={tabDrag}
           announceMove={(tab, n, count) => t('tabPosition', { label: tab.label, n, count })}
           moveGroup={TERMINAL_MOVE_GROUP}
           onMoveOut={(id) => onMoveOut(id as DockKey)}

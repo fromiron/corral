@@ -43,6 +43,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { holdPages } from './workbench/browser/overlap.ts';
 import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
 import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
@@ -366,6 +367,8 @@ export function Modal({
   onClose: () => void;
   children: React.ReactNode;
 }) {
+  // Over the whole screen, so over a browser tab's page too: the page is a picture meanwhile.
+  useEffect(() => holdPages(), []);
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh]">
       <button

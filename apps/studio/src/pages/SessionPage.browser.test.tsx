@@ -7,6 +7,7 @@ import {
   createFakeBrowserBridge,
   type FakeBrowserBridge,
 } from '../workbench/browser/fakeBrowserBridge.ts';
+import { holdPages } from '../workbench/browser/overlap.ts';
 import {
   panelMemoryKey,
   parsePanelMemory,
@@ -664,4 +665,242 @@ it('서랍에 브라우저 탭이 떠 있다 → 페이지에서 Shift+Escape �
   expect(document.activeElement).toBe(addressField());
   await keydown(document.activeElement, { key: 'Escape' });
   expect(presentation()).toBe('closed');
+});
+
+// --- the app over the page (앱 화면과 겹칠 때) -----------------------------------------------
+
+const PLACE = { left: 600, top: 100, width: 600, height: 700 };
+/** Boxes as a browser would give them: the page's place, and popups over it (or far from it). */
+function layOut(popups: 'over' | 'far' = 'over') {
+  const original = Element.prototype.getBoundingClientRect;
+  const box = (left: number, top: number, width: number, height: number) =>
+    ({
+      left,
+      top,
+      width,
+      height,
+      right: left + width,
+      bottom: top + height,
+      x: left,
+      y: top,
+      toJSON() {},
+    }) as DOMRect;
+  Element.prototype.getBoundingClientRect = function (this: Element) {
+    if (this.matches('[data-slot="browser-page"]'))
+      return box(PLACE.left, PLACE.top, PLACE.width, PLACE.height);
+    // Tooltips stand beside their control, here off the page; menus and dialogs lie over it.
+    const tooltip = this.closest('[role="tooltip"]') || this.querySelector('[role="tooltip"]');
+    if (this.closest('[data-base-ui-portal]'))
+      return popups === 'over' && !tooltip ? box(900, 80, 240, 200) : box(0, 0, 120, 30);
+    return original.call(this);
+  };
+  cleanups.push(() => {
+    Element.prototype.getBoundingClientRect = original;
+  });
+}
+const STILL = { stillId: 's_1', dataUrl: 'data:image/png;base64,AAAA', width: 1200, height: 1400 };
+const picture = () => place()?.querySelector('img[data-slot="browser-still"]') ?? null;
+const browserBody = () => side()?.querySelector('[data-slot="browser-tab"]') ?? null;
+async function openMore() {
+  const trigger = more();
+  await act(async () => trigger?.click());
+  await settle();
+}
+const menuOpen = () => Boolean(document.querySelector('[role="menu"]'));
+async function wait(ms: number) {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, ms));
+  });
+}
+
+it('살아 있는 페이지 위로 ⋯ 메뉴를 연다 → 페이지 자리는 그 순간의 그림이고(그림을 칠한 뒤 뷰를 숨긴다), Escape로 닫으면 살아 있는 뷰가 돌아오고 그림은 버린다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  await openMore();
+  await until(() => bridge.callsTo('freeze').length > 0);
+
+  expect(menuOpen()).toBe(true);
+  expect(bridge.callsTo('still')).toEqual([['b_one']]);
+  expect(bridge.callsTo('freeze')).toEqual([['b_one', 's_1']]);
+  expect(picture()?.getAttribute('src')).toBe(STILL.dataUrl);
+  expect(picture()?.getAttribute('aria-hidden')).toBe('true');
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => bridge.callsTo('thaw').length > 0 && !picture());
+  expect(menuOpen()).toBe(false);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+  expect(picture()).toBeNull();
+  expect(browserBody()?.hasAttribute('data-page-still')).toBe(false);
+});
+
+it('데스크톱이 그림을 주지 못한다(still이 null) → 살아 있는 뷰를 그대로 두고 숨기지도 되돌리지도 않는다 (반례)', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = null;
+  await livePage(bridge);
+  await openMore();
+  await until(() => bridge.callsTo('still').length > 0);
+  await wait(50);
+  expect(bridge.callsTo('freeze')).toEqual([]);
+  expect(picture()).toBeNull();
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await wait(50);
+  expect(bridge.callsTo('thaw')).toEqual([]);
+});
+
+it('그림이 오기 전에 메뉴가 닫힌다 → 뷰를 숨기지 않고 그림도 깔지 않는다 (반례: 늦은 답)', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  let answer: (still: typeof STILL) => void = () => {};
+  bridge.still = async (...args) => {
+    bridge.calls.push(['still', ...args]);
+    return new Promise((resolve) => {
+      answer = resolve;
+    });
+  };
+  await livePage(bridge);
+  await openMore();
+  await until(() => bridge.callsTo('still').length > 0);
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => !menuOpen());
+
+  await act(async () => answer(STILL));
+  await wait(80);
+  expect(bridge.callsTo('freeze')).toEqual([]);
+  expect(bridge.callsTo('thaw')).toEqual([]);
+  expect(picture()).toBeNull();
+});
+
+it('더 새 걸음이 이겨 freeze가 false다 → 그림을 걷고 뷰는 살아 있으며 되돌릴 것도 없다 (반례)', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  bridge.freezeAnswer = false;
+  await livePage(bridge);
+  await openMore();
+  await until(() => bridge.callsTo('freeze').length > 0);
+  await wait(30);
+  expect(picture()).toBeNull();
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await wait(50);
+  expect(bridge.callsTo('thaw')).toEqual([]);
+});
+
+it('페이지 자리와 겹치지 않는 팝업(사이드바의 툴팁 같은) → 그림으로 바꾸지 않는다 (반례)', async () => {
+  layOut('far');
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  await openMore();
+  await wait(80);
+  expect(menuOpen()).toBe(true);
+  expect(bridge.callsTo('still')).toEqual([]);
+});
+
+it('분할선을 끌어 패널 폭을 바꾼다 → 끄는 동안 페이지 자리는 그림이고, 놓으면 살아 있는 뷰가 돌아온다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  const splitter = document.querySelector('[data-slot="side-panel-frame"] [data-slot="splitter"]');
+  expect(splitter).not.toBeNull();
+  const at = (x: number) => ({
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    buttons: 1,
+    clientX: x,
+    clientY: 300,
+  });
+  await act(async () => {
+    splitter?.dispatchEvent(new PointerEvent('pointerdown', at(600)));
+    splitter?.dispatchEvent(new PointerEvent('pointermove', at(560)));
+  });
+  await until(() => bridge.callsTo('freeze').length > 0);
+  expect(bridge.callsTo('freeze')).toEqual([['b_one', 's_1']]);
+
+  await act(async () => {
+    splitter?.dispatchEvent(new PointerEvent('pointerup', at(560)));
+  });
+  await until(() => bridge.callsTo('thaw').length > 0);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+});
+
+it('탭 줄의 탭을 끄는 동안 → 페이지 자리는 그림이고, 놓으면 살아 있는 뷰가 돌아온다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  const tab = tabs()[1];
+  const at = (x: number) => ({
+    bubbles: true,
+    cancelable: true,
+    pointerId: 1,
+    pointerType: 'mouse',
+    button: 0,
+    buttons: 1,
+    clientX: x,
+    clientY: 50,
+  });
+  await act(async () => {
+    tab?.dispatchEvent(new PointerEvent('pointerdown', at(700)));
+    tab?.dispatchEvent(new PointerEvent('pointermove', at(640)));
+  });
+  await until(() => bridge.callsTo('freeze').length > 0);
+  expect(bridge.callsTo('freeze')).toEqual([['b_one', 's_1']]);
+
+  await act(async () => {
+    tab?.dispatchEvent(new PointerEvent('pointerup', at(640)));
+  });
+  await until(() => bridge.callsTo('thaw').length > 0);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+});
+
+it('창의 크기가 바뀐다 → 그동안 페이지 자리는 그림이고, 자리가 멈추면 살아 있는 뷰가 돌아온다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  await act(async () => {
+    window.dispatchEvent(new Event('resize'));
+  });
+  await until(() => bridge.callsTo('freeze').length > 0);
+  expect(bridge.callsTo('freeze')).toEqual([['b_one', 's_1']]);
+  await until(() => bridge.callsTo('thaw').length > 0, 2000);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
+});
+
+it('페이지에서 연 명령 팔레트가 페이지를 덮는다 → 그림으로 바뀌고, 닫으면 뷰를 되돌린 뒤에 포커스를 페이지에 준다', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  await act(async () => bridge.emit({ type: 'shortcut', tabId: 'b_one', id: 'palette' }));
+  await until(() => bridge.callsTo('freeze').length > 0);
+  expect(dialog()).not.toBeNull();
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => bridge.callsTo('focus').length > 0);
+  const order = bridge.calls.map(([name]) => name).filter((name) => /^(thaw|focus)$/.test(name));
+  expect(order).toEqual(['thaw', 'focus']);
+});
+
+it('그림으로 바뀐 채 다른 탭을 고른다 → 뷰를 되돌려 둔다 (반례: 숨긴 채 남지 않는다)', async () => {
+  layOut();
+  const bridge = createFakeBrowserBridge();
+  bridge.stillAnswer = STILL;
+  await livePage(bridge);
+  const release = holdPages();
+  cleanups.push(release);
+  await until(() => bridge.callsTo('freeze').length > 0);
+
+  await act(async () => tabs()[1]?.click());
+  await until(() => bridge.callsTo('thaw').length > 0);
+  expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
 });

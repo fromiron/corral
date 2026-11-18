@@ -9,6 +9,7 @@ import { Button, type TabsClosableHandle, tabsClosableIds } from '@corral/react/
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { usePageHoldSwitch } from '../browser/usePageStill.ts';
 import {
   DOCK_DEFAULT_HEIGHT,
   DOCK_MIN_HEIGHT,
@@ -133,6 +134,8 @@ export function useSessionDockArea(input: DockAreaInput) {
   const { value, answer } = input.list;
   const services = useServices();
   const t = useTranslations('SessionPanel');
+  // Dragging the dock's height moves a browser tab's page: a picture until it is let go.
+  const heightDrag = usePageHoldSwitch();
   const tt = useTranslations('Terminals');
   const tf = useTranslations('Files');
   const { dock, dispatch } = useSessionDock(sessionId, answer);
@@ -647,6 +650,7 @@ export function useSessionDockArea(input: DockAreaInput) {
             max: 100_000,
             onChange: (px: number) => dispatch({ type: 'height', px }),
             onReset: () => dispatch({ type: 'height', px: DOCK_DEFAULT_HEIGHT }),
+            onDragChange: heightDrag,
           },
           onBottomWithdrawnChange,
         }

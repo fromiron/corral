@@ -38,6 +38,7 @@ import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'rea
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { useBrowserPages } from '../browser/browserTabs.tsx';
+import { usePageHoldSwitch } from '../browser/usePageStill.ts';
 import { PresenceMark } from '../PresenceMark.tsx';
 import { documentTabNames } from '../panel/documentNames.ts';
 import { maximizeAvailable, type OpenTab, type PanelState, treeColumn } from '../panel/model.ts';
@@ -358,6 +359,8 @@ export function SessionPanelSide({
   const documentNames = documentTabNames(state.tabs);
   const plusLabel = usePlusLabel();
   const browserTab = useBrowserTabName();
+  // While a tab is dragged, a browser tab's page is a picture (its view would take the pointer).
+  const tabDrag = usePageHoldSwitch();
   const terminalPlusRow = useTerminalPlusRow();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
@@ -480,6 +483,7 @@ export function SessionPanelSide({
           onSelect={(id) => onSelect(id as TabKey)}
           onClose={(id) => onClose(id as TabKey)}
           closeLabel={(tab) => t('close', { name: tab.label })}
+          onTabDragChange={tabDrag}
           onReorder={(id, toIndex) =>
             onReorder(id as TabKey, Math.min(placeOf(toIndex), state.tabs.length - 1))
           }

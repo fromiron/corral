@@ -183,6 +183,10 @@ export function createFakeBrowserBridge(options: FakeBrowserOptions = {}): FakeB
       throw new Error('The fake browser bridge captures nothing.');
     }),
     cancelPreviewCapture: record('cancelPreviewCapture', async () => {}),
+    // Annotation (S6) is not drawn by the fake: the mode never turns on.
+    annotate: record('annotate', async () => false),
+    annotateContext: record('annotateContext', async () => {}),
+    answerAnnotate: record('answerAnnotate', async () => {}),
     onEvent: (callback) => {
       listeners.add(callback);
       return () => listeners.delete(callback);

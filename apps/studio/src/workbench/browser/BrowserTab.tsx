@@ -25,7 +25,8 @@ import { useTranslations } from 'use-intl';
 import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/browser-bridge.ts';
 import { desktop } from '../../desktop.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
-import { PAGE_ON_SCREEN } from './pageFocus.ts';
+import { focusPageWhenLive, PAGE_ON_SCREEN, PAGE_STILL } from './pageFocus.ts';
+import { usePageStill } from './usePageStill.ts';
 
 const useBrowserT = () => useTranslations('Browser');
 type Translate = ReturnType<typeof useBrowserT>;
@@ -111,8 +112,11 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const pages = tabs?.pages;
   useEffect(() => {
     if (bridge && pages && visible && live && pages.takePageFocus(tab.browserId))
-      void bridge.focus(tab.browserId).catch(() => {});
+      focusPageWhenLive(bridge, tab.browserId);
   }, [bridge, pages, tab.browserId, visible, live]);
+
+  // While the app covers the page, a picture of it stands in for the view.
+  const { picture, still } = usePageStill(bridge, tab.browserId, visible && live, area);
 
   // The page's keys pressed anywhere in the tab are the page's, never the app's: with no page
   // they do nothing. A listener of the tab's own, so the app's window listener never sees them.
@@ -179,7 +183,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       return;
     if (!live) return;
     event.preventDefault();
-    void b.focus(tabId).catch(() => {});
+    focusPageWhenLive(b, tabId);
   };
 
   return (
@@ -188,7 +192,10 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
       className="flex min-h-0 flex-1 flex-col"
       data-slot="browser-tab"
       data-browser-tab={tabId}
-      {...{ [PAGE_ON_SCREEN]: visible && live ? '' : undefined }}
+      {...{
+        [PAGE_ON_SCREEN]: visible && live ? '' : undefined,
+        [PAGE_STILL]: still ? '' : undefined,
+      }}
     >
       <div className="relative flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         <Tooltip content={t('back')}>
@@ -300,8 +307,23 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
         ref={area}
         data-slot="browser-page"
         data-live={live ? '' : undefined}
-        className="relative min-h-0 flex-1"
+        className="relative min-h-0 flex-1 overflow-hidden"
       >
+        {picture ? (
+          // The page as it was, while the app lies over it: it takes no press or wheel, and it
+          // is never kept once the live view is back.
+          <img
+            data-slot="browser-still"
+            src={picture.dataUrl}
+            alt=""
+            aria-hidden="true"
+            draggable={false}
+            onPointerDown={(event) => event.preventDefault()}
+            onWheel={(event) => event.preventDefault()}
+            style={{ width: picture.box.width, height: picture.box.height }}
+            className="absolute top-0 left-0 max-w-none select-none"
+          />
+        ) : null}
         <PagePlace
           page={page}
           onRetry={act((id) => b.reload(id))}

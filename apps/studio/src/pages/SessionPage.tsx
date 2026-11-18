@@ -39,6 +39,7 @@ import {
 } from '../workbench/adviceArrival.ts';
 import { BrowserTab } from '../workbench/browser/BrowserTab.tsx';
 import { BrowserTabsProvider, useBrowserTabs } from '../workbench/browser/browserTabs.tsx';
+import { usePageHoldSwitch } from '../workbench/browser/usePageStill.ts';
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
@@ -361,6 +362,8 @@ function WorkSessionPage() {
   panelNow.current = state;
   const operable = conversationOperable(state.presentation);
   const onScreen = panelOnScreen(state.presentation);
+  // Dragging the splitter, a browser tab's page is a picture until it is let go.
+  const splitterDrag = usePageHoldSwitch();
   const browserTabs = useBrowserTabs({
     bridge: services.browser,
     sessionId: session.sessionId,
@@ -1273,6 +1276,7 @@ function WorkSessionPage() {
                   max: Math.max(PANEL_MIN_WIDTH, (workArea ?? 0) - CONVERSATION_MIN_WIDTH),
                   onChange: setRememberedWidth,
                   onCommit: (px) => writePanelWidth(deviceStorage(), px),
+                  onDragChange: splitterDrag,
                 }}
                 onEscape={() => {
                   if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });

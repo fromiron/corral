@@ -7,6 +7,38 @@ import type { BrowserBridge } from '../../../../desktop/src/browser-bridge.ts';
 
 /** The tab body marks itself while its live page lies over its place on screen. */
 export const PAGE_ON_SCREEN = 'data-page-on-screen';
+/** And while its view is swapped for a picture (overlap.ts): the view cannot take the focus. */
+export const PAGE_STILL = 'data-page-still';
+
+/**
+ * Moves the focus into the page, once its view is live again if a picture stands in for it now
+ * (a menu or the palette closing over it). Returns the cancel.
+ */
+export function focusPageWhenLive(bridge: BrowserBridge, tabId: string): () => void {
+  const body = () => document.querySelector(`[data-browser-tab="${tabId}"]`);
+  const go = () => {
+    if (pageOnScreen(tabId)) void bridge.focus(tabId).catch(() => {});
+  };
+  const element = body();
+  if (!element?.hasAttribute(PAGE_STILL)) {
+    go();
+    return () => {};
+  }
+  const observer = new MutationObserver(() => {
+    const now = body();
+    if (now?.hasAttribute(PAGE_STILL)) return;
+    observer.disconnect();
+    window.clearTimeout(giveUp);
+    go();
+  });
+  observer.observe(element, { attributes: true, attributeFilter: [PAGE_STILL] });
+  // A view that never comes back (the tab left the screen) takes nothing.
+  const giveUp = window.setTimeout(() => observer.disconnect(), 3000);
+  return () => {
+    observer.disconnect();
+    window.clearTimeout(giveUp);
+  };
+}
 
 function pageOnScreen(tabId: string): boolean {
   return Boolean(document.querySelector(`[data-browser-tab="${tabId}"][${PAGE_ON_SCREEN}]`));
@@ -47,7 +79,7 @@ export function returnFocusToPage(
     return active === before || active === null || active === document.body;
   };
   const give = () => {
-    if (!stopped && pageOnScreen(tabId)) void bridge.focus(tabId).catch(() => {});
+    if (!stopped && pageOnScreen(tabId)) focusPageWhenLive(bridge, tabId);
   };
   afterSettle(() => {
     if (stopped) return;
