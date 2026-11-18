@@ -1,0 +1,13 @@
+@import "tailwindcss";
+@import "@corral/react/theme.css";
+@source "../../../../packages/react/src";
+
+/* The overlay lies over the page area: only what it draws covers the page. */
+@layer base {
+  html,
+  body,
+  #root {
+    background: transparent;
+    overflow: hidden;
+  }
+}
