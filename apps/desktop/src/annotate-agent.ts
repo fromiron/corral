@@ -49,7 +49,11 @@ export interface AgentCalls {
     result: AnnotatePick | null;
   };
   walk: { args: { direction: AgentDirection }; result: AnnotateTarget | null };
-  tokens: { args: Record<string, never>; result: AnnotateTokens };
+  /** What the style view opens with: the pick's computed values now and the page's tokens. */
+  inspect: {
+    args: { pickId: string };
+    result: { styles: Record<StyleProperty, string>; tokens: AnnotateTokens } | null;
+  };
   /** The selector of a rule that matches the pick alone, or 'invalid' when the page refuses the value. */
   rule: {
     args: { pickId: string; property: StyleProperty; value: string };
@@ -407,7 +411,12 @@ function agent(op: string, args: Record<string, unknown>): unknown {
       state.outline = next;
       return target(next);
     }
-    case 'tokens': {
+    case 'inspect': {
+      const picked = live(args.pickId as string);
+      if (!picked) return null;
+      const computed = getComputedStyle(picked);
+      const styles: Record<string, string> = {};
+      for (const name of PROPERTIES) styles[name] = computed.getPropertyValue(name).slice(0, 200);
       const names = new Set<string>();
       let budget = 20000;
       const visit = (rules: CSSRuleList | undefined) => {
@@ -452,7 +461,7 @@ function agent(op: string, args: Record<string, unknown>): unknown {
           lengths.push({ name, value });
         if (colors.length + lengths.length >= 1000) break;
       }
-      return { colors, lengths };
+      return { styles, tokens: { colors, lengths } };
     }
     case 'rule': {
       const element = live(args.pickId as string);
@@ -552,9 +561,9 @@ function cleanArgs<Op extends AgentOp>(op: Op, args: AgentCalls[Op]['args']) {
       break;
     case 'shot':
     case 'release':
+    case 'inspect':
       clean = { pickId: pickId(input.pickId) };
       break;
-    case 'tokens':
     case 'reset':
     case 'clear':
     case 'probe':

@@ -138,7 +138,7 @@ export const ANNOTATE_CALLS = [
   'pick',
   'walk',
   'wheel',
-  'tokens',
+  'inspect',
   'preview',
   'release',
   'submit',

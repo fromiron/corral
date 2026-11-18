@@ -243,7 +243,10 @@ it('the keys move on from what the pointer last moved onto, and a still pointer 
   expect(call('walk', { direction: 'left' })).toBeNull();
 });
 
-it("tokens are :root's colours and lengths from readable sheets, by name", () => {
+it("the style view opens with the pick's values now and :root's colours and lengths from readable sheets, by name", () => {
+  page('<p id="p">p</p>', { '#p': [0, 0, 100, 20] });
+  atPoint = () => document.getElementById('p');
+  call('pick', { x: 1, y: 1, pickId: 'g1-p1' });
   const style = document.createElement('style');
   style.textContent =
     ':root { --space-2: 8px; --brand: #0055ff; --font: Inter } @media (min-width: 1px) { :root { --accent: red } } .x { --not-root: 1px }';
@@ -271,13 +274,16 @@ it("tokens are :root's colours and lengths from readable sheets, by name", () =>
     configurable: true,
     value: [foreign, style.sheet],
   });
-  expect(call('tokens')).toEqual({
+  const inspected = call('inspect', { pickId: 'g1-p1' });
+  expect(inspected.tokens).toEqual({
     colors: [
       { name: '--accent', value: 'red' },
       { name: '--brand', value: '#0055ff' },
     ],
     lengths: [{ name: '--space-2', value: '8px' }],
   });
+  expect(Object.keys(inspected.styles)).toHaveLength(18);
+  expect(call('inspect', { pickId: 'g1-p9' })).toBeNull();
 });
 
 it("a preview rule's selector matches the picked element alone; a value the page refuses is invalid", () => {

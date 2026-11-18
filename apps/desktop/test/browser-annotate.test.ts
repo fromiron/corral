@@ -237,6 +237,11 @@ it('frame reads convert between the overlay and the page, both zooms counted', a
   pickId = picked.pick.pickId;
   expect(calls.at(-1)).toEqual(['pick', { x: 20, y: 30, pickId }]);
   expect(picked.pick.box).toEqual({ x: 24, y: 36, width: 144, height: 38.4 });
+  expect((picked.pick as unknown as { page: unknown }).page).toEqual({
+    kind: 'page',
+    origin: 'https://example.com',
+    path: '/shop',
+  });
   const frame = await call('frame', { pointer: { x: 120, y: 60 }, track: [pickId, 'unknown'] });
   expect(calls.at(-1)).toEqual(['frame', { pointer: { x: 100, y: 50 }, ids: [pickId] }]);
   expect(frame).toEqual({
@@ -294,14 +299,14 @@ it('a page that stops answering: reads give up after 1,000 ms and the overlay is
 it("a stalled read that never answers: the probe's answer, or a new document, ends the busy line", async () => {
   let probe!: (value: unknown) => void;
   const { f, page, call, told } = await annotated({
-    tokens: () => new Promise(() => {}),
+    inspect: () => new Promise(() => {}),
     probe: () =>
       new Promise((done) => {
         probe = done;
       }),
   });
   const picked = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
-  const waiting = call('tokens', picked.pick.pickId);
+  const waiting = call('inspect', picked.pick.pickId);
   await flush();
   f.advance(1000);
   expect(await waiting).toBeNull();
@@ -310,7 +315,7 @@ it("a stalled read that never answers: the probe's answer, or a new document, en
   await flush();
   expect(told().at(-1)).toEqual({ type: 'page-busy', busy: false });
   // Again, and this time the page moves on instead.
-  const second = call('tokens', picked.pick.pickId);
+  const second = call('inspect', picked.pick.pickId);
   await flush();
   f.advance(1000);
   await second;
@@ -360,7 +365,7 @@ it("a route change in the page drops its picks and Corral's rules; a fragment ch
   expect(page.css.size).toBe(1);
   page.emit('did-navigate-in-page', {}, 'https://example.com/shop?q=secret#other', true);
   expect(page.css.size).toBe(1);
-  expect(await call('tokens', pickId)).toBeNull(); // the agent answers null to tokens here
+  expect(await call('inspect', pickId)).toBeNull(); // the agent answers null to inspect here
   page.emit('did-navigate-in-page', {}, 'https://example.com/cart', true);
   await flush();
   expect(page.css.size).toBe(0);
@@ -444,7 +449,7 @@ it('the page refusing a value is invalid; a rule landing after its limit or its 
   await call('release', pick.pickId);
   await flush();
   expect(page.css.size).toBe(0);
-  expect(await call('tokens', pick.pickId)).toBeNull(); // forgotten
+  expect(await call('inspect', pick.pickId)).toBeNull(); // forgotten
 });
 
 it("wheels scroll the page: the DOM's deltas, sign flipped, in DIP", async () => {
@@ -608,7 +613,16 @@ it("a preview tab's send: the lease again, the address inside it, the console wh
     f.tabs.fromOverlay(overlay as never, overlay.mainFrame as never, name, args);
   for (let i = 0; i < 25; i++)
     page.emit('console-message', { level: 'warning', message: `line ${i} lease-token` });
-  const { pick } = (await call('pick', { x: 1, y: 1 })) as { pick: { pickId: string } };
+  const { pick } = (await call('pick', { x: 1, y: 1 })) as {
+    pick: { pickId: string; page: unknown; element: { text: string } };
+  };
+  // The overlay shows the note as it will go: the page inside the lease, the text without its token.
+  expect(pick.page).toEqual({
+    kind: 'preview',
+    origin: 'http://127.0.0.2:4321',
+    path: '/settings',
+  });
+  expect(pick.element.text).not.toMatch(/lease-token|key-path/);
   void call('submit', note(pick.pickId, { console: true, screenshot: false }));
   await flush();
   await flush();

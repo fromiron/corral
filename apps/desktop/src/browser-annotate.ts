@@ -17,6 +17,7 @@ import {
 import type {
   AnnotateElement,
   AnnotateEvent,
+  AnnotatePage,
   AnnotatePick,
   AnnotatePoint,
   AnnotateRect,
@@ -69,13 +70,47 @@ export function movesGeneration(
   return plain(before) !== plain(after);
 }
 
+type LeaseOf = { sessionId: string; leaseId: string; target: DesktopPreviewTarget } | null;
+
+/** The page as a note carries it: origin and path, a preview's inside its lease; null if neither. */
+function pageOf(page: WebContents, lease: LeaseOf): AnnotatePage | null {
+  try {
+    if (lease) {
+      const address = observationUrl(page.getURL(), lease.target);
+      const origin = lease.target.origin;
+      return { kind: 'preview', origin, path: address.slice(origin.length) || '/' };
+    }
+    const url = new URL(page.getURL());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+    return { kind: 'page', origin: url.origin, path: url.pathname.slice(0, 2048) };
+  } catch {
+    return null;
+  }
+}
+
+/** The element's data as a note carries it: a preview's without its token or path prefix. */
+function cleanElement(element: AnnotateElement, lease: LeaseOf): AnnotateElement {
+  const clean = (value: string, max: number) =>
+    (lease ? safeObservationText(value, lease.target) : value).slice(0, max);
+  const styles = {} as AnnotateElement['styles'];
+  for (const name of STYLE_PROPERTIES) styles[name] = clean(element.styles[name] ?? '', 200);
+  return {
+    tag: clean(element.tag, 80),
+    role: element.role === null ? null : clean(element.role, 120),
+    selector: clean(element.selector, 500),
+    text: clean(element.text, 4000),
+    bounds: element.bounds,
+    styles,
+  };
+}
+
 /** What the annotation needs from its tab; BrowserTabs builds it. */
 export interface AnnotationHost {
   readonly tabId: string;
   readonly kind: 'page' | 'preview';
   /** The tab's page while it is live; null otherwise. */
   page(): WebContents | null;
-  lease(): { sessionId: string; leaseId: string; target: DesktopPreviewTarget } | null;
+  lease(): LeaseOf;
   resolveLease(): Promise<unknown>;
   /** The page area's rectangle in the window (DIP); null when the tab isn't shown. */
   rect(): Rectangle | null;
@@ -358,7 +393,7 @@ export class TabAnnotation {
       return;
     }
     if (mode.ending)
-      return name === 'frame' || name === 'walk' || name === 'tokens' ? null : undefined;
+      return name === 'frame' || name === 'walk' || name === 'inspect' ? null : undefined;
     switch (name) {
       case 'frame':
         return this.frame(mode, args[0]);
@@ -369,8 +404,8 @@ export class TabAnnotation {
       case 'wheel':
         this.wheel(mode, args[0]);
         return;
-      case 'tokens':
-        return this.tokens(mode, args[0]);
+      case 'inspect':
+        return this.inspect(mode, args[0]);
       case 'preview':
         return this.preview(mode, args[0], args[1], args[2]);
       case 'release':
@@ -447,16 +482,15 @@ export class TabAnnotation {
       return { ok: false, reason: 'page-changed' };
     if (result.kind !== 'ok' || !result.value) return { ok: false, reason: 'nothing' };
     const found = result.value;
+    const where = pageOf(page, lease);
+    if (!where) return { ok: false, reason: 'nothing' };
+    // The overlay shows the element as the note will carry it (a preview's without its token).
+    const element = cleanElement(found.element, lease);
     if (this.picks.size >= MAX_PICKS) {
       const oldest = this.picks.keys().next().value;
       if (oldest) this.picks.delete(oldest);
     }
-    this.picks.set(pickId, {
-      pickId,
-      generation,
-      pickedAt: this.host.now(),
-      element: found.element,
-    });
+    this.picks.set(pickId, { pickId, generation, pickedAt: this.host.now(), element });
     return {
       ok: true,
       pick: {
@@ -464,7 +498,8 @@ export class TabAnnotation {
         label: found.label,
         name: found.name,
         box: scale.toOverlay(found.box),
-        element: found.element,
+        page: where,
+        element,
         screenshotAllowed: found.screenshotAllowed,
       },
     };
@@ -512,12 +547,12 @@ export class TabAnnotation {
     });
   }
 
-  private async tokens(mode: Mode, raw: unknown) {
+  private async inspect(mode: Mode, raw: unknown) {
     const pickId = id(raw);
     const page = this.host.page();
     if (!page || !this.picks.has(pickId)) return null;
     const generation = this.generation;
-    const result = await this.read(mode, 'tokens', {});
+    const result = await this.read(mode, 'inspect', { pickId });
     if (result.kind !== 'ok' || !this.same(mode, page, generation)) return null;
     return result.value;
   }
@@ -797,45 +832,20 @@ export class TabAnnotation {
     screenshot: AnnotationMaterial['screenshot'],
     mode: Mode,
   ): AnnotationMaterial | null {
-    let where: AnnotationMaterial['page'];
-    try {
-      if (lease) {
-        const address = observationUrl(page.getURL(), lease.target);
-        const origin = lease.target.origin;
-        where = {
-          kind: 'preview',
-          sessionId: lease.sessionId,
-          leaseId: lease.leaseId,
-          origin,
-          path: address.slice(origin.length) || '/',
-        };
-      } else {
-        const url = new URL(page.getURL());
-        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
-        where = { kind: 'page', origin: url.origin, path: url.pathname.slice(0, 2048) };
-      }
-    } catch {
-      return null;
-    }
+    const where = pageOf(page, lease);
+    if (!where) return null;
     const clean = (value: string, max: number) =>
       (lease ? safeObservationText(value, lease.target) : value).slice(0, max);
-    const element = pick.element;
-    const styles = {} as AnnotateElement['styles'];
-    for (const name of STYLE_PROPERTIES) styles[name] = clean(element.styles[name] ?? '', 200);
     return {
-      page: where,
+      page:
+        where.kind === 'preview' && lease
+          ? { ...where, kind: 'preview', sessionId: lease.sessionId, leaseId: lease.leaseId }
+          : { kind: 'page', origin: where.origin, path: where.path },
       pickedAt: new Date(pick.pickedAt).toISOString(),
       generation: pick.generation,
       pickId: pick.pickId,
       note: note.text,
-      element: {
-        tag: clean(element.tag, 80),
-        role: element.role === null ? null : clean(element.role, 120),
-        selector: clean(element.selector, 500),
-        text: clean(element.text, 4000),
-        bounds,
-        styles,
-      },
+      element: { ...pick.element, bounds },
       styles: note.styles.map((change) => ({
         property: change.property,
         before: clean(change.before, 200),

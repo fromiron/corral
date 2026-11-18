@@ -68,9 +68,18 @@ export interface AnnotateElement {
   styles: Record<StyleProperty, string>;
 }
 
+/** The page as a note carries it: origin and path only (a preview's path inside its lease). */
+export interface AnnotatePage {
+  kind: 'page' | 'preview';
+  origin: string;
+  path: string;
+}
+
 export interface AnnotatePick extends AnnotateTarget {
   /** Names this pick to main until it is released or the page moves. */
   pickId: string;
+  /** What the note will carry of the page and the element, as it will carry them. */
+  page: AnnotatePage;
   element: AnnotateElement;
   /**
    * False when the element holds an input field, text area, select or editable area, or one
@@ -179,7 +188,13 @@ export interface AnnotateBridge {
     /** DOM WheelEvent.deltaMode: 0 pixels, 1 lines, 2 pages. */
     deltaMode: 0 | 1 | 2;
   }): void;
-  tokens(pickId: string): Promise<AnnotateTokens | null>;
+  /**
+   * The style view opening: the pick's computed values now (each property's "before") and the
+   * page's tokens. Null when the pick is gone or the page didn't answer.
+   */
+  inspect(
+    pickId: string,
+  ): Promise<{ styles: Record<StyleProperty, string>; tokens: AnnotateTokens } | null>;
   /** Shows a value on the element at once (null takes it back); refused when not valid. */
   preview(
     pickId: string,
