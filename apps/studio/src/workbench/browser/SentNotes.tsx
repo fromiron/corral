@@ -40,7 +40,8 @@ export function SentNotes({
               </summary>
               <div className="mt-2">
                 <AnnotationContents
-                  note={view.note}
+                  // A note sent at once is the request's own text, already above: it shows once.
+                  note={view.n === null ? undefined : view.note}
                   page={view.page}
                   label={view.label}
                   selector={view.selector}
