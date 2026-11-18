@@ -86,8 +86,7 @@ describe('문서 tabs', () => {
 // after entry; the page reports what it found.
 describe('the 20 문서 tab limit', () => {
   const twenty = Array.from({ length: 20 }, (_, n) => doc(`src/f${n}.ts`));
-  const full = () =>
-    panel({ tabs: [files, ...twenty], selected: 'files', presentation: 'beside' });
+  const full = () => panel({ tabs: [files, ...twenty], selected: 'files', presentation: 'beside' });
 
   it('opens no 21st 문서 tab: the panel stays as it was', () => {
     const before = full();
