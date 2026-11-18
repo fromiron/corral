@@ -2,6 +2,7 @@
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { effectiveShortcuts } from '../shortcuts.ts';
 import {
   createFakeBrowserBridge,
   type FakeBrowserBridge,
@@ -16,6 +17,7 @@ import {
   createShellWorld,
   type MountedShell,
   mountShell,
+  NARROW,
   type ShellWorld,
   settle,
   stubBrowser,
@@ -348,4 +350,318 @@ it('웹 모드(데스크톱의 브라우저가 없음)에서는 "+" 목록에 �
   );
   expect(rows.length).toBeGreaterThan(0);
   expect(rows).not.toContain(W.browser.repeat(2));
+});
+
+// --- names and bodies of pages that could not open (탭의 이름과 표시, 불러오기와 오류) --------
+
+/** A remembered page tab, selected, its page loaded and live. */
+async function livePage(bridge: FakeBrowserBridge, id = 'b_one', origin = 'https://a.example') {
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: id, at: { origin, path: '/' } }, { kind: 'files' }],
+    `browser:${id}`,
+  );
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => bridge.stateOf(id)?.loading === false);
+  await settle();
+  return { at, shell };
+}
+const place = () => side()?.querySelector<HTMLElement>('[data-slot="browser-page"]') ?? null;
+const buttonNamed = (name: string) =>
+  [...(side()?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+    (button) => (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name,
+  ) ?? null;
+
+it('제목이 example.com인 페이지에서 https://localhost:8443/로 가다 열지 못한다 → 탭 이름은 실패한 주소의 호스트 localhost:8443이다 (반례: 앞 페이지의 제목이 남지 않는다)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', 'https://example.com');
+  expect(selectedName()).toBe('example.com');
+
+  await act(async () =>
+    bridge.setState('b_one', {
+      page: 'failed',
+      url: 'https://localhost:8443/',
+      loading: false,
+      failure: { kind: 'connection-refused', code: -102, certificate: null },
+    }),
+  );
+  await settle();
+  expect(bridge.stateOf('b_one')?.title).toBe('example.com');
+  expect(selectedName()).toBe('localhost:8443');
+});
+
+it('열지 못한 페이지의 자리는 한 줄 까닭과 "다시 시도", "시스템 브라우저에서 열기"이고 테두리 상자(빈 목록의 표시)가 아니다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () =>
+    bridge.setState('b_one', {
+      page: 'failed',
+      failure: { kind: 'connection-refused', code: -102, certificate: null },
+    }),
+  );
+  await settle();
+
+  expect(place()?.querySelector('[data-slot="empty-state"]')).toBeNull();
+  expect(place()?.querySelector('p')?.textContent).toBe(messages.Browser.failure.connectionRefused);
+  expect(buttonNamed(messages.Browser.tryAgain)).not.toBeNull();
+  expect(buttonNamed(messages.Browser.openSystem)).not.toBeNull();
+});
+
+it('공개 주소의 인증서 오류(challengeId 없음) → 까닭과 "돌아가기", "시스템 브라우저에서 열기"가 보이고 "그래도 열기"는 없다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () =>
+    bridge.setState('b_one', {
+      page: 'failed',
+      url: 'https://expired.example/',
+      failure: {
+        kind: 'certificate',
+        code: -201,
+        certificate: { reason: 'expired', challengeId: null },
+      },
+    }),
+  );
+  await settle();
+
+  expect(place()?.querySelector('[data-slot="empty-state"]')).toBeNull();
+  expect(place()?.textContent).toContain(messages.Browser.certificate.title);
+  expect(place()?.textContent).toContain(messages.Browser.certificate.expired);
+  expect(buttonNamed(messages.Browser.goBack)).not.toBeNull();
+  expect(buttonNamed(messages.Browser.openSystem)).not.toBeNull();
+  expect(buttonNamed(messages.Browser.openAnyway)).toBeNull();
+});
+
+it('localhost의 인증서 오류에서 "그래도 열기"를 누르는데 그 오류가 더는 지금 것이 아니다(false) → 본문은 그대로이고 다음 상태를 기다린다', async () => {
+  const bridge = createFakeBrowserBridge();
+  bridge.proceedCertificate = async (...args) => {
+    bridge.calls.push(['proceedCertificate', ...args]);
+    return false;
+  };
+  await livePage(bridge);
+  await act(async () =>
+    bridge.setState('b_one', {
+      page: 'failed',
+      url: 'https://localhost:8443/',
+      failure: {
+        kind: 'certificate',
+        code: -202,
+        certificate: { reason: 'self-signed', challengeId: 'c_1' },
+      },
+    }),
+  );
+  await settle();
+  await act(async () => buttonNamed(messages.Browser.openAnyway)?.click());
+  await settle();
+
+  expect(bridge.callsTo('proceedCertificate')).toEqual([['b_one', 'c_1']]);
+  expect(place()?.textContent).toContain(messages.Browser.certificate.title);
+  expect(buttonNamed(messages.Browser.openAnyway)).not.toBeNull();
+});
+
+const certificateStop = (url: string) => ({
+  page: 'failed' as const,
+  url,
+  loading: false,
+  failure: {
+    kind: 'certificate' as const,
+    code: -201,
+    certificate: { reason: 'expired' as const, challengeId: null },
+  },
+});
+
+it('인증서 오류의 "돌아가기" → 탭 안의 기록이 있으면 그 앞 페이지로 간다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () =>
+    bridge.setState('b_one', { ...certificateStop('https://expired.example/'), canGoBack: true }),
+  );
+  await settle();
+  await act(async () => buttonNamed(messages.Browser.goBack)?.click());
+  await settle();
+  expect(bridge.callsTo('back')).toEqual([['b_one']]);
+  expect(bridge.callsTo('reset')).toEqual([]);
+});
+
+it('기록이 없는 일반 탭에서 인증서 오류의 "돌아가기" → 탭은 새 탭의 상태("브라우저")로 돌아가고, 주소 입력란이 실패한 주소를 모두 고른 채 포커스를 갖는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.setState('b_one', certificateStop('https://expired.example/')));
+  await settle();
+  expect(bridge.stateOf('b_one')?.canGoBack).toBe(false);
+  await act(async () => buttonNamed(messages.Browser.goBack)?.click());
+  await until(() => document.activeElement === addressField());
+
+  expect(bridge.callsTo('back')).toEqual([]);
+  expect(bridge.callsTo('reset')).toEqual([['b_one']]);
+  expect(selectedName()).toBe(W.browser);
+  const field = addressField();
+  expect(document.activeElement).toBe(field);
+  expect(field?.value).toBe('https://expired.example/');
+  expect([field?.selectionStart, field?.selectionEnd]).toEqual([0, field?.value.length]);
+  expect(place()?.textContent).toBe('');
+});
+
+it('기록이 없는 미리보기 탭의 인증서 오류에는 "돌아가기"가 없다 (반례: 미리보기 탭은 빈 탭이 되지 않는다)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
+    'browser:b_pre',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => bridge.stateOf('b_pre')?.loading === false);
+  await act(async () =>
+    bridge.setState('b_pre', certificateStop('http://127.0.0.2:4100/lease_1/')),
+  );
+  await settle();
+  expect(place()?.textContent).toContain(messages.Browser.certificate.title);
+  expect(buttonNamed(messages.Browser.goBack)).toBeNull();
+});
+
+// --- keys and focus (포커스와 키보드) -----------------------------------------------------------
+
+async function keydown(target: Element | null, init: KeyboardEventInit) {
+  let delivered = true;
+  await act(async () => {
+    delivered = Boolean(
+      target?.dispatchEvent(
+        new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }),
+      ),
+    );
+  });
+  await settle();
+  return { prevented: !delivered };
+}
+const more = () => buttonNamed(messages.Browser.more);
+const dialog = () => document.querySelector('[role="dialog"]');
+
+it('앱의 단축키는 거르지 않은 effectiveShortcuts()로 데스크톱에 알린다: 주소 입력란에 포커스가 있어도 같다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await until(() => bridge.callsTo('setShortcuts').length > 0);
+  expect(bridge.callsTo('setShortcuts').at(-1)).toEqual([effectiveShortcuts()]);
+
+  await act(async () => addressField()?.focus());
+  await settle();
+  expect(bridge.callsTo('setShortcuts').at(-1)).toEqual([effectiveShortcuts()]);
+});
+
+it('페이지에서 명령 팔레트의 단축키를 누른다 → 팔레트가 뜨고, Escape로 닫으면 포커스는 그 페이지로 돌아간다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.emit({ type: 'shortcut', tabId: 'b_one', id: 'palette' }));
+  await until(() => Boolean(dialog()));
+  expect(dialog()).not.toBeNull();
+  expect(bridge.callsTo('focus')).toEqual([]);
+
+  await keydown(document.activeElement, { key: 'Escape' });
+  await until(() => bridge.callsTo('focus').length > 0);
+  expect(dialog()).toBeNull();
+  expect(bridge.callsTo('focus')).toEqual([['b_one']]);
+});
+
+it('페이지에서 사이드바 여닫기 단축키를 누른다 → 사이드바가 바뀌고 포커스는 그 페이지로 돌아간다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.emit({ type: 'shortcut', tabId: 'b_one', id: 'view.sidebar' }));
+  await until(() => bridge.callsTo('focus').length > 0);
+  expect(bridge.callsTo('focus')).toEqual([['b_one']]);
+});
+
+it('페이지에서 패널 여닫기 단축키를 누른다 → 패널이 닫히고 포커스를 페이지에 돌려주지 않는다 (반례: 화면에 없는 페이지)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.emit({ type: 'shortcut', tabId: 'b_one', id: 'view.panel' }));
+  await settle();
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  });
+  expect(
+    document.querySelector('[data-slot="side-panel-frame"]')?.getAttribute('data-presentation'),
+  ).toBe('closed');
+  expect(bridge.callsTo('place').at(-1)).toEqual(['b_one', null]);
+  expect(bridge.callsTo('focus')).toEqual([]);
+});
+
+it('주소 입력란에서 Mod+R → 그 페이지를 다시 불러오고 앱은 다시 불러오지 않는다; 확대 키는 그 페이지를 확대한다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  const field = addressField();
+
+  expect((await keydown(field, { key: 'r', ctrlKey: true })).prevented).toBe(true);
+  expect(bridge.callsTo('reload')).toEqual([['b_one']]);
+  expect((await keydown(field, { key: '=', ctrlKey: true })).prevented).toBe(true);
+  expect((await keydown(field, { key: '+', ctrlKey: true, shiftKey: true })).prevented).toBe(true);
+  expect((await keydown(more(), { key: '-', ctrlKey: true })).prevented).toBe(true);
+  expect((await keydown(more(), { key: '0', ctrlKey: true })).prevented).toBe(true);
+  expect(bridge.callsTo('zoom')).toEqual([
+    ['b_one', 'in'],
+    ['b_one', 'in'],
+    ['b_one', 'out'],
+    ['b_one', 'reset'],
+  ]);
+});
+
+it('페이지가 없는 새 탭에서 Mod+R과 확대 키 → 아무 일도 하지 않고 앱도 다시 불러오지 않는다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  await open(at, `/sessions/${at.sessionId}?panel=browser`);
+  await until(() => Boolean(addressField()));
+
+  expect((await keydown(addressField(), { key: 'r', ctrlKey: true })).prevented).toBe(true);
+  expect((await keydown(addressField(), { key: '=', ctrlKey: true })).prevented).toBe(true);
+  expect(bridge.callsTo('reload')).toEqual([]);
+  expect(bridge.callsTo('zoom')).toEqual([]);
+});
+
+it('⋯에서 Tab을 누른다 → 포커스가 페이지로 들어간다; Shift+Tab은 머리 안에 머문다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+
+  expect((await keydown(more(), { key: 'Tab', shiftKey: true })).prevented).toBe(false);
+  expect(bridge.callsTo('focus')).toEqual([]);
+  expect((await keydown(more(), { key: 'Tab' })).prevented).toBe(true);
+  expect(bridge.callsTo('focus')).toEqual([['b_one']]);
+});
+
+it('일반 페이지가 연 새 창의 탭이 선택된다 → 포커스는 그 페이지로 간다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const { at } = await livePage(bridge);
+  await act(async () => {
+    bridge.emit({ type: 'popup', tabId: 'b_pop', openerTabId: 'b_one', projectId: at.projectId });
+    bridge.setState('b_pop', { page: 'live', url: 'https://a.example/login' });
+  });
+  await until(() => bridge.callsTo('focus').length > 0);
+  expect(bridge.callsTo('focus')).toEqual([['b_pop']]);
+});
+
+it('서랍에 브라우저 탭이 떠 있다 → 페이지에서 Shift+Escape 뒤 Escape → 서랍이 닫힌다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_one', at: { origin: 'https://a.example', path: '/' } }],
+    'browser:b_one',
+  );
+  const shell = await mountShell(at, [`/sessions/${at.sessionId}?panel=browser&browser=b_one`], {
+    width: NARROW,
+  });
+  cleanups.push(() => shell.unmount());
+  const presentation = () =>
+    document.querySelector('[data-slot="side-panel-frame"]')?.getAttribute('data-presentation');
+  await until(() => Boolean(presentation()));
+  const toggle = [...document.querySelectorAll<HTMLButtonElement>('button[aria-pressed]')].find(
+    (button) => button.getAttribute('aria-label') === messages.SessionPanel.toggle,
+  );
+  await act(async () => toggle?.click());
+  await until(() => presentation() === 'drawer' && Boolean(addressField()));
+  expect(presentation()).toBe('drawer');
+
+  await act(async () => bridge.emit({ type: 'leave', tabId: 'b_one' }));
+  await settle();
+  expect(document.activeElement).toBe(addressField());
+  await keydown(document.activeElement, { key: 'Escape' });
+  expect(presentation()).toBe('closed');
 });

@@ -128,8 +128,10 @@ function useBrowserTabName() {
   return (tab: Extract<PanelTab, { kind: 'browser' }>): Partial<TabsClosableTab> => {
     const page = pages?.get(tab.browserId);
     const preview = Boolean(tab.lease);
+    // What the desktop says of the page wins over what the tab remembers; a page-less tab has
+    // no host, and a page that failed is named by the address that failed, not an older title.
+    const url = page?.page === 'none' ? null : (page?.url ?? tab.at?.origin ?? null);
     const host = (() => {
-      const url = page?.url ?? (tab.at ? tab.at.origin : null);
       if (!url) return null;
       try {
         return new URL(url).host;
@@ -137,8 +139,8 @@ function useBrowserTabName() {
         return null;
       }
     })();
-    const label =
-      page?.title || (preview ? tb('preview') : host) || (preview ? tb('preview') : td('browser'));
+    const title = page?.page === 'failed' || page?.page === 'none' ? null : page?.title;
+    const label = title || (preview ? tb('preview') : host || td('browser'));
     return {
       label,
       icon: preview ? Monitor : Globe,

@@ -4,7 +4,6 @@
 // page that could not open, one that closed itself, an ended preview) is drawn here.
 import {
   Button,
-  EmptyState,
   Input,
   Menu,
   MenuItem,
@@ -15,6 +14,7 @@ import {
 import { ArrowLeft, ArrowRight, Ellipsis, RefreshCw, X } from '@corral/react/icons';
 import {
   type FormEvent,
+  type KeyboardEvent,
   type ReactNode,
   useEffect,
   useLayoutEffect,
@@ -25,9 +25,29 @@ import { useTranslations } from 'use-intl';
 import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/browser-bridge.ts';
 import { desktop } from '../../desktop.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
+import { PAGE_ON_SCREEN } from './pageFocus.ts';
 
 const useBrowserT = () => useTranslations('Browser');
 type Translate = ReturnType<typeof useBrowserT>;
+
+const isMac = () => /Mac|iPhone|iPad/.test(globalThis.navigator?.platform ?? '');
+
+/**
+ * The page's own keys pressed in its tab (머리 or the page's place): Mod+R reloads, Mod+= and
+ * Mod+Shift+= zoom in, Mod+- out, Mod+0 back to the original size (features/browser-tab.md
+ * 포커스와 키보드). Null for any other key.
+ */
+function pageKey(event: globalThis.KeyboardEvent): 'reload' | 'in' | 'out' | 'reset' | null {
+  if (event.isComposing || event.altKey) return null;
+  const mod = isMac() ? event.metaKey : event.ctrlKey;
+  if (!mod || (isMac() ? event.ctrlKey : event.metaKey)) return null;
+  const key = event.key.toLowerCase();
+  if (key === 'r' && !event.shiftKey) return 'reload';
+  if (key === '=' || key === '+') return 'in';
+  if (key === '-' && !event.shiftKey) return 'out';
+  if (key === '0' && !event.shiftKey) return 'reset';
+  return null;
+}
 
 export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const t = useBrowserT();
@@ -36,18 +56,28 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const preview = Boolean(tab.lease);
   const address = useRef<HTMLInputElement>(null);
   const area = useRef<HTMLDivElement>(null);
+  const root = useRef<HTMLDivElement>(null);
   // What the field shows: the page's address until the person edits it.
   const [draft, setDraft] = useState<string | null>(null);
   const [unsupported, setUnsupported] = useState(false);
-  const shown = page?.url ?? (tab.at ? `${tab.at.origin}${tab.at.path}` : '');
+  const shown =
+    page?.page === 'none' ? '' : (page?.url ?? (tab.at ? `${tab.at.origin}${tab.at.path}` : ''));
   const hasPage = Boolean(page && page.page !== 'none');
   const live = page?.page === 'live';
+  // After 돌아가기 empties the tab, the field keeps the failed address, all of it chosen.
+  const chooseAll = useRef(false);
 
   // The address field takes the focus when asked (a new tab, Shift+Escape from the page).
   const asked = tabs?.pages.focusAsked(tab.browserId) ?? 0;
   useEffect(() => {
     if (asked > 0) address.current?.focus();
   }, [asked]);
+  useLayoutEffect(() => {
+    if (!chooseAll.current || draft === null) return;
+    chooseAll.current = false;
+    address.current?.focus();
+    address.current?.select();
+  }, [draft]);
 
   // The view lies over the page's place while the tab is on screen with a live page; otherwise
   // it is hidden (features/browser-tab.md 앱 화면과 겹칠 때).
@@ -77,6 +107,34 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
     };
   }, [bridge, tab.browserId, visible, live]);
 
+  // A page's new tab gives its page the focus once that page is live on screen.
+  const pages = tabs?.pages;
+  useEffect(() => {
+    if (bridge && pages && visible && live && pages.takePageFocus(tab.browserId))
+      void bridge.focus(tab.browserId).catch(() => {});
+  }, [bridge, pages, tab.browserId, visible, live]);
+
+  // The page's keys pressed anywhere in the tab are the page's, never the app's: with no page
+  // they do nothing. A listener of the tab's own, so the app's window listener never sees them.
+  const hasPageNow = useRef(hasPage);
+  hasPageNow.current = hasPage;
+  useEffect(() => {
+    const element = root.current;
+    if (!bridge || !element) return;
+    const tabId = tab.browserId;
+    const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      const key = pageKey(event);
+      if (!key) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (!hasPageNow.current) return;
+      if (key === 'reload') void bridge.reload(tabId).catch(() => {});
+      else void bridge.zoom(tabId, key).catch(() => {});
+    };
+    element.addEventListener('keydown', onKeyDown);
+    return () => element.removeEventListener('keydown', onKeyDown);
+  }, [bridge, tab.browserId]);
+
   if (!tabs) return null;
   const tabId = tab.browserId;
   const act = (run: (id: string) => Promise<unknown>) => () => void run(tabId).catch(() => {});
@@ -99,9 +157,39 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const copy = () => {
     if (shown) void navigator.clipboard?.writeText(shown).catch(() => {});
   };
+  // 돌아가기: the page before in the tab, or with none an ordinary tab empties to a new tab.
+  const goBack = () => {
+    if (page?.canGoBack) {
+      void b.back(tabId).catch(() => {});
+      return;
+    }
+    const failed = page?.url ?? '';
+    void tabs.reset(tabId).then(
+      () => {
+        chooseAll.current = true;
+        setUnsupported(false);
+        setDraft(failed);
+      },
+      () => {},
+    );
+  };
+  // ⋯ is the head's last stop: Tab goes on into a live page.
+  const intoPage = (event: KeyboardEvent) => {
+    if (event.key !== 'Tab' || event.shiftKey || event.altKey || event.ctrlKey || event.metaKey)
+      return;
+    if (!live) return;
+    event.preventDefault();
+    void b.focus(tabId).catch(() => {});
+  };
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col" data-slot="browser-tab">
+    <div
+      ref={root}
+      className="flex min-h-0 flex-1 flex-col"
+      data-slot="browser-tab"
+      data-browser-tab={tabId}
+      {...{ [PAGE_ON_SCREEN]: visible && live ? '' : undefined }}
+    >
       <div className="relative flex shrink-0 items-center gap-1 border-b border-border px-2 py-1">
         <Tooltip content={t('back')}>
           <Button
@@ -170,7 +258,11 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
         </form>
         <Menu>
           <Tooltip content={t('more')}>
-            <MenuTrigger render={<Button size="icon" variant="ghost" aria-label={t('more')} />}>
+            <MenuTrigger
+              render={
+                <Button size="icon" variant="ghost" aria-label={t('more')} onKeyDown={intoPage} />
+              }
+            >
               <Ellipsis />
             </MenuTrigger>
           </Tooltip>
@@ -214,7 +306,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
           page={page}
           onRetry={act((id) => b.reload(id))}
           onReopen={act((id) => b.reopen(id))}
-          onBack={act((id) => b.back(id))}
+          onBack={preview && !page?.canGoBack ? null : goBack}
           onProceed={(challengeId) =>
             void tabs.bridge.proceedCertificate(tabId, challengeId).catch(() => {})
           }
@@ -272,7 +364,11 @@ function certificateReason(
   }
 }
 
-/** What the page's place shows when no live page is over it. */
+/**
+ * What the page's place shows when no live page is over it: a line (two for a certificate) and
+ * its buttons, placed as the panel's own empty body is, never a box. An empty new tab shows
+ * nothing.
+ */
 function PagePlace({
   page,
   onRetry,
@@ -284,7 +380,8 @@ function PagePlace({
   page: BrowserTabState | undefined;
   onRetry: () => void;
   onReopen: () => void;
-  onBack: () => void;
+  /** Null where there is no way back (a preview tab with no page before). */
+  onBack: (() => void) | null;
   onProceed: (challengeId: string) => void;
   onSystem: (() => void) | null;
 }) {
@@ -301,55 +398,53 @@ function PagePlace({
       {t('openSystem')}
     </Button>
   ) : null;
-  let body: ReactNode;
+  let line: string;
+  let reason: string | null = null;
+  let actions: ReactNode = null;
   if (page.page === 'failed' && page.failure?.certificate) {
-    const { reason, challengeId } = page.failure.certificate;
-    body = (
-      <EmptyState
-        title={t('certificate.title')}
-        text={certificateReason(reason, t)}
-        action={
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" onClick={onBack}>
-              {t('goBack')}
-            </Button>
-            {system}
-            {challengeId ? (
-              <Button variant="ghost" onClick={() => onProceed(challengeId)}>
-                {t('openAnyway')}
-              </Button>
-            ) : null}
-          </div>
-        }
-      />
+    const { reason: why, challengeId } = page.failure.certificate;
+    line = t('certificate.title');
+    reason = certificateReason(why, t);
+    actions = (
+      <>
+        {onBack ? (
+          <Button variant="tertiary" onClick={onBack}>
+            {t('goBack')}
+          </Button>
+        ) : null}
+        {system}
+        {challengeId ? (
+          <Button variant="tertiary" onClick={() => onProceed(challengeId)}>
+            {t('openAnyway')}
+          </Button>
+        ) : null}
+      </>
     );
-  } else if (page.page === 'failed')
-    body = (
-      <EmptyState
-        title={failureText(page.failure, t)}
-        action={
-          <div className="mt-3 flex flex-wrap justify-center gap-2">
-            <Button variant="secondary" onClick={onRetry}>
-              {t('tryAgain')}
-            </Button>
-            {system}
-          </div>
-        }
-      />
+  } else if (page.page === 'failed') {
+    line = failureText(page.failure, t);
+    actions = (
+      <>
+        <Button variant="tertiary" onClick={onRetry}>
+          {t('tryAgain')}
+        </Button>
+        {system}
+      </>
     );
-  else if (page.page === 'closed-itself')
-    body = (
-      <EmptyState
-        title={t('closedItself')}
-        action={
-          <div className="mt-3 flex justify-center">
-            <Button ref={reopen} variant="secondary" onClick={onReopen}>
-              {t('reopen')}
-            </Button>
-          </div>
-        }
-      />
+  } else if (page.page === 'closed-itself') {
+    line = t('closedItself');
+    actions = (
+      <Button ref={reopen} variant="tertiary" onClick={onReopen}>
+        {t('reopen')}
+      </Button>
     );
-  else body = <EmptyState title={t('ended')} />;
-  return <div className="flex h-full items-center justify-center p-6">{body}</div>;
+  } else line = t('ended');
+  return (
+    <div className="grid h-full min-h-0 justify-center overflow-auto [grid-template-columns:min(320px,calc(100%-32px))] [grid-template-rows:max(48px,28%)_auto_1fr]">
+      <div className="row-start-2 flex flex-col items-start gap-2">
+        <p className="text-body text-foreground">{line}</p>
+        {reason ? <p className="text-caption text-muted-foreground">{reason}</p> : null}
+        {actions ? <div className="flex flex-wrap gap-2">{actions}</div> : null}
+      </div>
+    </div>
+  );
 }

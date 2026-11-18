@@ -25,6 +25,7 @@ export class BrowserPages {
   private readonly pages = new Map<string, BrowserTabState>();
   private readonly listeners = new Set<() => void>();
   private readonly focusAsks = new Map<string, number>();
+  private readonly pageFocusAsks = new Set<string>();
   private version = 0;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -40,12 +41,22 @@ export class BrowserPages {
     this.changed();
   }
   drop(tabId: string) {
+    this.pageFocusAsks.delete(tabId);
     if (this.pages.delete(tabId) || this.focusAsks.delete(tabId)) this.changed();
   }
   clear() {
     this.pages.clear();
     this.focusAsks.clear();
+    this.pageFocusAsks.clear();
     this.changed();
+  }
+  /** The page of that tab is to take the focus once it is live on screen (a page's new tab). */
+  focusPage(tabId: string) {
+    this.pageFocusAsks.add(tabId);
+  }
+  /** True once for a tab whose page was asked for the focus. */
+  takePageFocus(tabId: string): boolean {
+    return this.pageFocusAsks.delete(tabId);
   }
   /** The address field of that tab is to take the focus (a new tab, Shift+Escape). */
   focusAddress(tabId: string) {
@@ -73,6 +84,8 @@ export interface BrowserTabs {
     tabId: string,
     address: string,
   ): Promise<{ ok: true } | { ok: false; reason: 'unsupported-address' }>;
+  /** Puts an ordinary tab back to an empty new tab: no page, no history, nothing remembered. */
+  reset(tabId: string): Promise<void>;
 }
 
 const BrowserTabsContext = createContext<BrowserTabs | null>(null);
@@ -161,6 +174,12 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
         loaded.current.set(tabId, sessionId);
         return bridge.navigate(tabId, projectId, address);
       },
+      reset: async (tabId) => {
+        await bridge.reset(tabId);
+        const now = latest.current;
+        if (now.current() === sessionId)
+          now.dispatch({ type: 'browserAt', browserId: tabId, at: null });
+      },
     };
   if (!bridge) value.current = null;
 
@@ -191,8 +210,9 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
         }
         case 'popup':
           if (!own(event.openerTabId)) return;
-          // The desktop made the new window's page already.
+          // The desktop made the new window's page already; it takes the focus once shown.
           loaded.current.set(event.tabId, now.sessionId);
+          pages.focusPage(event.tabId);
           now.dispatch({
             type: 'browserPopup',
             browserId: event.tabId,
@@ -209,6 +229,7 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
           const tabId = now.newId();
           now.dispatch({ type: 'browserBeside', browserId: tabId, besideId: event.tabId });
           loaded.current.set(tabId, now.sessionId);
+          pages.focusPage(tabId);
           void bridge.navigate(tabId, event.projectId, event.url).catch(() => {});
           return;
         }

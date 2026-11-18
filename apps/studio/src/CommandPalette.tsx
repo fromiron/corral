@@ -43,6 +43,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
 import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
@@ -102,8 +103,12 @@ export function CommandLayer({
   const [help, setHelp] = useState(false);
   const [sessionSearch, setSessionSearch] = useState<string | null>(null);
   const returnTo = useRef<HTMLElement | null>(null);
+  const { browser } = useServices();
+  // The browser tab whose page the palette or help was opened from: the focus goes back there.
+  const pageReturn = useRef<string | null>(null);
   const open = useCallback((which: 'palette' | 'help', request: PaletteRequest = {}) => {
     returnTo.current = document.activeElement as HTMLElement | null;
+    pageReturn.current = null;
     if (which === 'palette') setPalette(request);
     else setHelp(true);
   }, []);
@@ -115,7 +120,10 @@ export function CommandLayer({
     setPalette(null);
     setHelp(false);
     restoreFocus();
-  }, [restoreFocus]);
+    const page = pageReturn.current;
+    pageReturn.current = null;
+    if (page && browser) returnFocusToPage(browser, page, returnTo.current);
+  }, [restoreFocus, browser]);
   useEffect(() => {
     const show = (event: Event) => {
       if (!held()) open('palette', (event as CustomEvent<PaletteRequest | null>).detail ?? {});
@@ -182,6 +190,29 @@ export function CommandLayer({
       window.removeEventListener('corral:shortcut-context', sync);
     };
   }, [bindings]);
+  // A browser tab's page passes the app's shortcuts to the app (features/browser-tab.md 포커스와
+  // 키보드): all of them, as the person bound them, whatever has the focus in the app.
+  useEffect(() => {
+    void browser?.setShortcuts(effectiveShortcuts(bindings)).catch(() => {});
+  }, [browser, bindings]);
+  useEffect(
+    () =>
+      browser?.onEvent((event) => {
+        if (event.type !== 'shortcut' || held()) return;
+        const before = document.activeElement;
+        if (event.id === 'palette' || event.id === 'help') {
+          if (event.id === 'palette' && palette) close();
+          else if (!palette && !help) {
+            open(event.id);
+            pageReturn.current = event.tabId;
+          }
+          return;
+        }
+        runShortcut(event.id as ShortcutId, event.digit);
+        returnFocusToPage(browser, event.tabId, before);
+      }),
+    [browser, palette, help, open, close],
+  );
   // The desktop menu asks for commands by name; they run like their shortcuts.
   useEffect(
     () =>

@@ -155,6 +155,13 @@ export function createFakeBrowserBridge(options: FakeBrowserOptions = {}): FakeB
       history.delete(tabId);
       if (state?.url) go(tabId, state.url, state.kind);
     }),
+    reset: record('reset', async (tabId: string) => {
+      const state = states.get(tabId);
+      if (!state) return;
+      if (state.kind === 'preview') throw new Error('A preview tab is not reset.');
+      history.delete(tabId);
+      setState(tabId, { ...blank(tabId, 'page'), pageFocused: state.pageFocused });
+    }),
     zoom: record('zoom', async () => {}),
     focus: record('focus', async () => {}),
     still: record('still', async () => fake.stillAnswer),
