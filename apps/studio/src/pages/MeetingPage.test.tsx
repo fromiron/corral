@@ -30,7 +30,7 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
   ),
 }));
 vi.mock('../workbench/ChatView.tsx', () => ({
-  ChatDensityMenu: () => null,
+  useChatDensityRow: () => () => null,
   // The real view hides its timeline while a long header (the widened records) is read.
   ChatView: ({ items, composer, header, children, expandedHeader, sent }: any) => (
     <div data-sent={sent}>

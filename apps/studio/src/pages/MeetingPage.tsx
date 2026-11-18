@@ -26,7 +26,7 @@ import { projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
 import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
 import { sessionRunMode } from '../workbench/autoChoice.ts';
-import { ChatDensityMenu, ChatView } from '../workbench/ChatView.tsx';
+import { ChatView, useChatDensityRow } from '../workbench/ChatView.tsx';
 import { MeetingContinue } from '../workbench/MeetingContinue.tsx';
 import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
 import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
@@ -377,6 +377,7 @@ function MeetingActions({
   const t = useTranslations('Sessions');
   const tm = useTranslations('Meetings');
   const td = useTranslations('Desktop');
+  const chatDensityRow = useChatDensityRow();
   const command = useTranslations('Commands');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -486,7 +487,7 @@ function MeetingActions({
         </MenuTrigger>
         <MenuPopup align="end" className="min-w-52">
           {/* The page's display choice leads its menu. */}
-          <ChatDensityMenu />
+          {chatDensityRow()}
           <MenuSeparator />
           <MenuItem disabled={busy} onClick={() => setRenaming(session.title)}>
             {td('rename')}

@@ -11,7 +11,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { ChatDensityMenu, ChatView } from './ChatView.tsx';
+import { ChatView, useChatDensityRow } from './ChatView.tsx';
 import { parsePreferences, preferences } from './preferences.ts';
 import { RunMessage } from './RunMessage.tsx';
 import { PendingTray } from './session/PendingTray.tsx';
@@ -154,12 +154,7 @@ async function render(status: 'running' | 'succeeded' = 'running', locale: 'en' 
     root.render(
       <IntlProvider locale={locale} messages={locale === 'en' ? messages : ko} timeZone="UTC">
         {/* The preference lives in the page menu, outside the conversation it changes. */}
-        <Menu>
-          <MenuTrigger aria-label="Page menu">…</MenuTrigger>
-          <MenuPopup>
-            <ChatDensityMenu />
-          </MenuPopup>
-        </Menu>
+        <PageMenu />
         <ChatView
           sessionId="session"
           composer={<textarea aria-label="Draft" defaultValue="Keep this draft" />}
@@ -252,6 +247,17 @@ it.each(['en', 'ko'] as const)(
     expect(f.sendCommand).not.toHaveBeenCalled();
   },
 );
+
+/** The page menu, whose first row is the conversation's density. */
+function PageMenu() {
+  const densityRow = useChatDensityRow();
+  return (
+    <Menu>
+      <MenuTrigger aria-label="Page menu">…</MenuTrigger>
+      <MenuPopup>{densityRow()}</MenuPopup>
+    </Menu>
+  );
+}
 
 it('changes only display density while keeping results, the decision and the failure count outside folds', async () => {
   const f = await render();

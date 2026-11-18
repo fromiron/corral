@@ -24,7 +24,7 @@ import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { shortcutLabel } from '../../shortcuts.ts';
-import { ChatDensityMenu } from '../ChatView.tsx';
+import { useChatDensityRow } from '../ChatView.tsx';
 import { forgetDeletedTree } from '../fileTreeState.ts';
 import { deviceStorage, forgetPanelMemory } from '../panel/memory.ts';
 import { PANE_CATALOG, type SessionPanel } from '../panels/registry.ts';
@@ -96,6 +96,7 @@ export function SessionActions({
   const t = useTranslations('Sessions');
   const tw = useTranslations('Workbench');
   const td = useTranslations('Desktop');
+  const chatDensityRow = useChatDensityRow();
   const { repository, sessionDeletion } = useServices();
   const router = useRouter();
   const navigate = useNavigate();
@@ -383,7 +384,7 @@ export function SessionActions({
         </Tooltip>
         <MenuPopup align="end" className="min-w-52">
           {/* The page's display choice leads its menu. */}
-          <ChatDensityMenu />
+          {chatDensityRow()}
           <MenuSeparator />
           {folded ? (
             <>

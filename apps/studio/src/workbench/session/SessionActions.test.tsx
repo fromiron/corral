@@ -22,7 +22,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
   useRouter: () => ({ invalidate: vi.fn(async () => {}) }),
 }));
-vi.mock('../ChatView.tsx', () => ({ ChatDensityMenu: () => null }));
+vi.mock('../ChatView.tsx', () => ({ useChatDensityRow: () => () => null }));
 const fit = vi.hoisted(() => ({ tier: 0 }));
 vi.mock('../TopbarSlot.tsx', async (original) => {
   const actual = await original<typeof import('../TopbarSlot.tsx')>();

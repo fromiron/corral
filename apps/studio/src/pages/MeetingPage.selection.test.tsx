@@ -19,7 +19,7 @@ vi.mock('../workbench/useCorralChat.ts', () => ({
 }));
 vi.mock('../workbench/MeetingEvidence.tsx', () => ({ MeetingEvidencePicker: () => null }));
 vi.mock('../workbench/ChatView.tsx', () => ({
-  ChatDensityMenu: () => null,
+  useChatDensityRow: () => () => null,
   ChatView: ({ items, composer, header, children, tray }: any) => (
     <div data-chat-view>
       {header}

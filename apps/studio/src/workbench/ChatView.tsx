@@ -17,13 +17,14 @@ import { changePreferences, preferences } from './preferences.ts';
 
 /**
  * How much of each reply the conversation shows; a display preference kept in the page's menu
- * rather than above the messages, so the conversation starts at its first message.
+ * rather than above the messages, so the conversation starts at its first message. It is drawn
+ * as the menu's own row, not through a component of its own, so the menu numbers it in its place.
  */
-export function ChatDensityMenu() {
+export function useChatDensityRow() {
   const t = useTranslations('Desktop');
   const chatDensity = useStore(preferences, (state) => state.chatDensity);
-  return (
-    <MenuSub>
+  return () => (
+    <MenuSub key="chat-density">
       <MenuSubTrigger>
         {t('chatDensity')}
         <span className="ml-auto truncate pl-3 text-caption text-muted-foreground">

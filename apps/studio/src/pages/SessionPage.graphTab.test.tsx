@@ -200,3 +200,25 @@ it('팀 그래프 탭이 열려 있다 → 그 팀의 초안이 저장되지 않
   await until(() => tab()?.getAttribute('aria-description') === null);
   expect(tab()?.getAttribute('aria-description')).toBeNull();
 });
+
+it('더 보기 메뉴를 연다 → 목록의 줄은 맨 앞의 대화 밀도 줄부터 차례로 한 번씩 번호가 매겨진다', async () => {
+  const world = await serverWorld();
+  await open(world, `/sessions/${world.sessionId}`);
+  await settle(20);
+  const trigger = [...document.querySelectorAll<HTMLElement>('button')].find(
+    (button) => nameOf(button) === W.actions,
+  );
+  await press(trigger);
+  const rows = () => [
+    ...(document.querySelector('[role="menu"]')?.querySelectorAll('[data-fluid-hover-index]') ??
+      []),
+  ];
+  await until(() => rows().length > 1);
+
+  expect(rows()[0]?.getAttribute('aria-label')?.startsWith(messages.Desktop.chatDensity)).toBe(
+    true,
+  );
+  expect(rows().map((row) => row.getAttribute('data-fluid-hover-index'))).toEqual(
+    rows().map((_, index) => String(index)),
+  );
+});
