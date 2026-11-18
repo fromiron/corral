@@ -10,7 +10,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
 // Checkpoint restore on a local host works whenever no agent run writes (workbench.md 공유 개발
-// 모드), through the same gate the route uses; its expected-tree check stays.
+// 모드), through the same gate the route uses; its expected-tree check stays. A server without
+// sharing refuses it while a task holds the copy, with the refusal's own code (api-contract.md 오류).
 vi.setConfig({ testTimeout: 40_000 });
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
@@ -18,7 +19,8 @@ afterEach(async () => {
 });
 const hash = (text: string) => createHash('sha256').update(text).digest('hex');
 
-it('restores a checkpoint over HTTP while a task runs, and still refuses a stale expected tree', async () => {
+/** A trusted session copy with a checkpoint before an edit, and a task running in it. */
+async function setup(shares: boolean) {
   const root = mkdtempSync(join(tmpdir(), 'corral-shared-restore-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);
@@ -42,7 +44,7 @@ it('restores a checkpoint over HTTP while a task runs, and still refuses a stale
     bootstrapToken: token,
     agents: new ScriptedAgentAdapter({ turns: 1 }),
     port: 0,
-    allowSharedDevelopment: true,
+    allowSharedDevelopment: shares,
   });
   cleanups.push(async () => {
     await server.close();
@@ -96,6 +98,11 @@ it('restores a checkpoint over HTTP while a task runs, and still refuses a stale
     checkpoint.checkpointId,
     checkpoint.manifestHash ?? '',
   );
+  return { workspaces, sessionId, plan };
+}
+
+it('restores a checkpoint over HTTP while a task runs, and still refuses a stale expected tree', async () => {
+  const { workspaces, sessionId, plan } = await setup(true);
   expect(
     await workspaces.restoreCheckpoint(sessionId, {
       operationId: 'restore',
@@ -117,5 +124,18 @@ it('restores a checkpoint over HTTP while a task runs, and still refuses a stale
       expectedTree: plan.expectedTree,
     }),
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  await workspaces.stopTask(sessionId, 'dev');
+});
+
+it('a server without sharing refuses the restore while a task holds the copy, keeping the refusal code', async () => {
+  const { workspaces, sessionId, plan } = await setup(false);
+  await expect(
+    workspaces.restoreCheckpoint(sessionId, {
+      operationId: 'restore',
+      checkpointId: plan.checkpointId,
+      manifestHash: plan.manifestHash,
+      expectedTree: plan.expectedTree,
+    }),
+  ).rejects.toMatchObject({ code: 'RUN_ALREADY_ACTIVE' });
   await workspaces.stopTask(sessionId, 'dev');
 });
