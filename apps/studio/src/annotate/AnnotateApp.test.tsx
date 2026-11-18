@@ -635,6 +635,20 @@ describe('고르기와 주석 칸', () => {
 });
 
 describe('Escape', () => {
+  it('키보드 포커스로 열린 툴팁이 있어도 Escape 한 번에 칸이 닫힌다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    const toggle = view.button('Include screenshot');
+    await act(async () => {
+      toggle?.focus();
+      toggle?.dispatchEvent(new FocusEvent('focusin', { bubbles: true }));
+      await new Promise((done) => setTimeout(done, 700));
+    });
+    await view.key(toggle, { key: 'Escape' });
+    expect(view.note()).toBeNull();
+  });
+
   it('칸을 닫아 쓴 것을 버리고 포커스는 페이지 자리로 가며, 다음 Escape가 모드를 끈다', async () => {
     const view = await mount();
     await view.start();
@@ -1054,6 +1068,8 @@ describe('스타일 바꿔 보기', () => {
     const view = await mount();
     await view.start(change);
     await view.open();
+    // A click focuses the button it presses.
+    view.button('Style')?.focus();
     await view.press(view.button('Style'));
     await view.answer(view.waiting('inspect'), { styles: computed, tokens });
     return view;
@@ -1279,6 +1295,39 @@ describe('스타일 바꿔 보기', () => {
     await view.pointer('click', 600, 400, { button: 0 });
     expect(view.of('pick')).toHaveLength(1);
     expect(view.note()).not.toBeNull();
+  });
+
+  it('목록이 누름의 시작에 닫혀도 그 누름은 목록만 닫는다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(view.button('Style'));
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    await view.press(control('font-weight'));
+    // A list that closes as the press begins (the document hears it first), before the page
+    // area does.
+    const shut = () =>
+      document.querySelector('[data-slot="select-popup"][data-open]')?.removeAttribute('data-open');
+    document.addEventListener('pointerdown', shut, true);
+    try {
+      await view.pointer('pointerdown', 600, 400, { button: 0 });
+      await view.pointer('click', 600, 400, { button: 0 });
+    } finally {
+      document.removeEventListener('pointerdown', shut, true);
+    }
+    expect(view.of('pick')).toHaveLength(1);
+    expect(view.note()).not.toBeNull();
+  });
+
+  it('읽는 사이에 글로 돌아갔으면 보기가 열려도 포커스를 가져가지 않는다', async () => {
+    const view = await mount();
+    await view.start();
+    await view.open();
+    await view.press(view.button('Style'));
+    view.textarea()?.focus();
+    await view.answer(view.waiting('inspect'), { styles: computed, tokens });
+    expect(styleView()).not.toBeNull();
+    expect(document.activeElement).toBe(view.textarea());
   });
 
   it('보내는 동안 보기의 값은 고칠 수 없다', async () => {

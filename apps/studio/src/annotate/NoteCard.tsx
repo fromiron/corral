@@ -172,7 +172,7 @@ export function NoteCard({
             className="[&_textarea]:max-h-[120px] [&_textarea]:min-h-0 [&_textarea]:resize-none [&_textarea]:px-1.5 [&_textarea]:py-1"
           />
           <div className="flex items-center gap-0.5">
-            <Tooltip content={t('screenshot')}>
+            <Tooltip escapeThrough content={t('screenshot')}>
               <Button
                 variant="ghost"
                 size="icon"
@@ -187,7 +187,7 @@ export function NoteCard({
               </Button>
             </Tooltip>
             {view.console !== null && (
-              <Tooltip content={t('console')}>
+              <Tooltip escapeThrough content={t('console')}>
                 <Button
                   variant="ghost"
                   size="icon"

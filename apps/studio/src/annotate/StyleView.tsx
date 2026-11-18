@@ -137,7 +137,10 @@ export function StyleView({
   const view = useRef<HTMLElement>(null);
   const touched = Object.values(rows).some((row) => row.touched);
 
+  // Into the view as it opens, unless the person has gone back to the note's text meanwhile.
   useEffect(() => {
+    const from = document.activeElement;
+    if (from && from !== document.body && !from.closest('[data-annotate="style-toggle"]')) return;
     view.current?.querySelector<HTMLElement>('input, [role="combobox"]')?.focus();
   }, []);
 
@@ -307,7 +310,7 @@ function Row({
           <span aria-hidden="true" className="size-7 shrink-0" />
         )}
         {row.touched ? (
-          <Tooltip content={t('reset', { property })}>
+          <Tooltip escapeThrough content={t('reset', { property })}>
             <Button
               variant="ghost"
               size="icon"
@@ -375,7 +378,7 @@ function Tokens({
         if (!next) setQuery('');
       }}
     >
-      <Tooltip content={t('tokens', { property })}>
+      <Tooltip escapeThrough content={t('tokens', { property })}>
         <PopoverTrigger
           disabled={locked}
           aria-label={t('tokens', { property })}

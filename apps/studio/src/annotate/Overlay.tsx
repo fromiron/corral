@@ -364,6 +364,16 @@ export function Overlay({
     (text ?? surface.current)?.focus();
   }, [focusRequest]);
 
+  // Whether a press begins while one of the note's popups is open, read before anything hears
+  // it: a list closes as the press begins, a popover as it ends.
+  useEffect(() => {
+    const begin = () => {
+      closesPopup.current = document.querySelector(OPEN_POPUP) !== null;
+    };
+    window.addEventListener('pointerdown', begin, true);
+    return () => window.removeEventListener('pointerdown', begin, true);
+  }, []);
+
   // The sent mark goes at the next press, pointer or key.
   useEffect(() => {
     if (!sent) return;
@@ -863,9 +873,6 @@ export function Overlay({
         aria-label={t('area')}
         tabIndex={-1}
         className="absolute inset-0 outline-none"
-        onPointerDown={() => {
-          closesPopup.current = document.querySelector(OPEN_POPUP) !== null;
-        }}
         onPointerMove={(event) => {
           live.current.pointer = { x: event.clientX, y: event.clientY };
           live.current.stale = false;
