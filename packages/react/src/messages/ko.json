@@ -4652,7 +4652,7 @@
     "widthTablet": "태블릿 (768px)",
     "widthMobile": "모바일 (390px)",
     "clearData": "이 프로젝트의 브라우저 데이터 지우기",
-    "clearTitle": "{project}의 브라우저 데이터를 지울까요?",
+    "clearTitle": "{project}의 브라우저 데이터를 지우시겠습니까?",
     "clearBody": "로그인, 쿠키, 사이트 저장소, 캐시와 기억한 권한이 지워집니다. 되돌릴 수 없습니다.",
     "clear": "지우기",
     "failure": {

@@ -138,7 +138,7 @@ describe('Korean messages (UX-A5)', () => {
     // models.dev names the catalog source; translating its domain would hide attribution.
     // `auto` is the team selector's name for Corral's automatic team.
     const allowed =
-      /\b(auto|Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
+      /\b(auto|Corral|Corrals|Run|Reins|Loop|Coordinator|Research|Writer|Reviewer|Helper|Source|Responder|JSON|corral|json|config|revision|control|http|https|Ctrl|Shift|Enter|codex|chmod|auth|models\.dev)\b/g;
     // A tag (`<isolate>…</isolate>`) is markup, not text.
     const untranslated = [...koLeaves].filter(([, message]) =>
       /\b[a-z]{4,}\b/.test(
