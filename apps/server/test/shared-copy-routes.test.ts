@@ -1,0 +1,121 @@
+import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { RestCorralRepository, WorkspacesApi } from '@corral/client';
+import { ScriptedAgentAdapter } from '@corral/testkit';
+import { afterEach, expect, it, vi } from 'vitest';
+import { startCorralServer } from '../src/index.ts';
+
+// Checkpoint restore on a local host works whenever no agent run writes (workbench.md 공유 개발
+// 모드), through the same gate the route uses; its expected-tree check stays.
+vi.setConfig({ testTimeout: 40_000 });
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const close of cleanups.splice(0)) await close();
+});
+const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+
+it('restores a checkpoint over HTTP while a task runs, and still refuses a stale expected tree', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-shared-restore-'));
+  const original = join(root, 'original');
+  execFileSync('git', ['init', '-q', original]);
+  writeFileSync(join(original, 'a.txt'), 'one\n');
+  writeFileSync(
+    join(original, 'package.json'),
+    JSON.stringify({ scripts: { serve: 'node server.cjs' } }),
+  );
+  writeFileSync(
+    join(original, 'server.cjs'),
+    "const s=require('http').createServer((q,r)=>r.end('ok'));s.listen(0,'127.0.0.1',()=>console.log('READY '+s.address().port));\n",
+  );
+  execFileSync('git', ['add', '.'], { cwd: original });
+  execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@e', 'commit', '-qm', 'first'], {
+    cwd: original,
+  });
+  const token = 'shared-copy-restore-fixture-0123456789ab';
+  const server = await startCorralServer({
+    workspace: join(root, 'workspace'),
+    worktreeRoot: join(root, 'copies'),
+    bootstrapToken: token,
+    agents: new ScriptedAgentAdapter({ turns: 1 }),
+    port: 0,
+    allowSharedDevelopment: true,
+  });
+  cleanups.push(async () => {
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  });
+  const login = await fetch(`${server.url}/api/v1/session`, {
+    method: 'POST',
+    headers: { origin: server.url, 'content-type': 'application/json' },
+    body: JSON.stringify({ token }),
+  });
+  const cookie = (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '';
+  const call: typeof fetch = (url, init = {}) => {
+    const headers = new Headers(init.headers);
+    headers.set('origin', server.url);
+    headers.set('cookie', cookie);
+    headers.set('x-corral-csrf', login.headers.get('x-corral-csrf') ?? '');
+    return fetch(url, { ...init, headers });
+  };
+  const options = { baseUrl: server.url, fetch: call };
+  const repository = new RestCorralRepository(options);
+  const workspaces = new WorkspacesApi(options);
+  await workspaces.bind('default', original);
+  await workspaces.configure('default', { trusted: true });
+  const created = await repository.createSession({ projectId: 'default', title: 'Restore' });
+  assert(created.ok);
+  const sessionId = created.session.sessionId;
+  await workspaces.createWorktree(sessionId);
+  const checkpoint = await workspaces.captureCheckpoint(sessionId, {
+    checkpointId: 'before_edit',
+    label: 'Before the edit',
+  });
+  const document = await workspaces.readDocument(sessionId, 'a.txt');
+  expect(
+    await workspaces.changeDocument(sessionId, {
+      operationId: 'edit',
+      kind: 'save',
+      target: document.target,
+      path: 'a.txt',
+      baseHash: hash('one\n'),
+      text: 'two\n',
+      editVersion: 1,
+    }),
+  ).toMatchObject({ state: 'succeeded' });
+  await workspaces.startTask(sessionId, {
+    operationId: 'dev',
+    target: document.target,
+    script: 'serve',
+  });
+  const plan = await workspaces.planCheckpointRestore(
+    sessionId,
+    checkpoint.checkpointId,
+    checkpoint.manifestHash ?? '',
+  );
+  expect(
+    await workspaces.restoreCheckpoint(sessionId, {
+      operationId: 'restore',
+      checkpointId: plan.checkpointId,
+      manifestHash: plan.manifestHash,
+      expectedTree: plan.expectedTree,
+    }),
+  ).toMatchObject({ state: 'applied' });
+  expect((await workspaces.readDocument(sessionId, 'a.txt')).content).toEqual({
+    kind: 'text',
+    text: 'one\n',
+  });
+  // The plan's tree is now stale: the copy moved under the restore.
+  await expect(
+    workspaces.restoreCheckpoint(sessionId, {
+      operationId: 'restore_stale',
+      checkpointId: plan.checkpointId,
+      manifestHash: plan.manifestHash,
+      expectedTree: plan.expectedTree,
+    }),
+  ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
+  await workspaces.stopTask(sessionId, 'dev');
+});
