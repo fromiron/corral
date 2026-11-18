@@ -17,7 +17,6 @@ export function installFakeBrowser(services: StudioServices) {
   services.browser = bridge;
   window.corralFakeBrowser = bridge;
   const style = document.createElement('style');
-  style.textContent =
-    '[data-slot="browser-page"][data-live]{background:var(--color-accent)}';
+  style.textContent = '[data-slot="browser-page"][data-live]{background:var(--color-accent)}';
   document.head.append(style);
 }
