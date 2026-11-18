@@ -1,7 +1,10 @@
 // @vitest-environment jsdom
+
+import type { WorkspacePreview } from '@corral/client';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { StudioServices } from '../services.tsx';
 import { effectiveShortcuts } from '../shortcuts.ts';
 import {
   createFakeBrowserBridge,
@@ -506,6 +509,7 @@ it('기록이 없는 일반 탭에서 인증서 오류의 "돌아가기" → 탭
 it('기록이 없는 미리보기 탭의 인증서 오류에는 "돌아가기"가 없다 (반례: 미리보기 탭은 빈 탭이 되지 않는다)', async () => {
   const bridge = createFakeBrowserBridge();
   const at = await world(bridge);
+  withPreviews(at, [lease('lease_1', { kind: 'service', runId: 'run_1' })]);
   remember(
     at.sessionId,
     [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
@@ -1138,6 +1142,7 @@ it('대화를 떠났다 돌아와 그 탭을 고른다 → 이어지던 내려�
 it('미리보기 페이지가 lease 밖으로 가려다 막혔다 → 페이지 자리 아래 한 줄 "미리보기 밖으로 가는 이동을 막았습니다"와 시스템 브라우저에서 열기; http(s)가 아닌 주소면 버튼이 없다', async () => {
   const bridge = createFakeBrowserBridge();
   const at = await world(bridge);
+  withPreviews(at, [lease('lease_1', { kind: 'service', runId: 'run_1' })]);
   remember(
     at.sessionId,
     [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
@@ -1284,6 +1289,7 @@ it('일반 페이지의 ⋯ → 시스템 브라우저에서 열기, 주소 복�
 it('미리보기 페이지의 ⋯ → 시스템 브라우저에서 열기(쓸 수 없음), 주소 복사, 보기 폭이고 사이트 권한과 데이터 지우기는 없다 (반례)', async () => {
   const bridge = createFakeBrowserBridge();
   const at = await world(bridge);
+  withPreviews(at, [lease('lease_1', { kind: 'service', runId: 'run_1' })]);
   remember(
     at.sessionId,
     [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
@@ -1334,6 +1340,7 @@ it('미리보기 페이지의 보기 폭에서 모바일 → 페이지의 뷰만
   layOut();
   const bridge = createFakeBrowserBridge();
   const at = await world(bridge);
+  withPreviews(at, [lease('lease_1', { kind: 'service', runId: 'run_1' })]);
   remember(
     at.sessionId,
     [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
@@ -1399,4 +1406,221 @@ it('⋯의 이 프로젝트의 브라우저 데이터 지우기 → "Project의 
   await act(async () => buttonIn(dialogTitled(title), B.clear)?.click());
   await until(() => !dialogTitled(title));
   expect(bridge.callsTo('clearProjectData')).toEqual([[at.projectId]]);
+});
+
+// --- 작업 탭의 미리보기 (여는 곳, 닫기와 떠나기, 계약 "되살리기의 정리") ------------------------
+
+const P = messages.Preview;
+const lease = (
+  leaseId: string,
+  fields: Partial<WorkspacePreview> & Pick<WorkspacePreview, 'kind'>,
+): WorkspacePreview => ({
+  leaseId,
+  sessionId: '',
+  url: `http://127.0.0.2:4100/${leaseId}/`,
+  origin: 'http://127.0.0.2:4100',
+  path: '/',
+  state: 'ready',
+  createdAt: '2026-11-18T00:00:00Z',
+  ...fields,
+});
+/** The conversation's preview leases, a running command for 로컬 앱, and what was stopped. */
+function withPreviews(at: ShellWorld, listed: WorkspacePreview[] | 'fails') {
+  const stopped: string[] = [];
+  const started: WorkspacePreview[] = [];
+  const workspaces = at.services.workspaces as NonNullable<StudioServices['workspaces']>;
+  at.services.workspaces = {
+    ...workspaces,
+    previews: async (sessionId: string) => {
+      if (listed === 'fails') throw new Error('the host could not list previews');
+      return listed.map((item) => ({ ...item, sessionId }));
+    },
+    commands: async () => [
+      {
+        id: 'op_dev',
+        run_id: 'run_dev',
+        state: 'running' as const,
+        cwd: '.',
+        shellId: 'bash',
+        mode: 'service' as const,
+        command: 'pnpm dev',
+        created_at: '2026-11-18T00:00:00Z',
+        updated_at: '2026-11-18T00:00:00Z',
+      },
+    ],
+    startPreview: async (sessionId: string) => {
+      // As the host makes it: a run's command gives its lease that run.
+      const made = lease('lease_svc', { kind: 'service', runId: 'run_dev', sessionId });
+      started.push(made);
+      return made;
+    },
+    stopPreview: async (_sessionId: string, leaseId: string) => {
+      stopped.push(leaseId);
+    },
+  } as never;
+  return { stopped, started };
+}
+const section = (label: string) =>
+  side()?.querySelector<HTMLElement>(`section[aria-label="${label}"]`) ?? null;
+const previewTabs = (bridge: FakeBrowserBridge) => bridge.callsTo('openPreview');
+
+it('작업 탭에서 준비된 lease를 연다 → 미리보기 탭이 열려 선택되고 그 lease를 열며, 다시 열면 그 탭을 고른다; 앱 주소에는 lease가 없다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  withPreviews(at, [lease('lease_run', { kind: 'service', runId: 'run_1' })]);
+  remember(at.sessionId, [{ kind: 'tools', view: 'preview' }], 'tools');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 1);
+
+  const tabId = browserId(shell);
+  expect(previewTabs(bridge)).toEqual([[tabId, at.sessionId, 'lease_run']]);
+  expect(tabNames()).toEqual([messages.Docking.tools, messages.Browser.preview]);
+  expect(selectedName()).toBe(messages.Browser.preview);
+  expect(search(shell).lease).toBeUndefined();
+  expect(JSON.stringify(search(shell))).not.toContain('lease_run');
+
+  await act(async () => tabs()[0]?.click());
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await settle();
+  expect(tabNames()).toEqual([messages.Docking.tools, messages.Browser.preview]);
+  expect(selectedName()).toBe(messages.Browser.preview);
+  expect(browserId(shell)).toBe(tabId);
+  expect(previewTabs(bridge)).toHaveLength(1);
+});
+
+it('미리보기 탭을 닫고 같은 lease를 다시 연다 → 새 탭 ID의 미리보기 탭이 열린다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  withPreviews(at, [lease('lease_run', { kind: 'static', runId: 'run_1' })]);
+  remember(at.sessionId, [{ kind: 'tools', view: 'preview' }], 'tools');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 1);
+  const first = browserId(shell);
+
+  const close = side()?.querySelectorAll<HTMLElement>('[data-slot="tabs-closable-close"]')[1];
+  await act(async () => close?.click());
+  await until(() => tabNames().length === 1);
+  await act(async () => tabs()[0]?.click());
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 2);
+
+  expect(browserId(shell)).not.toBe(first);
+  expect(previewTabs(bridge)[1]).toEqual([browserId(shell), at.sessionId, 'lease_run']);
+});
+
+it('작업 탭에서 시작한 서비스 미리보기의 탭과 실행이 시작한 lease의 탭을 닫는다 → 묻지 않고 작업 탭의 것만 멈춘다 (반례: 실행의 lease)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  const { stopped } = withPreviews(at, [lease('lease_run', { kind: 'service', runId: 'run_1' })]);
+  remember(at.sessionId, [{ kind: 'tools', view: 'preview' }], 'tools');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 1);
+  await act(async () => tabs()[0]?.click());
+  await until(() => Boolean(buttonIn(section(P.service), P.openInteractive)));
+  await act(async () => buttonIn(section(P.service), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 2);
+  expect(previewTabs(bridge).map(([, , leaseId]) => leaseId)).toEqual(['lease_run', 'lease_svc']);
+  // The desktop's own window is never asked for here.
+  expect(tabNames()).toHaveLength(3);
+  expect(stopped).toEqual([]);
+
+  // Closing the 작업 tab stops nothing.
+  const closeOf = (index: number) =>
+    side()?.querySelectorAll<HTMLElement>('[data-slot="tabs-closable-close"]')[index];
+  await act(async () => closeOf(0)?.click());
+  await until(() => tabNames().length === 2);
+  await settle();
+  expect(stopped).toEqual([]);
+
+  await act(async () => closeOf(0)?.click());
+  await until(() => tabNames().length === 1);
+  await act(async () => closeOf(0)?.click());
+  await until(() => stopped.length === 1);
+  await settle();
+  expect(stopped).toEqual(['lease_svc']);
+});
+
+it('작업 탭에서 시작한 서비스 미리보기의 페이지가 스스로 닫힌다 → 탭은 남고 서비스 미리보기는 멈추지 않는다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  const { stopped } = withPreviews(at, []);
+  remember(at.sessionId, [{ kind: 'tools', view: 'preview' }], 'tools');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(buttonIn(section(P.service), P.openInteractive)));
+  await act(async () => buttonIn(section(P.service), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 1);
+  const tabId = browserId(shell);
+
+  await act(async () => bridge.setState(tabId, { page: 'closed-itself' }));
+  await settle();
+  expect(tabNames()).toHaveLength(2);
+  expect(stopped).toEqual([]);
+});
+
+it('대화를 떠난다 → 작업 탭에서 시작한 서비스 미리보기는 멈추고, 실행의 lease는 그대로다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  const { stopped } = withPreviews(at, [lease('lease_run', { kind: 'service', runId: 'run_1' })]);
+  remember(at.sessionId, [{ kind: 'tools', view: 'preview' }], 'tools');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(buttonIn(section(P.opened), P.openInteractive)));
+  await act(async () => buttonIn(section(P.opened), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 1);
+  await act(async () => tabs()[0]?.click());
+  await until(() => Boolean(buttonIn(section(P.service), P.openInteractive)));
+  await act(async () => buttonIn(section(P.service), P.openInteractive)?.click());
+  await until(() => previewTabs(bridge).length === 2);
+
+  const other = await at.createConversation('Other');
+  await act(async () => {
+    void shell.router.navigate({ to: '/sessions/$sessionId', params: { sessionId: other } });
+  });
+  await until(() => stopped.length === 1);
+  await settle();
+  expect(stopped).toEqual(['lease_svc']);
+});
+
+it('대화의 기억에 끝난 lease와 준비된 lease의 미리보기 탭이 있다 → 대화를 열고 lease 목록이 답하면 끝난 것의 탭만 버린다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  withPreviews(at, [
+    lease('lease_ready', { kind: 'static', runId: 'run_1' }),
+    lease('lease_done', { kind: 'static', runId: 'run_1', state: 'stopped' }),
+  ]);
+  remember(
+    at.sessionId,
+    [
+      { kind: 'files' },
+      { kind: 'browser', browserId: 'b_ready', lease: 'lease_ready' },
+      { kind: 'browser', browserId: 'b_done', lease: 'lease_done' },
+      { kind: 'browser', browserId: 'b_gone', lease: 'lease_gone' },
+    ],
+    'files',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 2);
+  expect(tabNames()).toEqual([messages.Docking.files, messages.Browser.preview]);
+});
+
+it('lease 목록을 읽지 못한다 → 되살린 미리보기 탭은 남는다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  withPreviews(at, 'fails');
+  remember(
+    at.sessionId,
+    [{ kind: 'files' }, { kind: 'browser', browserId: 'b_gone', lease: 'lease_gone' }],
+    'files',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => tabNames().length === 2);
+  await wait(100);
+  expect(tabNames()).toEqual([messages.Docking.files, messages.Browser.preview]);
 });

@@ -39,6 +39,7 @@ import {
 } from '../workbench/adviceArrival.ts';
 import { BrowserTab } from '../workbench/browser/BrowserTab.tsx';
 import { BrowserTabsProvider, useBrowserTabs } from '../workbench/browser/browserTabs.tsx';
+import { type PreviewTabs, PreviewTabsContext } from '../workbench/browser/previewTabs.tsx';
 import { usePageHoldSwitch } from '../workbench/browser/usePageStill.ts';
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
@@ -157,6 +158,36 @@ function namesSelected(
     return target.browser ? key === `browser:${target.browser}` : key.startsWith('browser:');
   if (kind !== 'run') return key === kind;
   return target.run ? key === `run:${target.run}` : key.startsWith('run:');
+}
+
+/**
+ * The conversation's ready preview leases from one listing after entering it, for the clean-up of
+ * restored preview tabs (features/browser-tab.md 계약 "되살리기의 정리"); null until it answers,
+ * and null when it could not be read, so the restored tabs stay. Only where the browser tab is.
+ */
+function useReadyLeases(sessionId: string): readonly string[] | null {
+  const { workspaces, mode, browser } = useServices();
+  const [read, setRead] = useState<{ sessionId: string; ids: string[] } | null>(null);
+  useEffect(() => {
+    if (!browser || !workspaces || mode !== 'server') return;
+    let live = true;
+    void workspaces.previews(sessionId).then(
+      (items) => {
+        if (live)
+          setRead({
+            sessionId,
+            ids: items.filter((item) => item.state === 'ready').map((item) => item.leaseId),
+          });
+      },
+      () => {},
+    );
+    return () => {
+      live = false;
+      // A later visit asks again: this one's answer is not its.
+      setRead(null);
+    };
+  }, [browser, workspaces, mode, sessionId]);
+  return read?.sessionId === sessionId ? read.ids : null;
 }
 
 /**
@@ -296,6 +327,7 @@ function WorkSessionPage() {
   const [opened, setOpened] = useState<{ sessionId: string; key: TabKey; n: number } | null>(null);
   // The bottom dock's part, made further down: what an address the dock opens is handed to.
   const dockAreaRef = useRef<ReturnType<typeof useSessionDockArea> | null>(null);
+  const readyLeases = useReadyLeases(session.sessionId);
   const frame = usePanelFrame({
     sessionId: session.sessionId,
     search,
@@ -307,6 +339,7 @@ function WorkSessionPage() {
     terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
     corralIds: corrals.map((corral) => corral.corralId),
     browser: Boolean(services.browser),
+    leaseIds: readyLeases,
     browserId: newBrowserId,
     onDockAddress: (target, focus) => dockAreaRef.current?.openAddressed(target, focus),
     // The tree shared by the 파일 tab and the tree column is one visit's.
@@ -373,6 +406,8 @@ function WorkSessionPage() {
     dispatch: (event) => frame.dispatch(event),
     current: () => sessionNow.current,
     newId: newBrowserId,
+    stopPreview: (sessionId, leaseId) =>
+      services.workspaces?.stopPreview(sessionId, leaseId) ?? Promise.resolve(),
   });
   // Each run's name in the "+" list's run history: its request, else its team.
   const runNames = useRunNames(runs, session.entries);
@@ -401,13 +436,17 @@ function WorkSessionPage() {
   // Forward still go (features/session-panel.md 실행 조작이 서는 곳). The global shortcuts are held
   // back first (CommandPalette.tsx); this is the second line, for ways that are not shortcuts.
   const heldByConfirmation = modalConfirmationOpen;
+  /**
+   * An opening way. Returns whether it opened or chose the browser tab it asked for (a preview
+   * lease's tab, `lease` being never part of the address); other ways answer false.
+   */
   const open = (
-    target: Partial<SessionSearch> & { panel: SessionPanel },
+    target: Partial<SessionSearch> & { panel: SessionPanel; lease?: string },
     from: 'way' | 'plus' | 'debugger' = 'way',
     place?: 'tree',
-  ) => {
-    if (heldByConfirmation()) return;
-    const { panel, run, terminal, corral, ...rest } = target;
+  ): boolean => {
+    if (heldByConfirmation()) return false;
+    const { panel, run, terminal, corral, lease, ...rest } = target;
     // A 문서 tab is named by its file (and its source): they are its identity, not its state.
     const documentTarget =
       panel === 'document' && rest.file
@@ -426,7 +465,7 @@ function WorkSessionPage() {
         !(terminal && panelNow.current.tabs.some((tab) => tabKey(tab) === `terminal:${terminal}`)))
     ) {
       dockAreaRef.current?.openAddressed({ panel, terminal }, true);
-      return;
+      return false;
     }
     rememberOpener();
     const tab = targetTab({ panel, run, terminal, corral, ...documentTarget }, ctx.runIds);
@@ -444,16 +483,22 @@ function WorkSessionPage() {
           ...(run ? { run } : {}),
           ...(terminal ? { terminal } : {}),
           ...(corral ? { corral } : {}),
+          ...(lease && panel === 'browser' ? { lease } : {}),
           ...documentTarget,
         },
         from,
       },
       own,
     );
+    const leaseTab =
+      Boolean(lease) &&
+      next.tabs.some(
+        (tab) => tab.kind === 'browser' && tab.lease === lease && tabKey(tab) === next.selected,
+      );
     // The debugger keeps the focus to go on stepping (features/session-panel.md 디버그와 문서).
     if (from === 'debugger') {
       focusNext.current = null;
-      return;
+      return leaseTab;
     }
     // A new browser tab has only its head: the focus goes to its address field
     // (features/browser-tab.md 여는 곳).
@@ -467,7 +512,7 @@ function WorkSessionPage() {
     if (panel === 'browser' && fresh?.kind === 'browser') {
       focusNext.current = null;
       browserTabs?.pages.focusAddress(fresh.browserId);
-      return;
+      return leaseTab;
     }
     // Opened from the tree column, which stays beside the document: the focus stays on the row
     // and the opening is said instead (features/session-panel.md 파일 탭과 트리 열).
@@ -475,10 +520,28 @@ function WorkSessionPage() {
       focusNext.current = null;
       const key = next.selected;
       if (key) setOpened((last) => ({ sessionId: session.sessionId, key, n: (last?.n ?? 0) + 1 }));
-      return;
+      return leaseTab;
     }
     focusOpened({ panel, terminal, corral, ...documentTarget }, next, before);
+    return leaseTab;
   };
+  // The 작업 tab's previews open in a preview tab where the desktop's browser tab is: one value
+  // per conversation, opening through the latest `open`.
+  const openNow = useRef(open);
+  openNow.current = open;
+  const previewTabs = useMemo<PreviewTabs | null>(
+    () =>
+      browserTabs
+        ? {
+            open: (leaseId, options) => {
+              const opened = openNow.current({ panel: 'browser', lease: leaseId });
+              if (opened && options?.started) browserTabs.started(leaseId);
+              return opened;
+            },
+          }
+        : null,
+    [browserTabs],
+  );
   /** A way to 파일 that, on a wide panel, selected the 문서 tab beside the tree column instead. */
   const besideTheTree = (target: Partial<SessionSearch>, next: PanelState) =>
     target.panel === 'files' && next.selected !== 'files' && treeColumn(next, ctx);
@@ -1325,43 +1388,46 @@ function WorkSessionPage() {
                 }
                 side={
                   <BrowserTabsProvider value={browserTabs}>
-                    <SessionPanelSide
-                      sessionId={session.sessionId}
-                      teamNames={teamNames}
-                      unsaved={unsavedTabs}
-                      notice={
-                        limited === session.sessionId &&
-                        state.tabs.filter((tab) => tab.kind === 'document').length >= DOCUMENT_LIMIT
-                          ? tdock('tabLimit')
-                          : null
-                      }
-                      opened={opened?.sessionId === session.sessionId ? opened : null}
-                      state={state}
-                      ctx={ctx}
-                      strip={strip}
-                      onSelect={select}
-                      onClose={close}
-                      onReorder={(key, toIndex) => {
-                        if (!heldByConfirmation())
-                          frame.dispatch({ type: 'reorder', key, toIndex });
-                      }}
-                      // Out by drag into the dock: as a close, ending nothing.
-                      onMoveOut={(key) => closeTab(key)}
-                      onMoveIn={(terminalId, index) =>
-                        frame.dispatch({ type: 'moveIn', terminalId, index })
-                      }
-                      runs={runs}
-                      runNames={runNames}
-                      onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
-                      terminalRow={dockArea.terminalRow}
-                      terminals={terminalList.value?.list?.terminals ?? []}
-                      onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
-                      onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
-                      onMaximize={() => {
-                        if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
-                      }}
-                      renderTab={renderTab}
-                    />
+                    <PreviewTabsContext.Provider value={previewTabs}>
+                      <SessionPanelSide
+                        sessionId={session.sessionId}
+                        teamNames={teamNames}
+                        unsaved={unsavedTabs}
+                        notice={
+                          limited === session.sessionId &&
+                          state.tabs.filter((tab) => tab.kind === 'document').length >=
+                            DOCUMENT_LIMIT
+                            ? tdock('tabLimit')
+                            : null
+                        }
+                        opened={opened?.sessionId === session.sessionId ? opened : null}
+                        state={state}
+                        ctx={ctx}
+                        strip={strip}
+                        onSelect={select}
+                        onClose={close}
+                        onReorder={(key, toIndex) => {
+                          if (!heldByConfirmation())
+                            frame.dispatch({ type: 'reorder', key, toIndex });
+                        }}
+                        // Out by drag into the dock: as a close, ending nothing.
+                        onMoveOut={(key) => closeTab(key)}
+                        onMoveIn={(terminalId, index) =>
+                          frame.dispatch({ type: 'moveIn', terminalId, index })
+                        }
+                        runs={runs}
+                        runNames={runNames}
+                        onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
+                        terminalRow={dockArea.terminalRow}
+                        terminals={terminalList.value?.list?.terminals ?? []}
+                        onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
+                        onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
+                        onMaximize={() => {
+                          if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
+                        }}
+                        renderTab={renderTab}
+                      />
+                    </PreviewTabsContext.Provider>
                   </BrowserTabsProvider>
                 }
               />

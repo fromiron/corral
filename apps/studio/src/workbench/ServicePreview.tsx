@@ -5,6 +5,7 @@ import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { previewDesktop as desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
+import { usePreviewTabs } from './browser/previewTabs.tsx';
 import { workHref } from './navigation.ts';
 import { PreviewFeedback } from './PreviewFeedback.tsx';
 import { type PreviewOutput, PreviewView } from './PreviewView.tsx';
@@ -14,6 +15,12 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   const t = useTranslations('Preview');
   const portId = useId();
   const { workspaces, workspaceId, mode } = useServices();
+  // Where the desktop's browser tab is, the preview opens in a preview tab and stops when that
+  // tab closes or the conversation is left (features/browser-tab.md 닫기와 떠나기), never when
+  // this pane goes. Elsewhere it opens in the separate preview window and goes with this pane.
+  const tabs = usePreviewTabs();
+  const inTabs = useRef(Boolean(tabs));
+  inTabs.current = Boolean(tabs);
   const context = useMemo(
     () => ({ workspaces, workspaceId, sessionId, projectId }),
     [workspaces, workspaceId, sessionId, projectId],
@@ -87,7 +94,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   // biome-ignore lint/correctness/useExhaustiveDependencies: Leaving the host or session closes its owned preview.
   useEffect(
     () => () => {
-      if (opened)
+      if (opened && !inTabs.current)
         void opened.context.workspaces
           ?.stopPreview(opened.context.sessionId, opened.lease.leaseId)
           .catch(() => {});
@@ -128,7 +135,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
           onChange={(event) => setPort(event.target.value)}
         />
       </label>
-      {desktop ? (
+      {tabs || desktop ? (
         <Button
           variant="tertiary"
           disabled={
@@ -139,7 +146,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
             Number(port) > 65535
           }
           onClick={async () => {
-            if (!workspaces || !desktop) return;
+            if (!workspaces || !(tabs || desktop)) return;
             setPending(true);
             setError(null);
             let next: WorkspacePreview | undefined;
@@ -152,7 +159,13 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
                 await workspaces.stopPreview(sessionId, next.leaseId);
                 return;
               }
-              await desktop.openPreview(sessionId, next.leaseId);
+              if (tabs) {
+                // Nothing opened (the panel is held by a confirmation): the lease goes again.
+                if (!tabs.open(next.leaseId, { started: true })) {
+                  await workspaces.stopPreview(sessionId, next.leaseId);
+                  return;
+                }
+              } else await desktop?.openPreview(sessionId, next.leaseId);
               const chosen = commands.find((item) => item.id === selected);
               if (alive.current && current.current === context)
                 setOpened({
@@ -193,7 +206,8 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
       {lease && opened ? (
         <PreviewView sessionId={sessionId} lease={lease} output={opened.output} />
       ) : null}
-      {lease ? (
+      {/* Element capture is the separate preview window's; a preview tab has none. */}
+      {lease && !tabs ? (
         <PreviewFeedback
           key={`${workspaceId}:${sessionId}:${lease.leaseId}`}
           projectId={projectId}

@@ -195,6 +195,11 @@ export interface BrowserTabs {
   ): Promise<{ ok: true } | { ok: false; reason: 'unsupported-address' }>;
   /** Puts an ordinary tab back to an empty new tab: no page, no history, nothing remembered. */
   reset(tabId: string): Promise<void>;
+  /**
+   * The 작업 tab started this service preview of the conversation: closing its tab, or leaving
+   * the conversation, stops it. Kept for the page's life only.
+   */
+  started(leaseId: string): void;
 }
 
 const BrowserTabsContext = createContext<BrowserTabs | null>(null);
@@ -278,6 +283,8 @@ export interface BrowserTabsInput {
   current: () => string;
   /** Makes a browser tab's ID, for a tab the page's menu asks for. */
   newId: () => string;
+  /** Stops a preview lease of a conversation (the 작업 tab's service previews). */
+  stopPreview?: (sessionId: string, leaseId: string) => Promise<void>;
 }
 
 /**
@@ -287,6 +294,8 @@ export interface BrowserTabsInput {
  * - a tab the person closes closes its page (its own downloads end); a tab whose page closed
  *   itself as a new window is only taken off the strip;
  * - leaving the conversation unloads every page it loaded (downloads carry on);
+ * - a service preview the 작업 tab started stops when the person closes its tab or the
+ *   conversation is left; a run's lease, and a page that closed itself, stop nothing;
  * - the bridge's events reach only the tabs of this conversation.
  */
 export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
@@ -298,6 +307,8 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
   const loaded = useRef(new Map<string, string>());
   /** New-window tabs whose page is gone already: nothing to close. */
   const gone = useRef(new Set<string>());
+  /** Service previews the 작업 tab started, by conversation (닫기와 떠나기). */
+  const started = useRef(new Map<string, Set<string>>());
   const value = useRef<BrowserTabs | null>(null);
   if (
     bridge &&
@@ -319,6 +330,11 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
         const now = latest.current;
         if (now.current() === sessionId)
           now.dispatch({ type: 'browserAt', browserId: tabId, at: null });
+      },
+      started: (leaseId) => {
+        const own = started.current.get(sessionId) ?? new Set<string>();
+        own.add(leaseId);
+        started.current.set(sessionId, own);
       },
     };
   if (!bridge) value.current = null;
@@ -461,6 +477,25 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
     }
   }, [bridge, tabIds, pages, sessionId]);
 
+  // A preview tab the person closed: the service preview the 작업 tab started for it stops.
+  // Another conversation's tabs are never this one's closes.
+  const leases = input.state.tabs
+    .flatMap((tab) => (tab.kind === 'browser' && tab.lease ? [tab.lease] : []))
+    .join(',');
+  const leasesBefore = useRef<{ sessionId: string; leases: Set<string> } | null>(null);
+  useEffect(() => {
+    const now = new Set(leases ? leases.split(',') : []);
+    const before = leasesBefore.current;
+    leasesBefore.current = { sessionId, leases: now };
+    if (before?.sessionId !== sessionId) return;
+    const own = started.current.get(sessionId);
+    if (!own) return;
+    for (const leaseId of before.leases) {
+      if (now.has(leaseId) || !own.delete(leaseId)) continue;
+      void latest.current.stopPreview?.(sessionId, leaseId).catch(() => {});
+    }
+  }, [leases, sessionId]);
+
   // Leaving the conversation unloads its pages. A remount in the same visit (StrictMode) is not
   // leaving: the unload waits a turn and the next run of this effect cancels it.
   const leaving = useRef<{ sessionId: string; timer: number } | null>(null);
@@ -480,6 +515,11 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
           pages.drop(tabId);
           void bridge.unload(tabId).catch(() => {});
         }
+        // The service previews the 작업 tab started stop with the visit.
+        const own = started.current.get(sessionId);
+        started.current.delete(sessionId);
+        for (const leaseId of own ?? [])
+          void latest.current.stopPreview?.(sessionId, leaseId).catch(() => {});
       }, 0);
       leaving.current = { sessionId, timer };
     };
