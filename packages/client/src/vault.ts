@@ -28,7 +28,8 @@ export interface PortableApplication {
       | 'nav.back'
       | 'nav.forward'
       | 'run.stop'
-      | 'reply.quote',
+      | 'reply.quote'
+      | 'browser.annotate',
       {
         key: string;
         mod?: boolean;

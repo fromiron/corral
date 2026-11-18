@@ -50,6 +50,7 @@ export const PortableApplication = z.strictObject({
       'nav.forward': ModChord.optional(),
       'run.stop': ModChord.optional(),
       'reply.quote': z.union([ModChord, AltChord]).optional(),
+      'browser.annotate': ModChord.optional(),
     })
     .optional(),
 });
