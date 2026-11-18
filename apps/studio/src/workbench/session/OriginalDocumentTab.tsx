@@ -17,10 +17,13 @@ const SourceCode = lazy(() =>
 
 export function OriginalDocumentTab({
   projectId,
+  sessionId,
   path,
   onReference,
 }: {
   projectId: string;
+  /** The conversation whose tree the head may be beside: it names the source only if the tree's differs. */
+  sessionId: string;
   path: string;
   onReference: (reference: FileReference) => void;
 }) {
@@ -63,7 +66,7 @@ export function OriginalDocumentTab({
     <section aria-label={path} className="flex min-h-0 min-w-0 flex-1 flex-col">
       <DocumentHeader
         path={path}
-        target={{ kind: 'source' }}
+        target={{ kind: 'source', sessionId }}
         status={<span className="truncate @max-xl/head:sr-only">{tf('readOnlyPreview')}</span>}
         actions={
           content?.kind === 'text' ? (

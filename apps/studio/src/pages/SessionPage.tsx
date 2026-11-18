@@ -63,6 +63,7 @@ import {
   type PanelState,
   panelOnScreen,
   toggleAvailable,
+  treeColumn,
 } from '../workbench/panel/model.ts';
 import { runControlPlace, stopCommandRoute } from '../workbench/panel/runControls.ts';
 import { RunHeadControlsContext, StopCommandContext } from '../workbench/panel/runHeadControls.ts';
@@ -130,12 +131,21 @@ import { MeetingPage } from './MeetingPage.tsx';
  */
 /** a meeting has its own chat; every other session keeps the work view. */
 /** Whether the selected tab of `state` is the one a way's target names. */
-function namesSelected(target: Partial<SessionSearch>, state: PanelState): boolean {
+function namesSelected(
+  target: Partial<SessionSearch> & { source?: 'original' },
+  state: PanelState,
+): boolean {
   const key = state.selected;
   if (!target.panel || !key) return false;
   const kind = PANEL_TAB_OF[target.panel];
   if (kind === null) return false;
   if (kind === 'terminal') return target.terminal ? key === `terminal:${target.terminal}` : false;
+  // A 문서 or 팀 그래프 tab is named by its file or its design, not by its kind alone.
+  if (kind === 'document' || kind === 'graph') {
+    const source = target.source ?? (target.target === 'original' ? 'original' : undefined);
+    const tab = targetTab({ ...target, panel: target.panel, ...(source ? { source } : {}) }, null);
+    return tab ? key === tabKey(tab) : false;
+  }
   if (kind !== 'run') return key === kind;
   return target.run ? key === `run:${target.run}` : key.startsWith('run:');
 }
@@ -273,6 +283,8 @@ function WorkSessionPage() {
   if (closing) askedTab.current = closing.key;
   // A file refused for the 20 문서 tab limit: the panel says why until one of them closes.
   const [limited, setLimited] = useState<string | null>(null);
+  // The last 문서 tab opened from the tree column, said politely; `n` says it again.
+  const [opened, setOpened] = useState<{ sessionId: string; key: TabKey; n: number } | null>(null);
   // The bottom dock's part, made further down: what an address the dock opens is handed to.
   const dockAreaRef = useRef<ReturnType<typeof useSessionDockArea> | null>(null);
   const frame = usePanelFrame({
@@ -299,7 +311,7 @@ function WorkSessionPage() {
     // and closing the panel gives it back to the link. A link inside the panel opens no panel and
     // leaves what opened it as it is. A link that opens or selects nothing moves no focus.
     onOpenedByLink: (arrived, next, before) => {
-      if (!namesSelected(arrived, next)) return;
+      if (!namesSelected(arrived, next) && !besideTheTree(arrived, next)) return;
       rememberOpener();
       if (!panelOnScreen(next.presentation)) return;
       focusOpened(arrived, next, before);
@@ -361,6 +373,7 @@ function WorkSessionPage() {
   const open = (
     target: Partial<SessionSearch> & { panel: SessionPanel },
     from: 'way' | 'plus' = 'way',
+    place?: 'tree',
   ) => {
     if (heldByConfirmation()) return;
     const { panel, run, terminal, corral, ...rest } = target;
@@ -406,10 +419,37 @@ function WorkSessionPage() {
       },
       own,
     );
-    focusOpened({ panel, terminal }, next, before);
+    // Opened from the tree column, which stays beside the document: the focus stays on the row
+    // and the opening is said instead (features/session-panel.md 파일 탭과 트리 열).
+    if (place === 'tree' && next.selected !== 'files' && treeColumn(next, ctx)) {
+      focusNext.current = null;
+      const key = next.selected;
+      if (key) setOpened((last) => ({ sessionId: session.sessionId, key, n: (last?.n ?? 0) + 1 }));
+      return;
+    }
+    focusOpened({ panel, terminal, corral, ...documentTarget }, next, before);
   };
+  /** A way to 파일 that, on a wide panel, selected the 문서 tab beside the tree column instead. */
+  const besideTheTree = (target: Partial<SessionSearch>, next: PanelState) =>
+    target.panel === 'files' && next.selected !== 'files' && treeColumn(next, ctx);
   /** Where the focus goes once a way opened `next`: its tab, or the place inside it it names. */
-  const focusOpened = (target: Partial<SessionSearch>, next: PanelState, before: PanelState) => {
+  const focusOpened = (
+    target: Partial<SessionSearch> & { source?: 'original' },
+    next: PanelState,
+    before: PanelState,
+  ) => {
+    // A way to 파일 beside a 문서 tab on a wide panel selects the document, the tree its column:
+    // the focus goes into the tree.
+    if (besideTheTree(target, next)) {
+      focusNext.current = null;
+      focusPlace(
+        'files',
+        (content) =>
+          content.querySelector<HTMLElement>('[role="treeitem"][tabindex="0"]') ??
+          content.querySelector<HTMLElement>('input, button:not([disabled])'),
+      );
+      return;
+    }
     // A way that opened or selected nothing it names (a run tab with no run) moves no focus.
     if (!namesSelected(target, next)) return;
     // A way that names the terminal or Git puts the focus in the terminal or the commit message
@@ -455,16 +495,23 @@ function WorkSessionPage() {
   const focusPlace = (tab: TabKey, find: (content: HTMLElement) => HTMLElement | null) => {
     stopPlaceWait();
     const sessionId = session.sessionId;
+    // Where the opening found the focus: a link outside the panel, say.
+    const from = document.activeElement;
     let tries = 0;
     const attempt = () => {
       placeWait.current = null;
       const content = document.getElementById(tabsClosableIds(PANEL_ID_PREFIX, tab).panel);
       const place = content && !content.hidden ? find(content) : null;
       if (place) {
-        // Only while the focus is still where the opening left it (the tab, the panel, the
-        // page): the person may have gone on meanwhile.
+        // Only while the focus is still where the opening left it (where it was, the tab, the
+        // panel, the page): the person may have gone on meanwhile.
         const focused = document.activeElement;
-        if (!focused || focused === document.body || side.current?.contains(focused))
+        if (
+          !focused ||
+          focused === from ||
+          focused === document.body ||
+          side.current?.contains(focused)
+        )
           place.focus({ preventScroll: true });
       } else if (++tries < 40)
         placeWait.current = { sessionId, timer: window.setTimeout(attempt, 50) };
@@ -657,6 +704,39 @@ function WorkSessionPage() {
     session.sessionId,
   ]);
 
+  // The panel crossing 800px turns the tree between its 파일 tab and the column; the focus moves
+  // only when it was in the place that goes (features/session-panel.md 파일 탭과 트리 열). This runs
+  // before the frame hands the new width to the model, while the place is still on screen.
+  const wide = Boolean(ctx.wide);
+  const lastWide = useRef<{ sessionId: string; wide: boolean } | null>(null);
+  // biome-ignore lint/correctness/useExhaustiveDependencies: crossing 800px is the trigger; the context and the select are read as they are then.
+  useLayoutEffect(() => {
+    const was = lastWide.current;
+    lastWide.current = { sessionId: session.sessionId, wide };
+    if (!frame.entered || !was || was.sessionId !== session.sessionId || was.wide === wide) return;
+    const focused = document.activeElement;
+    if (!(focused instanceof HTMLElement)) return;
+    const files = tabsClosableIds(PANEL_ID_PREFIX, 'files');
+    const now = panelNow.current;
+    if (!wide) {
+      // Narrower, with the focus in the tree column: the tree is its tab again, and selected.
+      if (now.selected === 'files' || !document.getElementById(files.panel)?.contains(focused))
+        return;
+      select('files');
+      if (document.activeElement !== focused && focused.isConnected)
+        focused.focus({ preventScroll: true });
+      return;
+    }
+    // Wider, with the focus on the strip's 파일 tab: that tab leaves the strip, and the 문서 tab
+    // selected in its place takes the focus.
+    if (
+      now.selected === 'files' &&
+      treeColumn(now, ctx) &&
+      document.getElementById(files.tab)?.contains(focused)
+    )
+      focusNext.current = 'tab';
+  }, [wide, session.sessionId, frame.entered]);
+
   const trayContext = useMemo(
     () => ({
       store: tray,
@@ -719,7 +799,7 @@ function WorkSessionPage() {
   const openDocument = (
     request: Pick<OpenDocumentRequest, 'target' | 'path'> | { source: 'original'; path: string },
     range?: TextRange,
-    options: { keepFocus?: boolean } = {},
+    options: { keepFocus?: boolean; place?: 'tree' } = {},
   ) => {
     const { path } = request;
     const original = 'source' in request;
@@ -746,7 +826,11 @@ function WorkSessionPage() {
     setLimited(null);
     if (range && !original) setReveal({ sessionId: session.sessionId, key, range });
     const kept = document.activeElement;
-    open({ panel: 'document', file: path, ...(original ? { target: 'original' as const } : {}) });
+    open(
+      { panel: 'document', file: path, ...(original ? { target: 'original' as const } : {}) },
+      'way',
+      options.place,
+    );
     if (options.keepFocus)
       window.setTimeout(() => {
         if (kept instanceof HTMLElement && kept.isConnected) kept.focus({ preventScroll: true });
@@ -771,8 +855,10 @@ function WorkSessionPage() {
         runs={runs}
         onReference={handleReference}
         onAttach={handleAttachment}
-        onOpenDocument={(document, range) => openDocument(document, range)}
-        onOpenOriginal={(path) => openDocument({ source: 'original', path })}
+        onOpenDocument={(document, range) => openDocument(document, range, { place: 'tree' })}
+        onOpenOriginal={(path) =>
+          openDocument({ source: 'original', path }, undefined, { place: 'tree' })
+        }
         headEnd={headEnd}
       />
     ),
@@ -924,6 +1010,7 @@ function WorkSessionPage() {
       ) : tab.source === 'original' ? (
         <OriginalDocumentTab
           projectId={session.projectId}
+          sessionId={session.sessionId}
           path={tab.path}
           onReference={handleReference}
         />
@@ -1195,6 +1282,7 @@ function WorkSessionPage() {
                         ? tdock('tabLimit')
                         : null
                     }
+                    opened={opened?.sessionId === session.sessionId ? opened : null}
                     state={state}
                     ctx={ctx}
                     strip={strip}

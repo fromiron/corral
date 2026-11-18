@@ -260,6 +260,7 @@ export function SessionPanelSide({
   teamNames,
   unsaved = {},
   notice = null,
+  opened = null,
 }: {
   sessionId: string;
   state: PanelState;
@@ -293,6 +294,8 @@ export function SessionPanelSide({
   teamNames?: Readonly<Record<string, string>>;
   /** Why a way opened nothing (the 문서 tab limit), shown under the strip. */
   notice?: string | null;
+  /** The 문서 tab last opened from the tree column, said politely; a new `n` says it again. */
+  opened?: { key: TabKey; n: number } | null;
   /** The 문서 and 팀 그래프 tabs with work not saved, or a save whose result is not known. */
   unsaved?: Readonly<Partial<Record<TabKey, 'unsaved' | 'pending'>>>;
 }) {
@@ -406,6 +409,7 @@ export function SessionPanelSide({
       ...(tab.kind === 'terminal' ? { ...terminalState(tab.terminalId), movable: true } : {}),
     };
   });
+  const openedLabel = opened ? tabs.find((tab) => tab.id === opened.key)?.label : undefined;
   const maximized = state.presentation === 'maximized';
   const maximizeLabel = t(maximized ? 'restore' : 'maximize');
   return (
@@ -489,6 +493,11 @@ export function SessionPanelSide({
           {notice}
         </p>
       ) : null}
+      {/* Mounted before anything is said, so the first opening is said too; each opening is a
+          new node, so the same name is said again. */}
+      <p className="sr-only" role="status" aria-live="polite">
+        {openedLabel ? <span key={opened?.n}>{t('opened', { name: openedLabel })}</span> : null}
+      </p>
       {/* 파일 comes first in both widths, so the tree is never moved or mounted again as it
           turns between its tab and the column, and the column comes before the document. */}
       <div className={`flex min-h-0 flex-1 ${column ? 'flex-row' : 'flex-col'}`}>

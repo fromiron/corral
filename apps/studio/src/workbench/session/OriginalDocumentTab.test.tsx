@@ -4,6 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { publishTreeSource } from '../DocumentHeader.tsx';
 import { OriginalDocumentTab } from './OriginalDocumentTab.tsx';
 
 Element.prototype.getAnimations ??= () => [];
@@ -63,7 +64,12 @@ async function mount(path: string, onReference = vi.fn()) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <OriginalDocumentTab projectId="project" path={path} onReference={onReference} />
+        <OriginalDocumentTab
+          projectId="project"
+          sessionId="session"
+          path={path}
+          onReference={onReference}
+        />
       </IntlProvider>,
     ),
   );
@@ -112,4 +118,23 @@ it('a file the folder cannot read says why; another path reads that file', async
   const { container } = await mount('gone.md');
   expect(container.querySelector('[role="alert"]')?.textContent).toBe('the file is unavailable');
   expect(container.querySelector('[data-source]')).toBeNull();
+});
+
+it('beside a tree that shows the source folder its head does not name the source again; beside one showing the copy it does', async () => {
+  const sourceName = messages.Desktop.sourceFolder;
+  const badge = (container: HTMLElement) =>
+    [...container.querySelectorAll('[data-testid="document-header"] *')].some(
+      (node) => node.children.length === 0 && node.textContent === sourceName,
+    );
+  const withdraw = publishTreeSource('session', 'source');
+  cleanups.push(async () => withdraw());
+  const { container } = await mount('README.md');
+  expect(badge(container)).toBe(false);
+
+  await act(async () => {
+    withdraw();
+    const copy = publishTreeSource('session', 'copy');
+    cleanups.push(async () => copy());
+  });
+  expect(badge(container)).toBe(true);
 });

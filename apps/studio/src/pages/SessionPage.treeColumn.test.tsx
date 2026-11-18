@@ -23,9 +23,28 @@ vi.mock('../workbench/DockDocumentPanel.tsx', () => ({
   DockDocumentPanel: ({ path }: { path: string }) => <div data-testid="document-leaf">{path}</div>,
 }));
 
+// The tree's rows render: jsdom has no layout for the virtualizer to measure, so every list it
+// draws is given a tall view.
+vi.mock('@tanstack/react-virtual', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@tanstack/react-virtual')>();
+  return {
+    ...real,
+    useVirtualizer: (options: Parameters<typeof real.useVirtualizer>[0]) =>
+      real.useVirtualizer({
+        ...options,
+        observeElementRect: (_instance, change) => {
+          change({ width: 900, height: 2000 });
+          return () => {};
+        },
+      }),
+  };
+});
+
 vi.setConfig({ testTimeout: 20_000 });
 
 const W = {
+  add: messages.SessionPanel.add,
+  opened: (name: string) => messages.SessionPanel.opened.replace('{name}', name),
   files: messages.Docking.files,
   closeFiles: messages.SessionPanel.close.replace('{name}', messages.Docking.files),
   maximize: messages.SessionPanel.maximize,
@@ -103,6 +122,16 @@ const button = (name: string) =>
     (node) => node.getAttribute('aria-label') === name,
   ) ?? null;
 const visible = (element: HTMLElement | null) => Boolean(element && !element.closest('[hidden]'));
+/** The tree's row for a path, in the 파일 tab's panel or the tree column. */
+const row = (path: string) =>
+  side()
+    ?.querySelector(`#${CSS.escape('session-panel-panel-files')}`)
+    ?.querySelector<HTMLElement>(`[role="treeitem"][title="${path}"]`) ?? null;
+const said = () =>
+  [...(side()?.querySelectorAll<HTMLElement>('[aria-live="polite"]') ?? [])]
+    .map((region) => region.textContent ?? '')
+    .join('|');
+const NOTES = 'notes.md';
 
 it('패널 폭이 900px이고 파일 · a.ts · b.ts 탭이 열려 a.ts가 선택돼 있다 → 탭 줄에는 a.ts와 b.ts만 있고 트리가 a.ts 왼쪽의 열에 있다; b.ts를 고르면 트리 열은 b.ts 옆에 있다', async () => {
   const { world: at } = await world();
@@ -221,4 +250,154 @@ it('패널 폭이 740px이다 → 파일 · a.ts 탭이 열려 있어도 트리 
 
   expect(tabNames()).toEqual([W.files, 'a.ts']);
   expect(column()).toBeNull();
+});
+
+// Focus with the tree column (features/session-panel.md 파일 탭과 트리 열, 접근성).
+const spoken = (text: string) =>
+  [...(side()?.querySelectorAll<HTMLElement>('[aria-live="polite"] *') ?? [])].find(
+    (node) => node.children.length === 0 && node.textContent === text,
+  ) ?? null;
+async function choose(element: HTMLElement | null) {
+  expect(element, 'the control is on screen').toBeTruthy();
+  await act(async () => {
+    element?.focus();
+    element?.click();
+  });
+  await settle();
+}
+
+it('패널 폭이 900px이고 파일 · a.ts 탭이 열려 트리 열이 있다 → 트리 열에서 notes.md를 연다 → notes.md 탭이 선택되고 포커스는 트리의 그 행에 남으며 "notes.md 열림"을 정중하게 알린다; 다시 고르면 다시 알린다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'document:copy:a.ts');
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(column()) && Boolean(row(NOTES)));
+  expect(said()).not.toContain(W.opened(NOTES));
+
+  await choose(row(NOTES));
+  await until(() => selectedName() === NOTES);
+
+  expect(selectedName()).toBe(NOTES);
+  expect(visible(column())).toBe(true);
+  expect(document.activeElement).toBe(row(NOTES));
+  const first = spoken(W.opened(NOTES));
+  expect(first).not.toBeNull();
+
+  // The same document chosen again is said again: a new announcement, not the old one left.
+  await choose(row(NOTES));
+  await until(() => spoken(W.opened(NOTES)) !== first);
+  expect(spoken(W.opened(NOTES))).not.toBe(first);
+  expect(spoken(W.opened(NOTES))).not.toBeNull();
+  expect(document.activeElement).toBe(row(NOTES));
+});
+
+it('패널 폭이 740px이고 파일 탭이 선택돼 있다 → 트리에서 notes.md를 연다 → 포커스는 새로 선택된 notes.md 탭으로 간다 (반례)', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'files');
+  await open(at, `/sessions/${at.sessionId}`, TIGHT);
+  await until(() => Boolean(row(NOTES)));
+
+  await choose(row(NOTES));
+  await until(() => selectedName() === NOTES);
+  await until(() => document.activeElement === selectedTab());
+
+  expect(document.activeElement).toBe(selectedTab());
+  expect(spoken(W.opened(NOTES))).toBeNull();
+});
+
+it('패널 폭이 900px이고 트리 열의 행에 포커스가 있다 → 좁아진다 → 파일 탭이 선택되고 포커스는 같은 행에 남으며 주소는 panel=files로 바뀌어 쓰이고 기록은 쌓이지 않는다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'document:copy:a.ts');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(column()) && Boolean(row(NOTES)));
+  await act(async () => row(NOTES)?.focus());
+  const kept = row(NOTES);
+  const entries = shell.history.length;
+
+  await shell.setWidth(TIGHT);
+  await until(() => selectedName() === W.files);
+
+  expect(tabNames()).toEqual([W.files, 'a.ts']);
+  expect(selectedName()).toBe(W.files);
+  expect(document.activeElement).toBe(kept);
+  await until(() => search(shell).panel === 'files');
+  expect(search(shell).panel).toBe('files');
+  expect(shell.history.length).toBe(entries);
+});
+
+it('패널 폭이 900px이고 a.ts 탭에 포커스가 있다 → 좁아진다 → a.ts가 선택된 채 포커스도 그대로다 (반례)', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'document:copy:a.ts');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => Boolean(column()));
+  await act(async () => selectedTab()?.focus());
+  const kept = selectedTab();
+
+  await shell.setWidth(TIGHT);
+  await until(() => tabNames().length === 2);
+  await settle();
+
+  expect(selectedName()).toBe('a.ts');
+  expect(document.activeElement).toBe(kept);
+});
+
+it('패널 폭이 740px이고 탭 줄의 파일 탭에 포커스가 있다 → 넓어진다 → a.ts가 선택되고 포커스는 a.ts 탭으로 간다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'files');
+  const shell = await open(at, `/sessions/${at.sessionId}`, TIGHT);
+  await until(() => tabNames().length === 2);
+  await act(async () => selectedTab()?.focus());
+  expect(tabName(document.activeElement as HTMLElement)).toBe(W.files);
+
+  await shell.setWidth(ROOMY);
+  await until(() => Boolean(column()) && selectedName() === 'a.ts');
+  await until(() => document.activeElement === selectedTab());
+
+  expect(document.activeElement).toBe(selectedTab());
+});
+
+it('패널 폭이 740px이고 파일 탭의 트리 행에 포커스가 있다 → 넓어진다 → a.ts가 선택되고 포커스는 같은 행에 남는다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'files');
+  const shell = await open(at, `/sessions/${at.sessionId}`, TIGHT);
+  await until(() => Boolean(row(NOTES)));
+  await act(async () => row(NOTES)?.focus());
+  const kept = row(NOTES);
+
+  await shell.setWidth(ROOMY);
+  await until(() => Boolean(column()) && selectedName() === 'a.ts');
+  await settle();
+
+  expect(document.activeElement).toBe(kept);
+});
+
+it('패널 폭이 900px이고 a.ts 탭만 열려 있다 → panel=files를 여는 링크 → 트리 열이 a.ts 옆에 생기고 a.ts가 선택된 채 포커스는 트리 열로 간다', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [doc('a.ts')], 'document:copy:a.ts');
+  const shell = await open(at, `/sessions/${at.sessionId}`);
+  await until(() => leaf() === 'a.ts');
+  expect(column()).toBeNull();
+
+  await act(async () => {
+    void shell.router.navigate({
+      to: '/sessions/$sessionId',
+      params: { sessionId: at.sessionId },
+      search: { panel: 'files' } as never,
+    });
+  });
+  await until(() => Boolean(column()?.contains(document.activeElement)));
+
+  expect(tabNames()).toEqual(['a.ts']);
+  expect(selectedName()).toBe('a.ts');
+  expect(search(shell)).toMatchObject({ panel: 'document', file: 'a.ts' });
+  expect(column()?.contains(document.activeElement)).toBe(true);
+});
+
+it('패널 폭이 900px이고 파일 · a.ts 탭이 열려 a.ts가 선택돼 있다 → 새로 고침처럼 panel=files 주소로 들어온다 → a.ts가 선택되고 포커스는 트리 열로 옮기지 않는다 (반례)', async () => {
+  const { world: at } = await world();
+  remember(at.sessionId, [{ kind: 'files' }, doc('a.ts')], 'document:copy:a.ts');
+  await open(at, `/sessions/${at.sessionId}?panel=files`);
+  await until(() => Boolean(column()) && selectedName() === 'a.ts');
+  await settle();
+
+  expect(column()?.contains(document.activeElement)).toBe(false);
 });

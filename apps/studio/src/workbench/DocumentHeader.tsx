@@ -110,7 +110,8 @@ export function DocumentHeader({
   children,
 }: {
   path: string;
-  target: { kind: 'source' } | { kind: 'copy'; target: WorkspaceTarget };
+  /** The file's source; a source-folder file names its conversation, whose tree it may be beside. */
+  target: { kind: 'source'; sessionId?: string } | { kind: 'copy'; target: WorkspaceTarget };
   /** The source the file tree beside this head shows; by default, its session's tree's. */
   treeSource?: Source;
   unsaved?: boolean;
@@ -128,7 +129,9 @@ export function DocumentHeader({
   const folder = path.slice(0, path.length - name.length);
   const source = td(target.kind === 'copy' ? 'sessionCopy' : 'sourceFolder');
   const SourceIcon = target.kind === 'copy' ? Files : Folder;
-  const published = useTreeSource(target.kind === 'copy' ? target.target.sessionId : null);
+  const published = useTreeSource(
+    target.kind === 'copy' ? target.target.sessionId : (target.sessionId ?? null),
+  );
   const beside = treeSource ?? published;
   const height = useSize().variant === 'compact' ? 'h-10' : 'h-12';
   return (

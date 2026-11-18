@@ -363,6 +363,8 @@ function serverParts(sessionId: string, projectId: string, options: TerminalOpti
       reviewed: false,
       missing: false,
     }),
+    // The 파일 tab's tree over the copy: its one file.
+    listFiles: async () => ({ files: [{ path, bytes: text.length }], truncated: false }),
     searchFiles: async () => ({ items: [{ path, kind: 'file' as const }], truncated: false }),
     readDocument: async (_session: string, at: string): Promise<FileDocument> => {
       if (unreadable.has(at)) throw new Error('the host could not read the file');
