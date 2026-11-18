@@ -11,3 +11,48 @@
     overflow: hidden;
   }
 }
+
+/* The overlay's motion on the kit's tiers (DESIGN.md Motion): the frame draws itself around the
+   page area (a path draw, so a tween) and fades out on the slow tier's exit; a marker pops in on
+   the fast tier. Reduced motion shows the same states at once. */
+@layer components {
+  .annotate-draw {
+    stroke-dasharray: 1;
+    animation: annotate-draw var(--duration-slow) var(--ease-out-soft) both;
+  }
+  .annotate-leave {
+    animation: annotate-fade var(--duration-moderate) var(--ease-out-soft) both;
+  }
+  .annotate-pop {
+    animation: annotate-pop var(--duration-fast) var(--ease-out-soft) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .annotate-draw,
+    .annotate-leave,
+    .annotate-pop {
+      animation: none;
+    }
+  }
+}
+
+@keyframes annotate-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes annotate-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes annotate-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
