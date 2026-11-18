@@ -27,7 +27,8 @@ export type ShortcutId =
   | 'nav.back'
   | 'nav.forward'
   | 'run.stop'
-  | 'reply.quote';
+  | 'reply.quote'
+  | 'browser.annotate';
 
 export interface Shortcut {
   id: ShortcutId;
@@ -53,6 +54,9 @@ export const SHORTCUTS: readonly Shortcut[] = [
   { id: 'run.stop', chord: { mod: true, key: '.' } },
   // Quotes the passage chosen in a reply (reply-citation.md); with no such passage it does nothing.
   { id: 'reply.quote', chord: { alt: true, key: 'q' } },
+  // The browser tab's annotation mode (features/browser-annotate.md 켜고 끄기): heard only with the
+  // focus in that tab; there is no browser tab in a browser.
+  { id: 'browser.annotate', chord: { mod: true, shift: true, key: 'd' }, web: null },
 ];
 
 /** Keys that work only inside one place (composer, editor); listed in help, not bound here. */

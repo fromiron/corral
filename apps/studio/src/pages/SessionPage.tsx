@@ -37,6 +37,13 @@ import {
   type AdviceRequest,
   useAdviceArrivalRequest,
 } from '../workbench/adviceArrival.ts';
+import {
+  BrowserAnnotateProvider,
+  BrowserAnnouncer,
+  ComposerAnnotateContext,
+  ComposerAnnotateRegistry,
+  useBrowserAnnotate,
+} from '../workbench/browser/annotate.tsx';
 import { BrowserTab } from '../workbench/browser/BrowserTab.tsx';
 import { BrowserTabsProvider, useBrowserTabs } from '../workbench/browser/browserTabs.tsx';
 import { type PreviewTabs, PreviewTabsContext } from '../workbench/browser/previewTabs.tsx';
@@ -408,6 +415,16 @@ function WorkSessionPage() {
     newId: newBrowserId,
     stopPreview: (sessionId, leaseId) =>
       services.workspaces?.stopPreview(sessionId, leaseId) ?? Promise.resolve(),
+  });
+  // Browser annotation (features/browser-annotate.md): the mode and the overlay's context; the
+  // composer publishes its draft's side through `composerAnnotate`.
+  const [composerAnnotate] = useState(() => new ComposerAnnotateRegistry());
+  const annotate = useBrowserAnnotate({
+    bridge: services.browser,
+    sessionId: session.sessionId,
+    owns: (tabId) =>
+      panelNow.current.tabs.some((tab) => tab.kind === 'browser' && tab.browserId === tabId),
+    composer: composerAnnotate,
   });
   // Each run's name in the "+" list's run history: its request, else its team.
   const runNames = useRunNames(runs, session.entries);
@@ -1313,127 +1330,132 @@ function WorkSessionPage() {
           },
         }}
       >
-        <ChatWidgetProvider
-          sessionId={session.sessionId}
-          presentationRunId={presentationRunId}
-          live={Boolean(liveRunId)}
-          runIds={sessionRunIds}
-        >
-          <PendingTrayContext.Provider value={trayContext}>
-            <StopCommandContext.Provider value={routeStop}>
-              <SidePanelFrame
-                className="min-h-0 flex-1"
-                presentation={state.presentation}
-                sideLabel={tpanel('label')}
-                sideWidth={sideWidth}
-                drawerWidth={
-                  workArea === null ? PANEL_MIN_WIDTH : drawerWidth(workArea, rememberedWidth)
-                }
-                onFrameWidthChange={setMeasured}
-                sideRef={side}
-                mainRef={setMainElement}
-                {...dockArea.frame}
-                resize={{
-                  'aria-label': tpanel('width'),
-                  min: PANEL_MIN_WIDTH,
-                  max: Math.max(PANEL_MIN_WIDTH, (workArea ?? 0) - CONVERSATION_MIN_WIDTH),
-                  onChange: setRememberedWidth,
-                  onCommit: (px) => writePanelWidth(deviceStorage(), px),
-                  onDragChange: splitterDrag,
-                }}
-                onEscape={() => {
-                  if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
-                }}
-                onScrimPress={() => {
-                  if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
-                }}
-                main={
-                  <AdviceArrival.Provider
-                    key={panelKey(services, {
-                      kind: 'chat',
-                      projectId: session.projectId,
-                      sessionId: session.sessionId,
-                    })}
-                    value={adviceArrival}
-                  >
-                    {/* While the changes tab is on screen it says the change count, not the bar. */}
-                    <ChangesTabShownContext.Provider
-                      value={state.selected === 'changes' && onScreen}
-                    >
-                      <SessionChat
+        <ComposerAnnotateContext.Provider value={composerAnnotate}>
+          <BrowserAnnotateProvider value={annotate}>
+            <BrowserAnnouncer annotate={annotate} />
+            <ChatWidgetProvider
+              sessionId={session.sessionId}
+              presentationRunId={presentationRunId}
+              live={Boolean(liveRunId)}
+              runIds={sessionRunIds}
+            >
+              <PendingTrayContext.Provider value={trayContext}>
+                <StopCommandContext.Provider value={routeStop}>
+                  <SidePanelFrame
+                    className="min-h-0 flex-1"
+                    presentation={state.presentation}
+                    sideLabel={tpanel('label')}
+                    sideWidth={sideWidth}
+                    drawerWidth={
+                      workArea === null ? PANEL_MIN_WIDTH : drawerWidth(workArea, rememberedWidth)
+                    }
+                    onFrameWidthChange={setMeasured}
+                    sideRef={side}
+                    mainRef={setMainElement}
+                    {...dockArea.frame}
+                    resize={{
+                      'aria-label': tpanel('width'),
+                      min: PANEL_MIN_WIDTH,
+                      max: Math.max(PANEL_MIN_WIDTH, (workArea ?? 0) - CONVERSATION_MIN_WIDTH),
+                      onChange: setRememberedWidth,
+                      onCommit: (px) => writePanelWidth(deviceStorage(), px),
+                      onDragChange: splitterDrag,
+                    }}
+                    onEscape={() => {
+                      if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
+                    }}
+                    onScrimPress={() => {
+                      if (!heldByConfirmation()) frame.dispatch({ type: 'closeDrawer' });
+                    }}
+                    main={
+                      <AdviceArrival.Provider
                         key={panelKey(services, {
                           kind: 'chat',
                           projectId: session.projectId,
                           sessionId: session.sessionId,
                         })}
-                        connection={{ lost, retry: refresh }}
-                        session={session}
-                        team={team}
-                        corrals={corrals}
-                        runs={runs}
-                        active={active}
-                        liveRunId={liveRunId}
-                        conversationInoperable={!operable}
-                        onChange={refresh}
-                        sessionReads={sessionReads}
-                        runsListed={listed}
-                        reference={reference}
-                        onReferenceUsed={() => setReference(null)}
-                        onPanel={(value, run) => open({ ...run, panel: value })}
-                        // The conversation's place only: no history entry, no other view.
-                        onPlace={(message) => frame.writeTab({ message }, { replace: true })}
-                      />
-                    </ChangesTabShownContext.Provider>
-                  </AdviceArrival.Provider>
-                }
-                side={
-                  <BrowserTabsProvider value={browserTabs}>
-                    <PreviewTabsContext.Provider value={previewTabs}>
-                      <SessionPanelSide
-                        sessionId={session.sessionId}
-                        teamNames={teamNames}
-                        unsaved={unsavedTabs}
-                        notice={
-                          limited === session.sessionId &&
-                          state.tabs.filter((tab) => tab.kind === 'document').length >=
-                            DOCUMENT_LIMIT
-                            ? tdock('tabLimit')
-                            : null
-                        }
-                        opened={opened?.sessionId === session.sessionId ? opened : null}
-                        state={state}
-                        ctx={ctx}
-                        strip={strip}
-                        onSelect={select}
-                        onClose={close}
-                        onReorder={(key, toIndex) => {
-                          if (!heldByConfirmation())
-                            frame.dispatch({ type: 'reorder', key, toIndex });
-                        }}
-                        // Out by drag into the dock: as a close, ending nothing.
-                        onMoveOut={(key) => closeTab(key)}
-                        onMoveIn={(terminalId, index) =>
-                          frame.dispatch({ type: 'moveIn', terminalId, index })
-                        }
-                        runs={runs}
-                        runNames={runNames}
-                        onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
-                        terminalRow={dockArea.terminalRow}
-                        terminals={terminalList.value?.list?.terminals ?? []}
-                        onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
-                        onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
-                        onMaximize={() => {
-                          if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
-                        }}
-                        renderTab={renderTab}
-                      />
-                    </PreviewTabsContext.Provider>
-                  </BrowserTabsProvider>
-                }
-              />
-            </StopCommandContext.Provider>
-          </PendingTrayContext.Provider>
-        </ChatWidgetProvider>
+                        value={adviceArrival}
+                      >
+                        {/* While the changes tab is on screen it says the change count, not the bar. */}
+                        <ChangesTabShownContext.Provider
+                          value={state.selected === 'changes' && onScreen}
+                        >
+                          <SessionChat
+                            key={panelKey(services, {
+                              kind: 'chat',
+                              projectId: session.projectId,
+                              sessionId: session.sessionId,
+                            })}
+                            connection={{ lost, retry: refresh }}
+                            session={session}
+                            team={team}
+                            corrals={corrals}
+                            runs={runs}
+                            active={active}
+                            liveRunId={liveRunId}
+                            conversationInoperable={!operable}
+                            onChange={refresh}
+                            sessionReads={sessionReads}
+                            runsListed={listed}
+                            reference={reference}
+                            onReferenceUsed={() => setReference(null)}
+                            onPanel={(value, run) => open({ ...run, panel: value })}
+                            // The conversation's place only: no history entry, no other view.
+                            onPlace={(message) => frame.writeTab({ message }, { replace: true })}
+                          />
+                        </ChangesTabShownContext.Provider>
+                      </AdviceArrival.Provider>
+                    }
+                    side={
+                      <BrowserTabsProvider value={browserTabs}>
+                        <PreviewTabsContext.Provider value={previewTabs}>
+                          <SessionPanelSide
+                            sessionId={session.sessionId}
+                            teamNames={teamNames}
+                            unsaved={unsavedTabs}
+                            notice={
+                              limited === session.sessionId &&
+                              state.tabs.filter((tab) => tab.kind === 'document').length >=
+                                DOCUMENT_LIMIT
+                                ? tdock('tabLimit')
+                                : null
+                            }
+                            opened={opened?.sessionId === session.sessionId ? opened : null}
+                            state={state}
+                            ctx={ctx}
+                            strip={strip}
+                            onSelect={select}
+                            onClose={close}
+                            onReorder={(key, toIndex) => {
+                              if (!heldByConfirmation())
+                                frame.dispatch({ type: 'reorder', key, toIndex });
+                            }}
+                            // Out by drag into the dock: as a close, ending nothing.
+                            onMoveOut={(key) => closeTab(key)}
+                            onMoveIn={(terminalId, index) =>
+                              frame.dispatch({ type: 'moveIn', terminalId, index })
+                            }
+                            runs={runs}
+                            runNames={runNames}
+                            onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
+                            terminalRow={dockArea.terminalRow}
+                            terminals={terminalList.value?.list?.terminals ?? []}
+                            onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
+                            onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
+                            onMaximize={() => {
+                              if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
+                            }}
+                            renderTab={renderTab}
+                          />
+                        </PreviewTabsContext.Provider>
+                      </BrowserTabsProvider>
+                    }
+                  />
+                </StopCommandContext.Provider>
+              </PendingTrayContext.Provider>
+            </ChatWidgetProvider>
+          </BrowserAnnotateProvider>
+        </ComposerAnnotateContext.Provider>
       </SourceNavigationContext.Provider>
     </OpenTerminalContext.Provider>
   );

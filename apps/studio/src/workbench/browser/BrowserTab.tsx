@@ -16,7 +16,7 @@ import {
   MenuTrigger,
   Tooltip,
 } from '@corral/react/design-kit';
-import { ArrowLeft, ArrowRight, Ellipsis, RefreshCw, X } from '@corral/react/icons';
+import { ArrowLeft, ArrowRight, Ellipsis, RefreshCw, SquarePen, X } from '@corral/react/icons';
 import {
   type FormEvent,
   type KeyboardEvent,
@@ -29,6 +29,8 @@ import {
 import { useTranslations } from 'use-intl';
 import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/browser-bridge.ts';
 import { desktop } from '../../desktop.tsx';
+import { shortcutFor, shortcutLabel } from '../../shortcuts.ts';
+import { useAnnotating, useBrowserAnnotateContext } from './annotate.tsx';
 import { BlockedLine, DownloadLines, PermissionLines } from './BrowserLines.tsx';
 import { ClearDataDialog, SitePermissionsDialog } from './BrowserMenuDialogs.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
@@ -74,6 +76,8 @@ function pageKey(event: globalThis.KeyboardEvent): 'reload' | 'in' | 'out' | 're
 export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   const t = useBrowserT();
   const tabs = useBrowserTabsContext();
+  const annotate = useBrowserAnnotateContext();
+  const annotating = useAnnotating(tab.browserId);
   const page = useBrowserPage(tab.browserId);
   const preview = Boolean(tab.lease);
   const address = useRef<HTMLInputElement>(null);
@@ -155,11 +159,21 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
   // they do nothing. A listener of the tab's own, so the app's window listener never sees them.
   const hasPageNow = useRef(hasPage);
   hasPageNow.current = hasPage;
+  const annotateNow = useRef(annotate);
+  annotateNow.current = annotate;
   useEffect(() => {
     const element = root.current;
     if (!bridge || !element) return;
     const tabId = tab.browserId;
     const onKeyDown = (event: globalThis.KeyboardEvent) => {
+      // The annotation mode's shortcut is heard only here, in its tab (browser-annotate.md 켜고
+      // 끄기); a page's press comes back from the desktop with its tab.
+      if (shortcutFor(event)?.id === 'browser.annotate') {
+        event.preventDefault();
+        event.stopPropagation();
+        annotateNow.current?.toggle(tabId, 'shortcut');
+        return;
+      }
       const key = pageKey(event);
       if (!key) return;
       event.preventDefault();
@@ -296,6 +310,21 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
             autoComplete="off"
           />
         </form>
+        {annotate ? (
+          <Tooltip content={t('annotate')} shortcut={shortcutLabel('browser.annotate')}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t('annotate')}
+              aria-pressed={annotating}
+              data-pressed={annotating ? '' : undefined}
+              disabled={!live && !annotating}
+              onClick={() => annotate.toggle(tabId, 'button')}
+            >
+              <SquarePen />
+            </Button>
+          </Tooltip>
+        ) : null}
         <Menu>
           <Tooltip content={t('more')}>
             <MenuTrigger

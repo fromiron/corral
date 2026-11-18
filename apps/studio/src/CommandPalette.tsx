@@ -43,6 +43,7 @@ import {
   shortcutLabel,
 } from './shortcuts.ts';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { ANNOTATE_SHORTCUT } from './workbench/browser/annotate.tsx';
 import { holdPages } from './workbench/browser/overlap.ts';
 import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
 import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
@@ -207,6 +208,13 @@ export function CommandLayer({
             open(event.id);
             pageReturn.current = event.tabId;
           }
+          return;
+        }
+        // The annotation mode is that tab's: its overlay takes the focus once it shows.
+        if (event.id === 'browser.annotate') {
+          window.dispatchEvent(
+            new CustomEvent(ANNOTATE_SHORTCUT, { detail: { tabId: event.tabId } }),
+          );
           return;
         }
         runShortcut(event.id as ShortcutId, event.digit);
@@ -873,6 +881,7 @@ const LABEL: Record<ShortcutId, string> = {
   'nav.forward': 'navForward',
   'run.stop': 'runStop',
   'reply.quote': 'replyQuote',
+  'browser.annotate': 'browserAnnotate',
 };
 
 /** Every shortcut that works here, from the one table the key handler uses. */
@@ -927,7 +936,13 @@ export function ShortcutTable({ editable = false }: { editable?: boolean }) {
     }
   };
   const { sendKey } = usePreferences();
-  const sessionIds = new Set(['session.new', 'session.jump', 'run.stop', 'reply.quote']);
+  const sessionIds = new Set([
+    'session.new',
+    'session.jump',
+    'run.stop',
+    'reply.quote',
+    'browser.annotate',
+  ]);
   const commands = (session: boolean): [string, string, ShortcutId?][] =>
     SHORTCUTS.flatMap((s) => {
       const keys = shortcutLabel(s.id);

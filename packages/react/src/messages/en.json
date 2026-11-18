@@ -1438,6 +1438,7 @@
     "navBack": "Back",
     "navForward": "Forward",
     "runStop": "Stop the run",
+    "browserAnnotate": "Turn annotation on or off",
     "replyQuote": "Quote the selected reply text",
     "recall": "Earlier request (empty box)",
     "mention": "Reference a file, folder, result, run or role",
@@ -4590,6 +4591,9 @@
     "team": "Corral"
   },
   "Browser": {
+    "annotate": "Annotate",
+    "annotateOn": "Annotate on",
+    "annotateOff": "Annotate off",
     "noteSource": "Page note",
     "back": "Back",
     "forward": "Forward",

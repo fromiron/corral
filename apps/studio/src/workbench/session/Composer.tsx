@@ -15,6 +15,7 @@ import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { sessionRunMode } from '../autoChoice.ts';
+import { usePublishComposerAnnotate } from '../browser/annotate.tsx';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
 import { removeMention, selectMention } from '../composerMenu.ts';
@@ -381,6 +382,22 @@ function SessionComposer({
     );
     if (mounted.current) setLowered(outcome.lowered);
   };
+
+  // Browser annotation reads the draft's side (features/browser-annotate.md 계약): its counts
+  // against the limits and whether the send key would carry an image now.
+  const keyIntent = forKey('send').intent;
+  const imagesNow = keyIntent === 'next' || keyIntent === 'queue';
+  usePublishComposerAnnotate(
+    {
+      state: () => ({
+        textAttachments: attachments.length,
+        images: images.length,
+        imagesNow,
+        markers: [],
+      }),
+    },
+    `${attachments.length}:${images.length}:${imagesNow}`,
+  );
 
   const backToInput = () => backToInputOf(input);
 

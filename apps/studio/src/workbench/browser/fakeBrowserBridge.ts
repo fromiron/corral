@@ -186,8 +186,13 @@ export function createFakeBrowserBridge(options: FakeBrowserOptions = {}): FakeB
       throw new Error('The fake browser bridge captures nothing.');
     }),
     cancelPreviewCapture: record('cancelPreviewCapture', async () => {}),
-    // Annotation (S6) is not drawn by the fake: the mode never turns on.
-    annotate: record('annotate', async () => false),
+    // Annotation (S6): the fake draws no overlay; the mode turns on only over a live page, and
+    // says so as main does.
+    annotate: record('annotate', async (tabId: string, on: boolean) => {
+      if (on && states.get(tabId)?.page !== 'live') return false;
+      later(() => emit({ type: 'annotate', tabId, on }));
+      return true;
+    }),
     annotateContext: record('annotateContext', async () => {}),
     answerAnnotate: record('answerAnnotate', async () => {}),
     onEvent: (callback) => {

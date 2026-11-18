@@ -1438,6 +1438,7 @@
     "navBack": "뒤로",
     "navForward": "앞으로",
     "runStop": "실행 중지",
+    "browserAnnotate": "주석 켜고 끄기",
     "replyQuote": "고른 답변 글 인용",
     "recall": "이전 요청(빈 입력칸)",
     "mention": "파일·폴더·결과·실행·역할 참조",
@@ -4590,6 +4591,9 @@
     "team": "Corral"
   },
   "Browser": {
+    "annotate": "주석",
+    "annotateOn": "주석 켜짐",
+    "annotateOff": "주석 꺼짐",
     "noteSource": "페이지 주석",
     "back": "뒤로",
     "forward": "앞으로",
