@@ -330,7 +330,12 @@ export class BrowserTabs {
     const contents = tab?.contents;
     if (!tab || !contents || !this.visible(tab)) return null;
     const epoch = ++tab.stillEpoch;
-    const image = await contents.capturePage();
+    let image: Awaited<ReturnType<WebContents['capturePage']>>;
+    try {
+      image = await contents.capturePage();
+    } catch {
+      return null; // the view could not be drawn (seen in a hidden window); it stays live
+    }
     if (tab.contents !== contents || tab.stillEpoch !== epoch || !this.visible(tab)) return null;
     const stillId = this.ports.id();
     tab.stillId = stillId;

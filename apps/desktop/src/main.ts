@@ -26,6 +26,7 @@ import { type DesktopRun, RunSleepBlocker, runRoute, trayRunState } from './life
 import { type DesktopLocale, nativeLocale, parseDesktopLocale } from './locale.ts';
 import { installStudioMicrophone } from './microphone.ts';
 import { DesktopPreviews } from './preview.ts';
+import { withoutPageAddresses } from './quiet-warnings.ts';
 import { RemoteHostController } from './remote-host-controller.ts';
 import {
   type DesktopCommand,
@@ -42,6 +43,7 @@ import { hasWindowUnsavedEdits } from './unsaved.ts';
 import { DesktopUpdater } from './updater.ts';
 
 app.setName('Corral');
+withoutPageAddresses(process);
 const dataArg = process.argv.find((arg) => arg.startsWith('--data-dir='))?.slice(11);
 if (dataArg && isAbsolute(dataArg)) app.setPath('userData', dataArg);
 protocol.registerSchemesAsPrivileged([

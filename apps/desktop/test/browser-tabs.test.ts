@@ -276,6 +276,10 @@ it('the still-image swap: picture first, hide after it is painted, a newer step 
   expect(late).toBeNull();
   expect(f.tabs.freeze('tab-a', 'id1')).toBe(false);
   expect(v.visible).toBe(true);
+  // A capture that fails leaves the live view as it is.
+  v.webContents.capturePage.mockRejectedValueOnce(new Error('UnknownVizError'));
+  expect(await f.tabs.still('tab-a')).toBeNull();
+  expect(v.visible).toBe(true);
   // A frozen tab stays hidden when placed again, until thawed.
   const next = await f.tabs.still('tab-a');
   f.tabs.freeze('tab-a', next?.stillId ?? '');
