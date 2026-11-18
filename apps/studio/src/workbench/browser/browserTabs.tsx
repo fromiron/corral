@@ -12,13 +12,25 @@ import {
 } from 'react';
 import type {
   BrowserBridge,
+  BrowserDownload,
   BrowserEvent,
   BrowserTabState,
+  SitePermission,
 } from '../../../../desktop/src/browser-bridge.ts';
 import type { OpenTab, PanelEvent, PanelState } from '../panel/model.ts';
 import { pageAt, tabKey } from '../panel/tabs.ts';
 
 export type BrowserTab = Extract<OpenTab, { kind: 'browser' }>;
+
+/** A page's request for permissions, asked on the line under its tab's head. */
+export interface PermissionAsk {
+  requestId: string;
+  origin: string;
+  permissions: SitePermission[];
+}
+
+const NO_ASKS: readonly PermissionAsk[] = [];
+const NO_DOWNLOADS: readonly BrowserDownload[] = [];
 
 /** What the page of each browser tab says now, by tab ID; the bodies and the strip read it. */
 export class BrowserPages {
@@ -26,6 +38,9 @@ export class BrowserPages {
   private readonly listeners = new Set<() => void>();
   private readonly focusAsks = new Map<string, number>();
   private readonly pageFocusAsks = new Set<string>();
+  private readonly asks = new Map<string, readonly PermissionAsk[]>();
+  private readonly downloads = new Map<string, BrowserDownload>();
+  private readonly downloadLines = new Map<string, readonly BrowserDownload[]>();
   private version = 0;
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -40,15 +55,81 @@ export class BrowserPages {
     this.pages.set(state.tabId, state);
     this.changed();
   }
+  /** The tab's page is gone (closed, unloaded): its lines go; a later load asks again. */
   drop(tabId: string) {
     this.pageFocusAsks.delete(tabId);
-    if (this.pages.delete(tabId) || this.focusAsks.delete(tabId)) this.changed();
+    const asked = this.asks.delete(tabId);
+    let lines = false;
+    for (const [id, download] of this.downloads)
+      if (download.tabId === tabId) {
+        this.downloads.delete(id);
+        lines = true;
+      }
+    if (lines) this.lineDownloads();
+    if (this.pages.delete(tabId) || this.focusAsks.delete(tabId) || asked || lines) this.changed();
   }
   clear() {
     this.pages.clear();
     this.focusAsks.clear();
     this.pageFocusAsks.clear();
+    this.asks.clear();
+    this.downloads.clear();
+    this.downloadLines.clear();
     this.changed();
+  }
+  /** The tab's open permission asks, oldest first. */
+  asksOf(tabId: string): readonly PermissionAsk[] {
+    return this.asks.get(tabId) ?? NO_ASKS;
+  }
+  /** An ask, or the same request again with what is still unanswered. */
+  ask(tabId: string, ask: PermissionAsk) {
+    const now = this.asksOf(tabId);
+    const at = now.findIndex((open) => open.requestId === ask.requestId);
+    this.asks.set(tabId, at < 0 ? [...now, ask] : now.map((open, i) => (i === at ? ask : open)));
+    this.changed();
+  }
+  endAsk(tabId: string, requestId: string) {
+    const now = this.asksOf(tabId);
+    if (!now.some((open) => open.requestId === requestId)) return;
+    this.asks.set(
+      tabId,
+      now.filter((open) => open.requestId !== requestId),
+    );
+    this.changed();
+  }
+  /** The downloads whose line is under the tab's head, oldest first. */
+  downloadsOf(tabId: string): readonly BrowserDownload[] {
+    return this.downloadLines.get(tabId) ?? NO_DOWNLOADS;
+  }
+  /** A download's news: cancelled, or with no tab of this conversation, it has no line. */
+  download(download: BrowserDownload, shown: boolean) {
+    if (download.state === 'cancelled' || !shown) {
+      if (!this.downloads.delete(download.downloadId)) return;
+    } else this.downloads.set(download.downloadId, download);
+    this.lineDownloads();
+    this.changed();
+  }
+  /** The tab moved to another page: the lines of downloads that ended there go. */
+  pageMoved(tabId: string) {
+    let gone = false;
+    for (const [id, download] of this.downloads)
+      if (download.tabId === tabId && download.state !== 'progressing') {
+        this.downloads.delete(id);
+        gone = true;
+      }
+    if (!gone) return;
+    this.lineDownloads();
+    this.changed();
+  }
+  private lineDownloads() {
+    this.downloadLines.clear();
+    for (const download of this.downloads.values()) {
+      if (!download.tabId) continue;
+      this.downloadLines.set(download.tabId, [
+        ...(this.downloadLines.get(download.tabId) ?? []),
+        download,
+      ]);
+    }
   }
   /** The page of that tab is to take the focus once it is live on screen (a page's new tab). */
   focusPage(tabId: string) {
@@ -114,6 +195,26 @@ export function useBrowserPage(tabId: string): BrowserTabState | undefined {
   );
 }
 
+/** The tab's open permission asks. */
+export function useBrowserAsks(tabId: string): readonly PermissionAsk[] {
+  const tabs = useContext(BrowserTabsContext);
+  return useSyncExternalStore(
+    tabs?.pages.subscribe ?? noSubscribe,
+    () => tabs?.pages.asksOf(tabId) ?? NO_ASKS,
+    () => NO_ASKS,
+  );
+}
+
+/** The downloads with a line under the tab's head. */
+export function useBrowserDownloads(tabId: string): readonly BrowserDownload[] {
+  const tabs = useContext(BrowserTabsContext);
+  return useSyncExternalStore(
+    tabs?.pages.subscribe ?? noSubscribe,
+    () => tabs?.pages.downloadsOf(tabId) ?? NO_DOWNLOADS,
+    () => NO_DOWNLOADS,
+  );
+}
+
 /** Re-renders with any page's change: for the strip, which names every tab. */
 export function useBrowserPages(): BrowserPages | null {
   const tabs = useContext(BrowserTabsContext);
@@ -122,6 +223,7 @@ export function useBrowserPages(): BrowserPages | null {
 }
 
 const noSubscribe = () => () => {};
+const withoutHash = (url: string) => url.split('#')[0];
 const zero = () => 0;
 
 export interface BrowserTabsInput {
@@ -197,6 +299,11 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
         case 'state': {
           const { state } = event;
           if (!own(state.tabId)) return;
+          // A move to another page (not a reload, not a jump within it) ends the lines of
+          // downloads that finished on the page before.
+          const before = pages.get(state.tabId)?.url;
+          if (before && state.url && withoutHash(before) !== withoutHash(state.url))
+            pages.pageMoved(state.tabId);
           pages.set(state);
           const tab = now.state.tabs.find(
             (open): open is BrowserTab => open.kind === 'browser' && open.browserId === state.tabId,
@@ -236,6 +343,22 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
         case 'leave':
           if (own(event.tabId)) pages.focusAddress(event.tabId);
           return;
+        case 'permission':
+          if (own(event.tabId))
+            pages.ask(event.tabId, {
+              requestId: event.requestId,
+              origin: event.origin,
+              permissions: event.permissions,
+            });
+          return;
+        case 'permission-ended':
+          pages.endAsk(event.tabId, event.requestId);
+          return;
+        case 'download': {
+          const { download } = event;
+          pages.download(download, Boolean(download.tabId && own(download.tabId)));
+          return;
+        }
         default:
           return;
       }
@@ -264,8 +387,17 @@ export function useBrowserTabs(input: BrowserTabsInput): BrowserTabs | null {
       void bridge
         .navigate(selectedId, now.projectId, `${tab.at.origin}${tab.at.path}`)
         .catch(() => {});
+      // Downloads carry on while the conversation is left: their lines come back with the tab.
+      void bridge.downloads(selectedId).then(
+        (downloads) => {
+          if (latest.current.current() !== now.sessionId) return;
+          for (const download of downloads)
+            if (download.tabId === selectedId) pages.download(download, true);
+        },
+        () => {},
+      );
     }
-  }, [bridge, selectedId, onScreen]);
+  }, [bridge, selectedId, onScreen, pages]);
 
   // A tab gone from the strip: the person closed it (its page closes), or its page is gone.
   const tabIds = input.state.tabs

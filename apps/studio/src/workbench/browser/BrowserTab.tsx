@@ -24,6 +24,7 @@ import {
 import { useTranslations } from 'use-intl';
 import type { BrowserFailure, BrowserTabState } from '../../../../desktop/src/browser-bridge.ts';
 import { desktop } from '../../desktop.tsx';
+import { BlockedLine, DownloadLines, PermissionLines } from './BrowserLines.tsx';
 import { type BrowserTab as Tab, useBrowserPage, useBrowserTabsContext } from './browserTabs.tsx';
 import { focusPageWhenLive, PAGE_ON_SCREEN, PAGE_STILL } from './pageFocus.ts';
 import { usePageStill } from './usePageStill.ts';
@@ -300,6 +301,8 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
         </p>
       ) : null}
       {/* Polite news of the page: loading, failing, closing itself, ending. */}
+      <PermissionLines bridge={b} tabId={tabId} />
+      <DownloadLines bridge={b} tabId={tabId} />
       <p role="status" className="sr-only">
         {announce(page, t)}
       </p>
@@ -349,6 +352,7 @@ export function BrowserTab({ tab, visible }: { tab: Tab; visible: boolean }) {
           onSystem={preview ? null : openSystem}
         />
       </div>
+      <BlockedLine bridge={b} tabId={tabId} blocked={preview ? (page?.blocked ?? null) : null} />
     </div>
   );
 }

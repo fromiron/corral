@@ -936,3 +936,229 @@ it('주석 모드의 덧뷰가 있는 페이지 위로 ⋯ 메뉴를 연다 → 
   expect(bridge.callsTo('thaw')).toEqual([['b_one']]);
   expect(pictures()).toEqual([]);
 });
+
+// --- lines under the head: permissions, downloads; under the page: a preview's blocked move ---
+
+const B = messages.Browser;
+const lineText = (selector: string) =>
+  [...(side()?.querySelectorAll<HTMLElement>(selector) ?? [])].map((line) =>
+    (line.textContent ?? '').replace(/\s+/g, ' ').trim(),
+  );
+const asks = () => lineText('[data-browser-line="permission"]');
+const downloadLines = () => lineText('[data-browser-line="download"]');
+const fill = (text: string, values: Record<string, string>) =>
+  Object.entries(values).reduce((out, [key, value]) => out.replace(`{${key}}`, value), text);
+
+it('일반 페이지가 카메라를 요청한다 → 머리 아래 한 줄이 "meet.example wants to use camera"와 허용 · 거부를 보이고 포커스를 가져가지 않으며, 허용은 그 요청에 답하고 끝나면 줄이 사라진다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', 'https://meet.example');
+  await act(async () => addressField()?.focus());
+  await act(async () =>
+    bridge.emit({
+      type: 'permission',
+      tabId: 'b_one',
+      requestId: 'r_1',
+      origin: 'https://meet.example',
+      permissions: ['camera'],
+    }),
+  );
+  await settle();
+
+  expect(asks()).toHaveLength(1);
+  expect(asks()[0]).toContain(
+    fill(B.permissionAsk, { site: 'meet.example', permissions: B.permission.camera }),
+  );
+  expect(document.activeElement).toBe(addressField());
+  // The line lies above the page's place, so the page moves down rather than under it.
+  const line = side()?.querySelector('[data-browser-line="permission"]');
+  expect(
+    line && place()
+      ? line.compareDocumentPosition(place() as Node) & Node.DOCUMENT_POSITION_FOLLOWING
+      : 0,
+  ).toBeTruthy();
+
+  await act(async () => buttonNamed(B.allow)?.click());
+  await settle();
+  expect(bridge.callsTo('answerPermission')).toEqual([['b_one', 'r_1', true]]);
+  await act(async () =>
+    bridge.emit({ type: 'permission-ended', tabId: 'b_one', requestId: 'r_1' }),
+  );
+  await settle();
+  expect(asks()).toEqual([]);
+});
+
+it('카메라와 마이크를 함께 요청하고, 같은 요청이 마이크만 남겨 다시 온다 → 한 줄이 둘을, 다음엔 마이크만 이름 대고 거부는 false로 답한다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge, 'b_one', 'https://meet.example');
+  const ask = (permissions: ('camera' | 'microphone')[]) =>
+    act(async () =>
+      bridge.emit({
+        type: 'permission',
+        tabId: 'b_one',
+        requestId: 'r_2',
+        origin: 'https://meet.example',
+        permissions,
+      }),
+    );
+  await ask(['camera', 'microphone']);
+  await settle();
+  expect(asks()).toHaveLength(1);
+  expect(asks()[0]).toContain(
+    fill(B.permissionAsk, {
+      site: 'meet.example',
+      permissions: `${B.permission.camera} and ${B.permission.microphone}`,
+    }),
+  );
+
+  await ask(['microphone']);
+  await settle();
+  expect(asks()).toHaveLength(1);
+  expect(asks()[0]).toContain(
+    fill(B.permissionAsk, { site: 'meet.example', permissions: B.permission.microphone }),
+  );
+  await act(async () => buttonNamed(B.deny)?.click());
+  await settle();
+  expect(bridge.callsTo('answerPermission')).toEqual([['b_one', 'r_2', false]]);
+});
+
+it('다른 대화의 탭이 권한을 요청한다 → 이 대화에는 줄이 없다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () =>
+    bridge.emit({
+      type: 'permission',
+      tabId: 'b_elsewhere',
+      requestId: 'r_3',
+      origin: 'https://meet.example',
+      permissions: ['camera'],
+    }),
+  );
+  await settle();
+  expect(asks()).toEqual([]);
+});
+
+const download = (
+  patch: Partial<import('../../../desktop/src/browser-bridge.ts').BrowserDownload>,
+) => ({
+  downloadId: 'd_1',
+  tabId: 'b_one',
+  name: 'report.pdf',
+  state: 'progressing' as const,
+  receivedBytes: 40,
+  totalBytes: 100,
+  ...patch,
+});
+
+it('내려받기 → "{이름} 내려받는 중 · 40%"와 취소, 끝나면 "{이름}을 내려받았습니다"와 폴더에서 보기가 다음 페이지 이동까지 남는다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => bridge.emit({ type: 'download', download: download({}) }));
+  await settle();
+  expect(downloadLines()).toHaveLength(1);
+  expect(downloadLines()[0]).toContain(fill(B.downloading, { name: 'report.pdf', percent: '40' }));
+  await act(async () => buttonNamed(B.cancel)?.click());
+  await settle();
+  expect(bridge.callsTo('cancelDownload')).toEqual([['d_1']]);
+
+  await act(async () =>
+    bridge.emit({
+      type: 'download',
+      download: download({ state: 'completed', receivedBytes: 100 }),
+    }),
+  );
+  await settle();
+  expect(downloadLines()[0]).toContain(fill(B.downloaded, { name: 'report.pdf' }));
+  await act(async () => buttonNamed(B.showInFolder)?.click());
+  await settle();
+  expect(bridge.callsTo('showDownload')).toEqual([['d_1']]);
+
+  // A reload of the same page is not a move to the next page: the line stays.
+  await act(async () => bridge.setState('b_one', { loading: true }));
+  await act(async () => bridge.setState('b_one', { loading: false }));
+  await settle();
+  expect(downloadLines()).toHaveLength(1);
+  await act(async () => bridge.setState('b_one', { url: 'https://a.example/next' }));
+  await settle();
+  expect(downloadLines()).toEqual([]);
+});
+
+it('중단된 내려받기 → "{이름} 내려받기가 중단되었습니다"이고 다시 이어지면 진행 줄로 돌아간다; 취소된 것은 줄이 없다', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () =>
+    bridge.emit({ type: 'download', download: download({ state: 'interrupted' }) }),
+  );
+  await settle();
+  expect(downloadLines()[0]).toContain(fill(B.downloadInterrupted, { name: 'report.pdf' }));
+
+  await act(async () =>
+    bridge.emit({ type: 'download', download: download({ receivedBytes: 70 }) }),
+  );
+  await settle();
+  expect(downloadLines()[0]).toContain(fill(B.downloading, { name: 'report.pdf', percent: '70' }));
+
+  await act(async () =>
+    bridge.emit({ type: 'download', download: download({ state: 'cancelled' }) }),
+  );
+  await settle();
+  expect(downloadLines()).toEqual([]);
+});
+
+it('줄이 없는 내려받기(그 탭이 없음)나 다른 대화의 탭의 내려받기 → 이 탭에 줄이 없다 (반례)', async () => {
+  const bridge = createFakeBrowserBridge();
+  await livePage(bridge);
+  await act(async () => {
+    bridge.emit({ type: 'download', download: download({ downloadId: 'd_2', tabId: null }) });
+    bridge.emit({
+      type: 'download',
+      download: download({ downloadId: 'd_3', tabId: 'b_elsewhere' }),
+    });
+  });
+  await settle();
+  expect(downloadLines()).toEqual([]);
+});
+
+it('대화를 떠났다 돌아와 그 탭을 고른다 → 이어지던 내려받기의 줄이 그대로 있다', async () => {
+  const bridge = createFakeBrowserBridge();
+  bridge.downloads = async (...args) => {
+    bridge.calls.push(['downloads', ...args]);
+    return [download({ receivedBytes: 55 })];
+  };
+  await livePage(bridge);
+  await until(() => downloadLines().length > 0);
+  expect(bridge.callsTo('downloads')).toEqual([['b_one']]);
+  expect(downloadLines()[0]).toContain(fill(B.downloading, { name: 'report.pdf', percent: '55' }));
+});
+
+it('미리보기 페이지가 lease 밖으로 가려다 막혔다 → 페이지 자리 아래 한 줄 "미리보기 밖으로 가는 이동을 막았습니다"와 시스템 브라우저에서 열기; http(s)가 아닌 주소면 버튼이 없다', async () => {
+  const bridge = createFakeBrowserBridge();
+  const at = await world(bridge);
+  remember(
+    at.sessionId,
+    [{ kind: 'browser', browserId: 'b_pre', lease: 'lease_1' }],
+    'browser:b_pre',
+  );
+  await open(at, `/sessions/${at.sessionId}`);
+  await until(() => bridge.stateOf('b_pre')?.loading === false);
+
+  await act(async () => bridge.setState('b_pre', { blocked: { url: 'https://cdn.example/a' } }));
+  await settle();
+  const line = () => side()?.querySelector<HTMLElement>('[data-browser-line="blocked"]') ?? null;
+  expect(line()?.textContent).toContain(B.blockedMove);
+  expect(
+    place() && line()
+      ? (place() as Node).compareDocumentPosition(line() as Node) & Node.DOCUMENT_POSITION_FOLLOWING
+      : 0,
+  ).toBeTruthy();
+  await act(async () => buttonNamed(B.openSystem)?.click());
+  await settle();
+  expect(bridge.callsTo('openBlocked')).toEqual([['b_pre']]);
+
+  await act(async () => bridge.setState('b_pre', { blocked: { url: null } }));
+  await settle();
+  expect(line()?.textContent).toContain(B.blockedMove);
+  expect(line()?.querySelector('button')).toBeNull();
+  await act(async () => bridge.setState('b_pre', { blocked: null }));
+  await settle();
+  expect(line()).toBeNull();
+});
