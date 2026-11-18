@@ -424,6 +424,12 @@ function WorkSessionPage() {
     sessionId: session.sessionId,
     owns: (tabId) =>
       panelNow.current.tabs.some((tab) => tab.kind === 'browser' && tab.browserId === tabId),
+    leaseOf: (tabId) => {
+      const tab = panelNow.current.tabs.find(
+        (open) => open.kind === 'browser' && open.browserId === tabId,
+      );
+      return tab?.kind === 'browser' ? (tab.lease ?? null) : null;
+    },
     composer: composerAnnotate,
   });
   // Each run's name in the "+" list's run history: its request, else its team.

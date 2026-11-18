@@ -57,6 +57,7 @@ import { MaterialsDialog, ModelsDialog, StopRunDialog } from './composer/dialogs
 import { backToInput as backToInputOf } from './composer/focus.ts';
 import { useComposerKeys } from './composer/keys.ts';
 import { type MeetingComposerProps, MeetingSend } from './composer/meeting.tsx';
+import { useNoteSender } from './composer/noteSend.ts';
 import { useQueuedRequests } from './composer/queue.ts';
 import { menuSends, noTargetReason, SendMenu, TargetChip } from './composer/SendControls.tsx';
 import {
@@ -387,6 +388,22 @@ function SessionComposer({
   // against the limits and whether the send key would carry an image now.
   const keyIntent = forKey('send').intent;
   const imagesNow = keyIntent === 'next' || keyIntent === 'queue';
+  const tRefusal = useTranslations('Refusal');
+  const notes = useNoteSender({
+    services,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    sendDeps: () => ({ ...startDeps, team, ownActive, runMode }),
+    how: (role) => forKey(role),
+    unavailable: (sendIntent, explicitQueue) =>
+      Boolean(availableFor(sendIntent, explicitQueue).unavailable),
+    steerTarget: () => steerTarget,
+    permissionMode: () => permissionMode,
+    advisorConfirmed: async () => !advisorUnknown || (await recheckAdvisor()),
+    refusalText: (kind) => tRefusal(kind),
+    advisorUnconfirmed: tc('advisor.unconfirmedSend'),
+    imageFailed: tc('imageFailed'),
+  });
   usePublishComposerAnnotate(
     {
       state: () => ({
@@ -395,6 +412,8 @@ function SessionComposer({
         imagesNow,
         markers: [],
       }),
+      sendNote: notes.sendNote,
+      forgetNote: notes.forgetNote,
     },
     `${attachments.length}:${images.length}:${imagesNow}`,
   );

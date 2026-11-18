@@ -3,6 +3,8 @@
 // whole on every change, the overlay's messages, and what the app page says politely. The
 // overlay (apps/studio/src/annotate/) draws the notes; the composer's draft stays the composer's,
 // reached through the port it publishes.
+
+import { AnnotationMaterial } from '@corral/contracts';
 import {
   createContext,
   type ReactNode,
@@ -14,9 +16,15 @@ import {
 } from 'react';
 import { useTranslations } from 'use-intl';
 import type { BrowserBridge, BrowserEvent } from '../../../../desktop/src/browser-bridge.ts';
-import type { AnnotateContext, AnnotateMessage } from '../../annotate/protocol.ts';
+import type {
+  AnnotateContext,
+  AnnotateMessage,
+  AnnotateOutcome,
+  AnnotateSubmitExtra,
+} from '../../annotate/protocol.ts';
 import { useLocale } from '../../locale.tsx';
 import { usePreferences } from '../preferences.ts';
+import type { NoteSendRequest } from '../session/composer/noteSend.ts';
 import { appliedAppearance } from '../themes/appearance.ts';
 import { paletteTokens } from '../themes/tokens.ts';
 
@@ -55,6 +63,10 @@ const IDLE_COMPOSER: ComposerAnnotateState = {
 /** The composer's side, published by the mounted composer of the conversation. */
 export interface ComposerAnnotatePort {
   state(): ComposerAnnotateState;
+  /** Sends a note at once through the composer's send path, under the note's own command. */
+  sendNote(request: NoteSendRequest): Promise<AnnotateOutcome>;
+  /** The note closed: its kept command goes. */
+  forgetNote(noteId: string): void;
 }
 
 /** One conversation's composer port, held while its composer is mounted. */
@@ -93,7 +105,11 @@ export function usePublishComposerAnnotate(port: ComposerAnnotatePort, key: stri
   latest.current = port;
   useEffect(() => {
     if (!registry) return;
-    registry.set({ state: () => latest.current.state() });
+    registry.set({
+      state: () => latest.current.state(),
+      sendNote: (request) => latest.current.sendNote(request),
+      forgetNote: (noteId) => latest.current.forgetNote(noteId),
+    });
     return () => registry.set(null);
   }, [registry]);
   // biome-ignore lint/correctness/useExhaustiveDependencies: `key` is the change signal.
@@ -185,6 +201,15 @@ export function useAnnotating(tabId: string): boolean {
 /** A shortcut pressed in a page, which the desktop handed back with its tab. */
 export const ANNOTATE_SHORTCUT = 'corral:browser-annotate';
 
+/** A submit's `extra`, as the overlay says how it was asked for. */
+function submitExtra(extra: unknown): AnnotateSubmitExtra {
+  const value = (extra && typeof extra === 'object' ? extra : {}) as Record<string, unknown>;
+  const via = ['send', 'interrupt', 'queue', 'button'].includes(value.via as string)
+    ? (value.via as AnnotateSubmitExtra['via'])
+    : 'send';
+  return { via, again: value.again === true };
+}
+
 /** What the overlay may tell the app page; anything else is dropped. */
 function overlayMessage(message: unknown): AnnotateMessage | null {
   if (!message || typeof message !== 'object') return null;
@@ -201,6 +226,8 @@ export interface BrowserAnnotateInput {
   sessionId: string;
   /** Whether a tab is this conversation's. */
   owns: (tabId: string) => boolean;
+  /** The preview lease a tab of this conversation shows; null for an ordinary page. */
+  leaseOf: (tabId: string) => string | null;
   composer: ComposerAnnotateRegistry;
 }
 
@@ -211,6 +238,10 @@ export interface BrowserAnnotateInput {
 export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate | null {
   const { bridge, sessionId, composer } = input;
   const t = useTranslations('Browser');
+  const ta = useTranslations('Annotate');
+  const tr = useTranslations('Refusal');
+  const words = useRef({ ta, tr });
+  words.current = { ta, tr };
   const latest = useRef(input);
   latest.current = input;
   const toggleRef = useRef<BrowserAnnotate['toggle']>(() => {});
@@ -238,6 +269,71 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
     annotations.snapshot,
   );
 
+  /** Submits waiting for their outcome; one the overlay stopped waiting for is said here. */
+  const [submits] = useState(() => new Map<string, { tabId: string; cancelled: boolean }>());
+  /** One answer for every submit, whatever happens on the way. */
+  const submit = async (
+    bridge: BrowserBridge,
+    event: Extract<BrowserEvent, { type: 'annotate-submit' }>,
+    now: BrowserAnnotateInput,
+  ) => {
+    const { ta, tr } = words.current;
+    const waiting = { tabId: event.tabId, cancelled: false };
+    submits.set(event.submitId, waiting);
+    let outcome: AnnotateOutcome;
+    try {
+      outcome = await outcomeOf(event, now);
+    } catch {
+      outcome =
+        event.intent === 'add'
+          ? { kind: 'not-added', reason: null }
+          : { kind: 'refused', reason: tr('other') };
+    }
+    submits.delete(event.submitId);
+    void bridge.answerAnnotate(event.tabId, event.submitId, outcome).catch(() => {});
+    // The overlay stopped waiting (its note closed, the mode ended): a send says its result here.
+    if (waiting.cancelled && event.intent === 'send') {
+      if (outcome.kind === 'accepted') annotations.announce(ta('announce.sent'));
+      else if (outcome.kind === 'refused')
+        annotations.announce(`${ta('announce.notSent')} ${outcome.reason}`);
+      else if (outcome.kind === 'unconfirmed') annotations.announce(ta('announce.unconfirmed'));
+    }
+  };
+  const outcomeOf = async (
+    event: Extract<BrowserEvent, { type: 'annotate-submit' }>,
+    now: BrowserAnnotateInput,
+  ): Promise<AnnotateOutcome> => {
+    const { ta, tr } = words.current;
+    const parsed = AnnotationMaterial.safeParse(event.material);
+    if (!parsed.success) return { kind: 'refused', reason: tr('other') };
+    const material = parsed.data;
+    // The note is the tab's page: a preview's lease is the one this tab shows, in this conversation.
+    const lease = now.leaseOf(event.tabId);
+    const { page } = material;
+    if (
+      (page.kind === 'preview') !== Boolean(lease) ||
+      (page.kind === 'preview' && (page.sessionId !== now.sessionId || page.leaseId !== lease))
+    )
+      return event.intent === 'add'
+        ? { kind: 'not-added', reason: ta('failed.pageChanged') }
+        : { kind: 'refused', reason: ta('failed.pageChanged') };
+    const composerPort = now.composer.get();
+    if (event.intent === 'add' || !composerPort)
+      return event.intent === 'add'
+        ? { kind: 'not-added', reason: null }
+        : { kind: 'refused', reason: tr('other') };
+    const extra = submitExtra(event.extra);
+    return composerPort.sendNote({
+      noteId: event.noteId,
+      material,
+      via: extra.via,
+      again: extra.again,
+    });
+  };
+
+  const submitNow = useRef(submit);
+  submitNow.current = submit;
+
   // Leaving the conversation: its tabs' modes are over (main ends them as their pages go).
   // biome-ignore lint/correctness/useExhaustiveDependencies: A new conversation starts with no mode on.
   useEffect(() => () => annotations.clear(), [annotations, sessionId]);
@@ -257,9 +353,20 @@ export function useBrowserAnnotate(input: BrowserAnnotateInput): BrowserAnnotate
           writeCollect(message.on);
           setCollect(message.on);
         }
+        if (message?.type === 'note-closed') now.composer.get()?.forgetNote(message.noteId);
+        return;
+      }
+      if (event.type === 'annotate-cancel') {
+        const waiting = submits.get(event.submitId);
+        if (waiting?.tabId === event.tabId) waiting.cancelled = true;
+        return;
+      }
+      if (event.type === 'annotate-submit') {
+        if (!now.owns(event.tabId)) return;
+        void submitNow.current(bridge, event, now);
       }
     });
-  }, [bridge, annotations]);
+  }, [bridge, annotations, submits]);
 
   // The context, whole, to every tab in the mode, whenever any part of it changes.
   // biome-ignore lint/correctness/useExhaustiveDependencies: `mode` and `composerVersion` are the change signals of their stores.
