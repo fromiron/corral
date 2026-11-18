@@ -882,6 +882,7 @@ export class BrowserTabs {
       };
       tab.page = 'failed';
       tab.url = url;
+      tab.title = null; // the last title was the page before; the failed one has none
       this.apply(tab);
       this.emit(tab);
     });

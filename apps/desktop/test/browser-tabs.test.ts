@@ -68,6 +68,17 @@ it('the view shows only while placed and live; failures, closing and hiding hide
   v.webContents.commit('https://example.com/', 'Example');
   expect(v.visible).toBe(true);
   expect(f.last('tab-a')).toMatchObject({ page: 'live', failure: null, title: 'Example' });
+  // A failed load names no title: the last one was another page's (a certificate stop too).
+  v.webContents.fail('https://other.example/', -105);
+  expect(f.last('tab-a')).toMatchObject({
+    page: 'failed',
+    url: 'https://other.example/',
+    title: null,
+  });
+  v.webContents.commit('https://example.com/', 'Example');
+  v.webContents.fail('https://expired.example/', -201);
+  expect(f.last('tab-a')).toMatchObject({ page: 'failed', title: null });
+  v.webContents.commit('https://example.com/', 'Example');
   // A cancelled load is not a failure.
   v.webContents.emit('did-fail-load', {}, -3, 'aborted', 'https://example.com/x', true, 1, 1);
   expect(f.last('tab-a')).toMatchObject({ page: 'live' });
