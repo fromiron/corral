@@ -4590,6 +4590,7 @@
     "team": "Corral"
   },
   "Browser": {
+    "noteSource": "Page note",
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",
