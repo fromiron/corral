@@ -1708,6 +1708,48 @@ describe('what a next request carries', () => {
     expect(readComposerDraft('session').images).toEqual([IMAGE]);
   });
 
+  it('a join with collected page notes sends the notes as text and leaves their screenshots in the box as plain images (browser-annotate.md 모아 두기)', async () => {
+    const note = createTextAttachment(
+      'annotation-1.json',
+      'application/json',
+      JSON.stringify({ element: { tag: 'button', label: 'button.pay 120×32' } }),
+      {
+        kind: 'page',
+        origin: 'https://shop.example',
+        path: '/cart',
+        pickedAt: '2026-11-18T12:00:00.000Z',
+        generation: 2,
+        screenshotHash: IMAGE.sha256,
+      },
+    );
+    writeComposerDraft('session', {
+      text: 'Fix these',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [note],
+      images: [IMAGE],
+    });
+    const f = await mount({ workspaces: { imageUrl: () => '' } });
+    // Held as the note's own: the plain image row does not list it.
+    const removeImage = messages.Composer.removeImage.replace('{name}', IMAGE.name);
+    const named = (name: string) =>
+      [...f.container.querySelectorAll('button')].some(
+        (button) => button.getAttribute('aria-label') === name,
+      );
+    expect(named(removeImage)).toBe(false);
+    await f.press();
+    expect(steerPayload(f.sendCommand)).toMatchObject({ attachments: [note] });
+    expect(steerPayload(f.sendCommand)).not.toHaveProperty('images');
+    const left = readComposerDraft('session');
+    expect(left.attachments ?? []).toEqual([]);
+    expect(left.images).toEqual([IMAGE]);
+    // From then on it is an ordinary image in the box.
+    await act(async () => {});
+    expect(named(removeImage)).toBe(true);
+  });
+
   it.each([
     ['a file range', 'Compare @src/a.ts:L2-L4 now', [FILE_REF]],
     ['a folder', 'Read @docs/ first', [{ kind: 'folder', path: 'docs' }]],
