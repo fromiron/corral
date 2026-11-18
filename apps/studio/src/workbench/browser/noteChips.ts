@@ -16,6 +16,16 @@ export function noteNumber(item: TextAttachment): number | null {
 
 export const isNote = (item: TextAttachment) => noteNumber(item) !== null;
 
+/** A page note in a request: sent at once (`annotation.json`) or collected (numbered). */
+export function isPageNote(item: TextAttachment): boolean {
+  const kind = item.provenance?.kind;
+  return (
+    item.mime === 'application/json' &&
+    (kind === 'page' || kind === 'preview') &&
+    (item.name === 'annotation.json' || noteNumber(item) !== null)
+  );
+}
+
 /** The number the next collected note takes. */
 export function nextNoteNumber(attachments: readonly TextAttachment[]): number {
   return Math.max(0, ...attachments.map((item) => noteNumber(item) ?? 0)) + 1;
@@ -57,7 +67,8 @@ export function withoutNote(
 
 /** What a chip shows of its note: the page body as written, read as plain values only. */
 export interface NoteView {
-  n: number;
+  /** A collected note's number; null for one sent at once. */
+  n: number | null;
   label: string;
   page: { origin: string; path: string };
   selector: string;
@@ -68,10 +79,17 @@ export interface NoteView {
 
 const text = (value: unknown, fallback = '') => (typeof value === 'string' ? value : fallback);
 
-/** The chip's view of a note; a body without a name tag (an older one) shows its tag name. */
-export function noteView(item: TextAttachment): NoteView | null {
+/** The chip's view of a collected note; a body without a name tag (an older one) shows its tag. */
+export function noteView(item: TextAttachment): (NoteView & { n: number }) | null {
   const n = noteNumber(item);
-  if (n === null) return null;
+  const view = n === null ? null : pageNoteView(item);
+  return view && n !== null ? { ...view, n } : null;
+}
+
+/** What a page note shows of its body, sent at once or collected. */
+export function pageNoteView(item: TextAttachment): NoteView | null {
+  if (!isPageNote(item)) return null;
+  const n = noteNumber(item);
   let body: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(item.text);

@@ -4600,6 +4600,7 @@
     "noteChip": "Note {n}, {label}",
     "removeNote": "Remove note {n}",
     "noteShot": "Screenshot of note {n}",
+    "noteShotOf": "Screenshot of {label}",
     "back": "Back",
     "forward": "Forward",
     "reload": "Reload",

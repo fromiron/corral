@@ -4600,6 +4600,7 @@
     "noteChip": "주석 {n}, {label}",
     "removeNote": "주석 {n} 빼기",
     "noteShot": "주석 {n}의 스크린샷",
+    "noteShotOf": "{label}의 스크린샷",
     "back": "뒤로",
     "forward": "앞으로",
     "reload": "새로 고침",
