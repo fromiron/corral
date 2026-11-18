@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "vite build && node scripts/no-fake-browser.mjs",
     "preview": "vite preview",
     "typecheck": "tsc -p tsconfig.json",
     "test:e2e": "playwright test",

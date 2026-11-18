@@ -37,6 +37,8 @@ import {
   type AdviceRequest,
   useAdviceArrivalRequest,
 } from '../workbench/adviceArrival.ts';
+import { BrowserTab } from '../workbench/browser/BrowserTab.tsx';
+import { BrowserTabsProvider, useBrowserTabs } from '../workbench/browser/browserTabs.tsx';
 import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
 import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
 import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
@@ -75,7 +77,7 @@ import {
   tabKey,
   targetTab,
 } from '../workbench/panel/tabs.ts';
-import { runStatusOf, usePanelFrame } from '../workbench/panel/usePanelFrame.ts';
+import { newBrowserId, runStatusOf, usePanelFrame } from '../workbench/panel/usePanelFrame.ts';
 import {
   CONVERSATION_MIN_WIDTH,
   drawerWidth,
@@ -149,6 +151,9 @@ function namesSelected(
     const tab = targetTab({ ...target, panel: target.panel, ...(source ? { source } : {}) }, null);
     return tab ? key === tabKey(tab) : false;
   }
+  // A browser tab is named by its ID; without one the way asked for a new tab (or a lease's).
+  if (kind === 'browser')
+    return target.browser ? key === `browser:${target.browser}` : key.startsWith('browser:');
   if (kind !== 'run') return key === kind;
   return target.run ? key === `run:${target.run}` : key.startsWith('run:');
 }
@@ -300,6 +305,8 @@ function WorkSessionPage() {
     paddock: Boolean(terminals && terminalList.value?.list?.target),
     terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
     corralIds: corrals.map((corral) => corral.corralId),
+    browser: Boolean(services.browser),
+    browserId: newBrowserId,
     onDockAddress: (target, focus) => dockAreaRef.current?.openAddressed(target, focus),
     // The tree shared by the 파일 tab and the tree column is one visit's.
     onEnter: forgetTreeState,
@@ -354,6 +361,16 @@ function WorkSessionPage() {
   panelNow.current = state;
   const operable = conversationOperable(state.presentation);
   const onScreen = panelOnScreen(state.presentation);
+  const browserTabs = useBrowserTabs({
+    bridge: services.browser,
+    sessionId: session.sessionId,
+    projectId: session.projectId,
+    state,
+    onScreen,
+    dispatch: (event) => frame.dispatch(event),
+    current: () => sessionNow.current,
+    newId: newBrowserId,
+  });
   // Each run's name in the "+" list's run history: its request, else its team.
   const runNames = useRunNames(runs, session.entries);
 
@@ -433,6 +450,20 @@ function WorkSessionPage() {
     // The debugger keeps the focus to go on stepping (features/session-panel.md 디버그와 문서).
     if (from === 'debugger') {
       focusNext.current = null;
+      return;
+    }
+    // A new browser tab has only its head: the focus goes to its address field
+    // (features/browser-tab.md 여는 곳).
+    const fresh = next.tabs.find(
+      (tab) =>
+        tab.kind === 'browser' &&
+        !tab.lease &&
+        tabKey(tab) === next.selected &&
+        !before.tabs.some((old) => tabKey(old) === tabKey(tab)),
+    );
+    if (panel === 'browser' && fresh?.kind === 'browser') {
+      focusNext.current = null;
+      browserTabs?.pages.focusAddress(fresh.browserId);
       return;
     }
     // Opened from the tree column, which stays beside the document: the focus stays on the row
@@ -999,6 +1030,7 @@ function WorkSessionPage() {
         () => strip.current?.focusTab(tabKey(tab)),
       );
     if (tab.kind === 'files') return renderFiles(column);
+    if (tab.kind === 'browser') return <BrowserTab tab={tab} visible={selected && onScreen} />;
     if (tab.kind === 'document')
       return tab.source === 'copy' && documents ? (
         <DocumentTab
@@ -1288,42 +1320,45 @@ function WorkSessionPage() {
                   </AdviceArrival.Provider>
                 }
                 side={
-                  <SessionPanelSide
-                    sessionId={session.sessionId}
-                    teamNames={teamNames}
-                    unsaved={unsavedTabs}
-                    notice={
-                      limited === session.sessionId &&
-                      state.tabs.filter((tab) => tab.kind === 'document').length >= DOCUMENT_LIMIT
-                        ? tdock('tabLimit')
-                        : null
-                    }
-                    opened={opened?.sessionId === session.sessionId ? opened : null}
-                    state={state}
-                    ctx={ctx}
-                    strip={strip}
-                    onSelect={select}
-                    onClose={close}
-                    onReorder={(key, toIndex) => {
-                      if (!heldByConfirmation()) frame.dispatch({ type: 'reorder', key, toIndex });
-                    }}
-                    // Out by drag into the dock: as a close, ending nothing.
-                    onMoveOut={(key) => closeTab(key)}
-                    onMoveIn={(terminalId, index) =>
-                      frame.dispatch({ type: 'moveIn', terminalId, index })
-                    }
-                    runs={runs}
-                    runNames={runNames}
-                    onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
-                    terminalRow={dockArea.terminalRow}
-                    terminals={terminalList.value?.list?.terminals ?? []}
-                    onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
-                    onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
-                    onMaximize={() => {
-                      if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
-                    }}
-                    renderTab={renderTab}
-                  />
+                  <BrowserTabsProvider value={browserTabs}>
+                    <SessionPanelSide
+                      sessionId={session.sessionId}
+                      teamNames={teamNames}
+                      unsaved={unsavedTabs}
+                      notice={
+                        limited === session.sessionId &&
+                        state.tabs.filter((tab) => tab.kind === 'document').length >= DOCUMENT_LIMIT
+                          ? tdock('tabLimit')
+                          : null
+                      }
+                      opened={opened?.sessionId === session.sessionId ? opened : null}
+                      state={state}
+                      ctx={ctx}
+                      strip={strip}
+                      onSelect={select}
+                      onClose={close}
+                      onReorder={(key, toIndex) => {
+                        if (!heldByConfirmation())
+                          frame.dispatch({ type: 'reorder', key, toIndex });
+                      }}
+                      // Out by drag into the dock: as a close, ending nothing.
+                      onMoveOut={(key) => closeTab(key)}
+                      onMoveIn={(terminalId, index) =>
+                        frame.dispatch({ type: 'moveIn', terminalId, index })
+                      }
+                      runs={runs}
+                      runNames={runNames}
+                      onPlus={(item) => open(plusTarget(item, ctx), 'plus')}
+                      terminalRow={dockArea.terminalRow}
+                      terminals={terminalList.value?.list?.terminals ?? []}
+                      onTerminal={(shellId) => dockArea.onPlusTerminal('panel', shellId)}
+                      onOpenRun={(runId) => open({ panel: 'run', run: runId }, 'plus')}
+                      onMaximize={() => {
+                        if (!heldByConfirmation()) frame.dispatch({ type: 'maximize' });
+                      }}
+                      renderTab={renderTab}
+                    />
+                  </BrowserTabsProvider>
                 }
               />
             </StopCommandContext.Provider>

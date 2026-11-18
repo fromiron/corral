@@ -434,7 +434,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
 }
 
 /** A browser tab's ID: random, so it says nothing of the page (browser-tab.md 계약). */
-function newBrowserId(): string {
+export function newBrowserId(): string {
   return `b_${globalThis.crypto.randomUUID().replaceAll('-', '')}`;
 }
 

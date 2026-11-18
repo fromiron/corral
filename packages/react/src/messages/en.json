@@ -4586,6 +4586,45 @@
     "git": "Git",
     "team": "Corral"
   },
+  "Browser": {
+    "back": "Back",
+    "forward": "Forward",
+    "reload": "Reload",
+    "stop": "Stop loading",
+    "address": "Address",
+    "more": "More",
+    "onlyWeb": "Only http and https addresses open here",
+    "openSystem": "Open in system browser",
+    "previewInside": "Previews open only inside Corral",
+    "copyAddress": "Copy address",
+    "loading": "Loading",
+    "failedTab": "Couldn't open",
+    "preview": "Preview",
+    "previewSuffix": "preview",
+    "tryAgain": "Try again",
+    "goBack": "Go back",
+    "openAnyway": "Open anyway",
+    "closedItself": "The page closed itself",
+    "reopen": "Reopen",
+    "ended": "The preview has ended",
+    "failure": {
+      "nameNotResolved": "This site's address couldn't be found",
+      "connectionRefused": "The site refused the connection",
+      "timedOut": "The site took too long to answer",
+      "offline": "This device is offline",
+      "crashed": "The page stopped working",
+      "other": "The page couldn't be opened"
+    },
+    "certificate": {
+      "title": "This site's certificate isn't trusted",
+      "expired": "The certificate has expired.",
+      "nameMismatch": "The certificate is for another site.",
+      "selfSigned": "The certificate is signed by the site itself.",
+      "untrusted": "The certificate's issuer isn't trusted.",
+      "revoked": "The certificate has been revoked.",
+      "other": "The certificate couldn't be checked."
+    }
+  },
   "SessionPanel": {
     "label": "Panel",
     "sourceFolderSuffix": "project source folder",

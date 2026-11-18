@@ -30,6 +30,15 @@ window.addEventListener('hashchange', () => {
 const renderer = createRoot(root);
 try {
   const services = await createStudioServices();
+  // Development only: `?fakeDesktopBrowser=1` puts a stand-in for the desktop's browser bridge
+  // behind the browser tab, to look at it outside the desktop app (installFakeBrowser.ts).
+  if (
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get('fakeDesktopBrowser') === '1'
+  ) {
+    const { installFakeBrowser } = await import('./workbench/browser/installFakeBrowser.ts');
+    installFakeBrowser(services);
+  }
   window.addEventListener('pagehide', () => services.disposeRuns(), { once: true });
   const router = createStudioRouter(services);
   renderer.render(

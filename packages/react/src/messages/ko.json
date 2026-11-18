@@ -4586,6 +4586,45 @@
     "git": "Git",
     "team": "Corral"
   },
+  "Browser": {
+    "back": "뒤로",
+    "forward": "앞으로",
+    "reload": "새로 고침",
+    "stop": "불러오기 멈춤",
+    "address": "주소",
+    "more": "더 보기",
+    "onlyWeb": "http나 https 주소만 열 수 있습니다",
+    "openSystem": "시스템 브라우저에서 열기",
+    "previewInside": "미리보기는 Corral 안에서만 열립니다",
+    "copyAddress": "주소 복사",
+    "loading": "불러오는 중",
+    "failedTab": "열지 못함",
+    "preview": "미리보기",
+    "previewSuffix": "미리보기",
+    "tryAgain": "다시 시도",
+    "goBack": "돌아가기",
+    "openAnyway": "그래도 열기",
+    "closedItself": "페이지가 스스로 닫혔습니다",
+    "reopen": "다시 열기",
+    "ended": "미리보기가 끝났습니다",
+    "failure": {
+      "nameNotResolved": "이 사이트의 주소를 찾지 못했습니다",
+      "connectionRefused": "사이트가 연결을 거절했습니다",
+      "timedOut": "사이트가 제때 답하지 않았습니다",
+      "offline": "이 기기가 오프라인입니다",
+      "crashed": "페이지가 멈췄습니다",
+      "other": "페이지를 열지 못했습니다"
+    },
+    "certificate": {
+      "title": "이 사이트의 인증서를 믿을 수 없습니다",
+      "expired": "인증서가 만료되었습니다.",
+      "nameMismatch": "인증서가 다른 사이트의 것입니다.",
+      "selfSigned": "사이트가 스스로 서명한 인증서입니다.",
+      "untrusted": "인증서를 발급한 곳을 믿을 수 없습니다.",
+      "revoked": "인증서가 폐기되었습니다.",
+      "other": "인증서를 확인하지 못했습니다."
+    }
+  },
   "SessionPanel": {
     "label": "패널",
     "sourceFolderSuffix": "프로젝트 원본 폴더",

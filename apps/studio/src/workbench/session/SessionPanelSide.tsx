@@ -26,8 +26,10 @@ import {
   Globe,
   History,
   ListChecks,
+  LoaderCircle,
   Maximize2,
   Minimize2,
+  Monitor,
   Plus,
   Route,
   Terminal,
@@ -35,6 +37,7 @@ import {
 import { type ReactNode, type Ref, useCallback, useSyncExternalStore } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { useBrowserPages } from '../browser/browserTabs.tsx';
 import { PresenceMark } from '../PresenceMark.tsx';
 import { documentTabNames } from '../panel/documentNames.ts';
 import { maximizeAvailable, type OpenTab, type PanelState, treeColumn } from '../panel/model.ts';
@@ -109,6 +112,50 @@ export function usePanelTabName(
     return {
       label: tw('runNumber', { number: index + 1 }),
       shortLabel: tp('runShort', { number: index + 1 }),
+    };
+  };
+}
+
+/**
+ * A browser tab's name and marks (features/browser-tab.md 탭의 이름과 표시): the page's title,
+ * else its host (a preview page: "미리보기"), else "브라우저"; a globe or a preview mark in the
+ * icon's place, a turning mark while it loads, and ", preview" after a preview page's name.
+ */
+function useBrowserTabName() {
+  const pages = useBrowserPages();
+  const tb = useTranslations('Browser');
+  const td = useTranslations('Docking');
+  return (tab: Extract<PanelTab, { kind: 'browser' }>): Partial<TabsClosableTab> => {
+    const page = pages?.get(tab.browserId);
+    const preview = Boolean(tab.lease);
+    const host = (() => {
+      const url = page?.url ?? (tab.at ? tab.at.origin : null);
+      if (!url) return null;
+      try {
+        return new URL(url).host;
+      } catch {
+        return null;
+      }
+    })();
+    const label =
+      page?.title || (preview ? tb('preview') : host) || (preview ? tb('preview') : td('browser'));
+    return {
+      label,
+      icon: preview ? Monitor : Globe,
+      ...(preview ? { nameSuffix: tb('previewSuffix') } : {}),
+      ...(page?.loading
+        ? {
+            mark: (
+              <LoaderCircle
+                aria-hidden
+                className="size-4 animate-spin motion-reduce:animate-none"
+              />
+            ),
+            description: tb('loading'),
+          }
+        : page?.page === 'failed'
+          ? { description: tb('failedTab') }
+          : {}),
     };
   };
 }
@@ -308,6 +355,7 @@ export function SessionPanelSide({
   const name = usePanelTabName(ctx.runIds, ctx.terminalIds, teamNames);
   const documentNames = documentTabNames(state.tabs);
   const plusLabel = usePlusLabel();
+  const browserTab = useBrowserTabName();
   const terminalPlusRow = useTerminalPlusRow();
   const items = plusItems(ctx);
   const presenceOf = useRunPresences(ctx.runIds, runs);
@@ -411,6 +459,7 @@ export function SessionPanelSide({
           }
         : {}),
       ...(tab.kind === 'terminal' ? { ...terminalState(tab.terminalId), movable: true } : {}),
+      ...(tab.kind === 'browser' ? browserTab(tab) : {}),
     };
   });
   const openedLabel = opened ? tabs.find((tab) => tab.id === opened.key)?.label : undefined;
