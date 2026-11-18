@@ -212,6 +212,9 @@ try {
       { timeout: 15000 },
     )
     .toContain('P20_READY');
+  // The Tasks tab's own tabs: the service preview is on Preview.
+  const toolsTabs = page.getByRole('tablist', { name: 'Tasks', exact: true });
+  await toolsTabs.getByRole('tab', { name: 'Preview', exact: true }).click();
   await page.getByRole('spinbutton', { name: 'Port', exact: true }).fill(String(port));
   const opening = page.waitForResponse(
     (response) =>
@@ -415,8 +418,11 @@ try {
 
   phase('task stop closes its preview automatically');
   await page.bringToFront();
-  const toolsTab = page.getByRole('tab', { name: 'Tasks & preview', exact: true });
-  await toolsTab.getByText('Tasks & preview', { exact: true }).click();
+  await page
+    .getByRole('tablist', { name: 'Panel tabs', exact: true })
+    .getByRole('tab', { name: 'Tasks', exact: true })
+    .click();
+  await toolsTabs.getByRole('tab', { name: 'Tasks', exact: true }).click();
   await page.getByRole('button', { name: 'Stop dev', exact: true }).click();
   await expect.poll(() => preview.isClosed(), { timeout: 10000 }).toBe(true);
   const stopped = await api<{ tasks: { operationId: string; cleanupConfirmed?: boolean }[] }>(

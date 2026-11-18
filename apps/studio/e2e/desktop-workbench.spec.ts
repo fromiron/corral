@@ -9,6 +9,7 @@ import {
   panelTabNamed,
   requestBox,
   selectPanelTab,
+  showTree,
   startSession,
   teamFromTemplate,
 } from './workbench.ts';
@@ -129,15 +130,15 @@ test('DW-05 a file opens in a remembered preview and its line reference enters t
   await expect(requestBox(page)).toHaveValue('@README.md:L1 Desktop workbench');
   await expect(page.getByRole('list', { name: 'References' })).toContainText('README.md:L1');
   await openPanelTab(page, 'Changes');
-  await selectPanelTab(page, 'Files');
-  // #87: an original-folder file has one read-only preview in Files, kept across panes; the
-  // dock's document tabs are the only tab strip.
+  // An original-folder file is a read-only 문서 tab of its own, kept while another tab is chosen.
+  await selectPanelTab(page, /^README\.md, project source folder$/);
   await expect(page.getByRole('region', { name: 'README.md', exact: true })).toBeVisible();
-  // A nested file shows in the tree once its folder is expanded.
+  // A nested file shows in the tree once its folder is expanded, and opens a tab of its own.
+  await showTree(page);
   await page.getByRole('treeitem', { name: 'src', exact: true }).click();
   await page.getByRole('treeitem', { name: 'version.ts', exact: true }).click();
   await expect(page.getByRole('region', { name: 'src/version.ts', exact: true })).toBeVisible();
-  await expect(page.getByRole('region', { name: 'README.md', exact: true })).toHaveCount(0);
+  await expect(panelTabNamed(page, /^README\.md, project source folder$/)).toBeVisible();
   await closePanel(page);
   const request = requestBox(page);
   await request.fill('@version');

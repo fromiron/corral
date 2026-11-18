@@ -4,7 +4,14 @@ import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
 import type { Locator, Page } from '@playwright/test';
-import { dockToggle, maximizePanel, newConversation, openDock, panelToggle } from '../workbench.ts';
+import {
+  dockToggle,
+  maximizePanel,
+  newConversation,
+  openDock,
+  panelToggle,
+  showTree,
+} from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 async function reachable(target: Locator) {
@@ -193,9 +200,9 @@ test('line navigation reveals the selection above the bottom dock', async ({
   const { sessionId } = await fixture(page, corral);
   await page.setViewportSize({ width: 1179, height: 757 });
   await page.goto(`${corral.server.url}/sessions/${sessionId}?panel=files`);
-  // The editor and a dock under it need the Files tab wider than a narrow dock, which shows one
-  // pane at a time: with the sidebar hidden the panel has room beside the conversation, and
-  // maximized it takes the work area.
+  // The editor and the bottom dock under it need room: with the sidebar hidden the panel has room
+  // beside the conversation, and maximized it takes the work area, wide enough for the tree
+  // column beside the document.
   await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
   await maximizePanel(page);
   await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
@@ -215,11 +222,11 @@ test('line navigation reveals the selection above the bottom dock', async ({
       )
       .toBe(true);
   };
-  await page.getByRole('tab', { name: 'Files', exact: true }).last().click();
+  await showTree(page);
   await page.getByRole('combobox', { name: 'Search mode', exact: true }).click();
   await page.getByRole('option', { name: 'Contents', exact: true }).click();
   for (const line of [7, 9]) {
-    await page.getByRole('tab', { name: 'Files', exact: true }).last().click();
+    await showTree(page);
     await page
       .getByRole('textbox', { name: 'Find text in files', exact: true })
       .fill(`layout marker ${line}`);

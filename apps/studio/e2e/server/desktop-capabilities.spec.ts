@@ -459,7 +459,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     if (cancelScope === 'run') {
       await stopRun(page);
     } else {
-      await openPane(page, 'Tasks & preview');
+      await openPane(page, 'Tasks');
       const commands = page.getByTestId('worktree-command-panel');
       await expect(commands).toContainText('node long-job.mjs');
       await commands.getByRole('button', { name: 'Stop command', exact: true }).click();
@@ -470,7 +470,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => readCommandReport(page, capability, sessionId), { timeout: 30000 })
       .toMatchObject({ state: 'cancelled', cleanupConfirmed: true });
-    await openPane(page, 'Tasks & preview');
+    await openPane(page, 'Tasks');
     const commands = page.getByTestId('worktree-command-panel');
     await expect(commands).toContainText('Stopped');
     await expect(commands).toContainText('Process cleanup confirmed');
@@ -494,7 +494,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
-    // From the keyboard the panel's toggle brings the Files tab back as a drawer, Escape closes
+    // From the keyboard the panel's toggle brings the Tasks tab back as a drawer, Escape closes
     // the drawer and gives the focus back to the toggle, and the toggle brings it back again.
     const toggle = panelToggle(page);
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');

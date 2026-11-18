@@ -145,7 +145,7 @@ setTimeout(() => server.listen(${port}, '127.0.0.1'), 500);
       'Keep the service running?',
       { timeout: 45_000 },
     );
-    await openPane(page, 'Tasks & preview');
+    await openPane(page, 'Preview');
     const previews = page.getByRole('region', { name: 'Open previews', exact: true });
     await expect(previews).toContainText('Local app');
     await expect(previews.getByRole('link', { name: 'View run', exact: true })).toBeVisible();

@@ -11,6 +11,7 @@ import {
   openFolderSettings,
   openPane,
   openPanelTab,
+  panelTabNamed,
   requestBox,
   selectPanelTab,
 } from '../workbench.ts';
@@ -88,7 +89,9 @@ test('session file preview isolates cookies, reads refreshed assets and closes i
     await expect(page.getByRole('combobox', { name: 'File source', exact: true })).toContainText(
       'Paddock',
     );
+    // A Paddock file opens as its 문서 tab, whose preview is an HTML file's own.
     await page.getByRole('treeitem', { name: 'index.html', exact: true }).click();
+    await expect(panelTabNamed(page, 'index.html')).toHaveAttribute('aria-selected', 'true');
     await page.getByRole('button', { name: 'Open preview', exact: true }).click();
     const frame = page.frameLocator('[data-testid="file-preview-frame"]');
     await expect(
@@ -256,7 +259,7 @@ test.describe('run-owned previews', () => {
       expect(lease?.runId).toBeTruthy();
       expect(lease?.state).toBe('ready');
       previewUrl = lease.url;
-      await openPane(page, 'Tasks & preview');
+      await openPane(page, 'Preview');
       const previews = page.getByRole('region', { name: 'Open previews', exact: true });
       await expect(previews).toContainText('index.html');
       await previews.getByRole('button', { name: 'Open preview', exact: true }).click();

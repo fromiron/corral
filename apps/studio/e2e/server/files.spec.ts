@@ -12,7 +12,9 @@ import {
   openProject,
   panelToggle,
   requestBox,
+  selectPanelTab,
   showReviewFiles,
+  showTree,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
@@ -123,11 +125,14 @@ test('a session works in its own copy, and its changes are reviewed and checked'
     const sessionPath = new URL(page.url()).pathname;
 
     await openPanelTab(page, 'Files');
+    // A source-folder file opens read-only as its own 문서 tab.
     await page.getByRole('treeitem', { name: 'README.md', exact: true }).click();
     const content = page.getByRole('region', { name: 'File content', exact: true });
     await expect(content.getByText('hello', { exact: true })).toBeVisible();
     writeFileSync(join(original, 'README.md'), 'updated outside Corral\n');
+    await showTree(page);
     await page.getByRole('button', { name: 'Refresh files', exact: true }).click();
+    await selectPanelTab(page, /^README\.md, project source folder$/);
     await expect(content.getByText('updated outside Corral', { exact: true })).toBeVisible();
     writeFileSync(join(original, 'README.md'), 'hello\n');
     await openPanelTab(page, 'Changes');

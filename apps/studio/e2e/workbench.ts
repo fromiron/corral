@@ -436,6 +436,16 @@ export async function openPanelTab(
   await tabSelected(page, PLUS_TAB[item]);
 }
 
+/**
+ * Shows the folder tree: the tree column beside the selected document on a wide panel, else the
+ * Files tab (features/session-panel.md 파일 탭과 트리 열).
+ */
+export async function showTree(page: Page) {
+  const column = sessionPanel(page).getByRole('region', { name: 'Files', exact: true });
+  if (await column.isVisible()) return;
+  await selectPanelTab(page, 'Files');
+}
+
 /** Selects an open tab in the panel's strip. */
 export async function selectPanelTab(page: Page, name: string | RegExp) {
   const tab = panelTabNamed(page, name);
@@ -504,7 +514,8 @@ export async function terminalAction(page: Page, name: string | RegExp) {
 const PANE_TAB: Record<string, string | RegExp> = {
   Files: 'Files',
   Terminal: /^Terminal \d+$/,
-  'Tasks & preview': 'Files',
+  Tasks: 'Tasks',
+  Preview: 'Tasks',
   Debug: 'Debug',
   Changes: 'Changes',
   Git: 'Changes',
@@ -515,11 +526,12 @@ const PANE_TAB: Record<string, string | RegExp> = {
 };
 
 /**
- * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks & preview, Debug,
+ * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks, Preview, Debug,
  * Changes, Git, Checks, Problems, Results, Run): the tab that holds it opens, or is selected, with
  * that pane in front. The palette is there whatever the panel's state, with or without a folder.
  * A terminal opens where its tab is (the panel or the bottom dock, made in the dock when it has
- * none); the debugger opens in the bottom dock.
+ * none); the debugger opens in the bottom dock. Preview is the Tasks tab with Preview in front.
+ * Files beside an open document on a wide panel is the tree column, not a tab of the strip.
  */
 export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
   await page.keyboard.press('Control+k');
@@ -543,15 +555,26 @@ export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
     ).toHaveAttribute('aria-selected', 'true');
     return;
   }
-  await tabSelected(page, tab);
   if (tab === 'Files') {
-    // The Files tab's dock: the pane's own tab is the selected one of a group on screen (a narrow
-    // dock shows only the group of the pane in front).
+    // The Files tab selected, or the tree as the column beside the document selected instead.
+    const column = sessionPanel(page).getByRole('region', { name: 'Files', exact: true });
+    const selected = panelStrip(page).getByRole('tab', {
+      name: 'Files',
+      exact: true,
+      selected: true,
+    });
+    await expect(selected.or(column)).toBeVisible();
+    return;
+  }
+  await tabSelected(page, tab);
+  if (tab === 'Tasks') {
+    // The Tasks tab's own tabs: Tasks, or Preview in front.
+    const inner = name === 'Preview' ? 'Preview' : 'Tasks';
     await expect(
-      panelContent(page, 'Files')
-        .getByRole('region', { name: 'Workbench layout', exact: true })
-        .getByRole('tab', { name, exact: true, selected: true }),
-    ).toBeVisible();
+      panelContent(page, 'Tasks')
+        .getByRole('tablist', { name: 'Tasks', exact: true })
+        .getByRole('tab', { name: inner, exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
   } else if (tab === 'Changes') {
     // The Changes tab: its views (Review, Git, Checkpoints, Checks), or Problems in their place.
     // Changes alone names no view: one chosen there in the meantime stays.
