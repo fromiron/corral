@@ -134,7 +134,7 @@ import { HarnessService } from './harness/service.ts';
 import { SkillQualityService } from './harness/skill-quality.ts';
 import { registerSkillQualityRoutes } from './harness/skill-quality-routes.ts';
 import { createHarnessVaultAdapters } from './harness/vault.ts';
-import { ImageStore } from './images.ts';
+import { ImageRefusal, ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
@@ -2266,16 +2266,15 @@ async function createCorralServer(
     { bodyLimit: IMAGE_MAX_BYTES },
     async (request, reply) => {
       try {
-        const name = ImageAttachment.shape.name.parse(request.query.name);
+        const named = ImageAttachment.shape.name.safeParse(request.query.name);
+        if (!named.success) return fail(reply, 'SCHEMA_INVALID', 'image name is invalid');
+        const name = named.data;
         if (request.headers['content-type'] !== 'image/png' || !Buffer.isBuffer(request.body))
           return fail(reply, 'SCHEMA_INVALID', 'normalized PNG input required');
         return reply.code(201).send(images.put(request.params.sessionId, name, request.body));
-      } catch {
-        return fail(
-          reply,
-          'SCHEMA_INVALID',
-          'image unavailable, invalid, or over its size/dimension/storage limit',
-        );
+      } catch (error) {
+        if (error instanceof ImageRefusal) return fail(reply, error.code, error.message);
+        return fail(reply, 'STORAGE_UNAVAILABLE', 'image could not be stored');
       }
     },
   );

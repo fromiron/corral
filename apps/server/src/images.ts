@@ -3,6 +3,15 @@ import { type Clock, IMAGE_MAX_BYTES, ImageAttachment, type ImageInput } from '@
 import type { Db } from '@corral/storage-sqlite';
 import { PNG } from 'pngjs';
 
+/** A refusal of the request itself, with the error table's code; any other throw is the store's. */
+export class ImageRefusal extends Error {
+  readonly code: 'SCHEMA_INVALID' | 'TARGET_NOT_FOUND' | 'LIMIT_REACHED';
+  constructor(code: ImageRefusal['code'], message: string) {
+    super(message);
+    this.code = code;
+  }
+}
+
 const sha256 = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 const signature = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]);
 
@@ -58,15 +67,21 @@ export class ImageStore {
     this.clock = clock;
   }
   put(sessionId: string, name: string, input: Buffer): ImageAttachment {
-    ImageAttachment.shape.name.parse(name);
-    if (
-      !this.db
-        .prepare('SELECT 1 FROM work_sessions WHERE id=? AND archived_at IS NULL')
-        .get(sessionId)
-    )
-      throw new Error('image session is unavailable');
-    const body = normalize(input),
-      hash = sha256(body);
+    if (!ImageAttachment.shape.name.safeParse(name).success)
+      throw new ImageRefusal('SCHEMA_INVALID', 'image name is invalid');
+    // An archived session takes images as its entries do: it can still be sent to explicitly.
+    if (!this.db.prepare('SELECT 1 FROM work_sessions WHERE id=?').get(sessionId))
+      throw new ImageRefusal('TARGET_NOT_FOUND', 'session not found');
+    let body: Buffer;
+    try {
+      body = normalize(input);
+    } catch (error) {
+      throw new ImageRefusal(
+        'SCHEMA_INVALID',
+        error instanceof Error ? error.message : 'invalid PNG',
+      );
+    }
+    const hash = sha256(body);
     const metadata = ImageAttachment.parse({
       kind: 'image_attachment',
       imageId: `image_${hash}`,
@@ -88,7 +103,10 @@ export class ImageStore {
         )
         .get(sessionId) as { bytes: number };
       if (total.bytes + body.length > 64 * 1024 * 1024)
-        throw new Error('session image storage exceeds 64 MiB; start a new session');
+        throw new ImageRefusal(
+          'LIMIT_REACHED',
+          'session image storage exceeds 64 MiB; start a new session',
+        );
       this.db
         .prepare(
           'INSERT INTO input_images (session_id,id,metadata_json,body,created_at) VALUES (?,?,?,?,?)',
