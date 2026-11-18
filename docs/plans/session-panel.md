@@ -799,6 +799,12 @@ S5를 끝으로 치기 전에 실제 앱을 Xvfb에서 한 번 돌린다: 탭을
 - [직접 써 보며 확인] `alert`로 멈춘 읽기가 대화상자에 답한 뒤 풀리는 것.
 - [직접 써 보며 확인] 실제 창에서 덧뷰와 페이지 사이를 오가는 포커스.
 
+### S6 계약과 앱 페이지 쪽
+
+- 계약: `facc55f7`. 일반 페이지의 provenance 종류 `page`, 데스크톱이 앱 페이지에 넘기는 `AnnotationMaterial`과 그것으로 만드는 첨부 본문 `PageAnnotation`. 명세는 `4bfa88fb`(api-contract의 `POST /sessions/:id/entries` 줄과 [계약](../specs/features/browser-annotate.md#계약)의 첨부).
+- 서버 쪽 확인: 주석의 서버 쪽 검사는 스튜디오를 만드는 이의 통합 테스트 `465077c9`(`apps/server/test/page-annotation.test.ts`)다. `page`가 든 주석이 항목(`POST /sessions/:id/entries`)과 실행 시작(`POST /runs/auto`)에 받아지고, `path`에 쿼리나 조각, `origin`에 자격 증명이 들면 둘 다 400으로 거절된다. 계약의 스키마가 이미 거절하고 있어 처음 돌린 때 지났다. `steer`는 이 테스트에 없다(같은 `TextAttachments` 스키마를 쓴다).
+- 앱 페이지: `0ed7f9b1`, 주석을 켜고 끄는 단계. 브라우저 탭 머리의 주석 버튼과 Mod+Shift+D(`browser.annotate`), 데스크톱의 사건을 따르는 모드, 덧뷰에 넘기는 맥락.
+
 ### S6 구현 전에 확인할 것
 
 B0 스파이크를 늘려 확인한다. 하나라도 안 되면 명세로 돌아온다.
