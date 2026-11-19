@@ -739,7 +739,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       void this.refreshStatus(provider);
     }
-    const plan = planFromAnswer(text);
+    const plan = planFromAnswer(text, goal);
     return plan
       ? { ok: true, plan, model: { provider, modelId } }
       : unavailable(`${UNUSABLE_TEAM_PLAN_MESSAGE}; use the local suggestion`);

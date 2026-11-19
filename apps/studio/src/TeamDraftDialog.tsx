@@ -39,6 +39,7 @@ export function TeamDraftDialog({
   projectId?: string;
 }) {
   const t = useTranslations('TeamDraft');
+  const shared = useTranslations('TeamEditor.sharedOutrider');
   const messages = useMessages();
   const wording = useMemo(() => draftWording(messages), [messages]);
   const { repository, models, live } = useServices();
@@ -255,6 +256,23 @@ export function TeamDraftDialog({
                 <h3 className="text-subtitle">{t('beforeSaving')}</h3>
                 <p>{t(isReadOnlyTeam(preview) ? 'readOnlyWork' : 'changesWork')}</p>
                 <p>{t(hasReviewLoop(plan.pattern) ? 'hasReviewRound' : 'noReviewRound')}</p>
+                <Switch
+                  label={shared('observe')}
+                  checked={Boolean(plan.observeWork)}
+                  onToggle={() => {
+                    const { observeWork, ...rest } = plan;
+                    setPlan(observeWork ? rest : { ...rest, observeWork: true });
+                  }}
+                />
+                {preview.sharedOutrider?.observation ? (
+                  <p>
+                    {t('observationSummary', {
+                      model: preview.sharedOutrider.modelProfile,
+                      interval: preview.sharedOutrider.observation.review.interval,
+                      cap: preview.sharedOutrider.observation.review.maxRequestsPerReview,
+                    })}
+                  </p>
+                ) : null}
                 {preview.sharedOutrider ? (
                   <p>
                     {t(plan.outrider === 'artifact_review' ? 'artifactAdvice' : 'sharedAdvice')}

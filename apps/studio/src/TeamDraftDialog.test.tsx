@@ -546,3 +546,44 @@ it('the suggestion leaves the final approval off, and the person can turn it on'
     requireApproval: true,
   });
 });
+
+it.each(['local', 'model'] as const)(
+  'previews and can turn off an independent observation proposal from %s before saving',
+  async (source) => {
+    await mount();
+    const goal = 'Let workers ask for manuscript review when needed and watch work in progress.';
+    await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), goal);
+    fixture.draftTeam.mockResolvedValue({
+      plan: {
+        name: 'Invitation',
+        pattern: 'single',
+        brief: goal,
+        criteria: ['Include venue.'],
+        roles: [{ slot: 'worker', name: 'Writer', duty: 'Write an invitation.' }],
+        finalApproval: false,
+        outrider: 'artifact_review',
+        observeWork: true,
+      },
+    });
+    await press(button(source === 'local' ? en.TeamDraft.suggest : en.TeamDraft.ask));
+    const toggle = () =>
+      [...document.querySelectorAll<HTMLElement>('[role="switch"]')].find(
+        (item) =>
+          document.getElementById(item.getAttribute('aria-labelledby') ?? '')?.textContent ===
+          en.TeamEditor.sharedOutrider.observe,
+      );
+    expect(toggle()?.getAttribute('aria-checked')).toBe('true');
+    expect(document.body.textContent).toContain('model-a');
+    expect(document.body.textContent).toContain('every 3');
+    expect(document.body.textContent).toContain('additional model requests');
+    expect(document.body.textContent).toContain(en.TeamDraft.artifactAdvice);
+    expect(fixture.saved).toHaveLength(0);
+    const enabled = toggle();
+    if (!enabled) throw new Error('Missing observation setting');
+    await press(enabled);
+    expect(toggle()?.getAttribute('aria-checked')).toBe('false');
+    await press(button(en.TeamDraft.open));
+    expect(fixture.saved[0]?.definition.sharedOutrider).toMatchObject({ artifactReview: true });
+    expect(fixture.saved[0]?.definition.sharedOutrider).not.toHaveProperty('observation');
+  },
+);

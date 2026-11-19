@@ -1,5 +1,6 @@
 import {
   type CorralDefinition,
+  DEFAULT_ADVISOR_REVIEW,
   DEFAULT_LIMITS,
   hasReviewLoop,
   type PatternSlot,
@@ -210,7 +211,7 @@ function patternParts(
  * its name and brief stay. `keepCriteria` keeps criteria the person wrote by hand.
  */
 export function planWithPattern(
-  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria' | 'outrider'>,
+  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria' | 'outrider' | 'observeWork'>,
   pattern: TeamPattern,
   wording: TeamWording,
   { keepCriteria = false }: { keepCriteria?: boolean } = {},
@@ -221,6 +222,7 @@ export function planWithPattern(
     pattern,
     brief: plan.brief,
     ...(plan.outrider ? { outrider: plan.outrider } : {}),
+    ...(plan.observeWork ? { observeWork: true } : {}),
     ...parts,
     criteria: keepCriteria ? [...plan.criteria] : parts.criteria,
   };
@@ -255,11 +257,31 @@ function outriderFromGoal(goal: string): TeamPlan['outrider'] {
   return undefined;
 }
 
+/** A request to watch the team's ongoing work, including explicit opt-outs in either locale. */
+export function requestsWorkObservation(goal: string): boolean {
+  return goal.split(/[.!?;\n]/).some((clause) => {
+    const english =
+      /\b(?:(?:observe|watch|monitor) (?:the )?work in progress|(?:automatically|periodically) (?:observe|watch|monitor) (?:the |each |all )?(?:workers?|agents?)\b|automatic observation of (?:the )?(?:workers?|work in progress))\b/i;
+    const korean =
+      /(?:자동\s*관찰(?:을|를)?\s*(?:켜|활성화)|진행\s*중(?:인)?\s*(?:(?:작업|업무)(?:을|를)?\s*)?(?:자동(?:으로)?\s*)?관찰|(?:작업자|에이전트)(?:들의?|들|의)?\s*(?:작업|업무)?(?:을|를)?\s*(?:자동으로|주기적으로)\s*관찰)/;
+    const match = english.exec(clause) ?? korean.exec(clause);
+    if (!match) return false;
+    const before = clause.slice(0, match.index);
+    const after = clause.slice(match.index + match[0].length);
+    return (
+      !/\b(?:never|no|without|not|don't|disable)\s+(?:(?:the |any )?(?:outrider|advisor) to )?$/i.test(
+        before,
+      ) && !/^(?:을|를|은|는)?\s*(?:하지\s*(?:않|말|마)|없이|끄|꺼|비활성|금지)/.test(after)
+    );
+  });
+}
+
 /** The local suggestion: no model call. Null for an empty goal. */
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
   const brief = goal.trim();
   if (!brief) return null;
   const outrider = outriderFromGoal(brief);
+  const observeWork = requestsWorkObservation(brief);
   const template = wording.templates ? templatePatternFromGoal(brief) : null;
   // An optional review request alone does not add a sequential review to a writing task.
   const selfReview =
@@ -294,6 +316,7 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
     ...(parts.reviewRounds === undefined ? {} : { reviewRounds: parts.reviewRounds }),
     finalApproval: parts.finalApproval,
     ...(outrider ? { outrider } : {}),
+    ...(observeWork ? { observeWork: true } : {}),
   };
 }
 
@@ -381,12 +404,20 @@ export function draftFromPlan(
   labels: TeamLabels = ENGLISH_LABELS,
 ): TeamDraft {
   const sharedOutrider =
-    plan.outrider === 'consultation' || plan.outrider === 'artifact_review'
+    plan.observeWork || plan.outrider === 'consultation' || plan.outrider === 'artifact_review'
       ? {
           modelProfile: 'model-a',
           principles: labels.outriderPrinciples ?? DEFAULT_OUTRIDER_PRINCIPLES,
           targets: { kind: 'all' as const },
           ...(plan.outrider === 'artifact_review' ? { artifactReview: true as const } : {}),
+          ...(plan.observeWork
+            ? {
+                observation: {
+                  targets: { kind: 'all' as const },
+                  review: { ...DEFAULT_ADVISOR_REVIEW },
+                },
+              }
+            : {}),
         }
       : undefined;
   const consultation = sharedOutrider ? { sharedOutrider } : {};

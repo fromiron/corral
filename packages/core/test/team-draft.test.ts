@@ -471,3 +471,46 @@ it.each([
   expect(proposal?.outrider).toBe(policy);
   expect(proposal?.pattern).toBe('single');
 });
+
+describe('work observation in a goal draft', () => {
+  it.each([
+    ['진행 중 자동 관찰을 켜고 작성자가 원고 리뷰를 요청할 수 있게', 'artifact_review'],
+    ['자동 관찰을 켜 줘.', undefined],
+    ['작업자들을 주기적으로 관찰해 줘.', undefined],
+    ['Automatically monitor the workers as they work.', undefined],
+    ['Let the Outrider watch work in progress.', undefined],
+  ] as const)('adds an independent observation proposal for %s', (goal, outrider) => {
+    const suggested = planFromGoal(goal, wording);
+    expect(suggested?.observeWork).toBe(true);
+    expect(suggested?.outrider).toBe(outrider);
+    if (!suggested) throw new Error('Expected a suggestion');
+    for (const proposal of [suggested, planWithPattern(suggested, 'bug_fix', wording)]) {
+      const draft = draftFromPlan(TeamPlan.parse(proposal), 'observe_goal', labels);
+      expect(draft.definition.sharedOutrider).toMatchObject({
+        targets: { kind: 'all' },
+        observation: { targets: { kind: 'all' }, review: { interval: 3, maxRequestsPerReview: 8 } },
+      });
+      expect(
+        draft.definition.nodes.some(
+          (node) => node.type === 'agent' && node.invocation === 'observer',
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it.each([
+    'Let the writer ask for manuscript review when needed.',
+    '자동 관찰하지 말고 필요할 때만 전문가에게 물어보게 해줘.',
+    '진행 중 자동 관찰을 끄고 필요할 때만 의견을 받자.',
+    'Do not automatically monitor the workers. Let the writer ask for advice when needed.',
+    'Observe how bicycle gears work and explain the process.',
+    'Build a service to automatically monitor traffic.',
+  ])('leaves automatic observation off for %s', (goal) => {
+    const suggested = planFromGoal(goal, wording);
+    if (!suggested) throw new Error('Expected a suggestion');
+    expect(suggested).not.toHaveProperty('observeWork');
+    expect(
+      draftFromPlan(suggested, 'goal', labels).definition.sharedOutrider?.observation,
+    ).toBeUndefined();
+  });
+});

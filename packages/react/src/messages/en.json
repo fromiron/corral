@@ -1491,6 +1491,7 @@
     "changesWork": "This pattern includes roles that can change workspace files or run commands.",
     "hasReviewRound": "The flow includes review rounds.",
     "noReviewRound": "The flow has no sequential review round.",
+    "observationSummary": "{model} reviews all workers every {interval, plural, one {# model request} other {# model requests}} and checks unread work when each worker finishes. Each review uses up to {cap, plural, one {# additional model request} other {# additional model requests}}.",
     "artifactAdvice": "Workers can ask the shared Outrider for feedback on an artifact. The worker still submits the result.",
     "sharedAdvice": "Any worker can ask the shared Outrider for advice when needed.",
     "title": "Draft a Corral from a goal",

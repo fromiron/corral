@@ -1491,6 +1491,7 @@
     "changesWork": "이 패턴에는 작업공간의 파일을 바꾸거나 명령을 실행할 수 있는 역할이 있습니다.",
     "hasReviewRound": "실행 흐름에 검토 반복이 있습니다.",
     "noReviewRound": "실행 흐름에 순차 검토 반복이 없습니다.",
+    "observationSummary": "{model} 모델이 모든 작업자를 대상으로 모델 요청 {interval}회마다 검토하고, 각 작업이 끝날 때 아직 읽지 않은 기록을 확인합니다. 검토 한 번에 모델 요청이 최대 {cap}회 추가됩니다.",
     "artifactAdvice": "작업자는 산출물에 대해 공통 Outrider에게 의견을 요청하고 결과를 직접 제출합니다.",
     "sharedAdvice": "모든 작업자는 필요할 때 공통 Outrider에게 조언을 요청할 수 있습니다.",
     "title": "목표에서 Corral 초안 만들기",

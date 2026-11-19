@@ -1,6 +1,13 @@
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { closePanel, editorSettings, maximizePanel, requestBox, teamNode } from '../workbench.ts';
+import {
+  closePanel,
+  editorSettings,
+  maximizePanel,
+  openLibrary,
+  requestBox,
+  teamNode,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 async function call(page: Page, path: string, body?: unknown, method = 'POST') {
@@ -95,6 +102,31 @@ test('automatic observation can be saved for one worker and switched off indepen
   await configured.click();
   await expect(toggle).not.toBeChecked();
   await expect(settings.getByRole('radio', { name: 'Entire team' })).toBeChecked();
+});
+
+test('a worker observation proposal saves only after preview and reloads with its review interval', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await openLibrary(page, 'Templates');
+  await page.getByRole('button', { name: 'Draft from a goal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
+  await dialog
+    .getByLabel('What should the team do?')
+    .fill('Watch work in progress while writing an invitation.');
+  await dialog.getByRole('button', { name: 'Suggest a Corral' }).click();
+  await expect(dialog.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
+  await expect(dialog.getByText(/every 3/)).toContainText('additional model requests');
+  await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
+  await expect(page).toHaveURL(/\/edit$/);
+  await page.reload();
+  await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
+  const settings = editorSettings(page);
+  await expect(settings.getByRole('checkbox', { name: 'Observe work in progress' })).toBeChecked();
+  await expect(
+    settings.getByRole('spinbutton', { name: 'Review interval (model requests)' }),
+  ).toHaveValue('3');
 });
 
 test('pinned harness names survive two revision upgrades and reload without upgrading the binding', async ({
