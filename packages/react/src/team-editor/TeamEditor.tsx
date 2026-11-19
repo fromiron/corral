@@ -36,6 +36,7 @@ import {
   type CommandMenuItemData,
   CommandMenuList,
 } from '../design-kit/index.ts';
+import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
@@ -821,14 +822,19 @@ export function TeamEditor({
               </Button>
             );
           })}
-          <span className="flex min-w-0 flex-wrap gap-x-2 px-1 text-xs text-muted-foreground">
+          <span className="flex min-w-0 flex-wrap gap-x-2 px-1 text-caption text-muted-foreground">
             {paletteKind ? (
-              <span className="font-medium text-foreground">{t(`kinds.${paletteKind}`)}</span>
+              <span
+                className="text-foreground"
+                style={{ fontVariationSettings: fontWeights.semibold }}
+              >
+                {t(`kinds.${paletteKind}`)}
+              </span>
             ) : null}
             <span>{placementLabels.get(paletteKind ?? 'agent')}</span>
           </span>
           {placementError ? (
-            <span role="status" className="px-1 text-sm text-destructive">
+            <span role="status" className="px-1 text-body text-destructive">
               {placementError}
             </span>
           ) : null}

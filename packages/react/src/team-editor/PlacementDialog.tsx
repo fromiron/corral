@@ -9,6 +9,7 @@ import {
   KitDialogHeader,
   KitDialogTitle,
 } from '../design-kit/index.ts';
+import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import type { Placement } from './commands.ts';
 import type { PlacementPrompt } from './placement-preview.ts';
 
@@ -42,7 +43,9 @@ export function PlacementDialog({
   const list = (title: string, edges: ControlEdge[], definition: CorralDefinition) =>
     edges.length ? (
       <section>
-        <h3 className="mb-1 font-medium">{title}</h3>
+        <h3 className="mb-1 text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+          {title}
+        </h3>
         <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
           {edges.map((e) => (
             <li key={e.id}>{label(definition, e)}</li>
@@ -81,7 +84,11 @@ export function PlacementDialog({
         </KitDialogHeader>
         {prompt.kind === 'output' ? (
           <div className="flex flex-col items-start gap-2">
-            {incoming.length ? <h3 className="font-medium">{t('beforeOutput')}</h3> : null}
+            {incoming.length ? (
+              <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('beforeOutput')}
+              </h3>
+            ) : null}
             {incoming.map((e) => (
               <Button
                 key={e.id}
@@ -97,7 +104,7 @@ export function PlacementDialog({
             </Button>
           </div>
         ) : (
-          <div className="space-y-3 text-sm">
+          <div className="space-y-3 text-body">
             {list(t('removed'), prompt.diff.removed, base)}
             {list(t('added'), prompt.diff.added, prompt.result.draft.definition)}
             {list(t('boundary'), prompt.diff.boundary, prompt.result.draft.definition)}

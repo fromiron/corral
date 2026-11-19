@@ -1090,7 +1090,7 @@ export function TeamGraphCanvas({
         </div>
       ) : null}
       {drop?.check.ok && drop.check.label ? (
-        <p className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-md border border-border bg-card px-2 py-1 text-sm shadow-sm">
+        <p className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-md border border-border bg-card px-2 py-1 text-caption shadow-sm">
           {drop.check.label}
         </p>
       ) : null}
