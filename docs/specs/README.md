@@ -16,7 +16,7 @@ Corral은 명세 우선(spec-driven)으로 개발한다. **이 디렉터리가 �
 | 세션 화면의 틀·패널의 탭·폭·서랍·주소와 기억·실행 조작의 자리 | [features/session-panel.md](features/session-panel.md) |
 | 패널의 브라우저 탭·웹 페이지와 미리보기 페이지·브라우저 저장소·권한·내려받기 | [features/browser-tab.md](features/browser-tab.md) |
 | 브라우저 탭의 주석·요소 고르기·스타일 바꿔 보기·모아 두기 | [features/browser-annotate.md](features/browser-annotate.md) |
-| Outrider 역할과 조언 | [features/advisor.md](features/advisor.md) |
+| Outrider 역할과 조언 | [팀 공통 자문](features/shared-outrider.md), [자동 관찰](features/advisor.md) |
 | 채팅 위젯·현황 카드·Todo | [chat-widgets-contract.md](chat-widgets-contract.md) |
 | Desktop·명령·preview·host·음성 | [desktop-contract.md](desktop-contract.md) |
 | 개인 하네스·Skill·MCP·확장 | [harness-contract.md](harness-contract.md) |

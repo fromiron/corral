@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
 import {
   type AgentAdapter,
+  type AgentStartInput,
   type CorralDefinition,
   DEFAULT_LIMITS,
   type RunEvent,
@@ -432,6 +433,106 @@ describe('local security boundary', () => {
 });
 
 describe('REST: Corrals and runs', () => {
+  it.each([true, false])(
+    'runs a saved shared Outrider revision with workers choosing to consult: %s',
+    async (consult) => {
+      const scheduled = new Gate();
+      const proceed = new Gate();
+      const responderInputs: AgentStartInput[] = [];
+      const startedNodes: string[] = [];
+      const workers = new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: consult,
+        script: async (input) => {
+          startedNodes.push(input.nodeId);
+          if (input.assignment.kind === 'question') responderInputs.push(input);
+          if (input.nodeId === 'planner') {
+            scheduled.open();
+            await proceed.wait();
+          }
+          return null;
+        },
+        reply: (_turn, input) =>
+          input.assignment.kind === 'question'
+            ? `Reply to ${input.assignment.askerExecutionId}`
+            : `Submitted by ${input.nodeId}`,
+      });
+      const server = await start({ agents: workers });
+      const { call } = await browser(server);
+      const options = { baseUrl: server.url, fetch: call };
+      const repository = new RestCorralRepository(options);
+      const transport = new HttpSseTransport(options);
+      const definition = linearCorral(['planner', 'writer']);
+      definition.sharedOutrider = {
+        modelProfile: 'model-a',
+        principles: 'Only answer the worker who asked.',
+        targets: { kind: 'all' },
+      };
+      const first = await saved(server, definition, call);
+      const started = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start_shared',
+        mode: 'mock',
+        corralId: first.corralId,
+        definitionRevision: first.definitionRevision,
+      });
+      if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+      const runId = started.runId;
+      try {
+        await scheduled.wait();
+        // A later edit removes the shared advisor. The running team must keep the saved snapshot.
+        const changed = { ...first.definition };
+        delete changed.sharedOutrider;
+        const next = await repository.save({
+          definition: changed,
+          expectedDefinitionRevision: first.definitionRevision,
+        });
+        if (!next.ok) throw new Error(next.message);
+        expect(next.record.definitionRevision).toBe(first.definitionRevision + 1);
+      } finally {
+        proceed.open();
+      }
+      const final = await waitForProjection(transport, runId, (p) =>
+        ['succeeded', 'failed', 'cancelled'].includes(p.status),
+      );
+      expect(final.status).toBe('succeeded');
+      const questions = Object.values(final.questions);
+      expect(questions).toHaveLength(consult ? 2 : 0);
+      expect(responderInputs).toHaveLength(consult ? 2 : 0);
+      expect(final.output?.artifactVersionIds).toHaveLength(1);
+      const last = await transport.getArtifactText(
+        runId,
+        final.output?.artifactVersionIds[0] ?? '',
+      );
+      expect(last).toContain('Submitted by writer');
+      if (!consult) {
+        expect(startedNodes).toEqual(['planner', 'writer']);
+        return;
+      }
+      expect(new Set(questions.map((q) => q.targetNodeId)).size).toBe(1);
+      expect(questions.map((q) => final.executions[q.senderExecutionId]?.nodeId)).toEqual([
+        'planner',
+        'writer',
+      ]);
+      for (const q of questions) {
+        expect(q.status).toBe('answered');
+        const responder = final.executions[q.answer?.responderExecutionId ?? ''];
+        expect(responder?.parentExecutionId).toBe(q.senderExecutionId);
+        expect(responder?.modelCallIds).toHaveLength(1);
+        expect(q.answer?.body).toContain(`Reply to ${q.senderExecutionId}`);
+      }
+      for (const responder of responderInputs) {
+        expect(responder.role.prompt).toContain(definition.sharedOutrider.principles);
+        expect(responder.role.allowedWorkTools).not.toContain('write_file');
+        expect(responder.role.allowedWorkTools).not.toContain('run_command');
+        expect(responder.role.allowedCollaborationTools).toContain('reply');
+        expect(responder.role.allowedCollaborationTools).not.toContain('submit_result');
+        expect(responder.capabilities.askTo).toEqual([]);
+        expect(responder.capabilities.delegateTo).toEqual([]);
+      }
+    },
+  );
+
   it('saves Corrals by definition revision and refuses a stale save', async () => {
     const server = await start();
     const { call } = await browser(server);

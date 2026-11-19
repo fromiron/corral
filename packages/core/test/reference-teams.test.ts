@@ -11,6 +11,7 @@ import {
   planRun,
   type RunProjection,
   reviewCriteriaHash,
+  sharedOutriderTargets,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -116,6 +117,33 @@ const plan = (doc: CorralDefinition, teams: Record<string, CorralDefinition>) =>
 const node = (doc: CorralDefinition, id: string) => doc.nodes.find((n) => n.id === id);
 
 describe('reference teams: expansion', () => {
+  it('consults from the selected pinned member while preserving the original teams and their capabilities', () => {
+    const team = saved();
+    const before = JSON.stringify(team);
+    const doc = outer();
+    doc.sharedOutrider = {
+      modelProfile: 'model-a',
+      principles: 'Help the asker.',
+      targets: { kind: 'selected', nodeIds: ['T.W'] },
+    };
+    const resolve = (corral: string, revision: number) =>
+      corral === 'y' && revision === 1 ? team : undefined;
+    expect(
+      sharedOutriderTargets(doc, resolve)
+        .map((row) => row.nodeId)
+        .sort(),
+    ).toEqual(['P', 'Q', 'T.W']);
+    const result = planRun(doc, { resolveTeam: resolve });
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.plan.callables['T.W']?.question).toHaveLength(1);
+    expect(result.plan.callables.P).toBeUndefined();
+    expect(result.plan.callables.Q).toBeUndefined();
+    expect(JSON.stringify(team)).toBe(before);
+    expect(doc.nodes.find((item) => item.id === 'T')).toMatchObject({
+      source: { kind: 'reference' },
+    });
+  });
+
   it('copies the saved team into the Team with prefixed ids and runs it as an inline Team', () => {
     const planned = plan(outer(), { y: saved() });
     if (!planned.ok) throw new Error(JSON.stringify(planned.issues));

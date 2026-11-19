@@ -19,6 +19,41 @@ async function call(page: Page, path: string, body?: unknown, method = 'POST') {
   );
 }
 
+test('shared Outrider settings survive reload and removal is reversible in the editor', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const { record } = await call(page, '/corrals', {
+    definition: linearCorral(['planner', 'writer']),
+  });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  const add = page.getByRole('button', { name: 'Add shared Outrider', exact: true });
+  await expect(add).toBeVisible();
+  await add.click();
+  const settings = editorSettings(page);
+  const principles = settings.getByRole('textbox', { name: 'Review principles' });
+  await principles.fill('Ask for the evidence behind the plan.');
+  await settings.getByRole('radio', { name: 'Select workers' }).click();
+  await settings.getByRole('checkbox', { name: 'planner', exact: true }).click();
+  await settings.getByRole('button', { name: 'Apply', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('revisions')).toContainText('Version 2');
+
+  await page.reload();
+  const configured = page.getByRole('button', { name: 'Outrider · 1 worker', exact: true });
+  await configured.click();
+  await expect(principles).toHaveValue('Ask for the evidence behind the plan.');
+  await expect(settings.getByRole('checkbox', { name: 'planner', exact: true })).toBeChecked();
+  await expect(settings.getByRole('checkbox', { name: 'writer', exact: true })).not.toBeChecked();
+  await settings.getByRole('button', { name: 'Remove shared Outrider' }).click();
+  await expect(add).toBeVisible();
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await expect(configured).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  expect(corral.errors).toEqual([]);
+});
+
 test('pinned harness names survive two revision upgrades and reload without upgrading the binding', async ({
   page,
   corral,

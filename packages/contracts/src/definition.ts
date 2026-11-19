@@ -131,6 +131,17 @@ export type AdvisorReview = z.infer<typeof AdvisorReview>;
 /** An absent `review` (docs/specs/features/advisor.md). */
 export const DEFAULT_ADVISOR_REVIEW: AdvisorReview = { interval: 3, maxRequestsPerReview: 8 };
 
+/** A team's on-demand consultant. Targets are the intent, including future workers in all mode. */
+export const SharedOutrider = z.strictObject({
+  modelProfile: AgentRole.shape.modelProfile,
+  principles: AgentRole.shape.prompt,
+  targets: z.discriminatedUnion('kind', [
+    z.strictObject({ kind: z.literal('all') }),
+    z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),
+  ]),
+});
+export type SharedOutrider = z.infer<typeof SharedOutrider>;
+
 /**
  * An advisor: outside the run order, it watches the Agents its `advise` links point to
  * (docs/specs/features/advisor.md). It takes no input bindings and no retry.
@@ -369,6 +380,7 @@ export const CorralDefinition = z.strictObject({
     .strictObject({ corralId: Identifier, name: z.string().min(1), revision: z.int().min(1) })
     .optional(),
   planOwnerRoleId: Identifier.optional(),
+  sharedOutrider: SharedOutrider.optional(),
   schemaVersion: SchemaVersion,
   id: Identifier,
   name: z.string().min(1),

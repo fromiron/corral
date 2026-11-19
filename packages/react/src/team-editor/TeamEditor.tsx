@@ -10,6 +10,7 @@ import {
   type RolePresetId,
   type RunStats,
   roleFromPreset,
+  sharedOutriderTargets,
 } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
@@ -187,6 +188,15 @@ export function TeamEditor({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // The sheet shows the selection unless the team's settings or the problem list is asked for.
   const [view, setView] = useState<Exclude<SheetView, 'selection'> | null>(null);
+  // A settings sheet may still be animating out when reopened; each visit starts a fresh form.
+  const [outriderFormKey, setOutriderFormKey] = useState(0);
+  const outriderTargets = useMemo(
+    () =>
+      definition.sharedOutrider || view === 'sharedOutrider'
+        ? sharedOutriderTargets(definition, resolveTeam)
+        : [],
+    [definition, resolveTeam, view],
+  );
   const [dragging, setDragging] = useState<StepKind | null>(null);
   // The command menu, or the roles it copies from.
   const [menu, setMenu] = useState<{ open: boolean; at: Placement | null; roles: boolean }>({
@@ -296,7 +306,7 @@ export function TeamEditor({
   }, [definition]);
 
   const remove = (ids: string[]) => {
-    editor.getState().applyDraft(removeItems(editor.getState().draft, ids));
+    editor.getState().applyDraft(removeItems(editor.getState().draft, ids, outriderTargets));
     select(NONE);
   };
 
@@ -574,6 +584,14 @@ export function TeamEditor({
           setView((current) => (current === 'team' ? null : 'team'));
           setSelection(NONE);
         }}
+        onSharedOutrider={() => {
+          if (view !== 'sharedOutrider') {
+            reveal();
+            setOutriderFormKey((key) => key + 1);
+          }
+          setView((current) => (current === 'sharedOutrider' ? null : 'sharedOutrider'));
+          setSelection(NONE);
+        }}
         onProblems={() => {
           if (view !== 'problems') reveal();
           setView((current) => (current === 'problems' ? null : 'problems'));
@@ -670,6 +688,7 @@ export function TeamEditor({
               transition={reduced ? { duration: 0 } : spring.slow}
             >
               <InspectorSheet
+                key={view === 'sharedOutrider' ? outriderFormKey : 'inspector'}
                 stacked={stacked}
                 editor={editor}
                 diagnostics={diagnostics}
@@ -680,6 +699,7 @@ export function TeamEditor({
                 roleSettings={roleSettings}
                 loopSettings={loopSettings}
                 teams={teams}
+                outriderTargets={outriderTargets}
                 onOpenTeam={onOpenTeam}
                 onImportRole={openRoles}
                 notice={notice}

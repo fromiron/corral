@@ -851,6 +851,7 @@
     "item": "Item {index} of {total}"
   },
   "Questions": {
+    "consultation": { "open": "Waiting for an answer", "answered": "Answer received" },
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
@@ -6015,12 +6016,37 @@
       "advisorOutsideBoxes": "An Outrider stays outside Loops and Teams.",
       "watchNeedsAdvisor": "Only an Outrider watches agents.",
       "watchNeedsAgent": "An Outrider watches an agent in the flow or a callable agent.",
+      "invalidSharedOutrider": "Enter a valid model profile and review principles.",
       "advisorRole": "An Outrider’s role is not copied onto an agent."
     },
     "outline": "Corral structure",
     "addStep": "Add a step",
     "problems": "{count, plural, =0 {No problems} one {# problem} other {# problems}}",
     "teamSettings": "Limits and criteria",
+    "sharedOutrider": {
+      "add": "Add shared Outrider",
+      "title": "Shared Outrider",
+      "entireSummary": "Outrider · Entire team",
+      "selectedSummary": "Outrider · {count, plural, one {# worker} other {# workers}}",
+      "all": "Entire team",
+      "selected": "Select workers",
+      "scope": "Who can ask",
+      "workers": "Workers",
+      "canAsk": "Can ask the shared Outrider",
+      "excluded": "Outside the shared Outrider’s scope",
+      "noWorkers": "Add a working agent to consult the Outrider.",
+      "model": "Outrider model",
+      "principles": "Review principles",
+      "defaultPrinciples": "Answer the worker’s question using the available evidence. State any uncertainty.",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "remove": "Remove shared Outrider",
+      "limits": {
+        "depth": "Asking would exceed this team’s delegation depth.",
+        "questions": "The team’s question limit is zero.",
+        "spawns": "Asking would exceed this team’s limit on started agents."
+      }
+    },
     "commands": "Commands",
     "moveInto": "Move into {box}",
     "moveOut": "Move to the top level",

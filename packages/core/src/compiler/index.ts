@@ -19,6 +19,7 @@ import {
 import { ADVISOR_COLLABORATION_TOOLS, ADVISOR_WORK_TOOLS } from '../advisor/tools.ts';
 import { SPEC_HARD_CAPS } from '../config.ts';
 import { recipeAttempts, reviewCriteriaHash } from '../review-recipe.ts';
+import { workerDepths } from './call-depth.ts';
 import { vertexOf } from './cycles.ts';
 import {
   boxBoundaryViolation,
@@ -987,21 +988,7 @@ function analyzeGraph(c: Context): Graph | null {
   // Capability reachability: minimum delegation depth and the longest static chain. Advice is
   // not a call.
   const links = definition.capabilityLinks.filter((link) => link.kind !== 'advise');
-  const callableDepth = new Map<string, number>();
-  const queue: (readonly [string, number])[] = definition.nodes
-    .filter((n) => n.type === 'agent' && n.invocation === 'scheduled' && reached.has(n.id))
-    .map((n) => [n.id, 0] as const);
-  const best = new Map<string, number>(queue);
-  for (let i = 0; i < queue.length; i++) {
-    const [id, depth] = queue[i] as readonly [string, number];
-    for (const link of links) {
-      if (link.sourceNodeId !== id || !c.isCallable(link.targetNodeId)) continue;
-      if ((best.get(link.targetNodeId) ?? Number.POSITIVE_INFINITY) <= depth + 1) continue;
-      best.set(link.targetNodeId, depth + 1);
-      callableDepth.set(link.targetNodeId, depth + 1);
-      queue.push([link.targetNodeId, depth + 1]);
-    }
-  }
+  const callableDepth = workerDepths(definition.nodes, links, reached);
   const longest = (id: string, seen: Set<string>): number => {
     let deepest = 0;
     for (const link of links) {
@@ -1020,7 +1007,9 @@ function analyzeGraph(c: Context): Graph | null {
   };
   const maxStaticDepth = Math.max(
     0,
-    ...queue.filter(([, depth]) => depth === 0).map(([id]) => longest(id, new Set([id]))),
+    ...[...callableDepth]
+      .filter(([, depth]) => depth === 0)
+      .map(([id]) => longest(id, new Set([id]))),
   );
 
   return { order, ancestors: nodeAncestors, reached, callableDepth, maxStaticDepth };
@@ -1308,6 +1297,12 @@ function checkBindings(c: Context, graph: Graph) {
 function checkModelProfiles(c: Context, options: CompileOptions) {
   if (!options.knownModelProfiles) return;
   const known = new Set(options.knownModelProfiles);
+  const shared = c.definition.sharedOutrider;
+  if (shared && !known.has(shared.modelProfile))
+    c.error(
+      'UNKNOWN_MODEL_PROFILE',
+      `model profile ${shared.modelProfile} (shared Outrider) is not configured`,
+    );
   for (const node of c.definition.nodes)
     if (node.type === 'decision' && node.mode === 'router' && node.modelProfile)
       if (!known.has(node.modelProfile))

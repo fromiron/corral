@@ -3,8 +3,10 @@ import {
   type ControlEdge,
   type CorralDefinition,
   type CorralNode,
+  canonicalJson,
   type HarnessBindingRef,
   isWorkAgent,
+  SharedOutrider,
   type TargetPort,
 } from '@corral/contracts';
 import {
@@ -14,6 +16,7 @@ import {
   isBox,
   isWithin,
   outputPortsOf,
+  type SharedOutriderTarget,
   sourceSide,
   wouldCreateCycle,
 } from '@corral/core';
@@ -73,11 +76,38 @@ export type EditRejection =
   | 'advisorOutsideBoxes'
   | 'watchNeedsAdvisor'
   | 'watchNeedsAgent'
-  | 'advisorRole';
+  | 'advisorRole'
+  | 'invalidSharedOutrider';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
   | { ok: false; reason: EditRejection };
+
+/** A selected target list is a set; picking the same workers in another order is no edit. */
+function orderedOutriderSettings(settings: SharedOutrider): SharedOutrider {
+  if (settings.targets.kind === 'all') return settings;
+  const nodeIds = [...new Set(settings.targets.nodeIds)].sort();
+  return { ...settings, targets: { kind: 'selected', nodeIds } };
+}
+
+/** Store only the authored intent. The runtime derives the callable and its grants on its copy. */
+export function setSharedOutrider(draft: EditorDraft, settings: SharedOutrider | null): EditResult {
+  const current = draft.definition.sharedOutrider;
+  if (settings === null) {
+    if (!current) return { ok: true, draft };
+    const { sharedOutrider: _removed, ...definition } = draft.definition;
+    return { ok: true, draft: { ...draft, definition } };
+  }
+  const parsed = SharedOutrider.safeParse(settings);
+  if (!parsed.success) return { ok: false, reason: 'invalidSharedOutrider' };
+  const next = orderedOutriderSettings(parsed.data);
+  if (current && canonicalJson(orderedOutriderSettings(current)) === canonicalJson(next))
+    return { ok: true, draft };
+  return {
+    ok: true,
+    draft: { ...draft, definition: { ...draft.definition, sharedOutrider: next } },
+  };
+}
 
 /**
  * Another saved team of the project at its latest saved revision: added as a Team box that runs
@@ -592,7 +622,11 @@ export function setParent(draft: EditorDraft, id: string, parentId: string | nul
  * Removes nodes, connections and call links. A removed box hands its members to its own box
  * and joins what entered it to its first steps and its last steps to what came after it.
  */
-export function removeItems(draft: EditorDraft, ids: readonly string[]): EditorDraft {
+export function removeItems(
+  draft: EditorDraft,
+  ids: readonly string[],
+  outriderTargets: readonly SharedOutriderTarget[] = [],
+): EditorDraft {
   let next = draft;
   const gone = new Set(ids);
   const controlEdges = next.definition.controlEdges.filter((e) => !gone.has(e.id));
@@ -602,7 +636,7 @@ export function removeItems(draft: EditorDraft, ids: readonly string[]): EditorD
     const node = next.definition.nodes.find((n) => n.id === id);
     if (!node) continue;
     if (isBox(node)) next = unwrap(next, node.id);
-    next = removeNode(next, id);
+    next = removeNode(next, id, outriderTargets);
   }
   return next;
 }

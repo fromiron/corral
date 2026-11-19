@@ -82,7 +82,13 @@ export function QuestionsPanel({
                     {labelOf(question.targetNodeId)}
                   </span>
                 )}
-                <StatusBadge status={question.status} />
+                <StatusBadge
+                  status={question.status}
+                  {...(question.sharedOutrider &&
+                  (question.status === 'open' || question.status === 'answered')
+                    ? { label: t(`consultation.${question.status}`) }
+                    : {})}
+                />
               </div>
               <p className="whitespace-pre-wrap">{question.body}</p>
               {question.artifactRefs.length > 0 ? (

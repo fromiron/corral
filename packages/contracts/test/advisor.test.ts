@@ -4,6 +4,7 @@ import {
   AgentRole,
   advisorReview,
   CorralDefinition,
+  CorralDefinitionDraft,
   CorralNode,
   isWorkAgent,
   ObserverAgentNode,
@@ -37,6 +38,42 @@ const withAdvisor = (node: Record<string, unknown>) => ({
   capabilityLinks: [
     { id: 'watch', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'writer' },
   ],
+});
+
+describe('shared Outrider settings', () => {
+  it.each([
+    { kind: 'all' },
+    { kind: 'selected', nodeIds: ['writer', 'subteam.writer'] },
+    { kind: 'selected', nodeIds: [] },
+  ])('preserves shared Outrider target intent in draft, runnable, and JSON schemas', (targets) => {
+    const sharedOutrider = { modelProfile: 'model-a', principles: 'Cite evidence.', targets };
+    const definition = { ...minimal, sharedOutrider };
+    expect(CorralDefinition.parse(definition)).toEqual(definition);
+    expect(CorralDefinitionDraft.parse(definition)).toEqual(definition);
+    expect(definitionJson(definition)).toBe(true);
+  });
+
+  it.each([
+    { modelProfile: 'invalid profile' },
+    { principles: '' },
+    { targets: { kind: 'all', nodeIds: [] } },
+    { targets: { kind: 'selected', nodeIds: ['!'] } },
+    { targets: { kind: 'selected' } },
+    { invocation: 'observer' },
+  ])('rejects malformed shared Outrider settings in the domain and generated schema', (invalid) => {
+    const definition = {
+      ...minimal,
+      sharedOutrider: {
+        modelProfile: 'model-a',
+        principles: 'Cite evidence.',
+        targets: { kind: 'all' },
+        ...invalid,
+      },
+    };
+    expect(CorralDefinition.safeParse(definition).success).toBe(false);
+    expect(CorralDefinitionDraft.safeParse(definition).success).toBe(false);
+    expect(definitionJson(definition)).toBe(false);
+  });
 });
 
 describe('advisor nodes', () => {

@@ -74,6 +74,106 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
 };
 
 describe('team editor', () => {
+  it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
+    const draft = chain(2);
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const open = () => user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    await open();
+    await user.clear(screen.getByRole('textbox', { name: 'Review principles' }));
+    await user.type(screen.getByRole('textbox', { name: 'Review principles' }), 'Discard this');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(draft);
+    expect(editor.getState().canUndo).toBe(false);
+
+    await open();
+    const principles = screen.getByRole('textbox', { name: 'Review principles' });
+    expect(principles).not.toHaveValue('Discard this');
+    await user.clear(principles);
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    await user.type(principles, 'Check the evidence');
+    expect(screen.getByRole('radio', { name: 'Entire team' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const applied = editor.getState().draft;
+    expect(applied.definition.sharedOutrider).toEqual({
+      modelProfile: 'model-a',
+      principles: 'Check the evidence',
+      targets: { kind: 'all' },
+    });
+    expect(applied.definition.nodes).toEqual(draft.definition.nodes);
+    expect(editor.getState().past).toEqual([draft]);
+
+    await user.click(screen.getByRole('button', { name: 'Outrider · Entire team' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft).toBe(applied);
+    expect(editor.getState().past).toEqual([draft]);
+    act(() =>
+      editor.getState().applyDraft(ok(placeStep(applied, 'agent', { kind: 'empty' })).draft),
+    );
+    const outline = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.outline }),
+    );
+    await user.click(outline.getByRole('button', { name: 'Agent 3' }));
+    await waitFor(() => expect(screen.getByText('Can ask the shared Outrider')).toBeVisible());
+  });
+
+  it('shows selected shared Outrider workers, excludes observers, and removes and restores the settings in one undo', async () => {
+    const workers = patchNode(patchNode(chain(2), 'agent_1', { label: 'Writer' }), 'agent_2', {
+      label: 'Writer',
+    });
+    const draft = ok(placeStep(workers, 'observer', { kind: 'after', nodeId: 'agent_1' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    await user.click(screen.getByRole('radio', { name: 'Select workers' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Writer (agent_1)' }));
+    expect(screen.queryByRole('checkbox', { name: /Outrider/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const configured = editor.getState().draft;
+    expect(configured.definition.sharedOutrider?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['agent_1'],
+    });
+    await user.click(canvasNode('agent_2'));
+    await waitFor(() =>
+      expect(screen.getByText('Outside the shared Outrider’s scope')).toBeVisible(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Outrider · 1 worker' }));
+    await user.click(screen.getByRole('button', { name: 'Remove shared Outrider' }));
+    expect(editor.getState().draft.definition).toEqual(draft.definition);
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(configured);
+    expect(screen.getByRole('button', { name: 'Outrider · 1 worker' })).toBeVisible();
+  });
+
+  it('explains in Korean why a worker cannot ask the shared Outrider when the question limit is zero', async () => {
+    const draft = chain(1);
+    const editor = createEditorStore({
+      ...draft,
+      definition: { ...draft.definition, limits: { ...draft.definition.limits, maxQuestions: 0 } },
+    });
+    render(
+      <IntlProvider locale="ko" messages={koMessages}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '공통 Outrider 추가' }));
+    expect(screen.getByRole('radio', { name: '팀 전체' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByText('팀의 질문 한도가 0입니다.')).toBeVisible();
+    await user.click(screen.getByRole('radio', { name: '직접 선택' }));
+    expect(screen.getByRole('checkbox', { name: 'Agent 1' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(editor.getState().canUndo).toBe(false);
+  });
+
   it('puts the add button on the team row of the outline, with no heading over the outline', () => {
     renderEditor(chain(1));
     const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });

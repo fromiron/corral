@@ -27,6 +27,7 @@ import {
   outputPortsOf,
   type PlanIssue,
   planRun,
+  type SharedOutriderTarget,
   wouldCreateCycle,
 } from '@corral/core';
 
@@ -638,7 +639,11 @@ export function setBrief(draft: EditorDraft, brief: string): EditorDraft {
   });
 }
 
-export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
+export function removeNode(
+  draft: EditorDraft,
+  nodeId: string,
+  outriderTargets: readonly SharedOutriderTarget[] = [],
+): EditorDraft {
   const { definition } = draft;
   const removed = findNode(draft, nodeId);
   if (!removed) return draft;
@@ -658,6 +663,30 @@ export function removeNode(draft: EditorDraft, nodeId: string): EditorDraft {
     });
   const usedRoles = new Set(nodes.flatMap((n) => (n.type === 'agent' ? [n.roleId] : [])));
   const { planOwnerRoleId, ...remainingDefinition } = definition;
+  const shared = definition.sharedOutrider;
+  if (shared?.targets.kind === 'selected') {
+    const removedRef = removed.type === 'team' && removed.source.kind === 'reference';
+    const referenceMembers = new Set(
+      outriderTargets.filter((row) => row.referenceNodeId === nodeId).map((row) => row.nodeId),
+    );
+    const nodeIds = shared.targets.nodeIds.filter((id) => {
+      if (id === nodeId) return false;
+      if (!removedRef || !id.startsWith(`${nodeId}.`)) return true;
+      if (referenceMembers.has(id)) return false;
+      // A reference may still be loading. A worker with a dotted authored ID or a
+      // different reference with an overlapping prefix may own this selected target.
+      return nodes.some(
+        (node) =>
+          node.id === id ||
+          (node.type === 'team' &&
+            node.source.kind === 'reference' &&
+            id.startsWith(`${node.id}.`)),
+      );
+    });
+    if (nodeIds.length !== shared.targets.nodeIds.length) {
+      remainingDefinition.sharedOutrider = { ...shared, targets: { kind: 'selected', nodeIds } };
+    }
+  }
   return withDefinition(draft, {
     ...remainingDefinition,
     ...(planOwnerRoleId && usedRoles.has(planOwnerRoleId) ? { planOwnerRoleId } : {}),

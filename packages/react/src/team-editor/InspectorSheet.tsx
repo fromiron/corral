@@ -1,5 +1,5 @@
 import { type ControlEdge, type CorralNode, isWorkAgent, type TargetPort } from '@corral/contracts';
-import { type Diagnostic, outputPortsOf } from '@corral/core';
+import { type Diagnostic, outputPortsOf, type SharedOutriderTarget } from '@corral/core';
 import { type ReactNode, useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -30,13 +30,14 @@ import {
   type ProfileOption,
   type RoleSettings,
 } from './NodeSettings.tsx';
+import { SharedOutriderSettings } from './SharedOutriderSettings.tsx';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 // The floating settings sheet: what the selection is, its settings, where it leads and what is
 // wrong with it; or the team's own settings; or every problem in the team. Every field writes
 // through the editor store, so undo covers it.
 
-export type SheetView = 'selection' | 'team' | 'problems';
+export type SheetView = 'selection' | 'team' | 'problems' | 'sharedOutrider';
 
 export interface InspectorSheetProps {
   editor: EditorStore;
@@ -49,6 +50,7 @@ export interface InspectorSheetProps {
   loopSettings?: LoopSettings | undefined;
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
+  outriderTargets: readonly SharedOutriderTarget[];
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Opens the roles to copy onto the selected agent. */
   onImportRole?: (() => void) | undefined;
@@ -137,6 +139,7 @@ export function InspectorSheet({
   roleSettings,
   loopSettings,
   teams,
+  outriderTargets,
   onOpenTeam,
   onImportRole,
   notice,
@@ -251,7 +254,7 @@ export function InspectorSheet({
           variant="secondary"
           size="compact"
           onClick={() => {
-            apply(removeItems(draft, ids));
+            apply(removeItems(draft, ids, outriderTargets));
             onSelect({ nodes: [], edge: null });
           }}
         >
@@ -300,6 +303,17 @@ export function InspectorSheet({
       </ul>
     ) : (
       <p className={cn(size.type.body, 'text-muted-foreground')}>{t('noProblems')}</p>
+    );
+  } else if (view === 'sharedOutrider') {
+    title = t('sharedOutrider.title');
+    body = (
+      <SharedOutriderSettings
+        key={JSON.stringify(definition.sharedOutrider ?? null)}
+        editor={editor}
+        targets={outriderTargets}
+        profiles={profiles}
+        onClose={onClose}
+      />
     );
   } else if (view === 'team') {
     title = t('teamSettings');
@@ -402,8 +416,19 @@ export function InspectorSheet({
     );
   } else if (single) {
     title = t(`kinds.${kindOf(single)}`);
+    const askTarget = outriderTargets.find((target) => target.nodeId === single.id);
+    const scope = definition.sharedOutrider?.targets;
     body = (
       <>
+        {scope && askTarget ? (
+          <p className={cn(size.type.caption, 'text-muted-foreground')}>
+            {scope.kind === 'selected' && !scope.nodeIds.includes(single.id)
+              ? t('sharedOutrider.excluded')
+              : askTarget.unavailable
+                ? t(`sharedOutrider.limits.${askTarget.unavailable}`)
+                : t('sharedOutrider.canAsk')}
+          </p>
+        ) : null}
         <NodeSettings
           editor={editor}
           node={single}

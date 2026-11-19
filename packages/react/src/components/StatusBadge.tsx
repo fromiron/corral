@@ -59,12 +59,11 @@ export function StatusDot({ status, label }: { status: string; label?: string })
   );
 }
 
-export function StatusBadge({ status }: { status: string }) {
+export function StatusBadge({ status, label }: { status: string; label?: string }) {
   const t = useTranslations('Status');
-  const label = t.has(status) ? t(status) : status;
   return (
     <KitBadge variant="dot" color={COLOR[statusTone(status)]} data-status={status}>
-      {label}
+      {label ?? (t.has(status) ? t(status) : status)}
     </KitBadge>
   );
 }

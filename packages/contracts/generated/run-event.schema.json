@@ -5544,6 +5544,10 @@
               "type": "string",
               "const": "parent"
             },
+            "sharedOutrider": {
+              "type": "boolean",
+              "const": true
+            },
             "targetExecutionId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"

@@ -49,6 +49,8 @@
 
 ## 계약
 
+- 팀 구조에서 여는 [공통 Outrider](shared-outrider.md) 설정과 작업자별 자문 가능 표시는 같은 작업 사본에서 편집한다.
+
 - **정의 원본:** `packages/contracts`의 Zod. 현재 JSON Schema는 생성물(`packages/contracts/generated/`)이며 `pnpm contracts:check`가 최신인지 검사한다. 현재 생성물과 Zod는 같은 fixture에 같은 판정을 내야 한다. `contracts/*.schema.json`은 [초기 seed](../../../contracts/README.md)이며, 현재 규격과 공유하는 초기 fixture만 호환성을 검사한다. 노드 수 정책은 [사용량과 자원 정책](../product-contract.md#9-사용량과-자원-정책)을 따른다.
 - **포트 표와 구조 규칙:** [팀 그래프 모델](team-graph.md)이 정한다. 편집기의 연결·배치·감싸기 규칙과 compiler가 같은 포트 표와 상자 경계 규칙을 쓴다. 편집기 검사는 신뢰 경계가 아니며 runtime이 같은 compiler를 다시 쓴다.
 - **편집 명령:** 모든 조작은 초안을 받아 새 초안이나 거절 이유(`EditRejection`)를 돌려주는 순수 함수다(`packages/react/src/team-editor/commands.ts`). 캔버스·구조 목록·명령 메뉴·설정 시트는 어떤 명령을 부를지만 고른다. 한 명령은 되돌리기 한 단계다.

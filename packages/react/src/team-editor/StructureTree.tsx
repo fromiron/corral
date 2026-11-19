@@ -11,6 +11,7 @@ import {
   ChevronRight,
   CircleAlert,
   Command,
+  Eye,
   Gauge,
   Plus,
   TriangleAlert,
@@ -36,10 +37,11 @@ export interface StructureTreeProps {
   onMove: (nodeId: string, parentId: string | null) => void;
   onAdd: () => void;
   onTeamSettings: () => void;
+  onSharedOutrider: () => void;
   onProblems: () => void;
   onCommands: () => void;
   /** Which team-wide view the sheet shows, if any. */
-  view: 'team' | 'problems' | null;
+  view: 'team' | 'problems' | 'sharedOutrider' | null;
   /** A row of the stacked editor's column instead of its left side. */
   stacked?: boolean;
 }
@@ -56,6 +58,7 @@ export function StructureTree({
   onMove,
   onAdd,
   onTeamSettings,
+  onSharedOutrider,
   onProblems,
   onCommands,
   view,
@@ -210,6 +213,22 @@ export function StructureTree({
           <Plus />
         </Button>
       </div>
+      <Button
+        variant="ghost"
+        size="compact"
+        className="mx-2 mb-1 shrink-0 justify-start"
+        aria-pressed={view === 'sharedOutrider'}
+        onClick={onSharedOutrider}
+      >
+        <Eye />
+        {definition.sharedOutrider
+          ? definition.sharedOutrider.targets.kind === 'all'
+            ? t('sharedOutrider.entireSummary')
+            : t('sharedOutrider.selectedSummary', {
+                count: definition.sharedOutrider.targets.nodeIds.length,
+              })
+          : t('sharedOutrider.add')}
+      </Button>
       {/* Stacked, a long outline scrolls in itself, so the canvas stays near the top. */}
       <ul className={cn('overflow-y-auto px-2 pb-2', stacked ? 'max-h-60' : 'min-h-0 flex-1')}>
         {children(null).map((node) => row(node, 0))}

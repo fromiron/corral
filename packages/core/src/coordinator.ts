@@ -1817,6 +1817,7 @@ export class Coordinator {
         !parsed.success ||
         request.sessionId !== meeting.sessionId ||
         ('autoRoute' in request && request.autoRoute) ||
+        parsed.data.sharedOutrider ||
         parsed.data.roles.length !== 1 ||
         parsed.data.capabilityLinks.length ||
         parsed.data.roles.some(
@@ -1910,6 +1911,9 @@ export class Coordinator {
         .join('; ');
       return refuse({ code: 'GRAPH_INVALID', message });
     }
+    const sharedOutriderNodeIds =
+      planned.sharedOutriderNodeIds ??
+      (recovery?.source ?? branch?.source)?.snapshot.sharedOutriderNodeIds;
     for (const [roleId, override] of Object.entries(request.roleOverrides ?? {})) {
       const role = planned.definition.roles.find((role) => role.id === roleId);
       if (!role)
@@ -1956,7 +1960,16 @@ export class Coordinator {
     }
     const images: ImageInput[] = [];
     if (planned.definition.input.images?.length) {
-      if (Object.values(models).some((model) => model.imageInput !== true))
+      const consultRoles = new Set(
+        planned.definition.nodes.flatMap((n) =>
+          n.type === 'agent' && sharedOutriderNodeIds?.includes(n.id) ? [n.roleId] : [],
+        ),
+      );
+      const imageReaders = runModelProfiles({
+        ...planned.definition,
+        roles: planned.definition.roles.filter((r) => !consultRoles.has(r.id)),
+      });
+      if (imageReaders.some((profile) => models[profile]?.imageInput !== true))
         return refuse({
           code: 'CAPABILITY_DENIED',
           message: 'every role must use a model with confirmed image input support',
@@ -2204,6 +2217,7 @@ export class Coordinator {
       );
     }
     const snapshot: RunSnapshot = {
+      ...(sharedOutriderNodeIds?.length ? { sharedOutriderNodeIds } : {}),
       ...(branch
         ? {
             branchedFrom: {
@@ -5741,6 +5755,7 @@ export class Coordinator {
     const baseRole =
       spec.role ?? (node?.type === 'agent' && definition.roles.find((r) => r.id === node.roleId));
     const advisor = node?.type === 'agent' && node.invocation === 'observer';
+    const consultant = run.snapshot.sharedOutriderNodeIds?.includes(spec.nodeId) === true;
     if (!node || (!('inputBindings' in node) && !advisor) || node.type === 'output' || !baseRole) {
       throw new Error(`plan references missing agent ${spec.nodeId}`);
     }
@@ -5773,13 +5788,16 @@ export class Coordinator {
     const executionId = this.ids.next('execution');
     const effectId = this.ids.next('effect');
     const attemptNo = spec.attemptNo ?? 1;
-    const item =
-      spec.item ??
-      (spec.parentExecutionId ? run.startInputs.get(spec.parentExecutionId)?.item : undefined);
-    const contextRef =
-      run.snapshot.resumedFrom?.contextRef ??
-      run.snapshot.branchedFrom?.contextRef ??
-      (run.snapshot.meeting?.contextSource ? 'meeting_context' : undefined);
+    const item = consultant
+      ? undefined
+      : (spec.item ??
+        (spec.parentExecutionId ? run.startInputs.get(spec.parentExecutionId)?.item : undefined));
+    const contextRef = consultant
+      ? undefined
+      : (run.snapshot.resumedFrom?.contextRef ??
+        run.snapshot.branchedFrom?.contextRef ??
+        (run.snapshot.meeting?.contextSource ? 'meeting_context' : undefined));
+    const images = consultant ? [] : (run.snapshot.definition.input.images ?? []);
     // the session's turns go with the brief to the run's own scheduled agents.
     const conversation =
       run.snapshot.conversation &&
@@ -5802,9 +5820,9 @@ export class Coordinator {
             ),
           }
         : {}),
-      ...(run.snapshot.definition.input.images?.length
+      ...(images.length
         ? {
-            images: run.snapshot.definition.input.images.map((reference) =>
+            images: images.map((reference) =>
               ImageInput.parse(
                 JSON.parse(this.store.getArtifactText(run.runId, reference.imageId) ?? 'null'),
               ),
@@ -5838,7 +5856,7 @@ export class Coordinator {
         ...(callables.replyToChildren ? { replyToChildren: true } : {}),
       },
       inputs: spec.inputs ?? [
-        ...(run.snapshot.definition.input.images ?? []).map((image) => ({
+        ...images.map((image) => ({
           name: image.name,
           kind: 'explicit_version' as const,
           artifactVersionId: image.imageId,
@@ -10787,6 +10805,9 @@ export class Coordinator {
           questionId,
           taskId: parent?.taskId ?? responder!.input.taskId,
           ...(parent ? { delivery: 'parent' as const, targetExecutionId: parent.executionId } : {}),
+          ...(run.snapshot.sharedOutriderNodeIds?.includes(targetNodeId)
+            ? { sharedOutrider: true as const }
+            : {}),
           senderExecutionId: executionId,
           targetRoleId: role?.type === 'agent' ? role.roleId : targetNodeId,
           targetNodeId,

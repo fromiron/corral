@@ -19,6 +19,12 @@ export type ResolveTeam = (corralId: string, definitionRevision: number) => unkn
 export function expandReferences(
   definition: CorralDefinition,
   resolve: ResolveTeam,
+  finalize?: (
+    expanded: CorralDefinition,
+    source: CorralDefinition,
+    prefix: string,
+  ) => CorralDefinition,
+  prefix = '',
 ): CorralDefinition {
   let doc = definition;
   for (const team of definition.nodes) {
@@ -27,9 +33,15 @@ export function expandReferences(
     const saved = resolve(corralId, definitionRevision);
     if (saved === undefined || saved === null)
       throw new Error(`team ${corralId} revision ${definitionRevision} is not found`);
-    doc = expandOne(doc, team, expandReferences(Definition.parse(saved), resolve));
+    const members = expandReferences(
+      Definition.parse(saved),
+      resolve,
+      finalize,
+      `${prefix}${team.id}.`,
+    );
+    doc = expandOne(doc, team, members);
   }
-  return doc;
+  return finalize ? finalize(doc, definition, prefix) : doc;
 }
 
 const isBox = (node: CorralNode | undefined) => node?.type === 'loop' || node?.type === 'team';

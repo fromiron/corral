@@ -1,4 +1,4 @@
-import { CorralDefinition } from '@corral/contracts';
+import { CorralDefinition, type SharedOutrider } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { createTextAttachment } from '../attachments.ts';
@@ -17,6 +17,33 @@ export function describeCorralRepositoryContract(
   makeRepository: () => CorralRepository,
 ) {
   describe(`CorralRepository contract: ${name}`, () => {
+    it.each<SharedOutrider['targets']>([{ kind: 'all' }, { kind: 'selected', nodeIds: ['write'] }])(
+      'preserves shared Outrider scope, bindings, and grants across reads and copies',
+      async (targets) => {
+        const repo = makeRepository();
+        const definition: CorralDefinition = {
+          ...team(),
+          sharedOutrider: {
+            modelProfile: 'model-a',
+            principles: 'Check assumptions.',
+            targets,
+          },
+        };
+        const created = await repo.save({ definition, expectedDefinitionRevision: null });
+        if (!created.ok) throw new Error(created.message);
+        const { corralId, definitionRevision } = created.record;
+        const expected = { ...definition, id: corralId };
+        expect((await repo.get(corralId))?.definition).toEqual(expected);
+        expect(await repo.getRevision(corralId, definitionRevision)).toEqual(expected);
+        const duplicate = await repo.duplicate(corralId, 'Research copy');
+        if (!duplicate.ok) throw new Error(duplicate.message);
+        expect((await repo.get(duplicate.record.corralId))?.definition).toEqual({
+          ...definition,
+          id: duplicate.record.corralId,
+          name: 'Research copy',
+        });
+      },
+    );
     it('saving an unchanged definition keeps its revision; a change makes a new one', async () => {
       const repo = makeRepository();
       const created = await repo.save({

@@ -5,7 +5,7 @@ import {
   ScriptedAgentAdapter,
   SequentialIdFactory,
 } from '@corral/testkit';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { ArtifactViewer } from '../src/components/ArtifactViewer.tsx';
@@ -116,4 +116,32 @@ it('shows that the logical question timeout stops during a user pause', async ()
   const row = screen.getByTestId(`question-${question.questionId}`);
   expect(row).toHaveTextContent('The question timeout is paused.');
   expect(row).not.toHaveTextContent(`Waiting for a reply until ${question.deadline}`);
+});
+
+it('shows a shared consultation waiting and then answered without relabelling manual questions', async () => {
+  const session = await finishedRun();
+  const projection = session.getState().projection;
+  const question = Object.values(projection?.questions ?? {})[0];
+  if (!projection || !question?.answer) throw new Error('answered question fixture');
+  const shared = { ...question, sharedOutrider: true as const };
+  const show = (waiting: boolean) =>
+    session.setState({
+      projection: {
+        ...projection,
+        questions: {
+          ...projection.questions,
+          [question.questionId]: waiting ? { ...shared, status: 'open', answer: null } : shared,
+        },
+      },
+    });
+  show(true);
+  wrap(<QuestionsPanel session={session} onOpenArtifact={vi.fn()} />);
+  const item = screen.getByTestId(`question-${question.questionId}`);
+  const row = within(item);
+  expect(row.getByText('Waiting for an answer', { exact: true })).toBeVisible();
+  act(() => show(false));
+  expect(row.getByText('Answer received', { exact: true })).toBeVisible();
+  expect(item).toHaveTextContent(question.answer.body.replace(/\s+/g, ' ').trim());
+  act(() => session.setState({ projection }));
+  expect(row.getByText('Answered', { exact: true })).toBeVisible();
 });

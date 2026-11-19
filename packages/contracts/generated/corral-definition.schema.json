@@ -30,6 +30,64 @@
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
     },
+    "sharedOutrider": {
+      "type": "object",
+      "properties": {
+        "modelProfile": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "principles": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "targets": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "all"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "selected"
+                },
+                "nodeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "nodeIds"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "modelProfile",
+        "principles",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
     "schemaVersion": {
       "type": "string",
       "const": "0.1"

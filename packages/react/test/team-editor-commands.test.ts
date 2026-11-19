@@ -1,10 +1,14 @@
-import type { AgentRole } from '@corral/contracts';
-import { compileDefinition } from '@corral/core';
+import { type AgentRole, CorralDefinition, type SharedOutrider } from '@corral/contracts';
+import { compileDefinition, planRun, sharedOutriderTargets } from '@corral/core';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   connectCapability,
+  draftFromDefinition,
   type EditorDraft,
   emptyDraft,
+  exportDefinition,
+  importDefinition,
   updateNode,
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
@@ -19,6 +23,7 @@ import {
   removeItems,
   type StepKind,
   setParent,
+  setSharedOutrider,
   watchAgent,
   wrapIn,
 } from '../src/team-editor/commands.ts';
@@ -45,6 +50,135 @@ function chain(length = 3): EditorDraft {
     ({ draft, nodeId } = ok(placeStep(draft, 'agent', { kind: 'after', nodeId })));
   return draft;
 }
+
+describe('team shared Outrider settings', () => {
+  const settings: SharedOutrider = {
+    principles: 'Give reasons for each recommendation.',
+    modelProfile: 'model-a',
+    targets: { kind: 'all' },
+  };
+
+  it('forgets deleted selected workers before the same ID can be reused on reopen', () => {
+    const a = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
+    const out = ok(placeStep(a.draft, 'output', { kind: 'after', nodeId: a.nodeId }));
+    const worker = ok(placeStep(out.draft, 'agent', { kind: 'empty' }));
+    const configured = ok(
+      setSharedOutrider(worker.draft, {
+        ...settings,
+        targets: { kind: 'selected', nodeIds: [worker.nodeId] },
+      }),
+    ).draft;
+    const store = createEditorStore(configured);
+    const deleted = removeItems(configured, [worker.nodeId]);
+    store.getState().applyDraft(deleted);
+    const reopened = importDefinition(exportDefinition(deleted));
+    if (!reopened.ok) throw new Error(reopened.errors.join(', '));
+    const newlyAdded = ok(placeStep(reopened.draft, 'agent', { kind: 'after', nodeId: a.nodeId }));
+    expect(newlyAdded.nodeId).toBe(worker.nodeId);
+    const run = planRun(newlyAdded.draft.definition);
+    if (!run.ok) throw new Error('the edited team did not compile');
+    expect(run.plan.callables[newlyAdded.nodeId]?.question ?? []).toEqual([]);
+    expect(deleted.definition.sharedOutrider?.targets).toEqual({ kind: 'selected', nodeIds: [] });
+    store.getState().undo();
+    expect(store.getState().draft).toBe(configured);
+    const all = ok(setSharedOutrider(worker.draft, settings)).draft;
+    expect(removeItems(all, [worker.nodeId]).definition.sharedOutrider?.targets).toEqual({
+      kind: 'all',
+    });
+  });
+
+  it('forgets removed reference members while keeping unrelated selected workers with dotted IDs', () => {
+    const base = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' })).draft;
+    const worker = base.definition.nodes[0];
+    if (worker?.type !== 'agent') throw new Error('expected worker');
+    const ref = (id: string, corralId: string) => ({
+      id,
+      label: id,
+      type: 'team' as const,
+      source: { kind: 'reference' as const, corralId, definitionRevision: 1 },
+    });
+    const first = ref('scope', 'first');
+    const second = ref('scope.child', 'second');
+    const refDefinition = (ids: string[]) => {
+      const full = ok(placeStep(base, 'output', { kind: 'after', nodeId: worker.id })).draft
+        .definition;
+      return { ...full, nodes: [...full.nodes, ...ids.map((id) => ({ ...worker, id }))] };
+    };
+    const resolve = (id: string) =>
+      id === 'first' ? refDefinition(['child.gone']) : refDefinition(['keep']);
+    const host = draftFromDefinition({
+      ...base.definition,
+      nodes: [worker, { ...worker, id: 'scope.literal' }, first, second],
+    });
+    const ids = ['scope.child.gone', 'scope.literal', 'scope.child.keep'];
+    const configured = ok(
+      setSharedOutrider(host, { ...settings, targets: { kind: 'selected', nodeIds: ids } }),
+    ).draft;
+    const rows = sharedOutriderTargets(configured.definition, resolve);
+    const deleted = removeItems(configured, [first.id], rows);
+    expect(deleted.definition.sharedOutrider?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['scope.child.keep', 'scope.literal'],
+    });
+  });
+
+  it('applies and removes only the team setting, with one undo step each', () => {
+    // A team with its own callable nodes, manually granted question edges, and a review loop.
+    const initial = draftFromDefinition(CorralDefinition.parse(researchTeam));
+    const store = createEditorStore(initial);
+    const configured = ok(setSharedOutrider(initial, settings)).draft;
+    store.getState().applyDraft(configured);
+    expect(configured.definition).toEqual({ ...initial.definition, sharedOutrider: settings });
+    expect(store.getState().past).toEqual([initial]);
+    const removed = ok(setSharedOutrider(configured, null)).draft;
+    store.getState().applyDraft(removed);
+    expect(removed.definition).toEqual(initial.definition);
+    expect(store.getState().past).toEqual([initial, configured]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(configured);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(initial);
+    store.getState().redo();
+    expect(store.getState().draft).toBe(configured);
+  });
+
+  it('does not record duplicate clears, equivalent choices, or rejected settings', () => {
+    const initial = chain(2);
+    expect(ok(setSharedOutrider(initial, null)).draft).toBe(initial);
+    const selected: SharedOutrider = {
+      ...settings,
+      targets: { kind: 'selected', nodeIds: ['agent_1', 'agent_2'] },
+    };
+    const draft = ok(setSharedOutrider(initial, selected)).draft;
+    const store = createEditorStore(draft);
+    store.getState().applyDraft(
+      ok(
+        setSharedOutrider(draft, {
+          ...selected,
+          targets: { kind: 'selected', nodeIds: ['agent_2', 'agent_1'] },
+        }),
+      ).draft,
+    );
+    expect(store.getState().draft).toBe(draft);
+    expect(refused(setSharedOutrider(draft, { ...settings, principles: '' }))).toBe(
+      'invalidSharedOutrider',
+    );
+    expect(store.getState().canUndo).toBe(false);
+  });
+
+  it.each<SharedOutrider['targets']>([
+    { kind: 'all' },
+    { kind: 'selected', nodeIds: ['agent_1'] },
+    { kind: 'selected', nodeIds: [] },
+  ])('preserves the selection policy over JSON export and import', (targets) => {
+    const draft = ok(setSharedOutrider(chain(2), { ...settings, targets })).draft;
+    const loaded = importDefinition(exportDefinition(draft));
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) throw new Error(loaded.errors.join(', '));
+    expect(loaded.draft.definition).toEqual(draft.definition);
+    expect(loaded.draft.definition.sharedOutrider?.targets).toEqual(targets);
+  });
+});
 
 describe('team editor commands: adding steps', () => {
   it('appends after a step and takes over what came after it', () => {
