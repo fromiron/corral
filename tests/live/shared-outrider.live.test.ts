@@ -82,17 +82,21 @@ it.skipIf(mode !== '1' && !review)(
         role.modelProfile = workerId;
         role.prompt = `You are the ${role.name}. First call ask on the available Outrider for one short suggestion about your own part of the invitation. After receiving the reply, write your own short result with write_artifact, then submit that version using submit_result.`;
       }
+      const revisionWord = 'willow-' + randomUUID().slice(0, 8);
       if (review) {
+        // A real reviewer may need time to read the supplied version and issue its reply.
+        definition.limits = { ...definition.limits, questionTimeoutMs: 180000 };
         const writer = definition.roles.find((role) => role.id === 'writer_role');
         if (!writer) throw new Error('Expected a writer in the test fixture');
         writer.prompt =
-          'You write the final invitation. First write your own draft using write_artifact. Then call ask on the shared Outrider using reviewArtifactVersionId set to the exact V1 artifactVersionId you just created. Ask what to improve. After receiving the review, revise the same artifact using write_artifact, then call submit_result with just the new V2 artifactVersionId. Never submit the review as your own work.';
+          'You write the final invitation. First write your own draft using write_artifact. Then call ask on the shared Outrider using reviewArtifactVersionId set to the exact V1 artifactVersionId you just created. Ask what to improve. After receiving the review, include the exact meeting-place code from the reviewer in your invitation. Revise the same artifact using write_artifact, then call submit_result with just the new V2 artifactVersionId. Never submit the review as your own work.';
       }
       definition.sharedOutrider = {
         ...(review ? { artifactReview: true as const } : {}),
         modelProfile: advisorId,
-        principles:
-          'Give one relevant suggestion in a single sentence. Respond to the open question using reply with its questionId.',
+        principles: review
+          ? `Call reply immediately with the open questionId. For a version review, respond "Add the meeting-place code ${revisionWord} to the invitation." The draft is already attached to the question. For a general planning question, respond "Keep the invitation concise." Use one short answer.`
+          : 'Give one relevant suggestion in a single sentence. Respond to the open question using reply with its questionId.',
         targets: { kind: 'all' },
       };
       const coordinator = server.coordinator;
@@ -121,7 +125,7 @@ it.skipIf(mode !== '1' && !review)(
           }),
         );
       }, 10000);
-      deadline = setTimeout(stop, 240000);
+      deadline = setTimeout(stop, review ? 390000 : 240000);
       const final = await waitForProjection(new InProcessTransport(coordinator), id, (p) =>
         TERMINAL_RUN_STATUSES.has(p.status),
       );
@@ -183,9 +187,13 @@ it.skipIf(mode !== '1' && !review)(
         expect(final.artifacts[reviewed]?.version).toBe(1);
         expect(final.artifacts[submitted]?.version).toBe(2);
         expect(final.artifacts[submitted]?.parentVersionId).toBe(reviewed);
-        expect(await new InProcessTransport(coordinator).getArtifactText(id, submitted)).toMatch(
-          /picnic/i,
+        const submittedText = await new InProcessTransport(coordinator).getArtifactText(
+          id,
+          submitted,
         );
+        expect(requests[0]?.answer?.body).toContain(revisionWord);
+        expect(submittedText).toContain(revisionWord);
+        expect(submittedText).toMatch(/picnic/i);
       }
       expect(new Set(calls.map((c) => c.profile))).toEqual(new Set([workerId, advisorId]));
       expect(calls.every((c) => c.finished && c.certainty === 'reported')).toBe(true);
@@ -197,5 +205,5 @@ it.skipIf(mode !== '1' && !review)(
       rmSync(directory, { recursive: true, force: true });
     }
   },
-  270000,
+  review ? 420000 : 270000,
 );
