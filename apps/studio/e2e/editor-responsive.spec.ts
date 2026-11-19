@@ -1,3 +1,4 @@
+import { linearCorral } from '@corral/testkit';
 import { expect, test } from '@playwright/test';
 import { approvalResearchTeam } from '../src/demo/testing/approval-team.ts';
 import { editorSettings, importTeam, startTestRun, teamCanvas, teamNode } from './workbench.ts';
@@ -136,4 +137,23 @@ test('call links are dashed and named in both themes', async ({ page }, testInfo
       .toBe(true);
     await canvas.screenshot({ path: testInfo.outputPath(`call-links-${colorScheme}.png`) });
   }
+});
+
+test('a draft test in the browser runs a pinned saved team', async ({ page }) => {
+  await importTeam(page, linearCorral(['helper'], 'inner'), 0);
+  const corralId = new URL(page.url()).pathname.split('/')[2] as string;
+  const outer = linearCorral(['writer'], 'outer');
+  outer.nodes.push({
+    id: 'ref',
+    type: 'team',
+    label: 'Helper team',
+    source: { kind: 'reference', corralId, definitionRevision: 1 },
+  });
+  outer.controlEdges = [
+    { id: 'enter', source: 'writer', sourcePort: 'out', target: 'ref', targetPort: 'enter' },
+    { id: 'leave', source: 'ref', sourcePort: 'next', target: 'output', targetPort: 'in' },
+  ];
+  await importTeam(page, outer, 0);
+  await startTestRun(page);
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
 });

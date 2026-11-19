@@ -23,16 +23,21 @@ import { EditorPage, TeamDesign } from './EditorPage.tsx';
 const fixture = vi.hoisted(() => ({
   services: {} as Record<string, unknown>,
   record: null as unknown,
+  navigate: vi.fn().mockResolvedValue(undefined),
+  fromSession: undefined as string | undefined,
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({
-  editorRoute: { useLoaderData: () => fixture.record, useSearch: () => ({}) },
+  editorRoute: {
+    useLoaderData: () => fixture.record,
+    useSearch: () => ({ fromSession: fixture.fromSession }),
+  },
   demoRoute: {},
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
   useBlocker: () => {},
-  useNavigate: () => () => Promise.resolve(),
+  useNavigate: () => fixture.navigate,
   useRouter: () => ({ invalidate: () => Promise.resolve() }),
 }));
 
@@ -104,6 +109,8 @@ afterEach(async () => {
   delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
   delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
   localStorage.clear();
+  fixture.navigate.mockClear();
+  fixture.fromSession = undefined;
 });
 
 function memoryRepository(): CorralRepository {
@@ -158,6 +165,7 @@ type Host = 'route' | 'session';
 async function mount(
   host: Host,
   width: number,
+  configure?: (repository: CorralRepository, record: CorralRecord) => Record<string, unknown>,
   harness?: {
     binding: HarnessBindingRef;
     preview: (
@@ -181,6 +189,7 @@ async function mount(
     harnesses: harness ? { preview: harness.preview, profileManagement: async () => [] } : null,
     live: false,
     persistent: true,
+    ...configure?.(repository, record),
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -284,7 +293,7 @@ describe('team editor hosts: stacked below 960px', () => {
       .fn()
       .mockReturnValueOnce(first)
       .mockResolvedValue({ snapshot: { allowedTools: ['ask'] } });
-    await mount('route', 390, { binding, preview });
+    await mount('route', 390, undefined, { binding, preview });
     await click(named(outline(), 'Add shared Outrider'));
     expect(sheet().textContent).toContain('Harness question permission is unconfirmed.');
     expect(preview).toHaveBeenCalledExactlyOnceWith(binding, 'project_1');
@@ -411,5 +420,209 @@ describe('team editor hosts: stacked below 960px', () => {
     resize();
     expect(layoutOf()).toBe('beside');
     expect(isSelected('agent_1')).toBe(true);
+  });
+});
+
+/** A runnable flow created through the same commands as the canvas. */
+function linear(id: string, kind?: 'check' | 'team') {
+  const a = ok(placeStep(emptyDraft(id, id), 'agent', { kind: 'empty' }));
+  const next = kind
+    ? ok(
+        placeStep(
+          a.draft,
+          kind,
+          { kind: 'after', nodeId: a.nodeId },
+          {
+            reference: { corralId: 'inner', name: 'Release check', definitionRevision: 2 },
+          },
+        ),
+      )
+    : a;
+  return ok(placeStep(next.draft, 'output', { kind: 'after', nodeId: next.nodeId })).draft;
+}
+
+function edit(record: CorralRecord, repository: CorralRepository, draft: EditorDraft) {
+  const editor = editorWorkingCopy(repository, record).getState().editor;
+  editor
+    .getState()
+    .applyDraft({ ...draft, definition: { ...draft.definition, id: record.corralId } });
+  return editor;
+}
+
+describe('test run validation and recovery in the editor', () => {
+  it('waits for pinned references and retries only the failed nested revision', async () => {
+    const inner = linear('inner', 'team');
+    const reference = inner.definition.nodes.find((n) => n.type === 'team');
+    if (reference?.type !== 'team') throw Error('missing fixture reference');
+    reference.source = { kind: 'reference', corralId: 'leaf', definitionRevision: 3 };
+    reference.label = 'Leaf';
+    let release: (definition: typeof inner.definition) => void = () => {};
+    const read = vi
+      .fn<CorralRepository['getRevision']>()
+      .mockImplementationOnce(
+        () =>
+          new Promise((resolve) => {
+            release = resolve;
+          }),
+      )
+      .mockRejectedValueOnce(Error('temporary'))
+      .mockResolvedValueOnce(linear('leaf').definition);
+    await mount('route', 768, (repo, record) => {
+      edit(record, repo, linear('outer', 'team'));
+      repo.getRevision = read;
+      return {};
+    });
+    await click(named(document, m.testRun));
+    expect(document.body.textContent).toContain('Checking referenced teams');
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    await act(async () => release(inner.definition));
+    await click(named(document, 'Retry'));
+    expect(read.mock.calls).toEqual([
+      ['inner', 2],
+      ['leaf', 3],
+      ['leaf', 3],
+    ]);
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', false);
+    expect(outline().textContent).toContain('No problems');
+  });
+
+  it('offers a missing revision’s owning step instead of retrying a missing record', async () => {
+    await mount('route', 768, (repo, record) => {
+      edit(record, repo, linear('outer', 'team'));
+      repo.getRevision = vi.fn().mockResolvedValue(null);
+      return {};
+    });
+    await click(named(document, m.testRun));
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    const ref = [...document.querySelectorAll<HTMLElement>('button')].find((el) =>
+      el.textContent?.includes('Release check · r2'),
+    );
+    await click(ref as HTMLElement);
+    expect(shown(sheet())).toBe(true);
+    expect(sheet().querySelector<HTMLInputElement>('[data-node-settings] input')?.value).toBe(
+      'Release check',
+    );
+    expect(named(document, 'Retry')).toBeUndefined();
+  });
+
+  it('shares a known model error and opens its problem from the narrow test panel', async () => {
+    await mount('route', 768, (repo, record) => {
+      edit(record, repo, linear('unknown-model'));
+      return {
+        models: {
+          catalog: async () => [],
+          profiles: async () => [
+            { profileId: 'elsewhere', provider: 'local', providerName: 'Local', modelId: 'other' },
+          ],
+        },
+      };
+    });
+    await click(named(document, m.testRun));
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    await click(named(testRun(), 'View problems'));
+    expect(shown(sheet())).toBe(true);
+    expect(sheet().textContent).toContain('model');
+    expect(document.activeElement).toBe(sheet().querySelector('h2'));
+  });
+
+  it('keeps an edit made during a server test save and only runs the retried revision', async () => {
+    let repo!: CorralRepository;
+    const startRun = vi.fn().mockResolvedValue({
+      receipt: { error: { code: 'SCHEMA_INVALID', message: 'fixture end' } },
+    });
+    let release: () => void = () => {};
+    await mount('route', 1280, (repository, record) => {
+      repo = repository;
+      edit(record, repo, linear('A'));
+      const save = repository.save.bind(repository);
+      vi.spyOn(repository, 'save').mockImplementationOnce(async (input) => {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        return save(input);
+      });
+      return { mode: 'server', transport: { startRun } };
+    });
+    await click(named(document, m.testRun));
+    const start = named(testRun(), 'Run');
+    await act(async () => {
+      start.click();
+      start.click();
+    });
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    const editor = editorWorkingCopy(repo, fixture.record as CorralRecord).getState().editor;
+    await act(async () => {
+      editor.getState().setName('B');
+      release();
+    });
+    expect(startRun).not.toHaveBeenCalled();
+    expect(editor.getState().draft.definition.name).toBe('B');
+    await click(named(testRun(), 'Run'));
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(startRun.mock.calls[0]?.[0]).toMatchObject({ definitionRevision: 3 });
+  });
+
+  it('opens a conversation with the saved check team only after its save succeeds', async () => {
+    let repo!: CorralRepository;
+    const startRun = vi.fn();
+    await mount('route', 1000, (repository, record) => {
+      repo = repository;
+      edit(record, repo, linear('checked', 'check'));
+      vi.spyOn(repo, 'save').mockRejectedValueOnce(Error('save failed'));
+      vi.spyOn(repo, 'createSession');
+      return { mode: 'server', transport: { startRun } };
+    });
+    await click(named(document, m.testRun));
+    await click(named(testRun(), 'Open conversation with this team'));
+    expect(repo.createSession).not.toHaveBeenCalled();
+    expect(fixture.navigate).not.toHaveBeenCalled();
+    await click(named(testRun(), 'Open conversation with this team'));
+    expect(repo.createSession).toHaveBeenCalledWith(
+      expect.objectContaining({
+        corralId: (fixture.record as CorralRecord).corralId,
+        projectId: 'project_1',
+      }),
+    );
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: '/sessions/$sessionId',
+      params: { sessionId: 'session_1' },
+    });
+    expect(startRun).not.toHaveBeenCalled();
+  });
+  it('returns to the original conversation on the same saved team', async () => {
+    fixture.fromSession = 'session_1';
+    let repository!: CorralRepository;
+    await mount('route', 1000, (repo, record) => {
+      repository = repo;
+      void repo.createSession({
+        projectId: record.projectId,
+        corralId: record.corralId,
+        title: 'Original',
+        objective: 'Keep this context',
+      });
+      vi.spyOn(repo, 'createSession');
+      edit(record, repo, linear('checked', 'check'));
+      return { mode: 'server' };
+    });
+    await click(named(document, m.testRun));
+    await click(named(testRun(), 'Open conversation with this team'));
+    expect(repository.createSession).not.toHaveBeenCalled();
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: '/sessions/$sessionId',
+      params: { sessionId: 'session_1' },
+    });
+    expect((await repository.getSession('session_1'))?.objective).toBe('Keep this context');
+  });
+
+  it('shows an execution limit without blocking a runnable team', async () => {
+    await mount('route', 1000, (repo, record) => {
+      const team = linear('cap');
+      team.definition.limits.maxSpawns = 1000;
+      edit(record, repo, team);
+      return {};
+    });
+    await click(named(document, m.testRun));
+    expect(testRun().textContent).toContain(messages.Validation.codes.SPAWNS_CAPPED);
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', false);
   });
 });

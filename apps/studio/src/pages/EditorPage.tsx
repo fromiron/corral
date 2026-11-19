@@ -3,7 +3,10 @@ import type { CorralRecord } from '@corral/core';
 import {
   ApprovalPanel,
   ArtifactViewer,
+  compileDraft,
   createRunSession,
+  type DraftCompilation,
+  type EditorDraft,
   exportDefinition,
   ReinsPanel,
   RunControls,
@@ -13,6 +16,7 @@ import {
   StudioStoresProvider,
   TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,
+  type TeamEditorNavigation,
   useSteerTarget,
   useStudioStores,
 } from '@corral/react';
@@ -219,6 +223,8 @@ function Editor({
 }) {
   const t = useTranslations('Editor');
   const c = useTranslations('TeamEditor');
+  const tr = useTranslations('Run');
+  const ts = useTranslations('Sessions');
   const router = useRouter();
   const navigate = useNavigate();
   const services = useServices();
@@ -239,6 +245,21 @@ function Editor({
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
+  const checking = teams.issues.some((i) => i.state === 'loading');
+  const failed = teams.issues.some((i) => i.state === 'failed');
+  const validation = useMemo(
+    () =>
+      checking || failed
+        ? null
+        : compileDraft(draft, {
+            resolveTeam: teams.resolve,
+            ...(profiles?.length ? { knownModelProfiles: profiles.map((p) => p.profileId) } : {}),
+          }),
+    [draft, teams.resolve, profiles, checking, failed],
+  );
+  const editorNavigation = useRef<TeamEditorNavigation>(null);
+  const [openingSession, setOpeningSession] = useState(false);
+  const opening = useRef(false);
   const { resolvesHarness, readHarnessAsk } = useHarnessResolver(record.projectId);
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
   const [statsOn, setStatsOn] = useState(false);
@@ -287,16 +308,72 @@ function Editor({
     return result?.record ?? null;
   }, [repository, router, t, workingCopy]);
 
-  // The local server runs saved revisions only, so a run saves first.
+  // A save may finish after the person has edited again. Only the draft the action
+  // was requested for can launch that revision or take the person out of this editor.
+  const stillCurrent = (expected: EditorDraft) => {
+    if (editor.getState().draft === expected) return true;
+    workingCopy.setState({ message: { error: true, text: tr('draftChanged') } });
+    return false;
+  };
+  const saveForAction = async () => {
+    if (!stillCurrent(draft)) return null;
+    const record = await save();
+    return record && stillCurrent(draft) ? record : null;
+  };
   const beforeStart =
     mode === 'server'
       ? async () => {
-          const record = await save();
-          return record
-            ? { corralId: record.corralId, definitionRevision: record.definitionRevision }
+          const saved = await saveForAction();
+          return saved
+            ? { corralId: saved.corralId, definitionRevision: saved.definitionRevision }
             : null;
         }
       : undefined;
+  const openConversation = async () => {
+    if (opening.current) return;
+    opening.current = true;
+    setOpeningSession(true);
+    try {
+      const saved = await saveForAction();
+      if (!saved) return;
+      const original = fromSession ? await repository.getSession(fromSession) : null;
+      if (!stillCurrent(draft)) return;
+      let sessionId =
+        original?.projectId === saved.projectId &&
+        original.corralId === saved.corralId &&
+        !original.archivedAt
+          ? original.sessionId
+          : null;
+      if (!sessionId) {
+        const result = await repository.createSession({
+          projectId: saved.projectId,
+          corralId: saved.corralId,
+          title: ts('new'),
+          autoTitle: true,
+          objective: '',
+        });
+        if (!result.ok) {
+          workingCopy.setState({ message: { error: true, text: result.message } });
+          return;
+        }
+        sessionId = result.session.sessionId;
+        projectsChanged();
+      }
+      if (stillCurrent(draft))
+        await navigate({ to: '/sessions/$sessionId', params: { sessionId } });
+    } catch (error) {
+      workingCopy.setState({
+        message: { error: true, text: error instanceof Error ? error.message : String(error) },
+      });
+    } finally {
+      opening.current = false;
+      setOpeningSession(false);
+    }
+  };
+  const showProblems = () => {
+    if (runInPlace) setRunOpen(false);
+    editorNavigation.current?.showProblems();
+  };
 
   // The last place pressed stands in for focus when nothing has it.
   const pressed = useRef<Element | null>(null);
@@ -372,6 +449,31 @@ function Editor({
               {message.text}
             </p>
           ) : null}
+          {checking || failed ? (
+            <div className="flex items-center gap-2 text-caption" role="status">
+              {failed ? tr('referencesFailed') : tr('referencesChecking')}
+              {failed ? (
+                <Button size="compact" variant="secondary" onClick={teams.retry}>
+                  {tr('retryReferences')}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+          {teams.issues
+            .filter((i) => i.state === 'missing')
+            .map((i) => (
+              <Button
+                key={i.key}
+                variant="tertiary"
+                size="compact"
+                onClick={() => {
+                  if (runInPlace) setRunOpen(false);
+                  editorNavigation.current?.showNode(i.nodeId);
+                }}
+              >
+                {tr('missingReference', { name: i.name, revision: i.revision })}
+              </Button>
+            ))}
           <span className="grow" />
           {runStats.status === 'off' ? null : (
             <span
@@ -446,6 +548,11 @@ function Editor({
           {/* Too narrow for both, the test run takes the editor's place; the editor keeps its state. */}
           <div ref={column} className="grid min-h-0 grid-rows-[minmax(0,1fr)]" hidden={runInPlace}>
             <TeamEditor
+              ref={editorNavigation}
+              diagnostics={validation?.diagnostics ?? []}
+              validationStatus={
+                failed ? tr('referencesFailed') : checking ? tr('referencesChecking') : undefined
+              }
               editor={editor}
               stacked={stacked}
               profiles={profiles}
@@ -488,7 +595,10 @@ function Editor({
               className={`min-h-0 overflow-auto p-3 ${runBeside ? 'border-l border-border' : ''}`}
             >
               <RunSide
-                startDisabled={saving}
+                validation={validation}
+                onShowProblems={showProblems}
+                onOpenConversation={openConversation}
+                startDisabled={saving || openingSession}
                 projectId={record.projectId}
                 onStarted={() => setRunOpen(true)}
                 beforeStart={beforeStart}
@@ -547,6 +657,9 @@ function useHarnessResolver(projectId: string) {
 }
 
 function RunSide({
+  validation,
+  onShowProblems,
+  onOpenConversation,
   startDisabled,
   projectId,
   onStarted,
@@ -557,6 +670,9 @@ function RunSide({
 }: {
   projectId: string;
   startDisabled: boolean;
+  validation: DraftCompilation | null;
+  onOpenConversation: () => Promise<void>;
+  onShowProblems: () => void;
   onStarted: () => void;
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
   liveAvailable: boolean;
@@ -624,6 +740,9 @@ function RunSide({
       </details>
       {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
+        validation={validation}
+        onOpenConversation={onOpenConversation}
+        onShowProblems={onShowProblems}
         startDisabled={startDisabled}
         mode={runMode.mode}
         onModeChange={runMode.select}

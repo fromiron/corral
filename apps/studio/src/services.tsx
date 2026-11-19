@@ -226,17 +226,17 @@ export async function createStudioServices(): Promise<StudioServices> {
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
-  const { transport, workspace, readHistory } = createDemoRuntime();
+  const repository = createKeyValueCorralRepository(store, {
+    clock: systemClock,
+    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
+  });
+  const { transport, workspace, readHistory } = createDemoRuntime(repository);
   const runs = createRunSessions(transport);
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
     // a saved Corral lends its roles to the conversation lead.
     corral: (corralId) => repository.get(corralId),
-  });
-  const repository = createKeyValueCorralRepository(store, {
-    clock: systemClock,
-    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
   });
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
   const meetings = new MeetingService({

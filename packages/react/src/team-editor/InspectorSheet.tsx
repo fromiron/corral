@@ -42,6 +42,7 @@ export type SheetView = 'selection' | 'team' | 'problems' | 'sharedOutrider';
 export interface InspectorSheetProps {
   editor: EditorStore;
   diagnostics: readonly Diagnostic[];
+  validationStatus?: string | undefined;
   selection: TeamSelection;
   view: SheetView;
   profiles: ProfileOption[] | null;
@@ -57,6 +58,7 @@ export interface InspectorSheetProps {
   /** What the last edit left out, shown under the heading until the next edit. */
   notice?: string | null | undefined;
   onSelect: (selection: TeamSelection) => void;
+  onTeamSettings: () => void;
   onClose: () => void;
   /** A row under the canvas in the stacked editor, at its own height, instead of a floating card. */
   stacked?: boolean;
@@ -132,6 +134,7 @@ function IssueRow({ diagnostic, text }: { diagnostic: Diagnostic; text: string }
 export function InspectorSheet({
   editor,
   diagnostics,
+  validationStatus,
   selection,
   view,
   profiles,
@@ -145,6 +148,7 @@ export function InspectorSheet({
   notice,
   onSelect,
   onClose,
+  onTeamSettings,
   stacked = false,
 }: InspectorSheetProps) {
   const t = useTranslations('TeamEditor');
@@ -273,7 +277,9 @@ export function InspectorSheet({
 
   if (view === 'problems') {
     title = t('problemsList');
-    body = diagnostics.length ? (
+    body = validationStatus ? (
+      <p className={cn(size.type.body, 'text-muted-foreground')}>{validationStatus}</p>
+    ) : diagnostics.length ? (
       <ul className="grid gap-1">
         {diagnostics.map((d, i) => {
           const edge = d.edgeId ?? d.linkId;
@@ -282,7 +288,6 @@ export function InspectorSheet({
             <li key={i}>
               <button
                 type="button"
-                disabled={!d.nodeId && !edge}
                 className={cn(
                   size.type.caption,
                   'flex w-full gap-1.5 rounded-md px-1.5 py-1 text-left enabled:hover:bg-hover',
@@ -290,6 +295,7 @@ export function InspectorSheet({
                 onClick={() => {
                   if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
                   else if (edge) onSelect({ nodes: [], edge });
+                  else onTeamSettings();
                 }}
               >
                 <IssueRow diagnostic={d} text={issueText(d)} />
@@ -466,6 +472,7 @@ export function InspectorSheet({
       <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
         {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
         <h2
+          tabIndex={-1}
           className={cn(size.type.body, 'grow truncate text-foreground')}
           style={{ fontVariationSettings: fontWeights.semibold }}
         >

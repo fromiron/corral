@@ -1,11 +1,11 @@
 import type { RoleRunOverrides } from '@corral/contracts';
 import { type HarnessOverrides, type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
 import { Button, fontWeights, Select } from '../design-kit/index.ts';
-import { compileDraft } from '../editor/model.ts';
+import { compileDraft, type DraftCompilation } from '../editor/model.ts';
 import type { SavedRevision } from '../run/session.ts';
 
 /**
@@ -16,6 +16,9 @@ import type { SavedRevision } from '../run/session.ts';
 export function RunControls({
   onStarted,
   beforeStart,
+  validation,
+  onShowProblems,
+  onOpenConversation,
   liveAvailable = false,
   startFrom = null,
   onClearStartFrom,
@@ -28,6 +31,10 @@ export function RunControls({
 }: {
   onStarted?: (runId: string) => void;
   beforeStart?: () => Promise<SavedRevision | null>;
+  /** null while a required pinned revision cannot yet be checked. */
+  validation?: DraftCompilation | null;
+  onShowProblems?: (() => void) | undefined;
+  onOpenConversation?: (() => Promise<void>) | undefined;
   /** The runtime can call real models; the person chooses per run (default: simulated). */
   liveAvailable?: boolean;
   /** The earlier version the next run starts from, with a label for it. */
@@ -43,6 +50,7 @@ export function RunControls({
   startDisabled?: boolean;
 }) {
   const t = useTranslations('Run');
+  const codeText = useTranslations('Validation.codes');
   const { editor, session } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
   const projection = useStore(session, (s) => s.projection);
@@ -51,15 +59,29 @@ export function RunControls({
   const mode = chosenMode ?? localMode;
   const setMode = onModeChange ?? setLocalMode;
   const unavailable = mode === 'live' && !liveAvailable;
-  const compiled = useMemo(() => compileDraft(draft), [draft]);
+  const compiled = useMemo(
+    () => (validation === undefined ? compileDraft(draft) : validation),
+    [draft, validation],
+  );
+  const execution = compiled?.executionDefinition;
+  const startingRef = useRef(false);
   // A test run has no session, and check steps run only in a session's working copy.
   const needsSession =
-    compiled.definition?.nodes.some((n) => n.type === 'decision' && n.mode === 'check') ?? false;
+    execution?.nodes.some((n) => n.type === 'decision' && n.mode === 'check') ?? false;
   const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
   const start = async () => {
-    if (!compiled.definition || !compiled.runnable || needsSession || unavailable || startDisabled)
+    if (
+      !compiled?.definition ||
+      !execution ||
+      running ||
+      startingRef.current ||
+      needsSession ||
+      unavailable ||
+      startDisabled
+    )
       return;
+    startingRef.current = true;
     setStarting(true);
     try {
       const saved = beforeStart ? await beforeStart() : undefined;
@@ -80,6 +102,7 @@ export function RunControls({
       const runId = session.getState().runId;
       if (runId) onStarted?.(runId);
     } finally {
+      startingRef.current = false;
       setStarting(false);
     }
   };
@@ -98,7 +121,7 @@ export function RunControls({
           type="button"
           onClick={start}
           disabled={
-            !compiled.runnable ||
+            !compiled?.runnable ||
             needsSession ||
             running ||
             starting ||
@@ -139,17 +162,39 @@ export function RunControls({
           />
         </div>
       ) : null}
+      {compiled?.diagnostics.some((issue) => issue.code === 'SPAWNS_CAPPED') ? (
+        <p className="text-caption text-muted-foreground">{codeText('SPAWNS_CAPPED')}</p>
+      ) : null}
       {unavailable ? (
         <p role="alert" className="text-caption text-muted-foreground">
           {t('liveUnavailable')}
         </p>
       ) : null}
-      {!compiled.runnable ? (
+      {compiled && !compiled.runnable ? (
         <p className="text-caption text-muted-foreground">
-          {compiled.definition ? t('notRunnableHere') : t('notRunnable')}
+          {compiled.definition
+            ? compiled.runtimeLimits.map((issue) => issue.message).join(' ') || t('notRunnableHere')
+            : t('notRunnable')}
+          {onShowProblems && !compiled.definition ? (
+            <Button variant="ghost" size="compact" onClick={onShowProblems}>
+              {t('viewProblems')}
+            </Button>
+          ) : null}
         </p>
       ) : needsSession ? (
-        <p className="text-caption text-muted-foreground">{t('checksNeedSession')}</p>
+        <div className="grid justify-items-start gap-1 text-caption text-muted-foreground">
+          <p>{t('checksNeedSession')}</p>
+          {onOpenConversation ? (
+            <Button
+              variant="secondary"
+              size="compact"
+              disabled={startDisabled}
+              onClick={() => void onOpenConversation()}
+            >
+              {t('openTeamConversation')}
+            </Button>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );

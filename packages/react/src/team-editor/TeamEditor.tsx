@@ -5,6 +5,7 @@ import {
   isWorkAgent,
 } from '@corral/contracts';
 import {
+  type Diagnostic,
   isBox,
   outputSources,
   ROLE_PRESET_IDS,
@@ -16,8 +17,10 @@ import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type Ref,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -94,7 +97,15 @@ import { type ReadHarnessAsk, useOutriderTargets } from './useOutriderTargets.ts
 // canvas, a floating settings sheet and a command menu, all editing one draft in the editor
 // store, so undo, redo and the unsaved state are shared with every other view of the team.
 
+export interface TeamEditorNavigation {
+  showProblems(): void;
+  showNode(id: string): void;
+}
+
 export interface TeamEditorProps {
+  ref?: Ref<TeamEditorNavigation>;
+  diagnostics?: readonly Diagnostic[];
+  validationStatus?: string | undefined;
   editor: EditorStore;
   profiles?: ProfileOption[] | null;
   /** Saved image profiles. Null until the host knows the list; a role's current id is kept. */
@@ -138,6 +149,9 @@ const PATTERN_ICON: Record<Pattern, typeof Split> = {
 };
 
 export function TeamEditor({
+  ref,
+  diagnostics: sharedDiagnostics,
+  validationStatus,
   editor,
   profiles = null,
   imageProfiles = null,
@@ -168,11 +182,12 @@ export function TeamEditor({
   );
   const diagnostics = useMemo(
     () =>
+      sharedDiagnostics ??
       compileDraft(draft, {
         ...(resolveTeam ? { resolveTeam } : {}),
         ...(knownModelProfiles ? { knownModelProfiles } : {}),
       }).diagnostics,
-    [draft, resolveTeam, knownModelProfiles],
+    [sharedDiagnostics, draft, resolveTeam, knownModelProfiles],
   );
   // The role presets in the screen language.
   const presets = useMemo(
@@ -598,10 +613,29 @@ export function TeamEditor({
   const scroller = useRef<HTMLDivElement>(null);
   const settingsBox = useRef<HTMLDivElement>(null);
   const revealing = useRef(false);
+  const focusRequested = useRef(false);
+  const focusSheet = () => settingsBox.current?.querySelector('h2')?.focus({ preventScroll: true });
   const reveal = () => {
     revealing.current = stacked;
   };
+  useImperativeHandle(ref, () => ({
+    showProblems() {
+      if (view === 'problems') focusSheet();
+      else focusRequested.current = true;
+      reveal();
+      setView('problems');
+    },
+    showNode(id) {
+      focusRequested.current = true;
+      reveal();
+      select({ nodes: [id], edge: null });
+    },
+  }));
   useEffect(() => {
+    if (focusRequested.current) {
+      focusRequested.current = false;
+      focusSheet();
+    }
     if (!revealing.current) return;
     revealing.current = false;
     const box = settingsBox.current;
@@ -629,6 +663,7 @@ export function TeamEditor({
         stacked={stacked}
         definition={definition}
         diagnostics={diagnostics}
+        validationStatus={validationStatus}
         order={order}
         selection={selection}
         onSelect={(next) => {
@@ -754,6 +789,7 @@ export function TeamEditor({
                 stacked={stacked}
                 editor={editor}
                 diagnostics={diagnostics}
+                validationStatus={validationStatus}
                 selection={selection}
                 view={view ?? 'selection'}
                 profiles={profiles}
@@ -765,6 +801,10 @@ export function TeamEditor({
                 onOpenTeam={onOpenTeam}
                 onImportRole={openRoles}
                 notice={notice}
+                onTeamSettings={() => {
+                  reveal();
+                  setView('team');
+                }}
                 onSelect={(next) => {
                   // A step chosen from the problem list opens its settings from outside the canvas.
                   if (view === 'problems' && (next.nodes.length || next.edge)) reveal();

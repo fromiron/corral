@@ -27,6 +27,7 @@ const NODE_DRAG_TYPE = 'application/x-corral-node';
 export interface StructureTreeProps {
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
+  validationStatus?: string | undefined;
   /** Flow order of the nodes, as the canvas lays them out. */
   order: ReadonlyMap<string, number>;
   selection: TeamSelection;
@@ -49,6 +50,7 @@ export interface StructureTreeProps {
 export function StructureTree({
   definition,
   diagnostics,
+  validationStatus,
   order,
   selection,
   onSelect,
@@ -201,12 +203,13 @@ export function StructureTree({
         </span>
         <button
           type="button"
+          disabled={Boolean(validationStatus)}
           aria-pressed={view === 'problems'}
           className={cn(focusRing, 'rounded-full')}
           onClick={onProblems}
         >
           <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
-            {t('problems', { count: diagnostics.length })}
+            {validationStatus ?? t('problems', { count: diagnostics.length })}
           </KitBadge>
         </button>
         <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>

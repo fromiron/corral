@@ -1,5 +1,5 @@
 import './csp.ts';
-import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
+import { type CorralDefinition, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { Coordinator, exportRunArchive, InMemoryRunStore, InProcessTransport } from '@corral/core';
 import { ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { createDemoReply, DEMO_TURNS, demoPlansFor, publishDemoPlan } from './demo/script.ts';
@@ -15,10 +15,14 @@ let delayMs = 1500;
 const store = new InMemoryRunStore();
 // The demo's work folder and the file tools on it.
 const files = new DemoWorkspace(store);
+const teamRevisions = new Map<string, CorralDefinition>();
 const transport = new InProcessTransport(
   new Coordinator({
     store,
     files,
+    corrals: {
+      getDefinition: (id, revision) => teamRevisions.get(JSON.stringify([id, revision])) ?? null,
+    },
     clock: { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() },
     // A namespace per page load: demo runs vanish on reload, and a session saved in this
     // browser must not mistake a new run for an old one with the same number.
@@ -71,6 +75,9 @@ async function startRun(...args: Parameters<typeof transport.startRun>) {
 function request(message: DemoRequest): Promise<unknown> {
   switch (message.method) {
     case 'startRun':
+      teamRevisions.clear();
+      for (const { corralId, revision, definition } of message.revisions ?? [])
+        teamRevisions.set(JSON.stringify([corralId, revision]), definition);
       return startRun(...message.args);
     case 'sendCommand':
       return transport.sendCommand(...message.args);

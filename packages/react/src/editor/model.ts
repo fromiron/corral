@@ -127,8 +127,10 @@ export interface NodeChange {
 export interface DraftCompilation {
   /** Present only when the definition compiles. */
   definition?: CorralDefinition;
+  /** Includes the members of every pinned reference when checking where a test can run. */
+  executionDefinition?: CorralDefinition;
   diagnostics: Diagnostic[];
-  /** The current runtime can execute it (P1: linear Agent → Output only). */
+  /** The current runtime can execute this definition. */
   runnable: boolean;
   /** Valid structure the current runtime cannot run yet, with the node named. */
   runtimeLimits: PlanIssue[];
@@ -934,6 +936,7 @@ export function compileDraft(
   return {
     definition: compiled.definition,
     diagnostics: compiled.diagnostics,
+    ...(plan.ok ? { executionDefinition: plan.definition } : {}),
     runnable: plan.ok,
     runtimeLimits: plan.ok ? [] : plan.issues,
   };
