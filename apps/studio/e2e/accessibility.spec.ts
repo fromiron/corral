@@ -36,8 +36,15 @@ test('keyboard alone adds, deletes, undoes, selects, connects, wraps and steers 
   await page.goto('/demo?template=starter&delay=2500');
   // Nothing is selected, so the new agent stands on its own and its settings open.
   await activate(page, page.getByRole('button', { name: 'Add Agent', exact: true }));
+  await activate(
+    page,
+    page.getByRole('dialog').getByRole('button', { name: 'Writing', exact: true }),
+  );
   await expect(nodes(page)).toHaveCount(3);
-  await activate(page, settings(page).getByRole('button', { name: 'Delete', exact: true }));
+  await activate(page, settings(page).getByRole('button', { name: 'Step actions', exact: true }));
+  await page.keyboard.press('End');
+  await expect(page.getByRole('menuitem', { name: 'Delete', exact: true })).toBeFocused();
+  await page.keyboard.press('Enter');
   await expect(nodes(page)).toHaveCount(2);
   await activate(page, page.getByRole('button', { name: 'Undo', exact: true }));
   await expect(nodes(page)).toHaveCount(3);
@@ -81,9 +88,7 @@ test('keyboard alone adds, deletes, undoes, selects, connects, wraps and steers 
   await expect(canvas(page).locator('[data-box]')).toHaveCount(0);
   await expect(edges(page)).toHaveCount(1);
 
-  await activate(page, page.getByRole('button', { name: 'Test run', exact: true }));
-  const panel = page.getByRole('complementary', { name: 'Test run' });
-  await activate(page, panel.getByRole('button', { name: 'Run', exact: true }));
+  await activate(page, page.getByRole('button', { name: 'Mock test', exact: true }));
   await activate(page, page.getByRole('button', { name: 'Pause run', exact: true }));
   await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
   await tabTo(page, page.getByLabel('Instruction', { exact: true }));
@@ -100,11 +105,7 @@ test('keyboard alone adds, deletes, undoes, selects, connects, wraps and steers 
 for (const instruction of ['일차 자료만 사용하고 확인하지 못한 내용은 구분해 주세요.']) {
   test(`IME composition Enter does not submit ${instruction.slice(0, 4)}`, async ({ page }) => {
     await page.goto('/demo?template=starter&delay=3000');
-    await page.getByRole('button', { name: 'Test run', exact: true }).click();
-    await page
-      .getByRole('complementary', { name: 'Test run' })
-      .getByRole('button', { name: 'Run', exact: true })
-      .click();
+    await page.getByRole('button', { name: 'Mock test', exact: true }).click();
     await page.getByRole('button', { name: 'Pause run', exact: true }).click();
     await expect(page.getByTestId('run-status')).toContainText('Paused', { timeout: 10_000 });
     const input = page.getByLabel('Instruction', { exact: true });

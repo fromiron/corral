@@ -4,8 +4,11 @@ import {
   closePanel,
   editorSettings,
   maximizePanel,
+  openFlowGraph,
   openLibrary,
   requestBox,
+  saveNewTeam,
+  startTestRun,
   teamNode,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -253,23 +256,67 @@ test('a worker observation proposal saves only after preview and reloads with it
 }) => {
   await corral.open('/');
   await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
-  await dialog
-    .getByLabel('What should the team do?')
-    .fill('Watch work in progress while writing an invitation.');
-  await dialog.getByRole('button', { name: 'Suggest a Corral' }).click();
-  await expect(dialog.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
-  await expect(dialog.getByText(/every 3/)).toContainText('additional model requests');
-  await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('link', { name: 'Draft from a goal', exact: true }).click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('assistant') === '1',
+  );
+  let modelRequests = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/v1/team-assistant')) modelRequests++;
+  });
+  await page
+    .getByRole('textbox', { name: 'Request to build the team', exact: true })
+    .fill('One writer should write an invitation. Watch work in progress.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Local example', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Alternatives and settings', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
+  await expect(page.getByText(/every 3/)).toContainText('additional model requests');
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  expect(modelRequests).toBe(0);
+  expect(await call(page, '/corrals', undefined, 'GET')).toHaveLength(0);
+  await saveNewTeam(page);
   await page.reload();
+  await openFlowGraph(page);
   await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
   const settings = editorSettings(page);
   await expect(settings.getByRole('checkbox', { name: 'Observe work in progress' })).toBeChecked();
   await expect(
     settings.getByRole('spinbutton', { name: 'Review interval (model requests)' }),
   ).toHaveValue('3');
+});
+
+test('selecting a review target previews that result locally in one press', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const definition = linearCorral(['planner', 'writer']);
+  const output = definition.nodes.find((node) => node.type === 'output');
+  if (!output) throw new Error('Expected an output on the test team');
+  output.inputBindings.push({ kind: 'task_output', name: 'source notes', sourceNodeId: 'planner' });
+  const { record } = await call(page, '/corrals', { definition });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  const requests: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/v1/team-assistant')) requests.push(r.url());
+  });
+  await page.getByRole('button', { name: 'Edit the team with AI' }).click();
+  await page.getByRole('button', { name: 'Submit after review passes' }).click();
+  const group = page.getByRole('group', {
+    name: 'Which result should pass review before submission?',
+  });
+  const target = group.getByRole('button', { name: /source notes/ });
+  await expect(target).toHaveAccessibleDescription('');
+  const input = page.getByRole('textbox', { name: 'Request to edit the team' });
+  await input.fill('Keep this request for later.');
+  await target.click();
+  const preview = page.getByRole('region', { name: 'Proposed changes' });
+  await expect(preview).toContainText('source notes');
+  await expect(preview.getByRole('button', { name: 'Apply to draft' })).toBeEnabled();
+  await expect(group).toHaveCount(0);
+  await expect(input).toHaveValue('Keep this request for later.');
+  expect(requests).toEqual([]);
 });
 
 test('a required output review checks the saved candidate before publishing it', async ({
@@ -295,11 +342,7 @@ test('a required output review checks the saved candidate before publishing it',
   await page.reload();
   await teamNode(page, 'output').click();
   await expect(gate).toBeChecked();
-  await page.getByRole('button', { name: 'Test run', exact: true }).click();
-  await page
-    .getByRole('complementary', { name: 'Test run' })
-    .getByRole('button', { name: 'Run', exact: true })
-    .click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-output')).toContainText('writer', { timeout: 25_000 });
   expect(corral.errors).toEqual([]);
 });

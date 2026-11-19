@@ -1,3 +1,4 @@
+export { SqliteAgentLibrary } from './agent-library.ts';
 export { SqliteCorralRepository } from './corral-repository.ts';
 export {
   type Db,

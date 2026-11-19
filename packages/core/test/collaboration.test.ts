@@ -1,18 +1,26 @@
-import type { AgentStartInput, CorralDefinition, RunEvent } from '@corral/contracts';
+import {
+  type AgentStartInput,
+  type CorralDefinition,
+  isWorkAgent,
+  type RunEvent,
+} from '@corral/contracts';
 import {
   collaborationCorral,
   FakeClock,
   Gate,
+  linearCorral,
   ScriptedAgentAdapter,
   type ScriptedAgentOptions,
   SequentialIdFactory,
 } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  createAutoStarter,
   InProcessTransport,
   type RunProjection,
   SPEC_HARD_CAPS,
+  teamTemplate,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -66,6 +74,148 @@ async function run(
 
 const byNode = (p: RunProjection, nodeId: string) =>
   (p.nodeExecutions[nodeId] ?? []).map((id) => p.executions[id]);
+
+it('sends each saved template delegate its base and its own duty exactly once', async () => {
+  const roles = {
+    implement: { name: '구현', duty: '요청에 맞게 코드를 수정합니다.' },
+    review: { name: '검토', duty: '변경 사항을 기준에 맞게 검토합니다.' },
+  };
+  const team = teamTemplate('implement-review', 'saved_team', {
+    name: '구현·검토',
+    brief: '입력을 검증합니다.',
+    criteria: ['검사 결과를 남깁니다.'],
+    roles,
+    labels: { loop: '반복', decision: '결정', join: '합류', output: '출력' },
+  });
+  const { transport, started } = runtime({
+    collaborate: false,
+    script: async (input, host) => {
+      if (input.assignment.kind === 'scheduled') {
+        const spawned = await host.invokeTool({
+          name: 'spawn_subagents',
+          args: {
+            tasks: input.capabilities.delegateTo.map(({ nodeId }) => ({
+              targetNodeId: nodeId,
+              brief: 'Report your findings.',
+            })),
+          },
+        });
+        if (!spawned.ok) throw new Error(spawned.error.message);
+        const waited = await host.invokeTool({
+          name: 'await_tasks',
+          args: { taskIds: spawned.result.taskIds },
+        });
+        if (!waited.ok) throw new Error(waited.error.message);
+      }
+      return null;
+    },
+  });
+  const starter = createAutoStarter({
+    corral: () => ({ definition: team, definitionRevision: 2 }),
+    startRun: (request) => transport.startRun(request),
+  });
+  const { runId, receipt } = await starter.start(
+    {
+      commandId: 'chat',
+      sessionId: 'session',
+      brief: 'Use this team.',
+      mode: 'mock',
+      choice: { modelProfile: 'model-a' },
+      team: { corralId: team.id },
+    },
+    { fileTools: false },
+  );
+  if (!runId) throw new Error(JSON.stringify(receipt.error));
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  for (const [id, { duty }] of Object.entries(roles)) {
+    const input = started.find((agent) => agent.role.id === `team_${id}`);
+    const base = team.roles.find((role) => role.id === id)?.prompt;
+    assert(base);
+    expect(input?.assignment.kind).toBe('delegated');
+    expect(input?.stepInstruction).toBe(duty);
+    expect(input?.role.prompt).toBe(base);
+    expect(base).toContain('submit with submit_result.');
+    expect(JSON.stringify(input).split(base)).toHaveLength(2);
+    expect(JSON.stringify(started).split(duty)).toHaveLength(2);
+  }
+});
+
+it('retries with the snapshotted step instruction, without giving it to another seat of the same role', async () => {
+  const definition = linearCorral(['first', 'second']);
+  const [first, second] = definition.nodes;
+  if (!isWorkAgent(first) || !isWorkAgent(second)) throw new Error('missing seats');
+  second.roleId = first.roleId;
+  definition.roles = definition.roles.filter((role) => role.id === first.roleId);
+  const original = 'Check the source dates for this step.';
+  first.stepInstruction = original;
+  first.retry = { maxAttempts: 1 };
+  const { transport, started } = runtime({
+    script: async (input) => {
+      if (input.nodeId !== first.id || input.attemptNo !== 1) return null;
+      first.stepInstruction = 'A later edit, for the next run.';
+      return { outcome: 'failed', error: 'Retry this step.' };
+    },
+  });
+  const { runId, events } = await run(transport, definition);
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  expect(
+    started.map(({ nodeId, role, attemptNo, stepInstruction }) => [
+      nodeId,
+      role.id,
+      attemptNo,
+      stepInstruction,
+    ]),
+  ).toEqual([
+    ['first', first.roleId, 1, original],
+    ['first', first.roleId, 2, original],
+    ['second', first.roleId, 1, undefined],
+  ]);
+  expect(JSON.stringify(events)).not.toContain(original);
+});
+
+it('gives the same callable seat its own instruction for delegation and questions, not its caller’s', async () => {
+  const definition = collaborationCorral();
+  definition.nodes = definition.nodes.filter((node) => node.id !== 'respond');
+  const helperRole = definition.roles.find((role) => role.id === 'helper');
+  if (!helperRole) throw new Error('missing helper role');
+  helperRole.allowedCollaborationTools.push('reply');
+  for (const link of definition.capabilityLinks)
+    if (link.kind === 'question') link.targetNodeId = 'helper';
+  definition.sharedOutrider = {
+    modelProfile: 'model-a',
+    principles: 'Check the evidence.',
+    targets: { kind: 'selected', nodeIds: ['research'] },
+    observation: {
+      targets: { kind: 'selected', nodeIds: ['research'] },
+      review: { interval: 1, maxRequestsPerReview: 1 },
+    },
+  };
+  for (const seat of definition.nodes.filter(isWorkAgent))
+    seat.stepInstruction = `Seat: ${seat.id}`;
+  const { transport, started } = runtime();
+  const { runId } = await run(transport, definition);
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  const calls = started.filter((input) => input.nodeId === 'helper');
+  expect(calls.map((input) => input.assignment.kind).sort()).toEqual([
+    'delegated',
+    'delegated',
+    'question',
+  ]);
+  for (const input of calls) {
+    expect(input.stepInstruction).toBe('Seat: helper');
+    const frame = JSON.stringify(input);
+    expect(frame.split('Seat: helper')).toHaveLength(2);
+    expect(frame).not.toContain('Seat: research');
+    expect(frame).not.toContain('Seat: write');
+  }
+  const outriders = started.filter(
+    (input) => !definition.nodes.some((node) => node.id === input.nodeId),
+  );
+  expect(outriders.map((input) => input.assignment.kind).sort()).toEqual(['advisor', 'question']);
+  for (const input of outriders) expect(input).not.toHaveProperty('stepInstruction');
+  for (const input of started.filter((input) => input.assignment.kind === 'scheduled'))
+    expect(input.stepInstruction).toBe(`Seat: ${input.nodeId}`);
+});
 
 describe('delegation: spawn and await', () => {
   it('a parent runs two children at once and holds no model slot while it waits', async () => {
@@ -188,6 +338,29 @@ describe('delegation: spawn and await', () => {
 });
 
 describe('questions answered by new responder tasks', () => {
+  it('completes with zero shared questions, responder executions or advisor requests when nobody asks the shared Outrider', async () => {
+    const definition = linearCorral(['writer']);
+    const advisorProfile = 'advisor-model';
+    definition.sharedOutrider = {
+      modelProfile: advisorProfile,
+      principles: 'Check the evidence when asked.',
+      targets: { kind: 'all' },
+      artifactReview: true,
+    };
+    const { transport, started } = runtime({ collaborate: false });
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, settled);
+
+    expect(final.status).toBe('succeeded');
+    const writer = started.find((input) => input.nodeId === 'writer');
+    expect(writer?.capabilities.askTo).toHaveLength(1);
+    expect(Object.values(final.questions).filter((q) => q.sharedOutrider)).toHaveLength(0);
+    expect(Object.values(final.executions).map((e) => e.nodeId)).toEqual(['writer']);
+    const requests = Object.values(final.modelCalls);
+    expect(requests.filter((request) => request.profile === advisorProfile)).toHaveLength(0);
+    expect(requests.map((request) => request.executionId)).toEqual([writer?.executionId]);
+  });
+
   it('the writer asks, a new responder task answers once, and the answer reaches the draft', async () => {
     const { transport, started } = runtime();
     const { runId, events } = await run(transport);

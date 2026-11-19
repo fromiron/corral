@@ -82,13 +82,14 @@ it.each([
     const nav = container.querySelector('nav');
     expect(nav?.textContent?.trim()).toBe(name);
     expect(nav?.textContent).not.toContain('All projects…');
-    expect(nav?.querySelector('button[aria-label="Go to project"]')).toBeNull();
+    expect(nav?.querySelector('[data-crumb="project"]')).toBeNull();
   },
 );
 
 it('keeps the project menu at the start of a project’s path', async () => {
   const container = await render({ pathname: '/projects/alpha', projectId: 'alpha' });
-  const switcher = container.querySelector('nav button[aria-label="Go to project"]');
+  const switcher = container.querySelector('nav button[data-crumb="project"]');
+  expect(switcher?.getAttribute('aria-label')).toBe('Go to project: Alpha');
   expect(switcher?.textContent).toContain('Alpha');
 });
 
@@ -120,8 +121,8 @@ it.each(TOPBAR_TIERS.map((tier, index) => [tier, index] as const))(
     expect(name?.tagName).toBe('H2');
     expect(name?.querySelector('[data-crumb-label]')?.textContent).toBe('Fix the login redirect');
     // The project stays reachable: by name while there is room, then as its icon.
-    const project = container.querySelector('nav button[aria-label="Go to project"]');
-    expect(project?.getAttribute('data-crumb')).toBe('project');
+    const project = container.querySelector('nav button[data-crumb="project"]');
+    expect(project?.getAttribute('aria-label')).toBe('Go to project: Alpha');
     if (topbarLayout(index).project === 'name') expect(project?.textContent).toContain('Alpha');
     else {
       expect(project?.textContent).toBe('');

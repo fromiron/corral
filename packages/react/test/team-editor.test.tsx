@@ -1,5 +1,5 @@
 import { type AgentRole, CorralDefinition } from '@corral/contracts';
-import { definitionHash } from '@corral/core';
+import { definitionHash, roleFromPreset } from '@corral/core';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
@@ -17,6 +17,7 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 import {
+  addAgent,
   applyPattern,
   connectPorts,
   type EditResult,
@@ -73,8 +74,36 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
   // The list renders a moment after the click under load.
   await user.click(await screen.findByRole('option', { name: option }));
 };
+const writing = {
+  role: roleFromPreset('write', 'write', messages.TeamTemplates.presets.write.name),
+  stepInstruction: messages.TeamTemplates.presets.write.duty,
+  origin: { kind: 'preset' as const, presetId: 'write' },
+};
+async function chooseWriting() {
+  await userEvent.click(
+    await within(screen.getByRole('dialog')).findByRole('button', { name: 'Writing' }),
+  );
+}
+async function replacementAction(sheet: HTMLElement, catalog = messages) {
+  await userEvent.click(within(sheet).getByRole('button', { name: catalog.Inspector.seatActions }));
+  return screen.findByRole('menuitem', { name: catalog.Inspector.replaceAgent });
+}
 
 describe('team editor', () => {
+  it('shows the first task sentence, not the base instructions, on a graph card', () => {
+    const { draft, nodeId } = ok(
+      addAgent(
+        emptyDraft(),
+        { ...writing, stepInstruction: 'Edit the story. Keep it short.' },
+        { kind: 'empty' },
+      ),
+    );
+    renderEditor(draft);
+    expect(canvasNode(nodeId)).toHaveTextContent('Edit the story.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent('Keep it short.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent(writing.role.prompt);
+  });
+
   it('configures and removes a required review for the shown output and producer in one edit', async () => {
     const definition = chain(1);
     const output = ok(placeStep(definition, 'output', { kind: 'after', nodeId: 'agent_1' }));
@@ -172,20 +201,22 @@ describe('team editor', () => {
     expect(within(palette).getByText('Add after Agent 1')).toBeVisible();
     const add = within(palette).getByRole('button', { name: 'Add Agent' });
     await user.click(add);
+    await chooseWriting();
     const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
-    await waitFor(() => expect(within(dialog).getByText(/Agent 4.*Agent 3/)).toBeVisible());
-    await waitFor(() => expect(within(dialog).getByText(/Agent 4.*Agent 2/)).toBeVisible());
+    await waitFor(() => expect(within(dialog).getByText(/Writing.*Agent 3/)).toBeVisible());
+    await waitFor(() => expect(within(dialog).getByText(/Writing.*Agent 2/)).toBeVisible());
     expect(editor.getState().draft).toBe(draft);
     await user.keyboard('{Escape}');
     expect(editor.getState().canUndo).toBe(false);
     await user.click(add);
+    await chooseWriting();
     await user.click(
       within(screen.getByRole('dialog', { name: 'Preview connections' })).getByRole('button', {
         name: 'Apply',
       }),
     );
     expect(editor.getState().draft).toEqual(
-      ok(placeStep(draft, 'agent', { kind: 'after', nodeId: 'agent_1' })).draft,
+      ok(addAgent(draft, writing, { kind: 'after', nodeId: 'agent_1' })).draft,
     );
     act(() => editor.getState().undo());
     expect(editor.getState().draft).toBe(draft);
@@ -216,18 +247,20 @@ describe('team editor', () => {
     });
     await user.click(canvasNode('output_1'));
     await user.click(add);
+    await chooseWriting();
     let dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
     expect(editor.getState().canUndo).toBe(false);
     await user.click(within(dialog).getByRole('button', { name: /Agent 1.*[Ee]rror.*Output/ }));
     expect(editor.getState().draft).toEqual(
-      ok(placeStep(draft, 'agent', { kind: 'edge', edgeId: 'extra' })).draft,
+      ok(addAgent(draft, writing, { kind: 'edge', edgeId: 'extra' })).draft,
     );
     act(() => editor.getState().undo());
     await user.click(canvasNode('output_1'));
     await user.click(add);
+    await chooseWriting();
     dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
     await user.click(within(dialog).getByRole('button', { name: 'Add without connecting' }));
-    expect(editor.getState().draft).toEqual(ok(placeStep(draft, 'agent', { kind: 'empty' })).draft);
+    expect(editor.getState().draft).toEqual(ok(addAgent(draft, writing, { kind: 'empty' })).draft);
   });
 
   it('previews placement that would disconnect a successor and a Loop boundary move from the keyboard', async () => {
@@ -269,6 +302,7 @@ describe('team editor', () => {
     await user.click(canvasNode(output.nodeId));
     await user.click(screen.getByRole('button', { name: 'Find a step' }));
     await user.click(await screen.findByRole('option', { name: /Add Agent/ }));
+    await chooseWriting();
     const dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
     expect(within(dialog).queryByText('Insert before Output')).toBeNull();
     await waitFor(() =>
@@ -309,13 +343,14 @@ describe('team editor', () => {
     const user = userEvent.setup();
     await user.click(canvasNode(rule.nodeId));
     await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    await chooseWriting();
     const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
     expect(within(dialog).queryByText(/Agent 3/)).toBeNull();
     expect(within(dialog).getAllByRole('listitem')).toHaveLength(5);
     await user.click(within(dialog).getByRole('button', { name: 'Apply' }));
     expect(editor.getState().draft.definition.controlEdges).toContain(edges[2]);
     expect(editor.getState().draft).toEqual(
-      ok(placeStep(draft, 'agent', { kind: 'after', nodeId: rule.nodeId })).draft,
+      ok(addAgent(draft, writing, { kind: 'after', nodeId: rule.nodeId })).draft,
     );
   });
 
@@ -342,7 +377,7 @@ describe('team editor', () => {
     expect(editor.getState().draft.definition.nodes[0]?.label).toBe('Existing custom name');
   });
 
-  it('puts the next step, inputs and calls before a worker’s role settings, and watched agents before advisor permissions', async () => {
+  it('puts connections and the task before materials and advanced settings, and watches before advisor permissions', async () => {
     const { draft, nodeId } = ok(
       placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }),
     );
@@ -355,12 +390,16 @@ describe('team editor', () => {
       screen.getByRole('complementary', { name: messages.TeamEditor.inspector }),
     );
     const connections = sheet.getByRole('region', { name: messages.TeamEditor.connections });
-    const inputs = sheet.getByRole('group', { name: messages.Inspector.inputs });
-    const calls = sheet.getByRole('group', { name: messages.Inspector.calls });
-    const prompt = sheet.getByRole('textbox', { name: messages.Inspector.prompt });
-    expect(precedes(connections, inputs)).toBe(true);
-    expect(precedes(inputs, calls)).toBe(true);
-    expect(precedes(calls, prompt)).toBe(true);
+    const task = sheet.getByRole('textbox', { name: messages.Inspector.task });
+    const inputs = sheet.getByRole('group', { name: messages.Inspector.receives });
+    const advanced = sheet.getByRole('button', { name: messages.Inspector.advanced });
+    expect(precedes(connections, task)).toBe(true);
+    expect(precedes(task, inputs)).toBe(true);
+    expect(precedes(inputs, advanced)).toBe(true);
+    await user.click(advanced);
+    expect(precedes(advanced, sheet.getByRole('group', { name: messages.Inspector.calls }))).toBe(
+      true,
+    );
     await user.click(canvasNode(nodeId));
     const watches = sheet.getByRole('group', { name: messages.Inspector.watches });
     expect(precedes(watches, sheet.getByText(messages.Inspector.readTools))).toBe(true);
@@ -557,9 +596,10 @@ describe('team editor', () => {
     expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
     await user.click(canvasNode('agent_1'));
     await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    await chooseWriting();
     expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
-    await user.click(screen.getByRole('button', { name: 'Use Agent 2’s result' }));
-    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 2');
+    await user.click(screen.getByRole('button', { name: 'Use Writing’s result' }));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Writing');
     act(() => editor.getState().undo());
     expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
     act(() => editor.getState().undo());
@@ -698,6 +738,7 @@ describe('team editor', () => {
     const draft = patchNode(chain(3), 'agent_2', { invocation: 'callable' });
     renderEditor(draft);
     await act(async () => fireEvent.click(canvasNode('agent_3')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'From' })));
     const sources = screen.getAllByRole('option').map((o) => o.textContent);
     expect(sources).toContain('Agent 1');
@@ -723,6 +764,7 @@ describe('team editor', () => {
     });
     const editor = renderEditor(draft);
     await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'From' })));
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('Saved team');
     await act(async () =>
@@ -740,6 +782,7 @@ describe('team editor', () => {
   it('adds a specific-version input only with the version it names', async () => {
     const editor = renderEditor(chain(1));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await choose('Kind', 'Specific version');
     const add = screen.getByRole('button', { name: 'Add' });
     expect(add.hasAttribute('disabled') || add.getAttribute('aria-disabled') === 'true').toBe(true);
@@ -774,6 +817,7 @@ describe('team editor', () => {
       { profileId: 'keyed:gpt-image-1', label: 'keyed:gpt-image-1 · gpt-image-1' },
     ]);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole('switch', { name: 'Generate images' })));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
@@ -790,6 +834,7 @@ describe('team editor', () => {
       { profileId: 'illustration', label: 'illustration · gpt-image-1' },
     ]);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
     expect(screen.getByRole('combobox', { name: 'Image profile' }).textContent).toContain(
       `legacy_hand (${messages.Inspector.imageProfileMissing})`,
@@ -1036,7 +1081,7 @@ describe('team editor: advisors', () => {
     ).toEqual(['Agent 1', 'Agent 2', 'Helper'].sort());
   });
 
-  it('shows no work style settings and no role import on an advisor sheet', async () => {
+  it('shows work style settings and replacement only on a work seat', async () => {
     const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const editor = createEditorStore(added.draft);
     render(
@@ -1047,11 +1092,17 @@ describe('team editor: advisors', () => {
       </IntlProvider>,
     );
     await act(async () => fireEvent.click(canvasNode('agent_1')));
-    expect(screen.getByText('Work style here')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
+    await waitFor(() => expect(screen.getByText('Work style here')).toBeVisible());
+    const sheet = screen.getByRole('complementary', { name: messages.TeamEditor.inspector });
+    const replace = await replacementAction(sheet);
+    await waitFor(() => expect(replace).toBeVisible());
+    await userEvent.keyboard('{Escape}');
     await act(async () => fireEvent.click(canvasNode(added.nodeId)));
     expect(screen.queryByText('Work style here')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Import role…' })).toBeNull();
+    const actions = within(sheet).queryByRole('button', { name: messages.Inspector.seatActions });
+    if (actions) await userEvent.click(actions);
+    expect(screen.queryByRole('menuitem', { name: messages.Inspector.replaceAgent })).toBeNull();
   });
 
   it('adds an advisor from ⌘K watching a selected callable agent, not in the flow’s place', async () => {
@@ -1071,6 +1122,7 @@ describe('team editor: advisors', () => {
   it('turns an agent into an advisor from its sheet', async () => {
     const editor = renderEditor(chain(2));
     await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     await act(async () =>
       fireEvent.click(screen.getByRole('radio', { name: messages.Inspector.observer })),
     );
@@ -1081,7 +1133,7 @@ describe('team editor: advisors', () => {
   });
 });
 
-describe('team editor: importing a role', () => {
+describe('team editor: choosing an agent', () => {
   const releaseCheck: AgentRole = {
     id: 'release',
     name: 'Release check',
@@ -1093,7 +1145,7 @@ describe('team editor: importing a role', () => {
     harness: { profileId: 'careful', revision: 2 },
   };
   const otherTeams: TeamReference[] = [
-    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', roles: [releaseCheck] },
+    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', agents: [{ role: releaseCheck }] },
   ];
   const presetNames = [
     'Implementation',
@@ -1130,31 +1182,30 @@ describe('team editor: importing a role', () => {
     renderWith(chain(2));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    expect(within(sheet).getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    const replace = await replacementAction(sheet);
+    await waitFor(() => expect(replace).toBeVisible());
+    await userEvent.keyboard('{Escape}');
     await act(async () => fireEvent.keyDown(canvasNode('agent_1'), { key: 'k', ctrlKey: true }));
-    expect(screen.getByRole('option', { name: /Import role…/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Add Agent/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Import role/ })).toBeNull();
   });
 
   it('lists the presets first, then the roles of the other saved teams', async () => {
     renderWith(chain(1));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    await userEvent.click(await replacementAction(sheet));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByRole('tab', { name: 'Built-in' })).toHaveAttribute('aria-selected', 'true');
+    expect(
+      dialog
+        .getAllByRole('listitem')
+        .map((li) => within(li).getByRole('button').getAttribute('aria-label')),
+    ).toEqual(presetNames);
+    await userEvent.click(dialog.getByRole('tab', { name: 'Other teams' }));
+    expect(dialog.getByRole('button', { name: 'Release check' })).toHaveAccessibleDescription(
+      /Harbor.*Check the release notes/,
     );
-    const groups = screen.getAllByRole('group').map((group) => ({
-      heading: group.getAttribute('aria-labelledby')
-        ? document.getElementById(group.getAttribute('aria-labelledby') as string)?.textContent
-        : null,
-      options: within(group)
-        .getAllByRole('option')
-        .map((o) => o.textContent),
-    }));
-    expect(groups.map((g) => g.heading)).toEqual(['Role presets', 'Harbor']);
-    expect(groups[0]?.options.map((o) => presetNames.find((name) => o?.startsWith(name)))).toEqual(
-      presetNames,
-    );
-    expect(groups[1]?.options).toEqual(['Release check']);
   });
 
   it('copies the chosen role onto the selected agent from the sheet', async () => {
@@ -1162,15 +1213,33 @@ describe('team editor: importing a role', () => {
     const { editor } = renderWith(draft);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
-    );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    const preview = within(screen.getByRole('dialog'));
+    expect(
+      preview.getByRole('heading', { name: 'Replace with the agent “Release check”' }),
+    ).toBeVisible();
+    expect(preview.getByRole('heading', { name: 'What changes' })).toBeVisible();
+    expect(preview.getByText('Base instructions')).toBeVisible();
+    expect(preview.getByText('Result format')).toBeVisible();
+    expect(preview.queryByText('Role and source')).toBeNull();
+    expect(preview.getByRole('heading', { name: 'What stays' })).toBeVisible();
+    expect(preview.getByText(/Seat name, task, received materials, connections/)).toBeVisible();
+    expect(editor.getState().draft).toBe(draft);
+    await userEvent.click(preview.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().past).toHaveLength(0);
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    expect(editor.getState().past).toEqual([draft]);
     const next = editor.getState().draft;
     expect(roleOf(next, 'agent_1')).toMatchObject({
       prompt: releaseCheck.prompt,
       outputContract: 'review',
       modelProfile: 'model-b',
+      harness: releaseCheck.harness,
     });
     expect(next.definition.nodes.find((n) => n.id === 'agent_1')?.label).toBe('Agent 1');
     expect(roleOf(next, 'agent_2')).toEqual(roleOf(draft, 'agent_2'));
@@ -1180,18 +1249,23 @@ describe('team editor: importing a role', () => {
   });
 
   it('works from the keyboard alone and gives focus back to the editor', async () => {
-    const { editor, view } = renderWith(chain(1));
+    const before = chain(1);
+    const { editor, view } = renderWith(before);
     const user = userEvent.setup();
     await act(async () => canvasNode('agent_1').focus());
     await user.keyboard('{Enter}');
     expect(canvasNode('agent_1').getAttribute('aria-pressed')).toBe('true');
     await user.keyboard('{Control>}k{/Control}');
-    await user.keyboard('import');
+    await user.keyboard('add agent{Enter}');
+    const search = screen.getByRole('textbox', { name: 'Find an agent' });
+    await waitFor(() => expect(search).toHaveFocus());
+    await user.keyboard('release{Tab}{ArrowRight}');
+    expect(screen.getByRole('tab', { name: 'Other teams' })).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(screen.getByRole('button', { name: /^Release check/ })).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('option', { name: 'Release check' })).toBeTruthy();
-    await user.keyboard('rel');
-    await user.keyboard('{Enter}');
-    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
+    expect(roleOf(editor.getState().draft, 'agent_1')).toBe(roleOf(before, 'agent_1'));
+    expect(roleOf(editor.getState().draft, 'agent_2')?.prompt).toBe(releaseCheck.prompt);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(view.container.contains(document.activeElement)).toBe(true);
   });
@@ -1204,8 +1278,8 @@ describe('team editor: importing a role', () => {
         ctrlKey: true,
       }),
     );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Import role…/ })));
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Plan' })));
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Add Agent/ })));
+    await userEvent.click(screen.getByRole('button', { name: 'Plan' }));
     const added = editor
       .getState()
       .draft.definition.nodes.find((n) => n.type === 'agent' && n.id !== 'agent_1');
@@ -1217,10 +1291,10 @@ describe('team editor: importing a role', () => {
     renderWith(chain(1), { locale: 'ko' });
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: '설정' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: '역할 가져오기…' })),
-    );
-    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    await userEvent.click(await replacementAction(sheet, koMessages));
+    const options = screen
+      .getAllByRole('listitem')
+      .map((li) => within(li).getByRole('button').getAttribute('aria-label'));
     for (const name of [
       '구현',
       '계획',
@@ -1235,42 +1309,20 @@ describe('team editor: importing a role', () => {
     expect(options).not.toContain('Implementation');
   });
 
-  it('says once that a work style it could not resolve was left out', async () => {
-    const { editor } = renderWith(chain(2));
+  it('explains a refused replacement and retains the plan owner and draft', async () => {
+    const before = updateNode(chain(2), 'agent_1', { teamPlanOwner: true });
+    const { editor } = renderWith(before);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent(
+      messages.TeamEditor.rejected.movePlanOwner,
     );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
-    expect(roleOf(editor.getState().draft, 'agent_1')).not.toHaveProperty('harness');
-    const notices = screen
-      .getAllByRole('status')
-      .filter((s) => s.textContent?.includes('without its Harness'));
-    expect(notices).toHaveLength(1);
-    // The agent's sheet shows it under its heading.
-    expect(
-      within(screen.getByRole('complementary', { name: 'Settings' })).getAllByText(
-        /without its Harness/,
-      ),
-    ).toHaveLength(1);
-    // The next edit takes the notice away; it does not come back with redo.
-    await act(async () => editor.getState().undo());
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
-    await act(async () => editor.getState().redo());
-    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
-  });
-
-  it('says nothing when the role had no work style', async () => {
-    renderWith(chain(1));
-    await act(async () => fireEvent.click(canvasNode('agent_1')));
-    const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
-    );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Plan/ })));
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
+    expect(editor.getState().draft).toBe(before);
+    expect(editor.getState().past).toHaveLength(0);
+    expect(screen.getByText(messages.TeamEditor.rejected.movePlanOwner)).toBeTruthy();
   });
 });
 

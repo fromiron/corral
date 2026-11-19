@@ -1,6 +1,6 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import { type Diagnostic, isBox } from '@corral/core';
-import { type DragEvent as ReactDragEvent, useState } from 'react';
+import { type DragEvent as ReactDragEvent, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Button, Keycap, KitBadge, useSize } from '../design-kit/index.ts';
 import { focusRing } from '../design-kit/lib/focus.ts';
@@ -17,6 +17,7 @@ import {
   TriangleAlert,
 } from '../ui/icons.ts';
 import { KIND_ICON, kindOf } from './kinds.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 // The team as an outline: every step in flow order, boxes with their members inside. Dragging a
@@ -24,8 +25,34 @@ import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 const NODE_DRAG_TYPE = 'application/x-corral-node';
 
+/** The outline and the composition list use the same validation state and severity colors. */
+export function ProblemCountBadge({
+  diagnostics,
+  validationStatus,
+}: {
+  diagnostics: readonly Diagnostic[];
+  validationStatus?: string | undefined;
+}) {
+  const t = useTranslations('TeamEditor');
+  return (
+    <KitBadge
+      size="compact"
+      color={
+        diagnostics.some((issue) => issue.severity === 'error')
+          ? 'red'
+          : diagnostics.length
+            ? 'amber'
+            : 'gray'
+      }
+    >
+      {validationStatus ?? t('problems', { count: diagnostics.length })}
+    </KitBadge>
+  );
+}
+
 export interface StructureTreeProps {
   definition: CorralDefinition;
+  hasWorkAgent: boolean;
   diagnostics: readonly Diagnostic[];
   validationStatus?: string | undefined;
   /** Flow order of the nodes, as the canvas lays them out. */
@@ -48,6 +75,7 @@ export interface StructureTreeProps {
 
 export function StructureTree({
   definition,
+  hasWorkAgent,
   diagnostics,
   validationStatus,
   order,
@@ -67,13 +95,13 @@ export function StructureTree({
   const t = useTranslations('TeamEditor');
   const size = useSize();
   const [over, setOver] = useState<string | null>(null);
+  const reviewLoops = useMemo(() => requiredReviewLoopIds(definition.nodes), [definition.nodes]);
   const selected = new Set(selection.nodes);
   const worst = new Map<string, Diagnostic['severity']>();
   for (const d of diagnostics) {
     if (!d.nodeId) continue;
     if (worst.get(d.nodeId) !== 'error') worst.set(d.nodeId, d.severity);
   }
-  const errors = diagnostics.filter((d) => d.severity === 'error').length;
   const children = (parentId: string | null) =>
     definition.nodes
       .filter((n) => (n.parentId ?? null) === parentId)
@@ -102,6 +130,7 @@ export function StructureTree({
     // A reference team's inside lives in its own editor, so here it neither opens nor takes steps.
     const box = isBox(node) && !(node.type === 'team' && node.source.kind === 'reference');
     const open = box && !collapsed.has(node.id);
+    const reviewLoop = node.type === 'loop' && reviewLoops.has(node.id);
     const severity = worst.get(node.id);
     const dropping = over === node.id;
     return (
@@ -109,7 +138,7 @@ export function StructureTree({
         <div
           className={cn(
             'flex items-center gap-1 rounded-md pr-1',
-            selected.has(node.id) ? 'bg-selected/60' : 'hover:bg-hover',
+            selected.has(node.id) ? 'bg-active' : 'hover:bg-hover',
             dropping && 'outline-2 outline-emphasis',
           )}
           style={{ paddingLeft: 4 + depth * 14 }}
@@ -138,7 +167,8 @@ export function StructureTree({
             className={cn(
               focusRing,
               size.type.body,
-              'flex h-8 min-w-0 grow items-center gap-2 rounded-md px-1 text-left text-foreground',
+              'flex min-h-8 min-w-0 grow items-center gap-2 rounded-md px-1 text-left text-foreground',
+              reviewLoop && 'py-1',
             )}
             onDragStart={(event) => {
               event.dataTransfer.setData(NODE_DRAG_TYPE, node.id);
@@ -156,7 +186,14 @@ export function StructureTree({
             }}
           >
             <Icon size={14} aria-hidden className="shrink-0 text-muted-foreground" />
-            <span className="truncate">{node.label}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{node.label}</span>
+              {reviewLoop && (
+                <span className={cn(size.type.caption, 'block text-muted-foreground')}>
+                  {t('noFinalSubmission')}
+                </span>
+              )}
+            </span>
             {severity ? (
               <span
                 className={cn(
@@ -179,12 +216,15 @@ export function StructureTree({
   };
 
   return (
-    // The team row heads the outline: its name, its problems and the way to add a step.
+    // The team row heads the outline: its name, its problems and the way to add a step. Beside
+    // the work area the outline is the editor's left column, down to its bottom edge.
     <aside
       aria-label={t('outline')}
       className={cn(
         'flex flex-col border-border',
-        stacked ? 'shrink-0 border-b' : 'min-h-0 border-r',
+        stacked
+          ? 'shrink-0 border-b'
+          : 'col-start-1 row-span-2 row-start-1 min-h-0 w-[272px] border-r',
       )}
     >
       <div
@@ -200,47 +240,45 @@ export function StructureTree({
         >
           {definition.name}
         </span>
-        <button
-          type="button"
-          disabled={Boolean(validationStatus)}
-          aria-pressed={view === 'problems'}
-          className={cn(focusRing, 'rounded-full')}
-          onClick={onProblems}
-        >
-          <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
-            {validationStatus ??
-              (definition.nodes.length === 0 && diagnostics.length
-                ? t('startGraph')
-                : t('problems', { count: diagnostics.length }))}
-          </KitBadge>
-        </button>
+        {hasWorkAgent && (
+          <button
+            type="button"
+            disabled={Boolean(validationStatus)}
+            aria-pressed={view === 'problems'}
+            className={cn(focusRing, 'rounded-full')}
+            onClick={onProblems}
+          >
+            <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
+          </button>
+        )}
         <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>
           <Plus />
         </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="compact"
-        className="mx-2 mb-1 shrink-0 justify-start"
-        aria-pressed={view === 'sharedOutrider'}
-        onClick={onSharedOutrider}
-      >
-        <Eye />
-        {definition.sharedOutrider
-          ? definition.sharedOutrider.targets.kind === 'all'
-            ? t('sharedOutrider.entireSummary')
-            : t('sharedOutrider.selectedSummary', {
-                count: definition.sharedOutrider.targets.nodeIds.length,
-              })
-          : t('sharedOutrider.add')}
-      </Button>
       {/* Stacked, a long outline scrolls in itself, so the canvas stays near the top. */}
       <ul className={cn('overflow-y-auto px-2 pb-2', stacked ? 'max-h-60' : 'min-h-0 flex-1')}>
         {children(null).map((node) => row(node, 0))}
       </ul>
+      {/* What belongs to the whole team stands under its steps, as in the composition list. */}
       <footer
         className={cn('gap-0.5 border-t border-border p-2', stacked ? 'flex flex-wrap' : 'grid')}
       >
+        <Button
+          variant="ghost"
+          size="compact"
+          className="justify-start"
+          aria-pressed={view === 'sharedOutrider'}
+          onClick={onSharedOutrider}
+        >
+          <Eye />
+          {definition.sharedOutrider
+            ? definition.sharedOutrider.targets.kind === 'all'
+              ? t('sharedOutrider.entireSummary')
+              : t('sharedOutrider.selectedSummary', {
+                  count: definition.sharedOutrider.targets.nodeIds.length,
+                })
+            : t('sharedOutrider.add')}
+        </Button>
         <Button
           variant="ghost"
           size="compact"

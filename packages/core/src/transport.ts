@@ -11,7 +11,7 @@ import type { Coordinator, StartRunResult } from './coordinator.ts';
 import type { RuntimeSnapshot } from './partial-output.ts';
 import { applyEvent, type RunProjection } from './projection.ts';
 import type { RunStats } from './run-stats.ts';
-import type { RunSummary, StoredConversationTurn } from './store/run-store.ts';
+import type { RunSnapshot, RunSummary, StoredConversationTurn } from './store/run-store.ts';
 
 // The only way Studio talks to a runtime. HttpSseTransport and the
 // public demo implement the same contract.
@@ -37,6 +37,8 @@ export interface RuntimeTransport {
   listRuns(): Promise<RunSummary[]>;
   /** The definition a run was started with (its snapshot), or null for an unknown run. */
   getRunDefinition(runId: string): Promise<CorralDefinition | null>;
+  /** The saved revision the run started from, or null for an inline or unknown run. */
+  getRunSource?(runId: string): Promise<RunSnapshot['source']>;
   /** Recent finished live runs of one saved revision, step by step (run stats). */
   getRunStats(corralId: string, definitionRevision: number): Promise<RunStats>;
   /** Every committed event after `afterSeq`, once and in order, then live events. */
@@ -85,6 +87,10 @@ export class InProcessTransport implements RuntimeTransport {
 
   async getRunDefinition(runId: string): Promise<CorralDefinition | null> {
     return this.coordinator.getRunSnapshot(runId)?.definition ?? null;
+  }
+
+  async getRunSource(runId: string): Promise<RunSnapshot['source']> {
+    return this.coordinator.getRunSnapshot(runId)?.source ?? null;
   }
 
   async getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {

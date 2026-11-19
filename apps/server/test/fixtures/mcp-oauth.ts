@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
+import { Gate } from '@corral/testkit';
 
 /** Local PKCE/rotation fixture; never contacts an account or issues a real credential. */
 export async function oauthFixture() {
@@ -8,6 +9,8 @@ export async function oauthFixture() {
   let redirectUri = '';
   let exchanges = 0;
   let mcpCalls = 0;
+  let extraTool = false;
+  let heldCall: { release: Gate; replied: Gate } | undefined;
   let refreshes = 0;
   let grantScope = 'docs:read';
   let beforeTools: (() => Promise<void>) | undefined;
@@ -61,19 +64,23 @@ export async function oauthFixture() {
       if (message.method === 'tools/list') {
         await beforeTools?.();
         result = {
-          tools: [
-            {
-              name: 'echo',
-              description: 'Read fixture docs',
-              inputSchema: { type: 'object', properties: {} },
-              annotations: { readOnlyHint: true, openWorldHint: false },
-            },
-          ],
+          tools: (extraTool ? ['echo', 'edit', 'archive'] : ['echo', 'edit']).map((name) => ({
+            name,
+            description: name === 'echo' ? 'Read fixture docs' : `${name} fixture docs`,
+            inputSchema: { type: 'object', properties: {} },
+            annotations: { readOnlyHint: name === 'echo', openWorldHint: false },
+          })),
         };
       }
       if (message.method === 'tools/call') {
         mcpCalls++;
+        const hold = heldCall;
+        heldCall = undefined;
+        await hold?.release.wait();
         result = { content: [{ type: 'text', text: 'Local MCP result' }] };
+        json({ jsonrpc: '2.0', id: message.id, result });
+        hold?.replied.open();
+        return;
       }
       return json({ jsonrpc: '2.0', id: message.id, result });
     }
@@ -134,6 +141,14 @@ export async function oauthFixture() {
     },
     scope(value: string) {
       grantScope = value;
+    },
+    enableExtraTool(enabled: boolean) {
+      extraTool = enabled;
+    },
+    holdNextCall() {
+      const hold = { release: new Gate(), replied: new Gate() };
+      heldCall = hold;
+      return hold;
     },
     delayTools(fn?: () => Promise<void>) {
       beforeTools = fn;

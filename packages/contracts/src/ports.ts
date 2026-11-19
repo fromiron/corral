@@ -141,6 +141,8 @@ export interface AgentStartInput {
   nodeId: string;
   attemptNo: number;
   role: AgentRole;
+  /** The executing seat's job in the pinned team, separate from its reusable role. */
+  stepInstruction?: string;
   modelProfile: string;
   /** Simulated agents or real model calls; fixed for the whole run. */
   mode: 'mock' | 'live';

@@ -4,9 +4,9 @@ import type { Page } from '@playwright/test';
 import {
   activityBar,
   newConversation,
-  openLibrary,
   openProject,
   requestBox,
+  saveTemplateCopy,
 } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
@@ -173,10 +173,7 @@ test('a saved Corral is an optional choice that can be cleared back to a normal 
   corral,
 }) => {
   await corral.open('/');
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await saveTemplateCopy(page);
   const saved = await savedCorrals(page);
   expect(saved).toHaveLength(1);
   const custom = saved[0];

@@ -21,10 +21,17 @@ import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { tween } from '../design-kit/lib/springs.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import { ChevronDown, ChevronRight, CircleAlert, Plus, TriangleAlert, X } from '../ui/icons.ts';
-import type { EditRejection, Placement, PortRequest, StepKind } from './commands.ts';
+import {
+  type EditRejection,
+  type Placement,
+  type PortRequest,
+  type StepKind,
+  seatTaskSummary,
+} from './commands.ts';
 import { KIND_COLOR, KIND_ICON, kindOf, membersOf, portText, roleOf } from './kinds.ts';
 import {
   boundsOf,
+  GEOMETRY,
   type LaidEdge,
   type LaidItem,
   layoutTeam,
@@ -32,6 +39,7 @@ import {
   type Rect,
   routeTeam,
 } from './layout.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // The team editor's canvas (docs/specs/features/team-graph.md). Layout is automatic: the canvas
 // only turns pointer and keyboard input into structural edits and shows where they would land.
@@ -54,6 +62,7 @@ export interface ResultOffer {
 }
 
 export interface TeamGraphCanvasProps {
+  active: boolean;
   resultOffer?: ResultOffer | undefined;
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
@@ -141,7 +150,27 @@ const DASHES: Record<LaidEdge['kind'], string | undefined> = {
 const within = (r: Rect, p: { x: number; y: number }, slack = 0) =>
   p.x >= r.x - slack && p.x <= r.x + r.w + slack && p.y >= r.y - slack && p.y <= r.y + r.h + slack;
 
+/** Edits such as renaming a seat rebuild the layout without moving any card. */
+function sameGeometry(a: ReadonlyMap<string, LaidItem>, b: ReadonlyMap<string, LaidItem>) {
+  if (a.size !== b.size) return false;
+  for (const [id, item] of a) {
+    const next = b.get(id);
+    const r = item.rect;
+    if (
+      !next ||
+      next.kind !== item.kind ||
+      r.x !== next.rect.x ||
+      r.y !== next.rect.y ||
+      r.w !== next.rect.w ||
+      r.h !== next.rect.h
+    )
+      return false;
+  }
+  return true;
+}
+
 export function TeamGraphCanvas({
+  active,
   definition,
   diagnostics,
   selection,
@@ -183,11 +212,15 @@ export function TeamGraphCanvas({
   const reduced = useReducedMotion() ?? false;
   const markerId = useId().replace(/:/g, '');
 
-  const layout = useMemo(() => layoutTeam(definition, collapsed), [definition, collapsed]);
+  const reviewLoops = useMemo(() => requiredReviewLoopIds(definition.nodes), [definition.nodes]);
+  const layout = useMemo(
+    () => layoutTeam(definition, collapsed, reviewLoops),
+    [definition, collapsed, reviewLoops],
+  );
   const items = useTweenedItems(layout.items, reduced);
   const routed = useMemo(
-    () => routeTeam(definition, items, collapsed),
-    [definition, items, collapsed],
+    () => routeTeam(definition, items, collapsed, reviewLoops),
+    [definition, items, collapsed, reviewLoops],
   );
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
 
@@ -249,11 +282,36 @@ export function TeamGraphCanvas({
   const lastSelected = selection.nodes.at(-1);
   const view = useRef(viewport);
   view.current = viewport;
+  // Hiding the graph gives its pane zero size, not a new camera position. Only reveal a
+  // different selection/layout on return; a manually panned view can stay off the selection.
+  const revealed = useRef<{
+    id: string | undefined;
+    items: typeof layout.items;
+    inset: number;
+  } | null>(null);
+  const hidden = useRef(false);
+  const measured = viewport !== null;
   useEffect(() => {
     const element = pane.current;
     const viewport = view.current;
     const item = lastSelected ? layout.items.get(lastSelected) : undefined;
-    if (!element || !item || !viewport) return;
+    if (!active || !element?.clientWidth || !element.clientHeight) {
+      hidden.current = true;
+      return;
+    }
+    if (!measured || !viewport) return;
+    const returning = hidden.current;
+    hidden.current = false;
+    const last = revealed.current;
+    revealed.current = { id: lastSelected, items: layout.items, inset: insetRight };
+    if (
+      last &&
+      last.id === lastSelected &&
+      (last.items === layout.items || (returning && sameGeometry(last.items, layout.items))) &&
+      last.inset === insetRight
+    )
+      return;
+    if (!item) return;
     const { x, y, w, h } = item.rect;
     const k = viewport.k;
     const left = x * k + viewport.x;
@@ -269,7 +327,7 @@ export function TeamGraphCanvas({
       dy = element.clientHeight - margin - (top + h * k);
     // Only a new selection or a new layout moves the view; panning by hand never snaps back.
     if (dx || dy) setViewport({ ...viewport, x: viewport.x + dx, y: viewport.y + dy });
-  }, [lastSelected, layout.items, setViewport, pane, insetRight]);
+  }, [active, measured, lastSelected, layout.items, setViewport, pane, insetRight]);
 
   // ── dropping a step from the palette ─────────────────────────────────────
   const [drop, setDrop] = useState<{
@@ -330,11 +388,15 @@ export function TeamGraphCanvas({
   } | null>(null);
   useEffect(() => {
     if (
-      wire?.mode === 'pick' &&
-      (selection.nodes.length !== 1 || selection.nodes[0] !== wire.from.nodeId)
+      wire &&
+      ((wire.mode === 'pick' &&
+        (selection.nodes.length !== 1 || selection.nodes[0] !== wire.from.nodeId)) ||
+        (wire.from.port === 'exhausted' &&
+          nodes.get(wire.from.nodeId)?.type === 'loop' &&
+          reviewLoops.has(wire.from.nodeId)))
     )
       setWire(null);
-  }, [wire, selection.nodes]);
+  }, [wire, selection.nodes, nodes, reviewLoops]);
   const gesture = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const inMarks = routed.ports.filter((p) => p.side === 'in');
   const requestAt = (from: PortMark, point: { x: number; y: number }): PortRequest | null => {
@@ -613,7 +675,7 @@ export function TeamGraphCanvas({
   };
   const detail = (node: CorralNode): string => {
     if (node.type === 'output' && node.requireApproval) return t('approvalRequired');
-    if (node.type === 'agent') return roleOf(definition, node)?.prompt.split('\n')[0] ?? '';
+    if (node.type === 'agent') return seatTaskSummary(definition, node);
     if (node.type === 'loop' || node.type === 'team')
       return membersOf(definition, node.id)
         .filter((n) => n.parentId === node.id)
@@ -624,7 +686,22 @@ export function TeamGraphCanvas({
       return node.routes.map((r) => r.label).join(' · ');
     return '';
   };
-  const outPorts = routed.ports.filter((p) => p.side === 'out');
+  const endingId = (nodeId: string) =>
+    reviewLoops.has(nodeId) && nodes.get(nodeId)?.type === 'loop'
+      ? `${markerId}-ending-${nodeId}`
+      : undefined;
+  const outPorts: PortMark[] = [];
+  const endings: PortMark[] = [];
+  for (const port of routed.ports) {
+    if (port.side !== 'out') continue;
+    if (
+      port.port === 'exhausted' &&
+      reviewLoops.has(port.nodeId) &&
+      nodes.get(port.nodeId)?.type === 'loop'
+    )
+      endings.push(port);
+    else outPorts.push(port);
+  }
   const highlighted = new Set(drop?.check.ok ? drop.check.affected : highlightedEdges);
   const edgeStroke = (id: string) =>
     selection.edge === id || highlighted.has(id)
@@ -715,6 +792,7 @@ export function TeamGraphCanvas({
                     type="button"
                     data-node={item.id}
                     aria-pressed={isSelected}
+                    aria-describedby={endingId(node.id)}
                     className={cn(
                       focusRing,
                       size.type.body,
@@ -916,6 +994,7 @@ export function TeamGraphCanvas({
                 type="button"
                 data-node={item.id}
                 aria-pressed={isSelected}
+                aria-describedby={endingId(node.id)}
                 className={cn(focusRing, 'absolute rounded-xl text-left')}
                 style={{
                   transform: `translate(${item.rect.x}px, ${item.rect.y}px)`,
@@ -1013,6 +1092,26 @@ export function TeamGraphCanvas({
                 ) : null;
               })
             : null}
+          {endings.map(({ nodeId, at }) => (
+            <span
+              key={nodeId}
+              id={endingId(nodeId)}
+              className={cn(
+                size.type.caption,
+                'absolute z-10 inline-flex w-max origin-right -translate-x-full -translate-y-1/2 items-center gap-1.5 text-foreground',
+              )}
+              style={{
+                left: at.x,
+                top: at.y - GEOMETRY.reviewFooter / 2,
+                // Keep the ending legible at fit zoom without outgrowing its own footer.
+                scale: Math.max(1, Math.min(1.5, 1 / viewport.k)),
+                fontVariationSettings: fontWeights.semibold,
+              }}
+            >
+              {t('noFinalSubmission')}
+              <span aria-hidden className="size-2 bg-current" />
+            </span>
+          ))}
           {outPorts.map((port) => {
             const key = `${port.nodeId}:${port.port}`;
             const active = wire?.from.nodeId === port.nodeId && wire.from.port === port.port;

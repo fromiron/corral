@@ -155,6 +155,25 @@ describe('ScriptedAgentAdapter', () => {
     expect(settlement.outcome).toBe('failed');
     expect(settlement.error).toContain('CAPABILITY_DENIED');
   });
+
+  it('fails without submitting when an ask is refused for lack of permission', async () => {
+    const host = new RecordingHost();
+    host.denyTool = 'ask';
+    const handle = await new ScriptedAgentAdapter({ turns: 1 }).start(
+      {
+        ...input,
+        capabilities: { delegateTo: [], askTo: [{ nodeId: 'respond', label: 'Outrider' }] },
+        role: { ...input.role, allowedCollaborationTools: ['ask', 'submit_result'] },
+      },
+      host,
+    );
+    expect(await handle.waitForSettlement()).toMatchObject({
+      outcome: 'failed',
+      error: expect.stringContaining('CAPABILITY_DENIED'),
+    });
+    expect(host.calls).toEqual(['tool:ask']);
+  });
+
   it('hands collaboration notes to the reply instead of appending them when told to', async () => {
     const host = new RecordingHost();
     const seen: (readonly string[])[] = [];

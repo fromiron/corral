@@ -1,6 +1,7 @@
 import {
   CorralDefinition,
   type HarnessBindingRef,
+  type HarnessPreviewRole,
   isWorkAgent,
   type RunLimits,
   type SharedOutrider,
@@ -23,7 +24,7 @@ export interface SharedOutriderTarget {
 export function sharedOutriderTargets(
   definition: CorralDefinition,
   resolve?: ResolveTeam,
-  harnessMayAsk?: (binding: HarnessBindingRef) => boolean | undefined,
+  harnessMayAsk?: (role: HarnessPreviewRole) => boolean | undefined,
   limits: RunLimits = definition.limits,
 ): SharedOutriderTarget[] {
   const rows: SharedOutriderTarget[] = [];
@@ -57,7 +58,8 @@ export function sharedOutriderTargets(
           );
       }
       if (!isWorkAgent(node)) continue;
-      const harness = team.roles.find((role) => role.id === node.roleId)?.harness;
+      const role = team.roles.find((item) => item.id === node.roleId);
+      const harness = role?.harness;
       const depth = depths.get(node.id) ?? Number.POSITIVE_INFINITY;
       const row: SharedOutriderTarget = {
         nodeId: prefix + node.id,
@@ -73,8 +75,13 @@ export function sharedOutriderTargets(
         Math.min(limits.maxSpawns, limits.maxDelegationDepth)
       )
         row.unavailable = 'questions';
-      else if (harness) {
-        const mayAsk = harnessMayAsk?.(harness);
+      else if (role && (harness || role.skills !== undefined || role.mcpTools?.length)) {
+        const mayAsk = harnessMayAsk?.({
+          id: role.id,
+          harness,
+          skills: role.skills,
+          mcpTools: role.mcpTools,
+        });
         if (mayAsk === false) row.unavailable = 'harness';
         else if (mayAsk === undefined) row.permissionPending = true;
       }

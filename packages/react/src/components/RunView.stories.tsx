@@ -75,3 +75,25 @@ export const Disconnected: Story = {
     expect(within(canvasElement).getByRole('alert')).toHaveTextContent('Connection lost');
   },
 };
+
+export const NobodyAsked: Story = {
+  args: {
+    session: sessionStore({
+      runId: 'run_story',
+      startDefinition: {
+        ...linearCorral(['writer']),
+        sharedOutrider: {
+          modelProfile: 'critic',
+          principles: 'Check facts.',
+          targets: { kind: 'all' },
+        },
+      },
+      definition: linearCorral(['writer']),
+      projection: projectionWith({ status: 'succeeded' }),
+    }),
+    onSteer: () => {},
+  },
+  play: async ({ canvasElement }) => {
+    expect(within(canvasElement).getByText(/nobody asked|아무도 묻지 않았습니다/)).toBeVisible();
+  },
+};

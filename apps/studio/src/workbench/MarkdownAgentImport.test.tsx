@@ -15,7 +15,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-it('opens from a compact button, the same size as the editor head controls beside it', async () => {
+it('does not put a second file action or a dialog on screen before the editor opens import', async () => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
   document.body.append(container);
@@ -27,15 +27,19 @@ it('opens from a compact button, the same size as the editor head controls besid
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <MarkdownAgentImport editor={createEditorStore()} profiles={[]} projectId="default" />
+        <MarkdownAgentImport
+          open={false}
+          onClose={() => {}}
+          finalFocus={{ current: null }}
+          editor={createEditorStore()}
+          profiles={[]}
+          projectId="default"
+        />
       </IntlProvider>,
     ),
   );
-  const trigger = [...container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Import Markdown agent',
-  );
-  // Export JSON, Test run and Save in the head are all compact buttons.
-  expect(trigger?.dataset.size).toBe('compact');
+  expect(container.querySelector('button')).toBeNull();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
 });
 
 it('chooses the connected model with the searchable model field', async () => {
@@ -70,14 +74,17 @@ it('chooses the connected model with the searchable model field', async () => {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <MarkdownAgentImport editor={createEditorStore()} profiles={profiles} projectId="default" />
+        <MarkdownAgentImport
+          open
+          onClose={() => {}}
+          finalFocus={{ current: null }}
+          editor={createEditorStore()}
+          profiles={profiles}
+          projectId="default"
+        />
       </IntlProvider>,
     ),
   );
-  const open = [...container.querySelectorAll('button')].find(
-    (button) => button.textContent === 'Import Markdown agent',
-  );
-  await act(async () => open?.click());
   const field = () =>
     document.querySelector<HTMLButtonElement>(
       '[data-slot="model-picker-trigger"][aria-label^="Connected model profile"]',
