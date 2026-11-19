@@ -82,8 +82,7 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
         'Write the one-sentence invitation, incorporating review feedback when present. Use write_artifact then submit_result to submit your version.';
       definition.sharedOutrider = {
         modelProfile: advisorId,
-        principles:
-          'Review the supplied candidate against the given criterion. If it meets the criterion, pass it. Otherwise request revision. Write the structured review as a JSON artifact, using the exact target artifact version ID and criteria version ID provided, then submit your review version.',
+        principles: 'Check that the invitation explicitly mentions both bicycle and picnic.',
         targets: { kind: 'all' },
       };
       const enabled = setRequiredOutputReview(
@@ -173,8 +172,23 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
           verdict: r.verdict,
           target: r.targetVersionId,
           criteria: r.criteriaVersionId,
+          validation: r.issues
+            .filter((issue) => issue.criterionId === 'review_format')
+            .map((issue) =>
+              issue.reason.startsWith('the review names')
+                ? 'wrong_target'
+                : issue.reason.startsWith('the review uses criteria')
+                  ? 'wrong_criteria'
+                  : issue.reason.startsWith('the review is not valid review JSON')
+                    ? 'invalid_review_json'
+                    : 'invalid_review',
+            ),
         })),
         profiles: [...new Set(calls.map((c) => c.profile))],
+        submissions: Object.values(final.tasks).map((task) => ({
+          node: task.nodeId,
+          versions: task.submittedArtifactVersionIds,
+        })),
       };
       const out = join(ROOT, 'test-results', 'live');
       mkdirSync(out, { recursive: true });

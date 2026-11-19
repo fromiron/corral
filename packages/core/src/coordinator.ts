@@ -5824,6 +5824,22 @@ export class Coordinator {
             JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
           )
         : undefined;
+    // Some pinned Outputs have been inlined. Their strict decision-to-candidate mapping is
+    // already on the run snapshot, and the decision binding identifies its actual reviewer.
+    const requiredSources = new Set<string>();
+    if (role.outputContract === 'review' && run.snapshot.requiredReviewSources) {
+      for (const decision of definition.nodes) {
+        if (
+          decision.type !== 'decision' ||
+          !decision.inputBindings.some(
+            (b) => b.kind === 'task_output' && b.sourceNodeId === spec.nodeId,
+          )
+        )
+          continue;
+        for (const source of run.snapshot.requiredReviewSources[decision.id] ?? [])
+          requiredSources.add(source);
+      }
+    }
     const input: AgentStartInput = {
       sessionId: this.store.getRun(run.runId)?.sessionId ?? undefined,
       ...(conversation ? { conversation } : {}),
@@ -5889,9 +5905,44 @@ export class Coordinator {
           run,
           item ? [{ kind: 'run_input', name: 'criteria' }] : bindings,
           spec.iterationId,
+          requiredSources,
         ),
       ],
     };
+    if (requiredSources.size) {
+      const { iterationId } = spec;
+      const targetVersions = new Set(
+        [...requiredSources].flatMap((source) =>
+          this.submittedOutputOf(
+            run,
+            source,
+            iterationId && this.loopOf(run, source)
+              ? (round) => this.sameRound(run, round, iterationId)
+              : undefined,
+          ),
+        ),
+      );
+      const examples = [...targetVersions].map((targetArtifactVersionId) =>
+        JSON.stringify({
+          targetArtifactVersionId,
+          criteriaVersionId: input.criteriaVersionId,
+          verdict: 'inconclusive',
+          issues: [],
+          evidenceRefs: [],
+        }),
+      );
+      input.inputs.push({
+        name: 'required_review',
+        kind: 'run_input',
+        artifactVersionId: null,
+        text: [
+          'Evaluate each listed version against the criteria. Write one JSON review per version with write_artifact. The examples below give its exact target and criteria IDs.',
+          ...examples,
+          'Set verdict to pass, revise or inconclusive according to the candidate. For revise, include at least one issue in the format specified in your output contract.',
+          'Call submit_result once with exactly the version IDs returned for those JSON reviews. Keep any commentary inside the review issues.',
+        ].join('\n'),
+      });
+    }
     const recipeLoop = spec.iterationId
       ? run.projection.iterations[spec.iterationId]?.loopNodeId
       : undefined;
@@ -6115,6 +6166,7 @@ export class Coordinator {
     run: LiveRun,
     bindings: InputBinding[],
     iterationId: string | null,
+    requiredSources?: ReadonlySet<string>,
   ): ResolvedInput[] {
     const { brief, criteria } = run.snapshot.definition.input;
     const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
@@ -6127,27 +6179,29 @@ export class Coordinator {
         return [{ name: binding.name, kind: 'run_input', artifactVersionId: null, text }];
       }
       const source = binding.sourceNodeId ?? '';
-      let versionId: string | undefined;
+      let versions: (string | undefined)[] = [];
       if (binding.kind === 'task_output') {
-        // Inside a Loop, a producer in a Loop is read from this round: the round itself, a Loop
-        // round around it, or a nested Loop's round inside it, never an earlier round.
+        // Ordinary bindings read the first submitted version. A required reviewer must see
+        // every candidate the Output will publish, in its submitted order.
         const scoped = iterationId !== null && this.loopOf(run, source) !== null;
-        versionId = this.submittedOutputOf(
+        const submitted = this.submittedOutputOf(
           run,
           source,
           scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
-        )[0];
-      }
-      if (binding.kind === 'previous_iteration_output' && previousRound) {
-        versionId = this.submittedOutputOf(run, source, previousRound)[0];
-      }
-      if (binding.kind === 'explicit_version') versionId = binding.artifactVersionId;
-      const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
-      if (!versionId || text === null) {
-        if (binding.optional) return [];
+        );
+        versions = requiredSources?.has(source) ? submitted : submitted.slice(0, 1);
+      } else if (binding.kind === 'previous_iteration_output' && previousRound) {
+        versions = this.submittedOutputOf(run, source, previousRound).slice(0, 1);
+      } else if (binding.kind === 'explicit_version') versions = [binding.artifactVersionId];
+      const resolved = versions.flatMap((versionId) => {
+        const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
+        return versionId && text !== null
+          ? [{ name: binding.name, kind: binding.kind, artifactVersionId: versionId, text }]
+          : [];
+      });
+      if (!resolved.length && !binding.optional)
         throw new Error(`input "${binding.name}" (${binding.kind}) has no submitted version`);
-      }
-      return [{ name: binding.name, kind: binding.kind, artifactVersionId: versionId, text }];
+      return resolved;
     });
   }
 

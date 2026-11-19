@@ -427,3 +427,58 @@ it('keeps a writer’s existing review input and supplies this gate’s feedback
   );
   expect(compileDefinition(enabled.draft.definition).diagnostics).toEqual([]);
 });
+
+it('delivers each submitted candidate and its review protocol even when the person only wrote human principles', async () => {
+  const { next, gate } = setup();
+  const reviewer = next.definition.nodes.find((n) => n.id === gate.reviewerNodeId);
+  if (reviewer?.type !== 'agent' || reviewer.invocation !== 'scheduled')
+    throw Error('Missing test reviewer');
+  reviewer.inputBindings.push({ kind: 'task_output', name: 'notes', sourceNodeId: 'planner' });
+  const candidates: string[] = [];
+  const run = start(next.definition, undefined, {
+    script: async (input, host) => {
+      if (input.nodeId !== 'writer' && input.nodeId !== gate.reviewerNodeId) return null;
+      const versions: string[] = [];
+      async function write(text: string) {
+        const response = await host.invokeTool({ name: 'write_artifact', args: { text } });
+        if (!response.ok) throw Error('write failed');
+        versions.push(String(response.result.artifactVersionId));
+      }
+      if (input.nodeId === 'writer') {
+        for (const text of ['First page.', 'Second page.']) await write(text);
+        candidates.push(...versions);
+      } else {
+        const docs = input.inputs.filter((i) => i.name === 'draft');
+        expect(docs.map((d) => d.text)).toEqual(['First page.', 'Second page.']);
+        expect(input.role.prompt).toContain('Check the source.');
+        const protocol = input.inputs.find((i) => i.name === 'required_review');
+        for (const id of candidates) expect(protocol?.text).toContain(id);
+        const notes = input.inputs.find((i) => i.name === 'notes')?.artifactVersionId;
+        expect(notes).toBeTruthy();
+        expect(protocol?.text).not.toContain(notes!);
+        expect(protocol?.text).toContain(input.criteriaVersionId);
+        expect(protocol?.text).toContain('submit_result');
+        for (const document of docs)
+          await write(
+            JSON.stringify({
+              targetArtifactVersionId: document.artifactVersionId,
+              criteriaVersionId: input.criteriaVersionId,
+              verdict: 'pass',
+              issues: [],
+              evidenceRefs: [],
+            }),
+          );
+      }
+      const response = await host.invokeTool({
+        name: 'submit_result',
+        args: { artifactVersionIds: versions },
+      });
+      if (!response.ok) throw Error('submit failed');
+      return { outcome: 'succeeded' };
+    },
+  });
+  const p = await run.end();
+  expect(p.status, p.statusReason ?? '').toBe('succeeded');
+  expect(Object.values(p.reviews).map((r) => r.targetVersionId)).toEqual(candidates);
+  expect(p.output?.artifactVersionIds).toEqual(candidates);
+});
