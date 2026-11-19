@@ -52,7 +52,7 @@ Fields (use exactly these, no others):
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}
 
-Pick the smallest pattern that fits. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents. Write in the language of the goal.`;
+Pick the smallest pattern that fits. An on-request adviser or manuscript feedback does not require planning, research, implementation or sequential review roles. Use "single" for the underlying task unless the goal asks for distinct roles or a work sequence. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents. Write in the language of the goal.`;
 
 /** The plan in a model's answer, or null when there is none that fits. */
 export function planFromAnswer(text: string): TeamPlan | null {

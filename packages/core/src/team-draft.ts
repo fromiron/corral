@@ -125,7 +125,7 @@ const IMPLEMENT =
 const PLAN_FIRST =
   /\b(plan\w*|design\w*|migrat\w*|stages?|staged|step[- ]by[- ]step|phases?|phased|incremental\w*|roadmap|architect\w*)\b|설계|계획|마이그레이션|이관|옮기|옮겨|단계|아키텍처/i;
 const DOCUMENT =
-  /\b(documents?|docs?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
+  /\b(documents?|docs?|manuscripts?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|원고|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
 /** Writing a document: never a code pattern, whatever the document is about. */
 const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
 const SOFTWARE =
@@ -153,7 +153,11 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
     return 'tech_decision';
   const document = DOCUMENT.test(brief);
-  if (document && WRITE.test(brief)) return null;
+  if (
+    document &&
+    (WRITE.test(brief) || (!CODE.test(brief) && !SOFTWARE.test(brief) && FIX.test(brief)))
+  )
+    return null;
   // Fixing changes code; finding a cause without fixing it is research.
   if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
   if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
@@ -226,7 +230,7 @@ export function planWithPattern(
 function outriderFromGoal(goal: string): TeamPlan['outrider'] {
   const review = /\b(review|feedback|critique|pass)\b|검토|리뷰|피드백|수정 의견|통과/i.test(goal);
   const request =
-    /\b(on request|when needed|if needed|as needed|ask for|request a|request review|can ask)\b|필요할 때|요청할 수|요청할 때|원할 때|물어볼 수|물어보게|부탁할 수/i.test(
+    /\b(on request|on demand|when needed|when asked|if needed|as needed|ask for|request a|request review|can ask)\b|필요할 때|요청할 수|요청할 때|원할 때|물어볼 수|물어보게|부탁할 수/i.test(
       goal,
     );
   const mustPass =
@@ -291,6 +295,40 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
     finalApproval: parts.finalApproval,
     ...(outrider ? { outrider } : {}),
   };
+}
+
+/** Explicit task roles take priority over the inferred shape of an advice-only goal. */
+function hasExplicitTeamStructure(goal: string): boolean {
+  return (
+    /\b(?:two|three|four|[2-9])\s+(?:(?:different|distinct|separate)\s+)?(?:agents|roles|workers)\b|(?:두|세|네)\s*(?:명의?|개의?)?\s*(?:역할|작업자|에이전트)/i.test(
+      goal,
+    ) ||
+    /\bone (?:agent|role|worker)\b.*\b(?:another|the other)\b|(?:역할을|작업을)\s*(?:나누|분담)/i.test(
+      goal,
+    ) ||
+    /\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b.{0,30}\b(?:and|then)\b.{0,16}\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b|(?:기획자|조사자|작성자|편집자|구현자|검토자).{0,18}(?:와|과|다음에|그 뒤).{0,12}(?:기획자|조사자|작성자|편집자|구현자|검토자)/i.test(
+      goal,
+    )
+  );
+}
+
+/** The plan Studio can present after a model answer. A local recovery retains its origin. */
+export function planAfterModel(
+  goal: string,
+  proposed: TeamPlan | null,
+  wording: TeamWording,
+): { plan: TeamPlan | null; recovery: 'incompatible' | 'unusable' | null } {
+  const local = planFromGoal(goal, wording);
+  if (
+    local?.pattern !== 'single' ||
+    (local.outrider !== 'consultation' && local.outrider !== 'artifact_review') ||
+    hasExplicitTeamStructure(goal)
+  )
+    return { plan: proposed, recovery: null };
+
+  if (proposed?.pattern === 'single' && proposed.outrider === local.outrider)
+    return { plan: proposed, recovery: null };
+  return { plan: local, recovery: proposed ? 'incompatible' : 'unusable' };
 }
 
 const CONTRACT: Record<BaseSlot, CorralDefinition['roles'][number]['outputContract']> = {

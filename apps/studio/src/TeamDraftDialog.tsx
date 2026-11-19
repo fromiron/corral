@@ -5,8 +5,9 @@ import {
   TEAM_SLOTS,
   type TeamPattern,
   TeamPlan,
+  UNUSABLE_TEAM_PLAN_MESSAGE,
 } from '@corral/contracts';
-import { isReadOnlyTeam, planWithPattern, type TeamWording } from '@corral/core';
+import { isReadOnlyTeam, planAfterModel, planWithPattern, type TeamWording } from '@corral/core';
 import { draftFromPlan, planFromGoal } from '@corral/react';
 import {
   Button,
@@ -46,6 +47,7 @@ export function TeamDraftDialog({
   const [plan, setPlan] = useState<TeamPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recovery, setRecovery] = useState<ReturnType<typeof planAfterModel>['recovery']>(null);
   const [askFailed, setAskFailed] = useState(false);
   const pendingRequest = useRef<AbortController | null>(null);
   const draftIntent = useRef<{ goal: string; id: string } | null>(null);
@@ -67,12 +69,14 @@ export function TeamDraftDialog({
   const suggest = () => {
     setError(null);
     setAskFailed(false);
+    setRecovery(null);
     setPlan(planFromGoal(goal, wording));
   };
   const ask = async () => {
     if (!models) return;
     setBusy(true);
     setError(null);
+    setRecovery(null);
     const controller = new AbortController();
     pendingRequest.current?.abort();
     pendingRequest.current = controller;
@@ -85,16 +89,30 @@ export function TeamDraftDialog({
       });
       if (!controller.signal.aborted) {
         setAskFailed(false);
-        setPlan(result.plan);
+        const resolved = planAfterModel(goal, result.plan, wording);
+        setPlan(resolved.plan);
+        setRecovery(resolved.recovery);
       }
     } catch (failure) {
-      const unusable = failure instanceof ApiError && failure.code === 'MODEL_UNAVAILABLE';
+      const unusable =
+        failure instanceof ApiError &&
+        failure.code === 'MODEL_UNAVAILABLE' &&
+        failure.message.startsWith(UNUSABLE_TEAM_PLAN_MESSAGE);
       if (
         failure instanceof ApiError &&
         ['MODEL_UNAVAILABLE', 'CAPABILITY_DENIED'].includes(failure.code)
       )
         draftIntent.current = null;
       if (!controller.signal.aborted) {
+        if (unusable) {
+          const resolved = planAfterModel(goal, null, wording);
+          if (resolved.plan) {
+            setAskFailed(false);
+            setPlan(resolved.plan);
+            setRecovery(resolved.recovery);
+            return;
+          }
+        }
         setAskFailed(true);
         // The server's words for an unusable answer are not in the screen's language.
         setError(
@@ -144,6 +162,11 @@ export function TeamDraftDialog({
         <h2 className="text-title" style={{ fontVariationSettings: fontWeights.semibold }}>
           {t('title')}
         </h2>
+        {recovery ? (
+          <p role="alert" className="text-body">
+            {t(recovery === 'unusable' ? 'localAfterInvalidModel' : 'localAfterMismatchedModel')}
+          </p>
+        ) : null}
         {!plan ? (
           <>
             <label
@@ -255,6 +278,7 @@ export function TeamDraftDialog({
               type="button"
               onClick={() => {
                 draftIntent.current = null;
+                setRecovery(null);
                 setPlan(null);
               }}
               variant="tertiary"

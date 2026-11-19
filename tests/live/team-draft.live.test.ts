@@ -8,8 +8,9 @@ import {
   TEAM_SLOTS,
   type TeamPattern,
   TeamPlan,
+  UNUSABLE_TEAM_PLAN_MESSAGE,
 } from '@corral/contracts';
-import { PATTERN_TEMPLATES, planFromGoal, type TeamWording } from '@corral/core';
+import { PATTERN_TEMPLATES, planAfterModel, planFromGoal, type TeamWording } from '@corral/core';
 import {
   type CorralServer,
   createLiveModels,
@@ -112,6 +113,13 @@ interface GoalResult {
   pattern: TeamPattern | 'invalid' | 'error';
   outrider: TeamPlan['outrider'] | null;
   expectedOutrider?: GoalEntry['expectedOutrider'];
+  rawAccepted?: boolean;
+  preview?: {
+    pattern: TeamPattern | null;
+    outrider: TeamPlan['outrider'] | null;
+    source: 'model' | 'local' | null;
+    recovery: ReturnType<typeof planAfterModel>['recovery'];
+  };
   accepted: boolean;
   latencyMs: number;
   /** The route's error code when there was no usable plan. */
@@ -243,8 +251,7 @@ async function measure(
         code = error?.code ?? `HTTP_${response.status}`;
         // The route's own wording for an answer that failed the contract.
         pattern =
-          code === 'MODEL_UNAVAILABLE' &&
-          /answer was not a usable team plan/.test(error?.message ?? '')
+          code === 'MODEL_UNAVAILABLE' && error?.message?.startsWith(UNUSABLE_TEAM_PLAN_MESSAGE)
             ? 'invalid'
             : 'error';
       }
@@ -253,14 +260,36 @@ async function measure(
       ).json();
       const reported = page.items.filter((attempt) => attempt.usage.source === 'reported');
       const outrider = plan?.success ? (plan.data.outrider ?? null) : null;
+      const rawAccepted =
+        (entry.accept as string[]).includes(pattern) &&
+        (!entry.expectedOutrider || outrider === entry.expectedOutrider);
+      const preview = entry.expectedOutrider
+        ? pattern === 'error'
+          ? { plan: null, recovery: null }
+          : planAfterModel(entry.goal, plan?.success ? plan.data : null, LOCAL_WORDING)
+        : null;
+      const accepted = preview
+        ? preview.plan !== null &&
+          entry.accept.includes(preview.plan.pattern) &&
+          preview.plan.outrider === entry.expectedOutrider
+        : rawAccepted;
       const goal: GoalResult = {
         id: entry.id,
         pattern,
         outrider,
         ...(entry.expectedOutrider ? { expectedOutrider: entry.expectedOutrider } : {}),
-        accepted:
-          (entry.accept as string[]).includes(pattern) &&
-          (!entry.expectedOutrider || outrider === entry.expectedOutrider),
+        ...(preview
+          ? {
+              rawAccepted,
+              preview: {
+                pattern: preview.plan?.pattern ?? null,
+                outrider: preview.plan?.outrider ?? null,
+                source: preview.recovery ? 'local' : preview.plan ? 'model' : null,
+                recovery: preview.recovery,
+              },
+            }
+          : {}),
+        accepted,
         latencyMs,
         ...(code ? { code } : {}),
         attempts: page.items.length,
@@ -357,6 +386,12 @@ describe.skipIf(!enabled)('team draft pattern choice with real models', () => {
         )}; local ${local.filter((goal) => goal.accepted).length}/${local.length}; ${budget.used} requests`,
     );
     expect(failure).toBeNull();
+    const mismatches = results.flatMap((result) =>
+      result.goals.flatMap((goal) =>
+        goal.expectedOutrider && !goal.accepted ? [`${result.modelId}/${goal.id}`] : [],
+      ),
+    );
+    expect(mismatches).toEqual([]);
   }, 3_600_000);
 });
 

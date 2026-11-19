@@ -309,6 +309,102 @@ describe('the plan editor’s patterns', () => {
     },
   );
 
+  it.each([
+    [
+      '고객용 안내문을 쓰고 필요할 때 같은 전문가에게 자문을 요청해 주세요.',
+      'tech_decision',
+      'consultation',
+    ],
+    [
+      '원고의 오류는 작성자가 고치고 원할 때 초안 리뷰를 요청하게 해줘.',
+      'implement_review',
+      'artifact_review',
+    ],
+  ] as const)(
+    'keeps an on-demand Korean goal free of added workflow (%s)',
+    async (goal, pattern, outrider) => {
+      fixture.draftTeam.mockResolvedValue({
+        plan: {
+          name: '모델 제안',
+          pattern,
+          brief: goal,
+          criteria: ['요청을 충족하기'],
+          roles: TEAM_SLOTS[pattern].map((slot) => ({ slot, name: slot, duty: '결과 만들기' })),
+          ...(pattern === 'implement_review' ? { reviewRounds: 2 } : {}),
+          finalApproval: false,
+          outrider,
+        },
+        model: { provider: 'test', modelId: 'fake' },
+      });
+      await mount(ko as Messages, 'ko');
+      await type(field<HTMLTextAreaElement>(ko.TeamDraft.goalLabel), goal);
+      await press(button(ko.TeamDraft.ask));
+      expect(roleNames()).toHaveLength(1);
+      expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/로컬 제안/);
+      await press(button(ko.TeamDraft.open));
+      expect(fixture.saved[0]?.definition.nodes.map((node) => node.type)).toEqual([
+        'agent',
+        'output',
+      ]);
+    },
+  );
+
+  it('shows a localized preview when a returned model answer cannot be parsed for an on-demand goal', async () => {
+    fixture.draftTeam.mockRejectedValue(
+      new ApiError(
+        502,
+        'MODEL_UNAVAILABLE',
+        "the model's answer was not a usable team plan; use the local suggestion",
+      ),
+    );
+    await mount(ko as Messages, 'ko');
+    await type(
+      field<HTMLTextAreaElement>(ko.TeamDraft.goalLabel),
+      '보고서에 피드백이 필요할 때만 요청할 수 있게 해줘.',
+    );
+    await press(button(ko.TeamDraft.ask));
+    expect(roleNames()).toHaveLength(1);
+    expect(document.querySelector('[role="alert"]')?.textContent).toMatch(/로컬 제안/);
+    await press(button(ko.TeamDraft.open));
+    expect(fixture.saved[0]?.definition.sharedOutrider?.artifactReview).toBe(true);
+  });
+
+  it('keeps the model preview for a goal naming distinct roles', async () => {
+    const goal =
+      'Give a planner and a writer distinct roles. They can ask for expert advice when needed.';
+    fixture.draftTeam.mockResolvedValue({
+      plan: {
+        name: 'Two roles',
+        pattern: 'write_review',
+        brief: goal,
+        criteria: ['Produce the requested draft.'],
+        roles: TEAM_SLOTS.write_review.map((slot) => ({ slot, name: slot, duty: 'Do your part.' })),
+        reviewRounds: 2,
+        finalApproval: false,
+        outrider: 'consultation',
+      },
+      model: { provider: 'test', modelId: 'fake' },
+    });
+    await mount();
+    await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), goal);
+    await press(button(en.TeamDraft.ask));
+    expect(roleNames()).toEqual(['planner', 'writer', 'reviewer']);
+    expect(document.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('leaves a request failure visible rather than choosing a local draft', async () => {
+    const message = 'The model request failed; generate a new draft or use the local suggestion.';
+    fixture.draftTeam.mockRejectedValue(new ApiError(502, 'MODEL_UNAVAILABLE', message));
+    await mount();
+    await type(
+      field<HTMLTextAreaElement>(en.TeamDraft.goalLabel),
+      'Let the writer ask for feedback on demand.',
+    );
+    await press(button(en.TeamDraft.ask));
+    expect(roleNames()).toEqual([]);
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(message);
+  });
+
   it('choosing each pattern shows its roles and criteria and keeps the name and brief', async () => {
     await mount();
     await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), 'Write a launch note');

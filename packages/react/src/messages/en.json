@@ -1480,6 +1480,8 @@
     "queueNext": "Send a request for after the run"
   },
   "TeamDraft": {
+    "localAfterInvalidModel": "The model did not return a usable plan. Showing a local suggestion for your request.",
+    "localAfterMismatchedModel": "The model’s workflow or advice policy did not fit your request for advice on demand. Showing a local suggestion.",
     "reviewQuestion": "Should the team get feedback, or must the work pass review before submission?",
     "reviewFeedback": "Get feedback only",
     "reviewRequired": "Pass before submitting",

@@ -20,7 +20,7 @@ import type {
   ReasoningCapabilities,
   TeamPlan,
 } from '@corral/contracts';
-import { canonicalJson } from '@corral/contracts';
+import { canonicalJson, UNUSABLE_TEAM_PLAN_MESSAGE } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
@@ -742,7 +742,7 @@ export class ModelRegistry implements ModelResolver {
     const plan = planFromAnswer(text);
     return plan
       ? { ok: true, plan, model: { provider, modelId } }
-      : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+      : unavailable(`${UNUSABLE_TEAM_PLAN_MESSAGE}; use the local suggestion`);
   }
 
   /**

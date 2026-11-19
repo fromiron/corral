@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** The stable reason for a successful request whose answer did not supply a usable plan. */
+export const UNUSABLE_TEAM_PLAN_MESSAGE = "the model's answer was not a usable team plan";
+
 // a team drafted from a goal. It is a small plan, not a Corral definition: tools,
 // connections and limits come from the pattern when the plan becomes a definition, so neither
 // a model's answer nor pasted text can grant a permission through it.
