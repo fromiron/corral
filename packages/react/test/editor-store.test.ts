@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { addNode, connect } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
+import { addAgent } from '../src/team-editor/commands.ts';
 
 function withAgentAndOutput() {
   const store = createEditorStore();
@@ -12,6 +13,36 @@ function withAgentAndOutput() {
 }
 
 describe('editor store history', () => {
+  it('restores the empty team in one undo after adding its first agent and result', () => {
+    const store = createEditorStore();
+    const before = store.getState().draft;
+    const result = addAgent(
+      before,
+      {
+        role: {
+          name: 'Planner',
+          prompt: 'Make a plan.',
+          modelProfile: 'model-a',
+          outputContract: 'text',
+          allowedWorkTools: [],
+          allowedCollaborationTools: ['submit_result'],
+        },
+      },
+      { kind: 'empty' },
+    );
+    if (!result.ok) throw new Error(result.reason);
+    store.getState().applyDraft(result.draft);
+    const { nodes, controlEdges } = store.getState().draft.definition;
+    expect(nodes).toMatchObject([
+      { type: 'agent', label: 'Planner' },
+      { type: 'output', inputBindings: [{ kind: 'task_output', sourceNodeId: result.nodeId }] },
+    ]);
+    expect(controlEdges).toMatchObject([{ source: result.nodeId, target: nodes[1]?.id }]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(before);
+    expect(store.getState().canUndo).toBe(false);
+  });
+
   it('undoes and redoes structural edits, and a new edit clears redo', () => {
     const { store, agent, output } = withAgentAndOutput();
     const connected = connect(store.getState().draft, {

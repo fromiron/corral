@@ -26,6 +26,7 @@ let library: HarnessEntryView[] = [];
 const pending = () => new Promise<never>(() => {});
 const api = {
   entries: vi.fn(async () => library),
+  packages: vi.fn(async () => []),
   readEntry: vi.fn(pending),
   resource: vi.fn(pending),
 };
@@ -88,15 +89,15 @@ async function open() {
 }
 const adds = (container: HTMLElement) =>
   [...container.querySelectorAll('button')].filter(
-    (button) => button.textContent === messages.Resources.add,
+    (button) => button.textContent === 'Create skill',
   );
 
-it('lets the empty library carry its Add, with no button row of its own above it', async () => {
+it('offers create and import above the empty skills manager', async () => {
   const container = await open();
-  const empty = container.querySelector('[data-slot="empty-view"]');
+  const empty = container.querySelector('[data-slot="empty-state"]');
   expect(empty?.textContent).toContain(messages.Resources.emptySkills);
   expect(adds(container)).toHaveLength(1);
-  expect(empty?.contains(adds(container)[0] as Node)).toBe(true);
+  expect(container.textContent).toContain('Import');
 });
 
 it('moves focus to the Add above the list once the first saved skill replaces the empty state', async () => {
@@ -107,7 +108,8 @@ it('moves focus to the Add above the list once the first saved skill replaces th
     (b) => b.textContent === 'Save skill',
   );
   await act(async () => save?.click());
-  expect(container.querySelector('[data-slot="empty-view"]')).toBeNull();
+  expect(container.querySelector('[data-slot="empty-state"]')).toBeNull();
+  expect(container.querySelector('table')?.textContent).toContain('Review');
   expect(adds(container)).toHaveLength(1);
   expect(document.activeElement).toBe(adds(container)[0]);
 });

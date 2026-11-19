@@ -13,6 +13,7 @@ import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 import { ProfileContextDetails } from './ProfileContextDetails.tsx';
+import { useSkillLabel } from './RoleSkills.tsx';
 import { RunChanges } from './RunChanges.tsx';
 import { RuntimeRecovery } from './RuntimeRecovery.tsx';
 
@@ -35,6 +36,7 @@ export function RunStatusCards({
   const branchText = useTranslations('MessageBranch');
   const advisorWord = useTranslations('Advice')('advisor');
   const { mode, workspaces } = useServices();
+  const skillLabel = useSkillLabel();
   const state = useStore(session);
   const [copy, setCopy] = useState<boolean | null>(null);
   useEffect(() => {
@@ -195,7 +197,7 @@ export function RunStatusCards({
             <Link className="underline" {...navigation.link('models')}>
               {t('modelSettings')}
             </Link>
-            <HarnessDetails session={session} />
+            <HarnessDetails session={session} skillLabel={skillLabel} />
           </div>
         </AccordionContent>
       </AccordionItem>

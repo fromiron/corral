@@ -227,9 +227,13 @@ export {
   type TeamWording,
 } from './team/draft.ts';
 export type { Pattern, TeamReference } from './team-editor/commands.ts';
-export { importableRoles } from './team-editor/commands.ts';
+export { addAgent, importableAgents, setRequiredOutputReview } from './team-editor/commands.ts';
+export { RoleForm } from './team-editor/NodeSettings.tsx';
+export { TeamAssistant, type TeamAssistantHost } from './team-editor/TeamAssistant.tsx';
 export {
   TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,
   type TeamEditorNavigation,
+  type TeamEditorProps,
+  type TeamEditorView,
 } from './team-editor/TeamEditor.tsx';

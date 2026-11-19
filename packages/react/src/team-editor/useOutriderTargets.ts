@@ -1,52 +1,73 @@
-import type { CorralDefinition, HarnessBindingRef } from '@corral/contracts';
+import type { CorralDefinition, HarnessPreviewRole } from '@corral/contracts';
 import { sharedOutriderTargets } from '@corral/core';
 import { useEffect, useMemo, useState } from 'react';
 
-export type ReadHarnessAsk = (binding: HarnessBindingRef) => Promise<boolean>;
+export type ReadHarnessAsk = (role: HarnessPreviewRole) => Promise<boolean | undefined>;
 
-/** One preview per pinned work style used by the roster, including inside saved reference teams. */
+/** Preview each distinct policy and role selection, including those in saved reference teams. */
 export function useOutriderTargets(
   definition: CorralDefinition,
   enabled: boolean,
   resolve: Parameters<typeof sharedOutriderTargets>[1],
   read: ReadHarnessAsk | undefined,
 ) {
+  const scope = useMemo(
+    () => ({
+      read: enabled ? read : undefined,
+      pending: new Map<string, Promise<boolean | undefined>>(),
+    }),
+    [enabled, read],
+  );
   const [checked, setChecked] = useState<{
-    read: ReadHarnessAsk;
+    scope: typeof scope;
     permissions: ReadonlyMap<string, boolean>;
   }>();
-  const { rows, keys } = useMemo(() => {
-    const pins = new Set<string>();
+  const { rows, missing } = useMemo(() => {
+    const missing = new Map<string, HarnessPreviewRole>();
     const rows = enabled
-      ? sharedOutriderTargets(definition, resolve, (binding) => {
-          const key = `${binding.profileId}@${binding.revision}`;
-          pins.add(key);
-          return checked && checked.read === read ? checked.permissions.get(key) : undefined;
+      ? sharedOutriderTargets(definition, resolve, (role) => {
+          const { harness, skills, mcpTools } = role;
+          const key = JSON.stringify([
+            harness?.profileId,
+            harness?.revision,
+            skills && [...new Set(skills.map((s) => `${s.resourceHash}:${s.entry}`))].sort(),
+            mcpTools &&
+              [...new Set(mcpTools.map((tool) => `${tool.serverId}:${tool.name}`))].sort(),
+          ]);
+          const allowed = checked?.scope === scope ? checked.permissions.get(key) : undefined;
+          if (allowed === undefined && !missing.has(key)) missing.set(key, role);
+          return allowed;
         })
       : [];
-    return { rows, keys: [...pins].sort().join('\n') };
-  }, [definition, enabled, resolve, read, checked]);
+    return { rows, missing };
+  }, [definition, enabled, resolve, scope, checked]);
 
+  useEffect(() => () => scope.pending.clear(), [scope]);
   useEffect(() => {
-    if (!read || !keys) return;
-    let active = true;
-    const permissions = new Map<string, boolean>();
-    for (const key of keys.split('\n')) {
-      const [profileId, revision] = key.split('@');
-      if (!profileId) continue;
-      void read({ profileId, revision: Number(revision) }).then(
+    if (!scope.read) return;
+    const { pending } = scope;
+    for (const key of pending.keys()) {
+      if (!missing.has(key)) pending.delete(key);
+    }
+    for (const [key, role] of missing) {
+      if (pending.has(key)) continue;
+      const preview = scope.read(role);
+      pending.set(key, preview);
+      void preview.then(
         (allowed) => {
-          if (!active) return;
-          permissions.set(key, allowed);
-          setChecked({ read, permissions: new Map(permissions) });
+          if (allowed === undefined || pending.get(key) !== preview) return;
+          setChecked((previous) => ({
+            scope,
+            permissions: new Map(previous?.scope === scope ? previous.permissions : []).set(
+              key,
+              allowed,
+            ),
+          }));
         },
-        // A failed preview cannot confirm the permission. Refreshing work styles retries it.
+        // A preview problem or transport failure leaves permission unconfirmed.
         () => {},
       );
     }
-    return () => {
-      active = false;
-    };
-  }, [keys, read]);
+  }, [missing, scope]);
   return rows;
 }

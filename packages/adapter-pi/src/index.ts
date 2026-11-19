@@ -21,6 +21,7 @@ export {
   type SdkResources,
   SdkWorkerFrame,
   WorkerFrame,
+  WorkerTool,
 } from './protocol.ts';
 export { normalizeUsage, type UsageObservation } from './usage.ts';
 export { runWorker, type WorkerDeps } from './worker.ts';

@@ -1,6 +1,7 @@
 import {
   type CorralDefinition,
   CorralDefinition as Definition,
+  isWorkAgent,
   TEAM_PATTERNS,
   TEAM_SLOTS,
   type TeamPattern,
@@ -12,11 +13,14 @@ import {
   compileDefinition,
   draftFromPlan,
   isReadOnlyTeam,
+  isTemplatePattern,
   PATTERN_TEMPLATES,
+  planAfterModel,
   planFromGoal,
   planRun,
   planWithPattern,
   ROLE_PRESETS,
+  ROLE_RULES,
   type RolePresetId,
   TEAM_TEMPLATE_ROLES,
   type TeamTemplateWording,
@@ -90,15 +94,16 @@ function templateWording(pattern: TemplatePattern): TeamTemplateWording {
   };
 }
 
-/** Everything a plan may word: names, brief, criteria, prompts, labels, rounds, approval. */
+/** Everything a plan may word: names, brief, criteria, seat duties, labels, rounds, approval. */
 function structure(definition: CorralDefinition) {
   return {
     ...definition,
     name: '',
     input: { ...definition.input, brief: '', criteria: [] },
-    roles: definition.roles.map((role) => ({ ...role, name: '', prompt: '' })),
+    roles: definition.roles.map((role) => ({ ...role, name: '' })),
     nodes: definition.nodes.map((node) => {
       const unlabeled = { ...node, label: '' };
+      if (isWorkAgent(unlabeled)) return { ...unlabeled, stepInstruction: '' };
       if (unlabeled.type === 'loop') return { ...unlabeled, maxIterations: 0 };
       if (unlabeled.type === 'output') return { ...unlabeled, requireApproval: false };
       return unlabeled;
@@ -110,6 +115,22 @@ const changing = (definition: CorralDefinition) =>
   definition.roles
     .filter((role) => role.allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never)))
     .map((role) => role.id);
+
+it.each(TEAM_PATTERNS)('%s keeps each planned duty on its seat', (pattern) => {
+  const proposed = planWithPattern(
+    { name: 'Team', brief: 'Brief.', criteria: [] },
+    pattern,
+    wording,
+  );
+  const { definition } = draftFromPlan(proposed, 'drafted_words', labels);
+  const seats = definition.nodes.filter(isWorkAgent);
+  expect(seats.map((node) => [node.roleId, node.stepInstruction])).toEqual(
+    proposed.roles.map(({ slot, duty }) => [slot, duty]),
+  );
+  if (!isTemplatePattern(pattern)) {
+    for (const role of definition.roles) expect(role.prompt).toBe(ROLE_RULES);
+  }
+});
 
 describe('drafting the five template patterns', () => {
   it('maps each to the library template of the same name', () => {
@@ -168,7 +189,9 @@ describe('drafting the five template patterns', () => {
       ['fix', 'My fix'],
       ['review', 'My review'],
     ]);
-    expect(drafted.roles[1]?.prompt.startsWith('My duty for fix.')).toBe(true);
+    expect(drafted.nodes.find((node) => node.id === 'fix')).toMatchObject({
+      stepInstruction: 'My duty for fix.',
+    });
     expect(drafted.nodes.find((node) => node.type === 'loop')).toMatchObject({ maxIterations: 3 });
     expect(drafted.nodes.find((node) => node.type === 'output')).toMatchObject({
       requireApproval: true,
@@ -440,5 +463,148 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
         expect(['single', 'write_review', 'research_write_review'], goal).toContain(
           shape(goal, base),
         );
+  });
+});
+
+it('keeps requested artifact advice outside the work sequence', () => {
+  const proposed = planFromGoal(
+    'Let the writer ask for manuscript review when needed and revise it before submitting.',
+    wording,
+  );
+  if (!proposed) throw new Error('expected a plan');
+  expect(proposed.pattern).toBe('single');
+  const { definition } = draftFromPlan(proposed, 'requested_review', labels);
+  expect(definition.sharedOutrider).toMatchObject({
+    targets: { kind: 'all' },
+    artifactReview: true,
+  });
+  expect(compileDefinition(definition).ok).toBe(true);
+  expect(definition.nodes.map((step) => step.type)).toEqual(['agent', 'output']);
+  expect(definition.roles).toHaveLength(1);
+});
+
+it.each([
+  ['작업자가 직접 고쳐 제출', undefined],
+  ['모두가 필요할 때 전문가에게 물어보게 해줘', 'consultation'],
+  ['작성자가 원고 리뷰를 요청할 수 있게', 'artifact_review'],
+  ['리뷰 후 제출', 'clarify_review'],
+  ['매 제출 전 반드시 통과', 'required_review'],
+] as const)('keeps authorship and review policy distinct for %s', (goal, policy) => {
+  const proposal = planFromGoal(goal, wording);
+  expect(proposal?.outrider).toBe(policy);
+  expect(proposal?.pattern).toBe('single');
+});
+
+it.each([
+  '작성자가 필요할 때만 전문가에게 자문한다. 검토 통과나 자동 관찰은 필요 없다.',
+  'The writer consults an expert when needed. No review pass or automatic observation is needed.',
+  'Let the writer ask for advice on demand; passing review and automatic observation are not required.',
+])('keeps negated review and observation out of both goal-draft paths: %s', (goal) => {
+  const local = planFromGoal(goal, wording);
+  expect(local).toMatchObject({ pattern: 'single', outrider: 'consultation' });
+  if (!local) throw new Error('Expected a local plan');
+  expect(local).not.toHaveProperty('observeWork');
+  const proposed: TeamPlan = { ...local, name: 'Model writer', outrider: 'consultation' };
+  expect(planAfterModel(goal, proposed, wording)).toEqual({ plan: proposed, recovery: null });
+  const { definition } = draftFromPlan(proposed, 'advice', labels);
+  expect(definition.nodes.map((node) => node.type)).toEqual(['agent', 'output']);
+  expect(definition.sharedOutrider).not.toHaveProperty('observation');
+  expect(definition.sharedOutrider).not.toHaveProperty('artifactReview');
+});
+
+it('does not negate independently requested manuscript feedback or work observation', () => {
+  expect(
+    planFromGoal(
+      'Ask for manuscript feedback when needed. No review pass is needed. Watch work in progress.',
+      wording,
+    ),
+  ).toMatchObject({ pattern: 'single', outrider: 'artifact_review', observeWork: true });
+  expect(planFromGoal('Write the note. A review pass is not required.', wording)).toMatchObject({
+    pattern: 'single',
+  });
+  const noGate = 'Write the note. A review pass is not required.';
+  const proposed = planFromGoal('Write and review a note.', wording);
+  expect(planAfterModel(noGate, proposed, wording)).toMatchObject({
+    plan: { pattern: 'single' },
+    recovery: 'incompatible',
+  });
+});
+
+describe('work observation in a goal draft', () => {
+  it('preserves explicit work observation even when the model omits it or its response needs local recovery', () => {
+    const goal = 'Let the writer ask for feedback when needed and watch work in progress.';
+    const local = planFromGoal(goal, wording);
+    if (!local) throw new Error('Expected a suggestion');
+    const { observeWork: _omitted, ...model } = local;
+    expect(planAfterModel(goal, model, wording)).toMatchObject({
+      plan: { observeWork: true, outrider: 'artifact_review' },
+      recovery: null,
+    });
+    expect(planAfterModel(goal, null, wording)).toMatchObject({
+      plan: { observeWork: true, outrider: 'artifact_review' },
+      recovery: 'unusable',
+    });
+    expect(planAfterModel('Watch work in progress.', null, wording)).toMatchObject({
+      plan: { observeWork: true },
+      recovery: 'unusable',
+    });
+  });
+
+  it.each([
+    ['진행 중 자동 관찰을 켜고 작성자가 원고 리뷰를 요청할 수 있게', 'artifact_review'],
+    ['자동 관찰을 켜 줘.', undefined],
+    ['작업자들을 주기적으로 관찰해 줘.', undefined],
+    ['Automatically monitor the workers as they work.', undefined],
+    ['Let the Outrider watch work in progress.', undefined],
+  ] as const)('adds an independent observation proposal for %s', (goal, outrider) => {
+    const suggested = planFromGoal(goal, wording);
+    expect(suggested?.observeWork).toBe(true);
+    expect(suggested?.outrider).toBe(outrider);
+    if (!suggested) throw new Error('Expected a suggestion');
+    for (const proposal of [suggested, planWithPattern(suggested, 'bug_fix', wording)]) {
+      const draft = draftFromPlan(TeamPlan.parse(proposal), 'observe_goal', labels);
+      expect(draft.definition.sharedOutrider).toMatchObject({
+        targets: { kind: 'all' },
+        observation: { targets: { kind: 'all' }, review: { interval: 3, maxRequestsPerReview: 8 } },
+      });
+      expect(
+        draft.definition.nodes.some(
+          (node) => node.type === 'agent' && node.invocation === 'observer',
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it.each([
+    'Let the writer ask for manuscript review when needed.',
+    '자동 관찰하지 말고 필요할 때만 전문가에게 물어보게 해줘.',
+    '진행 중 자동 관찰을 끄고 필요할 때만 의견을 받자.',
+    '자동 관찰을 켜지 말고 요청한 작업자에게만 답해줘.',
+    'Do not enable automatic observation of workers.',
+    'Do not automatically monitor the workers. Let the writer ask for advice when needed.',
+    'Observe how bicycle gears work and explain the process.',
+    'Build a service to automatically monitor traffic.',
+  ])('leaves automatic observation off for %s', (goal) => {
+    const suggested = planFromGoal(goal, wording);
+    if (!suggested) throw new Error('Expected a suggestion');
+    expect(suggested).not.toHaveProperty('observeWork');
+    expect(
+      draftFromPlan(suggested, 'goal', labels).definition.sharedOutrider?.observation,
+    ).toBeUndefined();
+  });
+});
+
+it('preserves an explicitly required gate for confirmation when a model supplies a different or unusable policy', () => {
+  const goal = 'Write an invitation. The result must pass review before submitting.';
+  const plan = planFromGoal(goal, wording);
+  if (!plan) throw Error('No local draft');
+  const proposed = { ...plan, name: 'Model invitation', outrider: 'artifact_review' as const };
+  expect(planAfterModel(goal, proposed, wording).plan).toMatchObject({
+    name: 'Model invitation',
+    outrider: 'required_review',
+  });
+  expect(planAfterModel(goal, null, wording)).toMatchObject({
+    plan: { outrider: 'required_review' },
+    recovery: 'unusable',
   });
 });

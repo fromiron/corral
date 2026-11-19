@@ -1,0 +1,1669 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<link rel="icon" href="data:,">
+<title>Corral 팀 구성 · 설계 시안</title>
+<style>
+:root {
+  --floor:#fafafa; --surface:#fcfcfc; --card:#fff; --fg:#171717; --muted:#666;
+  --quiet:#f4f4f5; --line:rgb(23 23 23 / 12%); --hover:rgb(0 0 0 / 5%);
+  --selected:rgb(0 0 0 / 8%); --focus:#2563eb; --emphasis:#2f5fc4;
+  --error:#b91c1c; --success:#166534; --warning:#92400e; --scrim:rgb(0 0 0 / 40%);
+  --radius:8px; --radius-lg:12px;
+  font:13px/20px Inter,"Pretendard Variable",system-ui,sans-serif;
+  color:var(--fg); background:var(--floor);
+}
+* {box-sizing:border-box}
+body {margin:0;min-width:0;word-break:keep-all;overflow-wrap:anywhere}
+body:has(dialog[open]) {overflow:hidden}
+button,input,select,textarea {font:inherit;color:inherit}
+button {cursor:pointer}
+a {color:inherit}
+:focus-visible {outline:2px solid var(--focus);outline-offset:3px}
+[hidden] {display:none!important}
+h1,h2,h3,p,ol,ul,fieldset,dl,dd {margin:0}
+h1 {font-size:24px;line-height:32px;font-weight:650;letter-spacing:-.045em}
+h2 {font-size:16px;line-height:22px;font-weight:650;letter-spacing:-.02em}
+h3 {font-size:14px;line-height:20px;font-weight:650}
+strong {font-weight:650}
+svg {flex:none;vertical-align:middle}
+.muted {color:var(--muted)}
+.small {font-size:12px;line-height:18px}
+.icon {width:16px;height:16px}
+.icon-sm {width:14px;height:14px}
+.skip {position:fixed;left:12px;top:-80px;z-index:5;padding:7px 12px;background:var(--card);border-radius:var(--radius);box-shadow:0 1px 4px var(--line)}
+.skip:focus {top:9px}
+.layout {display:grid;grid-template-columns:218px minmax(0,1fr);min-height:100dvh}
+.rail {padding:15px 11px 12px;display:flex;flex-direction:column;gap:14px;min-width:0;border-right:1px solid var(--line)}
+.logo {display:flex;align-items:center;gap:8px;padding:0 9px;line-height:27px;text-decoration:none;width:max-content}
+.navgroup {display:grid;gap:3px}
+.navgroup h2 {font-size:11px;line-height:16px;padding:4px 9px;color:var(--muted);font-weight:650}
+.navlink,.teamlink {display:flex;align-items:center;gap:8px;min-height:32px;padding:5px 9px;border-radius:var(--radius);text-decoration:none;min-width:0;background:none;border:1px solid transparent;text-align:left;width:100%}
+.navlink:hover,.teamlink:hover,.ghost:hover,.action:hover:not(:disabled) {background:var(--hover)}
+.navlink[aria-current="page"],.teamlink[aria-current="page"] {background:var(--selected);font-weight:650}
+.project {font-size:12px;color:var(--muted);display:flex;align-items:center;gap:8px;padding:0 9px}
+.workspace {background:var(--surface);min-width:0;min-height:100dvh;display:flex;flex-direction:column;outline:none}
+.path {min-height:44px;display:flex;align-items:center;gap:7px;padding:8px 24px;border-bottom:1px solid var(--line);font-size:12px;justify-content:space-between}
+.crumbs {display:flex;align-items:center;gap:7px;min-width:0}
+.crumbs strong {white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.crumbs a {text-decoration:none;color:var(--muted)}
+.crumbs a:hover {text-decoration:underline}
+.demo {color:var(--muted);white-space:nowrap}
+.mobile-nav {display:none}
+.canvas {width:min(100%,1210px);margin-inline:auto;padding:23px 26px 22px;flex:1 0 auto}
+.page-header {display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:19px}
+.page-header h1 {margin-bottom:5px}
+.page-header p {color:var(--muted);max-width:67ch}
+.header-action {align-self:flex-end;flex:none}
+.section-title {display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px}
+.section-title h2 {display:flex;align-items:center;gap:7px}
+.workspace-grid {display:grid;grid-template-columns:minmax(0,1.12fr) minmax(0,1fr);align-items:start;gap:18px}
+.board {min-width:0}
+.timeline {list-style:none;padding:0;display:grid;gap:9px;margin-bottom:17px}
+.timeline li {display:grid;grid-template-columns:31px minmax(0,1fr);align-items:start;position:relative}
+.timeline li:not(:last-child)::before {content:'';position:absolute;left:12px;top:32px;width:1px;height:calc(100% - 19px);background:var(--line)}
+.marker {width:25px;height:25px;display:grid;place-items:center;border:1px solid var(--line);border-radius:var(--radius);margin-top:13px;background:var(--card);color:var(--muted);position:relative;z-index:1}
+.node {appearance:none;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;text-align:left;width:100%;padding:10px 12px;min-height:64px;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg)}
+.node:hover {background:var(--floor)}
+.node[aria-pressed="true"] {border-color:var(--emphasis);box-shadow:inset 0 0 0 1px var(--emphasis);background:#f8faff}
+.node-main {min-width:0;display:grid;gap:3px}
+.node-main strong {font-size:14px;line-height:20px}
+.node-meta {display:flex;align-items:baseline;gap:5px 10px;flex-wrap:wrap;font-size:12px;line-height:17px;color:var(--muted)}
+.node-meta span {max-width:100%}
+.node-state {color:var(--emphasis);display:flex;align-items:center;justify-content:center}
+.node-side {color:var(--muted)}
+.info-panel {border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--card);min-width:0}
+.panel-head {display:flex;gap:9px;align-items:center;padding:13px 14px;border-bottom:1px solid var(--line)}
+.panel-head > div {min-width:0;flex:1}
+.panel-head p {margin-top:1px}
+.avatar {width:30px;height:30px;border:1px solid var(--line);border-radius:var(--radius);background:var(--quiet);display:grid;place-items:center;flex:none}
+.detail-fields {padding:0 14px}
+.field-row {padding:11px 0;border-bottom:1px solid var(--line)}
+.field-row:last-child {border-bottom:0}
+.field-label {display:flex;align-items:center;justify-content:space-between;gap:6px;margin-bottom:4px}
+.field-label h3 {font-size:13px}
+.field-row p {line-height:19px}
+.tile-box {border:1px solid var(--line);background:var(--floor);display:flex;align-items:center;gap:7px;padding:6px 8px;border-radius:var(--radius)}
+.pills {display:flex;flex-wrap:wrap;align-items:center;gap:5px}
+.pill {display:inline-flex;align-items:center;gap:5px;background:var(--quiet);padding:2px 7px;border:1px solid var(--line);border-radius:5px;font-size:12px;line-height:17px}
+.field-row details summary {cursor:pointer;font-weight:600}
+.advanced-links {display:flex;gap:5px;flex-wrap:wrap;margin-top:8px}
+.context-row {border:1px solid var(--line);border-radius:var(--radius-lg);background:var(--card);padding:11px 12px;display:flex;gap:9px;align-items:center}
+.context-row > div {flex:1;min-width:0}
+.context-row p {margin-top:2px}
+.footer-bar {position:sticky;bottom:0;z-index:1;background:var(--surface);border-top:1px solid var(--line);padding:10px 26px;display:flex;align-items:center;justify-content:space-between;gap:10px}
+.footer-bar .status {color:var(--muted);display:flex;align-items:center;gap:6px;min-width:0;font-size:12px}
+.footer-actions,.controls {display:flex;gap:7px;align-items:center;flex-wrap:wrap}
+.action,.icon-button {min-height:32px;display:inline-flex;gap:6px;justify-content:center;align-items:center;padding:5px 9px;font-size:12px;line-height:18px;white-space:nowrap;font-weight:600;letter-spacing:-.01em;background:var(--card);border:1px solid var(--line);border-radius:var(--radius)}
+.action.primary {color:#fff;background:var(--fg);border-color:var(--fg)}
+.action.primary:hover:not(:disabled) {background:#333}
+.action.ghost,.icon-button {background:transparent;border-color:transparent}
+.action.ghost {padding-inline:5px}
+.action:disabled {opacity:.48;cursor:default}
+.icon-button {width:34px;padding:0}
+.action.mini {min-height:26px;padding-block:2px}
+.action.danger {color:var(--error)}
+.action-row {display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap}
+.status-line {min-height:18px;color:var(--muted);font-size:12px}
+.collection {border:1px solid var(--line);background:var(--card);border-radius:var(--radius-lg);overflow:hidden}
+.collection .list-row {border:0;border-bottom:1px solid var(--line)}
+.collection .list-row:last-child {border-bottom:0}
+.list-row {display:flex;align-items:center;gap:9px;padding:10px 12px;text-align:left;width:100%;border:1px solid var(--line);background:var(--card);min-width:0;color:inherit}
+button.list-row:hover {background:var(--floor)}
+.list-row > .grow,.grow {min-width:0;flex:1}
+.list-row .name {display:block;font-weight:650}
+.list-row .desc {display:block;color:var(--muted);font-size:12px;line-height:17px}
+.list-edit {display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:10px}
+.empty {padding:15px;color:var(--muted)}
+dialog {color:var(--fg);background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);padding:0;width:min(calc(100% - 28px),530px);max-height:min(760px,calc(100dvh - 44px));box-shadow:0 16px 48px rgb(0 0 0 / 20%);overflow:hidden}
+dialog::backdrop {background:var(--scrim)}
+.sheet {display:flex;flex-direction:column;min-height:0;max-height:min(756px,calc(100dvh - 48px))}
+.sheet-head {display:flex;align-items:flex-start;gap:8px;border-bottom:1px solid var(--line);padding:13px 15px}
+.sheet-head .icon-button {flex:none;margin-top:-2px}
+.sheet-head > div {flex:1;min-width:0}
+.sheet-head h2 {font-size:16px;line-height:22px}
+.sheet-head p {margin-top:3px;color:var(--muted);font-size:12px;line-height:18px}
+.sheet-body {min-height:0;overflow:auto;overscroll-behavior:contain;padding:13px 15px}
+.sheet-footer {border-top:1px solid var(--line);padding:10px 15px;display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.sheet-footer > p {flex:1;min-width:100px;font-size:12px;line-height:17px;color:var(--muted)}
+.sheet-footnote {margin-top:12px;color:var(--muted);font-size:12px;line-height:18px}
+.sheet label span.label {display:block;font-weight:650;margin-bottom:4px}
+.stack {display:grid;gap:11px;min-width:0}
+.stack h3 {margin-bottom:0}
+fieldset {padding:0;border:0;min-width:0}
+fieldset legend {font-weight:650;margin-bottom:5px}
+input[type=text], input[type=search], textarea, select {width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:var(--radius);background:var(--card);min-height:34px}
+textarea {min-height:80px;resize:vertical}
+[type=search] {min-width:0}
+.search-wrap {display:flex;align-items:center;position:relative}
+.search-wrap .icon {position:absolute;left:9px;color:var(--muted);pointer-events:none}
+.search-wrap input {padding-left:32px}
+.sheet-searchline {display:grid;grid-template-columns:minmax(0,1fr) auto;gap:6px;align-items:center;margin-bottom:9px}
+.sheet-searchline .action {min-height:34px}
+.choice-list {display:grid;gap:5px;list-style:none;padding:0}
+.choice {position:relative;display:flex;align-items:flex-start;gap:8px;border:1px solid var(--line);border-radius:var(--radius);padding:8px;cursor:pointer;min-height:47px}
+.choice:hover {background:var(--floor)}
+.choice:has(input:checked) {border-color:var(--emphasis);background:#f8faff}
+.choice:focus-within {outline:2px solid var(--focus);outline-offset:2px}
+.choice input {margin:2px 0 0;width:15px;height:15px;flex:none;accent-color:var(--emphasis)}
+.choice input:focus-visible {outline:none}
+.choice b {display:block;font-weight:650}
+.choice small {display:block;color:var(--muted);font-size:12px;line-height:17px;margin-top:1px}
+.choice .revision {margin-left:auto;font-size:11px;color:var(--muted);white-space:nowrap}
+.segment {display:flex;gap:2px;background:var(--quiet);border-radius:var(--radius);padding:3px;overflow:auto;margin-bottom:10px}
+.segment button {flex:1;white-space:nowrap;border:1px solid transparent;border-radius:6px;min-height:30px;padding:2px 5px;background:none}
+.segment button[aria-pressed=true],.segment button[aria-selected=true] {background:var(--card);border-color:var(--line);font-weight:650}
+.summary-box {display:grid;gap:6px;border:1px solid var(--line);border-radius:var(--radius);padding:9px;background:var(--floor)}
+.sample {padding:12px;background:var(--floor);border:1px solid var(--line);border-radius:var(--radius);white-space:pre-wrap}
+.warning {color:var(--warning)}
+.form-error {color:var(--error);min-height:18px}
+.mobile-only {display:none}
+@media(max-width:1000px) {
+  .layout {grid-template-columns:185px minmax(0,1fr)}
+  .canvas {padding-inline:17px}
+  .workspace-grid {gap:12px;grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .path,.footer-bar {padding-inline:17px}
+}
+@media(max-width:760px) {
+  .layout {display:block}
+  .rail {display:none}
+  .mobile-nav {display:flex;gap:3px;padding:6px 12px;border-bottom:1px solid var(--line);align-items:center;overflow-x:auto}
+  .mobile-nav .navlink {width:auto;white-space:nowrap;min-height:36px}
+  .path {min-height:41px;padding-inline:13px}
+  .path .demo {font-size:11px}
+  .workspace-grid {grid-template-columns:minmax(0,1fr)}
+  .desktop-detail {display:none}
+  .mobile-only {display:initial}
+  .canvas {padding:15px 13px 16px}
+  .page-header {display:block;margin-bottom:14px}
+  .page-header h1 {font-size:22px;line-height:28px}
+  .header-action {margin-top:8px}
+  .footer-bar {padding:8px 12px}
+  .footer-bar .status {max-width:45%;line-height:16px}
+  .footer-bar .action,.context-row .action {min-height:38px}
+  .action,.icon-button {min-height:38px}
+  .action.mini {min-height:34px}
+  dialog {position:fixed;inset:0;width:100%;max-width:none;height:100%;height:100dvh;max-height:none;margin:0;border:0;border-radius:0;box-shadow:none}
+  .sheet {height:100%;max-height:none}
+  .sheet-head {padding:12px 12px 11px}
+  .sheet-head .icon-button {width:39px;height:39px}
+  .sheet-body {padding:12px;flex:1}
+  .sheet-footer {padding:10px 12px max(10px, env(safe-area-inset-bottom));}
+  .sheet-footer .primary {min-height:42px}
+  .choice {min-height:49px}
+  .sheet-searchline .action {min-height:38px}
+}
+@media (forced-colors:active) {
+ .node[aria-pressed=true],.choice:has(input:checked) {border:2px solid Highlight}
+ .action.primary {background:ButtonFace;color:ButtonText}
+}
+.view-bar {display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap;margin:-4px 0 15px}
+ .team-views {display:flex;overflow:visible;gap:3px;padding:3px;margin:0;background:var(--quiet);border:1px solid var(--line);border-radius:var(--radius)}
+.team-views button {display:flex;align-items:center;justify-content:center;gap:6px;min-height:31px;min-width:105px}
+.graph-example {display:flex;align-items:center;gap:5px;color:var(--muted);font-size:12px;text-underline-offset:3px;padding:4px 1px}
+.graph-layout {grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+.graph-card {min-width:0;background:var(--card);border:1px solid var(--line);border-radius:var(--radius-lg);overflow:hidden}
+.graph-head {padding:9px 12px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:6px;flex-wrap:wrap}
+.graph-head p {font-size:12px;color:var(--muted)}
+.graph-canvas {position:relative;padding:14px 14px 13px;background:radial-gradient(circle, rgb(23 23 23 / 13%) 1px, transparent 1px) 0 0 / 13px 13px,var(--floor)}
+.graph-nodes {display:grid;gap:21px;max-width:660px;margin:auto;min-width:0}
+.graph-row {display:grid;grid-template-columns:minmax(0,1fr);min-width:0}
+.graph-canvas[data-review] .graph-row {grid-template-columns:minmax(0,1fr) minmax(106px,28%);column-gap:14px}
+.graph-node {position:relative;z-index:2;min-width:0;text-align:left;display:flex;gap:7px;align-items:center;width:100%;min-height:42px;padding:5px 8px;border:1px solid var(--line);border-radius:var(--radius);color:var(--fg);background:var(--card)}
+.graph-node:hover {background:var(--quiet)}
+.graph-node[aria-pressed=true] {border-color:var(--emphasis);box-shadow:inset 0 0 0 1px var(--emphasis);background:#f8faff}
+.graph-node-icon {display:grid;place-items:center;width:25px;height:25px;border-radius:5px;background:var(--quiet);color:var(--muted);flex:none}
+.graph-copy {display:grid;gap:0;line-height:16px;min-width:0}
+.graph-copy strong {font-size:13px}
+.graph-copy small {font-size:11px;color:var(--muted)}
+.graph-loop {position:relative;padding:5px 7px 9px;margin-inline:-7px;border:1px solid var(--line);background:rgb(255 255 255 / 82%);border-radius:var(--radius);display:grid;gap:21px}
+.graph-loop-title {display:flex;align-items:center;gap:5px;margin-bottom:-16px;font-size:11px;line-height:17px;color:var(--muted)}
+.graph-node.graph-exhausted {border-color:rgb(146 64 14 / 30%);background:#fffaf5;color:var(--warning);padding-inline:6px}
+.graph-node.graph-exhausted strong {font-size:12px}
+.graph-node.graph-exhausted[aria-pressed=true]{border-color:var(--emphasis)}
+.graph-edge-layer {position:absolute;inset:0;height:100%;width:100%;pointer-events:none;z-index:1;overflow:visible}
+.graph-edge {fill:none;stroke:#777;stroke-width:1.5;stroke-linecap:round;stroke-linejoin:round}
+.graph-edge[data-kind=return] {stroke:var(--emphasis);stroke-width:1.7}
+.graph-edge[data-kind=exhausted] {stroke:var(--warning)}
+.graph-edge-text {font-size:11px;font-weight:600;fill:var(--fg);stroke:var(--floor);stroke-width:4;paint-order:stroke;stroke-linejoin:round}
+.graph-edge-text[data-kind=return] {fill:var(--emphasis);stroke:var(--card)}
+.graph-edge-text[data-kind=exhausted] {fill:var(--warning)}
+.graph-advice {display:flex;align-items:center;gap:7px;border-top:1px solid var(--line);padding:8px 12px;background:var(--card);font-size:12px}
+.graph-order {padding:8px 14px;border-top:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:5px}
+.graph-order p {font-weight:650}
+.graph-detail-note {padding:10px 14px}
+.graph-detail-note p+p {margin-top:7px}
+.choice:has(input:disabled) {cursor:not-allowed;background:var(--floor)}
+.graph-empty {display:grid;gap:8px;padding:13px}
+.graph-empty .action {justify-self:start}
+.review-policy-selected {background:var(--floor);box-shadow:inset 2px 0 var(--emphasis);padding-inline:8px}
+.graph-review-return {display:none}
+.graph-node,[data-key^=role-] {scroll-margin-top:100px}
+.graph-description {position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+@media(max-width:760px) {
+  .view-bar {position:sticky;top:0;z-index:3;margin:0 0 10px;padding:2px 0 4px;background:var(--surface)}
+  .team-views {flex:1 0 100%;width:100%}
+  .team-views button {min-height:44px;min-width:0;flex:1 1 0}
+  .graph-review-return {display:flex;grid-column:2;align-items:center;justify-content:space-between;gap:6px;margin-top:4px;padding:4px 7px;border:1px solid var(--line);border-radius:var(--radius)}
+  .graph-review-return .action {white-space:normal}
+  .graph-example {min-height:37px}
+  .graph-layout {grid-template-columns:minmax(0,1fr)}
+  .graph-canvas {padding:10px 10px 11px}
+  .graph-head {padding:7px 10px}
+  .graph-canvas[data-review] .graph-row {grid-template-columns:minmax(0,1fr) minmax(97px,30%);column-gap:11px}
+  .graph-nodes,.graph-loop {gap:21px}
+  .graph-node {min-height:44px}
+  .graph-node.graph-exhausted .graph-node-icon {display:none}
+  .graph-node[aria-pressed=true] {outline-offset:2px}
+}
+@media(forced-colors:active) {
+  .graph-node[aria-pressed=true] {border:2px solid Highlight}
+  .graph-edge,.graph-edge-layer marker {forced-color-adjust:auto;stroke:CanvasText}
+  .graph-edge-text {forced-color-adjust:auto;fill:CanvasText;stroke:Canvas}
+}
+.start-choices,.builder-options {display:grid;gap:6px}
+.start-choices .list-row,.builder-options .list-row {border-radius:var(--radius)}
+.builder-notice {color:var(--muted);background:var(--quiet);border:1px solid var(--line);border-radius:var(--radius);padding:5px 8px;font-size:12px}
+.builder-thread {display:grid;gap:6px;list-style:none;padding:0}
+.builder-thread li {margin-right:22px;max-width:100%;padding:6px 8px;border-radius:var(--radius);background:var(--floor);border:1px solid var(--line)}
+.builder-thread li.builder-user {margin:0 0 0 22px;background:var(--quiet)}
+.builder-thread strong {font-size:11px;color:var(--muted)}
+.builder-suggestions {display:flex;flex-wrap:wrap;gap:5px}
+.builder-suggestions .action {white-space:normal;text-align:left}
+.builder form label {font-weight:650}
+.builder textarea {display:block;margin-top:4px;min-height:62px}
+.builder-preview {border:1px solid var(--line);border-radius:var(--radius);padding:9px}
+.builder-preview dl {display:grid;gap:5px}
+.builder-preview dl > div {padding-bottom:5px;border-bottom:1px solid var(--line)}
+.builder-preview dt {font-weight:650}
+.builder-preview-roles {padding-left:22px}
+.builder-preview-roles li+li {margin-top:5px}
+.builder-preview-roles .desc {display:block;color:var(--muted);font-size:12px}
+@media(max-width:760px) {
+  .builder .action,.start-choices .list-row,.builder-options .list-row {min-height:38px}
+}
+.assistant-area {background:var(--surface);border-top:1px solid var(--line);flex:none}
+.assistant-entry {width:min(100%,1210px);margin:auto;padding:5px 26px;display:flex}
+.assistant-entry button {white-space:nowrap}
+.assistant-docked[open] {position:static;inset:auto;width:auto;max-width:none;max-height:none;margin:0 26px 6px;border-radius:var(--radius);box-shadow:none}
+.assistant-docked .sheet {height:min(39dvh,410px);max-height:none}
+.assistant-docked .sheet-head {padding-block:7px}
+.assistant-docked .sheet-body {padding-block:7px;flex:1}
+.assistant-docked .sheet-footer {padding-block:5px}
+.workspace:has(.assistant-docked[open]) {height:100dvh;overflow:hidden}
+.workspace:has(.assistant-docked[open]) .canvas {flex:1 1 auto;min-height:0;overflow:auto}
+@media(max-width:760px) {
+  .assistant-entry {padding:2px 12px}
+  .assistant-entry button {min-height:44px}
+}
+.assistant-area:has(.assistant-docked[open]) .assistant-entry {display:none}
+.builder-sheet .sheet-footer > p:empty {display:none}
+@media(max-width:760px) {
+  .builder-sheet .sheet-footer > p:not(:empty) {flex-basis:100%;line-height:18px}
+  .builder-sheet .sheet-footer .action-row {margin-left:auto}
+}
+.assistant-docked .builder:has(.builder-preview) {padding-bottom:48px}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">본문으로</a>
+<div id="app"></div>
+<dialog id="dialog" aria-labelledby="sheet-title"></dialog>
+<div id="announcer" role="status" aria-live="polite" class="skip"></div>
+<script>
+
+'use strict';
+
+const iconPaths = {
+  library:'<path d="M4 5h4v14H4zM10 5h4v14h-4zM16 6l3-1 3 13-3 1z"/>',
+  teams:'<rect x="3" y="3" width="6" height="6" rx="1"/><rect x="15" y="15" width="6" height="6" rx="1"/><path d="M6 9v6a3 3 0 0 0 3 3h6M9 6h6a3 3 0 0 1 3 3v6"/>',
+  agent:'<rect x="4" y="6" width="16" height="14" rx="3"/><path d="M12 2v4M9 12h.01M15 12h.01M9 16h6M2 10v5M22 10v5"/>',
+  skill:'<path d="m13 2-3 7H4l7 4-2 9 11-13h-7l2-7z"/>',
+  check:'<path d="m5 12 4 4L19 6"/>',
+  arrow:'<path d="M4 12h16m-6-6 6 6-6 6"/>',
+  back:'<path d="M20 12H4m6 6-6-6 6-6"/>',
+  up:'<path d="M12 19V5m-5 5 5-5 5 5"/>',
+  down:'<path d="M12 5v14m-5-5 5 5 5-5"/>',
+  chevron:'<path d="m9 18 6-6-6-6"/>',
+  plus:'<path d="M12 5v14M5 12h14"/>',
+  x:'<path d="m6 6 12 12M18 6 6 18"/>',
+  search:'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>',
+  file:'<path d="M6 3h8l4 4v14H6zM14 3v5h4M9 12h6m-6 4h6"/>',
+  target:'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>',
+  chat:'<path d="M20 11a8 8 0 0 1-8 8H5l1-4a8 8 0 1 1 14-4Z"/><path d="M9 11h.01m3 0h.01m3 0h.01"/>',
+  pencil:'<path d="m4 16-1 5 5-1L21 7l-4-4zM14 6l4 4"/>',
+  folder:'<path d="M3 6h6l2 2h10v11H3z"/>',
+  dot:'<circle cx="12" cy="12" r="3"/>',
+  play:'<path d="m8 5 11 7-11 7z"/>',
+  undo:'<path d="M4 10h9a6 6 0 0 1 0 12M9 5l-5 5 5 5"/>',
+};
+const icon = (name, size='icon') => `<svg class="${size}" aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${iconPaths[name] || iconPaths.file}</svg>`;
+const escapeHTML = (value='') => String(value).replace(/[&<>'"]/g, glyph => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'})[glyph]);
+const copy = value => structuredClone(value);
+const pref = 'corral-team-composition-preview-v1';
+const mobile = matchMedia('(max-width: 760px)');
+const app = document.querySelector('#app');
+const dialog = document.querySelector('#dialog');
+const announcer = document.querySelector('#announcer');
+const logoMark = '<svg aria-hidden="true" viewBox="0 0 1401.71 1525.36" width="22" height="23" fill="currentColor"><path d="M1062.84 54.38L979.16 61.5C615.88 92.46 194.56 277.46 77.92 652.38C51.16 738.46 33.56 854.42 64.12 941.82C143.96 743.7 277.72 631.58 464.8 532.46L644.88 437.1C702.04 406.82 758.08 370.38 807.04 328.1L900.8 247.06C930.2 221.66 968 193.5 1003 179.7C942.56 298.38 795.44 453.78 907.68 588.06C936 621.94 977.16 632.46 1006.88 663.22L1109.76 769.66C1135.28 796.06 1138.4 853.94 1172.08 868.98C1253.84 905.54 1378.24 827.02 1349.48 732.38L1234.48 353.94C1224.32 320.58 1188.88 298.58 1170.08 271.7C1208.08 266.46 1308.52 283.1 1333.88 259.9C1322.48 203.78 1208.56 174.78 1163.28 155.7C1194.48 130.78 1252.68 103.06 1260.6 60.26C1240.8 38.82 1098.04 51.38 1062.84 54.38Z"/><path d="M628.72 521.86L554.88 561.22C459.96 611.82 369.76 672.46 288.68 743.7C123.44 889.06 -5.2 1134.3 228.68 1286.02L493.4 1457.78C613.52 1535.7 588.04 1359.94 574.56 1298.58L542.92 1154.22C482.88 880.5 570.96 676.22 734.36 463.86C699.76 478.42 663.56 503.3 628.72 521.86Z"/><path d="M643.04 969.9L645.2 1308.42C713.52 1222.78 802.56 1163.06 908.08 1134.3C941.44 1125.18 980.08 1126.94 1009.92 1108.34C1056.6 1079.26 1091.88 976.18 1062.32 928.02L688.64 926.46C668.16 926.38 642.88 948.62 643.04 969.9Z"/></svg><svg aria-hidden="true" viewBox="0 0 3676 1126" width="46" height="14" fill="currentColor"><path d="M629.37 369.74C651.01 383.26 664.16 406.98 664.16 432.5C664.16 473.37 631.02 506.5 590.16 506.5C576.29 506.5 562.7 502.6 550.94 495.25C514.07 472.22 471.47 460 428 460C299.87 460 196 563.87 196 692C196 820.13 299.87 924 428 924C519.05 924 601.68 870.74 639.29 787.82L750.37 542.89C808.34 407.14 943.06 312 1100 312C1309.87 312 1480 482.13 1480 692C1480 901.87 1309.87 1072 1100 1072C954.28 1072 827.71 989.98 763.96 869.58C698.48 993.54 569.44 1072 428 1072C218.13 1072 48 901.87 48 692C48 482.13 218.13 312 428 312C499.21 312 568.98 332.01 629.37 369.74ZM1332 692C1332 563.87 1228.13 460 1100 460C1057.6 460 1017.86 471.37 983.66 491.23C983.08 491.6 982.49 491.96 981.89 492.32C940.91 516.56 908.38 552.82 888.71 596.18L886.54 600.97C874.61 628.92 868 659.69 868 692C868 820.13 971.87 924 1100 924C1228.13 924 1332 820.13 1332 692Z"/><path d="M1690 998L1690 606C1690 525.37 1755.37 460 1836 460C1857.32 460 1878.38 464.67 1897.7 473.68C1907.5 478.25 1918.17 480.61 1928.98 480.61C1969.85 480.61 2002.98 447.48 2002.98 406.61C2002.98 377.85 1986.31 351.7 1960.25 339.55C1921.34 321.4 1878.93 312 1836 312C1673.63 312 1542 443.63 1542 606L1542 998C1542 1038.87 1575.13 1072 1616 1072C1656.87 1072 1690 1038.87 1690 998Z"/><path d="M2162 998L2162 606C2162 525.37 2227.37 460 2308 460C2329.32 460 2350.38 464.67 2369.7 473.68C2379.5 478.25 2390.17 480.61 2400.98 480.61C2441.85 480.61 2474.98 447.48 2474.98 406.61C2474.98 377.85 2458.31 351.7 2432.25 339.55C2393.34 321.4 2350.93 312 2308 312C2145.63 312 2014 443.63 2014 606L2014 998C2014 1038.87 2047.13 1072 2088 1072C2128.87 1072 2162 1038.87 2162 998Z"/><path d="M3220 692L3220 744C3220 822.29 3240.61 899.2 3279.75 967C3286.25 978.25 3289.67 991.01 3289.67 1004C3289.67 1044.87 3256.54 1078 3215.67 1078C3189.23 1078 3164.8 1063.9 3151.58 1041C3136.1 1014.19 3122.8 986.31 3111.74 957.62C3042.75 1028.2 2946.49 1072 2840 1072C2630.13 1072 2460 901.87 2460 692C2460 482.13 2630.13 312 2840 312C3049.87 312 3220 482.13 3220 692ZM3072 692L3072 691.98C3072 658.11 3064.58 624.65 3050.26 593.95C3049.92 593.21 3049.58 592.46 3049.26 591.71C3011.85 513.79 2932.21 460 2840 460C2711.87 460 2608 563.87 2608 692C2608 820.13 2711.87 924 2840 924C2968.13 924 3072 820.13 3072 692Z"/><path d="M3318 122L3318 836C3318 966.34 3423.66 1072 3554 1072C3594.87 1072 3628 1038.87 3628 998C3628 957.13 3594.87 924 3554 924C3505.4 924 3466 884.6 3466 836L3466 122C3466 81.13 3432.87 48 3392 48C3351.13 48 3318 81.13 3318 122Z"/></svg>';
+
+const defaults = [
+  {id:'planner',name:'기획자',job:'요청을 읽고 일정, 대상, 준비물을 담은 기획안을 만든다.',output:'기획안',skills:[]},
+  {id:'writer',name:'작성자',job:'받은 자료를 바탕으로 읽기 쉬운 문서를 작성한다.',output:'초대장',skills:[]},
+  {id:'reviewer',name:'검토자',job:'누락된 정보와 확인할 표현을 찾아 수정 의견을 정리한다.',output:'검토 의견',skills:[]},
+];
+const baseSkills = [
+  {id:'grammar',name:'문장 교정',desc:'오탈자와 어색한 문장을 조정합니다.',text:'- 맞춤법과 띄어쓰기를 확인한다.\n- 원문의 뜻을 유지한다.',rev:1},
+  {id:'voice',name:'브랜드 문체',desc:'편안한 어조와 정해 둔 표현을 사용합니다.',text:'- 딱딱한 표현을 일상어로 바꾼다.\n- 독자에게 직접 말을 건넨다.',rev:1},
+  {id:'read',name:'간결하게 작성',desc:'정해진 정보부터 보여 주고 문장을 줄입니다.',text:'- 중복된 정보는 한 번만 말한다.',rev:1},
+  {id:'fact',name:'사실 확인',desc:'받은 자료와 문서의 날짜·장소·수치를 대조합니다.',text:'- 날짜와 장소를 입력 자료와 대조한다.',rev:1},
+];
+const writer = {id:'my-writer',name:'우리 팀 작성자',job:'받은 자료에서 핵심 내용을 골라 초안을 작성한다.',output:'초대장',skills:['grammar','voice']};
+const planner = {...defaults[0],id:'planner-a',source:'planner',originName:defaults[0].name,originJob:defaults[0].job,input:'request'};
+const firstWriter = {...writer,id:'writer-a',source:writer.id,originName:writer.name,originJob:writer.job,name:'작성자',job:'기획안을 바탕으로 두 문장짜리 초대장을 작성한다.',input:planner.id};
+const blankAdvice = () => ({enabled:false,review:false,observe:false});
+const sampleTeams = [
+  {id:'a',name:'동네 자전거 소풍 초대장',goal:'기획안을 바탕으로 동네 자전거 모임의 초대장을 두 문장으로 작성합니다.',roles:[planner, firstWriter],final:firstWriter.id,mandatory:false,approval:false,advice:blankAdvice()},
+  {id:'b',name:'주말 안전 점검 안내',goal:'참가자에게 출발 전 준비물과 안전 점검 항목을 안내합니다.',roles:[{...planner,id:'planner-b'},{...firstWriter,id:'writer-b',input:'planner-b',output:'안내문',job:'기획안에서 준비물과 안전 점검 항목을 골라 안내문을 쓴다.'}],final:'writer-b',mandatory:false,approval:false,advice:blankAdvice()},
+];
+
+const reviewExample = {
+  id:'example-invite-review',name:'초대장 검토 예시',goal:'작성한 초대장이 필수 검토를 통과하면 제출합니다.',
+  roles:[{...planner,id:'planner-review'},{...firstWriter,id:'writer-review',input:'planner-review'}],
+  final:'writer-review',mandatory:true,approval:false,advice:{enabled:true,review:false,observe:false},
+};
+
+let storageAvailable = true;
+const loadProject = () => {
+  try {
+    const data = localStorage.getItem(pref);
+    if (data) return JSON.parse(data);
+  } catch { storageAvailable = false; }
+  return copy({skills:baseSkills,agents:[writer],teams:sampleTeams});
+};
+const project = loadProject();
+const drafts = new Map();
+const undoSteps = new Map();
+const ui = {view:'team',team:project.teams[0]?.id || 'a',selected:'writer-a',mode:'composition',status:'',librarySearch:'',graphSelected:'',reviewSelected:false};
+const layers = [];
+let serial = 0;
+let baseReturn = null;
+
+function newId(prefix) { serial += 1; return `${prefix}-${Date.now().toString(36)}-${serial}`; }
+function commitProject() {
+  try { localStorage.setItem(pref, JSON.stringify(project)); }
+  catch { storageAvailable = false; }
+}
+function savedTeam(id=ui.team) {
+  return project.teams.find(team => team.id === id) || (id===reviewExample.id ? reviewExample : undefined);
+}
+function allSavedTeams() {
+  return project.teams.some(team=>team.id===reviewExample.id) ? project.teams : [...project.teams,reviewExample];
+}
+function currentTeam(id=ui.team) {
+  if (!drafts.has(id) && savedTeam(id)) drafts.set(id, copy(savedTeam(id)));
+  return drafts.get(id);
+}
+const currentLayer = () => layers[layers.length - 1];
+const skill = id => project.skills.find(entry => entry.id === id);
+const skillLineage = entry => entry.lineage || entry.id;
+function latestSkills() {
+  const latest = new Map();
+  for (const entry of project.skills) {
+    const lineage = skillLineage(entry);
+    if (!latest.has(lineage) || latest.get(lineage).rev < entry.rev) latest.set(lineage,entry);
+  }
+  return [...latest.values()];
+}
+const roleIn = (team,id) => team.roles.find(role => role.id === id);
+const isDirty = team => JSON.stringify(team) !== JSON.stringify(savedTeam(team.id));
+
+
+function say(text) {
+  ui.status = text;
+  announcer.textContent = text;
+}
+function markUndo(team) {
+  const previous = undoSteps.get(team.id) || [];
+  previous.push(copy(team));
+  undoSteps.set(team.id, previous);
+}
+function stepUndo() {
+  const previous = undoSteps.get(ui.team)?.pop();
+  if (!previous) return;
+  drafts.set(ui.team, previous);
+  if (ui.selected !== 'final' && !roleIn(previous,ui.selected)) ui.selected = previous.roles[0]?.id || 'final';
+  say('마지막 변경을 되돌렸습니다.');
+  render('undo');
+}
+function button(label,action,{kind='',key=action,iconName='',value='',disabled=false,title=''}={}) {
+  return `<button type="button" class="action ${kind}" data-action="${action}" data-key="${key}"${value ? ` data-value="${escapeHTML(value)}"` : ''}${disabled ? ' disabled' : ''}${title ? ` title="${escapeHTML(title)}"` : ''}>${iconName ? icon(iconName,'icon-sm') : ''}${escapeHTML(label)}</button>`;
+}
+function iconButton(label,action,name,key=action,value='') {
+  return `<button type="button" class="icon-button" data-action="${action}" data-key="${key}" aria-label="${escapeHTML(label)}" title="${escapeHTML(label)}"${value ? ` data-value="${escapeHTML(value)}"` : ''}>${icon(name)}</button>`;
+}
+function focusKey(root,key) {
+  if (!key) return false;
+  const found = Array.from(root.querySelectorAll('[data-key]')).find(node => node.dataset.key === key && node.getClientRects().length && !node.disabled);
+  if (!found) return false;
+  found.focus({preventScroll:true});
+  return true;
+}
+function useNav(id,label,name,current) {
+  return `<a class="navlink" href="#${id}" data-action="nav" data-value="${id}" data-key="nav-${id}"${current ? ' aria-current="page"' : ''}>${icon(name)}${label}</a>`;
+}
+function inputName(team,role) {
+  if (role.input === 'request') return '팀 요청';
+  const producer = roleIn(team,role.input);
+  if (!producer) return '선택한 자료 없음';
+  return `${producer.name} · ${producer.output}`;
+}
+function finalName(team) {
+  const producer = roleIn(team,team.final);
+  return producer ? `${producer.name} · ${producer.output}` : '최종 결과 선택';
+}
+function skillBadges(ids) {
+  if (!ids.length) return '<span class="muted small">선택한 스킬 없음</span>';
+  return ids.map(id => {
+    const item = skill(id);
+    const versioned = item && project.skills.some(other => skillLineage(other) === skillLineage(item) && other.id !== item.id);
+    return `<span class="pill${item ? '' : ' warning'}"${item ? ` title="v${item.rev}"` : ''}>${icon('skill','icon-sm')}${escapeHTML(item?.name || '스킬 찾을 수 없음')}${versioned ? ` <span class="muted">v${item.rev}</span>` : ''}</span>`;
+  }).join('');
+}
+function navLinks(selected) {
+  return [useNav('teams','팀','teams',selected === 'teams'),useNav('agents','에이전트','agent',selected === 'agents'),useNav('skills','스킬','skill',selected === 'skills')].join('');
+}
+function rail() {
+  const teamLinks = [...drafts.values()].filter(team => !savedTeam(team.id));
+  const rows = [...allSavedTeams(),...teamLinks].map(team => `<a href="#team-${team.id}" class="teamlink" data-action="open-team" data-value="${team.id}" data-key="team-${team.id}"${ui.view === 'team' && ui.team === team.id ? ' aria-current="page"' : ''}>${icon('teams','icon-sm')}<span>${escapeHTML(team.name)}</span></a>`).join('');
+  return `<aside class="rail"><a class="logo" href="#teams" data-action="nav" data-value="teams" aria-label="Corral 팀 라이브러리">${logoMark}</a>
+  <div class="project">${icon('folder','icon-sm')}동네 자전거 모임</div>
+  <nav class="navgroup" aria-label="라이브러리"><h2>라이브러리</h2>${navLinks(ui.view)}</nav>
+  <nav class="navgroup" aria-label="프로젝트 팀"><h2>프로젝트 팀</h2>${rows}</nav>
+  </aside>`;
+}
+function path() {
+  const teamView = ui.view === 'team';
+  const names = {teams:'팀',agents:'에이전트',skills:'스킬'};
+  const crumb = teamView ? `<a href="#teams" data-action="nav" data-value="teams">팀</a>${icon('chevron','icon-sm')}<strong>${escapeHTML(currentTeam().name)}</strong>` : `<strong>${names[ui.view]}</strong>`;
+  return `<div class="path"><div class="crumbs">라이브러리 ${icon('chevron','icon-sm')} ${crumb}</div><span class="demo">설계 시안</span></div><nav class="mobile-nav" aria-label="라이브러리">${navLinks(teamView ? '' : ui.view)}</nav>`;
+}
+function header(title,description,actions='') {
+  return `<header class="page-header"><div><h1 tabindex="-1">${escapeHTML(title)}</h1><p>${escapeHTML(description)}</p></div>${actions ? `<div class="header-action controls">${actions}</div>` : ''}</header>`;
+}
+function footer(team) {
+  const dirty = isDirty(team);
+  const status = ui.status || (dirty ? '이 팀에 저장할 변경이 있습니다.' : '이 팀에 저장할 변경 없음');
+  return `<footer class="footer-bar"><p class="status" id="team-status">${icon(dirty ? 'dot' : 'check','icon-sm')}${escapeHTML(status)}</p><div class="footer-actions">
+  ${savedTeam(team.id) ? '' : button('초안 취소','cancel-draft',{kind:'ghost'})}${button('되돌리기','undo',{iconName:'undo',kind:'ghost',disabled:!undoSteps.get(team.id)?.length})}
+  ${button('팀 저장','save-team',{kind:'primary',disabled:!dirty})}</div></footer>`;
+}
+function render(focus='') {
+  const restoreDock=dialog.classList.contains('assistant-docked') && dialog.open;
+  if(restoreDock) document.body.appendChild(dialog);
+  if (ui.view === 'team' && !currentTeam()) ui.view = 'teams';
+  const content = ui.view === 'team' ? teamView(currentTeam()) : libraryView(ui.view);
+  app.innerHTML = `<div class="layout">${rail()}<main class="workspace" id="main" tabindex="-1">${path()}${content}</main></div>`;
+  if(restoreDock && currentLayer()?.type==='team-assistant') setActiveModal(currentLayer());
+  syncGraphDrawing();
+  if (focus && !focusKey(app,focus)) app.querySelector('h1')?.focus({preventScroll:true});
+}
+function teamView(team) {
+  const structure = ui.mode === 'structure';
+  const test = button(isDirty(team)?'저장하고 모의 시험':'모의 시험','trial',{iconName:'play'});
+  const panel = (mode,content) => `<div role="tabpanel" id="team-panel-${mode}" aria-labelledby="team-tab-${mode}"${mode===ui.mode?'':' hidden'}>${content}</div>`;
+  return `<div class="canvas">${header(team.name,team.goal,test)}${teamViewControls(team)}
+  ${panel('composition',structure?'':boardView(team))}${panel('structure',structure?structureView(team):'')}</div>
+  <section class="assistant-area" aria-label="AI 팀 설계"><div class="assistant-entry">
+  <button type="button" class="action ghost" data-action="builder-entry" data-key="builder-entry" aria-expanded="false">${icon('chat','icon-sm')}${team.roles.length?'AI로 팀 편집':'AI로 팀 만들기'}</button>
+  </div><div id="builder-dock"></div></section>${footer(team)}`;
+}
+function nodeRow(team,role) {
+  const active = ui.selected === role.id;
+  return `<li><span class="marker">${icon('agent','icon-sm')}</span><button type="button" class="node" data-action="select-role" data-value="${role.id}" data-key="role-${role.id}" aria-pressed="${active}">
+  <span class="node-main"><strong>${escapeHTML(role.name)}</strong><span class="node-meta"><span>${escapeHTML(role.job)}</span><span>${icon('file','icon-sm')} ${escapeHTML(role.output)}</span></span></span>
+  <span class="node-side"><span class="node-state">${icon('chevron','icon-sm')}</span></span></button></li>`;
+}
+function boardView(team) {
+  const role = roleIn(team,ui.selected);
+  const advice = team.advice;
+  const adviceText = advice.enabled ? ['팀 전체','필요할 때 자문',advice.review ? '요청할 때 산출물 리뷰' : '',advice.observe ? '진행 중 자동 관찰' : ''].filter(Boolean).join(' · ') : '';
+  return `<div class="workspace-grid"><section class="board" aria-labelledby="work-title">
+  <div class="section-title"><h2 id="work-title">작업 순서</h2>${button('에이전트 추가','add-agent',{iconName:'plus'})}</div>
+  <ol class="timeline">${team.roles.map(role => nodeRow(team,role)).join('')}
+  <li><span class="marker">${icon('target','icon-sm')}</span><button type="button" class="node" data-action="select-final" data-key="role-final" aria-pressed="${ui.selected === 'final'}"><span class="node-main"><strong>최종 결과</strong><span class="node-meta">${escapeHTML(finalName(team))}${team.mandatory ? '<span>제출 전 필수 검토</span>' : ''}</span></span><span class="node-state">${icon('chevron','icon-sm')}</span></button>
+  ${ui.reviewSelected?`<div class="graph-review-return"><span class="small">제출 전 필수 검토</span>${button('검토 정책 편집','edit-final',{kind:'mini',key:'mobile-review-policy'})}</div>`:''}</li></ol>
+  <section class="context-row" aria-label="팀 공통 Outrider"><span class="avatar">${icon('chat')}</span><div><h3>팀 공통 Outrider</h3>${adviceText?`<p class="small muted">${adviceText}</p>`:''}</div>${button(advice.enabled?'설정':'공통 Outrider 추가','outrider',{key:'outrider',title:'팀 공통 Outrider 설정'})}</section></section>
+  <div class="desktop-detail info-panel" aria-label="선택한 작업 세부 정보">${role ? roleContent(team,role,true) : finalContent(team,true)}</div></div>`;
+}
+function sourceName(role) {
+  const definition = project.agents.find(agent => agent.id === role.source) || defaults.find(agent => agent.id === role.source);
+  return role.originName || definition ? `팀 사본 · ${role.originName || definition.name}` : '이 팀에서 만든 에이전트';
+}
+function roleContent(team,role,withHead) {
+  const section = (name,body,action='') => `<section class="field-row"><div class="field-label"><h3>${name}</h3>${action}</div>${body}</section>`;
+  const name = escapeHTML(role.name);
+  const input = `<div class="tile-box">${icon('file','icon-sm')} <strong>${escapeHTML(inputName(team,role))}</strong></div>`;
+  return `${withHead ? `<header class="panel-head"><span class="avatar">${icon('agent')}</span><div><h2>${name}</h2><p class="muted small">${escapeHTML(sourceName(role))}</p></div></header>` : ''}
+  <div class="detail-fields">
+  ${section('맡은 일',`<p>${escapeHTML(role.job)}</p>`,button('편집','edit-job',{kind:'ghost mini'}))}
+  ${section('받는 자료',input,button('자료 변경','edit-input',{kind:'ghost mini'}))}
+  ${section('사용할 스킬',`<div class="pills">${skillBadges(role.skills)}</div>`,button('스킬 추가','role-skills',{kind:'ghost mini',iconName:'plus'}))}
+  <section class="field-row"><details><summary>상세 설정</summary><div class="advanced-links">${button('다른 에이전트로 교체','replace-agent',{kind:'mini'})}</div></details></section></div>`;
+}
+function finalContent(team,withHead) {
+  return `${withHead ? `<header class="panel-head"><span class="avatar">${icon('target')}</span><div><h2>최종 결과</h2><p class="muted small">제출할 산출물과 검토 조건</p></div></header>` : ''}
+  <div class="detail-fields"><section class="field-row"><div class="field-label"><h3>제출할 산출물</h3>${button('결과 바꾸기','edit-final',{kind:'ghost mini'})}</div><div class="tile-box">${icon('file','icon-sm')}<strong>${escapeHTML(finalName(team))}</strong></div></section>
+  <section class="field-row${ui.reviewSelected?' review-policy-selected':''}"><div class="field-label"><h3>제출 전 필수 검토</h3>${ui.reviewSelected?button('검토 정책 편집','edit-final',{kind:'ghost mini',key:'review-policy'}):''}</div><p class="small muted">${team.mandatory?'선택한 산출물이 검토를 통과해야 제출합니다.':'꺼짐'}</p></section>
+  <section class="field-row"><h3>사람의 최종 승인</h3><p class="small muted">${team.approval?'제출 직전에 사람의 승인을 받습니다.':'꺼짐'}</p></section>
+  <section class="field-row">${button('결과 예시 보기','preview-final',{iconName:'file'})}</section></div>`;
+}
+const teamViews=[['composition','팀 구성','agent'],['structure','흐름 그래프','teams']];
+function teamViewControls(team) {
+  const tabs = teamViews.map(([id,name,glyph]) => `<button type="button" role="tab" id="team-tab-${id}" aria-controls="team-panel-${id}" aria-selected="${ui.mode===id}" tabindex="${ui.mode===id?0:-1}" data-action="${id}" data-key="${id}">${icon(glyph,'icon-sm')}${name}</button>`).join('');
+  const example = team.id===reviewExample.id ? '' : `<a href="#graph-review" class="graph-example" data-action="graph-example" data-key="graph-example">초대장 검토 예시 ${icon('arrow','icon-sm')}</a>`;
+  return `<div class="view-bar"><div class="team-views segment" role="tablist" aria-label="팀 보기">${tabs}</div>${example}</div>`;
+}
+
+function selectTeamView(mode) {
+  if (ui.mode===mode) return;
+  if (mode==='composition') {
+    const selected=executionGraph(currentTeam()).selected;
+    ui.reviewSelected=['reviewer','verdict','exhausted'].includes(selected?.kind);
+    if (ui.reviewSelected || selected?.kind==='approval' || selected?.kind==='final') ui.selected='final';
+  } else if (!ui.reviewSelected) {
+    ui.graphSelected=ui.selected;
+  }
+  ui.mode=mode;
+  render(mode);
+  const selected=mode==='composition'
+    ? app.querySelector('.node[aria-pressed="true"]')
+    : app.querySelector('.graph-node[aria-pressed="true"]');
+  selected?.scrollIntoView({block:'nearest'});
+}
+
+const defaultRequiredReviewLimit=3;
+
+function executionGraph(team) {
+  const reviewed=team.mandatory ? roleIn(team,team.final) : null;
+  const pending=team.roles.map(role=>({id:role.id,name:role.name,summary:role.output,icon:'agent',kind:'stage'}));
+  const steps=pending.flatMap(node=>node.id===reviewed?.id ? [node,
+    {id:'reviewer',name:'검토자',summary:`${reviewed.output} 후보 검토`,icon:'agent',kind:'reviewer'},
+    {id:'verdict',name:'검토 판정',summary:'통과 또는 수정',icon:'check',kind:'verdict'},
+  ] : [node]);
+  if (pending.length && team.approval) steps.push({id:'approval',name:'사람의 최종 승인',summary:'승인 후 제출',icon:'check',kind:'approval'});
+  const producer=roleIn(team,team.final);
+  if (pending.length) steps.push({id:'final',name:'최종 결과',summary:producer ? `${producer.output} · ${producer.name} 제출` : '제출할 산출물 선택',icon:'target',kind:'final'});
+  const edges=steps.slice(1).map((to,index)=>{
+    const from=steps[index];
+    return {from:from.id,to:to.id,kind:from.id==='verdict'?'pass':from.id==='approval'?'approved':'next'};
+  });
+  const ended=reviewed ? {id:'exhausted',name:'최종 제출 없음',summary:'부분 결과만 남음',icon:'x',kind:'exhausted'} : null;
+  if (reviewed) edges.push({from:'verdict',to:reviewed.id,kind:'return'},{from:'review-loop',to:ended.id,kind:'exhausted'});
+  const all=ended ? [...steps,ended] : steps;
+  const selected=all.find(node=>node.id===ui.graphSelected) || all.find(node=>node.id===ui.selected) || all[0];
+  return {reviewed,pending,steps,ended,edges,all,selected};
+}
+
+function graphButton(node,selected) {
+  return `<button type="button" class="graph-node graph-${node.kind}" aria-pressed="${node.id===selected?.id}" data-action="select-graph" data-value="${node.id}" data-key="graph-${node.id}" data-graph-node="${node.id}">
+  <span class="graph-node-icon">${icon(node.icon,'icon-sm')}</span><span class="graph-copy"><strong>${escapeHTML(node.name)}</strong><small>${escapeHTML(node.summary)}</small></span></button>`;
+}
+
+function graphOrder(team,role) {
+  const index=team.roles.indexOf(role);
+  return `<div class="graph-order"><p class="small">실행 순서</p><div class="controls">
+  ${button('위로','move-up',{key:`up-${role.id}`,value:role.id,iconName:'up',disabled:index===0})}
+  ${button('아래로','move-down',{key:`down-${role.id}`,value:role.id,iconName:'down',disabled:index===team.roles.length-1})}</div></div>`;
+}
+
+function graphDetails(team,node,withHead) {
+  if (!node) return '';
+  const role=roleIn(team,node.id);
+  if (role) return roleContent(team,role,withHead)+graphOrder(team,role);
+  if (node.id==='final') return finalContent(team,withHead);
+  const source=roleIn(team,team.final);
+  const detail = {
+    reviewer:[`받는 자료 · ${source?.name}의 ${source?.output} 후보와 검토 기준`,`검토자의 수정 의견은 ${source?.name}의 다음 회차에 전달합니다.`],
+    verdict:['통과한 후보는 다음 단계로 갑니다. 수정 요청은 같은 생산자에게 돌아갑니다.','판정은 후보 산출물 버전에 귀속됩니다.'],
+    exhausted:[`${defaultRequiredReviewLimit}회차까지 통과하지 못하면 실행이 여기서 끝납니다.`,'미통과 후보는 부분 결과로 남습니다.'],
+    approval:[`제출할 산출물 · ${finalName(team)}`,'사람이 승인하면 최종 결과가 확정됩니다.'],
+  }[node.id];
+  const heading=node.kind==='approval'?'제출 조건':'필수 검토';
+  return `${withHead ? `<header class="panel-head"><span class="avatar">${icon(node.icon)}</span><div><h2>${node.name}</h2><p class="muted small">${heading}</p></div></header>` : ''}
+  <div class="graph-detail-note">${detail.map(text=>`<p>${escapeHTML(text)}</p>`).join('')}</div>`;
+}
+
+const graphEdgeLabel={pass:'통과',approved:'승인',return:'수정 요청',exhausted:'한도 소진',next:'다음'};
+function structureView(team) {
+  const graph=executionGraph(team);
+  const {reviewed,steps,ended,all,edges,selected}=graph;
+  const buttons=(node)=>graphButton(node,selected);
+  const row=(node,second)=>`<div class="graph-row">${buttons(node)}${second?buttons(second):''}</div>`;
+  const nodes = steps.map(node=>{
+    if (node.id==='reviewer' || node.id==='verdict') return '';
+    if (node.id===reviewed?.id) {
+      const group=all.filter(item=>item.id===reviewed.id || item.id==='reviewer' || item.id==='verdict');
+      return `<div class="graph-loop" data-graph-node="review-loop"><p class="graph-loop-title">${icon('undo','icon-sm')}<span>필수 검토 · ${defaultRequiredReviewLimit}회차까지</span></p>${group.map(item=>row(item)).join('')}</div>`;
+    }
+    return row(node,node.id==='final'?ended:null);
+  }).join('');
+  const labels = new Map(all.map(node=>[node.id,node.name]));
+  labels.set('review-loop','필수 검토 루프');
+  const description=edges.map(({from,to,kind})=>`<li>${escapeHTML(labels.get(from))} → ${escapeHTML(labels.get(to))} · ${graphEdgeLabel[kind]}</li>`).join('');
+  const advice=team.advice.enabled
+    ? `<div class="graph-advice" tabindex="-1" data-key="graph-advice">${icon('chat','icon-sm')}<strong>팀 공통 Outrider</strong><span class="muted">필요할 때 자문 · 팀 전체</span></div>` : '';
+  const graphCanvas = steps.length ? `<div class="graph-canvas"${reviewed?' data-review':''}><svg class="graph-edge-layer" aria-hidden="true" focusable="false"></svg><div class="graph-nodes">${nodes}</div></div><ul class="graph-description" aria-label="그래프 연결">${description}</ul>`
+    : `<div class="graph-empty"><p class="muted">팀에 에이전트를 추가하세요.</p>${button('에이전트 추가','add-agent',{kind:'primary',iconName:'plus'})}</div>`;
+  return `<div class="workspace-grid graph-layout">
+  <section class="graph-card" aria-labelledby="execution-path"><header class="graph-head"><h2 id="execution-path">실행 경로</h2>${reviewed?'<p>팀이 실행될 수 있는 경로</p>':''}</header>
+  ${graphCanvas}${advice}</section>
+  ${selected ? `<div class="desktop-detail info-panel" aria-label="선택한 노드">${graphDetails(team,selected,true)}</div>` : ''}</div>`;
+}
+
+let graphResize;
+function syncGraphDrawing() {
+  graphResize?.disconnect();
+  const canvas=app.querySelector('.graph-canvas');
+  if (!canvas) return;
+  const edges=executionGraph(currentTeam()).edges;
+  const draw=()=>drawGraph(canvas,edges);
+  graphResize = new ResizeObserver(draw);
+  graphResize.observe(canvas);
+  draw();
+}
+
+function drawGraph(canvas,edges) {
+  const svg=canvas.querySelector('svg.graph-edge-layer');
+  const bounds=canvas.getBoundingClientRect();
+  const points=new Map([...canvas.querySelectorAll('[data-graph-node]')].map(node=>{
+    const box=node.getBoundingClientRect();
+    const left=box.left-bounds.left,right=box.right-bounds.left;
+    const top=box.top-bounds.top,bottom=box.bottom-bounds.top;
+    return [node.dataset.graphNode,{left,right,top,bottom,x:(left+right)/2,y:(top+bottom)/2}];
+  }));
+  const entry=canvas.querySelector('.graph-loop [data-graph-node]')?.dataset.graphNode;
+  const loopLabel=canvas.querySelector('.graph-loop-title span');
+  const labelRight=loopLabel ? loopLabel.getBoundingClientRect().right-bounds.left : 0;
+  const marker=(id,fill)=>`<marker id="graph-${id}" markerWidth="6" markerHeight="6" refX="5" refY="3" orient="auto"><path d="M0 0 L6 3 L0 6 Z" fill="${fill}"/></marker>`;
+  svg.setAttribute('viewBox',`0 0 ${bounds.width} ${bounds.height}`);
+  const geometry=edges.map(edge=>{
+    const {from,to,kind}=edge;
+    const a=points.get(from),b=points.get(to);
+    if (!a || !b) return '';
+    let path,labelX,labelY,anchor='start';
+    if (kind==='return') {
+      const loop=points.get('review-loop');
+      const rail=loop.right-9;
+      path=`M ${a.right+1} ${a.y} H ${rail} V ${b.y} H ${b.right+2}`;
+      labelX=(Math.max(a.right,b.right)+rail)/2;
+      labelY=(a.y+b.y)/2+4;
+      anchor='middle';
+    } else if (kind==='exhausted') {
+      path=`M ${b.x} ${a.bottom} V ${b.top-2}`;
+      labelX=b.x+6; labelY=a.bottom+14;
+    } else {
+      const mid=(a.bottom+b.top)/2;
+      const targetX=kind==='next' && to===entry && labelRight+8>b.x ? Math.min(b.right-8,labelRight+8) : b.x;
+      path=`M ${a.x} ${a.bottom+1} V ${mid} H ${targetX} V ${b.top-2}`;
+      labelX=b.x+7; labelY=mid+3;
+    }
+    const arrow=kind==='return'||kind==='exhausted'?kind:'next';
+    const label=kind === 'next' ? '' : `<text class="graph-edge-text" data-kind="${kind}" x="${labelX}" y="${labelY}" text-anchor="${anchor}">${graphEdgeLabel[kind]}</text>`;
+    return `<path class="graph-edge" data-kind="${kind}" data-from="${from}" data-to="${to}" d="${path}" marker-end="url(#graph-${arrow})"/>${label}`;
+  }).join('');
+  svg.innerHTML=`<defs>${marker('next','#777')}${marker('return','var(--emphasis)')}${marker('exhausted','var(--warning)')}</defs>${geometry}`;
+}
+
+function pickGraphNode(id) {
+  const node=executionGraph(currentTeam()).all.find(item=>item.id===id);
+  if (!node) return;
+  ui.graphSelected=id;
+  ui.reviewSelected=false;
+  if (node.kind==='stage' || node.kind==='final') ui.selected=id;
+  render(`graph-${id}`);
+  if (mobile.matches) openLayer('graph-node',{id});
+}
+
+
+function libraryView(view) {
+  const words = {
+    teams:['팀','이 프로젝트의 팀을 열거나 목표를 적어 새 팀을 만듭니다.','팀 만들기','make-team'],
+    agents:['에이전트','저장한 원본을 편집하고 여러 팀에서 사본으로 씁니다.','새 에이전트','make-agent'],
+    skills:['스킬','이 프로젝트에서 사용할 스킬을 찾고 작성합니다.','새 스킬 만들기','make-skill'],
+  }[view];
+  return `<div class="canvas">${header(words[0],words[1],button(words[2],words[3],{kind:'primary',iconName:'plus'}))}
+  ${view === 'teams' ? '' : `<div class="list-edit"><div class="search-wrap grow">${icon('search')}<input type="search" aria-label="${words[0]} 검색" data-library-search placeholder="${words[0]} 검색" value="${escapeHTML(ui.librarySearch)}"></div></div>`}
+  <section class="collection" id="library-rows" aria-label="${words[0]} 목록">${libraryRows(view)}</section></div>`;
+}
+function listRow(name,desc,action,value,nameIcon) {
+  return `<button type="button" class="list-row" data-action="${action}" data-key="list-${value}" data-value="${value}"><span class="avatar">${icon(nameIcon)}</span><span class="grow"><span class="name">${escapeHTML(name)}</span><span class="desc">${escapeHTML(desc)}</span></span>${icon('chevron','icon-sm')}</button>`;
+}
+function libraryRows(view) {
+  const query = ui.librarySearch.trim().toLowerCase();
+  let rows = [];
+  if (view === 'teams') rows = allSavedTeams().map(team => listRow(team.name,`${team.roles.length}명 · ${finalName(team)}`,'open-team',team.id,'teams'));
+  if (view === 'agents') rows = project.agents.filter(agent => `${agent.name} ${agent.job}`.toLowerCase().includes(query)).map(agent => listRow(agent.name,`원본 · 스킬 ${agent.skills.length}개 · ${agent.job}`,'edit-agent-source',agent.id,'agent'));
+  if (view === 'skills') rows = latestSkills().filter(item => `${item.name} ${item.desc}`.toLowerCase().includes(query)).map(item => listRow(item.name,`${item.desc} · v${item.rev}`,'view-skill',item.id,'skill'));
+  return rows.length ? rows.join('') : `<p class="empty">${query ? '검색 결과가 없습니다.' : '저장한 항목이 없습니다.'}</p>`;
+}
+
+
+function setActiveModal(layer,focus='') {
+  if (!layer) return;
+  const dock=layer.type==='team-assistant' && layers.length===1 && !mobile.matches ? app.querySelector('#builder-dock') : null;
+  if (layer.type==='team-assistant' && layer.session.step==='preview') {
+    const session=layer.session;
+    const team=session.target?currentTeam(session.target):null;
+    session.warning=(team?JSON.stringify(team):null)===session.proposal.baseline?'':'이 제안 이후 팀 초안이 바뀌었습니다.';
+  }
+  if(dialog.open && Boolean(dock)===dialog.matches(':modal')) dialog.close();
+  if(dialog.parentElement!==(dock||document.body)) (dock||document.body).appendChild(dialog);
+  dialog.classList.toggle('assistant-docked',Boolean(dock));
+  dialog.classList.toggle('builder-sheet',layer.type==='team-assistant');
+  app.querySelector('[data-action="builder-entry"]')?.setAttribute('aria-expanded',String(layer.type==='team-assistant'));
+  const data = modalContent(layer);
+  const isNested = layers.length > 1;
+  const isGraphNode=layer.type==='graph-node';
+  dialog.innerHTML = `<div class="sheet"><header class="sheet-head">${isNested || isGraphNode ? iconButton(isGraphNode?'흐름 그래프로 돌아가기':'뒤로','back-sheet','back') : ''}<div><h2 id="sheet-title" tabindex="-1">${escapeHTML(data.title)}</h2>${data.description ? `<p>${escapeHTML(data.description)}</p>` : ''}</div>${isGraphNode?'':iconButton(isNested?'현재 화면 닫기':'닫기','close-sheet','x')}</header>
+  <div class="sheet-body">${data.body}</div>${data.footer ? `<footer class="sheet-footer">${data.footer}</footer>` : ''}</div>`;
+  if (!dialog.open) {
+    if(dock) dialog.show();
+    else dialog.showModal();
+  }
+  const body = dialog.querySelector('.sheet-body');
+  if (layer.scroll) body.scrollTop = layer.scroll;
+  if(layer.type==='team-assistant' && layer.session.messages.length) {
+    const latest=body.querySelector('[data-builder-preview],.builder-options') || body.querySelector('.builder-thread li:last-child');
+    const offset=latest.getBoundingClientRect().top-body.getBoundingClientRect().top+body.scrollTop;
+    body.scrollTop=offset-5;
+  }
+  if (!focusKey(dialog,focus)) dialog.querySelector('#sheet-title')?.focus({preventScroll:true});
+}
+function openLayer(type,values={}) {
+  const active = document.activeElement;
+  const top = currentLayer();
+  const returnKey = active?.dataset?.key || '';
+  if (top) {
+    top.scroll = dialog.querySelector('.sheet-body')?.scrollTop || 0;
+    top.returnKey = returnKey;
+  } else {
+    baseReturn = {key:returnKey,element:active};
+  }
+  layers.push({type,scroll:0,...values});
+  setActiveModal(currentLayer());
+}
+function closeLayer(focus='') {
+  const prior=layers.pop();
+  if (prior?.type==='team-assistant') builderComposing=false;
+  if (prior?.fromBuilderHash && location.hash==='#ai-builder') history.replaceState(null,'',location.href.split('#')[0]);
+  const prev = currentLayer();
+  const returnKey = focus || prev?.returnKey || baseReturn?.key;
+  if (prev) {
+    setActiveModal(prev,returnKey);
+  } else {
+    dialog.close();
+    if(dialog.parentElement!==document.body) document.body.appendChild(dialog);
+    dialog.classList.remove('assistant-docked','builder-sheet');
+    app.querySelector('[data-action="builder-entry"]')?.setAttribute('aria-expanded','false');
+    if (!focusKey(app,returnKey) && baseReturn?.element?.isConnected) baseReturn.element.focus({preventScroll:true});
+    baseReturn = null;
+  }
+}
+let builderComposing=false;
+dialog.addEventListener('cancel',event => {
+  event.preventDefault();
+  if(!builderComposing) closeLayer();
+});
+dialog.addEventListener('compositionstart',event=>{
+  if(event.target.matches('[data-builder-input]')) builderComposing=true;
+});
+dialog.addEventListener('compositionend',event=>{
+  if(event.target.matches('[data-builder-input]')) builderComposing=false;
+});
+dialog.addEventListener('keydown',event=>{
+  const composing=event.isComposing || event.keyCode===229 || builderComposing;
+  if(event.key==='Escape' && dialog.classList.contains('assistant-docked') && !composing) {
+    event.preventDefault();
+    closeLayer();
+  }
+  if(event.key==='Enter' && !event.shiftKey && event.target.matches('[data-builder-input]') && !composing) {
+    event.preventDefault();
+    event.target.form.requestSubmit();
+  }
+});
+function submitButton(label,form) {
+  return `<button type="submit" class="action primary" form="${form}">${escapeHTML(label)}</button>`;
+}
+function layerFooter(primary,note='',cancel='취소') {
+  return `<p>${escapeHTML(note)}</p><div class="action-row">${button(cancel,'close-sheet',{kind:'ghost'})}${primary}</div>`;
+}
+function formFields(formId,fields) {
+  return `<form id="${formId}" class="stack" data-form="${formId}">${fields}<p class="form-error" role="alert"></p></form>`;
+}
+function field(name,label,value,{textarea=false,max=140}={}) {
+  const id=`field-${name}`;
+  return `<div><label for="${id}"><span class="label">${label}</span></label>${textarea ? `<textarea id="${id}" name="${name}" data-form-value maxlength="${max}" required>${escapeHTML(value)}</textarea>` : `<input id="${id}" type="text" name="${name}" data-form-value maxlength="${max}" value="${escapeHTML(value)}" required>`}</div>`;
+}
+function searchBox(label,query,search='picker') {
+  return `<div class="search-wrap">${icon('search')}<input type="search" data-search="${search}" data-key="search-${search}" aria-label="${label}" placeholder="${label}" value="${escapeHTML(query)}"></div>`;
+}
+function check(name,title,description,checked,disabled=false) {
+  return `<label class="choice"><input type="checkbox" name="${name}" data-check="${name}"${checked?' checked':''}${disabled?' disabled':''}><span><b>${title}</b><small>${description}</small></span></label>`;
+}
+function roleTarget() {
+  return {kind:'team',team:ui.team,role:ui.selected};
+}
+function targetObject(target) {
+  return target.kind !== 'team' ? target.layer.fields : roleIn(currentTeam(target.team),target.role);
+}
+function modalRole() {
+  const team = currentTeam();
+  return roleIn(team,ui.selected);
+}
+function skillRows(layer) {
+  const query=layer.query.toLowerCase().trim();
+  const target=targetObject(layer.target);
+  const offered=new Set([...latestSkills().map(item=>item.id), ...target.skills, ...layer.pending]);
+  const results=project.skills.filter(item => offered.has(item.id) && (item.id===layer.latest || `${item.name} ${item.desc}`.toLowerCase().includes(query)));
+  results.sort((a,b) => Number(b.id===layer.latest)-Number(a.id===layer.latest));
+  if (!results.length) return `<p class="empty">${query ? '검색 결과가 없습니다. 검색어를 바꾸거나 새 스킬을 만들 수 있습니다.' : '프로젝트에 저장한 스킬이 없습니다.'}</p>`;
+  return `<ul class="choice-list">${results.map(item => `<li><label class="choice" title="${escapeHTML(item.name)}">
+  <input type="checkbox" name="skill-choice" data-skill-choice value="${item.id}" data-key="skill-${item.id}"${layer.pending.has(item.id)?' checked':''}>
+  <span class="grow"><b>${escapeHTML(item.name)}</b><small>${escapeHTML(item.desc)}</small></span><span class="revision" aria-label="버전 ${item.rev}">v${item.rev}${item.rev>1 && !target.skills.includes(item.id) ? ' · 새 버전' : ''}</span></label></li>`).join('')}</ul>`;
+}
+function skillPicker(layer) {
+  const target=targetObject(layer.target);
+  const original=layer.target.kind === 'original';
+  return {
+    title:'스킬 선택',
+    description:layer.target.kind==='team' ? `${currentTeam(layer.target.team).name} · ${target.name}` : `${target.name || '새 에이전트'} · ${original ? '라이브러리 원본' : '이 팀의 에이전트'}`,
+    body:`<div class="sheet-searchline">${searchBox('스킬 검색',layer.query,'skill')}${button('새 스킬 만들기','create-skill-from-picker',{iconName:'plus'})}</div>
+    <p id="picker-notice" class="status-line" role="status">${escapeHTML(layer.notice || '')}</p><div id="picker-rows">${skillRows(layer)}</div>`,
+    footer:`<p id="skill-count" aria-live="polite">${layer.pending.size}개 선택 · 적용 전</p><div class="action-row">${button('취소','close-sheet',{kind:'ghost'})}${button(`${target.name || '에이전트'}에게 적용`,'apply-skills',{kind:'primary'})}</div>`
+  };
+}
+function skillForm(layer) {
+  const nested=layers.at(-2)?.type === 'choose-skills';
+  const title=layer.id ? '스킬 새 버전 만들기' : '새 스킬 만들기';
+  const inputs=field('name','스킬 이름',layer.fields.name,{max:60})+field('desc','언제 쓰는지',layer.fields.desc,{max:180})+field('text','지침 (Markdown)',layer.fields.text,{textarea:true,max:5000});
+  return {title,description:'동네 자전거 모임 · 스킬 라이브러리',body:formFields('skill-form',inputs),
+    footer:layerFooter(submitButton(layer.id ? '새 버전 저장' : '라이브러리에 저장','skill-form'),nested?'저장 후 스킬 선택으로 돌아갑니다.':layer.id?'이미 적용된 버전은 그대로 사용합니다.':'프로젝트에서 사용할 스킬로 저장합니다.')};
+}
+function templateSelect(layer) {
+  return `<label><span class="label">시작점</span><select data-template><option value="">직접 만들기</option>${defaults.map(item => `<option value="${item.id}"${layer.template===item.id?' selected':''}>기본 제공 · ${item.name}</option>`).join('')}</select></label>`;
+}
+function agentForm(layer) {
+  const source = layer.type === 'agent-source';
+  const editing = !!layer.id;
+  const inputs = (source && !editing ? templateSelect(layer) : '') + field('name','이름',layer.fields.name,{max:60}) +
+    field('job','맡은 일',layer.fields.job,{textarea:true,max:1000}) + field('output','만드는 결과',layer.fields.output,{max:70}) +
+    `<section><div class="field-label"><h3>사용할 스킬</h3>${button('스킬 추가','source-skills',{iconName:'plus',kind:'mini'})}</div><div class="pills">${skillBadges(layer.fields.skills)}</div></section>`;
+  return {title:source ? (editing?'에이전트 원본 편집':'새 에이전트') : '이 팀의 에이전트 만들기',
+    description:source?'동네 자전거 모임 · 에이전트 라이브러리':currentTeam().name,body:formFields('agent-form',inputs),
+    footer:layerFooter(submitButton(source?'에이전트 원본 저장':'추가 확인','agent-form'),source?'팀은 저장한 원본의 사본을 사용합니다.':'팀 초안에 추가할 내용을 확인합니다.')};
+}
+function agentPicker(layer) {
+  const options=[['mine','내 에이전트'],['built-in','기본 제공'],['direct','직접 만들기']];
+  const available=layer.tab === 'mine' ? project.agents : defaults;
+  const label=layer.replacing?'다른 에이전트로 교체':'에이전트 추가';
+  const records=available.map(item => listRow(item.name,`${item.job} · 스킬 ${item.skills.length}개`,'choose-agent',item.id,'agent')).join('');
+  const tabRow=`<div class="segment" aria-label="에이전트 출처">${options.map(([tab,text]) => `<button type="button" aria-pressed="${layer.tab===tab}" data-action="agent-tab" data-value="${tab}" data-key="agent-tab-${tab}">${text}</button>`).join('')}</div>`;
+  const direct=`<div class="summary-box"><p>이 팀에서 맡을 일과 결과를 작성합니다.</p><div>${button('이 팀의 에이전트 만들기','make-inline-agent',{kind:'primary'})}</div></div>`;
+  return {title:label,description:layer.replacing?`${currentTeam().name} · ${modalRole().name}`:currentTeam().name,
+    body:`${tabRow}${layer.tab==='direct'?direct:`<div class="collection">${records || '<p class="empty">저장한 에이전트가 없습니다. 기본 제공 또는 직접 만들기에서 계속할 수 있습니다.</p>'}</div>`}`,
+    footer:layerFooter('',layer.replacing?'선택한 카드의 역할을 새 사본으로 바꿉니다.':'선택한 에이전트의 독립 사본을 팀에 추가합니다.')};
+}
+function agentPreview(layer) {
+  const item=layer.agent;
+  return {title:layer.replacing?'교체할 사본 확인':'추가할 사본 확인',description:currentTeam().name,
+    body:`<div class="summary-box"><h3>${escapeHTML(item.name)}</h3><p>${escapeHTML(item.job)}</p><div class="pills">${skillBadges(item.skills)}</div>
+    <p class="muted small">${layer.replacing?'카드 이름, 맡은 일, 받는 자료와 결과는 유지합니다. 이 사본의 스킬과 원본 출처를 바꿉니다.':'사본의 맡은 일과 스킬을 이 팀에서 편집할 수 있습니다.'}</p></div>`,
+    footer:layerFooter(button(layer.replacing?'이 카드 교체':'팀에 사본 추가','commit-agent-copy',{kind:'primary'}),'팀 저장 전에 확인할 수 있습니다.')};
+}
+function finalForm(layer) {
+  const t = currentTeam();
+  const mayEnableReview=t.advice.enabled || t.mandatory;
+  const options = t.roles.map(role => `<option value="${role.id}"${layer.fields.final===role.id?' selected':''}>${escapeHTML(`${role.name} · ${role.output}`)}</option>`).join('');
+  const result = `<label><span class="label">제출할 산출물</span><select required name="final" data-form-value><option value="">선택</option>${options}</select></label>`;
+  return {title:'최종 결과 바꾸기',description:t.name,body:formFields('final-form',result+
+    check('mandatory','제출 전 필수 검토',mayEnableReview?'선택한 산출물의 통과 버전만 제출합니다.':'팀 공통 Outrider를 추가하면 필수 검토를 설정할 수 있습니다.',layer.fields.mandatory,!mayEnableReview)+
+    check('approval','사람의 최종 승인','검토를 켠 경우 통과 후 별도 승인을 받습니다.',layer.fields.approval)),
+    footer:layerFooter(submitButton('최종 결과에 적용','final-form'),'변경은 이 팀 초안에 적용합니다.')};
+}
+function adviceForm(layer) {
+  const a = layer.fields;
+  const rest = a.enabled ? check('review','요청할 때 산출물 리뷰','작업자가 산출물 버전을 골라 의견을 요청합니다.',a.review)+
+    check('observe','진행 중 자동 관찰','선택한 작업자의 진행을 관찰하고 의견을 보냅니다.',a.observe) : '';
+  return {title:'팀 공통 Outrider',description:currentTeam().name,
+    body: formFields('advice-form',check('enabled','요청형 자문','팀 작업자가 필요할 때 조언을 요청합니다.',a.enabled)+rest)+
+    '<p class="sheet-footnote">특정 결과의 제출 전 필수 검토는 최종 결과 설정에서 켤 수 있습니다.</p>',
+    footer:layerFooter(submitButton('팀 초안에 적용','advice-form'),'팀의 자문과 관찰 설정입니다.')};
+}
+function roleForm(layer) {
+  const team=currentTeam();
+  const role=modalRole();
+  if (layer.type === 'job') return {title:`${role.name}의 맡은 일`,description:team.name,
+    body:formFields('job-form',field('job','맡은 일',layer.fields.job,{textarea:true,max:1000})),
+    footer:layerFooter(submitButton('맡은 일에 적용','job-form'),'이 팀 에이전트의 사본을 변경합니다.')};
+  const options = team.roles.slice(0,team.roles.indexOf(role)).map(other => `<option value="${other.id}"${layer.fields.input===other.id?' selected':''}>${escapeHTML(`${other.name} · ${other.output}`)}</option>`).join('');
+  return {title:`${role.name}가 받는 자료`,description:team.name,
+    body:formFields('input-form',`<label><span class="label">자료 출처</span><select name="input" data-form-value><option value="request">팀 요청</option>${options}</select></label>`),
+    footer:layerFooter(submitButton('자료에 적용','input-form'),'이 에이전트가 읽는 자료를 선택합니다.')};
+}
+function previewFinal(team,trial=false) {
+  const role=roleIn(team,team.final);
+  const example=role?.id === 'writer-a'
+    ? '이번 토요일 오전 10시, 공원 입구에서 만나 함께 자전거 소풍을 떠나요. 헬멧과 물을 챙기고, 비가 오면 모임 공지를 확인해 주세요.'
+    : (role?.output === '기획안' ? '대상은 동네 자전거 모임 참가자입니다. 토요일 오전 10시 공원 입구에서 출발하며 헬멧과 물을 준비합니다.' : '선택한 생산자의 결과가 실행 후 이곳에 표시됩니다.');
+  return {title:trial?'모의 시험 결과 예시':'최종 결과 예시',description:team.name,
+    body:`<div class="stack"><div class="tile-box">${icon('file')}<strong>${escapeHTML(finalName(team))}</strong></div><p class="sample">${escapeHTML(example)}</p><p class="small muted">설계 확인용 예시입니다. 모델 호출은 없습니다.</p></div>`,
+    footer:layerFooter('','','닫기')};
+}
+const assistantSessions=new Map();
+const assistantExamples={
+  goals:['동네 자전거 소풍 초대장을 작성한다','주간 진행 보고서를 작성한다','새 기능의 릴리스 안내를 작성한다'],
+  edits:['검토 추가','필요할 때 자문 추가','목표 변경: 일정과 준비물이 담긴 초대장을 작성한다','지금 누가 제출해?'],
+};
+const builderNotice='설계 시안 · 입력은 브라우저 안에서 예시 응답으로 처리합니다.';
+
+function startBuilder(team=null) {
+  const key=team?.id || 'new-team';
+  const mode=team?.roles.length?'edit':'create';
+  const previous=assistantSessions.get(key);
+  const session=previous?.mode===mode?previous: {key,mode,target:team?.id,step:'input',input:'',messages:[]};
+  assistantSessions.set(key,session);
+  openLayer('team-assistant',{session});
+  if(session.step==='input') focusKey(dialog,'builder-composer');
+}
+
+function builderTurn(session,text) {
+  session.messages=[...session.messages,{speaker:'AI',text}].slice(-6);
+}
+
+function jobSuggestion(goal) {
+  if (/뉴스레터/.test(goal)) return '뉴스레터';
+  if (/소식지/.test(goal)) return '소식지';
+  if (/초대|소풍/.test(goal)) return '초대장';
+  if (/주간|보고/.test(goal)) return '보고서';
+  if (/릴리스|출시/.test(goal)) return '릴리스 안내';
+  return '작업 결과';
+}
+
+function builderOptions(session) {
+  if (session.mode==='create') {
+    const output=jobSuggestion(session.goal);
+    return [
+      ['solo','작성자 한 명',`작성자가 팀 요청을 읽고 최종 결과를 제출합니다. 결과 형식은 ${output}입니다.`],
+      ['plan','기획 후 작성',`기획자가 자료를 정리하고 작성자는 그 기획안으로 최종 결과를 제출합니다. 결과 형식은 ${output}입니다.`],
+      ['required','작성 후 필수 검토',`작성자가 ${output} 후보를 만들고, 검토를 통과한 후보를 제출합니다. 공통 Outrider 설정도 포함합니다.`],
+    ];
+  }
+  return [
+    ['artifact','요청할 때 산출물 의견 받기','작업자가 필요할 때 공통 Outrider의 의견을 받습니다. 기존 제출 조건은 유지합니다.'],
+    ['required','검토를 통과한 산출물만 제출','제출자를 그대로 두고, 수정 요청은 같은 작성자에게 돌려보냅니다.'],
+  ];
+}
+
+function builderEditIntent(text) {
+  const wording=text.trim().replace(/[.!?。]+$/u,'').replace(/\s+/gu,' ');
+  if (/^(지금 )?(누가 제출해|누가 제출하나요|최종 결과가 뭐야|제출자가 누구야)$/u.test(wording)) return {kind:'explain'};
+  if (/^(검토 추가|검토를 추가해 줘|검토해 줘)$/u.test(wording)) return {kind:'clarify'};
+  if (/^(제출 전 (필수 )?검토 추가|제출 전에 꼭 검토해 줘|검토 통과 후 제출)$/u.test(wording)) return {kind:'required'};
+  if (/^(필요할 때 자문 추가|필요할 때만 자문을 받을 수 있게 해 줘|요청형 자문 추가)$/u.test(wording)) return {kind:'advice'};
+  if (/^(필요할 때만 자문|요청형 자문만)(?:[,·]\s*|\s+)검토(?: 통과)?(?:는)? (?:불필요|필요 없음)$/u.test(wording)) return {kind:'advice-only'};
+  const goal=text.trim().match(/^목표(?: 변경|를 바꿔 줘)?\s*[:：]\s*(.+)$/su);
+  if (goal) return {kind:'goal',value:goal[1]};
+  return {kind:'unsupported'};
+}
+
+function builderSend(session) {
+  const input=session.input.trim();
+  if (!input) return;
+  session.messages=[...session.messages,{speaker:'나',text:input}].slice(-6);
+  session.input='';
+  session.warning='';
+  if (session.mode==='create') {
+    session.goal=input;
+    const adviceOnly=/(?:필요할 때만 자문|요청형 자문만)/u.test(input) &&
+      /검토(?: 통과)?(?:는|가|를)?\s*(?:불필요|필요 없|없이)/u.test(input);
+    const oneWriter=/작성자\s*(?:한|1)\s*명(?:만|이)/u.test(input);
+    const otherRole=/(기획자|검토자|조사자|추가 역할|[2-9]명)/u.test(input);
+    const reviewCondition=!adviceOnly && /(?:제출 전 (?:필수 )?검토|검토를?\s*통과|검토를?\s*거쳐)/u.test(input);
+    if (adviceOnly || (oneWriter && !otherRole && !reviewCondition)) {
+      previewBuilder(session,adviceOnly?'solo-advice':'solo');
+      return;
+    }
+    session.step='options';
+    builderTurn(session,`제출할 결과는 ‘${jobSuggestion(input)}’입니다. 자료를 먼저 정리할지, 제출 전에 검토를 통과해야 할지에 따라 구성을 골라 주세요.`);
+  } else {
+    const intent=builderEditIntent(input);
+    const team=currentTeam(session.target);
+    if (intent.kind==='explain') {
+      builderTurn(session,`지금 설정한 최종 결과는 ‘${finalName(team)}’입니다.${team.mandatory?' 이 산출물은 검토를 통과한 후보만 제출합니다.':''}`);
+    } else if (intent.kind==='clarify') {
+      session.step='options';
+      builderTurn(session,'검토 의견을 받을까요, 제출 전에 통과를 요구할까요?');
+    } else if (intent.kind==='unsupported') {
+      builderTurn(session,'이 시안에서 지원하는 요청은 검토 추가, 요청형 자문, 목표 변경, 제출자 확인입니다. 아래 예시를 골라 다시 보낼 수 있습니다.');
+    } else {
+      previewBuilder(session,intent.kind,intent.value);
+      return;
+    }
+  }
+  bodyRerender(currentLayer(),session.step==='options'?'builder-first-option':'builder-composer');
+}
+
+function proposeBuilder(session,kind,value) {
+  const team=session.target?currentTeam(session.target):null;
+  if (session.mode==='create') {
+    const artifact=jobSuggestion(session.goal);
+    const producer={name:'작성자',output:artifact,job:`‘${session.goal}’에 맞는 ${artifact} 후보를 작성한다.`};
+    const roles=kind==='plan' ? [
+      {name:'기획자',output:'기획안',job:`${artifact}에 필요한 자료와 완성 기준을 정리한다.`},producer,
+    ] : [producer];
+    const advice=kind==='required'||kind==='solo-advice'?{enabled:true,review:false,observe:false}:blankAdvice();
+    return {baseline:team?JSON.stringify(team):null,roles,artifact,goal:session.goal,mandatory:kind==='required',advice};
+  }
+  const patch={};
+  const changes=[];
+  if (kind==='goal' && value!==team.goal) {
+    patch.goal=value;
+    changes.push(['팀 목표',team.goal,value]);
+  }
+  if (kind==='required') {
+    const source=roleIn(team,team.final);
+    if (!source) return {error:'팀의 최종 결과에서 제출할 산출물을 고른 뒤 필수 검토를 추가할 수 있습니다.'};
+    if (!team.mandatory) {
+      patch.mandatory=true;
+      changes.push(['제출 전 필수 검토','꺼짐',`${source.output} · ${source.name} 제출 · 검토 ${defaultRequiredReviewLimit}회차까지`]);
+    }
+  }
+  if (kind==='advice-only' && (team.mandatory || team.advice.review || team.advice.observe)) {
+    return {error:'시안에서는 공통 Outrider 설정과 최종 결과 설정에서 기존 검토나 관찰을 각각 끌 수 있습니다.'};
+  }
+  if (kind==='advice' || kind==='advice-only' || kind==='artifact' || (kind==='required' && !team.mandatory)) {
+    const enabled=team.advice.enabled;
+    if (!enabled || (kind==='artifact' && !team.advice.review)) {
+      patch.advice={...team.advice,enabled:true,...(kind==='artifact'?{review:true}:{})};
+      if (!enabled) changes.push(['팀 공통 Outrider','꺼짐','팀 전체 · 필요할 때 자문']);
+      if (kind==='artifact' && !team.advice.review) changes.push(['요청할 때 산출물 리뷰','꺼짐','필요할 때 작성자에게 검토 의견 전달']);
+    }
+  }
+  if (!changes.length) return {error:'팀 초안에 이미 이 설정이 적용되어 있습니다.'};
+  return {baseline:JSON.stringify(team),patch,changes};
+}
+
+function previewBuilder(session,kind,value) {
+  const proposal=proposeBuilder(session,kind,value);
+  if (proposal.error) {
+    session.step='input';
+    builderTurn(session,proposal.error);
+    bodyRerender(currentLayer(),'builder-composer');
+    return;
+  }
+  session.proposal=proposal;
+  session.choice={kind,value};
+  session.step='preview';
+  session.warning='';
+  builderTurn(session,session.mode==='create'?'이 구성으로 만들 초안을 확인해 주세요.':'이 팀에서 바뀔 항목을 확인해 주세요.');
+  bodyRerender(currentLayer());
+}
+
+function builderPreview(session) {
+  const p=session.proposal;
+  if (session.mode==='create') {
+    const label=session.choice.kind==='solo-advice'?'작성자 한 명 · 요청형 자문':builderOptions(session).find(item=>item[0]===session.choice.kind)?.[1];
+    const rows=p.roles.map((role,index)=>`<li><strong>${escapeHTML(role.name)}</strong> ${escapeHTML(role.job)}<span class="desc">${index?'기획안':'팀 요청'} → ${escapeHTML(role.output)}</span></li>`).join('');
+    const gate=p.mandatory?`<p><strong>제출 조건</strong> 검토 통과 후 작성자 제출 · ${defaultRequiredReviewLimit}회차까지</p>`:'';
+    const advice=p.advice.enabled?'<p><strong>함께 적용</strong> 팀 공통 Outrider · 팀 전체 요청형 자문</p>':'';
+    return `<div class="builder-preview stack" data-builder-preview><h3>${label}</h3><p><strong>팀 목표</strong> ${escapeHTML(p.goal)}</p><ol class="builder-preview-roles">${rows}</ol><p><strong>최종 결과</strong> ${escapeHTML(p.artifact)} · 작성자 제출</p>${gate}${advice}</div>`;
+  }
+  const team=currentTeam(session.target);
+  const changes=p.changes.map(([title,before,after])=>`<div><dt>${title}</dt><dd><span class="muted">${escapeHTML(before)}</span> <span aria-label="변경">→</span> <strong>${escapeHTML(after)}</strong></dd></div>`).join('');
+  const recovery=p.patch.mandatory?'수정 요청은 같은 제출자에게 돌아가며, 한도 소진 시 최종 제출이 없습니다.':'';
+  return `<div class="builder-preview stack" data-builder-preview><dl>${changes}</dl>
+    ${recovery?`<p class="small">${recovery}</p>`:''}
+    <p class="muted small">유지 · 기존 팀원·자료 연결·선택한 최종 결과(${escapeHTML(finalName(team))})와 라이브러리 원본</p></div>`;
+}
+
+function builderLayer(session) {
+  const editing=session.mode==='edit';
+  const target=session.target?currentTeam(session.target)?.name:'새 팀';
+  const prompt=editing?'이 팀에서 무엇을 바꿀까요? 현재 제출자를 물어볼 수도 있습니다.':'팀으로 무엇을 만들고 싶으세요? 원하는 결과를 한 문장으로 적어 주세요.';
+  const history=`<ol class="builder-thread" aria-label="설계 대화"><li><strong>AI</strong><p>${prompt}</p></li>${session.messages.map(({speaker,text})=>`<li${speaker==='나'?' class="builder-user"':''}><strong>${speaker}</strong><p>${escapeHTML(text)}</p></li>`).join('')}</ol>`;
+  let controls;
+  let finish;
+  if (session.step==='input') {
+    const ideas=editing?assistantExamples.edits:assistantExamples.goals;
+    controls=`<div class="builder-suggestions">${ideas.map(text=>button(text,'builder-suggestion',{kind:'mini',value:text})).join('')}</div>
+    <form id="builder-input"><label for="builder-composer">${editing?'요청':'팀 목표'}</label>
+    <textarea id="builder-composer" data-builder-input data-key="builder-composer" required maxlength="500" rows="2">${escapeHTML(session.input)}</textarea></form>`;
+    finish=submitButton('보내기','builder-input');
+  } else if (session.step==='options') {
+    controls=`<div class="builder-options">${builderOptions(session).map(([kind,title,note],i)=>`<button type="button" class="list-row" data-action="builder-choice" data-value="${kind}" data-key="${i===0?'builder-first-option':kind}"><span class="grow"><span class="name">${title}</span><span class="desc">${note}</span></span>${icon('chevron','icon-sm')}</button>`).join('')}</div>`;
+    finish=button(editing?'다른 요청 입력':'목표 다시 쓰기','builder-back',{kind:'ghost'});
+  } else {
+    controls=builderPreview(session);
+    finish=button(editing?'이 변경을 초안에 적용':'이 구성을 초안에 적용','builder-apply',{kind:'primary'});
+    if (session.warning) finish=button('다시 제안','builder-refresh',{kind:'primary'});
+    finish=button(session.mode==='create'?'다른 구성 보기':'다른 요청 입력','builder-back',{kind:'ghost'})+finish;
+  }
+  const note=session.step==='preview'?'적용은 초안에 기록됩니다. 팀 저장으로 확정하세요.':'';
+  const warning=session.warning?`<p class="warning small" role="alert">${escapeHTML(session.warning)}</p>`:'';
+  return {title:editing?'AI로 팀 편집':'AI로 팀 만들기',description:target,
+    body:`<div class="builder stack"><p class="builder-notice">${builderNotice}</p>${history}${controls}${warning}</div>`,
+    footer:`<p>${escapeHTML(note)}</p><div class="action-row">${finish}</div>`};
+}
+
+function builderBack(session) {
+  session.warning='';
+  if (session.mode==='create' && session.step==='preview') {
+    session.step='options';
+    bodyRerender(currentLayer(),'builder-first-option');
+  } else {
+    session.step='input';
+    if (session.mode==='create') session.input=session.goal;
+    bodyRerender(currentLayer(),'builder-composer');
+  }
+}
+
+function applyBuilder(session) {
+  const p=session.proposal;
+  const team=session.target?currentTeam(session.target):null;
+  if ((team?JSON.stringify(team):null)!==p.baseline) {
+    session.warning='대화를 열어 둔 동안 팀 초안이 바뀌었습니다.';
+    bodyRerender(currentLayer(),'builder-refresh');
+    return;
+  }
+  if (session.mode==='edit') {
+    markUndo(team);
+    Object.assign(team,copy(p.patch));
+    let focus='page';
+    if(p.patch.mandatory) {
+      ui.selected='final';
+      ui.graphSelected='final';
+      ui.reviewSelected=true;
+      focus=ui.mode==='structure'?'graph-final':'role-final';
+    } else if(p.patch.advice) {
+      focus=ui.mode==='structure'?'graph-advice':'outrider';
+    }
+    say('현재 팀 초안에 적용했습니다. 팀 저장으로 확정합니다.');
+    assistantSessions.delete(session.key);
+    closeLayer();
+    render(focus);
+    return;
+  }
+  const draft=team || {id:newId('team'),name:p.goal.slice(0,70),goal:p.goal,roles:[],final:'',mandatory:false,approval:false,advice:blankAdvice()};
+  markUndo(draft);
+  if(draft.name==='새 팀' && !draft.goal) draft.name=p.goal.slice(0,70);
+  const roles=[];
+  for(const role of p.roles) roles.push({id:newId('role'),...role,input:roles.at(-1)?.id||'request',source:'',skills:[]});
+  Object.assign(draft,{goal:p.goal,roles,final:roles.at(-1).id,mandatory:p.mandatory,advice:copy(p.advice)});
+  drafts.set(draft.id,draft);
+  assistantSessions.delete(session.key);
+  while (currentLayer() && ['team-assistant','new-team-start'].includes(currentLayer().type)) closeLayer();
+  if (ui.team!==draft.id || ui.view!=='team') openTeam(draft.id);
+  ui.selected=roles[0].id;
+  ui.graphSelected=roles[0].id;
+  say('팀 초안을 만들었습니다. 팀 저장으로 확정합니다.');
+  render(ui.mode==='structure'?`graph-${ui.selected}`:`role-${ui.selected}`);
+}
+
+
+function modalContent(layer) {
+  switch(layer.type) {
+    case 'team-assistant': return builderLayer(layer.session);
+    case 'new-team-start': return {title:'팀 만들기',description:'동네 자전거 모임',
+      body:`<div class="start-choices">
+        <button type="button" class="list-row" data-action="builder-new" data-key="builder-new"><span class="avatar">${icon('chat')}</span><span class="grow"><span class="name">AI로 팀 만들기</span><span class="desc">목표를 적고 예시를 골라 초안을 만듭니다.</span></span>${icon('chevron','icon-sm')}</button>
+        <button type="button" class="list-row" data-action="make-team-direct" data-key="make-team-direct"><span class="avatar">${icon('teams')}</span><span class="grow"><span class="name">직접 구성</span><span class="desc">빈 초안에서 에이전트를 추가합니다.</span></span>${icon('chevron','icon-sm')}</button>
+      </div>`,footer:layerFooter('')};
+    case 'role': return {title:modalRole().name,description:sourceName(modalRole()),body:roleContent(currentTeam(),modalRole(),false)};
+    case 'graph-node': {
+      const team=currentTeam();
+      const node=executionGraph(team).all.find(item=>item.id===layer.id);
+      return {title:node.name,description:team.name,body:graphDetails(team,node,false)};
+    }
+    case 'final': return {title:'최종 결과',description:currentTeam().name,body:finalContent(currentTeam(),false)};
+    case 'choose-skills': return skillPicker(layer);
+    case 'skill-form': return skillForm(layer);
+    case 'skill-view': {const item=skill(layer.id);return {title:item.name,description:`스킬 라이브러리 · v${item.rev}`,
+      body:`<div class="stack"><p>${escapeHTML(item.desc)}</p><p class="sample">${escapeHTML(item.text)}</p></div>`,
+      footer:layerFooter(button('새 버전 만들기','edit-skill',{kind:'primary',value:item.id}),'','닫기')};}
+    case 'agent-source':
+    case 'agent-inline': return agentForm(layer);
+    case 'agent-picker': return agentPicker(layer);
+    case 'agent-preview': return agentPreview(layer);
+    case 'final-form': return finalForm(layer);
+    case 'advice': return adviceForm(layer);
+    case 'job':
+    case 'input': return roleForm(layer);
+    case 'preview-final': return previewFinal(layer.team || currentTeam(),Boolean(layer.team));
+    case 'new-team':
+      return {title:'팀 만들기',description:'동네 자전거 모임',body:formFields('team-form',
+        field('name','팀 이름',layer.fields.name,{max:75})+field('goal','팀 목표',layer.fields.goal,{textarea:true,max:500})),
+        footer:layerFooter(submitButton('팀 구성 열기','team-form'),'팀은 마지막에 팀 저장으로 확정합니다.')};
+    default: throw new Error('Unknown sheet: '+layer.type);
+  }
+}
+
+
+let beforeExample;
+function leaveGraphExampleHash() {
+  if (location.hash !== '#graph-review') return;
+  history.replaceState(null,'',location.href.split('#')[0]);
+  beforeExample=undefined;
+}
+function openGraphExample(focus='page') {
+  if (location.hash!=='#graph-review') {
+    beforeExample={...ui};
+    history.pushState(null,'','#graph-review');
+  }
+  openTeam(reviewExample.id,'structure',focus);
+}
+function openTeam(id, mode='composition', focus='page') {
+  if(currentLayer()?.type==='team-assistant' && currentLayer().session.target!==id) closeLayer();
+  if(id!==reviewExample.id) leaveGraphExampleHash();
+  ui.view = 'team';
+  ui.team = id;
+  ui.mode = mode;
+  const team = currentTeam(id);
+  ui.selected = team.roles.find(role => role.source === 'my-writer')?.id || team.roles[0]?.id || 'final';
+  ui.graphSelected=ui.selected;
+  ui.reviewSelected=false;
+  ui.status = '';
+  render(focus);
+}
+function goTo(view) {
+  if(currentLayer()?.type==='team-assistant') closeLayer();
+  leaveGraphExampleHash();
+  ui.view = view;
+  ui.status = '';
+  ui.librarySearch = '';
+  render('page');
+}
+function bodyRerender(layer,focus) {
+  setActiveModal(layer,focus);
+}
+function pickSkills(target) {
+  openLayer('choose-skills',{target,query:'',pending:new Set(targetObject(target).skills),notice:''});
+}
+function newSkill() {
+  openLayer('skill-form',{fields:{name:'',desc:'',text:''}});
+}
+function newAgent(type='agent-source') {
+  openLayer(type,{fields:{name:'',job:'',output:'',skills:[]},template:''});
+}
+function openAgentCopy(layer) {
+  const team = currentTeam();
+  const chosen = layer.agent;
+  markUndo(team);
+  if (layer.replacing) {
+    const old = modalRole();
+    old.originName = chosen.name;
+    old.originJob = chosen.job;
+    old.skills = copy(chosen.skills);
+    old.source = chosen.id || '';
+    say(`${old.name} 사본으로 교체했습니다. 팀 저장으로 확정합니다.`);
+  } else {
+    const last = team.roles.at(-1);
+    const role = {id:newId('role'),source:chosen.id||'',originName:chosen.id?chosen.name:'',originJob:chosen.job,
+      name:chosen.name,job:chosen.job,skills:copy(chosen.skills),input:last?.id || 'request',output:chosen.output};
+    team.roles.push(role);
+    if (team.roles.length===1) team.final=role.id;
+    ui.selected = role.id;
+    ui.graphSelected = role.id;
+    ui.reviewSelected = false;
+    say(`${role.name} 사본을 추가했습니다. 팀 저장으로 확정합니다.`);
+  }
+  render();
+  while(currentLayer() && ['agent-picker','agent-inline','agent-preview'].includes(currentLayer().type)) closeLayer();
+  if(dialog.open) setActiveModal(currentLayer());
+  else focusKey(app,`${ui.mode==='structure'?'graph':'role'}-${ui.selected}`);
+}
+function storeTeam(focus='team-status') {
+  const team=currentTeam();
+  if (!team.roles.length) {
+    say('에이전트를 먼저 추가하세요.');
+    render('add-agent');
+    return false;
+  }
+  if (!roleIn(team,team.final)) {
+    ui.selected='final';
+    render();
+    openLayer('final-form',{fields:{final:'',mandatory:team.mandatory,approval:team.approval}});
+    return false;
+  }
+  if (team.roles.some((role,index)=>role.input !== 'request' && !team.roles.slice(0,index).some(producer=>producer.id===role.input))) {
+    say('받는 자료의 생산자가 먼저 실행되도록 작업 순서를 확인하세요.');
+    render('structure');
+    return false;
+  }
+  const existing=project.teams.findIndex(entry=>entry.id===team.id);
+  const storedTeam=copy(team);
+  if (existing < 0) project.teams.push(storedTeam);
+  else project.teams[existing] = storedTeam;
+  commitProject();
+  say(`이 팀의 변경을 ${storageAvailable ? '브라우저' : '탭'}에 저장했습니다.`);
+  render();
+  const status=app.querySelector('#team-status');
+  status.tabIndex=-1;
+  if (!focusKey(app,focus)) status.focus({preventScroll:true});
+  return true;
+}
+function moveRole(id,position) {
+  const team=currentTeam();
+  const index=team.roles.findIndex(role=>role.id===id);
+  const target=index+position;
+  if (index<0 || target<0 || target>=team.roles.length) return;
+  markUndo(team);
+  const [role]=team.roles.splice(index,1);
+  team.roles.splice(target,0,role);
+  say('실행 순서를 바꿨습니다. 받는 자료와 최종 결과는 직접 설정할 수 있습니다.');
+  const focus=`${position<0?'down':'up'}-${id}`;
+  render(dialog.open ? '' : focus);
+  if(currentLayer()?.type==='graph-node') setActiveModal(currentLayer(),focus);
+}
+function updateTeamFields(fields,status) {
+  const team=currentTeam();
+  const unchanged=Object.entries(fields).every(([key,value])=>JSON.stringify(team[key])===JSON.stringify(value));
+  if (!unchanged) {
+    markUndo(team);
+    Object.assign(team,fields);
+  }
+  say(status);
+  render();
+  closeLayer();
+}
+function action(event) {
+  const node=event.target.closest('[data-action]');
+  if (!node || node.disabled) return;
+  const key=node.dataset.action;
+  const value=node.dataset.value;
+  const layer=currentLayer();
+  event.preventDefault();
+  switch (key) {
+    case 'nav': goTo(value); break;
+    case 'open-team': if(value===reviewExample.id) openGraphExample(); else openTeam(value); break;
+    case 'graph-example': openGraphExample();break;
+    case 'make-team': openLayer('new-team-start');break;
+    case 'make-team-direct': openLayer('new-team',{fields:{name:'',goal:''}});break;
+    case 'builder-new': startNewBuilder();break;
+    case 'builder-entry':
+      if (currentLayer()?.type==='team-assistant') closeLayer();
+      else startBuilder(currentTeam());
+      break;
+    case 'builder-suggestion': {
+      layer.session.input=value;
+      const composer=dialog.querySelector('[data-builder-input]');
+      composer.value=value;
+      composer.focus();
+      break;
+    }
+    case 'builder-choice': previewBuilder(layer.session,value);break;
+    case 'builder-back': builderBack(layer.session);break;
+    case 'builder-refresh': previewBuilder(layer.session,layer.session.choice.kind,layer.session.choice.value);break;
+    case 'builder-apply': applyBuilder(layer.session);break;
+    case 'cancel-draft': drafts.delete(ui.team);undoSteps.delete(ui.team);goTo('teams');break;
+    case 'select-role':
+    case 'select-final':
+      ui.selected=value || 'final';
+      ui.reviewSelected=false;
+      render(`role-${ui.selected}`);
+      if (mobile.matches) openLayer(key==='select-role'?'role':'final');
+      break;
+    case 'select-graph': pickGraphNode(value);break;
+    case 'structure':
+    case 'composition': selectTeamView(key);break;
+    case 'save-team': storeTeam(); break;
+    case 'trial':
+      if ((!isDirty(currentTeam()) || storeTeam('trial')) && roleIn(savedTeam(),savedTeam().final)) {
+        openLayer('preview-final',{team:copy(savedTeam())});
+      }
+      break;
+    case 'undo': stepUndo(); break;
+    case 'role-skills': pickSkills(roleTarget()); break;
+    case 'source-skills': pickSkills({kind:layer.type==='agent-source'?'original':'draft-agent',layer}); break;
+    case 'make-skill':
+    case 'create-skill-from-picker': newSkill();break;
+    case 'view-skill': openLayer('skill-view',{id:value});break;
+    case 'edit-skill': {
+      const item=skill(value);
+      openLayer('skill-form',{id:item.id,fields:{name:item.name,desc:item.desc,text:item.text}});
+      break;
+    }
+    case 'make-agent': newAgent();break;
+    case 'edit-agent-source': {
+      const agent=project.agents.find(item=>item.id===value);
+      openLayer('agent-source',{id:agent.id,fields:copy(agent),template:''});
+      break;
+    }
+    case 'close-sheet':
+    case 'back-sheet': closeLayer();break;
+    case 'apply-skills': {
+      const target=targetObject(layer.target);
+      const next=Array.from(layer.pending);
+      if (layer.target.kind==='team' && JSON.stringify(next)!==JSON.stringify(target.skills)) markUndo(currentTeam(layer.target.team));
+      target.skills=next;
+      if (layer.target.kind==='team') {
+        say(`${target.name}에게 스킬 ${next.length}개를 적용했습니다. 팀 저장으로 확정합니다.`);
+        render();
+      }
+      closeLayer();break;
+    }
+    case 'add-agent':
+    case 'replace-agent': openLayer('agent-picker',{tab:'mine',replacing:key==='replace-agent'});break;
+    case 'agent-tab': layer.tab=value;bodyRerender(layer,`agent-tab-${value}`);break;
+    case 'make-inline-agent': newAgent('agent-inline');break;
+    case 'choose-agent': {
+      const item=(layer.tab==='mine'?project.agents:defaults).find(entry=>entry.id===value);
+      if(item) openLayer('agent-preview',{agent:copy(item),replacing:layer.replacing});
+      break;
+    }
+    case 'commit-agent-copy': openAgentCopy(layer);break;
+    case 'edit-job': openLayer('job',{fields:{job:modalRole().job}});break;
+    case 'edit-input': openLayer('input',{fields:{input:modalRole().input}});break;
+    case 'edit-final': {
+      const t=currentTeam();
+      openLayer('final-form',{fields:{final:t.final,mandatory:t.mandatory,approval:t.approval}});
+      break;
+    }
+    case 'preview-final': openLayer('preview-final');break;
+    case 'outrider': openLayer('advice',{fields:copy(currentTeam().advice)});break;
+    case 'move-up':
+    case 'move-down': moveRole(value,key==='move-up'?-1:1);break;
+  }
+}
+app.addEventListener('click',action);
+app.addEventListener('keydown',event=>{
+  const tab=event.target.closest('[role="tab"]');
+  if (!tab) return;
+  const position=teamViews.findIndex(([id])=>id===tab.dataset.action);
+  const steps={ArrowLeft:(position+teamViews.length-1)%teamViews.length,ArrowRight:(position+1)%teamViews.length,Home:0,End:teamViews.length-1};
+  if (!(event.key in steps)) return;
+  event.preventDefault();
+  selectTeamView(teamViews[steps[event.key]][0]);
+});
+dialog.addEventListener('click',event=>{event.stopPropagation();action(event);});
+app.addEventListener('input',event=>{
+  if (!event.target.matches('[data-library-search]')) return;
+  ui.librarySearch=event.target.value;
+  app.querySelector('#library-rows').innerHTML=libraryRows(ui.view);
+});
+dialog.addEventListener('input',event=>{
+  const target=event.target;
+  const layer=currentLayer();
+  if (!layer) return;
+  if (target.matches('[data-builder-input]')) layer.session.input=target.value;
+  if (target.matches('[data-form-value]')) layer.fields[target.name]=target.value;
+  if (target.matches('[data-search="skill"]')) {
+    layer.query=target.value;
+    dialog.querySelector('#picker-rows').innerHTML=skillRows(layer);
+  }
+});
+dialog.addEventListener('change',event=>{
+  const input=event.target;
+  const layer=currentLayer();
+  if (!layer) return;
+  if(input.matches('[data-check]')) {
+    layer.fields[input.name]=input.checked;
+    if (layer.type==='advice' && input.name==='enabled') {
+      bodyRerender(layer,'enabled-advice');
+      dialog.querySelector('[data-check="enabled"]')?.focus();
+    }
+  }
+  if(input.matches('[data-skill-choice]')) {
+    if (input.checked) {
+      const lineage=skillLineage(skill(input.value));
+      for (const id of layer.pending) {
+        if (skillLineage(skill(id))===lineage && id!==input.value) layer.pending.delete(id);
+      }
+      layer.pending.add(input.value);
+      for (const other of dialog.querySelectorAll('[data-skill-choice]')) other.checked=layer.pending.has(other.value);
+    } else layer.pending.delete(input.value);
+    dialog.querySelector('#skill-count').textContent=`${layer.pending.size}개 선택 · 적용 전`;
+  }
+  if(input.matches('[data-template]')) {
+    const item=defaults.find(entry=>entry.id===input.value);
+    layer.template=input.value;
+    if(item) layer.fields={name:item.name,job:item.job,output:item.output,skills:copy(item.skills)};
+    bodyRerender(layer);
+    dialog.querySelector('[data-template]')?.focus();
+  }
+});
+dialog.addEventListener('submit',event=>{
+  event.preventDefault();
+  const form=event.target;
+  const mode=form.dataset.form;
+  const layer=currentLayer();
+  if (!layer) return;
+  if(form.id==='builder-input') {
+    builderSend(layer.session);
+    return;
+  }
+  for (const field of form.querySelectorAll('[data-form-value]')) layer.fields[field.name]=field.value.trim();
+  const fields=layer.fields;
+  const invalid=Array.from(form.querySelectorAll('[required]')).find(field=>!field.value.trim());
+  if (invalid) {
+    form.querySelector('.form-error').textContent='필수 항목을 입력하세요.';
+    invalid.focus();
+    return;
+  }
+  switch(mode) {
+    case 'team-form': {
+      const draft={id:newId('team'),name:fields.name,goal:fields.goal,roles:[],final:'',mandatory:false,approval:false,advice:blankAdvice()};
+      drafts.set(draft.id,draft);
+      closeLayer();
+      if(currentLayer()?.type==='new-team-start') closeLayer();
+      openTeam(draft.id);
+      break;
+    }
+    case 'skill-form': {
+      const existing=skill(layer.id);
+      const id=newId('skill');
+      const lineage=existing?skillLineage(existing):id;
+      const previous=latestSkills().find(entry=>skillLineage(entry)===lineage);
+      const item={id,lineage,...fields,rev:(previous?.rev||0)+1};
+      project.skills.push(item);
+      commitProject();
+      const picker=layers.at(-2);
+      if(picker?.type==='choose-skills') {
+        picker.pending.add(item.id);
+        picker.latest=item.id;
+        picker.notice=`‘${item.name}’ 라이브러리에 저장 · 적용 전`;
+        say(picker.notice);
+        closeLayer(`skill-${item.id}`);
+      } else {
+        render();
+        closeLayer();
+        if(currentLayer()?.type==='skill-view') {
+          currentLayer().id=item.id;
+          setActiveModal(currentLayer());
+        }
+      }
+      break;
+    }
+    case 'agent-form': {
+      if(layer.type==='agent-inline') {
+        const parent=layers.at(-2);
+        openLayer('agent-preview',{agent:copy(fields),replacing:parent?.replacing||false});
+        return;
+      }
+      const existing=project.agents.find(agent=>agent.id===layer.id);
+      const item={...copy(fields),id:layer.id||newId('agent')};
+      if(existing) project.agents[project.agents.indexOf(existing)]=item;
+      else project.agents.push(item);
+      commitProject();
+      say(`‘${item.name}’ 원본을 저장했습니다.`);
+      render();closeLayer();break;
+    }
+    case 'job-form':
+    case 'input-form': {
+      const role=modalRole();
+      const team=currentTeam();
+      const type=mode==='job-form'?'job':'input';
+      if(role[type]!==fields[type]) {
+        markUndo(team);
+        role[type]=fields[type];
+      }
+      say('이 팀 초안에 적용했습니다.');
+      render();closeLayer();break;
+    }
+    case 'final-form': {
+      const team=currentTeam();
+      if(fields.mandatory && !team.mandatory && !team.advice.enabled) {
+        form.querySelector('.form-error').textContent='팀 공통 Outrider를 먼저 추가하세요.';
+        return;
+      }
+      if(team.mandatory && fields.mandatory && team.final!==fields.final) {
+        form.querySelector('.form-error').textContent='기존 산출물의 필수 검토를 해제한 뒤 결과를 바꾸세요.';
+        form.querySelector('[name="mandatory"]').focus();
+        return;
+      }
+      updateTeamFields(fields,'최종 결과를 이 팀 초안에 적용했습니다.');
+      break;
+    }
+    case 'advice-form':updateTeamFields({advice:fields.enabled ? copy(fields) : blankAdvice()},'팀 공통 Outrider 설정을 적용했습니다.');break;
+  }
+});
+function startNewBuilder() {
+  while(currentLayer()) closeLayer();
+  const draft={id:newId('team'),name:'새 팀',goal:'',roles:[],final:'',mandatory:false,approval:false,advice:blankAdvice()};
+  drafts.set(draft.id,draft);
+  openTeam(draft.id);
+  startBuilder(draft);
+}
+function openBuilderLink() {
+  if(currentLayer()?.fromBuilderHash) return;
+  while(dialog.open && currentLayer()) closeLayer();
+  startNewBuilder();
+  currentLayer().fromBuilderHash=true;
+}
+window.addEventListener('hashchange',()=>{
+  if(location.hash==='#ai-builder') {
+    openBuilderLink();
+    return;
+  }
+  if(currentLayer()?.fromBuilderHash) closeLayer();
+  if(location.hash==='#graph-review' && (ui.team!==reviewExample.id || ui.mode!=='structure')) {
+    while(dialog.open && currentLayer()) closeLayer();
+    openGraphExample();
+  } else if (location.hash!=='#graph-review' && beforeExample && ui.team===reviewExample.id) {
+    while(dialog.open && currentLayer()) closeLayer();
+    Object.assign(ui,beforeExample);
+    render('graph-example');
+  }
+});
+if(location.hash==='#graph-review') openGraphExample('');
+else {
+  render();
+  if(location.hash==='#ai-builder') openBuilderLink();
+}
+</script>
+</body>
+</html>
+

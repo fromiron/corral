@@ -65,7 +65,7 @@ describe('contextual settings navigation', () => {
 describe('list screens outside a project', () => {
   it('host the settings dialog and can be returned to, without matching lookalike paths', () => {
     expect(workHref('/inbox?settings=models&settingsProject=a')).toBe('/inbox');
-    for (const view of ['', '/teams', '/templates', '/resources'])
+    for (const view of ['', '/teams', '/agents', '/skills', '/templates', '/resources'])
       expect(workHref(`/library${view}?project=a#list`)).toBe(`/library${view}?project=a#list`);
     expect(workHref('/preview')).toBe('/preview');
     expect(workHref('/preview/pr-review?newSession=true')).toBe('/preview/pr-review');

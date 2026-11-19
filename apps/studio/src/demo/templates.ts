@@ -1,4 +1,5 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
+import { ROLE_RULES } from '@corral/core';
 import { addNode, connect, emptyDraft } from '@corral/react';
 
 // Demo templates. The default shows what the runtime is for: delegation, a question and
@@ -33,14 +34,12 @@ function starter(): DemoTemplate {
   return { id: 'starter', definition: connected.draft.definition };
 }
 
-const rolePrompt = (duty: string) =>
-  `${duty} Use only the task and inputs you were given, keep exact artifact versions and evidence references, and submit with submit_result. Do not hide tool failures or missing evidence.`;
-
 /**
  * examples/research-team.corral.json in English, without work tools the demo never calls and
  * without its two approvals (the final approval Decision and the Output's).
  */
 function researchTeam(): DemoTemplate {
+  const researchDuty = 'Plan the research, split it between helpers and merge their notes.';
   const definition: CorralDefinition = {
     schemaVersion: '0.1',
     id: 'public_demo_research_team',
@@ -54,7 +53,7 @@ function researchTeam(): DemoTemplate {
       {
         id: 'researcher',
         name: 'Researcher',
-        prompt: rolePrompt('Plan the research, split it between helpers and merge their notes.'),
+        prompt: ROLE_RULES,
         modelProfile: 'model-a',
         allowedWorkTools: ['write_artifact'],
         allowedCollaborationTools: [
@@ -69,7 +68,7 @@ function researchTeam(): DemoTemplate {
       {
         id: 'helper',
         name: 'Research Helper',
-        prompt: rolePrompt('Collect sources for the part of the brief you were handed.'),
+        prompt: ROLE_RULES,
         modelProfile: 'model-b',
         allowedWorkTools: ['write_artifact'],
         allowedCollaborationTools: ['read_artifact', 'submit_result'],
@@ -78,7 +77,7 @@ function researchTeam(): DemoTemplate {
       {
         id: 'writer',
         name: 'Writer',
-        prompt: rolePrompt('Write the comparison from the research notes and any review.'),
+        prompt: ROLE_RULES,
         modelProfile: 'model-a',
         allowedWorkTools: ['write_artifact'],
         allowedCollaborationTools: ['ask', 'read_artifact', 'submit_result'],
@@ -87,7 +86,7 @@ function researchTeam(): DemoTemplate {
       {
         id: 'reviewer',
         name: 'Reviewer',
-        prompt: rolePrompt('Review the exact draft you were given against the criteria.'),
+        prompt: ROLE_RULES,
         modelProfile: 'model-b',
         allowedWorkTools: ['write_artifact'],
         allowedCollaborationTools: ['read_artifact', 'submit_result'],
@@ -100,6 +99,7 @@ function researchTeam(): DemoTemplate {
         type: 'agent',
         label: 'Research',
         roleId: 'researcher',
+        stepInstruction: researchDuty,
         invocation: 'scheduled',
         inputBindings: [{ kind: 'run_input', name: 'brief' }],
         outputName: 'notes',
@@ -109,6 +109,7 @@ function researchTeam(): DemoTemplate {
         type: 'agent',
         label: 'Research Helper',
         roleId: 'helper',
+        stepInstruction: 'Collect sources for the part of the brief you were handed.',
         invocation: 'callable',
         inputBindings: [{ kind: 'run_input', name: 'brief' }],
         outputName: 'notes_part',
@@ -118,6 +119,7 @@ function researchTeam(): DemoTemplate {
         type: 'agent',
         label: 'Source Responder',
         roleId: 'researcher',
+        stepInstruction: researchDuty,
         invocation: 'callable',
         inputBindings: [{ kind: 'run_input', name: 'brief' }],
         outputName: 'answer_notes',
@@ -129,6 +131,7 @@ function researchTeam(): DemoTemplate {
         label: 'Writer',
         parentId: 'review_loop',
         roleId: 'writer',
+        stepInstruction: 'Write the comparison from the research notes and any review.',
         invocation: 'scheduled',
         inputBindings: [
           { kind: 'task_output', name: 'notes', sourceNodeId: 'research' },
@@ -153,6 +156,7 @@ function researchTeam(): DemoTemplate {
         label: 'Reviewer',
         parentId: 'review_loop',
         roleId: 'reviewer',
+        stepInstruction: 'Review the exact draft you were given against the criteria.',
         invocation: 'scheduled',
         // The criteria text, so the review is against what the person asked for (#20).
         inputBindings: [

@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openFlowGraph } from './workbench.ts';
 
 // Command palette, shortcut help and the workspace template gallery (roadmap UX-A5).
 
@@ -20,8 +21,18 @@ test('Ctrl+K opens the command palette; typing filters and Enter runs the comman
   await input.fill('research team');
   await expect(palette.getByRole('option').first()).toHaveText(/Research team/);
   await input.press('Enter');
-  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await expect(page).toHaveURL(
+    (url) =>
+      url.pathname === '/corrals/new/edit' &&
+      url.searchParams.get('project') === 'default' &&
+      url.searchParams.get('template') === 'research-team',
+  );
+  await expect(page.getByRole('tab', { name: 'Team composition' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
   await expect(page.getByRole('heading', { name: 'Research team', level: 1 })).toBeVisible();
+  await openFlowGraph(page);
   await expect(page.locator('[data-team-canvas] [data-node]')).toHaveCount(8);
 });
 

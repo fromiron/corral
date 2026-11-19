@@ -349,7 +349,7 @@ test('retrying the pinned reference enables an actual saved-revision test run', 
   );
   await page.goto(`${corral.server.url}/corrals/${saved.record.corralId}/edit`);
   const panel = await openTestRun(page);
-  const run = panel.getByRole('button', { name: 'Run', exact: true });
+  const run = panel.getByRole('button', { name: 'Start mock test', exact: true });
   await expect(run).toBeDisabled();
   await page.getByRole('button', { name: 'Retry', exact: true }).click();
   await expect(run).toBeEnabled();
