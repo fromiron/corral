@@ -65,7 +65,11 @@ type Receipt = { base: EditorDraft; request: TeamAssistantRequest };
 type Unanswered = Pick<Conversation, 'question' | 'decisions' | 'intent' | 'turns'>;
 
 export interface Conversation {
-  open: boolean;
+  /**
+   * Whether the conversation is open by a person's or the host's choice. Null until one of them
+   * chooses: then its place decides (docs/specs/features/team-assistant.md 2).
+   */
+  open: boolean | null;
   input: string;
   turns: Turn[];
   question: Question | null;
@@ -106,7 +110,7 @@ export function assistantConversation(editor: EditorStore, start?: { open: boole
   const existing = conversations.get(editor);
   if (existing) return existing;
   const conversation = createStore<Conversation>((set, get) => ({
-    open: start?.open ?? false,
+    open: start?.open ?? null,
     input: '',
     turns: [],
     question: null,
@@ -127,6 +131,15 @@ export function assistantConversation(editor: EditorStore, start?: { open: boole
       pending.controller.abort();
     },
   }));
+  // Using the conversation is choosing to have it open: it does not fold away with its place
+  // while a person is writing in it or reading its answer.
+  conversation.subscribe((state) => {
+    if (
+      state.open === null &&
+      (state.input || state.turns.length || state.question || state.proposal || state.pending)
+    )
+      conversation.setState({ open: true });
+  });
   conversations.set(editor, conversation);
   return conversation;
 }

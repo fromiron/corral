@@ -409,7 +409,7 @@ export function TeamAssistant({
   const creating = modeOf(draft) === 'create';
   const title = t(creating ? 'createTitle' : 'editTitle');
   const prompt = t(creating ? 'createPrompt' : 'editPrompt');
-  const { open, input, turns, proposal, question, failure } = state;
+  const { input, turns, proposal, question, failure } = state;
   const busy = Boolean(state.pending);
   const stale = Boolean(proposal && proposal.base !== draft);
   const lastTurn = turns.at(-1);
@@ -433,6 +433,9 @@ export function TeamAssistant({
   }, []);
   const narrow = room === 'sheet';
   const side = room === 'side' && sideClassName !== undefined;
+  // Nobody chose: the column stands open, the line and the sheet closed.
+  const chosen = state.open;
+  const open = chosen ?? side;
   const field = useRef<HTMLTextAreaElement>(null);
   const entry = useRef<HTMLButtonElement>(null);
   const composing = useRef(false);
@@ -448,11 +451,15 @@ export function TeamAssistant({
   }, []);
   const focusInput = () => field.current?.focus();
   useLayoutEffect(() => {
+    // Only a chosen opening takes the focus; a column that stands open by itself leaves it,
+    // and so does one whose first use (a choice pressed in it) made the opening chosen.
     if (narrow) return;
-    if (open) field.current?.focus();
-    else if (returnToEntry.current) entry.current?.focus();
+    const section = surface.current;
+    if (chosen) {
+      if (!section?.contains(section.ownerDocument.activeElement)) field.current?.focus();
+    } else if (returnToEntry.current) entry.current?.focus();
     returnToEntry.current = false;
-  }, [open, narrow]);
+  }, [chosen, narrow]);
   useLayoutEffect(() => {
     // Keep the latest reply and the composer reachable without scrolling the editor behind them.
     const panel = scroll.current;

@@ -39,12 +39,15 @@ function AssistantStory({
   locale,
   narrow,
   wide,
+  asked,
 }: {
   scene: Scene;
   locale: Locale;
   narrow: boolean;
   /** An editor wide enough for the conversation to stand in a column on its right. */
   wide: boolean;
+  /** The host opens the conversation, as for a new team. Without it the place decides. */
+  asked: boolean;
 }) {
   const messages = catalogs[locale];
   const wording = messages.TeamDraft.wording;
@@ -106,7 +109,7 @@ function AssistantStory({
           <TeamEditor
             editor={editor}
             assistant={host}
-            assistantStart={{ open: true }}
+            assistantStart={asked ? { open: true } : undefined}
             view="composition"
             stacked={narrow}
           />
@@ -119,7 +122,7 @@ function AssistantStory({
 const meta = {
   title: 'Team editor/Team assistant',
   component: AssistantStory,
-  args: { locale: 'en', scene: 'opening', narrow: false, wide: false },
+  args: { locale: 'en', scene: 'opening', narrow: false, wide: false, asked: true },
   parameters: { layout: 'fullscreen' },
 } satisfies Meta<typeof AssistantStory>;
 export default meta;
@@ -264,5 +267,49 @@ export const WideSide: Story = {
     await expect(box(detail).bottom).toBeCloseTo(box(frame).bottom, 0);
     await userEvent.click(entry);
     await expect(input()).toHaveFocus();
+  },
+};
+
+/** Nobody chose: the wide column opens by itself, and folds away with its room unless in use. */
+export const WideOpensByItself: Story = {
+  args: { scene: 'edit', wide: true, asked: false },
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement);
+    const t = en.TeamAssistant;
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const editor = canvasElement.querySelector<HTMLElement>('[lang]') as HTMLElement;
+    const region = await page.findByRole('region', { name: t.editTitle });
+    const width = () => region.getBoundingClientRect().width;
+    const input = () => page.queryByRole('textbox', { name: t.editRequest });
+    const entry = () => page.queryByRole('button', { name: t.editTitle });
+    // Open without being asked, and the focus stays where the person left it.
+    await waitFor(() => expect(input()).toBeVisible());
+    await expect(input()).not.toHaveFocus();
+    await expect(entry()).toBeNull();
+    // Unused, it folds into the line under the work area and comes back with the room.
+    editor.style.width = '1280px';
+    await waitFor(() => expect(entry()).toBeVisible());
+    await expect(input()).toBeNull();
+    editor.style.width = '1640px';
+    await waitFor(() => expect(input()).toBeVisible());
+    // In use, it stays open under the work area with what was typed and the focus.
+    await userEvent.type(input() as HTMLElement, 'Keep this');
+    editor.style.width = '1280px';
+    await waitFor(() => expect(width()).toBeGreaterThan(28 * rem));
+    await expect(input()).toHaveValue('Keep this');
+    await expect(input()).toHaveFocus();
+    editor.style.width = '1640px';
+    await waitFor(() => expect(width()).toBeLessThanOrEqual(28 * rem));
+    // Collapsing is the person's choice: it holds in both places.
+    await userEvent.clear(input() as HTMLElement);
+    await userEvent.click(page.getByRole('button', { name: t.collapse }));
+    await waitFor(() => expect(entry()).toHaveFocus());
+    await expect(width()).toBeLessThanOrEqual(3 * rem);
+    editor.style.width = '1280px';
+    await waitFor(() => expect(width()).toBeGreaterThan(28 * rem));
+    await expect(input()).toBeNull();
+    editor.style.width = '1640px';
+    await waitFor(() => expect(width()).toBeLessThanOrEqual(3 * rem));
+    await expect(input()).toBeNull();
   },
 };
