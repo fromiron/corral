@@ -139,6 +139,21 @@ export function NodeSettings({
         />
       </KitInputGroup>
 
+      {node.type === 'output' ? (
+        <OutputSources key={node.id} editor={editor} output={node} />
+      ) : (node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
+        <InputsEditor
+          editor={editor}
+          node={node as Extract<CorralNode, { inputBindings?: unknown }>}
+          draft={draft}
+        />
+      ) : null}
+      {node.type === 'agent' && node.invocation !== 'observer' ? (
+        <Calls editor={editor} nodeId={node.id} draft={draft} />
+      ) : null}
+      {node.type === 'agent' && node.invocation === 'observer' && role ? (
+        <AdvisorFields editor={editor} node={node} role={role} draft={draft} />
+      ) : null}
       {node.type === 'agent' && role ? (
         <>
           <fieldset>
@@ -203,9 +218,7 @@ export function NodeSettings({
             }
             onChange={(reasoning) => update(node.id, { reasoning })}
           />
-          {node.invocation === 'observer' ? (
-            <AdvisorFields editor={editor} node={node} role={role} draft={draft} />
-          ) : (
+          {node.invocation === 'observer' ? null : (
             <WorkTools
               editor={editor}
               node={node}
@@ -248,19 +261,6 @@ export function NodeSettings({
           checked={node.requireApproval}
           onToggle={() => update(node.id, { requireApproval: !node.requireApproval })}
         />
-      ) : null}
-
-      {node.type === 'output' ? (
-        <OutputSources key={node.id} editor={editor} output={node} />
-      ) : (node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
-        <InputsEditor
-          editor={editor}
-          node={node as Extract<CorralNode, { inputBindings?: unknown }>}
-          draft={draft}
-        />
-      ) : null}
-      {node.type === 'agent' && node.invocation === 'scheduled' ? (
-        <Calls editor={editor} nodeId={node.id} draft={draft} />
       ) : null}
     </div>
   );
@@ -553,32 +553,6 @@ function AdvisorFields({
   }, [refocus, id]);
   return (
     <>
-      <div className="flex flex-col gap-1">
-        <span id={`${id}-reads`} className="text-caption">
-          {t('readTools')}
-        </span>
-        <KitCheckboxGroup
-          aria-labelledby={`${id}-reads`}
-          checkedIndices={checked}
-          className="w-full"
-        >
-          {ADVISOR_READ_TOOLS.map((tool, index) => (
-            <KitCheckboxItem
-              key={tool}
-              index={index}
-              label={t(`readTool.${tool}`)}
-              checked={reads.includes(tool)}
-              onToggle={() =>
-                updateNode(node.id, {
-                  readTools: reads.includes(tool)
-                    ? reads.filter((other) => other !== tool)
-                    : [...reads, tool],
-                })
-              }
-            />
-          ))}
-        </KitCheckboxGroup>
-      </div>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1.5 text-caption">{t('watches')}</legend>
         {watching.length ? (
@@ -615,6 +589,32 @@ function AdvisorFields({
           />
         ) : null}
       </fieldset>
+      <div className="flex flex-col gap-1">
+        <span id={`${id}-reads`} className="text-caption">
+          {t('readTools')}
+        </span>
+        <KitCheckboxGroup
+          aria-labelledby={`${id}-reads`}
+          checkedIndices={checked}
+          className="w-full"
+        >
+          {ADVISOR_READ_TOOLS.map((tool, index) => (
+            <KitCheckboxItem
+              key={tool}
+              index={index}
+              label={t(`readTool.${tool}`)}
+              checked={reads.includes(tool)}
+              onToggle={() =>
+                updateNode(node.id, {
+                  readTools: reads.includes(tool)
+                    ? reads.filter((other) => other !== tool)
+                    : [...reads, tool],
+                })
+              }
+            />
+          ))}
+        </KitCheckboxGroup>
+      </div>
       <div className="flex items-center gap-2 text-body">
         <span aria-hidden="true">{t('reviewEvery')}</span>
         <KitInputGroup className="w-16" {...session}>

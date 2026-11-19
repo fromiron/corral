@@ -1,5 +1,10 @@
 import { type ControlEdge, type CorralNode, isWorkAgent, type TargetPort } from '@corral/contracts';
-import { type Diagnostic, outputPortsOf, type SharedOutriderTarget } from '@corral/core';
+import {
+  type Diagnostic,
+  inputPortsOf,
+  outputPortsOf,
+  type SharedOutriderTarget,
+} from '@corral/core';
 import { type ReactNode, useId } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -8,7 +13,7 @@ import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { CircleAlert, ExternalLink, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
+import { CircleAlert, ExternalLink, Pencil, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
 import {
   applyPattern,
   checkPorts,
@@ -17,12 +22,11 @@ import {
   type Pattern,
   patchNode,
   patchTeam,
-  primaryIn,
   removeItems,
   type TeamReference,
   wrapIn,
 } from './commands.ts';
-import { KIND_ICON, kindOf } from './kinds.ts';
+import { KIND_ICON, kindOf, portText } from './kinds.ts';
 import {
   type ImageProfileChoice,
   type LoopSettings,
@@ -223,6 +227,23 @@ export function InspectorSheet({
       </section>
     );
   };
+  const joinProblems = diagnostics
+    .filter(
+      (d): d is Diagnostic & { nodeId: string } =>
+        Boolean(d.nodeId) &&
+        ['PARALLEL_MERGE_NEEDS_JOIN', 'PARALLEL_UNJOINED', 'JOIN_PARTIAL'].includes(d.code),
+    )
+    .map((d) => (
+      <Button
+        key={`${d.code}-${d.nodeId}-${d.edgeId ?? ''}`}
+        variant="ghost"
+        size="compact"
+        className="h-auto justify-start whitespace-normal text-left"
+        onClick={() => onSelect({ nodes: [d.nodeId], edge: null })}
+      >
+        <TriangleAlert /> {name(d.nodeId)} · {issueText(d)}
+      </Button>
+    ));
   /** Applies an edit and selects what it made. */
   const run = (result: EditResult) => {
     if (!result.ok) return;
@@ -243,7 +264,7 @@ export function InspectorSheet({
           ...PATTERNS.map((pattern) => ({
             key: pattern,
             label: t(`patterns.${pattern}`),
-            result: applyPattern(draft, pattern, ids),
+            result: applyPattern(draft, pattern, ids, undefined, t('kinds.review')),
           })),
         ];
     return (
@@ -417,7 +438,10 @@ export function InspectorSheet({
           <dd>
             {from ? name(from) : ''}
             {edge ? (
-              <span className="text-muted-foreground"> · {portName(edge.sourcePort)}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                · {portText(nodes.get(edge.source), edge.sourcePort, portName)}
+              </span>
             ) : null}
           </dd>
           <dt className="text-muted-foreground">{t('to')}</dt>
@@ -427,7 +451,44 @@ export function InspectorSheet({
               <span className="text-muted-foreground"> · {portName(edge.targetPort)}</span>
             ) : null}
           </dd>
+          <dt className="text-muted-foreground">{t('relationship')}</dt>
+          <dd>{t(`relationships.${link?.kind ?? 'control'}`)}</dd>
         </dl>
+        {edge ? (
+          <div className="grid gap-2">
+            {(['replace', 'parallel'] as const).map((action) => {
+              const replaceId = action === 'replace' ? edge.id : undefined;
+              const label = t(action === 'replace' ? 'changeTarget' : 'addParallel');
+              const options = targetOptions(
+                draft,
+                edge.source,
+                edge.sourcePort,
+                portName,
+                replaceId,
+              );
+              return (
+                <Select
+                  key={action}
+                  label={label}
+                  placeholder={label}
+                  value={null}
+                  disabled={!options.length}
+                  options={options}
+                  onValueChange={(value: string) => {
+                    const [target, targetPort] = value.split('\u0000') as [string, TargetPort];
+                    const result = connectPorts(
+                      editor.getState().draft,
+                      { source: edge.source, sourcePort: edge.sourcePort, target, targetPort },
+                      replaceId,
+                    );
+                    if (result.ok) apply(result.draft);
+                  }}
+                />
+              );
+            })}
+          </div>
+        ) : null}
+        {edge ? joinProblems : null}
         {issues([selection.edge])}
         <Button
           variant="secondary"
@@ -438,7 +499,7 @@ export function InspectorSheet({
             onSelect({ nodes: [], edge: null });
           }}
         >
-          <Trash2 /> {t('delete')}
+          <Trash2 /> {t('disconnect')}
         </Button>
       </>
     );
@@ -460,6 +521,8 @@ export function InspectorSheet({
     const scope = definition.sharedOutrider?.targets;
     body = (
       <>
+        <Connections editor={editor} node={single} onSelect={onSelect} />
+        {definition.controlEdges.some((edge) => edge.source === single.id) ? joinProblems : null}
         {scope && askTarget ? (
           <p className={cn(size.type.caption, 'text-muted-foreground')}>
             {scope.kind === 'selected' && !scope.nodeIds.includes(single.id)
@@ -487,7 +550,6 @@ export function InspectorSheet({
           batch={batch}
         />
         {issues([single.id])}
-        <Connections editor={editor} node={single} onSelect={onSelect} />
         {structureActions([single.id])}
       </>
     );
@@ -744,6 +806,27 @@ function MoreFields({
 }
 
 /** Where a step leads, with a keyboard way to connect each output and to remove a connection. */
+function targetOptions(
+  draft: EditorDraft,
+  source: string,
+  sourcePort: string,
+  portName: (port: string) => string,
+  replaceEdgeId?: string,
+) {
+  return draft.definition.nodes.flatMap((target) =>
+    inputPortsOf(target)
+      .filter(
+        (targetPort) =>
+          checkPorts(draft, { source, sourcePort, target: target.id, targetPort }, replaceEdgeId)
+            .ok,
+      )
+      .map((targetPort) => ({
+        value: `${target.id}\u0000${targetPort}`,
+        label: targetPort === 'in' ? target.label : `${target.label} · ${portName(targetPort)}`,
+      })),
+  );
+}
+
 function Connections({
   editor,
   node,
@@ -764,33 +847,7 @@ function Connections({
   const ports = outputPortsOf(node);
   if (!ports.length) return null;
   const outgoing = definition.controlEdges.filter((e) => e.source === node.id);
-  const portLabel = (port: string) =>
-    node.type === 'decision' && node.mode === 'router'
-      ? (node.routes.find((r) => r.id === port)?.label ?? port)
-      : portName(port);
-  const targetsFor = (current: EditorDraft, port: string) =>
-    current.definition.nodes.flatMap((target) => {
-      const candidates: TargetPort[] =
-        target.type === 'loop'
-          ? ['enter', 'exit', 'repeat']
-          : target.type === 'team'
-            ? ['enter', 'exit']
-            : [primaryIn(target)].filter((p): p is TargetPort => p !== null);
-      return candidates
-        .filter(
-          (targetPort) =>
-            checkPorts(current, {
-              source: node.id,
-              sourcePort: port,
-              target: target.id,
-              targetPort,
-            }).ok,
-        )
-        .map((targetPort) => ({
-          value: `${target.id}\u0000${targetPort}`,
-          label: targetPort === 'in' ? target.label : `${target.label} · ${portName(targetPort)}`,
-        }));
-    });
+  const portLabel = (port: string) => portText(node, port, portName);
   const remove = (edge: ControlEdge) => apply(removeItems(draft, [edge.id]));
   return (
     <section className="grid gap-2" aria-label={t('connections')}>
@@ -802,7 +859,7 @@ function Connections({
       </h3>
       {ports.map((port) => {
         const edges = outgoing.filter((e) => e.sourcePort === port);
-        const options = targetsFor(draft, port);
+        const options = targetOptions(draft, node.id, port, portName);
         return (
           <div key={port} className="grid gap-1">
             {edges.map((edge) => (
@@ -822,6 +879,17 @@ function Connections({
                   ) : null}
                 </button>
                 <span className="grow" />
+                <Button
+                  variant="ghost"
+                  size="icon-compact"
+                  aria-label={t('editConnection', {
+                    source: node.label,
+                    target: name(edge.target),
+                  })}
+                  onClick={() => onSelect({ nodes: [], edge: edge.id })}
+                >
+                  <Pencil />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-compact"

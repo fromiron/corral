@@ -6069,7 +6069,8 @@
       "invalidSharedOutrider": "Enter a valid model profile and review principles.",
       "advisorRole": "An Outrider’s role is not copied onto an agent.",
       "invalidResultInput": "Select an existing submitted output input.",
-      "invalidResultSource": "Choose a preceding agent or referenced team."
+      "invalidResultSource": "Choose a preceding agent or referenced team.",
+      "unknownConnection": "That connection no longer exists."
     },
     "outline": "Corral structure",
     "startGraph": "Set up the flow",
@@ -6261,7 +6262,26 @@
       "cancel": "Cancel",
       "add": "Add result",
       "dismiss": "Dismiss result suggestion"
-    }
+    },
+    "relationships": {
+      "control": "Runs next",
+      "delegate": "Delegation",
+      "question": "Question",
+      "advise": "Observation"
+    },
+    "connectNext": "Connect next step",
+    "chooseInput": "Choose an input for {name} · {port}",
+    "connectInput": "Connect to {name} · {port}",
+    "startPort": "Start from {port}",
+    "openNodeSettings": "Open {name} settings",
+    "editConnection": "Edit connection from {source} to {target}",
+    "changeTarget": "Change target",
+    "addParallel": "Add parallel step",
+    "disconnect": "Disconnect",
+    "relationship": "Relationship",
+    "cancelConnection": "Cancel connection",
+    "availablePort": "Available",
+    "unavailablePort": "Unavailable"
   },
   "LiveVoice": {
     "loadFailed": "Could not load voice configuration.",

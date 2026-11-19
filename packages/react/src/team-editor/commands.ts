@@ -60,6 +60,7 @@ export type Placement =
   | { kind: 'into'; boxId: string };
 
 export type EditRejection =
+  | 'unknownConnection'
   | 'unknownNode'
   | 'selfConnection'
   | 'callableInControlFlow'
@@ -165,8 +166,21 @@ export function primaryIn(node: CorralNode): TargetPort | null {
 export function checkPorts(
   draft: EditorDraft,
   request: PortRequest,
+  replaceEdgeId?: string,
 ): { ok: true } | { ok: false; reason: EditRejection } {
   const { definition } = draft;
+  const old =
+    replaceEdgeId === undefined
+      ? undefined
+      : definition.controlEdges.find((edge) => edge.id === replaceEdgeId);
+  if (
+    replaceEdgeId !== undefined &&
+    (!old || old.source !== request.source || old.sourcePort !== request.sourcePort)
+  )
+    return { ok: false, reason: 'unknownConnection' };
+  const remaining = old
+    ? definition.controlEdges.filter((edge) => edge.id !== old.id)
+    : definition.controlEdges;
   const nodes = nodesOf(definition);
   const source = nodes.get(request.source);
   const target = nodes.get(request.target);
@@ -179,7 +193,7 @@ export function checkPorts(
   if (!inputPortsOf(target).includes(request.targetPort))
     return { ok: false, reason: 'invalidTargetPort' };
   if (
-    definition.controlEdges.some(
+    remaining.some(
       (e) =>
         e.source === request.source &&
         e.sourcePort === request.sourcePort &&
@@ -191,14 +205,27 @@ export function checkPorts(
   if (boxBoundaryViolation(nodes, request)) return { ok: false, reason: 'boxBoundary' };
   if (request.targetPort === 'repeat' && source.type !== 'decision')
     return { ok: false, reason: 'repeatNeedsDecision' };
-  if (wouldCreateCycle(definition.nodes, definition.controlEdges, request))
-    return { ok: false, reason: 'cycle' };
+  if (wouldCreateCycle(definition.nodes, remaining, request)) return { ok: false, reason: 'cycle' };
   return { ok: true };
 }
 
-export function connectPorts(draft: EditorDraft, request: PortRequest): EditResult {
-  const check = checkPorts(draft, request);
+export function connectPorts(
+  draft: EditorDraft,
+  request: PortRequest,
+  replaceEdgeId?: string,
+): EditResult {
+  const check = checkPorts(draft, request, replaceEdgeId);
   if (!check.ok) return check;
+  if (replaceEdgeId !== undefined) {
+    const old = draft.definition.controlEdges.find((e) => e.id === replaceEdgeId);
+    if (old?.target === request.target && old.targetPort === request.targetPort)
+      return { ok: true, draft };
+    const controlEdges = draft.definition.controlEdges.map((e) =>
+      e.id === replaceEdgeId ? { ...e, ...request } : e,
+    );
+    const definition = withSuggestedBinding({ ...draft.definition, controlEdges }, request.target);
+    return { ok: true, draft: withDefinition(draft, definition) };
+  }
   const { id, counters } = nextId(draft, 'edge');
   let definition: CorralDefinition = {
     ...draft.definition,
@@ -215,6 +242,7 @@ function createStep(
   kind: StepKind,
   parentId: string | null,
   reference?: TeamReference,
+  decisionLabel?: string,
 ): { draft: EditorDraft; nodeId: string } {
   const placed = (
     created: { draft: EditorDraft; nodeId: string },
@@ -260,7 +288,11 @@ function createStep(
           ? {
               id: node.id,
               type: 'decision',
-              label: node.label,
+              label: numbered(
+                decisionLabel ?? { review: 'Review', approval: 'Approval', rule: 'Rule' }[kind],
+                draft.definition.nodes.filter((n) => n.type === 'decision' && n.mode === kind)
+                  .length + 1,
+              ),
               ...(node.parentId ? { parentId: node.parentId } : {}),
               mode: kind,
               rule: DECISION_RULE[kind],
@@ -349,7 +381,7 @@ export function placeStep(
   draft: EditorDraft,
   kind: StepKind,
   at: Placement,
-  options: { reference?: TeamReference } = {},
+  options: { reference?: TeamReference; decisionLabel?: string } = {},
 ): EditResult {
   const { definition } = draft;
   const nodes = nodesOf(definition);
@@ -365,7 +397,7 @@ export function placeStep(
   }
   switch (at.kind) {
     case 'empty': {
-      const created = createStep(draft, kind, null, options.reference);
+      const created = createStep(draft, kind, null, options.reference, options.decisionLabel);
       return { ok: true, ...created };
     }
     case 'edge': {
@@ -374,7 +406,13 @@ export function placeStep(
       const decision = ['review', 'approval', 'rule', 'check', 'router'].includes(kind);
       if (edge.targetPort === 'repeat' && !decision)
         return { ok: false, reason: 'repeatNeedsDecision' };
-      const created = createStep(draft, kind, sourceSide(nodes, edge), options.reference);
+      const created = createStep(
+        draft,
+        kind,
+        sourceSide(nodes, edge),
+        options.reference,
+        options.decisionLabel,
+      );
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
@@ -407,7 +445,13 @@ export function placeStep(
       const port = primaryOut(before);
       if (!port || (before.type === 'agent' && before.invocation === 'callable'))
         return { ok: false, reason: 'noNextStep' };
-      const created = createStep(draft, kind, before.parentId ?? null, options.reference);
+      const created = createStep(
+        draft,
+        kind,
+        before.parentId ?? null,
+        options.reference,
+        options.decisionLabel,
+      );
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
@@ -451,7 +495,7 @@ export function placeStep(
       );
       if (body.length > 0 && lastStep)
         return placeStep(draft, kind, { kind: 'edge', edgeId: lastStep.id }, options);
-      const created = createStep(draft, kind, box.id, options.reference);
+      const created = createStep(draft, kind, box.id, options.reference, options.decisionLabel);
       if (body.length > 0) return { ok: true, ...created };
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const out = primaryOut(step);
@@ -712,6 +756,7 @@ export function applyPattern(
   pattern: Pattern,
   ids: readonly string[],
   at: Placement = { kind: 'empty' },
+  reviewLabel?: string,
 ): EditResult {
   let next = draft;
   let targets = [...ids];
@@ -721,7 +766,9 @@ export function applyPattern(
     next = created.draft;
     targets = [created.nodeId as string];
   }
-  return pattern === 'parallel' ? splitParallel(next, targets) : loopAround(next, targets, pattern);
+  return pattern === 'parallel'
+    ? splitParallel(next, targets)
+    : loopAround(next, targets, pattern, reviewLabel);
 }
 
 /** Wraps the steps in a Loop that ends in a verdict: pass leaves, revise or fail goes round. */
@@ -729,6 +776,7 @@ function loopAround(
   draft: EditorDraft,
   ids: string[],
   pattern: 'reviewLoop' | 'checkLoop',
+  reviewLabel?: string,
 ): EditResult {
   const wrapped = wrapIn(draft, ids, 'loop');
   if (!wrapped.ok) return wrapped;
@@ -773,7 +821,13 @@ function loopAround(
       ),
     });
   }
-  const verdictStep = createStep(next, pattern === 'reviewLoop' ? 'review' : 'check', loop);
+  const verdictStep = createStep(
+    next,
+    pattern === 'reviewLoop' ? 'review' : 'check',
+    loop,
+    undefined,
+    reviewLabel,
+  );
   next = verdictStep.draft;
   const verdict = verdictStep.nodeId;
   const first = reviewer ?? verdict;

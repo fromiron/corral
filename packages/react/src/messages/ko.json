@@ -6069,7 +6069,8 @@
       "invalidSharedOutrider": "올바른 모델 프로필과 검토 원칙을 입력하세요.",
       "advisorRole": "Outrider의 역할은 에이전트로 가져오지 않습니다.",
       "invalidResultInput": "기존 제출 결과 입력을 고르세요.",
-      "invalidResultSource": "이 출력보다 먼저 실행되는 에이전트나 참조 팀을 고르세요."
+      "invalidResultSource": "이 출력보다 먼저 실행되는 에이전트나 참조 팀을 고르세요.",
+      "unknownConnection": "이 연결이 더 이상 없습니다."
     },
     "outline": "Corral 구조",
     "startGraph": "흐름 구성하기",
@@ -6261,7 +6262,26 @@
       "cancel": "취소",
       "add": "받을 결과 추가",
       "dismiss": "결과 제안 닫기"
-    }
+    },
+    "relationships": {
+      "control": "다음 실행",
+      "delegate": "위임",
+      "question": "질문",
+      "advise": "관찰"
+    },
+    "connectNext": "다음 단계 연결",
+    "chooseInput": "{name} · {port}에서 연결할 입력을 고르세요",
+    "connectInput": "{name} · {port}에 연결",
+    "startPort": "{port}에서 연결",
+    "openNodeSettings": "{name} 설정 열기",
+    "editConnection": "{source}에서 {target}(으)로 가는 연결 편집",
+    "changeTarget": "대상 변경",
+    "addParallel": "병렬 단계 추가",
+    "disconnect": "연결 해제",
+    "relationship": "관계",
+    "cancelConnection": "연결 취소",
+    "availablePort": "연결 가능",
+    "unavailablePort": "연결 불가"
   },
   "LiveVoice": {
     "loadFailed": "음성 설정을 불러오지 못했습니다.",

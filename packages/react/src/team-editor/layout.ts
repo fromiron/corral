@@ -549,6 +549,9 @@ function routeControl(
     {
       id: edge.id,
       kind: 'control',
+      ...(from === edge.source && nodes.get(from)?.type === 'decision'
+        ? { label: { text: edge.sourcePort, at: { x: a.x + 7, y: a.y - 5 } } }
+        : {}),
       from,
       to,
       path,

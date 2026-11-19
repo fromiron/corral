@@ -26,6 +26,145 @@ async function call(page: Page, path: string, body?: unknown, method = 'POST') {
   );
 }
 
+test('click, keyboard and pointer drag make the same next-step connection', async ({
+  page,
+  corral,
+}, testInfo) => {
+  await page.setViewportSize({ width: 1680, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await corral.open('/');
+  const { record } = await call(page, '/corrals', {
+    definition: linearCorral(['planner', 'writer']),
+  });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  const canvas = page.locator('[data-team-canvas]');
+  const source = teamNode(page, 'planner');
+  const target = teamNode(page, 'output');
+  const edges = canvas.locator('[data-edge]');
+  const port = canvas.locator('[data-port="planner:out"]');
+  const undo = page.getByRole('button', { name: 'Undo', exact: true });
+  const pick = canvas.getByRole('button', { name: 'Connect to Output · in', exact: true });
+  const cancel = canvas.getByRole('button', { name: 'Cancel connection' });
+  await expect(edges).toHaveCount(2);
+
+  await source.click();
+  await canvas.getByRole('button', { name: 'Connect next step' }).click();
+  await source.click();
+  await expect(canvas.getByText('A step cannot lead to itself.')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(source).toBeFocused();
+  await expect(undo).toBeDisabled();
+
+  await port.click();
+  await expect(pick).toHaveAttribute('data-reachable', 'true');
+  await expect(page.locator('[data-node-settings] input').first()).toBeHidden();
+  await page.screenshot({ path: testInfo.outputPath('desktop-connect.png') });
+  await target.click();
+  await expect(edges).toHaveCount(3);
+  await expect(cancel).toBeHidden();
+  await undo.click();
+
+  await canvas.getByRole('button', { name: 'Connect next step' }).focus();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('ArrowRight');
+  await expect(target).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(edges).toHaveCount(3);
+  await undo.click();
+
+  const a = await port.boundingBox();
+  const b = await target.boundingBox();
+  if (!a || !b) throw new Error('The graph did not show both ends');
+  await page.mouse.move(a.x + a.width / 2, a.y + a.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 12 });
+  await page.mouse.up();
+  await expect(edges).toHaveCount(3);
+  await expect(cancel).toBeHidden();
+  await expect(editorSettings(page).getByRole('heading', { name: 'Connections' })).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+test('panning, palette drop and dragging a loose step into a box still work', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1680, height: 960 });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await corral.open('/');
+  const { record } = await call(page, '/corrals', { definition: linearCorral(['writer']) });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  const canvas = page.locator('[data-team-canvas]');
+  const stage = canvas.locator('[data-graph-stage]');
+  const transform = () => stage.evaluate((el) => getComputedStyle(el).transform);
+  await expect(teamNode(page, 'writer')).toBeVisible();
+  const initial = await transform();
+  const box = await canvas.boundingBox();
+  if (!box) throw new Error('Missing canvas');
+  const left = box.x + 45,
+    top = box.y + box.height - 110;
+  await page.mouse.move(left, top);
+  await page.mouse.down();
+  await page.mouse.move(left + 80, top - 30, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(transform).not.toBe(initial);
+  const palette = page.getByRole('toolbar', { name: 'Steps' });
+  for (const kind of ['Agent', 'Loop']) {
+    await palette
+      .getByRole('button', { name: `Add ${kind}`, exact: true })
+      .dragTo(canvas, { targetPosition: { x: 55, y: box.height - 110 } });
+  }
+  const outline = page.getByRole('complementary', { name: 'Corral structure' });
+  const loose = outline.getByRole('button', { name: /^Agent [0-9]+$/ });
+  await loose.dragTo(outline.getByRole('button', { name: 'Loop', exact: true }));
+  await outline.getByRole('button', { name: 'Collapse Loop' }).click();
+  await expect(loose).toBeHidden();
+  await outline.getByRole('button', { name: 'Expand Loop' }).click();
+  await expect(loose).toBeVisible();
+  expect(corral.errors).toEqual([]);
+});
+
+for (const entry of ['editor', 'session'] as const) {
+  test(`settings opened from a card return focus to its renamed card in the narrow ${entry}`, async ({
+    page,
+    corral,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await corral.open('/');
+    const { record } = await call(page, '/corrals', { definition: linearCorral(['writer']) });
+    if (entry === 'session') {
+      const { session } = await call(page, '/sessions', {
+        projectId: 'default',
+        title: 'Writing',
+        corralId: record.corralId,
+      });
+      await page.goto(`${corral.server.url}/sessions/${session.sessionId}`);
+      await page.getByRole('banner').getByRole('button', { name: 'Actions for Writing' }).click();
+      await page.getByRole('menuitem', { name: 'Open Corral design' }).click();
+    } else await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+    const card = teamNode(page, 'writer');
+    await card.scrollIntoViewIfNeeded();
+    const scroller = page.locator('[data-layout="stacked"]');
+    const offset = () => scroller.evaluate((el) => el.scrollTop);
+    const before = await offset();
+    await card.click();
+    await expect.poll(offset).toBe(before);
+    await page.getByRole('button', { name: 'Open writer settings' }).click();
+    const settings = editorSettings(page);
+    const name = settings.getByRole('textbox', { name: 'Name', exact: true }).first();
+    await expect(name).toBeFocused();
+    await name.fill('Copy editor');
+    await page.screenshot({ path: testInfo.outputPath(`${entry}-390-settings.png`) });
+    await settings.getByRole('button', { name: 'Close', exact: true }).click();
+    await expect(card).toBeFocused();
+    await expect.poll(offset).toBe(before);
+    await expect(page.getByRole('button', { name: 'Open Copy editor settings' })).toBeVisible();
+    expect(corral.errors).toEqual([]);
+  });
+}
+
 test('shared Outrider settings survive reload and removal is reversible in the editor', async ({
   page,
   corral,

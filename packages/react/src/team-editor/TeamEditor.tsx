@@ -243,8 +243,12 @@ export function TeamEditor({
     if (dropped && dropped !== draft) setDropped(null);
   }, [dropped, draft]);
 
+  const [settingsDismissed, setSettingsDismissed] = useState(false);
+  const settingsOrigin = useRef<{ id: string; scrollTop: number } | null>(null);
   const select = useCallback((next: TeamSelection) => {
     setPlacementError('');
+    settingsOrigin.current = null;
+    setSettingsDismissed(false);
     setSelection(next);
     setDropped(null);
     setInserted(null);
@@ -361,7 +365,10 @@ export function TeamEditor({
       return;
     }
     const location = where ?? placement(kind);
-    const result = placeStep(base, kind, location, reference ? { reference } : {});
+    const result = placeStep(base, kind, location, {
+      ...(reference ? { reference } : {}),
+      decisionLabel: t(`kinds.${kind}`),
+    });
     if (result.ok) {
       const diff = placementDiff(base, result);
       if (diff.removed.length > 1 || diff.disconnects) {
@@ -439,7 +446,7 @@ export function TeamEditor({
   const placementLabels = new Map<StepKind, string>();
   for (const kind of ADDABLE) {
     const where = kind === 'observer' ? (menu.at ?? placement(kind)) : at;
-    const result = placeStep(draft, kind, where);
+    const result = placeStep(draft, kind, where, { decisionLabel: t(`kinds.${kind}`) });
     const Icon = KIND_ICON[kind];
     const description = result.ok
       ? selectedOutput(kind, menu.at ?? undefined)
@@ -459,7 +466,7 @@ export function TeamEditor({
     });
   }
   for (const pattern of PATTERNS) {
-    const result = applyPattern(draft, pattern, selection.nodes, at);
+    const result = applyPattern(draft, pattern, selection.nodes, at, t('kinds.review'));
     commands.push({
       value: `pattern:${pattern}`,
       label: t(`patterns.${pattern}`),
@@ -687,7 +694,8 @@ export function TeamEditor({
     };
   }
 
-  const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
+  const sheetOpen =
+    view !== null || (!settingsDismissed && selection.nodes.length > 0) || selection.edge !== null;
   const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
 
   // Stacked, settings opened from outside the canvas (an outline row, the team settings, the
@@ -729,6 +737,10 @@ export function TeamEditor({
     focusRequested.current = null;
     if (revealing.current) {
       revealing.current = false;
+      if (settingsOrigin.current && view === null)
+        box
+          .querySelector<HTMLInputElement>('[data-node-settings] input')
+          ?.focus({ preventScroll: true });
       scroller.current?.scrollTo?.({
         top: box.offsetTop,
         behavior: reduced ? 'instant' : 'smooth',
@@ -786,7 +798,9 @@ export function TeamEditor({
         view={view}
       />
       <div
-        className={stacked ? 'contents' : 'relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'}
+        className={
+          stacked ? 'contents' : 'group/graph relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'
+        }
       >
         <div
           role="toolbar"
@@ -855,6 +869,15 @@ export function TeamEditor({
             diagnostics={diagnostics}
             selection={selection}
             onSelect={select}
+            onOpenSettings={
+              stacked
+                ? (id) => {
+                    select({ nodes: [id], edge: null });
+                    settingsOrigin.current = { id, scrollTop: scroller.current?.scrollTop ?? 0 };
+                    reveal();
+                  }
+                : undefined
+            }
             collapsed={collapsed}
             onToggle={toggle}
             dragging={dragging}
@@ -883,7 +906,7 @@ export function TeamEditor({
               className={
                 stacked
                   ? undefined
-                  : 'pointer-events-none relative col-start-1 row-start-2 m-3 min-h-0 justify-self-end'
+                  : 'pointer-events-none relative col-start-1 row-start-2 m-3 min-h-0 justify-self-end group-has-[[data-connecting]]/graph:hidden'
               }
               // Beside, it slides in from the side it floats on; stacked, it rises into its row.
               initial={
@@ -931,7 +954,17 @@ export function TeamEditor({
                 }}
                 onClose={() => {
                   setView(null);
-                  setSelection(NONE);
+                  const origin = settingsOrigin.current;
+                  settingsOrigin.current = null;
+                  if (origin && stacked && selection.nodes[0] === origin.id && view === null) {
+                    setSettingsDismissed(true);
+                    scroller.current
+                      ?.querySelector<HTMLElement>(
+                        `[data-team-canvas] [data-node="${CSS.escape(origin.id)}"]`,
+                      )
+                      ?.focus({ preventScroll: true });
+                    scroller.current?.scrollTo?.({ top: origin.scrollTop, behavior: 'instant' });
+                  } else setSelection(NONE);
                 }}
               />
             </motion.div>

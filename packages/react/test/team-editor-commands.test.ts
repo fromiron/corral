@@ -52,6 +52,29 @@ function chain(length = 3): EditorDraft {
   return draft;
 }
 
+describe('editing a selected connection', () => {
+  it('replaces only the selected edge, retains its ID and preserves the prior graph on Undo', () => {
+    const draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    const [edge] = draft.definition.controlEdges;
+    if (!edge) throw new Error('Missing original connection');
+    const { id, ...original } = edge;
+    const target = { ...original, target: 'agent_3' };
+    expect(ok(connectPorts(draft, original, id)).draft).toBe(draft);
+    expect(refused(connectPorts(draft, { ...target, target: edge.source }, id))).toBe(
+      'selfConnection',
+    );
+    const store = createEditorStore(draft);
+    const parallel = ok(connectPorts(draft, target)).draft;
+    expect(parallel.definition.controlEdges).toHaveLength(2);
+    expect(refused(connectPorts(parallel, target, id))).toBe('duplicate');
+    expect(parallel.definition.controlEdges[0]).toEqual(edge);
+    store.getState().applyDraft(ok(connectPorts(draft, target, id)).draft);
+    expect(store.getState().draft.definition.controlEdges).toEqual([{ id, ...target }]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(draft);
+  });
+});
+
 describe('team shared Outrider settings', () => {
   const settings: SharedOutrider = {
     principles: 'Give reasons for each recommendation.',

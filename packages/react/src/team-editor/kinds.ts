@@ -32,6 +32,19 @@ export function kindOf(node: CorralNode): NodeKind {
   }
 }
 
+/** Routers name their own output ports in the authored definition. */
+export function portText(
+  node: CorralNode | undefined,
+  port: string,
+  translate: (port: string) => string,
+): string {
+  if (node?.type === 'decision' && node.mode === 'router') {
+    const route = node.routes.find((r) => r.id === port);
+    if (route) return route.label;
+  }
+  return translate(port);
+}
+
 export const KIND_ICON: Record<NodeKind, LucideIcon> = {
   agent: Bot,
   callable: Bot,

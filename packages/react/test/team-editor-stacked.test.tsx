@@ -125,6 +125,17 @@ const follows = (a: Element, b: Element) =>
   !b.contains(a);
 
 describe('team editor: stacked', () => {
+  it('opens settings explicitly from a card and restores focus and selection to that card', async () => {
+    renderEditor(team(), true);
+    const user = userEvent.setup();
+    const card = canvasNode('agent_2');
+    await user.click(card);
+    await user.click(screen.getByRole('button', { name: 'Open B settings' }));
+    expect(within(sheet()).getByDisplayValue('B')).toHaveFocus();
+    await user.click(within(sheet()).getByRole('button', { name: m.close }));
+    expect(card).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Open B settings' })).toBeVisible();
+  });
   it('reads the outline, the palette, the canvas and the chosen step’s settings in that order', () => {
     renderEditor(team(), true);
     expect(layoutOf()).toBe('stacked');

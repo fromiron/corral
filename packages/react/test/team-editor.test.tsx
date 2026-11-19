@@ -18,6 +18,7 @@ import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 import {
   applyPattern,
+  connectPorts,
   type EditResult,
   patchNode,
   placeStep,
@@ -316,6 +317,135 @@ describe('team editor', () => {
     expect(editor.getState().draft).toEqual(
       ok(placeStep(draft, 'agent', { kind: 'after', nodeId: rule.nodeId })).draft,
     );
+  });
+
+  it.each([
+    ['en', messages],
+    ['ko', koMessages],
+  ] as const)('names new decision cards for the chosen kind in %s', async (locale, catalog) => {
+    const draft = patchNode(chain(1), 'agent_1', { label: 'Existing custom name' });
+    const editor = createEditorStore(draft);
+    render(
+      <IntlProvider locale={locale} messages={catalog}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    for (const kind of ['approval', 'rule', 'review'] as const) {
+      const title = catalog.TeamEditor.kinds[kind];
+      await userEvent.click(
+        screen.getByRole('button', { name: catalog.TeamEditor.addKind.replace('{kind}', title) }),
+      );
+      expect(editor.getState().draft.definition.nodes.at(-1)?.label).toEqual(title);
+    }
+    expect(editor.getState().draft.definition.nodes[0]?.label).toBe('Existing custom name');
+  });
+
+  it('puts the next step, inputs and calls before a worker’s role settings, and watched agents before advisor permissions', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    renderEditor(draft);
+    const user = userEvent.setup();
+    const precedes = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    await user.click(canvasNode('agent_1'));
+    const sheet = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.inspector }),
+    );
+    const connections = sheet.getByRole('region', { name: messages.TeamEditor.connections });
+    const inputs = sheet.getByRole('group', { name: messages.Inspector.inputs });
+    const calls = sheet.getByRole('group', { name: messages.Inspector.calls });
+    const prompt = sheet.getByRole('textbox', { name: messages.Inspector.prompt });
+    expect(precedes(connections, inputs)).toBe(true);
+    expect(precedes(inputs, calls)).toBe(true);
+    expect(precedes(calls, prompt)).toBe(true);
+    await user.click(canvasNode(nodeId));
+    const watches = sheet.getByRole('group', { name: messages.Inspector.watches });
+    expect(precedes(watches, sheet.getByText(messages.Inspector.readTools))).toBe(true);
+  });
+
+  it('connects by card or keyboard, explains rejected destinations and cancels without history', async () => {
+    const draft = ok(placeStep(chain(1), 'agent', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode('agent_1'));
+    const start = () => user.click(screen.getByRole('button', { name: 'Connect next step' }));
+    await start();
+    await user.click(canvasNode('agent_1'));
+    expect(screen.getByText(messages.TeamEditor.rejected.selfConnection)).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(editor.getState().canUndo).toBe(false);
+    expect(canvasNode('agent_1')).toHaveFocus();
+    await start();
+    const target = screen.getByRole('button', { name: /Connect to Agent 2/ });
+    target.focus();
+    await user.keyboard('{Enter}');
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([
+      { source: 'agent_1', target: 'agent_2' },
+    ]);
+    expect(screen.queryByRole('button', { name: /Connect to Agent 2/ })).toBeNull();
+    expect(editor.getState().past).toEqual([draft]);
+  });
+
+  it('reads an authored router route on its line and in the selected connection', async () => {
+    const router = ok(placeStep(emptyDraft(), 'router', { kind: 'empty' }));
+    const draft = ok(
+      placeStep(router.draft, 'agent', { kind: 'after', nodeId: router.nodeId }),
+    ).draft;
+    const edge = draft.definition.controlEdges.find((e) => e.source === router.nodeId);
+    if (!edge) throw new Error('Expected the router’s first route');
+    renderEditor(draft);
+    const line = document.querySelector(`[data-edge="${edge.id}"]`);
+    if (!line) throw new Error('Missing route on canvas');
+    expect(within(line as HTMLElement).getByText('A')).toBeInTheDocument();
+    await userEvent.click(canvasNode(router.nodeId));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit connection from Router to Agent 1' }),
+    );
+    expect(screen.getByText(/· A$/)).toBeInTheDocument();
+  });
+
+  it('shows where to fix a required Join after a legal fan-out', async () => {
+    const chainToOutput = ok(placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }));
+    const result = ok(
+      connectPorts(chainToOutput.draft, {
+        source: 'agent_1',
+        sourcePort: 'out',
+        target: chainToOutput.nodeId,
+        targetPort: 'in',
+      }),
+    );
+    renderEditor(result.draft);
+    await userEvent.click(canvasNode('agent_1'));
+    const settings = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.inspector }),
+    );
+    const fix = settings.getAllByRole('button', { name: /Output.*Join/i })[0];
+    if (!fix) throw new Error('Missing Join location');
+    await userEvent.click(fix);
+    expect(canvasNode(chainToOutput.nodeId)).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows the relationship and distinct replace and parallel actions for a selected control line', async () => {
+    const draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const [edge] = draft.definition.controlEdges;
+    if (!edge) throw new Error('Missing original connection');
+    await userEvent.click(canvasNode('agent_1'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit connection from Agent 1 to Agent 2' }),
+    );
+    await waitFor(() => expect(screen.getByText('Runs next')).toBeVisible());
+    await choose('Change target', /Agent 3/);
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([
+      { id: edge.id, target: 'agent_3' },
+    ]);
+    await choose('Add parallel step', /Agent 2/);
+    expect(editor.getState().draft.definition.controlEdges).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([{ target: 'agent_2' }]);
   });
 
   it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
