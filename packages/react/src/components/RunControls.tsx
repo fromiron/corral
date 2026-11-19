@@ -176,7 +176,7 @@ export function RunControls({
             ? compiled.runtimeLimits.map((issue) => issue.message).join(' ') || t('notRunnableHere')
             : t('notRunnable')}
           {onShowProblems && !compiled.definition ? (
-            <Button variant="ghost" size="compact" onClick={onShowProblems}>
+            <Button variant="ghost" onClick={onShowProblems}>
               {t('viewProblems')}
             </Button>
           ) : null}
@@ -187,7 +187,6 @@ export function RunControls({
           {onOpenConversation ? (
             <Button
               variant="secondary"
-              size="compact"
               disabled={startDisabled}
               onClick={() => void onOpenConversation()}
             >
