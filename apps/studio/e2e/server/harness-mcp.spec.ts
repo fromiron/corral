@@ -4,8 +4,31 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { linearCorral } from '@corral/testkit';
 import { oauthFixture } from '../../../server/test/fixtures/mcp-oauth.ts';
-import { lastRunSucceeded } from '../workbench.ts';
+import {
+  editorSettings,
+  expectTeamSaved,
+  lastRunSucceeded,
+  maximizePanel,
+  openFlowGraph,
+  teamNode,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
+
+function initializeRepository(source: string) {
+  execFileSync('git', ['init', '-q', source]);
+  execFileSync('git', [
+    '-C',
+    source,
+    '-c',
+    'user.name=Fixture',
+    '-c',
+    'user.email=fixture@example.invalid',
+    'commit',
+    '--allow-empty',
+    '-qm',
+    'fixture',
+  ]);
+}
 
 test.use({ live: true, codexLogin: true });
 test('reviews an MCP server, completes local OAuth and pins its role selection', async ({
@@ -15,19 +38,7 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
   const source = mkdtempSync(join(tmpdir(), 'corral-mcp-ui-'));
   const fixture = await oauthFixture();
   try {
-    execFileSync('git', ['init', '-q', source]);
-    execFileSync('git', [
-      '-C',
-      source,
-      '-c',
-      'user.name=Fixture',
-      '-c',
-      'user.email=fixture@example.invalid',
-      'commit',
-      '--allow-empty',
-      '-qm',
-      'fixture',
-    ]);
+    initializeRepository(source);
     // A loaded document can precede completion of the asynchronous session bootstrap.
     await page.route('**/api/v1/session', async (route) => {
       if (route.request().method() === 'POST')
@@ -150,6 +161,190 @@ test('reviews an MCP server, completes local OAuth and pins its role selection',
     await page.getByRole('button', { name: 'Revoke launch trust', exact: true }).click();
     await page.getByRole('button', { name: 'Sign out of Local docs', exact: true }).click();
     await expect(page.getByText(/Sign-in: Sign-in required/)).toBeVisible();
+    expect(corral.errors).toEqual([]);
+  } finally {
+    await fixture.close();
+    rmSync(source, { recursive: true, force: true });
+  }
+});
+
+test('the Applied Harness shows only the MCP tool and connection saved for the seat', async ({
+  page,
+  corral,
+}) => {
+  const source = mkdtempSync(join(tmpdir(), 'corral-seat-mcp-'));
+  const fixture = await oauthFixture();
+  try {
+    initializeRepository(source);
+    await corral.open('/');
+    const url = corral.server.url;
+    const { csrfToken } = await (await page.request.get(`${url}/api/v1/session`)).json();
+    const api = async (path: string, method = 'GET', data?: Record<string, unknown>) => {
+      const response = await page.request.fetch(`${url}/api/v1${path}`, {
+        method,
+        headers: { origin: url, 'x-corral-csrf': csrfToken },
+        ...(data ? { data } : {}),
+      });
+      await expect(response, `${method} ${path}`).toBeOK();
+      return response.json();
+    };
+
+    // Only this project has the connections. The policy is deliberately broader than the seat.
+    const { project } = await api('/projects', 'POST', { name: 'Issue investigation' });
+    const projectId = project.projectId;
+    const workspace = `/projects/${projectId}/workspace`;
+    await api(workspace, 'PUT', { path: source });
+    await api(workspace, 'PATCH', { trusted: true });
+    const tools = `/harness/projects/${projectId}`;
+    const servers = [
+      { id: 'docs', name: 'Project docs' },
+      { id: 'archive', name: 'Project archive' },
+    ];
+    await api(`${tools}/tools`, 'PUT', {
+      expectedRevision: 0,
+      config: {
+        checks: [],
+        lspServers: [],
+        mcpServers: servers.map((server) => ({
+          ...server,
+          enabled: true,
+          transport: 'http',
+          url: fixture.url,
+          auth: { kind: 'bearer', credentialRef: `${server.id}_login` },
+          exposure: 'direct',
+          timeoutMs: 5000,
+        })),
+      },
+    });
+    for (const { id } of servers) {
+      const path = `${tools}/mcp-servers/${id}`;
+      const { fingerprint } = await api(`${path}/launch`);
+      await api(`${path}/trust`, 'PUT', { fingerprint, trusted: true });
+      await api(`${path}/auth`, 'POST', {
+        action: 'bearer',
+        fingerprint,
+        token: 'fixture-access-0',
+      });
+    }
+    // Settings is a detour, not a navigation away from the private original or picker draft.
+    await page.goto(`${url}/library/agents?project=${projectId}`);
+    await page.getByRole('button', { name: 'Create agent', exact: true }).click();
+    const original = page.getByRole('dialog', { name: 'Create agent', exact: true });
+    await original.getByRole('textbox', { name: 'Name', exact: true }).fill('Private investigator');
+    await original.getByRole('textbox', { name: 'Base instructions' }).fill('Investigate issues.');
+    await original.getByRole('button', { name: 'Add tools' }).click();
+    const originalPicker = page.getByRole('dialog', { name: 'Add tools', exact: true });
+    await originalPicker.getByRole('button', { name: /Project docs/ }).click();
+    await originalPicker.getByRole('button', { name: 'Check tools' }).click();
+    await originalPicker.getByRole('checkbox', { name: 'echo', exact: true }).check();
+    await originalPicker.getByRole('link', { name: 'Manage connections' }).click();
+    await expect(page).toHaveURL(new RegExp(`settingsProject=${projectId}`));
+    await page
+      .locator('[data-settings-dialog]')
+      .getByRole('button', { name: 'Close settings' })
+      .click();
+    await expect(originalPicker).toBeVisible();
+    await expect(
+      originalPicker.getByRole('button', { name: 'Apply to the agent original' }),
+    ).toBeEnabled();
+    await originalPicker.getByRole('button', { name: 'Apply to the agent original' }).click();
+    await expect(original.getByRole('textbox', { name: 'Name', exact: true })).toHaveValue(
+      'Private investigator',
+    );
+    await expect(original.getByRole('textbox', { name: 'Base instructions' })).toHaveValue(
+      'Investigate issues.',
+    );
+    await expect(original.getByText('Project docs · echo', { exact: true })).toBeVisible();
+    await expect(
+      original.getByText('This tool needs an execution policy that permits MCP.'),
+    ).toBeVisible();
+    await original.getByRole('button', { name: 'Choose an execution policy' }).click();
+    await expect(original.getByRole('combobox', { name: /Harness/ })).toBeFocused();
+    await original.getByRole('button', { name: 'Save agent' }).click();
+    await expect(original).not.toBeVisible();
+
+    const selected = 'mcp__docs__echo';
+    await api('/harness/profiles/investigation', 'PUT', {
+      expectedRevision: 0,
+      profile: {
+        name: 'Investigation',
+        policy: 'trusted-native',
+        resources: [],
+        allowedTools: ['write_artifact', 'submit_result', selected, 'mcp__docs__edit'],
+        mcpServerIds: servers.map(({ id }) => id),
+        startupCommands: [],
+      },
+    });
+    const definition = linearCorral(['researcher']);
+    definition.roles[0]!.harness = { profileId: 'investigation', revision: 1 };
+    definition.roles[0]!.modelProfile = 'model-b';
+    const { record } = await api('/corrals', 'POST', { definition, projectId });
+    const { corralId } = record;
+    await page.goto(`${url}/corrals/${corralId}/edit`);
+    await openFlowGraph(page);
+    await teamNode(page, 'researcher').click();
+    const settings = editorSettings(page);
+    await expect(settings.getByText('External tools', { exact: true })).toBeVisible();
+    const picker = page.getByRole('dialog', { name: 'Add tools', exact: true });
+    const discover = async () => {
+      await settings.getByRole('button', { name: 'Add tools', exact: true }).click();
+      await picker.getByRole('button', { name: /Project docs/ }).click();
+      await picker.getByRole('button', { name: 'Check tools', exact: true }).click();
+    };
+    const echo = picker.getByRole('checkbox', { name: 'echo', exact: true });
+    const edit = picker.getByRole('checkbox', { name: 'edit', exact: true });
+    const apply = picker.getByRole('button', { name: 'Apply to researcher', exact: true });
+    await discover();
+    await echo.check();
+    await edit.check();
+    await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(picker).toBeHidden();
+    await expectTeamSaved(page, 1);
+    await expect(page.getByRole('button', { name: 'Undo', exact: true })).toBeDisabled();
+
+    await discover();
+    await expect(echo).not.toBeChecked();
+    await expect(edit).not.toBeChecked();
+    await expect(apply).toBeDisabled();
+    await echo.check();
+    await apply.click();
+    await expect(picker).toBeHidden();
+    await expect(settings.getByText('Mock tests do not call external tools.')).toBeVisible();
+    expect(fixture.mcpCalls).toBe(0);
+    await page.getByRole('button', { name: 'Save', exact: true }).click();
+    await expectTeamSaved(page, 2);
+    const saved = await api(`/corrals/${corralId}`);
+    expect(saved.definition.roles[0].mcpTools).toEqual([{ serverId: 'docs', name: selected }]);
+
+    corral.fake!.answerWith('Found in the project docs.', {
+      mcpCall: { name: selected, args: {} },
+    });
+    const { session } = await api('/sessions', 'POST', { projectId, corralId, title: 'Read docs' });
+    await api(`/sessions/${session.sessionId}/worktree`, 'POST', {});
+    const { runId } = await api('/runs', 'POST', {
+      schemaVersion: '0.1',
+      commandId: 'use-seat-mcp',
+      sessionId: session.sessionId,
+      corralId,
+      definitionRevision: 2,
+      mode: 'live',
+    });
+    await page.goto(`${url}/runs/${runId}?view=run`);
+    await expect(lastRunSucceeded(page)).toBeVisible();
+    expect(fixture.mcpCalls).toBe(1);
+    await maximizePanel(page);
+    await page.getByRole('button', { name: 'Run info', exact: true }).click();
+    const connections = page.getByTestId('status-connections');
+    await connections.getByRole('button', { name: /^Connections/ }).click();
+    const applied = connections.getByTestId('harness-details');
+    await applied.getByText('Applied Harnesses', { exact: true }).click();
+    const role = applied.locator('section').filter({
+      has: page.getByRole('heading', { name: 'researcher · investigation · r1', exact: true }),
+    });
+    const allowed = role.getByText(/^Allowed tool names:/);
+    await expect(allowed).toBeVisible();
+    expect((await allowed.innerText()).match(/mcp__\w+/g)).toEqual([selected]);
+    await expect(role.getByText('MCP connections: docs', { exact: true })).toBeVisible();
     expect(corral.errors).toEqual([]);
   } finally {
     await fixture.close();

@@ -1,6 +1,6 @@
 import { RunEvent } from '@corral/contracts';
 import { linearCorral } from '@corral/testkit';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { expect, it } from 'vitest';
 import { HarnessDetails } from '../src/components/HarnessDetails.tsx';
@@ -41,8 +41,36 @@ it('shows the pinned resource, final context, payload and unmanaged call evidenc
                 kind: 'extension',
                 required: true,
               },
+              {
+                hash: 'e'.repeat(64),
+                name: 'installed-pack',
+                version: '2.0.0',
+                kind: 'skill',
+                required: false,
+                skillName: 'internal-writing',
+                entry: 'skills/write/SKILL.md',
+                skillMode: 'auto',
+              },
+              {
+                hash: 'f'.repeat(64),
+                name: 'previous-pack',
+                version: '1.0.0',
+                kind: 'skill',
+                required: false,
+                skillName: 'recorded-earlier',
+                entry: 'skills/write/SKILL.md',
+                skillMode: 'auto',
+              },
             ],
-            allowedTools: ['echo'],
+            projectTools: {
+              projectId: 'project',
+              revision: 2,
+              hash: 'c'.repeat(64),
+              checkIds: [],
+              lspServerIds: [],
+              mcpServerIds: ['issues'],
+            },
+            allowedTools: ['echo', 'mcp__issues__search'],
             tools: [],
             diagnostics: [],
             layers: [
@@ -91,15 +119,36 @@ it('shows the pinned resource, final context, payload and unmanaged call evidenc
   );
   render(
     <IntlProvider locale="en" messages={messages} timeZone="UTC">
-      <HarnessDetails session={sessionStore({ runId: 'run_1', definition, events })} />
+      <HarnessDetails
+        session={sessionStore({ runId: 'run_1', definition, events })}
+        skillLabel={({ resourceHash, entry }) =>
+          resourceHash === 'e'.repeat(64) && entry === 'skills/write/SKILL.md'
+            ? 'Brand voice'
+            : null
+        }
+      />
     </IntlProvider>,
   );
   expect(screen.getByText('writing-pack · 1.0.0')).toBeInTheDocument();
+  const named = screen.getByText(/Brand voice/).closest('summary');
+  if (!named || !(named.parentElement instanceof HTMLDetailsElement))
+    throw Error('Missing skill disclosure');
+  expect(named).toHaveTextContent(messages.Harness.auto);
+  expect(named).not.toHaveTextContent(/internal-writing|installed-pack/);
+  const details = named.parentElement;
+  expect(details.open).toBe(false);
+  fireEvent.click(named);
+  expect(details.open).toBe(true);
+  expect(within(details).getByText('internal-writing')).toBeInTheDocument();
+  expect(within(details).getByText('e'.repeat(64))).toBeInTheDocument();
+  expect(within(details).getByText('installed-pack · 2.0.0')).toBeInTheDocument();
+  expect(screen.getByText(/recorded-earlier/, { selector: 'summary' })).toBeInTheDocument();
   expect(screen.getByRole('heading', { name: /writer · r2/ })).toBeInTheDocument();
   expect(screen.getByText(/compaction/)).toBeInTheDocument();
   expect(screen.getByText(/skill_writing/)).toBeInTheDocument();
   expect(screen.getByText('1'.repeat(64))).toBeInTheDocument();
   expect(screen.getByText(/echo.*Unmanaged native/)).toBeInTheDocument();
   expect(screen.getByText('Run · one-time · r3')).toBeInTheDocument();
-  expect(screen.getByText('Allowed tool names: echo')).toBeInTheDocument();
+  expect(screen.getByText('MCP connections: issues')).toBeInTheDocument();
+  expect(screen.getByText('Allowed tool names: echo, mcp__issues__search')).toBeInTheDocument();
 });

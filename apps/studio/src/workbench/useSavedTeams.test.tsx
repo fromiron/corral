@@ -95,22 +95,29 @@ describe('useSavedTeams: roles to import', () => {
     const resaved = await repository.save({
       definition: {
         ...harbor.definition,
-        roles: harbor.definition.roles.map((r) => ({ ...r, prompt: 'Check the release.' })),
+        roles: harbor.definition.roles.map((r) => ({ ...r, prompt: 'Base instructions.' })),
+        nodes: harbor.definition.nodes.map((n) => ({
+          ...n,
+          stepInstruction: 'Check the release.',
+        })),
       },
       expectedDefinitionRevision: harbor.definitionRevision,
     });
     if (!resaved.ok) throw new Error(resaved.message);
 
     const result = renderHook(repository, editing.corralId, projectId);
-    await waitFor(() => expect(result.current?.references[0]?.roles).toBeDefined());
+    await waitFor(() => expect(result.current?.references[0]?.agents).toBeDefined());
     const references = result.current?.references ?? [];
     expect(references.map((team) => team.name)).toEqual(['Harbor']);
     expect(references[0]).toMatchObject({
       corralId: harbor.corralId,
       definitionRevision: 2,
     });
-    expect(references[0]?.roles?.map((r) => [r.name, r.prompt])).toEqual([
-      ['Release check', 'Check the release.'],
+    expect(references[0]?.agents).toMatchObject([
+      {
+        role: { name: 'Release check', prompt: 'Base instructions.' },
+        stepInstruction: 'Check the release.',
+      },
     ]);
   });
 
@@ -121,9 +128,9 @@ describe('useSavedTeams: roles to import', () => {
     const harbor = await save(repository, draft.definition, 'default');
     const editing = await save(repository, oneRole('Editing', 'Lead'), 'default');
     const result = renderHook(repository, editing.corralId, 'default');
-    await waitFor(() => expect(result.current?.references[0]?.roles).toBeDefined());
+    await waitFor(() => expect(result.current?.references[0]?.agents).toBeDefined());
     expect(harbor.definition.roles.map((r) => r.name)).toContain('Outrider');
-    expect(result.current?.references[0]?.roles?.map((r) => r.name)).toEqual([
+    expect(result.current?.references[0]?.agents?.map(({ role }) => role.name)).toEqual([
       'Agent 1',
       'Agent 2',
     ]);
@@ -146,7 +153,7 @@ describe('useSavedTeams: roles to import', () => {
       },
     });
     const result = renderHook(watched, editing.corralId, 'default');
-    await waitFor(() => expect(result.current?.references[0]?.roles).toBeDefined());
+    await waitFor(() => expect(result.current?.references[0]?.agents).toBeDefined());
     expect(new Set(calls)).toEqual(new Set(['list', 'get']));
     expect(await repository.get(harbor.corralId)).toEqual(before);
   });

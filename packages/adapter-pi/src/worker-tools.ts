@@ -400,6 +400,7 @@ export function promptSections(start: PromptStart): PromptSection[] {
               : [
                   'Perform the scheduled task using the supplied brief, criteria and versioned inputs.',
                 ],
+          ...(start.stepInstruction ? { step_instruction: [start.stepInstruction] } : {}),
           output_contract: output,
         };
   const parts = Object.entries(sections).map(([name, lines]) => ({

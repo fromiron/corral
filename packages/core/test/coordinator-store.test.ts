@@ -553,6 +553,15 @@ describe('Coordinator: concurrent runs, pinned snapshot', () => {
 
     await waitForProjection(transport, runId ?? '', settled);
     expect((agents as CountingAdapter).started[0]?.role.prompt).toBe('Act as writer.');
+    expect(await transport.getRunSource(runId ?? '')).toEqual({
+      corralId: 'saved',
+      definitionRevision: 1,
+    });
+
+    const inline = await transport.startRun(start(definition, 'cmd_inline'));
+    expect(inline.receipt.status).toBe('applied');
+    expect(await transport.getRunSource(inline.runId ?? '')).toBeNull();
+    expect(await transport.getRunSource('run_missing')).toBeNull();
 
     const missing = await transport.startRun({
       schemaVersion: '0.1',

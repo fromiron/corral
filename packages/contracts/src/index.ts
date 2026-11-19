@@ -1,3 +1,4 @@
+export * from './agent-library.ts';
 export * from './attachments.ts';
 export * from './auto-team.ts';
 export { canonicalJson } from './canonical-json.ts';
@@ -41,6 +42,7 @@ export * from './schedules.ts';
 export * from './session-continuity.ts';
 export * from './skill-quality.ts';
 export * from './states.ts';
+export * from './team-assistant.ts';
 export * from './team-plan.ts';
 export * from './terminal.ts';
 export * from './user-git.ts';

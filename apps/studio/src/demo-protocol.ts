@@ -1,4 +1,4 @@
-import type { RunEvent, StreamFrame } from '@corral/contracts';
+import type { CorralDefinition, RunEvent, StreamFrame } from '@corral/contracts';
 import type { RuntimeTransport } from '@corral/core';
 
 export type DemoMethod = Exclude<keyof RuntimeTransport, 'subscribe'>;
@@ -8,6 +8,7 @@ export type DemoRequest = {
     id: number;
     method: M;
     args: Parameters<NonNullable<RuntimeTransport[M]>>;
+    revisions?: DemoTeamRevision[];
   };
 }[DemoMethod];
 /** The demo work folder's calls the page may make (demo/workspace.ts). */
@@ -46,6 +47,8 @@ export const DEMO_WORKSPACE_METHODS = [
   'inboxFacts',
 ] as const;
 export type DemoWorkspaceMethod = (typeof DEMO_WORKSPACE_METHODS)[number];
+
+export type DemoTeamRevision = { corralId: string; revision: number; definition: CorralDefinition };
 
 export type DemoMessage =
   | DemoRequest

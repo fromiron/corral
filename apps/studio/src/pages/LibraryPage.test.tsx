@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { HarnessEntryView, PackageView, ProjectToolConfigRevision } from '@corral/contracts';
 import { type CorralRepository, createKeyValueCorralRepository } from '@corral/core';
-import { emptyDraft } from '@corral/react';
+import { emptyDraft, exportDefinition } from '@corral/react';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -120,6 +120,7 @@ async function render(url: string, children?: ReactNode, locale: 'en' | 'ko' = '
   const router = createRouter({
     routeTree: root.addChildren([
       ...views,
+      stub('/corrals/new/edit'),
       stub('/corrals/$corralId/edit'),
       stub('/sessions/$sessionId'),
       stub('/projects/$projectId'),
@@ -277,6 +278,16 @@ beforeEach(async () => {
     mode: 'server',
     persistent: true,
     repository,
+    agents: {
+      list: vi.fn(async () => [
+        {
+          agentId: 'archived',
+          role: { name: 'Retired editor', prompt: 'Revise the copy.' },
+          updatedAt: '2026-11-10T00:00:00.000Z',
+          archivedAt: '2026-11-11T00:00:00.000Z',
+        },
+      ]),
+    },
     harnesses: harnesses(),
     workspaces: null,
   };
@@ -290,10 +301,13 @@ it('keeps a project filter, a draft request and an in-app return address', () =>
     project: 'project_a',
     draft: true,
   });
+  expect(validateLibrarySearch({ agent: 'agent_42' })).toEqual({ agent: 'agent_42' });
   for (const search of [
     { project: '' },
     { project: 'x'.repeat(257) },
     { project: ['project_a'] },
+    { agent: 42 },
+    { agent: '../other-project' },
     { returnTo: 'https://example.org' },
     { returnTo: '//example.org' },
     { returnTo: '/settings/skills' },
@@ -310,25 +324,65 @@ it.each(LIBRARY_VIEWS)('frames the %s view with the library title and its tab', 
   );
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Corrals', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals', 'Agents', 'Skills', 'Templates', 'Resources']);
   expect(
     name(tabs.find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement),
   ).toBe(view === 'teams' ? 'Corrals' : view[0]?.toUpperCase() + view.slice(1));
+  if (view === 'skills') {
+    expect(container.querySelector('table')?.textContent).toContain('Code review');
+    expect(byText(container, 'button', 'Create skill')).toBeTruthy();
+    expect(byText(container, 'button', 'Import')).toBeTruthy();
+  }
 });
 
-it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
+it('opens the linked archived original and keeps the project and return path when switching views', async () => {
+  const { container, router } = await render(
+    '/library/agents?project=project_1&agent=archived&returnTo=%2Fsessions%2Fs',
+  );
+  expect(container.querySelector('table button[aria-pressed="true"]')?.textContent).toContain(
+    'Retired editor',
+  );
+  const tab = container.querySelector<HTMLElement>('[role="tab"][data-view="templates"]');
+  expect(tab).toBeTruthy();
+  await act(async () => tab?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/library/templates');
+  expect(router.state.location.search).toEqual({ project: 'project_1', returnTo: '/sessions/s' });
+});
+
+it('opens an unsaved new team in the filtered project without changing the list', async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Beta writers', 'project_2');
   const { container, router } = await render('/library/teams?project=project_1');
   expect(container.textContent).toContain('Alpha reviewers');
   expect(container.textContent).not.toContain('Beta writers');
-  const create = byText(container, 'button', 'New Corral');
+  const create = byText(container, 'a', 'New Corral');
   expect(create).toBeTruthy();
   await act(async () => create?.click());
   await settle();
-  expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
-  const made = (await repository.list()).find((item) => item.corralId === 'corral_3');
-  expect(made?.projectId).toBe('project_1');
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_1' });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(await repository.list()).toHaveLength(2);
+  await act(async () => router.history.back());
+  await settle();
+  expect(container.textContent).toContain('Alpha reviewers');
+  expect(await repository.list()).toHaveLength(2);
+});
+
+it('still imports a JSON definition as a saved team, not a new-team draft', async () => {
+  const { container, router } = await render('/library/teams?project=project_2');
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error('Missing JSON import');
+  const source = exportDefinition(emptyDraft('untitled', 'Imported team'));
+  Object.defineProperty(input, 'files', { value: [{ text: async () => source }] });
+  await act(async () => {
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+  });
+  await settle();
+  const [saved] = await repository.list();
+  expect(saved).toMatchObject({ name: 'Imported team', projectId: 'project_2' });
+  expect(router.state.location.pathname).toBe(`/corrals/${saved?.corralId}/edit`);
 });
 
 it('uses the last opened project without a filter and offers a project filter', async () => {
@@ -416,8 +470,10 @@ it('adds the settings dialog to the current library address from Manage', async 
     settings: 'mcp',
     settingsProject: 'project_1',
   });
-  const skill = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Code review"]');
-  expect(new URL(skill?.href ?? '', 'http://x').searchParams.get('settings')).toBe('skills');
+  expect(container.textContent).not.toContain('Code review');
+  const skill = container.querySelector<HTMLAnchorElement>('a[href^="/library/skills"]');
+  expect(skill?.search).toContain('project=project_1');
+  expect(new URLSearchParams(skill?.search).get('returnTo')).toBe('/sessions/session_a');
   const hook = container.querySelector<HTMLAnchorElement>(
     'a[aria-label="Manage Notify on finish"]',
   );
@@ -443,10 +499,6 @@ it('carries the managed row’s key to the dialog, outside the address', async (
     expect(settingsItemOf(router.state.location.state)).toBeUndefined();
     return { section: (location.search as { settings?: string }).settings, carried };
   };
-  expect(await open('Code review')).toEqual({
-    section: 'skills',
-    carried: `${hash(1)}:skills/SKILL.md`,
-  });
   expect(await open('Notify on finish')).toEqual({
     section: 'hooks',
     carried: `${hash(2)}:extensions/hook.ts`,
@@ -466,7 +518,7 @@ it('shows a failed group with its failure and a retry while the other groups sta
   expect(group.textContent).toContain('Could not load Packages.');
   expect(group.textContent).not.toContain('None');
   expect(group.querySelector('[role="alert"]')).toBeTruthy();
-  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'hooks')?.textContent).toContain('Notify on finish');
   expect(groupOf(container, 'mcp')?.textContent).toContain('Local tools');
   const retry = byText(group, 'button', 'Try again');
   await act(async () => retry?.click());
@@ -518,6 +570,7 @@ it('shows the browser demo one empty state that says resources need the local se
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   expect(panel.textContent?.match(/Available with the local server/g)).toHaveLength(1);
+  expect(panel.querySelector('a[href^="/library/skills"]')).toBeTruthy();
   for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp'])
     expect(groupOf(container, group)).toBeNull();
   expect(panel.textContent).not.toContain('None');
@@ -542,7 +595,8 @@ it('shows one empty state with a way to add each kind when nothing is installed'
   const sections = [...panel.querySelectorAll<HTMLAnchorElement>('a[aria-label^="Manage "]')].map(
     (link) => new URL(link.href, 'http://x').searchParams.get('settings'),
   );
-  expect(new Set(sections)).toEqual(new Set(['skills', 'hooks', 'mcp']));
+  expect(new Set(sections)).toEqual(new Set(['hooks', 'mcp']));
+  expect(panel.querySelector('a[href^="/library/skills"]')).toBeTruthy();
 });
 
 it('lists only the groups that have items or failed, and keeps the others one click away', async () => {
@@ -556,7 +610,9 @@ it('lists only the groups that have items or failed, and keeps the others one cl
     }),
   };
   const { container, router } = await render('/library/resources?project=project_1');
-  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'skills')).toBeNull();
+  expect(container.textContent).not.toContain('Code review');
+  expect(container.querySelector('a[href^="/library/skills"]')).toBeTruthy();
   expect(groupOf(container, 'packages')?.textContent).toContain('Could not load Packages.');
   for (const group of ['hooks', 'extensions', 'mcp']) expect(groupOf(container, group)).toBeNull();
   expect(container.textContent).not.toContain('None');
@@ -579,7 +635,9 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   // No pointer to templates "below": they are on their own tab.
   expect(panel.textContent).not.toMatch(/below/i);
-  expect(byText(panel, 'button', 'New Corral')).toBeTruthy();
+  expect(byText(panel, 'a', 'New Corral')?.getAttribute('href')).toBe(
+    '/corrals/new/edit?project=project_1',
+  );
   // The storage note is not a sentence under the list.
   expect(panel.textContent).not.toContain('saved in this app data folder');
   await act(async () => byText(panel, 'button', 'Browse templates')?.click());
@@ -652,7 +710,7 @@ it('shows the eight templates in order with their roles, and marks the ones that
   }
   // Two quiet actions named for their template; the empty canvas has no conversation to start.
   const actions = (card: HTMLElement) =>
-    [...card.querySelectorAll('button')].map((button) => [
+    [...card.querySelectorAll('button, a')].map((button) => [
       button.textContent,
       button.getAttribute('aria-label'),
     ]);
@@ -665,7 +723,7 @@ it('shows the eight templates in order with their roles, and marks the ones that
   );
   // Neither is the screen's primary button: tertiary, then ghost.
   for (const card of cards) {
-    const buttons = [...card.querySelectorAll('button')];
+    const buttons = [...card.querySelectorAll('button, a')];
     expect(buttons.filter((button) => button.className.includes('text-background'))).toEqual([]);
     expect(buttons.at(-1)?.className).toContain('text-muted-foreground');
   }
@@ -689,25 +747,20 @@ it('starts a new conversation in the project with the template chosen', async ()
   );
 });
 
-it('drafts a team from a goal from the toolbar beside the tabs', async () => {
-  // The draft dialog follows the person's reduced-motion setting.
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  }));
+it('opens the unsaved editor with the assistant from the templates toolbar', async () => {
   const { container, router } = await render('/library/templates?project=project_1');
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
-  expect(byText(panel, 'button', 'Draft from a goal')).toBeUndefined();
-  await act(async () => byText(container, 'button', 'Draft from a goal')?.click());
+  expect(byText(panel, 'a,button', 'Draft from a goal')).toBeUndefined();
+  const action = byText(container, 'a', 'Draft from a goal');
+  expect(action).toBeTruthy();
+  await act(async () => action?.click());
   await settle();
-  expect(router.state.location.search).toMatchObject({ project: 'project_1', draft: true });
-  expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_1', assistant: 1 });
+  expect(await repository.list()).toHaveLength(0);
   // The other views have nothing to draft.
   const teams = await render('/library/teams?project=project_1');
-  expect(byText(teams.container, 'button', 'Draft from a goal')).toBeUndefined();
+  expect(byText(teams.container, 'a,button', 'Draft from a goal')).toBeUndefined();
 });
 
 it('names every template’s roles in Korean on a Korean screen', async () => {
@@ -720,7 +773,7 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   for (const card of cards)
     for (const step of roles(card))
       expect([step, /[A-Za-z]{2,}/.test(step ?? '')]).toEqual([step, false]);
-  const labels = [...(cards[0] as HTMLElement).querySelectorAll('button')].map((button) => [
+  const labels = [...(cards[0] as HTMLElement).querySelectorAll('button, a')].map((button) => [
     button.textContent,
     button.getAttribute('aria-label'),
   ]);
@@ -730,33 +783,31 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   ]);
 });
 
-it('saves a copy of a new template as a separate team and opens it in the editor', async () => {
-  // The copy dialog follows the person's reduced-motion setting.
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  }));
-  const { container, router } = await render('/library/templates?project=project_1');
-  for (const expected of ['Parallel code review', 'Parallel code review (2)']) {
-    const card = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')].find(
-      (article) => article.textContent?.includes('Parallel code review'),
-    ) as HTMLElement;
-    await act(async () => byText(card, 'button', 'Edit a copy')?.click());
-    await settle();
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
-    await act(async () => byText(dialog, 'button', 'Save copy and edit')?.click());
-    await settle();
-    expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
-    const corralId = router.state.location.pathname.split('/')[2] as string;
-    const saved = await repository.get(corralId);
-    expect(saved?.name).toBe(expected);
-    expect(saved?.projectId).toBe('project_1');
-    await act(async () => router.history.back());
-    await settle();
-  }
+it.each([
+  ['Parallel code review', { template: 'parallel-review' }],
+  ['Empty', {}],
+] as const)('opens an unsaved template copy of %s without creating a team', async (name, query) => {
+  const { container, router } = await render('/library/templates?project=project_2');
+  const copy = container.querySelector<HTMLAnchorElement>(`a[aria-label="Edit a copy of ${name}"]`);
+  expect(copy).toBeTruthy();
+  await act(async () => copy?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_2', ...query });
+  expect(await repository.list()).toHaveLength(0);
+});
+
+it.each(['teams', 'templates'])('hides creation for archived projects on %s', async (view) => {
+  const project = (await repository.listProjects()).find((item) => item.projectId === 'project_1');
+  if (!project) throw new Error('Missing fixture project');
+  await repository.updateProject(project.projectId, {
+    expectedRevision: project.revision,
+    archived: true,
+  });
+  const { container } = await render(`/library/${view}?project=project_1`);
+  expect(container.textContent).toContain(messages.Projects.archivedNote);
+  expect(container.querySelector('a[href^="/corrals/new/edit"]')).toBeNull();
+  expect(container.querySelector('input[type="file"], article')).toBeNull();
 });
 
 it("counts the project's teams on the Teams tab and names the list nowhere else", async () => {
@@ -766,15 +817,16 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
   const { container } = await render('/library/teams?project=project_1');
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Corrals 2', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals 2', 'Agents', 'Skills', 'Templates', 'Resources']);
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.textContent).not.toContain(messages.Library.teams.list);
   expect(panel.querySelector('h2:not(section h2)')).toBeNull();
-  // Where teams are kept stays one click away, in the row of the list's actions.
-  const storage = panel.querySelector('button[aria-label="Where Corrals are saved"]');
-  const create = byText(panel, 'button', 'New Corral');
+  // Where teams are kept stays one click away, with the list's actions at the end of the tab row.
+  const storage = container.querySelector('button[aria-label="Where Corrals are saved"]');
+  const create = byText(container, 'a', 'New Corral');
   expect(storage).not.toBeNull();
   expect(storage?.parentElement?.parentElement?.contains(create ?? null)).toBe(true);
+  expect(panel.contains(storage)).toBe(false);
 });
 
 it("heads the chosen team's detail with its name and leaves the row's details to the row", async () => {

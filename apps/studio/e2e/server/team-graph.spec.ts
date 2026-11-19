@@ -2,10 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CorralDefinition } from '@corral/contracts';
+import type { CorralDefinition, TargetPort } from '@corral/contracts';
 import type { Coordinator } from '@corral/core';
+import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { lastRunSucceeded, panelTabNamed } from '../workbench.ts';
+import { lastRunSucceeded, openTestRun, panelTabNamed } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The team graph's runtime paths a person meets on screen, on the local server with simulated
@@ -50,7 +51,12 @@ const agent = (id: string, label: string, from: string | null, parentId?: string
   outputName: 'text',
   ...(parentId ? { parentId } : {}),
 });
-const edge = (source: string, sourcePort: string, target: string, targetPort = 'in') => ({
+const edge = (
+  source: string,
+  sourcePort: string,
+  target: string,
+  targetPort: TargetPort = 'in',
+) => ({
   id: `${source}_${sourcePort}_${target}_${targetPort}`,
   source,
   sourcePort,
@@ -304,4 +310,64 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
   } finally {
     rmSync(source, { recursive: true, force: true });
   }
+});
+
+test('retrying the pinned reference enables an actual saved-revision test run', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const inner = await call(page, '/corrals', {
+    definition: linearCorral(['helper'], 'helper-team'),
+  });
+  const outer = linearCorral(['planner', 'writer'], 'outer');
+  outer.nodes.push({
+    type: 'team',
+    id: 'ref',
+    label: 'Saved helper',
+    source: {
+      kind: 'reference',
+      corralId: inner.record.corralId,
+      definitionRevision: inner.record.definitionRevision,
+    },
+  });
+  outer.controlEdges = [
+    edge('planner', 'out', 'ref', 'enter'),
+    edge('ref', 'next', 'writer'),
+    edge('writer', 'out', 'output'),
+  ];
+  const saved = await call(page, '/corrals', { definition: outer });
+  await page.route(
+    `**/corrals/${inner.record.corralId}/revisions/1`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'temporary failure' }),
+      }),
+    { times: 1 },
+  );
+  await page.goto(`${corral.server.url}/corrals/${saved.record.corralId}/edit`);
+  const panel = await openTestRun(page);
+  const run = panel.getByRole('button', { name: 'Start mock test', exact: true });
+  await expect(run).toBeDisabled();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(run).toBeEnabled();
+  const posted = page.waitForResponse(
+    (r) => r.url().endsWith('/api/v1/runs') && r.request().method() === 'POST',
+  );
+  await run.click();
+  const response = await posted;
+  expect(response.request().postDataJSON()).toMatchObject({
+    corralId: saved.record.corralId,
+    definitionRevision: saved.record.definitionRevision,
+  });
+  const { runId } = await response.json();
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(runId).projection.status)
+    .toBe('succeeded');
+  const executed = Object.values(
+    corral.server.coordinator.getSnapshot(runId).projection.executions,
+  );
+  expect(executed.map((execution) => execution.nodeId)).toContain('ref.helper');
 });

@@ -1,5 +1,8 @@
 import { z } from 'zod';
 
+/** The stable reason for a successful request whose answer did not supply a usable plan. */
+export const UNUSABLE_TEAM_PLAN_MESSAGE = "the model's answer was not a usable team plan";
+
 // a team drafted from a goal. It is a small plan, not a Corral definition: tools,
 // connections and limits come from the pattern when the plan becomes a definition, so neither
 // a model's answer nor pasted text can grant a permission through it.
@@ -71,6 +74,12 @@ export const TeamPlan = z
     reviewRounds: z.int().min(1).max(3).optional(),
     /** The final output waits for the person's approval. No pattern turns this on by itself. */
     finalApproval: z.boolean(),
+    /** Explicitly watch the workers while they work, independently of their review policy. */
+    observeWork: z.literal(true).optional(),
+    /** Requested shared consultation; unresolved policies are shown before a draft can be saved. */
+    outrider: z
+      .enum(['consultation', 'artifact_review', 'clarify_review', 'required_review'])
+      .optional(),
   })
   .superRefine((plan, ctx) => {
     const wanted: readonly string[] = TEAM_SLOTS[plan.pattern];
