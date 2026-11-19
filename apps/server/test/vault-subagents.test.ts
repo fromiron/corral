@@ -1,6 +1,6 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
 import { type Db, openDatabase, SqliteCorralRepository } from '@corral/storage-sqlite';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, assert, describe, expect, it } from 'vitest';
 import { createSubagentsVaultAdapter } from '../src/vault/subagents.ts';
 
 const opened: Db[] = [];
@@ -88,6 +88,32 @@ async function setup() {
 }
 
 describe('subagents domain owner adapter', () => {
+  it.each([undefined, 'Check the release notes.'])(
+    'preserves callable instructions through Markdown import (seat duty: %s)',
+    async (duty) => {
+      const { adapter, source, bindings, before, repository } = await setup();
+      const snapshot = {
+        ...source,
+        definition: {
+          ...source.definition,
+          nodes: source.definition.nodes.map((node) => ({
+            ...node,
+            ...(duty ? { stepInstruction: duty } : {}),
+          })),
+        },
+      };
+      const preview = await adapter.preview(snapshot, bindings);
+      await adapter.apply(preview.value, before.revision, 'import');
+      const imported = (await repository.get('target'))?.definition;
+      const role = imported?.roles.at(-1);
+      assert(imported && role);
+      const [instructions] = role.prompt.split('\n\nCorral import tool mapping:');
+      expect(instructions).toBe(
+        `Imported callable agent: Reviewer\n\n${duty ? `${duty}\n\n` : ''}Work`,
+      );
+      expect(imported.nodes.at(-1)).not.toHaveProperty('stepInstruction');
+    },
+  );
   it('requires explicit local team, parent and model bindings before import', async () => {
     const { adapter, source, bindings } = await setup();
     await expect(adapter.preview(source, {})).rejects.toThrow(/Bind/);

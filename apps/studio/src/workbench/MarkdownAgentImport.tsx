@@ -9,7 +9,7 @@ import {
   Select,
   Textarea,
 } from '@corral/react/design-kit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
@@ -25,18 +25,24 @@ export function MarkdownAgentImport({
   editor,
   profiles,
   projectId,
+  open,
+  onClose,
+  finalFocus,
 }: {
   editor: EditorStore;
   profiles: ProfileInfo[] | null;
   projectId: string;
+  open: boolean;
+  onClose(): void;
+  finalFocus: RefObject<HTMLButtonElement | null>;
 }) {
   const ko = useLocale().startsWith('ko');
+  const t = useTranslations('Editor');
   const tc = useTranslations('Composer');
   const { harnesses } = useServices();
   const text = (english: string, korean: string) => (ko ? korean : english);
   const draft = useStore(editor, (state) => state.draft);
   const parents = draft.definition.nodes.filter((node) => node.type === 'agent');
-  const [open, setOpen] = useState(false);
   const [source, setSource] = useState('');
   const [parentNodeId, setParent] = useState('');
   const [modelProfile, setModel] = useState('');
@@ -44,9 +50,8 @@ export function MarkdownAgentImport({
   const [fileError, setFileError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
-  const trigger = useRef<HTMLButtonElement>(null);
   const candidate = useMemo(() => parseMarkdownAgent(source), [source]);
-  const suffix = useRef(crypto.randomUUID());
+  const [suffix, setSuffix] = useState(() => crypto.randomUUID());
   const parent = parents.find((node) => node.id === parentNodeId);
   const role = draft.definition.roles.find((role) => role.id === parent?.roleId);
   const harnessKey = `${projectId}:${parentNodeId}:${role?.harness?.profileId ?? ''}:${role?.harness?.revision ?? ''}`;
@@ -82,7 +87,7 @@ export function MarkdownAgentImport({
         modelProfile,
         profiles: profiles ?? [],
         mappings,
-        suffix: suffix.current,
+        suffix,
         parentHarness: currentHarness?.snapshot,
       });
     } catch (failure) {
@@ -91,7 +96,9 @@ export function MarkdownAgentImport({
   }
   const importedRole = preview?.definition.roles.at(-1);
   const close = () => {
-    setOpen(false);
+    setConfirmed(false);
+    setStatus('');
+    onClose();
   };
   const updateSource = (value: string) => {
     setSource(value);
@@ -101,30 +108,16 @@ export function MarkdownAgentImport({
   };
   return (
     <>
-      {/* A compact control like the rest of the team editor's head. */}
-      <Button
-        ref={trigger}
-        variant="tertiary"
-        size="compact"
-        onClick={() => {
-          suffix.current = crypto.randomUUID();
-          setConfirmed(false);
-          setStatus('');
-          setOpen(true);
-        }}
-      >
-        {text('Import Markdown agent', 'Markdown 에이전트 가져오기')}
-      </Button>
-      {status ? (
-        <span role="status" className="text-caption text-muted-foreground">
+      {status && !open ? (
+        <span role="status" className="sr-only">
           {status}
         </span>
       ) : null}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => !next && close()}>
         <DialogPopup
           aria-label={text('Import a callable agent', '위임할 에이전트 가져오기')}
           showCloseButton={false}
-          finalFocus={trigger}
+          finalFocus={finalFocus}
           className="max-h-[85dvh] w-[min(42rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-4"
         >
           <div className="flex flex-col gap-3">
@@ -382,14 +375,10 @@ export function MarkdownAgentImport({
               onClick={() => {
                 if (!preview || !confirmed) return;
                 editor.getState().applyDraft(preview);
-                editor.getState().select(`import_${suffix.current}`);
-                setStatus(
-                  text(
-                    'Agent added. Save the Corral to keep this change.',
-                    '에이전트를 추가했습니다. Corral을 저장해 변경을 보관하세요.',
-                  ),
-                );
+                editor.getState().select(`import_${suffix}`);
+                setSuffix(crypto.randomUUID());
                 close();
+                setStatus(t('agentImported'));
                 updateSource('');
               }}
             >

@@ -52,7 +52,12 @@ test('evaluate, review, retry a lost adoption response and roll back after reloa
     return { baseline, candidate };
   });
   await page.reload();
-  await page.getByRole('button', { name: /Updated fixture writer/ }).click();
+  const updatedWriter = page
+    .getByRole('table', { name: 'Skills', exact: true })
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: 'Updated fixture writer', exact: true }) })
+    .getByRole('button', { name: /^Writing\b/ });
+  await updatedWriter.click();
   const panel = page.getByTestId('skill-quality');
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
   await panel.getByRole('combobox', { name: 'Baseline Skill', exact: true }).click();
@@ -117,7 +122,7 @@ test('evaluate, review, retry a lost adoption response and roll back after reloa
     page.evaluate(async () => (await fetch('/api/v1/harness/defaults/personal/default')).json());
   expect((await readDefault()).binding.revision).toBe(2);
   await page.reload();
-  await page.getByRole('button', { name: /Updated fixture writer/ }).click();
+  await updatedWriter.click();
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
   await panel.getByRole('combobox', { name: 'Apply to', exact: true }).click();
   await page.getByRole('option', { name: 'Personal default', exact: true }).click();

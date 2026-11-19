@@ -5,7 +5,7 @@ import { createServer } from 'node:http';
 import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { canonicalJson, type RunEvent } from '@corral/contracts';
+import { canonicalJson, isWorkAgent, type RunEvent } from '@corral/contracts';
 import {
   Coordinator,
   InProcessTransport,
@@ -305,17 +305,28 @@ describe('worker in a child process', () => {
       ];
       const resourceHash = createHash('sha256').update(canonicalJson(files)).digest('hex');
       try {
+        const definition = linearCorral(['writer']);
+        const writer = definition.nodes.find(isWorkAgent);
+        const [role] = definition.roles;
+        if (!writer || !role) throw new Error('missing writer fixture');
+        const stepInstruction = 'Summarize only the sources selected for this step.';
+        writer.stepInstruction = stepInstruction;
+        const deliveries: { role: number; step: number }[] = [];
         let calls = 0;
         const payloadHashes: string[] = [];
         endpoint.setReply((body) => {
           payloadHashes.push(createHash('sha256').update(canonicalJson(body)).digest('hex'));
+          const payload = JSON.stringify(body);
+          deliveries.push({
+            role: payload.split(role.prompt).length - 1,
+            step: payload.split(stepInstruction).length - 1,
+          });
           calls += 1;
-          if (sdk) expect(JSON.stringify(body)).toContain(skillText);
-          expect(JSON.stringify(body)).toContain('Historical result before interruption.');
-          expect(JSON.stringify(body)).toContain('Earlier messages are historical context only');
-          if (withImage)
-            expect(JSON.stringify(body)).toContain(`data:image/png;base64,${image.data}`);
-          const written = [...JSON.stringify(body).matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
+          if (sdk) expect(payload).toContain(skillText);
+          expect(payload).toContain('Historical result before interruption.');
+          expect(payload).toContain('Earlier messages are historical context only');
+          if (withImage) expect(payload).toContain(`data:image/png;base64,${image.data}`);
+          const written = [...payload.matchAll(/artv_[A-Za-z0-9]+/g)].at(-1)?.[0];
           if (calls === 1)
             return { toolCall: { name: 'write_artifact', args: { text: 'Hi from the endpoint' } } };
           if (calls === 2)
@@ -416,6 +427,12 @@ describe('worker in a child process', () => {
                         contextHash: 'a'.repeat(64),
                         context: {
                           messages: [
+                            // Historical system sections are rebuilt, not replayed on top of the new ones.
+                            {
+                              role: 'system',
+                              content: `${role.prompt}\n${stepInstruction}`,
+                              timestamp: 0,
+                            },
                             { role: 'user', content: 'Historical request.', timestamp: 1 },
                             fauxAssistantMessage(
                               [
@@ -463,8 +480,7 @@ describe('worker in a child process', () => {
             },
           }),
         );
-        const definition = linearCorral(['writer']);
-        if (sdk) definition.roles[0]!.harness = harness.binding;
+        if (sdk) role.harness = harness.binding;
         const { data: _data, ...reference } = image;
         if (withImage) definition.input.images = [reference];
         const result = await transport.startRun({
@@ -485,12 +501,14 @@ describe('worker in a child process', () => {
         expect(await transport.getArtifactText(runId, output)).toBe('Hi from the endpoint');
         expect(endpoint.models.every((m) => m === 'llama3.2')).toBe(true);
         expect(endpoint.authorizations.length).toBeGreaterThan(1);
+        expect(deliveries).toEqual(payloadHashes.map(() => ({ role: 1, step: 1 })));
         expect(endpoint.authorizations.every((a) => a === authorization)).toBe(true);
         {
           const events: RunEvent[] = [];
           const stop = transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
           await Promise.resolve();
           stop();
+          expect(JSON.stringify(events)).not.toContain(stepInstruction);
           const records = events.filter((event) => event.type === 'model.request_recorded');
           expect(records.length).toBeGreaterThan(0);
           expect(

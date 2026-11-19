@@ -1,4 +1,5 @@
-import type { CorralRecord, CorralRepository } from '@corral/core';
+import { type CorralDefinition, CorralDefinitionDraft, canonicalJson } from '@corral/contracts';
+import { type CorralRecord, type CorralRepository, definitionHash } from '@corral/core';
 import {
   createEditorStore,
   draftFromDefinition,
@@ -6,57 +7,118 @@ import {
   type EditorStore,
 } from '@corral/react';
 import { createStore, type StoreApi } from 'zustand/vanilla';
+import { templateCopyName } from '../templates.ts';
 
 interface EditorWorkingState {
+  projectId: string;
   editor: EditorStore;
-  saved: { record: CorralRecord; draft: EditorDraft };
+  /** A seeded template has neither a saved record nor a clean draft until first save. */
+  saved: { record: CorralRecord | null; draft: EditorDraft | null };
+  unconfirmedCreate: boolean;
   saving: boolean;
-  message: { text: string; error: boolean } | null;
+  message: { text: string; error: boolean; visible?: boolean; problems?: boolean } | null;
 }
 export type EditorWorkingCopy = StoreApi<EditorWorkingState>;
 
 const copies = new WeakMap<CorralRepository, Map<string, EditorWorkingCopy>>();
 const listeners = new WeakMap<CorralRepository, Set<() => void>>();
-const keyOf = (record: Pick<CorralRecord, 'projectId' | 'corralId'>) =>
-  JSON.stringify([record.projectId, record.corralId]);
+type CopyKey = { projectId: string; corralId: string | null };
+const keyOf = ({ projectId, corralId }: CopyKey) => JSON.stringify([projectId, corralId]);
+
+/** An empty entry counts content, not undo steps: typing and clearing a field is clean. */
+export function editorDraftChanged(draft: EditorDraft, saved: EditorWorkingState['saved']) {
+  if (draft === saved.draft) return false;
+  if (saved.record || !saved.draft) return true;
+  const baseline = saved.draft.definition;
+  const current = draft.definition;
+  return (
+    current.name !== baseline.name ||
+    current.input.brief !== baseline.input.brief ||
+    current.nodes.length !== baseline.nodes.length ||
+    canonicalJson(current) !== canonicalJson(baseline)
+  );
+}
+
 const dirty = (copy: EditorWorkingCopy) => {
   const state = copy.getState();
-  return state.saving || state.editor.getState().draft !== state.saved.draft;
+  return state.saving || editorDraftChanged(state.editor.getState().draft, state.saved);
 };
 
-/** Settings detours retain undo history and the revision against which Save must compare. */
-export function editorWorkingCopy(
+function createWorkingCopy(
   repository: CorralRepository,
-  record: CorralRecord,
+  key: CopyKey,
+  record: CorralRecord | null,
+  definition: CorralDefinition,
+  seeded: boolean,
 ): EditorWorkingCopy {
   let entries = copies.get(repository);
   if (!entries) {
     entries = new Map();
     copies.set(repository, entries);
   }
-  const key = keyOf(record);
-  const previous = entries.get(key);
-  if (
-    previous &&
-    (dirty(previous) ||
-      previous.getState().saved.record.definitionRevision >= record.definitionRevision)
-  )
-    return previous;
-  const draft = draftFromDefinition(record.definition);
+  const draft = draftFromDefinition(definition);
   const copy = createStore<EditorWorkingState>(() => ({
+    projectId: key.projectId,
     editor: createEditorStore(draft),
-    saved: { record, draft },
+    saved: { record, draft: seeded ? null : draft },
+    unconfirmedCreate: false,
     saving: false,
     message: null,
   }));
-  entries.set(key, copy);
+  entries.set(keyOf(key), copy);
   const notify = () => {
     for (const listener of listeners.get(repository) ?? []) listener();
   };
   copy.subscribe(notify);
   copy.getState().editor.subscribe(notify);
-  if (previous) notify();
   return copy;
+}
+
+/** A new entry and a saved entry share a store across the first save. Settings reuse it too. */
+export function newEditorWorkingCopy(
+  repository: CorralRepository,
+  projectId: string,
+  seeded: boolean,
+  seed: () => CorralDefinition,
+): EditorWorkingCopy {
+  const key = { projectId, corralId: null };
+  return (
+    copies.get(repository)?.get(keyOf(key)) ??
+    createWorkingCopy(repository, key, null, seed(), seeded)
+  );
+}
+
+export function newEditorName(repository: CorralRepository, projectId: string) {
+  return copies
+    .get(repository)
+    ?.get(keyOf({ projectId, corralId: null }))
+    ?.getState()
+    .editor.getState().draft.definition.name;
+}
+
+export function editorWorkingCopy(
+  repository: CorralRepository,
+  record: CorralRecord,
+): EditorWorkingCopy {
+  const previous = copies.get(repository)?.get(keyOf(record));
+  if (
+    previous &&
+    (dirty(previous) ||
+      (previous.getState().saved.record?.definitionRevision ?? 0) >= record.definitionRevision)
+  )
+    return previous;
+  const copy = createWorkingCopy(repository, record, record, record.definition, false);
+  if (previous) for (const listener of listeners.get(repository) ?? []) listener();
+  return copy;
+}
+
+/** The old creation fields required a non-blank name and request. Keep that validation
+ * without trimming a person's draft while they type. Criteria fields already trim lines. */
+export function firstSaveDefinition(definition: CorralDefinition): CorralDefinition {
+  const name = definition.name.trim();
+  const brief = definition.input.brief.trim() ? definition.input.brief : '';
+  if (name === definition.name && brief === definition.input.brief) return definition;
+  return { ...definition, name, input: { ...definition.input, brief } };
 }
 
 /** Called when any team draft of this repository changes, e.g. to mark its dock tab dirty. */
@@ -95,7 +157,7 @@ export const blocksLeaving = (unsaved: boolean, docked: boolean) => unsaved && !
 export const ownsSaveShortcut = (docked: boolean, view: Element | null, focused: Element | null) =>
   !docked || Boolean(view && focused && view.contains(focused));
 
-export function discardEditorCopy(repository: CorralRepository, record: CorralRecord) {
+export function discardEditorCopy(repository: CorralRepository, record: CopyKey) {
   copies.get(repository)?.delete(keyOf(record));
 }
 
@@ -114,32 +176,90 @@ export async function saveEditorCopy(
   text: {
     noChanges: string;
     saved: (changed: { definition: boolean }) => string;
+    renamed: (name: string) => string;
+    invalid: string;
   },
-): Promise<{ record: CorralRecord; wrote: boolean } | null> {
-  const { saved, saving, editor } = copy.getState();
+): Promise<{ record: CorralRecord; draft: EditorDraft; wrote: boolean } | null> {
+  const { saved, saving, editor, projectId, unconfirmedCreate } = copy.getState();
   if (saving) return null;
   const current = editor.getState().draft;
-  if (current === saved.draft) {
+  if (!editorDraftChanged(current, saved)) {
     copy.setState({ message: { text: text.noChanges, error: false } });
-    return { record: saved.record, wrote: false };
+    return saved.record ? { record: saved.record, draft: current, wrote: false } : null;
   }
   copy.setState({ saving: true });
+  let creating = false;
   try {
-    const result = await repository.save({
-      definition: current.definition,
-      expectedDefinitionRevision: saved.record.definitionRevision,
+    let definition = current.definition;
+    if (!saved.record) {
+      definition = firstSaveDefinition(definition);
+      if (!CorralDefinitionDraft.safeParse(definition).success) {
+        copy.setState({ message: { text: text.invalid, error: true, problems: true } });
+        return null;
+      }
+      const teams = await repository.list();
+      const name = templateCopyName(
+        definition.name,
+        projectId,
+        teams.filter((team) => team.corralId !== definition.id),
+      );
+      if (name !== definition.name) definition = { ...definition, name };
+      creating = true;
+    }
+    let result = await repository.save({
+      definition,
+      expectedDefinitionRevision: saved.record?.definitionRevision ?? null,
+      ...(creating ? { projectId, createId: definition.id } : {}),
     });
+    // Only recover an ambiguous create that this copy actually sent. An unrelated id
+    // collision on the first press is an error, never permission to overwrite that team.
+    if (creating && unconfirmedCreate) {
+      const existing =
+        !result.ok && result.error === 'revision_conflict'
+          ? await repository.get(definition.id)
+          : result.ok &&
+              !result.changed.definition &&
+              result.record.definitionHash !== definitionHash(definition)
+            ? result.record
+            : null;
+      if (existing?.projectId === projectId) {
+        result = await repository.save({
+          definition,
+          expectedDefinitionRevision: existing.definitionRevision,
+        });
+      }
+    }
     if (!result.ok) {
-      copy.setState({ message: { text: result.message, error: true } });
+      copy.setState({
+        ...(creating && result.error === 'storage_unavailable' ? { unconfirmedCreate: true } : {}),
+        message: { text: result.message, error: true },
+      });
       return null;
     }
+    // A suffix is part of saving, not a new undo step. Concurrent edits stay dirty.
+    const committed = definition === current.definition ? current : { ...current, definition };
+    if (committed !== current && editor.getState().draft === current)
+      editor.setState({ draft: committed });
+    if (creating) {
+      const entries = copies.get(repository);
+      const key = keyOf({ projectId, corralId: null });
+      if (entries?.get(key) === copy) {
+        entries.delete(key);
+        entries.set(keyOf(result.record), copy);
+      }
+    }
+    const renamed = creating && current.definition.name !== definition.name;
     copy.setState({
-      saved: { record: result.record, draft: current },
-      message: { text: text.saved(result.changed), error: false },
+      saved: { record: result.record, draft: committed },
+      unconfirmedCreate: false,
+      message: renamed
+        ? { text: text.renamed(definition.name), error: false, visible: true }
+        : { text: text.saved(result.changed), error: false },
     });
-    return { record: result.record, wrote: true };
+    return { record: result.record, draft: committed, wrote: true };
   } catch (error) {
     copy.setState({
+      ...(creating ? { unconfirmedCreate: true } : {}),
       message: { text: error instanceof Error ? error.message : String(error), error: true },
     });
     return null;

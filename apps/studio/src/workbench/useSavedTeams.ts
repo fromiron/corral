@@ -1,6 +1,6 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
-import { importableRoles, type TeamReference } from '@corral/react';
+import { importableAgents, type TeamReference } from '@corral/react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useServices } from '../services.tsx';
 
@@ -73,7 +73,7 @@ export function useSavedTeams(
           name: c.name,
         }));
       setReferences(others);
-      // Each team's saved roles, to copy one onto an agent; reading them changes nothing.
+      // Project each saved team into the agents and seat tasks the picker can copy.
       const read = await Promise.all(
         others.map(async (team): Promise<TeamReference> => {
           const saved = await repository.get(team.corralId).catch(() => null);
@@ -81,8 +81,7 @@ export function useSavedTeams(
             ? {
                 ...team,
                 definitionRevision: saved.definitionRevision,
-                // Not the roles its advisors run: those only advise.
-                roles: importableRoles(saved.definition),
+                agents: importableAgents(saved.definition),
               }
             : team;
         }),

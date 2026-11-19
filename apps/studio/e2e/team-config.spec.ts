@@ -1,36 +1,67 @@
 import { expect, type Locator, test } from '@playwright/test';
-import { openLibrary } from './workbench.ts';
+import {
+  openFlowGraph,
+  openLibrary,
+  openSeatAdvanced,
+  savedTeams,
+  saveNewTeam,
+  saveTemplateCopy,
+  teamNode,
+} from './workbench.ts';
 
-test('opening a template waits for an explicit named copy and cancel leaves no team', async ({
+test('a template can be discarded or saved as a named team without losing its selection or undo history', async ({
   page,
 }) => {
   await page.goto('/');
-  // Templates and the saved teams are two views of the library.
+  const editCopy = page.getByRole('link', { name: 'Edit a copy of Research team', exact: true });
+  const roster = page.getByRole('list', { name: 'Team composition', exact: true });
+  const writer = roster.getByRole('button', { name: 'Writer', exact: true });
+  const settings = page.getByRole('complementary', { name: 'Settings' });
+  const name = settings.getByRole('textbox', { name: 'Name', exact: true });
+  const save = page.getByRole('button', { name: 'Save', exact: true });
   for (let attempt = 0; attempt < 2; attempt++) {
     await openLibrary(page, 'Templates');
-    await page
-      .getByRole('button', { name: /^Edit a copy of / })
-      .first()
-      .click();
-    const dialog = page.getByRole('dialog', { name: 'Save a Corral copy' });
-    await expect(dialog).toBeVisible();
-    await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
-    await expect(dialog).toBeHidden();
-    await openLibrary(page, 'Teams');
+    await editCopy.click();
+    await expect(writer).toBeVisible();
+    await expect(save).toBeEnabled();
+    const prompt = page.waitForEvent('dialog').then(async (dialog) => {
+      expect(dialog.type()).toBe('confirm');
+      await dialog.accept();
+    });
+    await page.getByTestId('app-sidebar').getByRole('link', { name: 'Library' }).click();
+    await prompt;
+    await expect(page).toHaveURL(/\/library\/teams$/);
     await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
   }
   await openLibrary(page, 'Templates');
-  await page
-    .getByRole('button', { name: /^Edit a copy of / })
-    .first()
-    .click();
-  const dialog = page.getByRole('dialog', { name: 'Save a Corral copy' });
-  await dialog.getByRole('textbox', { name: 'Corral name' }).fill('Research copy');
-  await dialog.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  const templatesUrl = page.url();
+  await editCopy.click();
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  await name.fill('Research copy');
+  await writer.click();
+  await openFlowGraph(page);
+  const graph = page.getByRole('tab', { name: 'Flow graph', exact: true });
+  const selectedWriter = teamNode(page, 'write');
+  await expect(selectedWriter).toHaveAttribute('aria-pressed', 'true');
+  await saveNewTeam(page);
+  await expect(graph).toHaveAttribute('aria-selected', 'true');
+  await expect(selectedWriter).toHaveAttribute('aria-pressed', 'true');
   await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(
     'Research copy',
   );
+  await page.getByRole('tab', { name: 'Team composition' }).click();
+  await expect(writer).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Undo', exact: true }).click();
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  await expect(name).toHaveValue('Research team');
+  await expect(save).toBeEnabled();
+  await page.getByRole('button', { name: 'Redo', exact: true }).click();
+  await expect(save).toBeDisabled();
+  await page.goBack();
+  await expect(page).toHaveURL(templatesUrl);
+  await openLibrary(page, 'Teams');
+  await expect(savedTeams(page)).toHaveCount(1);
+  await expect(savedTeams(page).getByRole('button', { name: 'Research copy' })).toBeVisible();
 });
 
 test('saved names refresh the breadcrumb and call controls fit two independent teams at 1179px', async ({
@@ -52,19 +83,19 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
   };
   for (let team = 1; team <= 2; team++) {
     await page.goto(projectUrl);
-    await openLibrary(page, 'Templates');
-    await page.getByRole('button', { name: 'Edit a copy of Research team', exact: true }).click();
-    await page.getByRole('button', { name: 'Save copy and edit' }).click();
-    await expect(page).toHaveURL(/\/edit$/);
+    await saveTemplateCopy(page, 'Research team');
+    await openFlowGraph(page);
     const name = `Saved research ${team}`;
     await page.getByRole('button', { name: 'Team settings', exact: true }).click();
     await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(name);
     await page.locator('[data-team-canvas] [data-node="research"]').click();
+    await settings.getByRole('button', { name: 'Other kinds of material', exact: true }).click();
     const inputs = settings.getByRole('group', { name: 'Inputs', exact: true });
     for (const label of ['Kind', 'From'])
       await inSheet(inputs.getByRole('combobox', { name: label, exact: true }));
+    await openSeatAdvanced(page);
     const calls = settings.getByRole('group', { name: 'May call', exact: true });
     const kind = calls.getByRole('combobox', { name: 'Kind', exact: true });
     const target = calls.getByRole('combobox', { name: 'Callable agent', exact: true });

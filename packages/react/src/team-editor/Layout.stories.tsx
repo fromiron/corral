@@ -5,7 +5,7 @@ import { StudioStoresProvider } from '../context.tsx';
 import { type EditorDraft, emptyDraft } from '../editor/model.ts';
 import { createEditorStore, type EditorStore } from '../editor/store.ts';
 import messages from '../messages/en.json' with { type: 'json' };
-import { sessionStore } from '../stories/fixtures.tsx';
+import { researchTeamDraft, sessionStore } from '../stories/fixtures.tsx';
 import { type EditResult, patchNode, placeStep } from './commands.ts';
 import { TeamEditor } from './TeamEditor.tsx';
 
@@ -38,21 +38,26 @@ function LaidOut({
   stacked,
   loop = false,
   dark = false,
+  view = 'graph',
 }: {
   width: number;
   height: number;
   stacked: boolean;
   loop?: boolean;
   dark?: boolean;
+  view?: 'composition' | 'graph';
 }) {
-  const editor = useMemo(() => createEditorStore(team(loop)), [loop]);
+  const editor = useMemo(
+    () => createEditorStore(view === 'composition' ? researchTeamDraft() : team(loop)),
+    [loop, view],
+  );
   const session = useMemo(() => sessionStore(), []);
   shown = editor;
   return (
     <div className={dark ? 'dark bg-background text-foreground' : 'bg-background text-foreground'}>
       <div style={{ width, height }}>
         <StudioStoresProvider editor={editor} session={session}>
-          <TeamEditor editor={editor} stacked={stacked} />
+          <TeamEditor editor={editor} stacked={stacked} view={view} />
         </StudioStoresProvider>
       </div>
     </div>
@@ -73,7 +78,7 @@ const rect = (element: Element) => element.getBoundingClientRect();
 const regions = (canvasElement: HTMLElement) => {
   const view = within(canvasElement);
   return {
-    editor: canvasElement.querySelector('[data-layout]') as HTMLElement,
+    editor: canvasElement.querySelector('[data-graph-scroll]') as HTMLElement,
     outline: view.getByRole('complementary', { name: m.outline }),
     palette: view.getByRole('toolbar', { name: m.palette }),
     canvas: view.getByRole('application', { name: m.canvas }),
@@ -183,17 +188,19 @@ export const StackedShort: Story = {
 
 /**
  * 540px, a panel beside the conversation: the palette wraps inside the width, nothing scrolls
- * sideways, and an outline row dropped on the Loop's row moves the step into the Loop.
+ * sideways, and dropping a connected step into a Loop previews its boundary crossing before
+ * moving it.
  */
 export const StackedNarrow: Story = {
   args: { width: 540, loop: true },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, userEvent }) => {
     const { editor, outline, palette } = regions(canvasElement);
     await waitFor(() => expect(card(canvasElement, 'agent_1')).toBeTruthy());
     await expect(rect(palette).right).toBeLessThanOrEqual(rect(editor).right + 0.5);
     for (const button of within(palette).getAllByRole('button'))
       await expect(rect(button).right).toBeLessThanOrEqual(rect(editor).right + 0.5);
     await expect(editor.scrollWidth).toBeLessThanOrEqual(editor.clientWidth);
+    const original = shown?.getState().draft;
     const row = within(outline).getByRole('button', { name: 'B' });
     const target = within(outline).getByRole('button', { name: 'Loop' });
     const data = new DataTransfer();
@@ -202,6 +209,17 @@ export const StackedNarrow: Story = {
     target.dispatchEvent(dragEvent('dragover', data, centre(target)));
     target.dispatchEvent(dragEvent('drop', data, centre(target)));
     row.dispatchEvent(dragEvent('dragend', data));
+    const dialog = await within(canvasElement.ownerDocument.body).findByRole('dialog', {
+      name: m.placement.previewTitle,
+    });
+    await expect(shown?.getState().draft).toBe(original);
+    const boundary = within(dialog).getByRole('heading', { name: m.placement.boundary });
+    await waitFor(() => expect(boundary).toBeVisible());
+    await expect(within(dialog).getByRole('listitem')).toHaveTextContent('A · out → B · in');
+    await userEvent.click(within(dialog).getByRole('button', { name: m.placement.apply }));
+    const members = target.closest('li');
+    if (!members) throw new Error('Expected the Loop in the outline');
+    await within(members).findByRole('button', { name: 'B' });
     const loop = shown?.getState().draft.definition.nodes.find((n) => n.type === 'loop');
     const moved = shown?.getState().draft.definition.nodes.find((n) => n.id === 'agent_2');
     await expect(moved?.parentId).toBe(loop?.id);
@@ -209,21 +227,23 @@ export const StackedNarrow: Story = {
 };
 
 /**
- * 1200px: the outline beside the canvas, the palette over its top left corner and the settings
- * floating over its right side, leaving the canvas at least 320px.
+ * 1200px: the outline sits beside the palette and canvas. The palette occupies the row above
+ * the canvas, and the settings stay inside the canvas, leaving at least 320px uncovered.
  */
 export const Beside: Story = {
   args: { width: 1200, stacked: false },
   play: async ({ canvasElement }) => {
     const { outline, palette, canvas } = regions(canvasElement);
     await expect(rect(outline).right).toBeLessThanOrEqual(rect(canvas).left + 0.5);
-    await expect(rect(palette).top).toBeGreaterThanOrEqual(rect(canvas).top);
-    await expect(rect(palette).left).toBeGreaterThanOrEqual(rect(canvas).left);
-    await expect(rect(palette).bottom).toBeLessThan(rect(canvas).bottom);
+    await expect(rect(outline).right).toBeLessThanOrEqual(rect(palette).left + 0.5);
+    await expect(Math.abs(rect(palette).left - rect(canvas).left)).toBeLessThanOrEqual(0.5);
+    await expect(Math.abs(rect(palette).right - rect(canvas).right)).toBeLessThanOrEqual(0.5);
+    await expect(rect(palette).bottom).toBeLessThanOrEqual(rect(canvas).top + 0.5);
     const sheet = await selectStep(canvasElement, 'agent_1');
     await expect(rect(sheet).right).toBeLessThanOrEqual(rect(canvas).right);
     await expect(rect(sheet).left - rect(canvas).left).toBeGreaterThanOrEqual(320);
-    await expect(rect(sheet).top).toBeLessThan(rect(canvas).bottom);
+    await expect(rect(sheet).top).toBeGreaterThanOrEqual(rect(canvas).top - 0.5);
+    await expect(rect(sheet).bottom).toBeLessThanOrEqual(rect(canvas).bottom + 0.5);
   },
 };
 
@@ -247,15 +267,19 @@ export const StackedSettingsFromOutline: Story = {
     await waitFor(() => expect(card(canvasElement, 'agent_2')).toBeTruthy());
     within(outline).getByRole('button', { name: 'B' }).click();
     const sheet = await within(canvasElement).findByRole('complementary', { name: m.inspector });
-    await waitFor(() => expect(Math.abs(rect(sheet).top - rect(editor).top)).toBeLessThan(1));
+    const expectRevealed = () =>
+      waitFor(() => {
+        const top = rect(sheet).top - rect(editor).top;
+        const atEnd = editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
+        expect(editor.scrollTop).toBeGreaterThan(0);
+        expect(top).toBeGreaterThanOrEqual(-1);
+        expect(top).toBeLessThan(rect(editor).height);
+        expect(Math.abs(top) < 1 || atEnd).toBe(true);
+      });
+    await expectRevealed();
     editor.scrollTop = 0;
     within(outline).getByRole('button', { name: m.teamSettings }).click();
-    await waitFor(() => expect(editor.scrollTop).toBeGreaterThan(0));
-    await waitFor(() => {
-      const top = rect(sheet).top - rect(editor).top;
-      const atEnd = editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
-      expect(Math.abs(top) < 1 || (atEnd && top > 0)).toBe(true);
-    });
+    await expectRevealed();
     await waitFor(() => expect(getComputedStyle(sheet.parentElement as Element).opacity).toBe('1'));
   },
 };
@@ -265,5 +289,52 @@ export const StackedDark: Story = {
   args: { dark: true },
   play: async ({ canvasElement }) => {
     await selectStep(canvasElement, 'agent_1');
+  },
+};
+
+function writerRow(canvas: HTMLElement) {
+  const row = canvas.querySelector<HTMLButtonElement>('[data-composition-node="write"]');
+  if (!row) throw new Error('Expected the writer in the team composition');
+  return row;
+}
+
+export const Composition: Story = {
+  args: { width: 1640, stacked: false, view: 'composition' },
+  play: async ({ canvasElement, userEvent }) => {
+    const screen = within(canvasElement);
+    const list = screen.getByRole('list', { name: 'Team composition' });
+    const request = within(list).getByRole('button', { name: /^Request\b/ });
+    const origin = canvasElement.getBoundingClientRect().left;
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    // The roster is the flow graph's structure column: the outline's row inset, at most 28rem.
+    await expect(rect(request).left - origin).toBeCloseTo(rem / 2, 0);
+    await expect(rect(request).width).toBeLessThanOrEqual(28 * rem);
+    await expect(request).toHaveAttribute('aria-pressed', 'true');
+    const row = writerRow(canvasElement);
+    await expect(row).toBeVisible();
+    await userEvent.click(row);
+    const sheet = screen.getByRole('complementary', { name: m.inspector });
+    await expect(row).toHaveAttribute('aria-pressed', 'true');
+    await expect(request).toHaveAttribute('aria-pressed', 'false');
+    await expect(rect(row).right).toBeLessThanOrEqual(rect(sheet).left);
+    // On a wide editor the fields keep one 40rem column in the middle of the work area, with
+    // the same room on both sides (a scrollbar's width apart at most).
+    const field = within(sheet).getAllByRole('textbox')[0] as HTMLElement;
+    await expect(rect(field).width).toBeLessThanOrEqual(40 * rem);
+    const before = rect(field).left - rect(sheet).left;
+    const after = rect(sheet).right - rect(field).right;
+    await expect(before).toBeGreaterThan(4 * rem);
+    await expect(Math.abs(before - after)).toBeLessThanOrEqual(rem);
+  },
+};
+
+export const CompositionDrillIn: Story = {
+  args: { width: 390, height: 844, stacked: true, view: 'composition' },
+  play: async ({ canvasElement, userEvent }) => {
+    const row = writerRow(canvasElement);
+    await userEvent.click(row);
+    await expect(row).not.toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await expect(row).toHaveFocus();
   },
 };

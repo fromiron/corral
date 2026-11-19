@@ -21,6 +21,8 @@ import { draftFromDefinition, exportDefinition, importDefinition } from '../src/
 import { createEditorStore } from '../src/editor/store.ts';
 import { applyPattern, setRequiredOutputReview } from '../src/team-editor/commands.ts';
 
+const labels = { loop: '제출 전 검토', reviewer: '제출 전 검토자', decision: '제출 전 판정' };
+
 function setup() {
   const initial = linearCorral(['planner', 'writer']);
   initial.sharedOutrider = {
@@ -29,7 +31,7 @@ function setup() {
     targets: { kind: 'all' },
   };
   const draft = draftFromDefinition(initial);
-  const added = setRequiredOutputReview(draft, 'output', 'final', 'writer', true);
+  const added = setRequiredOutputReview(draft, 'output', 'final', 'writer', labels);
   if (!added.ok) throw new Error(added.reason);
   const output = added.draft.definition.nodes.find(
     (node): node is OutputNode => node.type === 'output',
@@ -83,7 +85,14 @@ it('installs an atomic version-bound review around the original writer and prese
   const reviewer = next.definition.nodes.find((n) => n.id === gate.reviewerNodeId);
   const role =
     reviewer?.type === 'agent' && next.definition.roles.find((r) => r.id === reviewer.roleId);
+  const labelOf = (id: string) => next.definition.nodes.find((node) => node.id === id)?.label;
+  expect([labelOf(gate.loopNodeId), reviewer?.label, labelOf(gate.decisionNodeId)]).toEqual([
+    labels.loop,
+    labels.reviewer,
+    labels.decision,
+  ]);
   expect(role).toMatchObject({
+    name: labels.reviewer,
     modelProfile: 'critic',
     prompt: 'Check the source.',
     outputContract: 'review',
@@ -97,7 +106,7 @@ it('installs an atomic version-bound review around the original writer and prese
     ok: true,
     draft: { definition: next.definition },
   });
-  const unchanged = setRequiredOutputReview(next, 'output', 'final', 'writer', true);
+  const unchanged = setRequiredOutputReview(next, 'output', 'final', 'writer', labels);
   expect(unchanged.ok && unchanged.draft).toBe(next);
   const disabled = setRequiredOutputReview(next, 'output', 'final', 'writer', false);
   if (!disabled.ok) throw Error(disabled.reason);
@@ -107,6 +116,27 @@ it('installs an atomic version-bound review around the original writer and prese
   expect(compileDefinition(disabled.draft.definition).ok).toBe(true);
   store.getState().undo();
   expect(store.getState().draft).toBe(draft);
+});
+
+it('keeps authored labels and uses the first free number for each generated review step', () => {
+  const { draft } = setup();
+  const nodes = draft.definition.nodes;
+  nodes[0]!.label = labels.reviewer;
+  nodes[1]!.label = `${labels.reviewer} 2`;
+  nodes[2]!.label = labels.decision;
+  const result = setRequiredOutputReview(draft, 'output', 'final', 'writer', labels);
+  if (!result.ok) throw Error(result.reason);
+  const { definition } = result.draft;
+  const added = definition.nodes.filter((node) => !nodes.some(({ id }) => id === node.id));
+  expect(added.map((node) => node.label)).toEqual([
+    labels.loop,
+    `${labels.reviewer} 3`,
+    `${labels.decision} 2`,
+  ]);
+  expect(definition.roles.at(-1)?.name).toBe(`${labels.reviewer} 3`);
+  expect(definition.nodes.slice(0, nodes.length).map((node) => node.label)).toEqual(
+    nodes.map((node) => node.label),
+  );
 });
 
 it.each(['exhausted', 'outside', 'changed source'] as const)(
@@ -254,7 +284,7 @@ it('does not finalize after the reviewer fails or while its execution is stopped
 it('separates two bindings of the same producer and retains the remaining review when one is disabled', () => {
   const { next, output, gate } = setup();
   output.inputBindings.push({ kind: 'task_output', name: 'also', sourceNodeId: 'writer' });
-  const result = setRequiredOutputReview(next, 'output', 'also', 'writer', true);
+  const result = setRequiredOutputReview(next, 'output', 'also', 'writer', labels);
   if (!result.ok) throw Error(result.reason);
   const removed = setRequiredOutputReview(result.draft, 'output', 'final', 'writer', false);
   if (!removed.ok) throw Error(removed.reason);
@@ -358,7 +388,7 @@ it('expands only the selected duplicate input of a reference with two distinct r
   });
   const outer = draft.definition.nodes.find((n) => n.type === 'output')!;
   outer.inputBindings.push({ ...outer.inputBindings[0]! });
-  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', true, 1);
+  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', labels, 1);
   if (!enabled.ok) throw Error(enabled.reason);
   const planned = planRun(enabled.draft.definition, { resolveTeam: () => inner });
   if (!planned.ok) throw Error(JSON.stringify(planned.issues));
@@ -380,13 +410,13 @@ it('reviews an output from a pinned team without modifying its saved revision', 
     ...referenceTeam(),
     sharedOutrider: { modelProfile: 'model-a', principles: 'Review.', targets: { kind: 'all' } },
   });
-  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', true);
+  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', labels);
   if (!enabled.ok) throw Error(enabled.reason);
   const resolve = (id: string, rev: number) => (id === 'inner' && rev === 1 ? author : null);
   const planned = planRun(enabled.draft.definition, { resolveTeam: resolve });
   if (!planned.ok) throw Error(JSON.stringify(planned.issues));
   const reviewer = planned.definition.nodes.find(
-    (n) => n.type === 'agent' && n.label === 'Reviewer',
+    (n) => n.type === 'agent' && n.label === labels.reviewer,
   );
   expect(reviewer).toBeDefined();
   let receivedFeedback = false;
@@ -418,7 +448,7 @@ it('keeps a required review runnable when the selected producer starts the entir
     'output',
     'final',
     'writer',
-    true,
+    labels,
   );
   if (!enabled.ok) throw Error(enabled.reason);
   expect(compileDefinition(enabled.draft.definition).diagnostics).toEqual([]);
@@ -430,7 +460,7 @@ it('accepts an all join after the reviewed branch and identifies a bypass throug
   const { draft } = setup();
   const split = applyPattern(draft, 'parallel', ['writer']);
   if (!split.ok) throw Error(split.reason);
-  const enabled = setRequiredOutputReview(split.draft, 'output', 'final', 'writer', true);
+  const enabled = setRequiredOutputReview(split.draft, 'output', 'final', 'writer', labels);
   if (!enabled.ok) throw Error(enabled.reason);
   const definition = enabled.draft.definition;
   expect(compileDefinition(definition).diagnostics).toEqual([]);
@@ -446,7 +476,7 @@ it('keeps a writer’s existing review input and supplies this gate’s feedback
   const writer = draft.definition.nodes.find((n) => n.id === 'writer');
   if (!isWorkAgent(writer)) throw Error('missing fixture writer');
   writer.inputBindings.push({ kind: 'task_output', name: 'review', sourceNodeId: 'planner' });
-  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', true);
+  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', labels);
   if (!enabled.ok) throw Error(enabled.reason);
   const source = enabled.draft.definition.nodes.find((n) => n.id === 'writer');
   expect(isWorkAgent(source) && source.inputBindings).toEqual(

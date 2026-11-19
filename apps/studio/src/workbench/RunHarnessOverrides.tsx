@@ -1,10 +1,17 @@
-import type { HarnessPreview } from '@corral/client';
-import type { HarnessBindingRef, HarnessOverrides, HarnessProfileView } from '@corral/contracts';
+import type { RoleHarnessPreview } from '@corral/client';
+import type {
+  HarnessBindingRef,
+  HarnessOverrides,
+  HarnessProfileView,
+  RoleMcpToolRef,
+  RoleSkillRef,
+} from '@corral/contracts';
 import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
 import { useServices } from '../services.tsx';
+import { McpPreviewProblem, RoleHarnessProblem } from './HarnessRoleSettings.tsx';
 
 export function RunHarnessOverrides({
   roles,
@@ -13,7 +20,13 @@ export function RunHarnessOverrides({
   onChange,
   disabled = false,
 }: {
-  roles: { roleId: string; name: string; harness?: HarnessBindingRef }[];
+  roles: {
+    roleId: string;
+    name: string;
+    harness?: HarnessBindingRef;
+    skills?: RoleSkillRef[];
+    mcpTools?: RoleMcpToolRef[];
+  }[];
   projectId: string;
   value: HarnessOverrides;
   onChange(value: HarnessOverrides): void;
@@ -25,17 +38,18 @@ export function RunHarnessOverrides({
   const [failed, setFailed] = useState(false);
   const [preview, setPreview] = useState<{
     key: string;
-    value?: HarnessPreview;
+    value?: RoleHarnessPreview;
+    skills?: RoleSkillRef[];
     error?: boolean;
   } | null>(null);
   const selectionKey = JSON.stringify([
     projectId,
-    roles.map((role) => [role.roleId, role.harness]),
+    roles.map((role) => [role.roleId, role.harness, role.skills, role.mcpTools]),
     value,
   ]);
   const request = useRef(0);
   useEffect(() => {
-    void selectionKey;
+    setPreview((current) => (current?.key === selectionKey ? current : null));
     return () => {
       request.current += 1;
     };
@@ -120,9 +134,23 @@ export function RunHarnessOverrides({
                   const key = selectionKey;
                   const version = ++request.current;
                   setPreview({ key });
-                  void api.preview(binding, projectId, chosen).then(
+                  const result =
+                    role.skills === undefined && role.mcpTools === undefined
+                      ? api.preview(binding, projectId, chosen)
+                      : api.preview(
+                          {
+                            id: role.roleId,
+                            harness: binding,
+                            ...(role.skills && { skills: role.skills }),
+                            ...(role.mcpTools && { mcpTools: role.mcpTools }),
+                          },
+                          projectId,
+                          chosen,
+                        );
+                  void result.then(
                     (value) => {
-                      if (version === request.current) setPreview({ key, value });
+                      if (version === request.current)
+                        setPreview({ key, value, skills: role.skills });
                     },
                     () => {
                       if (version === request.current) setPreview({ key, error: true });
@@ -137,10 +165,19 @@ export function RunHarnessOverrides({
         })}
         {preview?.key === selectionKey ? (
           <div data-testid="run-harness-preview">
-            {preview.error ? (
-              <p role="alert">{t('error')}</p>
-            ) : preview.value ? (
+            {preview.value?.snapshot ? (
               <HarnessPreviewView preview={preview.value} />
+            ) : preview.value?.problem || preview.value?.mcpProblem ? (
+              <>
+                {preview.value.problem && (
+                  <RoleHarnessProblem problem={preview.value.problem} skills={preview.skills} />
+                )}
+                {preview.value.mcpProblem && (
+                  <McpPreviewProblem problem={preview.value.mcpProblem} />
+                )}
+              </>
+            ) : preview.error || preview.value ? (
+              <p role="alert">{t('error')}</p>
             ) : (
               <p role="status">{t('busy')}</p>
             )}

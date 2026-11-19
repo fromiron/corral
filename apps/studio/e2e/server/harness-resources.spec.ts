@@ -194,7 +194,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await expect(
       page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
     ).toHaveCount(0);
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
     await page.getByRole('option', { name: 'Import folder', exact: true }).click();
     await page.getByLabel('Resource folder', { exact: true }).fill(source);
@@ -203,7 +203,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
+    await page.getByRole('button', { name: 'Trust for use', exact: true }).click();
     const projectId = await page.evaluate(async () => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       const response = await fetch('/api/v1/projects', {
@@ -276,7 +276,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await expect(page.getByLabel('Use skill writing', { exact: true })).toBeChecked();
     await page.goto(`${corral.server.url}/settings/skills`);
     await page.getByRole('button', { name: /^writing/ }).click();
-    await page.getByRole('button', { name: 'Edit a copy', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'Source', exact: true })
       .fill(
@@ -286,10 +286,16 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('link', { name: 'Connect in Harnesses', exact: true }).click();
+    await page.getByRole('button', { name: 'Trust for use', exact: true }).click();
+    // The edited copy is not yet used. Its predecessor links directly to the policy to update.
+    const policies = page.getByRole('region', { name: 'Execution policies', exact: true });
+    await expect(policies).toContainText('No execution policies use this version.');
+    await page.getByRole('button', { name: 'Previous version', exact: true }).click();
+    await policies.getByRole('link', { name: 'Evidence writer · r1', exact: true }).click();
     await expect(page).toHaveURL(/settings=harness/);
-    await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Evidence writer · r1', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     const replacement = page.getByRole('checkbox', {
       name: 'Use skill writing',
       exact: true,
@@ -332,24 +338,28 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     expect(effective.sections[0]?.text).toContain('Always cite the revised source.');
 
     await page.goto(`${corral.server.url}/settings/skills`);
-    await page
-      .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 Harnesses' })
-      .filter({ hasNotText: 'An edited copy is available.' })
-      .click();
-    await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
+    const currentWriting = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('button', { name: /^writing/ }) })
+      .filter({ hasNotText: 'New version available' });
+    await currentWriting.getByRole('button').click();
+    await expect(page.getByRole('link', { name: 'Evidence writer · r2' })).toBeVisible();
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
     await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await page.getByRole('switch', { name: 'Show archived items' }).click();
+    await page
+      .getByRole('row')
+      .filter({ hasText: 'Archived' })
+      .getByRole('button', { name: /^writing/ })
+      .click();
     await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
     await expect(
       page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
     await page.reload();
-    await page
-      .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 Harnesses' })
-      .filter({ hasNotText: 'An edited copy is available.' })
-      .click();
+    await currentWriting.getByRole('button').click();
+    await expect(page.getByRole('link', { name: 'Evidence writer · r2' })).toBeVisible();
     await expect(page.getByText('Always cite the revised source.', { exact: false })).toBeVisible();
 
     expect(corral.errors).toHaveLength(1);

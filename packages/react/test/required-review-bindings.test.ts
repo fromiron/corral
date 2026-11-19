@@ -14,12 +14,15 @@ import {
   importDefinition,
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
+import en from '../src/messages/en.json' with { type: 'json' };
 import {
   type EditResult,
   patchNode,
   replaceOutputSource,
   setRequiredOutputReview,
 } from '../src/team-editor/commands.ts';
+
+const labels = en.Inspector.requiredReviewLabels;
 
 function output(draft: EditorDraft) {
   return draft.definition.nodes.find((n): n is OutputNode => n.type === 'output')!;
@@ -55,7 +58,9 @@ function admitted(draft: EditorDraft) {
 }
 
 it('blocks an unreviewed replacement even when a second identical result still reads the original producer', () => {
-  const enabled = success(setRequiredOutputReview(initial(), 'output', 'final', 'writer', true, 0));
+  const enabled = success(
+    setRequiredOutputReview(initial(), 'output', 'final', 'writer', labels, 0),
+  );
   const two = duplicate(enabled);
   const store = createEditorStore(two);
   const changed = success(replaceOutputSource(two, 'output', 0, 'planner'));
@@ -88,7 +93,7 @@ it('blocks an unreviewed replacement even when a second identical result still r
 
 it('keeps a selected duplicate distinct through deletion, save, removal of its orphan policy and re-enabling', () => {
   const two = duplicate(initial());
-  const enabled = success(setRequiredOutputReview(two, 'output', 'final', 'writer', true, 1));
+  const enabled = success(setRequiredOutputReview(two, 'output', 'final', 'writer', labels, 1));
   expect(admitted(drop(enabled, 0))).toEqual([true, true]);
   const orphaned = drop(enabled, 1);
   expect(admitted(orphaned)).toEqual([false, false]);
@@ -97,7 +102,7 @@ it('keeps a selected duplicate distinct through deletion, save, removal of its o
   expect(admitted(imported.draft)).toEqual([false, false]);
   const gate = output(orphaned).requiredReviews![0]!;
   const replacement = success(
-    setRequiredOutputReview(orphaned, 'output', 'final', 'writer', true, 0),
+    setRequiredOutputReview(orphaned, 'output', 'final', 'writer', labels, 0),
   );
   expect(admitted(replacement)).toEqual([false, false]);
   const kept = success(
@@ -125,14 +130,16 @@ it('keeps a selected duplicate distinct through deletion, save, removal of its o
     ),
   );
   expect(admitted(cleared)).toEqual([true, true]);
-  const fresh = success(setRequiredOutputReview(cleared, 'output', 'final', 'writer', true, 0));
+  const fresh = success(setRequiredOutputReview(cleared, 'output', 'final', 'writer', labels, 0));
   expect(admitted(fresh)).toEqual([true, true]);
   const altered = success(replaceOutputSource(fresh, 'output', 0, 'planner'));
   expect(admitted(altered)).toEqual([false, false]);
 });
 
 it('reads older unambiguous policies and refuses to infer their row from a duplicated name', () => {
-  const current = success(setRequiredOutputReview(initial(), 'output', 'final', 'writer', true, 0));
+  const current = success(
+    setRequiredOutputReview(initial(), 'output', 'final', 'writer', labels, 0),
+  );
   const old = output(current);
   const untagged = patchNode(current, 'output', {
     inputBindings: old.inputBindings.map(({ bindingId: _id, ...binding }) => binding),

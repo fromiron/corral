@@ -13,6 +13,7 @@ import { createLiveModels, startCorralServer } from '@corral/server';
 import { linearCorral } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import { draftFromDefinition } from '../../packages/react/src/editor/model.ts';
+import en from '../../packages/react/src/messages/en.json' with { type: 'json' };
 import { setRequiredOutputReview } from '../../packages/react/src/team-editor/commands.ts';
 import { ROOT } from '../../tools/release/candidate.ts';
 
@@ -107,7 +108,7 @@ it.skipIf(mode !== '1' && !revise)(
         'output',
         'final',
         'writer',
-        true,
+        en.Inspector.requiredReviewLabels,
       );
       if (!enabled.ok) throw Error(enabled.reason);
       const required = enabled.draft.definition.nodes.find((n) => n.type === 'output')
