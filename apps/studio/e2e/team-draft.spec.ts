@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openLibrary } from './workbench.ts';
+import { openLibrary, teamNode } from './workbench.ts';
 
 test('a local security review suggestion has specific roles and a short name before saving', async ({
   page,
@@ -105,4 +105,29 @@ test('a local goal draft saves opt-in artifact review as a shared Outrider setti
   await page.reload();
   await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
   await expect(page.getByRole('switch', { name: 'Artifact review', exact: true })).toBeChecked();
+});
+
+test('a goal requiring review confirms the producer before adding a gate to the saved Output', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await openLibrary(page, 'Templates');
+  await page.getByRole('button', { name: 'Draft from a goal' }).click();
+  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
+  await dialog
+    .getByLabel('What should the team do?')
+    .fill('Write a launch note. The result must pass review before submitting.');
+  await dialog.getByRole('button', { name: 'Suggest a Corral' }).click();
+  const confirm = dialog.getByRole('switch', { name: 'Submit after review passes' });
+  await expect(confirm).not.toBeChecked();
+  await expect(confirm).toHaveAccessibleDescription(/revises the candidate/);
+  const open = dialog.getByRole('button', { name: 'Open in editor' });
+  await expect(open).toBeDisabled();
+  await confirm.click();
+  await open.click();
+  await expect(page).toHaveURL(/\/edit$/);
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
+  await page.reload();
+  await teamNode(page, 'output').click();
+  await expect(page.getByRole('switch', { name: 'Submit after review passes' })).toBeChecked();
 });

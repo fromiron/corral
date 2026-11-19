@@ -1488,7 +1488,6 @@
     "reviewQuestion": "수정 의견만 받으면 되나요, 통과해야 제출하나요?",
     "reviewFeedback": "수정 의견만 받기",
     "reviewRequired": "통과해야 제출",
-    "requiredUnavailable": "이 초안에서는 검토 통과를 제출 조건으로 설정할 수 없습니다. 뒤로 가서 목표를 수정할 수 있습니다.",
     "beforeSaving": "저장 전 확인",
     "readOnlyWork": "작업공간의 파일을 바꾸거나 명령을 실행할 수 있는 역할이 없습니다.",
     "changesWork": "이 패턴에는 작업공간의 파일을 바꾸거나 명령을 실행할 수 있는 역할이 있습니다.",

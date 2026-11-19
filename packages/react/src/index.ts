@@ -227,7 +227,7 @@ export {
   type TeamWording,
 } from './team/draft.ts';
 export type { Pattern, TeamReference } from './team-editor/commands.ts';
-export { importableRoles } from './team-editor/commands.ts';
+export { importableRoles, setRequiredOutputReview } from './team-editor/commands.ts';
 export {
   TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,

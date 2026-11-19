@@ -265,16 +265,36 @@ describe('the plan editor’s patterns', () => {
     expect(fixture.navigate).toHaveBeenCalledOnce();
   });
 
-  it('asks once when review policy is ambiguous and does not save an unavailable required policy', async () => {
+  it('asks once for ambiguous review, confirms the Output and saves the same valid gate', async () => {
     await mount(ko as Messages, 'ko');
     await type(field<HTMLTextAreaElement>(ko.TeamDraft.goalLabel), '원고를 리뷰 후 제출');
     await press(button(ko.TeamDraft.suggest));
     expect(document.body.textContent).toContain(ko.TeamDraft.reviewQuestion);
     expect(button(ko.TeamDraft.open).disabled).toBe(true);
     await press(button(ko.TeamDraft.reviewRequired));
-    expect(document.body.textContent).toContain(ko.TeamDraft.requiredUnavailable);
+    const target = () =>
+      Array.from(document.querySelectorAll<HTMLElement>('[role="switch"]')).find(
+        (el) =>
+          document.getElementById(el.getAttribute('aria-labelledby') ?? '')?.textContent ===
+          ko.Inspector.requireReview,
+      );
+    expect(target()).toBeDefined();
     expect(button(ko.TeamDraft.open).disabled).toBe(true);
     expect(fixture.saved).toHaveLength(0);
+    await press(target()!);
+    expect(button(ko.TeamDraft.open).disabled).toBe(false);
+    await press(button(ko.TeamDraft.open));
+    const definition = fixture.saved[0]?.definition;
+    if (!definition) throw Error('no confirmed team saved');
+    const output = definition.nodes.find((n) => n.type === 'output');
+    const item = output?.requiredReviews?.[0];
+    expect(item).toBeDefined();
+    expect(output?.inputBindings).toContainEqual(
+      expect.objectContaining({ name: item?.bindingName, sourceNodeId: item?.sourceNodeId }),
+    );
+    expect(definition.sharedOutrider?.modelProfile).toBe('model-a');
+    expect(output?.requireApproval).toBe(false);
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
   });
 
   it.each(['local', 'model'] as const)(

@@ -8,7 +8,12 @@ import {
   UNUSABLE_TEAM_PLAN_MESSAGE,
 } from '@corral/contracts';
 import { isReadOnlyTeam, planAfterModel, planWithPattern, type TeamWording } from '@corral/core';
-import { draftFromPlan, planFromGoal } from '@corral/react';
+import {
+  draftFromDefinition,
+  draftFromPlan,
+  planFromGoal,
+  setRequiredOutputReview,
+} from '@corral/react';
 import {
   Button,
   fontWeights,
@@ -40,12 +45,14 @@ export function TeamDraftDialog({
 }) {
   const t = useTranslations('TeamDraft');
   const shared = useTranslations('TeamEditor.sharedOutrider');
+  const inspector = useTranslations('Inspector');
   const messages = useMessages();
   const wording = useMemo(() => draftWording(messages), [messages]);
   const { repository, models, live } = useServices();
   const navigate = useNavigate();
   const [goal, setGoal] = useState('');
   const [plan, setPlan] = useState<TeamPlan | null>(null);
+  const [reviewTargets, setReviewTargets] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recovery, setRecovery] = useState<ReturnType<typeof planAfterModel>['recovery']>(null);
@@ -126,21 +133,59 @@ export function TeamDraftDialog({
   };
 
   const checked = plan ? TeamPlan.safeParse(plan) : null;
-  const unresolved = plan?.outrider === 'clarify_review' || plan?.outrider === 'required_review';
-  const preview = checked?.success
+  const base = checked?.success
     ? draftFromPlan(checked.data, 'preview', wording.labels).definition
     : null;
+  const targets =
+    plan?.outrider === 'required_review' && base
+      ? base.nodes.flatMap((output) =>
+          output.type === 'output'
+            ? output.inputBindings.flatMap((binding) => {
+                if (binding.kind !== 'task_output' || !binding.sourceNodeId) return [];
+                const sourceId = binding.sourceNodeId;
+                return [
+                  {
+                    key: JSON.stringify([output.id, binding.name, sourceId]),
+                    outputId: output.id,
+                    output: output.label,
+                    bindingName: binding.name,
+                    sourceId,
+                    source: base.nodes.find((n) => n.id === sourceId)?.label ?? sourceId,
+                  },
+                ];
+              })
+            : [],
+        )
+      : [];
+  let preview = base;
+  const confirmed = targets.filter((target) => reviewTargets.includes(target.key));
+  if (base && confirmed.length) {
+    let draft = draftFromDefinition(base);
+    for (const target of confirmed) {
+      const change = setRequiredOutputReview(
+        draft,
+        target.outputId,
+        target.bindingName,
+        target.sourceId,
+        true,
+      );
+      if (!change.ok) {
+        preview = null;
+        break;
+      }
+      draft = change.draft;
+      preview = draft.definition;
+    }
+  }
+  const unresolved =
+    plan?.outrider === 'clarify_review' ||
+    (plan?.outrider === 'required_review' && !confirmed.length);
   const open = async () => {
-    if (!checked?.success || busy || unresolved) return;
+    if (!preview || busy || unresolved) return;
     setBusy(true);
-    const draft = draftFromPlan(
-      checked.data,
-      `team_${globalThis.crypto.randomUUID().slice(0, 8)}`,
-      wording.labels,
-    );
     try {
       const saved = await repository.save({
-        ...draft,
+        definition: { ...preview, id: `team_${globalThis.crypto.randomUUID().slice(0, 8)}` },
         expectedDefinitionRevision: null,
         ...(projectId ? { projectId } : {}),
       });
@@ -245,17 +290,45 @@ export function TeamDraftDialog({
                 </div>
               </div>
             ) : null}
-            {plan.outrider === 'required_review' ? (
-              <p role="status" className="text-body">
-                {t('requiredUnavailable')}
-              </p>
-            ) : null}
-            <PlanEditor plan={plan} wording={wording} onChange={setPlan} />
+            {targets.map((target, index) => {
+              const hint = `${goalId}-review-${index}`;
+              return (
+                <div key={target.key} className="grid gap-1 rounded fill-group p-3">
+                  <Switch
+                    label={inspector('requireReview')}
+                    aria-describedby={hint}
+                    checked={reviewTargets.includes(target.key)}
+                    onToggle={() =>
+                      setReviewTargets((prev) =>
+                        prev.includes(target.key)
+                          ? prev.filter((key) => key !== target.key)
+                          : [...prev, target.key],
+                      )
+                    }
+                  />
+                  <p id={hint} className="text-caption text-muted-foreground">
+                    {target.output} ·{' '}
+                    {inspector('requiredReviewSource', {
+                      binding: target.bindingName,
+                      source: target.source,
+                    })}
+                  </p>
+                </div>
+              );
+            })}
+            <PlanEditor
+              plan={plan}
+              wording={wording}
+              onChange={(next) => {
+                if (next.pattern !== plan.pattern) setReviewTargets([]);
+                setPlan(next);
+              }}
+            />
             {preview ? (
               <div className="grid gap-1 rounded fill-group p-3 text-body">
                 <h3 className="text-subtitle">{t('beforeSaving')}</h3>
                 <p>{t(isReadOnlyTeam(preview) ? 'readOnlyWork' : 'changesWork')}</p>
-                <p>{t(hasReviewLoop(plan.pattern) ? 'hasReviewRound' : 'noReviewRound')}</p>
+                <p>{t(confirmed.length || hasReviewLoop(plan.pattern) ? 'hasReviewRound' : 'noReviewRound')}</p>
                 <Switch
                   label={shared('observe')}
                   checked={Boolean(plan.observeWork)}
@@ -312,7 +385,7 @@ export function TeamDraftDialog({
               variant="primary"
               size="compact"
               type="button"
-              disabled={!checked?.success || busy || unresolved}
+              disabled={!preview || busy || unresolved}
               onClick={() => void open()}
             >
               {t('open')}

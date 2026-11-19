@@ -1488,7 +1488,6 @@
     "reviewQuestion": "Should the team get feedback, or must the work pass review before submission?",
     "reviewFeedback": "Get feedback only",
     "reviewRequired": "Pass before submitting",
-    "requiredUnavailable": "Passing review before submission is unavailable in this draft. Go back to revise the goal.",
     "beforeSaving": "Before saving",
     "readOnlyWork": "The roles cannot change workspace files or run commands.",
     "changesWork": "This pattern includes roles that can change workspace files or run commands.",

@@ -414,7 +414,10 @@ export function draftFromPlan(
   labels: TeamLabels = ENGLISH_LABELS,
 ): TeamDraft {
   const sharedOutrider =
-    plan.observeWork || plan.outrider === 'consultation' || plan.outrider === 'artifact_review'
+    plan.observeWork ||
+    plan.outrider === 'consultation' ||
+    plan.outrider === 'artifact_review' ||
+    plan.outrider === 'required_review'
       ? {
           modelProfile: 'model-a',
           principles: labels.outriderPrinciples ?? DEFAULT_OUTRIDER_PRINCIPLES,
