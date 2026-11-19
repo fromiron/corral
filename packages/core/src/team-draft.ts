@@ -269,9 +269,9 @@ export function requestsWorkObservation(goal: string): boolean {
     const before = clause.slice(0, match.index);
     const after = clause.slice(match.index + match[0].length);
     return (
-      !/\b(?:never|no|without|not|don't|disable)\s+(?:(?:the |any )?(?:outrider|advisor) to )?$/i.test(
+      !/\b(?:never|no|without|not|don't|disable)\s+(?:enable\s+|turn on\s+)?(?:(?:the |any )?(?:outrider|advisor) to )?$/i.test(
         before,
-      ) && !/^(?:을|를|은|는)?\s*(?:하지\s*(?:않|말|마)|없이|끄|꺼|비활성|금지)/.test(after)
+      ) && !/^(?:을|를|은|는)?\s*(?:(?:하)?지\s*(?:않|말|마)|없이|끄|꺼|비활성|금지)/.test(after)
     );
   });
 }

@@ -522,6 +522,8 @@ describe('work observation in a goal draft', () => {
     'Let the writer ask for manuscript review when needed.',
     '자동 관찰하지 말고 필요할 때만 전문가에게 물어보게 해줘.',
     '진행 중 자동 관찰을 끄고 필요할 때만 의견을 받자.',
+    '자동 관찰을 켜지 말고 요청한 작업자에게만 답해줘.',
+    'Do not enable automatic observation of workers.',
     'Do not automatically monitor the workers. Let the writer ask for advice when needed.',
     'Observe how bicycle gears work and explain the process.',
     'Build a service to automatically monitor traffic.',
