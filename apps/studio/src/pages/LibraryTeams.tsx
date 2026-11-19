@@ -237,9 +237,6 @@ export function LibraryTeams({
           projectId={projectId}
           corrals={corrals}
           onClose={() => setCreating(null)}
-          onSaved={async (corralId) => {
-            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
-          }}
         />
       ) : null}
       {teams.length ? (
@@ -545,9 +542,6 @@ export function LibraryTemplates({
           projectId={projectId}
           corrals={corrals}
           onClose={blank ? onDraftClosed : () => setCopyTemplate(null)}
-          onSaved={async (corralId) => {
-            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
-          }}
         />
       ) : null}
       {drafting ? <TeamDraftDialog onClose={onDraftClosed} projectId={projectId} /> : null}

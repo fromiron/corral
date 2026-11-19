@@ -473,6 +473,41 @@ it.each([
   expect(proposal?.pattern).toBe('single');
 });
 
+it.each([
+  '작성자가 필요할 때만 전문가에게 자문한다. 검토 통과나 자동 관찰은 필요 없다.',
+  'The writer consults an expert when needed. No review pass or automatic observation is needed.',
+  'Let the writer ask for advice on demand; passing review and automatic observation are not required.',
+])('keeps negated review and observation out of both goal-draft paths: %s', (goal) => {
+  const local = planFromGoal(goal, wording);
+  expect(local).toMatchObject({ pattern: 'single', outrider: 'consultation' });
+  if (!local) throw new Error('Expected a local plan');
+  expect(local).not.toHaveProperty('observeWork');
+  const proposed: TeamPlan = { ...local, name: 'Model writer', outrider: 'consultation' };
+  expect(planAfterModel(goal, proposed, wording)).toEqual({ plan: proposed, recovery: null });
+  const { definition } = draftFromPlan(proposed, 'advice', labels);
+  expect(definition.nodes.map((node) => node.type)).toEqual(['agent', 'output']);
+  expect(definition.sharedOutrider).not.toHaveProperty('observation');
+  expect(definition.sharedOutrider).not.toHaveProperty('artifactReview');
+});
+
+it('does not negate independently requested manuscript feedback or work observation', () => {
+  expect(
+    planFromGoal(
+      'Ask for manuscript feedback when needed. No review pass is needed. Watch work in progress.',
+      wording,
+    ),
+  ).toMatchObject({ pattern: 'single', outrider: 'artifact_review', observeWork: true });
+  expect(planFromGoal('Write the note. A review pass is not required.', wording)).toMatchObject({
+    pattern: 'single',
+  });
+  const noGate = 'Write the note. A review pass is not required.';
+  const proposed = planFromGoal('Write and review a note.', wording);
+  expect(planAfterModel(noGate, proposed, wording)).toMatchObject({
+    plan: { pattern: 'single' },
+    recovery: 'incompatible',
+  });
+});
+
 describe('work observation in a goal draft', () => {
   it('preserves explicit work observation even when the model omits it or its response needs local recovery', () => {
     const goal = 'Let the writer ask for feedback when needed and watch work in progress.';

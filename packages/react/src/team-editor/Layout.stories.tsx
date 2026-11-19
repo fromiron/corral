@@ -5,7 +5,7 @@ import { StudioStoresProvider } from '../context.tsx';
 import { type EditorDraft, emptyDraft } from '../editor/model.ts';
 import { createEditorStore, type EditorStore } from '../editor/store.ts';
 import messages from '../messages/en.json' with { type: 'json' };
-import { sessionStore } from '../stories/fixtures.tsx';
+import { researchTeamDraft, sessionStore } from '../stories/fixtures.tsx';
 import { type EditResult, patchNode, placeStep } from './commands.ts';
 import { TeamEditor } from './TeamEditor.tsx';
 
@@ -38,21 +38,26 @@ function LaidOut({
   stacked,
   loop = false,
   dark = false,
+  view = 'graph',
 }: {
   width: number;
   height: number;
   stacked: boolean;
   loop?: boolean;
   dark?: boolean;
+  view?: 'composition' | 'graph';
 }) {
-  const editor = useMemo(() => createEditorStore(team(loop)), [loop]);
+  const editor = useMemo(
+    () => createEditorStore(view === 'composition' ? researchTeamDraft() : team(loop)),
+    [loop, view],
+  );
   const session = useMemo(() => sessionStore(), []);
   shown = editor;
   return (
     <div className={dark ? 'dark bg-background text-foreground' : 'bg-background text-foreground'}>
       <div style={{ width, height }}>
         <StudioStoresProvider editor={editor} session={session}>
-          <TeamEditor editor={editor} stacked={stacked} />
+          <TeamEditor editor={editor} stacked={stacked} view={view} />
         </StudioStoresProvider>
       </div>
     </div>
@@ -73,7 +78,7 @@ const rect = (element: Element) => element.getBoundingClientRect();
 const regions = (canvasElement: HTMLElement) => {
   const view = within(canvasElement);
   return {
-    editor: canvasElement.querySelector('[data-layout]') as HTMLElement,
+    editor: canvasElement.querySelector('[data-graph-scroll]') as HTMLElement,
     outline: view.getByRole('complementary', { name: m.outline }),
     palette: view.getByRole('toolbar', { name: m.palette }),
     canvas: view.getByRole('application', { name: m.canvas }),
@@ -208,9 +213,13 @@ export const StackedNarrow: Story = {
       name: m.placement.previewTitle,
     });
     await expect(shown?.getState().draft).toBe(original);
-    await expect(within(dialog).getByRole('heading', { name: m.placement.boundary })).toBeVisible();
+    const boundary = within(dialog).getByRole('heading', { name: m.placement.boundary });
+    await waitFor(() => expect(boundary).toBeVisible());
     await expect(within(dialog).getByRole('listitem')).toHaveTextContent('A · out → B · in');
     await userEvent.click(within(dialog).getByRole('button', { name: m.placement.apply }));
+    const members = target.closest('li');
+    if (!members) throw new Error('Expected the Loop in the outline');
+    await within(members).findByRole('button', { name: 'B' });
     const loop = shown?.getState().draft.definition.nodes.find((n) => n.type === 'loop');
     const moved = shown?.getState().draft.definition.nodes.find((n) => n.id === 'agent_2');
     await expect(moved?.parentId).toBe(loop?.id);
@@ -258,15 +267,19 @@ export const StackedSettingsFromOutline: Story = {
     await waitFor(() => expect(card(canvasElement, 'agent_2')).toBeTruthy());
     within(outline).getByRole('button', { name: 'B' }).click();
     const sheet = await within(canvasElement).findByRole('complementary', { name: m.inspector });
-    await waitFor(() => expect(Math.abs(rect(sheet).top - rect(editor).top)).toBeLessThan(1));
+    const expectRevealed = () =>
+      waitFor(() => {
+        const top = rect(sheet).top - rect(editor).top;
+        const atEnd = editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
+        expect(editor.scrollTop).toBeGreaterThan(0);
+        expect(top).toBeGreaterThanOrEqual(-1);
+        expect(top).toBeLessThan(rect(editor).height);
+        expect(Math.abs(top) < 1 || atEnd).toBe(true);
+      });
+    await expectRevealed();
     editor.scrollTop = 0;
     within(outline).getByRole('button', { name: m.teamSettings }).click();
-    await waitFor(() => expect(editor.scrollTop).toBeGreaterThan(0));
-    await waitFor(() => {
-      const top = rect(sheet).top - rect(editor).top;
-      const atEnd = editor.scrollTop >= editor.scrollHeight - editor.clientHeight - 1;
-      expect(Math.abs(top) < 1 || (atEnd && top > 0)).toBe(true);
-    });
+    await expectRevealed();
     await waitFor(() => expect(getComputedStyle(sheet.parentElement as Element).opacity).toBe('1'));
   },
 };
@@ -276,5 +289,43 @@ export const StackedDark: Story = {
   args: { dark: true },
   play: async ({ canvasElement }) => {
     await selectStep(canvasElement, 'agent_1');
+  },
+};
+
+function writerRow(canvas: HTMLElement) {
+  const row = canvas.querySelector<HTMLButtonElement>('[data-composition-node="write"]');
+  if (!row) throw new Error('Expected the writer in the team composition');
+  return row;
+}
+
+export const Composition: Story = {
+  args: { width: 1640, stacked: false, view: 'composition' },
+  play: async ({ canvasElement, userEvent }) => {
+    const screen = within(canvasElement);
+    const list = screen.getByRole('list', { name: 'Team composition' });
+    const request = within(list).getByRole('button', { name: /^Request\b/ });
+    const origin = canvasElement.getBoundingClientRect().left;
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    await expect(rect(request).left - origin).toBeCloseTo(rem, 0);
+    await expect(rect(request).width).toBeLessThanOrEqual(45 * rem);
+    await expect(request).toHaveAttribute('aria-pressed', 'true');
+    const row = writerRow(canvasElement);
+    await expect(row).toBeVisible();
+    await userEvent.click(row);
+    const sheet = screen.getByRole('complementary', { name: m.inspector });
+    await expect(row).toHaveAttribute('aria-pressed', 'true');
+    await expect(request).toHaveAttribute('aria-pressed', 'false');
+    await expect(rect(row).right).toBeLessThanOrEqual(rect(sheet).left);
+  },
+};
+
+export const CompositionDrillIn: Story = {
+  args: { width: 390, height: 844, stacked: true, view: 'composition' },
+  play: async ({ canvasElement, userEvent }) => {
+    const row = writerRow(canvasElement);
+    await userEvent.click(row);
+    await expect(row).not.toBeVisible();
+    await userEvent.keyboard('{Escape}');
+    await expect(row).toHaveFocus();
   },
 };

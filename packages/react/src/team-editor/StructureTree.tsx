@@ -24,6 +24,36 @@ import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 const NODE_DRAG_TYPE = 'application/x-corral-node';
 
+/** The outline and the composition list use the same validation state and severity colors. */
+export function ProblemCountBadge({
+  diagnostics,
+  validationStatus,
+  emptyGraph = false,
+}: {
+  diagnostics: readonly Diagnostic[];
+  validationStatus?: string | undefined;
+  emptyGraph?: boolean;
+}) {
+  const t = useTranslations('TeamEditor');
+  return (
+    <KitBadge
+      size="compact"
+      color={
+        diagnostics.some((issue) => issue.severity === 'error')
+          ? 'red'
+          : diagnostics.length
+            ? 'amber'
+            : 'gray'
+      }
+    >
+      {validationStatus ??
+        (emptyGraph && diagnostics.length
+          ? t('startGraph')
+          : t('problems', { count: diagnostics.length }))}
+    </KitBadge>
+  );
+}
+
 export interface StructureTreeProps {
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
@@ -73,7 +103,6 @@ export function StructureTree({
     if (!d.nodeId) continue;
     if (worst.get(d.nodeId) !== 'error') worst.set(d.nodeId, d.severity);
   }
-  const errors = diagnostics.filter((d) => d.severity === 'error').length;
   const children = (parentId: string | null) =>
     definition.nodes
       .filter((n) => (n.parentId ?? null) === parentId)
@@ -109,7 +138,7 @@ export function StructureTree({
         <div
           className={cn(
             'flex items-center gap-1 rounded-md pr-1',
-            selected.has(node.id) ? 'bg-selected/60' : 'hover:bg-hover',
+            selected.has(node.id) ? 'bg-active' : 'hover:bg-hover',
             dropping && 'outline-2 outline-emphasis',
           )}
           style={{ paddingLeft: 4 + depth * 14 }}
@@ -207,12 +236,11 @@ export function StructureTree({
           className={cn(focusRing, 'rounded-full')}
           onClick={onProblems}
         >
-          <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
-            {validationStatus ??
-              (definition.nodes.length === 0 && diagnostics.length
-                ? t('startGraph')
-                : t('problems', { count: diagnostics.length }))}
-          </KitBadge>
+          <ProblemCountBadge
+            diagnostics={diagnostics}
+            validationStatus={validationStatus}
+            emptyGraph={definition.nodes.length === 0}
+          />
         </button>
         <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>
           <Plus />

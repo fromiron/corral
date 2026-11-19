@@ -158,22 +158,34 @@ it.each([
 it.each([
   ['skills', messages.Resources.emptySkills],
   ['mcp', messages.Resources.emptyMcp],
-] as const)('shows one empty state and one Add for an empty %s list', async (section, title) => {
-  fixture.services = { ...browserDemo, mode: 'server', harnesses: emptyHarness };
-  const container = await render(<SettingsContent section={section} />);
-  const main = container.querySelector('main') as HTMLElement;
-  expect(main.querySelectorAll('.border-dashed')).toHaveLength(1);
-  expect(main.textContent).toContain(title);
-  const adds = [...main.querySelectorAll('button')].filter(
-    (button) => button.textContent === messages.Resources.add,
-  );
-  expect(adds).toHaveLength(1);
-  // No row whose label repeats its own button.
-  expect([...main.querySelectorAll('h3')].map((heading) => heading.textContent)).not.toContain(
-    messages.Resources.add,
-  );
-  expect(main.textContent).not.toContain('Select an item');
-});
+] as const)(
+  'shows one empty state and the actions for an empty %s list',
+  async (section, title) => {
+    fixture.services = { ...browserDemo, mode: 'server', harnesses: emptyHarness };
+    const container = await render(<SettingsContent section={section} />);
+    const main = container.querySelector('main') as HTMLElement;
+    expect(main.querySelectorAll('.border-dashed')).toHaveLength(1);
+    expect(main.textContent).toContain(title);
+    const buttons = [...main.querySelectorAll('button')];
+    const headings = [...main.querySelectorAll('h1, h2, h3, h4, h5, h6')].map(
+      (heading) => heading.textContent,
+    );
+    const actions =
+      section === 'skills'
+        ? [messages.Resources.createSkill, messages.Resources.importSkills]
+        : [messages.Resources.add];
+    for (const label of actions) {
+      expect(buttons.filter((button) => button.textContent === label)).toHaveLength(1);
+      expect(headings).not.toContain(label);
+    }
+    if (section === 'skills') {
+      const empty = main.querySelector('[data-slot="empty-state"]');
+      expect(empty?.textContent).toBe(title);
+      expect(empty?.querySelector('button')).toBeNull();
+    }
+    expect(main.textContent).not.toContain('Select an item');
+  },
+);
 
 // glossary.md, "설명이 붙는 용어": the work-style section's title explains the term by one icon
 // right after it, hidden with the title on narrow screens; no other section draws one.

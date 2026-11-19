@@ -49,6 +49,7 @@ export function RunView({
   onOpenArtifact,
   onStartFrom,
   prices,
+  skillLabel,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
@@ -56,6 +57,7 @@ export function RunView({
   onStartFrom?: Parameters<typeof RunOutput>[0]['onStartFrom'];
   /** List prices for the cost estimate. */
   prices?: ModelPrices | undefined;
+  skillLabel?: Parameters<typeof HarnessDetails>[0]['skillLabel'];
 }) {
   const t = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
@@ -102,7 +104,7 @@ export function RunView({
             <p className="text-caption text-muted-foreground">{t('harnessSimulation')}</p>
           ) : null}
           <UsageInspector session={session} prices={prices} />
-          <HarnessDetails session={session} />
+          <HarnessDetails session={session} skillLabel={skillLabel} />
           <div className="flex items-center gap-2 text-caption">
             <span className="text-muted-foreground">{t('status')}</span>
             <span aria-live="polite" data-testid="run-status">

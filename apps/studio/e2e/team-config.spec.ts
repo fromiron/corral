@@ -1,5 +1,5 @@
 import { expect, type Locator, test } from '@playwright/test';
-import { openLibrary } from './workbench.ts';
+import { openFlowGraph, openLibrary, openSeatAdvanced } from './workbench.ts';
 
 test('opening a template waits for an explicit named copy and cancel leaves no team', async ({
   page,
@@ -56,15 +56,18 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
     await page.getByRole('button', { name: 'Edit a copy of Research team', exact: true }).click();
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);
+    await openFlowGraph(page);
     const name = `Saved research ${team}`;
     await page.getByRole('button', { name: 'Team settings', exact: true }).click();
     await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(name);
     await page.locator('[data-team-canvas] [data-node="research"]').click();
+    await settings.getByRole('button', { name: 'Other kinds of material', exact: true }).click();
     const inputs = settings.getByRole('group', { name: 'Inputs', exact: true });
     for (const label of ['Kind', 'From'])
       await inSheet(inputs.getByRole('combobox', { name: label, exact: true }));
+    await openSeatAdvanced(page);
     const calls = settings.getByRole('group', { name: 'May call', exact: true });
     const kind = calls.getByRole('combobox', { name: 'Kind', exact: true });
     const target = calls.getByRole('combobox', { name: 'Callable agent', exact: true });

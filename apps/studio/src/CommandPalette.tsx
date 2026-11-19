@@ -46,6 +46,7 @@ import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './temp
 import { ANNOTATE_SHORTCUT } from './workbench/browser/annotate.tsx';
 import { holdPages } from './workbench/browser/overlap.ts';
 import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
+import { openNewTeam } from './workbench/editorView.ts';
 import { modalConfirmationOpen } from './workbench/modalConfirmation.ts';
 import { openNewMeeting } from './workbench/NewMeeting.tsx';
 import {
@@ -561,11 +562,7 @@ export function Palette({
             templateText,
             currentProject(),
           );
-          if (created.ok)
-            await navigate({
-              to: '/corrals/$corralId/edit',
-              params: { corralId: created.corralId },
-            });
+          if (created.ok) await openNewTeam(navigate, created.corralId);
         },
       }),
     );

@@ -28,6 +28,8 @@ import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
 import { definitionHash } from '../definition-hash.ts';
 
+export * from './agent-library.ts';
+
 // Saved Corrals. Changing what runs bumps definitionRevision; every revision stays readable.
 // Work in progress may be saved: records hold the draft schema, runs compile the strict one.
 // The browser uses this over localStorage until the local server replaces it (P2, PUT /corrals).

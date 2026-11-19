@@ -29,6 +29,7 @@ import { useMessages, useTranslations } from 'use-intl';
 import { Modal } from './CommandPalette.tsx';
 import { useServices } from './services.tsx';
 import { draftWording, patternName } from './templates.ts';
+import { openNewTeam } from './workbench/editorView.ts';
 
 /**
  * Goal → team draft. The person writes a goal, gets a plan from the local suggestion or
@@ -193,10 +194,7 @@ export function TeamDraftDialog({
       });
       if (!saved.ok) return setError(saved.message);
       onClose();
-      await navigate({
-        to: '/corrals/$corralId/edit',
-        params: { corralId: saved.record.corralId },
-      });
+      await openNewTeam(navigate, saved.record.corralId);
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));
     } finally {

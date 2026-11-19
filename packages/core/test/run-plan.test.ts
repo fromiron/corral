@@ -1,6 +1,6 @@
 import { CorralDefinition } from '@corral/contracts';
 import { collaborationCorral, linearCorral } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import { compileDefinition, planRun, sharedOutriderTargets } from '../src/index.ts';
 
@@ -193,9 +193,31 @@ describe('shared Outrider consultations', () => {
     const allowed = sharedOutriderTargets(
       definition,
       undefined,
-      (binding) => binding.profileId === harness.profileId && binding.revision === harness.revision,
+      ({ harness: binding }) =>
+        binding?.profileId === harness.profileId && binding.revision === harness.revision,
     );
     expect(allowed[0]).not.toHaveProperty('unavailable');
     expect(allowed[0]).not.toHaveProperty('permissionPending');
+  });
+
+  it('checks the exact authored skills, including an empty selection, unless a run limit already blocks asking', () => {
+    const definition = linearCorral(['selected', 'empty', 'inherited']);
+    const skills = [{ resourceHash: 'a'.repeat(64), entry: 'guide/SKILL.md' }];
+    definition.roles[0]!.skills = skills;
+    definition.roles[1]!.skills = [];
+    const mayAsk = vi.fn(() => false);
+    const rows = sharedOutriderTargets(definition, undefined, mayAsk);
+    expect(mayAsk.mock.calls).toEqual([
+      [{ id: 'selected_role', skills }],
+      [{ id: 'empty_role', skills: [] }],
+    ]);
+    expect(rows.map((row) => row.unavailable)).toEqual(['harness', 'harness', undefined]);
+    mayAsk.mockClear();
+    const capped = sharedOutriderTargets(definition, undefined, mayAsk, {
+      ...definition.limits,
+      maxQuestions: 0,
+    });
+    expect(capped.every((row) => row.unavailable === 'questions')).toBe(true);
+    expect(mayAsk).not.toHaveBeenCalled();
   });
 });

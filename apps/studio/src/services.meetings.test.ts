@@ -30,3 +30,35 @@ it('the browser runtime continues a held chain through its meeting service', asy
   ).resolves.toMatchObject({ ok: false, error: 'not_found' });
   services.disposeRuns();
 });
+
+it.each([
+  ['/', true],
+  ['/demo', false],
+] as const)(
+  'keeps project originals with the teams of browser mode %s',
+  async (path, persistent) => {
+    window.history.replaceState(null, '', path);
+    const services = await createStudioServices();
+    const project = await services.repository.createProject({ name: 'My project' });
+    if (!project.ok) throw new Error(project.message);
+    const { projectId } = project.project;
+    const made = await services.agents.create(projectId, {
+      operationId: 'save_writer',
+      role: {
+        name: 'Writer',
+        prompt: 'Write.',
+        modelProfile: 'model-a',
+        outputContract: 'draft',
+        allowedWorkTools: [],
+        allowedCollaborationTools: [],
+      },
+    });
+    if (!made.ok) throw new Error(made.message);
+    expect(await services.agents.list(projectId)).toEqual([made.agent]);
+    services.disposeRuns();
+    const reopened = await createStudioServices();
+    expect(reopened.persistent).toBe(persistent);
+    expect(await reopened.agents.list(projectId)).toEqual(persistent ? [made.agent] : []);
+    reopened.disposeRuns();
+  },
+);

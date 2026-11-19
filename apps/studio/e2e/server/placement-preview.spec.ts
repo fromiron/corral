@@ -52,7 +52,10 @@ for (const [width, height] of [
       return el.scrollTop;
     });
     if (width === 1280) await add.dragTo(author);
-    else await add.click();
+    else {
+      await add.click();
+      await page.getByRole('dialog').getByRole('button', { name: '작성', exact: true }).click();
+    }
     const dialog = page.getByRole('dialog', {
       name: korean ? '연결 미리보기' : 'Preview connections',
     });
@@ -79,6 +82,10 @@ for (const [width, height] of [
     ).toBeDisabled();
     await add.focus();
     await page.keyboard.press('Enter');
+    await page
+      .getByRole('dialog')
+      .getByRole('button', { name: korean ? '작성' : 'Writing', exact: true })
+      .click();
     await dialog.getByRole('button', { name: korean ? '적용' : 'Apply' }).click();
     await expect(canvas.locator('[data-node]')).toHaveCount(5);
     await add.focus();

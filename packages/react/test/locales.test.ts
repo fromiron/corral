@@ -89,13 +89,14 @@ describe('Korean messages (UX-A5)', () => {
     );
   });
 
-  it('names role import in both languages', () => {
+  it('names the agent picker and replacement errors in both languages', () => {
     const keys = [
-      'TeamEditor.importRole',
-      'TeamEditor.importRoleTitle',
-      'TeamEditor.rolePresets',
-      'TeamEditor.roleSearch',
-      'TeamEditor.workStyleDropped',
+      'TeamEditor.agentPicker.add',
+      'TeamEditor.agentPicker.replaceTitle',
+      'TeamEditor.agentPicker.builtin',
+      'TeamEditor.agentPicker.search',
+      'TeamEditor.rejected.movePlanOwner',
+      'TeamEditor.rejected.replacementCompileError',
       'TeamEditor.rejected.roleNeedsAgent',
     ];
     expect(keys.filter((key) => !enLeaves.has(key))).toEqual([]);

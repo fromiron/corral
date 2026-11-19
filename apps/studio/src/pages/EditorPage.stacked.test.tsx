@@ -6,14 +6,16 @@ import {
   type CorralRepository,
   createKeyValueCorralRepository,
 } from '@corral/core';
-import { type EditorDraft, emptyDraft } from '@corral/react';
+import { type EditorDraft, emptyDraft, type RunSessionStore } from '@corral/react';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { placeStep } from '../../../../packages/react/src/team-editor/commands.ts';
+import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
 import { editorWorkingCopy } from '../workbench/editorDraft.ts';
+import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
 import { EditorPage, TeamDesign } from './EditorPage.tsx';
 
 // The team editor in its two hosts, the route editor and the session's team graph pane, stacks
@@ -69,8 +71,17 @@ function resize(width = hostWidth) {
 }
 
 const cleanups: (() => Promise<void>)[] = [];
+const animations = Object.getOwnPropertyDescriptor(Element.prototype, 'getAnimations');
 beforeEach(() => {
   hostWidth = 900;
+  vi.stubGlobal('matchMedia', (media: string) => ({
+    matches: false,
+    media,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  }));
   vi.stubGlobal(
     'ResizeObserver',
     class {
@@ -88,6 +99,10 @@ beforeEach(() => {
     },
   );
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  Object.defineProperty(Element.prototype, 'getAnimations', {
+    configurable: true,
+    value: () => [],
+  });
   Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
     configurable: true,
     get(this: HTMLElement) {
@@ -108,6 +123,8 @@ afterEach(async () => {
   // Restores jsdom's own prototype getters.
   delete (HTMLElement.prototype as { clientWidth?: number }).clientWidth;
   delete (HTMLElement.prototype as { clientHeight?: number }).clientHeight;
+  if (animations) Object.defineProperty(Element.prototype, 'getAnimations', animations);
+  else Reflect.deleteProperty(Element.prototype, 'getAnimations');
   localStorage.clear();
   fixture.navigate.mockClear();
   fixture.fromSession = undefined;
@@ -181,16 +198,37 @@ async function mount(
   fixture.services = {
     mode: 'browser',
     repository,
+    agents: { list: async () => [] },
     transport: {},
     editorSessions: new Map(),
     runModes: {},
     saveRunMode: () => Promise.resolve(),
     models: null,
-    harnesses: harness ? { preview: harness.preview, profileManagement: async () => [] } : null,
+    harnesses: harness
+      ? {
+          preview: (target: HarnessBindingRef | { id: string }, project: string) =>
+            'id' in target
+              ? Promise.resolve({ snapshot: { resources: [] } })
+              : harness.preview(target, project),
+          profileManagement: async () => [],
+          entries: async () => [],
+          packages: async () => [],
+        }
+      : null,
     live: false,
     persistent: true,
     ...configure?.(repository, record),
   };
+  await renderPage(host === 'route' ? <EditorPage /> : <TeamDesign corralId={record.corralId} />);
+  // The session's pane reads the saved team first.
+  for (let i = 0; i < 20 && !canvasNode('agent_1'); i++)
+    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(canvasNode('agent_1'), 'the canvas drew the team').toBeTruthy();
+  /** The draft the editor is editing, which the session pane and the route share. */
+  return () => editorWorkingCopy(repository, record).getState().editor.getState().draft;
+}
+
+async function renderPage(page: ReactNode) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -201,16 +239,10 @@ async function mount(
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        {host === 'route' ? <EditorPage /> : <TeamDesign corralId={record.corralId} />}
+        {page}
       </IntlProvider>,
     ),
   );
-  // The session's pane reads the saved team first.
-  for (let i = 0; i < 20 && !canvasNode('agent_1'); i++)
-    await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
-  expect(canvasNode('agent_1'), 'the canvas drew the team').toBeTruthy();
-  /** The draft the editor is editing, which the session pane and the route share. */
-  return () => editorWorkingCopy(repository, record).getState().editor.getState().draft;
 }
 
 const editorRoot = () => document.querySelector('[data-layout]') as HTMLElement;
@@ -230,9 +262,19 @@ const named = (scope: ParentNode, name: string) =>
   ) as HTMLElement;
 const isSelected = (id: string) => canvasNode(id).getAttribute('aria-pressed') === 'true';
 
-async function click(element: HTMLElement) {
-  expect(element, 'the control to press is on screen').toBeTruthy();
+async function click(element: HTMLElement | undefined) {
+  assert(element, 'the control to press is on screen');
   await act(async () => element.click());
+}
+
+async function prepareRun() {
+  const menu = named(document, 'Run options');
+  assert(menu);
+  await act(async () => {
+    menu.focus();
+    menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+  });
+  await click(region('[role="menuitem"][aria-label="Prepare a run"]'));
 }
 
 /** The drag data one drag carries from its start to its drop, as a browser keeps it. */
@@ -282,6 +324,192 @@ const HOSTS: [Host, number][] = [
   ['session', 540],
 ];
 
+const viewTab = (name: string) =>
+  [...document.querySelectorAll<HTMLElement>('header [role="tab"]')].find((tab) =>
+    tab.textContent?.includes(name),
+  );
+
+describe('team editor views', () => {
+  it.each(['route', 'session'] as const)(
+    'loads the current project’s originals in the %s editor',
+    async (host) => {
+      const list = vi.fn().mockResolvedValue([]);
+      await mount(host, 1000, () => ({ agents: { list } }));
+      expect(list).toHaveBeenCalledExactlyOnceWith('project_1');
+      await click(named(palette(), 'Add Agent'));
+      const dialog = region('[role="dialog"]');
+      expect(dialog.textContent).toContain('My agents');
+      expect(dialog.textContent).not.toContain('Project: Project');
+      expect(dialog.querySelector('[role="tab"][aria-selected="true"]')?.textContent).toContain(
+        'Built-in',
+      );
+      await click(
+        [...dialog.querySelectorAll<HTMLElement>('[role="tab"]')].find((tab) =>
+          tab.textContent?.includes('My agents'),
+        ),
+      );
+      expect(dialog.textContent).toContain('Project: Project');
+    },
+  );
+
+  it('uses one create operation per opened save dialog and reloads originals after success', async () => {
+    const list = vi.fn().mockResolvedValue([]);
+    const create = vi
+      .fn()
+      .mockRejectedValueOnce(new Error('Lost response'))
+      .mockResolvedValue({ ok: true });
+    const draft = await mount('route', 1280, () => ({ agents: { list, create } }));
+    const before = draft();
+    await click(canvasNode('agent_1'));
+    async function openSave() {
+      const trigger = named(sheet(), messages.Inspector.seatActions);
+      await act(async () => {
+        trigger.focus();
+        trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      });
+      await click(region('[role="menuitem"][aria-label="Save to library"]'));
+    }
+    await openSave();
+    await click(named(region('[role="dialog"]'), 'Save agent'));
+    expect(region('[role="dialog"] [role="alert"]').textContent).toContain('Could not save');
+    await click(named(region('[role="dialog"]'), 'Save agent'));
+    expect(create.mock.calls[0]).toEqual(create.mock.calls[1]);
+    expect(create.mock.calls[0]).toEqual([
+      'project_1',
+      { role: expect.objectContaining({ name: 'Agent 1' }), operationId: expect.any(String) },
+    ]);
+    expect(list).toHaveBeenCalledTimes(2);
+    await openSave();
+    await click(named(region('[role="dialog"]'), 'Save agent'));
+    expect(create.mock.calls[2]?.[1].operationId).not.toBe(create.mock.calls[0]?.[1].operationId);
+    expect(draft()).toBe(before);
+  });
+
+  it('isolates each team’s view and keeps a refused write for the rest of this tab', () => {
+    rememberEditorView('private-team', 'graph');
+    const refuse = () => {
+      throw new DOMException('Storage denied', 'SecurityError');
+    };
+    try {
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(refuse);
+      rememberEditorView('private-team', 'composition');
+      expect(readEditorView('private-team')).toBe('composition');
+      vi.spyOn(Storage.prototype, 'getItem').mockImplementation(refuse);
+      expect(readEditorView('another-team')).toBe('graph');
+      expect(readEditorView('private-team')).toBe('composition');
+    } finally {
+      vi.restoreAllMocks();
+      rememberEditorView('private-team', 'graph');
+    }
+  });
+
+  it('opens an existing team in Flow graph; arrows switch focus and view, not the working copy', async () => {
+    const draft = await mount('route', 390, () => ({
+      transport: { getRunStats: vi.fn().mockRejectedValue(Error('unavailable')) },
+    }));
+    const original = draft();
+    const graph = viewTab('Flow graph');
+    const composition = viewTab('Team composition');
+    expect(graph?.getAttribute('aria-selected')).toBe('true');
+    await click(named(document, m.stats.toggle));
+    expect(document.querySelector('header')?.textContent).toContain(m.stats.failed);
+    await act(async () => {
+      graph?.focus();
+      graph?.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+    });
+    expect(document.activeElement).toBe(composition);
+    expect(composition?.getAttribute('aria-selected')).toBe('true');
+    expect(named(document, m.stats.toggle)).toBeUndefined();
+    expect(document.querySelector('header')?.textContent).not.toContain(m.stats.failed);
+    expect(shown(canvas())).toBe(false);
+    expect(draft()).toBe(original);
+    expect(named(document, m.undo)).toHaveProperty('disabled', true);
+    expect(named(document, messages.Editor.save)).toHaveProperty('disabled', true);
+    await act(async () => {
+      composition?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }),
+      );
+    });
+    expect(document.activeElement).toBe(graph);
+    expect(shown(canvas())).toBe(true);
+  });
+
+  it('opens a newly saved template copy in composition, then remembers a deliberate switch', async () => {
+    const repository = memoryRepository();
+    await repository.createProject({ name: 'Project' });
+    fixture.services = {
+      mode: 'browser',
+      repository,
+      agents: { list: async () => [] },
+      transport: {},
+      editorSessions: new Map(),
+      models: null,
+      harnesses: null,
+      runModes: {},
+      live: false,
+    };
+    await renderPage(
+      <TemplateCopyDialog
+        template="starter"
+        projectId="project_1"
+        corrals={[]}
+        onClose={() => {}}
+      />,
+    );
+    await click(named(document, messages.Workspace.saveCopyEdit));
+    const [record] = await repository.list();
+    if (!record) throw Error('Expected a saved template copy');
+    const id = record.corralId;
+    expect(fixture.navigate).toHaveBeenCalledWith({
+      to: '/corrals/$corralId/edit',
+      params: { corralId: id },
+    });
+    await cleanups.pop()?.();
+    fixture.record = await repository.get(id);
+    await renderPage(<EditorPage />);
+    expect(viewTab('Team composition')?.getAttribute('aria-selected')).toBe('true');
+    await click(viewTab('Flow graph'));
+    await cleanups.pop()?.();
+    await renderPage(<TeamDesign corralId={id} />);
+    expect(viewTab('Flow graph')?.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('keeps the chosen tab, the roster and its detail consecutive in the native tab order', async () => {
+    await mount('route', 960);
+    const tab = viewTab('Team composition');
+    await click(tab);
+    assert(tab);
+    const stops = [
+      ...document.querySelectorAll<HTMLElement>('button,input,textarea,a[href],[tabindex]'),
+    ].filter((el) => shown(el) && el.tabIndex >= 0 && !el.matches(':disabled,[inert] *'));
+    const position = stops.indexOf(tab);
+    expect(position).toBeGreaterThanOrEqual(0);
+    expect(stops[position + 1]?.closest('[data-composition-scroll]')).not.toBeNull();
+    expect(stops[position + 2]?.closest('aside')).toBe(sheet());
+  });
+
+  it('discloses import and export in the header menu and opens the callable agent dialog', async () => {
+    await mount('route', 960);
+    const header = region('header');
+    expect(named(header, 'Import Markdown agent')).toBeUndefined();
+    expect(named(header, messages.Editor.export)).toBeUndefined();
+    const more = named(header, 'More actions');
+    await act(async () => {
+      more.focus();
+      more.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+    });
+    const items = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')];
+    expect(items.map((item) => item.getAttribute('aria-label'))).toEqual([
+      'Import Markdown agent',
+      messages.Editor.export,
+    ]);
+    await click(items[0]);
+    expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe(
+      'Import a callable agent',
+    );
+  });
+});
+
 describe('team editor hosts: stacked below 960px', () => {
   it('shows pinned Harness ask permission for the project in the shared Outrider roster and worker settings', async () => {
     const binding = { profileId: 'restricted', revision: 2 };
@@ -321,6 +549,11 @@ describe('team editor hosts: stacked below 960px', () => {
       expect(
         pathBar.compareDocumentPosition(editorRoot()) & Node.DOCUMENT_POSITION_FOLLOWING,
       ).toBeTruthy();
+      if (host === 'session') {
+        expect(named(pathBar, 'Mock test')).toBeUndefined();
+        expect(named(pathBar, 'Run options')).toBeUndefined();
+        expect(testRun()).toBeNull();
+      }
       resize(960);
       expect(layoutOf()).toBe('beside');
       resize(959);
@@ -375,12 +608,12 @@ describe('team editor hosts: stacked below 960px', () => {
     await mount('route', 768);
     expect(layoutOf()).toBe('stacked');
     await click(canvasNode('agent_1'));
-    await click(named(document, m.testRun));
+    await prepareRun();
     resize();
     expect(shown(testRun())).toBe(true);
     expect(shown(canvas())).toBe(false);
     expect(shown(palette())).toBe(false);
-    await click(named(document, m.hideRun));
+    await click(named(testRun(), 'Close test panel'));
     resize();
     expect(shown(canvas())).toBe(true);
     expect(layoutOf()).toBe('stacked');
@@ -419,13 +652,13 @@ describe('team editor hosts: stacked below 960px', () => {
     await mount('route', 1300);
     expect(layoutOf()).toBe('beside');
     await click(canvasNode('agent_1'));
-    await click(named(document, m.testRun));
+    await prepareRun();
     resize();
     expect(shown(testRun())).toBe(true);
     expect(shown(canvas())).toBe(true);
     expect(layoutOf()).toBe('stacked');
     expect(isSelected('agent_1')).toBe(true);
-    await click(named(document, m.hideRun));
+    await click(named(testRun(), 'Close test panel'));
     resize();
     expect(layoutOf()).toBe('beside');
     expect(isSelected('agent_1')).toBe(true);
@@ -459,6 +692,93 @@ function edit(record: CorralRecord, repository: CorralRepository, draft: EditorD
 }
 
 describe('test run validation and recovery in the editor', () => {
+  it('starts the draft once in mock mode despite the saved live choice, and only restarts a terminal run', async () => {
+    const sessions = new Map<string, RunSessionStore>();
+    const startRun = vi.fn().mockResolvedValue({ runId: 'run_one' });
+    const subscribe = vi.fn(() => vi.fn());
+    await mount('route', 1000, (repo, record) => {
+      edit(record, repo, linear('Unsaved draft'));
+      return {
+        live: true,
+        runModes: { [JSON.stringify([record.projectId, 'corral', record.corralId])]: 'live' },
+        editorSessions: sessions,
+        transport: { startRun, subscribe, getRunDefinition: async () => record.definition },
+      };
+    });
+    const header = named(document, 'Mock test');
+    await prepareRun();
+    expect(shown(named(testRun(), 'Run with real models'))).toBe(true);
+    expect(startRun).not.toHaveBeenCalled();
+    await click(named(testRun(), 'Close test panel'));
+    await act(async () => {
+      header.click();
+      header.click();
+    });
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(startRun.mock.calls[0]?.[0]).toMatchObject({
+      definition: { name: 'Unsaved draft' },
+      mode: 'mock',
+    });
+    expect(shown(testRun())).toBe(true);
+    expect(shown(region('[data-testid="run-status"]'))).toBe(true);
+    await click(named(testRun(), 'Close test panel'));
+    expect(shown(testRun())).toBe(false);
+    const [session] = sessions.values();
+    assert(session);
+    const current = session.getState().projection;
+    assert(current);
+    expect(session.getState().runId).toBe('run_one');
+    expect(subscribe.mock.results[0]?.value).not.toHaveBeenCalled();
+    await click(header);
+    expect(shown(testRun())).toBe(true);
+    expect(startRun).toHaveBeenCalledTimes(1);
+    await act(async () => session.setState({ projection: { ...current, status: 'succeeded' } }));
+    startRun.mockResolvedValue({ runId: 'run_two' });
+    await click(header);
+    expect(startRun).toHaveBeenCalledTimes(2);
+    expect(session.getState().runId).toBe('run_two');
+  });
+
+  it('retains the previous run and unsaved draft on a server save failure', async () => {
+    const sessions = new Map<string, RunSessionStore>();
+    const startRun = vi.fn().mockResolvedValue({ runId: 'previous' });
+    let repo!: CorralRepository;
+    const draft = await mount('route', 1280, (repository, record) => {
+      repo = repository;
+      edit(record, repo, linear('First'));
+      return {
+        mode: 'server',
+        editorSessions: sessions,
+        transport: {
+          startRun,
+          subscribe: () => () => {},
+          getRunDefinition: async () => record.definition,
+        },
+      };
+    });
+    await click(named(document, 'Save and mock test'));
+    expect(startRun.mock.calls[0]?.[0]).toMatchObject({ definitionRevision: 2, mode: 'mock' });
+    const [session] = sessions.values();
+    assert(session);
+    const current = session.getState().projection;
+    assert(current);
+    await act(async () => {
+      session.setState({ projection: { ...current, status: 'succeeded' } });
+      editorWorkingCopy(repo, fixture.record as CorralRecord)
+        .getState()
+        .editor.getState()
+        .setName('Second');
+    });
+    const previous = session.getState();
+    const unsaved = draft();
+    vi.spyOn(repo, 'save').mockRejectedValueOnce(Error('save failed'));
+    await click(named(document, 'Save and mock test'));
+    expect(startRun).toHaveBeenCalledTimes(1);
+    expect(session.getState()).toBe(previous);
+    expect(draft()).toBe(unsaved);
+    expect(document.querySelector('[role="alert"]')?.textContent).toContain('save failed');
+  });
+
   it('waits for pinned references and retries only the failed nested revision', async () => {
     const inner = linear('inner', 'team');
     const reference = inner.definition.nodes.find((n) => n.type === 'team');
@@ -481,14 +801,14 @@ describe('test run validation and recovery in the editor', () => {
       repo.getRevision = read;
       return {};
     });
-    await click(named(document, m.testRun));
+    await prepareRun();
     expect(document.body.textContent).toContain('Checking referenced teams');
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    expect(named(testRun(), 'Start mock test')).toHaveProperty('disabled', true);
     await click(named(testRun(), 'Edit request'));
     expect(shown(sheet())).toBe(true);
     expect(sheet().querySelector('[data-team-brief]')).toBe(document.activeElement);
-    await click(named(document, m.testRun));
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    await prepareRun();
+    expect(named(testRun(), 'Start mock test')).toHaveProperty('disabled', true);
     await act(async () => release(inner.definition));
     await click(named(document, 'Retry'));
     expect(read.mock.calls).toEqual([
@@ -496,7 +816,7 @@ describe('test run validation and recovery in the editor', () => {
       ['leaf', 3],
       ['leaf', 3],
     ]);
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', false);
+    expect(named(testRun(), 'Start mock test')).toHaveProperty('disabled', false);
     expect(outline().textContent).toContain('No problems');
   });
 
@@ -506,8 +826,8 @@ describe('test run validation and recovery in the editor', () => {
       repo.getRevision = vi.fn().mockResolvedValue(null);
       return {};
     });
-    await click(named(document, m.testRun));
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    await prepareRun();
+    expect(named(testRun(), 'Start mock test')).toHaveProperty('disabled', true);
     const ref = [...document.querySelectorAll<HTMLElement>('button')].find((el) =>
       el.textContent?.includes('Release check · r2'),
     );
@@ -519,10 +839,12 @@ describe('test run validation and recovery in the editor', () => {
     expect(named(document, 'Retry')).toBeUndefined();
   });
 
-  it('shares a known model error and opens its problem from the narrow test panel', async () => {
+  it('opens structural problems directly from the header without starting a run', async () => {
+    const startRun = vi.fn();
     await mount('route', 768, (repo, record) => {
       edit(record, repo, linear('unknown-model'));
       return {
+        transport: { startRun },
         models: {
           catalog: async () => [],
           profiles: async () => [
@@ -531,9 +853,9 @@ describe('test run validation and recovery in the editor', () => {
         },
       };
     });
-    await click(named(document, m.testRun));
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
-    await click(named(testRun(), 'View problems'));
+    await click(named(document, 'Mock test'));
+    expect(startRun).not.toHaveBeenCalled();
+    expect(shown(testRun())).toBe(false);
     expect(shown(sheet())).toBe(true);
     expect(sheet().textContent).toContain('model');
     expect(document.activeElement).toBe(sheet().querySelector('h2'));
@@ -557,13 +879,13 @@ describe('test run validation and recovery in the editor', () => {
       });
       return { mode: 'server', transport: { startRun } };
     });
-    await click(named(document, m.testRun));
-    const start = named(testRun(), 'Run');
+    const start = named(document, 'Save and mock test');
     await act(async () => {
       start.click();
       start.click();
     });
     expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(startRun).not.toHaveBeenCalled();
     const editor = editorWorkingCopy(repo, fixture.record as CorralRecord).getState().editor;
     await act(async () => {
       editor.getState().setName('B');
@@ -571,9 +893,16 @@ describe('test run validation and recovery in the editor', () => {
     });
     expect(startRun).not.toHaveBeenCalled();
     expect(editor.getState().draft.definition.name).toBe('B');
-    await click(named(testRun(), 'Run'));
+    expect(document.querySelector('[role="alert"]')?.textContent).toBe(messages.Run.draftChanged);
+    await click(named(document, 'Save and mock test'));
     expect(startRun).toHaveBeenCalledTimes(1);
-    expect(startRun.mock.calls[0]?.[0]).toMatchObject({ definitionRevision: 3 });
+    expect(startRun.mock.calls[0]?.[0]).toMatchObject({
+      corralId: (fixture.record as CorralRecord).corralId,
+      definitionRevision: 3,
+      mode: 'mock',
+    });
+    expect(startRun.mock.calls[0]?.[0]).not.toHaveProperty('definition');
+    expect(named(document, 'Mock test')).toBeTruthy();
   });
 
   it('opens a conversation with the saved check team only after its save succeeds', async () => {
@@ -586,7 +915,11 @@ describe('test run validation and recovery in the editor', () => {
       vi.spyOn(repo, 'createSession');
       return { mode: 'server', transport: { startRun } };
     });
-    await click(named(document, m.testRun));
+    await click(named(document, 'Save and mock test'));
+    expect(shown(testRun())).toBe(true);
+    expect(testRun().textContent).toContain(messages.Run.checksNeedSession);
+    expect(startRun).not.toHaveBeenCalled();
+    expect(repo.save).not.toHaveBeenCalled();
     await click(named(testRun(), 'Open conversation with this team'));
     expect(repo.createSession).not.toHaveBeenCalled();
     expect(fixture.navigate).not.toHaveBeenCalled();
@@ -618,7 +951,7 @@ describe('test run validation and recovery in the editor', () => {
       edit(record, repo, linear('checked', 'check'));
       return { mode: 'server' };
     });
-    await click(named(document, m.testRun));
+    await click(named(document, 'Save and mock test'));
     await click(named(testRun(), 'Open conversation with this team'));
     expect(repository.createSession).not.toHaveBeenCalled();
     expect(fixture.navigate).toHaveBeenCalledWith({
@@ -635,8 +968,8 @@ describe('test run validation and recovery in the editor', () => {
       edit(record, repo, team);
       return {};
     });
-    await click(named(document, m.testRun));
+    await prepareRun();
     expect(testRun().textContent).toContain(messages.Validation.codes.SPAWNS_CAPPED);
-    expect(named(testRun(), 'Run')).toHaveProperty('disabled', false);
+    expect(named(testRun(), 'Start mock test')).toHaveProperty('disabled', false);
   });
 });

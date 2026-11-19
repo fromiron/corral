@@ -1,5 +1,10 @@
 import { z } from 'zod';
-import type { HarnessProfileRevision, HarnessResourceView } from './harness.ts';
+import type { AgentRole, RoleSkillRef } from './definition.ts';
+import type {
+  EffectiveHarnessSnapshot,
+  HarnessProfileRevision,
+  HarnessResourceView,
+} from './harness.ts';
 import { ContentHash, HarnessBindingRef, HarnessProfile, ResourcePath } from './harness.ts';
 import { Identifier } from './ids.ts';
 import { McpUrl, RegisteredMcpServer } from './project-tools.ts';
@@ -38,6 +43,20 @@ export interface HarnessEntryView extends HarnessEntryKey, HarnessManagementStat
 export interface HarnessProfileView extends HarnessProfileRevision, HarnessManagementState {
   usages: { id: string; scope: 'personal' | 'project' | 'role'; name: string; revision: number }[];
 }
+export type HarnessPreviewRole = Pick<AgentRole, 'id' | 'harness' | 'skills'>;
+export interface HarnessPreview {
+  snapshot: EffectiveHarnessSnapshot;
+  sections: { source: 'skill'; name: string; text: string }[];
+  dynamic: boolean;
+}
+export interface RoleSkillProblem {
+  roleId: string;
+  reason: 'unusable_skills' | 'execution_policy_required';
+  entries: (RoleSkillRef & { reason: 'missing' | 'disabled' | 'untrusted' | 'name_conflict' })[];
+}
+export type RoleHarnessPreview =
+  | HarnessPreview
+  | { snapshot: null; problem: RoleSkillProblem | null };
 export const HarnessPublish = z.strictObject({
   operationId: Identifier,
   profileId: Identifier,

@@ -61,6 +61,7 @@ import {
   StartFrom,
   TaskStart,
   TERMINAL_RUN_STATUSES,
+  TeamAssistantRequest,
   TextAttachments,
   WorkspaceTarget,
 } from '@corral/contracts';
@@ -103,6 +104,7 @@ import {
   deleteSessionRecords,
   openDatabase,
   previewSessionDeletion,
+  SqliteAgentLibrary,
   SqliteCorralRepository,
   SqliteHarnessStore,
   SqliteModelAttemptStore,
@@ -153,11 +155,13 @@ import {
   registerEndpoints,
   userConfigDir,
 } from './models/index.ts';
+import type { TeamOperationResult } from './models/registry.ts';
 import { prepareDebugBrowser } from './preview/debug-browser.ts';
 import { registerPreviewRoutes } from './preview/routes.ts';
 import { PreviewService } from './preview/service.ts';
 import { PreviewToolsBroker } from './preview/tools.ts';
 import { PTY_INTERACTIVE_ROUTES, registerTerminalRoutes } from './processes/pty-routes.ts';
+import { registerAgentLibraryRoutes } from './projects/agent-library-routes.ts';
 import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
@@ -483,6 +487,10 @@ async function createCorralServer(
   const corrals = new SqliteCorralRepository(db, {
     clock,
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
+  });
+  const agentLibrary = new SqliteAgentLibrary(db, {
+    clock,
+    newAgentId: () => ids.next('artifact').replace(/^art_/, 'agent_'),
   });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
   let registry: ModelRegistry | null = null;
@@ -1026,6 +1034,7 @@ async function createCorralServer(
     },
   );
   // ── Projects ───────────────────────────────────────────────────────
+  registerAgentLibraryRoutes(app, agentLibrary, parse, fail);
   const projectReply = (reply: FastifyReply, result: ProjectResult, created: boolean) => {
     if (result.ok) return reply.code(created ? 201 : 200).send(result);
     const code: ErrorCode =
@@ -1567,14 +1576,67 @@ async function createCorralServer(
     },
   );
 
-  // ── team drafts ───────────────────────────────────────────────────
-  // One model request for a goal; only a plan that passes the contract comes back.
-  const draftOperations = new Map<
-    string,
-    Promise<Awaited<ReturnType<ModelRegistry['draftTeam']>>>
-  >();
+  // Both team proposal routes share the admission record and its single in-flight request.
+  const teamOperations = new Map<string, Promise<TeamOperationResult>>();
+  const findOperation = db.prepare<[string], { fingerprint: string; result_json: string | null }>(
+    'SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?',
+  );
+  const startOperation = db.prepare(
+    'INSERT INTO model_operations(operation_id, fingerprint) VALUES (?, ?)',
+  );
+  const finishOperation = db.prepare(
+    'UPDATE model_operations SET result_json=? WHERE operation_id=?',
+  );
+  const teamOperation = async (
+    reply: FastifyReply,
+    id: string,
+    fingerprint: string,
+    send: (signal: AbortSignal) => Promise<TeamOperationResult>,
+  ) => {
+    const previous = findOperation.get(id);
+    if (previous && previous.fingerprint !== fingerprint)
+      return fail(reply, 'REVISION_CONFLICT', 'This draft operation belongs to another request.');
+    let work = teamOperations.get(id);
+    if (previous && !previous.result_json && !work)
+      return fail(
+        reply,
+        'REQUEST_OUTCOME_UNKNOWN',
+        'The earlier draft outcome is unconfirmed. It has not been resent.',
+      );
+    let result: TeamOperationResult;
+    if (previous?.result_json) {
+      result = JSON.parse(previous.result_json);
+    } else {
+      if (!work) {
+        startOperation.run(id, fingerprint);
+        const controller = new AbortController();
+        const closed = () => {
+          if (!reply.raw.writableFinished) controller.abort();
+        };
+        reply.raw.once('close', closed);
+        if (reply.raw.destroyed) closed();
+        work = send(controller.signal)
+          .then((value) => {
+            finishOperation.run(JSON.stringify(value), id);
+            return value;
+          })
+          .finally(() => {
+            reply.raw.off('close', closed);
+            teamOperations.delete(id);
+          });
+        teamOperations.set(id, work);
+      }
+      result = await work;
+    }
+    if (!result.ok) return fail(reply, result.code, result.message);
+    return 'plan' in result
+      ? { plan: result.plan, model: result.model }
+      : { reply: result.reply, model: result.model };
+  };
+
   app.post('/api/v1/team-drafts', async (request, reply) => {
-    if (!registry) return noLive(reply);
+    const current = registry;
+    if (!current) return noLive(reply);
     const body = parse(
       z.strictObject({
         goal: z.string().trim().min(1).max(2000),
@@ -1586,53 +1648,21 @@ async function createCorralServer(
     if (!body) return reply;
     const id = body.operationId ?? randomUUID();
     const fingerprint = createHash('sha256').update(body.goal).digest('hex');
-    const previous = db
-      .prepare('SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?')
-      .get(id) as { fingerprint: string; result_json: string | null } | undefined;
-    if (previous && previous.fingerprint !== fingerprint)
-      return fail(reply, 'REVISION_CONFLICT', 'This draft operation belongs to another request.');
-    if (previous && !previous.result_json && !draftOperations.has(id))
-      return fail(
-        reply,
-        'REQUEST_OUTCOME_UNKNOWN',
-        'The earlier draft outcome is unconfirmed. It has not been resent.',
-      );
-    const controller = new AbortController();
-    const closed = () => {
-      if (!reply.raw.writableFinished) controller.abort();
-    };
-    reply.raw.once('close', closed);
-    let result: Awaited<ReturnType<ModelRegistry['draftTeam']>>;
-    try {
-      if (previous?.result_json) result = JSON.parse(previous.result_json);
-      else {
-        let work = draftOperations.get(id);
-        if (!work) {
-          db.prepare('INSERT INTO model_operations(operation_id, fingerprint) VALUES (?, ?)').run(
-            id,
-            fingerprint,
-          );
-          work = registry
-            .draftTeam(body.goal, { id, signal: controller.signal })
-            .then((value) => {
-              db.prepare('UPDATE model_operations SET result_json=? WHERE operation_id=?').run(
-                JSON.stringify(value),
-                id,
-              );
-              return value;
-            })
-            .finally(() => draftOperations.delete(id));
-          draftOperations.set(id, work);
-        }
-        result = await work;
-      }
-    } finally {
-      reply.raw.off('close', closed);
-    }
+    return teamOperation(reply, id, fingerprint, (signal) =>
+      current.draftTeam(body.goal, { id, signal }),
+    );
+  });
 
-    return result.ok
-      ? { plan: result.plan, model: result.model }
-      : fail(reply, result.code, result.message);
+  app.post('/api/v1/team-assistant', async (request, reply) => {
+    const current = registry;
+    if (!current) return noLive(reply);
+    const body = parse(TeamAssistantRequest, request, reply);
+    if (!body) return reply;
+    // Legacy draft fingerprints are bare digests of arbitrary text. Tag the digest, not its input.
+    const fingerprint = `assistant:${createHash('sha256').update(canonicalJson(body)).digest('hex')}`;
+    return teamOperation(reply, body.operationId, fingerprint, (signal) =>
+      current.assistTeam(body, signal),
+    );
   });
 
   // ── runs ───────────────────────────────────────────────────────────────────

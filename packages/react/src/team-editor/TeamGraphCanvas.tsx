@@ -54,6 +54,7 @@ export interface ResultOffer {
 }
 
 export interface TeamGraphCanvasProps {
+  active: boolean;
   resultOffer?: ResultOffer | undefined;
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
@@ -141,7 +142,27 @@ const DASHES: Record<LaidEdge['kind'], string | undefined> = {
 const within = (r: Rect, p: { x: number; y: number }, slack = 0) =>
   p.x >= r.x - slack && p.x <= r.x + r.w + slack && p.y >= r.y - slack && p.y <= r.y + r.h + slack;
 
+/** Edits such as renaming a seat rebuild the layout without moving any card. */
+function sameGeometry(a: ReadonlyMap<string, LaidItem>, b: ReadonlyMap<string, LaidItem>) {
+  if (a.size !== b.size) return false;
+  for (const [id, item] of a) {
+    const next = b.get(id);
+    const r = item.rect;
+    if (
+      !next ||
+      next.kind !== item.kind ||
+      r.x !== next.rect.x ||
+      r.y !== next.rect.y ||
+      r.w !== next.rect.w ||
+      r.h !== next.rect.h
+    )
+      return false;
+  }
+  return true;
+}
+
 export function TeamGraphCanvas({
+  active,
   definition,
   diagnostics,
   selection,
@@ -249,11 +270,36 @@ export function TeamGraphCanvas({
   const lastSelected = selection.nodes.at(-1);
   const view = useRef(viewport);
   view.current = viewport;
+  // Hiding the graph gives its pane zero size, not a new camera position. Only reveal a
+  // different selection/layout on return; a manually panned view can stay off the selection.
+  const revealed = useRef<{
+    id: string | undefined;
+    items: typeof layout.items;
+    inset: number;
+  } | null>(null);
+  const hidden = useRef(false);
+  const measured = viewport !== null;
   useEffect(() => {
     const element = pane.current;
     const viewport = view.current;
     const item = lastSelected ? layout.items.get(lastSelected) : undefined;
-    if (!element || !item || !viewport) return;
+    if (!active || !element?.clientWidth || !element.clientHeight) {
+      hidden.current = true;
+      return;
+    }
+    if (!measured || !viewport) return;
+    const returning = hidden.current;
+    hidden.current = false;
+    const last = revealed.current;
+    revealed.current = { id: lastSelected, items: layout.items, inset: insetRight };
+    if (
+      last &&
+      last.id === lastSelected &&
+      (last.items === layout.items || (returning && sameGeometry(last.items, layout.items))) &&
+      last.inset === insetRight
+    )
+      return;
+    if (!item) return;
     const { x, y, w, h } = item.rect;
     const k = viewport.k;
     const left = x * k + viewport.x;
@@ -269,7 +315,7 @@ export function TeamGraphCanvas({
       dy = element.clientHeight - margin - (top + h * k);
     // Only a new selection or a new layout moves the view; panning by hand never snaps back.
     if (dx || dy) setViewport({ ...viewport, x: viewport.x + dx, y: viewport.y + dy });
-  }, [lastSelected, layout.items, setViewport, pane, insetRight]);
+  }, [active, measured, lastSelected, layout.items, setViewport, pane, insetRight]);
 
   // ── dropping a step from the palette ─────────────────────────────────────
   const [drop, setDrop] = useState<{

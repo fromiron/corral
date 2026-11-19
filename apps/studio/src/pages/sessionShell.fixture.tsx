@@ -2,6 +2,7 @@ import { ApiError } from '@corral/client';
 import type { CorralDefinition, FileDocument, TerminalView } from '@corral/contracts';
 import {
   Coordinator,
+  createKeyValueAgentLibrary,
   createKeyValueCorralRepository,
   InMemoryRunStore,
   InProcessTransport,
@@ -203,8 +204,9 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
     getRunStats: (...args) => inner.getRunStats(...args),
     subscribe: (...args) => inner.subscribe(...args),
   };
+  const clock = { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() };
   const repository = createKeyValueCorralRepository(window.localStorage, {
-    clock: { nowIso: () => new Date().toISOString(), monotonicMs: () => performance.now() },
+    clock,
     newCorralId: () => 'corral_team',
   });
   const project = await repository.createProject({ name: 'Project' });
@@ -245,6 +247,11 @@ export async function createShellWorld(options: ShellWorldOptions = {}): Promise
     harnesses: null,
     live: false,
     repository,
+    agents: createKeyValueAgentLibrary(window.localStorage, {
+      projects: repository,
+      clock,
+      newAgentId: () => `agent_${crypto.randomUUID()}`,
+    }),
     transport,
     readHistory: async () => {
       throw new Error('no history in tests');

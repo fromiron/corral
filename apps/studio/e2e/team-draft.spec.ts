@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openLibrary, teamNode } from './workbench.ts';
+import { openFlowGraph, openLibrary, openTestRun, teamNode } from './workbench.ts';
 
 test('a local security review suggestion has specific roles and a short name before saving', async ({
   page,
@@ -35,6 +35,7 @@ test('a local security review suggestion has specific roles and a short name bef
   await expect(
     page.getByRole('heading', { level: 1, name: 'Security PR review', exact: true }),
   ).toBeVisible();
+  await openFlowGraph(page);
   await expect(page.getByRole('application', { name: 'Corral graph' })).toContainText(
     'Security reviewer',
   );
@@ -57,6 +58,7 @@ test('the blank team keeps its request and lets you edit it from the narrow test
   await form.getByRole('button', { name: 'Create and edit' }).click();
   await expect(page).toHaveURL(/\/edit$/);
 
+  await openFlowGraph(page);
   await page.getByRole('button', { name: 'Add the first agent', exact: true }).click();
   await page
     .getByRole('button', { name: 'Use this result as the final output', exact: true })
@@ -68,8 +70,7 @@ test('the blank team keeps its request and lets you edit it from the narrow test
   await page.reload();
 
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.getByRole('button', { name: 'Test run', exact: true }).click();
-  const run = page.getByRole('complementary', { name: 'Test run', exact: true });
+  const run = await openTestRun(page);
   await expect(run.getByText('Compare build logs', { exact: true })).toBeVisible();
   await run.getByRole('button', { name: 'Edit request', exact: true }).click();
   const teamSettings = page.getByRole('complementary', { name: 'Settings', exact: true });
@@ -80,7 +81,7 @@ test('the blank team keeps its request and lets you edit it from the narrow test
     'Include timestamps',
   );
   await request.fill('Compare test logs');
-  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await openTestRun(page);
   await expect(run.getByText('Compare test logs', { exact: true })).toBeVisible();
   await expect(save).toBeEnabled();
 });
@@ -103,6 +104,7 @@ test('a local goal draft saves opt-in artifact review as a shared Outrider setti
   await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.reload();
+  await openFlowGraph(page);
   await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
   await expect(page.getByRole('switch', { name: 'Artifact review', exact: true })).toBeChecked();
 });
@@ -128,6 +130,7 @@ test('a goal requiring review confirms the producer before adding a gate to the 
   await expect(page).toHaveURL(/\/edit$/);
   await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
   await page.reload();
+  await openFlowGraph(page);
   await teamNode(page, 'output').click();
   await expect(page.getByRole('switch', { name: 'Submit after review passes' })).toBeChecked();
 });

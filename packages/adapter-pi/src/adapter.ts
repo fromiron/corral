@@ -6,9 +6,11 @@ import {
   type AgentSettlement,
   type AgentStartInput,
   type DeliveredDirective,
+  EffectiveHarnessSnapshot,
   FILE_TOOLS,
   type ModelProfileSnapshot,
   ModelRequestRecord,
+  ROLE_SKILLS_MINIMAL_BINDING,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
 import type { EndpointSpec } from './endpoint.ts';
@@ -60,13 +62,16 @@ export class PiAgentAdapter implements AgentAdapter {
 
   async start(input: AgentStartInput, host: AgentHost): Promise<AgentHandle> {
     let resources: SdkResources | undefined;
+    const binding =
+      input.role.harness ??
+      (input.role.skills !== undefined ? ROLE_SKILLS_MINIMAL_BINDING : undefined);
     // An advisor starts without its role's work style (features/advisor.md, 계약), so it runs on
     // the core worker only; one handed a work style is a host error, not an SDK execution.
-    if (input.assignment.kind === 'advisor' && (input.role.harness || input.harness))
+    if (input.assignment.kind === 'advisor' && (binding || input.harness))
       throw new Error('an advisor runs without a work style');
     if (input.assignment.kind === 'advisor' && !host.nextReview)
       throw new Error('the host gives this advisor no reviews');
-    if (input.role.harness) {
+    if (binding) {
       if (
         !input.harness ||
         !this.options.spawnSdk ||
@@ -75,8 +80,10 @@ export class PiAgentAdapter implements AgentAdapter {
         !host.pendingDirectives ||
         !host.beginNativeTool ||
         !host.finishNativeTool ||
-        input.harness.binding.profileId !== input.role.harness.profileId ||
-        input.harness.binding.revision !== input.role.harness.revision
+        !EffectiveHarnessSnapshot.safeParse(input.harness).success ||
+        input.harness.binding.profileId !== binding.profileId ||
+        input.harness.binding.revision !== binding.revision ||
+        (!input.role.harness && input.harness.policy !== 'strict')
       )
         throw new Error('the harness runtime is unavailable or unresolved');
       try {
@@ -331,6 +338,7 @@ class WorkerExecution {
           ...(role.imageProfile ? { imageProfile: role.imageProfile } : {}),
           ...(role.answer ? { answer: role.answer } : {}),
         },
+        ...(this.input.stepInstruction ? { stepInstruction: this.input.stepInstruction } : {}),
         inputs: this.input.inputs.map(({ name, artifactVersionId, text }) => ({
           name,
           artifactVersionId,

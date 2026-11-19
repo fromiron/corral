@@ -117,6 +117,74 @@ describeTransportContract('HTTP + SSE against the local server', async (agents) 
   };
 });
 
+describe('project agent library routes', () => {
+  it('guards project originals and writes by session and CSRF', async () => {
+    const server = await start();
+    const url = `${server.url}/api/v1/projects/default/agents`;
+    expect((await fetch(url)).status).toBe(401);
+    const { cookie, call } = await browser(server);
+    const denied = await fetch(url, {
+      method: 'POST',
+      headers: { cookie, origin: server.url, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe('ORIGIN_REJECTED');
+    expect(await (await call(url)).json()).toEqual([]);
+  });
+
+  it('validates, creates, replays, reads and patches only in the owning project', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const projects = `${server.url}/api/v1/projects`;
+    const url = `${projects}/default/agents`;
+    const write = (path: string, method: string, body: object) =>
+      call(path, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const role = {
+      name: 'Researcher',
+      prompt: 'Investigate.',
+      modelProfile: 'model-a',
+      outputContract: 'notes',
+      allowedWorkTools: [],
+      allowedCollaborationTools: [],
+    };
+    const create = { operationId: 'create_one', role };
+    const invalid = await write(url, 'POST', { ...create, role: { ...role, id: 'team_role' } });
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.code).toBe('SCHEMA_INVALID');
+    const response = await write(url, 'POST', create);
+    expect(response.status).toBe(201);
+    const first = await response.json();
+    expect(first).toMatchObject({ revision: 1, role, projectId: 'default' });
+    expect(await (await write(url, 'POST', create)).json()).toEqual(first);
+    const conflict = await write(url, 'POST', { ...create, role: { ...role, name: 'Different' } });
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error.code).toBe('IDEMPOTENCY_CONFLICT');
+    const path = `${url}/${first.agentId}`;
+    expect(await (await call(path)).json()).toEqual(first);
+    const patch = { expectedRevision: 1, role: { ...role, name: 'Editor' } };
+    const second = await (await write(path, 'PATCH', patch)).json();
+    expect(second).toMatchObject({ revision: 2, role: patch.role });
+    expect(await (await call(url)).json()).toEqual([second]);
+    const stale = await write(path, 'PATCH', { expectedRevision: 1, archived: true });
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error.code).toBe('REVISION_CONFLICT');
+    expect((await write(path, 'PATCH', { expectedRevision: 2 })).status).toBe(400);
+
+    const other = await (await write(projects, 'POST', { name: 'Other' })).json();
+    const outside = `${projects}/${other.projectId}/agents/${first.agentId}`;
+    for (const refusal of [await call(outside), await write(outside, 'PATCH', patch)]) {
+      expect(refusal.status).toBe(404);
+      expect((await refusal.json()).error.code).toBe('TARGET_NOT_FOUND');
+    }
+    expect(await (await call(path)).json()).toEqual(second);
+  });
+});
+
 describe('local security boundary', () => {
   it('refuses to listen anywhere but the loopback interface', async () => {
     await expect(

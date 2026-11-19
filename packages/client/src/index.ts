@@ -209,8 +209,8 @@ import {
   CommandError,
   type ConversationSource,
   type CorralDefinition,
+  type CreateLibraryAgent,
   type CreateRunRequest,
-  type EffectiveHarnessSnapshot,
   type ErrorCode,
   type HarnessBindingRef,
   type HarnessDefault,
@@ -218,12 +218,15 @@ import {
   type HarnessEntryKey,
   type HarnessEntryView,
   type HarnessManagementState,
+  type HarnessPreview,
+  type HarnessPreviewRole,
   type HarnessProfile,
   type HarnessProfileRevision,
   type HarnessProfileView,
   type HarnessPublish,
   type HarnessResource,
   type HarnessResourceView,
+  LibraryAgent,
   type LspProposal,
   type LspProposalSummary,
   type ManagedHook,
@@ -234,17 +237,23 @@ import {
   type RegisteredCheck,
   type RegisteredMcpServer,
   type ReviewRecipeRevision,
+  type RoleHarnessPreview,
   type RunCommand,
   RunEvent,
   type RunReference,
   type StartFrom,
   type StartRunRequest,
   type StreamFrame,
+  type TeamAssistantRequest,
+  type TeamAssistantResponse,
   type TeamPlan,
   TerminalStreamMessage,
+  type UpdateLibraryAgent,
   type VerificationReport,
 } from '@corral/contracts';
 import type {
+  AgentLibrary,
+  AgentLibraryResult,
   AutoStartResult,
   CorralRecord,
   CorralRepository,
@@ -1194,6 +1203,79 @@ export class TerminalsApi {
   }
 }
 
+const libraryAgentList = LibraryAgent.array();
+
+function libraryAgentPath(projectId: string, agentId?: string): string {
+  const collection = `/projects/${encodeURIComponent(projectId)}/agents`;
+  return agentId === undefined ? collection : `${collection}/${encodeURIComponent(agentId)}`;
+}
+
+export class RestAgentLibrary implements AgentLibrary {
+  private readonly http: Http;
+
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+
+  async list(projectId: string): Promise<LibraryAgent[]> {
+    try {
+      return libraryAgentList.parse(await this.http.json(libraryAgentPath(projectId)));
+    } catch {
+      throw new Error('Could not read the agent library.');
+    }
+  }
+
+  async get(projectId: string, agentId: string): Promise<LibraryAgent | null> {
+    try {
+      return LibraryAgent.parse(await this.http.json(libraryAgentPath(projectId, agentId)));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw new Error('Could not read the library agent.');
+    }
+  }
+
+  create(projectId: string, input: CreateLibraryAgent): Promise<AgentLibraryResult> {
+    return this.write(libraryAgentPath(projectId), 'POST', input);
+  }
+
+  update(
+    projectId: string,
+    agentId: string,
+    change: UpdateLibraryAgent,
+  ): Promise<AgentLibraryResult> {
+    return this.write(libraryAgentPath(projectId, agentId), 'PATCH', change);
+  }
+
+  private async write(
+    path: string,
+    method: 'POST' | 'PATCH',
+    input: CreateLibraryAgent | UpdateLibraryAgent,
+  ): Promise<AgentLibraryResult> {
+    try {
+      const response = await this.http.request(path, { method, body: JSON.stringify(input) });
+      if (response.ok) return { ok: true, agent: LibraryAgent.parse(await response.json()) };
+      if (response.status === 400)
+        return { ok: false, error: 'invalid', message: 'Invalid agent library request.' };
+      if (response.status === 404)
+        return { ok: false, error: 'not_found', message: 'Project or agent not found.' };
+      if (response.status === 409) {
+        const { code } = await apiError(response);
+        if (code === 'REVISION_CONFLICT')
+          return { ok: false, error: 'revision_conflict', message: 'The agent revision changed.' };
+        if (code === 'IDEMPOTENCY_CONFLICT')
+          return {
+            ok: false,
+            error: 'operation_conflict',
+            message: 'The operation ID was already used for a different request.',
+          };
+      }
+    } catch {
+      // Transport and decode failures can contain private request or response data.
+    }
+    return { ok: false, error: 'storage_unavailable', message: 'Agent library unavailable.' };
+  }
+}
+
 // ── Corral repository ────────────────────────────────────────────────────────
 
 export class RestCorralRepository implements CorralRepository {
@@ -1767,6 +1849,14 @@ export class ModelsApi {
     });
   }
 
+  assistTeam(request: TeamAssistantRequest, signal?: AbortSignal): Promise<TeamAssistantResponse> {
+    return this.http.json('/team-assistant', {
+      method: 'POST',
+      signal,
+      body: JSON.stringify(request),
+    });
+  }
+
   /**
    * Fetches an endpoint's `/models` again from the saved address. The revision is the config the
    * person is looking at; a changed config answers REVISION_CONFLICT and sends nothing.
@@ -1793,11 +1883,7 @@ export class ModelsApi {
 
 // ── work folders and file changes ──────────────────────────────────
 
-export interface HarnessPreview {
-  snapshot: EffectiveHarnessSnapshot;
-  sections: { source: 'skill'; name: string; text: string }[];
-  dynamic: boolean;
-}
+export type { HarnessPreview, RoleHarnessPreview } from '@corral/contracts';
 
 export interface McpProbeResult {
   operationId: string;
@@ -2192,10 +2278,24 @@ export class HarnessApi {
     binding: HarnessBindingRef,
     projectId: string,
     runOverride?: HarnessBindingRef,
-  ): Promise<HarnessPreview> {
+  ): Promise<HarnessPreview>;
+  preview(
+    role: HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<RoleHarnessPreview>;
+  preview(
+    input: HarnessBindingRef | HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<RoleHarnessPreview> {
+    const selection =
+      'profileId' in input
+        ? { binding: input }
+        : { roleId: input.id, binding: input.harness, skills: input.skills };
     return this.http.json('/harness/preview', {
       method: 'POST',
-      body: JSON.stringify({ binding, projectId, ...(runOverride ? { runOverride } : {}) }),
+      body: JSON.stringify({ ...selection, projectId, runOverride }),
     });
   }
   default(scope: HarnessDefault['scope'], scopeId: string): Promise<HarnessDefault> {

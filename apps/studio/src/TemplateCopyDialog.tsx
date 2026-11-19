@@ -10,6 +10,7 @@ import {
   Input,
   Textarea,
 } from '@corral/react/design-kit';
+import { useNavigate } from '@tanstack/react-router';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from './services.tsx';
@@ -19,22 +20,22 @@ import {
   useTemplateText,
   type WorkspaceTemplateId,
 } from './templates.ts';
+import { openNewTeam } from './workbench/editorView.ts';
 
 export function TemplateCopyDialog({
   template,
   projectId,
   corrals,
-  onSaved,
   onClose,
 }: {
   template: WorkspaceTemplateId;
   projectId: string;
   corrals: CorralSummary[];
-  onSaved(corralId: string): Promise<void>;
   onClose(): void;
 }) {
   const t = useTranslations('Workspace');
   const { repository } = useServices();
+  const navigate = useNavigate();
   const text = useTemplateText();
   const blank = template === 'blank';
   const [brief, setBrief] = useState('');
@@ -63,7 +64,7 @@ export function TemplateCopyDialog({
         setError(result.message);
         return;
       }
-      await onSaved(result.corralId);
+      await openNewTeam(navigate, result.corralId);
       onClose();
     } catch (failure) {
       setError(failure instanceof Error ? failure.message : String(failure));

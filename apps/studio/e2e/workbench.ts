@@ -22,7 +22,10 @@ type SearchLabels = {
  * person moving around does (a browser demo's runs and its `?delay` last until a reload); a
  * window without the sidebar loads the view's address instead.
  */
-export async function openLibrary(page: Page, view: 'Teams' | 'Templates' | 'Resources') {
+export async function openLibrary(
+  page: Page,
+  view: 'Teams' | 'Agents' | 'Templates' | 'Resources',
+) {
   const link = page.getByTestId('app-sidebar').getByRole('link', { name: 'Library', exact: true });
   const opener = page.getByRole('button', { name: 'Show the sidebar', exact: true });
   await expect(link.or(opener).first()).toBeVisible({ timeout: 20_000 });
@@ -63,6 +66,10 @@ export async function newTeam(page: Page) {
     .fill('Say which inputs were used.');
   await page.getByRole('button', { name: 'Create and edit', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await expect(page.getByRole('tab', { name: en.Editor.composition, exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 }
 
 /** The library's saved teams of the chosen project: the table's rows, each with its team. */
@@ -747,6 +754,12 @@ export function lastRunSucceeded(page: Page) {
   return page.locator('[data-testid="activity-bar"][data-run="succeeded"]:not([data-live])');
 }
 
+/** Canvas tasks choose the graph explicitly, independently of a team's remembered view. */
+export async function openFlowGraph(page: Page) {
+  const tab = page.getByRole('tab', { name: en.Editor.graph, exact: true });
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+}
+
 /** The team editor's canvas and one of its steps. */
 export const teamCanvas = (page: Page) => page.locator('[data-team-canvas]');
 export const teamNode = (page: Page, nodeId: string) =>
@@ -754,13 +767,31 @@ export const teamNode = (page: Page, nodeId: string) =>
 /** The editor's settings sheet for the selection or the team. */
 export const editorSettings = (page: Page) => page.getByRole('complementary', { name: 'Settings' });
 
-/**
- * In a new team: an agent and an output after it. With the agent selected, the output is placed
- * after it and connected.
- */
-export async function addAgentAndOutput(page: Page) {
+/** Reveals a selected agent's model, permissions, execution policy and call links. */
+export async function openSeatAdvanced(page: Page) {
+  const advanced = editorSettings(page).getByRole('button', {
+    name: en.Inspector.advanced,
+    exact: true,
+  });
+  if ((await advanced.getAttribute('aria-expanded')) !== 'true') await advanced.click();
+}
+
+/** Add an ordinary seat with a known name and default permissions through the graph picker. */
+export async function addCustomAgent(page: Page, name = 'Agent 1') {
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Create your own' }).click();
+  await dialog.getByLabel('Name', { exact: true }).fill(name);
+  await dialog
+    .getByLabel('Task', { exact: true })
+    .fill('Review the request and submit the result.');
+  await dialog.getByRole('button', { name: 'Add agent', exact: true }).click();
+}
+
+/** The first agent in an empty team brings its connected final result. */
+export async function addAgentAndOutput(page: Page) {
+  await openFlowGraph(page);
+  await addCustomAgent(page);
   await expect(teamCanvas(page).locator('[data-edge]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
 }
@@ -785,22 +816,26 @@ export async function expectTeamSaved(page: Page, version?: number) {
     await expect(page.getByTestId('revisions')).toHaveText(`Version ${version}`);
 }
 
-/** Opens the editor's test-run panel, which may already be open, and returns it. */
+/** Opens the editor's preparation panel without starting or changing a run. */
 export async function openTestRun(page: Page) {
-  const open = page.getByRole('button', { name: 'Test run', exact: true });
-  const close = page.getByRole('button', { name: 'Close test run', exact: true });
-  // The first page of a cold dev server can take a while.
-  await expect(open.or(close)).toBeVisible({ timeout: 20_000 });
-  if (await open.isVisible()) await open.click();
+  const options = page.getByRole('button', { name: 'Run options', exact: true });
+  await expect(options).toBeVisible({ timeout: 20_000 });
   const panel = page.getByRole('complementary', { name: 'Test run' });
+  if (!(await panel.isVisible())) {
+    await options.click();
+    await page.getByRole('menuitem', { name: 'Prepare a run', exact: true }).click();
+  }
   await expect(panel).toBeVisible();
   return panel;
 }
 
-/** Starts a test run from the editor's run panel. */
+/** Starts a mock test with one press (saving the draft first in server mode). */
 export async function startTestRun(page: Page) {
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  const start = page.getByRole('button', { name: /^(Mock test|Save and mock test)$/ });
+  await expect(start).toBeVisible({ timeout: 20_000 });
+  await start.click();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  await expect(panel).toBeVisible();
   return panel;
 }
 

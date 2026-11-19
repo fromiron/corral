@@ -1001,11 +1001,12 @@ function isTaskOutputSource(node: CorralNode | undefined): boolean {
   );
 }
 
-/** The output picker also works on drafts with missing bindings, using the compiler's single-pass order. */
-export function outputSources(definition: CorralDefinition, outputId: string): CorralNode[] {
+/** Producers that run before this consumer, even on drafts with missing bindings. */
+export function outputSources(definition: CorralDefinition, consumerId: string): CorralNode[] {
   const context = new Context(definition);
-  if (context.nodes.get(outputId)?.type !== 'output') return [];
-  const before = executionOrder(context)?.ancestors.get(outputId);
+  const consumer = context.nodes.get(consumerId);
+  if (!isWorkAgent(consumer) && consumer?.type !== 'output') return [];
+  const before = executionOrder(context)?.ancestors.get(consumerId);
   return definition.nodes.filter((node) => before?.has(node.id) && isTaskOutputSource(node));
 }
 

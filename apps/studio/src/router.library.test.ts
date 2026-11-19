@@ -39,3 +39,24 @@ it('opens "draft a team from a goal" in the library templates for that project',
   expect(router.state.location.pathname).toBe('/library/templates');
   expect(router.state.location.search).toEqual({ project: 'project_a', draft: true });
 });
+
+it('opens the skills view with the project and return destination', async () => {
+  const { router } = await open(['/library/skills?project=a&returnTo=%2Fsessions%2Fs']);
+  expect(router.state.matches.at(-1)?.routeId).toBe('/library/skills');
+  expect(router.state.matches.at(-1)?.search).toMatchObject({
+    project: 'a',
+    returnTo: '/sessions/s',
+  });
+});
+
+it('opens an agent original within the given project and return context', async () => {
+  const { router } = await open([
+    '/library/agents?project=a&agent=writer&returnTo=%2Fsessions%2Fs',
+  ]);
+  expect(router.state.matches.at(-1)?.routeId).toBe('/library/agents');
+  expect(router.state.matches.at(-1)?.search).toMatchObject({
+    project: 'a',
+    agent: 'writer',
+    returnTo: '/sessions/s',
+  });
+});

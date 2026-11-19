@@ -93,7 +93,7 @@ export const inboxRoute = createRoute({
   component: InboxPage,
 });
 
-/** The library: saved teams, templates and resources, filtered by `?project=`. */
+/** Library views share the project and the address to return to. */
 export const libraryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/library',
@@ -107,6 +107,18 @@ export const libraryTeamsRoute = createRoute({
   path: '/library/teams',
   validateSearch: validateLibrarySearch,
   component: () => <LibraryPage view="teams" />,
+});
+const libraryAgentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/agents',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="agents" />,
+});
+const librarySkillsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/skills',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="skills" />,
 });
 export const libraryTemplatesRoute = createRoute({
   getParentRoute: () => rootRoute,
@@ -471,6 +483,8 @@ export function createStudioRouter(
       inboxRoute,
       libraryRoute,
       libraryTeamsRoute,
+      libraryAgentsRoute,
+      librarySkillsRoute,
       libraryTemplatesRoute,
       libraryResourcesRoute,
       previewRoute,

@@ -155,6 +155,25 @@ describe('team editor: stacked', () => {
       expect(follows(regions[i - 1] as Element, regions[i] as Element)).toBe(true);
   });
 
+  it('drops the Agent tile as a default step without opening the picker or adding an Output', () => {
+    const before = emptyDraft('drag-agent', 'Drag agent');
+    const { editor } = renderEditor(before, true);
+    const agent = paletteStep('agent');
+    const data = transfer();
+    const point = { x: 320, y: 160 };
+    drag('dragStart', agent, data);
+    drag('dragOver', canvas(), data, point);
+    drag('drop', canvas(), data, point);
+    drag('dragEnd', agent, data);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(before, 'agent', { kind: 'empty' })).draft,
+    );
+    expect(editor.getState().draft.definition.nodes.map((node) => node.type)).toEqual(['agent']);
+    editor.getState().undo();
+    expect(editor.getState().draft).toBe(before);
+  });
+
   it('puts a palette step dropped on the connection between A and B between them', () => {
     const { editor } = renderEditor(team(), true);
     expect(layoutOf()).toBe('stacked');
@@ -363,7 +382,7 @@ describe('team editor: the wheel over the canvas', () => {
 describe('team editor: settings opened from outside the canvas', () => {
   /** The editor's own scrolling, watched; jsdom does not scroll. */
   function watchScroll() {
-    const root = document.querySelector('[data-layout]') as HTMLElement;
+    const root = document.querySelector('[data-graph-scroll]') as HTMLElement;
     const scrollTo = vi.fn();
     root.scrollTo = scrollTo as unknown as typeof root.scrollTo;
     return scrollTo;

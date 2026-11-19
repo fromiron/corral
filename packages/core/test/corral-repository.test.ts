@@ -2,8 +2,15 @@ import { CorralDefinition } from '@corral/contracts';
 import { FakeClock, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
-import { createKeyValueCorralRepository, type KeyValueStore } from '../src/index.ts';
-import { describeCorralRepositoryContract } from '../src/testing/index.ts';
+import {
+  createKeyValueAgentLibrary,
+  createKeyValueCorralRepository,
+  type KeyValueStore,
+} from '../src/index.ts';
+import {
+  describeAgentLibraryContract,
+  describeCorralRepositoryContract,
+} from '../src/testing/index.ts';
 
 class MapStore implements KeyValueStore {
   readonly data = new Map<string, string>();
@@ -32,6 +39,47 @@ function setup() {
 }
 
 describeCorralRepositoryContract('key-value (browser)', () => setup().repo);
+
+function librarySetup() {
+  const { store, repo: projects } = setup();
+  const clock = new FakeClock();
+  let id = 0;
+  const options = { clock, projects, newAgentId: () => `agent_${++id}` };
+  return { agents: createKeyValueAgentLibrary(store, options), store, options, clock, projects };
+}
+
+describeAgentLibraryContract('key-value (browser)', librarySetup);
+
+it('keeps originals on the same browser store across instances and refuses broken data', async () => {
+  const { agents, store, options } = librarySetup();
+  const role = {
+    name: 'Author',
+    prompt: 'Write.',
+    modelProfile: 'model-a',
+    outputContract: 'draft' as const,
+    allowedWorkTools: [],
+    allowedCollaborationTools: [],
+  };
+  const input = { role, operationId: 'create' };
+  const first = await agents.create('default', input);
+  if (!first.ok) throw new Error(first.message);
+  const other = createKeyValueAgentLibrary(store, options);
+  expect(await other.create('default', input)).toEqual(first);
+  expect(await other.get('default', first.agent.agentId)).toEqual(first.agent);
+  const isolated = createKeyValueAgentLibrary(new MapStore(), options);
+  expect(await isolated.list('default')).toEqual([]);
+
+  const [key] = [...store.data.keys()].filter((k) => k.startsWith('corral:v1:agent'));
+  if (!key) throw new Error('missing project library');
+  store.setItem(key, '{broken JSON with private text');
+  await expect(other.list('default')).rejects.toThrow('cannot be read');
+  await expect(other.get('default', first.agent.agentId)).rejects.toThrow('cannot be read');
+  expect(await other.create('default', input)).toMatchObject({
+    ok: false,
+    error: 'storage_unavailable',
+  });
+  expect(store.getItem(key)).toBe('{broken JSON with private text');
+});
 
 describe('key-value corral repository', () => {
   it('a failed storage write preserves the pending title and retry records one request', async () => {

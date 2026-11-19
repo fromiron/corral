@@ -6,6 +6,7 @@ import {
   addAgentAndOutput,
   modelSettingsTab,
   newTeam,
+  openFlowGraph,
   openLibrary,
   openLibraryTeams,
   openTestRun,
@@ -165,7 +166,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
 
   // Sign in through the API the Settings page uses (as this tab), then run again.
@@ -193,7 +194,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
     )
     .toBe(true);
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   expect(corral.fake?.seen.tokens.every((token) => token === 'access-1-secret')).toBe(true);
@@ -227,7 +228,7 @@ test.describe('a borrowed Codex CLI login', () => {
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
     await openTestRun(page);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
     expect(corral.fake?.seen.tokens.length).toBeGreaterThan(0);
     expect(corral.fake?.seen.tokens.every((token) => token === FAKE_CODEX_ACCESS)).toBe(true);
@@ -266,7 +267,7 @@ test('an API key typed under Models runs live, is never shown, and can be remove
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
   expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
 
@@ -318,7 +319,7 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
     await openTestRun(page);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
     expect(corral.endpoint?.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
     expect(corral.errors).toEqual([]);
@@ -371,6 +372,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
   await dialog.getByRole('button', { name: 'Open in editor' }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await openFlowGraph(page);
   await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);

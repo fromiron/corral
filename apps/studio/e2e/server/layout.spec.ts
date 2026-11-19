@@ -48,7 +48,7 @@ test('#75 the archived resources filter is named by its visible text', async ({ 
       '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.',
     );
     await corral.open('/settings/skills');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
     await page.getByRole('option', { name: 'Import folder', exact: true }).click();
     await page.getByLabel('Resource folder', { exact: true }).fill(source);
@@ -278,7 +278,7 @@ test('#88 a settings address opens the same settings dialog over work, and closi
   // Entering by address shows the dialog form, not a separate page with its own back rules.
   await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=skills/);
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await expect(dialog.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Create skill', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).not.toHaveURL(/settings/);

@@ -6,6 +6,7 @@ import {
   type CorralDefinition,
   CorralDefinitionDraft,
   type CorralNode,
+  canonicalJson,
   DEFAULT_LIMITS,
   type DecisionNode,
   FILE_TOOLS,
@@ -14,8 +15,10 @@ import {
   type LoopNode,
   type ObserverAgentNode,
   type OutputContract,
+  type RoleSkillRef,
   type SharedOutrider,
   type TargetPort,
+  type WorkAgentNode,
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
@@ -108,6 +111,7 @@ export interface NodeChange {
   modelProfile?: string;
   reasoning?: AgentRole['reasoning'] | null;
   harness?: AgentRole['harness'] | null;
+  skills?: RoleSkillRef[] | null;
   mode?: Extract<DecisionNode, { rule: unknown }>['mode'];
   maxIterations?: number;
   reviewRecipe?: LoopNode['reviewRecipe'] | null;
@@ -183,15 +187,33 @@ export function nextId(
   return { id, counters: { ...draft.counters, [prefix]: n } };
 }
 
-function newRole(id: string, name: string): AgentRole {
+export function defaultAgentRole(
+  name: string,
+  prompt = DEFAULT_AGENT_PROMPT,
+): Omit<AgentRole, 'id' | 'origin'> {
   return {
-    id,
     name,
-    prompt: DEFAULT_AGENT_PROMPT,
+    prompt,
     modelProfile: 'model-a',
     allowedWorkTools: ['write_artifact'],
     allowedCollaborationTools: ['submit_result', 'ask_user', 'update_plan'],
     outputContract: 'text',
+  };
+}
+
+function newRole(id: string, name: string): AgentRole {
+  return { id, ...defaultAgentRole(name) };
+}
+
+export function newWorkAgent(id: string, role: AgentRole): WorkAgentNode {
+  return {
+    id,
+    type: 'agent',
+    label: role.name,
+    roleId: role.id,
+    invocation: 'scheduled',
+    inputBindings: [{ kind: 'run_input', name: 'brief' }],
+    outputName: 'text',
   };
 }
 
@@ -208,15 +230,7 @@ export function addNode(
     case 'agent': {
       const role = newRole(`${id}_role`, `Agent ${index}`);
       roles.push(role);
-      node = {
-        id,
-        type: 'agent',
-        label: `Agent ${index}`,
-        roleId: role.id,
-        invocation: 'scheduled',
-        inputBindings: [{ kind: 'run_input', name: 'brief' }],
-        outputName: 'text',
-      };
+      node = newWorkAgent(id, role);
       break;
     }
     case 'decision':
@@ -391,6 +405,7 @@ function changeInvocation(
       // read tools carry over.
       const {
         harness: _harness,
+        skills: _skills,
         imageProfile: _image,
         editingMode: _editing,
         answer: _answer,
@@ -449,6 +464,16 @@ export function duplicateNode(
 
 // ── definition changes ───────────────────────────────────────────────────────
 
+/** Object fields on parsed roles (reasoning, references and tool lists) compare by JSON value. */
+export function sameRoleField(left: AgentRole[keyof AgentRole], right: AgentRole[keyof AgentRole]) {
+  return (
+    left === right ||
+    (typeof left === 'object' &&
+      typeof right === 'object' &&
+      canonicalJson(left) === canonicalJson(right))
+  );
+}
+
 export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChange): EditorDraft {
   const node = findNode(draft, nodeId);
   if (!node) return draft;
@@ -473,11 +498,10 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     return updateNode(draft, nodeId, Object.fromEntries(kept) as NodeChange);
   }
   let { nodes, roles, controlEdges, capabilityLinks } = draft.definition;
-  const setNode = (next: CorralNode) => {
-    nodes = nodes.map((n) => (n.id === nodeId ? next : n));
-  };
-  let next: CorralNode = { ...node };
-  if (change.label !== undefined) next = { ...next, label: change.label };
+  let counters = draft.counters;
+  let next = node;
+  if (change.label !== undefined && change.label !== node.label)
+    next = { ...node, label: change.label };
   if (change.inputBindings && next.type === 'team') {
     // Only a referenced Team takes inputs; an empty list leaves none.
     const { inputBindings: _was, ...team } = next;
@@ -486,80 +510,71 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   } else if (change.inputBindings && 'inputBindings' in next)
     next = { ...next, inputBindings: change.inputBindings };
 
-  if (next.type === 'agent') {
-    const roleId = next.roleId;
+  const role = node.type === 'agent' ? roles.find((r) => r.id === node.roleId) : undefined;
+  if (next.type === 'agent' && role) {
     const roleChange: Partial<AgentRole> = {};
-    if (change.teamPlanOwner)
-      roleChange.allowedCollaborationTools = [
-        ...new Set([
-          ...(roles.find((r) => r.id === roleId)?.allowedCollaborationTools ?? []),
-          'update_plan' as const,
-        ]),
-      ];
+    if (change.teamPlanOwner && !role.allowedCollaborationTools.includes('update_plan'))
+      roleChange.allowedCollaborationTools = [...role.allowedCollaborationTools, 'update_plan'];
     if (change.prompt !== undefined) roleChange.prompt = change.prompt;
     if (change.outputContract) roleChange.outputContract = change.outputContract;
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
-    if (change.harness) roleChange.harness = change.harness;
-    if (change.reasoning) roleChange.reasoning = change.reasoning;
+    if (change.harness !== undefined) roleChange.harness = change.harness ?? undefined;
+    if (change.reasoning !== undefined) roleChange.reasoning = change.reasoning ?? undefined;
     if (change.editingMode) roleChange.editingMode = change.editingMode;
+    if (change.skills) {
+      const seen = new Set<string>();
+      roleChange.skills = change.skills.filter(({ resourceHash, entry }) => {
+        const key = `${resourceHash}:${entry}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+    } else if (change.skills === null) roleChange.skills = undefined;
     if (change.fileTools !== undefined) {
-      const current = roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
-      const others = current.filter((tool) => !(FILE_TOOLS as readonly string[]).includes(tool));
-      roleChange.allowedWorkTools = change.fileTools ? [...others, ...FILE_TOOLS] : others;
-    }
-    if (change.runCommand !== undefined) {
-      const current =
-        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
-      const others = current.filter((tool) => tool !== 'run_command');
-      roleChange.allowedWorkTools = change.runCommand ? [...others, 'run_command'] : others;
+      if (change.fileTools) {
+        const missing = FILE_TOOLS.filter((tool) => !role.allowedWorkTools.includes(tool));
+        if (missing.length) roleChange.allowedWorkTools = [...role.allowedWorkTools, ...missing];
+      } else {
+        roleChange.allowedWorkTools = role.allowedWorkTools.filter(
+          (tool) => !(FILE_TOOLS as readonly string[]).includes(tool),
+        );
+      }
     }
     if (change.readTools && next.invocation === 'observer')
       roleChange.allowedWorkTools = ADVISOR_READ_TOOLS.filter((tool) =>
         change.readTools?.includes(tool),
       );
-    if (change.imageProfile) roleChange.imageProfile = change.imageProfile;
-    if (change.generateImage !== undefined) {
-      const current =
-        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
-      const others = current.filter((tool) => tool !== 'generate_image');
-      roleChange.allowedWorkTools = change.generateImage ? [...others, 'generate_image'] : others;
-    }
+    if (change.imageProfile !== undefined)
+      roleChange.imageProfile = change.imageProfile ?? undefined;
     for (const [key, tool] of [
+      ['runCommand', 'run_command'],
+      ['generateImage', 'generate_image'],
       ['previewFile', 'preview_file'],
       ['previewApp', 'preview_app'],
       ['previewAction', 'preview_action'],
     ] as const) {
       if (change[key] === undefined) continue;
-      const current =
-        roleChange.allowedWorkTools ?? roles.find((r) => r.id === roleId)?.allowedWorkTools ?? [];
-      const others = current.filter((candidate) => candidate !== tool);
-      roleChange.allowedWorkTools = change[key] ? [...others, tool] : others;
+      const current = roleChange.allowedWorkTools ?? role.allowedWorkTools;
+      if (current.includes(tool) === change[key]) continue;
+      roleChange.allowedWorkTools = change[key]
+        ? [...current, tool]
+        : current.filter((candidate) => candidate !== tool);
     }
-    if (change.label !== undefined) {
-      const sharedBy = nodes.filter((n) => n.type === 'agent' && n.roleId === roleId);
-      if (sharedBy.length === 1) roleChange.name = change.label;
-    }
-    if (Object.keys(roleChange).length > 0) {
-      roles = roles.map((r) => (r.id === roleId ? { ...r, ...roleChange } : r));
-    }
-    if (change.reasoning === null)
-      roles = roles.map((role) => {
-        if (role.id !== roleId) return role;
-        const { reasoning: _reasoning, ...rest } = role;
-        return rest;
-      });
-    if (change.imageProfile === null)
-      roles = roles.map((role) => {
-        if (role.id !== roleId) return role;
-        const { imageProfile: _imageProfile, ...rest } = role;
-        return rest;
-      });
-    if (change.harness === null) {
-      roles = roles.map((r) => {
-        if (r.id !== roleId) return r;
-        const { harness: _removed, ...basic } = r;
-        return basic;
-      });
+    const shared = nodes.some((n) => n.id !== nodeId && n.type === 'agent' && n.roleId === role.id);
+    if (change.label !== undefined && !shared) roleChange.name = change.label;
+    const keys = Object.keys(roleChange) as (keyof AgentRole)[];
+    if (keys.some((key) => !sameRoleField(roleChange[key], role[key]))) {
+      const edited = { ...role, ...roleChange };
+      for (const key of keys) if (roleChange[key] === undefined) delete edited[key];
+      if (shared) {
+        const fresh = nextId(draft, 'role');
+        counters = fresh.counters;
+        edited.id = fresh.id;
+        next = { ...next, roleId: edited.id };
+        roles = [...roles, edited];
+      } else {
+        roles = roles.map((r) => (r.id === role.id ? edited : r));
+      }
     }
   }
   // An advisor takes no inputs; changing to or from one happened above.
@@ -611,7 +626,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
   }
   if (next.type === 'output' && change.requireApproval !== undefined)
     next = { ...next, requireApproval: change.requireApproval };
-  setNode(next);
+  if (next !== node) nodes = nodes.map((n) => (n.id === nodeId ? next : n));
   const { planOwnerRoleId, ...definition } = draft.definition;
   const owner =
     next.type === 'agent' && change.teamPlanOwner !== undefined
@@ -621,14 +636,19 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
           ? undefined
           : planOwnerRoleId
       : planOwnerRoleId;
-  return withDefinition(draft, {
-    ...definition,
-    ...(owner ? { planOwnerRoleId: owner } : {}),
-    nodes,
-    roles,
-    controlEdges,
-    capabilityLinks,
-  });
+  if (nodes === definition.nodes && roles === definition.roles && owner === planOwnerRoleId)
+    return draft;
+  return withDefinition(
+    { ...draft, counters },
+    {
+      ...definition,
+      ...(owner ? { planOwnerRoleId: owner } : {}),
+      nodes,
+      roles,
+      controlEdges,
+      capabilityLinks,
+    },
+  );
 }
 
 export function setName(draft: EditorDraft, name: string): EditorDraft {

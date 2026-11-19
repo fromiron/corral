@@ -1,8 +1,14 @@
-import type { AgentStartInput, CorralDefinition, RunEvent } from '@corral/contracts';
+import {
+  type AgentStartInput,
+  type CorralDefinition,
+  isWorkAgent,
+  type RunEvent,
+} from '@corral/contracts';
 import {
   collaborationCorral,
   FakeClock,
   Gate,
+  linearCorral,
   ScriptedAgentAdapter,
   type ScriptedAgentOptions,
   SequentialIdFactory,
@@ -66,6 +72,83 @@ async function run(
 
 const byNode = (p: RunProjection, nodeId: string) =>
   (p.nodeExecutions[nodeId] ?? []).map((id) => p.executions[id]);
+
+it('retries with the snapshotted step instruction, without giving it to another seat of the same role', async () => {
+  const definition = linearCorral(['first', 'second']);
+  const [first, second] = definition.nodes;
+  if (!isWorkAgent(first) || !isWorkAgent(second)) throw new Error('missing seats');
+  second.roleId = first.roleId;
+  definition.roles = definition.roles.filter((role) => role.id === first.roleId);
+  const original = 'Check the source dates for this step.';
+  first.stepInstruction = original;
+  first.retry = { maxAttempts: 1 };
+  const { transport, started } = runtime({
+    script: async (input) => {
+      if (input.nodeId !== first.id || input.attemptNo !== 1) return null;
+      first.stepInstruction = 'A later edit, for the next run.';
+      return { outcome: 'failed', error: 'Retry this step.' };
+    },
+  });
+  const { runId, events } = await run(transport, definition);
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  expect(
+    started.map(({ nodeId, role, attemptNo, stepInstruction }) => [
+      nodeId,
+      role.id,
+      attemptNo,
+      stepInstruction,
+    ]),
+  ).toEqual([
+    ['first', first.roleId, 1, original],
+    ['first', first.roleId, 2, original],
+    ['second', first.roleId, 1, undefined],
+  ]);
+  expect(JSON.stringify(events)).not.toContain(original);
+});
+
+it('gives the same callable seat its own instruction for delegation and questions, not its caller’s', async () => {
+  const definition = collaborationCorral();
+  definition.nodes = definition.nodes.filter((node) => node.id !== 'respond');
+  const helperRole = definition.roles.find((role) => role.id === 'helper');
+  if (!helperRole) throw new Error('missing helper role');
+  helperRole.allowedCollaborationTools.push('reply');
+  for (const link of definition.capabilityLinks)
+    if (link.kind === 'question') link.targetNodeId = 'helper';
+  definition.sharedOutrider = {
+    modelProfile: 'model-a',
+    principles: 'Check the evidence.',
+    targets: { kind: 'selected', nodeIds: ['research'] },
+    observation: {
+      targets: { kind: 'selected', nodeIds: ['research'] },
+      review: { interval: 1, maxRequestsPerReview: 1 },
+    },
+  };
+  for (const seat of definition.nodes.filter(isWorkAgent))
+    seat.stepInstruction = `Seat: ${seat.id}`;
+  const { transport, started } = runtime();
+  const { runId } = await run(transport, definition);
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  const calls = started.filter((input) => input.nodeId === 'helper');
+  expect(calls.map((input) => input.assignment.kind).sort()).toEqual([
+    'delegated',
+    'delegated',
+    'question',
+  ]);
+  for (const input of calls) {
+    expect(input.stepInstruction).toBe('Seat: helper');
+    const frame = JSON.stringify(input);
+    expect(frame.split('Seat: helper')).toHaveLength(2);
+    expect(frame).not.toContain('Seat: research');
+    expect(frame).not.toContain('Seat: write');
+  }
+  const outriders = started.filter(
+    (input) => !definition.nodes.some((node) => node.id === input.nodeId),
+  );
+  expect(outriders.map((input) => input.assignment.kind).sort()).toEqual(['advisor', 'question']);
+  for (const input of outriders) expect(input).not.toHaveProperty('stepInstruction');
+  for (const input of started.filter((input) => input.assignment.kind === 'scheduled'))
+    expect(input.stepInstruction).toBe(`Seat: ${input.nodeId}`);
+});
 
 describe('delegation: spawn and await', () => {
   it('a parent runs two children at once and holds no model slot while it waits', async () => {

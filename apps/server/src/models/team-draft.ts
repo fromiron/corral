@@ -37,9 +37,7 @@ const PATTERN_USE: Record<TeamPattern, string> = {
     'a framer states the question and two options, each option is researched at the same time, then a comparison recommends one. Choosing between technical options.',
 };
 
-export const DRAFT_SYSTEM_PROMPT = `You design a small team of AI agents for a goal. Answer with one JSON object and nothing else.
-
-Fields (use exactly these, no others):
+export const TEAM_PLAN_PROMPT = `Fields (use exactly these, no others):
 - name: a short title for the team (at most ${TEAM_LIMITS.name} characters)
 - pattern: one of ${quoted(TEAM_PATTERNS)}
 - brief: the task as the team will receive it (at most ${TEAM_LIMITS.brief} characters)
@@ -54,7 +52,11 @@ Fields (use exactly these, no others):
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}
 
-Pick the smallest pattern that fits. An on-request adviser or manuscript feedback does not require planning, research, implementation or sequential review roles. Use "single" for the underlying task unless the goal asks for distinct roles or a work sequence. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents. Write in the language of the goal.`;
+Pick the smallest pattern that fits. An on-request adviser or manuscript feedback does not require planning, research, implementation or sequential review roles. Use "single" for the underlying task unless the goal asks for distinct roles or a work sequence. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents.`;
+
+export const DRAFT_SYSTEM_PROMPT = `You design a small team of AI agents for a goal. Answer with one JSON object and nothing else.
+
+${TEAM_PLAN_PROMPT} Write in the language of the goal.`;
 
 /** The plan in a model's answer, or null when there is none that fits. */
 export function planFromAnswer(text: string, goal?: string): TeamPlan | null {

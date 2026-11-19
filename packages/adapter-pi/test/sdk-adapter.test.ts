@@ -5,9 +5,11 @@ import { join } from 'node:path';
 import {
   type AgentHost,
   type AgentStartInput,
+  CollaborationTool,
   type CompactionReport,
   canonicalJson,
   type EffectiveHarnessSnapshot,
+  WorkTool,
 } from '@corral/contracts';
 import {
   createTextAttachment,
@@ -23,9 +25,11 @@ import {
   type FauxResponseStep,
   fauxAssistantMessage,
   fauxToolCall,
+  getCurrentTools,
 } from '@earendil-works/pi-ai';
 import { SettingsManager, shouldCompact } from '@earendil-works/pi-coding-agent';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { roleSkillCases } from '../../core/test/harness-role-skill-cases.ts';
 import { PiAgentAdapter } from '../src/adapter.ts';
 import { memoryChannelPair } from '../src/channel.ts';
 import { probeMcp } from '../src/mcp-probe.ts';
@@ -35,6 +39,7 @@ import {
   PROTOCOL_VERSION,
   SdkStartFrame,
   StartFrame,
+  WorkerTool,
 } from '../src/protocol.ts';
 import { runSdkWorker } from '../src/sdk-worker.ts';
 import { runWorker } from '../src/worker.ts';
@@ -220,6 +225,268 @@ function runtime(
     catalogModel: faux.getModel(),
   };
 }
+
+describe('role skill snapshots at the SDK boundary', () => {
+  const minimal = { profileId: 'role-skills-minimal', revision: 1 };
+  const body = (name: string) => `Private fixture directions for ${name}.`;
+  const entry = (name: string) => `${name}.md`;
+  const pathOf = (name: string) => `skills/${name}/SKILL.md`;
+  const names = ['first', 'second', 'old', 'required', 'mandatory', 'explicit', 'optional'];
+
+  // The resolver owns selection and inheritance. Start with its resolved entries and observe
+  // what the SDK actually lists, injects, and reads from this multi-entry package.
+  it.each(roleSkillCases.filter((c) => c.expected !== undefined))(
+    'starts with the resolved skills: $title',
+    async ({ bound, skills: selected, expected = [] }) => {
+      const root = mkdtempSync(join(tmpdir(), 'corral-role-skills-'));
+      scratch.push(root);
+      const files = names.map((name) => {
+        const text = body(name);
+        writeFileSync(join(root, entry(name)), text);
+        return {
+          path: entry(name),
+          hash: createHash('sha256').update(text).digest('hex'),
+          bytes: Buffer.byteLength(text),
+        };
+      });
+      const resourceHash = createHash('sha256').update(canonicalJson(files)).digest('hex');
+      const skills: SdkResources['skills'] = expected.map((name) => ({
+        name,
+        description: `Use ${name}.`,
+        entry: entry(name),
+        hash: resourceHash,
+        mode: name === 'explicit' || name === 'mandatory' ? name : 'auto',
+        content: name === 'mandatory' ? body(name) : '',
+      }));
+      const auto = skills.filter((s) => s.mode === 'auto').map((s) => s.name);
+      const read = auto[0];
+      const reads: unknown[] = [];
+      let listed: string[] = [];
+      let injected: string[] = [];
+      let receivedBody = false;
+      const run = runtime(
+        [
+          (context) => {
+            const messages = JSON.stringify(context.messages);
+            listed = names.filter((name) => messages.includes(pathOf(name)));
+            injected = names.filter((name) => messages.includes(body(name)));
+            return read
+              ? fauxAssistantMessage([fauxToolCall('read', { path: pathOf(read) })], {
+                  stopReason: 'toolUse',
+                })
+              : fauxAssistantMessage('Done.');
+          },
+          (context) => {
+            receivedBody = context.messages.some(
+              (message) =>
+                message.role === 'toolResult' &&
+                JSON.stringify(message.content).includes(body(read!)),
+            );
+            return fauxAssistantMessage('Done.');
+          },
+        ],
+        '',
+        {
+          authorizeTool: async (proposal) => {
+            reads.push({ name: proposal.name, path: proposal.args.path });
+            return { ok: true, toolCallId: 'read_skill' };
+          },
+          executeTool: async (toolCallId) => ({
+            ok: true,
+            toolCallId,
+            result: { path: pathOf(read!), text: body(read!), resourceHash },
+          }),
+        },
+        undefined,
+        undefined,
+        [],
+        {
+          skills,
+          extensions: [],
+          bundles: skills.length ? [{ root, hash: resourceHash, files }] : [],
+        },
+      );
+      if (!bound) delete run.input.role.harness;
+      if (selected !== undefined)
+        run.input.role.skills = selected.map((name) => ({ resourceHash, entry: entry(name) }));
+      run.input.harness = {
+        ...snapshot,
+        binding: bound ? snapshot.binding : minimal,
+        policy: 'strict',
+        allowedTools: ['read'],
+        resources: skills.map(({ name, mode, hash, entry }) => ({
+          name: 'fixture',
+          version: '1',
+          kind: 'skill',
+          hash,
+          entry,
+          skillName: name,
+          skillMode: mode,
+          required: name === 'mandatory' || name === 'required',
+        })),
+      };
+      const handle = await run.adapter.start(run.input, run.host);
+      expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+      expect(listed.sort()).toEqual(auto.sort());
+      expect(injected).toEqual(expected.filter((name) => name === 'mandatory'));
+      expect(reads).toEqual(read ? [{ name: 'read', path: pathOf(read) }] : []);
+      expect(receivedBody).toBe(Boolean(read));
+      expect(run.requests[0]).toMatchObject({ runtime: 'pi-sdk' });
+    },
+  );
+
+  it.each([
+    ['pi', WorkTool.options],
+    ['hashline', WorkTool.options],
+    ['hashline', ['read_file']],
+    ['pi', ['write_artifact']],
+    ['hashline', ['run_command', 'preview_app', 'preview_action']],
+  ] satisfies ['pi' | 'hashline', WorkTool[]][])(
+    'preserves the broker tools offered to a %s role with grants %j',
+    async (editingMode, grants) => {
+      const seen: string[][] = [];
+      const capture: FauxResponseStep = (context) => {
+        seen.push(
+          getCurrentTools(context.messages)
+            .map((tool) => tool.name)
+            .sort(),
+        );
+        return fauxAssistantMessage('Done.');
+      };
+      const sdk = runtime([capture], '', {}, undefined, undefined, [], {
+        extensions: [],
+        bundles: [],
+      });
+      const role = sdk.input.role;
+      delete role.harness;
+      role.editingMode = editingMode;
+      role.allowedWorkTools = [...grants];
+      role.allowedCollaborationTools = [...CollaborationTool.options];
+      role.imageProfile = 'image';
+      sdk.input.capabilities = {
+        askTo: [{ nodeId: 'expert', label: 'Expert' }],
+        delegateTo: [{ nodeId: 'helper', label: 'Helper' }],
+        replyToChildren: true,
+      };
+      const coreInput = { ...sdk.input };
+      delete coreInput.harness;
+      const faux = createFauxCore({});
+      faux.setResponses([capture]);
+      const core = new PiAgentAdapter({
+        credentials: sdk.credentials,
+        spawn: () => {
+          const pair = memoryChannelPair();
+          runWorker(pair.worker, {
+            resolveModel: () => faux.getModel(),
+            streamFn: faux.streamSimple,
+          });
+          return pair.host;
+        },
+      });
+      const coreRun = await core.start(coreInput, sdk.host);
+      expect((await coreRun.waitForSettlement()).outcome).toBe('succeeded');
+      role.skills = [];
+      sdk.input.harness = {
+        ...snapshot,
+        binding: minimal,
+        policy: 'strict',
+        allowedTools: [...WorkerTool.options, 'read'],
+        resources: [],
+      };
+      const sdkRun = await sdk.adapter.start(sdk.input, sdk.host);
+      expect((await sdkRun.waitForSettlement()).outcome).toBe('succeeded');
+      expect(seen).toHaveLength(2);
+      expect(seen[0]).toContain('submit_result');
+      expect(seen[1]!.filter((tool) => tool !== 'read')).toEqual(seen[0]);
+      for (const names of seen) {
+        for (const native of ['run_command', 'preview_app', 'preview_action'])
+          expect(names).not.toContain(native);
+      }
+    },
+  );
+
+  it('keeps a trusted-native bound role’s command grant when it also selects skills', async () => {
+    let commandOffered = false;
+    const capture: FauxResponseStep = (context) => {
+      commandOffered = getCurrentTools(context.messages).some(
+        (tool) => tool.name === 'run_command',
+      );
+      return fauxAssistantMessage('Done.');
+    };
+    const run = runtime([capture], '', {}, undefined, undefined, [], {
+      extensions: [],
+      bundles: [],
+    });
+    run.input.role.skills = [];
+    // Only the implicit minimal binding is restricted: an explicitly chosen revision is not it.
+    run.input.role.harness = { ...minimal, revision: 2 };
+    run.input.role.allowedWorkTools = ['run_command'];
+    run.input.harness = {
+      ...snapshot,
+      binding: run.input.role.harness,
+      allowedTools: ['run_command'],
+      resources: [],
+    };
+    const handle = await run.adapter.start(run.input, run.host);
+    expect((await handle.waitForSettlement()).outcome).toBe('succeeded');
+    expect(commandOffered).toBe(true);
+  });
+
+  const empty: EffectiveHarnessSnapshot = {
+    ...snapshot,
+    binding: minimal,
+    policy: 'strict',
+    resources: [],
+  };
+  it.each([
+    ['wrong profile', { ...empty, binding: { ...minimal, profileId: 'other' } }],
+    ['wrong revision', { ...empty, binding: { ...minimal, revision: 2 } }],
+    ['malformed snapshot', { ...empty, snapshotHash: 'invalid' }],
+    ['non-strict minimal policy', { ...empty, policy: 'trusted-native' }],
+    ['no snapshot', undefined],
+  ] as const)(
+    'refuses %s for an explicitly empty selection before preparing or launching',
+    async (_label, harnessSnapshot) => {
+      const run = runtime([]);
+      delete run.input.role.harness;
+      run.input.role.skills = [];
+      if (harnessSnapshot) run.input.harness = harnessSnapshot;
+      else delete run.input.harness;
+      const spawn = vi.fn();
+      const harness = vi.fn();
+      const adapter = new PiAgentAdapter({
+        spawn,
+        spawnSdk: spawn,
+        harness,
+        credentials: run.credentials,
+      });
+      await expect(adapter.start(run.input, run.host)).rejects.toThrow('unavailable or unresolved');
+      expect(harness).not.toHaveBeenCalled();
+      expect(spawn).not.toHaveBeenCalled();
+      expect(run.credentials).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a snapshot when the role has neither a binding nor skills', async () => {
+    const run = runtime([]);
+    delete run.input.role.harness;
+    run.input.harness!.binding = minimal;
+    await expect(run.adapter.start(run.input, run.host)).rejects.toThrow(
+      'unexpected harness snapshot',
+    );
+  });
+
+  it('refuses role skills on an advisor even without a snapshot', async () => {
+    const run = runtime([], '', { nextReview: async () => null });
+    delete run.input.role.harness;
+    delete run.input.harness;
+    run.input.role.skills = [];
+    run.input.assignment = { kind: 'advisor', watches: ['writer'] };
+    await expect(run.adapter.start(run.input, run.host)).rejects.toThrow(
+      'an advisor runs without a work style',
+    );
+  });
+});
 
 describe('SDK worker through the product adapter (H2)', () => {
   it('preserves generated image tool results as pixels in the next model context', async () => {
@@ -1111,6 +1378,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       { text: 'Always cite sources.', mode: 'mandatory', brief: 'Context history. '.repeat(3500) },
       128000,
     );
+    run.input.stepInstruction = 'Check the sources for this chapter.';
     run.input.model.contextPolicy = resolveProfileContext(
       { contextWindow: 65536 },
       { contextWindow: 128000, source: 'catalog' },
@@ -1126,6 +1394,7 @@ describe('SDK worker through the product adapter (H2)', () => {
       text: expect.stringContaining('Always cite sources.'),
     });
     expect(seen.at(-1)?.text).toContain(protectedText);
+    expect(seen.at(-1)?.text).toContain(run.input.stepInstruction);
     expect(run.credentials).toHaveBeenCalledTimes(seen.length);
     expect(run.calls.filter((call) => call.startsWith('observe'))).toHaveLength(seen.length);
     // Each automatic compaction reports its start and its result once, without a command.
@@ -2256,6 +2525,7 @@ it.each([false, true])(
     const start = input();
     delete start.harness;
     delete start.role.harness;
+    start.stepInstruction = 'Compare the two sources for this chapter.';
     start.inputs[0]!.text = 'ORIGINAL_FIRST_PROMPT '.repeat(1000);
     const image =
       'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+jZxkAAAAASUVORK5CYII=';
@@ -2358,6 +2628,7 @@ it.each([false, true])(
     expect(seen[0]?.includes('ORIGINAL_FIRST_PROMPT')).toBe(changed);
     expect(seen[0]).toContain(image);
     expect(seen[0]).toContain(currentState);
+    expect(seen[0]).toContain(start.stepInstruction);
     expect(JSON.stringify(checkpoints.at(-1))).toContain('Done.');
   },
 );

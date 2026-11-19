@@ -364,6 +364,18 @@ export function layoutTeam(
 
 const advisor = (n: CorralNode | undefined) => n?.type === 'agent' && n.invocation === 'observer';
 
+/** Full flow order for both editor lists. Collapsing a box only hides rows in the view. */
+export function outlineOrder(definition: CorralDefinition): Map<string, number> {
+  const advisors = new Set(definition.nodes.filter(advisor).map((node) => node.id));
+  const items = [...layoutTeam(definition).items.values()].sort(
+    (a, b) =>
+      Number(advisors.has(a.id)) - Number(advisors.has(b.id)) ||
+      a.rect.x - b.rect.x ||
+      a.rect.y - b.rect.y,
+  );
+  return new Map(items.map((item, index) => [item.id, index]));
+}
+
 /** Where the items reach: the area to fit in view. */
 export function boundsOf(items: ReadonlyMap<string, LaidItem>): Rect {
   const rects = [...items.values()].map((i) => i.rect);

@@ -1,19 +1,46 @@
-import { type ControlEdge, type CorralNode, isWorkAgent, type TargetPort } from '@corral/contracts';
+import {
+  type AgentRole,
+  type ControlEdge,
+  type CorralNode,
+  isWorkAgent,
+  type LibraryAgent,
+  type TargetPort,
+} from '@corral/contracts';
 import {
   type Diagnostic,
   inputPortsOf,
   outputPortsOf,
   type SharedOutriderTarget,
 } from '@corral/core';
-import { type ReactNode, useId } from 'react';
+import { type ReactNode, useId, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Checkbox, Input, Select, Textarea, useSize } from '../design-kit/index.ts';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  Select,
+  Textarea,
+  useSize,
+} from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { CircleAlert, ExternalLink, Pencil, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
+import {
+  CircleAlert,
+  Ellipsis,
+  ExternalLink,
+  Pencil,
+  Plus,
+  Trash2,
+  TriangleAlert,
+  X,
+} from '../ui/icons.ts';
 import {
   applyPattern,
   checkPorts,
@@ -26,13 +53,14 @@ import {
   type TeamReference,
   wrapIn,
 } from './commands.ts';
-import { KIND_ICON, kindOf, portText } from './kinds.ts';
+import { KIND_ICON, kindOf, portText, roleOf } from './kinds.ts';
 import {
   type ImageProfileChoice,
   type LoopSettings,
   NodeSettings,
   type ProfileOption,
   type RoleSettings,
+  type RoleSkillsSlot,
 } from './NodeSettings.tsx';
 import { SharedOutriderSettings } from './SharedOutriderSettings.tsx';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
@@ -54,20 +82,25 @@ export interface InspectorSheetProps {
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings?: RoleSettings | undefined;
+  roleSkills?: RoleSkillsSlot | undefined;
   loopSettings?: LoopSettings | undefined;
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
   outriderTargets: readonly SharedOutriderTarget[];
   onOpenTeam?: ((corralId: string) => void) | undefined;
-  /** Opens the roles to copy onto the selected agent. */
-  onImportRole?: (() => void) | undefined;
-  /** What the last edit left out, shown under the heading until the next edit. */
-  notice?: string | null | undefined;
+  /** Return focus to the seat menu trigger after the picker closes; its menu item is gone. */
+  onReplaceAgent?: ((nodeId: string, opener: HTMLElement | null) => void) | undefined;
+  onSaveAgent?: ((role: AgentRole, opener: HTMLElement | null) => void) | undefined;
+  agents?: readonly LibraryAgent[] | undefined;
+  presets?: readonly AgentRole[];
+  onShowInGraph?: ((nodeId: string) => void) | undefined;
   onSelect: (selection: TeamSelection) => void;
   onTeamSettings: () => void;
   onClose: () => void;
   /** A row under the canvas in the stacked editor, at its own height, instead of a floating card. */
   stacked?: boolean;
+  /** Beside the composition list, at the full height of the column. */
+  docked?: boolean;
 }
 
 export const PATTERNS: readonly Pattern[] = ['reviewLoop', 'checkLoop', 'parallel'];
@@ -148,23 +181,30 @@ export function InspectorSheet({
   profiles,
   imageProfiles,
   roleSettings,
+  roleSkills,
   loopSettings,
   teams,
   outriderTargets,
   onOpenTeam,
-  onImportRole,
-  notice,
+  onReplaceAgent,
+  onSaveAgent,
+  agents,
+  presets,
+  onShowInGraph,
   onSelect,
   onClose,
   onTeamSettings,
   stacked = false,
+  docked = false,
 }: InspectorSheetProps) {
   const t = useTranslations('TeamEditor');
+  const ti = useTranslations('Inspector');
   const f = useTranslations('TeamEditor.fields');
   const portName = useTranslations('Canvas.ports');
   const codeText = useTranslations('Validation.codes');
   const schemaText = useTranslations('Validation.schema');
   const size = useSize();
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const draft = useStore(editor, (s) => s.draft);
   const { definition } = draft;
   const apply = editor.getState().applyDraft;
@@ -250,7 +290,12 @@ export function InspectorSheet({
     apply(result.draft);
     onSelect(result.nodeId ? { nodes: [result.nodeId], edge: null } : { nodes: [], edge: null });
   };
+  const removeSelection = (ids: string[]) => {
+    apply(removeItems(draft, ids, outriderTargets));
+    onSelect({ nodes: [], edge: null });
+  };
   const structureActions = (ids: string[]) => {
+    if (docked) return null;
     const boxes =
       ids.length === 1 && ['loop', 'team'].includes(nodes.get(ids[0] as string)?.type ?? '');
     const actions = boxes
@@ -281,21 +326,11 @@ export function InspectorSheet({
               {action.label}
             </Button>
           ))}
-        {onImportRole && ids.length === 1 && isWorkAgent(nodes.get(ids[0] as string)) ? (
-          <Button variant="secondary" size="compact" onClick={onImportRole}>
-            {t('importRole')}
+        {ids.length > 1 || (!isWorkAgent(nodes.get(ids[0] as string)) && !onShowInGraph) ? (
+          <Button variant="secondary" size="compact" onClick={() => removeSelection(ids)}>
+            <Trash2 /> {ids.length > 1 ? t('deleteCount', { count: ids.length }) : t('delete')}
           </Button>
         ) : null}
-        <Button
-          variant="secondary"
-          size="compact"
-          onClick={() => {
-            apply(removeItems(draft, ids, outriderTargets));
-            onSelect({ nodes: [], edge: null });
-          }}
-        >
-          <Trash2 /> {ids.length > 1 ? t('deleteCount', { count: ids.length }) : t('delete')}
-        </Button>
       </div>
     );
   };
@@ -334,8 +369,8 @@ export function InspectorSheet({
                   'flex w-full gap-1.5 rounded-md px-1.5 py-1 text-left enabled:hover:bg-hover',
                 )}
                 onClick={() => {
-                  if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
-                  else if (edge) onSelect({ nodes: [], edge });
+                  if (edge) onSelect({ nodes: [], edge });
+                  else if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
                   else (globalFix ?? onTeamSettings)();
                 }}
               >
@@ -521,8 +556,11 @@ export function InspectorSheet({
     const scope = definition.sharedOutrider?.targets;
     body = (
       <>
-        <Connections editor={editor} node={single} onSelect={onSelect} />
-        {definition.controlEdges.some((edge) => edge.source === single.id) ? joinProblems : null}
+        {!docked ? <Connections editor={editor} node={single} onSelect={onSelect} /> : null}
+        {isWorkAgent(single) ? issues([single.id]) : null}
+        {!docked && definition.controlEdges.some((edge) => edge.source === single.id)
+          ? joinProblems
+          : null}
         {scope && askTarget ? (
           <p className={cn(size.type.caption, 'text-muted-foreground')}>
             {scope.kind === 'selected' && !scope.nodeIds.includes(single.id)
@@ -535,21 +573,45 @@ export function InspectorSheet({
           </p>
         ) : null}
         <NodeSettings
+          key={single.id}
           editor={editor}
           node={single}
           profiles={profiles}
           imageProfiles={imageProfiles}
-          roleSettings={roleSettings}
+          roleSettings={(role, nodeId) => {
+            const origin = role.origin;
+            const source =
+              origin?.kind === 'library'
+                ? agents?.find((a) => a.agentId === origin.agentId)?.role.name
+                : origin && presets?.find((p) => p.id === origin.presetId)?.name;
+            return (
+              <>
+                {source && origin && (
+                  <p className="text-caption text-muted-foreground">
+                    {origin.kind === 'library'
+                      ? t('agentPicker.libraryOrigin', { name: source, revision: origin.revision })
+                      : t('agentPicker.presetOrigin', { name: source })}
+                  </p>
+                )}
+                {roleSettings?.(role, nodeId)}
+              </>
+            );
+          }}
+          roleSkills={roleSkills}
           loopSettings={loopSettings}
         />
-        <MoreFields
-          editor={editor}
-          node={single}
-          teams={teams}
-          onOpenTeam={onOpenTeam}
-          batch={batch}
-        />
-        {issues([single.id])}
+        {!isWorkAgent(single) ? (
+          <>
+            <MoreFields
+              editor={editor}
+              node={single}
+              teams={teams}
+              onOpenTeam={onOpenTeam}
+              batch={batch}
+            />
+            {issues([single.id])}
+          </>
+        ) : null}
         {structureActions([single.id])}
       </>
     );
@@ -560,9 +622,11 @@ export function InspectorSheet({
     <aside
       aria-label={t('inspector')}
       className={
-        stacked
-          ? 'flex w-full flex-col border-t border-border'
-          : 'pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg'
+        docked
+          ? 'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden'
+          : stacked
+            ? 'flex w-full flex-col border-t border-border'
+            : 'pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg'
       }
     >
       <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
@@ -574,26 +638,52 @@ export function InspectorSheet({
         >
           {title}
         </h2>
-        <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
-          <X />
-        </Button>
+        {single && (docked || isWorkAgent(single) || onShowInGraph) ? (
+          <Menu>
+            <MenuTrigger
+              ref={menuTrigger}
+              aria-label={ti('seatActions')}
+              render={<Button variant="ghost" size="icon-compact" />}
+            >
+              <Ellipsis />
+            </MenuTrigger>
+            <MenuPopup align="end" aria-label={ti('seatActions')}>
+              {isWorkAgent(single) && onReplaceAgent ? (
+                <MenuItem onClick={() => onReplaceAgent(single.id, menuTrigger.current)}>
+                  {ti('replaceAgent')}
+                </MenuItem>
+              ) : null}
+              {isWorkAgent(single) && onSaveAgent && roleOf(definition, single) ? (
+                <MenuItem
+                  onClick={() => {
+                    const role = roleOf(definition, single);
+                    if (role) onSaveAgent(role, menuTrigger.current);
+                  }}
+                >
+                  {t('agentPicker.saveTitle')}
+                </MenuItem>
+              ) : null}
+              {onShowInGraph ? (
+                <MenuItem onClick={() => onShowInGraph(single.id)}>{ti('showInGraph')}</MenuItem>
+              ) : null}
+              <MenuItem onClick={() => removeSelection([single.id])}>{t('delete')}</MenuItem>
+            </MenuPopup>
+          </Menu>
+        ) : null}
+        {!(
+          docked &&
+          (stacked || (view === 'team' && !selection.nodes.length && !selection.edge))
+        ) ? (
+          <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
+            <X />
+          </Button>
+        ) : null}
       </header>
-      {notice ? (
-        <p
-          className={cn(
-            size.type.caption,
-            'flex gap-1.5 border-b border-border px-4 py-2 text-foreground',
-          )}
-        >
-          <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
-          {notice}
-        </p>
-      ) : null}
       {/* Stacked, the editor scrolls, and the fields keep the kit's narrow measure. */}
       <div
         className={cn(
           'grid content-start gap-4 p-4',
-          stacked ? 'w-full max-w-[720px]' : 'overflow-y-auto',
+          stacked && !docked ? 'w-full max-w-[720px]' : 'overflow-y-auto',
         )}
       >
         {body}
@@ -634,25 +724,7 @@ function MoreFields({
   );
   switch (node.type) {
     case 'agent':
-      return (
-        <>
-          {node.invocation === 'scheduled' ? (
-            <Field label={f('retry')}>
-              <Input
-                type="number"
-                min={0}
-                value={String(node.retry?.maxAttempts ?? 0)}
-                onChange={(e) => {
-                  const value = number(e.target.value) ?? 0;
-                  patch({ retry: value > 0 ? { maxAttempts: value } : undefined });
-                }}
-                {...batch}
-              />
-            </Field>
-          ) : null}
-          {note}
-        </>
-      );
+      return note;
     case 'decision':
       return (
         <>

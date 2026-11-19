@@ -4,8 +4,10 @@ import {
   closePanel,
   editorSettings,
   maximizePanel,
+  openFlowGraph,
   openLibrary,
   requestBox,
+  startTestRun,
   teamNode,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -264,6 +266,7 @@ test('a worker observation proposal saves only after preview and reloads with it
   await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
   await expect(page).toHaveURL(/\/edit$/);
   await page.reload();
+  await openFlowGraph(page);
   await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
   const settings = editorSettings(page);
   await expect(settings.getByRole('checkbox', { name: 'Observe work in progress' })).toBeChecked();
@@ -295,11 +298,7 @@ test('a required output review checks the saved candidate before publishing it',
   await page.reload();
   await teamNode(page, 'output').click();
   await expect(gate).toBeChecked();
-  await page.getByRole('button', { name: 'Test run', exact: true }).click();
-  await page
-    .getByRole('complementary', { name: 'Test run' })
-    .getByRole('button', { name: 'Run', exact: true })
-    .click();
+  await startTestRun(page);
   await expect(page.getByTestId('run-output')).toContainText('writer', { timeout: 25_000 });
   expect(corral.errors).toEqual([]);
 });

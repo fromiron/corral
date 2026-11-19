@@ -16,6 +16,7 @@ import {
   emptyDraft,
   exportDefinition,
   importDefinition,
+  type NodeChange,
   removeNode,
   updateNode,
   withDefinition,
@@ -426,5 +427,110 @@ describe('file tools switch', () => {
       'preview_file',
       'preview_app',
     ]);
+  });
+});
+
+describe('editing a role shared by two seats', () => {
+  function shared() {
+    const first = addNode(emptyDraft(), 'agent');
+    const second = addNode(first.draft, 'agent');
+    const [role] = first.draft.definition.roles;
+    if (!role) throw new Error('Missing original role');
+    const draft = withDefinition(second.draft, {
+      ...second.draft.definition,
+      roles: [role],
+      planOwnerRoleId: role.id,
+      nodes: second.draft.definition.nodes.map((node) =>
+        node.type === 'agent' ? { ...node, roleId: role.id } : node,
+      ),
+    });
+    return { draft, first: first.nodeId, second: second.nodeId, role };
+  }
+
+  it.each([
+    { prompt: 'Different work.' },
+    { modelProfile: 'other' },
+    { reasoning: { mode: 'auto' } },
+    { fileTools: true },
+    { runCommand: true },
+    { generateImage: true },
+    { previewFile: true },
+    { previewApp: true },
+    { previewAction: true },
+    { outputContract: 'notes' },
+    { harness: { profileId: 'other', revision: 2 } },
+    { imageProfile: 'image' },
+    { editingMode: 'hashline' },
+    { skills: [] },
+  ] satisfies NodeChange[])(
+    'forks only the edited seat for %o and retains the plan owner',
+    (change) => {
+      const { draft, first, second, role } = shared();
+      const changed = updateNode(draft, second, change);
+      expect(changed.definition.roles).toHaveLength(2);
+      expect(changed.definition.roles.find((r) => r.id === role.id)).toBe(role);
+      expect(changed.definition.nodes.find((n) => n.id === first)).toMatchObject({
+        roleId: role.id,
+      });
+      const fork = changed.definition.roles.find((r) => r.id !== role.id);
+      expect(changed.definition.nodes.find((n) => n.id === second)).toMatchObject({
+        roleId: fork?.id,
+      });
+      expect(changed.definition.planOwnerRoleId).toBe(role.id);
+      expect(updateNode(changed, second, change)).toBe(changed);
+    },
+  );
+
+  it('drops skills only from the observer and does not restore them when it resumes work', () => {
+    const { draft, first, second, role } = shared();
+    const skill = { resourceHash: 'a'.repeat(64), entry: 'writer/SKILL.md' };
+    const skilled = { ...role, skills: [skill] };
+    const before = withDefinition(draft, { ...draft.definition, roles: [skilled] });
+    const observer = updateNode(before, second, { invocation: 'observer' });
+    const node = observer.definition.nodes.find((n) => n.id === second);
+    if (node?.type !== 'agent') throw new Error('Missing converted agent');
+    expect(node.invocation).toBe('observer');
+    expect(node.roleId).not.toBe(skilled.id);
+    const fork = observer.definition.roles.find((r) => r.id === node.roleId);
+    expect(fork).toBeDefined();
+    expect(fork).not.toHaveProperty('skills');
+    const resumed = updateNode(observer, second, { invocation: 'scheduled' });
+    expect(resumed.definition.nodes.find((n) => n.id === second)).toMatchObject({
+      invocation: 'scheduled',
+      roleId: node.roleId,
+    });
+    expect(resumed.definition.roles.find((r) => r.id === node.roleId)).not.toHaveProperty('skills');
+    expect(resumed.definition.nodes.find((n) => n.id === first)).toMatchObject({
+      roleId: skilled.id,
+    });
+    expect(resumed.definition.roles.find((r) => r.id === skilled.id)).toBe(skilled);
+    expect(skilled.skills).toEqual([skill]);
+  });
+
+  it('does not reorder existing tool grants or fork the role when those grants already match', () => {
+    const { draft, second, role } = shared();
+    const before = withDefinition(draft, {
+      ...draft.definition,
+      roles: [{ ...role, allowedWorkTools: ['run_command', 'preview_file', 'write_artifact'] }],
+    });
+    expect(updateNode(before, second, { runCommand: true, previewFile: true })).toBe(before);
+  });
+
+  it('distinguishes inherited, empty, and selected skills, and deduplicates by both hash and entry', () => {
+    const { draft, second, role } = shared();
+    const a = { resourceHash: 'a'.repeat(64), entry: 'a/SKILL.md' };
+    const b = { ...a, entry: 'b/SKILL.md' };
+    const c = { ...a, resourceHash: 'b'.repeat(64) };
+    const skills = [a, { ...a }, b, c];
+    expect(updateNode(draft, second, { skills: null })).toBe(draft);
+    const selected = updateNode(draft, second, { skills });
+    const fork = selected.definition.roles.find((r) => r.id !== role.id);
+    expect(fork?.skills).toEqual([a, b, c]);
+    expect(updateNode(selected, second, { skills: structuredClone(skills) })).toBe(selected);
+    const cleared = updateNode(selected, second, { skills: [] });
+    expect(cleared.definition.roles.find((r) => r.id === fork?.id)?.skills).toEqual([]);
+    const inherited = updateNode(cleared, second, { skills: null });
+    expect(inherited.definition.roles.find((r) => r.id === fork?.id)).not.toHaveProperty('skills');
+    expect(inherited.definition.roles.find((r) => r.id === role.id)).toBe(role);
   });
 });

@@ -1,7 +1,13 @@
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { newTeam, openLibraryTeams } from './workbench.ts';
+import {
+  addCustomAgent,
+  newTeam,
+  openFlowGraph,
+  openLibraryTeams,
+  startTestRun,
+} from './workbench.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
@@ -18,6 +24,7 @@ async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
   await openLibraryTeams(page);
   await newTeam(page);
+  await openFlowGraph(page);
   await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
 }
 
@@ -53,14 +60,6 @@ async function buildAgentToOutput(page: Page) {
   await expect(noProblems(page)).toBeVisible();
 }
 
-async function openTestRun(page: Page) {
-  const open = page.getByRole('button', { name: 'Test run', exact: true });
-  if (await open.isVisible()) await open.click();
-  const panel = page.getByRole('complementary', { name: 'Test run' });
-  await expect(panel).toBeVisible();
-  return panel;
-}
-
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
   await newCorral(page, '?delay=50');
@@ -70,8 +69,7 @@ test('steps dropped on an empty canvas and connected run as drawn', async ({ pag
   const brief = 'Compare notebook formats for field notes.';
   await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   await settings(page).getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  const panel = await startTestRun(page);
 
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('run-output')).toContainText(
@@ -99,7 +97,7 @@ test('a saved team survives a settings detour and a reload, and saving it unchan
   await expect(save).toBeDisabled();
 
   // An edit undone back to the saved team leaves nothing to save.
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await addCustomAgent(page, 'Another agent');
   await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(save).toBeDisabled();
@@ -128,8 +126,7 @@ test('an imported team with a Loop validates and runs through its review and app
   await expect(noProblems(page)).toBeVisible();
 
   // Two review rounds, then the person approves the decision and the final output.
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
@@ -154,10 +151,10 @@ test('a connection from the settings list, a wrap and one-step undo work without
   page,
 }) => {
   await newCorral(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  // With nothing selected the output lands on its own, unconnected.
-  await canvas(page).press('Escape');
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  await addCustomAgent(page);
+  await settings(page)
+    .getByRole('button', { name: 'Remove the connection from Agent 1 to Output' })
+    .click();
   await expect(edges(page)).toHaveCount(0);
   await canvas(page).locator('[data-node="agent_1"]').click();
 
@@ -190,6 +187,7 @@ test('the workspace and editor have no serious automated accessibility violation
 
   await openLibraryTeams(page);
   await newTeam(page);
+  await openFlowGraph(page);
   await buildAgentToOutput(page);
   // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
   await page
@@ -232,6 +230,12 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
   ).toHaveValue('검토');
   await settings(page).getByRole('button', { name: 'Add a criteria input', exact: true }).click();
   await expect(noProblems(page)).toBeVisible();
+  await expect(settings(page).getByRole('group', { name: 'Receives', exact: true })).toContainText(
+    'Team request',
+  );
+  await settings(page)
+    .getByRole('button', { name: 'Other kinds of material', exact: true })
+    .click();
   await expect(settings(page).getByRole('group', { name: 'Inputs', exact: true })).toContainText(
     'criteria · Run input',
   );

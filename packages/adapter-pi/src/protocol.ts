@@ -28,6 +28,7 @@ import {
   RuntimeContext,
   SessionConversation,
   TaskBrief,
+  WorkAgentNode,
 } from '@corral/contracts';
 import { z } from 'zod';
 import { EndpointSpec } from './endpoint.ts';
@@ -205,6 +206,7 @@ export const StartFrame = z.strictObject({
     /** the last reply without a tool call is the result. */
     answer: z.literal('final_reply').optional(),
   }),
+  stepInstruction: WorkAgentNode.shape.stepInstruction,
   inputs: z.array(
     z.strictObject({
       name: z.string().min(1),

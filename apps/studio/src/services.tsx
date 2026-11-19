@@ -13,6 +13,7 @@ import {
   openSession,
   type PathEngineStatus,
   probeServer,
+  RestAgentLibrary,
   RestCorralRepository,
   RunModesApi,
   type SessionDeletionRequest,
@@ -24,9 +25,11 @@ import {
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
+  type AgentLibrary,
   type AutoStartResult,
   type CorralRepository,
   createAutoStarter,
+  createKeyValueAgentLibrary,
   createKeyValueCorralRepository,
   type KeyValueStore,
   MeetingDecisionsService,
@@ -60,6 +63,7 @@ export interface StudioServices {
   pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
+  agents: AgentLibrary;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
   runFor: (runId: string) => RunSessionStore;
@@ -189,6 +193,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
       repository,
+      agents: new RestAgentLibrary(http),
       sessionDeletion: {
         preview: (sessionId) => repository.deletionPreview(sessionId),
         delete: (sessionId, body) => repository.deleteSession(sessionId, body),
@@ -261,6 +266,12 @@ export async function createStudioServices(): Promise<StudioServices> {
     harnesses: null,
     live: false,
     repository,
+    agents: createKeyValueAgentLibrary(store, {
+      projects: repository,
+      clock: systemClock,
+      newAgentId: () => `agent_${crypto.randomUUID()}`,
+      locks: persistent ? navigator.locks : undefined,
+    }),
     transport,
     readHistory,
     runFor: runs.runFor,

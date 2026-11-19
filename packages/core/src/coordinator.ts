@@ -48,6 +48,7 @@ import {
   type ImageGenerationResult,
   ImageInput,
   type InputBinding,
+  isWorkAgent,
   LspQuery,
   MessageBranchPoint,
   type MessageBranchPreview,
@@ -73,6 +74,7 @@ import {
   ResumeRuntimeRequest,
   ReviewArtifact,
   type ReviewRecipeRevision,
+  ROLE_SKILLS_MINIMAL_BINDING,
   type RoutingBackend,
   RunCommand,
   RunCommandArgs,
@@ -233,6 +235,10 @@ const RUNTIME = { kind: 'runtime', id: 'coordinator' } as const;
 const START_SCOPE = '*';
 /** Recorded with every allowed tool call: role allowlists plus argument checks. */
 const TOOL_POLICY_VERSION = 'role-allowlist@1';
+
+function needsHarness(role: AgentRole): boolean {
+  return role.harness !== undefined || role.skills !== undefined;
+}
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
 type EventDraft = {
@@ -449,7 +455,7 @@ export interface CoordinatorDeps {
 /** Resolves immutable, trusted revisions without importing extension code. */
 export interface HarnessResolver {
   resolve(
-    binding: HarnessBindingRef,
+    binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
@@ -1196,7 +1202,7 @@ export class Coordinator {
     );
     if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
     try {
-      if (state.role.harness) {
+      if (needsHarness(state.role)) {
         const resolved = this.harnesses?.resolve(
           state.role.harness,
           source.snapshot.definition,
@@ -1823,7 +1829,7 @@ export class Coordinator {
         parsed.data.capabilityLinks.length ||
         parsed.data.roles.some(
           (role) =>
-            role.harness ||
+            needsHarness(role) ||
             role.allowedWorkTools.some((tool) => tool !== 'write_artifact') ||
             role.allowedCollaborationTools.some((tool) => tool !== 'submit_result'),
         )
@@ -2057,8 +2063,18 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'run work style requires a role with a bound harness',
         });
+    // Observers use Coordinator tools, never an SDK work style. Do not accept
+    // a skill selection their execution cannot honor.
+    for (const { roleId } of Object.values(planned.plan.advisors)) {
+      if (planned.definition.roles.some((role) => role.id === roleId && role.skills !== undefined))
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `observer role ${roleId} cannot select skills`,
+        });
+    }
     for (const role of planned.definition.roles) {
-      if (!role.harness) continue;
+      if (!needsHarness(role)) continue;
+      const binding = role.harness ?? ROLE_SKILLS_MINIMAL_BINDING;
       try {
         const snapshot = EffectiveHarnessSnapshot.parse(
           this.harnesses?.resolve(role.harness, planned.definition, role.id, {
@@ -2069,8 +2085,9 @@ export class Coordinator {
           }),
         );
         if (
-          snapshot.binding.profileId !== role.harness.profileId ||
-          snapshot.binding.revision !== role.harness.revision ||
+          snapshot.binding.profileId !== binding.profileId ||
+          snapshot.binding.revision !== binding.revision ||
+          (!role.harness && snapshot.policy !== 'strict') ||
           (snapshot.policy === 'strict' && snapshot.resources.some((r) => r.kind === 'extension'))
         )
           throw new Error('invalid binding');
@@ -5866,6 +5883,9 @@ export class Coordinator {
       nodeId: spec.nodeId,
       attemptNo,
       role,
+      ...(isWorkAgent(node) && node.stepInstruction
+        ? { stepInstruction: node.stepInstruction }
+        : {}),
       ...(!advisor && run.snapshot.harnesses?.[role.id]
         ? { harness: run.snapshot.harnesses[role.id] }
         : {}),

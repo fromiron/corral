@@ -31,6 +31,8 @@ import {
   HarnessDocumentDraft,
   HarnessEntryKey,
   type HarnessEntryView,
+  type HarnessPreview,
+  type HarnessPreviewRole,
   HarnessProfile,
   type HarnessProfileRevision,
   HarnessPublish,
@@ -42,6 +44,10 @@ import {
   PinnedPackageSource,
   RegisteredMcpServer,
   ResourcePath,
+  ROLE_SKILLS_MINIMAL_BINDING,
+  type RoleHarnessPreview,
+  type RoleSkillProblem,
+  type RoleSkillRef,
   WorkTool,
 } from '@corral/contracts';
 import { type Db, SqliteHarnessStore, SqliteProjectToolStore } from '@corral/storage-sqlite';
@@ -88,6 +94,64 @@ const SESSION_DEFAULT: HarnessProfile = {
   resources: [],
   startupCommands: [],
 };
+
+// Immutable installation data: extend the broker vocabulary in a new policy revision.
+const MINIMAL_PROFILE_V1: HarnessProfile = {
+  name: 'Role skills',
+  policy: 'strict',
+  allowedTools: [
+    'search',
+    'read_document',
+    'write_artifact',
+    'generate_image',
+    'preview_file',
+    'preview_app',
+    'preview_action',
+    'list_files',
+    'read_file',
+    'write_file',
+    'delete_file',
+    'move_file',
+    'run_command',
+    'read_hashline',
+    'edit_hashline',
+    'submit_result',
+    'ask_user',
+    'update_plan',
+    'spawn_subagents',
+    'await_tasks',
+    'ask',
+    'reply',
+    'read_artifact',
+    'advise',
+    'read',
+  ],
+  resources: [],
+  startupCommands: [],
+  checkIds: [],
+  lspServerIds: [],
+  mcpServerIds: [],
+};
+
+class RoleResolutionError extends Error {
+  readonly problem: RoleSkillProblem;
+  constructor(problem: RoleSkillProblem) {
+    super(`Harness unavailable for role ${problem.roleId}: ${problem.reason}`);
+    this.problem = problem;
+  }
+}
+
+class ResourceVerificationError extends Error {
+  readonly reason: 'missing' | 'untrusted';
+  constructor(reason: 'missing' | 'untrusted', message: string) {
+    super(message);
+    this.reason = reason;
+  }
+}
+
+const resourceKey = (ref: RoleSkillRef) => `${ref.resourceHash}:${ref.entry}`;
+const requiredResource = (ref: HarnessProfile['resources'][number]) =>
+  ref.required || ref.skillMode === 'mandatory';
 
 export class HarnessService {
   private readonly evaluationDefinitions = new Map<string, HarnessBindingRef>();
@@ -760,12 +824,14 @@ export class HarnessService {
         });
       }
     }
-    for (const layer of input.harness.layers ?? [
-      { scope: 'role', binding: input.harness.binding },
-    ]) {
-      resources.startupCommands.push(...this.profile(layer.binding).startupCommands);
+    if (input.harness.startupCommandPolicy !== 'none') {
+      for (const layer of input.harness.layers ?? [
+        { scope: 'role', binding: input.harness.binding },
+      ]) {
+        resources.startupCommands.push(...this.profile(layer.binding).startupCommands);
+      }
+      if (resources.startupCommands.length > 16) throw new Error('too many startup commands');
     }
-    if (resources.startupCommands.length > 16) throw new Error('too many startup commands');
     if (input.runId && this.mcp)
       Object.assign(resources, await this.mcp.resources(input.runId, input.harness));
     else if (input.harness.projectTools?.mcpServerIds?.length)
@@ -926,7 +992,44 @@ export class HarnessService {
     return this.store.saveProfile(profileId, expectedRevision, profile);
   }
 
-  preview(binding: HarnessBindingRef, projectId: string, runOverride?: HarnessBindingRef) {
+  preview(
+    binding: HarnessBindingRef,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): HarnessPreview;
+  preview(
+    role: HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): RoleHarnessPreview;
+  preview(
+    input: HarnessBindingRef | HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): RoleHarnessPreview {
+    if ('profileId' in input) return this.resolveLayers(input, projectId, runOverride);
+    if (!input.harness && runOverride)
+      throw new Error('run work style requires a role with a bound harness');
+    if (!input.harness && !input.skills) return { snapshot: null, problem: null };
+    try {
+      return this.resolveLayers(
+        input.harness ?? ROLE_SKILLS_MINIMAL_BINDING,
+        projectId,
+        runOverride,
+        input,
+      );
+    } catch (error) {
+      if (error instanceof RoleResolutionError) return { snapshot: null, problem: error.problem };
+      throw error;
+    }
+  }
+
+  private resolveLayers(
+    binding: HarnessBindingRef,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+    role?: HarnessPreviewRole,
+  ) {
     const layers: {
       scope: 'personal' | 'project' | 'role' | 'run';
       profile: HarnessProfileRevision;
@@ -935,9 +1038,23 @@ export class HarnessService {
       const selection = this.store.getDefault(scope, scope === 'personal' ? 'default' : projectId);
       if (selection.binding) layers.push({ scope, profile: this.profile(selection.binding) });
     }
-    layers.push({ scope: 'role', profile: this.profile(binding) });
+    layers.push({
+      scope: 'role',
+      profile: role && !role.harness ? this.minimalProfile() : this.profile(binding),
+    });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
-    return this.compose(layers, binding, projectId);
+    return this.compose(layers, binding, projectId, role);
+  }
+
+  private minimalProfile() {
+    const stored = this.store.getProfile(ROLE_SKILLS_MINIMAL_BINDING);
+    if (!stored)
+      return this.store.saveProfile(ROLE_SKILLS_MINIMAL_BINDING.profileId, 0, MINIMAL_PROFILE_V1);
+    // A pre-existing user profile may have used the same ID before the built-in existed.
+    const { profileId: _id, revision: _revision, createdAt: _createdAt, ...policy } = stored;
+    if (canonicalJson(policy) !== canonicalJson(MINIMAL_PROFILE_V1))
+      throw new Error('invalid minimal role policy');
+    return stored;
   }
 
   setDefault(
@@ -1004,19 +1121,30 @@ export class HarnessService {
   }
 
   resolve(
-    binding: HarnessBindingRef,
+    binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
-    _roleId: string,
+    roleId: string,
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
-  ): EffectiveHarnessSnapshot {
+  ): EffectiveHarnessSnapshot | null {
+    const skills = definition.roles.find((role) => role.id === roleId)?.skills;
+    if (!binding && options?.runOverride)
+      throw new Error('run work style requires a role with a bound harness');
+    if (!binding && !skills) return null;
+    const role = { id: roleId, harness: binding, skills };
     const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
     if (
       evaluation &&
+      binding &&
       canonicalJson(evaluation) === canonicalJson(binding) &&
       !options?.sessionId &&
       !options?.runOverride
     )
-      return this.compose([{ scope: 'role', profile: this.profile(binding) }], binding).snapshot;
+      return this.compose(
+        [{ scope: 'role', profile: this.profile(binding) }],
+        binding,
+        undefined,
+        role,
+      ).snapshot;
     const row = this.db.prepare('SELECT project_id FROM corrals WHERE id = ?').get(definition.id) as
       | { project_id: string }
       | undefined;
@@ -1027,10 +1155,11 @@ export class HarnessService {
       : undefined;
     if (options?.sessionId && (!session || (row && row.project_id !== session.project_id)))
       throw new Error('harness project does not match session');
-    return this.preview(
-      binding,
+    return this.resolveLayers(
+      binding ?? ROLE_SKILLS_MINIMAL_BINDING,
       session?.project_id ?? row?.project_id ?? 'default',
       options?.runOverride,
+      role,
     ).snapshot;
   }
 
@@ -1044,6 +1173,7 @@ export class HarnessService {
     layers: { scope: 'personal' | 'project' | 'role' | 'run'; profile: HarnessProfileRevision }[],
     binding?: HarnessBindingRef,
     projectId?: string,
+    role?: HarnessPreviewRole,
   ) {
     const last = layers.at(-1)?.profile;
     if (!last) throw new Error('harness profile is missing');
@@ -1102,10 +1232,11 @@ export class HarnessService {
         ...(mcpServerIds.length ? { mcpServerIds } : {}),
       };
     }
+    const picks = role?.skills && new Map(role.skills.map((ref) => [resourceKey(ref), ref]));
     const selected = new Map<string, HarnessProfile['resources'][number]>();
     for (const { profile } of layers)
       for (const resource of profile.resources) {
-        const key = `${resource.resourceHash}:${resource.entry}`;
+        const key = resourceKey(resource);
         const prior = selected.get(key);
         if (prior && prior.kind !== resource.kind) throw new Error('resource kind conflict');
         selected.set(key, {
@@ -1114,34 +1245,100 @@ export class HarnessService {
           ...(resource.kind === 'skill'
             ? {
                 skillMode:
-                  prior?.skillMode === 'mandatory' ? 'mandatory' : (resource.skillMode ?? 'auto'),
+                  prior?.skillMode === 'mandatory' || resource.skillMode === 'mandatory'
+                    ? 'mandatory'
+                    : picks?.has(key) && prior?.skillMode === 'explicit'
+                      ? 'explicit'
+                      : (resource.skillMode ?? 'auto'),
               }
             : {}),
         });
       }
+    if (picks) {
+      for (const [key, resource] of selected) {
+        if (
+          resource.kind === 'skill'
+            ? !requiredResource(resource) && !picks.has(key)
+            : !role?.harness && !resource.required
+        )
+          selected.delete(key);
+      }
+      for (const [key, ref] of picks) {
+        if (!selected.has(key))
+          selected.set(key, { ...ref, kind: 'skill', required: false, skillMode: 'auto' });
+      }
+    }
     const resources: EffectiveHarnessSnapshot['resources'] = [];
     const sections: { source: 'skill'; name: string; text: string }[] = [];
-    const names = new Set<string>();
+    const names = new Map<string, string>();
+    const problems = new Map<string, RoleSkillProblem['entries'][number]['reason']>();
+    const verified = new Map<string, HarnessResourceView>();
     const diagnostics: string[] = [];
     if (disabledMcp) diagnostics.push('mcp_server_disabled');
+    let needsExecutionPolicy = false;
     let mandatoryBytes = 0;
-    for (const selectedResource of selected.values()) {
-      if (this.store.packageManagement(selectedResource.resourceHash).status !== 'enabled') {
-        if (selectedResource.required || selectedResource.skillMode === 'mandatory')
+    for (const [key, selectedResource] of selected) {
+      const picked = picks?.has(key);
+      if (picked && selectedResource.kind !== 'skill') {
+        problems.set(key, 'missing');
+        continue;
+      }
+      const status = this.store.packageManagement(selectedResource.resourceHash).status;
+      if (status !== 'enabled') {
+        if (picked) {
+          problems.set(key, status === 'removed' ? 'missing' : 'disabled');
+          continue;
+        }
+        if (requiredResource(selectedResource))
           throw new Error('required package is disabled or removed');
         diagnostics.push('package_disabled');
         continue;
       }
-      const resource = this.verify(selectedResource.resourceHash);
-      if (!resource.trustedAt) throw new Error('resource requires trust before binding');
+      let resource = verified.get(selectedResource.resourceHash);
+      if (!resource) {
+        try {
+          resource = this.verify(selectedResource.resourceHash);
+        } catch (error) {
+          if (!picked || !(error instanceof ResourceVerificationError)) throw error;
+          problems.set(key, error.reason);
+          continue;
+        }
+        verified.set(resource.hash, resource);
+      }
+      if (!resource.trustedAt) {
+        if (!picked) throw new Error('resource requires trust before binding');
+        problems.set(key, 'untrusted');
+        continue;
+      }
       if (selectedResource.kind === 'extension') {
-        if (policy === 'strict') throw new Error('strict policy refuses native extensions');
+        if (policy === 'strict') {
+          if (!role || role.harness) throw new Error('strict policy refuses native extensions');
+          needsExecutionPolicy = true;
+          continue;
+        }
         if (!resource.extensions.includes(selectedResource.entry))
           throw new Error('unknown extension entry');
       } else {
         const skill = resource.skills.find((skill) => skill.entry === selectedResource.entry);
-        if (!skill || names.has(skill.name)) throw new Error('unknown or duplicate skill name');
-        names.add(skill.name);
+        if (!skill) {
+          if (!picked) throw new Error('unknown or duplicate skill name');
+          problems.set(key, 'missing');
+          continue;
+        }
+        const priorKey = names.get(skill.name);
+        if (priorKey) {
+          const prior = selected.get(priorKey)!;
+          const conflict = [priorKey, key].filter((candidate) => picks?.has(candidate));
+          if (!conflict.length) throw new Error('unknown or duplicate skill name');
+          // A required original stays usable: flag the other hash the role selected.
+          const optional = conflict.filter(
+            (candidate) => !requiredResource(selected.get(candidate)!),
+          );
+          for (const candidate of optional.length ? optional : conflict)
+            problems.set(candidate, 'name_conflict');
+          if (!requiredResource(prior) && requiredResource(selectedResource))
+            names.set(skill.name, key);
+        } else names.set(skill.name, key);
         if (selectedResource.skillMode === 'mandatory') {
           const body = readFileSync(join(this.directory(resource.hash), skill.entry));
           mandatoryBytes += body.length;
@@ -1158,6 +1355,7 @@ export class HarnessService {
         version: resource.version,
         kind: selectedResource.kind,
         required: selectedResource.required || selectedResource.skillMode === 'mandatory',
+        ...(picked ? { selectedByRole: true as const } : {}),
         entry: selectedResource.entry,
         ...(selectedResource.kind === 'skill'
           ? {
@@ -1166,6 +1364,17 @@ export class HarnessService {
                 ?.name,
             }
           : {}),
+      });
+    }
+    if (role && picks && (problems.size || needsExecutionPolicy)) {
+      const entries = [...picks].flatMap(([key, ref]) => {
+        const reason = problems.get(key);
+        return reason ? [{ ...ref, reason }] : [];
+      });
+      throw new RoleResolutionError({
+        roleId: role.id,
+        reason: needsExecutionPolicy ? 'execution_policy_required' : 'unusable_skills',
+        entries,
       });
     }
     if (resources.some((resource) => resource.kind === 'extension'))
@@ -1179,6 +1388,7 @@ export class HarnessService {
     );
     const resolved = {
       ...(permissionPolicies.length ? { permissionPolicies } : {}),
+      ...(role && !role.harness ? { startupCommandPolicy: 'none' as const } : {}),
       binding: binding ?? { profileId: last.profileId, revision: last.revision },
       piVersion: '1.3.0' as const,
       policyRevision: permissionPolicies.length ? 2 : 1,
@@ -1206,7 +1416,7 @@ export class HarnessService {
 
   private verify(resourceHash: string): HarnessResourceView {
     const resource = this.store.getResource(resourceHash);
-    if (!resource) throw new Error('resource not installed');
+    if (!resource) throw new ResourceVerificationError('missing', 'resource not installed');
     try {
       if (treeHash(scan(this.directory(resourceHash))) !== resourceHash)
         throw new Error('resource changed');
@@ -1214,7 +1424,10 @@ export class HarnessService {
       this.checkEntries(resource, Boolean(manifest?.mcpServers.length || manifest?.ui.length));
     } catch {
       this.store.trustResource(resourceHash, false);
-      throw new Error('resource integrity changed; review and trust the new content');
+      throw new ResourceVerificationError(
+        'untrusted',
+        'resource integrity changed; review and trust the new content',
+      );
     }
     return resource;
   }

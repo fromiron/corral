@@ -1,5 +1,5 @@
-import type { HarnessBindingRef, HarnessOverrides, RoleRunOverrides } from '@corral/contracts';
-import type { CorralRecord } from '@corral/core';
+import type { HarnessOverrides, HarnessPreviewRole, RoleRunOverrides } from '@corral/contracts';
+import type { CorralRecord, ProjectSummary } from '@corral/core';
 import {
   ApprovalPanel,
   ArtifactViewer,
@@ -17,19 +17,43 @@ import {
   TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,
   type TeamEditorNavigation,
+  type TeamEditorProps,
+  type TeamEditorView,
   useSteerTarget,
   useStudioStores,
 } from '@corral/react';
-import { Button, fontWeights, KitBadge, Select } from '@corral/react/design-kit';
-import { Activity, Play, Redo2, Undo2 } from '@corral/react/icons';
+import {
+  Button,
+  fontWeights,
+  KitBadge,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  Select,
+  TabItem,
+  TabPanel,
+  Tabs,
+  TabsList,
+} from '@corral/react/design-kit';
+import { Activity, ChevronDown, Ellipsis, Play, Redo2, Undo2, X } from '@corral/react/icons';
 import { Link, useBlocker, useNavigate, useRouter } from '@tanstack/react-router';
-import { type ReactNode, useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { DemoGuide } from '../demo/DemoGuide.tsx';
 import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
 import { useModelPrices } from '../prices.ts';
-import { projectsChanged, setCurrentProject } from '../projects.ts';
+import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
 import { demoRoute, editorRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import {
@@ -40,11 +64,17 @@ import {
   ownsSaveShortcut,
   saveEditorCopy,
 } from '../workbench/editorDraft.ts';
+import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
 import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
-import { settingsInteractionBlocked, settingsOnlyTransition } from '../workbench/navigation.ts';
+import {
+  settingsInteractionBlocked,
+  settingsOnlyTransition,
+  useSettingsNavigation,
+} from '../workbench/navigation.ts';
 import { panelKey } from '../workbench/panels/registry.ts';
+import { RoleSkills, useSkillLabel } from '../workbench/RoleSkills.tsx';
 import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
@@ -224,6 +254,7 @@ function Editor({
   const t = useTranslations('Editor');
   const c = useTranslations('TeamEditor');
   const tr = useTranslations('Run');
+  const n = useTranslations('Navigation');
   const ts = useTranslations('Sessions');
   const router = useRouter();
   const navigate = useNavigate();
@@ -241,10 +272,12 @@ function Editor({
   }, [services, record.projectId, record.corralId]);
   const profiles = useModelProfiles();
   const imageProfiles = useImageProfiles();
+  const skillLabel = useSkillLabel();
   const draft = useStore(editor, (s) => s.draft);
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
+  const originals = useAgentOriginals(record.projectId);
   const checking = teams.issues.some((i) => i.state === 'loading');
   const failed = teams.issues.some((i) => i.state === 'failed');
   const validation = useMemo(
@@ -260,11 +293,21 @@ function Editor({
   const editorNavigation = useRef<TeamEditorNavigation>(null);
   const [openingSession, setOpeningSession] = useState(false);
   const opening = useRef(false);
-  const { resolvesHarness, readHarnessAsk } = useHarnessResolver(record.projectId);
+  const readHarnessAsk = useHarnessAsk(record.projectId);
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
+  const startMock = useRef<() => void>(null);
+  const mockButton = useRef<HTMLButtonElement>(null);
+  const [view, setView] = useState(() => readEditorView(record.corralId));
+  const [importOpen, setImportOpen] = useState(false);
+  const more = useRef<HTMLButtonElement>(null);
   const [statsOn, setStatsOn] = useState(false);
   const revision = saved.record.definitionRevision;
-  const runStats = useRunStats(services.transport, statsOn, record.corralId, revision);
+  const runStats = useRunStats(
+    services.transport,
+    view === 'graph' && statsOn,
+    record.corralId,
+    revision,
+  );
   const runId = useId();
   // Undo back to the saved draft returns the same object, so identity is the dirty check.
   const dirty = saving || draft !== saved.draft;
@@ -279,6 +322,11 @@ function Editor({
   // The editor stacks by its own width, which a test run beside it narrows.
   const column = useRef<HTMLDivElement>(null);
   const stacked = !useContainerAtLeast(column, TEAM_EDITOR_BESIDE_MIN);
+  const changeView = (next: TeamEditorView) => {
+    setView(next);
+    rememberEditorView(record.corralId, next);
+    if (runInPlace) setRunOpen(false);
+  };
 
   useBlocker({
     shouldBlockFn: ({ current, next }) => {
@@ -406,12 +454,20 @@ function Editor({
 
   return (
     <StudioStoresProvider editor={editor} session={session}>
-      <div ref={shell} className="grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)]">
+      <Tabs
+        ref={shell}
+        value={view}
+        onValueChange={(next) => {
+          if (next === 'composition' || next === 'graph') changeView(next);
+        }}
+        className="@container grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)]"
+      >
         {/* One header row: the way back to the session leads it instead of a row of its own. */}
         <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
           {fromSession ? (
             <Button
               data-testid="from-session"
+              className="order-first"
               variant="ghost"
               size="compact"
               render={<Link to="/sessions/$sessionId" params={{ sessionId: fromSession }} />}
@@ -444,7 +500,9 @@ function Editor({
           {message ? (
             <p
               role={message.error ? 'alert' : 'status'}
-              className={`min-w-0 truncate text-caption ${message.error ? 'text-destructive' : 'text-muted-foreground'}`}
+              className={
+                message.error ? 'min-w-0 break-words text-caption text-destructive' : 'sr-only'
+              }
             >
               {message.text}
             </p>
@@ -474,74 +532,128 @@ function Editor({
                 {tr('missingReference', { name: i.name, revision: i.revision })}
               </Button>
             ))}
-          <span className="grow" />
-          {runStats.status === 'off' ? null : (
-            <span
-              role="status"
-              className={`text-caption ${runStats.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
-            >
-              {runStats.status === 'loading'
-                ? c('stats.loading')
-                : runStats.status === 'failed'
-                  ? c('stats.failed')
-                  : runStats.stats.runs.length
-                    ? c('stats.summary', { revision, count: runStats.stats.runs.length })
-                    : c('stats.empty', { revision })}
-            </span>
-          )}
-          <Button
-            variant="tertiary"
-            size="compact"
-            aria-pressed={statsOn}
-            onClick={() => setStatsOn((on) => !on)}
-          >
-            <Activity /> {c('stats.toggle')}
-          </Button>
-          {toolbar}
-          <Button
-            variant="ghost"
-            size="icon-compact"
-            aria-label={c('undo')}
-            disabled={!canUndo}
-            onClick={() => editor.getState().undo()}
-          >
-            <Undo2 />
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-compact"
-            aria-label={c('redo')}
-            disabled={!canRedo}
-            onClick={() => editor.getState().redo()}
-          >
-            <Redo2 />
-          </Button>
-          <MarkdownAgentImport editor={editor} profiles={profiles} projectId={record.projectId} />
-          <Button type="button" onClick={exportFile} variant="tertiary" size="compact">
-            {t('export')}
-          </Button>
-          {inSession ? null : (
+          <div className="ml-auto flex max-w-full flex-wrap items-center justify-end gap-1">
+            {view === 'graph' ? (
+              <>
+                {runStats.status === 'off' ? null : (
+                  <span
+                    role="status"
+                    className={`text-caption ${runStats.status === 'failed' ? 'text-destructive' : 'text-muted-foreground'}`}
+                  >
+                    {runStats.status === 'loading'
+                      ? c('stats.loading')
+                      : runStats.status === 'failed'
+                        ? c('stats.failed')
+                        : runStats.stats.runs.length
+                          ? c('stats.summary', { revision, count: runStats.stats.runs.length })
+                          : c('stats.empty', { revision })}
+                  </span>
+                )}
+                <Button
+                  variant="tertiary"
+                  size="compact"
+                  aria-pressed={statsOn}
+                  onClick={() => setStatsOn((on) => !on)}
+                >
+                  <Activity /> {c('stats.toggle')}
+                </Button>
+              </>
+            ) : null}
+            {toolbar}
             <Button
-              variant="tertiary"
-              size="compact"
-              aria-controls={runId}
-              aria-expanded={runOpen}
-              onClick={() => setRunOpen((open) => !open)}
+              variant="ghost"
+              size="icon-compact"
+              aria-label={c('undo')}
+              disabled={!canUndo}
+              onClick={() => editor.getState().undo()}
             >
-              <Play /> {c(runOpen ? 'hideRun' : 'testRun')}
+              <Undo2 />
             </Button>
-          )}
-          <Button
-            variant="primary"
-            size="compact"
-            type="button"
-            onClick={() => void save()}
-            disabled={saving || !dirty}
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={c('redo')}
+              disabled={!canRedo}
+              onClick={() => editor.getState().redo()}
+            >
+              <Redo2 />
+            </Button>
+            {inSession ? null : (
+              <div className="flex items-center gap-1">
+                <Button
+                  ref={mockButton}
+                  variant="tertiary"
+                  size="compact"
+                  aria-controls={runId}
+                  onClick={() => startMock.current?.()}
+                >
+                  <Play /> {c(mode === 'server' && dirty ? 'saveAndMockTest' : 'mockTest')}
+                </Button>
+                <Menu>
+                  <MenuTrigger
+                    render={
+                      <Button variant="tertiary" size="icon-compact" aria-label={c('runOptions')} />
+                    }
+                  >
+                    <ChevronDown />
+                  </MenuTrigger>
+                  <MenuPopup align="end">
+                    <MenuItem onClick={() => setRunOpen(true)}>{n('prepareExecution')}</MenuItem>
+                  </MenuPopup>
+                </Menu>
+              </div>
+            )}
+            <Button
+              variant="primary"
+              size="compact"
+              type="button"
+              onClick={() => void save()}
+              disabled={saving || !dirty}
+            >
+              {saving ? t('saving') : t('save')}
+            </Button>
+            <Menu>
+              <MenuTrigger
+                render={
+                  <Button ref={more} variant="ghost" size="icon-compact" aria-label={t('more')} />
+                }
+              >
+                <Ellipsis />
+              </MenuTrigger>
+              <MenuPopup align="end">
+                <MenuItem onClick={() => setImportOpen(true)}>{t('importAgent')}</MenuItem>
+                <MenuItem onClick={exportFile}>{t('export')}</MenuItem>
+              </MenuPopup>
+            </Menu>
+            <MarkdownAgentImport
+              editor={editor}
+              profiles={profiles}
+              projectId={record.projectId}
+              open={importOpen}
+              onClose={() => setImportOpen(false)}
+              finalFocus={more}
+            />
+          </div>
+          {/* The tab's next native stop is its panel content, not an unrelated header action. */}
+          <TabsList
+            aria-label={t('views')}
+            className="-order-1 grid w-full auto-cols-fr grid-flow-col @2xl:inline-flex @2xl:w-auto"
           >
-            {saving ? t('saving') : t('save')}
-          </Button>
+            <TabItem
+              value="composition"
+              label={t('composition')}
+              className="justify-center pointer-coarse:min-h-11"
+            />
+            <TabItem
+              value="graph"
+              label={t('graph')}
+              className="justify-center pointer-coarse:min-h-11"
+            />
+          </TabsList>
         </header>
-        <div
+        <TabPanel
+          value={view}
+          tabIndex={-1}
           ref={body}
           className={`grid min-h-0 ${runBeside ? 'grid-cols-[minmax(640px,1fr)_minmax(320px,400px)]' : 'grid-cols-1'}`}
         >
@@ -554,12 +666,15 @@ function Editor({
                 failed ? tr('referencesFailed') : checking ? tr('referencesChecking') : undefined
               }
               editor={editor}
+              view={view}
+              onViewChange={changeView}
               stacked={stacked}
               profiles={profiles}
               imageProfiles={imageProfiles}
               teams={teams.references}
+              agentLibrary={originals.agentLibrary}
+              beginSaveAgent={originals.beginSaveAgent}
               resolveTeam={teams.resolve}
-              resolvesHarness={resolvesHarness}
               readHarnessAsk={readHarnessAsk}
               onOpenTeam={(corralId) =>
                 void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
@@ -575,6 +690,22 @@ function Editor({
                   key={`${node.id}:${node.reviewRecipe?.revision ?? 0}`}
                   node={node}
                   projectId={record.projectId}
+                />
+              )}
+              skillLabel={skillLabel}
+              roleSkills={(role, nodeId, { revealPolicy }) => (
+                <RoleSkills
+                  revealPolicy={revealPolicy}
+                  key={nodeId}
+                  roleId={role.id}
+                  harness={role.harness}
+                  value={role.skills}
+                  mode="seat"
+                  targetLabel={
+                    draft.definition.nodes.find((node) => node.id === nodeId)?.label ?? role.name
+                  }
+                  projectId={record.projectId}
+                  onApply={(skills) => editor.getState().updateNode(nodeId, { skills })}
                 />
               )}
               roleSettings={(role, nodeId) => (
@@ -595,12 +726,18 @@ function Editor({
               className={`min-h-0 overflow-auto p-3 ${runBeside ? 'border-l border-border' : ''}`}
             >
               <RunSide
+                skillLabel={skillLabel}
                 validation={validation}
                 onShowProblems={showProblems}
                 onOpenConversation={openConversation}
                 startDisabled={saving || openingSession}
                 projectId={record.projectId}
-                onStarted={() => setRunOpen(true)}
+                startMock={startMock}
+                onOpen={() => setRunOpen(true)}
+                onClose={() => {
+                  setRunOpen(false);
+                  mockButton.current?.focus();
+                }}
                 onEditBrief={() => {
                   setRunOpen(false);
                   editorNavigation.current?.editBrief();
@@ -612,52 +749,89 @@ function Editor({
               />
             </aside>
           )}
-        </div>
-      </div>
+        </TabPanel>
+      </Tabs>
     </StudioStoresProvider>
   );
 }
 
-/**
- * Whether a work style a copied role names is one this installation keeps. Saved revisions stay,
- * so any revision up to a profile's latest resolves. The browser demo has no work styles.
- */
-function useHarnessResolver(projectId: string) {
+function useAgentOriginals(projectId: string) {
+  const { agents, repository } = useServices();
+  const errors = useTranslations('Library.agents.errors');
+  const projectsText = useTranslations('Projects');
+  const [refresh, setRefresh] = useState(0);
+  const [project, setProject] = useState<ProjectSummary>();
+  const [read, setRead] = useState<
+    Pick<NonNullable<TeamEditorProps['agentLibrary']>, 'agents' | 'status'>
+  >({ agents: [], status: 'loading' });
+  useEffect(() => {
+    let current = true;
+    void repository.listProjects().then(
+      (projects) => {
+        if (current) setProject(projects.find((item) => item.projectId === projectId));
+      },
+      () => {
+        if (current) setProject(undefined);
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [repository, projectId]);
+  useEffect(() => {
+    let current = true;
+    void refresh;
+    setRead({ status: 'loading', agents: [] });
+    void agents.list(projectId).then(
+      (originals) => {
+        if (current) setRead({ status: 'ready', agents: originals });
+      },
+      () => {
+        if (current) setRead({ status: 'failed', agents: [] });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [agents, projectId, refresh]);
+  const beginSaveAgent: NonNullable<TeamEditorProps['beginSaveAgent']> = () => {
+    const operationId = `agent_${crypto.randomUUID()}`;
+    return async (role) => {
+      const result = await agents.create(projectId, { role, operationId });
+      return result.ok ? { ok: true } : { ok: false, message: errors(result.error) };
+    };
+  };
+  return {
+    agentLibrary: {
+      ...read,
+      projectName: project ? projectName(project, projectsText('defaultName')) : projectId,
+      retry: () => setRefresh((value) => value + 1),
+    },
+    beginSaveAgent,
+  };
+}
+
+function useHarnessAsk(projectId: string) {
   const { harnesses } = useServices();
-  const [latest, setLatest] = useState<ReadonlyMap<string, number> | null>(null);
+  const [revision, setRevision] = useState(0);
   useEffect(() => {
     if (!harnesses) return;
-    let live = true;
-    // As the role's work style setting does: read again when work styles may have changed.
-    const refresh = () =>
-      void harnesses.profileManagement().then(
-        (profiles) =>
-          live &&
-          setLatest(new Map(profiles.map((profile) => [profile.profileId, profile.revision]))),
-        // A failed read keeps what was read before; with nothing read, nothing resolves.
-        () => {},
-      );
-    refresh();
-    window.addEventListener('focus', refresh);
+    const refresh = () => setRevision((value) => value + 1);
     window.addEventListener('corral:harness-changed', refresh);
-    return () => {
-      live = false;
-      window.removeEventListener('focus', refresh);
-      window.removeEventListener('corral:harness-changed', refresh);
-    };
+    return () => window.removeEventListener('corral:harness-changed', refresh);
   }, [harnesses]);
-  return useMemo(
-    () => ({
-      resolvesHarness: latest
-        ? (ref: HarnessBindingRef) => (latest.get(ref.profileId) ?? 0) >= ref.revision
-        : undefined,
-      readHarnessAsk: harnesses
-        ? async (binding: HarnessBindingRef) =>
-            (await harnesses.preview(binding, projectId)).snapshot.allowedTools.includes('ask')
-        : undefined,
-    }),
-    [latest, harnesses, projectId],
-  );
+  return useMemo(() => {
+    // A changed project default invalidates every cached ask permission.
+    void revision;
+    if (!harnesses) return undefined;
+    return async (role: HarnessPreviewRole) => {
+      const { snapshot } =
+        role.harness && role.skills === undefined
+          ? await harnesses.preview(role.harness, projectId)
+          : await harnesses.preview(role, projectId);
+      return snapshot?.allowedTools.includes('ask');
+    };
+  }, [harnesses, projectId, revision]);
 }
 
 function RunSide({
@@ -666,20 +840,26 @@ function RunSide({
   onOpenConversation,
   startDisabled,
   projectId,
-  onStarted,
+  startMock,
+  onOpen,
+  onClose,
   beforeStart,
   liveAvailable,
   guide,
   initialStartFrom,
+  skillLabel,
   onEditBrief,
 }: {
   projectId: string;
   onEditBrief: () => void;
+  skillLabel: ReturnType<typeof useSkillLabel>;
   startDisabled: boolean;
   validation: DraftCompilation | null;
   onOpenConversation: () => Promise<void>;
   onShowProblems: () => void;
-  onStarted: () => void;
+  startMock: Ref<() => void>;
+  onOpen: () => void;
+  onClose: () => void;
   beforeStart?: (() => Promise<SavedRevision | null>) | undefined;
   liveAvailable: boolean;
   guide?: GuideSlot | undefined;
@@ -687,6 +867,10 @@ function RunSide({
 }) {
   const t = useTranslations('Editor');
   const n = useTranslations('Navigation');
+  const c = useTranslations('TeamEditor');
+  const ts = useTranslations('Sessions');
+  const navigation = useSettingsNavigation();
+  const headingId = useId();
   const { session, editor } = useStudioStores();
   const definition = useStore(editor, (state) => state.draft.definition);
   const runMode = useRunMode(projectId, 'corral', definition.id);
@@ -699,6 +883,7 @@ function RunSide({
     profileId: role.modelProfile,
     ...(role.reasoning ? { reasoning: role.reasoning } : {}),
     ...(role.harness ? { harness: role.harness } : {}),
+    ...(role.skills !== undefined ? { skills: role.skills } : {}),
   }));
   const key = JSON.stringify([projectId, definition.id, roles]);
   const [selection, setSelection] = useState<{ key: string; value: HarnessOverrides } | null>(null);
@@ -716,9 +901,25 @@ function RunSide({
     setSetupOpen(true);
   };
   return (
-    <section aria-labelledby="run-heading" className="flex flex-col gap-3">
+    <section aria-labelledby={headingId} className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-2">
+        <h2
+          id={headingId}
+          className="text-subtitle"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+        >
+          {c('testRun')}
+        </h2>
+        <Button
+          variant="ghost"
+          size="icon-compact"
+          aria-label={c('closeRunPanel')}
+          onClick={onClose}
+        >
+          <X />
+        </Button>
+      </div>
       {guide?.(session, setChosen)}
-      <p className="text-caption text-muted-foreground">{n('directRunHint')}</p>
       <details
         open={setupOpen}
         onToggle={(event) => setSetupOpen(event.currentTarget.open)}
@@ -755,6 +956,17 @@ function RunSide({
       </details>
       {runMode.error ? <p role="alert">{t('modeSaveFailed')}</p> : null}
       <RunControls
+        startMock={startMock}
+        onOpen={onOpen}
+        modelConnections={
+          <Button
+            variant="tertiary"
+            size="compact"
+            render={<Link {...navigation.link('models')} />}
+          >
+            {ts('connectModel')}
+          </Button>
+        }
         validation={validation}
         onOpenConversation={onOpenConversation}
         onShowProblems={onShowProblems}
@@ -766,7 +978,6 @@ function RunSide({
         breakpoints={breakpoints.filter((id) => definition.nodes.some((node) => node.id === id))}
         onStarted={() => {
           setSetupOpen(false);
-          onStarted();
           setChosen(null);
           setSelection(null);
           setRoleOverrides({});
@@ -781,6 +992,7 @@ function RunSide({
       />
       <RunView
         session={session}
+        skillLabel={skillLabel}
         onSteer={setChosen}
         onOpenArtifact={setViewing}
         onStartFrom={chooseStartFrom}

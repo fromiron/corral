@@ -277,6 +277,16 @@ beforeEach(async () => {
     mode: 'server',
     persistent: true,
     repository,
+    agents: {
+      list: vi.fn(async () => [
+        {
+          agentId: 'archived',
+          role: { name: 'Retired editor', prompt: 'Revise the copy.' },
+          updatedAt: '2026-11-10T00:00:00.000Z',
+          archivedAt: '2026-11-11T00:00:00.000Z',
+        },
+      ]),
+    },
     harnesses: harnesses(),
     workspaces: null,
   };
@@ -290,10 +300,13 @@ it('keeps a project filter, a draft request and an in-app return address', () =>
     project: 'project_a',
     draft: true,
   });
+  expect(validateLibrarySearch({ agent: 'agent_42' })).toEqual({ agent: 'agent_42' });
   for (const search of [
     { project: '' },
     { project: 'x'.repeat(257) },
     { project: ['project_a'] },
+    { agent: 42 },
+    { agent: '../other-project' },
     { returnTo: 'https://example.org' },
     { returnTo: '//example.org' },
     { returnTo: '/settings/skills' },
@@ -310,10 +323,30 @@ it.each(LIBRARY_VIEWS)('frames the %s view with the library title and its tab', 
   );
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Corrals', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals', 'Agents', 'Skills', 'Templates', 'Resources']);
   expect(
     name(tabs.find((tab) => tab.getAttribute('aria-selected') === 'true') as HTMLElement),
   ).toBe(view === 'teams' ? 'Corrals' : view[0]?.toUpperCase() + view.slice(1));
+  if (view === 'skills') {
+    expect(container.querySelector('table')?.textContent).toContain('Code review');
+    expect(byText(container, 'button', 'Create skill')).toBeTruthy();
+    expect(byText(container, 'button', 'Import')).toBeTruthy();
+  }
+});
+
+it('opens the linked archived original and keeps the project and return path when switching views', async () => {
+  const { container, router } = await render(
+    '/library/agents?project=project_1&agent=archived&returnTo=%2Fsessions%2Fs',
+  );
+  expect(container.querySelector('table button[aria-pressed="true"]')?.textContent).toContain(
+    'Retired editor',
+  );
+  const tab = container.querySelector<HTMLElement>('[role="tab"][data-view="templates"]');
+  expect(tab).toBeTruthy();
+  await act(async () => tab?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/library/templates');
+  expect(router.state.location.search).toEqual({ project: 'project_1', returnTo: '/sessions/s' });
 });
 
 it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
@@ -477,8 +510,10 @@ it('adds the settings dialog to the current library address from Manage', async 
     settings: 'mcp',
     settingsProject: 'project_1',
   });
-  const skill = container.querySelector<HTMLAnchorElement>('a[aria-label="Manage Code review"]');
-  expect(new URL(skill?.href ?? '', 'http://x').searchParams.get('settings')).toBe('skills');
+  expect(container.textContent).not.toContain('Code review');
+  const skill = container.querySelector<HTMLAnchorElement>('a[href^="/library/skills"]');
+  expect(skill?.search).toContain('project=project_1');
+  expect(new URLSearchParams(skill?.search).get('returnTo')).toBe('/sessions/session_a');
   const hook = container.querySelector<HTMLAnchorElement>(
     'a[aria-label="Manage Notify on finish"]',
   );
@@ -504,10 +539,6 @@ it('carries the managed row’s key to the dialog, outside the address', async (
     expect(settingsItemOf(router.state.location.state)).toBeUndefined();
     return { section: (location.search as { settings?: string }).settings, carried };
   };
-  expect(await open('Code review')).toEqual({
-    section: 'skills',
-    carried: `${hash(1)}:skills/SKILL.md`,
-  });
   expect(await open('Notify on finish')).toEqual({
     section: 'hooks',
     carried: `${hash(2)}:extensions/hook.ts`,
@@ -527,7 +558,7 @@ it('shows a failed group with its failure and a retry while the other groups sta
   expect(group.textContent).toContain('Could not load Packages.');
   expect(group.textContent).not.toContain('None');
   expect(group.querySelector('[role="alert"]')).toBeTruthy();
-  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'hooks')?.textContent).toContain('Notify on finish');
   expect(groupOf(container, 'mcp')?.textContent).toContain('Local tools');
   const retry = byText(group, 'button', 'Try again');
   await act(async () => retry?.click());
@@ -579,6 +610,7 @@ it('shows the browser demo one empty state that says resources need the local se
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   expect(panel.textContent?.match(/Available with the local server/g)).toHaveLength(1);
+  expect(panel.querySelector('a[href^="/library/skills"]')).toBeTruthy();
   for (const group of ['skills', 'hooks', 'extensions', 'packages', 'mcp'])
     expect(groupOf(container, group)).toBeNull();
   expect(panel.textContent).not.toContain('None');
@@ -603,7 +635,8 @@ it('shows one empty state with a way to add each kind when nothing is installed'
   const sections = [...panel.querySelectorAll<HTMLAnchorElement>('a[aria-label^="Manage "]')].map(
     (link) => new URL(link.href, 'http://x').searchParams.get('settings'),
   );
-  expect(new Set(sections)).toEqual(new Set(['skills', 'hooks', 'mcp']));
+  expect(new Set(sections)).toEqual(new Set(['hooks', 'mcp']));
+  expect(panel.querySelector('a[href^="/library/skills"]')).toBeTruthy();
 });
 
 it('lists only the groups that have items or failed, and keeps the others one click away', async () => {
@@ -617,7 +650,9 @@ it('lists only the groups that have items or failed, and keeps the others one cl
     }),
   };
   const { container, router } = await render('/library/resources?project=project_1');
-  expect(groupOf(container, 'skills')?.textContent).toContain('Code review');
+  expect(groupOf(container, 'skills')).toBeNull();
+  expect(container.textContent).not.toContain('Code review');
+  expect(container.querySelector('a[href^="/library/skills"]')).toBeTruthy();
   expect(groupOf(container, 'packages')?.textContent).toContain('Could not load Packages.');
   for (const group of ['hooks', 'extensions', 'mcp']) expect(groupOf(container, group)).toBeNull();
   expect(container.textContent).not.toContain('None');
@@ -827,7 +862,7 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
   const { container } = await render('/library/teams?project=project_1');
   const tabs = [...container.querySelectorAll<HTMLElement>('[role="tablist"] [role="tab"]')];
   const name = (tab: HTMLElement) => tab.querySelector('span > span:last-child')?.textContent;
-  expect(tabs.map(name)).toEqual(['Corrals 2', 'Templates', 'Resources']);
+  expect(tabs.map(name)).toEqual(['Corrals 2', 'Agents', 'Skills', 'Templates', 'Resources']);
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.textContent).not.toContain(messages.Library.teams.list);
   expect(panel.querySelector('h2:not(section h2)')).toBeNull();
