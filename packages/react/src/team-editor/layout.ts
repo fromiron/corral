@@ -1,5 +1,6 @@
 import type { CapabilityLink, ControlEdge, CorralDefinition, CorralNode } from '@corral/contracts';
 import { isBox, outputPortsOf } from '@corral/core';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // Automatic layout for the team editor (docs/specs/features/team-graph.md). Nobody places nodes:
 // each box lays out its own members in layers from left to right, sizes itself around them and
@@ -16,6 +17,7 @@ export const GEOMETRY = {
   padX: 24,
   head: 44,
   padBottom: 44,
+  reviewFooter: 32,
   emptyBox: { w: 240, h: 72 },
   callGap: 64,
 } as const;
@@ -81,6 +83,7 @@ interface Measured {
 export function layoutTeam(
   definition: Pick<CorralDefinition, 'nodes' | 'controlEdges' | 'capabilityLinks' | 'entryNodeId'>,
   collapsed: ReadonlySet<string> = new Set(),
+  reviewLoops: ReadonlySet<string> = requiredReviewLoopIds(definition.nodes),
 ): TeamLayout {
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const order = new Map(definition.nodes.map((n, i) => [n.id, i]));
@@ -121,13 +124,15 @@ export function layoutTeam(
   const measureItem = (id: string): Measured => {
     const node = nodes.get(id) as CorralNode;
     const depth = depthOf(id);
+    const footer = node.type === 'loop' && reviewLoops.has(id) ? GEOMETRY.reviewFooter : 0;
     // A reference team's steps live in the other team, so it is always a tile.
     const reference = node.type === 'team' && node.source.kind === 'reference';
     if (isBox(node) && !collapsed.has(id) && !reference) {
       const inner = measureContainer(id);
       const empty = inner.w === 0;
       const w = (empty ? GEOMETRY.emptyBox.w : inner.w) + GEOMETRY.padX * 2;
-      const h = GEOMETRY.head + (empty ? GEOMETRY.emptyBox.h : inner.h) + GEOMETRY.padBottom;
+      const h =
+        GEOMETRY.head + (empty ? GEOMETRY.emptyBox.h : inner.h) + GEOMETRY.padBottom + footer;
       const main = GEOMETRY.head + (empty ? GEOMETRY.emptyBox.h / 2 : inner.main);
       return {
         w,
@@ -142,13 +147,13 @@ export function layoutTeam(
     const size = node.type === 'join' ? GEOMETRY.join : isBox(node) ? GEOMETRY.tile : GEOMETRY.node;
     return {
       w: size.w,
-      h: size.h,
+      h: size.h + footer,
       main: size.h / 2,
       place(x, y) {
         items.set(id, {
           id,
           kind: isBox(node) ? 'tile' : 'node',
-          rect: { x, y, w: size.w, h: size.h },
+          rect: { x, y, w: size.w, h: size.h + footer },
           mainY: y + size.h / 2,
           depth,
         });
@@ -358,11 +363,23 @@ export function layoutTeam(
     advisorX = x + w + GEOMETRY.padX;
   }
 
-  const { edges, ports } = routeTeam(definition, items, collapsed);
+  const { edges, ports } = routeTeam(definition, items, collapsed, reviewLoops);
   return { items, edges, ports, bounds: boundsOf(items) };
 }
 
 const advisor = (n: CorralNode | undefined) => n?.type === 'agent' && n.invocation === 'observer';
+
+/** Full flow order for both editor lists. Collapsing a box only hides rows in the view. */
+export function outlineOrder(definition: CorralDefinition): Map<string, number> {
+  const advisors = new Set(definition.nodes.filter(advisor).map((node) => node.id));
+  const items = [...layoutTeam(definition).items.values()].sort(
+    (a, b) =>
+      Number(advisors.has(a.id)) - Number(advisors.has(b.id)) ||
+      a.rect.x - b.rect.x ||
+      a.rect.y - b.rect.y,
+  );
+  return new Map(items.map((item, index) => [item.id, index]));
+}
 
 /** Where the items reach: the area to fit in view. */
 export function boundsOf(items: ReadonlyMap<string, LaidItem>): Rect {
@@ -386,6 +403,7 @@ export function routeTeam(
   definition: Pick<CorralDefinition, 'nodes' | 'controlEdges' | 'capabilityLinks'>,
   items: ReadonlyMap<string, LaidItem>,
   collapsed: ReadonlySet<string> = new Set(),
+  reviewLoops: ReadonlySet<string> = requiredReviewLoopIds(definition.nodes),
 ): { edges: LaidEdge[]; ports: PortMark[] } {
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const shownAs = (id: string) => {
@@ -397,7 +415,7 @@ export function routeTeam(
     }
     return shown;
   };
-  const ports = portsOf(definition, items, shownAs);
+  const ports = portsOf(definition, items, shownAs, reviewLoops);
   const control = definition.controlEdges.flatMap((edge) =>
     routeControl(edge, nodes, items, shownAs, ports),
   );
@@ -423,6 +441,7 @@ function portsOf(
   definition: Pick<CorralDefinition, 'nodes'>,
   items: ReadonlyMap<string, LaidItem>,
   shownAs: (id: string) => string,
+  reviewLoops: ReadonlySet<string>,
 ): Map<string, PortMark> {
   const marks = new Map<string, PortMark>();
   const mark = (nodeId: string, port: string, side: 'in' | 'out', at: Point) =>
@@ -436,14 +455,17 @@ function portsOf(
       mark(node.id, 'enter', 'in', { x, y: item.mainY });
       mark(node.id, 'body', 'out', { x: x + 10, y: item.mainY });
       mark(node.id, 'exit', 'in', { x: x + w - 10, y: item.mainY });
-      if (node.type === 'loop') mark(node.id, 'repeat', 'in', { x: x + 10, y: y + h - 18 });
+      if (node.type === 'loop') {
+        const footer = reviewLoops.has(node.id) ? GEOMETRY.reviewFooter : 0;
+        mark(node.id, 'repeat', 'in', { x: x + 10, y: y + h - footer - 18 });
+      }
       mark(node.id, 'next', 'out', { x: x + w, y: item.mainY });
       if (node.type === 'loop') mark(node.id, 'exhausted', 'out', { x: x + w - 28, y: y + h });
       continue;
     }
     if (item.kind === 'tile') {
-      mark(node.id, 'enter', 'in', { x, y: y + h / 2 });
-      mark(node.id, 'next', 'out', { x: x + w, y: y + h / 2 });
+      mark(node.id, 'enter', 'in', { x, y: item.mainY });
+      mark(node.id, 'next', 'out', { x: x + w, y: item.mainY });
       if (node.type === 'loop') mark(node.id, 'exhausted', 'out', { x: x + w - 28, y: y + h });
       continue;
     }
@@ -513,7 +535,7 @@ function routeControl(
   let insertAt: Point | null = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   if (to === edge.target && edge.targetPort === 'repeat' && target.kind === 'box') {
     // Round again: out to the right, down under the body, back to the start of the loop.
-    const lane = target.rect.y + target.rect.h - 18;
+    const lane = b.y;
     const turn = a.x + 14;
     const r = 8;
     const left = target.rect.x + 10;
@@ -549,6 +571,9 @@ function routeControl(
     {
       id: edge.id,
       kind: 'control',
+      ...(from === edge.source && nodes.get(from)?.type === 'decision'
+        ? { label: { text: edge.sourcePort, at: { x: a.x + 7, y: a.y - 5 } } }
+        : {}),
       from,
       to,
       path,

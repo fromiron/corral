@@ -41,8 +41,7 @@ export function advisorMayUse(role: AgentRole, tool: string): boolean {
 
 /**
  * The roles a team's advisors run: those of its observer nodes, and any role that lists `advise`.
- * They are no one's delegate. The team editor's role import (`importableRoles` in
- * `packages/react/src/team-editor/commands.ts`) leaves out the same roles; keep the two alike.
+ * They are no one's delegate and are not importable work agents in the team editor.
  */
 export function advisorRoleIds(definition: {
   nodes: readonly CorralNode[];

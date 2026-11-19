@@ -1,3 +1,4 @@
+import { linearCorral } from '@corral/testkit';
 import { expect, test } from '@playwright/test';
 import { approvalResearchTeam } from '../src/demo/testing/approval-team.ts';
 import { editorSettings, importTeam, startTestRun, teamCanvas, teamNode } from './workbench.ts';
@@ -8,7 +9,7 @@ test('a narrow editor opens on the whole team, and a rename in its settings save
   await page.setViewportSize({ width: 768, height: 900 });
   await page.goto('/demo?delay=150');
   // The demo opens its guided test run; the editor alone is the narrow layout under test.
-  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await page.getByRole('button', { name: 'Close test panel', exact: true }).click();
   const canvas = page.locator('[data-team-canvas]');
   await expect(canvas.locator('[data-node]')).toHaveCount(8, { timeout: 20_000 });
   await expect
@@ -32,7 +33,7 @@ test('a narrow editor opens on the whole team, and a rename in its settings save
     .toBe(true);
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   const settings = page.getByRole('complementary', { name: 'Settings' });
   await settings.getByRole('textbox', { name: 'Name', exact: true }).fill('Narrow team');
   await expect(save).toBeEnabled();
@@ -79,15 +80,22 @@ test("at 768px the test run takes the editor's place and gives it back as it was
   await expect(canvas).toBeHidden();
   await expect(palette).toBeHidden();
   expect((await panel.boundingBox())?.width).toBeGreaterThan(700);
-  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  // After laying out beside a wide canvas, the open panel must also shrink again.
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await expect(canvas).toBeVisible();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(canvas).toBeHidden();
+  await expect(panel.getByRole('button', { name: 'Close test panel' })).toBeInViewport();
+  await expect(page.getByRole('button', { name: 'Mock test', exact: true })).toBeInViewport();
+  await page.getByRole('button', { name: 'Close test panel', exact: true }).click();
   await teamNode(page, 'write').click();
   await expect(name).toHaveValue('Writer');
-  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await page.getByRole('button', { name: 'Mock test', exact: true }).click();
   await expect(panel).toBeVisible();
   await expect(canvas).toBeHidden();
   await expect(palette).toBeHidden();
   await expect(settings).toBeHidden();
-  await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+  await page.getByRole('button', { name: 'Close test panel', exact: true }).click();
   await expect(panel).toBeHidden();
   await expect(name).toHaveValue('Writer');
   await expect(teamNode(page, 'write')).toBeInViewport();
@@ -136,4 +144,23 @@ test('call links are dashed and named in both themes', async ({ page }, testInfo
       .toBe(true);
     await canvas.screenshot({ path: testInfo.outputPath(`call-links-${colorScheme}.png`) });
   }
+});
+
+test('a draft test in the browser runs a pinned saved team', async ({ page }) => {
+  await importTeam(page, linearCorral(['helper'], 'inner'), 0);
+  const corralId = new URL(page.url()).pathname.split('/')[2] as string;
+  const outer = linearCorral(['writer'], 'outer');
+  outer.nodes.push({
+    id: 'ref',
+    type: 'team',
+    label: 'Helper team',
+    source: { kind: 'reference', corralId, definitionRevision: 1 },
+  });
+  outer.controlEdges = [
+    { id: 'enter', source: 'writer', sourcePort: 'out', target: 'ref', targetPort: 'enter' },
+    { id: 'leave', source: 'ref', sourcePort: 'next', target: 'output', targetPort: 'in' },
+  ];
+  await importTeam(page, outer, 0);
+  await startTestRun(page);
+  await expect(page.getByTestId('run-status')).toContainText('Completed');
 });

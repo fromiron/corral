@@ -5,6 +5,7 @@ import {
   CorralDefinition,
   DEFAULT_LIMITS,
   type RunEvent,
+  TEAM_SLOTS,
 } from '@corral/contracts';
 import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
@@ -19,6 +20,7 @@ import {
   parseAutoRoute,
   planRun,
   type RouteAnswer,
+  rolePrompt,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -33,6 +35,30 @@ const CHOICE: AutoModelChoice = {
 const WRITERS = new Set(['worker', 'writer']);
 
 describe('auto templates', () => {
+  it.each(AUTO_TEMPLATES)('%s keeps the duty in one role prompt and off the seat', (template) => {
+    const definition = autoDefinition({
+      id: 'auto_words',
+      template,
+      brief: 'Answer the question.',
+      choice: CHOICE,
+      fileTools: false,
+    });
+    const duties = {
+      worker:
+        'Do what the request asks, directly and completely. State routine assumptions; use ask_user when a missing decision would materially change the work.',
+      planner: 'Outline what the result must contain and how it will be checked.',
+      researcher:
+        'Collect the facts and sources the request needs, noting where each one came from.',
+      writer: 'Write the result from the request and the notes, and revise it from the review.',
+      reviewer:
+        'Check the draft against the request and the criteria; pass it or say exactly what to revise.',
+    };
+    expect(definition.roles.map(({ id, prompt }) => [id, prompt])).toEqual(
+      TEAM_SLOTS[template].map((slot) => [slot, rolePrompt(duties[slot])]),
+    );
+    for (const node of definition.nodes) expect(node).not.toHaveProperty('stepInstruction');
+  });
+
   it('explicit Auto work style binds every role and keeps missing style unchanged', () => {
     const base = {
       id: 'auto_style',

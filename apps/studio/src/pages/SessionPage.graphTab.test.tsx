@@ -16,15 +16,8 @@ import {
 
 // The 팀 그래프 tab (features/session-panel.md 탭, 여는 길, 주소와 기억): "Corral 설계 열기" opens the
 // team's graph in the panel, one tab per team named by the team; `panel=graph&corral=…` names it;
-// a restored one whose team the project no longer has is dropped. The editor inside is the team
-// editor's own (its tests cover it), stood in for here.
-
-vi.mock('./EditorPage.tsx', async (original) => ({
-  ...(await original<typeof import('./EditorPage.tsx')>()),
-  TeamDesign: ({ corralId }: { corralId: string }) => (
-    <div data-testid="team-design">{corralId}</div>
-  ),
-}));
+// a restored one whose team the project no longer has is dropped. The route and dock open
+// the same team's editor, including its last-used view.
 
 vi.setConfig({ testTimeout: 20_000 });
 
@@ -102,7 +95,10 @@ const presentation = () =>
   null;
 const search = (shell: MountedShell) =>
   shell.router.state.location.search as Record<string, unknown>;
-const design = () => document.querySelector<HTMLElement>('[data-testid="team-design"]');
+const editorTab = (name: string) =>
+  [...document.querySelectorAll<HTMLElement>('header [role="tab"]')].find(
+    (tab) => nameOf(tab) === name,
+  );
 
 async function editTeam() {
   const trigger = [...document.querySelectorAll<HTMLElement>('button')].find(
@@ -124,13 +120,13 @@ it('패널이 닫힘이다 → 더 보기 메뉴의 "Corral 설계 열기" → �
   expect(presentation()).toBe('closed');
 
   await editTeam();
-  await until(() => panelSelected() === TEAM);
+  await until(() => panelSelected() === TEAM && Boolean(editorTab('Flow graph')));
 
   expect(presentation()).not.toBe('closed');
   expect(panelTabNames()).toEqual([TEAM]);
   expect(search(shell).panel).toBe('graph');
   expect(search(shell).corral).toBe('corral_team');
-  expect(design()?.textContent).toBe('corral_team');
+  expect(editorTab('Flow graph')?.getAttribute('aria-selected')).toBe('true');
 
   await editTeam();
   await settle(20);
@@ -141,11 +137,25 @@ it('패널이 닫힘이다 → 더 보기 메뉴의 "Corral 설계 열기" → �
 it('새 페이지를 panel=graph&corral=… 주소로 연다 → 그 팀의 팀 그래프 탭이 열려 선택된다', async () => {
   const world = await serverWorld();
   const shell = await open(world, `/sessions/${world.sessionId}?panel=graph&corral=corral_team`);
-  await until(() => panelSelected() === TEAM);
+  await until(() => panelSelected() === TEAM && Boolean(editorTab('Flow graph')));
 
   expect(panelTabNames()).toEqual([TEAM]);
-  expect(design()?.textContent).toBe('corral_team');
+  expect(editorTab('Flow graph')?.getAttribute('aria-selected')).toBe('true');
   expect(search(shell).corral).toBe('corral_team');
+});
+
+it('opens the same view in the session graph tab that was chosen on the team route', async () => {
+  const world = await serverWorld();
+  const route = await open(world, '/corrals/corral_team/edit');
+  await until(() => Boolean(editorTab('Team composition')));
+  await press(editorTab('Team composition'));
+  await route.unmount();
+
+  await open(world, `/sessions/${world.sessionId}?panel=graph&corral=corral_team`);
+  await until(() => editorTab('Team composition')?.getAttribute('aria-selected') === 'true');
+  expect(panelSelected()).toBe(TEAM);
+  expect(editorTab('Team composition')?.getAttribute('aria-selected')).toBe('true');
+  expect(panelTabs()[0]?.getAttribute('aria-description')).toBeNull();
 });
 
 it('대화의 기억에 프로젝트에 없는 팀의 팀 그래프 탭과 파일 탭이 있다 → 들어오면 그 팀 그래프 탭은 버려지고 파일 탭이 선택된다; 있는 팀의 탭은 남는다', async () => {
@@ -177,7 +187,7 @@ it('주소가 프로젝트에 없는 팀을 가리킨다 → 그 탭은 버려�
   await settle(20);
 
   expect(panelTabs()).toHaveLength(1);
-  expect(design()?.textContent).toBe('corral_gone');
+  expect(side()?.textContent).toContain(messages.Docking.unknownPanel);
   expect(search(shell).corral).toBe('corral_gone');
 });
 

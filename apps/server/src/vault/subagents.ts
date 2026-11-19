@@ -3,6 +3,7 @@ import {
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
   type HarnessBindingRef,
+  type WorkAgentNode,
 } from '@corral/contracts';
 import {
   type AgentImportProfile,
@@ -13,6 +14,7 @@ import {
   type MarkdownAgent,
   type SaveRequest,
   type SaveResult,
+  seatPrompt,
 } from '@corral/core';
 import { z } from 'zod';
 import type { VaultDomainAdapter, VaultDomainSnapshot } from './types.ts';
@@ -102,7 +104,7 @@ export function createSubagentsVaultAdapter(options: {
     )
       throw new Error('Bind the target project, team and parent agent explicitly.');
     const nodes = source.definition.nodes.filter(
-      (node) => node.type === 'agent' && node.invocation === 'callable',
+      (node): node is WorkAgentNode => node.type === 'agent' && node.invocation === 'callable',
     );
     if (!nodes.length) throw new Error('The source team has no callable agents.');
     const profiles = await options.profiles();
@@ -120,7 +122,6 @@ export function createSubagentsVaultAdapter(options: {
         : undefined;
     let draft = { definition: record.definition };
     for (const node of nodes) {
-      if (node.type !== 'agent') continue;
       const role = source.definition.roles.find((role) => role.id === node.roleId);
       if (!role) throw new Error('Source callable role is missing.');
       const modelProfile = bindings[`model:${role.id}`];
@@ -129,7 +130,7 @@ export function createSubagentsVaultAdapter(options: {
       const candidate: MarkdownAgent = {
         name: role.name,
         description: `Imported callable agent: ${role.name}`,
-        prompt: role.prompt,
+        prompt: seatPrompt(role.prompt, node.stepInstruction),
         tools,
         model: role.modelProfile,
         errors: [],

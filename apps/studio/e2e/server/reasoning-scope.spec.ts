@@ -5,6 +5,7 @@ import {
   expectTeamSaved,
   openLibraryTeams,
   openProject,
+  openSeatAdvanced,
   openTestRun,
   startTestRun,
   teamNode,
@@ -84,6 +85,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await corral.open('/');
   await importTeam(page, 'reasoning-editor');
   await teamNode(page, 'writer').click();
+  await openSeatAdvanced(page);
   const effort = editorSettings(page).getByRole('combobox', {
     name: 'Reasoning effort',
     exact: true,
@@ -94,6 +96,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   await expectTeamSaved(page);
   await page.reload();
   await teamNode(page, 'writer').click();
+  await openSeatAdvanced(page);
   await expect(effort).toContainText('Low');
   await effort.click();
   await page.getByRole('option', { name: 'High', exact: true }).click();
@@ -121,6 +124,7 @@ test('role reasoning survives save, reload and undo', async ({ page, corral }) =
   ).toEqual({ mode: 'fixed', level: 'high' });
   await page.reload();
   await teamNode(page, 'writer').click();
+  await openSeatAdvanced(page);
   await expect(effort).toContainText('Low');
 });
 

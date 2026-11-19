@@ -1,7 +1,7 @@
 import { type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { RunControls } from '../src/components/RunControls.tsx';
 import { StudioStoresProvider } from '../src/context.tsx';
 import { draftFromDefinition } from '../src/editor/model.ts';
@@ -72,23 +72,32 @@ function team(withCheck: boolean): CorralDefinition {
   } as CorralDefinition;
 }
 
-function renderControls(definition: CorralDefinition) {
+function renderControls(definition: CorralDefinition, live = false, available = true) {
+  const start = vi.fn().mockResolvedValue(undefined);
   render(
     <IntlProvider locale="en" messages={messages}>
       <StudioStoresProvider
         editor={createEditorStore(draftFromDefinition(definition))}
-        session={sessionStore()}
+        session={sessionStore({ start })}
       >
-        <RunControls />
+        <RunControls
+          mode={live ? 'live' : 'mock'}
+          liveAvailable={available}
+          roleOverrides={{ writer_role: { modelProfile: 'override' } }}
+          breakpoints={['writer']}
+        />
       </StudioStoresProvider>
     </IntlProvider>,
   );
-  return screen.getByRole('button', { name: /^Run$/ });
+  return {
+    start,
+    run: screen.getByRole('button', { name: live ? 'Run with real models' : 'Start mock test' }),
+  };
 }
 
 describe('test run controls', () => {
   it('keep Run off for a team with a check step and say why', () => {
-    const run = renderControls(team(true));
+    const { run } = renderControls(team(true));
     expect(run).toBeDisabled();
     expect(
       screen.getByText(
@@ -98,8 +107,33 @@ describe('test run controls', () => {
   });
 
   it('leave Run on for the same team without its check step', () => {
-    const run = renderControls(team(false));
+    const { run } = renderControls(team(false));
     expect(run).toBeEnabled();
     expect(screen.queryByText(/Check steps run only/)).toBeNull();
+  });
+
+  it('sends live mode and the prepared overrides only through its named action', async () => {
+    const { run, start } = renderControls(team(false), true);
+    expect(start).not.toHaveBeenCalled();
+    fireEvent.click(run);
+    await waitFor(() =>
+      expect(start).toHaveBeenCalledWith(
+        team(false),
+        undefined,
+        'live',
+        undefined,
+        undefined,
+        { writer_role: { modelProfile: 'override' } },
+        ['writer'],
+      ),
+    );
+  });
+
+  it('never starts when real models are unavailable', () => {
+    const { run, start } = renderControls(team(false), true, false);
+    expect(run).toBeDisabled();
+    expect(screen.getByRole('alert')).toHaveTextContent(messages.Run.liveUnavailable);
+    fireEvent.click(run);
+    expect(start).not.toHaveBeenCalled();
   });
 });

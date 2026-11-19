@@ -13,14 +13,15 @@ import {
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import {
+  addAgent,
   applyPattern,
   connectPorts,
   type EditResult,
-  importableRoles,
-  importRole,
+  importableAgents,
   patchNode,
   placeStep,
   removeItems,
+  replaceAgent,
   replaceOutputSource,
   type StepKind,
   setParent,
@@ -52,12 +53,61 @@ function chain(length = 3): EditorDraft {
   return draft;
 }
 
+describe('editing a selected connection', () => {
+  it('replaces only the selected edge, retains its ID and preserves the prior graph on Undo', () => {
+    const draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    const [edge] = draft.definition.controlEdges;
+    if (!edge) throw new Error('Missing original connection');
+    const { id, ...original } = edge;
+    const target = { ...original, target: 'agent_3' };
+    expect(ok(connectPorts(draft, original, id)).draft).toBe(draft);
+    expect(refused(connectPorts(draft, { ...target, target: edge.source }, id))).toBe(
+      'selfConnection',
+    );
+    const store = createEditorStore(draft);
+    const parallel = ok(connectPorts(draft, target)).draft;
+    expect(parallel.definition.controlEdges).toHaveLength(2);
+    expect(refused(connectPorts(parallel, target, id))).toBe('duplicate');
+    expect(parallel.definition.controlEdges[0]).toEqual(edge);
+    store.getState().applyDraft(ok(connectPorts(draft, target, id)).draft);
+    expect(store.getState().draft.definition.controlEdges).toEqual([{ id, ...target }]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(draft);
+  });
+});
+
 describe('team shared Outrider settings', () => {
   const settings: SharedOutrider = {
     principles: 'Give reasons for each recommendation.',
     modelProfile: 'model-a',
     targets: { kind: 'all' },
   };
+
+  it('removes stale observation targets on deletion and treats reordered observer selections as the same edit', () => {
+    const draft = chain(3);
+    const observation = {
+      targets: { kind: 'selected' as const, nodeIds: ['agent_2', 'agent_3'] },
+      review: { interval: 1, maxRequestsPerReview: 4 },
+    };
+    const configured = ok(setSharedOutrider(draft, { ...settings, observation })).draft;
+    expect(
+      ok(
+        setSharedOutrider(configured, {
+          ...settings,
+          observation: {
+            ...observation,
+            targets: { kind: 'selected', nodeIds: ['agent_3', 'agent_2'] },
+          },
+        }),
+      ).draft,
+    ).toBe(configured);
+    const removed = removeItems(configured, ['agent_2']);
+    expect(removed.definition.sharedOutrider?.targets).toEqual({ kind: 'all' });
+    expect(removed.definition.sharedOutrider?.observation?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['agent_3'],
+    });
+  });
 
   it('forgets deleted selected workers before the same ID can be reused on reopen', () => {
     const a = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
@@ -848,20 +898,20 @@ describe('team editor commands: advisors', () => {
   it('takes no role copied from a working agent', () => {
     const added = ok(placeStep(chain(1), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const role = roleFor(added.draft, 'agent_1') as AgentRole;
-    expect(refused(importRole(added.draft, role, [added.nodeId]) as EditResult)).toBe(
-      'roleNeedsAgent',
-    );
+    expect(refused(replaceAgent(added.draft, added.nodeId, { role }))).toBe('roleNeedsAgent');
   });
 
   // Review round 2 (canvas.md rules 6 and 11).
   it('copies no advisor role onto an agent, and lists none to copy', () => {
     const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const advisorRole = roleFor(added.draft, added.nodeId) as AgentRole;
-    expect(refused(importRole(added.draft, advisorRole, ['agent_2']) as EditResult)).toBe(
+    expect(refused(replaceAgent(added.draft, 'agent_2', { role: advisorRole }))).toBe(
       'advisorRole',
     );
-    expect(refused(importRole(added.draft, advisorRole, []) as EditResult)).toBe('advisorRole');
-    expect(importableRoles(added.draft.definition).map((r) => r.id)).toEqual([
+    expect(refused(addAgent(added.draft, { role: advisorRole }, { kind: 'empty' }))).toBe(
+      'advisorRole',
+    );
+    expect(importableAgents(added.draft.definition).map(({ role }) => role.id)).toEqual([
       'agent_1_role',
       'agent_2_role',
     ]);
@@ -873,7 +923,7 @@ describe('team editor commands: advisors', () => {
         r.id === advisorRole.id ? { ...r, allowedCollaborationTools: [] } : r,
       ),
     };
-    expect(importableRoles(bare).map((r) => r.id)).not.toContain(advisorRole.id);
+    expect(importableAgents(bare).map(({ role }) => role.id)).not.toContain(advisorRole.id);
   });
 
   it('gives a converted advisor the role shape of a new one, keeping prompt, model, reasoning and reads', () => {

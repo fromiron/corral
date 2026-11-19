@@ -8,7 +8,6 @@ import {
   newConversationFromSidebar,
   openActivity,
   openConversationDetails,
-  openLibrary,
   openLibraryTeams,
   openPanelTab,
   panelContent,
@@ -16,6 +15,7 @@ import {
   runControls,
   selectSessionTeam,
   showResults,
+  teamFromTemplate,
 } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
@@ -89,12 +89,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .fill('Keep this purpose through team setup');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
-  // Back through the library to the project.
-  for (let step = 0; step < 4 && page.url() !== project; step++) await page.goBack();
+  await teamFromTemplate(page);
   await expect(page).toHaveURL(project);
   await openConversationDetails(page);
   await expect(details.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(

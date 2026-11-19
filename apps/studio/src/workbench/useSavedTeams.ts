@@ -1,7 +1,7 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import type { CorralRecord } from '@corral/core';
-import { importableRoles, type TeamReference } from '@corral/react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { importableAgents, type TeamReference } from '@corral/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useServices } from '../services.tsx';
 
 // The other saved teams a team can put in as reference Teams or copy roles from, and the saved
@@ -9,18 +9,44 @@ import { useServices } from '../services.tsx';
 
 const keyOf = (corralId: string, revision: number) => `${corralId}@${revision}`;
 
-/** The saved revisions a team's reference Teams name, as `corralId@revision`. */
-function referencesOf(nodes: readonly CorralNode[]): string[] {
-  return nodes.flatMap((node) =>
-    node.type === 'team' && node.source.kind === 'reference'
-      ? [keyOf(node.source.corralId, node.source.definitionRevision)]
-      : [],
-  );
+type ReferenceRead = CorralDefinition | null | 'failed';
+
+interface ReferenceIssue {
+  key: string;
+  corralId: string;
+  revision: number;
+  name: string;
+  /** The directly editable reference through which this revision was reached. */
+  nodeId: string;
+  state: 'loading' | 'failed' | 'missing';
 }
 
-function parseKey(key: string): [string, number] {
-  const at = key.lastIndexOf('@');
-  return [key.slice(0, at), Number(key.slice(at + 1))];
+function referenceIssues(nodes: readonly CorralNode[], reads: ReadonlyMap<string, ReferenceRead>) {
+  const issues: ReferenceIssue[] = [];
+  const visited = new Set<string>();
+  function visit(nodes: readonly CorralNode[], owner?: string) {
+    for (const node of nodes) {
+      if (node.type !== 'team' || node.source.kind !== 'reference') continue;
+      const { corralId, definitionRevision: revision } = node.source;
+      const key = keyOf(corralId, revision);
+      if (visited.has(key)) continue;
+      visited.add(key);
+      const read = reads.get(key);
+      const nodeId = owner ?? node.id;
+      if (read && read !== 'failed') visit(read.nodes, nodeId);
+      else
+        issues.push({
+          key,
+          corralId,
+          revision,
+          name: node.label,
+          nodeId,
+          state: read === null ? 'missing' : read === 'failed' ? 'failed' : 'loading',
+        });
+    }
+  }
+  visit(nodes);
+  return issues;
 }
 
 export function useSavedTeams(
@@ -28,6 +54,8 @@ export function useSavedTeams(
   definition: { nodes: readonly CorralNode[] },
 ): {
   references: TeamReference[];
+  issues: ReferenceIssue[];
+  retry: () => void;
   resolve: (corralId: string, definitionRevision: number) => CorralDefinition | undefined;
 } {
   const { repository } = useServices();
@@ -45,7 +73,7 @@ export function useSavedTeams(
           name: c.name,
         }));
       setReferences(others);
-      // Each team's saved roles, to copy one onto an agent; reading them changes nothing.
+      // Project each saved team into the agents and seat tasks the picker can copy.
       const read = await Promise.all(
         others.map(async (team): Promise<TeamReference> => {
           const saved = await repository.get(team.corralId).catch(() => null);
@@ -53,8 +81,7 @@ export function useSavedTeams(
             ? {
                 ...team,
                 definitionRevision: saved.definitionRevision,
-                // Not the roles its advisors run: those only advise.
-                roles: importableRoles(saved.definition),
+                agents: importableAgents(saved.definition),
               }
             : team;
         }),
@@ -66,37 +93,45 @@ export function useSavedTeams(
     };
   }, [repository, record.projectId, record.corralId]);
 
-  // Saved revisions never change, so each one is read once; null means it is not there.
-  const [loaded, setLoaded] = useState<ReadonlyMap<string, CorralDefinition | null>>(
-    () => new Map(),
+  // Only follow revisions reachable from this draft. The compiler reports graph cycles itself.
+  const [reads, setReads] = useState<ReadonlyMap<string, ReferenceRead>>(() => new Map());
+  const issues = useMemo(() => referenceIssues(definition.nodes, reads), [definition.nodes, reads]);
+  const wanted = JSON.stringify(
+    issues
+      .filter((issue) => issue.state === 'loading')
+      .map(({ key, corralId, revision }) => [key, corralId, revision]),
   );
-  const known = useRef(loaded);
-  known.current = loaded;
-  const wanted = useMemo(() => referencesOf(definition.nodes).join('\n'), [definition.nodes]);
   useEffect(() => {
-    const queue = wanted ? wanted.split('\n').filter((key) => !known.current.has(key)) : [];
-    if (!queue.length) return;
+    const missing: [string, string, number][] = JSON.parse(wanted);
+    if (!missing.length) return;
     let live = true;
-    void (async () => {
-      const found = new Map<string, CorralDefinition | null>();
-      // A referenced team may itself reference others; the compiler expands them all.
-      for (let key = queue.shift(); key !== undefined; key = queue.shift()) {
-        if (known.current.has(key) || found.has(key)) continue;
-        const [corralId, revision] = parseKey(key);
-        const saved = await repository.getRevision(corralId, revision).catch(() => null);
-        found.set(key, saved);
-        if (saved) queue.push(...referencesOf(saved.nodes));
-      }
-      if (live) setLoaded((current) => new Map([...current, ...found]));
-    })();
+    void Promise.all(
+      missing.map(async ([key, corralId, revision]): Promise<[string, ReferenceRead]> => {
+        try {
+          return [key, await repository.getRevision(corralId, revision)];
+        } catch {
+          return [key, 'failed'];
+        }
+      }),
+    ).then((found) => {
+      if (live) setReads((current) => new Map([...current, ...found]));
+    });
     return () => {
       live = false;
     };
-  }, [repository, wanted]);
+  }, [wanted, repository]);
+  const retry = () =>
+    setReads((current) => {
+      const next = new Map(current);
+      for (const issue of issues) if (issue.state === 'failed') next.delete(issue.key);
+      return next;
+    });
   const resolve = useCallback(
-    (corralId: string, definitionRevision: number) =>
-      loaded.get(keyOf(corralId, definitionRevision)) ?? undefined,
-    [loaded],
+    (corralId: string, revision: number) => {
+      const value = reads.get(keyOf(corralId, revision));
+      return value && value !== 'failed' ? value : undefined;
+    },
+    [reads],
   );
-  return { references, resolve };
+  return { references, resolve, issues, retry };
 }

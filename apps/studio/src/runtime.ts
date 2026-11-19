@@ -1,8 +1,14 @@
-import type { RunArchive, RuntimeTransport, TransportHandlers } from '@corral/core';
+import type {
+  CorralRepository,
+  RunArchive,
+  RuntimeTransport,
+  TransportHandlers,
+} from '@corral/core';
 import type {
   DemoMessage,
   DemoMethod,
   DemoResponse,
+  DemoTeamRevision,
   DemoWorkspaceMethod,
 } from './demo-protocol.ts';
 
@@ -17,7 +23,7 @@ export function createDemoTransport(): RuntimeTransport {
 }
 
 /** The demo worker's transport and its work folder. */
-export function createDemoRuntime(): {
+export function createDemoRuntime(repository?: Pick<CorralRepository, 'getRevision'>): {
   transport: RuntimeTransport;
   workspace: DemoWorkspaceCall;
   readHistory: (runId: string) => Promise<RunArchive>;
@@ -62,13 +68,14 @@ export function createDemoRuntime(): {
   worker.addEventListener('messageerror', fail);
   const request = <M extends DemoMethod>(
     method: M,
-    ...args: Parameters<NonNullable<RuntimeTransport[M]>>
+    args: Parameters<NonNullable<RuntimeTransport[M]>>,
+    revisions?: DemoTeamRevision[],
   ): ReturnType<NonNullable<RuntimeTransport[M]>> => {
     const id = ++nextId;
     return new Promise((resolve, reject) => {
       if (failure) return reject(failure);
       pending.set(id, { resolve, reject });
-      worker.postMessage({ type: 'request', id, method, args });
+      worker.postMessage({ type: 'request', id, method, args, revisions });
     }) as ReturnType<NonNullable<RuntimeTransport[M]>>;
   };
   const workspace: DemoWorkspaceCall = (method, ...args) => {
@@ -80,16 +87,40 @@ export function createDemoRuntime(): {
     });
   };
   const transport: RuntimeTransport = {
-    startRun: (...args) => request('startRun', ...args),
-    sendCommand: (...args) => request('sendCommand', ...args),
-    getReceipt: (...args) => request('getReceipt', ...args),
-    getSnapshot: (...args) => request('getSnapshot', ...args),
-    getArtifactText: (...args) => request('getArtifactText', ...args),
-    getConversationTurn: (...args) => request('getConversationTurn', ...args),
-    getMeetingAnswer: (...args) => request('getMeetingAnswer', ...args),
-    listRuns: () => request('listRuns'),
-    getRunDefinition: (...args) => request('getRunDefinition', ...args),
-    getRunStats: (...args) => request('getRunStats', ...args),
+    async startRun(input) {
+      const revisions: DemoTeamRevision[] = [];
+      if (repository && 'definition' in input) {
+        // The worker has no localStorage. Give its Coordinator the original pinned definitions
+        // so reference expansion and Loop policy are identical to a saved-revision server run.
+        const seen = new Set<string>();
+        const queue = [input.definition];
+        for (const team of queue) {
+          for (const node of team.nodes) {
+            if (node.type !== 'team' || node.source.kind !== 'reference') continue;
+            const { corralId, definitionRevision: revision } = node.source;
+            const key = JSON.stringify([corralId, revision]);
+            if (seen.has(key)) continue;
+            seen.add(key);
+            const definition = await repository.getRevision(corralId, revision);
+            if (definition) {
+              revisions.push({ corralId, revision, definition });
+              queue.push(definition);
+            }
+          }
+        }
+      }
+      return request('startRun', [input], revisions);
+    },
+    sendCommand: (...args) => request('sendCommand', args),
+    getReceipt: (...args) => request('getReceipt', args),
+    getSnapshot: (...args) => request('getSnapshot', args),
+    getArtifactText: (...args) => request('getArtifactText', args),
+    getConversationTurn: (...args) => request('getConversationTurn', args),
+    getMeetingAnswer: (...args) => request('getMeetingAnswer', args),
+    listRuns: () => request('listRuns', []),
+    getRunDefinition: (...args) => request('getRunDefinition', args),
+    getRunSource: (...args) => request('getRunSource', args),
+    getRunStats: (...args) => request('getRunStats', args),
     subscribe(runId, afterSeq, handlers) {
       const id = ++nextId;
       if (failure) {

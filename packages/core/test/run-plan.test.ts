@@ -1,6 +1,6 @@
 import { CorralDefinition } from '@corral/contracts';
 import { collaborationCorral, linearCorral } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import { compileDefinition, planRun, sharedOutriderTargets } from '../src/index.ts';
 
@@ -131,6 +131,39 @@ describe('shared Outrider consultations', () => {
     expect(result.definition.roles).toEqual(definition.roles);
   });
 
+  it('watches actual workers independently of barriers to asking, without watching the shared responder', () => {
+    const doc = linearCorral(['planner', 'writer']);
+    const controls = { interval: 2, maxRequestsPerReview: 5 };
+    const definition = {
+      ...doc,
+      limits: { ...doc.limits, maxQuestions: 0 },
+      sharedOutrider: {
+        ...policy,
+        targets: { kind: 'selected' as const, nodeIds: [] },
+        observation: { targets: { kind: 'all' as const }, review: controls },
+      },
+    };
+    const result = planRun(definition);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.plan.callables).toEqual({});
+    expect(Object.values(result.plan.advisors)).toMatchObject([
+      { watches: ['planner', 'writer'], review: controls },
+    ]);
+    expect(definition.nodes).toEqual(doc.nodes);
+    const noTargets = planRun({
+      ...definition,
+      sharedOutrider: {
+        ...policy,
+        observation: {
+          targets: { kind: 'selected', nodeIds: [] },
+          review: controls,
+        },
+      },
+    });
+    if (!noTargets.ok) throw new Error(JSON.stringify(noTargets.issues));
+    expect(noTargets.plan.advisors).toEqual({});
+  });
+
   it('accounts for a question spent reaching the worker, keeping workers reached by delegation eligible', () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxQuestions: 1 };
@@ -160,9 +193,56 @@ describe('shared Outrider consultations', () => {
     const allowed = sharedOutriderTargets(
       definition,
       undefined,
-      (binding) => binding.profileId === harness.profileId && binding.revision === harness.revision,
+      ({ harness: binding }) =>
+        binding?.profileId === harness.profileId && binding.revision === harness.revision,
     );
     expect(allowed[0]).not.toHaveProperty('unavailable');
     expect(allowed[0]).not.toHaveProperty('permissionPending');
+  });
+
+  it('checks the exact authored skills, including an empty selection, unless a run limit already blocks asking', () => {
+    const definition = linearCorral(['selected', 'empty', 'inherited']);
+    const skills = [{ resourceHash: 'a'.repeat(64), entry: 'guide/SKILL.md' }];
+    definition.roles[0]!.skills = skills;
+    definition.roles[1]!.skills = [];
+    const mayAsk = vi.fn(() => false);
+    const rows = sharedOutriderTargets(definition, undefined, mayAsk);
+    expect(mayAsk.mock.calls).toEqual([
+      [{ id: 'selected_role', skills }],
+      [{ id: 'empty_role', skills: [] }],
+    ]);
+    expect(rows.map((row) => row.unavailable)).toEqual(['harness', 'harness', undefined]);
+    mayAsk.mockClear();
+    const capped = sharedOutriderTargets(definition, undefined, mayAsk, {
+      ...definition.limits,
+      maxQuestions: 0,
+    });
+    expect(capped.every((row) => row.unavailable === 'questions')).toBe(true);
+    expect(mayAsk).not.toHaveBeenCalled();
+  });
+
+  it('previews exact MCP picks for ask, bypassing only empty, otherwise unbound workers', () => {
+    const definition = linearCorral(['selected', 'empty', 'bound', 'skills']);
+    const [selected, empty, bound, skills] = definition.roles;
+    const picks = [{ serverId: 'docs', name: 'mcp__docs__echo' }];
+    selected!.mcpTools = picks;
+    empty!.mcpTools = [];
+    bound!.harness = { profileId: 'writer', revision: 1 };
+    bound!.mcpTools = [];
+    skills!.skills = [];
+    skills!.mcpTools = [];
+    const mayAsk = vi.fn(() => false);
+    const rows = sharedOutriderTargets(definition, undefined, mayAsk);
+    expect(mayAsk.mock.calls).toEqual([
+      [{ id: selected!.id, mcpTools: picks }],
+      [{ id: bound!.id, harness: bound!.harness, mcpTools: [] }],
+      [{ id: skills!.id, skills: [], mcpTools: [] }],
+    ]);
+    expect(rows.map((row) => row.unavailable)).toEqual([
+      'harness',
+      undefined,
+      'harness',
+      'harness',
+    ]);
   });
 });

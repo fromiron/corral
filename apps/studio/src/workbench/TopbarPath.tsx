@@ -141,7 +141,7 @@ function ProjectSwitcher({
               <Button
                 variant="ghost"
                 size="icon-compact"
-                aria-label={n('switchProject')}
+                aria-label={n('switchProject', { name })}
                 data-crumb="project"
                 className="shrink-0"
               />
@@ -156,7 +156,7 @@ function ProjectSwitcher({
             <Button
               variant="ghost"
               size="compact"
-              aria-label={n('switchProject')}
+              aria-label={n('switchProject', { name })}
               data-crumb="project"
               // A project name is never cut mid-word to make room: the session name gives first.
               className="max-w-52 shrink-0 gap-1 px-2"

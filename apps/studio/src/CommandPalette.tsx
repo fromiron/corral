@@ -42,7 +42,7 @@ import {
   shortcutFor,
   shortcutLabel,
 } from './shortcuts.ts';
-import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from './templates.ts';
+import { WORKSPACE_TEMPLATES } from './templates.ts';
 import { ANNOTATE_SHORTCUT } from './workbench/browser/annotate.tsx';
 import { holdPages } from './workbench/browser/overlap.ts';
 import { returnFocusToPage } from './workbench/browser/pageFocus.ts';
@@ -423,7 +423,6 @@ export function Palette({
   const ti = useTranslations('RunIdentity');
   const status = usePresenceWord();
   const format = useFormatter();
-  const templateText = useTemplateText();
   const navigate = useNavigate();
   const services = useServices();
   const [query, setQuery] = useState(initialQuery);
@@ -547,19 +546,11 @@ export function Palette({
         title:
           id === 'blank' ? t('newBlank') : t('newFromTemplate', { name: t(`templates.${id}`) }),
         group: t('groups.create'),
-        run: async () => {
-          const created = await createFromTemplate(
-            services.repository,
-            id,
-            templateText,
-            currentProject(),
-          );
-          if (created.ok)
-            await navigate({
-              to: '/corrals/$corralId/edit',
-              params: { corralId: created.corralId },
-            });
-        },
+        run: () =>
+          navigate({
+            to: '/corrals/new/edit',
+            search: id === 'blank' ? { project: here } : { project: here, template: id },
+          }),
       }),
     );
     const meeting: AppCommand[] = hereProject
@@ -578,7 +569,7 @@ export function Palette({
       title: t('draftTeam'),
       group: t('groups.create'),
       keywords: ['goal', 'team', 'draft', '목표', '팀', '초안'],
-      run: () => navigate({ to: '/', search: { draft: true } }),
+      run: () => navigate({ to: '/corrals/new/edit', search: { project: here, assistant: 1 } }),
     };
     const go: AppCommand[] = [
       {
@@ -649,13 +640,13 @@ export function Palette({
       ...dynamic,
       ...go,
       ...meeting,
-      draftTeam,
-      ...fromTemplate,
+      ...(hereProject?.archivedAt ? [] : [draftTeam, ...fromTemplate]),
       ...(help ? [{ ...help, run: onHelp }] : []),
     ];
   }, [
     mode,
     sessionCommands,
+    here,
     hereProject,
     dynamic,
     registered,
@@ -663,7 +654,6 @@ export function Palette({
     navigate,
     t,
     tp,
-    templateText,
     onHelp,
     navigation.link,
   ]);

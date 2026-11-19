@@ -51,6 +51,32 @@ describe('shared Outrider settings', () => {
       CorralDefinition.parse({ ...minimal, sharedOutrider: settings }).sharedOutrider,
     ).not.toHaveProperty('artifactReview');
   });
+  it('round-trips independent observation targets and review settings, while enforcing existing review limits', () => {
+    const shared = {
+      modelProfile: 'model-a',
+      principles: 'Give feedback.',
+      targets: { kind: 'all' },
+    };
+    const observation = {
+      targets: { kind: 'selected', nodeIds: ['writer'] },
+      review: { interval: 2, maxRequestsPerReview: 4 },
+    };
+    const doc = { ...minimal, sharedOutrider: { ...shared, observation } };
+    expect(CorralDefinition.parse(doc)).toEqual(doc);
+    expect(CorralDefinitionDraft.parse(doc)).toEqual(doc);
+    expect(definitionJson(doc)).toBe(true);
+    for (const review of [
+      { interval: 0, maxRequestsPerReview: 4 },
+      { interval: 3, maxRequestsPerReview: 65 },
+    ]) {
+      const invalid = {
+        ...doc,
+        sharedOutrider: { ...shared, observation: { ...observation, review } },
+      };
+      expect(CorralDefinition.safeParse(invalid).success).toBe(false);
+      expect(definitionJson(invalid)).toBe(false);
+    }
+  });
   it.each([
     { kind: 'all' },
     { kind: 'selected', nodeIds: ['writer', 'subteam.writer'] },

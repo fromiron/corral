@@ -117,6 +117,74 @@ describeTransportContract('HTTP + SSE against the local server', async (agents) 
   };
 });
 
+describe('project agent library routes', () => {
+  it('guards project originals and writes by session and CSRF', async () => {
+    const server = await start();
+    const url = `${server.url}/api/v1/projects/default/agents`;
+    expect((await fetch(url)).status).toBe(401);
+    const { cookie, call } = await browser(server);
+    const denied = await fetch(url, {
+      method: 'POST',
+      headers: { cookie, origin: server.url, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe('ORIGIN_REJECTED');
+    expect(await (await call(url)).json()).toEqual([]);
+  });
+
+  it('validates, creates, replays, reads and patches only in the owning project', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const projects = `${server.url}/api/v1/projects`;
+    const url = `${projects}/default/agents`;
+    const write = (path: string, method: string, body: object) =>
+      call(path, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const role = {
+      name: 'Researcher',
+      prompt: 'Investigate.',
+      modelProfile: 'model-a',
+      outputContract: 'notes',
+      allowedWorkTools: [],
+      allowedCollaborationTools: [],
+    };
+    const create = { operationId: 'create_one', role };
+    const invalid = await write(url, 'POST', { ...create, role: { ...role, id: 'team_role' } });
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.code).toBe('SCHEMA_INVALID');
+    const response = await write(url, 'POST', create);
+    expect(response.status).toBe(201);
+    const first = await response.json();
+    expect(first).toMatchObject({ revision: 1, role, projectId: 'default' });
+    expect(await (await write(url, 'POST', create)).json()).toEqual(first);
+    const conflict = await write(url, 'POST', { ...create, role: { ...role, name: 'Different' } });
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error.code).toBe('IDEMPOTENCY_CONFLICT');
+    const path = `${url}/${first.agentId}`;
+    expect(await (await call(path)).json()).toEqual(first);
+    const patch = { expectedRevision: 1, role: { ...role, name: 'Editor' } };
+    const second = await (await write(path, 'PATCH', patch)).json();
+    expect(second).toMatchObject({ revision: 2, role: patch.role });
+    expect(await (await call(url)).json()).toEqual([second]);
+    const stale = await write(path, 'PATCH', { expectedRevision: 1, archived: true });
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error.code).toBe('REVISION_CONFLICT');
+    expect((await write(path, 'PATCH', { expectedRevision: 2 })).status).toBe(400);
+
+    const other = await (await write(projects, 'POST', { name: 'Other' })).json();
+    const outside = `${projects}/${other.projectId}/agents/${first.agentId}`;
+    for (const refusal of [await call(outside), await write(outside, 'PATCH', patch)]) {
+      expect(refusal.status).toBe(404);
+      expect((await refusal.json()).error.code).toBe('TARGET_NOT_FOUND');
+    }
+    expect(await (await call(path)).json()).toEqual(second);
+  });
+});
+
 describe('local security boundary', () => {
   it('refuses to listen anywhere but the loopback interface', async () => {
     await expect(
@@ -713,6 +781,80 @@ describe('REST: Corrals and runs', () => {
       }),
     });
     expect(noPrecondition.status).toBe(400);
+  });
+
+  it('saves under the stable createId and checks replays against the first definition', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'Writing' });
+    if (!project.ok) throw new Error(project.message);
+    const projectId = project.project.projectId;
+    const definition = { ...linearCorral(['writer']), id: 'corral_new-team' };
+    const create = { projectId, definition, createId: definition.id };
+    const url = `${server.url}/api/v1/corrals`;
+    const firstSave = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(create),
+    };
+    const first = await call(url, firstSave);
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({
+      ok: true,
+      record: { corralId: definition.id, projectId, definitionRevision: 1, definition },
+    });
+
+    const edited = { ...definition, name: 'Revised team' };
+    const update = await repo.save({ definition: edited, expectedDefinitionRevision: 1 });
+    if (!update.ok) throw new Error(update.message);
+    const request = { ...create, expectedDefinitionRevision: null };
+    const replay = await call(url, firstSave);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({
+      ok: true,
+      record: update.record,
+      changed: { definition: false },
+    });
+    for (const conflict of [{ definition: edited }, { projectId: 'default' }]) {
+      expect(await repo.save({ ...request, ...conflict })).toMatchObject({
+        ok: false,
+        error: 'revision_conflict',
+      });
+    }
+    expect(await repo.get(definition.id)).toEqual(update.record);
+    expect(await repo.list()).toHaveLength(1);
+
+    // The same imported definition, without an explicit identity, still gets a new id.
+    const copy = await repo.save({ definition, projectId, expectedDefinitionRevision: null });
+    if (!copy.ok) throw new Error(copy.message);
+    expect(copy.record.corralId).not.toBe(definition.id);
+    expect(copy.record.definitionRevision).toBe(1);
+  });
+
+  it('refuses a malformed or mismatched stable createId without writing', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const definition = linearCorral(['writer']);
+    for (const [id, createId] of [
+      ['corral_right', 'corral_other'],
+      ['other_prefix', 'other_prefix'],
+      ['corral_', 'corral_'],
+      ['corral_/path', 'corral_/path'],
+      ['corral_right', null],
+    ] as const) {
+      const invalid = await call(`${server.url}/api/v1/corrals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ definition: { ...definition, id }, createId }),
+      });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ error: { code: 'SCHEMA_INVALID' } });
+    }
+    const invalid = await repo.save({ definition, createId: '', expectedDefinitionRevision: null });
+    expect(invalid).toMatchObject({ ok: false, error: 'validation_error' });
+    expect(await repo.list()).toEqual([]);
   });
 
   it('runs the same scripted Corral to the same event order in a fresh workspace', async () => {

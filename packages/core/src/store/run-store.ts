@@ -27,6 +27,8 @@ export interface RunSnapshot {
   sharedOutriderNodeIds?: string[];
   /** Shared responders permitted to review an explicitly named version in this run. */
   artifactReviewNodeIds?: string[];
+  /** Strict decision IDs and candidate sources, including those in expanded, pinned teams. */
+  requiredReviewSources?: Record<string, string[]>;
   imageProfiles?: Record<string, ImageGenerationProfile>;
   permissionMode?: PermissionMode;
   resumedFrom?: ResumedFrom;

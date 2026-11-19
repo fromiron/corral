@@ -232,13 +232,18 @@ export class ScriptedAgentAdapter implements AgentAdapter {
               ),
             },
           });
-          if (!asked.ok) return failed(asked.error);
-          const result = asked.result as { outcome: string; body?: string };
-          notes.push(
-            result.outcome === 'answered'
-              ? `answer: ${result.body}`
-              : `no answer (${result.outcome})`,
-          );
+          if (asked.ok) {
+            const result = asked.result as { outcome: string; body?: string };
+            notes.push(
+              result.outcome === 'answered'
+                ? `answer: ${result.body}`
+                : `no answer (${result.outcome})`,
+            );
+          } else if (asked.error.code === 'LIMIT_REACHED') {
+            notes.push('no answer (question limit reached)');
+          } else {
+            return failed(asked.error);
+          }
         }
 
         let text = '';

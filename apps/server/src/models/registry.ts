@@ -18,12 +18,15 @@ import type {
   ProfileContextOverrides,
   ProfileContextPolicy,
   ReasoningCapabilities,
+  TeamAssistantRequest,
+  TeamAssistantResponse,
   TeamPlan,
 } from '@corral/contracts';
-import { canonicalJson } from '@corral/contracts';
+import { canonicalJson, UNUSABLE_TEAM_PLAN_MESSAGE } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
+  assistantReplyFromAnswer,
   autoRouterPrompt,
   FALLBACK_OUTPUT_TOKENS,
   fixedReasoning,
@@ -63,6 +66,7 @@ import {
   type ValueSource,
 } from './endpoints.ts';
 import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
+import { TEAM_ASSISTANT_SYSTEM_PROMPT } from './team-assistant.ts';
 import {
   DRAFT_MAX_OUTPUT_TOKENS,
   DRAFT_SYSTEM_PROMPT,
@@ -73,6 +77,17 @@ import {
 // Model profiles and sign-in for the local server. Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
 // carry status and expiry only: no token, key or callback URL ever leaves through them.
+
+type TeamModelResult<T> =
+  | ({ ok: true } & T)
+  | {
+      ok: false;
+      code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE' | 'REQUEST_OUTCOME_UNKNOWN';
+      message: string;
+    };
+
+type TeamDraftResponse = { plan: TeamPlan; model: { provider: string; modelId: string } };
+export type TeamOperationResult = TeamModelResult<TeamDraftResponse | TeamAssistantResponse>;
 
 export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
@@ -666,13 +681,45 @@ export class ModelRegistry implements ModelResolver {
   async draftTeam(
     goal: string,
     operation?: { id: string; signal?: AbortSignal },
+  ): Promise<TeamModelResult<TeamDraftResponse>> {
+    const answer = await this.requestTeamText(DRAFT_SYSTEM_PROMPT, goal, operation);
+    if (!answer.ok) return answer;
+    const plan = planFromAnswer(answer.text, goal);
+    return plan
+      ? { ok: true, plan, model: { provider: answer.provider, modelId: answer.modelId } }
+      : {
+          ok: false,
+          code: 'MODEL_UNAVAILABLE',
+          message: `${UNUSABLE_TEAM_PLAN_MESSAGE}; use the local suggestion`,
+        };
+  }
+
+  async assistTeam(
+    request: TeamAssistantRequest,
+    signal?: AbortSignal,
+  ): Promise<TeamModelResult<TeamAssistantResponse>> {
+    const { operationId, ...input } = request;
+    const answer = await this.requestTeamText(TEAM_ASSISTANT_SYSTEM_PROMPT, JSON.stringify(input), {
+      id: operationId,
+      signal,
+    });
+    if (!answer.ok) return answer;
+    const reply = assistantReplyFromAnswer(answer.text, request);
+    return reply
+      ? { ok: true, reply, model: answer.modelName }
+      : {
+          ok: false,
+          code: 'MODEL_UNAVAILABLE',
+          message: 'The model did not return a usable team proposal.',
+        };
+  }
+
+  private async requestTeamText(
+    systemPrompt: string,
+    input: string,
+    operation?: { id: string; signal?: AbortSignal },
   ): Promise<
-    | { ok: true; plan: TeamPlan; model: { provider: string; modelId: string } }
-    | {
-        ok: false;
-        code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE' | 'REQUEST_OUTCOME_UNKNOWN';
-        message: string;
-      }
+    TeamModelResult<{ text: string; provider: string; modelId: string; modelName: string }>
   > {
     const profile = this.profiles[0];
     const resolution = profile ? this.resolve(profile.id, 'live') : null;
@@ -700,8 +747,8 @@ export class ModelRegistry implements ModelResolver {
           ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
           : model,
         {
-          systemPrompt: DRAFT_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: goal, timestamp: Date.now() }],
+          systemPrompt,
+          messages: [{ role: 'user', content: input, timestamp: this.now() }],
         },
         {
           maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
@@ -739,10 +786,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       void this.refreshStatus(provider);
     }
-    const plan = planFromAnswer(text);
-    return plan
-      ? { ok: true, plan, model: { provider, modelId } }
-      : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+    return { ok: true, text, provider, modelId, modelName: model.name };
   }
 
   /**
