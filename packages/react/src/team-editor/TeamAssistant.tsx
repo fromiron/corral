@@ -285,6 +285,7 @@ function QuestionChoices({
   decisions,
   focus,
   disabled,
+  cost,
   t,
 }: {
   question: NonNullable<Conversation['question']>;
@@ -293,12 +294,14 @@ function QuestionChoices({
   decisions: Conversation['decisions'];
   focus(): void;
   disabled: boolean;
+  cost: string | null;
   t: AssistantText;
 }) {
   const outputs = useMemo(
     () => (question.id === 'review_target' ? summarize(draft).outputs : []),
     [question.id, draft],
   );
+  const costId = useId();
   if (question.id === 'brief') return null;
   return (
     <fieldset className="flex flex-wrap gap-2">
@@ -327,9 +330,10 @@ function QuestionChoices({
             variant="secondary"
             className={optionClass}
             disabled={disabled}
+            aria-describedby={cost ? costId : undefined}
             aria-pressed={chosen}
             onClick={() => {
-              actions.answer(value, label);
+              void actions.answer(value, label);
               focus();
             }}
           >
@@ -342,15 +346,21 @@ function QuestionChoices({
           key={action}
           variant="ghost"
           disabled={disabled}
+          aria-describedby={action === 'recommend' && cost ? costId : undefined}
           className={optionClass}
           onClick={() => {
-            actions.answer(action, action === 'direct' ? '' : t('choice.recommend'));
+            if (action === 'recommend') void actions.answer(action, t('choice.recommend'));
             focus();
           }}
         >
           {t(`choice.${action}`)}
         </Button>
       ))}
+      {cost && (
+        <p id={costId} className="basis-full text-caption text-muted-foreground">
+          {cost}
+        </p>
+      )}
     </fieldset>
   );
 }
@@ -468,6 +478,7 @@ export function TeamAssistant({
   const localReply = question?.source === 'choice';
   const paidSend = connected && !localReply;
   const modelName = host.modelLabel || td('ask');
+  const cost = paidSend ? `${modelName} · ${td('askCost')}` : null;
   const origin =
     proposal?.origin === 'model'
       ? t('modelProposal', { model: state.model || modelName })
@@ -522,9 +533,6 @@ export function TeamAssistant({
               {turn.text}
             </p>
           ))}
-          {question && lastTurn?.text !== t(`question.${question.id}`) && (
-            <p>{t(`question.${question.id}`)}</p>
-          )}
           {proposal && (
             <section
               data-assistant-preview
@@ -632,6 +640,7 @@ export function TeamAssistant({
             actions={actions}
             decisions={state.decisions}
             disabled={busy}
+            cost={cost}
             focus={focusInput}
             t={t}
           />
@@ -692,7 +701,7 @@ export function TeamAssistant({
         onValueChange={actions.setInput}
         onSend={() => void actions.send()}
         sendLabel={t('send')}
-        sendDescription={paidSend ? `${modelName} · ${td('askCost')}` : td('noModelCall')}
+        sendDescription={cost ?? td('noModelCall')}
         sendDisabled={busy}
         placeholder={t(creating ? 'createPlaceholder' : 'editPlaceholder')}
         textareaProps={{

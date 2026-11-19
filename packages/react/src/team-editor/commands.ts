@@ -1,4 +1,5 @@
 import {
+  type AgentNode,
   type AgentRole,
   type ControlEdge,
   type CorralDefinition,
@@ -10,6 +11,7 @@ import {
   type RoleOrigin,
   SharedOutrider,
   type TargetPort,
+  type WorkAgentNode,
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
@@ -41,6 +43,7 @@ import {
   withDefinition,
   withSuggestedBinding,
 } from '../editor/model.ts';
+import { outlineOrder } from './layout.ts';
 import { requiredReviewLoopIds } from './roster.ts';
 
 // Structural edits for the team editor (docs/specs/features/team-graph.md). Every gesture is a
@@ -147,8 +150,8 @@ export interface TeamReference {
   corralId: string;
   definitionRevision: number;
   name: string;
-  /** The roles of that revision, once the host has read them. */
-  roles?: readonly AgentRole[];
+  /** Reusable agents with their first seat's task at that revision. */
+  agents?: readonly SavedAgentSource[];
 }
 
 export interface PortRequest {
@@ -1186,15 +1189,33 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
 const isAdvisorRole = (role: Pick<AgentRole, 'allowedCollaborationTools'>) =>
   role.allowedCollaborationTools.includes('advise');
 
-/** The roles of a team another team may copy: not those its advisors run. */
-export function importableRoles(definition: {
-  nodes: readonly CorralNode[];
-  roles: readonly AgentRole[];
-}): AgentRole[] {
-  const advisors = new Set(
-    definition.nodes.flatMap((n) => (isAdvisor(n) && n.type === 'agent' ? [n.roleId] : [])),
-  );
-  return definition.roles.filter((role) => !advisors.has(role.id) && !isAdvisorRole(role));
+type SavedAgentSource = AgentSource & { role: AgentRole };
+
+/** Copy each non-advisor role once, with its first seat's instructions in flow order. */
+export function importableAgents(definition: CorralDefinition): SavedAgentSource[] {
+  const advisors = new Set<string>();
+  const first = new Map<string, WorkAgentNode>();
+  let order: Map<string, number> | undefined;
+  for (const node of definition.nodes) {
+    if (node.type !== 'agent') continue;
+    if (!isWorkAgent(node)) {
+      advisors.add(node.roleId);
+      continue;
+    }
+    const prior = first.get(node.roleId);
+    if (prior) {
+      order ??= outlineOrder(definition);
+      if ((order.get(prior.id) ?? Infinity) <= (order.get(node.id) ?? Infinity)) continue;
+    }
+    first.set(node.roleId, node);
+  }
+  return definition.roles
+    .filter((role) => !advisors.has(role.id) && !isAdvisorRole(role))
+    .map((role) => {
+      const stepInstruction = first.get(role.id)?.stepInstruction;
+      // With no separate instruction the role prompt itself is the task, not a second copy.
+      return stepInstruction ? { role, stepInstruction } : { role };
+    });
 }
 
 export interface AgentSource {
@@ -1308,7 +1329,13 @@ const keptSeatFields = [
 ] as const;
 
 type RoleSetting = Exclude<keyof AgentRole, 'id' | 'name' | 'origin'>;
-export type ReplacementChange = 'instructions' | 'model' | 'permissions' | 'skills' | 'format';
+export type ReplacementChange =
+  | 'task'
+  | 'instructions'
+  | 'model'
+  | 'permissions'
+  | 'skills'
+  | 'format';
 const replacementGroups = [
   ['instructions', ['prompt']],
   ['model', ['modelProfile', 'reasoning']],
@@ -1340,7 +1367,7 @@ export function previewReplaceAgent(
       draft: EditorDraft;
       nodeId: string;
       changed: ReplacementChange[];
-      kept: typeof keptSeatFields;
+      kept: readonly (typeof keptSeatFields)[number][];
     } {
   const { definition } = draft;
   const seat = definition.nodes.find((n) => n.id === nodeId);
@@ -1351,7 +1378,16 @@ export function previewReplaceAgent(
   for (const [category, fields] of replacementGroups)
     if (fields.some((key) => !sameRoleField(previous?.[key], source.role[key])))
       changed.push(category);
-  const preview = { ok: true as const, nodeId, changed, kept: keptSeatFields };
+  const task = seatTask(definition, nodeId);
+  const singlePrompt = !source.origin && !source.stepInstruction;
+  const incomingTask =
+    source.origin?.kind === 'library'
+      ? undefined
+      : (source.stepInstruction ?? (singlePrompt ? source.role.prompt : undefined));
+  const fillsTask = !task?.text.trim() && !!incomingTask?.trim();
+  if (fillsTask) changed.push('task');
+  const kept = fillsTask ? keptSeatFields.filter((field) => field !== 'task') : keptSeatFields;
+  const preview = { ok: true as const, nodeId, changed, kept };
   if (
     !changed.length &&
     previous?.name === source.role.name &&
@@ -1367,9 +1403,17 @@ export function previewReplaceAgent(
     return { ok: false, reason: 'movePlanOwner' };
   const { id, counters } = nextId(draft, 'role');
   const role = copyAgentRole(source, id);
-  const task = seatTask(definition, nodeId);
   const replacement = { ...seat, roleId: id };
-  if (task?.target === 'role' && task.text.trim()) replacement.stepInstruction = task.text;
+  if (fillsTask) {
+    if (source.stepInstruction) replacement.stepInstruction = source.stepInstruction;
+    else delete replacement.stepInstruction; // The incoming role prompt is the whole task.
+  } else if (
+    task?.target === 'role' &&
+    task.text.trim() &&
+    !(singlePrompt && task.text === source.role.prompt)
+  ) {
+    replacement.stepInstruction = task.text;
+  }
   const next: EditorDraft = {
     counters,
     definition: {
@@ -1420,6 +1464,14 @@ export function setStepInstruction(draft: EditorDraft, nodeId: string, text: str
         ? draft
         : patchNode(draft, nodeId, { stepInstruction }),
   };
+}
+
+/** Roster rows and graph cards share the first sentence of the seat task, or the role fallback. */
+export function seatTaskSummary(definition: CorralDefinition, node: AgentNode) {
+  const text =
+    (isWorkAgent(node) ? node.stepInstruction : undefined) ??
+    definition.roles.find((role) => role.id === node.roleId)?.prompt;
+  return text?.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim() ?? '';
 }
 
 export function seatTask(

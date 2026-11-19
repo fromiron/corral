@@ -38,6 +38,7 @@ import {
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
+import { rolePrompt } from './role-prompt.ts';
 import { basePatternFromGoal, draftFromPlan, type TeamWording } from './team-draft.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
@@ -134,6 +135,20 @@ export interface AutoDefinitionInput {
   routeLevel?: AutoRouteLevel;
 }
 
+/** Auto and conversation use the same shapes, but keep each duty in a single role prompt. */
+function singlePromptAutoDraft(plan: TeamPlan, id: string): CorralDefinition {
+  const { definition } = draftFromPlan(plan, id, WORDING.labels);
+  // This is a fresh auto draft: each worker seat has its own role.
+  for (const node of definition.nodes) {
+    if (!isWorkAgent(node)) continue;
+    const role = definition.roles.find((candidate) => candidate.id === node.roleId);
+    if (!role || !node.stepInstruction) throw new Error(`missing auto role or duty for ${node.id}`);
+    role.prompt = rolePrompt(node.stepInstruction);
+    delete node.stepInstruction;
+  }
+  return definition;
+}
+
 export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
   const template = AutoTemplate.parse(input.template);
   const plan: TeamPlan = {
@@ -150,7 +165,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     // Nobody designed this team, so its result does not wait for an approval.
     finalApproval: false,
   };
-  const { definition } = draftFromPlan(plan, input.id, WORDING.labels);
+  const definition = singlePromptAutoDraft(plan, input.id);
   // Roles always get a reasoning policy: `route` becomes the level picked for this request.
   const asked = input.choice.reasoning;
   const reasoning =

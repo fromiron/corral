@@ -1,23 +1,29 @@
 // @vitest-environment jsdom
 
-import type { HarnessBindingRef } from '@corral/contracts';
+import type { AgentStartInput, HarnessBindingRef } from '@corral/contracts';
 import {
+  Coordinator,
   type CorralRecord,
   type CorralRepository,
   createKeyValueCorralRepository,
+  InProcessTransport,
+  waitForProjection,
 } from '@corral/core';
 import {
+  draftFromDefinition,
   type EditorDraft,
   type EditorStore,
   emptyDraft,
   type RunSessionStore,
 } from '@corral/react';
+import { FakeClock, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { placeStep } from '../../../../packages/react/src/team-editor/commands.ts';
+import { templateDefinition, templateText } from '../templates.ts';
 import { editorWorkingCopy, newEditorWorkingCopy } from '../workbench/editorDraft.ts';
 import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
 import { EditorPage, TeamDesign } from './EditorPage.tsx';
@@ -835,6 +841,56 @@ function edit(record: CorralRecord, repository: CorralRepository, draft: EditorD
 }
 
 describe('test run validation and recovery in the editor', () => {
+  it('delivers the template base and seat duty separately to each scheduled mock worker', async () => {
+    const inputs: AgentStartInput[] = [];
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock: new FakeClock(),
+        ids: new SequentialIdFactory(),
+        agents: new ScriptedAgentAdapter({
+          turns: 1,
+          script: async (input) => {
+            inputs.push(input);
+            return null;
+          },
+        }),
+      }),
+    );
+    const sessions = new Map<string, RunSessionStore>();
+    let editor!: EditorStore;
+    await mount('route', 1280, (repo, record) => {
+      editor = editorWorkingCopy(repo, record).getState().editor;
+      return { transport, editorSessions: sessions };
+    });
+    const team = templateDefinition(
+      'implement-review',
+      editor.getState().draft.definition.id,
+      templateText(messages),
+    );
+    await act(async () => editor.getState().applyDraft(draftFromDefinition(team)));
+    await click(named(document, 'Mock test'));
+    const runId = [...sessions.values()][0]?.getState().runId;
+    assert(runId);
+    await act(async () => {
+      const run = await waitForProjection(transport, runId, (p) =>
+        ['succeeded', 'failed'].includes(p.status),
+      );
+      expect(run.status).toBe('succeeded');
+    });
+    expect([...new Set(inputs.map(({ nodeId }) => nodeId))].sort()).toEqual([
+      'implement',
+      'review',
+    ]);
+    for (const input of inputs) {
+      const duty = messages.TeamTemplates.presets[input.nodeId as 'implement' | 'review'].duty;
+      expect(input.assignment.kind).toBe('scheduled');
+      expect(input.stepInstruction).toBe(duty);
+      expect(input.role.prompt).toBe(team.roles.find((role) => role.id === input.role.id)?.prompt);
+      expect(input.role.prompt).toContain('submit with submit_result.');
+      expect(input.role.prompt).not.toContain(duty);
+    }
+  });
+
   it.each(['browser', 'server'])('updates Will apply on edit and save (%s)', async (mode) => {
     let editor!: EditorStore;
     await mount('route', 1280, (repository, record) => {

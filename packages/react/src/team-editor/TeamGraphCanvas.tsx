@@ -21,7 +21,13 @@ import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { tween } from '../design-kit/lib/springs.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import { ChevronDown, ChevronRight, CircleAlert, Plus, TriangleAlert, X } from '../ui/icons.ts';
-import type { EditRejection, Placement, PortRequest, StepKind } from './commands.ts';
+import {
+  type EditRejection,
+  type Placement,
+  type PortRequest,
+  type StepKind,
+  seatTaskSummary,
+} from './commands.ts';
 import { KIND_COLOR, KIND_ICON, kindOf, membersOf, portText, roleOf } from './kinds.ts';
 import {
   boundsOf,
@@ -669,7 +675,7 @@ export function TeamGraphCanvas({
   };
   const detail = (node: CorralNode): string => {
     if (node.type === 'output' && node.requireApproval) return t('approvalRequired');
-    if (node.type === 'agent') return roleOf(definition, node)?.prompt.split('\n')[0] ?? '';
+    if (node.type === 'agent') return seatTaskSummary(definition, node);
     if (node.type === 'loop' || node.type === 'team')
       return membersOf(definition, node.id)
         .filter((n) => n.parentId === node.id)

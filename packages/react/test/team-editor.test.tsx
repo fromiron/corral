@@ -75,7 +75,8 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
   await user.click(await screen.findByRole('option', { name: option }));
 };
 const writing = {
-  role: roleFromPreset('write', 'write', messages.TeamTemplates.presets.write),
+  role: roleFromPreset('write', 'write', messages.TeamTemplates.presets.write.name),
+  stepInstruction: messages.TeamTemplates.presets.write.duty,
   origin: { kind: 'preset' as const, presetId: 'write' },
 };
 async function chooseWriting() {
@@ -89,6 +90,20 @@ async function replacementAction(sheet: HTMLElement, catalog = messages) {
 }
 
 describe('team editor', () => {
+  it('shows the first task sentence, not the base instructions, on a graph card', () => {
+    const { draft, nodeId } = ok(
+      addAgent(
+        emptyDraft(),
+        { ...writing, stepInstruction: 'Edit the story. Keep it short.' },
+        { kind: 'empty' },
+      ),
+    );
+    renderEditor(draft);
+    expect(canvasNode(nodeId)).toHaveTextContent('Edit the story.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent('Keep it short.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent(writing.role.prompt);
+  });
+
   it('configures and removes a required review for the shown output and producer in one edit', async () => {
     const definition = chain(1);
     const output = ok(placeStep(definition, 'output', { kind: 'after', nodeId: 'agent_1' }));
@@ -1130,7 +1145,7 @@ describe('team editor: choosing an agent', () => {
     harness: { profileId: 'careful', revision: 2 },
   };
   const otherTeams: TeamReference[] = [
-    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', roles: [releaseCheck] },
+    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', agents: [{ role: releaseCheck }] },
   ];
   const presetNames = [
     'Implementation',

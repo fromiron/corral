@@ -1607,7 +1607,7 @@
       "opinion_only": "Feedback when needed",
       "required": "Pass before submitting",
       "recommend": "Recommend one",
-      "direct": "Write my own answer"
+      "direct": "Answer in my own words"
     },
     "question": {
       "material": "Will you supply the material, or should the team research it?",
@@ -6560,8 +6560,9 @@
       "preview": "Replace with the agent “{name}”",
       "changes": "What changes",
       "stays": "What stays",
-      "retained": "Seat name, task, received materials, connections, final result selection and advice target.",
+      "retained": "Seat name,{task, select, kept { task,} other {}} received materials, connections, final result selection and advice target.",
       "fields": {
+        "task": "Task",
         "instructions": "Base instructions",
         "model": "Model and reasoning",
         "permissions": "Tools and permissions",

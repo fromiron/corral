@@ -91,7 +91,9 @@ export interface InspectorSheetProps {
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Return focus to the seat menu trigger after the picker closes; its menu item is gone. */
   onReplaceAgent?: ((nodeId: string, opener: HTMLElement | null) => void) | undefined;
-  onSaveAgent?: ((role: AgentRole, opener: HTMLElement | null) => void) | undefined;
+  onSaveAgent?:
+    | ((role: AgentRole, stepInstruction: string | undefined, opener: HTMLElement | null) => void)
+    | undefined;
   agents?: readonly LibraryAgent[] | undefined;
   presets?: readonly AgentRole[];
   onShowInGraph?: ((nodeId: string) => void) | undefined;
@@ -663,7 +665,7 @@ export function InspectorSheet({
                 <MenuItem
                   onClick={() => {
                     const role = roleOf(definition, single);
-                    if (role) onSaveAgent(role, menuTrigger.current);
+                    if (role) onSaveAgent(role, single.stepInstruction, menuTrigger.current);
                   }}
                 >
                   {t('agentPicker.saveTitle')}

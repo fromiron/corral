@@ -1,4 +1,4 @@
-import { type CorralDefinition, FILE_TOOLS } from '@corral/contracts';
+import { type CorralDefinition, FILE_TOOLS, isWorkAgent } from '@corral/contracts';
 import {
   type CorralRepository,
   type CorralSummary,
@@ -8,7 +8,6 @@ import {
   type PlanStep,
   type RolePresetId,
   type RoleWording,
-  rolePrompt,
   TEAM_TEMPLATE_IDS,
   TEAM_TEMPLATE_ROLES,
   type TeamTemplateId,
@@ -176,12 +175,15 @@ function demoDefinition(
       return {
         ...role,
         name: own.name,
-        prompt: id === 'starter' ? own.duty : rolePrompt(own.duty),
+        prompt: id === 'starter' ? own.duty : role.prompt,
       };
     }),
     nodes: definition.nodes.map((node) => ({
       ...node,
       label: wording.nodes[node.id] ?? node.label,
+      ...(isWorkAgent(node) && node.stepInstruction !== undefined
+        ? { stepInstruction: wording.roles[node.roleId]?.duty ?? node.stepInstruction }
+        : {}),
     })),
   };
 }

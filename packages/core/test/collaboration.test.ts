@@ -13,12 +13,14 @@ import {
   type ScriptedAgentOptions,
   SequentialIdFactory,
 } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import {
   Coordinator,
+  createAutoStarter,
   InProcessTransport,
   type RunProjection,
   SPEC_HARD_CAPS,
+  teamTemplate,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -72,6 +74,71 @@ async function run(
 
 const byNode = (p: RunProjection, nodeId: string) =>
   (p.nodeExecutions[nodeId] ?? []).map((id) => p.executions[id]);
+
+it('sends each saved template delegate its base and its own duty exactly once', async () => {
+  const roles = {
+    implement: { name: '구현', duty: '요청에 맞게 코드를 수정합니다.' },
+    review: { name: '검토', duty: '변경 사항을 기준에 맞게 검토합니다.' },
+  };
+  const team = teamTemplate('implement-review', 'saved_team', {
+    name: '구현·검토',
+    brief: '입력을 검증합니다.',
+    criteria: ['검사 결과를 남깁니다.'],
+    roles,
+    labels: { loop: '반복', decision: '결정', join: '합류', output: '출력' },
+  });
+  const { transport, started } = runtime({
+    collaborate: false,
+    script: async (input, host) => {
+      if (input.assignment.kind === 'scheduled') {
+        const spawned = await host.invokeTool({
+          name: 'spawn_subagents',
+          args: {
+            tasks: input.capabilities.delegateTo.map(({ nodeId }) => ({
+              targetNodeId: nodeId,
+              brief: 'Report your findings.',
+            })),
+          },
+        });
+        if (!spawned.ok) throw new Error(spawned.error.message);
+        const waited = await host.invokeTool({
+          name: 'await_tasks',
+          args: { taskIds: spawned.result.taskIds },
+        });
+        if (!waited.ok) throw new Error(waited.error.message);
+      }
+      return null;
+    },
+  });
+  const starter = createAutoStarter({
+    corral: () => ({ definition: team, definitionRevision: 2 }),
+    startRun: (request) => transport.startRun(request),
+  });
+  const { runId, receipt } = await starter.start(
+    {
+      commandId: 'chat',
+      sessionId: 'session',
+      brief: 'Use this team.',
+      mode: 'mock',
+      choice: { modelProfile: 'model-a' },
+      team: { corralId: team.id },
+    },
+    { fileTools: false },
+  );
+  if (!runId) throw new Error(JSON.stringify(receipt.error));
+  expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+  for (const [id, { duty }] of Object.entries(roles)) {
+    const input = started.find((agent) => agent.role.id === `team_${id}`);
+    const base = team.roles.find((role) => role.id === id)?.prompt;
+    assert(base);
+    expect(input?.assignment.kind).toBe('delegated');
+    expect(input?.stepInstruction).toBe(duty);
+    expect(input?.role.prompt).toBe(base);
+    expect(base).toContain('submit with submit_result.');
+    expect(JSON.stringify(input).split(base)).toHaveLength(2);
+    expect(JSON.stringify(started).split(duty)).toHaveLength(2);
+  }
+});
 
 it('retries with the snapshotted step instruction, without giving it to another seat of the same role', async () => {
   const definition = linearCorral(['first', 'second']);

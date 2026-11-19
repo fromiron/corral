@@ -346,10 +346,15 @@ describe('replacing the role, not the seat', () => {
       let before = updateNode(initial, 'agent_1', { prompt: sentence });
       if (kind === 'step')
         before = patchNode(before, 'agent_1', { stepInstruction: 'Invite the neighbors.' });
-      const preset = roleFromPreset('plan', 'plan', messages.TeamTemplates.presets.plan);
-      const source: AgentSource = { role: preset, origin: { kind: 'preset', presetId: 'plan' } };
+      const { name, duty } = messages.TeamTemplates.presets.plan;
+      const preset = roleFromPreset('plan', 'plan', name);
+      const source: AgentSource = {
+        role: preset,
+        origin: { kind: 'preset', presetId: 'plan' },
+        stepInstruction: duty,
+      };
       const expectedTask =
-        kind === 'handmade' ? sentence : kind === 'step' ? 'Invite the neighbors.' : '';
+        kind === 'handmade' ? sentence : kind === 'step' ? 'Invite the neighbors.' : duty;
       const preview = previewReplaceAgent(before, 'agent_1', source);
       if (!preview.ok) throw new Error(preview.reason);
       const { draft } = ok(replaceAgent(before, 'agent_1', source));
@@ -359,9 +364,9 @@ describe('replacing the role, not the seat', () => {
         text: expectedTask,
         base: preset.prompt,
       });
-      expect(preview.kept).toContain('task');
-      if (kind === 'origin') expect(agent(draft, 'agent_1')).not.toHaveProperty('stepInstruction');
-      else expect(agent(draft, 'agent_1').stepInstruction).toBe(expectedTask);
+      expect(preview.kept.includes('task')).toBe(kind !== 'origin');
+      expect(preview.changed.includes('task')).toBe(kind === 'origin');
+      expect(agent(draft, 'agent_1').stepInstruction).toBe(expectedTask);
       expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
       const store = createEditorStore(before);
       store.getState().applyDraft(draft);
@@ -370,6 +375,42 @@ describe('replacing the role, not the seat', () => {
       expect(store.getState().canUndo).toBe(false);
     },
   );
+
+  it('fills only the missing task when choosing the same preset, but not a library original', () => {
+    const source: AgentSource = {
+      role: writer().role,
+      origin: { kind: 'preset', presetId: 'write' },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const preview = previewReplaceAgent(draft, nodeId, { ...source, stepInstruction: 'Draft it.' });
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['task']);
+    expect(preview.kept).not.toContain('task');
+    expect(agent(preview.draft, nodeId).stepInstruction).toBe('Draft it.');
+    const library = previewReplaceAgent(draft, nodeId, {
+      role: source.role,
+      origin: { kind: 'library', agentId: 'writer', revision: 4 },
+    });
+    if (!library.ok) throw new Error(library.reason);
+    expect(library.changed).not.toContain('task');
+    expect(seatTask(library.draft.definition, nodeId)?.text).toBe('');
+  });
+
+  it('fills an empty seat from another team’s handmade role without duplicating its one prompt', () => {
+    const { draft, nodeId } = addAtEnd(emptyDraft(), {
+      role: writer().role,
+      origin: { kind: 'preset', presetId: 'write' },
+    });
+    const preview = previewReplaceAgent(draft, nodeId, { role: writer().role });
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['task']);
+    expect(preview.kept).not.toContain('task');
+    expect(seatTask(preview.draft.definition, nodeId)).toMatchObject({
+      target: 'role',
+      text: writer().role.prompt,
+    });
+    expect(agent(preview.draft, nodeId)).not.toHaveProperty('stepInstruction');
+  });
 
   it('previews an MCP-only change as permissions and keeps each copy independent of its original', () => {
     const source = writer();
@@ -485,7 +526,7 @@ describe('replacing the role, not the seat', () => {
   it.each(ROLE_PRESET_IDS)(
     'copies the %s preset without changing the source or explicit inputs',
     (id) => {
-      const source = roleFromPreset(id, id, messages.TeamTemplates.presets[id]);
+      const source = roleFromPreset(id, id, messages.TeamTemplates.presets[id].name);
       const before = flow();
       const { draft } = ok(
         replaceAgent(before, 'agent_1', { role: source, origin: { kind: 'preset', presetId: id } }),

@@ -35,7 +35,7 @@ function setup({
     wording: en.TeamDraft.wording,
     onConnectModel: vi.fn(),
   } satisfies TeamAssistantHost;
-  render(
+  const dock = (assistant: TeamAssistantHost) => (
     <IntlProvider locale="en" messages={en} timeZone="UTC">
       <StudioStoresProvider editor={editor} session={session}>
         {integrated ? (
@@ -43,16 +43,22 @@ function setup({
             editor={editor}
             view="composition"
             stacked={narrow}
-            assistant={host}
+            assistant={assistant}
             assistantStart={{ open }}
           />
         ) : (
-          <TeamAssistant editor={editor} host={host} start={{ open }} onApplied={vi.fn()} />
+          <TeamAssistant editor={editor} host={assistant} start={{ open }} onApplied={vi.fn()} />
         )}
       </StudioStoresProvider>
-    </IntlProvider>,
+    </IntlProvider>
   );
-  return { editor, host, user: userEvent.setup() };
+  const { rerender } = render(dock(host));
+  return {
+    editor,
+    host,
+    user: userEvent.setup(),
+    disconnect: () => rerender(dock({ ...host, ask: null })),
+  };
 }
 
 const button = (name: string | RegExp) => screen.getByRole('button', { name });
@@ -80,20 +86,74 @@ it('keeps the conversation and unsent input across collapse, returning focus to 
   const answer = await screen.findByRole('button', { name: 'I’ll provide the material' });
   expect(transcript).toContainElement(answer);
   expect(transcript.scrollTop).toBe(500);
-  await user.click(answer);
+  await user.type(field(), 'My unfinished note');
+  await user.click(button('Answer in my own words'));
+  expect(field()).toHaveFocus();
+  expect(field()).toHaveValue('My unfinished note');
   expect(ask).toHaveBeenCalledTimes(1);
-  expect(field()).toHaveValue('I’ll provide the material');
+  await user.click(answer);
+  expect(ask).toHaveBeenCalledTimes(2);
+  expect(field()).toHaveValue('My unfinished note');
   await user.keyboard('{Escape}');
   expect(field()).toBeVisible();
   await user.click(button('Collapse'));
   expect(button('Build the team with AI')).toHaveFocus();
   await user.keyboard('{Enter}');
   expect(field()).toHaveFocus();
-  expect(field()).toHaveValue('I’ll provide the material');
+  expect(field()).toHaveValue('My unfinished note');
+  expect(screen.queryByRole('button', { name: 'I’ll provide the material' })).toBeNull();
+  expect(
+    within(screen.getByRole('log')).getByText('I’ll provide the material', { selector: 'p' }),
+  ).toBeVisible();
   expect(screen.getByText('Make a weekly neighborhood newsletter.')).toBeVisible();
   await user.clear(field());
   await user.keyboard('{Escape}');
   expect(button('Build the team with AI')).toHaveFocus();
+  expect(ask).toHaveBeenCalledTimes(2);
+});
+
+it('quotes a question choice before sending and disables choices until cancel or completion', async () => {
+  const gate = new Gate();
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValueOnce(question)
+    .mockImplementationOnce(async () => {
+      await gate.wait();
+      return question;
+    })
+    .mockResolvedValueOnce(question);
+  const { user } = setup({ ask, open: true });
+  await user.type(field(), 'Write a newsletter.{Enter}');
+  const options = await screen.findByRole('group', { name: en.TeamAssistant.question.material });
+  expect(within(options).getByText('Test model · 1 request')).toBeVisible();
+  await user.type(field(), 'Save this note');
+  await user.click(button('Recommend one'));
+  expect(ask).toHaveBeenCalledTimes(2);
+  for (const option of within(options).getAllByRole('button')) expect(option).toBeDisabled();
+  fireEvent.click(button('I’ll provide the material'));
+  expect(ask).toHaveBeenCalledTimes(2);
+  await user.click(button('Cancel'));
+  expect(button('Recommend one')).toBeEnabled();
+  await user.click(button('Recommend one'));
+  expect(ask).toHaveBeenCalledTimes(3);
+  await act(async () => gate.open());
+  expect(field()).toHaveValue('Save this note');
+  expect(screen.queryByRole('group', { name: en.TeamAssistant.question.material })).toBeNull();
+  expect(
+    within(screen.getByRole('log')).getAllByText('Recommend one', { selector: 'p' }),
+  ).toHaveLength(1);
+});
+
+it('removes the cost caption on disconnect and continues the same question locally in one press', async () => {
+  const ask = vi.fn().mockResolvedValue(question);
+  const { user, disconnect } = setup({ ask, open: true });
+  await user.type(field(), 'Write a newsletter.{Enter}');
+  const options = await screen.findByRole('group', { name: en.TeamAssistant.question.material });
+  expect(within(options).getByText('Test model · 1 request')).toBeVisible();
+  disconnect();
+  expect(within(options).queryByText('Test model · 1 request')).toBeNull();
+  await user.click(button(en.TeamAssistant.choice.team));
+  expect(screen.getByRole('region', { name: 'Local example' })).toBeVisible();
   expect(ask).toHaveBeenCalledTimes(1);
 });
 

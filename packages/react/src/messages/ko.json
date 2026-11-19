@@ -6560,8 +6560,9 @@
       "preview": "“{name}” 에이전트로 교체",
       "changes": "바뀌는 것",
       "stays": "유지되는 것",
-      "retained": "자리 이름, 맡은 일, 받는 자료, 연결, 최종 결과 선택, 자문 대상",
+      "retained": "자리 이름,{task, select, kept { 맡은 일,} other {}} 받는 자료, 연결, 최종 결과 선택, 자문 대상",
       "fields": {
+        "task": "맡은 일",
         "instructions": "기본 지시",
         "model": "모델과 추론",
         "permissions": "도구와 권한",

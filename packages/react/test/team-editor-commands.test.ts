@@ -17,7 +17,7 @@ import {
   applyPattern,
   connectPorts,
   type EditResult,
-  importableRoles,
+  importableAgents,
   patchNode,
   placeStep,
   removeItems,
@@ -911,7 +911,7 @@ describe('team editor commands: advisors', () => {
     expect(refused(addAgent(added.draft, { role: advisorRole }, { kind: 'empty' }))).toBe(
       'advisorRole',
     );
-    expect(importableRoles(added.draft.definition).map((r) => r.id)).toEqual([
+    expect(importableAgents(added.draft.definition).map(({ role }) => role.id)).toEqual([
       'agent_1_role',
       'agent_2_role',
     ]);
@@ -923,7 +923,7 @@ describe('team editor commands: advisors', () => {
         r.id === advisorRole.id ? { ...r, allowedCollaborationTools: [] } : r,
       ),
     };
-    expect(importableRoles(bare).map((r) => r.id)).not.toContain(advisorRole.id);
+    expect(importableAgents(bare).map(({ role }) => role.id)).not.toContain(advisorRole.id);
   });
 
   it('gives a converted advisor the role shape of a new one, keeping prompt, model, reasoning and reads', () => {

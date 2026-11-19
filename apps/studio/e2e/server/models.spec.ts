@@ -400,6 +400,56 @@ test('asks the signed-in model for a team draft once and opens it after review',
   expect(corral.errors).toEqual([]);
 });
 
+test('one question choice sends one model request and preserves the unsent composer text', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await signInOpenAI(page);
+  await page.reload();
+  await openLibrary(page, 'Templates');
+  await page.getByRole('link', { name: 'Draft from a goal' }).click();
+  const input = page.getByRole('textbox', { name: 'Request to build the team' });
+  corral.fake?.replyText(
+    JSON.stringify({ kind: 'question', id: 'material', choices: ['person', 'team'] }),
+  );
+  await input.fill('Make a newsletter.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const answer = page.getByRole('button', { name: 'I’ll provide the material' });
+  await expect(answer).toHaveAccessibleDescription('Test A · 1 request');
+  await input.fill('Keep the dates for later.');
+  corral.fake?.replyText(
+    JSON.stringify({
+      kind: 'plan',
+      plan: {
+        name: 'Newsletter',
+        pattern: 'single',
+        brief: 'Write the newsletter using the material provided.',
+        criteria: ['Use the supplied dates.'],
+        roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the newsletter.' }],
+        finalApproval: false,
+      },
+      reason: 'One writer can use the supplied material.',
+    }),
+  );
+  const request = page.waitForRequest(
+    (r) => r.url().endsWith('/api/v1/team-assistant') && r.method() === 'POST',
+  );
+  await answer.click();
+  expect((await request).postDataJSON()).toMatchObject({
+    decisions: { material: 'person' },
+    messages: [
+      { role: 'user', content: 'Make a newsletter.' },
+      { role: 'assistant', questionId: 'material' },
+      { role: 'user', content: 'I’ll provide the material' },
+    ],
+  });
+  await expect(page.getByRole('button', { name: 'Apply to draft' })).toBeEnabled();
+  await expect(answer).toHaveCount(0);
+  await expect(input).toHaveValue('Keep the dates for later.');
+  expect(corral.fake?.seen.hostRequests).toHaveLength(2);
+});
+
 test.describe('editing models on the Models page', () => {
   test('an endpoint key stays out of config and is sent again after a partial save', async ({
     page,

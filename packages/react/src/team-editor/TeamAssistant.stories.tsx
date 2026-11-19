@@ -16,6 +16,7 @@ const catalogs = { en, ko };
 type Scene =
   | 'opening'
   | 'question'
+  | 'answered'
   | 'proposal'
   | 'stale'
   | 'failure'
@@ -69,7 +70,7 @@ function AssistantStory({
               if (scene === 'failure') throw new TypeError('Connection closed');
               if (request.mode === 'edit')
                 return { model: 'Storybook', reply: { kind: 'describe', topic: 'submitter' } };
-              if (scene === 'question' && request.messages.length === 1) {
+              if ((scene === 'question' || scene === 'answered') && request.messages.length === 1) {
                 return {
                   model: 'Storybook',
                   reply: { kind: 'question', id: 'material', choices: ['person', 'team'] },
@@ -170,8 +171,17 @@ function example(scene: Scene, locale: Locale, narrow = false): Story {
       await userEvent.click(region.getByRole('button', { name: t.examples.newsletter }));
       await expect(input).toHaveValue(t.examples.newsletter);
       await userEvent.click(region.getByRole('button', { name: t.send }));
-      if (scene === 'question') {
-        await expect(await region.findByRole('button', { name: t.choice.person })).toBeVisible();
+      if (scene === 'question' || scene === 'answered') {
+        const choice = await region.findByRole('button', { name: t.choice.person });
+        await expect(choice).toHaveAccessibleDescription(`Storybook · ${m.TeamDraft.askCost}`);
+        if (scene === 'answered') {
+          await userEvent.click(input);
+          await userEvent.paste(t.examples.compare);
+          await userEvent.click(choice);
+          await expect(await region.findByRole('button', { name: t.apply })).toBeEnabled();
+          await expect(input).toHaveValue(t.examples.compare);
+          await expect(region.getByText(t.choice.person, { selector: 'p' })).toBeVisible();
+        }
       } else if (scene === 'failure') {
         await expect(await region.findByRole('alert')).toHaveTextContent(t.logic.unknown);
       } else {
@@ -199,6 +209,8 @@ export const CreateOpening = example('opening', 'en');
 export const CreateOpeningKorean = example('opening', 'ko');
 export const MaterialQuestion = example('question', 'en');
 export const MaterialQuestionKorean = example('question', 'ko');
+export const AnsweredQuestion = example('answered', 'en');
+export const AnsweredQuestionKorean = example('answered', 'ko');
 export const ProposalWithAlternatives = example('proposal', 'en');
 export const ProposalWithAlternativesKorean = example('proposal', 'ko');
 export const ChangedWorkingCopy = example('stale', 'en');

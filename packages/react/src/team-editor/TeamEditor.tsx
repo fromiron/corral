@@ -14,6 +14,7 @@ import {
   type RolePresetId,
   type RunStats,
   roleFromPreset,
+  seatPrompt,
 } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
@@ -233,9 +234,7 @@ export function TeamEditor({
   // The role presets in the screen language.
   const presets = useMemo(
     () =>
-      ROLE_PRESET_IDS.map((id: RolePresetId) =>
-        roleFromPreset(id, id, { name: presetText(`${id}.name`), duty: presetText(`${id}.duty`) }),
-      ),
+      ROLE_PRESET_IDS.map((id: RolePresetId) => roleFromPreset(id, id, presetText(`${id}.name`))),
     [presetText],
   );
 
@@ -281,7 +280,11 @@ export function TeamEditor({
     | { kind: 'replace'; nodeId: string }
     | null
   >(null);
-  const [savingAgent, setSavingAgent] = useState<{ role: AgentRole; save: SaveAgent } | null>(null);
+  const [savingAgent, setSavingAgent] = useState<{
+    role: AgentRole;
+    initialPrompt: string;
+    save: SaveAgent;
+  } | null>(null);
   const [savedNotice, setSavedNotice] = useState('');
   const [addedUnconnected, setAddedUnconnected] = useState(false);
   useEffect(() => {
@@ -895,10 +898,17 @@ export function TeamEditor({
       }}
       onSaveAgent={
         beginSaveAgent &&
-        ((role, opener) => {
+        ((role, stepInstruction, opener) => {
           dialogOrigin.current = opener;
           setSavedNotice('');
-          setSavingAgent({ role, save: beginSaveAgent() });
+          setSavingAgent({
+            role,
+            initialPrompt:
+              role.origin?.kind === 'library'
+                ? role.prompt
+                : seatPrompt(role.prompt, stepInstruction),
+            save: beginSaveAgent(),
+          });
         })
       }
       onShowInGraph={showInGraph}

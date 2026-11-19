@@ -1,5 +1,6 @@
 import { CorralDefinition, DEFAULT_ADVISOR_REVIEW, isWorkAgent } from '@corral/contracts';
 import { TEAM_TEMPLATE_ROLES, type TeamTemplateId, teamTemplate } from '@corral/core';
+import { linearCorral } from '@corral/testkit';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ComponentProps } from 'react';
@@ -139,9 +140,9 @@ describe('Team composition rows', () => {
     ['整理する。 次へ', '整理する。'],
     ['完了？ 次へ', '完了？'],
     ['確認！ 次へ', '確認！'],
-  ])('shows the first sentence of the first prompt line: %s', (prompt, expected) => {
-    const d = template('plan-implement-review');
-    const role = d.roles.find((r) => r.id === 'plan');
+  ])('shows the first sentence of an unsplit seat’s prompt: %s', (prompt, expected) => {
+    const d = linearCorral(['plan']);
+    const [role] = d.roles;
     assert(role);
     role.prompt = prompt;
     setup(d);

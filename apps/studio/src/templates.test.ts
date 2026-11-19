@@ -1,13 +1,14 @@
-import { CorralDefinition } from '@corral/contracts';
+import { CorralDefinition, isWorkAgent } from '@corral/contracts';
 import {
   CHANGE_TOOLS,
   compileDefinition,
   createKeyValueCorralRepository,
   isReadOnlyTeam,
   planRun,
+  type RoleWording,
 } from '@corral/core';
 import { emptyDraft } from '@corral/react';
-import { describe, expect, it } from 'vitest';
+import { assert, describe, expect, it } from 'vitest';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { templateForWorkspace } from './demo/templates.ts';
@@ -76,9 +77,32 @@ describe('library templates (docs/specs/features/library.md)', () => {
       const compiled = compileDefinition(definition, {
         knownModelProfiles: ['model-a', 'model-b'],
       });
-      expect(compiled.diagnostics.filter((d) => d.severity === 'error')).toEqual([]);
+      expect(compiled.diagnostics).toEqual([]);
       expect(compiled.ok).toBe(true);
       expect(planRun(definition).ok).toBe(true);
+    }
+  });
+
+  it.each(runnable)('%s keeps the localized seat duty separate from submission rules', (id) => {
+    for (const text of [english, korean]) {
+      const team = templateDefinition(id, 'copy', text);
+      const words: Record<string, RoleWording> =
+        id === 'starter' || id === 'research-team' ? text.demo(id).roles : text.wording(id).roles;
+      const seats = team.nodes.filter(isWorkAgent);
+      expect(seats.length).toBeGreaterThan(0);
+      for (const seat of seats) {
+        const duty = words[seat.roleId]?.duty;
+        const role = team.roles.find((r) => r.id === seat.roleId);
+        assert(duty && role);
+        if (id === 'starter') {
+          expect(seat).not.toHaveProperty('stepInstruction');
+          expect(role.prompt).toBe(duty);
+        } else {
+          expect(seat.stepInstruction).toBe(duty);
+          expect(role.prompt).toContain('submit with submit_result.');
+          expect(role.prompt).not.toContain(duty);
+        }
+      }
     }
   });
 
@@ -136,19 +160,26 @@ describe('library templates (docs/specs/features/library.md)', () => {
       expect(roleSteps(definition)).toEqual(steps);
       const hangul = /[가-힣]/;
       const words = [
-        ...definition.roles.flatMap((role) => [role.name, role.prompt]),
+        ...definition.roles.map((role) => role.name),
+        ...definition.nodes
+          .filter(isWorkAgent)
+          .map(
+            (seat) =>
+              seat.stepInstruction ??
+              definition.roles.find((role) => role.id === seat.roleId)?.prompt,
+          ),
         ...definition.nodes.map((node) => node.label),
         definition.input.brief,
         ...definition.input.criteria,
       ];
-      expect(words.filter((word) => !hangul.test(word))).toEqual([]);
+      expect(words.filter((word) => !word || !hangul.test(word))).toEqual([]);
       // Only the wording differs from the English team.
       const shape = (team: CorralDefinition) => ({
         ...team,
         name: '',
         input: { brief: '', criteria: team.input.criteria.map(() => '') },
         roles: team.roles.map((role) => ({ ...role, name: '', prompt: '' })),
-        nodes: team.nodes.map((node) => ({ ...node, label: '' })),
+        nodes: team.nodes.map((node) => ({ ...node, label: '', stepInstruction: undefined })),
       });
       expect(shape(definition)).toEqual(shape(templateDefinition(id, 'x', english)));
     },

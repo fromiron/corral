@@ -88,6 +88,7 @@ export { fixedReasoning } from './reasoning.ts';
 export * from './redact.ts';
 export * from './repository/index.ts';
 export { reviewCriteriaHash } from './review-recipe.ts';
+export * from './role-prompt.ts';
 export * from './run-plan.ts';
 export * from './run-stats.ts';
 export * from './runner.ts';

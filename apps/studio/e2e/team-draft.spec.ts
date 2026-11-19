@@ -26,6 +26,12 @@ test('a local security review suggestion has specific roles and a short name bef
   page.on('request', (r) => {
     if (r.url().endsWith('/team-assistant')) calls.push(r.url());
   });
+  const example = page.getByRole('button', { name: 'Use one writer to write this guide.' });
+  await example.click();
+  await expect(page.getByRole('textbox', { name: 'Request to build the team' })).toHaveValue(
+    'Use one writer to write this guide.',
+  );
+  expect(calls).toEqual([]);
   const goal =
     'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve';
   await propose(page, goal);

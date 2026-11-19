@@ -286,6 +286,39 @@ test('a worker observation proposal saves only after preview and reloads with it
   ).toHaveValue('3');
 });
 
+test('selecting a review target previews that result locally in one press', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const definition = linearCorral(['planner', 'writer']);
+  const output = definition.nodes.find((node) => node.type === 'output');
+  if (!output) throw new Error('Expected an output on the test team');
+  output.inputBindings.push({ kind: 'task_output', name: 'source notes', sourceNodeId: 'planner' });
+  const { record } = await call(page, '/corrals', { definition });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  const requests: string[] = [];
+  page.on('request', (r) => {
+    if (r.url().endsWith('/api/v1/team-assistant')) requests.push(r.url());
+  });
+  await page.getByRole('button', { name: 'Edit the team with AI' }).click();
+  await page.getByRole('button', { name: 'Submit after review passes' }).click();
+  const group = page.getByRole('group', {
+    name: 'Which result should pass review before submission?',
+  });
+  const target = group.getByRole('button', { name: /source notes/ });
+  await expect(target).toHaveAccessibleDescription('');
+  const input = page.getByRole('textbox', { name: 'Request to edit the team' });
+  await input.fill('Keep this request for later.');
+  await target.click();
+  const preview = page.getByRole('region', { name: 'Proposed changes' });
+  await expect(preview).toContainText('source notes');
+  await expect(preview.getByRole('button', { name: 'Apply to draft' })).toBeEnabled();
+  await expect(group).toHaveCount(0);
+  await expect(input).toHaveValue('Keep this request for later.');
+  expect(requests).toEqual([]);
+});
+
 test('a required output review checks the saved candidate before publishing it', async ({
   page,
   corral,

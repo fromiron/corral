@@ -62,6 +62,7 @@ type MessageIntent = {
 type ChoiceIntent = { kind: 'choice'; choice: Choice; brief?: string };
 type Intent = MessageIntent | ChoiceIntent;
 type Receipt = { base: EditorDraft; request: TeamAssistantRequest };
+type Unanswered = Pick<Conversation, 'question' | 'decisions' | 'intent' | 'turns'>;
 
 export interface Conversation {
   open: boolean;
@@ -72,7 +73,7 @@ export interface Conversation {
   failure: string | null;
   model: string | null;
   decisions: Decisions;
-  pending: { operationId: string; controller: AbortController } | null;
+  pending: { operationId: string; controller: AbortController; unanswered?: Unanswered } | null;
   initialName: string;
   // Only these messages can leave the working copy. Display history is never serialized.
   intent: Intent | null;
@@ -91,7 +92,7 @@ export interface AssistantActions {
   setOpen(open: boolean): void;
   suggestLocal(): void;
   chooseEdit(choice: Choice): void;
-  answer(value: string | TeamAssistantTarget, label: string): void;
+  answer(value: string | TeamAssistantTarget, label: string): Promise<void>;
   pattern(value: TeamPattern): void;
   observe(value: boolean): void;
   reviewPolicy(value: 'opinion_only' | 'required'): void;
@@ -122,7 +123,7 @@ export function assistantConversation(editor: EditorStore, start?: { open: boole
     cancel() {
       const { pending } = get();
       if (!pending) return;
-      set({ pending: null });
+      set({ ...pending.unanswered, pending: null });
       pending.controller.abort();
     },
   }));
@@ -400,7 +401,7 @@ export function createAssistantActions(
     }
   }
 
-  async function run(intent: MessageIntent, receipt: Receipt | null = null) {
+  async function run(intent: MessageIntent, receipt: Receipt | null = null, before?: Unanswered) {
     const base = receipt?.base ?? editor.getState().draft;
     const mode = modeOf(base);
     if (intent.mode !== mode) {
@@ -408,8 +409,15 @@ export function createAssistantActions(
       // Do not send previous-mode questions or choices as if they described this team.
       intent = { ...intent, mode, messages: [intent.messages[0]] };
       setState({ decisions: {}, chosenPattern: null });
+      before = undefined;
     }
-    setState({ intent, question: null, proposal: null, failure: null, receipt: null });
+    setState({
+      intent,
+      question: before?.question ?? null,
+      proposal: null,
+      failure: null,
+      receipt: null,
+    });
     if (intent.kind === 'local' || !host.ask) {
       try {
         if (mode === 'edit') say(t('logic.unsupported'));
@@ -439,7 +447,17 @@ export function createAssistantActions(
     const controller = new AbortController();
     const active = () =>
       getState().pending?.controller === controller && !controller.signal.aborted;
-    setState({ pending: { operationId: request.operationId, controller } });
+    // Cancelling an answer reopens that exact question, not the whole conversation (the
+    // composer may have been edited in the meantime). A second answer replaces the cancelled turn.
+    const unanswered = before && {
+      question: before.question,
+      decisions: before.decisions,
+      intent: before.intent,
+      turns: before.turns,
+    };
+    setState({
+      pending: { operationId: request.operationId, controller, ...(unanswered && { unanswered }) },
+    });
     try {
       let result: TeamAssistantResponse;
       try {
@@ -457,7 +475,11 @@ export function createAssistantActions(
         } else if (!code || code === 'REQUEST_OUTCOME_UNKNOWN') {
           // If even the receipt was lost, Retry first retrieves the same operation.
           // A confirmed unknown is terminal; only explicit Retry starts a new one.
-          setState({ failure: t('logic.unknown'), receipt: !code ? { request, base } : null });
+          setState({
+            question: null,
+            failure: t('logic.unknown'),
+            receipt: !code ? { request, base } : null,
+          });
         } else {
           failed(error);
         }
@@ -578,11 +600,15 @@ export function createAssistantActions(
     }
     if (!continuation) setState({ decisions: {}, chosenPattern: null });
     const message: UserMessage = { role: 'user', content: text };
-    return run({
-      kind: local || !host.ask ? 'local' : 'model',
-      mode,
-      messages: continuation ? [...continuation.messages, message] : [message],
-    });
+    return run(
+      {
+        kind: local || !host.ask ? 'local' : 'model',
+        mode,
+        messages: continuation ? [...continuation.messages, message] : [message],
+      },
+      null,
+      continuation ? state : undefined,
+    );
   }
 
   return {
@@ -631,18 +657,16 @@ export function createAssistantActions(
       });
       runChoice({ kind: 'choice', choice });
     },
-    answer(value: string | TeamAssistantTarget, label: string) {
-      const { question, intent, decisions, pending } = getState();
+    async answer(value, label) {
+      const state = getState();
+      const { question, intent, decisions, pending } = state;
       if (!question || pending || !intent || question.id === 'brief') return;
       const next = { ...decisions };
       if (question.id === 'material') delete next.material;
       else if (question.id === 'review_policy') delete next.reviewPolicy;
       else delete next.reviewTarget;
-      if (value === 'direct' || (value === 'recommend' && question.source === 'model')) {
-        setState({ input: value === 'direct' ? '' : label, decisions: next });
-        return;
-      }
-      if (value === 'recommend') {
+      const delegate = value === 'recommend' && question.source === 'model' && host.ask !== null;
+      if (value === 'recommend' && !delegate) {
         const first = question.choices[0];
         if (!first) return;
         value = first;
@@ -662,11 +686,27 @@ export function createAssistantActions(
         next.reviewPolicy = value;
       else if (question.id === 'material' && (value === 'person' || value === 'team'))
         next.material = value;
-      else return;
-      if (intent.kind === 'choice') {
-        setState((s) => ({ turns: appendTurn(s.turns, 'user', label), decisions: next }));
-        runChoice(intent);
-      } else setState({ input: label, decisions: next });
+      else if (!delegate) return;
+      setState({ turns: appendTurn(state.turns, 'user', label), decisions: next });
+      if (intent.kind === 'choice') return runChoice(intent);
+      if (!host.ask && intent.mode === 'edit') {
+        if (question.id === 'review_target' || question.id === 'review_policy') {
+          return runChoice({
+            kind: 'choice',
+            choice: next.reviewPolicy === 'opinion_only' ? 'add_shared_advice' : 'require_review',
+          });
+        }
+        return say(t('logic.unsupported'));
+      }
+      await run(
+        {
+          ...intent,
+          kind: host.ask ? 'model' : 'local',
+          messages: [...intent.messages, { role: 'user', content: label.slice(0, 2000) }],
+        },
+        null,
+        state,
+      );
     },
     pattern(value: TeamPattern) {
       const { proposal, decisions } = getState();

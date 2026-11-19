@@ -9,7 +9,7 @@ import {
   type TeamPattern,
   type TeamPlan,
 } from '@corral/contracts';
-import { rolePrompt } from './role-prompt.ts';
+import { ROLE_RULES } from './role-prompt.ts';
 import {
   type RoleWording,
   type TeamTemplateId,
@@ -19,8 +19,6 @@ import {
 
 // goal → team plan → Corral. The local suggestion reads the goal's words; the plan
 // becomes a definition whose tools, bindings, Loop ports and limits are fixed by the pattern.
-
-export { rolePrompt };
 
 /** The three patterns drafted here; auto mode uses their shapes. */
 export type BasePattern = 'single' | 'write_review' | 'research_write_review';
@@ -495,20 +493,26 @@ export function draftFromPlan(
     return {
       definition: { ...templateDraft(plan, plan.pattern, corralId, labels), ...consultation },
     };
-  const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
+  const plannedRole = (slot: BaseSlot) => {
     const planned = plan.roles.find((r) => r.slot === slot);
     if (!planned) throw new Error(`the plan has no ${slot}`);
+    return planned;
+  };
+  const seatWording = (slot: BaseSlot) => {
+    const { name, duty } = plannedRole(slot);
+    return { label: name, stepInstruction: duty };
+  };
+  const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
     return {
       id: slot,
-      name: planned.name,
-      prompt: rolePrompt(planned.duty),
+      name: plannedRole(slot).name,
+      prompt: ROLE_RULES,
       modelProfile: slot === 'reviewer' ? 'model-b' : 'model-a',
       allowedWorkTools: ['write_artifact' as const],
       allowedCollaborationTools: ['read_artifact' as const, 'submit_result' as const],
       outputContract: CONTRACT[slot],
     };
   };
-  const label = (slot: BaseSlot) => plan.roles.find((r) => r.slot === slot)?.name ?? slot;
   const base = {
     ...consultation,
     schemaVersion: '0.1' as const,
@@ -535,7 +539,7 @@ export function draftFromPlan(
         {
           id: 'work',
           type: 'agent' as const,
-          label: label('worker'),
+          ...seatWording('worker'),
           roleId: 'worker',
           invocation: 'scheduled' as const,
           inputBindings: [{ kind: 'run_input' as const, name: 'brief' }],
@@ -557,7 +561,7 @@ export function draftFromPlan(
     {
       id: firstNode,
       type: 'agent',
-      label: label(first),
+      ...seatWording(first),
       roleId: first,
       invocation: 'scheduled',
       inputBindings: [{ kind: 'run_input', name: 'brief' }],
@@ -572,7 +576,7 @@ export function draftFromPlan(
     {
       id: 'write',
       type: 'agent',
-      label: label('writer'),
+      ...seatWording('writer'),
       parentId: 'review_loop',
       roleId: 'writer',
       invocation: 'scheduled',
@@ -592,7 +596,7 @@ export function draftFromPlan(
     {
       id: 'review',
       type: 'agent',
-      label: label('reviewer'),
+      ...seatWording('reviewer'),
       parentId: 'review_loop',
       roleId: 'reviewer',
       invocation: 'scheduled',

@@ -25,12 +25,7 @@ import {
 } from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { defaultAgentRole } from '../editor/model.ts';
-import {
-  type AgentSource,
-  importableRoles,
-  type ReplacementChange,
-  type TeamReference,
-} from './commands.ts';
+import type { AgentSource, ReplacementChange, TeamReference } from './commands.ts';
 import type { TeamEditorProps } from './TeamEditor.tsx';
 
 export type SaveAgent = (
@@ -164,20 +159,24 @@ export function AgentPicker({
       builtin: presets.map(
         (role): Choice => ({
           key: role.id,
-          source: { role, origin: { kind: 'preset', presetId: role.id } },
+          source: {
+            role,
+            origin: { kind: 'preset', presetId: role.id },
+            stepInstruction: presetText(`${role.id}.duty`),
+          },
         }),
       ),
       others: teams.flatMap((team) =>
-        importableRoles({ nodes: [], roles: team.roles ?? [] }).map(
-          (role): Choice => ({
-            key: `${team.corralId}:${role.id}`,
+        (team.agents ?? []).map(
+          (source): Choice => ({
+            key: `${team.corralId}:${source.role.id}`,
             team: team.name,
-            source: { role },
+            source,
           }),
         ),
       ),
     }),
-    [agentLibrary?.agents, presets, teams],
+    [agentLibrary?.agents, presets, presetText, teams],
   );
   const tab =
     chosenTab ??
@@ -186,10 +185,10 @@ export function AgentPicker({
       : 'mine');
   const text = query.trim().toLocaleLowerCase();
   const rows = choices[tab as keyof typeof choices].filter(
-    ({ source: { role } }) =>
+    ({ source }) =>
       !text ||
-      role.name.toLocaleLowerCase().includes(text) ||
-      role.prompt.toLocaleLowerCase().includes(text),
+      source.role.name.toLocaleLowerCase().includes(text) ||
+      (source.stepInstruction ?? source.role.prompt).toLocaleLowerCase().includes(text),
   );
   const result = typeof face === 'object' ? preview?.(face) : undefined;
   const title =
@@ -274,9 +273,7 @@ export function AgentPicker({
                             <span id={`${id}-detail`} className="grid gap-1 text-muted-foreground">
                               {team && <span className="text-caption">{team}</span>}
                               <span className="line-clamp-2 whitespace-pre-line break-words text-body">
-                                {source.origin?.kind === 'preset'
-                                  ? presetText(`${source.origin.presetId}.duty`)
-                                  : source.role.prompt}
+                                {source.stepInstruction ?? source.role.prompt}
                               </span>
                               {skills.length > 0 && (
                                 <span className="break-words text-caption">
@@ -333,7 +330,9 @@ export function AgentPicker({
               <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
                 {t('stays')}
               </h3>
-              <p className="text-body">{t('retained')}</p>
+              <p className="text-body">
+                {t('retained', { task: result.changed.includes('task') ? 'changed' : 'kept' })}
+              </p>
             </section>
           </>
         ))
@@ -370,15 +369,16 @@ export function AgentPicker({
 
 export function SaveAgentDialog({
   role,
+  initialPrompt,
   save,
   onClose,
   onSaved,
   returnFocus,
-}: DialogActions & { role: AgentRole; save: SaveAgent; onSaved(): void }) {
+}: DialogActions & { role: AgentRole; initialPrompt: string; save: SaveAgent; onSaved(): void }) {
   const t = useTranslations('TeamEditor.agentPicker');
   const input = useRef<HTMLInputElement>(null);
   const [name, setName] = useState(role.name);
-  const [prompt, setPrompt] = useState(role.prompt);
+  const [prompt, setPrompt] = useState(initialPrompt);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const submit = async () => {

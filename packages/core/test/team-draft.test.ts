@@ -1,6 +1,7 @@
 import {
   type CorralDefinition,
   CorralDefinition as Definition,
+  isWorkAgent,
   TEAM_PATTERNS,
   TEAM_SLOTS,
   type TeamPattern,
@@ -12,12 +13,14 @@ import {
   compileDefinition,
   draftFromPlan,
   isReadOnlyTeam,
+  isTemplatePattern,
   PATTERN_TEMPLATES,
   planAfterModel,
   planFromGoal,
   planRun,
   planWithPattern,
   ROLE_PRESETS,
+  ROLE_RULES,
   type RolePresetId,
   TEAM_TEMPLATE_ROLES,
   type TeamTemplateWording,
@@ -91,15 +94,16 @@ function templateWording(pattern: TemplatePattern): TeamTemplateWording {
   };
 }
 
-/** Everything a plan may word: names, brief, criteria, prompts, labels, rounds, approval. */
+/** Everything a plan may word: names, brief, criteria, seat duties, labels, rounds, approval. */
 function structure(definition: CorralDefinition) {
   return {
     ...definition,
     name: '',
     input: { ...definition.input, brief: '', criteria: [] },
-    roles: definition.roles.map((role) => ({ ...role, name: '', prompt: '' })),
+    roles: definition.roles.map((role) => ({ ...role, name: '' })),
     nodes: definition.nodes.map((node) => {
       const unlabeled = { ...node, label: '' };
+      if (isWorkAgent(unlabeled)) return { ...unlabeled, stepInstruction: '' };
       if (unlabeled.type === 'loop') return { ...unlabeled, maxIterations: 0 };
       if (unlabeled.type === 'output') return { ...unlabeled, requireApproval: false };
       return unlabeled;
@@ -111,6 +115,22 @@ const changing = (definition: CorralDefinition) =>
   definition.roles
     .filter((role) => role.allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never)))
     .map((role) => role.id);
+
+it.each(TEAM_PATTERNS)('%s keeps each planned duty on its seat', (pattern) => {
+  const proposed = planWithPattern(
+    { name: 'Team', brief: 'Brief.', criteria: [] },
+    pattern,
+    wording,
+  );
+  const { definition } = draftFromPlan(proposed, 'drafted_words', labels);
+  const seats = definition.nodes.filter(isWorkAgent);
+  expect(seats.map((node) => [node.roleId, node.stepInstruction])).toEqual(
+    proposed.roles.map(({ slot, duty }) => [slot, duty]),
+  );
+  if (!isTemplatePattern(pattern)) {
+    for (const role of definition.roles) expect(role.prompt).toBe(ROLE_RULES);
+  }
+});
 
 describe('drafting the five template patterns', () => {
   it('maps each to the library template of the same name', () => {
@@ -169,7 +189,9 @@ describe('drafting the five template patterns', () => {
       ['fix', 'My fix'],
       ['review', 'My review'],
     ]);
-    expect(drafted.roles[1]?.prompt.startsWith('My duty for fix.')).toBe(true);
+    expect(drafted.nodes.find((node) => node.id === 'fix')).toMatchObject({
+      stepInstruction: 'My duty for fix.',
+    });
     expect(drafted.nodes.find((node) => node.type === 'loop')).toMatchObject({ maxIterations: 3 });
     expect(drafted.nodes.find((node) => node.type === 'output')).toMatchObject({
       requireApproval: true,

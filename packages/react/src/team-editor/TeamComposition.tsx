@@ -27,7 +27,7 @@ import {
   Split,
   TriangleAlert,
 } from '../ui/icons.ts';
-import { seatTask } from './commands.ts';
+import { seatTaskSummary } from './commands.ts';
 import type { SheetView } from './InspectorSheet.tsx';
 import { KIND_ICON, kindOf } from './kinds.ts';
 import { type RosterRow, type RosterStep, rosterOf } from './roster.ts';
@@ -304,8 +304,6 @@ const graphIssue: Partial<Record<Diagnostic['code'], true>> = {
   UNREACHABLE: true,
 };
 const firstLine = (text?: string) => text?.trim().split(/\r?\n/, 1)[0];
-const firstSentence = (text?: string) =>
-  text?.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim();
 
 export function TeamComposition({
   definition,
@@ -464,15 +462,9 @@ export function TeamComposition({
   }
 
   function agentContent(node: Extract<CorralNode, { type: 'agent' }>): RowContent {
-    const task = seatTask(definition, node.id);
-    const duty = firstSentence(
-      task
-        ? task.text || task.base || ''
-        : definition.roles.find((r) => r.id === node.roleId)?.prompt,
-    );
     return {
       name: node.label,
-      summary: duty,
+      summary: seatTaskSummary(definition, node),
       singleLine: true,
       result: node.outputName,
       tag: node.invocation === 'callable' ? c('called') : undefined,
