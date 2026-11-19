@@ -348,7 +348,8 @@ describe('team editor hosts: stacked below 960px', () => {
       expect(edges).toContain(`agent_1>${added?.id}`);
       expect(edges).toContain(`${added?.id}>agent_2`);
       expect(edges).not.toContain('agent_1>agent_2');
-      // Agent 2's row dropped on the Loop's row moves it into the Loop.
+      // Moving Agent 2 across the Loop boundary requires confirming the affected connection.
+      const beforeMove = draft();
       const row = transfer();
       const agent = named(outline(), 'Agent 2');
       const loop = named(outline(), 'Loop');
@@ -357,6 +358,14 @@ describe('team editor hosts: stacked below 960px', () => {
       drag('dragover', loop, row);
       drag('drop', loop, row);
       drag('dragend', agent, row);
+      expect(draft()).toBe(beforeMove);
+      const preview = region('[role="dialog"]');
+      expect(preview.querySelector('h2')?.textContent).toBe(m.placement.previewTitle);
+      expect(preview.textContent).toContain(m.placement.boundary);
+      expect([...preview.querySelectorAll('li')].map((item) => item.textContent)).toContain(
+        `${added?.label} · ${messages.Canvas.ports.pass} → Agent 2 · ${messages.Canvas.ports.in}`,
+      );
+      await click(named(preview, m.placement.apply));
       const box = draft().definition.nodes.find((n) => n.type === 'loop');
       expect(draft().definition.nodes.find((n) => n.id === 'agent_2')?.parentId).toBe(box?.id);
     },
