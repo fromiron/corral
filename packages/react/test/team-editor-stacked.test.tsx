@@ -125,6 +125,17 @@ const follows = (a: Element, b: Element) =>
   !b.contains(a);
 
 describe('team editor: stacked', () => {
+  it('opens settings explicitly from a card and restores focus and selection to that card', async () => {
+    renderEditor(team(), true);
+    const user = userEvent.setup();
+    const card = canvasNode('agent_2');
+    await user.click(card);
+    await user.click(screen.getByRole('button', { name: 'Open B settings' }));
+    expect(within(sheet()).getByDisplayValue('B')).toHaveFocus();
+    await user.click(within(sheet()).getByRole('button', { name: m.close }));
+    expect(card).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Open B settings' })).toBeVisible();
+  });
   it('reads the outline, the palette, the canvas and the chosen step’s settings in that order', () => {
     renderEditor(team(), true);
     expect(layoutOf()).toBe('stacked');
@@ -142,6 +153,25 @@ describe('team editor: stacked', () => {
     const regions = [outline(), palette(), canvas(), sheet()];
     for (let i = 1; i < regions.length; i++)
       expect(follows(regions[i - 1] as Element, regions[i] as Element)).toBe(true);
+  });
+
+  it('drops the Agent tile as a default step without opening the picker or adding an Output', () => {
+    const before = emptyDraft('drag-agent', 'Drag agent');
+    const { editor } = renderEditor(before, true);
+    const agent = paletteStep('agent');
+    const data = transfer();
+    const point = { x: 320, y: 160 };
+    drag('dragStart', agent, data);
+    drag('dragOver', canvas(), data, point);
+    drag('drop', canvas(), data, point);
+    drag('dragEnd', agent, data);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(before, 'agent', { kind: 'empty' })).draft,
+    );
+    expect(editor.getState().draft.definition.nodes.map((node) => node.type)).toEqual(['agent']);
+    editor.getState().undo();
+    expect(editor.getState().draft).toBe(before);
   });
 
   it('puts a palette step dropped on the connection between A and B between them', () => {
@@ -352,7 +382,7 @@ describe('team editor: the wheel over the canvas', () => {
 describe('team editor: settings opened from outside the canvas', () => {
   /** The editor's own scrolling, watched; jsdom does not scroll. */
   function watchScroll() {
-    const root = document.querySelector('[data-layout]') as HTMLElement;
+    const root = document.querySelector('[data-graph-scroll]') as HTMLElement;
     const scrollTo = vi.fn();
     root.scrollTo = scrollTo as unknown as typeof root.scrollTo;
     return scrollTo;

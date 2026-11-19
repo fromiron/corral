@@ -1,19 +1,21 @@
-import type { RoleRunOverrides } from '@corral/contracts';
+import type { CorralDefinition, RoleRunOverrides } from '@corral/contracts';
 import { type HarnessOverrides, type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import { useMemo, useRef, useState } from 'react';
+import { type ReactNode, type Ref, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useStudioStores } from '../context.tsx';
-import { Button, fontWeights, Select } from '../design-kit/index.ts';
+import { Button, Select } from '../design-kit/index.ts';
 import { compileDraft, type DraftCompilation } from '../editor/model.ts';
 import type { SavedRevision } from '../run/session.ts';
 
 /**
- * Starts a run of the current draft, or says why it cannot run. With `beforeStart` the run
- * starts from the revision it returns (the local server runs saved revisions only); null means
- * the draft could not be saved and nothing starts.
+ * Starts a runnable draft. A host that saves first returns the committed draft (demo) or
+ * a pinned revision (server); null means saving failed and nothing starts.
  */
 export function RunControls({
+  startMock,
+  onOpen,
+  modelConnections,
   onStarted,
   beforeStart,
   validation,
@@ -29,8 +31,12 @@ export function RunControls({
   onModeChange,
   startDisabled = false,
 }: {
+  /** The header always requests a mock run, independently of the panel's prepared mode. */
+  startMock?: Ref<() => void>;
+  onOpen?: () => void;
+  modelConnections?: ReactNode;
   onStarted?: (runId: string) => void;
-  beforeStart?: () => Promise<SavedRevision | null>;
+  beforeStart?: () => Promise<SavedRevision | CorralDefinition | null>;
   /** null while a required pinned revision cannot yet be checked. */
   validation?: DraftCompilation | null;
   onShowProblems?: (() => void) | undefined;
@@ -53,7 +59,10 @@ export function RunControls({
   const codeText = useTranslations('Validation.codes');
   const { editor, session } = useStudioStores();
   const draft = useStore(editor, (s) => s.draft);
-  const projection = useStore(session, (s) => s.projection);
+  const running = useStore(
+    session,
+    (s) => s.projection !== null && !TERMINAL_RUN_STATUSES.has(s.projection.status),
+  );
   const [starting, setStarting] = useState(false);
   const [localMode, setLocalMode] = useState<'mock' | 'live'>('mock');
   const mode = chosenMode ?? localMode;
@@ -68,30 +77,35 @@ export function RunControls({
   // A test run has no session, and check steps run only in a session's working copy.
   const needsSession =
     execution?.nodes.some((n) => n.type === 'decision' && n.mode === 'check') ?? false;
-  const running = projection !== null && !TERMINAL_RUN_STATUSES.has(projection.status);
 
-  const start = async () => {
-    if (
-      !compiled?.definition ||
-      !execution ||
-      running ||
-      startingRef.current ||
-      needsSession ||
-      unavailable ||
-      startDisabled
-    )
+  const start = async (requested: 'mock' | 'live') => {
+    if (startingRef.current) return;
+    if (running) {
+      onOpen?.();
       return;
+    }
+    if (startDisabled) return;
+    if (compiled && !compiled.definition) {
+      onShowProblems?.();
+      return;
+    }
+    if (!compiled?.runnable || !compiled.definition || needsSession) {
+      onOpen?.();
+      return;
+    }
+    if (requested === 'live' && !liveAvailable) return;
     startingRef.current = true;
     setStarting(true);
     try {
-      const saved = beforeStart ? await beforeStart() : undefined;
-      if (saved === null) return;
+      const source = beforeStart ? await beforeStart() : undefined;
+      if (source === null) return;
+      onOpen?.();
       await session
         .getState()
         .start(
-          compiled.definition,
-          saved,
-          mode,
+          source && 'nodes' in source ? source : compiled.definition,
+          source && 'corralId' in source ? source : undefined,
+          requested,
           startFrom
             ? { runId: startFrom.runId, artifactVersionId: startFrom.artifactVersionId }
             : undefined,
@@ -106,20 +120,14 @@ export function RunControls({
       setStarting(false);
     }
   };
+  useImperativeHandle(startMock, () => () => void start('mock'));
 
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
-        <h2
-          id="run-heading"
-          className="text-subtitle"
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {t('heading')}
-        </h2>
         <Button
           type="button"
-          onClick={start}
+          onClick={() => void start(mode)}
           disabled={
             !compiled?.runnable ||
             needsSession ||
@@ -130,10 +138,10 @@ export function RunControls({
           }
           variant="primary"
         >
-          {starting ? t('starting') : t('start')}
+          {starting ? t('starting') : t(mode === 'live' ? 'startLive' : 'startMock')}
         </Button>
       </div>
-      {/* What a test run creates, before it starts (#77 GA-03). */}
+      {/* The test run always stays outside a conversation. */}
       <p data-testid="run-scope" className="text-caption text-muted-foreground">
         {t(beforeStart ? 'scopeSaved' : 'scopeDraft')}
       </p>
@@ -148,20 +156,18 @@ export function RunControls({
           </Button>
         </div>
       ) : null}
-      {liveAvailable || mode === 'live' ? (
-        <div className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
-          <span className="text-muted-foreground">{t('agents')}</span>
-          <Select
-            label={t('agents')}
-            value={mode}
-            onValueChange={setMode}
-            options={[
-              { value: 'mock', label: t('modeMock') },
-              { value: 'live', label: t('modeLive') },
-            ]}
-          />
-        </div>
-      ) : null}
+      <div className="flex min-w-0 flex-wrap items-center gap-2 text-caption">
+        <Select
+          label={t('agents')}
+          value={mode}
+          onValueChange={setMode}
+          options={[
+            { value: 'mock', label: t('modeMock') },
+            { value: 'live', label: t('modeLive') },
+          ]}
+        />
+        {mode === 'live' ? modelConnections : null}
+      </div>
       {compiled?.diagnostics.some((issue) => issue.code === 'SPAWNS_CAPPED') ? (
         <p className="text-caption text-muted-foreground">{codeText('SPAWNS_CAPPED')}</p>
       ) : null}

@@ -1,6 +1,7 @@
-import type { RunEvent } from '@corral/contracts';
+import { type CorralDefinition, DEFAULT_LIMITS, type RunEvent } from '@corral/contracts';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpSseTransport, MeetingsApi, openSession } from '../src/index.ts';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import { HttpSseTransport, MeetingsApi, openSession, RestCorralRepository } from '../src/index.ts';
 
 const event = (runSeq: number): RunEvent => ({
   schemaVersion: '0.1',
@@ -20,6 +21,45 @@ const sse = (...events: RunEvent[]) =>
 afterEach(() => vi.useRealTimers());
 
 describe('HTTP boundaries and replay', () => {
+  it('shares one immutable run response between definition and source reads, including inline runs', async () => {
+    const source = { corralId: researchTeam.id, definitionRevision: 7 };
+    const fetch = vi.fn<typeof globalThis.fetch>(async (url) =>
+      Response.json({
+        definition: researchTeam,
+        source: String(url).endsWith('/saved') ? source : null,
+      }),
+    );
+    const transport = new HttpSseTransport({ baseUrl: '', fetch });
+    const [saved, revision, inline] = await Promise.all([
+      transport.getRunDefinition('saved'),
+      transport.getRunSource('saved'),
+      transport.getRunSource('inline'),
+    ]);
+    expect(saved).toEqual(researchTeam);
+    expect(revision).toEqual(source);
+    expect(inline).toBeNull();
+    expect(await transport.getRunDefinition('inline')).toEqual(researchTeam);
+    expect(fetch.mock.calls.map(([url]) => String(url))).toEqual([
+      '/api/v1/runs/saved',
+      '/api/v1/runs/inline',
+    ]);
+  });
+
+  it('does not cache a missing run or a failed run source read', async () => {
+    const source = { corralId: researchTeam.id, definitionRevision: 2 };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 404 }))
+      .mockRejectedValueOnce(new Error('Disconnected'))
+      .mockResolvedValueOnce(Response.json({ definition: researchTeam, source }));
+    const transport = new HttpSseTransport({ baseUrl: '', fetch });
+    expect(await transport.getRunDefinition('saved')).toBeNull();
+    await expect(transport.getRunSource('saved')).rejects.toThrow('Disconnected');
+    expect(await transport.getRunSource('saved')).toEqual(source);
+    expect(await transport.getRunDefinition('saved')).toEqual(researchTeam);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
   it('acquires CSRF before mutation and excludes session bootstrap', async () => {
     const requests: { path: string; headers: Headers }[] = [];
     const fetcher: typeof fetch = async (input, init) => {
@@ -42,6 +82,52 @@ describe('HTTP boundaries and replay', () => {
     });
     expect(requests).toHaveLength(3);
     expect(requests[2]?.headers.get('x-corral-csrf')).toBe('csrf-test');
+  });
+
+  it('sends the stable createId only when requested on a first save', async () => {
+    const definition: CorralDefinition = {
+      schemaVersion: '0.1',
+      id: 'corral_draft',
+      name: 'Draft',
+      input: { brief: 'Write', criteria: ['Done'] },
+      entryNodeId: '',
+      roles: [],
+      nodes: [],
+      controlEdges: [],
+      capabilityLinks: [],
+      limits: DEFAULT_LIMITS,
+    };
+    const fetch = vi.fn<typeof globalThis.fetch>(async (url) =>
+      String(url).endsWith('/session')
+        ? Response.json({ csrfToken: 'csrf' })
+        : Response.json(
+            { error: { code: 'REVISION_CONFLICT', message: 'Already saved' } },
+            { status: 409 },
+          ),
+    );
+    const repo = new RestCorralRepository({ baseUrl: '', fetch });
+    const create = { definition, expectedDefinitionRevision: null, projectId: 'project_test' };
+    const result = await repo.save({ ...create, createId: definition.id });
+    expect(result).toMatchObject({ ok: false, error: 'revision_conflict' });
+    await repo.save(create);
+    await repo.save({ definition, expectedDefinitionRevision: 1 });
+    expect(
+      fetch.mock.calls
+        .slice(1)
+        .map(([url, init]) => [url, init?.method, JSON.parse(String(init?.body))]),
+    ).toEqual([
+      [
+        '/api/v1/corrals',
+        'POST',
+        { definition, projectId: 'project_test', createId: definition.id },
+      ],
+      ['/api/v1/corrals', 'POST', { definition, projectId: 'project_test' }],
+      ['/api/v1/corrals/corral_draft', 'PUT', { definition }],
+    ]);
+    expect(
+      await repo.save({ definition, createId: definition.id, expectedDefinitionRevision: 1 }),
+    ).toMatchObject({ ok: false, error: 'validation_error' });
+    expect(fetch).toHaveBeenCalledTimes(4);
   });
 
   it('reconnects at committed cursor, discards duplicate events and retrieves lost events', async () => {

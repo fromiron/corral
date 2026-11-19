@@ -1,14 +1,16 @@
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { CorralDefinition } from '@corral/contracts';
+import { CorralDefinition, type CreateLibraryAgent } from '@corral/contracts';
 import {
   Coordinator,
+  definitionHash,
   InProcessTransport,
   type RunProjection,
   waitForProjection,
 } from '@corral/core';
 import {
+  describeAgentLibraryContract,
   describeCorralRepositoryContract,
   describeRunStoreContract,
   describeTransportContract,
@@ -26,6 +28,7 @@ import researchTeam from '../../../examples/research-team.corral.json' with { ty
 import {
   MIGRATIONS,
   openDatabase as openSqliteDatabase,
+  SqliteAgentLibrary,
   SqliteCorralRepository,
   SqliteRunStore,
 } from '../src/index.ts';
@@ -49,18 +52,41 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function repository(db: Database.Database) {
+function repository(db: Database.Database, clock = new FakeClock()) {
   const ids = new SequentialIdFactory();
   return new SqliteCorralRepository(db, {
-    clock: new FakeClock(),
+    clock,
     newCorralId: () => ids.next('run').replace('run', 'corral'),
   });
 }
+
+function agentLibrary(db: Database.Database) {
+  const clock = new FakeClock();
+  let next = 0;
+  return {
+    projects: repository(db, clock),
+    agents: new SqliteAgentLibrary(db, { clock, newAgentId: () => `agent_${++next}` }),
+    clock,
+  };
+}
+
+const createAuthor: CreateLibraryAgent = {
+  operationId: 'create_once',
+  role: {
+    name: 'Author',
+    prompt: 'Write.',
+    modelProfile: 'model-a',
+    outputContract: 'draft',
+    allowedWorkTools: [],
+    allowedCollaborationTools: [],
+  },
+};
 
 describeRunStoreContract('sqlite', () => new SqliteRunStore(openDatabase(':memory:')), {
   recordsProject: true,
 });
 describeCorralRepositoryContract('sqlite', () => repository(openDatabase(':memory:')));
+describeAgentLibraryContract('sqlite', () => agentLibrary(openDatabase(':memory:')));
 describeTransportContract(
   'in-process over SQLite',
   (agents) =>
@@ -78,6 +104,44 @@ const settled = (p: RunProjection) =>
   ['succeeded', 'failed', 'cancelled', 'interrupted'].includes(p.status);
 
 describe('SQLite database', () => {
+  it('reopens a project original and its original creation receipt after editing it', async () => {
+    const file = tempFile();
+    const options = { clock: new FakeClock(), newAgentId: () => 'agent_reopen' };
+    const db = openDatabase(file);
+    const library = new SqliteAgentLibrary(db, options);
+    const original = await library.create('default', createAuthor);
+    if (!original.ok) throw new Error(original.message);
+    const id = original.agent.agentId;
+    const edit = await library.update('default', id, {
+      role: { ...createAuthor.role, name: 'Editor' },
+      expectedRevision: 1,
+      archived: true,
+    });
+    if (!edit.ok) throw new Error(edit.message);
+    db.close();
+    const reopened = new SqliteAgentLibrary(openDatabase(file), options);
+    expect(await reopened.get('default', id)).toEqual(edit.agent);
+    expect(await reopened.create('default', createAuthor)).toEqual(original);
+    expect(await reopened.list('default')).toEqual([edit.agent]);
+  });
+
+  it('refuses invalid stored agent data without including its contents in errors', async () => {
+    const db = openDatabase(':memory:');
+    const { agents } = agentLibrary(db);
+    const original = await agents.create('default', createAuthor);
+    if (!original.ok) throw new Error(original.message);
+    db.exec(`UPDATE library_agents SET role_json = json_set(role_json, '$.unexpected', 1)`);
+    await expect(agents.get('default', original.agent.agentId)).rejects.toThrow(
+      /^Saved agent cannot be read\.$/,
+    );
+    await expect(agents.list('default')).rejects.toThrow(/^Saved agent cannot be read\.$/);
+    db.exec('UPDATE library_agents SET creation_role_json = role_json');
+    expect(await agents.create('default', createAuthor)).toMatchObject({
+      ok: false,
+      error: 'storage_unavailable',
+    });
+  });
+
   it('migrates old session titles without guessing and keeps pending automatic titles across restart', async () => {
     const file = tempFile();
     const old = trackDatabase(new Database(file));
@@ -410,6 +474,35 @@ describe('projects in SQLite', () => {
     await waitForProjection(transport, runId, (p) => p.status === 'succeeded');
     return runId;
   }
+
+  it('keeps a pre-library team readable and runnable with an empty agent library', async () => {
+    const path = tempFile();
+    const old = trackDatabase(new Database(path));
+    const step = MIGRATIONS.findIndex(({ name }) => name === '0047_agent_library');
+    expect(step).toBeGreaterThan(0);
+    for (const migration of MIGRATIONS.slice(0, step)) {
+      old.exec(migration.sql);
+      migration.data?.(old);
+    }
+    old.pragma(`user_version = ${step}`);
+    const definition = linearCorral(['writer']);
+    const createdAt = new FakeClock().nowIso();
+    old
+      .prepare(`INSERT INTO corrals (id, project_id, name, definition_revision, updated_at)
+      VALUES (?, 'default', ?, 1, ?)`)
+      .run(definition.id, definition.name, createdAt);
+    old
+      .prepare(`INSERT INTO definition_versions
+      (corral_id, revision, definition_hash, definition_json, created_at) VALUES (?, 1, ?, ?, ?)`)
+      .run(definition.id, definitionHash(definition), JSON.stringify(definition), createdAt);
+    old.close();
+
+    const upgraded = openDatabase(path);
+    const { projects, agents } = agentLibrary(upgraded);
+    expect(await agents.list('default')).toEqual([]);
+    expect((await projects.get(definition.id))?.definition).toEqual(definition);
+    await runOf(upgraded, definition.id, 'cmd_migrated_team');
+  });
 
   it('records the project a run started in; a moved Corral leaves old runs where they were', async () => {
     const db = openDatabase(':memory:');

@@ -3,6 +3,7 @@ import {
   type CorralDefinition,
   type CorralNode,
   CorralDefinition as Definition,
+  type OutputNode,
   type RunEvent,
 } from '@corral/contracts';
 import {
@@ -82,7 +83,7 @@ const loop = (id: string, extra: Partial<CorralNode> = {}, parentId?: string): C
     ...(parentId ? { parentId } : {}),
     ...extra,
   }) as CorralNode;
-const output = (draft: string): CorralNode => ({
+const output = (draft: string): OutputNode => ({
   id: 'output',
   type: 'output',
   label: 'output',
@@ -251,6 +252,53 @@ describe('loop execution', () => {
     );
   }
 
+  it('finalizes the reviewed draft after the shared Outrider question budget is spent', async () => {
+    const definition = nested('inner');
+    definition.sharedOutrider = {
+      modelProfile: 'model-a',
+      principles: 'Check the evidence.',
+      targets: { kind: 'all' },
+    };
+    const result = definition.nodes.find((node) => node.type === 'output');
+    if (!result) throw new Error('expected an output');
+    result.requiredReviews = [
+      {
+        bindingName: 'final',
+        sourceNodeId: 'b_write',
+        loopNodeId: 'loop_b',
+        reviewerNodeId: 'b_review',
+        decisionNodeId: 'b_decision',
+      },
+    ];
+    const transport = runtime(undefined);
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(
+      events.filter((e) => e.type === 'message.question_created' && e.payload.sharedOutrider),
+    ).toHaveLength(6);
+    const asks = new Set(
+      events.flatMap((e) =>
+        e.type === 'tool.requested' && e.payload.name === 'ask' ? [e.payload.toolCallId] : [],
+      ),
+    );
+    expect(
+      events.some(
+        (e) =>
+          e.type === 'tool.blocked' &&
+          asks.has(e.payload.toolCallId) &&
+          e.payload.reason.startsWith('LIMIT_REACHED:'),
+      ),
+    ).toBe(true);
+    expect(final.status).toBe('succeeded');
+    expect(Object.values(final.executions).some((e) => e.status === 'failed')).toBe(false);
+    expect(events.filter((e) => e.type === 'output.finalized')).toHaveLength(1);
+    const [version] = final.output?.artifactVersionIds ?? [];
+    if (!version) throw new Error('expected the reviewed draft');
+    expect(await transport.getArtifactText(runId, version)).toContain(
+      'no answer (question limit reached)',
+    );
+  });
+
   it('starts an inner Loop at round 1 in every outer round, under that round', async () => {
     const transport = runtime(
       scripted({ a_decision: ['revise', 'pass'], b_decision: ['pass', 'pass'] }),
@@ -366,6 +414,44 @@ describe('loop execution', () => {
     expect(rounds(final, 'loop')).toEqual([[1, 'cap_reached']]);
     expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
     expect(pendingApproval(final)).toBeNull();
+  });
+
+  it('fails without finalizing output when the required reviewer requests revision in both allowed rounds', async () => {
+    const body = reviewedBody('loop', 'l');
+    const definition = team(
+      [
+        loop('loop', { maxIterations: 2 }),
+        ...body.nodes,
+        {
+          ...output('l_write'),
+          requiredReviews: [
+            {
+              bindingName: 'final',
+              sourceNodeId: 'l_write',
+              loopNodeId: 'loop',
+              reviewerNodeId: 'l_review',
+              decisionNodeId: 'l_decision',
+            },
+          ],
+        },
+      ],
+      [...body.edges, edge('loop', 'next', 'output')],
+      'loop',
+    );
+    const transport = runtime(undefined, { review: () => 'revise' });
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+
+    const verdicts = Object.values(final.reviews).map((review) => review.verdict);
+    expect(verdicts).toEqual(['revise', 'revise']);
+    expect(rounds(final, 'loop')).toEqual([
+      [1, 'revise'],
+      [2, 'cap_reached'],
+    ]);
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('loop_exhausted: loop cap_reached');
+    expect(final.output).toBeNull();
+    expect(events.filter((event) => event.type === 'output.finalized')).toHaveLength(0);
   });
 
   it('an exhausted Loop ends the run without waiting for an advisor’s review', async () => {

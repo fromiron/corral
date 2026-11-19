@@ -21,10 +21,17 @@ import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { tween } from '../design-kit/lib/springs.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import { ChevronDown, ChevronRight, CircleAlert, Plus, TriangleAlert, X } from '../ui/icons.ts';
-import type { EditRejection, Placement, PortRequest, StepKind } from './commands.ts';
-import { KIND_COLOR, KIND_ICON, kindOf, membersOf, roleOf } from './kinds.ts';
+import {
+  type EditRejection,
+  type Placement,
+  type PortRequest,
+  type StepKind,
+  seatTaskSummary,
+} from './commands.ts';
+import { KIND_COLOR, KIND_ICON, kindOf, membersOf, portText, roleOf } from './kinds.ts';
 import {
   boundsOf,
+  GEOMETRY,
   type LaidEdge,
   type LaidItem,
   layoutTeam,
@@ -32,6 +39,7 @@ import {
   type Rect,
   routeTeam,
 } from './layout.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // The team editor's canvas (docs/specs/features/team-graph.md). Layout is automatic: the canvas
 // only turns pointer and keyboard input into structural edits and shows where they would land.
@@ -54,6 +62,7 @@ export interface ResultOffer {
 }
 
 export interface TeamGraphCanvasProps {
+  active: boolean;
   resultOffer?: ResultOffer | undefined;
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
@@ -71,6 +80,7 @@ export interface TeamGraphCanvasProps {
   canConnect: (request: PortRequest) => Check;
   onConnect: (request: PortRequest) => void;
   onDelete: (ids: string[]) => void;
+  onOpenSettings?: ((id: string) => void) | undefined;
   /** How much of the canvas's right side a floating panel covers. */
   insetRight?: number;
   /** Shown just under a step or box, by node id (run stats); the row gap leaves room for it. */
@@ -140,7 +150,27 @@ const DASHES: Record<LaidEdge['kind'], string | undefined> = {
 const within = (r: Rect, p: { x: number; y: number }, slack = 0) =>
   p.x >= r.x - slack && p.x <= r.x + r.w + slack && p.y >= r.y - slack && p.y <= r.y + r.h + slack;
 
+/** Edits such as renaming a seat rebuild the layout without moving any card. */
+function sameGeometry(a: ReadonlyMap<string, LaidItem>, b: ReadonlyMap<string, LaidItem>) {
+  if (a.size !== b.size) return false;
+  for (const [id, item] of a) {
+    const next = b.get(id);
+    const r = item.rect;
+    if (
+      !next ||
+      next.kind !== item.kind ||
+      r.x !== next.rect.x ||
+      r.y !== next.rect.y ||
+      r.w !== next.rect.w ||
+      r.h !== next.rect.h
+    )
+      return false;
+  }
+  return true;
+}
+
 export function TeamGraphCanvas({
+  active,
   definition,
   diagnostics,
   selection,
@@ -155,6 +185,7 @@ export function TeamGraphCanvas({
   canConnect,
   onConnect,
   onDelete,
+  onOpenSettings,
   insetRight = 0,
   annotations,
   resultOffer,
@@ -181,11 +212,15 @@ export function TeamGraphCanvas({
   const reduced = useReducedMotion() ?? false;
   const markerId = useId().replace(/:/g, '');
 
-  const layout = useMemo(() => layoutTeam(definition, collapsed), [definition, collapsed]);
+  const reviewLoops = useMemo(() => requiredReviewLoopIds(definition.nodes), [definition.nodes]);
+  const layout = useMemo(
+    () => layoutTeam(definition, collapsed, reviewLoops),
+    [definition, collapsed, reviewLoops],
+  );
   const items = useTweenedItems(layout.items, reduced);
   const routed = useMemo(
-    () => routeTeam(definition, items, collapsed),
-    [definition, items, collapsed],
+    () => routeTeam(definition, items, collapsed, reviewLoops),
+    [definition, items, collapsed, reviewLoops],
   );
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
 
@@ -247,11 +282,36 @@ export function TeamGraphCanvas({
   const lastSelected = selection.nodes.at(-1);
   const view = useRef(viewport);
   view.current = viewport;
+  // Hiding the graph gives its pane zero size, not a new camera position. Only reveal a
+  // different selection/layout on return; a manually panned view can stay off the selection.
+  const revealed = useRef<{
+    id: string | undefined;
+    items: typeof layout.items;
+    inset: number;
+  } | null>(null);
+  const hidden = useRef(false);
+  const measured = viewport !== null;
   useEffect(() => {
     const element = pane.current;
     const viewport = view.current;
     const item = lastSelected ? layout.items.get(lastSelected) : undefined;
-    if (!element || !item || !viewport) return;
+    if (!active || !element?.clientWidth || !element.clientHeight) {
+      hidden.current = true;
+      return;
+    }
+    if (!measured || !viewport) return;
+    const returning = hidden.current;
+    hidden.current = false;
+    const last = revealed.current;
+    revealed.current = { id: lastSelected, items: layout.items, inset: insetRight };
+    if (
+      last &&
+      last.id === lastSelected &&
+      (last.items === layout.items || (returning && sameGeometry(last.items, layout.items))) &&
+      last.inset === insetRight
+    )
+      return;
+    if (!item) return;
     const { x, y, w, h } = item.rect;
     const k = viewport.k;
     const left = x * k + viewport.x;
@@ -267,7 +327,7 @@ export function TeamGraphCanvas({
       dy = element.clientHeight - margin - (top + h * k);
     // Only a new selection or a new layout moves the view; panning by hand never snaps back.
     if (dx || dy) setViewport({ ...viewport, x: viewport.x + dx, y: viewport.y + dy });
-  }, [lastSelected, layout.items, setViewport, pane, insetRight]);
+  }, [active, measured, lastSelected, layout.items, setViewport, pane, insetRight]);
 
   // ── dropping a step from the palette ─────────────────────────────────────
   const [drop, setDrop] = useState<{
@@ -318,6 +378,7 @@ export function TeamGraphCanvas({
 
   // ── connecting by dragging a port ────────────────────────────────────────
   const [wire, setWire] = useState<{
+    mode: 'drag' | 'pick';
     from: PortMark;
     to: { x: number; y: number };
     request: PortRequest | null;
@@ -325,6 +386,18 @@ export function TeamGraphCanvas({
     /** The input ports this output may lead to, worked out when the drag starts. */
     reachable: Set<string>;
   } | null>(null);
+  useEffect(() => {
+    if (
+      wire &&
+      ((wire.mode === 'pick' &&
+        (selection.nodes.length !== 1 || selection.nodes[0] !== wire.from.nodeId)) ||
+        (wire.from.port === 'exhausted' &&
+          nodes.get(wire.from.nodeId)?.type === 'loop' &&
+          reviewLoops.has(wire.from.nodeId)))
+    )
+      setWire(null);
+  }, [wire, selection.nodes, nodes, reviewLoops]);
+  const gesture = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const inMarks = routed.ports.filter((p) => p.side === 'in');
   const requestAt = (from: PortMark, point: { x: number; y: number }): PortRequest | null => {
     let best: { mark: PortMark; d: number } | null = null;
@@ -354,11 +427,7 @@ export function TeamGraphCanvas({
     const inside = source ? membersOf(definition, box.id).some((n) => n.id === source.id) : false;
     return ask(box.id, inside ? 'exit' : 'enter');
   };
-  const startWire = (event: ReactPointerEvent<HTMLElement>, from: PortMark) => {
-    if (event.button !== 0) return;
-    event.stopPropagation();
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
+  const beginWire = (from: PortMark, mode: 'drag' | 'pick') => {
     const reachable = new Set<string>();
     for (const mark of inMarks) {
       const check = canConnect({
@@ -369,16 +438,60 @@ export function TeamGraphCanvas({
       });
       if (check.ok) reachable.add(`${mark.nodeId}:${mark.port}`);
     }
-    setWire({ from, to: from.at, request: null, check: null, reachable });
+    setWire({ mode, from, to: from.at, request: null, check: null, reachable });
+    if (mode === 'pick') {
+      onSelect({ nodes: [from.nodeId], edge: null });
+      pane.current?.focus({ preventScroll: true });
+    }
+  };
+  const startWire = (event: ReactPointerEvent<HTMLElement>, from: PortMark) => {
+    if (event.button !== 0) return;
+    event.stopPropagation();
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    gesture.current = { x: event.clientX, y: event.clientY, moved: false };
+    beginWire(from, 'drag');
   };
   const moveWire = (event: ReactPointerEvent<HTMLElement>) => {
-    if (!wire) return;
+    if (wire?.mode !== 'drag' || !gesture.current) return;
+    if (Math.hypot(event.clientX - gesture.current.x, event.clientY - gesture.current.y) >= 4)
+      gesture.current.moved = true;
     const point = toStage(event.clientX, event.clientY);
     const request = requestAt(wire.from, point);
     setWire({ ...wire, to: point, request, check: request ? canConnect(request) : null });
   };
-  const endWire = () => {
-    if (wire?.request && wire.check?.ok) onConnect(wire.request);
+  const endWire = (event: ReactPointerEvent<HTMLElement>) => {
+    event.stopPropagation();
+    if (!wire || !gesture.current) return;
+    const dragged =
+      gesture.current.moved ||
+      Math.hypot(event.clientX - gesture.current.x, event.clientY - gesture.current.y) >= 4;
+    gesture.current = null;
+    if (!dragged) {
+      beginWire(wire.from, 'pick');
+      return;
+    }
+    const request = requestAt(wire.from, toStage(event.clientX, event.clientY));
+    if (request && canConnect(request).ok) onConnect(request);
+    setWire(null);
+  };
+  const pickDestination = (target: string, targetPort: TargetPort) => {
+    if (wire?.mode !== 'pick') return;
+    const request = { source: wire.from.nodeId, sourcePort: wire.from.port, target, targetPort };
+    const check = canConnect(request);
+    if (check.ok) {
+      onConnect(request);
+      setWire(null);
+      focusNode(wire.from.nodeId);
+    } else {
+      const at = inMarks.find((mark) => mark.nodeId === target && mark.port === targetPort)?.at;
+      const rect = items.get(target)?.rect;
+      setWire({ ...wire, request, check, to: at ?? (rect ? { x: rect.x, y: rect.y } : wire.to) });
+    }
+  };
+  const cancelWire = () => {
+    if (wire) focusNode(wire.from.nodeId);
+    gesture.current = null;
     setWire(null);
   };
 
@@ -445,14 +558,19 @@ export function TeamGraphCanvas({
       return;
     }
     if (event.key === 'Escape') {
-      if (wire) setWire(null);
-      else onSelect({ nodes: [], edge: null });
+      if (wire) {
+        event.stopPropagation();
+        event.preventDefault();
+        cancelWire();
+      } else onSelect({ nodes: [], edge: null });
       return;
     }
     const step = { ArrowRight: [1, 0], ArrowLeft: [-1, 0], ArrowDown: [0, 1], ArrowUp: [0, -1] }[
       event.key
     ];
-    const current = lastSelected ? layout.items.get(lastSelected) : undefined;
+    const focusedNode = (event.target as Element).closest<HTMLElement>('[data-node]')?.dataset.node;
+    const active = wire?.mode === 'pick' ? (focusedNode ?? wire.from.nodeId) : lastSelected;
+    const current = active ? layout.items.get(active) : undefined;
     if (!step || !current) return;
     event.preventDefault();
     const [sx, sy] = step as [number, number];
@@ -470,11 +588,22 @@ export function TeamGraphCanvas({
       if (!best || score < best.score) best = { id: item.id, score };
     }
     if (!best) return;
-    onSelect({ nodes: [best.id], edge: null });
+    if (wire?.mode !== 'pick') onSelect({ nodes: [best.id], edge: null });
     focusNode(best.id);
   };
 
   const select = (event: { shiftKey: boolean; metaKey: boolean; ctrlKey: boolean }, id: string) => {
+    if (wire?.mode === 'pick') {
+      const target = nodes.get(id);
+      const inside = target && (target.type === 'loop' || target.type === 'team');
+      const port = inside
+        ? membersOf(definition, id).some((node) => node.id === wire.from.nodeId)
+          ? 'exit'
+          : 'enter'
+        : 'in';
+      pickDestination(id, port);
+      return;
+    }
     if (event.shiftKey || event.metaKey || event.ctrlKey) {
       const next = selected.has(id)
         ? selection.nodes.filter((n) => n !== id)
@@ -546,7 +675,7 @@ export function TeamGraphCanvas({
   };
   const detail = (node: CorralNode): string => {
     if (node.type === 'output' && node.requireApproval) return t('approvalRequired');
-    if (node.type === 'agent') return roleOf(definition, node)?.prompt.split('\n')[0] ?? '';
+    if (node.type === 'agent') return seatTaskSummary(definition, node);
     if (node.type === 'loop' || node.type === 'team')
       return membersOf(definition, node.id)
         .filter((n) => n.parentId === node.id)
@@ -557,7 +686,22 @@ export function TeamGraphCanvas({
       return node.routes.map((r) => r.label).join(' · ');
     return '';
   };
-  const outPorts = routed.ports.filter((p) => p.side === 'out');
+  const endingId = (nodeId: string) =>
+    reviewLoops.has(nodeId) && nodes.get(nodeId)?.type === 'loop'
+      ? `${markerId}-ending-${nodeId}`
+      : undefined;
+  const outPorts: PortMark[] = [];
+  const endings: PortMark[] = [];
+  for (const port of routed.ports) {
+    if (port.side !== 'out') continue;
+    if (
+      port.port === 'exhausted' &&
+      reviewLoops.has(port.nodeId) &&
+      nodes.get(port.nodeId)?.type === 'loop'
+    )
+      endings.push(port);
+    else outPorts.push(port);
+  }
   const highlighted = new Set(drop?.check.ok ? drop.check.affected : highlightedEdges);
   const edgeStroke = (id: string) =>
     selection.edge === id || highlighted.has(id)
@@ -565,6 +709,11 @@ export function TeamGraphCanvas({
       : problems.get(id)?.severity === 'error'
         ? 'var(--destructive)'
         : 'color-mix(in oklab, var(--muted-foreground) 70%, transparent)';
+  const selectedCard =
+    selection.nodes.length === 1 && lastSelected ? items.get(lastSelected) : undefined;
+  const selectedPorts = outPorts.filter((port) => port.nodeId === selectedCard?.id);
+  const startPort =
+    selectedPorts.find((p) => p.port === 'out' || p.port === 'next') ?? selectedPorts[0];
   const shownInserter = (id: string) =>
     !dragging && !wire && (hoverEdge === id || selection.edge === id);
 
@@ -576,7 +725,6 @@ export function TeamGraphCanvas({
         ? { reason: drop.check.reason, at: drop.point }
         : null;
 
-  const offerRect = resultOffer && items.get(resultOffer.source.id)?.rect;
   const closeOffer = () => {
     if (!resultOffer) return;
     resultOffer.dismiss();
@@ -586,6 +734,7 @@ export function TeamGraphCanvas({
     <div
       ref={pane}
       data-team-canvas
+      data-connecting={wire ? true : undefined}
       role="application"
       aria-label={t('canvas')}
       aria-roledescription={t('canvasRole')}
@@ -643,6 +792,7 @@ export function TeamGraphCanvas({
                     type="button"
                     data-node={item.id}
                     aria-pressed={isSelected}
+                    aria-describedby={endingId(node.id)}
                     className={cn(
                       focusRing,
                       size.type.body,
@@ -764,7 +914,9 @@ export function TeamGraphCanvas({
                       className="fill-muted-foreground"
                       fontSize={11}
                     >
-                      {t(`links.${edge.label.text}`)}
+                      {edge.kind === 'control'
+                        ? portText(nodes.get(edge.from), edge.label.text, portName)
+                        : t(`links.${edge.label.text}`)}
                     </text>
                   ) : null}
                 </g>
@@ -842,6 +994,7 @@ export function TeamGraphCanvas({
                 type="button"
                 data-node={item.id}
                 aria-pressed={isSelected}
+                aria-describedby={endingId(node.id)}
                 className={cn(focusRing, 'absolute rounded-xl text-left')}
                 style={{
                   transform: `translate(${item.rect.x}px, ${item.rect.y}px)`,
@@ -939,29 +1092,58 @@ export function TeamGraphCanvas({
                 ) : null;
               })
             : null}
+          {endings.map(({ nodeId, at }) => (
+            <span
+              key={nodeId}
+              id={endingId(nodeId)}
+              className={cn(
+                size.type.caption,
+                'absolute z-10 inline-flex w-max origin-right -translate-x-full -translate-y-1/2 items-center gap-1.5 text-foreground',
+              )}
+              style={{
+                left: at.x,
+                top: at.y - GEOMETRY.reviewFooter / 2,
+                // Keep the ending legible at fit zoom without outgrowing its own footer.
+                scale: Math.max(1, Math.min(1.5, 1 / viewport.k)),
+                fontVariationSettings: fontWeights.semibold,
+              }}
+            >
+              {t('noFinalSubmission')}
+              <span aria-hidden className="size-2 bg-current" />
+            </span>
+          ))}
           {outPorts.map((port) => {
             const key = `${port.nodeId}:${port.port}`;
             const active = wire?.from.nodeId === port.nodeId && wire.from.port === port.port;
             const bottom = port.port === 'error' || port.port === 'exhausted';
             return (
-              // A pointer shortcut: the inspector's connection list does the same from the keyboard.
-              <span
+              <button
+                type="button"
                 key={key}
                 data-port={key}
-                aria-hidden
-                title={portName(port.port)}
+                aria-label={t('startPort', {
+                  port: `${nodes.get(port.nodeId)?.label} · ${portText(nodes.get(port.nodeId), port.port, portName)}`,
+                })}
+                title={portText(nodes.get(port.nodeId), port.port, portName)}
                 className={cn(
                   'absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-crosshair rounded-full border bg-background transition-transform',
+                  focusRing,
                   active
                     ? 'scale-125 border-emphasis'
                     : 'border-muted-foreground/60 hover:scale-125',
                   bottom ? 'size-2.5' : 'size-3',
                 )}
                 style={{ left: port.at.x, top: port.at.y }}
+                onClick={(event) => {
+                  if (event.detail === 0) beginWire(port, 'pick');
+                }}
                 onPointerDown={(event) => startWire(event, port)}
                 onPointerMove={moveWire}
                 onPointerUp={endWire}
-                onPointerCancel={() => setWire(null)}
+                onPointerCancel={() => {
+                  gesture.current = null;
+                  setWire(null);
+                }}
               />
             );
           })}
@@ -994,16 +1176,37 @@ export function TeamGraphCanvas({
                 const hit =
                   wire.request?.target === mark.nodeId && wire.request.targetPort === mark.port;
                 return (
-                  <span
+                  <button
+                    type="button"
                     key={key}
-                    aria-hidden
+                    tabIndex={wire.mode === 'pick' ? 0 : -1}
+                    aria-label={t('connectInput', {
+                      name: nodes.get(mark.nodeId)?.label ?? mark.nodeId,
+                      port: portName(mark.port),
+                    })}
+                    aria-description={t(ok ? 'availablePort' : 'unavailablePort')}
+                    title={`${portName(mark.port)} · ${t(ok ? 'availablePort' : 'unavailablePort')}`}
+                    data-input-port={key}
+                    data-reachable={ok}
                     className={cn(
-                      'pointer-events-none absolute z-10 size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2',
-                      ok ? 'border-emphasis bg-background' : 'border-border bg-muted opacity-40',
-                      hit && ok && 'scale-150 bg-emphasis',
+                      'absolute z-10 grid size-6 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full',
+                      wire.mode === 'drag' && 'pointer-events-none',
+                      focusRing,
                     )}
                     style={{ left: mark.at.x, top: mark.at.y }}
-                  />
+                    onClick={() => pickDestination(mark.nodeId, mark.port as TargetPort)}
+                  >
+                    <span
+                      aria-hidden
+                      className={cn(
+                        'size-3 border-2',
+                        ok
+                          ? 'rounded-full border-emphasis bg-background'
+                          : 'rounded-sm border-dashed border-muted-foreground bg-muted',
+                        hit && ok && 'scale-125 bg-emphasis',
+                      )}
+                    />
+                  </button>
                 );
               })
             : null}
@@ -1028,36 +1231,88 @@ export function TeamGraphCanvas({
           )}
         </div>
       ) : null}
-      {offerRect && resultOffer && viewport ? (
+      {viewport && selectedCard && !wire && !dragging ? (
         <div
-          className="absolute z-20 flex max-w-56 gap-1 rounded-md bg-background"
+          className="absolute z-20 flex max-w-[calc(100%_-_1rem)] flex-col items-start gap-1"
           style={{
-            left: `clamp(4px, ${offerRect.x * viewport.k + viewport.x}px, calc(100% - ${insetRight}px - 14rem))`,
-            top:
-              (offerRect.y + offerRect.h) * viewport.k +
-              viewport.y +
-              (annotations?.has(resultOffer.source.id) ? 25 : 4),
+            left: `clamp(.25rem, ${viewport.x + selectedCard.rect.x * viewport.k}px, max(.25rem, calc(100% - ${insetRight}px - 14rem)))`,
+            top: `clamp(.25rem, ${viewport.y + (selectedCard.rect.y + selectedCard.rect.h) * viewport.k + (annotations?.has(selectedCard.id) ? 25 : 4)}px, calc(100% - ${resultOffer ? '6rem' : '4rem'}))`,
           }}
         >
-          <Button
-            size="compact"
-            variant="secondary"
-            className="min-w-0"
-            onClick={() => {
-              resultOffer.apply();
-              closeOffer();
-            }}
-          >
-            <span className="truncate">{t('results.use', { name: resultOffer.source.label })}</span>
-          </Button>
-          <Button
-            size="icon-compact"
-            variant="ghost"
-            aria-label={t('results.dismiss')}
-            onClick={closeOffer}
-          >
-            <X />
-          </Button>
+          {resultOffer ? (
+            <div className="flex max-w-56 gap-1 rounded-md bg-background">
+              <Button
+                size="compact"
+                variant="secondary"
+                className="min-w-0"
+                onClick={() => {
+                  resultOffer.apply();
+                  closeOffer();
+                }}
+              >
+                <span className="truncate">
+                  {t('results.use', { name: resultOffer.source.label })}
+                </span>
+              </Button>
+              <Button
+                size="icon-compact"
+                variant="ghost"
+                aria-label={t('results.dismiss')}
+                onClick={closeOffer}
+              >
+                <X />
+              </Button>
+            </div>
+          ) : null}
+          <div className="flex flex-wrap gap-1">
+            {startPort ? (
+              <Button
+                size="compact"
+                variant="secondary"
+                onClick={() => beginWire(startPort, 'pick')}
+              >
+                {t('connectNext')}
+              </Button>
+            ) : null}
+            {onOpenSettings ? (
+              <Button
+                size="compact"
+                variant="secondary"
+                onClick={() => onOpenSettings(selectedCard.id)}
+              >
+                {t('openNodeSettings', {
+                  name: nodes.get(selectedCard.id)?.label ?? selectedCard.id,
+                })}
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+      {wire?.mode === 'pick' ? (
+        <div className="absolute right-1 bottom-1 z-20 grid max-w-[calc(100%_-_4rem)] gap-1 rounded-lg border border-border bg-card p-2">
+          <p role="status" className={size.type.caption}>
+            {t('chooseInput', {
+              name: nodes.get(wire.from.nodeId)?.label ?? wire.from.nodeId,
+              port: portText(nodes.get(wire.from.nodeId), wire.from.port, portName),
+            })}
+          </p>
+          <div className="flex flex-wrap gap-1">
+            {outPorts
+              .filter((mark) => mark.nodeId === wire.from.nodeId && mark.port !== wire.from.port)
+              .map((mark) => (
+                <Button
+                  key={mark.port}
+                  variant="ghost"
+                  size="compact"
+                  onClick={() => beginWire(mark, 'pick')}
+                >
+                  {t('startPort', { port: portText(nodes.get(mark.nodeId), mark.port, portName) })}
+                </Button>
+              ))}
+            <Button variant="secondary" size="compact" onClick={cancelWire}>
+              {t('cancelConnection')}
+            </Button>
+          </div>
         </div>
       ) : null}
       {definition.nodes.length === 0 ? (

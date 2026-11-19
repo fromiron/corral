@@ -28,6 +28,7 @@ const services = vi.hoisted(() => {
       list: async () => [],
       listProjects: async () => [],
       listSessions: async () => [],
+      save: vi.fn(async () => ({ ok: false, message: 'Must not save on entry' })),
     },
     transport: { listRuns: async () => [], getRunDefinition: async () => null },
   });
@@ -71,6 +72,7 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   fixture.navigate.mockClear();
   fixture.mode = 'server';
+  services.server.repository.save.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 });
 afterEach(async () => {
@@ -214,6 +216,36 @@ it('goes to Needs you, Library, Automation and feature previews, and starts a me
   } finally {
     window.removeEventListener('corral:new-meeting', listen);
   }
+});
+
+it.each([
+  ['New empty Corral', {}],
+  ['New Corral from template: Bug fix', { template: 'bug-fix' }],
+  ['Draft a Corral from a goal', { assistant: 1 }],
+] as const)('opens the unsaved editor for “%s” without writing a team', async (label, search) => {
+  const container = await mount({ initialQuery: label });
+  const option = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (row) => row.textContent === label,
+  );
+  expect(option).toBeTruthy();
+  await act(async () => {
+    option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  });
+  expect(services.server.repository.save).not.toHaveBeenCalled();
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/corrals/new/edit',
+    search: { project: 'alpha', ...search },
+  });
+});
+
+it('omits unsaved team actions for an archived project', async () => {
+  const container = await mount({
+    projects: [{ ...project('alpha', 'Alpha'), archivedAt: createdAt }],
+  });
+  const labels = options(container);
+  expect(labels).not.toContain(messages.CommandPalette.newBlank);
+  expect(labels).not.toContain(messages.CommandPalette.draftTeam);
+  expect(labels.some((label) => label?.startsWith('New Corral from template:'))).toBe(false);
 });
 
 // glossary.md: the whole-run stop is named Stop the run / 실행 중지; the word it had before still

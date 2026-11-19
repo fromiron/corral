@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import {
+  AgentRole,
   ContentHash,
   canonicalJson,
   HarnessBindingRef,
@@ -565,11 +566,27 @@ export function registerHarnessRoutes(
     action(reply, () => {
       const input = z
         .strictObject({
-          binding: HarnessBindingRef,
+          binding: HarnessBindingRef.optional(),
+          roleId: Identifier.optional(),
+          skills: AgentRole.shape.skills,
+          mcpTools: AgentRole.shape.mcpTools,
           projectId: Identifier,
           runOverride: HarnessBindingRef.optional(),
         })
         .parse(request.body);
+      if (input.roleId)
+        return service.preview(
+          {
+            id: input.roleId,
+            harness: input.binding,
+            skills: input.skills,
+            mcpTools: input.mcpTools,
+          },
+          input.projectId,
+          input.runOverride,
+        );
+      if (!input.binding || input.skills || input.mcpTools)
+        throw new Error('role preview requires a role ID');
       return service.preview(input.binding, input.projectId, input.runOverride);
     }),
   );

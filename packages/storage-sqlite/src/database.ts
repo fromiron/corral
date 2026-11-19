@@ -747,6 +747,24 @@ CREATE INDEX workspace_access_writer ON workspace_access(worktree_key)
   AND owner_id IN (SELECT operation_id FROM workbench_operations WHERE kind='development');
 DELETE FROM workbench_operations WHERE kind='development';`,
   },
+  {
+    name: '0047_agent_library',
+    sql: `
+CREATE TABLE IF NOT EXISTS library_agents (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  role_json TEXT NOT NULL CHECK (json_valid(role_json) AND json_type(role_json) = 'object'),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  operation_id TEXT NOT NULL,
+  creation_role_json TEXT NOT NULL CHECK (json_valid(creation_role_json) AND json_type(creation_role_json) = 'object'),
+  UNIQUE (project_id, operation_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS library_agents_by_project ON library_agents (project_id, created_at, id);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

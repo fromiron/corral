@@ -1,5 +1,5 @@
 import type { HarnessApi } from '@corral/client';
-import type { HarnessEntryKey, HarnessEntryView, ManagedHook } from '@corral/contracts';
+import type { HarnessEntryView } from '@corral/contracts';
 import { EmptyView } from '@corral/react';
 import { Button, cn, fontWeights, Input, Switch } from '@corral/react/design-kit';
 import { Plus } from '@corral/react/icons';
@@ -9,34 +9,38 @@ import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
 import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
+import { EntryContent, entryId, entryKey } from '../workbench/harness/EntryContent.tsx';
 import { PackageManager } from '../workbench/harness/PackageManager.tsx';
 import { ResourceEditor } from '../workbench/harness/ResourceEditor.tsx';
-import { SkillQualityPanel } from '../workbench/harness/SkillQualityPanel.tsx';
+import { SkillManager } from '../workbench/harness/SkillManager.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { SectionIndex } from '../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
-const keyOf = (entry: HarnessEntryKey) => `${entry.resourceHash}:${entry.entry}`;
-const refOf = (entry: HarnessEntryKey): HarnessEntryKey => ({
-  resourceHash: entry.resourceHash,
-  entry: entry.entry,
-  kind: entry.kind,
-});
 export function SkillSettingsPage() {
-  return <ResourceSettingsPage kind="skill" />;
+  const { harnesses } = useServices();
+  const t = useTranslations('Library.resources');
+  return (
+    <SettingsLayout active="skills">
+      <main className="settings-content">
+        {harnesses ? (
+          <SkillManager api={harnesses} />
+        ) : (
+          <p className="text-body text-muted-foreground">{t('localOnly')}</p>
+        )}
+      </main>
+    </SettingsLayout>
+  );
 }
 export function HookSettingsPage() {
-  return <ResourceSettingsPage kind="extension" />;
-}
-function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
   const { harnesses } = useServices();
   const t = useTranslations('Harness');
   return (
-    <SettingsLayout active={kind === 'skill' ? 'skills' : 'hooks'}>
+    <SettingsLayout active="hooks">
       {harnesses ? (
-        <ResourceManager key={kind} api={harnesses} kind={kind} />
+        <HookManager api={harnesses} />
       ) : (
         <main className="settings-content">
           <p className="text-body text-muted-foreground">{t('localOnly')}</p>
@@ -45,7 +49,7 @@ function ResourceSettingsPage({ kind }: { kind: 'skill' | 'extension' }) {
     </SettingsLayout>
   );
 }
-function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'extension' }) {
+function HookManager({ api }: { api: HarnessApi }) {
   const t = useTranslations('Resources'),
     h = useTranslations('Harness');
   const n = useTranslations('Navigation');
@@ -75,7 +79,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
     void api.entries().then(
       (value) => {
         if (active) {
-          setEntries(value.filter((entry) => entry.kind === kind));
+          setEntries(value.filter((entry) => entry.kind === 'extension'));
           setLoaded(true);
         }
       },
@@ -84,8 +88,8 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
     return () => {
       active = false;
     };
-  }, [api, kind, version]);
-  const selected = entries.find((entry) => keyOf(entry) === selection);
+  }, [api, version]);
+  const selected = entries.find((entry) => entryId(entry) === selection);
   // Manage in the library opens this page to choose one entry (features/library.md): once, after
   // the first load, and only an exact match, so a package's hash meant for the package list
   // below never picks one of its entries. The person's own choice wins from then on.
@@ -95,16 +99,16 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
     if (!loaded || !carried.current) return;
     const item = carried.current;
     carried.current = undefined;
-    const entry = entries.find((value) => keyOf(value) === item);
+    const entry = entries.find((value) => entryId(value) === item);
     if (!entry) return;
     setArchived(Boolean(entry.archivedAt));
     setSelection(item);
     requestAnimationFrame(() => chosenRow.current?.scrollIntoView?.({ block: 'nearest' }));
   }, [loaded, entries]);
   useEffect(() => {
-    if (!selection || entries.some((entry) => keyOf(entry) === selection)) return;
-    const sameBundle = entries.find((entry) => entry.resourceHash === selection.split(':')[0]);
-    if (sameBundle) setSelection(keyOf(sameBundle));
+    if (!selection || entries.some((entry) => entryId(entry) === selection)) return;
+    const sameBundle = entries.find((entry) => selection.startsWith(`${entry.resourceHash}:`));
+    if (sameBundle) setSelection(entryId(sameBundle));
   }, [entries, selection]);
   const filtered = entries.filter(
     (entry) =>
@@ -113,7 +117,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         .toLocaleLowerCase()
         .includes(search.toLocaleLowerCase()),
   );
-  const runSettingsTask = useSettingsTask(`resources:${kind}`);
+  const runSettingsTask = useSettingsTask('resources:extension');
 
   async function work(action: () => Promise<unknown>) {
     setBusy(true);
@@ -141,7 +145,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       {/* Package management lives below the hook library; with a library above it the top of the
           page says so and lets the keyboard jump there (#82). An empty library leaves the
           Packages heading right below, and the row would only repeat it. */}
-      {kind === 'extension' && entries.length > 0 ? (
+      {entries.length > 0 ? (
         <SectionIndex
           sections={[
             { id: 'resources-library', label: t('library') },
@@ -174,7 +178,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
         {none ? (
           <EmptyView
             className="w-full"
-            title={t(kind === 'skill' ? 'emptySkills' : 'emptyHooks')}
+            title={t('emptyHooks')}
             action={{ label: t('add'), onClick: () => setEditor({}), ref: add }}
           />
         ) : (
@@ -203,15 +207,15 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
             ) : (
               <ul className="flex flex-col">
                 {filtered.map((entry) => (
-                  <li key={keyOf(entry)}>
+                  <li key={entryId(entry)}>
                     <Button
-                      ref={selection === keyOf(entry) ? chosenRow : undefined}
+                      ref={selection === entryId(entry) ? chosenRow : undefined}
                       variant="ghost"
-                      aria-pressed={selection === keyOf(entry)}
-                      onClick={() => setSelection(keyOf(entry))}
+                      aria-pressed={selection === entryId(entry)}
+                      onClick={() => setSelection(entryId(entry))}
                       className={cn(
                         'h-auto w-full flex-col items-start gap-1.5 whitespace-normal p-3 text-left',
-                        selection === keyOf(entry) && CHOSEN_BUTTON_ROW,
+                        selection === entryId(entry) && CHOSEN_BUTTON_ROW,
                       )}
                     >
                       <span style={{ fontVariationSettings: fontWeights.semibold }}>
@@ -238,7 +242,11 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           </section>
         )}
         {selected ? (
-          <section key={keyOf(selected)} className="flex flex-col gap-6" aria-label={t('details')}>
+          <section
+            key={entryId(selected)}
+            className="flex flex-col gap-6"
+            aria-label={t('details')}
+          >
             <section className="settings-row">
               <div>
                 <h3>{selected.name}</h3>
@@ -267,7 +275,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
               <div>
                 <h3>{selected.resource.trustedAt ? h('trusted') : h('untrusted')}</h3>
                 <p>{selected.resource.trustedAt ? t('packageTrust') : t('trustBeforeUse')}</p>
-                {kind === 'extension' ? <p className="text-warning">{h('nativeWarning')}</p> : null}
+                <p className="text-warning">{h('nativeWarning')}</p>
               </div>
               <Button
                 variant="tertiary"
@@ -290,7 +298,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                   const save = () =>
                     void work(() =>
                       api.archiveEntry(
-                        refOf(selected),
+                        entryKey(selected),
                         selected.managementRevision,
                         !selected.archivedAt,
                         operationId(),
@@ -323,14 +331,6 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 {n('addToWorkStyle')}
               </Button>
             </section>
-            {kind === 'skill' && !selected.archivedAt ? (
-              <SkillQualityPanel
-                api={api}
-                entry={selected}
-                entries={entries}
-                onChanged={() => refresh((value) => value + 1)}
-              />
-            ) : null}
             {selected.successor ? (
               <section className="settings-row">
                 <div>
@@ -339,8 +339,9 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
                 <Button
                   variant="tertiary"
                   onClick={() => {
+                    if (!selected.successor) return;
                     setArchived(false);
-                    setSelection(keyOf(selected.successor!));
+                    setSelection(entryId(selected.successor));
                   }}
                 >
                   {t('viewCopy')}
@@ -356,7 +357,7 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
       {editor ? (
         <ResourceEditor
           api={api}
-          kind={kind}
+          kind="extension"
           entry={editor.entry}
           onClose={() => {
             setEditor(null);
@@ -365,77 +366,17 @@ function ResourceManager({ api, kind }: { api: HarnessApi; kind: 'skill' | 'exte
           onSaved={(hash, entry) => {
             setEditor(null);
             setArchived(false);
-            setSelection(
-              `${hash}:${entry ?? (kind === 'skill' ? 'skills/SKILL.md' : 'extensions/hook.ts')}`,
-            );
+            setSelection(`${hash}:${entry ?? 'extensions/hook.ts'}`);
             refresh((n) => n + 1);
             add.current?.focus();
           }}
         />
       ) : null}
       {/* Below the hook library, named by its own heading. */}
-      {kind === 'extension' ? (
-        <div id="resources-packages" tabIndex={-1} className="outline-none">
-          <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
-        </div>
-      ) : null}
+      <div id="resources-packages" tabIndex={-1} className="outline-none">
+        <PackageManager api={api} onChanged={() => refresh((n) => n + 1)} />
+      </div>
       {confirmation.dialog}
     </main>
-  );
-}
-function EntryContent({ api, entry }: { api: HarnessApi; entry: HarnessEntryView }) {
-  const t = useTranslations('Resources'),
-    h = useTranslations('Harness');
-  const [filesOpen, setFilesOpen] = useState(false);
-  const [value, setValue] = useState<{
-      content: string;
-      hook: ManagedHook | null;
-      files: Awaited<ReturnType<HarnessApi['resource']>>['files'];
-    } | null>(null),
-    [error, setError] = useState('');
-  useEffect(() => {
-    let active = true;
-    void Promise.all([api.readEntry(refOf(entry)), api.resource(entry.resourceHash)]).then(
-      ([v, resource]) => active && setValue({ ...v, files: resource.files }),
-      (e) => active && setError(e.message),
-    );
-    return () => {
-      active = false;
-    };
-  }, [api, entry]);
-  return (
-    <>
-      {error ? (
-        <p role="alert" className="text-body text-danger">
-          {error}
-        </p>
-      ) : null}
-      {entry.kind === 'extension' ? (
-        <p className="text-caption text-muted-foreground">
-          {t(value?.hook ? 'managedHook' : 'externalExtension')}
-        </p>
-      ) : null}
-      <pre className="max-h-80 overflow-auto whitespace-pre-wrap break-words rounded-lg bg-subtle p-4 font-mono text-caption">
-        {value?.content ?? t('loadingContent')}
-      </pre>
-      <details
-        className="text-caption text-muted-foreground"
-        onToggle={(e) => setFilesOpen(e.currentTarget.open)}
-      >
-        <summary className="cursor-pointer">
-          {t('advanced')} · {h('files', { count: entry.resource.fileCount })}
-        </summary>
-        <p className="my-2 break-all font-mono">{entry.resourceHash}</p>
-        {filesOpen ? (
-          <ul className="max-h-40 overflow-auto">
-            {value?.files.map((file) => (
-              <li key={file.path}>
-                {file.path} · {file.bytes} B
-              </li>
-            ))}
-          </ul>
-        ) : null}
-      </details>
-    </>
   );
 }

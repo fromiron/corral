@@ -5,7 +5,7 @@ import {
   manyCapabilityDefinition,
   manyNodeDefinition,
 } from '../../contracts/test/fixtures/many-nodes.ts';
-import { compileDefinition, type Diagnostic } from '../src/index.ts';
+import { compileDefinition, type Diagnostic, outputSources } from '../src/index.ts';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const team = () => clone(researchTeam) as any;
@@ -18,6 +18,14 @@ function diagnosticsOf(doc: unknown, options?: Parameters<typeof compileDefiniti
 
 const has = (diagnostics: Diagnostic[], expected: Partial<Diagnostic>) =>
   expect(diagnostics).toContainEqual(expect.objectContaining(expected));
+
+it('offers only earlier producers to a work seat even before the team has a final output', () => {
+  const team = manyNodeDefinition();
+  team.nodes = team.nodes.filter((n) => n.type !== 'output');
+  team.controlEdges = team.controlEdges.filter((e) => e.target !== 'output');
+  expect(outputSources(team, 'node_2').map((n) => n.id)).toEqual(['node_0', 'node_1']);
+  expect(outputSources(team, 'node_0')).toEqual([]);
+});
 
 describe('compileDefinition: valid definition', () => {
   it('compiles more than 64 connected authored nodes with unique roles and unchanged runtime limits', () => {

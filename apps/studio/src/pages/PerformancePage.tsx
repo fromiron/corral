@@ -11,6 +11,7 @@ import {
 } from '@corral/react';
 import { useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
+import { useSkillLabel } from '../workbench/RoleSkills.tsx';
 
 // Only bundled in MODE=performance. All replay, commands and frames use the local server.
 const params = new URLSearchParams(location.search);
@@ -66,6 +67,7 @@ function PaintObserver() {
 }
 
 export default function PerformancePage() {
+  const skillLabel = useSkillLabel();
   const [result, setResult] = useState('ready');
   const [running, setRunning] = useState(false);
   async function measure() {
@@ -129,7 +131,7 @@ export default function PerformancePage() {
         <div className="grid grid-cols-2 gap-4">
           <Timeline session={session} />
           <div className="h-96 overflow-auto">
-            <RunView session={session} onSteer={() => {}} />
+            <RunView session={session} onSteer={() => {}} skillLabel={skillLabel} />
           </div>
         </div>
       </StudioStoresProvider>
