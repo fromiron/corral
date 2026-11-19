@@ -1,4 +1,4 @@
-import { CorralDefinition } from '@corral/contracts';
+import { CorralDefinition, type SharedOutrider } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { createTextAttachment } from '../attachments.ts';
@@ -10,13 +10,40 @@ const team = () => CorralDefinition.parse(researchTeam);
 
 /**
  * Behaviour every CorralRepository must share: the browser store and the
- * server's SQLite store. Corral ids come from the repository (`corral_…`).
+ * server's SQLite store. Imported definitions and duplicates receive new `corral_…` ids.
  */
 export function describeCorralRepositoryContract(
   name: string,
   makeRepository: () => CorralRepository,
 ) {
   describe(`CorralRepository contract: ${name}`, () => {
+    it.each<SharedOutrider['targets']>([{ kind: 'all' }, { kind: 'selected', nodeIds: ['write'] }])(
+      'preserves shared Outrider scope, bindings, and grants across reads and copies',
+      async (targets) => {
+        const repo = makeRepository();
+        const definition: CorralDefinition = {
+          ...team(),
+          sharedOutrider: {
+            modelProfile: 'model-a',
+            principles: 'Check assumptions.',
+            targets,
+          },
+        };
+        const created = await repo.save({ definition, expectedDefinitionRevision: null });
+        if (!created.ok) throw new Error(created.message);
+        const { corralId, definitionRevision } = created.record;
+        const expected = { ...definition, id: corralId };
+        expect((await repo.get(corralId))?.definition).toEqual(expected);
+        expect(await repo.getRevision(corralId, definitionRevision)).toEqual(expected);
+        const duplicate = await repo.duplicate(corralId, 'Research copy');
+        if (!duplicate.ok) throw new Error(duplicate.message);
+        expect((await repo.get(duplicate.record.corralId))?.definition).toEqual({
+          ...definition,
+          id: duplicate.record.corralId,
+          name: 'Research copy',
+        });
+      },
+    );
     it('saving an unchanged definition keeps its revision; a change makes a new one', async () => {
       const repo = makeRepository();
       const created = await repo.save({
@@ -122,6 +149,79 @@ export function describeCorralRepositoryContract(
       });
       expect(result.ok).toBe(true);
     });
+
+    describe('stable creation', () => {
+      it('saves the requested id once, while a normal import still gets a fresh id', async () => {
+        const repo = makeRepository();
+        const project = await repo.createProject({ name: 'Drafts' });
+        if (!project.ok) throw new Error(project.message);
+        const definition = { ...team(), id: 'corral_editor-draft' };
+        const request = {
+          definition,
+          createId: definition.id,
+          projectId: project.project.projectId,
+          expectedDefinitionRevision: null,
+        };
+        const first = await repo.save(request);
+        if (!first.ok) throw new Error(first.message);
+        expect(first.record).toMatchObject({
+          corralId: definition.id,
+          projectId: request.projectId,
+          definitionRevision: 1,
+          definition,
+        });
+        expect(await repo.save(request)).toEqual({ ...first, changed: { definition: false } });
+        const imported = await repo.save({ definition, expectedDefinitionRevision: null });
+        if (!imported.ok) throw new Error(imported.message);
+        expect(imported.record.corralId).not.toBe(definition.id);
+        expect(await repo.list()).toHaveLength(2);
+      });
+
+      it('compares the unfinished first revision, not the current or runnable definition', async () => {
+        const repo = makeRepository();
+        const first = await repo.save({
+          definition: { ...team(), entryNodeId: '', nodes: [], roles: [], controlEdges: [] },
+          expectedDefinitionRevision: null,
+        });
+        if (!first.ok) throw new Error(first.message);
+        const { corralId, definition } = first.record;
+        expect(await repo.getRevision(corralId, 1)).toBeNull();
+        const second = await repo.save({
+          definition: { ...team(), id: corralId },
+          expectedDefinitionRevision: 1,
+        });
+        if (!second.ok) throw new Error(second.message);
+        const request = { createId: corralId, definition, expectedDefinitionRevision: null };
+        expect(await repo.save(request)).toEqual({ ...second, changed: { definition: false } });
+        expect(await repo.save({ ...request, definition: second.record.definition })).toMatchObject(
+          {
+            ok: false,
+            error: 'revision_conflict',
+          },
+        );
+        expect(await repo.get(corralId)).toEqual(second.record);
+        expect(await repo.getRevision(corralId, 3)).toBeNull();
+        expect(await repo.list()).toHaveLength(1);
+      });
+
+      it('refuses to claim the same id in another project without creating or moving it', async () => {
+        const repo = makeRepository();
+        const first = await repo.save({ definition: team(), expectedDefinitionRevision: null });
+        const project = await repo.createProject({ name: 'Elsewhere' });
+        if (!first.ok || !project.ok) throw new Error('setup failed');
+        expect(
+          await repo.save({
+            createId: first.record.corralId,
+            definition: first.record.definition,
+            expectedDefinitionRevision: null,
+            projectId: project.project.projectId,
+          }),
+        ).toMatchObject({ ok: false, error: 'revision_conflict' });
+        expect(await repo.get(first.record.corralId)).toEqual(first.record);
+        expect(await repo.list()).toHaveLength(1);
+      });
+    });
+
     describe('projects', () => {
       const create = (repo: CorralRepository, projectId?: string) =>
         repo.save({

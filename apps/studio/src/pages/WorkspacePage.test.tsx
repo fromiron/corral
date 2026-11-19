@@ -22,6 +22,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import { chooseNewSessionTeam } from '../workbench/newSessionDraft.ts';
 import { forgetSharedPresenceHolds } from '../workbench/useSettledPresence.ts';
 import { WorkspacePage } from './WorkspacePage.tsx';
 
@@ -1192,6 +1193,33 @@ function creating(result?: () => Promise<unknown>) {
   };
   return createSession;
 }
+
+it('saves the suggested team when starting its conversation, not before', async () => {
+  const save = vi.fn(async () => ({ ok: true, record: { corralId: 'new_team' } }));
+  const createSession = vi.fn(async () => ({ ok: true, session: session('session_9', 'New') }));
+  fixture.services.repository = {
+    list: async () => [],
+    listSessions: async () => [],
+    save,
+    createSession,
+  };
+  chooseNewSessionTeam('alpha', 'template:bug-fix');
+  const { container, router } = await render();
+  const form = await openDetails(container);
+  expect(form?.querySelector('[role="combobox"]')?.textContent).toContain('Bug fix');
+  expect(save).not.toHaveBeenCalled();
+  expect(createSession).not.toHaveBeenCalled();
+  await act(async () => startChat()?.click());
+  await settle();
+  expect(save).toHaveBeenCalledOnce();
+  expect(save).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: 'alpha', expectedDefinitionRevision: null }),
+  );
+  expect(createSession).toHaveBeenCalledWith(
+    expect.objectContaining({ corralId: 'new_team', projectId: 'alpha' }),
+  );
+  expect(router.state.location.pathname).toBe('/sessions/session_9');
+});
 
 it('starts a conversation with its completion criteria, trimmed and without blank lines', async () => {
   const createSession = creating();

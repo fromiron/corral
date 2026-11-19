@@ -76,6 +76,55 @@ async function collectEvents(transport: InProcessTransport, runId: string): Prom
 }
 
 describe('Coordinator: linear mock run', () => {
+  it.each([true, false])(
+    'collects only submitted versions when an alternate producer did not run (keep writer: %s)',
+    async (keepWriter) => {
+      const definition = linearCorral(['writer', 'recovery']);
+      const output = definition.nodes.find((node) => node.type === 'output');
+      if (!output || !definition.controlEdges[0]) throw new Error('linear team');
+      definition.controlEdges[0].sourcePort = 'error';
+      definition.controlEdges.push({
+        id: 'normal',
+        source: 'writer',
+        sourcePort: 'out',
+        target: output.id,
+        targetPort: 'in',
+      });
+      if (keepWriter)
+        output.inputBindings.push({
+          kind: 'task_output',
+          name: 'original',
+          sourceNodeId: 'writer',
+        });
+      const transport = setup();
+      const { runId, receipt } = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: 'cmd_output',
+        mode: 'mock',
+        definition,
+      });
+      expect(receipt.status).toBe('applied');
+      if (!runId) throw new Error('missing run');
+      const events = await collectEvents(transport, runId);
+      const final = await waitForProjection(transport, runId, settled);
+      expect(final.nodeExecutions.recovery).toBeUndefined();
+      const finalized = events.find((event) => event.type === 'output.finalized');
+      if (keepWriter) {
+        expect(final.status).toBe('succeeded');
+        const versions = final.output?.artifactVersionIds ?? [];
+        expect(versions).toHaveLength(1);
+        expect(finalized?.payload.artifactVersionIds).toEqual(versions);
+        expect(final.artifacts[versions[0] ?? '']?.authorExecutionId).toBe(
+          final.nodeExecutions.writer?.[0],
+        );
+      } else {
+        expect(final.status).toBe('failed');
+        expect(final.output).toBeNull();
+        expect(finalized).toBeUndefined();
+      }
+    },
+  );
+
   it('runs agents in edge order and finalizes the last submitted version', async () => {
     const transport = setup();
     const { runId, receipt } = await transport.startRun(startRequest(['research', 'writer']));

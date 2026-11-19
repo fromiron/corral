@@ -1160,7 +1160,7 @@ function WorkSessionPage() {
     if (tab.kind === 'graph')
       return (
         <div className="flex min-h-0 flex-1 flex-col">
-          <TeamDesign corralId={tab.corralId} />
+          <TeamDesign corralId={tab.corralId} sessionId={session.sessionId} />
         </div>
       );
     if (tab.kind === 'tools')

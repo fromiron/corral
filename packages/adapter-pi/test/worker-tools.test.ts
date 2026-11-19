@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { ReviewArtifact } from '@corral/contracts';
 import { expect, it } from 'vitest';
 import { assertImagePayload, assertProtectedPayload } from '../src/request-record.ts';
@@ -26,6 +27,68 @@ const start = {
   delegateTo: [],
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
+
+it('keeps the exact legacy system and user prompts for a step without an instruction', () => {
+  expect(createHash('sha256').update(systemPrompt(start)).digest('hex')).toBe(
+    'df19abbca723b61693ca803beb20f8db8be33b928f7e457f3caea1ae20a2d1bf',
+  );
+  expect(createHash('sha256').update(userPrompt(start)).digest('hex')).toBe(
+    'c22647bb2abc64cf8ffb12895aaadd5ce3c40b4e237a7ca6d63f9a4ee1424812',
+  );
+});
+
+it('keeps the role prompt and this step’s job in separate protected system sections', () => {
+  const input = { ...start, stepInstruction: 'Check the financial claims only.' };
+  const sections = promptSections(input);
+  expect(sections.filter((section) => section.text.includes(input.role.prompt))).toMatchObject([
+    { name: 'corral_identity' },
+  ]);
+  expect(sections.filter((section) => section.text.includes(input.stepInstruction))).toMatchObject([
+    { name: 'corral_step_instruction', text: `## step_instruction\n${input.stepInstruction}` },
+  ]);
+  for (const text of [input.role.prompt, input.stepInstruction]) {
+    expect(systemPrompt(input).split(text)).toHaveLength(2);
+    expect(userPrompt(input)).not.toContain(text);
+  }
+});
+
+it('distinguishes a requested artifact review from general questions with attachments', () => {
+  const asker = {
+    ...start,
+    tools: ['ask'],
+    role: { ...start.role, outputContract: 'text' },
+    askTo: [
+      { nodeId: 'expert', label: 'Expert', artifactReview: true as const },
+      { nodeId: 'peer', label: 'Peer' },
+    ],
+  };
+  expect(systemPrompt(asker)).toContain('reviewArtifactVersionId');
+  expect(systemPrompt({ ...asker, askTo: [{ nodeId: 'expert', label: 'Expert' }] })).not.toContain(
+    'reviewArtifactVersionId',
+  );
+  const responder = {
+    ...asker,
+    tools: ['reply'],
+    askTo: [],
+    assignment: {
+      kind: 'question' as const,
+      questionId: 'q1',
+      body: 'Check my draft.',
+      reviewArtifactVersionId: 'v1',
+    },
+    inputs: [
+      { name: 'reference', artifactVersionId: 'background', text: 'Background evidence' },
+      { name: 'reference', artifactVersionId: 'v1', text: 'Requested draft' },
+    ],
+  };
+  expect(userPrompt(responder)).toContain('"reviewArtifactVersionId":"v1"');
+  expect(
+    userPrompt({
+      ...responder,
+      assignment: { kind: 'question', questionId: 'q1', body: 'Check my draft.' },
+    }),
+  ).not.toContain('reviewArtifactVersionId');
+});
 
 it('a marked meeting response is a conversation instead of a work report', () => {
   const input = {

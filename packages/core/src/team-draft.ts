@@ -1,5 +1,6 @@
 import {
   type CorralDefinition,
+  DEFAULT_ADVISOR_REVIEW,
   DEFAULT_LIMITS,
   hasReviewLoop,
   type PatternSlot,
@@ -8,7 +9,7 @@ import {
   type TeamPattern,
   type TeamPlan,
 } from '@corral/contracts';
-import { rolePrompt } from './role-prompt.ts';
+import { ROLE_RULES } from './role-prompt.ts';
 import {
   type RoleWording,
   type TeamTemplateId,
@@ -18,8 +19,6 @@ import {
 
 // goal → team plan → Corral. The local suggestion reads the goal's words; the plan
 // becomes a definition whose tools, bindings, Loop ports and limits are fixed by the pattern.
-
-export { rolePrompt };
 
 /** The three patterns drafted here; auto mode uses their shapes. */
 export type BasePattern = 'single' | 'write_review' | 'research_write_review';
@@ -68,9 +67,13 @@ export interface TeamLabels {
   loop: string;
   decision: string;
   output: string;
+  outriderPrinciples?: string;
   /** The Join where the parallel patterns' branches meet. */
   join?: string;
 }
+
+const DEFAULT_OUTRIDER_PRINCIPLES =
+  'Check the evidence against the requested result and suggest concrete corrections.';
 
 const ENGLISH_LABELS: TeamLabels = {
   loop: 'Review loop',
@@ -121,7 +124,7 @@ const IMPLEMENT =
 const PLAN_FIRST =
   /\b(plan\w*|design\w*|migrat\w*|stages?|staged|step[- ]by[- ]step|phases?|phased|incremental\w*|roadmap|architect\w*)\b|설계|계획|마이그레이션|이관|옮기|옮겨|단계|아키텍처/i;
 const DOCUMENT =
-  /\b(documents?|docs?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
+  /\b(documents?|docs?|manuscripts?|reports?|articles?|essays?|posts?|announcements?|proposals?|blogs?|e-?mails?|letters?|memos?|newsletters?|readme|faq|slides?|decks?|guides?|manuals?)\b|안내문|보고서|문서|원고|제안서|기획서|이메일|편지|공지|슬라이드|가이드|매뉴얼/i;
 /** Writing a document: never a code pattern, whatever the document is about. */
 const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
 const SOFTWARE =
@@ -149,7 +152,11 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
     return 'tech_decision';
   const document = DOCUMENT.test(brief);
-  if (document && WRITE.test(brief)) return null;
+  if (
+    document &&
+    (WRITE.test(brief) || (!CODE.test(brief) && !SOFTWARE.test(brief) && FIX.test(brief)))
+  )
+    return null;
   // Fixing changes code; finding a cause without fixing it is research.
   if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
   if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
@@ -202,7 +209,7 @@ function patternParts(
  * its name and brief stay. `keepCriteria` keeps criteria the person wrote by hand.
  */
 export function planWithPattern(
-  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria'>,
+  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria' | 'outrider' | 'observeWork'>,
   pattern: TeamPattern,
   wording: TeamWording,
   { keepCriteria = false }: { keepCriteria?: boolean } = {},
@@ -212,17 +219,132 @@ export function planWithPattern(
     name: plan.name,
     pattern,
     brief: plan.brief,
+    ...(plan.outrider ? { outrider: plan.outrider } : {}),
+    ...(plan.observeWork ? { observeWork: true } : {}),
     ...parts,
     criteria: keepCriteria ? [...plan.criteria] : parts.criteria,
   };
 }
 
+/** Read explicit advice/review intent before matching the work itself to a pattern. */
+function outriderFromGoal(goal: string): TeamPlan['outrider'] {
+  const review = /\b(review|feedback|critique|pass)\b|검토|리뷰|피드백|수정 의견|통과/i.test(goal);
+  const request =
+    /\b(on request|on demand|when needed|when asked|if needed|as needed|ask for|request a|request review|can ask)\b|필요할 때|요청할 수|요청할 때|원할 때|물어볼 수|물어보게|부탁할 수/i.test(
+      goal,
+    );
+  const mustPass =
+    /\b(must pass|must be approved by (?:a|the) review|only (?:after|if).{0,32}(?:review|pass)|require.{0,18}review.{0,18}pass)\b|반드시.{0,20}통과|통과해야.{0,15}제출|통과한 뒤에만/i.test(
+      goal,
+    );
+  if (review && mustPass) return 'required_review';
+  if (review && request) return 'artifact_review';
+  if (
+    /\b(review (?:it )?(?:before (?:every )?(?:submitting|submission|publishing|publication)|then submit)|submit after review)\b|(?:검토|리뷰)(?:한)? 후 제출|(?:발행|제출)\s*전에?\s*(?:검토|리뷰)/i.test(
+      goal,
+    )
+  )
+    return 'clarify_review';
+  if (
+    request &&
+    /\b(experts?|advice|advisors?|consult\w*|outrider)\b|전문가|자문|아웃라이더|Outrider|조언/i.test(
+      goal,
+    )
+  )
+    return 'consultation';
+  return undefined;
+}
+
+// Remove only the denied policy, not the entire sentence: the author may still want
+// manuscript feedback or separately ask to observe the work.
+const EN_POLICY =
+  '(?:passing (?:a )?review|(?:an? )?(?:review(?: pass| gate| step| rounds?)?|automatic observation(?: of (?:the )?(?:workers?|work in progress))?))';
+const EN_POLICIES = `${EN_POLICY}(?:\\s+(?:or|and|nor)\\s+${EN_POLICY})*`;
+const DENIED_EN_POLICY = new RegExp(
+  `\\b(?:(?:no(?: need for)?|without|do not need|don't need|skip)\\s+${EN_POLICIES}|${EN_POLICIES}\\s+(?:(?:is|are) not|isn't|aren't|not) (?:needed|required|necessary))\\b`,
+  'gi',
+);
+const KO_POLICY = '(?:(?:검토|리뷰)(?:\\s*(?:통과|단계))?|(?:진행\\s*중\\s*)?자동\\s*관찰)';
+const DENIED_KO_POLICY = new RegExp(
+  `${KO_POLICY}(?:\\s*(?:이나|나|또는|와|과|및)\\s*${KO_POLICY})*(?:이|가|은|는|을|를|도)?\\s*(?:필요\\s*없|필요하지\\s*않|불필요|없이|하지\\s*(?:않|말|마))`,
+  'g',
+);
+
+export interface AdviceIntent {
+  outrider: TeamPlan['outrider'];
+  observeWork: boolean;
+  singleWithoutReview: boolean;
+}
+
+/** The same review and observation intent governs local, model and conversational proposals. */
+export function adviceIntentFromGoal(goal: string): AdviceIntent {
+  let declinedReview = false;
+  const removeDenied = (policy: string) => {
+    if (/review|검토|리뷰/i.test(policy)) declinedReview = true;
+    return ' ';
+  };
+  const positive = goal
+    .replace(DENIED_EN_POLICY, removeDenied)
+    .replace(DENIED_KO_POLICY, removeDenied);
+  return {
+    outrider: outriderFromGoal(positive),
+    observeWork: matchesWorkObservation(positive),
+    singleWithoutReview: declinedReview && !hasExplicitTeamStructure(positive),
+  };
+}
+
+export function requestsWorkObservation(goal: string): boolean {
+  return adviceIntentFromGoal(goal).observeWork;
+}
+
+/** A request to watch the team's ongoing work, including explicit opt-outs in either locale. */
+function matchesWorkObservation(goal: string): boolean {
+  return goal.split(/[.!?;\n]/).some((clause) => {
+    const english =
+      /\b(?:(?:observe|watch|monitor) (?:the )?work in progress|(?:automatically|periodically) (?:observe|watch|monitor) (?:the |each |all )?(?:workers?|agents?)\b|automatic observation of (?:the )?(?:workers?|work in progress))\b/i;
+    const korean =
+      /(?:자동\s*관찰(?:을|를)?\s*(?:켜|활성화)|진행\s*중(?:인)?\s*(?:(?:작업|업무)(?:을|를)?\s*)?(?:자동(?:으로)?\s*)?관찰|(?:작업자|에이전트)(?:들의?|들|의)?\s*(?:작업|업무)?(?:을|를)?\s*(?:자동으로|주기적으로)\s*관찰)/;
+    const match = english.exec(clause) ?? korean.exec(clause);
+    if (!match) return false;
+    const before = clause.slice(0, match.index);
+    const after = clause.slice(match.index + match[0].length);
+    return (
+      !/\b(?:never|no|without|not|don't|disable)\s+(?:enable\s+|turn on\s+)?(?:(?:the |any )?(?:outrider|advisor) to )?$/i.test(
+        before,
+      ) && !/^(?:을|를|은|는)?\s*(?:(?:하)?지\s*(?:않|말|마)|없이|끄|꺼|비활성|금지)/.test(after)
+    );
+  });
+}
+
+/** Keep an independently requested observation setting when accepting a model's other choices. */
+export function withWorkObservation(plan: TeamPlan, enabled: boolean): TeamPlan {
+  if (Boolean(plan.observeWork) === enabled) return plan;
+  if (enabled) return { ...plan, observeWork: true };
+  const { observeWork: _unrequested, ...rest } = plan;
+  return rest;
+}
+
 /** The local suggestion: no model call. Null for an empty goal. */
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
-  const brief = goal.trim();
+  return localPlan(goal.trim(), wording, adviceIntentFromGoal(goal));
+}
+
+function localPlan(
+  brief: string,
+  wording: TeamWording,
+  { outrider, observeWork, singleWithoutReview }: AdviceIntent,
+): TeamPlan | null {
   if (!brief) return null;
+  const template = wording.templates ? templatePatternFromGoal(brief) : null;
+  // An optional review request alone does not add a sequential review to a writing task.
+  const selfReview =
+    /\b(?:worker|writer|author).{0,34}(?:revise|edit|correct).{0,28}(?:submit|deliver)\b|(?:작업자|작성자).{0,24}직접.{0,18}(?:고쳐|수정).{0,14}제출/i.test(
+      brief,
+    );
   const pattern: TeamPattern =
-    (wording.templates ? templatePatternFromGoal(brief) : null) ?? basePatternFromGoal(brief);
+    singleWithoutReview || ((outrider || selfReview) && !template && !isSecurityReview(brief))
+      ? 'single'
+      : (template ?? basePatternFromGoal(brief));
   const task =
     pattern === 'research_write_review' && isSecurityReview(brief)
       ? wording.securityReview
@@ -230,6 +352,12 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
   const firstLine = brief.split('\n')[0]?.replace(/\s+/g, ' ') ?? brief;
   const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0] || firstLine;
   const parts = patternParts(pattern, wording);
+  const worker =
+    pattern === 'single' &&
+    (((selfReview || outrider === 'artifact_review') && WRITING.test(brief)) ||
+      (singleWithoutReview && /\b(?:writer|author)\b|작성자/i.test(brief)))
+      ? wording.roles.writer
+      : undefined;
   return {
     name: task?.name ?? cut(firstSentence, SUGGESTED_NAME_LENGTH),
     pattern,
@@ -237,11 +365,58 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
     criteria: (task ? Object.values(task.criteria) : undefined) ?? parts.criteria,
     roles: parts.roles.map((role) => ({
       ...role,
+      ...(role.slot === 'worker' && worker ? worker : {}),
       ...(task && role.slot in task.roles ? task.roles[role.slot as keyof typeof task.roles] : {}),
     })),
     ...(parts.reviewRounds === undefined ? {} : { reviewRounds: parts.reviewRounds }),
     finalApproval: parts.finalApproval,
+    ...(outrider ? { outrider } : {}),
+    ...(observeWork ? { observeWork: true } : {}),
   };
+}
+
+/** Explicit task roles take priority over the inferred shape of an advice-only goal. */
+function hasExplicitTeamStructure(goal: string): boolean {
+  return (
+    /\b(?:two|three|four|[2-9])\s+(?:(?:different|distinct|separate)\s+)?(?:agents|roles|workers)\b|(?:두|세|네)\s*(?:명의?|개의?)?\s*(?:역할|작업자|에이전트)/i.test(
+      goal,
+    ) ||
+    /\bone (?:agent|role|worker)\b.*\b(?:another|the other)\b|(?:역할을|작업을)\s*(?:나누|분담)/i.test(
+      goal,
+    ) ||
+    /\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b.{0,30}\b(?:and|then)\b.{0,16}\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b|(?:기획자|조사자|작성자|편집자|구현자|검토자).{0,18}(?:와|과|다음에|그 뒤).{0,12}(?:기획자|조사자|작성자|편집자|구현자|검토자)/i.test(
+      goal,
+    )
+  );
+}
+
+/** The plan Studio can present after a model answer. A local recovery retains its origin. */
+export function planAfterModel(
+  goal: string,
+  proposed: TeamPlan | null,
+  wording: TeamWording,
+): { plan: TeamPlan | null; recovery: 'incompatible' | 'unusable' | null } {
+  const intent = adviceIntentFromGoal(goal);
+  const local = localPlan(goal.trim(), wording, intent);
+  if (!proposed && local?.observeWork) return { plan: local, recovery: 'unusable' };
+  const modelPlan = proposed && withWorkObservation(proposed, Boolean(local?.observeWork));
+  if (local?.outrider === 'required_review') {
+    if (!modelPlan) return { plan: local, recovery: 'unusable' };
+    return modelPlan.outrider === 'required_review'
+      ? { plan: modelPlan, recovery: null }
+      : { plan: { ...modelPlan, outrider: 'required_review' }, recovery: 'incompatible' };
+  }
+  if (
+    local?.pattern !== 'single' ||
+    (!intent.singleWithoutReview &&
+      ((local.outrider !== 'consultation' && local.outrider !== 'artifact_review') ||
+        hasExplicitTeamStructure(goal)))
+  )
+    return { plan: modelPlan, recovery: null };
+
+  if (proposed?.pattern === 'single' && proposed.outrider === local.outrider)
+    return { plan: modelPlan, recovery: null };
+  return { plan: local, recovery: proposed ? 'incompatible' : 'unusable' };
 }
 
 const CONTRACT: Record<BaseSlot, CorralDefinition['roles'][number]['outputContract']> = {
@@ -293,23 +468,53 @@ export function draftFromPlan(
   corralId: string,
   labels: TeamLabels = ENGLISH_LABELS,
 ): TeamDraft {
+  const sharedOutrider =
+    plan.observeWork ||
+    plan.outrider === 'consultation' ||
+    plan.outrider === 'artifact_review' ||
+    plan.outrider === 'required_review'
+      ? {
+          modelProfile: 'model-a',
+          principles: labels.outriderPrinciples ?? DEFAULT_OUTRIDER_PRINCIPLES,
+          targets: { kind: 'all' as const },
+          ...(plan.outrider === 'artifact_review' ? { artifactReview: true as const } : {}),
+          ...(plan.observeWork
+            ? {
+                observation: {
+                  targets: { kind: 'all' as const },
+                  review: { ...DEFAULT_ADVISOR_REVIEW },
+                },
+              }
+            : {}),
+        }
+      : undefined;
+  const consultation = sharedOutrider ? { sharedOutrider } : {};
   if (isTemplatePattern(plan.pattern))
-    return { definition: templateDraft(plan, plan.pattern, corralId, labels) };
-  const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
+    return {
+      definition: { ...templateDraft(plan, plan.pattern, corralId, labels), ...consultation },
+    };
+  const plannedRole = (slot: BaseSlot) => {
     const planned = plan.roles.find((r) => r.slot === slot);
     if (!planned) throw new Error(`the plan has no ${slot}`);
+    return planned;
+  };
+  const seatWording = (slot: BaseSlot) => {
+    const { name, duty } = plannedRole(slot);
+    return { label: name, stepInstruction: duty };
+  };
+  const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
     return {
       id: slot,
-      name: planned.name,
-      prompt: rolePrompt(planned.duty),
+      name: plannedRole(slot).name,
+      prompt: ROLE_RULES,
       modelProfile: slot === 'reviewer' ? 'model-b' : 'model-a',
       allowedWorkTools: ['write_artifact' as const],
       allowedCollaborationTools: ['read_artifact' as const, 'submit_result' as const],
       outputContract: CONTRACT[slot],
     };
   };
-  const label = (slot: BaseSlot) => plan.roles.find((r) => r.slot === slot)?.name ?? slot;
   const base = {
+    ...consultation,
     schemaVersion: '0.1' as const,
     id: corralId,
     name: plan.name,
@@ -334,7 +539,7 @@ export function draftFromPlan(
         {
           id: 'work',
           type: 'agent' as const,
-          label: label('worker'),
+          ...seatWording('worker'),
           roleId: 'worker',
           invocation: 'scheduled' as const,
           inputBindings: [{ kind: 'run_input' as const, name: 'brief' }],
@@ -356,7 +561,7 @@ export function draftFromPlan(
     {
       id: firstNode,
       type: 'agent',
-      label: label(first),
+      ...seatWording(first),
       roleId: first,
       invocation: 'scheduled',
       inputBindings: [{ kind: 'run_input', name: 'brief' }],
@@ -371,7 +576,7 @@ export function draftFromPlan(
     {
       id: 'write',
       type: 'agent',
-      label: label('writer'),
+      ...seatWording('writer'),
       parentId: 'review_loop',
       roleId: 'writer',
       invocation: 'scheduled',
@@ -391,7 +596,7 @@ export function draftFromPlan(
     {
       id: 'review',
       type: 'agent',
-      label: label('reviewer'),
+      ...seatWording('reviewer'),
       parentId: 'review_loop',
       roleId: 'reviewer',
       invocation: 'scheduled',

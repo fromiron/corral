@@ -61,7 +61,17 @@ const DRAG_DEAD_ZONE = 2;
 
 const Switch = forwardRef<HTMLDivElement, SwitchProps>(
   (
-    { label, checked, onToggle, disabled = false, thumbTransition, size, className, ...props },
+    {
+      label,
+      checked,
+      onToggle,
+      disabled = false,
+      thumbTransition,
+      size,
+      className,
+      'aria-describedby': describedBy,
+      ...props
+    },
     ref,
   ) => {
     const labelId = useId();
@@ -234,6 +244,7 @@ const Switch = forwardRef<HTMLDivElement, SwitchProps>(
         {...props}
       >
         <SwitchPrimitive.Root
+          aria-describedby={describedBy}
           checked={checked}
           aria-labelledby={labelId}
           onCheckedChange={() => {

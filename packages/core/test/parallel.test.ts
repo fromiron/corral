@@ -128,6 +128,126 @@ const live = (p: RunProjection, nodeId: string) =>
 const joins = (events: RunEvent[]) =>
   events.flatMap((e) => (e.type === 'workflow.joined' ? [e.payload] : []));
 
+describe('shared Outrider consultations', () => {
+  it.each(['answered', 'timed_out', 'cancelled'] as const)(
+    'one of two open requests can be %s without changing its sibling',
+    async (outcome) => {
+      const definition = forked('all');
+      definition.sharedOutrider = {
+        modelProfile: 'model-a',
+        principles: 'Advise the worker who asked.',
+        targets: { kind: 'all' },
+      };
+      const clock = new FakeClock();
+      const releaseA = new Gate();
+      const releaseB = new Gate();
+      const askerResults = new Map<string, unknown>();
+      const replyOutcomes = new Map<string, boolean>();
+      const transport = new InProcessTransport(
+        new Coordinator({
+          clock,
+          timers: clock,
+          ids: new SequentialIdFactory(),
+          agents: new ScriptedAgentAdapter({
+            turns: 1,
+            collaborate: false,
+            script: async (input, host) => {
+              if (input.assignment.kind === 'question') {
+                const { body, questionId } = input.assignment;
+                // Try to deliver even after cancellation so the host's late-reply boundary is exercised.
+                await (body === 'Question from a' ? releaseA : releaseB).wait();
+                const reply = await host.invokeTool({
+                  name: 'reply',
+                  args: { questionId, body: `Advice on ${body}`, evidenceRefs: [] },
+                });
+                replyOutcomes.set(body, reply.ok);
+                return { outcome: 'succeeded' };
+              }
+              if (input.nodeId !== 'a' && input.nodeId !== 'b') return null;
+              const target = input.capabilities.askTo[0];
+              if (!target)
+                return { outcome: 'failed', error: 'No shared Outrider offered to the worker' };
+              const asked = await host.invokeTool({
+                name: 'ask',
+                args: { targetNodeId: target.nodeId, body: `Question from ${input.nodeId}` },
+              });
+              askerResults.set(input.nodeId, asked.ok ? asked.result : asked.error);
+              return null;
+            },
+          }),
+        }),
+      );
+      try {
+        const { runId, events } = await run(transport, definition);
+        const started = await waitForProjection(transport, runId, (p) => {
+          const open = Object.values(p.questions).filter((q) => q.status === 'open');
+          const executions = Object.values(p.executions);
+          return (
+            finished(p) ||
+            (open.length === 2 &&
+              open.every((q) => executions.some((execution) => execution.taskId === q.taskId)))
+          );
+        });
+        const questions = Object.values(started.questions);
+        expect(questions).toHaveLength(2);
+        expect(new Set(questions.map((q) => q.targetNodeId)).size).toBe(1);
+        const requestA = questions.find((q) => q.body === 'Question from a');
+        const requestB = questions.find((q) => q.body === 'Question from b');
+        if (!requestA || !requestB) throw new Error('Both workers must own a distinct request');
+        expect(requestA.senderExecutionId).not.toBe(requestB.senderExecutionId);
+        const responders = Object.values(started.executions);
+        const responderA = responders.find((execution) => execution.taskId === requestA.taskId);
+        const responderB = responders.find((execution) => execution.taskId === requestB.taskId);
+        if (!responderA || !responderB) throw new Error('Both requests must have a responder');
+        expect(responderA.executionId).not.toBe(responderB.executionId);
+        expect(responderA.parentExecutionId).toBe(requestA.senderExecutionId);
+        expect(responderB.parentExecutionId).toBe(requestB.senderExecutionId);
+        releaseB.open();
+        const halfway = await waitForProjection(
+          transport,
+          runId,
+          (p) => p.questions[requestB.questionId]?.status === 'answered',
+        );
+        expect(halfway.questions[requestA.questionId]?.status).toBe('open');
+        if (outcome === 'timed_out') clock.advance(definition.limits.questionTimeoutMs);
+        if (outcome === 'cancelled') {
+          const receipt = await transport.sendCommand({
+            schemaVersion: '0.1',
+            commandId: 'cancel_responder',
+            runId,
+            type: 'cancel',
+            expectedControlRevision: halfway.controlRevision,
+            payload: {
+              scope: { kind: 'execution', executionId: responderA.executionId },
+              reason: 'Stop this consultation',
+            },
+          });
+          expect(receipt.error).toBeUndefined();
+        }
+        releaseA.open();
+        const final = await waitForProjection(transport, runId, finished);
+        expect(final.status).toBe('succeeded');
+        expect(final.questions[requestA.questionId]?.status).toBe(outcome);
+        expect(askerResults.get('a')).toMatchObject(
+          outcome === 'answered' ? { outcome, body: 'Advice on Question from a' } : { outcome },
+        );
+        expect(askerResults.get('b')).toMatchObject({
+          outcome: 'answered',
+          body: 'Advice on Question from b',
+        });
+        expect(replyOutcomes.get('Question from a')).toBe(outcome === 'answered');
+        expect(events.filter((e) => e.type === 'message.closed')).toHaveLength(2);
+        expect(
+          events.filter((e) => e.type === 'message.question_created' && e.payload.sharedOutrider),
+        ).toHaveLength(2);
+      } finally {
+        releaseA.open();
+        releaseB.open();
+      }
+    },
+  );
+});
+
 describe('parallel branches', () => {
   it('compiles a fan-out with a Join as runnable', () => {
     expect(compileDefinition(forked('all')).ok).toBe(true);

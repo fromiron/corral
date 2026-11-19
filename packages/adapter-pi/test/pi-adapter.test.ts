@@ -370,6 +370,33 @@ describe('Pi adapter under the Coordinator', () => {
     expect(types).not.toContain('task.submitted');
   });
 
+  it('records a forced MCP request as blocked on a role with no harness and an empty selection', async () => {
+    const name = 'mcp__docs__echo';
+    let offered: string[] = [];
+    const { transport } = liveRuntime([
+      (context) => {
+        offered = getCurrentTools(context.messages).map((tool) => tool.name);
+        return fauxAssistantMessage([fauxToolCall(name, {})], { stopReason: 'toolUse' });
+      },
+      ...writeThenSubmit('Completed without MCP.'),
+    ]);
+    const { runId, events } = await liveRun(transport, (definition) => {
+      definition.roles[0]!.mcpTools = [];
+    });
+    expect((await waitForProjection(transport, runId, settled)).status).toBe('succeeded');
+    expect(offered).not.toContain(name);
+    const requests = events.flatMap((e) =>
+      e.type === 'tool.requested' && e.payload.name === name ? [e.payload.toolCallId] : [],
+    );
+    expect(requests).toHaveLength(1);
+    expect(
+      events.filter((e) => e.type === 'tool.blocked' && e.payload.toolCallId === requests[0]),
+    ).toHaveLength(1);
+    expect(
+      events.some((e) => e.type === 'tool.started' && e.payload.toolCallId === requests[0]),
+    ).toBe(false);
+  });
+
   it('offers a role only the tools it may use', async () => {
     const offered: string[][] = [];
     const { transport } = liveRuntime([

@@ -1,5 +1,7 @@
 # 기능 명세: 팀 그래프 모델
 
+[팀 공통 Outrider](shared-outrider.md)의 질문 허용 관계는 고정 revision 참조를 펼친 실행 사본에 적용한다.
+
 - 상태: implemented
 - 기준: [제품 계약](../product-contract.md) §2.1, §3, [기술 설계](../technical-design.md) §4. 노드·포트·상자·병렬·컴파일 규칙의 정본은 이 문서다.
 - 비목표: 실행 중 구조 변경, 사용자 코드·수식 평가, 범용 데이터 타입 설계기. 단계별 hook(도구 사용 전 동작, 에이전트에게 추가 메시지 보내기를 GUI로 붙이는 것)은 없다. 편집 화면의 조작은 [팀 편집기](canvas.md)가 정한다.
@@ -24,13 +26,14 @@
 | 노드 | 필드 |
 |---|---|
 | 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
-| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`를 쓰지 않는다 |
+| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0), `stepInstruction?`(이 자리의 단계 지시, [에이전트 라이브러리](agent-library.md#단계-지시의-전달)). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`·`stepInstruction`을 쓰지 않는다 |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
 | Loop | `maxIterations?`(1 이상), `limitPolicy?`(없으면 `exhaust`), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
 | Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
 | Join | `policy: 'all' \| 'any'` |
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
+- 역할(`roles[]`)의 선택 필드 `origin`(사본의 출처)과 `skills`(고른 스킬)는 [에이전트 라이브러리](agent-library.md#정의의-선택-필드)와 [스킬 라이브러리](skill-library.md)가 정한다. 둘 다 없으면 이전과 같이 읽고 실행한다.
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
 - `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [Outrider](advisor.md)를 따른다.
 - `limitPolicy`는 `{ kind: 'exhaust' }`, `{ kind: 'raise_reasoning', level }`, `{ kind: 'upper_model', modelProfile }`, `{ kind: 'unlimited' }` 중 하나다. `level`은 추론 수준, `modelProfile`은 모델 profile id다. 의미는 [루프 실행](#루프-실행)을 따른다.
@@ -524,3 +527,5 @@ Scenario: 이해하지 못하는 필드
 - 참조 팀은 같은 사용자가 읽을 수 있는 정의만 가져온다. Run 시작 시 펼친 정의를 스냅샷으로 고정하고, 원본이 바뀌어도 그 Run은 바뀌지 않는다.
 - 가져오기 크기 제한(1 MiB)과 strict schema는 그대로다. 참조 순환을 금지하므로 펼친 결과는 유한하다.
 - 편집 화면의 접근성과 성능은 [팀 편집기](canvas.md)가 정한다.
+
+출력의 선택 필드 `requiredReviews`는 입력 이름·생산자 노드와 검토 Loop·검토자·판정 노드를 연결한다. 실제 제출에 필요한 버전 증거와 편집·우회 정책은 [팀 공통 Outrider](shared-outrider.md#제출-전-필수-검토)를 따른다.

@@ -33,6 +33,9 @@ import type { RunStore } from './store/run-store.ts';
 export const SESSION_CONVERSATION = 'session_conversation';
 
 const Snapshot = z.strictObject({
+  sharedOutriderNodeIds: z.array(Identifier).optional(),
+  artifactReviewNodeIds: z.array(Identifier).optional(),
+  requiredReviewSources: z.record(Identifier, z.array(Identifier)).optional(),
   meeting: MeetingRunOrigin.optional(),
   permissionMode: PermissionMode.optional(),
   imageProfiles: z.record(Identifier, ImageGenerationProfile).optional(),

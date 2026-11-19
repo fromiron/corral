@@ -41,7 +41,7 @@ it('scrolls the settings into view at once under reduced motion', () => {
       </StudioStoresProvider>
     </IntlProvider>,
   );
-  const root = document.querySelector('[data-layout]') as HTMLElement;
+  const root = document.querySelector('[data-graph-scroll]') as HTMLElement;
   const scrollTo = vi.fn();
   root.scrollTo = scrollTo as unknown as typeof root.scrollTo;
   const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });

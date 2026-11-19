@@ -166,6 +166,8 @@ export interface IterationView {
 /** A question from one execution to a callable role, answered by a new responder task. */
 export interface QuestionView {
   delivery?: 'parent';
+  sharedOutrider?: true;
+  reviewArtifactVersionId?: string;
   targetExecutionId?: string;
   questionId: string;
   /** The responder's task. */

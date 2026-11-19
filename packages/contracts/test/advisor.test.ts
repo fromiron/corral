@@ -4,6 +4,7 @@ import {
   AgentRole,
   advisorReview,
   CorralDefinition,
+  CorralDefinitionDraft,
   CorralNode,
   isWorkAgent,
   ObserverAgentNode,
@@ -37,6 +38,78 @@ const withAdvisor = (node: Record<string, unknown>) => ({
   capabilityLinks: [
     { id: 'watch', kind: 'advise', sourceNodeId: 'advisor', targetNodeId: 'writer' },
   ],
+});
+
+describe('shared Outrider settings', () => {
+  it('preserves the on-request artifact review opt-in without enabling it on existing teams', () => {
+    const settings = { modelProfile: 'model-a', principles: 'Advise.', targets: { kind: 'all' } };
+    const enabled = { ...minimal, sharedOutrider: { ...settings, artifactReview: true } };
+    expect(CorralDefinitionDraft.parse(enabled)).toEqual(enabled);
+    expect(CorralDefinition.parse(enabled)).toEqual(enabled);
+    expect(definitionJson(enabled)).toBe(true);
+    expect(
+      CorralDefinition.parse({ ...minimal, sharedOutrider: settings }).sharedOutrider,
+    ).not.toHaveProperty('artifactReview');
+  });
+  it('round-trips independent observation targets and review settings, while enforcing existing review limits', () => {
+    const shared = {
+      modelProfile: 'model-a',
+      principles: 'Give feedback.',
+      targets: { kind: 'all' },
+    };
+    const observation = {
+      targets: { kind: 'selected', nodeIds: ['writer'] },
+      review: { interval: 2, maxRequestsPerReview: 4 },
+    };
+    const doc = { ...minimal, sharedOutrider: { ...shared, observation } };
+    expect(CorralDefinition.parse(doc)).toEqual(doc);
+    expect(CorralDefinitionDraft.parse(doc)).toEqual(doc);
+    expect(definitionJson(doc)).toBe(true);
+    for (const review of [
+      { interval: 0, maxRequestsPerReview: 4 },
+      { interval: 3, maxRequestsPerReview: 65 },
+    ]) {
+      const invalid = {
+        ...doc,
+        sharedOutrider: { ...shared, observation: { ...observation, review } },
+      };
+      expect(CorralDefinition.safeParse(invalid).success).toBe(false);
+      expect(definitionJson(invalid)).toBe(false);
+    }
+  });
+  it.each([
+    { kind: 'all' },
+    { kind: 'selected', nodeIds: ['writer', 'subteam.writer'] },
+    { kind: 'selected', nodeIds: [] },
+  ])('preserves shared Outrider target intent in draft, runnable, and JSON schemas', (targets) => {
+    const sharedOutrider = { modelProfile: 'model-a', principles: 'Cite evidence.', targets };
+    const definition = { ...minimal, sharedOutrider };
+    expect(CorralDefinition.parse(definition)).toEqual(definition);
+    expect(CorralDefinitionDraft.parse(definition)).toEqual(definition);
+    expect(definitionJson(definition)).toBe(true);
+  });
+
+  it.each([
+    { modelProfile: 'invalid profile' },
+    { principles: '' },
+    { targets: { kind: 'all', nodeIds: [] } },
+    { targets: { kind: 'selected', nodeIds: ['!'] } },
+    { targets: { kind: 'selected' } },
+    { invocation: 'observer' },
+  ])('rejects malformed shared Outrider settings in the domain and generated schema', (invalid) => {
+    const definition = {
+      ...minimal,
+      sharedOutrider: {
+        modelProfile: 'model-a',
+        principles: 'Cite evidence.',
+        targets: { kind: 'all' },
+        ...invalid,
+      },
+    };
+    expect(CorralDefinition.safeParse(definition).success).toBe(false);
+    expect(CorralDefinitionDraft.safeParse(definition).success).toBe(false);
+    expect(definitionJson(definition)).toBe(false);
+  });
 });
 
 describe('advisor nodes', () => {

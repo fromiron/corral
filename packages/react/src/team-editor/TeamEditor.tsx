@@ -1,22 +1,29 @@
 import {
   type AgentRole,
   type CorralDefinition,
-  type HarnessBindingRef,
   isWorkAgent,
+  type LibraryAgent,
+  type RoleSkillRef,
 } from '@corral/contracts';
 import {
+  type Diagnostic,
   isBox,
+  isWithin,
+  outputSources,
   ROLE_PRESET_IDS,
   type RolePresetId,
   type RunStats,
   roleFromPreset,
+  seatPrompt,
 } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
+  type Ref,
   useCallback,
   useEffect,
+  useImperativeHandle,
   useMemo,
   useRef,
   useState,
@@ -32,12 +39,14 @@ import {
   type CommandMenuItemData,
   CommandMenuList,
 } from '../design-kit/index.ts';
+import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
+import { cn } from '../design-kit/lib/utils.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
 import {
+  ArrowLeft,
   Boxes,
-  Copy,
   GitMerge,
   Maximize2,
   Minimize2,
@@ -50,19 +59,24 @@ import {
   UserCheck,
   Users,
 } from '../ui/icons.ts';
+import { AgentPicker, type SaveAgent, SaveAgentDialog } from './AgentPicker.tsx';
 import {
+  type AgentSource,
+  addAgent,
   applyPattern,
   checkPorts,
+  compositionPlacement,
   connectPorts,
   type EditResult,
-  importableRoles,
-  importRole,
   type Pattern,
   type Placement,
   type PortRequest,
   placeStep,
+  previewReplaceAgent,
   primaryOut,
   removeItems,
+  replaceAgent,
+  replaceOutputSource,
   type StepKind,
   setParent,
   type TeamReference,
@@ -70,37 +84,73 @@ import {
 } from './commands.ts';
 import { InspectorSheet, PATTERNS, type SheetView } from './InspectorSheet.tsx';
 import { ADDABLE, KIND_ICON } from './kinds.ts';
-import { layoutTeam } from './layout.ts';
+import { outlineOrder } from './layout.ts';
 import type {
   ImageProfileChoice,
   LoopSettings,
   ProfileOption,
+  RoleCapabilitySlot,
   RoleSettings,
 } from './NodeSettings.tsx';
+import { PlacementDialog } from './PlacementDialog.tsx';
+import { type PlacementPrompt, placementDiff } from './placement-preview.ts';
 import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
-import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraphCanvas.tsx';
+import { TeamAssistant, type TeamAssistantHost } from './TeamAssistant.tsx';
+import { TeamComposition } from './TeamComposition.tsx';
+import {
+  type ResultOffer,
+  STEP_DRAG_TYPE,
+  TeamGraphCanvas,
+  type TeamSelection,
+} from './TeamGraphCanvas.tsx';
+import { type ReadHarnessAsk, useOutriderTargets } from './useOutriderTargets.ts';
 
 // The team editor (docs/specs/features/team-graph.md): the structure outline, the auto-laid-out
 // canvas, a floating settings sheet and a command menu, all editing one draft in the editor
 // store, so undo, redo and the unsaved state are shared with every other view of the team.
 
+export interface TeamEditorNavigation {
+  showProblems(): void;
+  showNode(id: string): void;
+  editBrief(): void;
+}
+
+export type TeamEditorView = 'composition' | 'graph';
+
 export interface TeamEditorProps {
+  ref?: Ref<TeamEditorNavigation>;
+  diagnostics?: readonly Diagnostic[];
+  validationStatus?: string | undefined;
   editor: EditorStore;
+  assistant?: TeamAssistantHost;
+  assistantStart?: { open: boolean } | undefined;
+  view?: TeamEditorView;
+  onViewChange?: ((view: TeamEditorView) => void) | undefined;
   profiles?: ProfileOption[] | null;
   /** Saved image profiles. Null until the host knows the list; a role's current id is kept. */
   imageProfiles?: readonly ImageProfileChoice[] | null;
   /** Extra role settings the host adds to an agent's sheet, such as its Skills. */
   roleSettings?: RoleSettings | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   /** Extra loop settings the host adds to a Loop's sheet. */
   loopSettings?: LoopSettings | undefined;
   /** The other saved teams of the project, each at its latest saved revision. */
   teams?: readonly TeamReference[];
+  agentLibrary?: {
+    status: 'loading' | 'failed' | 'ready';
+    agents: readonly LibraryAgent[];
+    projectName: string;
+    retry(): void;
+  };
+  beginSaveAgent?: () => SaveAgent;
+  skillLabel?: (skill: RoleSkillRef) => string | null;
   /** The saved definition a reference Team points at, once the host has loaded it. */
   resolveTeam?: ((corralId: string, definitionRevision: number) => unknown) | undefined;
-  /** Whether a work style a copied role names resolves here; without it none does. */
-  resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
+  /** Reads the effective ask permission at this project's pinned work style revision. */
+  readHarnessAsk?: ReadHarnessAsk | undefined;
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Run stats of the saved revision, laid over the canvas while the host shows them. */
   runStats?: { stats: RunStats; definition: CorralDefinition } | null | undefined;
@@ -128,26 +178,42 @@ const PATTERN_ICON: Record<Pattern, typeof Split> = {
 };
 
 export function TeamEditor({
+  ref,
+  diagnostics: sharedDiagnostics,
+  validationStatus,
   editor,
+  assistant,
+  assistantStart,
+  view: editorView = 'graph',
+  onViewChange,
   profiles = null,
   imageProfiles = null,
   roleSettings,
+  roleSkills,
+  roleTools,
   loopSettings,
   teams = NO_TEAMS,
+  agentLibrary,
+  beginSaveAgent,
+  skillLabel,
   resolveTeam,
-  resolvesHarness,
+  readHarnessAsk,
   onOpenTeam,
   runStats = null,
   onOpenRun,
   stacked = false,
 }: TeamEditorProps) {
   const t = useTranslations('TeamEditor');
+  const editorText = useTranslations('Editor');
+  const composition = editorView === 'composition';
+  const codeText = useTranslations('Validation.codes');
   const presetText = useTranslations('TeamTemplates.presets');
   const reduced = useReducedMotion() ?? false;
   const draft = useStore(editor, (s) => s.draft);
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const { definition } = draft;
+  const hasWorkAgent = useMemo(() => definition.nodes.some(isWorkAgent), [definition.nodes]);
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
   // Once the host knows the installed model profiles, a role naming another one is a problem.
   // With none installed every role would be one, and the team is not where that is fixed.
@@ -155,20 +221,21 @@ export function TeamEditor({
     () => (profiles?.length ? profiles.map((p) => p.profileId) : undefined),
     [profiles],
   );
+  const compileOptions = useMemo(
+    () => ({
+      ...(resolveTeam && { resolveTeam }),
+      ...(knownModelProfiles && { knownModelProfiles }),
+    }),
+    [resolveTeam, knownModelProfiles],
+  );
   const diagnostics = useMemo(
-    () =>
-      compileDraft(draft, {
-        ...(resolveTeam ? { resolveTeam } : {}),
-        ...(knownModelProfiles ? { knownModelProfiles } : {}),
-      }).diagnostics,
-    [draft, resolveTeam, knownModelProfiles],
+    () => sharedDiagnostics ?? compileDraft(draft, compileOptions).diagnostics,
+    [sharedDiagnostics, draft, compileOptions],
   );
   // The role presets in the screen language.
   const presets = useMemo(
     () =>
-      ROLE_PRESET_IDS.map((id: RolePresetId) =>
-        roleFromPreset(id, id, { name: presetText(`${id}.name`), duty: presetText(`${id}.duty`) }),
-      ),
+      ROLE_PRESET_IDS.map((id: RolePresetId) => roleFromPreset(id, id, presetText(`${id}.name`))),
     [presetText],
   );
 
@@ -187,32 +254,83 @@ export function TeamEditor({
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   // The sheet shows the selection unless the team's settings or the problem list is asked for.
   const [view, setView] = useState<Exclude<SheetView, 'selection'> | null>(null);
+  const [drilled, setDrilled] = useState(false);
+  const list = useRef<HTMLDivElement>(null);
+  const rowOrigin = useRef<HTMLElement | null>(null);
+  const returning = useRef(false);
+  // A settings sheet may still be animating out when reopened; each visit starts a fresh form.
+  const [outriderFormKey, setOutriderFormKey] = useState(0);
+  const outriderTargets = useOutriderTargets(
+    definition,
+    Boolean(definition.sharedOutrider) || view === 'sharedOutrider',
+    resolveTeam,
+    readHarnessAsk,
+  );
+  const [prompt, setPrompt] = useState<(PlacementPrompt & { source?: AgentSource }) | null>(null);
+  const [placementError, setPlacementError] = useState('');
+  const [paletteKind, setPaletteKind] = useState<StepKind | null>(null);
   const [dragging, setDragging] = useState<StepKind | null>(null);
-  // The command menu, or the roles it copies from.
-  const [menu, setMenu] = useState<{ open: boolean; at: Placement | null; roles: boolean }>({
+  const [menu, setMenu] = useState<{ open: boolean; at: Placement | null }>({
     open: false,
     at: null,
-    roles: false,
   });
-  // Said once, right after the import that left a work style out, until the next edit or
-  // selection.
-  const [dropped, setDropped] = useState<typeof draft | null>(null);
+  const dialogOrigin = useRef<HTMLElement | null>(null);
+  const [picker, setPicker] = useState<
+    | { kind: 'composition' }
+    | { kind: 'add'; at: Placement; outputId?: string }
+    | { kind: 'replace'; nodeId: string }
+    | null
+  >(null);
+  const [savingAgent, setSavingAgent] = useState<{
+    role: AgentRole;
+    initialPrompt: string;
+    save: SaveAgent;
+  } | null>(null);
+  const [savedNotice, setSavedNotice] = useState('');
+  const [addedUnconnected, setAddedUnconnected] = useState(false);
   useEffect(() => {
-    if (dropped && dropped !== draft) setDropped(null);
-  }, [dropped, draft]);
+    if (!addedUnconnected) return;
+    return editor.subscribe((next, previous) => {
+      if (next.draft !== previous.draft) setAddedUnconnected(false);
+    });
+  }, [editor, addedUnconnected]);
+  const [inserted, setInserted] = useState<{ sourceId: string; outputId: string } | null>(null);
 
+  const [settingsDismissed, setSettingsDismissed] = useState(false);
+  const settingsOrigin = useRef<{ id: string; scrollTop: number } | null>(null);
   const select = useCallback((next: TeamSelection) => {
+    setPlacementError('');
+    setAddedUnconnected(false);
+    settingsOrigin.current = null;
+    setSettingsDismissed(false);
     setSelection(next);
-    setDropped(null);
+    setInserted(null);
     if (next.nodes.length || next.edge) setView(null);
   }, []);
+  const unfoldFor = useCallback(
+    (ids: readonly string[]) => {
+      if (!ids.length) return;
+      setCollapsed((current) => {
+        let next: Set<string> | undefined;
+        for (const box of current) {
+          if (ids.some((id) => isWithin(nodes, nodes.get(id)?.parentId ?? null, box))) {
+            next ??= new Set(current);
+            next.delete(box);
+          }
+        }
+        return next ?? current;
+      });
+    },
+    [nodes],
+  );
   // Another view, such as an agent import, can ask for a step to be selected.
   const requested = useStore(editor, (s) => s.selectedNodeId);
   useEffect(() => {
     if (!requested) return;
+    unfoldFor([requested]);
     select({ nodes: [requested], edge: null });
     editor.getState().select(null);
-  }, [requested, editor, select]);
+  }, [requested, editor, select, unfoldFor]);
   const toggle = useCallback((id: string) => {
     setCollapsed((current) => {
       const next = new Set(current);
@@ -221,17 +339,56 @@ export function TeamEditor({
       return next;
     });
   }, []);
-  const apply = (result: EditResult) => {
-    if (!result.ok) return;
-    editor.getState().applyDraft(result.draft);
-    if (result.nodeId) select({ nodes: [result.nodeId], edge: null });
+  const rejection = (result: Extract<EditResult, { ok: false }>) => {
+    if (result.reason !== 'replacementCompileError') return t(`rejected.${result.reason}`);
+    const d = result.diagnostic;
+    const issue = codeText.has(d.code)
+      ? codeText(d.code, { message: d.message, node: nodes.get(d.nodeId ?? '')?.label ?? '' })
+      : d.message;
+    return t('rejected.replacementCompileError', { issue });
   };
-  const copyRole = (role: AgentRole, at: Placement) => {
-    const result = importRole(editor.getState().draft, role, selection.nodes, at, {
-      resolvesHarness,
-    });
+  const apply = (result: EditResult) => {
+    if (!result.ok) {
+      setPlacementError(rejection(result));
+      return;
+    }
+    setPlacementError('');
+    const before = editor.getState().draft;
+    editor.getState().applyDraft(result.draft);
+    if (!result.nodeId) return;
+    select({ nodes: [result.nodeId], edge: null });
+    const sourceId = result.nodeId;
+    if (before.definition.nodes.some((node) => node.id === sourceId)) return;
+    const after = result.draft.definition;
+    const outgoing = after.controlEdges.filter((edge) => edge.source === sourceId);
+    const target = after.nodes.find((node) => node.id === outgoing[0]?.target);
+    if (
+      outgoing.length === 1 &&
+      target?.type === 'output' &&
+      target.inputBindings.length === 1 &&
+      target.inputBindings[0]?.kind === 'task_output' &&
+      target.inputBindings[0].sourceNodeId !== sourceId &&
+      before.definition.controlEdges.some(
+        (edge) =>
+          edge.target === target.id && !after.controlEdges.some((next) => next.id === edge.id),
+      ) &&
+      outputSources(after, target.id).some((node) => node.id === sourceId)
+    ) {
+      setInserted({ sourceId, outputId: target.id });
+    }
+  };
+  const placeAgent = (source: AgentSource, at: Placement) => {
+    const base = editor.getState().draft;
+    const result = addAgent(base, source, at);
+    if (result.ok) {
+      const diff = placementDiff(base, result);
+      if (diff.removed.length > 1 || diff.disconnects) {
+        setPrompt({ kind: 'preview', base, result, diff, location: placeName(at, 'agent') });
+        return;
+      }
+    }
+    setPrompt(null);
     apply(result);
-    setDropped(result.ok && result.droppedHarness ? result.draft : null);
   };
 
   /**
@@ -250,78 +407,138 @@ export function TeamEditor({
       return { kind: 'after', nodeId: only.id };
     return { kind: 'empty' };
   };
-  const placeName = (at: Placement, kind?: StepKind) => {
-    if (kind === 'observer')
-      return at.kind === 'after' && isWorkAgent(nodes.get(at.nodeId))
-        ? t('addWatching', { name: nodes.get(at.nodeId)?.label ?? at.nodeId })
-        : undefined;
+  const selectedOutput = (kind: StepKind, explicit?: Placement) => {
+    if (kind === 'observer' || explicit || selection.nodes.length !== 1) return undefined;
+    const selected = nodes.get(selection.nodes[0] as string);
+    return selected?.type === 'output' ? selected : undefined;
+  };
+  const placeName = (at: Placement, kind?: StepKind): string => {
+    if (kind === 'observer' && at.kind === 'after' && isWorkAgent(nodes.get(at.nodeId)))
+      return t('addWatching', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
+    if (kind === 'observer') return t('placement.standalone');
     switch (at.kind) {
       case 'after':
-        return t('addAfter', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
+        return t('placement.after', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
       case 'into':
-        return t('addInto', { name: nodes.get(at.boxId)?.label ?? at.boxId });
-      case 'edge':
-        return t('addOnEdge');
+        return t('placement.inside', { name: nodes.get(at.boxId)?.label ?? at.boxId });
+      case 'beforeOutput':
+        return t('placement.beforeOutput');
+      case 'edge': {
+        const edge = definition.controlEdges.find((e) => e.id === at.edgeId);
+        return edge
+          ? t('placement.between', {
+              source: nodes.get(edge.source)?.label ?? edge.source,
+              target: nodes.get(edge.target)?.label ?? edge.target,
+            })
+          : t('rejected.unknownNode');
+      }
       case 'empty':
-        return undefined;
+        return t('placement.standalone');
     }
   };
-  const canPlace = useCallback(
-    (kind: StepKind, at: Placement) => {
-      const result = placeStep(editor.getState().draft, kind, at);
-      return result.ok ? ({ ok: true } as const) : result;
-    },
-    [editor],
-  );
+  const requestStep = (kind: StepKind, where?: Placement, reference?: TeamReference) => {
+    const base = editor.getState().draft;
+    const output = selectedOutput(kind, where);
+    setPlacementError('');
+    if (output) {
+      setPrompt({
+        kind: 'output',
+        base,
+        outputId: output.id,
+        step: kind,
+        ...(reference ? { reference } : {}),
+      });
+      return;
+    }
+    const location = where ?? placement(kind);
+    const result = placeStep(base, kind, location, {
+      ...(reference ? { reference } : {}),
+      decisionLabel: t(`kinds.${kind}`),
+    });
+    if (result.ok) {
+      const diff = placementDiff(base, result);
+      if (diff.removed.length > 1 || diff.disconnects) {
+        setPrompt({ kind: 'preview', base, result, diff, location: placeName(location, kind) });
+        return;
+      }
+    }
+    setPrompt(null);
+    apply(result);
+  };
+  const requestMove = (nodeId: string, parentId: string | null) => {
+    const base = editor.getState().draft;
+    const result = setParent(base, nodeId, parentId);
+    if (result.ok && result.draft !== base) {
+      const diff = placementDiff(base, result, true);
+      if (diff.boundary.length) {
+        const parent = parentId ? nodes.get(parentId) : undefined;
+        const from = nodes.get(nodeId)?.parentId;
+        const loop = parent?.type === 'loop' || (!!from && nodes.get(from)?.type === 'loop');
+        const wrap = loop ? wrapIn(base, [nodeId], 'loop') : null;
+        const location = parent ? t('moveInto', { box: parent.label }) : t('moveOut');
+        setPrompt({ kind: 'preview', base, result, diff, location, ...(wrap?.ok ? { wrap } : {}) });
+        return;
+      }
+    }
+    apply(result);
+  };
+  const currentPrompt = () => {
+    if (prompt?.base === editor.getState().draft) return true;
+    setPrompt(null);
+    setPlacementError(t('placement.changed'));
+    return false;
+  };
+  const canPlace = (kind: StepKind, where: Placement) => {
+    const base = editor.getState().draft;
+    const result = placeStep(base, kind, where);
+    if (!result.ok) return result;
+    const diff = placementDiff(base, result);
+    return {
+      ok: true as const,
+      label: placeName(where, kind),
+      affected: diff.removed.map((e) => e.id),
+    };
+  };
   const canConnect = useCallback(
     (request: PortRequest) => checkPorts(editor.getState().draft, request),
     [editor],
   );
 
-  // Flow order for the outline: the canvas reads left to right, then top to bottom. Advisors
-  // are not steps: they come after the flow, in the order of their row.
-  const order = useMemo(() => {
-    const advisor = new Set(
-      definition.nodes
-        .filter((n) => n.type === 'agent' && n.invocation === 'observer')
-        .map((n) => n.id),
-    );
-    const items = [...layoutTeam(definition).items.values()].sort(
-      (a, b) =>
-        Number(advisor.has(a.id)) - Number(advisor.has(b.id)) ||
-        a.rect.x - b.rect.x ||
-        a.rect.y - b.rect.y,
-    );
-    return new Map(items.map((item, index) => [item.id, index]));
-  }, [definition]);
+  const order = useMemo(() => outlineOrder(definition), [definition]);
 
   const remove = (ids: string[]) => {
-    editor.getState().applyDraft(removeItems(editor.getState().draft, ids));
+    editor.getState().applyDraft(removeItems(editor.getState().draft, ids, outriderTargets));
     select(NONE);
   };
 
   // ── command menu ──────────────────────────────────────────────────────────
   const at = menu.at ?? placement();
   const commands: CommandMenuItemData[] = [];
+  const placementLabels = new Map<StepKind, string>();
   for (const kind of ADDABLE) {
     const where = kind === 'observer' ? (menu.at ?? placement(kind)) : at;
-    const result = placeStep(draft, kind, where);
+    const result = placeStep(draft, kind, where, { decisionLabel: t(`kinds.${kind}`) });
     const Icon = KIND_ICON[kind];
+    const description = result.ok
+      ? selectedOutput(kind, menu.at ?? undefined)
+        ? t('placement.chooseOutput')
+        : placeName(where, kind)
+      : t(`rejected.${result.reason}`);
+    placementLabels.set(kind, description);
     commands.push({
       value: `add:${kind}`,
       label: t('addKind', { kind: t(`kinds.${kind}`) }),
-      description: result.ok
-        ? (placeName(where, kind) ?? t(`kindDescriptions.${kind}`))
-        : t(`rejected.${result.reason}`),
+      description,
       icon: Icon,
       group: t('groups.add'),
       disabled: !result.ok,
       keywords: [kind, t(`kinds.${kind}`)],
-      onSelect: () => apply(result),
+      onSelect: () =>
+        kind === 'agent' ? openAdd(menu.at ?? undefined) : requestStep(kind, menu.at ?? undefined),
     });
   }
   for (const pattern of PATTERNS) {
-    const result = applyPattern(draft, pattern, selection.nodes, at);
+    const result = applyPattern(draft, pattern, selection.nodes, at, t('kinds.review'));
     commands.push({
       value: `pattern:${pattern}`,
       label: t(`patterns.${pattern}`),
@@ -337,20 +554,6 @@ export function TeamEditor({
       onSelect: () => apply(result),
     });
   }
-  const roleTarget = importRole(draft, presets[0] as AgentRole, selection.nodes, at);
-  commands.push({
-    value: 'import-role',
-    label: t('importRole'),
-    ...(roleTarget.ok
-      ? selection.nodes.length
-        ? {}
-        : { description: t('withNewAgent') }
-      : { description: t(`rejected.${roleTarget.reason}`) }),
-    icon: Copy,
-    group: t('groups.patterns'),
-    disabled: !roleTarget.ok,
-    keywords: ['role', t('importRoleTitle')],
-  });
   for (const team of teams) {
     const result = placeStep(draft, 'team', at, { reference: team });
     commands.push({
@@ -363,7 +566,7 @@ export function TeamEditor({
       group: t('savedTeams'),
       disabled: !result.ok,
       keywords: [team.name],
-      onSelect: () => apply(result),
+      onSelect: () => requestStep('team', menu.at ?? undefined, team),
     });
   }
   if (selection.nodes.length) {
@@ -386,21 +589,23 @@ export function TeamEditor({
         label: t('moveOut'),
         icon: Boxes,
         group: t('groups.structure'),
-        onSelect: () => apply(setParent(draft, selection.nodes[0] as string, null)),
+        onSelect: () => requestMove(selection.nodes[0] as string, null),
       });
     if (selection.nodes.length === 1) {
       const nodeId = selection.nodes[0] as string;
       for (const box of definition.nodes) {
         if (!isBox(box) || box.id === nodes.get(nodeId)?.parentId) continue;
         const result = setParent(draft, nodeId, box.id);
-        if (!result.ok) continue;
+
         commands.push({
           value: `move:${box.id}`,
           label: t('moveInto', { box: box.label }),
           icon: Boxes,
           group: t('groups.structure'),
           keywords: [box.label],
-          onSelect: () => apply(result),
+          disabled: !result.ok,
+          ...(result.ok ? {} : { description: t(`rejected.${result.reason}`) }),
+          onSelect: () => requestMove(nodeId, box.id),
         });
       }
     }
@@ -455,39 +660,54 @@ export function TeamEditor({
       onSelect: () => editor.getState().redo(),
     },
   );
-  const openMenu = (where: Placement | null) => setMenu({ open: true, at: where, roles: false });
-  const openRoles = () => setMenu((current) => ({ ...current, open: true, roles: true }));
-
-  // The roles to copy: the presets, then each other saved team's roles.
-  const roleItems: CommandMenuItemData[] = [
-    ...presets.map((role) => ({
-      value: `role:preset:${role.id}`,
-      label: role.name,
-      icon: Copy,
-      group: t('rolePresets'),
-      onSelect: () => copyRole(role, at),
-    })),
-    ...teams.flatMap((team) =>
-      importableRoles({ nodes: [], roles: team.roles ?? [] }).map((role) => ({
-        value: `role:${team.corralId}:${role.id}`,
-        label: role.name,
-        icon: Copy,
-        group: team.name,
-        keywords: [team.name],
-        onSelect: () => copyRole(role, at),
-      })),
-    ),
-  ];
+  const rememberDialogOrigin = () => {
+    dialogOrigin.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  };
+  const openMenu = (where: Placement | null) => {
+    rememberDialogOrigin();
+    setMenu({ open: true, at: where });
+  };
+  const openAdd = (where?: Placement) => {
+    if (!menu.open) rememberDialogOrigin();
+    const output = selectedOutput('agent', where);
+    setPicker({
+      kind: 'add',
+      at: where ?? placement('agent'),
+      ...(output ? { outputId: output.id } : {}),
+    });
+  };
+  const addToComposition = () => {
+    rememberDialogOrigin();
+    setPicker({ kind: 'composition' });
+  };
 
   // ⌘K belongs to the editor while focus is inside it; elsewhere it is the app's palette.
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
+    if (event.defaultPrevented || event.nativeEvent.isComposing || event.keyCode === 229) return;
+    if (picker || savingAgent) return;
+    if (
+      composition &&
+      stacked &&
+      drilled &&
+      event.key === 'Escape' &&
+      !menu.open &&
+      !prompt &&
+      event.currentTarget.contains(event.target as Node)
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeSheet();
+      return;
+    }
     const mod = event.metaKey || event.ctrlKey;
-    if (!mod || event.nativeEvent.isComposing) return;
+    if (!mod || prompt) return;
     const key = event.key.toLowerCase();
     if (key === 'k') {
       event.preventDefault();
       event.stopPropagation();
-      setMenu((current) => ({ open: !current.open, at: null, roles: false }));
+      if (menu.open) setMenu({ open: false, at: null });
+      else openMenu(null);
       return;
     }
     if ((event.target as Element).closest('input, textarea, [contenteditable]')) return;
@@ -518,8 +738,37 @@ export function TeamEditor({
     return shown;
   }, [runStats, definition, onOpenRun]);
 
-  const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
-  const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
+  const selectedSource = inserted && nodes.get(inserted.sourceId);
+  const destination = inserted && nodes.get(inserted.outputId);
+  let resultOffer: ResultOffer | undefined;
+  if (
+    selectedSource &&
+    destination?.type === 'output' &&
+    destination.inputBindings.length === 1 &&
+    destination.inputBindings[0]?.sourceNodeId !== selectedSource.id &&
+    selection.nodes.length === 1 &&
+    selection.nodes[0] === selectedSource.id &&
+    definition.controlEdges.some(
+      (edge) => edge.source === selectedSource.id && edge.target === destination.id,
+    )
+  ) {
+    resultOffer = {
+      source: selectedSource,
+      apply: () => {
+        const result = replaceOutputSource(
+          editor.getState().draft,
+          destination.id,
+          0,
+          selectedSource.id,
+        );
+        if (result.ok) editor.getState().applyDraft(result.draft);
+      },
+      dismiss: () => setInserted(null),
+    };
+  }
+
+  const sheetOpen =
+    view !== null || (!settingsDismissed && selection.nodes.length > 0) || selection.edge !== null;
 
   // Stacked, settings opened from outside the canvas (an outline row, the team settings, the
   // problem list) scroll into view at their top once drawn. A card chosen on the canvas leaves
@@ -527,235 +776,586 @@ export function TeamEditor({
   const scroller = useRef<HTMLDivElement>(null);
   const settingsBox = useRef<HTMLDivElement>(null);
   const revealing = useRef(false);
+  const focusRequested = useRef<'heading' | 'brief' | null>(null);
+  const focusSheet = () => settingsBox.current?.querySelector('h2')?.focus({ preventScroll: true });
   const reveal = () => {
-    revealing.current = stacked;
+    if (composition) {
+      setDrilled(true);
+      if (stacked && !focusRequested.current) focusRequested.current = 'heading';
+    } else revealing.current = stacked;
   };
+  useImperativeHandle(ref, () => ({
+    showProblems() {
+      rowOrigin.current = null;
+      if (view === 'problems') focusSheet();
+      else focusRequested.current = 'heading';
+      reveal();
+      setView('problems');
+    },
+    editBrief() {
+      rowOrigin.current = null;
+      focusRequested.current = 'brief';
+      reveal();
+      setView('team');
+      setSelection(NONE);
+    },
+    showNode(id) {
+      rowOrigin.current = null;
+      unfoldFor([id]);
+      focusRequested.current = 'heading';
+      reveal();
+      select({ nodes: [id], edge: null });
+    },
+  }));
   useEffect(() => {
-    if (!revealing.current) return;
-    revealing.current = false;
+    if (returning.current && composition) {
+      returning.current = false;
+      const origin = rowOrigin.current;
+      (origin && list.current?.contains(origin)
+        ? origin
+        : (list.current?.querySelector<HTMLElement>(
+            '[data-composition-main][aria-pressed="true"]',
+          ) ?? list.current?.querySelector<HTMLElement>('[tabindex="0"]'))
+      )?.focus({ preventScroll: true });
+    }
     const box = settingsBox.current;
-    if (box)
+    if (!box) return;
+    if (focusRequested.current === 'brief')
+      box.querySelector<HTMLTextAreaElement>('[data-team-brief]')?.focus({ preventScroll: true });
+    else if (focusRequested.current === 'heading') focusSheet();
+    focusRequested.current = null;
+    if (revealing.current) {
+      revealing.current = false;
+      if (settingsOrigin.current && view === null)
+        box
+          .querySelector<HTMLInputElement>('[data-node-settings] input')
+          ?.focus({ preventScroll: true });
       scroller.current?.scrollTo?.({
         top: box.offsetTop,
         behavior: reduced ? 'instant' : 'smooth',
       });
+    }
   });
-  // Both layouts are one tree in one order (outline, palette, canvas, settings) with other
-  // classes, so changing layout keeps focus, the canvas view and a field's open undo batch.
+  const closeSheet = () => {
+    setView(null);
+    if (composition && stacked) {
+      returning.current = true;
+      setDrilled(false);
+      return;
+    }
+    const origin = settingsOrigin.current;
+    settingsOrigin.current = null;
+    if (!composition && origin && stacked && selection.nodes[0] === origin.id && view === null) {
+      setSettingsDismissed(true);
+      scroller.current
+        ?.querySelector<HTMLElement>(`[data-team-canvas] [data-node="${CSS.escape(origin.id)}"]`)
+        ?.focus({ preventScroll: true });
+      scroller.current?.scrollTo?.({ top: origin.scrollTop, behavior: 'instant' });
+    } else setSelection(NONE);
+  };
+  const showInGraph =
+    composition && onViewChange
+      ? (id: string) => {
+          unfoldFor([id]);
+          select({ nodes: [id], edge: null });
+          onViewChange('graph');
+        }
+      : undefined;
+  const sheet = (
+    <InspectorSheet
+      key={view === 'sharedOutrider' ? outriderFormKey : 'inspector'}
+      stacked={stacked}
+      docked={composition}
+      editor={editor}
+      diagnostics={diagnostics}
+      validationStatus={validationStatus}
+      selection={selection}
+      view={
+        view ?? (composition && !selection.nodes.length && !selection.edge ? 'team' : 'selection')
+      }
+      onFixFlow={() => {
+        if (composition) onViewChange?.('graph');
+        openMenu(placement());
+      }}
+      onAddFirstAgent={
+        composition
+          ? addToComposition
+          : () => apply(placeStep(editor.getState().draft, 'agent', { kind: 'empty' }))
+      }
+      profiles={profiles}
+      imageProfiles={imageProfiles}
+      roleSettings={roleSettings}
+      roleSkills={roleSkills}
+      roleTools={roleTools}
+      loopSettings={loopSettings}
+      teams={teams}
+      outriderTargets={outriderTargets}
+      onOpenTeam={onOpenTeam}
+      agents={agentLibrary?.agents}
+      presets={presets}
+      onReplaceAgent={(nodeId, opener) => {
+        dialogOrigin.current = opener;
+        setPicker({ kind: 'replace', nodeId });
+      }}
+      onSaveAgent={
+        beginSaveAgent &&
+        ((role, stepInstruction, opener) => {
+          dialogOrigin.current = opener;
+          setSavedNotice('');
+          setSavingAgent({
+            role,
+            initialPrompt:
+              role.origin?.kind === 'library'
+                ? role.prompt
+                : seatPrompt(role.prompt, stepInstruction),
+            save: beginSaveAgent(),
+          });
+        })
+      }
+      onShowInGraph={showInGraph}
+      onTeamSettings={() => {
+        reveal();
+        setView('team');
+        setSelection(NONE);
+      }}
+      onSelect={(next) => {
+        if (next.edge && composition) onViewChange?.('graph');
+        if (view === 'problems' && (next.nodes.length || next.edge)) {
+          const wire = next.edge && definition.controlEdges.find((e) => e.id === next.edge);
+          const link = next.edge && definition.capabilityLinks.find((l) => l.id === next.edge);
+          unfoldFor(
+            wire
+              ? [wire.source, wire.target]
+              : link
+                ? [link.sourceNodeId, link.targetNodeId]
+                : next.nodes,
+          );
+          reveal();
+        }
+        if (composition && !next.nodes.length && !next.edge) closeSheet();
+        select(next);
+      }}
+      onClose={closeSheet}
+    />
+  );
+  const showDetail = !stacked || (drilled && sheetOpen);
   return (
+    // Beside, both views share one frame: the structure column on the left down to the bottom
+    // edge, the work area on the right, and the conversation under the work area. The frame is
+    // the size container the column's width and the conversation's height are measured against.
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div
-      ref={scroller}
-      data-layout={stacked ? 'stacked' : 'beside'}
-      className={
+      className={cn(
+        'h-full min-h-0 min-w-0 [container:team-editor/size]',
         stacked
-          ? 'relative flex h-full min-h-0 flex-col overflow-y-auto'
-          : 'grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]'
-      }
+          ? 'flex flex-col'
+          : // The structure column, the work area, and on a wide editor the conversation's column.
+            'grid grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto]',
+      )}
+      data-layout={stacked ? 'stacked' : 'beside'}
       onKeyDown={onKeyDown}
     >
-      <StructureTree
-        stacked={stacked}
-        definition={definition}
-        diagnostics={diagnostics}
-        order={order}
-        selection={selection}
-        onSelect={(next) => {
-          select(next);
-          if (next.nodes.length) reveal();
-        }}
-        collapsed={collapsed}
-        onToggle={toggle}
-        canMove={(nodeId, parentId) => setParent(draft, nodeId, parentId).ok}
-        onMove={(nodeId, parentId) => apply(setParent(draft, nodeId, parentId))}
-        onAdd={() => openMenu(null)}
-        onTeamSettings={() => {
-          if (view !== 'team') reveal();
-          setView((current) => (current === 'team' ? null : 'team'));
-          setSelection(NONE);
-        }}
-        onProblems={() => {
-          if (view !== 'problems') reveal();
-          setView((current) => (current === 'problems' ? null : 'problems'));
-          setSelection(NONE);
-        }}
-        onCommands={() => openMenu(null)}
-        view={view}
-      />
-      {/* Beside, the palette and the settings float over the canvas; stacked, this box gives
-          way and its parts are rows of the editor's column. */}
-      <div className={stacked ? 'contents' : 'relative min-h-0'}>
+      <div
+        ref={scroller}
+        data-graph-scroll
+        hidden={composition}
+        className={stacked ? 'relative flex min-h-0 flex-1 flex-col overflow-y-auto' : 'contents'}
+      >
+        <StructureTree
+          stacked={stacked}
+          definition={definition}
+          hasWorkAgent={hasWorkAgent}
+          diagnostics={diagnostics}
+          validationStatus={validationStatus}
+          order={order}
+          selection={selection}
+          onSelect={(next) => {
+            select(next);
+            if (next.nodes.length) reveal();
+          }}
+          collapsed={collapsed}
+          onToggle={toggle}
+          onMove={requestMove}
+          onAdd={() => openMenu(null)}
+          onTeamSettings={() => {
+            if (view !== 'team') reveal();
+            setView((current) => (current === 'team' ? null : 'team'));
+            setSelection(NONE);
+          }}
+          onSharedOutrider={() => {
+            if (view !== 'sharedOutrider') {
+              reveal();
+              setOutriderFormKey((key) => key + 1);
+            }
+            setView((current) => (current === 'sharedOutrider' ? null : 'sharedOutrider'));
+            setSelection(NONE);
+          }}
+          onProblems={() => {
+            if (view !== 'problems') reveal();
+            setView((current) => (current === 'problems' ? null : 'problems'));
+            setSelection(NONE);
+          }}
+          onCommands={() => openMenu(null)}
+          view={view}
+        />
         <div
-          role="toolbar"
-          aria-label={t('palette')}
           className={
             stacked
-              ? 'flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5'
-              : 'absolute top-3 left-3 z-10 flex gap-0.5 rounded-xl border border-border bg-card p-1 shadow-sm'
+              ? 'contents'
+              : 'group/graph relative col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]'
           }
         >
-          {ADDABLE.map((kind) => {
-            const Icon = KIND_ICON[kind];
-            return (
-              <Button
-                key={kind}
-                variant="ghost"
-                size="icon-compact"
-                draggable
-                aria-label={t('addKind', { kind: t(`kinds.${kind}`) })}
-                title={`${t(`kinds.${kind}`)} — ${t(`kindDescriptions.${kind}`)}`}
-                onDragStart={(event) => {
-                  event.dataTransfer.setData(STEP_DRAG_TYPE, kind);
-                  event.dataTransfer.effectAllowed = 'copy';
-                  setDragging(kind);
-                }}
-                onDragEnd={() => setDragging(null)}
-                onClick={() => apply(placeStep(draft, kind, placement(kind)))}
-              >
-                <Icon />
-              </Button>
-            );
-          })}
-        </div>
-        {/* Stacked, the canvas takes 60% of the editor's height and at least 400px, three rows
+          <div
+            role="toolbar"
+            aria-label={t('palette')}
+            className="flex min-w-0 shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-card px-3 py-1.5"
+          >
+            <Button size="compact" variant="secondary" onClick={() => openMenu(null)}>
+              {t('placement.search')}
+            </Button>
+            {ADDABLE.map((kind) => {
+              const Icon = KIND_ICON[kind];
+              return (
+                <Button
+                  key={kind}
+                  variant="ghost"
+                  size="icon-compact"
+                  draggable
+                  aria-label={t('addKind', { kind: t(`kinds.${kind}`) })}
+                  title={`${t(`kinds.${kind}`)} · ${t(`kindDescriptions.${kind}`)} · ${placementLabels.get(kind)}`}
+                  onFocus={() => setPaletteKind(kind)}
+                  onBlur={() => setPaletteKind(null)}
+                  onPointerEnter={() => setPaletteKind(kind)}
+                  onPointerLeave={() => setPaletteKind(null)}
+                  onDragStart={(event) => {
+                    event.dataTransfer.setData(STEP_DRAG_TYPE, kind);
+                    event.dataTransfer.effectAllowed = 'copy';
+                    setDragging(kind);
+                  }}
+                  onDragEnd={() => setDragging(null)}
+                  onClick={() => (kind === 'agent' ? openAdd() : requestStep(kind))}
+                >
+                  <Icon />
+                </Button>
+              );
+            })}
+            <span className="flex min-w-0 flex-wrap gap-x-2 px-1 text-caption text-muted-foreground">
+              {paletteKind ? (
+                <span
+                  className="text-foreground"
+                  style={{ fontVariationSettings: fontWeights.semibold }}
+                >
+                  {t(`kinds.${paletteKind}`)}
+                </span>
+              ) : null}
+              <span>{placementLabels.get(paletteKind ?? 'agent')}</span>
+            </span>
+            {placementError ? (
+              <span role="status" className="px-1 text-body text-destructive">
+                {placementError}
+              </span>
+            ) : null}
+          </div>
+          {/* Stacked, the canvas takes 60% of the editor's height and at least 400px, three rows
             of cards at full size, but always 6rem less than the editor: it keeps touch for
             panning, so the editor must show something to scroll by. A plain wheel over it
             scrolls the editor; Ctrl or ⌘ with it, or a pinch, zooms. */}
-        <div
-          className={
-            stacked
-              ? 'relative isolate h-[60%] min-h-[min(400px,calc(100%_-_6rem))] shrink-0'
-              : 'relative isolate h-full'
-          }
-        >
-          <TeamGraphCanvas
-            definition={definition}
-            diagnostics={diagnostics}
-            selection={selection}
-            onSelect={select}
-            collapsed={collapsed}
-            onToggle={toggle}
-            dragging={dragging}
-            canPlace={canPlace}
-            onPlace={(kind, where) => apply(placeStep(editor.getState().draft, kind, where))}
-            onRequestAdd={openMenu}
-            canConnect={canConnect}
-            onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
-            onDelete={remove}
-            insetRight={sheetOpen && !stacked ? 368 : 0}
-            annotations={annotations}
-            wheelZoom={stacked ? 'withModifier' : 'always'}
-          />
+          <div
+            className={
+              stacked
+                ? 'relative isolate h-[60%] min-h-[min(400px,calc(100%_-_6rem))] shrink-0'
+                : 'relative isolate col-start-1 row-start-2 min-h-0'
+            }
+          >
+            <TeamGraphCanvas
+              active={!composition}
+              definition={definition}
+              diagnostics={diagnostics}
+              selection={selection}
+              onSelect={select}
+              onOpenSettings={
+                stacked
+                  ? (id) => {
+                      select({ nodes: [id], edge: null });
+                      settingsOrigin.current = { id, scrollTop: scroller.current?.scrollTop ?? 0 };
+                      reveal();
+                    }
+                  : undefined
+              }
+              collapsed={collapsed}
+              onToggle={toggle}
+              dragging={dragging}
+              canPlace={canPlace}
+              onPlace={requestStep}
+              highlightedEdges={
+                prompt?.kind === 'preview'
+                  ? [...prompt.diff.removed, ...prompt.diff.boundary].map((e) => e.id)
+                  : undefined
+              }
+              onRequestAdd={openMenu}
+              canConnect={canConnect}
+              onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
+              onDelete={remove}
+              insetRight={sheetOpen && !stacked ? 368 : 0}
+              annotations={annotations}
+              resultOffer={resultOffer}
+              wheelZoom={stacked ? 'withModifier' : 'always'}
+            />
+          </div>
+          {!composition && (
+            <AnimatePresence>
+              {sheetOpen ? (
+                <motion.div
+                  key="sheet"
+                  ref={settingsBox}
+                  className={
+                    stacked
+                      ? undefined
+                      : 'pointer-events-none relative col-start-1 row-start-2 m-3 min-h-0 justify-self-end group-has-[[data-connecting]]/graph:hidden'
+                  }
+                  // Beside, it slides in from the side it floats on; stacked, it rises into its row.
+                  initial={
+                    reduced
+                      ? { opacity: 0 }
+                      : stacked
+                        ? { opacity: 0, y: 8 }
+                        : { opacity: 0, x: 24 }
+                  }
+                  animate={{ opacity: 1, x: 0, y: 0 }}
+                  exit={
+                    reduced
+                      ? { opacity: 0, transition: { duration: 0 } }
+                      : stacked
+                        ? { opacity: 0, y: 8, transition: spring.slow.exit }
+                        : { opacity: 0, x: 24, transition: spring.slow.exit }
+                  }
+                  transition={reduced ? { duration: 0 } : spring.slow}
+                >
+                  {sheet}
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+          )}
         </div>
-        <AnimatePresence>
-          {sheetOpen ? (
-            <motion.div
-              key="sheet"
+      </div>
+      {(composition || onViewChange) && (
+        <div hidden={!composition} className={stacked ? 'min-h-0 flex-1' : 'contents'}>
+          {/* In this view the composition list is the structure column, and the chosen row's
+            settings fill the work area. */}
+          <div
+            hidden={stacked && showDetail}
+            className={
+              stacked
+                ? 'flex h-full min-h-0 flex-col'
+                : 'col-start-1 row-span-2 row-start-1 flex min-h-0 w-[clamp(22rem,32cqw,28rem)] flex-col border-r border-border'
+            }
+          >
+            <div
+              ref={list}
+              data-composition-scroll
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto px-2 pb-2"
+              onClickCapture={(event) => {
+                if (event.target instanceof Element)
+                  rowOrigin.current = event.target.closest('button');
+              }}
+            >
+              <TeamComposition
+                definition={definition}
+                hasWorkAgent={hasWorkAgent}
+                order={order}
+                diagnostics={diagnostics}
+                validationStatus={validationStatus}
+                selection={selection}
+                sheetView={view}
+                collapsed={collapsed}
+                onToggle={toggle}
+                onNode={(id) => {
+                  select({ nodes: [id], edge: null });
+                  reveal();
+                }}
+                onRequest={() => {
+                  select(NONE);
+                  setView('team');
+                  reveal();
+                }}
+                onAdd={addToComposition}
+                onSharedOutrider={() => {
+                  select(NONE);
+                  if (view !== 'sharedOutrider') setOutriderFormKey((k) => k + 1);
+                  setView('sharedOutrider');
+                  reveal();
+                }}
+                onProblems={() => {
+                  select(NONE);
+                  setView('problems');
+                  reveal();
+                }}
+                onShowInGraph={showInGraph}
+                onDelete={remove}
+                resultOffer={resultOffer}
+              />
+              <p role="status" className="px-2 text-body text-muted-foreground">
+                {addedUnconnected &&
+                  selection.nodes.length === 1 &&
+                  t('composition.addedUnconnected')}
+              </p>
+              {placementError && (
+                <p role="status" className="px-2 text-body text-destructive">
+                  {placementError}
+                </p>
+              )}
+            </div>
+          </div>
+          {composition && showDetail && (
+            <div
               ref={settingsBox}
               className={
-                stacked ? undefined : 'pointer-events-none absolute top-3 right-3 bottom-3'
+                stacked ? 'flex h-full min-h-0 flex-col' : 'col-start-2 row-start-1 min-h-0 min-w-0'
               }
-              // Beside, it slides in from the side it floats on; stacked, it rises into its row.
-              initial={
-                reduced ? { opacity: 0 } : stacked ? { opacity: 0, y: 8 } : { opacity: 0, x: 24 }
-              }
-              animate={{ opacity: 1, x: 0, y: 0 }}
-              exit={
-                reduced
-                  ? { opacity: 0, transition: { duration: 0 } }
-                  : stacked
-                    ? { opacity: 0, y: 8, transition: spring.slow.exit }
-                    : { opacity: 0, x: 24, transition: spring.slow.exit }
-              }
-              transition={reduced ? { duration: 0 } : spring.slow}
             >
-              <InspectorSheet
-                stacked={stacked}
-                editor={editor}
-                diagnostics={diagnostics}
-                selection={selection}
-                view={view ?? 'selection'}
-                profiles={profiles}
-                imageProfiles={imageProfiles}
-                roleSettings={roleSettings}
-                loopSettings={loopSettings}
-                teams={teams}
-                onOpenTeam={onOpenTeam}
-                onImportRole={openRoles}
-                notice={notice}
-                onSelect={(next) => {
-                  // A step chosen from the problem list opens its settings from outside the canvas.
-                  if (view === 'problems' && (next.nodes.length || next.edge)) reveal();
-                  select(next);
-                }}
-                onClose={() => {
-                  setView(null);
-                  setSelection(NONE);
-                }}
-              />
-            </motion.div>
-          ) : null}
-        </AnimatePresence>
-        {/* Read out once; the sheet of the agent it happened to shows it. */}
-        <p role="status" className="sr-only">
-          {notice}
-        </p>
-      </div>
-      <CommandMenuDialog
-        open={menu.open}
-        onOpenChange={(open) => setMenu((current) => ({ ...current, open }))}
-        shortcut={null}
-        title={menu.roles ? t('importRoleTitle') : t('commandTitle')}
-        description={menu.roles ? t('roleSearch') : t('commandDescription')}
-      >
-        <EditorMenu
-          items={menu.roles ? roleItems : commands}
-          roles={menu.roles}
-          placeholder={menu.roles ? t('roleSearch') : t('commandPlaceholder')}
-          empty={t('commandEmpty')}
-          onSelect={(item) => {
-            // Import role opens the roles in the same menu; anything else closes it.
-            if (item.value === 'import-role') openRoles();
-            else setMenu({ open: false, at: null, roles: false });
+              {stacked && (
+                <div className="shrink-0 border-b border-border px-3 py-1">
+                  <Button variant="ghost" onClick={closeSheet}>
+                    <ArrowLeft />
+                    {editorText('composition')}
+                  </Button>
+                </div>
+              )}
+              {sheet}
+            </div>
+          )}
+        </div>
+      )}
+      {assistant && (
+        <TeamAssistant
+          editor={editor}
+          host={assistant}
+          start={assistantStart}
+          compileOptions={compileOptions}
+          className={stacked ? undefined : 'col-start-2 row-start-2 min-w-0'}
+          sideClassName={stacked ? undefined : 'col-start-3 row-span-2 row-start-1'}
+          onApplied={(row) => {
+            // Show the affected row, not its narrow drill-in. Restore focus after both the
+            // selection and the conversation sheet have committed their changes.
+            rowOrigin.current = null;
+            returning.current = true;
+            setDrilled(false);
+            if (!composition) onViewChange?.('composition');
+            if (row === '@request' || row === '@advice') {
+              select(NONE);
+              setView(row === '@request' ? 'team' : 'sharedOutrider');
+            } else {
+              unfoldFor([row]);
+              select({ nodes: [row], edge: null });
+            }
           }}
         />
-      </CommandMenuDialog>
+      )}
+      {prompt ? (
+        <PlacementDialog
+          prompt={prompt}
+          returnFocus={() =>
+            (composition
+              ? rowOrigin.current
+              : scroller.current?.querySelector<HTMLElement>(
+                  '[data-team-canvas] [data-node][aria-pressed="true"]',
+                )) ?? true
+          }
+          cancel={() => setPrompt(null)}
+          choose={(where) => {
+            if (prompt.kind !== 'output' || !currentPrompt()) return;
+            if (prompt.source) placeAgent(prompt.source, where);
+            else requestStep(prompt.step, where, prompt.reference);
+          }}
+          confirm={() => {
+            if (prompt.kind === 'preview' && currentPrompt()) {
+              setPrompt(null);
+              apply(prompt.result);
+            }
+          }}
+          previewWrap={() => {
+            if (prompt.kind === 'preview' && prompt.wrap && currentPrompt())
+              setPrompt({
+                kind: 'preview',
+                base: prompt.base,
+                result: prompt.wrap,
+                diff: placementDiff(prompt.base, prompt.wrap),
+                location: prompt.location,
+                wrapping: true,
+              });
+          }}
+        />
+      ) : null}
+      {picker && (
+        <AgentPicker
+          {...(agentLibrary ? { agentLibrary } : {})}
+          {...(skillLabel ? { skillLabel } : {})}
+          presets={presets}
+          teams={teams}
+          returnFocus={() => dialogOrigin.current ?? true}
+          onClose={() => setPicker(null)}
+          preview={
+            picker.kind === 'replace'
+              ? (source) => {
+                  const result = previewReplaceAgent(draft, picker.nodeId, source, compileOptions);
+                  return result.ok ? { changed: result.changed } : { error: rejection(result) };
+                }
+              : undefined
+          }
+          onChoose={(source) => {
+            const base = editor.getState().draft;
+            if (picker.kind === 'replace') {
+              apply(replaceAgent(base, picker.nodeId, source, compileOptions));
+            } else if (picker.kind === 'composition') {
+              const at = compositionPlacement(base.definition);
+              const result = addAgent(base, source, at);
+              apply(result);
+              if (
+                result.ok &&
+                at.kind === 'empty' &&
+                !result.draft.definition.controlEdges.some(
+                  (edge) => edge.source === result.nodeId || edge.target === result.nodeId,
+                )
+              )
+                setAddedUnconnected(true);
+            } else if (picker.outputId) {
+              setPrompt({ kind: 'output', base, outputId: picker.outputId, step: 'agent', source });
+            } else placeAgent(source, picker.at);
+            setPicker(null);
+          }}
+        />
+      )}
+      {savingAgent && (
+        <SaveAgentDialog
+          {...savingAgent}
+          returnFocus={() => dialogOrigin.current ?? true}
+          onClose={() => setSavingAgent(null)}
+          onSaved={() => {
+            setSavingAgent(null);
+            setSavedNotice(t('agentPicker.saved'));
+            agentLibrary?.retry();
+          }}
+        />
+      )}
+      <p role="status" className="sr-only">
+        {savedNotice}
+      </p>
+      {!picker && (
+        <CommandMenuDialog
+          open={menu.open}
+          onOpenChange={(open) => setMenu((current) => ({ ...current, open }))}
+          shortcut={null}
+          title={t('commandTitle')}
+          description={t('commandDescription')}
+        >
+          <CommandMenu items={commands}>
+            <CommandMenuInput placeholder={t('commandPlaceholder')} />
+            <CommandMenuList>
+              <CommandMenuEmpty>{t('commandEmpty')}</CommandMenuEmpty>
+            </CommandMenuList>
+          </CommandMenu>
+        </CommandMenuDialog>
+      )}
     </div>
-  );
-}
-
-/** The editor's command menu. Its field starts empty again when it turns to the roles. */
-function EditorMenu({
-  items,
-  roles,
-  placeholder,
-  empty,
-  onSelect,
-}: {
-  items: CommandMenuItemData[];
-  roles: boolean;
-  placeholder: string;
-  empty: string;
-  onSelect: (item: CommandMenuItemData) => void;
-}) {
-  const [query, setQuery] = useState('');
-  const [shown, setShown] = useState(roles);
-  if (shown !== roles) {
-    setShown(roles);
-    setQuery('');
-  }
-  return (
-    <CommandMenu
-      items={items}
-      query={query}
-      onQueryChange={setQuery}
-      closeOnSelect={false}
-      onSelect={onSelect}
-    >
-      <CommandMenuInput placeholder={placeholder} />
-      <CommandMenuList>
-        <CommandMenuEmpty>{empty}</CommandMenuEmpty>
-      </CommandMenuList>
-    </CommandMenu>
   );
 }

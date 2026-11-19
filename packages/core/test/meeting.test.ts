@@ -1365,6 +1365,19 @@ describe('meeting messages', () => {
     withFiles.roles[0]!.allowedWorkTools = ['write_artifact', 'read_file'];
     for (const [commandId, change] of [
       ['files', { definition: withFiles }],
+      [
+        'consultations',
+        {
+          definition: {
+            ...definition,
+            sharedOutrider: {
+              modelProfile: 'model-a',
+              principles: 'Review the request.',
+              targets: { kind: 'all' },
+            },
+          },
+        },
+      ],
       ['elsewhere', { sessionId: 'session_other' }],
     ] as const) {
       const refused = await start(commandId, change);

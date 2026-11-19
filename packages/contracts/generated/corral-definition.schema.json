@@ -30,6 +30,136 @@
       "type": "string",
       "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
     },
+    "sharedOutrider": {
+      "type": "object",
+      "properties": {
+        "observation": {
+          "type": "object",
+          "properties": {
+            "targets": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "all"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "selected"
+                    },
+                    "nodeIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "nodeIds"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "review": {
+              "type": "object",
+              "properties": {
+                "interval": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "maxRequestsPerReview": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              },
+              "required": [
+                "interval",
+                "maxRequestsPerReview"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "targets",
+            "review"
+          ],
+          "additionalProperties": false
+        },
+        "modelProfile": {
+          "type": "string",
+          "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+        },
+        "principles": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 20000
+        },
+        "artifactReview": {
+          "type": "boolean",
+          "const": true
+        },
+        "targets": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "all"
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "kind": {
+                  "type": "string",
+                  "const": "selected"
+                },
+                "nodeIds": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                }
+              },
+              "required": [
+                "kind",
+                "nodeIds"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        }
+      },
+      "required": [
+        "modelProfile",
+        "principles",
+        "targets"
+      ],
+      "additionalProperties": false
+    },
     "schemaVersion": {
       "type": "string",
       "const": "0.1"
@@ -298,6 +428,100 @@
             ],
             "additionalProperties": false
           },
+          "skills": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "resourceHash": {
+                  "type": "string",
+                  "pattern": "^[a-f0-9]{64}$"
+                },
+                "entry": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 500,
+                  "pattern": "^(?!\\/)(?![A-Za-z]:)(?!.*(?:^|\\/)\\.{1,2}(?:\\/|$))(?!.*\\/\\/)[^\\\\\\p{Cc}]+$"
+                }
+              },
+              "required": [
+                "resourceHash",
+                "entry"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "mcpTools": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "serverId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "required": [
+                "serverId",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "origin": {
+            "oneOf": [
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "library"
+                  },
+                  "agentId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  },
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 9007199254740991
+                  }
+                },
+                "required": [
+                  "kind",
+                  "agentId",
+                  "revision"
+                ],
+                "additionalProperties": false
+              },
+              {
+                "type": "object",
+                "properties": {
+                  "kind": {
+                    "type": "string",
+                    "const": "preset"
+                  },
+                  "presetId": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "presetId"
+                ],
+                "additionalProperties": false
+              }
+            ]
+          },
           "answer": {
             "type": "string",
             "const": "final_reply"
@@ -399,6 +623,11 @@
                   "outputName": {
                     "type": "string",
                     "minLength": 1
+                  },
+                  "stepInstruction": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 20000
                   },
                   "retry": {
                     "type": "object",
@@ -1186,6 +1415,10 @@
                     },
                     "optional": {
                       "type": "boolean"
+                    },
+                    "bindingId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                     }
                   },
                   "required": [
@@ -1197,6 +1430,48 @@
               },
               "requireApproval": {
                 "type": "boolean"
+              },
+              "requiredReviews": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingName": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "bindingId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "loopNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "reviewerNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "decisionNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    }
+                  },
+                  "required": [
+                    "bindingName",
+                    "sourceNodeId",
+                    "loopNodeId",
+                    "reviewerNodeId",
+                    "decisionNodeId"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

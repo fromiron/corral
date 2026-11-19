@@ -27,6 +27,7 @@ import { buildTranscript, type TranscriptEntry } from '../run/transcript.ts';
 import { AdviceBlock } from './AdviceLine.tsx';
 import { FailureNotice } from './FailureNotice.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
+import { ReviewVersion } from './ReviewVersion.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 
 /**
@@ -133,6 +134,7 @@ export function ExecutionTranscript({
         ) : (
           <Entry
             key={`${entry.kind}-${entry.seq}`}
+            session={session}
             entry={entry}
             labelOf={labelOf}
             {...(onOpenArtifact ? { onOpenArtifact } : {})}
@@ -276,12 +278,14 @@ export function ExecutionToolGroup({
 }
 
 function Entry({
+  session,
   entry,
   labelOf,
   onOpenArtifact,
   compact = false,
   failureShown = false,
 }: {
+  session: RunSessionStore;
   entry: TranscriptEntry;
   labelOf: (nodeId: string) => string;
   onOpenArtifact?: (id: string) => void;
@@ -358,6 +362,13 @@ function Entry({
             {t('asked', { target: labelOf(entry.targetNodeId) })}
           </p>
           <p className="whitespace-pre-wrap">{entry.body}</p>
+          {entry.reviewArtifactVersionId && (
+            <ReviewVersion
+              session={session}
+              versionId={entry.reviewArtifactVersionId}
+              onOpen={onOpenArtifact}
+            />
+          )}
           {entry.answer ? (
             <div className="mt-4 space-y-2">
               <p className="text-muted-foreground">{t('answer')}</p>

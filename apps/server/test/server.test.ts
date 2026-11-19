@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import { HttpSseTransport, RestCorralRepository } from '@corral/client';
 import {
   type AgentAdapter,
+  type AgentStartInput,
   type CorralDefinition,
   DEFAULT_LIMITS,
   type RunEvent,
@@ -114,6 +115,74 @@ describeTransportContract('HTTP + SSE against the local server', async (agents) 
       };
     },
   };
+});
+
+describe('project agent library routes', () => {
+  it('guards project originals and writes by session and CSRF', async () => {
+    const server = await start();
+    const url = `${server.url}/api/v1/projects/default/agents`;
+    expect((await fetch(url)).status).toBe(401);
+    const { cookie, call } = await browser(server);
+    const denied = await fetch(url, {
+      method: 'POST',
+      headers: { cookie, origin: server.url, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(denied.status).toBe(403);
+    expect((await denied.json()).error.code).toBe('ORIGIN_REJECTED');
+    expect(await (await call(url)).json()).toEqual([]);
+  });
+
+  it('validates, creates, replays, reads and patches only in the owning project', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const projects = `${server.url}/api/v1/projects`;
+    const url = `${projects}/default/agents`;
+    const write = (path: string, method: string, body: object) =>
+      call(path, {
+        method,
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+    const role = {
+      name: 'Researcher',
+      prompt: 'Investigate.',
+      modelProfile: 'model-a',
+      outputContract: 'notes',
+      allowedWorkTools: [],
+      allowedCollaborationTools: [],
+    };
+    const create = { operationId: 'create_one', role };
+    const invalid = await write(url, 'POST', { ...create, role: { ...role, id: 'team_role' } });
+    expect(invalid.status).toBe(400);
+    expect((await invalid.json()).error.code).toBe('SCHEMA_INVALID');
+    const response = await write(url, 'POST', create);
+    expect(response.status).toBe(201);
+    const first = await response.json();
+    expect(first).toMatchObject({ revision: 1, role, projectId: 'default' });
+    expect(await (await write(url, 'POST', create)).json()).toEqual(first);
+    const conflict = await write(url, 'POST', { ...create, role: { ...role, name: 'Different' } });
+    expect(conflict.status).toBe(409);
+    expect((await conflict.json()).error.code).toBe('IDEMPOTENCY_CONFLICT');
+    const path = `${url}/${first.agentId}`;
+    expect(await (await call(path)).json()).toEqual(first);
+    const patch = { expectedRevision: 1, role: { ...role, name: 'Editor' } };
+    const second = await (await write(path, 'PATCH', patch)).json();
+    expect(second).toMatchObject({ revision: 2, role: patch.role });
+    expect(await (await call(url)).json()).toEqual([second]);
+    const stale = await write(path, 'PATCH', { expectedRevision: 1, archived: true });
+    expect(stale.status).toBe(409);
+    expect((await stale.json()).error.code).toBe('REVISION_CONFLICT');
+    expect((await write(path, 'PATCH', { expectedRevision: 2 })).status).toBe(400);
+
+    const other = await (await write(projects, 'POST', { name: 'Other' })).json();
+    const outside = `${projects}/${other.projectId}/agents/${first.agentId}`;
+    for (const refusal of [await call(outside), await write(outside, 'PATCH', patch)]) {
+      expect(refusal.status).toBe(404);
+      expect((await refusal.json()).error.code).toBe('TARGET_NOT_FOUND');
+    }
+    expect(await (await call(path)).json()).toEqual(second);
+  });
 });
 
 describe('local security boundary', () => {
@@ -432,6 +501,248 @@ describe('local security boundary', () => {
 });
 
 describe('REST: Corrals and runs', () => {
+  it.each(['revise', 'keep', 'earlier', 'skip', 'ordinary'] as const)(
+    'opens the exact versions for on-request artifact review: %s',
+    async (choice) => {
+      const v1Text = 'Draft without a source.';
+      const v2Text = 'Draft citing source A.';
+      const opinion = 'Add source A to the draft.';
+      const reviews = choice !== 'skip' && choice !== 'ordinary';
+      let hiddenId = '';
+      let v1 = '';
+      let v2 = '';
+      let targetAllowsReview = false;
+      const reviewedTexts: string[] = [];
+      const refusals: string[] = [];
+      const agents = new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        script: async (input, host) => {
+          const write = async (text: string) => {
+            const result = await host.invokeTool({ name: 'write_artifact', args: { text } });
+            if (!result.ok) throw new Error(result.error.message);
+            return String(result.result.artifactVersionId);
+          };
+          if (input.nodeId === 'planner') {
+            hiddenId = await write('Unsubmitted notes held by planner.');
+            return null;
+          }
+          if (input.assignment.kind === 'question') {
+            const reference = input.inputs.find((i) => i.artifactVersionId === v1);
+            if (reference) reviewedTexts.push(reference.text);
+            const replied = await host.invokeTool({
+              name: 'reply',
+              args: {
+                questionId: input.assignment.questionId,
+                body: opinion,
+                evidenceRefs: [v1],
+              },
+            });
+            return replied.ok
+              ? { outcome: 'succeeded' }
+              : { outcome: 'failed', error: replied.error.message };
+          }
+          if (input.nodeId !== 'writer') return null;
+          const target = input.capabilities.askTo[0];
+          if (!target) throw new Error('Writer has no consultation target');
+          targetAllowsReview = target.artifactReview === true;
+          v1 = await write(v1Text);
+          if (choice === 'earlier') {
+            const reading = await host.invokeTool({
+              name: 'read_artifact',
+              args: { artifactVersionId: v1 },
+            });
+            if (!reading.ok) throw new Error(reading.error.message);
+            v2 = await write(v2Text);
+          }
+          if (choice !== 'skip') {
+            const refused = await host.invokeTool({
+              name: 'ask',
+              args: {
+                targetNodeId: target.nodeId,
+                body: 'Review this version.',
+                reviewArtifactVersionId: choice === 'ordinary' ? v1 : hiddenId,
+              },
+            });
+            if (!refused.ok) refusals.push(refused.error.code);
+            const asked = await host.invokeTool({
+              name: 'ask',
+              args: {
+                targetNodeId: target.nodeId,
+                body: 'Should the writer cite a source?',
+                ...(choice === 'ordinary'
+                  ? { artifactRefs: [v1] }
+                  : { reviewArtifactVersionId: v1 }),
+              },
+            });
+            if (!asked.ok || asked.result.body !== opinion)
+              throw new Error('Writer did not receive the advice');
+          }
+          if (choice === 'revise') v2 = await write(v2Text);
+          const submitted = await host.invokeTool({
+            name: 'submit_result',
+            args: {
+              artifactVersionIds: [v2 || v1],
+            },
+          });
+          return submitted.ok
+            ? { outcome: 'succeeded' }
+            : { outcome: 'failed', error: submitted.error.message };
+        },
+      });
+      const server = await start({ agents });
+      const { call } = await browser(server);
+      const options = { baseUrl: server.url, fetch: call };
+      const definition = linearCorral(['planner', 'writer']);
+      definition.roles
+        .find((role) => role.id === 'writer_role')
+        ?.allowedCollaborationTools.push('read_artifact');
+      definition.sharedOutrider = {
+        modelProfile: 'model-a',
+        principles: 'Give specific advice.',
+        targets: { kind: 'all' },
+        ...(choice === 'ordinary' ? {} : { artifactReview: true }),
+      };
+      const record = await saved(server, definition, call);
+      const transport = new HttpSseTransport(options);
+      const started = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: 'artifact_review',
+        corralId: record.corralId,
+        definitionRevision: record.definitionRevision,
+        mode: 'mock',
+      });
+      if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+      const runId = started.runId;
+      const final = await waitForProjection(transport, runId, (p) =>
+        ['succeeded', 'failed', 'cancelled'].includes(p.status),
+      );
+      expect(final.status).toBe('succeeded');
+      expect(targetAllowsReview).toBe(choice !== 'ordinary');
+      const questions = Object.values(final.questions);
+      expect(questions).toHaveLength(choice === 'skip' ? 0 : 1);
+      if (choice !== 'skip') {
+        const [q] = questions;
+        expect(q?.sharedOutrider).toBe(true);
+        expect(q?.reviewArtifactVersionId).toBe(reviews ? v1 : undefined);
+        expect(q?.artifactRefs).toEqual([v1]);
+        expect(q?.answer?.body).toBe(opinion);
+        expect(reviewedTexts).toEqual([v1Text]);
+        expect(refusals).toEqual(['CAPABILITY_DENIED']);
+      }
+      const finalId = v2 || v1;
+      expect(final.output?.artifactVersionIds).toEqual([finalId]);
+      const produced = final.artifacts[finalId];
+      expect(final.executions[produced?.authorExecutionId ?? '']?.nodeId).toBe('writer');
+      expect(await transport.getArtifactText(runId, finalId)).toBe(v2 ? v2Text : v1Text);
+      if (v2) {
+        expect(final.artifacts[v1]?.version).toBe(1);
+        expect(final.artifacts[v2]?.parentVersionId).toBe(v1);
+        expect(await transport.getArtifactText(runId, v1)).toBeNull();
+      }
+    },
+  );
+
+  it.each([true, false])(
+    'runs a saved shared Outrider revision with workers choosing to consult: %s',
+    async (consult) => {
+      const scheduled = new Gate();
+      const proceed = new Gate();
+      const responderInputs: AgentStartInput[] = [];
+      const startedNodes: string[] = [];
+      const workers = new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: consult,
+        script: async (input) => {
+          startedNodes.push(input.nodeId);
+          if (input.assignment.kind === 'question') responderInputs.push(input);
+          if (input.nodeId === 'planner') {
+            scheduled.open();
+            await proceed.wait();
+          }
+          return null;
+        },
+        reply: (_turn, input) =>
+          input.assignment.kind === 'question'
+            ? `Reply to ${input.assignment.askerExecutionId}`
+            : `Submitted by ${input.nodeId}`,
+      });
+      const server = await start({ agents: workers });
+      const { call } = await browser(server);
+      const options = { baseUrl: server.url, fetch: call };
+      const repository = new RestCorralRepository(options);
+      const transport = new HttpSseTransport(options);
+      const definition = linearCorral(['planner', 'writer']);
+      definition.sharedOutrider = {
+        modelProfile: 'model-a',
+        principles: 'Only answer the worker who asked.',
+        targets: { kind: 'all' },
+      };
+      const first = await saved(server, definition, call);
+      const started = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: 'start_shared',
+        mode: 'mock',
+        corralId: first.corralId,
+        definitionRevision: first.definitionRevision,
+      });
+      if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+      const runId = started.runId;
+      try {
+        await scheduled.wait();
+        // A later edit removes the shared advisor. The running team must keep the saved snapshot.
+        const changed = { ...first.definition };
+        delete changed.sharedOutrider;
+        const next = await repository.save({
+          definition: changed,
+          expectedDefinitionRevision: first.definitionRevision,
+        });
+        if (!next.ok) throw new Error(next.message);
+        expect(next.record.definitionRevision).toBe(first.definitionRevision + 1);
+      } finally {
+        proceed.open();
+      }
+      const final = await waitForProjection(transport, runId, (p) =>
+        ['succeeded', 'failed', 'cancelled'].includes(p.status),
+      );
+      expect(final.status).toBe('succeeded');
+      const questions = Object.values(final.questions);
+      expect(questions).toHaveLength(consult ? 2 : 0);
+      expect(responderInputs).toHaveLength(consult ? 2 : 0);
+      expect(final.output?.artifactVersionIds).toHaveLength(1);
+      const last = await transport.getArtifactText(
+        runId,
+        final.output?.artifactVersionIds[0] ?? '',
+      );
+      expect(last).toContain('Submitted by writer');
+      if (!consult) {
+        expect(startedNodes).toEqual(['planner', 'writer']);
+        return;
+      }
+      expect(new Set(questions.map((q) => q.targetNodeId)).size).toBe(1);
+      expect(questions.map((q) => final.executions[q.senderExecutionId]?.nodeId)).toEqual([
+        'planner',
+        'writer',
+      ]);
+      for (const q of questions) {
+        expect(q.status).toBe('answered');
+        const responder = final.executions[q.answer?.responderExecutionId ?? ''];
+        expect(responder?.parentExecutionId).toBe(q.senderExecutionId);
+        expect(responder?.modelCallIds).toHaveLength(1);
+        expect(q.answer?.body).toContain(`Reply to ${q.senderExecutionId}`);
+      }
+      for (const responder of responderInputs) {
+        expect(responder.role.prompt).toContain(definition.sharedOutrider.principles);
+        expect(responder.role.allowedWorkTools).not.toContain('write_file');
+        expect(responder.role.allowedWorkTools).not.toContain('run_command');
+        expect(responder.role.allowedCollaborationTools).toContain('reply');
+        expect(responder.role.allowedCollaborationTools).not.toContain('submit_result');
+        expect(responder.capabilities.askTo).toEqual([]);
+        expect(responder.capabilities.delegateTo).toEqual([]);
+      }
+    },
+  );
+
   it('saves Corrals by definition revision and refuses a stale save', async () => {
     const server = await start();
     const { call } = await browser(server);
@@ -470,6 +781,80 @@ describe('REST: Corrals and runs', () => {
       }),
     });
     expect(noPrecondition.status).toBe(400);
+  });
+
+  it('saves under the stable createId and checks replays against the first definition', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'Writing' });
+    if (!project.ok) throw new Error(project.message);
+    const projectId = project.project.projectId;
+    const definition = { ...linearCorral(['writer']), id: 'corral_new-team' };
+    const create = { projectId, definition, createId: definition.id };
+    const url = `${server.url}/api/v1/corrals`;
+    const firstSave = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(create),
+    };
+    const first = await call(url, firstSave);
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({
+      ok: true,
+      record: { corralId: definition.id, projectId, definitionRevision: 1, definition },
+    });
+
+    const edited = { ...definition, name: 'Revised team' };
+    const update = await repo.save({ definition: edited, expectedDefinitionRevision: 1 });
+    if (!update.ok) throw new Error(update.message);
+    const request = { ...create, expectedDefinitionRevision: null };
+    const replay = await call(url, firstSave);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({
+      ok: true,
+      record: update.record,
+      changed: { definition: false },
+    });
+    for (const conflict of [{ definition: edited }, { projectId: 'default' }]) {
+      expect(await repo.save({ ...request, ...conflict })).toMatchObject({
+        ok: false,
+        error: 'revision_conflict',
+      });
+    }
+    expect(await repo.get(definition.id)).toEqual(update.record);
+    expect(await repo.list()).toHaveLength(1);
+
+    // The same imported definition, without an explicit identity, still gets a new id.
+    const copy = await repo.save({ definition, projectId, expectedDefinitionRevision: null });
+    if (!copy.ok) throw new Error(copy.message);
+    expect(copy.record.corralId).not.toBe(definition.id);
+    expect(copy.record.definitionRevision).toBe(1);
+  });
+
+  it('refuses a malformed or mismatched stable createId without writing', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const definition = linearCorral(['writer']);
+    for (const [id, createId] of [
+      ['corral_right', 'corral_other'],
+      ['other_prefix', 'other_prefix'],
+      ['corral_', 'corral_'],
+      ['corral_/path', 'corral_/path'],
+      ['corral_right', null],
+    ] as const) {
+      const invalid = await call(`${server.url}/api/v1/corrals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ definition: { ...definition, id }, createId }),
+      });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ error: { code: 'SCHEMA_INVALID' } });
+    }
+    const invalid = await repo.save({ definition, createId: '', expectedDefinitionRevision: null });
+    expect(invalid).toMatchObject({ ok: false, error: 'validation_error' });
+    expect(await repo.list()).toEqual([]);
   });
 
   it('runs the same scripted Corral to the same event order in a fresh workspace', async () => {

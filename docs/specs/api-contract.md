@@ -21,7 +21,7 @@
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문은 필요 시 조회 |
-| POST /corrals | 정의, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
+| POST /corrals | `{ definition, projectId?, createId? }` | 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`, 프로젝트를 생략하면 기본 프로젝트다. `createId`가 없으면 새 id를 발급하고, 있으면 [팀 편집기의 첫 저장 규칙](features/canvas.md#계약)을 따른다. 형식이나 정의 id가 맞지 않으면 `SCHEMA_INVALID`, 기존 팀과 충돌하면 `REVISION_CONFLICT`다. |
 | GET /corrals/:id | — | 현재 definition/revision |
 | GET /corrals/:id/revisions/:revision | — | 그 revision의 저장된 definition. 없는 팀·revision은 `TARGET_NOT_FOUND` |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
@@ -55,6 +55,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
 | GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록, provider별 연결 방법(`oauth`·`apiKey`). 엔드포인트의 모델은 `limits`(contextWindow·maxOutput·reasoning·imageInput 각각 `{value, source}`; source는 `config`·`known`·`response`·`catalog`·`default`)를 가진다. 자격 증명·상태 없음 |
 | GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
+| POST /team-assistant | `TeamAssistantRequest` | `{ reply, model }`. 한 번 보낼 때 모델에 팀 구성 질문이나 제안을 한 번 요청한다. 저장이나 실행은 하지 않는다. [허용된 응답과 멱등 규칙](features/team-assistant.md#계약)을 따른다. |
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
@@ -62,6 +63,10 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1), 원본과 같은 프로젝트 |
 | PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
+| GET /projects/:projectId/agents | — | 프로젝트의 [에이전트 원본](features/agent-library.md#원본-레코드) 목록을 보관한 항목까지 반환한다. |
+| POST /projects/:projectId/agents | `{role, operationId}` | 원본을 만들고 201로 반환한다. 생성 재전송은 [원본 저장 규칙](features/agent-library.md#저장소와-http)을 따른다. |
+| GET /projects/:projectId/agents/:agentId | — | 프로젝트에 속한 원본 하나를 반환한다. 없거나 다른 프로젝트의 원본이면 `TARGET_NOT_FOUND`다. |
+| PATCH /projects/:projectId/agents/:agentId | `{role?, archived?, expectedRevision}` | 역할과 보관 여부 중 하나 이상을 받아 원본을 고치고 반환한다. |
 | POST /sessions/search | `SessionSearchRequest` | `SessionSearchResult`; 50개 접힌 결과 단위 페이지. 원문 `excerpt`, 원문 UTF-16 `excerptMatches`, 세션 기준 `runNumber`, 접힌 `sources`의 정확한 entry/run/artifact/sequence ID. 검색·동의·중복 기준은 [세션 목록과 검색](workbench.md#세션-목록과-검색)을 따른다. |
 | POST /sessions/search/rebuild | — | 파생 검색 캐시만 비움; 원문 기록 변경 없음 |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
@@ -262,11 +267,11 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | GRAPH_INVALID | 422 | 포트·Loop·role·binding 등 의미 불일치 |
 | CAPABILITY_DENIED | 403 | 도구/질문/위임 관계가 허용되지 않음 |
 | STALE_CONTROL_REVISION | 409 | 준비 중 다른 제어 변경이 발생 |
-| IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 payload |
+| IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 본문을 보냈거나, 한 프로젝트에서 에이전트 원본 생성의 같은 operationId에 다른 역할을 보냈다. |
 | TARGET_NOT_FOUND | 404 | 대상 Run·실행·작업이 없음 (구현 중 추가) |
 | COMMAND_NOT_SUPPORTED | 501 | 형식은 올바르지만 현재 runtime 단계에서 아직 처리하지 않는 명령. 효과 없음 (구현 중 추가) |
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
-| REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
+| REVISION_CONFLICT | 409 | Corral 정의나 에이전트 원본 등 저장 대상의 기준 revision이 현재와 다르다. 변경을 적용하지 않는다. |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |
 | RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때와 계산 중에 회의 분석 장치를 바꾸려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
@@ -279,6 +284,17 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | POLICY_ERROR | 500 | admission gate가 예외로 실패해 요청·도구 호출을 거절함(fail closed). 통과로 처리하지 않음 |
 | MODEL_UNAVAILABLE | 502 | Run 밖의 모델 요청(팀 초안)이 실패했거나 응답이 계약에 맞지 않음. 응답 원문은 보내지 않음 |
 | REQUEST_OUTCOME_UNKNOWN | 409 | 전송 결과가 확인되지 않은 관리형 요청. 같은 operation ID는 저장된 결과만 조회하며 새 유료 호출을 만들지 않음 |
+
+`POST /team-assistant`의 오류는 대화 본문이나 모델 원문을 포함하지 않는다.
+
+| 코드 | HTTP | 조건 |
+|---|---|---|
+| SCHEMA_INVALID | 400 | 요청 형식 또는 요청에 지정한 검토 대상이 올바르지 않다. |
+| COMMAND_NOT_SUPPORTED | 501 | 서버에 실제 모델 연결 기능이 없다. |
+| CAPABILITY_DENIED | 403 | 사용할 모델 프로필이 없거나 연결되지 않았다. |
+| REVISION_CONFLICT | 409 | 같은 `operationId`에 다른 요청을 보냈다. |
+| REQUEST_OUTCOME_UNKNOWN | 409 | 앞서 보낸 요청의 결과가 확인되지 않았다. 자동으로 다시 보내지 않는다. |
+| MODEL_UNAVAILABLE | 502 | 요청이 실패했거나 응답의 형식·대상·질문 횟수·선택이 허용 범위를 벗어나 제안을 만들 수 없다. |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 
@@ -304,7 +320,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `task.submitted` | artifactVersionIds |
 | `task.completed` | completionEvidence |
 | `task.blocked` | cause,requiredUserAction |
-| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline. 구현: taskId는 이 질문에 답하려고 만든 응답 Task이며, 응답 실행은 질문자의 자식이다 |
+| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline. 구현: taskId는 이 질문에 답하려고 만든 응답 Task이며, 응답 실행은 질문자의 자식이다. 팀 공통 자문과 정식 리뷰 대상 버전의 선택 표시는 [공통 Outrider](features/shared-outrider.md)를 따른다 |
 | `message.answer_committed` | questionId,responseTaskId,body,refs |
 | `message.closed` | questionId,answer|cancel|timeout. 닫힌 뒤의 reply는 `observation.late`(originalEventType `reply`)로만 남는다 |
 | `artifact.version_created` | artifactId,version,bodyRef,hash,parentVersion,authorExecutionId,modelCallId,contextSnapshotId |
