@@ -13,6 +13,7 @@ import {
   DEFAULT_ADVISOR_REVIEW,
   FILE_TOOLS,
   type HarnessBindingRef,
+  isWorkAgent,
   type ModelProfileSnapshot,
   type PatternSlot,
   type PermissionMode,
@@ -23,6 +24,7 @@ import {
   type StartRunRequest,
   type TeamPlan,
   type TeamSlot,
+  type WorkAgentNode,
   type WorkTool,
 } from '@corral/contracts';
 import { sha256 } from '@noble/hashes/sha2.js';
@@ -36,6 +38,7 @@ import {
 import { canonicalJson } from './canonical-json.ts';
 import type { StartRunResult } from './coordinator.ts';
 import type { CorralRecord } from './repository/index.ts';
+import { rolePrompt } from './role-prompt.ts';
 import { basePatternFromGoal, draftFromPlan, type TeamWording } from './team-draft.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
@@ -132,6 +135,20 @@ export interface AutoDefinitionInput {
   routeLevel?: AutoRouteLevel;
 }
 
+/** Auto and conversation use the same shapes, but keep each duty in a single role prompt. */
+function singlePromptAutoDraft(plan: TeamPlan, id: string): CorralDefinition {
+  const { definition } = draftFromPlan(plan, id, WORDING.labels);
+  // This is a fresh auto draft: each worker seat has its own role.
+  for (const node of definition.nodes) {
+    if (!isWorkAgent(node)) continue;
+    const role = definition.roles.find((candidate) => candidate.id === node.roleId);
+    if (!role || !node.stepInstruction) throw new Error(`missing auto role or duty for ${node.id}`);
+    role.prompt = rolePrompt(node.stepInstruction);
+    delete node.stepInstruction;
+  }
+  return definition;
+}
+
 export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
   const template = AutoTemplate.parse(input.template);
   const plan: TeamPlan = {
@@ -148,7 +165,7 @@ export function autoDefinition(input: AutoDefinitionInput): CorralDefinition {
     // Nobody designed this team, so its result does not wait for an approval.
     finalApproval: false,
   };
-  const { definition } = draftFromPlan(plan, input.id, WORDING.labels);
+  const definition = singlePromptAutoDraft(plan, input.id);
   // Roles always get a reasoning policy: `route` becomes the level picked for this request.
   const asked = input.choice.reasoning;
   const reasoning =
@@ -223,10 +240,20 @@ const LEAD_DUTY =
   "You are the assistant in this conversation. Answer the person's latest message directly and completely, using the earlier messages as context. Use tools only when the request needs them. Delegate to subagents only when the person explicitly asks for subagents, parallel agents or a team; then give each a self-contained task, read their results and answer yourself. State routine assumptions; use ask_user when a missing decision would materially change the work.";
 const HELPER_PROMPT =
   'You are a subagent. Do the delegated task given below completely and reply with your findings. You do not see the conversation; rely only on the task text and your tools.';
+const HELPER = { id: 'helper', name: 'Helper' };
+
+type DelegateSeat = Pick<WorkAgentNode, 'id' | 'roleId' | 'label' | 'stepInstruction'>;
+
+/** Without distinct seat instructions the lead has always called one target per role. */
+function roleSeat(role: Pick<AgentRole, 'id' | 'name'>): DelegateSeat {
+  return { id: role.id, label: role.name, roleId: role.id };
+}
 
 /** delegates the lead may call; `guidance` describes how a saved team worked. */
 export interface ConversationRoster {
   roles: AgentRole[];
+  /** Absent for a legacy roster: one callable with each role's id and name. */
+  seats?: DelegateSeat[];
   guidance?: string;
 }
 
@@ -245,7 +272,8 @@ export function conversationDefinition(
   const base = autoDefinition({ ...rest, template: 'single' });
   // Team none has no start-model level, so per request is judged like automatic reasoning.
   const perRequest = !roster && rest.choice.reasoning?.mode === 'route';
-  const duty = roster ? leadTeamDuty(roster) : LEAD_DUTY;
+  const seats = roster?.seats ?? (roster?.roles ?? [HELPER]).map(roleSeat);
+  const duty = roster ? leadTeamDuty(seats, roster.guidance) : LEAD_DUTY;
   const roles = base.roles.map((role) => ({
     ...role,
     ...(perRequest ? { reasoning: { mode: 'auto' as const } } : {}),
@@ -267,8 +295,7 @@ export function conversationDefinition(
   const delegates = roster?.roles ?? [
     {
       ...lead,
-      id: 'helper',
-      name: 'Helper',
+      ...HELPER,
       prompt: lead.prompt.replace(duty, HELPER_PROMPT),
       allowedCollaborationTools: [],
     },
@@ -279,23 +306,24 @@ export function conversationDefinition(
     roles: [...roles, ...delegates],
     nodes: [
       ...base.nodes,
-      ...delegates.map((role) => ({
-        id: role.id,
+      ...seats.map((seat) => ({
+        id: seat.id,
         type: 'agent' as const,
-        label: role.name,
-        roleId: role.id,
+        label: seat.label,
+        roleId: seat.roleId,
         invocation: 'callable' as const,
         inputBindings: [],
         outputName: 'notes',
+        ...(seat.stepInstruction ? { stepInstruction: seat.stepInstruction } : {}),
       })),
     ],
     capabilityLinks: [
       ...base.capabilityLinks,
-      ...delegates.map((role) => ({
-        id: `lead_${role.id}`,
+      ...seats.map((seat) => ({
+        id: `lead_${seat.id}`,
         kind: 'delegate' as const,
         sourceNodeId: leadNode.id,
-        targetNodeId: role.id,
+        targetNodeId: seat.id,
       })),
     ],
   };
@@ -417,13 +445,13 @@ export function withSessionAdvisor(
   };
 }
 
-function leadTeamDuty(roster: ConversationRoster): string {
-  const members = roster.roles.map((role) => `${role.name} (${role.id})`).join(', ');
+function leadTeamDuty(seats: DelegateSeat[], guidance?: string): string {
+  const members = seats.map((seat) => `${seat.label} (${seat.id})`).join(', ');
   return [
     "You lead a team in this conversation. Answer the person's latest message, using the earlier messages as context.",
     `Your team: ${members}. When the work benefits, give them self-contained tasks with spawn_subagents, wait with await_tasks, read their results and write the answer yourself. Answer simple messages directly.`,
-    ...(roster.guidance
-      ? [`The team was designed to work like this; use it as guidance: ${roster.guidance}`]
+    ...(guidance
+      ? [`The team was designed to work like this; use it as guidance: ${guidance}`]
       : []),
     'State routine assumptions; use ask_user when a missing decision would materially change the work.',
   ].join(' ');
@@ -464,7 +492,7 @@ export function corralRoster(corral: CorralDefinition): ConversationRoster {
   const flow = corral.controlEdges
     .map((edge) => `${label(edge.source)} → ${label(edge.target)}`)
     .join('; ');
-  return {
+  const roster: ConversationRoster = {
     // The conversation borrows roles, not the flow: the team's advisors have nothing of theirs to
     // watch there, and their roles are no one's delegate.
     roles: corral.roles
@@ -472,6 +500,37 @@ export function corralRoster(corral: CorralDefinition): ConversationRoster {
       .map((role) => delegateRole(role, `team_${role.id}`)),
     ...(flow ? { guidance: `${corral.name}: ${flow}.` } : {}),
   };
+  if (!corral.nodes.some((node) => isWorkAgent(node) && node.stepInstruction)) return roster;
+
+  const byRole = new Map<string, WorkAgentNode[]>();
+  for (const node of corral.nodes) {
+    if (!isWorkAgent(node)) continue;
+    const id = `team_${node.roleId}`;
+    const group = byRole.get(id);
+    if (group) group.push(node);
+    else byRole.set(id, [node]);
+  }
+  roster.seats = roster.roles.flatMap((role): DelegateSeat[] => {
+    const group = byRole.get(role.id);
+    const stepInstruction = group?.[0]?.stepInstruction;
+    if (!group || group.every((seat) => seat.stepInstruction === stepInstruction)) {
+      const seat = roleSeat(role);
+      if (stepInstruction) seat.stepInstruction = stepInstruction;
+      return [seat];
+    }
+    return group.map((seat) => ({
+      // Distinct namespaces for role ids (team_), seat ids and long seat ids. Leave room
+      // within Identifier's 120 characters for the `lead_` capability link prefix.
+      id:
+        seat.id.length <= 110
+          ? `seat_${seat.id}`
+          : `seat.${bytesToHex(sha256(utf8ToBytes(seat.id)))}`,
+      label: seat.label,
+      roleId: role.id,
+      ...(seat.stepInstruction ? { stepInstruction: seat.stepInstruction } : {}),
+    }));
+  });
+  return roster;
 }
 
 export const AUTO_ROUTE_MAX_RESPONSE_BYTES = 4096;

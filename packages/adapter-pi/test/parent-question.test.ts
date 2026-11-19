@@ -137,6 +137,104 @@ it('preserves the legacy question responder schema without parent-question opt-i
 });
 
 it.each([false, true])(
+  'exposes the enabled Outrider review target and forwards the chosen version (SDK=%s)',
+  async (sdk) => {
+    const input = startInput(sdk);
+    input.role.allowedCollaborationTools = ['ask', 'submit_result'];
+    input.capabilities = {
+      delegateTo: [],
+      askTo: [
+        { nodeId: 'specialist', label: 'Specialist' },
+        { nodeId: 'shared_consultant', label: 'Outrider', artifactReview: true },
+      ],
+    };
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    const runtime = adapter([
+      (context) => {
+        const ask = getCurrentTools(context.messages).find((entry) => entry.name === 'ask');
+        expect(ask?.parameters).toMatchObject({
+          properties: {
+            reviewArtifactVersionId: { type: 'string' },
+            artifactRefs: { type: 'array' },
+          },
+          required: ['targetNodeId', 'body'],
+        });
+        return tool('ask', {
+          targetNodeId: 'shared_consultant',
+          body: 'Check the citations on V1.',
+          reviewArtifactVersionId: 'v1',
+        });
+      },
+      () => tool('submit_result', { artifactVersionIds: ['v2'] }),
+    ]);
+    const { host } = recordingHost({
+      ...sdkHost,
+      authorizeTool: async (proposal) => {
+        calls.push(proposal);
+        return { ok: true, toolCallId: `tool_${calls.length}` };
+      },
+    });
+    expect(await (await runtime.start(input, host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+    expect(calls[0]).toMatchObject({
+      name: 'ask',
+      args: { targetNodeId: 'shared_consultant', reviewArtifactVersionId: 'v1' },
+    });
+  },
+);
+
+it('keeps the ordinary attachment schema when no target accepts artifact reviews', () => {
+  const ask = parametersOf('ask', {
+    delegateTo: [],
+    askTo: [{ nodeId: 'specialist', label: 'Outrider' }],
+  });
+  expect(ask).not.toHaveProperty('properties.reviewArtifactVersionId');
+  expect(ask).toHaveProperty('properties.artifactRefs');
+});
+
+it.each([false, true])(
+  'pins the named artifact review version in the responder assignment (SDK=%s)',
+  async (sdk) => {
+    const input = startInput(sdk);
+    input.assignment = {
+      kind: 'question',
+      questionId: 'q1',
+      body: 'Review my draft.',
+      askerExecutionId: 'writer',
+      reviewArtifactVersionId: 'v1',
+    };
+    input.inputs = [
+      {
+        name: 'reference',
+        kind: 'explicit_version',
+        artifactVersionId: 'background',
+        text: 'Background',
+      },
+      {
+        name: 'reference',
+        kind: 'explicit_version',
+        artifactVersionId: 'v1',
+        text: 'Candidate draft',
+      },
+    ];
+    const runtime = adapter([
+      (context) => {
+        expect(JSON.stringify(context.messages)).toContain('reviewArtifactVersionId');
+        return tool('reply', { body: 'Clarify the first paragraph.' });
+      },
+    ]);
+    const { host } = recordingHost({
+      ...sdkHost,
+      executeTool: async (toolCallId) => ({ ok: true, toolCallId, result: { questionId: 'q1' } }),
+    });
+    expect(await (await runtime.start(input, host)).waitForSettlement()).toMatchObject({
+      outcome: 'succeeded',
+    });
+  },
+);
+
+it.each([false, true])(
   'offers parent reply and delivers the question as agent data without contextPolicy (SDK=%s)',
   async (sdk) => {
     const proposals: { name: string; args: Record<string, unknown> }[] = [];

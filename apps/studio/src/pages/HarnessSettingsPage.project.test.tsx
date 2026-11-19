@@ -150,3 +150,60 @@ it('says once that a work style is shared, as the section description', async ()
     container.remove();
   }
 });
+
+it('opens the exact policy revision carried by a skill usage link', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const profile = {
+    profileId: 'p',
+    revision: 2,
+    name: 'Previous policy',
+    resources: [],
+    allowedTools: [],
+    startupCommands: [],
+    policy: 'strict',
+  };
+  const lookup = vi.fn(async () => profile);
+  fixture.api = {
+    resources: async () => [],
+    profileManagement: async () => [{ ...profile, revision: 3, name: 'Latest policy', usages: [] }],
+    projectTools: async () => null,
+    entries: async () => [],
+    profile: lookup,
+  } as unknown as HarnessApi;
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <SettingsNavigationContext.Provider
+            value={{
+              projects: [],
+              search: {},
+              returnTo: '/library/skills',
+              item: 'p:2',
+              link: () => ({ to: '/', search: {}, resetScroll: false }),
+            }}
+          >
+            <HarnessSettingsPage />
+          </SettingsNavigationContext.Provider>
+        </IntlProvider>,
+      ),
+    );
+    expect(lookup).toHaveBeenCalledWith({ profileId: 'p', revision: 2 });
+    expect(Array.from(host.querySelectorAll('input'), (input) => input.value)).toContain(
+      'Previous policy',
+    );
+    expect(host.querySelector('button[aria-pressed="true"]')).toBeNull();
+    expect(host.textContent).toContain('Previous policy · r2');
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+  }
+});

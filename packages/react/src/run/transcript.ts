@@ -74,6 +74,7 @@ export type TranscriptEntry =
       kind: 'question';
       seq: number;
       questionId: string;
+      reviewArtifactVersionId?: string;
       targetNodeId: string;
       body: string;
       status: RunProjection['questions'][string]['status'];
@@ -203,6 +204,9 @@ export function buildTranscript(
           kind: 'question',
           seq: event.runSeq,
           questionId: event.payload.questionId,
+          ...(event.payload.reviewArtifactVersionId
+            ? { reviewArtifactVersionId: event.payload.reviewArtifactVersionId }
+            : {}),
           targetNodeId: event.payload.targetNodeId,
           body: event.payload.body,
           status: q?.status ?? 'open',

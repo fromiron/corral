@@ -61,7 +61,12 @@ import {
   selectCompactableRange,
   summarizeRegion,
 } from './ported/dsh/context.ts';
-import { PROTOCOL_VERSION, SdkHostFrame, type SdkStartFrame } from './protocol.ts';
+import {
+  PROTOCOL_VERSION,
+  SdkHostFrame,
+  type SdkStartFrame,
+  unavailableMcpProposal,
+} from './protocol.ts';
 import {
   assertReasoningCapabilities,
   reasoningRequest,
@@ -923,8 +928,18 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       const wrappedTools = new WeakSet<ToolDefinition>();
       const nativeParents = new Map<string, string>();
       const wrappedHandlers = new WeakSet<object>();
-      const publishRegistry = () => {
+      const registryTools = () => {
         const tools = [...descriptors.values()];
+        return start.roleMcpSelection
+          ? tools.filter(
+              (tool) =>
+                tool.source !== 'extension:pi-mcp@1.3.0' ||
+                start.harness.allowedTools.includes(tool.name),
+            )
+          : tools;
+      };
+      const publishRegistry = () => {
+        const tools = registryTools();
         const hash = hashOf(tools);
         if (!reported || hash === reportedRegistryHash) return;
         reportedRegistryHash = hash;
@@ -979,6 +994,8 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         for (const { definition } of extension.tools.values()) {
           if (descriptors.has(definition.name)) throw new Error('tool name collision');
           if (!start.harness.allowedTools.includes(definition.name)) definition.exposure = 'hidden';
+          // MCP checks reachability during session_start, before the post-start loadout.
+          else if (codemode && definition.name === 'codemode') definition.defaultActive = true;
           register(definition, resource.source);
           if (wrappedTools.has(definition)) continue;
           wrappedTools.add(definition);
@@ -1468,12 +1485,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       await notifications;
       if (requiredExtensionFailed) throw new Error('required extension initialization failed');
       session.setActiveToolsByName(
-        [
-          ...new Set([
-            ...session.getActiveToolNames(),
-            ...(start.harness.allowedTools.includes('codemode') ? ['codemode'] : []),
-          ]),
-        ].filter((name) => start.harness.allowedTools.includes(name)),
+        session.getActiveToolNames().filter((name) => start.harness.allowedTools.includes(name)),
       );
       failureCode = 'policy_denied';
       // A registered foreign provider could bypass the permit. Never select it implicitly.
@@ -1501,7 +1513,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       });
       if (new Set(commands.map((command) => command.alias)).size !== commands.length)
         throw new Error('ambiguous extension command alias');
-      const initialTools = [...descriptors.values()];
+      const initialTools = registryTools();
       reportedRegistryHash = hashOf(initialTools);
       await ack({
         type: 'harness_report',
@@ -1516,6 +1528,13 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
       reported = true;
       publishRegistry();
       let settled = false;
+      session.agent.subscribe(async (event) => {
+        if (event.type !== 'tool_execution_start' || cancelled) return;
+        const proposal = unavailableMcpProposal(event.toolName, start.harness.allowedTools);
+        // This event precedes Pi's tool lookup; an absent tool never reaches tool_call.
+        // Never put the reply in `authorized` or make the tool available to Pi.
+        if (proposal) await call(proposal);
+      });
       session.subscribe((event) => {
         if (event.type === 'agent_start') settled = false;
         if (event.type === 'agent_settled') settled = true;

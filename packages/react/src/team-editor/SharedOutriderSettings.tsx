@@ -1,4 +1,4 @@
-import { SharedOutrider } from '@corral/contracts';
+import { DEFAULT_ADVISOR_REVIEW, SharedOutrider } from '@corral/contracts';
 import type { SharedOutriderTarget } from '@corral/core';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -9,6 +9,7 @@ import {
   Input,
   KitRadioGroup,
   KitRadioItem,
+  KitSwitch,
   Textarea,
 } from '../design-kit/index.ts';
 import type { EditorStore } from '../editor/store.ts';
@@ -48,7 +49,6 @@ export function SharedOutriderSettings({
       }
     );
   });
-  const selected = value.targets.kind === 'selected' ? value.targets.nodeIds : null;
   const labelCounts = new Map<string, number>();
   for (const { label } of targets) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
   const valid = SharedOutrider.safeParse(value).success;
@@ -57,6 +57,76 @@ export function SharedOutriderSettings({
     if (!result.ok) return;
     editor.getState().applyDraft(result.draft);
     onClose();
+  };
+
+  const observation = value.observation;
+  const invalidInterval =
+    observation &&
+    (!Number.isSafeInteger(observation.review.interval) || observation.review.interval < 1);
+  const scopeField = (
+    scope: SharedOutrider['targets'],
+    ask: boolean,
+    change: (next: SharedOutrider['targets']) => void,
+  ) => {
+    const selected = scope.kind === 'selected' ? scope.nodeIds : null;
+    return (
+      <fieldset className="grid gap-2">
+        <legend className="text-caption">{t(ask ? 'scope' : 'watches')}</legend>
+        <KitRadioGroup
+          className="w-full"
+          aria-label={t(ask ? 'scope' : 'watches')}
+          value={scope.kind}
+          onValueChange={(kind) => {
+            if (kind !== scope.kind) {
+              change(kind === 'all' ? { kind } : { kind: 'selected', nodeIds: [] });
+            }
+          }}
+        >
+          <KitRadioItem index={0} value="all" label={t('all')} />
+          <KitRadioItem index={1} value="selected" label={t('selected')} />
+        </KitRadioGroup>
+        <ul aria-label={t('workers')} className="grid gap-1 text-caption">
+          {targets.map((target) => {
+            const checked = selected?.includes(target.nodeId) ?? false;
+            const label =
+              labelCounts.get(target.label) === 1
+                ? target.label
+                : `${target.label} (${target.nodeId})`;
+            return (
+              <li key={target.nodeId}>
+                {selected ? (
+                  <Checkbox
+                    label={label}
+                    checked={checked}
+                    disabled={ask && Boolean(target.unavailable) && !checked}
+                    onToggle={() =>
+                      change({
+                        kind: 'selected',
+                        nodeIds: checked
+                          ? selected.filter((item) => item !== target.nodeId)
+                          : [...selected, target.nodeId],
+                      })
+                    }
+                  />
+                ) : (
+                  label
+                )}
+                {ask && target.unavailable ? (
+                  <p className="text-muted-foreground">{t(`limits.${target.unavailable}`)}</p>
+                ) : ask && target.permissionPending ? (
+                  <p className="text-muted-foreground">{t('permissionUnconfirmed')}</p>
+                ) : null}
+              </li>
+            );
+          })}
+        </ul>
+        {targets.length ? null : (
+          <p className="text-caption text-muted-foreground">
+            {t(ask ? 'noWorkers' : 'noWatchedWorkers')}
+          </p>
+        )}
+      </fieldset>
+    );
   };
 
   return (
@@ -94,67 +164,75 @@ export function SharedOutriderSettings({
           onChange={(event) => setValue({ ...value, principles: event.target.value })}
         />
       </label>
-      <fieldset className="grid gap-2">
-        <legend className="text-caption">{t('scope')}</legend>
-        <KitRadioGroup
-          className="w-full"
-          aria-label={t('scope')}
-          value={value.targets.kind}
-          onValueChange={(kind) => {
-            if (kind !== value.targets.kind) {
-              setValue({
-                ...value,
-                targets: kind === 'all' ? { kind } : { kind: 'selected', nodeIds: [] },
-              });
-            }
+      {scopeField(value.targets, true, (targets) => setValue({ ...value, targets }))}
+      <div className="grid gap-1">
+        <KitSwitch
+          label={t('artifactReview')}
+          checked={value.artifactReview === true}
+          onToggle={() => {
+            const { artifactReview, ...settings } = value;
+            setValue(artifactReview ? settings : { ...settings, artifactReview: true });
           }}
-        >
-          <KitRadioItem index={0} value="all" label={t('all')} />
-          <KitRadioItem index={1} value="selected" label={t('selected')} />
-        </KitRadioGroup>
-        <ul aria-label={t('workers')} className="grid gap-1 text-caption">
-          {targets.map((target) => {
-            const checked = selected?.includes(target.nodeId) ?? false;
-            const label =
-              labelCounts.get(target.label) === 1
-                ? target.label
-                : `${target.label} (${target.nodeId})`;
-            return (
-              <li key={target.nodeId}>
-                {selected ? (
-                  <Checkbox
-                    label={label}
-                    checked={checked}
-                    disabled={Boolean(target.unavailable) && !checked}
-                    onToggle={() =>
-                      setValue({
-                        ...value,
-                        targets: {
-                          kind: 'selected',
-                          nodeIds: checked
-                            ? selected.filter((item) => item !== target.nodeId)
-                            : [...selected, target.nodeId],
-                        },
-                      })
-                    }
-                  />
-                ) : (
-                  label
-                )}
-                {target.unavailable ? (
-                  <p className="text-muted-foreground">{t(`limits.${target.unavailable}`)}</p>
-                ) : target.permissionPending ? (
-                  <p className="text-muted-foreground">{t('permissionUnconfirmed')}</p>
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-        {targets.length ? null : (
-          <p className="text-caption text-muted-foreground">{t('noWorkers')}</p>
-        )}
-      </fieldset>
-      {!valid ? (
+        />
+        {value.artifactReview ? (
+          <p className="text-caption text-muted-foreground">{t('onRequest')}</p>
+        ) : null}
+      </div>
+      <Checkbox
+        label={t('observe')}
+        checked={Boolean(observation)}
+        onToggle={() => {
+          if (observation) {
+            const { observation: _removed, ...remaining } = value;
+            setValue(remaining);
+          } else {
+            setValue({
+              ...value,
+              observation: { targets: value.targets, review: { ...DEFAULT_ADVISOR_REVIEW } },
+            });
+          }
+        }}
+      />
+      {observation ? (
+        <>
+          {scopeField(observation.targets, false, (targets) =>
+            setValue({ ...value, observation: { ...observation, targets } }),
+          )}
+          <label className="grid gap-1 text-caption" htmlFor={`${id}-interval`}>
+            {t('interval')}
+            <Input
+              id={`${id}-interval`}
+              type="number"
+              min={1}
+              step={1}
+              aria-invalid={invalidInterval || undefined}
+              aria-describedby={invalidInterval ? `${id}-interval-error` : undefined}
+              value={observation.review.interval || ''}
+              onChange={(event) =>
+                setValue({
+                  ...value,
+                  observation: {
+                    ...observation,
+                    review: { ...observation.review, interval: Number(event.target.value) },
+                  },
+                })
+              }
+            />
+          </label>
+          {invalidInterval ? (
+            <p id={`${id}-interval-error`} role="status" className="text-caption text-destructive">
+              {t('intervalError')}
+            </p>
+          ) : null}
+          <p className="text-caption text-muted-foreground">
+            {t('observationCost', {
+              model: value.modelProfile,
+              cap: observation.review.maxRequestsPerReview,
+            })}
+          </p>
+        </>
+      ) : null}
+      {!valid && !invalidInterval ? (
         <p role="status" className="text-caption text-muted-foreground">
           {rejected('invalidSharedOutrider')}
         </p>

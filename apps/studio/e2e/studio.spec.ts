@@ -1,7 +1,14 @@
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
-import { newTeam, openLibraryTeams } from './workbench.ts';
+import {
+  addCustomAgent,
+  collapseTeamAssistant,
+  newTeam,
+  openFlowGraph,
+  openLibraryTeams,
+  startTestRun,
+} from './workbench.ts';
 
 const EXAMPLES = join(import.meta.dirname, '..', '..', '..', 'examples');
 
@@ -18,7 +25,10 @@ async function newCorral(page: Page, query = '') {
   await page.goto(`/${query}`);
   await openLibraryTeams(page);
   await newTeam(page);
-  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
+  await openFlowGraph(page);
+  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9-]+\/edit$/);
+  await expect(canvas(page)).toBeVisible();
+  await expect(nodes(page)).toHaveCount(0);
 }
 
 const canvas = (page: Page) => page.locator('[data-team-canvas]');
@@ -53,13 +63,64 @@ async function buildAgentToOutput(page: Page) {
   await expect(noProblems(page)).toBeVisible();
 }
 
-async function openTestRun(page: Page) {
-  const open = page.getByRole('button', { name: 'Test run', exact: true });
-  if (await open.isVisible()) await open.click();
-  const panel = page.getByRole('complementary', { name: 'Test run' });
-  await expect(panel).toBeVisible();
-  return panel;
-}
+test('leaving a new Corral prompts only for an edited draft and never creates a team', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await openLibraryTeams(page);
+  const create = page.getByRole('link', { name: 'New Corral', exact: true });
+  const library = page.getByTestId('app-sidebar').getByRole('link', { name: 'Library' });
+  const prompts: string[] = [];
+  let discard = false;
+  page.on('dialog', async (dialog) => {
+    prompts.push(dialog.message());
+    if (discard) await dialog.accept();
+    else await dialog.dismiss();
+  });
+
+  await create.click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('project') === 'default',
+  );
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(page.getByText('Not saved yet', { exact: true })).toBeVisible();
+  await collapseTeamAssistant(page);
+  await library.click();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
+  expect(prompts).toEqual([]);
+
+  await create.click();
+  await collapseTeamAssistant(page);
+  const roster = page.getByRole('list', { name: 'Team composition', exact: true });
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  const brief = settings(page).getByRole('textbox', { name: 'Brief', exact: true });
+  await expect(brief).toHaveValue('');
+  await expect(settings(page).getByRole('textbox', { name: /^Criteria/ })).toHaveValue('');
+  await brief.fill('Leave this request unsaved.');
+  await library.click();
+  await expect
+    .poll(() => prompts)
+    .toEqual(['Leave without saving? Your unsaved changes will be lost.']);
+  await expect(brief).toHaveValue('Leave this request unsaved.');
+  discard = true;
+  await library.click();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
+  expect(prompts).toHaveLength(2);
+
+  await create.click();
+  await collapseTeamAssistant(page);
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  await expect(brief).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+});
+
+test('Save and mock test creates the team before running the browser draft', async ({ page }) => {
+  await page.goto('/corrals/new/edit?project=default&template=starter&delay=0');
+  await page.getByRole('button', { name: 'Save and mock test', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9-]+\/edit$/);
+  await expect(page.getByTestId('revisions')).toHaveText('Version 1');
+  await expect(page.getByTestId('run-status')).toHaveText('Completed');
+});
 
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
@@ -68,10 +129,9 @@ test('steps dropped on an empty canvas and connected run as drawn', async ({ pag
 
   await buildAgentToOutput(page);
   const brief = 'Compare notebook formats for field notes.';
-  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   await settings(page).getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  const panel = await startTestRun(page);
 
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   await expect(page.getByTestId('run-output')).toContainText(
@@ -99,7 +159,7 @@ test('a saved team survives a settings detour and a reload, and saving it unchan
   await expect(save).toBeDisabled();
 
   // An edit undone back to the saved team leaves nothing to save.
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await addCustomAgent(page, 'Another agent', 'unconnected');
   await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(save).toBeDisabled();
@@ -128,8 +188,7 @@ test('an imported team with a Loop validates and runs through its review and app
   await expect(noProblems(page)).toBeVisible();
 
   // Two review rounds, then the person approves the decision and the final output.
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  await startTestRun(page);
   const decision = page.locator('[data-testid^="approval-"]').filter({ hasText: 'Your decision' });
   await expect(decision).toBeVisible({ timeout: 15_000 });
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
@@ -154,10 +213,10 @@ test('a connection from the settings list, a wrap and one-step undo work without
   page,
 }) => {
   await newCorral(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  // With nothing selected the output lands on its own, unconnected.
-  await canvas(page).press('Escape');
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  await addCustomAgent(page);
+  await settings(page)
+    .getByRole('button', { name: 'Remove the connection from Agent 1 to Output' })
+    .click();
   await expect(edges(page)).toHaveCount(0);
   await canvas(page).locator('[data-node="agent_1"]').click();
 
@@ -190,6 +249,7 @@ test('the workspace and editor have no serious automated accessibility violation
 
   await openLibraryTeams(page);
   await newTeam(page);
+  await openFlowGraph(page);
   await buildAgentToOutput(page);
   // The view keeps the selected output clear of the sheet, so the agent is chosen from the list.
   await page
@@ -232,6 +292,12 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
   ).toHaveValue('검토');
   await settings(page).getByRole('button', { name: 'Add a criteria input', exact: true }).click();
   await expect(noProblems(page)).toBeVisible();
+  await expect(settings(page).getByRole('group', { name: 'Receives', exact: true })).toContainText(
+    'Team request',
+  );
+  await settings(page)
+    .getByRole('button', { name: 'Other kinds of material', exact: true })
+    .click();
   await expect(settings(page).getByRole('group', { name: 'Inputs', exact: true })).toContainText(
     'criteria · Run input',
   );

@@ -201,65 +201,69 @@ it('binds browser OAuth to reviewed settings and allows logout after trust revoc
     await fixture.close();
   }
 });
-it('simulates a bound work style without claiming that its SDK resources were loaded', async () => {
-  root = mkdtempSync(join(tmpdir(), 'corral-harness-simulation-'));
-  const token = 'simulation-bootstrap-0123456789abcdef';
-  server = await startCorralServer({
-    workspace: root,
-    agents: new ScriptedAgentAdapter({ turns: 1 }),
-    bootstrapToken: token,
-  });
-  const login = await fetch(`${server.url}/api/v1/session`, {
-    method: 'POST',
-    headers: { origin: server.url, 'content-type': 'application/json' },
-    body: JSON.stringify({ token }),
-  });
-  const headers = {
-    cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
-    origin: server.url,
-    'content-type': 'application/json',
-    'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
-  };
-  expect(
-    (
-      await fetch(`${server.url}/api/v1/harness/profiles/sample`, {
-        method: 'PUT',
-        headers,
-        body: JSON.stringify({
-          expectedRevision: 0,
-          profile: {
-            name: 'Sample',
-            policy: 'strict',
-            resources: [],
-            allowedTools: ['write_artifact', 'submit_result'],
-            startupCommands: [],
-          },
-        }),
-      })
-    ).status,
-  ).toBe(200);
-  const definition = linearCorral(['writer']);
-  definition.roles[0]!.harness = { profileId: 'sample', revision: 1 };
-  const transport = new InProcessTransport(server.coordinator);
-  const started = await transport.startRun({
-    schemaVersion: '0.1',
-    commandId: 'simulate',
-    definition,
-    mode: 'mock',
-  });
-  expect(started.runId).toBeTruthy();
-  const id = started.runId!;
-  const events: string[] = [];
-  const off = transport.subscribe(id, 0, { onEvent: (event) => events.push(event.type) });
-  const final = await waitForProjection(transport, id, (p) =>
-    ['succeeded', 'failed', 'cancelled'].includes(p.status),
-  );
-  off();
-  expect(final.status).toBe('succeeded');
-  expect(events).toContain('harness.simulated');
-  expect(events).not.toContain('harness.loaded');
-  expect(events).not.toContain('model.request_recorded');
-});
+it.each(['bound', 'skills-only'])(
+  'simulates a %s work style without claiming that its SDK resources were loaded',
+  async (style) => {
+    root = mkdtempSync(join(tmpdir(), 'corral-harness-simulation-'));
+    const token = 'simulation-bootstrap-0123456789abcdef';
+    server = await startCorralServer({
+      workspace: root,
+      agents: new ScriptedAgentAdapter({ turns: 1 }),
+      bootstrapToken: token,
+    });
+    const login = await fetch(`${server.url}/api/v1/session`, {
+      method: 'POST',
+      headers: { origin: server.url, 'content-type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+    const headers = {
+      cookie: (login.headers.get('set-cookie') ?? '').split(';')[0] ?? '',
+      origin: server.url,
+      'content-type': 'application/json',
+      'x-corral-csrf': login.headers.get('x-corral-csrf') ?? '',
+    };
+    expect(
+      (
+        await fetch(`${server.url}/api/v1/harness/profiles/sample`, {
+          method: 'PUT',
+          headers,
+          body: JSON.stringify({
+            expectedRevision: 0,
+            profile: {
+              name: 'Sample',
+              policy: 'strict',
+              resources: [],
+              allowedTools: ['write_artifact', 'submit_result'],
+              startupCommands: [],
+            },
+          }),
+        })
+      ).status,
+    ).toBe(200);
+    const definition = linearCorral(['writer']);
+    if (style === 'bound') definition.roles[0]!.harness = { profileId: 'sample', revision: 1 };
+    else definition.roles[0]!.skills = [];
+    const transport = new InProcessTransport(server.coordinator);
+    const started = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: 'simulate',
+      definition,
+      mode: 'mock',
+    });
+    expect(started.runId).toBeTruthy();
+    const id = started.runId!;
+    const events: string[] = [];
+    const off = transport.subscribe(id, 0, { onEvent: (event) => events.push(event.type) });
+    const final = await waitForProjection(transport, id, (p) =>
+      ['succeeded', 'failed', 'cancelled'].includes(p.status),
+    );
+    off();
+    expect(final.status).toBe('succeeded');
+    expect(events).toContain('harness.simulated');
+    expect(events).not.toContain('harness.loaded');
+    expect(events).not.toContain('model.request_recorded');
+  },
+);
 it.skipIf(process.platform !== 'linux')(
   'server startup reaps the previous SDK owner before accepting work',
   async () => {
@@ -486,6 +490,38 @@ it('resource API requires review and trust, pins revisions and protects local pa
   expect(preview.body.snapshot.binding).toEqual(binding);
   expect(preview.body.dynamic).toBe(true);
   expect(existsSync(marker)).toBe(false);
+  const lost = { resourceHash: '0'.repeat(64), entry: 'skills/missing/SKILL.md' };
+  const rolePreview = await call('/preview', {
+    projectId: 'default',
+    roleId: 'writer',
+    skills: [lost],
+  });
+  expect(rolePreview.status).toBe(200);
+  expect(rolePreview.body).toEqual({
+    snapshot: null,
+    problem: {
+      roleId: 'writer',
+      reason: 'unusable_skills',
+      entries: [{ ...lost, reason: 'missing' }],
+    },
+  });
+  const minimal = await call('/preview', { projectId: 'default', roleId: 'writer', skills: [] });
+  expect(minimal.body.snapshot.binding).toEqual({ profileId: 'role-skills-minimal', revision: 1 });
+  const mcp = { serverId: 'docs', name: 'mcp__docs__echo' };
+  const unavailable = await call('/preview', {
+    projectId: 'default',
+    roleId: 'writer',
+    mcpTools: [mcp],
+  });
+  expect(unavailable.status).toBe(200);
+  expect(unavailable.body).toEqual({
+    snapshot: null,
+    problem: null,
+    mcpProblem: { roleId: 'writer', tools: [{ ...mcp, reason: 'execution_policy_required' }] },
+  });
+  expect((await call('/preview', { projectId: 'default', binding, mcpTools: [] })).status).toBe(
+    400,
+  );
   expect(
     (await call('/defaults/personal/default', { expectedRevision: 0, binding }, 'PUT')).body
       .binding,

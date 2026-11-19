@@ -9,7 +9,9 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { ArtifactViewer } from '../src/components/ArtifactViewer.tsx';
+import { ExecutionTranscript } from '../src/components/ExecutionTranscript.tsx';
 import { QuestionsPanel } from '../src/components/QuestionsPanel.tsx';
+import { RunView } from '../src/components/RunView.tsx';
 import { TaskBoard } from '../src/components/TaskBoard.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
 import { createRunSession } from '../src/run/session.ts';
@@ -43,6 +45,123 @@ const wrap = (ui: React.ReactNode) =>
   );
 
 describe('Task Board and questions', () => {
+  it('links the reviewed version from the requesting worker’s transcript', async () => {
+    const session = await finishedRun();
+    const { projection, events } = session.getState();
+    const question = Object.values(projection?.questions ?? {})[0];
+    const id = projection?.output?.artifactVersionIds[0];
+    const artifact = id && projection?.artifacts[id];
+    if (!projection || !question || !id || !artifact) throw new Error('review target fixture');
+    session.setState({
+      projection: {
+        ...projection,
+        questions: {
+          [question.questionId]: { ...question, sharedOutrider: true, reviewArtifactVersionId: id },
+        },
+      },
+      events: events.map((e) =>
+        e.type === 'message.question_created' && e.payload.questionId === question.questionId
+          ? { ...e, payload: { ...e.payload, sharedOutrider: true, reviewArtifactVersionId: id } }
+          : e,
+      ),
+    });
+    const open = vi.fn();
+    wrap(
+      <ExecutionTranscript
+        session={session}
+        executionId={question.senderExecutionId}
+        onOpenArtifact={open}
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole('button', {
+        name: `Requested a review of ${artifact.name} v${artifact.version}`,
+      }),
+    );
+    expect(open).toHaveBeenCalledWith(id);
+    expect(screen.getByRole('log')).toHaveTextContent(
+      question.answer?.body.split('\n')[0] ?? 'missing opinion',
+    );
+    session.getState().dispose();
+  });
+
+  it('keeps the requested artifact review on V1 when the test run opens the writer’s submitted V2', async () => {
+    const session = await finishedRun();
+    const p = session.getState().projection;
+    const question = Object.values(p?.questions ?? {})[0];
+    const versionId = p?.output?.artifactVersionIds[0];
+    const result = versionId && p?.artifacts[versionId];
+    if (!p || !question?.answer || !result || !p.output) throw new Error('finished draft fixture');
+    const output = p.output;
+    const ordinary = {
+      ...question,
+      sharedOutrider: true as const,
+      artifactRefs: ['draft_v1'],
+      body: 'Which style guide should I use?',
+    };
+    const review = {
+      ...ordinary,
+      questionId: 'review_request',
+      reviewArtifactVersionId: 'draft_v1',
+      body: 'Check the evidence in V1.',
+      answer: {
+        ...question.answer,
+        body: 'Cite the source on page four.',
+        evidenceRefs: ['draft_v1'],
+      },
+    };
+    const first = { ...result, artifactVersionId: 'draft_v1', version: 1 };
+    const second = {
+      ...result,
+      artifactVersionId: 'draft_v2',
+      parentVersionId: 'draft_v1',
+      version: 2,
+    };
+    session.setState({
+      projection: {
+        ...p,
+        status: 'running',
+        questions: { [ordinary.questionId]: ordinary, review_request: review },
+        artifacts: { ...p.artifacts, draft_v1: first },
+        output: null,
+      },
+    });
+    const open = vi.fn();
+    wrap(<RunView session={session} onSteer={vi.fn()} onOpenArtifact={open} />);
+    const row = await screen.findByTestId('question-review_request');
+    expect(row).toHaveTextContent('Writer');
+    expect(row).toHaveTextContent('Outrider');
+    expect(row).toHaveTextContent('Cite the source on page four.');
+    const reviewed = `Requested a review of ${first.name} v1`;
+    fireEvent.click(within(row).getByRole('button', { name: reviewed }));
+    expect(open).toHaveBeenLastCalledWith('draft_v1');
+    expect(screen.getByTestId(`question-${ordinary.questionId}`)).not.toHaveTextContent(
+      'Requested a review',
+    );
+    act(() =>
+      session.setState({
+        projection: {
+          ...p,
+          questions: { [ordinary.questionId]: ordinary, review_request: review },
+          artifacts: {
+            ...p.artifacts,
+            draft_v1: { ...first, bodyAvailable: false },
+            draft_v2: second,
+          },
+          output: { ...output, artifactVersionIds: ['draft_v2'] },
+        },
+      }),
+    );
+    expect(row).toHaveTextContent(reviewed);
+    expect(row).toHaveTextContent('The reviewed version’s content is no longer available.');
+    expect(within(row).queryByRole('button', { name: /draft_v1|v1/i })).toBeNull();
+    expect(row).toHaveTextContent('Cite the source on page four.');
+    expect(screen.getByText('Submitted result · Writer')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: `${second.name} v2` }));
+    expect(open).toHaveBeenLastCalledWith('draft_v2');
+    session.getState().dispose();
+  });
+
   it('lists every task with its owner, parent and submitted versions', async () => {
     const session = await finishedRun();
     const onOpen = vi.fn();

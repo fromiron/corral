@@ -167,6 +167,7 @@ export interface IterationView {
 export interface QuestionView {
   delivery?: 'parent';
   sharedOutrider?: true;
+  reviewArtifactVersionId?: string;
   targetExecutionId?: string;
   questionId: string;
   /** The responder's task. */

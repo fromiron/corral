@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ImageAttachments } from './attachments.ts';
-import { ContentHash, HarnessBindingRef, HarnessResourceRef } from './harness.ts';
+import { ContentHash, HarnessBindingRef, HarnessResourceRef, ResourcePath } from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
@@ -74,6 +74,44 @@ export type CollaborationTool = z.infer<typeof CollaborationTool>;
 export const OutputContract = z.enum(['text', 'notes', 'draft', 'review']);
 export type OutputContract = z.infer<typeof OutputContract>;
 
+/**
+ * Where a team's copy of a role came from: a project's saved agent at one revision, or a
+ * built-in role preset. Kept for display and for the task field's rule only; a run never
+ * reads it and the copy does not follow its original (docs/specs/features/agent-library.md).
+ */
+export const RoleOrigin = z.discriminatedUnion('kind', [
+  z.strictObject({
+    kind: z.literal('library'),
+    agentId: Identifier,
+    revision: z.int().min(1),
+  }),
+  z.strictObject({ kind: z.literal('preset'), presetId: Identifier }),
+]);
+export type RoleOrigin = z.infer<typeof RoleOrigin>;
+
+/** One installed skill entry at one exact package hash (docs/specs/features/skill-library.md). */
+export const RoleSkillRef = z.strictObject({ resourceHash: ContentHash, entry: ResourcePath });
+export type RoleSkillRef = z.infer<typeof RoleSkillRef>;
+
+/**
+ * One exact MCP tool of one registered server (docs/specs/features/role-tools.md). `name` is the
+ * identifier allowlists and run events use, so it carries the server's namespace.
+ */
+export const RoleMcpToolRef = z
+  .strictObject({
+    serverId: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_]+$/),
+  })
+  .refine((ref) => ref.name.startsWith(`mcp__${ref.serverId}__`), {
+    message: 'MCP tool does not belong to this server',
+    path: ['name'],
+  });
+export type RoleMcpToolRef = z.infer<typeof RoleMcpToolRef>;
+
 export const AgentRole = z.strictObject({
   id: Identifier,
   name: z.string().min(1),
@@ -86,6 +124,19 @@ export const AgentRole = z.strictObject({
   allowedCollaborationTools: z.array(CollaborationTool).max(9),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),
+  /**
+   * The optional skills this role may use. Absent inherits, an empty list selects none, a list
+   * selects exactly those entries; required skills of upper layers stay in every case
+   * (docs/specs/harness-contract.md, "역할의 스킬 선택").
+   */
+  skills: z.array(RoleSkillRef).max(64).optional(),
+  /**
+   * The MCP tools this role may use. Absent inherits, an empty list selects none, a list keeps
+   * exactly those tools; the selection only narrows what the role's policy allows
+   * (docs/specs/harness-contract.md, "역할의 MCP 도구 선택").
+   */
+  mcpTools: z.array(RoleMcpToolRef).max(64).optional(),
+  origin: RoleOrigin.optional(),
   /**
    * the agent's last reply without a tool call is its result. It is offered neither
    * write_artifact nor submit_result; the Coordinator records and submits that reply.
@@ -115,6 +166,11 @@ export const WorkAgentNode = z.strictObject({
   invocation: z.enum(['scheduled', 'callable']),
   inputBindings: bindings(0),
   outputName: z.string().min(1),
+  /**
+   * What this seat does in this team, given to the worker apart from the role's reusable
+   * prompt. Absent means the role's prompt alone (docs/specs/features/agent-library.md).
+   */
+  stepInstruction: z.string().min(1).max(20000).optional(),
   /** Further attempts after a failure; then the `error` port. */
   retry: z.strictObject({ maxAttempts: z.int().min(0) }).optional(),
 });
@@ -131,14 +187,19 @@ export type AdvisorReview = z.infer<typeof AdvisorReview>;
 /** An absent `review` (docs/specs/features/advisor.md). */
 export const DEFAULT_ADVISOR_REVIEW: AdvisorReview = { interval: 3, maxRequestsPerReview: 8 };
 
+const OutriderTargets = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('all') }),
+  z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),
+]);
+
 /** A team's on-demand consultant. Targets are the intent, including future workers in all mode. */
 export const SharedOutrider = z.strictObject({
+  observation: z.strictObject({ targets: OutriderTargets, review: AdvisorReview }).optional(),
   modelProfile: AgentRole.shape.modelProfile,
   principles: AgentRole.shape.prompt,
-  targets: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('all') }),
-    z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),
-  ]),
+  /** Enables advisory review of a version explicitly selected by the asker. */
+  artifactReview: z.literal(true).optional(),
+  targets: OutriderTargets,
 });
 export type SharedOutrider = z.infer<typeof SharedOutrider>;
 
@@ -264,11 +325,26 @@ export const JoinNode = z.strictObject({
 });
 export type JoinNode = z.infer<typeof JoinNode>;
 
+/** A required review belongs to one named input and one producer on this Output. */
+export const RequiredOutputReview = z.strictObject({
+  bindingName: InputBinding.shape.name,
+  bindingId: Identifier.optional(),
+  sourceNodeId: Identifier,
+  loopNodeId: Identifier,
+  reviewerNodeId: Identifier,
+  decisionNodeId: Identifier,
+});
+export type RequiredOutputReview = z.infer<typeof RequiredOutputReview>;
+
 export const OutputNode = z.strictObject({
   ...nodeBase,
   type: z.literal('output'),
-  inputBindings: bindings(1),
+  inputBindings: z
+    .array(InputBinding.extend({ bindingId: Identifier.optional() }))
+    .min(1)
+    .max(20),
   requireApproval: z.boolean(),
+  requiredReviews: z.array(RequiredOutputReview).min(1).max(20).optional(),
 });
 export type OutputNode = z.infer<typeof OutputNode>;
 

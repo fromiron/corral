@@ -27,6 +27,7 @@ import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { WorkspacePage } from './pages/WorkspacePage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';
+import { WORKSPACE_TEMPLATES } from './templates.ts';
 import {
   type SettingsSearch,
   validateSettingsOverlay,
@@ -54,13 +55,23 @@ const rootRoute = createRootRouteWithContext<{ services: StudioServices; runLook
   errorComponent: ErrorView,
 });
 
-// `?draft=1` opens "Draft a team from a goal".
+// Old creation addresses remain usable without reviving the chooser.
 const draftSearch = (
   search: Record<string, unknown>,
-): { draft?: boolean; newSession?: boolean } => ({
+): { draft?: boolean; blank?: boolean; newSession?: boolean } => ({
   ...(search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {}),
+  ...(search.blank === true || search.blank === 1 || search.blank === '1' ? { blank: true } : {}),
   ...(search.newSession === true || search.newSession === 'true' ? { newSession: true } : {}),
 });
+
+function redirectCreation(project: string, search: { draft?: boolean; blank?: boolean }) {
+  if (search.draft || search.blank)
+    throw redirect({
+      to: '/corrals/new/edit',
+      search: { project, ...(search.draft ? { assistant: 1 as const } : {}) },
+      replace: true,
+    });
+}
 
 /** `/` is the project worked in last; old links to it keep working. */
 const indexRoute = createRoute({
@@ -93,7 +104,7 @@ export const inboxRoute = createRoute({
   component: InboxPage,
 });
 
-/** The library: saved teams, templates and resources, filtered by `?project=`. */
+/** Library views share the project and the address to return to. */
 export const libraryRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/library',
@@ -106,12 +117,26 @@ export const libraryTeamsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/library/teams',
   validateSearch: validateLibrarySearch,
+  beforeLoad: ({ search }) => redirectCreation(search.project ?? currentProject(), search),
   component: () => <LibraryPage view="teams" />,
+});
+const libraryAgentsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/agents',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="agents" />,
+});
+const librarySkillsRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: '/library/skills',
+  validateSearch: validateLibrarySearch,
+  component: () => <LibraryPage view="skills" />,
 });
 export const libraryTemplatesRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/library/templates',
   validateSearch: validateLibrarySearch,
+  beforeLoad: ({ search }) => redirectCreation(search.project ?? currentProject(), search),
   component: () => <LibraryPage view="templates" />,
 });
 export const libraryResourcesRoute = createRoute({
@@ -140,18 +165,13 @@ export const workspaceRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/projects/$projectId',
   validateSearch: draftSearch,
-  // Teams live in the library now: the old Teams link and "draft a team" land there, replacing.
+  // Replace old addresses so Back goes to the previous work surface.
   beforeLoad: ({ location, params, search }) => {
+    redirectCreation(params.projectId, search);
     if (location.hash.replace(/^#/, '') === 'corrals')
       throw redirect({
         to: '/library/teams',
         search: { project: params.projectId, ...validateSettingsOverlay({ ...search }) },
-        replace: true,
-      });
-    if (search.draft)
-      throw redirect({
-        to: '/library/templates',
-        search: { project: params.projectId, draft: true },
         replace: true,
       });
   },
@@ -263,9 +283,40 @@ export const demoRoute = createRoute({
   component: DemoPage,
 });
 
-export const editorRoute = createRoute({
+// The parent stays mounted on first save: row selection, viewport, and an in-flight
+// save-and-test belong to the editor, not to the address of the child route.
+const editorsRoute = createRoute({
   getParentRoute: () => rootRoute,
-  path: '/corrals/$corralId/edit',
+  path: '/corrals',
+  component: EditorPage,
+});
+
+export const newEditorRoute = createRoute({
+  getParentRoute: () => editorsRoute,
+  path: 'new/edit',
+  validateSearch: (raw: Record<string, unknown>) => {
+    const template = WORKSPACE_TEMPLATES.find((id) => id === raw.template);
+    return {
+      ...(typeof raw.project === 'string' && raw.project ? { project: raw.project } : {}),
+      ...(template && template !== 'blank' ? { template } : {}),
+      ...(raw.assistant === 1 || raw.assistant === '1' ? { assistant: 1 as const } : {}),
+    };
+  },
+  loaderDeps: ({ search }) => ({ project: search.project, template: search.template }),
+  loader: async ({ context, deps }) => {
+    const projectId = deps.project ?? currentProject();
+    const projects = await context.services.repository.listProjects();
+    const project = projects.find((item) => item.projectId === projectId);
+    if (!project) throw notFound();
+    if (project.archivedAt)
+      throw redirect({ to: '/library/teams', search: { project: projectId }, replace: true });
+    return { projectId, newTemplate: deps.template ?? ('blank' as const) };
+  },
+});
+
+export const editorRoute = createRoute({
+  getParentRoute: () => editorsRoute,
+  path: '$corralId/edit',
   // A version of an earlier run the next run starts from, from the Run page.
   // `fromSession`: opened from a session's menu, so the editor offers the way back.
   validateSearch: validateEditorSearch,
@@ -274,7 +325,6 @@ export const editorRoute = createRoute({
     if (!record) throw notFound();
     return record;
   },
-  component: EditorPage,
 });
 
 /** How long arriving at `/runs/:runId` waits for its session before opening the run page. */
@@ -471,6 +521,8 @@ export function createStudioRouter(
       inboxRoute,
       libraryRoute,
       libraryTeamsRoute,
+      libraryAgentsRoute,
+      librarySkillsRoute,
       libraryTemplatesRoute,
       libraryResourcesRoute,
       previewRoute,
@@ -480,7 +532,7 @@ export function createStudioRouter(
       sessionRoute,
       reviewRoute,
       demoRoute,
-      editorRoute,
+      editorsRoute.addChildren([newEditorRoute, editorRoute]),
       runRoute,
       modelSettingsRoute,
       vaultSettingsRoute,

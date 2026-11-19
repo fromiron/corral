@@ -13,6 +13,7 @@ import {
   openSession,
   type PathEngineStatus,
   probeServer,
+  RestAgentLibrary,
   RestCorralRepository,
   RunModesApi,
   type SessionDeletionRequest,
@@ -24,9 +25,11 @@ import {
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
+  type AgentLibrary,
   type AutoStartResult,
   type CorralRepository,
   createAutoStarter,
+  createKeyValueAgentLibrary,
   createKeyValueCorralRepository,
   type KeyValueStore,
   MeetingDecisionsService,
@@ -48,6 +51,8 @@ import { sessionFetch } from './sessionConnection.ts';
 // runs); opened any other way it runs the in-browser runtime with simulated agents.
 // Run pages and team editors keep separate views; the Coordinator owns active runs.
 
+const newCorralId = () => `corral_${crypto.randomUUID().slice(0, 8)}`;
+
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
@@ -60,6 +65,8 @@ export interface StudioServices {
   pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
+  newCorralId(): string;
+  agents: AgentLibrary;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
   runFor: (runId: string) => RunSessionStore;
@@ -189,6 +196,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
       repository,
+      newCorralId,
+      agents: new RestAgentLibrary(http),
       sessionDeletion: {
         preview: (sessionId) => repository.deletionPreview(sessionId),
         delete: (sessionId, body) => repository.deleteSession(sessionId, body),
@@ -226,17 +235,17 @@ export async function createStudioServices(): Promise<StudioServices> {
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
-  const { transport, workspace, readHistory } = createDemoRuntime();
+  const repository = createKeyValueCorralRepository(store, {
+    clock: systemClock,
+    newCorralId,
+  });
+  const { transport, workspace, readHistory } = createDemoRuntime(repository);
   const runs = createRunSessions(transport);
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
     // a saved Corral lends its roles to the conversation lead.
     corral: (corralId) => repository.get(corralId),
-  });
-  const repository = createKeyValueCorralRepository(store, {
-    clock: systemClock,
-    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
   });
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
   const meetings = new MeetingService({
@@ -261,6 +270,13 @@ export async function createStudioServices(): Promise<StudioServices> {
     harnesses: null,
     live: false,
     repository,
+    newCorralId,
+    agents: createKeyValueAgentLibrary(store, {
+      projects: repository,
+      clock: systemClock,
+      newAgentId: () => `agent_${crypto.randomUUID()}`,
+      locks: persistent ? navigator.locks : undefined,
+    }),
     transport,
     readHistory,
     runFor: runs.runFor,

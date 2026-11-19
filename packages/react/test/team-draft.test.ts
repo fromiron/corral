@@ -1,4 +1,4 @@
-import { TeamPlan } from '@corral/contracts';
+import { isWorkAgent, TeamPlan } from '@corral/contracts';
 import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import en from '../src/messages/en.json' with { type: 'json' };
@@ -88,7 +88,10 @@ describe('draftFromPlan', () => {
       expect(definition.input).toEqual({ brief: p.brief, criteria: p.criteria });
       for (const role of p.roles) {
         const made = definition.roles.find((r) => r.name === role.name);
-        expect(made?.prompt).toContain(role.duty);
+        const seat = definition.nodes.filter(isWorkAgent).find((node) => node.roleId === made?.id);
+        expect(seat?.stepInstruction).toBe(role.duty);
+        expect(made?.prompt).toContain('submit with submit_result.');
+        expect(made?.prompt).not.toContain(role.duty);
       }
     }
     const full = draftFromPlan(plan(), 'drafted_2').definition;

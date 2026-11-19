@@ -3437,6 +3437,10 @@
                       "trusted-native"
                     ]
                   },
+                  "startupCommandPolicy": {
+                    "type": "string",
+                    "const": "none"
+                  },
                   "resources": {
                     "maxItems": 64,
                     "type": "array",
@@ -3466,6 +3470,10 @@
                         },
                         "required": {
                           "type": "boolean"
+                        },
+                        "selectedByRole": {
+                          "type": "boolean",
+                          "const": true
                         },
                         "skillMode": {
                           "type": "string",
@@ -5547,6 +5555,10 @@
             "sharedOutrider": {
               "type": "boolean",
               "const": true
+            },
+            "reviewArtifactVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
             },
             "targetExecutionId": {
               "type": "string",
