@@ -192,7 +192,7 @@ describe('team editor', () => {
     const user = userEvent.setup();
     await user.click(screen.getByRole('button', { name: '공통 Outrider 추가' }));
     expect(screen.getByRole('radio', { name: '팀 전체' })).toHaveAttribute('aria-checked', 'true');
-    expect(screen.getByText('팀의 질문 한도가 0입니다.')).toBeVisible();
+    await waitFor(() => expect(screen.getByText('팀의 질문 한도가 0입니다.')).toBeVisible());
     await user.click(screen.getByRole('radio', { name: '직접 선택' }));
     expect(screen.getByRole('checkbox', { name: 'Agent 1' })).toHaveAttribute(
       'aria-disabled',
