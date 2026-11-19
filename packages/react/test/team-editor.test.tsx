@@ -926,3 +926,19 @@ describe('team editor: importing a role', () => {
     expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
   });
 });
+
+it('adds the first agent and then submits its output in one edit per action', async () => {
+  const editor = renderEditor(emptyDraft());
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Add the first agent' }));
+  const [agent] = editor.getState().draft.definition.nodes;
+  expect(agent?.type).toBe('agent');
+  await user.click(screen.getByRole('button', { name: 'Use this result as the final output' }));
+  const { nodes, controlEdges } = editor.getState().draft.definition;
+  expect(nodes[1]).toMatchObject({
+    type: 'output',
+    inputBindings: [{ kind: 'task_output', sourceNodeId: agent?.id }],
+  });
+  expect(controlEdges).toMatchObject([{ source: agent?.id, target: nodes[1]?.id }]);
+  expect(editor.getState().past).toHaveLength(2);
+});

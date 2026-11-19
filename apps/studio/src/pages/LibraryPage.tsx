@@ -21,6 +21,8 @@ export interface LibrarySearch {
   returnTo?: string;
   /** Opens "Draft a team from a goal" in Templates; consumed once. */
   draft?: boolean;
+  /** Opens direct creation on the templates page. */
+  blank?: boolean;
 }
 
 export function validateLibrarySearch(search: Record<string, unknown>): LibrarySearch {
@@ -30,6 +32,7 @@ export function validateLibrarySearch(search: Record<string, unknown>): LibraryS
       ? { project: search.project }
       : {}),
     ...(returnTo ? { returnTo } : {}),
+    ...(search.blank === true || search.blank === 1 || search.blank === '1' ? { blank: true } : {}),
     ...(search.draft === true || search.draft === 1 || search.draft === '1' ? { draft: true } : {}),
   };
 }
@@ -111,14 +114,20 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         projects={data.projects}
         corrals={data.corrals}
         onChanged={reload}
-        onBrowseTemplates={() => void navigate({ to: VIEW_ROUTES.templates, search: kept })}
+        onBrowseTemplates={(draft) =>
+          void navigate({
+            to: VIEW_ROUTES.templates,
+            search: { ...kept, project: projectId, ...(draft ? { draft: true } : {}) },
+          })
+        }
       />
     ) : view === 'templates' ? (
       <LibraryTemplates
         projectId={projectId}
         project={project}
         corrals={data.corrals}
-        drafting={Boolean(search.draft)}
+        blank={Boolean(search.blank)}
+        drafting={Boolean(search.draft && !search.blank)}
         onDraftClosed={() =>
           void navigate({
             to: VIEW_ROUTES.templates,

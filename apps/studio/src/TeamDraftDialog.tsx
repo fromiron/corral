@@ -6,7 +6,7 @@ import {
   type TeamPattern,
   TeamPlan,
 } from '@corral/contracts';
-import { planWithPattern, type TeamWording } from '@corral/core';
+import { isReadOnlyTeam, planWithPattern, type TeamWording } from '@corral/core';
 import { draftFromPlan, planFromGoal } from '@corral/react';
 import {
   Button,
@@ -107,23 +107,35 @@ export function TeamDraftDialog({
   };
 
   const checked = plan ? TeamPlan.safeParse(plan) : null;
+  const unresolved = plan?.outrider === 'clarify_review' || plan?.outrider === 'required_review';
+  const preview = checked?.success
+    ? draftFromPlan(checked.data, 'preview', wording.labels).definition
+    : null;
   const open = async () => {
-    if (!checked?.success) return;
+    if (!checked?.success || busy || unresolved) return;
     setBusy(true);
     const draft = draftFromPlan(
       checked.data,
       `team_${globalThis.crypto.randomUUID().slice(0, 8)}`,
       wording.labels,
     );
-    const saved = await repository.save({
-      ...draft,
-      expectedDefinitionRevision: null,
-      ...(projectId ? { projectId } : {}),
-    });
-    setBusy(false);
-    if (!saved.ok) return setError(saved.message);
-    onClose();
-    await navigate({ to: '/corrals/$corralId/edit', params: { corralId: saved.record.corralId } });
+    try {
+      const saved = await repository.save({
+        ...draft,
+        expectedDefinitionRevision: null,
+        ...(projectId ? { projectId } : {}),
+      });
+      if (!saved.ok) return setError(saved.message);
+      onClose();
+      await navigate({
+        to: '/corrals/$corralId/edit',
+        params: { corralId: saved.record.corralId },
+      });
+    } catch (failure) {
+      setError(failure instanceof Error ? failure.message : String(failure));
+    } finally {
+      setBusy(false);
+    }
   };
 
   return (
@@ -187,7 +199,47 @@ export function TeamDraftDialog({
             </div>
           </>
         ) : (
-          <PlanEditor plan={plan} wording={wording} onChange={setPlan} />
+          <>
+            {plan.outrider === 'clarify_review' ? (
+              <div className="grid gap-2 rounded fill-group p-3">
+                <p>{t('reviewQuestion')}</p>
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    onClick={() => setPlan({ ...plan, outrider: 'artifact_review' })}
+                  >
+                    {t('reviewFeedback')}
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    size="compact"
+                    onClick={() => setPlan({ ...plan, outrider: 'required_review' })}
+                  >
+                    {t('reviewRequired')}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+            {plan.outrider === 'required_review' ? (
+              <p role="status" className="text-body">
+                {t('requiredUnavailable')}
+              </p>
+            ) : null}
+            <PlanEditor plan={plan} wording={wording} onChange={setPlan} />
+            {preview ? (
+              <div className="grid gap-1 rounded fill-group p-3 text-body">
+                <h3 className="text-subtitle">{t('beforeSaving')}</h3>
+                <p>{t(isReadOnlyTeam(preview) ? 'readOnlyWork' : 'changesWork')}</p>
+                <p>{t(hasReviewLoop(plan.pattern) ? 'hasReviewRound' : 'noReviewRound')}</p>
+                {preview.sharedOutrider ? (
+                  <p>
+                    {t(plan.outrider === 'artifact_review' ? 'artifactAdvice' : 'sharedAdvice')}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+          </>
         )}
         {error ? (
           <p role="alert" className="text-body text-danger">
@@ -218,7 +270,7 @@ export function TeamDraftDialog({
               variant="primary"
               size="compact"
               type="button"
-              disabled={!checked?.success || busy}
+              disabled={!checked?.success || busy || unresolved}
               onClick={() => void open()}
             >
               {t('open')}

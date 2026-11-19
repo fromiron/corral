@@ -209,7 +209,10 @@ export function StructureTree({
           onClick={onProblems}
         >
           <KitBadge size="compact" color={errors ? 'red' : diagnostics.length ? 'amber' : 'gray'}>
-            {validationStatus ?? t('problems', { count: diagnostics.length })}
+            {validationStatus ??
+              (definition.nodes.length === 0 && diagnostics.length
+                ? t('startGraph')
+                : t('problems', { count: diagnostics.length }))}
           </KitBadge>
         </button>
         <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>

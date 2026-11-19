@@ -54,6 +54,14 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
 /** In the library's Teams view: makes an empty team and opens it in the editor. */
 export async function newTeam(page: Page) {
   await page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true }).click();
+  await page.getByRole('button', { name: 'Build a blank team', exact: true }).click();
+  await page
+    .getByRole('textbox', { name: 'Request', exact: true })
+    .fill('Compare two options using primary sources.');
+  await page
+    .getByRole('textbox', { name: 'Completion criterion', exact: true })
+    .fill('Say which inputs were used.');
+  await page.getByRole('button', { name: 'Create and edit', exact: true }).click();
   await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
 }
 
@@ -760,8 +768,8 @@ export async function addAgentAndOutput(page: Page) {
 /** Renames the team in its settings sheet. */
 export async function renameTeam(page: Page, name: string) {
   const settings = editorSettings(page);
-  if (!(await settings.getByRole('heading', { name: 'Limits and criteria' }).isVisible()))
-    await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  if (!(await settings.getByRole('heading', { name: 'Team settings' }).isVisible()))
+    await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
 }
 

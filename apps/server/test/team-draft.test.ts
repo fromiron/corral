@@ -56,6 +56,13 @@ describe('planFromAnswer', () => {
     );
   });
 
+  it('accepts a review request without accepting a proposed tool or unsupported policy', () => {
+    const proposal = answer('single', { outrider: 'artifact_review' });
+    expect(planFromAnswer(JSON.stringify(proposal))).toEqual(proposal);
+    expect(planFromAnswer(JSON.stringify({ ...proposal, outrider: 'auto_observe' }))).toBeNull();
+    expect(planFromAnswer(JSON.stringify({ ...proposal, tools: ['write_file'] }))).toBeNull();
+  });
+
   it('reads an answer that leaves the approval out as a plan without one', () => {
     const { finalApproval: _left, ...bare } = answer('tech_decision');
     expect(planFromAnswer(JSON.stringify(bare))).toEqual({ ...bare, finalApproval: false });

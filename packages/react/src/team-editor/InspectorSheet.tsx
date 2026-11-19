@@ -45,6 +45,8 @@ export interface InspectorSheetProps {
   validationStatus?: string | undefined;
   selection: TeamSelection;
   view: SheetView;
+  onAddFirstAgent?: () => void;
+  onFixFlow?: () => void;
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings?: RoleSettings | undefined;
@@ -137,6 +139,8 @@ export function InspectorSheet({
   validationStatus,
   selection,
   view,
+  onAddFirstAgent,
+  onFixFlow,
   profiles,
   imageProfiles,
   roleSettings,
@@ -155,6 +159,7 @@ export function InspectorSheet({
   const f = useTranslations('TeamEditor.fields');
   const portName = useTranslations('Canvas.ports');
   const codeText = useTranslations('Validation.codes');
+  const schemaText = useTranslations('Validation.schema');
   const size = useSize();
   const draft = useStore(editor, (s) => s.draft);
   const { definition } = draft;
@@ -165,10 +170,16 @@ export function InspectorSheet({
   };
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const name = (nodeId: string) => nodes.get(nodeId)?.label ?? nodeId;
-  const issueText = (d: Diagnostic) =>
-    codeText.has(d.code)
+  const issueText = (d: Diagnostic) => {
+    const path =
+      d.schemaPath
+        ?.replace(/^nodes\.\d+\.inputBindings$/, 'inputBindings')
+        .replace(/^input\.(?:brief|criteria)(?:\.\d+)?$/, 'runInput') ?? '';
+    if (path && schemaText.has(path)) return schemaText(path);
+    return codeText.has(d.code)
       ? codeText(d.code, { message: d.message, node: d.nodeId ? name(d.nodeId) : '' })
       : d.message;
+  };
   const fixText = useTranslations('Validation');
   // A reviewer without the criteria: give it the run input that carries them.
   const giveCriteria = (nodeId: string) => {
@@ -282,6 +293,15 @@ export function InspectorSheet({
     ) : diagnostics.length ? (
       <ul className="grid gap-1">
         {diagnostics.map((d, i) => {
+          const graphPath =
+            d.schemaPath &&
+            ['nodes', 'roles', 'entryNodeId', 'controlEdges'].includes(d.schemaPath);
+          const globalFix =
+            graphPath || d.code === 'ENTRY_INVALID' || d.code === 'NO_OUTPUT'
+              ? definition.nodes.length
+                ? onFixFlow
+                : onAddFirstAgent
+              : undefined;
           const edge = d.edgeId ?? d.linkId;
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
@@ -295,7 +315,7 @@ export function InspectorSheet({
                 onClick={() => {
                   if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
                   else if (edge) onSelect({ nodes: [], edge });
-                  else onTeamSettings();
+                  else (globalFix ?? onTeamSettings)();
                 }}
               >
                 <IssueRow diagnostic={d} text={issueText(d)} />
@@ -310,6 +330,19 @@ export function InspectorSheet({
     ) : (
       <p className={cn(size.type.body, 'text-muted-foreground')}>{t('noProblems')}</p>
     );
+    if (!definition.nodes.length && onAddFirstAgent) {
+      body = (
+        <div className="grid gap-2">
+          <Button size="compact" onClick={onAddFirstAgent}>
+            {t('fixEmptyGraph')}
+          </Button>
+          <details>
+            <summary className="cursor-pointer">{t('problemDetails')}</summary>
+            {body}
+          </details>
+        </div>
+      );
+    }
   } else if (view === 'sharedOutrider') {
     title = t('sharedOutrider.title');
     body = (
@@ -349,6 +382,7 @@ export function InspectorSheet({
         </Field>
         <Field label={f('brief')}>
           <Textarea
+            data-team-brief
             value={definition.input.brief}
             onChange={(e) => apply(patchTeam(draft, { brief: e.target.value }))}
             {...batch}

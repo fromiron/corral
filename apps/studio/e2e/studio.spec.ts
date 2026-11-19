@@ -68,7 +68,7 @@ test('steps dropped on an empty canvas and connected run as drawn', async ({ pag
 
   await buildAgentToOutput(page);
   const brief = 'Compare notebook formats for field notes.';
-  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   await settings(page).getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
   const panel = await openTestRun(page);
   await panel.getByRole('button', { name: 'Run', exact: true }).click();

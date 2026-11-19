@@ -289,6 +289,14 @@
     }
   },
   "Validation": {
+    "schema": {
+      "nodes": "Add an agent and an Output.",
+      "controlEdges": "Connect the steps in execution order.",
+      "roles": "Add at least one agent.",
+      "entryNodeId": "Choose an agent where the flow starts.",
+      "inputBindings": "Add an input to this step.",
+      "runInput": "Enter a request and at least one completion criterion in Team settings."
+    },
     "codes": {
       "ADVISOR_OUTSIDE_FLOW": "An Outrider stays outside the flow: no connections, no Loop or Team, and no delegating or asking.",
       "ADVISOR_UNWATCHED": "{node} watches no one. Connect it to an agent it advises.",
@@ -610,6 +618,13 @@
   "Workspace": {
     "heading": "Corrals",
     "new": "New Corral",
+    "chooseTemplate": "Start from a template",
+    "chooseBlank": "Build a blank team",
+    "creationBrief": "Request",
+    "creationCriterion": "Completion criterion",
+    "creationBriefExample": "For example, compare two options",
+    "creationCriterionExample": "For example, include the source links",
+    "creationSave": "Create and edit",
     "newName": "Untitled Corral",
     "import": "Import JSON",
     "importHint": "Choose a .corral.json file.",
@@ -711,6 +726,8 @@
     "revisions": "Version {definition}",
     "unsaved": "Unsaved changes",
     "saved": "All changes saved",
+    "runBrief": "Request",
+    "editRunBrief": "Edit request",
     "save": "Save",
     "saving": "Saving…",
     "savedResult": "Saved. {definition, select, true {New revision.} other {Definition unchanged.}}",
@@ -1463,6 +1480,17 @@
     "queueNext": "Send a request for after the run"
   },
   "TeamDraft": {
+    "reviewQuestion": "Should the team get feedback, or must the work pass review before submission?",
+    "reviewFeedback": "Get feedback only",
+    "reviewRequired": "Pass before submitting",
+    "requiredUnavailable": "Passing review before submission is unavailable in this draft. Go back to revise the goal.",
+    "beforeSaving": "Before saving",
+    "readOnlyWork": "The roles cannot change workspace files or run commands.",
+    "changesWork": "This pattern includes roles that can change workspace files or run commands.",
+    "hasReviewRound": "The flow includes review rounds.",
+    "noReviewRound": "The flow has no sequential review round.",
+    "artifactAdvice": "Workers can ask the shared Outrider for feedback on an artifact. The worker still submits the result.",
+    "sharedAdvice": "Any worker can ask the shared Outrider for advice when needed.",
     "title": "Draft a Corral from a goal",
     "goalLabel": "What should the team do?",
     "goalPlaceholder": "e.g. Compare three help desk tools for a 20-person team",
@@ -1517,6 +1545,7 @@
         "sources": "Name the source behind each main claim."
       },
       "labels": {
+        "outriderPrinciples": "Check the evidence against the requested result and suggest concrete corrections.",
         "loop": "Review loop",
         "decision": "Review decision",
         "output": "Output"
@@ -5962,7 +5991,10 @@
     "zoomOut": "Zoom out",
     "fit": "Fit to view",
     "insertHere": "Add a step here",
-    "addFirst": "Add the first step",
+    "addFirstAgent": "Add the first agent",
+    "addOtherStep": "Choose another step",
+    "completeFirstAgent": "Use this result as the final output",
+    "problemDetails": "Problem details",
     "collapse": "Collapse {name}",
     "expand": "Expand {name}",
     "kinds": {
@@ -6032,9 +6064,11 @@
       "invalidResultSource": "Choose a preceding agent or referenced team."
     },
     "outline": "Corral structure",
+    "startGraph": "Set up the flow",
+    "fixEmptyGraph": "Add an agent to start the flow",
     "addStep": "Add a step",
     "problems": "{count, plural, =0 {No problems} one {# problem} other {# problems}}",
-    "teamSettings": "Limits and criteria",
+    "teamSettings": "Team settings",
     "sharedOutrider": {
       "artifactReview": "Artifact review",
       "onRequest": "On request",

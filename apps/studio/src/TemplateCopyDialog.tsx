@@ -8,6 +8,7 @@ import {
   DialogPopup,
   DialogTitle,
   Input,
+  Textarea,
 } from '@corral/react/design-kit';
 import { useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -35,20 +36,29 @@ export function TemplateCopyDialog({
   const t = useTranslations('Workspace');
   const { repository } = useServices();
   const text = useTemplateText();
-  const [name, setName] = useState(
-    t(template === 'blank' ? 'newName' : `template.${template}.name`),
-  );
+  const blank = template === 'blank';
+  const [brief, setBrief] = useState('');
+  const [criterion, setCriterion] = useState('');
+  const [name, setName] = useState(t(blank ? 'newName' : `template.${template}.name`));
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const nameHintId = useId();
   const savedName = templateCopyName(name.trim(), projectId, corrals);
   const adjustedName = name.trim() && savedName !== name.trim();
+  const ready = Boolean(name.trim() && (!blank || (brief.trim() && criterion.trim())));
   const save = async () => {
-    if (busy || !name.trim()) return;
+    if (busy || !ready) return;
     setBusy(true);
     setError('');
     try {
-      const result = await createFromTemplate(repository, template, text, projectId, name);
+      const result = await createFromTemplate(
+        repository,
+        template,
+        text,
+        projectId,
+        name,
+        blank ? { brief: brief.trim(), criteria: [criterion.trim()] } : undefined,
+      );
       if (!result.ok) {
         setError(result.message);
         return;
@@ -65,7 +75,7 @@ export function TemplateCopyDialog({
     <Dialog open onOpenChange={(open) => !open && !busy && onClose()}>
       <DialogPopup>
         <DialogHeader>
-          <DialogTitle>{t('saveCopyTitle')}</DialogTitle>
+          <DialogTitle>{t(blank ? 'chooseBlank' : 'saveCopyTitle')}</DialogTitle>
         </DialogHeader>
         <DialogPanel>
           <Input
@@ -83,6 +93,30 @@ export function TemplateCopyDialog({
               {t('copyNameAdjusted', { name: savedName })}
             </p>
           ) : null}
+          {blank ? (
+            <>
+              <label className="grid gap-1 text-body">
+                {t('creationBrief')}
+                <Textarea
+                  aria-label={t('creationBrief')}
+                  disabled={busy}
+                  value={brief}
+                  placeholder={t('creationBriefExample')}
+                  onChange={(event) => setBrief(event.target.value)}
+                />
+              </label>
+              <label className="grid gap-1 text-body">
+                {t('creationCriterion')}
+                <Input
+                  aria-label={t('creationCriterion')}
+                  disabled={busy}
+                  value={criterion}
+                  placeholder={t('creationCriterionExample')}
+                  onChange={(event) => setCriterion(event.target.value)}
+                />
+              </label>
+            </>
+          ) : null}
           {error ? (
             <p role="alert" className="text-body text-danger">
               {error}
@@ -93,8 +127,8 @@ export function TemplateCopyDialog({
           <Button variant="tertiary" disabled={busy} onClick={onClose}>
             {t('cancel')}
           </Button>
-          <Button disabled={busy || !name.trim()} onClick={() => void save()}>
-            {t('saveCopyEdit')}
+          <Button disabled={busy || !ready} onClick={() => void save()}>
+            {t(blank ? 'creationSave' : 'saveCopyEdit')}
           </Button>
         </DialogFooter>
       </DialogPopup>

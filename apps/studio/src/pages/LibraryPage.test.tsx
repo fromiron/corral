@@ -317,6 +317,13 @@ it.each(LIBRARY_VIEWS)('frames the %s view with the library title and its tab', 
 });
 
 it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+    addListener() {},
+    removeListener() {},
+  }));
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Beta writers', 'project_2');
   const { container, router } = await render('/library/teams?project=project_1');
@@ -326,9 +333,63 @@ it("lists the filtered project's teams and makes a new team in it with the exist
   expect(create).toBeTruthy();
   await act(async () => create?.click());
   await settle();
+  expect((await repository.list()).length).toBe(2);
+  const choices = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
+  expect(byText(choices, 'button', 'Draft from a goal')).toBeTruthy();
+  expect(byText(choices, 'button', 'Start from a template')).toBeTruthy();
+  await act(async () => byText(choices, 'button', 'Cancel')?.click());
+  await settle();
+  expect((await repository.list()).length).toBe(2);
+  await act(async () => create?.click());
+  await settle();
+  const reopened = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
+  await act(async () => byText(reopened, 'button', 'Build a blank team')?.click());
+  await settle();
+  const form = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
+  const submit = byText(form, 'button', 'Create and edit') as HTMLButtonElement;
+  expect(submit.disabled).toBe(true);
+  const enter = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
+    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set?.call(
+      element,
+      value,
+    );
+    element.dispatchEvent(new Event('input', { bubbles: true }));
+  };
+  const brief = form.querySelector('textarea') as HTMLTextAreaElement;
+  const criterion = form.querySelector(
+    'input[aria-label="Completion criterion"]',
+  ) as HTMLInputElement;
+  await act(async () => enter(criterion, 'Include timestamps'));
+  expect(submit.disabled).toBe(true);
+  await act(async () => {
+    enter(criterion, '');
+    enter(brief, 'Compare build logs');
+  });
+  expect(submit.disabled).toBe(true);
+  await act(async () => enter(criterion, 'Include timestamps'));
+  const save = vi.spyOn(repository, 'save').mockResolvedValueOnce({
+    ok: false,
+    error: 'storage_unavailable',
+    message: 'Storage unavailable.',
+  });
+  await act(async () => submit.click());
+  await settle();
+  expect(form.querySelector('[role="alert"]')?.textContent).toBe('Storage unavailable.');
+  expect(form.querySelector('textarea')?.value).toBe('Compare build logs');
+  expect((await repository.list()).length).toBe(2);
+  save.mockRestore();
+  await act(async () => submit.click());
+  await settle();
   expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
-  const made = (await repository.list()).find((item) => item.corralId === 'corral_3');
+  const made = await repository.get('corral_3');
   expect(made?.projectId).toBe('project_1');
+  expect(made?.definition.input).toEqual({
+    brief: 'Compare build logs',
+    criteria: ['Include timestamps'],
+  });
+  expect((await repository.get('corral_1'))?.definition.input).toEqual(
+    emptyDraft().definition.input,
+  );
 });
 
 it('uses the last opened project without a filter and offers a project filter', async () => {

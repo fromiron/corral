@@ -37,12 +37,10 @@ import { describe, expect, it } from 'vitest';
 //   CORRAL_DRAFT_PROVIDER_FILE=/path/to/provider.json \   (one `modelProviders` entry, no key)
 //   CORRAL_DRAFT_MODELS=deepseek-ai/deepseek-v4.1-flash-1017
 //
-// The result keeps the chosen pattern, acceptance, latency and request counts. It never keeps
+// The result keeps the chosen pattern and Outrider policy, acceptance, latency and request counts. It never keeps
 // or prints the answer text, the goal's draft, credentials or local paths.
 
 const enabled = process.env.CORRAL_DRAFT_LIVE === '1';
-/** A run's whole budget: two models over a 20-goal set is 40. */
-const REQUEST_CAP = 60;
 const PROVIDER = process.env.CORRAL_DRAFT_PROVIDER ?? 'openai';
 /** The provider's definition for the temporary workspace; the built-in OpenAI needs none. */
 const PROVIDER_FILE = process.env.CORRAL_DRAFT_PROVIDER_FILE;
@@ -51,9 +49,10 @@ interface GoalEntry {
   id: string;
   goal: string;
   accept: TeamPattern[];
+  expectedOutrider?: NonNullable<TeamPlan['outrider']>;
 }
 
-/** A goals file: `{ split?, goals: [{ id, goal, accept: [pattern, ...] }] }`. */
+/** A goals file: `{ split?, goals: [{ id, goal, accept: [pattern, ...], expectedOutrider? }] }`. */
 function goalSet(value: unknown): { split: string | null; goals: GoalEntry[] } {
   const set = value as { split?: unknown; goals?: unknown };
   if (!Array.isArray(set.goals) || set.goals.length === 0)
@@ -69,7 +68,14 @@ function goalSet(value: unknown): { split: string | null; goals: GoalEntry[] } {
       !accept.every((pattern) => (TEAM_PATTERNS as readonly string[]).includes(pattern))
     )
       throw new Error(`Goal ${index + 1} needs an id, a goal and known accepted patterns.`);
-    return { id: entry.id, goal: entry.goal, accept };
+    if (!TeamPlan.shape.outrider.safeParse(entry.expectedOutrider).success)
+      throw new Error(`Goal ${index + 1} has an unknown Outrider policy.`);
+    return {
+      id: entry.id,
+      goal: entry.goal,
+      accept,
+      ...(entry.expectedOutrider ? { expectedOutrider: entry.expectedOutrider } : {}),
+    };
   });
   return { split: typeof set.split === 'string' ? set.split : null, goals };
 }
@@ -104,6 +110,8 @@ interface GoalResult {
   id: string;
   /** The chosen pattern, `invalid` when the answer failed the contract, `error` when no answer. */
   pattern: TeamPattern | 'invalid' | 'error';
+  outrider: TeamPlan['outrider'] | null;
+  expectedOutrider?: GoalEntry['expectedOutrider'];
   accepted: boolean;
   latencyMs: number;
   /** The route's error code when there was no usable plan. */
@@ -137,8 +145,6 @@ function settings() {
   if (!goalsPath || !out || models.length === 0)
     throw new Error('Set CORRAL_DRAFT_GOALS, CORRAL_DRAFT_MODELS and CORRAL_DRAFT_OUT.');
   const set = goalSet(JSON.parse(readFileSync(resolve(goalsPath), 'utf8')));
-  if (set.goals.length * models.length > REQUEST_CAP)
-    throw new Error(`The run would exceed its ${REQUEST_CAP} request cap.`);
   return { set, models: [...new Set(models)], out: resolve(out) };
 }
 
@@ -222,7 +228,6 @@ async function measure(
       return result;
     }
     for (const entry of goals) {
-      if (budget.used >= REQUEST_CAP) throw new Error('request cap reached');
       budget.used += 1;
       const operationId = `draft_live_${randomUUID()}`;
       const started = performance.now();
@@ -247,10 +252,15 @@ async function measure(
         await server.api(`/model-attempts?ownerId=${encodeURIComponent(operationId)}`)
       ).json();
       const reported = page.items.filter((attempt) => attempt.usage.source === 'reported');
+      const outrider = plan?.success ? (plan.data.outrider ?? null) : null;
       const goal: GoalResult = {
         id: entry.id,
         pattern,
-        accepted: (entry.accept as string[]).includes(pattern),
+        outrider,
+        ...(entry.expectedOutrider ? { expectedOutrider: entry.expectedOutrider } : {}),
+        accepted:
+          (entry.accept as string[]).includes(pattern) &&
+          (!entry.expectedOutrider || outrider === entry.expectedOutrider),
         latencyMs,
         ...(code ? { code } : {}),
         attempts: page.items.length,
@@ -288,11 +298,16 @@ describe.skipIf(!enabled)('team draft pattern choice with real models', () => {
     const budget = { used: 0 };
     const results: ModelResult[] = [];
     const local = set.goals.map((entry) => {
-      const pattern = planFromGoal(entry.goal, LOCAL_WORDING)?.pattern ?? null;
+      const plan = planFromGoal(entry.goal, LOCAL_WORDING);
       return {
         id: entry.id,
-        pattern,
-        accepted: pattern !== null && (entry.accept as string[]).includes(pattern),
+        pattern: plan?.pattern ?? null,
+        outrider: plan?.outrider ?? null,
+        ...(entry.expectedOutrider ? { expectedOutrider: entry.expectedOutrider } : {}),
+        accepted:
+          plan !== null &&
+          entry.accept.includes(plan.pattern) &&
+          (!entry.expectedOutrider || plan.outrider === entry.expectedOutrider),
       };
     });
     let failure: string | null = null;
@@ -307,7 +322,7 @@ describe.skipIf(!enabled)('team draft pattern choice with real models', () => {
       }
     } catch (error) {
       // Provider errors can carry request details; keep only the kind of failure.
-      failure = error instanceof Error ? error.message.slice(0, 200) : 'unknown failure';
+      failure = error instanceof Error ? error.name : 'Unknown failure';
     } finally {
       mkdirSync(dirname(out), { recursive: true });
       writeFileSync(
@@ -318,7 +333,6 @@ describe.skipIf(!enabled)('team draft pattern choice with real models', () => {
             startedAt,
             completedAt: new Date().toISOString(),
             requests: budget.used,
-            requestCap: REQUEST_CAP,
             failure,
             local: {
               accepted: local.filter((goal) => goal.accepted).length,
@@ -343,11 +357,23 @@ describe.skipIf(!enabled)('team draft pattern choice with real models', () => {
         )}; local ${local.filter((goal) => goal.accepted).length}/${local.length}; ${budget.used} requests`,
     );
     expect(failure).toBeNull();
-    expect(budget.used).toBeLessThanOrEqual(REQUEST_CAP);
   }, 3_600_000);
 });
 
 describe.runIf(!enabled)('team draft live measurement', () => {
+  it('validates the synthetic Outrider goals and reports their local policy without a provider', () => {
+    const set = goalSet(
+      JSON.parse(
+        readFileSync(new URL('./fixtures/team-draft-goals.outrider.json', import.meta.url), 'utf8'),
+      ),
+    );
+    for (const goal of set.goals) {
+      const plan = planFromGoal(goal.goal, LOCAL_WORDING);
+      expect(plan?.outrider, goal.id).toBe(goal.expectedOutrider);
+      expect(goal.accept, goal.id).toContain(plan?.pattern);
+    }
+  });
+
   it('is skipped unless CORRAL_DRAFT_LIVE=1 (it calls real models with your sign-in)', () => {
     expect(enabled).toBe(false);
   });

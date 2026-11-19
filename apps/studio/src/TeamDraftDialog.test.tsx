@@ -265,6 +265,50 @@ describe('the plan editor’s patterns', () => {
     expect(fixture.navigate).toHaveBeenCalledOnce();
   });
 
+  it('asks once when review policy is ambiguous and does not save an unavailable required policy', async () => {
+    await mount(ko as Messages, 'ko');
+    await type(field<HTMLTextAreaElement>(ko.TeamDraft.goalLabel), '원고를 리뷰 후 제출');
+    await press(button(ko.TeamDraft.suggest));
+    expect(document.body.textContent).toContain(ko.TeamDraft.reviewQuestion);
+    expect(button(ko.TeamDraft.open).disabled).toBe(true);
+    await press(button(ko.TeamDraft.reviewRequired));
+    expect(document.body.textContent).toContain(ko.TeamDraft.requiredUnavailable);
+    expect(button(ko.TeamDraft.open).disabled).toBe(true);
+    expect(fixture.saved).toHaveLength(0);
+  });
+
+  it.each(['local', 'model'] as const)(
+    'saves requested artifact review from the %s proposal',
+    async (method) => {
+      const goal =
+        'Let the writer ask for manuscript review when needed and revise it before submitting.';
+      fixture.draftTeam.mockResolvedValue({
+        plan: {
+          name: 'Manuscripts',
+          pattern: 'single',
+          brief: goal,
+          criteria: ['The manuscript includes the approved changes.'],
+          roles: [{ slot: 'worker', name: 'Writer', duty: 'Revise and submit the manuscript.' }],
+          finalApproval: false,
+          outrider: 'artifact_review',
+        },
+        model: { provider: 'openai', modelId: 'gpt-test' },
+      });
+      await mount();
+      await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), goal);
+      await press(button(method === 'local' ? en.TeamDraft.suggest : en.TeamDraft.ask));
+      expect(document.body.textContent).toContain(en.TeamDraft.artifactAdvice);
+      await press(button(en.TeamDraft.open));
+      const definition = fixture.saved[0]?.definition;
+      expect(definition?.sharedOutrider).toMatchObject({
+        targets: { kind: 'all' },
+        artifactReview: true,
+      });
+      expect(definition?.nodes.map((node) => node.type)).toEqual(['agent', 'output']);
+      expect(compileDefinition(definition).ok).toBe(true);
+    },
+  );
+
   it('choosing each pattern shows its roles and criteria and keeps the name and brief', async () => {
     await mount();
     await type(field<HTMLTextAreaElement>(en.TeamDraft.goalLabel), 'Write a launch note');

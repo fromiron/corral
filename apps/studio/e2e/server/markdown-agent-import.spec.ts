@@ -2,6 +2,7 @@ import type { Page } from '@playwright/test';
 import {
   chooseModel,
   expectTeamSaved,
+  newTeam,
   openLibraryTeams,
   openTestRun,
   teamCanvas,
@@ -22,7 +23,7 @@ test('reviewed Markdown agent import survives save/reload and is one undoable ed
   test.setTimeout(60000);
   await corral.open('/');
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
+  await newTeam(page);
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
   // The agent is still selected, so the output is placed after it and connected.
@@ -194,7 +195,7 @@ test('Markdown Edit imports a reviewed Hashline role with parent file permission
 }) => {
   await corral.open('/');
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
+  await newTeam(page);
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Can change files/ }).check();
   await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
@@ -261,7 +262,7 @@ test('Bash import inherits a verified local parent work style without trusting s
     if (!response.ok) throw new Error(`Local work style setup failed: ${response.status}`);
   });
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New Corral', exact: true }).click();
+  await newTeam(page);
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   await page.getByRole('switch', { name: /Run shell commands/ }).check();
   await page.getByRole('combobox', { name: 'Harnesses', exact: true }).click();

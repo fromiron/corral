@@ -68,9 +68,13 @@ export interface TeamLabels {
   loop: string;
   decision: string;
   output: string;
+  outriderPrinciples?: string;
   /** The Join where the parallel patterns' branches meet. */
   join?: string;
 }
+
+const DEFAULT_OUTRIDER_PRINCIPLES =
+  'Check the evidence against the requested result and suggest concrete corrections.';
 
 const ENGLISH_LABELS: TeamLabels = {
   loop: 'Review loop',
@@ -202,7 +206,7 @@ function patternParts(
  * its name and brief stay. `keepCriteria` keeps criteria the person wrote by hand.
  */
 export function planWithPattern(
-  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria'>,
+  plan: Pick<TeamPlan, 'name' | 'brief' | 'criteria' | 'outrider'>,
   pattern: TeamPattern,
   wording: TeamWording,
   { keepCriteria = false }: { keepCriteria?: boolean } = {},
@@ -212,17 +216,56 @@ export function planWithPattern(
     name: plan.name,
     pattern,
     brief: plan.brief,
+    ...(plan.outrider ? { outrider: plan.outrider } : {}),
     ...parts,
     criteria: keepCriteria ? [...plan.criteria] : parts.criteria,
   };
+}
+
+/** Read explicit advice/review intent before matching the work itself to a pattern. */
+function outriderFromGoal(goal: string): TeamPlan['outrider'] {
+  const review = /\b(review|feedback|critique|pass)\b|검토|리뷰|피드백|수정 의견|통과/i.test(goal);
+  const request =
+    /\b(on request|when needed|if needed|as needed|ask for|request a|request review|can ask)\b|필요할 때|요청할 수|요청할 때|원할 때|물어볼 수|물어보게|부탁할 수/i.test(
+      goal,
+    );
+  const mustPass =
+    /\b(must pass|must be approved by (?:a|the) review|only (?:after|if).{0,32}(?:review|pass)|require.{0,18}review.{0,18}pass)\b|반드시.{0,20}통과|통과해야.{0,15}제출|통과한 뒤에만/i.test(
+      goal,
+    );
+  if (review && mustPass) return 'required_review';
+  if (review && request) return 'artifact_review';
+  if (
+    /\b(review (?:it )?(?:before (?:every )?(?:submitting|submission)|then submit)|submit after review)\b|(?:검토|리뷰)(?:한)? 후 제출/i.test(
+      goal,
+    )
+  )
+    return 'clarify_review';
+  if (
+    request &&
+    /\b(experts?|advice|advisors?|consult\w*|outrider)\b|전문가|자문|아웃라이더|Outrider|조언/i.test(
+      goal,
+    )
+  )
+    return 'consultation';
+  return undefined;
 }
 
 /** The local suggestion: no model call. Null for an empty goal. */
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
   const brief = goal.trim();
   if (!brief) return null;
+  const outrider = outriderFromGoal(brief);
+  const template = wording.templates ? templatePatternFromGoal(brief) : null;
+  // An optional review request alone does not add a sequential review to a writing task.
+  const selfReview =
+    /\b(?:worker|writer|author).{0,34}(?:revise|edit|correct).{0,28}(?:submit|deliver)\b|(?:작업자|작성자).{0,24}직접.{0,18}(?:고쳐|수정).{0,14}제출/i.test(
+      brief,
+    );
   const pattern: TeamPattern =
-    (wording.templates ? templatePatternFromGoal(brief) : null) ?? basePatternFromGoal(brief);
+    (outrider || selfReview) && !template && !isSecurityReview(brief)
+      ? 'single'
+      : (template ?? basePatternFromGoal(brief));
   const task =
     pattern === 'research_write_review' && isSecurityReview(brief)
       ? wording.securityReview
@@ -230,6 +273,10 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
   const firstLine = brief.split('\n')[0]?.replace(/\s+/g, ' ') ?? brief;
   const firstSentence = firstLine.split(/[.!?](?:\s|$)/)[0] || firstLine;
   const parts = patternParts(pattern, wording);
+  const worker =
+    pattern === 'single' && (selfReview || outrider === 'artifact_review') && WRITING.test(brief)
+      ? wording.roles.writer
+      : undefined;
   return {
     name: task?.name ?? cut(firstSentence, SUGGESTED_NAME_LENGTH),
     pattern,
@@ -237,10 +284,12 @@ export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | nul
     criteria: (task ? Object.values(task.criteria) : undefined) ?? parts.criteria,
     roles: parts.roles.map((role) => ({
       ...role,
+      ...(role.slot === 'worker' && worker ? worker : {}),
       ...(task && role.slot in task.roles ? task.roles[role.slot as keyof typeof task.roles] : {}),
     })),
     ...(parts.reviewRounds === undefined ? {} : { reviewRounds: parts.reviewRounds }),
     finalApproval: parts.finalApproval,
+    ...(outrider ? { outrider } : {}),
   };
 }
 
@@ -293,8 +342,20 @@ export function draftFromPlan(
   corralId: string,
   labels: TeamLabels = ENGLISH_LABELS,
 ): TeamDraft {
+  const sharedOutrider =
+    plan.outrider === 'consultation' || plan.outrider === 'artifact_review'
+      ? {
+          modelProfile: 'model-a',
+          principles: labels.outriderPrinciples ?? DEFAULT_OUTRIDER_PRINCIPLES,
+          targets: { kind: 'all' as const },
+          ...(plan.outrider === 'artifact_review' ? { artifactReview: true as const } : {}),
+        }
+      : undefined;
+  const consultation = sharedOutrider ? { sharedOutrider } : {};
   if (isTemplatePattern(plan.pattern))
-    return { definition: templateDraft(plan, plan.pattern, corralId, labels) };
+    return {
+      definition: { ...templateDraft(plan, plan.pattern, corralId, labels), ...consultation },
+    };
   const role = (slot: BaseSlot): CorralDefinition['roles'][number] => {
     const planned = plan.roles.find((r) => r.slot === slot);
     if (!planned) throw new Error(`the plan has no ${slot}`);
@@ -310,6 +371,7 @@ export function draftFromPlan(
   };
   const label = (slot: BaseSlot) => plan.roles.find((r) => r.slot === slot)?.name ?? slot;
   const base = {
+    ...consultation,
     schemaVersion: '0.1' as const,
     id: corralId,
     name: plan.name,

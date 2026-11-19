@@ -71,6 +71,10 @@ export const TeamPlan = z
     reviewRounds: z.int().min(1).max(3).optional(),
     /** The final output waits for the person's approval. No pattern turns this on by itself. */
     finalApproval: z.boolean(),
+    /** Requested shared consultation; unresolved policies are shown before a draft can be saved. */
+    outrider: z
+      .enum(['consultation', 'artifact_review', 'clarify_review', 'required_review'])
+      .optional(),
   })
   .superRefine((plan, ctx) => {
     const wanted: readonly string[] = TEAM_SLOTS[plan.pattern];

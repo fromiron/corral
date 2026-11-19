@@ -548,6 +548,13 @@ export function Palette({
           id === 'blank' ? t('newBlank') : t('newFromTemplate', { name: t(`templates.${id}`) }),
         group: t('groups.create'),
         run: async () => {
+          if (id === 'blank') {
+            await navigate({
+              to: '/library/templates',
+              search: { project: currentProject(), blank: true },
+            });
+            return;
+          }
           const created = await createFromTemplate(
             services.repository,
             id,

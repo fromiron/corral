@@ -1,5 +1,5 @@
 import { type CorralSummary, isReadOnlyTeam, type ProjectSummary } from '@corral/core';
-import { emptyDraft, importDefinition } from '@corral/react';
+import { importDefinition } from '@corral/react';
 import {
   Badge,
   Button,
@@ -8,6 +8,12 @@ import {
   CardContent,
   CardFooter,
   CardHeader,
+  Dialog,
+  DialogFooter,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
   EmptyState,
   fontWeights,
   KitCardTitle,
@@ -15,7 +21,6 @@ import {
   MenuItem,
   MenuPopup,
   MenuTrigger,
-  SectionLabel,
   Table,
   TableBody,
   TableCell,
@@ -75,7 +80,7 @@ export function LibraryTeams({
   corrals: CorralSummary[];
   onChanged: () => void;
   /** Switches the library to its Templates tab. */
-  onBrowseTemplates: () => void;
+  onBrowseTemplates: (draft?: boolean) => void;
 }) {
   const t = useTranslations('Workspace');
   const tl = useTranslations('Library');
@@ -85,6 +90,7 @@ export function LibraryTeams({
   const navigate = useNavigate();
   const ago = useSessionAge();
   const importInput = useRef<HTMLInputElement>(null);
+  const [creating, setCreating] = useState<'choose' | 'blank' | null>(null);
   const [selection, select] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -106,21 +112,6 @@ export function LibraryTeams({
       setBusy(false);
     }
   };
-
-  const openNew = () =>
-    work(async () => {
-      const draft = emptyDraft('untitled', t('newName'));
-      const result = await repository.save({
-        definition: draft.definition,
-        expectedDefinitionRevision: null,
-        projectId,
-      });
-      if (!result.ok) return [result.message];
-      await navigate({
-        to: '/corrals/$corralId/edit',
-        params: { corralId: result.record.corralId },
-      });
-    });
 
   const onImport = (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -215,6 +206,42 @@ export function LibraryTeams({
   );
   return (
     <div className="flex flex-col gap-6">
+      {creating === 'choose' ? (
+        <Dialog open onOpenChange={(open) => !open && setCreating(null)}>
+          <DialogPopup>
+            <DialogHeader>
+              <DialogTitle>{t('new')}</DialogTitle>
+            </DialogHeader>
+            <DialogPanel className="grid gap-2">
+              <Button variant="secondary" onClick={() => onBrowseTemplates(true)}>
+                {t('draftFromGoal')}
+              </Button>
+              <Button variant="secondary" onClick={() => onBrowseTemplates()}>
+                {t('chooseTemplate')}
+              </Button>
+              <Button variant="secondary" onClick={() => setCreating('blank')}>
+                {t('chooseBlank')}
+              </Button>
+            </DialogPanel>
+            <DialogFooter>
+              <Button variant="tertiary" onClick={() => setCreating(null)}>
+                {t('cancel')}
+              </Button>
+            </DialogFooter>
+          </DialogPopup>
+        </Dialog>
+      ) : null}
+      {creating === 'blank' ? (
+        <TemplateCopyDialog
+          template="blank"
+          projectId={projectId}
+          corrals={corrals}
+          onClose={() => setCreating(null)}
+          onSaved={async (corralId) => {
+            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
+          }}
+        />
+      ) : null}
       {teams.length ? (
         // The list's actions; the Teams tab above already names the list and counts it.
         <div className="flex min-h-9 flex-wrap items-center justify-end gap-2">
@@ -227,7 +254,7 @@ export function LibraryTeams({
           {archived ? null : (
             <>
               {importButton}
-              <Button size="compact" disabled={busy} onClick={() => void openNew()}>
+              <Button size="compact" disabled={busy} onClick={() => setCreating('choose')}>
                 {t('new')}
               </Button>
             </>
@@ -247,10 +274,10 @@ export function LibraryTeams({
           </div>
           {archived ? null : (
             <div className="flex flex-wrap justify-center gap-2">
-              <Button disabled={busy} onClick={() => void openNew()}>
+              <Button disabled={busy} onClick={() => setCreating('choose')}>
                 {t('new')}
               </Button>
-              <Button variant="tertiary" onClick={onBrowseTemplates}>
+              <Button variant="tertiary" onClick={() => onBrowseTemplates()}>
                 {tl('teams.browseTemplates')}
               </Button>
               {importButton}
@@ -413,12 +440,14 @@ export function LibraryTemplates({
   project,
   corrals,
   drafting,
+  blank,
   onDraftClosed,
 }: {
   projectId: string;
   project: ProjectSummary | undefined;
   corrals: CorralSummary[];
   drafting: boolean;
+  blank: boolean;
   onDraftClosed: () => void;
 }) {
   const t = useTranslations('Workspace');
@@ -427,6 +456,7 @@ export function LibraryTemplates({
   const text = useTemplateText();
   const navigate = useNavigate();
   const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
+  const activeTemplate = blank ? 'blank' : copyTemplate;
   // Each card shows the team its template makes: the roles in order, and whether any may
   // change files or run commands.
   const templates = useMemo(
@@ -509,12 +539,12 @@ export function LibraryTemplates({
           ))}
         </div>
       </div>
-      {copyTemplate ? (
+      {activeTemplate ? (
         <TemplateCopyDialog
-          template={copyTemplate}
+          template={activeTemplate}
           projectId={projectId}
           corrals={corrals}
-          onClose={() => setCopyTemplate(null)}
+          onClose={blank ? onDraftClosed : () => setCopyTemplate(null)}
           onSaved={async (corralId) => {
             await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
           }}

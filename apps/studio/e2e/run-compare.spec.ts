@@ -13,8 +13,8 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await expect(page).toHaveURL(/\/edit$/);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {
     const settings = editorSettings(page);
-    if (!(await settings.getByRole('heading', { name: 'Limits and criteria' }).isVisible()))
-      await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+    if (!(await settings.getByRole('heading', { name: 'Team settings' }).isVisible()))
+      await page.getByRole('button', { name: 'Team settings', exact: true }).click();
     await settings.getByRole('textbox', { name: 'Brief', exact: true }).fill(brief);
     await startTestRun(page);
     await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });

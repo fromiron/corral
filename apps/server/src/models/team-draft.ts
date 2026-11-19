@@ -46,6 +46,8 @@ Fields (use exactly these, no others):
 - roles: one entry for each role of the pattern, no more and no fewer: {"slot": role, "name": a short job title (at most ${TEAM_LIMITS.roleName} characters), "duty": what this role does, in one or two sentences (at most ${TEAM_LIMITS.duty} characters)}
 - reviewRounds: 1 to 3, only for ${quoted(REVIEW_LOOP_PATTERNS)}; leave it out for the other patterns
 - finalApproval: true or false; false unless the goal itself asks that a person approve the result before it is final
+- outrider: optional. Use "consultation" when workers should ask a shared expert for advice when needed, and "artifact_review" when they should ask for feedback on a draft and then revise and submit it themselves. Use "clarify_review" when the goal asks for review before submission and does not say whether passing is necessary. Use "required_review" only when the goal explicitly says passing review is required to submit. Omit outrider if the goal makes none of these requests.
+- Describe who produces and submits each result in the role's duty. An on-request Outrider is shared advice, not one of the roles in the pattern. Do not add a sequential reviewer or review loop for that advice alone. A worker who revises and submits their own result needs no separate reviewer.
 
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}

@@ -33,7 +33,7 @@ test('a narrow editor opens on the whole team, and a rename in its settings save
     .toBe(true);
   const save = page.getByRole('button', { name: 'Save', exact: true });
   await expect(save).toBeDisabled();
-  await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   const settings = page.getByRole('complementary', { name: 'Settings' });
   await settings.getByRole('textbox', { name: 'Name', exact: true }).fill('Narrow team');
   await expect(save).toBeEnabled();

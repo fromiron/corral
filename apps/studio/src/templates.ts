@@ -268,7 +268,13 @@ export async function createFromTemplate(
   text: TemplateText,
   projectId?: string,
   copyName?: string,
+  input?: CorralDefinition['input'],
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
+  if (
+    id === 'blank' &&
+    (!input?.brief.trim() || !input.criteria.some((criterion) => criterion.trim()))
+  )
+    return { ok: false, message: 'Enter a request and completion criterion.' };
   const suffix = globalThis.crypto.randomUUID().slice(0, 8);
   const draft = {
     definition: templateDefinition(id, `${id.replaceAll('-', '_')}_${suffix}`, text),
@@ -284,6 +290,7 @@ export async function createFromTemplate(
     definition: {
       ...draft.definition,
       name: uniqueName,
+      ...(id === 'blank' && input ? { input } : {}),
     },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),

@@ -157,6 +157,20 @@ export function TeamGraphCanvas({
   wheelZoom = 'always',
 }: TeamGraphCanvasProps) {
   const t = useTranslations('TeamEditor');
+  const firstNode = definition.nodes[0];
+  const firstRole =
+    firstNode?.type === 'agent'
+      ? definition.roles.find((role) => role.id === firstNode.roleId)
+      : undefined;
+  const firstWorker =
+    definition.nodes.length === 1 &&
+    firstNode?.type === 'agent' &&
+    firstNode.invocation === 'scheduled' &&
+    firstNode.id === definition.entryNodeId &&
+    firstRole &&
+    firstRole.outputContract !== 'review'
+      ? firstNode
+      : null;
   const portName = useTranslations('Canvas.ports');
   const codeText = useTranslations('Validation.codes');
   const size = useSize();
@@ -1039,10 +1053,32 @@ export function TeamGraphCanvas({
           </Button>
         </div>
       ) : null}
-      {layout.items.size === 0 ? (
-        <div className="absolute inset-0 grid place-items-center">
-          <Button variant="secondary" onClick={() => onRequestAdd({ kind: 'empty' })}>
-            <Plus /> {t('addFirst')}
+      {definition.nodes.length === 0 ? (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="pointer-events-auto flex flex-wrap justify-center gap-2">
+            <Button onClick={() => onPlace('agent', { kind: 'empty' })}>
+              <Plus /> {t('addFirstAgent')}
+            </Button>
+            <Button variant="secondary" onClick={() => onRequestAdd({ kind: 'empty' })}>
+              {t('addOtherStep')}
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      {firstWorker ? (
+        <div className="pointer-events-none absolute inset-x-0 bottom-4 z-20 flex flex-wrap justify-center gap-2">
+          <Button
+            className="pointer-events-auto"
+            onClick={() => onPlace('output', { kind: 'after', nodeId: firstWorker.id })}
+          >
+            {t('completeFirstAgent')}
+          </Button>
+          <Button
+            className="pointer-events-auto"
+            variant="secondary"
+            onClick={() => onRequestAdd({ kind: 'after', nodeId: firstWorker.id })}
+          >
+            {t('addOtherStep')}
           </Button>
         </div>
       ) : null}

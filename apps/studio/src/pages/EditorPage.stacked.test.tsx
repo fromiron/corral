@@ -475,6 +475,11 @@ describe('test run validation and recovery in the editor', () => {
     await click(named(document, m.testRun));
     expect(document.body.textContent).toContain('Checking referenced teams');
     expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
+    await click(named(testRun(), 'Edit request'));
+    expect(shown(sheet())).toBe(true);
+    expect(sheet().querySelector('[data-team-brief]')).toBe(document.activeElement);
+    await click(named(document, m.testRun));
+    expect(named(testRun(), 'Run')).toHaveProperty('disabled', true);
     await act(async () => release(inner.definition));
     await click(named(document, 'Retry'));
     expect(read.mock.calls).toEqual([

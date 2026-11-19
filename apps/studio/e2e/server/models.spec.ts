@@ -5,6 +5,7 @@ import type { Locator, Page } from '@playwright/test';
 import {
   addAgentAndOutput,
   modelSettingsTab,
+  newTeam,
   openLibrary,
   openLibraryTeams,
   openTestRun,
@@ -113,7 +114,7 @@ test.use({ live: true });
 
 async function agentToOutput(page: Page) {
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await newTeam(page);
   await addAgentAndOutput(page);
   await openTestRun(page);
 }

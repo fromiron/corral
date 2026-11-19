@@ -57,7 +57,7 @@ test('saved names refresh the breadcrumb and call controls fit two independent t
     await page.getByRole('button', { name: 'Save copy and edit' }).click();
     await expect(page).toHaveURL(/\/edit$/);
     const name = `Saved research ${team}`;
-    await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+    await page.getByRole('button', { name: 'Team settings', exact: true }).click();
     await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
     await page.getByRole('button', { name: 'Save', exact: true }).click();
     await expect(page.getByRole('navigation', { name: 'Current location' })).toContainText(name);

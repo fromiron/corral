@@ -601,6 +601,10 @@ function Editor({
                 startDisabled={saving || openingSession}
                 projectId={record.projectId}
                 onStarted={() => setRunOpen(true)}
+                onEditBrief={() => {
+                  setRunOpen(false);
+                  editorNavigation.current?.editBrief();
+                }}
                 beforeStart={beforeStart}
                 liveAvailable={live}
                 guide={guide}
@@ -667,8 +671,10 @@ function RunSide({
   liveAvailable,
   guide,
   initialStartFrom,
+  onEditBrief,
 }: {
   projectId: string;
+  onEditBrief: () => void;
   startDisabled: boolean;
   validation: DraftCompilation | null;
   onOpenConversation: () => Promise<void>;
@@ -724,6 +730,15 @@ function RunSide({
         >
           {n('prepareExecution')}
         </summary>
+        <div className="mb-3 flex flex-wrap items-start justify-between gap-2">
+          <div className="min-w-0 grow basis-56">
+            <p className="text-caption text-muted-foreground">{t('runBrief')}</p>
+            <p className="whitespace-pre-wrap break-words text-body">{definition.input.brief}</p>
+          </div>
+          <Button variant="tertiary" size="compact" onClick={onEditBrief}>
+            {t('editRunBrief')}
+          </Button>
+        </div>
         <RunRoleOverrides
           roles={roles}
           profiles={profiles}

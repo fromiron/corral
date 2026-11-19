@@ -99,6 +99,7 @@ export interface Diagnostic {
   severity: 'error' | 'warning';
   /** English fallback; the UI looks up `code` in its message catalog. */
   message: string;
+  schemaPath?: string;
   nodeId?: string;
   edgeId?: string;
   linkId?: string;
@@ -591,6 +592,7 @@ function schemaDiagnostics(
       code: 'SCHEMA_INVALID',
       severity: 'error',
       message: plainMessage(issue) ?? `${path}: ${issue.message}`,
+      schemaPath: path,
       ...at,
     };
   });

@@ -442,3 +442,32 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
         );
   });
 });
+
+it('keeps requested artifact advice outside the work sequence', () => {
+  const proposed = planFromGoal(
+    'Let the writer ask for manuscript review when needed and revise it before submitting.',
+    wording,
+  );
+  if (!proposed) throw new Error('expected a plan');
+  expect(proposed.pattern).toBe('single');
+  const { definition } = draftFromPlan(proposed, 'requested_review', labels);
+  expect(definition.sharedOutrider).toMatchObject({
+    targets: { kind: 'all' },
+    artifactReview: true,
+  });
+  expect(compileDefinition(definition).ok).toBe(true);
+  expect(definition.nodes.map((step) => step.type)).toEqual(['agent', 'output']);
+  expect(definition.roles).toHaveLength(1);
+});
+
+it.each([
+  ['작업자가 직접 고쳐 제출', undefined],
+  ['모두가 필요할 때 전문가에게 물어보게 해줘', 'consultation'],
+  ['작성자가 원고 리뷰를 요청할 수 있게', 'artifact_review'],
+  ['리뷰 후 제출', 'clarify_review'],
+  ['매 제출 전 반드시 통과', 'required_review'],
+] as const)('keeps authorship and review policy distinct for %s', (goal, policy) => {
+  const proposal = planFromGoal(goal, wording);
+  expect(proposal?.outrider).toBe(policy);
+  expect(proposal?.pattern).toBe('single');
+});

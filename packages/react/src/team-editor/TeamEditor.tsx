@@ -100,6 +100,7 @@ import { type ReadHarnessAsk, useOutriderTargets } from './useOutriderTargets.ts
 export interface TeamEditorNavigation {
   showProblems(): void;
   showNode(id: string): void;
+  editBrief(): void;
 }
 
 export interface TeamEditorProps {
@@ -613,7 +614,7 @@ export function TeamEditor({
   const scroller = useRef<HTMLDivElement>(null);
   const settingsBox = useRef<HTMLDivElement>(null);
   const revealing = useRef(false);
-  const focusRequested = useRef(false);
+  const focusRequested = useRef<'heading' | 'brief' | null>(null);
   const focusSheet = () => settingsBox.current?.querySelector('h2')?.focus({ preventScroll: true });
   const reveal = () => {
     revealing.current = stacked;
@@ -621,29 +622,36 @@ export function TeamEditor({
   useImperativeHandle(ref, () => ({
     showProblems() {
       if (view === 'problems') focusSheet();
-      else focusRequested.current = true;
+      else focusRequested.current = 'heading';
       reveal();
       setView('problems');
     },
+    editBrief() {
+      focusRequested.current = 'brief';
+      reveal();
+      setView('team');
+      setSelection(NONE);
+    },
     showNode(id) {
-      focusRequested.current = true;
+      focusRequested.current = 'heading';
       reveal();
       select({ nodes: [id], edge: null });
     },
   }));
   useEffect(() => {
-    if (focusRequested.current) {
-      focusRequested.current = false;
-      focusSheet();
-    }
-    if (!revealing.current) return;
-    revealing.current = false;
     const box = settingsBox.current;
-    if (box)
+    if (!box) return;
+    if (focusRequested.current === 'brief')
+      box.querySelector<HTMLTextAreaElement>('[data-team-brief]')?.focus({ preventScroll: true });
+    else if (focusRequested.current === 'heading') focusSheet();
+    focusRequested.current = null;
+    if (revealing.current) {
+      revealing.current = false;
       scroller.current?.scrollTo?.({
         top: box.offsetTop,
         behavior: reduced ? 'instant' : 'smooth',
       });
+    }
   });
   // Both layouts are one tree in one order (outline, palette, canvas, settings) with other
   // classes, so changing layout keeps focus, the canvas view and a field's open undo batch.
@@ -792,6 +800,10 @@ export function TeamEditor({
                 validationStatus={validationStatus}
                 selection={selection}
                 view={view ?? 'selection'}
+                onFixFlow={() => openMenu(placement())}
+                onAddFirstAgent={() =>
+                  apply(placeStep(editor.getState().draft, 'agent', { kind: 'empty' }))
+                }
                 profiles={profiles}
                 imageProfiles={imageProfiles}
                 roleSettings={roleSettings}
