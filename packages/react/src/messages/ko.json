@@ -851,6 +851,8 @@
     "item": "항목 {index}/{total}"
   },
   "Questions": {
+    "reviewRequested": "{version} 리뷰 요청",
+    "reviewUnavailable": "리뷰한 버전의 본문은 더 이상 열 수 없습니다.",
     "consultation": { "open": "답변 대기", "answered": "답변 받음" },
     "heading": "질문",
     "about": "관련 자료",
@@ -1738,6 +1740,7 @@
     "unnamedRun": "실행"
   },
   "Results": {
+    "submittedBy": "제출된 결과 · {author}",
     "noCurrentResult": "현재 열 수 있는 최종 결과가 없습니다.",
     "label": "결과",
     "kind": {
@@ -6024,6 +6027,8 @@
     "problems": "{count, plural, =0 {문제 없음} other {문제 #개}}",
     "teamSettings": "한도 · 기준",
     "sharedOutrider": {
+      "artifactReview": "산출물 리뷰",
+      "onRequest": "요청할 때",
       "add": "공통 Outrider 추가",
       "title": "공통 Outrider",
       "entireSummary": "Outrider · 팀 전체",

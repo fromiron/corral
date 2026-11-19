@@ -27,6 +27,44 @@ const start = {
   askTo: [],
 } satisfies Parameters<typeof systemPrompt>[0];
 
+it('distinguishes a requested artifact review from general questions with attachments', () => {
+  const asker = {
+    ...start,
+    tools: ['ask'],
+    role: { ...start.role, outputContract: 'text' },
+    askTo: [
+      { nodeId: 'expert', label: 'Expert', artifactReview: true as const },
+      { nodeId: 'peer', label: 'Peer' },
+    ],
+  };
+  expect(systemPrompt(asker)).toContain('reviewArtifactVersionId');
+  expect(systemPrompt({ ...asker, askTo: [{ nodeId: 'expert', label: 'Expert' }] })).not.toContain(
+    'reviewArtifactVersionId',
+  );
+  const responder = {
+    ...asker,
+    tools: ['reply'],
+    askTo: [],
+    assignment: {
+      kind: 'question' as const,
+      questionId: 'q1',
+      body: 'Check my draft.',
+      reviewArtifactVersionId: 'v1',
+    },
+    inputs: [
+      { name: 'reference', artifactVersionId: 'background', text: 'Background evidence' },
+      { name: 'reference', artifactVersionId: 'v1', text: 'Requested draft' },
+    ],
+  };
+  expect(userPrompt(responder)).toContain('"reviewArtifactVersionId":"v1"');
+  expect(
+    userPrompt({
+      ...responder,
+      assignment: { kind: 'question', questionId: 'q1', body: 'Check my draft.' },
+    }),
+  ).not.toContain('reviewArtifactVersionId');
+});
+
 it('a marked meeting response is a conversation instead of a work report', () => {
   const input = {
     ...start,

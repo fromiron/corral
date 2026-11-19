@@ -399,6 +399,9 @@ class WorkerExecution {
                   kind: 'question',
                   questionId: this.input.assignment.questionId,
                   body: this.input.assignment.body,
+                  ...(this.input.assignment.reviewArtifactVersionId
+                    ? { reviewArtifactVersionId: this.input.assignment.reviewArtifactVersionId }
+                    : {}),
                 }
               : this.input.assignment.kind === 'advisor'
                 ? { kind: 'advisor', watches: this.input.assignment.watches }

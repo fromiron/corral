@@ -135,6 +135,8 @@ export const DEFAULT_ADVISOR_REVIEW: AdvisorReview = { interval: 3, maxRequestsP
 export const SharedOutrider = z.strictObject({
   modelProfile: AgentRole.shape.modelProfile,
   principles: AgentRole.shape.prompt,
+  /** Enables advisory review of a version explicitly selected by the asker. */
+  artifactReview: z.literal(true).optional(),
   targets: z.discriminatedUnion('kind', [
     z.strictObject({ kind: z.literal('all') }),
     z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),

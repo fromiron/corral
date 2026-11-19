@@ -5548,6 +5548,10 @@
               "type": "boolean",
               "const": true
             },
+            "reviewArtifactVersionId": {
+              "type": "string",
+              "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+            },
             "targetExecutionId": {
               "type": "string",
               "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"

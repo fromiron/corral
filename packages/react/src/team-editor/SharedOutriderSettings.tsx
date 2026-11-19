@@ -9,6 +9,7 @@ import {
   Input,
   KitRadioGroup,
   KitRadioItem,
+  KitSwitch,
   Textarea,
 } from '../design-kit/index.ts';
 import type { EditorStore } from '../editor/store.ts';
@@ -154,6 +155,19 @@ export function SharedOutriderSettings({
           <p className="text-caption text-muted-foreground">{t('noWorkers')}</p>
         )}
       </fieldset>
+      <div className="grid gap-1">
+        <KitSwitch
+          label={t('artifactReview')}
+          checked={value.artifactReview === true}
+          onToggle={() => {
+            const { artifactReview, ...settings } = value;
+            setValue(artifactReview ? settings : { ...settings, artifactReview: true });
+          }}
+        />
+        {value.artifactReview ? (
+          <p className="text-caption text-muted-foreground">{t('onRequest')}</p>
+        ) : null}
+      </div>
       {!valid ? (
         <p role="status" className="text-caption text-muted-foreground">
           {rejected('invalidSharedOutrider')}

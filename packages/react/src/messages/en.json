@@ -851,6 +851,8 @@
     "item": "Item {index} of {total}"
   },
   "Questions": {
+    "reviewRequested": "Requested a review of {version}",
+    "reviewUnavailable": "The reviewed version’s content is no longer available.",
     "consultation": { "open": "Waiting for an answer", "answered": "Answer received" },
     "heading": "Questions",
     "about": "About",
@@ -1738,6 +1740,7 @@
     "unnamedRun": "Run"
   },
   "Results": {
+    "submittedBy": "Submitted result · {author}",
     "noCurrentResult": "No current final result is available.",
     "label": "Results",
     "kind": {
@@ -6024,6 +6027,8 @@
     "problems": "{count, plural, =0 {No problems} one {# problem} other {# problems}}",
     "teamSettings": "Limits and criteria",
     "sharedOutrider": {
+      "artifactReview": "Artifact review",
+      "onRequest": "On request",
       "add": "Add shared Outrider",
       "title": "Shared Outrider",
       "entireSummary": "Outrider · Entire team",

@@ -41,6 +41,16 @@ const withAdvisor = (node: Record<string, unknown>) => ({
 });
 
 describe('shared Outrider settings', () => {
+  it('preserves the on-request artifact review opt-in without enabling it on existing teams', () => {
+    const settings = { modelProfile: 'model-a', principles: 'Advise.', targets: { kind: 'all' } };
+    const enabled = { ...minimal, sharedOutrider: { ...settings, artifactReview: true } };
+    expect(CorralDefinitionDraft.parse(enabled)).toEqual(enabled);
+    expect(CorralDefinition.parse(enabled)).toEqual(enabled);
+    expect(definitionJson(enabled)).toBe(true);
+    expect(
+      CorralDefinition.parse({ ...minimal, sharedOutrider: settings }).sharedOutrider,
+    ).not.toHaveProperty('artifactReview');
+  });
   it.each([
     { kind: 'all' },
     { kind: 'selected', nodeIds: ['writer', 'subteam.writer'] },

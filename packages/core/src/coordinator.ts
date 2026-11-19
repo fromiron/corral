@@ -1914,6 +1914,9 @@ export class Coordinator {
     const sharedOutriderNodeIds =
       planned.sharedOutriderNodeIds ??
       (recovery?.source ?? branch?.source)?.snapshot.sharedOutriderNodeIds;
+    const artifactReviewNodeIds =
+      planned.artifactReviewNodeIds ??
+      (recovery?.source ?? branch?.source)?.snapshot.artifactReviewNodeIds;
     for (const [roleId, override] of Object.entries(request.roleOverrides ?? {})) {
       const role = planned.definition.roles.find((role) => role.id === roleId);
       if (!role)
@@ -2218,6 +2221,7 @@ export class Coordinator {
     }
     const snapshot: RunSnapshot = {
       ...(sharedOutriderNodeIds?.length ? { sharedOutriderNodeIds } : {}),
+      ...(artifactReviewNodeIds?.length ? { artifactReviewNodeIds } : {}),
       ...(branch
         ? {
             branchedFrom: {
@@ -5855,7 +5859,14 @@ export class Coordinator {
       capabilities: {
         delegateTo: callables.delegate.map(label),
         askTo: [
-          ...questions.filter((id) => !mayAskParent || id !== parent.nodeId).map(label),
+          ...questions
+            .filter((id) => !mayAskParent || id !== parent.nodeId)
+            .map((id) => ({
+              ...label(id),
+              ...(run.snapshot.artifactReviewNodeIds?.includes(id)
+                ? { artifactReview: true as const }
+                : {}),
+            })),
           ...(mayAskParent ? [{ ...label(parent.nodeId), delivery: 'parent' as const }] : []),
         ],
         ...(callables.replyToChildren ? { replyToChildren: true } : {}),
@@ -10759,9 +10770,13 @@ export class Coordinator {
     const targetNodeId = proposal.args.targetNodeId as string;
     const parent = this.parentQuestionTarget(run, input, targetNodeId);
     const body = proposal.args.body as string;
-    const artifactRefs = (
+    const reviewArtifactVersionId = proposal.args.reviewArtifactVersionId as string | undefined;
+    const attached = (
       Array.isArray(proposal.args.artifactRefs) ? proposal.args.artifactRefs : []
     ).filter((id): id is string => typeof id === 'string' && Boolean(run.projection.artifacts[id]));
+    const artifactRefs = reviewArtifactVersionId
+      ? [reviewArtifactVersionId, ...attached.filter((id) => id !== reviewArtifactVersionId)]
+      : attached;
     const questionId = this.ids.next('question');
     const timeoutMs = run.limits.questionTimeoutMs;
     const deadline = new Date(Date.parse(this.clock.nowIso()) + timeoutMs).toISOString();
@@ -10772,7 +10787,13 @@ export class Coordinator {
           iterationId: run.projection.executions[executionId]?.iterationId ?? null,
           parentExecutionId: executionId,
           depth: input.depth + 1,
-          assignment: { kind: 'question', questionId, body, askerExecutionId: executionId },
+          assignment: {
+            kind: 'question',
+            questionId,
+            body,
+            askerExecutionId: executionId,
+            ...(reviewArtifactVersionId ? { reviewArtifactVersionId } : {}),
+          },
           given: [
             { name: 'question', kind: 'run_input', artifactVersionId: null, text: body },
             ...artifactRefs.map((id) => ({
@@ -10813,6 +10834,7 @@ export class Coordinator {
           ...(run.snapshot.sharedOutriderNodeIds?.includes(targetNodeId)
             ? { sharedOutrider: true as const }
             : {}),
+          ...(reviewArtifactVersionId ? { reviewArtifactVersionId } : {}),
           senderExecutionId: executionId,
           targetRoleId: role?.type === 'agent' ? role.roleId : targetNodeId,
           targetNodeId,

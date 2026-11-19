@@ -648,6 +648,7 @@ function RunSide({
       <RunView
         session={session}
         onSteer={setChosen}
+        onOpenArtifact={setViewing}
         onStartFrom={chooseStartFrom}
         prices={prices}
       />

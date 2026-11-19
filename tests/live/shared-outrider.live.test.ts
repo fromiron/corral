@@ -16,8 +16,12 @@ import { ROOT } from '../../tools/release/candidate.ts';
 
 // Manual provider run. Credentials stay in the application's store. The temporary workspace
 // contains a synthetic writing task and explicitly selected model profiles only.
-it.skipIf(process.env.CORRAL_OUTRIDER_LIVE !== '1')(
-  'two actual workers consult the same Outrider and the writer submits the result',
+const mode = process.env.CORRAL_OUTRIDER_LIVE;
+const review = mode === 'review';
+it.skipIf(mode !== '1' && !review)(
+  review
+    ? 'a live writer requests a review of V1 and submits its own V2'
+    : 'two actual workers consult the same Outrider and the writer submits the result',
   async () => {
     const workerId = process.env.CORRAL_WORKER_PROFILE ?? 'deepseek-hive';
     const advisorId = process.env.CORRAL_ADVISOR_PROFILE ?? 'zai-org-glm-5.3-flash';
@@ -78,7 +82,14 @@ it.skipIf(process.env.CORRAL_OUTRIDER_LIVE !== '1')(
         role.modelProfile = workerId;
         role.prompt = `You are the ${role.name}. First call ask on the available Outrider for one short suggestion about your own part of the invitation. After receiving the reply, write your own short result with write_artifact, then submit that version using submit_result.`;
       }
+      if (review) {
+        const writer = definition.roles.find((role) => role.id === 'writer_role');
+        if (!writer) throw new Error('Expected a writer in the test fixture');
+        writer.prompt =
+          'You write the final invitation. First write your own draft using write_artifact. Then call ask on the shared Outrider using reviewArtifactVersionId set to the exact V1 artifactVersionId you just created. Ask what to improve. After receiving the review, revise the same artifact using write_artifact, then call submit_result with just the new V2 artifactVersionId. Never submit the review as your own work.';
+      }
       definition.sharedOutrider = {
+        ...(review ? { artifactReview: true as const } : {}),
         modelProfile: advisorId,
         principles:
           'Give one relevant suggestion in a single sentence. Respond to the open question using reply with its questionId.',
@@ -129,11 +140,18 @@ it.skipIf(process.env.CORRAL_OUTRIDER_LIVE !== '1')(
         questions: questions.map((q) => ({
           sender: final.executions[q.senderExecutionId]?.nodeId,
           recipient: q.targetNodeId,
+          reviewedVersion: q.reviewArtifactVersionId ?? null,
+          opinionReceived: Boolean(q.answer?.body.trim()),
           status: q.status,
         })),
         calls: calls.map((c) => ({ profile: c.profile, certainty: c.certainty, usage: c.usage })),
         usage: usageTotals(final),
         finals,
+        finalVersions: final.output?.artifactVersionIds.map((id) => ({
+          id,
+          version: final.artifacts[id]?.version,
+          parent: final.artifacts[id]?.parentVersionId,
+        })),
       };
       const out = join(ROOT, 'test-results', 'live');
       mkdirSync(out, { recursive: true });
@@ -155,6 +173,20 @@ it.skipIf(process.env.CORRAL_OUTRIDER_LIVE !== '1')(
       expect(questions.every((q) => q.status === 'answered' && q.answer?.body.trim())).toBe(true);
       expect(new Set(questions.map((q) => q.targetNodeId)).size).toBe(1);
       expect(finals).toEqual(['writer']);
+      if (review) {
+        const requests = questions.filter((q) => q.reviewArtifactVersionId);
+        expect(requests).toHaveLength(1);
+        const reviewed = requests[0]?.reviewArtifactVersionId;
+        const submitted = final.output?.artifactVersionIds[0];
+        if (!reviewed || !submitted) throw new Error('Missing review or submitted version');
+        expect(requests[0]?.artifactRefs).toContain(reviewed);
+        expect(final.artifacts[reviewed]?.version).toBe(1);
+        expect(final.artifacts[submitted]?.version).toBe(2);
+        expect(final.artifacts[submitted]?.parentVersionId).toBe(reviewed);
+        expect(await new InProcessTransport(coordinator).getArtifactText(id, submitted)).toMatch(
+          /picnic/i,
+        );
+      }
       expect(new Set(calls.map((c) => c.profile))).toEqual(new Set([workerId, advisorId]));
       expect(calls.every((c) => c.finished && c.certainty === 'reported')).toBe(true);
     } finally {

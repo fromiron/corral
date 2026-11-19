@@ -117,6 +117,23 @@ const plan = (doc: CorralDefinition, teams: Record<string, CorralDefinition>) =>
 const node = (doc: CorralDefinition, id: string) => doc.nodes.find((n) => n.id === id);
 
 describe('reference teams: expansion', () => {
+  it('pins on-request artifact review only to the participating shared responder after reference expansion', () => {
+    const embedded = saved();
+    const policy = {
+      modelProfile: 'model-a',
+      principles: 'Advise.',
+      targets: { kind: 'all' as const },
+    };
+    embedded.sharedOutrider = { ...policy, artifactReview: true };
+    const owner = { ...outer(), sharedOutrider: policy };
+    const result = plan(owner, { y: embedded });
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    const enabled = result.sharedOutriderNodeIds?.filter((id) => id.startsWith('T.'));
+    expect(enabled).toHaveLength(1);
+    expect(result.artifactReviewNodeIds).toEqual(enabled);
+    expect(result.sharedOutriderNodeIds).toHaveLength(2);
+  });
+
   it('consults from the selected pinned member while preserving the original teams and their capabilities', () => {
     const team = saved();
     const before = JSON.stringify(team);

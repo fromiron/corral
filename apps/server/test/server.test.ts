@@ -433,6 +433,148 @@ describe('local security boundary', () => {
 });
 
 describe('REST: Corrals and runs', () => {
+  it.each(['revise', 'keep', 'earlier', 'skip', 'ordinary'] as const)(
+    'opens the exact versions for on-request artifact review: %s',
+    async (choice) => {
+      const v1Text = 'Draft without a source.';
+      const v2Text = 'Draft citing source A.';
+      const opinion = 'Add source A to the draft.';
+      const reviews = choice !== 'skip' && choice !== 'ordinary';
+      let hiddenId = '';
+      let v1 = '';
+      let v2 = '';
+      let targetAllowsReview = false;
+      const reviewedTexts: string[] = [];
+      const refusals: string[] = [];
+      const agents = new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        script: async (input, host) => {
+          const write = async (text: string) => {
+            const result = await host.invokeTool({ name: 'write_artifact', args: { text } });
+            if (!result.ok) throw new Error(result.error.message);
+            return String(result.result.artifactVersionId);
+          };
+          if (input.nodeId === 'planner') {
+            hiddenId = await write('Unsubmitted notes held by planner.');
+            return null;
+          }
+          if (input.assignment.kind === 'question') {
+            const reference = input.inputs.find((i) => i.artifactVersionId === v1);
+            if (reference) reviewedTexts.push(reference.text);
+            const replied = await host.invokeTool({
+              name: 'reply',
+              args: {
+                questionId: input.assignment.questionId,
+                body: opinion,
+                evidenceRefs: [v1],
+              },
+            });
+            return replied.ok
+              ? { outcome: 'succeeded' }
+              : { outcome: 'failed', error: replied.error.message };
+          }
+          if (input.nodeId !== 'writer') return null;
+          const target = input.capabilities.askTo[0];
+          if (!target) throw new Error('Writer has no consultation target');
+          targetAllowsReview = target.artifactReview === true;
+          v1 = await write(v1Text);
+          if (choice === 'earlier') {
+            const reading = await host.invokeTool({
+              name: 'read_artifact',
+              args: { artifactVersionId: v1 },
+            });
+            if (!reading.ok) throw new Error(reading.error.message);
+            v2 = await write(v2Text);
+          }
+          if (choice !== 'skip') {
+            const refused = await host.invokeTool({
+              name: 'ask',
+              args: {
+                targetNodeId: target.nodeId,
+                body: 'Review this version.',
+                reviewArtifactVersionId: choice === 'ordinary' ? v1 : hiddenId,
+              },
+            });
+            if (!refused.ok) refusals.push(refused.error.code);
+            const asked = await host.invokeTool({
+              name: 'ask',
+              args: {
+                targetNodeId: target.nodeId,
+                body: 'Should the writer cite a source?',
+                ...(choice === 'ordinary'
+                  ? { artifactRefs: [v1] }
+                  : { reviewArtifactVersionId: v1 }),
+              },
+            });
+            if (!asked.ok || asked.result.body !== opinion)
+              throw new Error('Writer did not receive the advice');
+          }
+          if (choice === 'revise') v2 = await write(v2Text);
+          const submitted = await host.invokeTool({
+            name: 'submit_result',
+            args: {
+              artifactVersionIds: [v2 || v1],
+            },
+          });
+          return submitted.ok
+            ? { outcome: 'succeeded' }
+            : { outcome: 'failed', error: submitted.error.message };
+        },
+      });
+      const server = await start({ agents });
+      const { call } = await browser(server);
+      const options = { baseUrl: server.url, fetch: call };
+      const definition = linearCorral(['planner', 'writer']);
+      definition.roles
+        .find((role) => role.id === 'writer_role')
+        ?.allowedCollaborationTools.push('read_artifact');
+      definition.sharedOutrider = {
+        modelProfile: 'model-a',
+        principles: 'Give specific advice.',
+        targets: { kind: 'all' },
+        ...(choice === 'ordinary' ? {} : { artifactReview: true }),
+      };
+      const record = await saved(server, definition, call);
+      const transport = new HttpSseTransport(options);
+      const started = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: 'artifact_review',
+        corralId: record.corralId,
+        definitionRevision: record.definitionRevision,
+        mode: 'mock',
+      });
+      if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+      const runId = started.runId;
+      const final = await waitForProjection(transport, runId, (p) =>
+        ['succeeded', 'failed', 'cancelled'].includes(p.status),
+      );
+      expect(final.status).toBe('succeeded');
+      expect(targetAllowsReview).toBe(choice !== 'ordinary');
+      const questions = Object.values(final.questions);
+      expect(questions).toHaveLength(choice === 'skip' ? 0 : 1);
+      if (choice !== 'skip') {
+        const [q] = questions;
+        expect(q?.sharedOutrider).toBe(true);
+        expect(q?.reviewArtifactVersionId).toBe(reviews ? v1 : undefined);
+        expect(q?.artifactRefs).toEqual([v1]);
+        expect(q?.answer?.body).toBe(opinion);
+        expect(reviewedTexts).toEqual([v1Text]);
+        expect(refusals).toEqual(['CAPABILITY_DENIED']);
+      }
+      const finalId = v2 || v1;
+      expect(final.output?.artifactVersionIds).toEqual([finalId]);
+      const produced = final.artifacts[finalId];
+      expect(final.executions[produced?.authorExecutionId ?? '']?.nodeId).toBe('writer');
+      expect(await transport.getArtifactText(runId, finalId)).toBe(v2 ? v2Text : v1Text);
+      if (v2) {
+        expect(final.artifacts[v1]?.version).toBe(1);
+        expect(final.artifacts[v2]?.parentVersionId).toBe(v1);
+        expect(await transport.getArtifactText(runId, v1)).toBeNull();
+      }
+    },
+  );
+
   it.each([true, false])(
     'runs a saved shared Outrider revision with workers choosing to consult: %s',
     async (consult) => {

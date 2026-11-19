@@ -25,6 +25,8 @@ import type { RunProjection } from '../projection.ts';
 export interface RunSnapshot {
   /** Callable workers created from shared consultation policies in this run's expanded copy. */
   sharedOutriderNodeIds?: string[];
+  /** Shared responders permitted to review an explicitly named version in this run. */
+  artifactReviewNodeIds?: string[];
   imageProfiles?: Record<string, ImageGenerationProfile>;
   permissionMode?: PermissionMode;
   resumedFrom?: ResumedFrom;

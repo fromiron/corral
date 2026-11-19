@@ -34,6 +34,7 @@ import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
 import { PresenceBadge, usePresenceWord } from './PresenceBadge.tsx';
+import { QuestionsPanel } from './QuestionsPanel.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
 import { LoopEscalationText, RunReason } from './RunText.tsx';
@@ -45,11 +46,13 @@ import { UsageInspector } from './UsageInspector.tsx';
 export function RunView({
   session,
   onSteer,
+  onOpenArtifact,
   onStartFrom,
   prices,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
+  onOpenArtifact?: (artifactVersionId: string) => void;
   onStartFrom?: Parameters<typeof RunOutput>[0]['onStartFrom'];
   /** List prices for the cost estimate. */
   prices?: ModelPrices | undefined;
@@ -115,7 +118,14 @@ export function RunView({
             </p>
           ) : null}
           <ExecutionTree session={session} onSteer={onSteer} steers />
-          <RunOutput session={session} {...(onStartFrom ? { onStartFrom } : {})} />
+          {onOpenArtifact ? (
+            <QuestionsPanel session={session} onOpenArtifact={onOpenArtifact} />
+          ) : null}
+          <RunOutput
+            session={session}
+            {...(onOpenArtifact ? { onOpenResults: onOpenArtifact } : {})}
+            {...(onStartFrom ? { onStartFrom } : {})}
+          />
         </>
       ) : null}
     </div>
@@ -138,6 +148,8 @@ export function RunOutput({
 }) {
   const t = useTranslations('Run');
   const tr = useTranslations('Results');
+  const definition = useStore(session, (s) => s.definition);
+  const nameOf = useAgentName(definition);
   const projection = useRunDisplay(session, (s) => s.projection);
   const finals = (projection?.output?.artifactVersionIds ?? []).flatMap(
     (id) => projection?.artifacts[id] ?? [],
@@ -170,16 +182,27 @@ export function RunOutput({
           ) : null}
           {finals.map((artifact) => {
             const label = tr('itemName', { name: artifact.name, version: artifact.version });
+            const nodeId =
+              projection?.executions[artifact.authorExecutionId]?.nodeId ??
+              projection?.forkedFrom?.carried.find((step) =>
+                step.artifactVersionIds.includes(artifact.artifactVersionId),
+              )?.nodeId;
             return (
-              <Button
-                key={artifact.artifactVersionId}
-                type="button"
-                onClick={() => onOpenResults(artifact.artifactVersionId)}
-                aria-label={label}
-                variant="tertiary"
-              >
-                {label} ↗
-              </Button>
+              <div key={artifact.artifactVersionId} className="flex flex-wrap items-center gap-1">
+                <span>
+                  {tr('submittedBy', {
+                    author: nodeId ? nameOf(nodeId) : artifact.authorExecutionId,
+                  })}
+                </span>
+                <Button
+                  type="button"
+                  onClick={() => onOpenResults(artifact.artifactVersionId)}
+                  aria-label={label}
+                  variant="tertiary"
+                >
+                  {label} ↗
+                </Button>
+              </div>
             );
           })}
         </div>

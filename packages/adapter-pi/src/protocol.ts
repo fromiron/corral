@@ -168,7 +168,12 @@ export type WorkerTool = z.infer<typeof WorkerTool>;
 const WorkAssignment = z.discriminatedUnion('kind', [
   z.strictObject({ kind: z.literal('scheduled') }),
   z.strictObject({ kind: z.literal('delegated'), brief: Text }),
-  z.strictObject({ kind: z.literal('question'), questionId: Identifier, body: Text }),
+  z.strictObject({
+    kind: z.literal('question'),
+    questionId: Identifier,
+    body: Text,
+    reviewArtifactVersionId: Identifier.optional(),
+  }),
 ]);
 
 /** One review an advisor runs a turn on (`AdvisorReviewRequest`). */
@@ -239,6 +244,7 @@ export const StartFrame = z.strictObject({
       nodeId: Identifier,
       label: z.string(),
       delivery: z.literal('parent').optional(),
+      artifactReview: z.literal(true).optional(),
     }),
   ),
   replyToChildren: z.boolean().optional(),

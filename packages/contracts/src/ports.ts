@@ -92,7 +92,13 @@ export interface ResolvedInput {
 export type Assignment =
   | { kind: 'scheduled' }
   | { kind: 'delegated'; brief: string; parentExecutionId: string }
-  | { kind: 'question'; questionId: string; body: string; askerExecutionId: string }
+  | {
+      kind: 'question';
+      questionId: string;
+      body: string;
+      askerExecutionId: string;
+      reviewArtifactVersionId?: string;
+    }
   /** An advisor: it reviews the executions it watches, one review at a time (features/advisor.md). */
   | { kind: 'advisor'; watches: string[] };
 
@@ -114,6 +120,8 @@ export interface AdvisorReviewRequest {
 export interface CallableTarget {
   nodeId: string;
   label: string;
+  /** This shared consultation target permits an explicit on-request review. */
+  artifactReview?: true;
   /** The current parent execution, not a new callable responder. */
   delivery?: 'parent';
 }

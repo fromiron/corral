@@ -16,7 +16,13 @@ export interface PlanIssue {
 }
 
 export type RunPlan =
-  | { ok: true; definition: CorralDefinition; plan: CompiledPlan; sharedOutriderNodeIds?: string[] }
+  | {
+      ok: true;
+      definition: CorralDefinition;
+      plan: CompiledPlan;
+      sharedOutriderNodeIds?: string[];
+      artifactReviewNodeIds?: string[];
+    }
   | { ok: false; issues: PlanIssue[] };
 
 const issue = (
@@ -36,6 +42,7 @@ export function planRun(definition: unknown, options?: CompileOptions): RunPlan 
     checked.ok &&
     checked.definition.nodes.some((n) => n.type === 'team' && n.source.kind === 'reference');
   const sharedOutriderNodeIds: string[] = [];
+  const artifactReviewNodeIds: string[] = [];
   let compiled = checked;
   if (checked.ok && (checked.definition.sharedOutrider || references)) {
     const resolve = options?.resolveTeam;
@@ -46,7 +53,11 @@ export function planRun(definition: unknown, options?: CompileOptions): RunPlan 
         resolve,
         checked.definition.limits,
       );
-      if (effective.responderId) sharedOutriderNodeIds.push(prefix + effective.responderId);
+      if (effective.responderId) {
+        const id = prefix + effective.responderId;
+        sharedOutriderNodeIds.push(id);
+        if (source.sharedOutrider?.artifactReview) artifactReviewNodeIds.push(id);
+      }
       return effective.definition;
     };
     const doc =
@@ -73,6 +84,7 @@ export function planRun(definition: unknown, options?: CompileOptions): RunPlan 
     definition: compiled.definition,
     plan: compiled.plan,
     ...(sharedOutriderNodeIds.length ? { sharedOutriderNodeIds } : {}),
+    ...(artifactReviewNodeIds.length ? { artifactReviewNodeIds } : {}),
   };
 }
 

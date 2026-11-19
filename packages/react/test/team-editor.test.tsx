@@ -74,6 +74,33 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
 };
 
 describe('team editor', () => {
+  it('keeps artifact review off until requested and saves, reopens and undoes the exact setting', async () => {
+    const editor = renderEditor(chain(2));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    const toggle = screen.getByRole('switch', { name: 'Artifact review' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    toggle.focus();
+    await user.keyboard(' ');
+    expect(screen.getByText('On request')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const enabled = editor.getState().draft;
+    expect(enabled.definition.sharedOutrider?.artifactReview).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Outrider · Entire team' }));
+    const persisted = screen.getByRole('switch', { name: 'Artifact review' });
+    expect(persisted).toHaveAttribute('aria-checked', 'true');
+    persisted.focus();
+    await user.keyboard(' ');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft.definition.sharedOutrider).toEqual({
+      modelProfile: enabled.definition.sharedOutrider?.modelProfile,
+      principles: enabled.definition.sharedOutrider?.principles,
+      targets: { kind: 'all' },
+    });
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(enabled);
+  });
+
   it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
     const draft = chain(2);
     const editor = renderEditor(draft);

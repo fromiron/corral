@@ -42,6 +42,10 @@
           "minLength": 1,
           "maxLength": 20000
         },
+        "artifactReview": {
+          "type": "boolean",
+          "const": true
+        },
         "targets": {
           "oneOf": [
             {
