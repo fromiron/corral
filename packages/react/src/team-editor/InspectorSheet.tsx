@@ -637,61 +637,83 @@ export function InspectorSheet({
             : 'pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg'
       }
     >
-      <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
-        {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
-        <h2
-          tabIndex={-1}
-          className={cn(size.type.body, 'grow truncate text-foreground')}
-          style={{ fontVariationSettings: fontWeights.semibold }}
+      <header
+        className={cn(
+          'flex items-center border-b border-border px-4',
+          // In the work area its head is the same bar as the flow graph's palette row.
+          docked && !stacked ? 'min-h-[41px] py-1' : 'py-2',
+        )}
+      >
+        {/* The title and its actions keep the fields' column, so on a wide editor they stay
+          with the form instead of at the two ends of the work area. */}
+        <div
+          className={cn(
+            'flex min-w-0 grow items-center gap-2',
+            docked && !stacked && 'mx-auto max-w-[40rem]',
+          )}
         >
-          {title}
-        </h2>
-        {single && (docked || isWorkAgent(single) || onShowInGraph) ? (
-          <Menu>
-            <MenuTrigger
-              ref={menuTrigger}
-              aria-label={ti('seatActions')}
-              render={<Button variant="ghost" size="icon-compact" />}
-            >
-              <Ellipsis />
-            </MenuTrigger>
-            <MenuPopup align="end" aria-label={ti('seatActions')}>
-              {isWorkAgent(single) && onReplaceAgent ? (
-                <MenuItem onClick={() => onReplaceAgent(single.id, menuTrigger.current)}>
-                  {ti('replaceAgent')}
-                </MenuItem>
-              ) : null}
-              {isWorkAgent(single) && onSaveAgent && roleOf(definition, single) ? (
-                <MenuItem
-                  onClick={() => {
-                    const role = roleOf(definition, single);
-                    if (role) onSaveAgent(role, single.stepInstruction, menuTrigger.current);
-                  }}
+          {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
+          <h2
+            tabIndex={-1}
+            className={cn(size.type.body, 'grow truncate text-foreground')}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </h2>
+          <div className="-me-2 flex items-center gap-2 empty:hidden">
+            {single && (docked || isWorkAgent(single) || onShowInGraph) ? (
+              <Menu>
+                <MenuTrigger
+                  ref={menuTrigger}
+                  aria-label={ti('seatActions')}
+                  render={<Button variant="ghost" size="icon-compact" />}
                 >
-                  {t('agentPicker.saveTitle')}
-                </MenuItem>
-              ) : null}
-              {onShowInGraph ? (
-                <MenuItem onClick={() => onShowInGraph(single.id)}>{ti('showInGraph')}</MenuItem>
-              ) : null}
-              <MenuItem onClick={() => removeSelection([single.id])}>{t('delete')}</MenuItem>
-            </MenuPopup>
-          </Menu>
-        ) : null}
-        {!(
-          docked &&
-          (stacked || (view === 'team' && !selection.nodes.length && !selection.edge))
-        ) ? (
-          <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
-            <X />
-          </Button>
-        ) : null}
+                  <Ellipsis />
+                </MenuTrigger>
+                <MenuPopup align="end" aria-label={ti('seatActions')}>
+                  {isWorkAgent(single) && onReplaceAgent ? (
+                    <MenuItem onClick={() => onReplaceAgent(single.id, menuTrigger.current)}>
+                      {ti('replaceAgent')}
+                    </MenuItem>
+                  ) : null}
+                  {isWorkAgent(single) && onSaveAgent && roleOf(definition, single) ? (
+                    <MenuItem
+                      onClick={() => {
+                        const role = roleOf(definition, single);
+                        if (role) onSaveAgent(role, single.stepInstruction, menuTrigger.current);
+                      }}
+                    >
+                      {t('agentPicker.saveTitle')}
+                    </MenuItem>
+                  ) : null}
+                  {onShowInGraph ? (
+                    <MenuItem onClick={() => onShowInGraph(single.id)}>
+                      {ti('showInGraph')}
+                    </MenuItem>
+                  ) : null}
+                  <MenuItem onClick={() => removeSelection([single.id])}>{t('delete')}</MenuItem>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+            {!(
+              docked &&
+              (stacked || (view === 'team' && !selection.nodes.length && !selection.edge))
+            ) ? (
+              <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
+                <X />
+              </Button>
+            ) : null}
+          </div>
+        </div>
       </header>
-      {/* Stacked, the editor scrolls, and the fields keep the kit's narrow measure. */}
+      {/* Stacked, the editor scrolls, and the fields keep the kit's narrow measure. In the work
+        area the fields keep a reading measure in its middle, so a wide editor leaves the same
+        room on both sides instead of a void on one. */}
       <div
         className={cn(
           'grid content-start gap-4 p-4',
           stacked && !docked ? 'w-full max-w-[720px]' : 'overflow-y-auto',
+          docked && !stacked && 'justify-items-center [&>*]:w-full [&>*]:max-w-[40rem]',
         )}
       >
         {body}

@@ -140,6 +140,7 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         projects={data.projects}
         corrals={data.corrals}
         onChanged={reload}
+        toolbar={toolbar}
         onBrowseTemplates={() =>
           void navigate({
             to: VIEW_ROUTES.templates,
@@ -231,8 +232,9 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
                   }))}
                 />
               ) : null}
-              {view === 'skills' || view === 'agents' ? (
-                <div className="flex flex-wrap gap-2 empty:hidden" ref={setToolbar} />
+              {/* Each list view puts its own actions here, at the end of the one toolbar row. */}
+              {view === 'skills' || view === 'agents' || view === 'teams' ? (
+                <div className="flex flex-wrap items-center gap-2 empty:hidden" ref={setToolbar} />
               ) : null}
             </div>
           </div>

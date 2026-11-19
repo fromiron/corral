@@ -327,7 +327,8 @@ describe('Team composition rows', () => {
     expect(props.onDelete).not.toHaveBeenCalled();
     await user.keyboard('{Delete}');
     expect(props.onDelete).toHaveBeenCalledWith(['plan']);
-    await user.keyboard('{ArrowDown}{ArrowRight}');
+    // The fold control leads its row, as in the flow graph's outline.
+    await user.keyboard('{ArrowDown}{ArrowLeft}');
     expect(button('Collapse Review loop')).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(props.onToggle).toHaveBeenCalledWith('review_loop');

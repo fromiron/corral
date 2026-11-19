@@ -125,7 +125,9 @@ it('quotes a question choice before sending and disables choices until cancel or
   const { user } = setup({ ask, open: true });
   await user.type(field(), 'Write a newsletter.{Enter}');
   const options = await screen.findByRole('group', { name: en.TeamAssistant.question.material });
-  expect(within(options).getByText('Test model · 1 request')).toBeVisible();
+  // The caption beside the input names the cost of a press; the options do not repeat it.
+  expect(button('Recommend one')).toHaveAccessibleDescription('Test model · 1 request');
+  expect(within(options).queryByText(/1 request/)).toBeNull();
   await user.type(field(), 'Save this note');
   await user.click(button('Recommend one'));
   expect(ask).toHaveBeenCalledTimes(2);
@@ -148,10 +150,13 @@ it('removes the cost caption on disconnect and continues the same question local
   const ask = vi.fn().mockResolvedValue(question);
   const { user, disconnect } = setup({ ask, open: true });
   await user.type(field(), 'Write a newsletter.{Enter}');
-  const options = await screen.findByRole('group', { name: en.TeamAssistant.question.material });
-  expect(within(options).getByText('Test model · 1 request')).toBeVisible();
+  await screen.findByRole('group', { name: en.TeamAssistant.question.material });
+  expect(button(en.TeamAssistant.choice.team)).toHaveAccessibleDescription(
+    'Test model · 1 request',
+  );
   disconnect();
-  expect(within(options).queryByText('Test model · 1 request')).toBeNull();
+  expect(button(en.TeamAssistant.choice.team)).not.toHaveAccessibleDescription();
+  expect(screen.queryByText(/1 request/)).toBeNull();
   await user.click(button(en.TeamAssistant.choice.team));
   expect(screen.getByRole('region', { name: 'Local example' })).toBeVisible();
   expect(ask).toHaveBeenCalledTimes(1);

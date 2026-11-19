@@ -41,6 +41,7 @@ import {
 } from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
+import { cn } from '../design-kit/lib/utils.ts';
 import { compileDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
 import {
@@ -939,9 +940,18 @@ export function TeamEditor({
   );
   const showDetail = !stacked || (drilled && sheetOpen);
   return (
+    // Beside, both views share one frame: the structure column on the left down to the bottom
+    // edge, the work area on the right, and the conversation under the work area. The frame is
+    // the size container the column's width and the conversation's height are measured against.
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div
-      className="flex h-full min-h-0 min-w-0 flex-col"
+      className={cn(
+        'h-full min-h-0 min-w-0 [container:team-editor/size]',
+        stacked
+          ? 'flex flex-col'
+          : // The structure column, the work area, and on a wide editor the conversation's column.
+            'grid grid-cols-[auto_minmax(0,1fr)_auto] grid-rows-[minmax(0,1fr)_auto]',
+      )}
       data-layout={stacked ? 'stacked' : 'beside'}
       onKeyDown={onKeyDown}
     >
@@ -949,11 +959,7 @@ export function TeamEditor({
         ref={scroller}
         data-graph-scroll
         hidden={composition}
-        className={
-          stacked
-            ? 'relative flex min-h-0 flex-1 flex-col overflow-y-auto'
-            : 'grid min-h-0 flex-1 grid-cols-[272px_minmax(0,1fr)]'
-        }
+        className={stacked ? 'relative flex min-h-0 flex-1 flex-col overflow-y-auto' : 'contents'}
       >
         <StructureTree
           stacked={stacked}
@@ -996,7 +1002,7 @@ export function TeamEditor({
           className={
             stacked
               ? 'contents'
-              : 'group/graph relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'
+              : 'group/graph relative col-start-2 row-start-1 grid min-h-0 min-w-0 grid-rows-[auto_minmax(0,1fr)]'
           }
         >
           <div
@@ -1133,23 +1139,26 @@ export function TeamEditor({
         </div>
       </div>
       {(composition || onViewChange) && (
-        <div
-          hidden={!composition}
-          className={
-            stacked ? 'min-h-0 flex-1' : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_344px]'
-          }
-        >
+        <div hidden={!composition} className={stacked ? 'min-h-0 flex-1' : 'contents'}>
+          {/* In this view the composition list is the structure column, and the chosen row's
+            settings fill the work area. */}
           <div
-            ref={list}
-            data-composition-scroll
             hidden={stacked && showDetail}
-            className="h-full min-h-0 min-w-0 overflow-y-auto px-4 py-3"
-            onClickCapture={(event) => {
-              if (event.target instanceof Element)
-                rowOrigin.current = event.target.closest('button');
-            }}
+            className={
+              stacked
+                ? 'flex h-full min-h-0 flex-col'
+                : 'col-start-1 row-span-2 row-start-1 flex min-h-0 w-[clamp(22rem,32cqw,28rem)] flex-col border-r border-border'
+            }
           >
-            <div className="w-full max-w-[45rem]">
+            <div
+              ref={list}
+              data-composition-scroll
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto px-2 pb-2"
+              onClickCapture={(event) => {
+                if (event.target instanceof Element)
+                  rowOrigin.current = event.target.closest('button');
+              }}
+            >
               <TeamComposition
                 definition={definition}
                 hasWorkAgent={hasWorkAgent}
@@ -1185,13 +1194,13 @@ export function TeamEditor({
                 onDelete={remove}
                 resultOffer={resultOffer}
               />
-              <p role="status" className="text-body text-muted-foreground">
+              <p role="status" className="px-2 text-body text-muted-foreground">
                 {addedUnconnected &&
                   selection.nodes.length === 1 &&
                   t('composition.addedUnconnected')}
               </p>
               {placementError && (
-                <p role="status" className="text-body text-destructive">
+                <p role="status" className="px-2 text-body text-destructive">
                   {placementError}
                 </p>
               )}
@@ -1201,7 +1210,7 @@ export function TeamEditor({
             <div
               ref={settingsBox}
               className={
-                stacked ? 'flex h-full min-h-0 flex-col' : 'min-h-0 border-l border-border'
+                stacked ? 'flex h-full min-h-0 flex-col' : 'col-start-2 row-start-1 min-h-0 min-w-0'
               }
             >
               {stacked && (
@@ -1223,6 +1232,8 @@ export function TeamEditor({
           host={assistant}
           start={assistantStart}
           compileOptions={compileOptions}
+          className={stacked ? undefined : 'col-start-2 row-start-2 min-w-0'}
+          sideClassName={stacked ? undefined : 'col-start-3 row-span-2 row-start-1'}
           onApplied={(row) => {
             // Show the affected row, not its narrow drill-in. Restore focus after both the
             // selection and the conversation sheet have committed their changes.

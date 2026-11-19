@@ -4,6 +4,7 @@ import {
   Button,
   EmptyState,
   Input,
+  KitCardTitle,
   Switch,
   Table,
   TableBody,
@@ -12,7 +13,6 @@ import {
   TableHeader,
   TableRow,
 } from '@corral/react/design-kit';
-import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type ReactNode, useCallback, useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
@@ -318,17 +318,19 @@ export function SkillManager({ api, toolbar }: { api: HarnessApi; toolbar?: HTML
     setSearch('');
     choose(entry);
   }
+  // In the library's toolbar row the actions take its compact step, the main one last.
+  const size = toolbar ? 'compact' : 'default';
   const controls = (
     <>
-      <Button onClick={(event) => open({}, event.currentTarget)}>
-        <Plus aria-hidden />
-        {t('createSkill')}
-      </Button>
       <Button
         variant="tertiary"
+        size={size}
         onClick={(event) => open({ importing: true }, event.currentTarget)}
       >
         {t('importSkills')}
+      </Button>
+      <Button size={size} onClick={(event) => open({}, event.currentTarget)}>
+        {t('createSkill')}
       </Button>
     </>
   );
@@ -449,7 +451,10 @@ export function SkillManager({ api, toolbar }: { api: HarnessApi; toolbar?: HTML
             </TableBody>
           </Table>
           {selected ? (
-            <section aria-label={t('details')} className="grid min-w-0 gap-4">
+            <section aria-label={t('details')} className="grid min-w-0 content-start gap-4">
+              <h2>
+                <KitCardTitle>{selected.name}</KitCardTitle>
+              </h2>
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="tertiary"

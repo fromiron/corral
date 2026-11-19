@@ -306,8 +306,9 @@ export const Composition: Story = {
     const request = within(list).getByRole('button', { name: /^Request\b/ });
     const origin = canvasElement.getBoundingClientRect().left;
     const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
-    await expect(rect(request).left - origin).toBeCloseTo(rem, 0);
-    await expect(rect(request).width).toBeLessThanOrEqual(45 * rem);
+    // The roster is the flow graph's structure column: the outline's row inset, at most 28rem.
+    await expect(rect(request).left - origin).toBeCloseTo(rem / 2, 0);
+    await expect(rect(request).width).toBeLessThanOrEqual(28 * rem);
     await expect(request).toHaveAttribute('aria-pressed', 'true');
     const row = writerRow(canvasElement);
     await expect(row).toBeVisible();
@@ -316,6 +317,14 @@ export const Composition: Story = {
     await expect(row).toHaveAttribute('aria-pressed', 'true');
     await expect(request).toHaveAttribute('aria-pressed', 'false');
     await expect(rect(row).right).toBeLessThanOrEqual(rect(sheet).left);
+    // On a wide editor the fields keep one 40rem column in the middle of the work area, with
+    // the same room on both sides (a scrollbar's width apart at most).
+    const field = within(sheet).getAllByRole('textbox')[0] as HTMLElement;
+    await expect(rect(field).width).toBeLessThanOrEqual(40 * rem);
+    const before = rect(field).left - rect(sheet).left;
+    const after = rect(sheet).right - rect(field).right;
+    await expect(before).toBeGreaterThan(4 * rem);
+    await expect(Math.abs(before - after)).toBeLessThanOrEqual(rem);
   },
 };
 

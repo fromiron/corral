@@ -24,12 +24,14 @@ import {
   RadioGroup,
   RadioItem,
   Switch,
+  Tooltip,
 } from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
+import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { Bot, ChevronDown, ChevronRight, Sparkles } from '../ui/icons.ts';
+import { Bot, ChevronDown, ChevronRight, PanelRight, Sparkles } from '../ui/icons.ts';
 import {
   type AssistantActions,
   assistantConversation,
@@ -166,7 +168,8 @@ function PlanPreview({
       {definition.nodes.some((n) => n.type === 'output' && n.requireApproval) && (
         <p>{t('approval')}</p>
       )}
-      <Accordion size="compact">
+      {/* The options take the card's width, not the kit's 18rem column. */}
+      <Accordion size="compact" className="w-full">
         <AccordionItem value="options" highlight="trigger" disabled={disabled}>
           <AccordionTrigger>{t('options')}</AccordionTrigger>
           <AccordionContent>
@@ -285,7 +288,7 @@ function QuestionChoices({
   decisions,
   focus,
   disabled,
-  cost,
+  costId,
   t,
 }: {
   question: NonNullable<Conversation['question']>;
@@ -294,14 +297,14 @@ function QuestionChoices({
   decisions: Conversation['decisions'];
   focus(): void;
   disabled: boolean;
-  cost: string | null;
+  /** The caption beside the input that names the model and the request a press would send. */
+  costId: string | undefined;
   t: AssistantText;
 }) {
   const outputs = useMemo(
     () => (question.id === 'review_target' ? summarize(draft).outputs : []),
     [question.id, draft],
   );
-  const costId = useId();
   if (question.id === 'brief') return null;
   return (
     <fieldset className="flex flex-wrap gap-2">
@@ -330,7 +333,7 @@ function QuestionChoices({
             variant="secondary"
             className={optionClass}
             disabled={disabled}
-            aria-describedby={cost ? costId : undefined}
+            aria-describedby={costId}
             aria-pressed={chosen}
             onClick={() => {
               void actions.answer(value, label);
@@ -346,7 +349,7 @@ function QuestionChoices({
           key={action}
           variant="ghost"
           disabled={disabled}
-          aria-describedby={action === 'recommend' && cost ? costId : undefined}
+          aria-describedby={action === 'recommend' ? costId : undefined}
           className={optionClass}
           onClick={() => {
             if (action === 'recommend') void actions.answer(action, t('choice.recommend'));
@@ -356,11 +359,6 @@ function QuestionChoices({
           {t(`choice.${action}`)}
         </Button>
       ))}
-      {cost && (
-        <p id={costId} className="basis-full text-caption text-muted-foreground">
-          {cost}
-        </p>
-      )}
     </fieldset>
   );
 }
@@ -372,12 +370,21 @@ export function TeamAssistant({
   start,
   onApplied,
   compileOptions,
+  className,
+  sideClassName,
 }: {
   editor: EditorStore;
   host: TeamAssistantHost;
   start?: { open: boolean } | undefined;
   onApplied(row: string): void;
   compileOptions?: Pick<CompileOptions, 'resolveTeam' | 'knownModelProfiles'> | undefined;
+  /** Where the editor's frame places the conversation under its work area. */
+  className?: string | undefined;
+  /**
+   * Where the frame places it as a column on its right. Given this, an editor of 88rem or
+   * more keeps the conversation there instead of under the work area.
+   */
+  sideClassName?: string | undefined;
 }) {
   const root = useTranslations();
   const t = useCallback<AssistantText>(
@@ -407,9 +414,9 @@ export function TeamAssistant({
   const stale = Boolean(proposal && proposal.base !== draft);
   const lastTurn = turns.at(-1);
   const surface = useRef<HTMLElement>(null);
-  const [narrow, setNarrow] = useState(false);
+  const [room, setRoom] = useState<'sheet' | 'dock' | 'side'>('dock');
   useLayoutEffect(() => {
-    // The editor frame stays mounted when the conversation moves into or out of its sheet.
+    // The editor frame stays mounted when the conversation moves between its places.
     const frame = surface.current?.parentElement;
     if (!frame) return;
     const measure = () => {
@@ -417,13 +424,15 @@ export function TeamAssistant({
       if (width === 0) return; // A hidden editor does not have a layout to switch to.
       const rem =
         Number.parseFloat(getComputedStyle(frame.ownerDocument.documentElement).fontSize) || 16;
-      setNarrow(width < 30 * rem);
+      setRoom(width < 30 * rem ? 'sheet' : width < 88 * rem ? 'dock' : 'side');
     };
     measure();
     const observer = new ResizeObserver(measure);
     observer.observe(frame);
     return () => observer.disconnect();
   }, []);
+  const narrow = room === 'sheet';
+  const side = room === 'side' && sideClassName !== undefined;
   const field = useRef<HTMLTextAreaElement>(null);
   const entry = useRef<HTMLButtonElement>(null);
   const composing = useRef(false);
@@ -433,6 +442,10 @@ export function TeamAssistant({
   const scroll = useRef<HTMLDivElement>(null);
   const id = useId();
   const reduceMotion = useReducedMotion();
+  const wasMounted = useRef(false);
+  useEffect(() => {
+    wasMounted.current = true;
+  }, []);
   const focusInput = () => field.current?.focus();
   useLayoutEffect(() => {
     if (narrow) return;
@@ -473,7 +486,8 @@ export function TeamAssistant({
     if (row === null) return;
     if (narrow) focusRow.current = row;
     else onApplied(row);
-    actions.setOpen(false);
+    // Beside the work area the conversation covers nothing, so it stays for the next change.
+    if (!side) actions.setOpen(false);
   }
   const localReply = question?.source === 'choice';
   const paidSend = connected && !localReply;
@@ -486,7 +500,31 @@ export function TeamAssistant({
         ? t('local')
         : t('changes');
   const waiting = proposal ? t('proposalWaiting') : question ? t('questionWaiting') : null;
-  const chooseEntry = (
+  const chooseEntry = side ? (
+    // In its rail the entry is the icon alone; the tooltip and the name say what it opens.
+    <Tooltip content={waiting ? `${title} · ${waiting}` : title} side="left">
+      <Button
+        ref={entry}
+        variant="ghost"
+        size="icon-compact"
+        aria-label={title}
+        aria-expanded={open}
+        aria-describedby={waiting ? `${id}-waiting` : undefined}
+        className="relative mt-1.5"
+        onClick={() => actions.setOpen(true)}
+      >
+        <Sparkles aria-hidden />
+        {waiting && (
+          <>
+            <span aria-hidden className="absolute end-1 top-1 size-1.5 rounded-full bg-emphasis" />
+            <span id={`${id}-waiting`} className="sr-only">
+              {waiting}
+            </span>
+          </>
+        )}
+      </Button>
+    </Tooltip>
+  ) : (
     <Button
       ref={entry}
       variant="ghost"
@@ -494,7 +532,7 @@ export function TeamAssistant({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       aria-describedby={waiting ? `${id}-waiting` : undefined}
-      className="h-10 w-full max-w-[45rem] justify-start px-4"
+      className="h-10 w-full justify-start px-4"
       onClick={() => actions.setOpen(true)}
     >
       <span className="flex items-center gap-2">
@@ -506,18 +544,23 @@ export function TeamAssistant({
           </span>
         )}
       </span>
-      <ChevronRight aria-hidden className="absolute end-0 size-4 -rotate-90" />
+      <ChevronRight aria-hidden className="absolute end-4 size-4 -rotate-90" />
     </Button>
   );
+  // The conversation keeps the detail's measure and its axis: 40rem in the middle of the work area.
   const body = (
-    <div className="grid min-h-0 w-full max-w-[45rem] flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 overflow-hidden px-4 pb-2 text-body [overflow-wrap:anywhere]">
+    <div className="mx-auto grid min-h-0 w-full max-w-[42rem] flex-1 grid-rows-[minmax(0,1fr)_auto] gap-2 overflow-hidden px-4 pb-3 text-body [overflow-wrap:anywhere]">
       <div
         ref={scroll}
         role="log"
         aria-live="polite"
         aria-relevant="additions text"
         aria-label={title}
-        className="min-h-0 overflow-y-auto overscroll-contain"
+        className={cn(
+          'min-h-0 overflow-y-auto overscroll-contain',
+          // In the column the conversation rests on the input and grows upward.
+          side && 'flex flex-col [&>:first-child]:mt-auto',
+        )}
       >
         <div className="grid min-w-0 gap-2">
           {turns.map((turn) => (
@@ -640,17 +683,23 @@ export function TeamAssistant({
             actions={actions}
             decisions={state.decisions}
             disabled={busy}
-            cost={cost}
+            costId={cost ? `${id}-cost` : undefined}
             focus={focusInput}
             t={t}
           />
         )}
         {!question && !proposal && !busy && (
           <div className="grid gap-2">
-            <p className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
-              {prompt}
-            </p>
-            <div className="flex flex-wrap gap-2">
+            {/* The other way to start stands at the end of the opening line, not as a row. */}
+            <div className="flex flex-wrap items-center justify-between gap-x-2">
+              <p className="text-foreground">{prompt}</p>
+              {creating && host.onBrowseTemplates && (
+                <Button size="compact" variant="ghost" onClick={host.onBrowseTemplates}>
+                  {t('templates')}
+                </Button>
+              )}
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               {creating
                 ? (['newsletter', 'guide', 'compare'] as const).map((example) => (
                     <Button
@@ -681,15 +730,6 @@ export function TeamAssistant({
                     </Button>
                   ))}
             </div>
-            {creating && host.onBrowseTemplates && (
-              <Button
-                variant="link"
-                className="justify-self-start"
-                onClick={host.onBrowseTemplates}
-              >
-                {t('templates')}
-              </Button>
-            )}
           </div>
         )}
       </div>
@@ -729,11 +769,12 @@ export function TeamAssistant({
                 {t('connect')}
               </Button>
             )}
+            {/* Read as one line, "model · one request": the choices take it as their description.
+              The model keeps its own element, as wherever else its name is shown. */}
             {paidSend && (
-              <>
-                <span>{modelName}</span>
-                <span>{td('askCost')}</span>
-              </>
+              <span id={`${id}-cost`}>
+                <span>{modelName}</span> · <span>{td('askCost')}</span>
+              </span>
             )}
             {connected && creating && !question && (
               <Button
@@ -763,7 +804,7 @@ export function TeamAssistant({
       <section
         ref={surface}
         aria-label={open ? undefined : title}
-        className="shrink-0 border-t border-border"
+        className={cn('shrink-0 border-t border-border', className)}
       >
         <Dialog
           open={open}
@@ -796,7 +837,7 @@ export function TeamAssistant({
               return entry.current;
             }}
             closeLabel={t('collapse')}
-            className="bottom-0 top-auto flex h-[85dvh] max-h-[85dvh] w-full max-w-[45rem] flex-col overflow-hidden rounded-b-none p-0 pb-[env(safe-area-inset-bottom)]"
+            className="bottom-0 top-auto flex max-h-[85dvh] w-full max-w-[45rem] flex-col overflow-hidden rounded-b-none p-0 pb-[env(safe-area-inset-bottom)]"
           >
             <DialogTitle className="shrink-0 px-4 py-3 pe-14">{title}</DialogTitle>
             <section className="flex min-h-0 flex-1 flex-col" aria-label={title}>
@@ -807,14 +848,20 @@ export function TeamAssistant({
       </section>
     );
   return (
-    <motion.section
+    // Under the work area it is as tall as what it holds, up to half of the editor (60% with a
+    // question or a proposal): the editor's frame is the size container these are measured
+    // against. In a wide editor it is the frame's right column instead, a rail while collapsed.
+    <section
       ref={surface}
       aria-label={title}
-      initial={false}
-      animate={{ height: open ? (proposal || question ? '60%' : '50%') : 'auto' }}
-      transition={reduceMotion ? { duration: 0 } : open ? spring.moderate : spring.moderate.exit}
-      style={{ maxHeight: proposal || question ? '60%' : '50%' }}
-      className="flex min-h-0 shrink-0 flex-col overflow-hidden border-t border-border"
+      style={side ? undefined : { maxHeight: proposal || question ? '60cqh' : '50cqh' }}
+      className={cn(
+        'flex min-h-0 shrink-0 flex-col overflow-hidden border-border',
+        side
+          ? cn('border-l', open ? 'w-[clamp(22rem,26cqw,28rem)]' : 'w-10 items-center')
+          : 'border-t',
+        side ? sideClassName : className,
+      )}
       onKeyDown={(event) => {
         if (
           event.key !== 'Escape' ||
@@ -832,24 +879,37 @@ export function TeamAssistant({
       }}
     >
       {open ? (
-        <>
-          <div className="flex w-full max-w-[45rem] shrink-0 items-center justify-between gap-2 px-4 py-1">
+        <motion.div
+          // Opening grows from the entry row; an editor that starts open does not animate, and
+          // neither does the column, which takes the frame's height.
+          initial={!side && wasMounted.current && !reduceMotion ? { height: 40 } : false}
+          animate={{ height: 'auto' }}
+          transition={reduceMotion ? { duration: 0 } : spring.moderate}
+          className={cn('flex min-h-0 flex-col overflow-hidden', side && 'flex-1')}
+        >
+          <div className="flex h-10 w-full shrink-0 items-center justify-between gap-2 ps-4 pe-2">
             <h2
               id={id}
-              className="text-subtitle"
+              className="flex items-center gap-2 text-body"
               style={{ fontVariationSettings: fontWeights.semibold }}
             >
+              <Sparkles aria-hidden className="size-4" />
               {title}
             </h2>
-            <Button variant="ghost" size="icon" aria-label={t('collapse')} onClick={collapse}>
-              <ChevronDown aria-hidden />
+            <Button
+              variant="ghost"
+              size="icon-compact"
+              aria-label={t('collapse')}
+              onClick={collapse}
+            >
+              {side ? <PanelRight aria-hidden /> : <ChevronDown aria-hidden />}
             </Button>
           </div>
           {body}
-        </>
+        </motion.div>
       ) : (
         chooseEntry
       )}
-    </motion.section>
+    </section>
   );
 }

@@ -18,6 +18,7 @@ import {
   DialogTitle,
   EmptyState,
   Input,
+  KitCardTitle,
   Switch,
   Table,
   TableBody,
@@ -26,7 +27,6 @@ import {
   TableHeader,
   TableRow,
 } from '@corral/react/design-kit';
-import { Plus } from '@corral/react/icons';
 import { useEffect, useReducer, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
@@ -354,8 +354,7 @@ export function LibraryAgents({
     !archivedProject &&
     toolbar &&
     createPortal(
-      <Button disabled={busy} onClick={(event) => open(null, event.currentTarget)}>
-        <Plus aria-hidden />
+      <Button size="compact" disabled={busy} onClick={(event) => open(null, event.currentTarget)}>
         {t('Library.agents.create')}
       </Button>,
       toolbar,
@@ -487,24 +486,14 @@ export function LibraryAgents({
             </TableBody>
           </Table>
           {chosen ? (
-            <section aria-label={t('Library.agents.detail')} className="grid min-w-0 gap-4">
-              <div className="grid gap-1">
-                <h2 className="text-caption text-muted-foreground">{t('Inspector.base')}</h2>
-                <p className="whitespace-pre-wrap break-words text-body">{chosen.role.prompt}</p>
-              </div>
-              {names.length ? (
-                <div className="grid gap-1">
-                  <h2 className="text-caption text-muted-foreground">{t('Library.view.skills')}</h2>
-                  <p className="break-words text-body">
-                    {format.list(names, { type: 'unit' })}
-                    {missing ? ` · ${t('Library.agents.skillCount', { count: missing })}` : null}
-                  </p>
-                </div>
-              ) : (
-                <p className="text-body text-muted-foreground">
-                  {t('Library.agents.skillCount', { count: skills.length })}
-                </p>
-              )}
+            <section
+              aria-label={t('Library.agents.detail')}
+              className="grid min-w-0 content-start gap-4"
+            >
+              {/* As in the Teams and Skills details: the name, what can be done, then what it holds. */}
+              <h2>
+                <KitCardTitle>{chosen.role.name}</KitCardTitle>
+              </h2>
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="tertiary"
@@ -530,6 +519,23 @@ export function LibraryAgents({
                   {t(chosen.archivedAt ? 'Projects.restore' : 'Projects.archive')}
                 </Button>
               </div>
+              <section className="grid gap-1">
+                <h3 className="text-subtitle">{t('Inspector.base')}</h3>
+                <p className="whitespace-pre-wrap break-words text-body">{chosen.role.prompt}</p>
+              </section>
+              {names.length ? (
+                <section className="grid gap-1">
+                  <h3 className="text-subtitle">{t('Library.view.skills')}</h3>
+                  <p className="break-words text-body">
+                    {format.list(names, { type: 'unit' })}
+                    {missing ? ` · ${t('Library.agents.skillCount', { count: missing })}` : null}
+                  </p>
+                </section>
+              ) : (
+                <p className="text-body text-muted-foreground">
+                  {t('Library.agents.skillCount', { count: skills.length })}
+                </p>
+              )}
             </section>
           ) : null}
         </div>

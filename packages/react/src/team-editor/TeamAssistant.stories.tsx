@@ -38,10 +38,13 @@ function AssistantStory({
   scene,
   locale,
   narrow,
+  wide,
 }: {
   scene: Scene;
   locale: Locale;
   narrow: boolean;
+  /** An editor wide enough for the conversation to stand in a column on its right. */
+  wide: boolean;
 }) {
   const messages = catalogs[locale];
   const wording = messages.TeamDraft.wording;
@@ -97,7 +100,7 @@ function AssistantStory({
       <div
         lang={locale}
         className="h-dvh max-h-[52rem] bg-background text-foreground"
-        style={{ maxWidth: narrow ? 390 : 1280 }}
+        style={wide ? { width: 1640 } : { maxWidth: narrow ? 390 : 1280 }}
       >
         <StudioStoresProvider editor={editor} session={session}>
           <TeamEditor
@@ -116,15 +119,15 @@ function AssistantStory({
 const meta = {
   title: 'Team editor/Team assistant',
   component: AssistantStory,
-  args: { locale: 'en', scene: 'opening', narrow: false },
+  args: { locale: 'en', scene: 'opening', narrow: false, wide: false },
   parameters: { layout: 'fullscreen' },
 } satisfies Meta<typeof AssistantStory>;
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-function example(scene: Scene, locale: Locale, narrow = false): Story {
+function example(scene: Scene, locale: Locale, narrow = false, wide = false): Story {
   return {
-    args: { scene, locale, narrow },
+    args: { scene, locale, narrow, wide },
     play: async ({ canvasElement, userEvent }) => {
       const page = within(canvasElement.ownerDocument.body);
       const m = catalogs[locale];
@@ -188,8 +191,9 @@ function example(scene: Scene, locale: Locale, narrow = false): Story {
         const apply = await region.findByRole('button', { name: t.apply });
         await userEvent.click(region.getByRole('button', { name: t.options }));
         const alternatives = region.getByRole('radiogroup', { name: m.TeamDraft.patternLabel });
-        await expect(alternatives).toBeVisible();
-        // The accordion fades its body in while it expands. Axe compares its settled colours.
+        // The accordion fades its body in while it expands: it is not visible on its first
+        // frame, and Axe compares its settled colours.
+        await waitFor(() => expect(alternatives).toBeVisible());
         const panel = alternatives.closest('[role="region"]')?.firstElementChild;
         await waitFor(() => expect(panel && getComputedStyle(panel).opacity).toBe('1'));
         if (scene === 'stale') {
@@ -225,3 +229,40 @@ export const GoalChange = example('goal', 'en');
 export const GoalChangeKorean = example('goal', 'ko');
 export const NarrowQuestion = example('question', 'en', true);
 export const NarrowQuestionKorean = example('question', 'ko', true);
+export const WideProposal = example('proposal', 'en', false, true);
+export const WideProposalKorean = example('proposal', 'ko', false, true);
+
+/** A wide editor keeps the conversation in a column on its right, open or collapsed. */
+export const WideSide: Story = {
+  args: { scene: 'edit', wide: true },
+  play: async ({ canvasElement, userEvent }) => {
+    const page = within(canvasElement);
+    const t = en.TeamAssistant;
+    const box = (el: Element) => el.getBoundingClientRect();
+    const rem = Number.parseFloat(getComputedStyle(document.documentElement).fontSize);
+    const region = await page.findByRole('region', { name: t.editTitle });
+    const frame = region.parentElement as HTMLElement;
+    const list = page.getByRole('list', { name: 'Team composition' });
+    const detail = page.getByRole('complementary', { name: en.TeamEditor.inspector });
+    const input = () => within(region).getByRole('textbox', { name: t.editRequest });
+    // Open, it is the editor's right column: as tall as the editor, the input at its foot.
+    await expect(box(region).right).toBeCloseTo(box(frame).right, 0);
+    await expect(box(region).height).toBeCloseTo(box(frame).height, 0);
+    await expect(box(region).width).toBeGreaterThanOrEqual(22 * rem);
+    await expect(box(region).width).toBeLessThanOrEqual(28 * rem);
+    await expect(box(list).right).toBeLessThanOrEqual(box(detail).left);
+    await expect(box(detail).right).toBeLessThanOrEqual(box(region).left);
+    await expect(box(detail).bottom).toBeCloseTo(box(frame).bottom, 0);
+    await expect(box(frame).bottom - box(input()).bottom).toBeLessThan(5 * rem);
+    // Collapsed, a rail keeps the same edge, and nothing is left under the work area.
+    await userEvent.click(input());
+    await userEvent.keyboard('{Escape}');
+    const entry = page.getByRole('button', { name: t.editTitle });
+    await expect(entry).toHaveFocus();
+    await expect(box(region).right).toBeCloseTo(box(frame).right, 0);
+    await expect(box(region).width).toBeLessThanOrEqual(3 * rem);
+    await expect(box(detail).bottom).toBeCloseTo(box(frame).bottom, 0);
+    await userEvent.click(entry);
+    await expect(input()).toHaveFocus();
+  },
+};

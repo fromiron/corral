@@ -26,6 +26,7 @@ import {
 import { ChevronRight, Info } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectName, projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
@@ -64,6 +65,7 @@ export function LibraryTeams({
   corrals,
   onChanged,
   onBrowseTemplates,
+  toolbar,
 }: {
   projectId: string;
   project: ProjectSummary | undefined;
@@ -72,6 +74,8 @@ export function LibraryTeams({
   onChanged: () => void;
   /** Switches the library to its Templates tab. */
   onBrowseTemplates: () => void;
+  /** The library's toolbar row, where this view's actions stand. */
+  toolbar: HTMLElement | null;
 }) {
   const t = useTranslations('Workspace');
   const tl = useTranslations('Library');
@@ -199,25 +203,28 @@ export function LibraryTeams({
   );
   return (
     <div className="flex flex-col gap-6">
-      {teams.length ? (
-        // The list's actions; the Teams tab above already names the list and counts it.
-        <div className="flex min-h-9 flex-wrap items-center justify-end gap-2">
-          {/* Where teams are kept is worth knowing once, not a line under the list. */}
-          <Tooltip content={storage} className="max-w-xs">
-            <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
-              <Info aria-hidden />
-            </Button>
-          </Tooltip>
-          {archived ? null : (
+      {teams.length && toolbar
+        ? // The list's actions; the Teams tab beside them already names the list and counts it.
+          createPortal(
             <>
-              {importButton}
-              <Button size="compact" render={newTeamLink}>
-                {t('new')}
-              </Button>
-            </>
-          )}
-        </div>
-      ) : null}
+              {/* Where teams are kept is worth knowing once, not a line under the list. */}
+              <Tooltip content={storage} className="max-w-xs">
+                <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+                  <Info aria-hidden />
+                </Button>
+              </Tooltip>
+              {archived ? null : (
+                <>
+                  {importButton}
+                  <Button size="compact" render={newTeamLink}>
+                    {t('new')}
+                  </Button>
+                </>
+              )}
+            </>,
+            toolbar,
+          )
+        : null}
       {archived ? (
         <p role="note" className="text-body text-warning">
           {tp('archivedNote')}

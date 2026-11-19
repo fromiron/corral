@@ -821,11 +821,12 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
   expect(panel.textContent).not.toContain(messages.Library.teams.list);
   expect(panel.querySelector('h2:not(section h2)')).toBeNull();
-  // Where teams are kept stays one click away, in the row of the list's actions.
-  const storage = panel.querySelector('button[aria-label="Where Corrals are saved"]');
-  const create = byText(panel, 'a', 'New Corral');
+  // Where teams are kept stays one click away, with the list's actions at the end of the tab row.
+  const storage = container.querySelector('button[aria-label="Where Corrals are saved"]');
+  const create = byText(container, 'a', 'New Corral');
   expect(storage).not.toBeNull();
   expect(storage?.parentElement?.parentElement?.contains(create ?? null)).toBe(true);
+  expect(panel.contains(storage)).toBe(false);
 });
 
 it("heads the chosen team's detail with its name and leaves the row's details to the row", async () => {

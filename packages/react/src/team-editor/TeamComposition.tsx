@@ -175,7 +175,7 @@ function Row({
   nodeId,
   selected,
   onSelect,
-  controls,
+  toggle,
   problem,
   detail,
   children,
@@ -184,7 +184,8 @@ function Row({
   nodeId?: string;
   selected?: boolean;
   onSelect: () => void;
-  controls?: ReactNode;
+  /** The fold control of a group; it stands in the same leading slot as the outline's. */
+  toggle?: ReactNode;
   problem?: ReactNode;
   detail?: ReactNode;
   children?: ReactNode;
@@ -202,7 +203,9 @@ function Row({
   return (
     <li>
       <div data-composition-row>
-        <div className="flex items-center gap-1">
+        {/* The row's fill covers the leading slot too, so chosen rows share one left edge. */}
+        <div className="relative">
+          {toggle}
           <Button
             variant="ghost"
             tabIndex={-1}
@@ -213,11 +216,11 @@ function Row({
             aria-pressed={selected}
             onClick={onSelect}
             className={cn(
-              'h-auto min-w-0 flex-1 justify-start gap-2 whitespace-normal px-2 py-1.5 text-left text-foreground',
+              'h-auto w-full min-w-0 justify-start gap-2 whitespace-normal py-1.5 ps-8 pe-2 text-left text-foreground',
               selected && 'bg-active',
             )}
           >
-            <Icon aria-hidden className="size-4 text-muted-foreground" />
+            <Icon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 flex-1 [overflow-wrap:anywhere]">
               <span
                 id={`${id}-name`}
@@ -237,33 +240,33 @@ function Row({
               {summary && (
                 <span
                   id={`${id}-summary`}
-                  title={singleLine ? summary : undefined}
+                  title={summary}
                   className={cn(
                     size.type.caption,
-                    'block text-muted-foreground',
-                    singleLine && 'truncate',
+                    'text-muted-foreground',
+                    singleLine ? 'block truncate' : 'line-clamp-2',
                   )}
                 >
                   {summary}
                 </span>
               )}
             </span>
+            {/* A short result keeps its line; only one past two fifths of the row wraps. */}
             {result && (
               <span
                 id={`${id}-result`}
                 className={cn(
                   size.type.caption,
-                  'max-w-[35%] text-end text-muted-foreground [overflow-wrap:anywhere]',
+                  'max-w-[40%] shrink-0 text-end text-muted-foreground [overflow-wrap:anywhere]',
                 )}
               >
                 {result}
               </span>
             )}
           </Button>
-          {controls}
         </div>
         {(detail || problem) && (
-          <div className="ms-8 flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1">
+          <div className="ms-13.5 flex flex-wrap items-center gap-x-2 gap-y-0.5 pb-1">
             {problem && <span id={`${id}-problem`}>{problem}</span>}
             {detail}
           </div>
@@ -274,7 +277,8 @@ function Row({
   );
 }
 
-const rail = 'ms-2 border-s border-border ps-2';
+// Members indent by the outline's step, under the same leading slot.
+const rail = 'ps-3.5';
 // These corrections require editing wires, membership or graph boundaries, rather than fields.
 const graphIssue: Partial<Record<Diagnostic['code'], true>> = {
   ADVISOR_OUTSIDE_FLOW: true,
@@ -409,18 +413,21 @@ export function TeamComposition({
         {...content}
         selected={chosen.has(node.id) && (!sheetView || sheetView === 'selection')}
         onSelect={() => onNode(node.id)}
-        controls={
+        toggle={
           disclosure !== undefined && (
-            <Button
-              variant="ghost"
-              size="icon"
+            <button
+              type="button"
               tabIndex={-1}
               aria-expanded={disclosure}
               aria-label={t(disclosure ? 'collapse' : 'expand', { name: node.label })}
+              className={cn(
+                focusRing,
+                'absolute start-1 top-1/2 z-10 inline-flex size-5 -translate-y-1/2 items-center justify-center rounded text-muted-foreground hover:text-foreground',
+              )}
               onClick={() => onToggle(node.id)}
             >
-              {disclosure ? <ChevronDown /> : <ChevronRight />}
-            </Button>
+              {disclosure ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            </button>
           )
         }
         problem={problem}
@@ -503,10 +510,10 @@ export function TeamComposition({
             data-composition-row
             className={cn(
               size.type.caption,
-              'flex items-center gap-2 px-2 py-1 text-muted-foreground',
+              'flex items-center gap-2 py-1 ps-8 pe-2 text-muted-foreground',
             )}
           >
-            <Split aria-hidden size={16} /> {name}
+            <Split aria-hidden size={14} /> {name}
             {graphAction(row.sourceId, true)}
           </div>
           <ul aria-label={name} className={rail}>
@@ -586,42 +593,53 @@ export function TeamComposition({
       { graph: unconnected || row.kind === 'reference' },
     );
   }
+  // With agents, adding is a quiet row in the list's own rhythm; without, the list's one action.
   const add = (
     <Button
       variant={hasWorkAgent ? 'ghost' : 'primary'}
       tabIndex={-1}
       data-composition-main=""
       onClick={onAdd}
+      className={hasWorkAgent ? 'w-full justify-start gap-2 ps-8 text-muted-foreground' : undefined}
     >
-      <Plus aria-hidden />
+      <Plus aria-hidden className={hasWorkAgent ? 'size-3.5' : undefined} />
       {c('add')}
     </Button>
   );
   const shared = roster.advice.shared;
   return (
     <div {...navigation}>
-      {hasWorkAgent && (
-        <div data-composition-row className="flex justify-end px-2 pb-1">
-          <button
-            type="button"
-            className={cn(focusRing, 'rounded-full')}
-            tabIndex={-1}
-            data-composition-main=""
-            disabled={Boolean(validationStatus)}
-            aria-pressed={sheetView === 'problems'}
-            onClick={onProblems}
+      {/* The same head as the flow graph's outline: the team, then its problems. */}
+      <div data-composition-row className="sticky top-0 z-20 bg-surface-2 pt-2 pb-1">
+        <div className="flex min-h-10 items-center gap-2 py-1.5 pr-1 pl-2">
+          <span
+            className={cn(size.type.body, 'grow truncate text-foreground')}
+            style={{ fontVariationSettings: fontWeights.semibold }}
           >
-            <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
-          </button>
+            {definition.name}
+          </span>
+          {hasWorkAgent && (
+            <button
+              type="button"
+              className={cn(focusRing, 'rounded-full')}
+              tabIndex={-1}
+              data-composition-main=""
+              disabled={Boolean(validationStatus)}
+              aria-pressed={sheetView === 'problems'}
+              onClick={onProblems}
+            >
+              <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
+            </button>
+          )}
         </div>
-      )}
+      </div>
       <p id={hint} className="sr-only">
         {c('keyboard')}
       </p>
       <ul
         aria-label={editor('composition')}
         aria-describedby={hint}
-        className="grid grid-cols-1 content-start gap-1"
+        className="grid grid-cols-1 content-start gap-0.5"
       >
         <Row
           icon={FileText}
@@ -643,7 +661,7 @@ export function TeamComposition({
         </li>
         {roster.unconnected.length > 0 && (
           <li>
-            <span className={cn(size.type.caption, 'block px-2 py-1 text-muted-foreground')}>
+            <span className={cn(size.type.caption, 'block py-1 ps-8 pe-2 text-muted-foreground')}>
               {c('unconnected')}
             </span>
             <ul aria-label={c('unconnected')} className={rail}>

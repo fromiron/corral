@@ -216,12 +216,15 @@ export function StructureTree({
   };
 
   return (
-    // The team row heads the outline: its name, its problems and the way to add a step.
+    // The team row heads the outline: its name, its problems and the way to add a step. Beside
+    // the work area the outline is the editor's left column, down to its bottom edge.
     <aside
       aria-label={t('outline')}
       className={cn(
         'flex flex-col border-border',
-        stacked ? 'shrink-0 border-b' : 'min-h-0 border-r',
+        stacked
+          ? 'shrink-0 border-b'
+          : 'col-start-1 row-span-2 row-start-1 min-h-0 w-[272px] border-r',
       )}
     >
       <div
@@ -252,29 +255,30 @@ export function StructureTree({
           <Plus />
         </Button>
       </div>
-      <Button
-        variant="ghost"
-        size="compact"
-        className="mx-2 mb-1 shrink-0 justify-start"
-        aria-pressed={view === 'sharedOutrider'}
-        onClick={onSharedOutrider}
-      >
-        <Eye />
-        {definition.sharedOutrider
-          ? definition.sharedOutrider.targets.kind === 'all'
-            ? t('sharedOutrider.entireSummary')
-            : t('sharedOutrider.selectedSummary', {
-                count: definition.sharedOutrider.targets.nodeIds.length,
-              })
-          : t('sharedOutrider.add')}
-      </Button>
       {/* Stacked, a long outline scrolls in itself, so the canvas stays near the top. */}
       <ul className={cn('overflow-y-auto px-2 pb-2', stacked ? 'max-h-60' : 'min-h-0 flex-1')}>
         {children(null).map((node) => row(node, 0))}
       </ul>
+      {/* What belongs to the whole team stands under its steps, as in the composition list. */}
       <footer
         className={cn('gap-0.5 border-t border-border p-2', stacked ? 'flex flex-wrap' : 'grid')}
       >
+        <Button
+          variant="ghost"
+          size="compact"
+          className="justify-start"
+          aria-pressed={view === 'sharedOutrider'}
+          onClick={onSharedOutrider}
+        >
+          <Eye />
+          {definition.sharedOutrider
+            ? definition.sharedOutrider.targets.kind === 'all'
+              ? t('sharedOutrider.entireSummary')
+              : t('sharedOutrider.selectedSummary', {
+                  count: definition.sharedOutrider.targets.nodeIds.length,
+                })
+            : t('sharedOutrider.add')}
+        </Button>
         <Button
           variant="ghost"
           size="compact"
