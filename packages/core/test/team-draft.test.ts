@@ -536,3 +536,18 @@ describe('work observation in a goal draft', () => {
     ).toBeUndefined();
   });
 });
+
+it('preserves an explicitly required gate for confirmation when a model supplies a different or unusable policy', () => {
+  const goal = 'Write an invitation. The result must pass review before submitting.';
+  const plan = planFromGoal(goal, wording);
+  if (!plan) throw Error('No local draft');
+  const proposed = { ...plan, name: 'Model invitation', outrider: 'artifact_review' as const };
+  expect(planAfterModel(goal, proposed, wording).plan).toMatchObject({
+    name: 'Model invitation',
+    outrider: 'required_review',
+  });
+  expect(planAfterModel(goal, null, wording)).toMatchObject({
+    plan: { outrider: 'required_review' },
+    recovery: 'unusable',
+  });
+});

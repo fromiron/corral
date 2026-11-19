@@ -17,8 +17,12 @@ import { setRequiredOutputReview } from '../../packages/react/src/team-editor/co
 import { ROOT } from '../../tools/release/candidate.ts';
 
 // Manual opt-in. This test uses paid providers only when a person is supervising.
-it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
-  'the saved Output publishes the writer version that passed its mandatory Outrider review',
+const mode = process.env.CORRAL_REQUIRED_REVIEW_LIVE;
+const revise = mode === 'revise';
+it.skipIf(mode !== '1' && !revise)(
+  revise
+    ? 'the original writer revises V1 from the Outrider feedback and only the approved V2 is published'
+    : 'the saved Output publishes the writer version that passed its mandatory Outrider review',
   async () => {
     const workerId = process.env.CORRAL_WORKER_PROFILE ?? 'deepseek-hive';
     const advisorId = process.env.CORRAL_ADVISOR_PROFILE ?? 'zai-org-glm-5.3-flash';
@@ -73,16 +77,29 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
       const definition = linearCorral(['writer'], 'live_required_review');
       definition.input = {
         brief: 'Write a one-sentence invitation to a neighborhood bicycle picnic.',
-        criteria: ['The invitation must include the words bicycle and picnic.'],
+        criteria: [
+          'The invitation must include the words bicycle and picnic.',
+          ...(revise
+            ? [
+                'The final invitation must include the exact meeting-point code specified in the review. A draft without the code needs revision.',
+              ]
+            : []),
+        ],
       };
       const writer = definition.roles[0];
       if (!writer) throw Error('Expected writer fixture');
       writer.modelProfile = workerId;
       writer.prompt =
         'Write the one-sentence invitation, incorporating review feedback when present. Use write_artifact then submit_result to submit your version.';
+      if (revise)
+        writer.prompt =
+          'Submit this first draft using write_artifact and submit_result: "Join our neighborhood bicycle picnic on Saturday." On a revision round, incorporate the exact meeting-point code provided in the review and submit the new invitation.';
+      const meetingPoint = 'Willow-' + randomUUID().slice(0, 8);
       definition.sharedOutrider = {
         modelProfile: advisorId,
-        principles: 'Check that the invitation explicitly mentions both bicycle and picnic.',
+        principles: revise
+          ? `Check the words bicycle and picnic and the meeting-point code ${meetingPoint}. If the code is missing, request a revision and tell the writer to include exactly ${meetingPoint}. Pass when the revised invitation includes all three.`
+          : 'Check that the invitation explicitly mentions both bicycle and picnic.',
         targets: { kind: 'all' },
       };
       const enabled = setRequiredOutputReview(
@@ -160,7 +177,18 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
         (b) => b.nodeId === required.decisionNodeId,
       );
       const reviews = Object.values(final.reviews);
+      const transport = new InProcessTransport(coordinator);
+      const candidateChecks = await Promise.all(
+        reviews.map(async (review) => ({
+          id: review.targetVersionId,
+          hasMeetingCode:
+            (await transport.getArtifactText(id, review.targetVersionId))?.includes(meetingPoint) ??
+            false,
+          reviewGaveCode: review.issues.some((issue) => issue.reason.includes(meetingPoint)),
+        })),
+      );
       const report = {
+        ...(revise ? { candidateChecks } : {}),
         run: id,
         status: final.status,
         reason: final.statusReason,
@@ -185,6 +213,11 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
             ),
         })),
         profiles: [...new Set(calls.map((c) => c.profile))],
+        versionsWithInputs: versions.map((version) => ({
+          id: version,
+          parent: final.artifacts[version]?.parentVersionId,
+          inputs: final.artifacts[version]?.inputArtifactVersionIds,
+        })),
         submissions: Object.values(final.tasks).map((task) => ({
           node: task.nodeId,
           versions: task.submittedArtifactVersionIds,
@@ -211,6 +244,25 @@ it.skipIf(process.env.CORRAL_REQUIRED_REVIEW_LIVE !== '1')(
             final.reviews[ref.id]?.verdict === 'pass',
         ),
       ).toBe(true);
+      if (revise) {
+        const [first, second] = reviews;
+        expect(decisions.map((b) => b.selectedPort)).toEqual(['revise', 'pass']);
+        expect(first?.verdict).toBe('revise');
+        expect(first?.issues.some((issue) => issue.reason.includes(meetingPoint))).toBe(true);
+        expect(second?.targetVersionId).toBe(selected);
+        expect(second?.verdict).toBe('pass');
+        const original = first!.targetVersionId,
+          feedback = first!.reviewVersionId;
+        expect(final.artifacts[selected]?.parentVersionId).toBe(original);
+        const before = await new InProcessTransport(coordinator).getArtifactText(id, original);
+        const after = await new InProcessTransport(coordinator).getArtifactText(id, selected);
+        expect(before).not.toContain(meetingPoint);
+        expect(after).toContain(meetingPoint);
+        expect(final.artifacts[selected]?.inputArtifactVersionIds).toContain(feedback);
+        expect(final.executions[final.artifacts[original]!.authorExecutionId]?.nodeId).toBe(
+          'writer',
+        );
+      }
       expect(new Set(calls.map((c) => c.profile))).toEqual(new Set([workerId, advisorId]));
       expect(calls.every((c) => c.finished && c.certainty === 'reported')).toBe(true);
     } finally {

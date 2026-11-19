@@ -352,6 +352,12 @@ export function planAfterModel(
   const local = planFromGoal(goal, wording);
   if (!proposed && local?.observeWork) return { plan: local, recovery: 'unusable' };
   const modelPlan = proposed && withWorkObservation(proposed, Boolean(local?.observeWork));
+  if (local?.outrider === 'required_review') {
+    if (!modelPlan) return { plan: local, recovery: 'unusable' };
+    return modelPlan.outrider === 'required_review'
+      ? { plan: modelPlan, recovery: null }
+      : { plan: { ...modelPlan, outrider: 'required_review' }, recovery: 'incompatible' };
+  }
   if (
     local?.pattern !== 'single' ||
     (local.outrider !== 'consultation' && local.outrider !== 'artifact_review') ||
