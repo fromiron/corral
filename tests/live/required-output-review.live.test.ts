@@ -168,25 +168,35 @@ it.skipIf(mode !== '1' && !revise)(
         );
       }, 10000);
       deadline = setTimeout(stop, 390000);
-      const final = await waitForProjection(new InProcessTransport(coordinator), id, (p) =>
-        TERMINAL_RUN_STATUSES.has(p.status),
-      );
+      const codeByVersion = new Map<string, boolean>();
+      const final = await waitForProjection(new InProcessTransport(coordinator), id, (p) => {
+        if (revise) {
+          // Superseded bodies leave the public view after termination. Record the boolean
+          // while the candidate is available, without storing or logging the text.
+          for (const artifact of Object.values(p.artifacts)) {
+            const version = artifact.artifactVersionId;
+            if (
+              p.executions[artifact.authorExecutionId]?.nodeId !== 'writer' ||
+              codeByVersion.has(version)
+            )
+              continue;
+            const text = coordinator.getArtifactText(id, version);
+            if (text !== null) codeByVersion.set(version, text.includes(meetingPoint));
+          }
+        }
+        return TERMINAL_RUN_STATUSES.has(p.status);
+      });
       const versions = final.output?.artifactVersionIds ?? [];
       const calls = Object.values(final.modelCalls);
       const decisions = Object.values(final.workflowBranches ?? {}).filter(
         (b) => b.nodeId === required.decisionNodeId,
       );
       const reviews = Object.values(final.reviews);
-      const transport = new InProcessTransport(coordinator);
-      const candidateChecks = await Promise.all(
-        reviews.map(async (review) => ({
-          id: review.targetVersionId,
-          hasMeetingCode:
-            (await transport.getArtifactText(id, review.targetVersionId))?.includes(meetingPoint) ??
-            false,
-          reviewGaveCode: review.issues.some((issue) => issue.reason.includes(meetingPoint)),
-        })),
-      );
+      const candidateChecks = reviews.map((review) => ({
+        id: review.targetVersionId,
+        hasMeetingCode: codeByVersion.get(review.targetVersionId) ?? null,
+        reviewGaveCode: review.issues.some((issue) => issue.reason.includes(meetingPoint)),
+      }));
       const report = {
         ...(revise ? { candidateChecks } : {}),
         run: id,
@@ -254,10 +264,8 @@ it.skipIf(mode !== '1' && !revise)(
         const original = first!.targetVersionId,
           feedback = first!.reviewVersionId;
         expect(final.artifacts[selected]?.parentVersionId).toBe(original);
-        const before = await new InProcessTransport(coordinator).getArtifactText(id, original);
-        const after = await new InProcessTransport(coordinator).getArtifactText(id, selected);
-        expect(before).not.toContain(meetingPoint);
-        expect(after).toContain(meetingPoint);
+        expect(codeByVersion.get(original)).toBe(false);
+        expect(codeByVersion.get(selected)).toBe(true);
         expect(final.artifacts[selected]?.inputArtifactVersionIds).toContain(feedback);
         expect(final.executions[final.artifacts[original]!.authorExecutionId]?.nodeId).toBe(
           'writer',
