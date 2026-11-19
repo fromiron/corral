@@ -20,7 +20,7 @@ import { focusRing } from '../design-kit/lib/focus.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { tween } from '../design-kit/lib/springs.ts';
 import { cn } from '../design-kit/lib/utils.ts';
-import { ChevronDown, ChevronRight, CircleAlert, Plus, TriangleAlert } from '../ui/icons.ts';
+import { ChevronDown, ChevronRight, CircleAlert, Plus, TriangleAlert, X } from '../ui/icons.ts';
 import type { EditRejection, Placement, PortRequest, StepKind } from './commands.ts';
 import { KIND_COLOR, KIND_ICON, kindOf, membersOf, roleOf } from './kinds.ts';
 import {
@@ -45,7 +45,14 @@ export const STEP_DRAG_TYPE = 'application/x-corral-step';
 
 type Check = { ok: true } | { ok: false; reason: EditRejection };
 
+export interface ResultOffer {
+  source: CorralNode;
+  apply: () => void;
+  dismiss: () => void;
+}
+
 export interface TeamGraphCanvasProps {
+  resultOffer?: ResultOffer | undefined;
   definition: CorralDefinition;
   diagnostics: readonly Diagnostic[];
   selection: TeamSelection;
@@ -146,6 +153,7 @@ export function TeamGraphCanvas({
   onDelete,
   insetRight = 0,
   annotations,
+  resultOffer,
   wheelZoom = 'always',
 }: TeamGraphCanvasProps) {
   const t = useTranslations('TeamEditor');
@@ -507,11 +515,19 @@ export function TeamGraphCanvas({
           : t('reference', { revision: node.source.definitionRevision });
       case 'join':
         return t(node.policy === 'all' ? 'joinAll' : 'joinAny');
-      case 'output':
-        return node.requireApproval ? t('approvalRequired') : kindName(node);
+      case 'output': {
+        const inputs = node.inputBindings.filter(
+          (binding) => binding.kind === 'task_output' && binding.sourceNodeId,
+        );
+        if (!inputs.length) return t('results.choose');
+        if (inputs.length > 1) return t('results.sourceCount', { count: inputs.length });
+        const source = inputs[0]?.sourceNodeId ?? '';
+        return t('results.receive', { source: nodes.get(source)?.label ?? source });
+      }
     }
   };
   const detail = (node: CorralNode): string => {
+    if (node.type === 'output' && node.requireApproval) return t('approvalRequired');
     if (node.type === 'agent') return roleOf(definition, node)?.prompt.split('\n')[0] ?? '';
     if (node.type === 'loop' || node.type === 'team')
       return membersOf(definition, node.id)
@@ -541,6 +557,12 @@ export function TeamGraphCanvas({
         ? { reason: drop.check.reason, at: drop.point }
         : null;
 
+  const offerRect = resultOffer && items.get(resultOffer.source.id)?.rect;
+  const closeOffer = () => {
+    if (!resultOffer) return;
+    resultOffer.dismiss();
+    focusNode(resultOffer.source.id);
+  };
   return (
     <div
       ref={pane}
@@ -983,6 +1005,38 @@ export function TeamGraphCanvas({
               </Button>
             ) : null,
           )}
+        </div>
+      ) : null}
+      {offerRect && resultOffer && viewport ? (
+        <div
+          className="absolute z-20 flex max-w-56 gap-1 rounded-md bg-background"
+          style={{
+            left: `clamp(4px, ${offerRect.x * viewport.k + viewport.x}px, calc(100% - ${insetRight}px - 14rem))`,
+            top:
+              (offerRect.y + offerRect.h) * viewport.k +
+              viewport.y +
+              (annotations?.has(resultOffer.source.id) ? 25 : 4),
+          }}
+        >
+          <Button
+            size="compact"
+            variant="secondary"
+            className="min-w-0"
+            onClick={() => {
+              resultOffer.apply();
+              closeOffer();
+            }}
+          >
+            <span className="truncate">{t('results.use', { name: resultOffer.source.label })}</span>
+          </Button>
+          <Button
+            size="icon-compact"
+            variant="ghost"
+            aria-label={t('results.dismiss')}
+            onClick={closeOffer}
+          >
+            <X />
+          </Button>
         </div>
       ) : null}
       {layout.items.size === 0 ? (

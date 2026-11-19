@@ -21,6 +21,7 @@ import {
   patchNode,
   placeStep,
   removeItems,
+  replaceOutputSource,
   type StepKind,
   setParent,
   setSharedOutrider,
@@ -177,6 +178,57 @@ describe('team shared Outrider settings', () => {
     if (!loaded.ok) throw new Error(loaded.errors.join(', '));
     expect(loaded.draft.definition).toEqual(draft.definition);
     expect(loaded.draft.definition.sharedOutrider?.targets).toEqual(targets);
+  });
+});
+
+describe('output result selection', () => {
+  it('replaces one named binding without changing its metadata, siblings or execution edges', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(3), 'output', { kind: 'after', nodeId: 'agent_3' }),
+    );
+    const bindings = [
+      { kind: 'task_output' as const, name: 'original', sourceNodeId: 'agent_1', optional: true },
+      { kind: 'task_output' as const, name: 'other', sourceNodeId: 'agent_3' },
+    ];
+    const original = patchNode(draft, nodeId, { inputBindings: bindings });
+    const store = createEditorStore(original);
+    const changed = ok(replaceOutputSource(original, nodeId, 0, 'agent_2')).draft;
+    store.getState().applyDraft(changed);
+    expect(node(changed, nodeId)).toMatchObject({
+      inputBindings: [{ ...bindings[0], sourceNodeId: 'agent_2' }, bindings[1]],
+    });
+    expect(changed.definition.controlEdges).toBe(original.definition.controlEdges);
+    store.getState().applyDraft(ok(replaceOutputSource(changed, nodeId, 0, 'agent_2')).draft);
+    expect(store.getState().past).toEqual([original]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(original);
+    store.getState().redo();
+    expect(store.getState().draft).toBe(changed);
+  });
+
+  it('only accepts preceding scheduled agents and reference teams supported by the compiler', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const isolated = ok(placeStep(draft, 'agent', { kind: 'empty' }));
+    const observer = ok(
+      placeStep(isolated.draft, 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const nested = ok(
+      placeStep(
+        observer.draft,
+        'team',
+        { kind: 'after', nodeId: 'agent_1' },
+        {
+          reference: { corralId: 'saved-team', definitionRevision: 1, name: 'Saved team' },
+        },
+      ),
+    );
+    expect(replaceOutputSource(nested.draft, nodeId, 0, nested.nodeId).ok).toBe(true);
+    for (const invalid of [isolated.nodeId, observer.nodeId, nodeId, 'missing']) {
+      expect(replaceOutputSource(nested.draft, nodeId, 0, invalid).ok).toBe(false);
+    }
+    expect(replaceOutputSource(nested.draft, nodeId, 9, 'agent_1').ok).toBe(false);
   });
 });
 

@@ -6020,7 +6020,9 @@
       "watchNeedsAdvisor": "Only an Outrider watches agents.",
       "watchNeedsAgent": "An Outrider watches an agent in the flow or a callable agent.",
       "invalidSharedOutrider": "Enter a valid model profile and review principles.",
-      "advisorRole": "An Outrider’s role is not copied onto an agent."
+      "advisorRole": "An Outrider’s role is not copied onto an agent.",
+      "invalidResultInput": "Select an existing submitted output input.",
+      "invalidResultSource": "Choose a preceding agent or referenced team."
     },
     "outline": "Corral structure",
     "addStep": "Add a step",
@@ -6166,6 +6168,21 @@
       "runTokens": "{count, number} tokens",
       "runFailures": "{count} failed",
       "runRetries": "{count} retried"
+    },
+    "results": {
+      "receive": "Result to receive · {source}",
+      "sourceCount": "Results to receive · {count}",
+      "heading": "Results to receive",
+      "choose": "Choose result to receive",
+      "change": "Change result source",
+      "changeNamed": "Change source for {name}",
+      "use": "Use {name}’s result",
+      "sourceFor": "Result source for {name}",
+      "noSources": "Connect a preceding agent or referenced team to this output.",
+      "apply": "Apply",
+      "cancel": "Cancel",
+      "add": "Add result",
+      "dismiss": "Dismiss result suggestion"
     }
   },
   "LiveVoice": {

@@ -16,6 +16,7 @@ import {
   isBox,
   isWithin,
   outputPortsOf,
+  outputSources,
   type SharedOutriderTarget,
   sourceSide,
   wouldCreateCycle,
@@ -63,6 +64,8 @@ export type EditRejection =
   | 'callableInControlFlow'
   | 'invalidSourcePort'
   | 'invalidTargetPort'
+  | 'invalidResultSource'
+  | 'invalidResultInput'
   | 'duplicate'
   | 'boxBoundary'
   | 'cycle'
@@ -960,6 +963,30 @@ export function importRole(
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────
+
+/** Changes which producer supplies one binding, independently of execution order. */
+export function replaceOutputSource(
+  draft: EditorDraft,
+  outputId: string,
+  index: number,
+  sourceId: string,
+): EditResult {
+  const output = draft.definition.nodes.find((node) => node.id === outputId);
+  if (output?.type !== 'output') return { ok: false, reason: 'unknownNode' };
+  const binding = output.inputBindings[index];
+  if (binding?.kind !== 'task_output') return { ok: false, reason: 'invalidResultInput' };
+  if (!outputSources(draft.definition, outputId).some((source) => source.id === sourceId)) {
+    return { ok: false, reason: 'invalidResultSource' };
+  }
+  if (binding.sourceNodeId === sourceId) return { ok: true, draft };
+  const inputBindings = output.inputBindings.map((existing, i) =>
+    i === index ? { ...existing, sourceNodeId: sourceId } : existing,
+  );
+  const nodes = draft.definition.nodes.map((node) =>
+    node === output ? { ...output, inputBindings } : node,
+  );
+  return { ok: true, draft: { ...draft, definition: { ...draft.definition, nodes } } };
+}
 
 /** Sets fields of one node; `undefined` removes an optional field. The compiler validates. */
 export function patchNode(

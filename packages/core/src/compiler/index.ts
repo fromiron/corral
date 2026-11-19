@@ -903,7 +903,7 @@ const WRITE_TOOLS = new Set<WorkTool>(['write_file', 'delete_file', 'move_file']
 
 // A box is split in two virtual vertices: B#in (enter → body) and B#out (exit → next, exhausted)
 // joined by B#in → B#out. Edges into "repeat" are the only back edges a Corral may have.
-function analyzeGraph(c: Context): Graph | null {
+function executionOrder(c: Context) {
   const { definition } = c;
   const adjacency = new Map<string, { to: string; edge: ControlEdge | null }[]>();
   const link = (from: string, to: string, edge: ControlEdge | null) =>
@@ -983,6 +983,29 @@ function analyzeGraph(c: Context): Graph | null {
     if (!v.endsWith('#out')) nodeAncestors.set(nodeOfVertex(v), set);
   }
 
+  return { order, ancestors: nodeAncestors, ordered, adjacency, reached };
+}
+
+function isTaskOutputSource(node: CorralNode | undefined): boolean {
+  return (
+    (node?.type === 'agent' && node.invocation === 'scheduled') ||
+    (node?.type === 'team' && node.source.kind === 'reference')
+  );
+}
+
+/** The output picker also works on drafts with missing bindings, using the compiler's single-pass order. */
+export function outputSources(definition: CorralDefinition, outputId: string): CorralNode[] {
+  const context = new Context(definition);
+  if (context.nodes.get(outputId)?.type !== 'output') return [];
+  const before = executionOrder(context)?.ancestors.get(outputId);
+  return definition.nodes.filter((node) => before?.has(node.id) && isTaskOutputSource(node));
+}
+
+function analyzeGraph(c: Context): Graph | null {
+  const flow = executionOrder(c);
+  if (!flow) return null;
+  const { definition } = c;
+  const { order, ancestors, ordered, adjacency, reached } = flow;
   checkParallel(c, ordered, adjacency);
 
   // Capability reachability: minimum delegation depth and the longest static chain. Advice is
@@ -1012,7 +1035,7 @@ function analyzeGraph(c: Context): Graph | null {
       .map(([id]) => longest(id, new Set([id]))),
   );
 
-  return { order, ancestors: nodeAncestors, reached, callableDepth, maxStaticDepth };
+  return { order, ancestors, reached, callableDepth, maxStaticDepth };
 }
 
 /**
@@ -1243,10 +1266,7 @@ function checkBindings(c: Context, graph: Graph) {
             bad(`${label}: run inputs are "brief" and "criteria"`);
           break;
         case 'task_output':
-          if (
-            !(source?.type === 'agent' && source.invocation === 'scheduled') &&
-            !(source?.type === 'team' && source.source.kind === 'reference')
-          ) {
+          if (!source || !isTaskOutputSource(source)) {
             bad(`${label} must read a scheduled agent or a referenced Team`);
           } else if (!callable && !before.has(source.id)) {
             bad(`${label} reads ${source.id}, which does not run before this node`);

@@ -6020,7 +6020,9 @@
       "watchNeedsAdvisor": "에이전트를 지켜보는 것은 Outrider뿐입니다.",
       "watchNeedsAgent": "Outrider는 흐름 안의 에이전트나 호출 전용 에이전트를 지켜봅니다.",
       "invalidSharedOutrider": "올바른 모델 프로필과 검토 원칙을 입력하세요.",
-      "advisorRole": "Outrider의 역할은 에이전트로 가져오지 않습니다."
+      "advisorRole": "Outrider의 역할은 에이전트로 가져오지 않습니다.",
+      "invalidResultInput": "기존 제출 결과 입력을 고르세요.",
+      "invalidResultSource": "이 출력보다 먼저 실행되는 에이전트나 참조 팀을 고르세요."
     },
     "outline": "Corral 구조",
     "addStep": "단계 추가",
@@ -6166,6 +6168,21 @@
       "runTokens": "토큰 {count, number}",
       "runFailures": "실패 {count}",
       "runRetries": "재시도 {count}"
+    },
+    "results": {
+      "receive": "받을 결과 · {source}",
+      "sourceCount": "받을 결과 · {count}개",
+      "heading": "받을 결과",
+      "choose": "받을 결과 선택",
+      "change": "받을 결과 변경",
+      "changeNamed": "{name} 출처 변경",
+      "use": "{name} 결과 사용",
+      "sourceFor": "{name} 결과 출처",
+      "noSources": "이 출력 앞에 실행 에이전트나 참조 팀을 연결하세요.",
+      "apply": "적용",
+      "cancel": "취소",
+      "add": "받을 결과 추가",
+      "dismiss": "결과 제안 닫기"
     }
   },
   "LiveVoice": {

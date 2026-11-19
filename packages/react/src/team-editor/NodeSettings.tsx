@@ -47,6 +47,7 @@ import {
 import type { EditorStore } from '../editor/store.ts';
 import { X } from '../ui/icons.ts';
 import { patchNode, removeItems, watchAgent } from './commands.ts';
+import { OutputSources } from './OutputSources.tsx';
 
 // The settings of one step that the team editor's sheet shows: role, model, tools, inputs and
 // call links for agents, and the kind-specific fields of decisions, loops and outputs. Every
@@ -244,7 +245,9 @@ export function NodeSettings({
         />
       ) : null}
 
-      {(node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
+      {node.type === 'output' ? (
+        <OutputSources key={node.id} editor={editor} output={node} />
+      ) : (node.type === 'team' ? node.source.kind === 'reference' : 'inputBindings' in node) ? (
         <InputsEditor
           editor={editor}
           node={node as Extract<CorralNode, { inputBindings?: unknown }>}

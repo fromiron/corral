@@ -201,6 +201,72 @@ describe('team editor', () => {
     expect(editor.getState().canUndo).toBe(false);
   });
 
+  it('shows the actual output source and offers a separate edit after insertion', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    await user.click(canvasNode('agent_1'));
+    await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Use Agent 2’s result' }));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 2');
+    act(() => editor.getState().undo());
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(draft);
+  });
+
+  it('keeps a source change local until applied and tracks a renamed source', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(nodeId));
+    await user.click(screen.getByRole('button', { name: 'Change result source' }));
+    await choose('Result source for text', 'Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(draft);
+    act(() => editor.getState().applyDraft(patchNode(draft, 'agent_2', { label: 'Editor' })));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Editor');
+  });
+
+  it('repairs an empty output and explicitly chooses which of two named inputs to change', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const editor = renderEditor(patchNode(draft, nodeId, { inputBindings: [] }));
+    const user = userEvent.setup();
+    const input = async (button: string, name: string, producer: string) => {
+      await user.click(screen.getByRole('button', { name: button }));
+      const result = screen.getByRole('group', { name: 'Results to receive' });
+      const label = within(result).getByRole('textbox', { name: 'Name' });
+      await user.clear(label);
+      await user.type(label, name);
+      await choose(`Result source for ${name}`, producer);
+      await user.click(within(result).getByRole('button', { name: 'Apply' }));
+    };
+    expect(canvasNode(nodeId)).toHaveTextContent('Choose result to receive');
+    await user.click(canvasNode(nodeId));
+    await input('Choose result to receive', 'draft', 'Agent 1');
+    await input('Add result', 'proof', 'Agent 2');
+    expect(canvasNode(nodeId)).toHaveTextContent('Results to receive · 2');
+    await user.click(screen.getByRole('button', { name: 'Change source for proof' }));
+    await choose('Result source for proof', 'Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(
+      editor.getState().draft.definition.nodes.find((node) => node.id === nodeId),
+    ).toMatchObject({
+      inputBindings: [
+        { name: 'draft', kind: 'task_output', sourceNodeId: 'agent_1' },
+        { name: 'proof', kind: 'task_output', sourceNodeId: 'agent_1' },
+      ],
+    });
+  });
+
   it('puts the add button on the team row of the outline, with no heading over the outline', () => {
     renderEditor(chain(1));
     const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });

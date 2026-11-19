@@ -6,6 +6,7 @@ import {
 } from '@corral/contracts';
 import {
   isBox,
+  outputSources,
   ROLE_PRESET_IDS,
   type RolePresetId,
   type RunStats,
@@ -63,6 +64,7 @@ import {
   placeStep,
   primaryOut,
   removeItems,
+  replaceOutputSource,
   type StepKind,
   setParent,
   type TeamReference,
@@ -80,7 +82,12 @@ import type {
 import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
-import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraphCanvas.tsx';
+import {
+  type ResultOffer,
+  STEP_DRAG_TYPE,
+  TeamGraphCanvas,
+  type TeamSelection,
+} from './TeamGraphCanvas.tsx';
 import { type ReadHarnessAsk, useOutriderTargets } from './useOutriderTargets.ts';
 
 // The team editor (docs/specs/features/team-graph.md): the structure outline, the auto-laid-out
@@ -209,6 +216,7 @@ export function TeamEditor({
   // Said once, right after the import that left a work style out, until the next edit or
   // selection.
   const [dropped, setDropped] = useState<typeof draft | null>(null);
+  const [inserted, setInserted] = useState<{ sourceId: string; outputId: string } | null>(null);
   useEffect(() => {
     if (dropped && dropped !== draft) setDropped(null);
   }, [dropped, draft]);
@@ -216,6 +224,7 @@ export function TeamEditor({
   const select = useCallback((next: TeamSelection) => {
     setSelection(next);
     setDropped(null);
+    setInserted(null);
     if (next.nodes.length || next.edge) setView(null);
   }, []);
   // Another view, such as an agent import, can ask for a step to be selected.
@@ -235,8 +244,29 @@ export function TeamEditor({
   }, []);
   const apply = (result: EditResult) => {
     if (!result.ok) return;
+    const before = editor.getState().draft;
     editor.getState().applyDraft(result.draft);
-    if (result.nodeId) select({ nodes: [result.nodeId], edge: null });
+    if (!result.nodeId) return;
+    select({ nodes: [result.nodeId], edge: null });
+    const sourceId = result.nodeId;
+    if (before.definition.nodes.some((node) => node.id === sourceId)) return;
+    const after = result.draft.definition;
+    const outgoing = after.controlEdges.filter((edge) => edge.source === sourceId);
+    const target = after.nodes.find((node) => node.id === outgoing[0]?.target);
+    if (
+      outgoing.length === 1 &&
+      target?.type === 'output' &&
+      target.inputBindings.length === 1 &&
+      target.inputBindings[0]?.kind === 'task_output' &&
+      target.inputBindings[0].sourceNodeId !== sourceId &&
+      before.definition.controlEdges.some(
+        (edge) =>
+          edge.target === target.id && !after.controlEdges.some((next) => next.id === edge.id),
+      ) &&
+      outputSources(after, target.id).some((node) => node.id === sourceId)
+    ) {
+      setInserted({ sourceId, outputId: target.id });
+    }
   };
   const copyRole = (role: AgentRole, at: Placement) => {
     const result = importRole(editor.getState().draft, role, selection.nodes, at, {
@@ -530,6 +560,35 @@ export function TeamEditor({
     return shown;
   }, [runStats, definition, onOpenRun]);
 
+  const selectedSource = inserted && nodes.get(inserted.sourceId);
+  const destination = inserted && nodes.get(inserted.outputId);
+  let resultOffer: ResultOffer | undefined;
+  if (
+    selectedSource &&
+    destination?.type === 'output' &&
+    destination.inputBindings.length === 1 &&
+    destination.inputBindings[0]?.sourceNodeId !== selectedSource.id &&
+    selection.nodes.length === 1 &&
+    selection.nodes[0] === selectedSource.id &&
+    definition.controlEdges.some(
+      (edge) => edge.source === selectedSource.id && edge.target === destination.id,
+    )
+  ) {
+    resultOffer = {
+      source: selectedSource,
+      apply: () => {
+        const result = replaceOutputSource(
+          editor.getState().draft,
+          destination.id,
+          0,
+          selectedSource.id,
+        );
+        if (result.ok) editor.getState().applyDraft(result.draft);
+      },
+      dismiss: () => setInserted(null),
+    };
+  }
+
   const sheetOpen = view !== null || selection.nodes.length > 0 || selection.edge !== null;
   const notice = dropped && dropped === draft ? t('workStyleDropped') : null;
 
@@ -664,6 +723,7 @@ export function TeamEditor({
             onDelete={remove}
             insetRight={sheetOpen && !stacked ? 368 : 0}
             annotations={annotations}
+            resultOffer={resultOffer}
             wheelZoom={stacked ? 'withModifier' : 'always'}
           />
         </div>
