@@ -18,7 +18,8 @@ import { ROOT } from '../../tools/release/candidate.ts';
 // contains a synthetic writing task and explicitly selected model profiles only.
 const mode = process.env.CORRAL_OUTRIDER_LIVE;
 const review = mode === 'review';
-const observe = mode === 'observation';
+const waitForAdvice = mode === 'observation-delivery';
+const observe = mode === 'observation' || waitForAdvice;
 it.skipIf(mode !== '1' && !review && !observe)(
   observe
     ? 'a live shared observer reviews a scheduled writer and records the delivery of its advice'
@@ -64,10 +65,43 @@ it.skipIf(mode !== '1' && !review && !observe)(
         });
     };
     try {
+      const live = createLiveModels();
+      const realAgents = live.agents;
+      if (waitForAdvice) {
+        // Gate the writer's next actual model request until the Coordinator admits real advice.
+        // This fixture controls scheduling only. The host delivers the directive normally.
+        live.agents = (...args) => {
+          const agents = realAgents(...args);
+          return {
+            start(input, host) {
+              if (input.nodeId !== 'writer') return agents.start(input, host);
+              let requests = 0;
+              return agents.start(input, {
+                ...host,
+                async prepareModelRequest(...request) {
+                  if (++requests === 2 && server) {
+                    await waitForProjection(
+                      new InProcessTransport(server.coordinator),
+                      input.runId,
+                      (p) =>
+                        TERMINAL_RUN_STATUSES.has(p.status) ||
+                        p.status === 'cancelling' ||
+                        Object.values(p.advice ?? {}).some(
+                          (a) => a.targetExecutionId === input.executionId,
+                        ),
+                    );
+                  }
+                  return host.prepareModelRequest(...request);
+                },
+              });
+            },
+          };
+        };
+      }
       server = await startCorralServer({
         workspace: directory,
         port: 0,
-        live: createLiveModels(),
+        live,
         agents: {
           start: async () => {
             throw new Error('A live check cannot use the mock adapter');
@@ -214,6 +248,7 @@ it.skipIf(mode !== '1' && !review && !observe)(
         ...(observe
           ? {
               savedRevision,
+              supervisedRequestGate: waitForAdvice,
               interval: definition.sharedOutrider?.observation?.review.interval,
               advice,
               observationMarkerInFinal: observedFinalText?.includes(revisionWord) ?? false,
@@ -268,6 +303,11 @@ it.skipIf(mode !== '1' && !review && !observe)(
               advice.some((a) => a.observer === final.executions[c.executionId]?.nodeId),
           ),
         ).toBe(true);
+        if (waitForAdvice) {
+          expect(advice.some((a) => a.includedInWorkerRequest && a.delivery !== 'preserve')).toBe(
+            true,
+          );
+        }
         expect(observedFinalText).toMatch(/Orchard Park/i);
       } else {
         expect(new Set(senders)).toEqual(new Set(['planner', 'writer']));
