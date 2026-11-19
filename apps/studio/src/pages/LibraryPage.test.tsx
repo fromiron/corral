@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { HarnessEntryView, PackageView, ProjectToolConfigRevision } from '@corral/contracts';
 import { type CorralRepository, createKeyValueCorralRepository } from '@corral/core';
-import { emptyDraft } from '@corral/react';
+import { emptyDraft, exportDefinition } from '@corral/react';
 import {
   createMemoryHistory,
   createRootRoute,
@@ -120,6 +120,7 @@ async function render(url: string, children?: ReactNode, locale: 'en' | 'ko' = '
   const router = createRouter({
     routeTree: root.addChildren([
       ...views,
+      stub('/corrals/new/edit'),
       stub('/corrals/$corralId/edit'),
       stub('/sessions/$sessionId'),
       stub('/projects/$projectId'),
@@ -349,80 +350,39 @@ it('opens the linked archived original and keeps the project and return path whe
   expect(router.state.location.search).toEqual({ project: 'project_1', returnTo: '/sessions/s' });
 });
 
-it("lists the filtered project's teams and makes a new team in it with the existing editor flow", async () => {
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  }));
+it('opens an unsaved new team in the filtered project without changing the list', async () => {
   await team(repository, 'Alpha reviewers', 'project_1');
   await team(repository, 'Beta writers', 'project_2');
   const { container, router } = await render('/library/teams?project=project_1');
   expect(container.textContent).toContain('Alpha reviewers');
   expect(container.textContent).not.toContain('Beta writers');
-  const create = byText(container, 'button', 'New Corral');
+  const create = byText(container, 'a', 'New Corral');
   expect(create).toBeTruthy();
   await act(async () => create?.click());
   await settle();
-  expect((await repository.list()).length).toBe(2);
-  const choices = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
-  expect(byText(choices, 'button', 'Draft from a goal')).toBeTruthy();
-  expect(byText(choices, 'button', 'Start from a template')).toBeTruthy();
-  await act(async () => byText(choices, 'button', 'Cancel')?.click());
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_1' });
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(await repository.list()).toHaveLength(2);
+  await act(async () => router.history.back());
   await settle();
-  expect((await repository.list()).length).toBe(2);
-  await act(async () => create?.click());
-  await settle();
-  const reopened = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
-  await act(async () => byText(reopened, 'button', 'Build a blank team')?.click());
-  await settle();
-  const form = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
-  const submit = byText(form, 'button', 'Create and edit') as HTMLButtonElement;
-  expect(submit.disabled).toBe(true);
-  const enter = (element: HTMLInputElement | HTMLTextAreaElement, value: string) => {
-    Object.getOwnPropertyDescriptor(Object.getPrototypeOf(element), 'value')?.set?.call(
-      element,
-      value,
-    );
-    element.dispatchEvent(new Event('input', { bubbles: true }));
-  };
-  const brief = form.querySelector('textarea') as HTMLTextAreaElement;
-  const criterion = form.querySelector(
-    'input[aria-label="Completion criterion"]',
-  ) as HTMLInputElement;
-  await act(async () => enter(criterion, 'Include timestamps'));
-  expect(submit.disabled).toBe(true);
+  expect(container.textContent).toContain('Alpha reviewers');
+  expect(await repository.list()).toHaveLength(2);
+});
+
+it('still imports a JSON definition as a saved team, not a new-team draft', async () => {
+  const { container, router } = await render('/library/teams?project=project_2');
+  const input = container.querySelector<HTMLInputElement>('input[type="file"]');
+  if (!input) throw new Error('Missing JSON import');
+  const source = exportDefinition(emptyDraft('untitled', 'Imported team'));
+  Object.defineProperty(input, 'files', { value: [{ text: async () => source }] });
   await act(async () => {
-    enter(criterion, '');
-    enter(brief, 'Compare build logs');
+    input.dispatchEvent(new Event('change', { bubbles: true }));
   });
-  expect(submit.disabled).toBe(true);
-  await act(async () => enter(criterion, 'Include timestamps'));
-  const save = vi.spyOn(repository, 'save').mockResolvedValueOnce({
-    ok: false,
-    error: 'storage_unavailable',
-    message: 'Storage unavailable.',
-  });
-  await act(async () => submit.click());
   await settle();
-  expect(form.querySelector('[role="alert"]')?.textContent).toBe('Storage unavailable.');
-  expect(form.querySelector('textarea')?.value).toBe('Compare build logs');
-  expect((await repository.list()).length).toBe(2);
-  save.mockRestore();
-  await act(async () => submit.click());
-  await settle();
-  expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
-  const made = await repository.get('corral_3');
-  expect(made?.projectId).toBe('project_1');
-  expect(made?.definition.input).toEqual({
-    brief: 'Compare build logs',
-    criteria: ['Include timestamps'],
-  });
-  expect((await repository.get('corral_1'))?.definition.input).toEqual(
-    emptyDraft().definition.input,
-  );
+  const [saved] = await repository.list();
+  expect(saved).toMatchObject({ name: 'Imported team', projectId: 'project_2' });
+  expect(router.state.location.pathname).toBe(`/corrals/${saved?.corralId}/edit`);
 });
 
 it('uses the last opened project without a filter and offers a project filter', async () => {
@@ -675,7 +635,9 @@ it('offers New team and Browse templates when the project has no teams', async (
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   // No pointer to templates "below": they are on their own tab.
   expect(panel.textContent).not.toMatch(/below/i);
-  expect(byText(panel, 'button', 'New Corral')).toBeTruthy();
+  expect(byText(panel, 'a', 'New Corral')?.getAttribute('href')).toBe(
+    '/corrals/new/edit?project=project_1',
+  );
   // The storage note is not a sentence under the list.
   expect(panel.textContent).not.toContain('saved in this app data folder');
   await act(async () => byText(panel, 'button', 'Browse templates')?.click());
@@ -748,7 +710,7 @@ it('shows the eight templates in order with their roles, and marks the ones that
   }
   // Two quiet actions named for their template; the empty canvas has no conversation to start.
   const actions = (card: HTMLElement) =>
-    [...card.querySelectorAll('button')].map((button) => [
+    [...card.querySelectorAll('button, a')].map((button) => [
       button.textContent,
       button.getAttribute('aria-label'),
     ]);
@@ -761,7 +723,7 @@ it('shows the eight templates in order with their roles, and marks the ones that
   );
   // Neither is the screen's primary button: tertiary, then ghost.
   for (const card of cards) {
-    const buttons = [...card.querySelectorAll('button')];
+    const buttons = [...card.querySelectorAll('button, a')];
     expect(buttons.filter((button) => button.className.includes('text-background'))).toEqual([]);
     expect(buttons.at(-1)?.className).toContain('text-muted-foreground');
   }
@@ -785,25 +747,20 @@ it('starts a new conversation in the project with the template chosen', async ()
   );
 });
 
-it('drafts a team from a goal from the toolbar beside the tabs', async () => {
-  // The draft dialog follows the person's reduced-motion setting.
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  }));
+it('opens the unsaved editor with the assistant from the templates toolbar', async () => {
   const { container, router } = await render('/library/templates?project=project_1');
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
-  expect(byText(panel, 'button', 'Draft from a goal')).toBeUndefined();
-  await act(async () => byText(container, 'button', 'Draft from a goal')?.click());
+  expect(byText(panel, 'a,button', 'Draft from a goal')).toBeUndefined();
+  const action = byText(container, 'a', 'Draft from a goal');
+  expect(action).toBeTruthy();
+  await act(async () => action?.click());
   await settle();
-  expect(router.state.location.search).toMatchObject({ project: 'project_1', draft: true });
-  expect(document.querySelector('[role="dialog"]')).toBeTruthy();
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_1', assistant: 1 });
+  expect(await repository.list()).toHaveLength(0);
   // The other views have nothing to draft.
   const teams = await render('/library/teams?project=project_1');
-  expect(byText(teams.container, 'button', 'Draft from a goal')).toBeUndefined();
+  expect(byText(teams.container, 'a,button', 'Draft from a goal')).toBeUndefined();
 });
 
 it('names every template’s roles in Korean on a Korean screen', async () => {
@@ -816,7 +773,7 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   for (const card of cards)
     for (const step of roles(card))
       expect([step, /[A-Za-z]{2,}/.test(step ?? '')]).toEqual([step, false]);
-  const labels = [...(cards[0] as HTMLElement).querySelectorAll('button')].map((button) => [
+  const labels = [...(cards[0] as HTMLElement).querySelectorAll('button, a')].map((button) => [
     button.textContent,
     button.getAttribute('aria-label'),
   ]);
@@ -826,33 +783,31 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   ]);
 });
 
-it('saves a copy of a new template as a separate team and opens it in the editor', async () => {
-  // The copy dialog follows the person's reduced-motion setting.
-  vi.stubGlobal('matchMedia', () => ({
-    matches: false,
-    addEventListener() {},
-    removeEventListener() {},
-    addListener() {},
-    removeListener() {},
-  }));
-  const { container, router } = await render('/library/templates?project=project_1');
-  for (const expected of ['Parallel code review', 'Parallel code review (2)']) {
-    const card = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')].find(
-      (article) => article.textContent?.includes('Parallel code review'),
-    ) as HTMLElement;
-    await act(async () => byText(card, 'button', 'Edit a copy')?.click());
-    await settle();
-    const dialog = document.querySelector<HTMLElement>('[role="dialog"]') as HTMLElement;
-    await act(async () => byText(dialog, 'button', 'Save copy and edit')?.click());
-    await settle();
-    expect(router.state.location.pathname).toMatch(/^\/corrals\/corral_\d+\/edit$/);
-    const corralId = router.state.location.pathname.split('/')[2] as string;
-    const saved = await repository.get(corralId);
-    expect(saved?.name).toBe(expected);
-    expect(saved?.projectId).toBe('project_1');
-    await act(async () => router.history.back());
-    await settle();
-  }
+it.each([
+  ['Parallel code review', { template: 'parallel-review' }],
+  ['Empty', {}],
+] as const)('opens an unsaved template copy of %s without creating a team', async (name, query) => {
+  const { container, router } = await render('/library/templates?project=project_2');
+  const copy = container.querySelector<HTMLAnchorElement>(`a[aria-label="Edit a copy of ${name}"]`);
+  expect(copy).toBeTruthy();
+  await act(async () => copy?.click());
+  await settle();
+  expect(router.state.location.pathname).toBe('/corrals/new/edit');
+  expect(router.state.location.search).toEqual({ project: 'project_2', ...query });
+  expect(await repository.list()).toHaveLength(0);
+});
+
+it.each(['teams', 'templates'])('hides creation for archived projects on %s', async (view) => {
+  const project = (await repository.listProjects()).find((item) => item.projectId === 'project_1');
+  if (!project) throw new Error('Missing fixture project');
+  await repository.updateProject(project.projectId, {
+    expectedRevision: project.revision,
+    archived: true,
+  });
+  const { container } = await render(`/library/${view}?project=project_1`);
+  expect(container.textContent).toContain(messages.Projects.archivedNote);
+  expect(container.querySelector('a[href^="/corrals/new/edit"]')).toBeNull();
+  expect(container.querySelector('input[type="file"], article')).toBeNull();
 });
 
 it("counts the project's teams on the Teams tab and names the list nowhere else", async () => {
@@ -868,7 +823,7 @@ it("counts the project's teams on the Teams tab and names the list nowhere else"
   expect(panel.querySelector('h2:not(section h2)')).toBeNull();
   // Where teams are kept stays one click away, in the row of the list's actions.
   const storage = panel.querySelector('button[aria-label="Where Corrals are saved"]');
-  const create = byText(panel, 'button', 'New Corral');
+  const create = byText(panel, 'a', 'New Corral');
   expect(storage).not.toBeNull();
   expect(storage?.parentElement?.parentElement?.contains(create ?? null)).toBe(true);
 });

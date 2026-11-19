@@ -25,7 +25,12 @@ import {
 } from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { defaultAgentRole } from '../editor/model.ts';
-import { type AgentSource, importableRoles, type TeamReference } from './commands.ts';
+import {
+  type AgentSource,
+  importableRoles,
+  type ReplacementChange,
+  type TeamReference,
+} from './commands.ts';
 import type { TeamEditorProps } from './TeamEditor.tsx';
 
 export type SaveAgent = (
@@ -111,21 +116,7 @@ function AgentDialog({
 }
 
 type Choice = { key: string; source: AgentSource; team?: string };
-export type ReplacementPreview = { error: string } | { changed: readonly (keyof AgentRole)[] };
-const groups = {
-  instructions: ['prompt'],
-  model: ['modelProfile', 'reasoning'],
-  permissions: [
-    'allowedWorkTools',
-    'allowedCollaborationTools',
-    'imageProfile',
-    'editingMode',
-    'harness',
-  ],
-  skills: ['skills'],
-  format: ['outputContract', 'answer'],
-  original: ['name', 'origin'],
-} satisfies Record<string, (keyof AgentRole)[]>;
+export type ReplacementPreview = { error: string } | { changed: readonly ReplacementChange[] };
 
 export function AgentPicker({
   agentLibrary,
@@ -330,14 +321,12 @@ export function AgentPicker({
               </h3>
               {result.changed.length ? (
                 <ul className="list-disc pl-5 text-body">
-                  {Object.entries(groups)
-                    .filter(([, fields]) => fields.some((field) => result.changed.includes(field)))
-                    .map(([group]) => (
-                      <li key={group}>{t(`fields.${group}`)}</li>
-                    ))}
+                  {result.changed.map((change) => (
+                    <li key={change}>{t(`fields.${change}`)}</li>
+                  ))}
                 </ul>
               ) : (
-                <p className="text-body">{t('identical')}</p>
+                <p className="text-body">{t('sameSettings')}</p>
               )}
             </section>
             <section className="grid gap-1">

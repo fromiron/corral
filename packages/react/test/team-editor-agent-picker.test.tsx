@@ -206,7 +206,7 @@ it('confirming an identical source leaves the same draft and undo stack', async 
   await user.click(opener);
   await user.click(await screen.findByRole('menuitem', { name: messages.Inspector.replaceAgent }));
   await user.click(button('Planner'));
-  expect(screen.getByText(/Nothing changes/)).toBeVisible();
+  expect(screen.getByText('These settings stay the same.')).toBeVisible();
   await user.click(button('Replace'));
   await waitFor(() => expect(opener).toHaveFocus());
   expect(editor.getState().draft).toBe(before);

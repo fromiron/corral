@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AgentRole, RoleSkillRef } from './definition.ts';
+import type { AgentRole, RoleMcpToolRef, RoleSkillRef } from './definition.ts';
 import type {
   EffectiveHarnessSnapshot,
   HarnessProfileRevision,
@@ -43,7 +43,7 @@ export interface HarnessEntryView extends HarnessEntryKey, HarnessManagementStat
 export interface HarnessProfileView extends HarnessProfileRevision, HarnessManagementState {
   usages: { id: string; scope: 'personal' | 'project' | 'role'; name: string; revision: number }[];
 }
-export type HarnessPreviewRole = Pick<AgentRole, 'id' | 'harness' | 'skills'>;
+export type HarnessPreviewRole = Pick<AgentRole, 'id' | 'harness' | 'skills' | 'mcpTools'>;
 export interface HarnessPreview {
   snapshot: EffectiveHarnessSnapshot;
   sections: { source: 'skill'; name: string; text: string }[];
@@ -54,9 +54,64 @@ export interface RoleSkillProblem {
   reason: 'unusable_skills' | 'execution_policy_required';
   entries: (RoleSkillRef & { reason: 'missing' | 'disabled' | 'untrusted' | 'name_conflict' })[];
 }
+export const RoleMcpToolProblemReason = z.enum([
+  'execution_policy_required',
+  'server_missing',
+  'server_disabled',
+  'server_not_selected',
+  'tool_not_allowed',
+]);
+export type RoleMcpToolProblemReason = z.infer<typeof RoleMcpToolProblemReason>;
+export interface RoleMcpToolProblem {
+  roleId: string;
+  tools: (RoleMcpToolRef & { reason: RoleMcpToolProblemReason })[];
+}
+
+/** Only structured selection failures may cross from harness resolution into a run refusal. */
+export class RoleHarnessResolutionError extends Error {
+  readonly problem: RoleSkillProblem | null;
+  readonly mcpProblem: RoleMcpToolProblem | undefined;
+  constructor(problem: RoleSkillProblem | null, mcpProblem?: RoleMcpToolProblem) {
+    super(
+      `Harness unavailable for role ${problem?.roleId ?? mcpProblem?.roleId}: ${problem?.reason ?? mcpProblem?.tools[0]?.reason}`,
+    );
+    this.problem = problem;
+    this.mcpProblem = mcpProblem;
+  }
+}
+
+export function isHarnessMcpTool(name: string): boolean {
+  return (
+    name.startsWith('mcp__') ||
+    name === 'list_mcp_resources' ||
+    name === 'list_mcp_resource_templates' ||
+    name === 'read_mcp_resource'
+  );
+}
+
+/** Check the resolver's output at both run boundaries without resolving a second policy. */
+export function matchesRoleMcpSelection(
+  role: Pick<AgentRole, 'harness' | 'mcpTools'>,
+  snapshot: EffectiveHarnessSnapshot,
+): boolean {
+  if (!role.mcpTools) return true;
+  if (role.mcpTools.length && (!role.harness || snapshot.policy !== 'trusted-native')) return false;
+  const names = new Set(role.mcpTools.map((ref) => ref.name));
+  const servers = new Set(role.mcpTools.map((ref) => ref.serverId));
+  const serverIds = snapshot.projectTools?.mcpServerIds ?? [];
+  return (
+    snapshot.allowedTools.every((name) => !isHarnessMcpTool(name) || names.has(name)) &&
+    snapshot.tools.every(({ name }) => !isHarnessMcpTool(name) || names.has(name)) &&
+    role.mcpTools.every(
+      (ref) => snapshot.allowedTools.includes(ref.name) && serverIds.includes(ref.serverId),
+    ) &&
+    serverIds.every((id) => servers.has(id))
+  );
+}
+
 export type RoleHarnessPreview =
   | HarnessPreview
-  | { snapshot: null; problem: RoleSkillProblem | null };
+  | { snapshot: null; problem: RoleSkillProblem | null; mcpProblem?: RoleMcpToolProblem };
 export const HarnessPublish = z.strictObject({
   operationId: Identifier,
   profileId: Identifier,

@@ -1,4 +1,4 @@
-import { CorralDefinition, isWorkAgent } from '@corral/contracts';
+import { CorralDefinition, DEFAULT_ADVISOR_REVIEW, isWorkAgent } from '@corral/contracts';
 import { TEAM_TEMPLATE_ROLES, type TeamTemplateId, teamTemplate } from '@corral/core';
 import { fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -10,7 +10,7 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import { outlineOrder } from '../src/team-editor/layout.ts';
 import { TeamComposition } from '../src/team-editor/TeamComposition.tsx';
 
-function template(id: TeamTemplateId) {
+function template(id: TeamTemplateId, duty?: string) {
   return teamTemplate(id, 'example', {
     name: 'Example',
     brief: 'Prepare a report.\nInternal request details.',
@@ -18,7 +18,7 @@ function template(id: TeamTemplateId) {
     roles: Object.fromEntries(
       Object.keys(TEAM_TEMPLATE_ROLES[id]).map((key) => [
         key,
-        { name: key, duty: `Work on ${key}.\nPrivate details.` },
+        { name: key, duty: duty ?? `Work on ${key}.\nPrivate details.` },
       ]),
     ),
     labels: { loop: 'Review loop', decision: 'Verdict', join: 'Gather', output: 'Report' },
@@ -29,6 +29,7 @@ type Props = ComponentProps<typeof TeamComposition>;
 function setup(definition: CorralDefinition, overrides: Partial<Props> = {}) {
   const props = {
     definition,
+    hasWorkAgent: definition.nodes.some(isWorkAgent),
     order: outlineOrder(definition),
     selection: { nodes: [], edge: null },
     collapsed: new Set<string>(),
@@ -121,6 +122,41 @@ describe('Team composition rows', () => {
     expect(button('Expand Review loop')).toHaveAttribute('aria-expanded', 'false');
   });
 
+  it('summarizes a drafted role by its duty sentence but keeps the whole request line', () => {
+    const duty = '브리프에 필요한 사실과 출처를 모아 노트로 정리한다.';
+    const d = template('plan-implement-review', duty);
+    d.input.brief = 'Prepare a report. Include sources.\nInternal details.';
+    setup(d);
+    expect(within(node('plan')).getByText(duty)).toBeVisible();
+    expect(row(button(/^Request\b/)).getByText('Prepare a report. Include sources.')).toBeVisible();
+  });
+
+  it.each([
+    ['Gather evidence\nKeep exact versions.', 'Gather evidence'],
+    ['v1.2 notes. Next', 'v1.2 notes.'],
+    ['Ready?\tThen submit.', 'Ready?'],
+    ['Ship! More details.', 'Ship!'],
+    ['整理する。 次へ', '整理する。'],
+    ['完了？ 次へ', '完了？'],
+    ['確認！ 次へ', '確認！'],
+  ])('shows the first sentence of the first prompt line: %s', (prompt, expected) => {
+    const d = template('plan-implement-review');
+    const role = d.roles.find((r) => r.id === 'plan');
+    assert(role);
+    role.prompt = prompt;
+    setup(d);
+    expect(within(node('plan')).getByText(expected)).toBeVisible();
+  });
+
+  it('summarizes a step instruction instead of its base prompt', () => {
+    const d = template('plan-implement-review');
+    const worker = d.nodes.find((n) => n.id === 'implement');
+    assert(worker && isWorkAgent(worker));
+    worker.stepInstruction = 'Revise v1.2. Keep exact sources.';
+    setup(d);
+    expect(within(node('implement')).getByText('Revise v1.2.')).toBeVisible();
+  });
+
   it('groups the parallel reviews but not the join; offers the new producer without relabelling the output', async () => {
     const d = template('parallel-review');
     const source = d.nodes.find((n) => n.id === 'security');
@@ -176,6 +212,39 @@ describe('Team composition rows', () => {
     expect(screen.getAllByText('Called when needed')).toHaveLength(3);
     expect(node('output')).toHaveTextContent('draft · 작성');
     expect(button(/Shared Outrider · 1 worker/)).toBeVisible();
+  });
+
+  it('reads the review beside only its result, the loop ending and the shared advice modes', () => {
+    const d = template('plan-implement-review');
+    const out = d.nodes.find((n) => n.type === 'output');
+    assert(out);
+    out.inputBindings.push({ kind: 'task_output', name: 'notes', sourceNodeId: 'plan' });
+    out.requiredReviews = [
+      {
+        bindingName: 'draft',
+        sourceNodeId: 'implement',
+        loopNodeId: 'review_loop',
+        reviewerNodeId: 'review',
+        decisionNodeId: 'review_decision',
+      },
+    ];
+    d.sharedOutrider = {
+      modelProfile: 'model-a',
+      principles: 'Review',
+      targets: { kind: 'all' },
+      artifactReview: true,
+      observation: { targets: { kind: 'all' }, review: { ...DEFAULT_ADVISOR_REVIEW, interval: 3 } },
+    };
+    setup(d);
+    expect(node('output')).toHaveAccessibleDescription(
+      'draft · implement · Submit after review passes · notes · plan',
+    );
+    expect(node('review_loop')).toHaveAccessibleDescription(
+      'up to 2 rounds · No final submission if it does not pass',
+    );
+    expect(button(/Shared Outrider · Entire team/)).toHaveTextContent(
+      /Output review · Observes every 3 model requests/,
+    );
   });
 
   it('shows named outputs individually, including unconnected outputs, and links a disconnected seat to the graph', async () => {

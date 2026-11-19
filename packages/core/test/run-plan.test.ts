@@ -220,4 +220,29 @@ describe('shared Outrider consultations', () => {
     expect(capped.every((row) => row.unavailable === 'questions')).toBe(true);
     expect(mayAsk).not.toHaveBeenCalled();
   });
+
+  it('previews exact MCP picks for ask, bypassing only empty, otherwise unbound workers', () => {
+    const definition = linearCorral(['selected', 'empty', 'bound', 'skills']);
+    const [selected, empty, bound, skills] = definition.roles;
+    const picks = [{ serverId: 'docs', name: 'mcp__docs__echo' }];
+    selected!.mcpTools = picks;
+    empty!.mcpTools = [];
+    bound!.harness = { profileId: 'writer', revision: 1 };
+    bound!.mcpTools = [];
+    skills!.skills = [];
+    skills!.mcpTools = [];
+    const mayAsk = vi.fn(() => false);
+    const rows = sharedOutriderTargets(definition, undefined, mayAsk);
+    expect(mayAsk.mock.calls).toEqual([
+      [{ id: selected!.id, mcpTools: picks }],
+      [{ id: bound!.id, harness: bound!.harness, mcpTools: [] }],
+      [{ id: skills!.id, skills: [], mcpTools: [] }],
+    ]);
+    expect(rows.map((row) => row.unavailable)).toEqual([
+      'harness',
+      undefined,
+      'harness',
+      'harness',
+    ]);
+  });
 });

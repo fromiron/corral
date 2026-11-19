@@ -21,6 +21,7 @@ import {
   updateNode,
   withDefinition,
 } from '../src/editor/model.ts';
+import { createEditorStore } from '../src/editor/store.ts';
 
 const team = () => CorralDefinition.parse(researchTeam);
 
@@ -462,6 +463,7 @@ describe('editing a role shared by two seats', () => {
     { imageProfile: 'image' },
     { editingMode: 'hashline' },
     { skills: [] },
+    { mcpTools: [] },
   ] satisfies NodeChange[])(
     'forks only the edited seat for %o and retains the plan owner',
     (change) => {
@@ -481,10 +483,11 @@ describe('editing a role shared by two seats', () => {
     },
   );
 
-  it('drops skills only from the observer and does not restore them when it resumes work', () => {
+  it('drops selected skills and MCP tools only from the observer, including after it resumes work', () => {
     const { draft, first, second, role } = shared();
     const skill = { resourceHash: 'a'.repeat(64), entry: 'writer/SKILL.md' };
-    const skilled = { ...role, skills: [skill] };
+    const tool = { serverId: 'issues', name: 'mcp__issues__search' };
+    const skilled = { ...role, skills: [skill], mcpTools: [tool] };
     const before = withDefinition(draft, { ...draft.definition, roles: [skilled] });
     const observer = updateNode(before, second, { invocation: 'observer' });
     const node = observer.definition.nodes.find((n) => n.id === second);
@@ -494,17 +497,23 @@ describe('editing a role shared by two seats', () => {
     const fork = observer.definition.roles.find((r) => r.id === node.roleId);
     expect(fork).toBeDefined();
     expect(fork).not.toHaveProperty('skills');
+    expect(fork).not.toHaveProperty('mcpTools');
+    expect(updateNode(observer, second, { mcpTools: [tool] })).toBe(observer);
     const resumed = updateNode(observer, second, { invocation: 'scheduled' });
     expect(resumed.definition.nodes.find((n) => n.id === second)).toMatchObject({
       invocation: 'scheduled',
       roleId: node.roleId,
     });
     expect(resumed.definition.roles.find((r) => r.id === node.roleId)).not.toHaveProperty('skills');
+    expect(resumed.definition.roles.find((r) => r.id === node.roleId)).not.toHaveProperty(
+      'mcpTools',
+    );
     expect(resumed.definition.nodes.find((n) => n.id === first)).toMatchObject({
       roleId: skilled.id,
     });
     expect(resumed.definition.roles.find((r) => r.id === skilled.id)).toBe(skilled);
     expect(skilled.skills).toEqual([skill]);
+    expect(skilled.mcpTools).toEqual([tool]);
   });
 
   it('does not reorder existing tool grants or fork the role when those grants already match', () => {
@@ -532,5 +541,38 @@ describe('editing a role shared by two seats', () => {
     const inherited = updateNode(cleared, second, { skills: null });
     expect(inherited.definition.roles.find((r) => r.id === fork?.id)).not.toHaveProperty('skills');
     expect(inherited.definition.roles.find((r) => r.id === role.id)).toBe(role);
+  });
+
+  it('applies distinct MCP tool references in one undo and distinguishes none from inherited', () => {
+    const { draft, second, role } = shared();
+    const store = createEditorStore(draft);
+    const { updateNode: edit, undo, redo } = store.getState();
+    const search = { serverId: 'issues', name: 'mcp__issues__search' };
+    const update = { serverId: 'issues', name: 'mcp__issues__update' };
+    const other = { serverId: 'docs', name: 'mcp__docs__search' };
+    edit(second, { mcpTools: null });
+    expect(store.getState().canUndo).toBe(false);
+    const mcpTools = [search, update, { ...search }, other];
+    edit(second, { mcpTools });
+    const selected = store.getState().draft;
+    const fork = selected.definition.roles.find((r) => r.id !== role.id);
+    expect(fork?.mcpTools).toEqual([search, update, other]);
+    expect(selected.definition.roles.find((r) => r.id === role.id)).toBe(role);
+    edit(second, { mcpTools: structuredClone(mcpTools) });
+    expect(store.getState().draft).toBe(selected);
+    undo();
+    expect(store.getState().draft).toBe(draft);
+    expect(store.getState().canUndo).toBe(false);
+    redo();
+    edit(second, { mcpTools: [] });
+    const cleared = store.getState().draft;
+    expect(cleared.definition.roles.find((r) => r.id === fork?.id)?.mcpTools).toEqual([]);
+    edit(second, { mcpTools: [] });
+    expect(store.getState().draft).toBe(cleared);
+    edit(second, { mcpTools: null });
+    const inherited = store.getState().draft;
+    expect(inherited.definition.roles.find((r) => r.id === fork?.id)).not.toHaveProperty(
+      'mcpTools',
+    );
   });
 });

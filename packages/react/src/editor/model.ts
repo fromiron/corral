@@ -15,6 +15,7 @@ import {
   type LoopNode,
   type ObserverAgentNode,
   type OutputContract,
+  type RoleMcpToolRef,
   type RoleSkillRef,
   type SharedOutrider,
   type TargetPort,
@@ -112,6 +113,7 @@ export interface NodeChange {
   reasoning?: AgentRole['reasoning'] | null;
   harness?: AgentRole['harness'] | null;
   skills?: RoleSkillRef[] | null;
+  mcpTools?: RoleMcpToolRef[] | null;
   mode?: Extract<DecisionNode, { rule: unknown }>['mode'];
   maxIterations?: number;
   reviewRecipe?: LoopNode['reviewRecipe'] | null;
@@ -406,6 +408,7 @@ function changeInvocation(
       const {
         harness: _harness,
         skills: _skills,
+        mcpTools: _mcpTools,
         imageProfile: _image,
         editingMode: _editing,
         answer: _answer,
@@ -530,6 +533,16 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
         return true;
       });
     } else if (change.skills === null) roleChange.skills = undefined;
+    if (change.mcpTools) {
+      const seen = new Set<string>();
+      roleChange.mcpTools = [];
+      for (const { serverId, name } of change.mcpTools) {
+        const key = `${serverId}:${name}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        roleChange.mcpTools.push({ serverId, name });
+      }
+    } else if (change.mcpTools === null) roleChange.mcpTools = undefined;
     if (change.fileTools !== undefined) {
       if (change.fileTools) {
         const missing = FILE_TOOLS.filter((tool) => !role.allowedWorkTools.includes(tool));

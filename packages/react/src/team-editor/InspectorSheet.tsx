@@ -59,8 +59,8 @@ import {
   type LoopSettings,
   NodeSettings,
   type ProfileOption,
+  type RoleCapabilitySlot,
   type RoleSettings,
-  type RoleSkillsSlot,
 } from './NodeSettings.tsx';
 import { SharedOutriderSettings } from './SharedOutriderSettings.tsx';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
@@ -82,7 +82,8 @@ export interface InspectorSheetProps {
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings?: RoleSettings | undefined;
-  roleSkills?: RoleSkillsSlot | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   loopSettings?: LoopSettings | undefined;
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
@@ -182,6 +183,7 @@ export function InspectorSheet({
   imageProfiles,
   roleSettings,
   roleSkills,
+  roleTools,
   loopSettings,
   teams,
   outriderTargets,
@@ -598,7 +600,11 @@ export function InspectorSheet({
             );
           }}
           roleSkills={roleSkills}
+          roleTools={roleTools}
           loopSettings={loopSettings}
+          onShowInGraph={
+            onShowInGraph ?? (docked ? undefined : (id) => onSelect({ nodes: [id], edge: null }))
+          }
         />
         {!isWorkAgent(single) ? (
           <>

@@ -45,7 +45,7 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
   if (!projectName) return;
   // The project filter shows once the library knows there is more than one project.
   const filter = page.getByRole('combobox', { name: 'Project', exact: true });
-  const loaded = page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true });
+  const loaded = page.getByRole('main').getByRole('link', { name: 'New Corral', exact: true });
   await expect(filter.or(loaded).first()).toBeVisible();
   if (!(await filter.isVisible())) return;
   if ((await filter.innerText()).includes(projectName)) return;
@@ -54,18 +54,31 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
   await expect(filter).toContainText(projectName);
 }
 
-/** In the library's Teams view: makes an empty team and opens it in the editor. */
+/** First Save replaces the unsaved address; the returned editor owns a real team. */
+export async function saveNewTeam(page: Page) {
+  await expect(page).toHaveURL(/\/corrals\/new\/edit\?/);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/(?!new\/)[^/?#]+\/edit$/);
+}
+
+/** Close the initially open assistant to edit the new team by hand, even in a narrow sheet. */
+export const collapseTeamAssistant = (page: Page) =>
+  page.getByRole('button', { name: en.TeamAssistant.collapse, exact: true }).click();
+
+/** In the Teams view: save a team with a request and criterion, but no graph nodes. */
 export async function newTeam(page: Page) {
-  await page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true }).click();
-  await page.getByRole('button', { name: 'Build a blank team', exact: true }).click();
+  await page.getByRole('main').getByRole('link', { name: 'New Corral', exact: true }).click();
+  await collapseTeamAssistant(page);
   await page
-    .getByRole('textbox', { name: 'Request', exact: true })
+    .getByRole('list', { name: en.Editor.composition, exact: true })
+    .getByRole('button', { name: /^Request\b/ })
+    .click();
+  const settings = editorSettings(page);
+  await settings
+    .getByRole('textbox', { name: 'Brief', exact: true })
     .fill('Compare two options using primary sources.');
-  await page
-    .getByRole('textbox', { name: 'Completion criterion', exact: true })
-    .fill('Say which inputs were used.');
-  await page.getByRole('button', { name: 'Create and edit', exact: true }).click();
-  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await settings.getByRole('textbox', { name: /^Criteria/ }).fill('Say which inputs were used.');
+  await saveNewTeam(page);
   await expect(page.getByRole('tab', { name: en.Editor.composition, exact: true })).toHaveAttribute(
     'aria-selected',
     'true',
@@ -90,6 +103,13 @@ export async function chooseTeam(page: Page, name: string) {
   return detail;
 }
 
+/** Save the named library template as a team and stay in its editor. */
+export async function saveTemplateCopy(page: Page, name = 'Single agent') {
+  await openLibrary(page, 'Templates');
+  await page.getByRole('link', { name: `Edit a copy of ${name}`, exact: true }).click();
+  await saveNewTeam(page);
+}
+
 /** From a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
   // `/` redirects to the project in the app; the project page is where this comes back to.
@@ -97,10 +117,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     timeout: 20_000,
   });
   const home = page.url();
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: `Edit a copy of ${name}`, exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await saveTemplateCopy(page, name);
   // Back through the library to the project, as a person would.
   for (let step = 0; step < 4 && page.url() !== home; step++) await page.goBack();
   await expect(page).toHaveURL(home);
@@ -133,7 +150,7 @@ export async function newConversationFromSidebar(page: Page) {
 export async function openProject(page: Page, name?: string) {
   const switcher = page
     .getByRole('navigation', { name: 'Current location', exact: true })
-    .getByRole('button', { name: 'Go to project', exact: true });
+    .getByRole('button', { name: /^Go to project: / });
   if (name && !(await switcher.isVisible()))
     await page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();
   else {
@@ -776,8 +793,8 @@ export async function openSeatAdvanced(page: Page) {
   if ((await advanced.getAttribute('aria-expanded')) !== 'true') await advanced.click();
 }
 
-/** Add an ordinary seat with a known name and default permissions through the graph picker. */
-export async function addCustomAgent(page: Page, name = 'Agent 1') {
+/** Add an ordinary seat; when adding at an Output, specify the placement choice explicitly. */
+export async function addCustomAgent(page: Page, name = 'Agent 1', atOutput?: 'unconnected') {
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
   const dialog = page.getByRole('dialog');
   await dialog.getByRole('button', { name: 'Create your own' }).click();
@@ -786,6 +803,12 @@ export async function addCustomAgent(page: Page, name = 'Agent 1') {
     .getByLabel('Task', { exact: true })
     .fill('Review the request and submit the result.');
   await dialog.getByRole('button', { name: 'Add agent', exact: true }).click();
+  if (atOutput === 'unconnected') {
+    await page
+      .getByRole('dialog', { name: en.TeamEditor.placement.chooseTitle })
+      .getByRole('button', { name: en.TeamEditor.placement.standalone, exact: true })
+      .click();
+  }
 }
 
 /** The first agent in an empty team brings its connected final result. */

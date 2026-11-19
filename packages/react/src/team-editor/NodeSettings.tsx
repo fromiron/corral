@@ -61,6 +61,7 @@ import {
   watchAgent,
 } from './commands.ts';
 import { OutputSources } from './OutputSources.tsx';
+import { requiredReviewFacts } from './roster.ts';
 
 // The settings of one step that the team editor's sheet shows: role, model, tools, inputs and
 // call links for agents, and the kind-specific fields of decisions, loops and outputs. Every
@@ -91,7 +92,7 @@ function imageProfileChoices(
 }
 
 export type RoleSettings = (role: AgentRole, nodeId: string) => ReactNode;
-export type RoleSkillsSlot = (
+export type RoleCapabilitySlot = (
   role: AgentRole,
   nodeId: string,
   context: { revealPolicy(): void },
@@ -123,15 +124,19 @@ export function NodeSettings({
   imageProfiles,
   roleSettings,
   roleSkills,
+  roleTools,
   loopSettings,
+  onShowInGraph,
 }: {
   editor: EditorStore;
   node: CorralNode;
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings: RoleSettings | undefined;
-  roleSkills?: RoleSkillsSlot | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   loopSettings: LoopSettings | undefined;
+  onShowInGraph?: ((nodeId: string) => void) | undefined;
 }) {
   const t = useTranslations('Inspector');
   const id = useId();
@@ -150,6 +155,7 @@ export function NodeSettings({
         imageProfiles={imageProfiles}
         roleSettings={roleSettings}
         roleSkills={roleSkills}
+        roleTools={roleTools}
       />
     );
 
@@ -200,7 +206,12 @@ export function NodeSettings({
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
-        <RequiredReviews output={node} editor={editor} draft={draft} />
+        <RequiredReviews
+          output={node}
+          editor={editor}
+          draft={draft}
+          onShowInGraph={onShowInGraph}
+        />
       ) : null}
       {node.type === 'output' ? (
         <KitSwitch
@@ -442,6 +453,7 @@ export function RoleForm({
   profiles,
   imageProfiles,
   roleSkills,
+  roleTools,
   roleSettings,
 }: {
   editor: EditorStore;
@@ -449,10 +461,12 @@ export function RoleForm({
   variant: 'seat' | 'original';
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
-  roleSkills?: RoleSkillsSlot | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   roleSettings?: RoleSettings | undefined;
 }) {
   const t = useTranslations('Inspector');
+  const toolsText = useTranslations('TeamEditor.roleTools');
   const f = useTranslations('TeamEditor.fields');
   const id = useId();
   const session = useEditSession(editor);
@@ -474,14 +488,14 @@ export function RoleForm({
   const node = draft.definition.nodes.find((n) => n.id === nodeId);
   if (!isWorkAgent(node)) return null;
   const role = draft.definition.roles.find((r) => r.id === node.roleId);
-  const skills =
-    role &&
-    roleSkills?.(role, nodeId, {
-      revealPolicy() {
-        setAdvanced('open');
-        setFocusPolicy(true);
-      },
-    });
+  const context = {
+    revealPolicy() {
+      setAdvanced('open');
+      setFocusPolicy(true);
+    },
+  };
+  const skills = role && roleSkills?.(role, nodeId, context);
+  const tools = role && roleTools?.(role, nodeId, context);
   return (
     <div ref={settings} key={nodeId} className="grid min-w-0 gap-3" data-node-settings={nodeId}>
       <NameField editor={editor} node={node} />
@@ -497,6 +511,12 @@ export function RoleForm({
         <section className="grid gap-2">
           <h3 className="text-caption">{t('skills')}</h3>
           {skills}
+        </section>
+      ) : null}
+      {tools != null ? (
+        <section className="grid gap-2">
+          <h3 className="text-caption">{toolsText('heading')}</h3>
+          {tools}
         </section>
       ) : null}
       <Disclosure label={t('advanced')} control={{ value: advanced, onValueChange: setAdvanced }}>
@@ -563,16 +583,20 @@ function RequiredReviews({
   output,
   editor,
   draft,
+  onShowInGraph,
 }: {
   output: Extract<CorralNode, { type: 'output' }>;
   editor: EditorStore;
   draft: EditorDraft;
+  onShowInGraph?: ((nodeId: string) => void) | undefined;
 }) {
   const t = useTranslations('Inspector');
+  const composition = useTranslations('TeamEditor.composition');
   const id = useId();
   const rejected = useTranslations('TeamEditor.rejected');
   const [reason, setReason] = useState<string | null>(null);
   const gates = output.requiredReviews ?? [];
+  const nodeById = (nodeId: string) => draft.definition.nodes.find((n) => n.id === nodeId);
   const bindings: {
     bindingName: string;
     sourceNodeId: string;
@@ -598,16 +622,24 @@ function RequiredReviews({
     <>
       {bindings.map((b, i) => {
         const checked = !!b.gate;
-        const source =
-          draft.definition.nodes.find((n) => n.id === b.sourceNodeId)?.label ?? b.sourceNodeId;
+        const facts =
+          b.gate && b.index !== undefined ? requiredReviewFacts(b.gate, nodeById) : null;
+        const loop = facts?.loop ?? (b.gate && nodeById(b.gate.loopNodeId));
+        const position =
+          b.index !== undefined &&
+          output.inputBindings.some(
+            (input, index) => index !== b.index && input.name === b.bindingName,
+          )
+            ? b.index + 1
+            : undefined;
         const disabled = !checked && !draft.definition.sharedOutrider;
         const descriptionId = `${id}-required-${i}`;
         return (
           <div
             key={
               b.index === undefined
-                ? 'policy-' + (b.gate?.bindingId ?? b.bindingName + '/' + b.sourceNodeId)
-                : 'input-' + b.index
+                ? `policy-${b.gate?.bindingId ?? `${b.bindingName}/${b.sourceNodeId}`}`
+                : `input-${b.index}`
             }
             className="grid gap-1"
           >
@@ -622,7 +654,13 @@ function RequiredReviews({
                   output.id,
                   b.bindingName,
                   b.sourceNodeId,
-                  !checked,
+                  checked
+                    ? false
+                    : {
+                        loop: t('requiredReviewLabels.loop'),
+                        reviewer: t('requiredReviewLabels.reviewer'),
+                        decision: t('requiredReviewLabels.decision'),
+                      },
                   b.index,
                   b.gate?.bindingId,
                 );
@@ -632,14 +670,58 @@ function RequiredReviews({
                 } else setReason(rejected(result.reason));
               }}
             />
-            <p id={descriptionId} className="text-caption text-muted-foreground">
-              {b.index !== undefined &&
-              output.inputBindings.filter((input) => input.name === b.bindingName).length > 1
-                ? t('requiredReviewPosition', { position: b.index + 1 }) + ' · '
-                : ''}
-              {t('requiredReviewSource', { binding: b.bindingName, source })}
-              {disabled ? ' ' + rejected('requiredReviewNeedsOutrider') : ''}
-            </p>
+            <div id={descriptionId} className="grid gap-1 text-caption text-muted-foreground">
+              {position !== undefined ? (
+                <span>{t('requiredReviewPosition', { position })}</span>
+              ) : null}
+              {facts ? (
+                <>
+                  <p>
+                    {t('requiredReviewSubmission', {
+                      source: facts.producer.label,
+                      binding: b.bindingName,
+                      reviewer: facts.reviewer.label,
+                    })}
+                  </p>
+                  <p>
+                    {facts.maxRounds === null
+                      ? t('requiredReviewUnlimited', { source: facts.producer.label })
+                      : t('requiredReviewRounds', {
+                          source: facts.producer.label,
+                          count: facts.maxRounds,
+                        })}
+                  </p>
+                  <p>
+                    {t(
+                      facts.maxRounds === null
+                        ? 'requiredReviewNeedsPass'
+                        : 'requiredReviewAtLimit',
+                    )}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <p>
+                    {composition('received', {
+                      name: b.bindingName,
+                      source: nodeById(b.sourceNodeId)?.label ?? composition('unknownSource'),
+                    })}
+                  </p>
+                  {disabled ? <p>{rejected('requiredReviewNeedsOutrider')}</p> : null}
+                  {checked ? <p>{t('requiredReviewIncomplete')}</p> : null}
+                </>
+              )}
+            </div>
+            {loop?.type === 'loop' && onShowInGraph ? (
+              <Button
+                variant="ghost"
+                className="justify-self-start"
+                aria-description={loop.label}
+                onClick={() => onShowInGraph(loop.id)}
+              >
+                {t('showInGraph')}
+              </Button>
+            ) : null}
           </div>
         );
       })}

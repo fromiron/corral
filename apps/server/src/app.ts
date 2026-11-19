@@ -68,6 +68,7 @@ import {
 import {
   autoDefinition,
   Coordinator,
+  CorralCreateId,
   canReadArtifactBody,
   compileDefinition,
   createAutoStarter,
@@ -338,6 +339,7 @@ const HEARTBEAT_MS = 15_000;
 const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
   projectId: Identifier.optional(),
+  createId: CorralCreateId.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
 // Bounded here; the session rules (20 lines of 1 to 200 characters) answer with their reason.
@@ -956,15 +958,15 @@ async function createCorralServer(
   }));
 
   // ── Corrals ────────────────────────────────────────────────────────────────
+  const saveErrors = {
+    not_found: 'TARGET_NOT_FOUND',
+    revision_conflict: 'REVISION_CONFLICT',
+    validation_error: 'SCHEMA_INVALID',
+    storage_unavailable: 'STORAGE_UNAVAILABLE',
+  } as const;
   const saveReply = (reply: FastifyReply, result: SaveResult, created: boolean) => {
-    if (result.ok) return reply.code(created ? 201 : 200).send(result);
-    const code: ErrorCode =
-      result.error === 'not_found'
-        ? 'TARGET_NOT_FOUND'
-        : result.error === 'revision_conflict'
-          ? 'REVISION_CONFLICT'
-          : 'STORAGE_UNAVAILABLE';
-    return fail(reply, code, result.message);
+    if (result.ok) return reply.code(created && result.changed.definition ? 201 : 200).send(result);
+    return fail(reply, saveErrors[result.error], result.message);
   };
   const parse = <T>(schema: z.ZodType<T>, request: FastifyRequest, reply: FastifyReply) => {
     const parsed = schema.safeParse(request.body);
@@ -977,7 +979,10 @@ async function createCorralServer(
   app.post('/api/v1/corrals', async (request, reply) => {
     const body = parse(CreateCorral, request, reply);
     if (!body) return reply;
-    const result = await corrals.save({ ...body, expectedDefinitionRevision: null } as never);
+    if (body.createId !== undefined && body.createId !== body.definition.id) {
+      return fail(reply, 'SCHEMA_INVALID', 'createId does not match definition.id');
+    }
+    const result = await corrals.save({ ...body, expectedDefinitionRevision: null });
     return saveReply(reply, result, true);
   });
   app.get<{ Params: { corralId: string } }>('/api/v1/corrals/:corralId', async (request, reply) => {

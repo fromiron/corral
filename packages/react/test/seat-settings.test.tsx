@@ -80,6 +80,7 @@ describe('work seat settings', () => {
       open(patchNode(team(), 'agent_2', { stepInstruction: 'Review the outline.' }), {
         docked,
         roleSkills: () => <p>Selected skills</p>,
+        roleTools: () => <p>Selected tools</p>,
         roleSettings: () => <p>Execution policy</p>,
         diagnostics: [
           { code: 'UNREACHABLE', severity: 'error', nodeId: 'agent_2', message: 'Unreachable' },
@@ -96,6 +97,7 @@ describe('work seat settings', () => {
         button('Base instructions'),
         screen.getByRole('group', { name: 'Receives' }),
         screen.getByRole('heading', { name: 'Skills' }),
+        screen.getByRole('heading', { name: 'External tools' }),
         button('Advanced'),
       ];
       order.reduce((previous, next) => {

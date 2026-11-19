@@ -51,6 +51,8 @@ import { sessionFetch } from './sessionConnection.ts';
 // runs); opened any other way it runs the in-browser runtime with simulated agents.
 // Run pages and team editors keep separate views; the Coordinator owns active runs.
 
+const newCorralId = () => `corral_${crypto.randomUUID().slice(0, 8)}`;
+
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
@@ -63,6 +65,7 @@ export interface StudioServices {
   pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
+  newCorralId(): string;
   agents: AgentLibrary;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
@@ -193,6 +196,7 @@ export async function createStudioServices(): Promise<StudioServices> {
       },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
       repository,
+      newCorralId,
       agents: new RestAgentLibrary(http),
       sessionDeletion: {
         preview: (sessionId) => repository.deletionPreview(sessionId),
@@ -233,7 +237,7 @@ export async function createStudioServices(): Promise<StudioServices> {
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
   const repository = createKeyValueCorralRepository(store, {
     clock: systemClock,
-    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
+    newCorralId,
   });
   const { transport, workspace, readHistory } = createDemoRuntime(repository);
   const runs = createRunSessions(transport);
@@ -266,6 +270,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     harnesses: null,
     live: false,
     repository,
+    newCorralId,
     agents: createKeyValueAgentLibrary(store, {
       projects: repository,
       clock: systemClock,

@@ -507,6 +507,21 @@ it('resource API requires review and trust, pins revisions and protects local pa
   });
   const minimal = await call('/preview', { projectId: 'default', roleId: 'writer', skills: [] });
   expect(minimal.body.snapshot.binding).toEqual({ profileId: 'role-skills-minimal', revision: 1 });
+  const mcp = { serverId: 'docs', name: 'mcp__docs__echo' };
+  const unavailable = await call('/preview', {
+    projectId: 'default',
+    roleId: 'writer',
+    mcpTools: [mcp],
+  });
+  expect(unavailable.status).toBe(200);
+  expect(unavailable.body).toEqual({
+    snapshot: null,
+    problem: null,
+    mcpProblem: { roleId: 'writer', tools: [{ ...mcp, reason: 'execution_policy_required' }] },
+  });
+  expect((await call('/preview', { projectId: 'default', binding, mcpTools: [] })).status).toBe(
+    400,
+  );
   expect(
     (await call('/defaults/personal/default', { expectedRevision: 0, binding }, 'PUT')).body
       .binding,

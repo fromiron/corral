@@ -1,5 +1,4 @@
 import type { TeamEditorView } from '@corral/react';
-import type { UseNavigateResult } from '@tanstack/react-router';
 
 // A refused write still counts for this tab, even if storage can read its older value.
 const unsavedViews = new Map<string, TeamEditorView>();
@@ -24,10 +23,4 @@ export function rememberEditorView(corralId: string, view: TeamEditorView): void
   } catch {
     unsavedViews.set(corralId, view);
   }
-}
-
-/** Imports, duplicates and demo seeds are existing definitions, not newly composed teams. */
-export function openNewTeam(navigate: UseNavigateResult<string>, corralId: string) {
-  rememberEditorView(corralId, 'composition');
-  return navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
 }

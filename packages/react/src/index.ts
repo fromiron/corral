@@ -229,6 +229,7 @@ export {
 export type { Pattern, TeamReference } from './team-editor/commands.ts';
 export { addAgent, importableRoles, setRequiredOutputReview } from './team-editor/commands.ts';
 export { RoleForm } from './team-editor/NodeSettings.tsx';
+export { TeamAssistant, type TeamAssistantHost } from './team-editor/TeamAssistant.tsx';
 export {
   TEAM_EDITOR_BESIDE_MIN,
   TeamEditor,

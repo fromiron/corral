@@ -783,6 +783,80 @@ describe('REST: Corrals and runs', () => {
     expect(noPrecondition.status).toBe(400);
   });
 
+  it('saves under the stable createId and checks replays against the first definition', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const project = await repo.createProject({ name: 'Writing' });
+    if (!project.ok) throw new Error(project.message);
+    const projectId = project.project.projectId;
+    const definition = { ...linearCorral(['writer']), id: 'corral_new-team' };
+    const create = { projectId, definition, createId: definition.id };
+    const url = `${server.url}/api/v1/corrals`;
+    const firstSave = {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(create),
+    };
+    const first = await call(url, firstSave);
+    expect(first.status).toBe(201);
+    expect(await first.json()).toMatchObject({
+      ok: true,
+      record: { corralId: definition.id, projectId, definitionRevision: 1, definition },
+    });
+
+    const edited = { ...definition, name: 'Revised team' };
+    const update = await repo.save({ definition: edited, expectedDefinitionRevision: 1 });
+    if (!update.ok) throw new Error(update.message);
+    const request = { ...create, expectedDefinitionRevision: null };
+    const replay = await call(url, firstSave);
+    expect(replay.status).toBe(200);
+    expect(await replay.json()).toEqual({
+      ok: true,
+      record: update.record,
+      changed: { definition: false },
+    });
+    for (const conflict of [{ definition: edited }, { projectId: 'default' }]) {
+      expect(await repo.save({ ...request, ...conflict })).toMatchObject({
+        ok: false,
+        error: 'revision_conflict',
+      });
+    }
+    expect(await repo.get(definition.id)).toEqual(update.record);
+    expect(await repo.list()).toHaveLength(1);
+
+    // The same imported definition, without an explicit identity, still gets a new id.
+    const copy = await repo.save({ definition, projectId, expectedDefinitionRevision: null });
+    if (!copy.ok) throw new Error(copy.message);
+    expect(copy.record.corralId).not.toBe(definition.id);
+    expect(copy.record.definitionRevision).toBe(1);
+  });
+
+  it('refuses a malformed or mismatched stable createId without writing', async () => {
+    const server = await start();
+    const { call } = await browser(server);
+    const repo = new RestCorralRepository({ baseUrl: server.url, fetch: call });
+    const definition = linearCorral(['writer']);
+    for (const [id, createId] of [
+      ['corral_right', 'corral_other'],
+      ['other_prefix', 'other_prefix'],
+      ['corral_', 'corral_'],
+      ['corral_/path', 'corral_/path'],
+      ['corral_right', null],
+    ] as const) {
+      const invalid = await call(`${server.url}/api/v1/corrals`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ definition: { ...definition, id }, createId }),
+      });
+      expect(invalid.status).toBe(400);
+      expect(await invalid.json()).toMatchObject({ error: { code: 'SCHEMA_INVALID' } });
+    }
+    const invalid = await repo.save({ definition, createId: '', expectedDefinitionRevision: null });
+    expect(invalid).toMatchObject({ ok: false, error: 'validation_error' });
+    expect(await repo.list()).toEqual([]);
+  });
+
   it('runs the same scripted Corral to the same event order in a fresh workspace', async () => {
     const order = async () => {
       const server = await start();

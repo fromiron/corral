@@ -6,15 +6,19 @@ import {
   type CorralRepository,
   createKeyValueCorralRepository,
 } from '@corral/core';
-import { type EditorDraft, emptyDraft, type RunSessionStore } from '@corral/react';
+import {
+  type EditorDraft,
+  type EditorStore,
+  emptyDraft,
+  type RunSessionStore,
+} from '@corral/react';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { placeStep } from '../../../../packages/react/src/team-editor/commands.ts';
-import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
-import { editorWorkingCopy } from '../workbench/editorDraft.ts';
+import { editorWorkingCopy, newEditorWorkingCopy } from '../workbench/editorDraft.ts';
 import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
 import { EditorPage, TeamDesign } from './EditorPage.tsx';
 
@@ -27,12 +31,29 @@ const fixture = vi.hoisted(() => ({
   record: null as unknown,
   navigate: vi.fn().mockResolvedValue(undefined),
   fromSession: undefined as string | undefined,
+  template: undefined as 'starter' | 'blank' | undefined,
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../router.tsx', () => ({
   editorRoute: {
     useLoaderData: () => fixture.record,
     useSearch: () => ({ fromSession: fixture.fromSession }),
+    useMatch: () =>
+      fixture.template
+        ? undefined
+        : {
+            loaderData: fixture.record,
+            search: { fromSession: fixture.fromSession },
+          },
+  },
+  newEditorRoute: {
+    useMatch: () =>
+      fixture.template
+        ? {
+            loaderData: { projectId: 'project_1', newTemplate: fixture.template },
+            search: {},
+          }
+        : undefined,
   },
   demoRoute: {},
 }));
@@ -128,6 +149,7 @@ afterEach(async () => {
   localStorage.clear();
   fixture.navigate.mockClear();
   fixture.fromSession = undefined;
+  fixture.template = undefined;
 });
 
 function memoryRepository(): CorralRepository {
@@ -245,6 +267,30 @@ async function renderPage(page: ReactNode) {
   );
 }
 
+async function renderNewEditor(template: 'blank' | 'starter') {
+  const repository = memoryRepository();
+  await repository.createProject({ name: 'Project' });
+  const save = vi.spyOn(repository, 'save');
+  fixture.template = template;
+  fixture.services = {
+    mode: 'browser',
+    repository,
+    newCorralId: () => 'corral_working',
+    agents: { list: async () => [] },
+    transport: {},
+    editorSessions: new Map(),
+    models: null,
+    harnesses: null,
+    runModes: {},
+    live: false,
+  };
+  await renderPage(<EditorPage />);
+  const copy = newEditorWorkingCopy(repository, 'project_1', template !== 'blank', () => {
+    throw Error('The editor must have opened its working copy');
+  });
+  return { repository, save, editor: copy.getState().editor };
+}
+
 const editorRoot = () => document.querySelector('[data-layout]') as HTMLElement;
 const layoutOf = () => editorRoot()?.getAttribute('data-layout');
 const region = (selector: string) => document.querySelector(selector) as HTMLElement;
@@ -330,6 +376,38 @@ const viewTab = (name: string) =>
   );
 
 describe('team editor views', () => {
+  it('offers only examples and choices when there is no server to connect a model to', async () => {
+    const draft = await mount('route', 1280);
+    const before = draft();
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    expect(named(editorRoot(), 'Connect a model')).toBeFalsy();
+    expect(editorRoot().textContent).toContain(messages.TeamAssistant.noModel);
+    expect(draft()).toBe(before);
+  });
+
+  it('does not offer a different connected profile when the endpoint’s first profile is offline', async () => {
+    const assistTeam = vi.fn();
+    const profile = { source: 'profile', providerName: 'Provider', available: true };
+    await mount('route', 1280, () => ({
+      live: true,
+      models: {
+        catalog: async () => [],
+        profiles: async () => [
+          { ...profile, profileId: 'model-a', modelName: 'Offline model', method: null },
+          { ...profile, profileId: 'model-b', modelName: 'Connected model', method: 'apiKey' },
+        ],
+        assistTeam,
+      },
+    }));
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    expect(named(editorRoot(), 'Connect a model')).toBeTruthy();
+    await click(named(editorRoot(), 'Connect a model'));
+    expect(fixture.navigate).toHaveBeenCalledWith(
+      expect.objectContaining({ to: '/settings/models' }),
+    );
+    expect(assistTeam).not.toHaveBeenCalled();
+  });
+
   it.each(['route', 'session'] as const)(
     'loads the current project’s originals in the %s editor',
     async (host) => {
@@ -434,41 +512,71 @@ describe('team editor views', () => {
     expect(shown(canvas())).toBe(true);
   });
 
-  it('opens a newly saved template copy in composition, then remembers a deliberate switch', async () => {
-    const repository = memoryRepository();
-    await repository.createProject({ name: 'Project' });
-    fixture.services = {
-      mode: 'browser',
-      repository,
-      agents: { list: async () => [] },
-      transport: {},
-      editorSessions: new Map(),
-      models: null,
-      harnesses: null,
-      runModes: {},
-      live: false,
-    };
-    await renderPage(
-      <TemplateCopyDialog
-        template="starter"
-        projectId="project_1"
-        corrals={[]}
-        onClose={() => {}}
-      />,
+  it.each(['Team composition', 'Flow graph'])(
+    '%s hides the problem badge until the first work agent, then opens request problems',
+    async (view) => {
+      hostWidth = 1280;
+      const { editor } = await renderNewEditor('blank');
+      await click(viewTab(view));
+      const area = view === 'Flow graph' ? outline() : region('[data-composition-scroll]');
+      const count = () =>
+        [...area.querySelectorAll('button')].find((button) =>
+          /^(?:\d+ problems?|No problems|Set up the flow)$/.test(button.textContent.trim()),
+        );
+      expect(count()).toBeUndefined();
+      await act(async () => {
+        const { draft } = ok(placeStep(editor.getState().draft, 'agent', { kind: 'empty' }));
+        editor.getState().applyDraft(draft);
+      });
+      expect(count()?.textContent).toMatch(/^\d+ problems?$/);
+      await click(count());
+      expect(sheet().textContent).toContain(messages.Validation.schema.runInput);
+    },
+  );
+
+  it('disables both mock-test controls with the Save reason until an empty draft is edited', async () => {
+    const { editor } = await renderNewEditor('blank');
+    const actions = [m.saveAndMockTest, m.runOptions, messages.Editor.save].map((name) =>
+      named(document, name),
     );
-    await click(named(document, messages.Workspace.saveCopyEdit));
+    for (const action of actions) {
+      expect(action).toHaveProperty('disabled', true);
+      expect(action.getAttribute('aria-description')).toBe(messages.Editor.noChanges);
+    }
+    await act(async () => editor.getState().setBrief('A request'));
+    for (const action of actions) {
+      expect(action).toHaveProperty('disabled', false);
+      expect(action.hasAttribute('aria-description')).toBe(false);
+    }
+    await act(async () => editor.getState().undo());
+    expect(actions.every((action) => action.matches(':disabled'))).toBe(true);
+  });
+
+  it('opens an unsaved template copy in composition, creates it once, and remembers the chosen view', async () => {
+    const { repository, save } = await renderNewEditor('starter');
+    expect(viewTab('Team composition')?.getAttribute('aria-selected')).toBe('true');
+    expect(document.querySelector('header')?.textContent).toContain('Not saved yet');
+    expect(named(document, m.saveAndMockTest)).toHaveProperty('disabled', false);
+    expect(named(document, m.runOptions)).toHaveProperty('disabled', false);
+    expect(document.querySelector('[data-composition-scroll]')?.textContent).toContain('Agent 1');
+    expect(save).not.toHaveBeenCalled();
+    await click(viewTab('Flow graph'));
+    expect(named(document, m.stats.toggle)).toBeUndefined();
+    await click(named(document, messages.Editor.save));
+    expect(save).toHaveBeenCalledTimes(1);
     const [record] = await repository.list();
     if (!record) throw Error('Expected a saved template copy');
     const id = record.corralId;
     expect(fixture.navigate).toHaveBeenCalledWith({
       to: '/corrals/$corralId/edit',
       params: { corralId: id },
+      replace: true,
     });
     await cleanups.pop()?.();
+    fixture.template = undefined;
     fixture.record = await repository.get(id);
     await renderPage(<EditorPage />);
-    expect(viewTab('Team composition')?.getAttribute('aria-selected')).toBe('true');
-    await click(viewTab('Flow graph'));
+    expect(viewTab('Flow graph')?.getAttribute('aria-selected')).toBe('true');
     await cleanups.pop()?.();
     await renderPage(<TeamDesign corralId={id} />);
     expect(viewTab('Flow graph')?.getAttribute('aria-selected')).toBe('true');
@@ -692,6 +800,77 @@ function edit(record: CorralRecord, repository: CorralRepository, draft: EditorD
 }
 
 describe('test run validation and recovery in the editor', () => {
+  it.each(['browser', 'server'])('updates Will apply on edit and save (%s)', async (mode) => {
+    let editor!: EditorStore;
+    await mount('route', 1280, (repository, record) => {
+      editor = edit(record, repository, linear('Research'));
+      editor.getState().updateNode('agent_1', { label: 'Saved writer' });
+      return { mode };
+    });
+    await click(named(document, messages.Editor.save));
+    await prepareRun();
+    const setup = [...testRun().querySelectorAll('h3')]
+      .find((heading) => heading.textContent === 'Will apply')
+      ?.closest('section');
+    assert(setup);
+    expect(setup.textContent).toContain('comes from Saved writer.');
+    expect(setup.textContent).not.toContain('Shared Outrider advice');
+    expect(setup.textContent).toContain('Saved version 2');
+    await act(async () => {
+      editor.getState().updateNode('agent_1', { label: 'Draft writer' });
+      const { draft, applyDraft } = editor.getState();
+      applyDraft({
+        ...draft,
+        definition: {
+          ...draft.definition,
+          sharedOutrider: {
+            modelProfile: 'critic',
+            principles: 'Check sources.',
+            targets: { kind: 'all' },
+          },
+        },
+      });
+    });
+    expect(setup.textContent).toContain('comes from Draft writer.');
+    expect(setup.textContent).toContain('Shared Outrider advice is set up for the whole team.');
+    expect(setup.textContent).toContain('Includes unsaved changes');
+    expect(setup.textContent).not.toContain('Saved version');
+    await click(named(document, messages.Editor.save));
+    expect(setup.textContent).toContain('comes from Draft writer.');
+    expect(setup.textContent).toContain('Shared Outrider advice is set up for the whole team.');
+    expect(setup.textContent).toContain('Saved version 3');
+    expect(setup.textContent).not.toContain('Includes unsaved changes');
+  });
+
+  it('opens the authored revision pinned to a reloaded test run instead of the latest saved team', async () => {
+    const sessions = new Map<string, RunSessionStore>();
+    const source = vi.fn(async () => ({ corralId: 'historical-team', definitionRevision: 7 }));
+    const historical = linear('Historical writer').definition;
+    historical.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check sources.',
+      targets: { kind: 'all' },
+    };
+    const getRevision = vi.fn(async () => historical);
+    await mount('route', 1280, (repository, record) => ({
+      mode: 'server',
+      repository: { ...repository, getRevision },
+      editorSessions: sessions,
+      transport: {
+        getRunDefinition: async () => record.definition,
+        getRunSource: source,
+        subscribe: () => () => {},
+      },
+    }));
+    const [session] = sessions.values();
+    assert(session);
+    await act(async () => session.getState().open('reloaded'));
+    await prepareRun();
+    expect(source).toHaveBeenCalledExactlyOnceWith('reloaded');
+    expect(getRevision).toHaveBeenCalledWith('historical-team', 7);
+    expect(testRun().textContent).toContain('0 requests · nobody asked');
+  });
+
   it('starts the draft once in mock mode despite the saved live choice, and only restarts a terminal run', async () => {
     const sessions = new Map<string, RunSessionStore>();
     const startRun = vi.fn().mockResolvedValue({ runId: 'run_one' });

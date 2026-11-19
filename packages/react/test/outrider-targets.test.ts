@@ -49,6 +49,25 @@ describe('Outrider ask permissions', () => {
     ]);
   });
 
+  it('checks different MCP selections independently, even under the same policy', async () => {
+    const team = linearCorral(['inherited', 'none', 'selected', 'same']);
+    const ref = { serverId: 'issues', name: 'mcp__issues__search' };
+    for (const [index, role] of team.roles.entries()) {
+      role.harness = harness;
+      if (index > 0) role.mcpTools = index === 1 ? [] : [ref];
+    }
+    const read = vi.fn<ReadHarnessAsk>(async ({ mcpTools }) => !mcpTools?.length);
+    const hook = renderHook(() => useOutriderTargets(team, true, undefined, read));
+    await waitFor(() => expect(hook.result.current.some((r) => r.permissionPending)).toBe(false));
+    expect(read).toHaveBeenCalledTimes(3);
+    expect(hook.result.current.map((r) => r.unavailable)).toEqual([
+      undefined,
+      undefined,
+      'harness',
+      'harness',
+    ]);
+  });
+
   it('leaves unreadable skills-only previews pending and ignores a late answer from a previous project', async () => {
     const team = linearCorral(['empty', 'selected', 'broken', 'plain']);
     team.roles[0]!.skills = [];

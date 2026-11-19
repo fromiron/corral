@@ -3,7 +3,7 @@ import type { CorralSummary, ProjectSummary } from '@corral/core';
 import { TermTooltip } from '@corral/react';
 import { Button, Page, Select, TabItem, TabPanel, Tabs, TabsList } from '@corral/react/design-kit';
 import { ArrowLeft } from '@corral/react/icons';
-import { useNavigate, useRouterState } from '@tanstack/react-router';
+import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { projectName, useCurrentProject, useProjectsVersion } from '../projects.ts';
@@ -21,9 +21,8 @@ export interface LibrarySearch {
   project?: string;
   agent?: string;
   returnTo?: string;
-  /** Opens "Draft a team from a goal" in Templates; consumed once. */
+  /** Legacy creation links redirected by the router. */
   draft?: boolean;
-  /** Opens direct creation on the templates page. */
   blank?: boolean;
 }
 
@@ -141,29 +140,15 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         projects={data.projects}
         corrals={data.corrals}
         onChanged={reload}
-        onBrowseTemplates={(draft) =>
+        onBrowseTemplates={() =>
           void navigate({
             to: VIEW_ROUTES.templates,
-            search: { ...kept, project: projectId, ...(draft ? { draft: true } : {}) },
+            search: { ...kept, project: projectId },
           })
         }
       />
     ) : view === 'templates' ? (
-      <LibraryTemplates
-        projectId={projectId}
-        project={project}
-        corrals={data.corrals}
-        blank={Boolean(search.blank)}
-        drafting={Boolean(search.draft && !search.blank)}
-        onDraftClosed={() =>
-          void navigate({
-            to: VIEW_ROUTES.templates,
-            search: kept,
-            replace: true,
-            resetScroll: false,
-          })
-        }
-      />
+      <LibraryTemplates projectId={projectId} project={project} />
     ) : (
       <LibraryResources key={projectId} projectId={projectId} returnTo={returnTo} />
     );
@@ -208,13 +193,8 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
                 <Button
                   variant="tertiary"
                   size="compact"
-                  onClick={() =>
-                    void navigate({
-                      to: VIEW_ROUTES.templates,
-                      search: { ...kept, draft: true },
-                      replace: true,
-                      resetScroll: false,
-                    })
+                  render={
+                    <Link to="/corrals/new/edit" search={{ project: projectId, assistant: 1 }} />
                   }
                 >
                   {tw('draftFromGoal')}

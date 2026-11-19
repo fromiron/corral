@@ -87,14 +87,15 @@ import type {
   ImageProfileChoice,
   LoopSettings,
   ProfileOption,
+  RoleCapabilitySlot,
   RoleSettings,
-  RoleSkillsSlot,
 } from './NodeSettings.tsx';
 import { PlacementDialog } from './PlacementDialog.tsx';
 import { type PlacementPrompt, placementDiff } from './placement-preview.ts';
 import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
+import { TeamAssistant, type TeamAssistantHost } from './TeamAssistant.tsx';
 import { TeamComposition } from './TeamComposition.tsx';
 import {
   type ResultOffer,
@@ -121,6 +122,8 @@ export interface TeamEditorProps {
   diagnostics?: readonly Diagnostic[];
   validationStatus?: string | undefined;
   editor: EditorStore;
+  assistant?: TeamAssistantHost;
+  assistantStart?: { open: boolean } | undefined;
   view?: TeamEditorView;
   onViewChange?: ((view: TeamEditorView) => void) | undefined;
   profiles?: ProfileOption[] | null;
@@ -128,7 +131,8 @@ export interface TeamEditorProps {
   imageProfiles?: readonly ImageProfileChoice[] | null;
   /** Extra role settings the host adds to an agent's sheet, such as its Skills. */
   roleSettings?: RoleSettings | undefined;
-  roleSkills?: RoleSkillsSlot | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   /** Extra loop settings the host adds to a Loop's sheet. */
   loopSettings?: LoopSettings | undefined;
   /** The other saved teams of the project, each at its latest saved revision. */
@@ -176,12 +180,15 @@ export function TeamEditor({
   diagnostics: sharedDiagnostics,
   validationStatus,
   editor,
+  assistant,
+  assistantStart,
   view: editorView = 'graph',
   onViewChange,
   profiles = null,
   imageProfiles = null,
   roleSettings,
   roleSkills,
+  roleTools,
   loopSettings,
   teams = NO_TEAMS,
   agentLibrary,
@@ -204,6 +211,7 @@ export function TeamEditor({
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const { definition } = draft;
+  const hasWorkAgent = useMemo(() => definition.nodes.some(isWorkAgent), [definition.nodes]);
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
   // Once the host knows the installed model profiles, a role naming another one is a problem.
   // With none installed every role would be one, and the team is not where that is fixed.
@@ -211,14 +219,16 @@ export function TeamEditor({
     () => (profiles?.length ? profiles.map((p) => p.profileId) : undefined),
     [profiles],
   );
+  const compileOptions = useMemo(
+    () => ({
+      ...(resolveTeam && { resolveTeam }),
+      ...(knownModelProfiles && { knownModelProfiles }),
+    }),
+    [resolveTeam, knownModelProfiles],
+  );
   const diagnostics = useMemo(
-    () =>
-      sharedDiagnostics ??
-      compileDraft(draft, {
-        ...(resolveTeam ? { resolveTeam } : {}),
-        ...(knownModelProfiles ? { knownModelProfiles } : {}),
-      }).diagnostics,
-    [sharedDiagnostics, draft, resolveTeam, knownModelProfiles],
+    () => sharedDiagnostics ?? compileDraft(draft, compileOptions).diagnostics,
+    [sharedDiagnostics, draft, compileOptions],
   );
   // The role presets in the screen language.
   const presets = useMemo(
@@ -872,6 +882,7 @@ export function TeamEditor({
       imageProfiles={imageProfiles}
       roleSettings={roleSettings}
       roleSkills={roleSkills}
+      roleTools={roleTools}
       loopSettings={loopSettings}
       teams={teams}
       outriderTargets={outriderTargets}
@@ -920,7 +931,7 @@ export function TeamEditor({
   return (
     // biome-ignore lint/a11y/noStaticElementInteractions: catches the editor's shortcuts from any control inside it.
     <div
-      className="h-full min-h-0 min-w-0"
+      className="flex h-full min-h-0 min-w-0 flex-col"
       data-layout={stacked ? 'stacked' : 'beside'}
       onKeyDown={onKeyDown}
     >
@@ -930,13 +941,14 @@ export function TeamEditor({
         hidden={composition}
         className={
           stacked
-            ? 'relative flex h-full min-h-0 flex-col overflow-y-auto'
-            : 'grid h-full min-h-0 grid-cols-[272px_minmax(0,1fr)]'
+            ? 'relative flex min-h-0 flex-1 flex-col overflow-y-auto'
+            : 'grid min-h-0 flex-1 grid-cols-[272px_minmax(0,1fr)]'
         }
       >
         <StructureTree
           stacked={stacked}
           definition={definition}
+          hasWorkAgent={hasWorkAgent}
           diagnostics={diagnostics}
           validationStatus={validationStatus}
           order={order}
@@ -1114,7 +1126,7 @@ export function TeamEditor({
         <div
           hidden={!composition}
           className={
-            stacked ? 'h-full min-h-0' : 'grid h-full min-h-0 grid-cols-[minmax(0,1fr)_344px]'
+            stacked ? 'min-h-0 flex-1' : 'grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)_344px]'
           }
         >
           <div
@@ -1130,6 +1142,7 @@ export function TeamEditor({
             <div className="w-full max-w-[45rem]">
               <TeamComposition
                 definition={definition}
+                hasWorkAgent={hasWorkAgent}
                 order={order}
                 diagnostics={diagnostics}
                 validationStatus={validationStatus}
@@ -1194,6 +1207,30 @@ export function TeamEditor({
           )}
         </div>
       )}
+      {assistant && (
+        <TeamAssistant
+          editor={editor}
+          host={assistant}
+          start={assistantStart}
+          narrow={stacked}
+          compileOptions={compileOptions}
+          onApplied={(row) => {
+            // Show the affected row, not its narrow drill-in. Restore focus after both the
+            // selection and the conversation sheet have committed their changes.
+            rowOrigin.current = null;
+            returning.current = true;
+            setDrilled(false);
+            if (!composition) onViewChange?.('composition');
+            if (row === '@request' || row === '@advice') {
+              select(NONE);
+              setView(row === '@request' ? 'team' : 'sharedOutrider');
+            } else {
+              unfoldFor([row]);
+              select({ nodes: [row], edge: null });
+            }
+          }}
+        />
+      )}
       {prompt ? (
         <PlacementDialog
           prompt={prompt}
@@ -1240,10 +1277,7 @@ export function TeamEditor({
           preview={
             picker.kind === 'replace'
               ? (source) => {
-                  const result = previewReplaceAgent(draft, picker.nodeId, source, {
-                    ...(knownModelProfiles ? { knownModelProfiles } : {}),
-                    ...(resolveTeam ? { resolveTeam } : {}),
-                  });
+                  const result = previewReplaceAgent(draft, picker.nodeId, source, compileOptions);
                   return result.ok ? { changed: result.changed } : { error: rejection(result) };
                 }
               : undefined
@@ -1251,12 +1285,7 @@ export function TeamEditor({
           onChoose={(source) => {
             const base = editor.getState().draft;
             if (picker.kind === 'replace') {
-              apply(
-                replaceAgent(base, picker.nodeId, source, {
-                  ...(knownModelProfiles ? { knownModelProfiles } : {}),
-                  ...(resolveTeam ? { resolveTeam } : {}),
-                }),
-              );
+              apply(replaceAgent(base, picker.nodeId, source, compileOptions));
             } else if (picker.kind === 'composition') {
               const at = compositionPlacement(base.definition);
               const result = addAgent(base, source, at);

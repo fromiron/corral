@@ -25,6 +25,7 @@ import type { EditRejection, Placement, PortRequest, StepKind } from './commands
 import { KIND_COLOR, KIND_ICON, kindOf, membersOf, portText, roleOf } from './kinds.ts';
 import {
   boundsOf,
+  GEOMETRY,
   type LaidEdge,
   type LaidItem,
   layoutTeam,
@@ -32,6 +33,7 @@ import {
   type Rect,
   routeTeam,
 } from './layout.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // The team editor's canvas (docs/specs/features/team-graph.md). Layout is automatic: the canvas
 // only turns pointer and keyboard input into structural edits and shows where they would land.
@@ -204,11 +206,15 @@ export function TeamGraphCanvas({
   const reduced = useReducedMotion() ?? false;
   const markerId = useId().replace(/:/g, '');
 
-  const layout = useMemo(() => layoutTeam(definition, collapsed), [definition, collapsed]);
+  const reviewLoops = useMemo(() => requiredReviewLoopIds(definition.nodes), [definition.nodes]);
+  const layout = useMemo(
+    () => layoutTeam(definition, collapsed, reviewLoops),
+    [definition, collapsed, reviewLoops],
+  );
   const items = useTweenedItems(layout.items, reduced);
   const routed = useMemo(
-    () => routeTeam(definition, items, collapsed),
-    [definition, items, collapsed],
+    () => routeTeam(definition, items, collapsed, reviewLoops),
+    [definition, items, collapsed, reviewLoops],
   );
   const nodes = useMemo(() => new Map(definition.nodes.map((n) => [n.id, n])), [definition]);
 
@@ -376,11 +382,15 @@ export function TeamGraphCanvas({
   } | null>(null);
   useEffect(() => {
     if (
-      wire?.mode === 'pick' &&
-      (selection.nodes.length !== 1 || selection.nodes[0] !== wire.from.nodeId)
+      wire &&
+      ((wire.mode === 'pick' &&
+        (selection.nodes.length !== 1 || selection.nodes[0] !== wire.from.nodeId)) ||
+        (wire.from.port === 'exhausted' &&
+          nodes.get(wire.from.nodeId)?.type === 'loop' &&
+          reviewLoops.has(wire.from.nodeId)))
     )
       setWire(null);
-  }, [wire, selection.nodes]);
+  }, [wire, selection.nodes, nodes, reviewLoops]);
   const gesture = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const inMarks = routed.ports.filter((p) => p.side === 'in');
   const requestAt = (from: PortMark, point: { x: number; y: number }): PortRequest | null => {
@@ -670,7 +680,22 @@ export function TeamGraphCanvas({
       return node.routes.map((r) => r.label).join(' · ');
     return '';
   };
-  const outPorts = routed.ports.filter((p) => p.side === 'out');
+  const endingId = (nodeId: string) =>
+    reviewLoops.has(nodeId) && nodes.get(nodeId)?.type === 'loop'
+      ? `${markerId}-ending-${nodeId}`
+      : undefined;
+  const outPorts: PortMark[] = [];
+  const endings: PortMark[] = [];
+  for (const port of routed.ports) {
+    if (port.side !== 'out') continue;
+    if (
+      port.port === 'exhausted' &&
+      reviewLoops.has(port.nodeId) &&
+      nodes.get(port.nodeId)?.type === 'loop'
+    )
+      endings.push(port);
+    else outPorts.push(port);
+  }
   const highlighted = new Set(drop?.check.ok ? drop.check.affected : highlightedEdges);
   const edgeStroke = (id: string) =>
     selection.edge === id || highlighted.has(id)
@@ -761,6 +786,7 @@ export function TeamGraphCanvas({
                     type="button"
                     data-node={item.id}
                     aria-pressed={isSelected}
+                    aria-describedby={endingId(node.id)}
                     className={cn(
                       focusRing,
                       size.type.body,
@@ -962,6 +988,7 @@ export function TeamGraphCanvas({
                 type="button"
                 data-node={item.id}
                 aria-pressed={isSelected}
+                aria-describedby={endingId(node.id)}
                 className={cn(focusRing, 'absolute rounded-xl text-left')}
                 style={{
                   transform: `translate(${item.rect.x}px, ${item.rect.y}px)`,
@@ -1059,6 +1086,26 @@ export function TeamGraphCanvas({
                 ) : null;
               })
             : null}
+          {endings.map(({ nodeId, at }) => (
+            <span
+              key={nodeId}
+              id={endingId(nodeId)}
+              className={cn(
+                size.type.caption,
+                'absolute z-10 inline-flex w-max origin-right -translate-x-full -translate-y-1/2 items-center gap-1.5 text-foreground',
+              )}
+              style={{
+                left: at.x,
+                top: at.y - GEOMETRY.reviewFooter / 2,
+                // Keep the ending legible at fit zoom without outgrowing its own footer.
+                scale: Math.max(1, Math.min(1.5, 1 / viewport.k)),
+                fontVariationSettings: fontWeights.semibold,
+              }}
+            >
+              {t('noFinalSubmission')}
+              <span aria-hidden className="size-2 bg-current" />
+            </span>
+          ))}
           {outPorts.map((port) => {
             const key = `${port.nodeId}:${port.port}`;
             const active = wire?.from.nodeId === port.nodeId && wire.from.port === port.port;

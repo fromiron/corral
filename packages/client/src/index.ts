@@ -265,6 +265,7 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
+  RunSnapshot,
   RunStats,
   RunSummary,
   RuntimeSnapshot,
@@ -660,11 +661,14 @@ export async function hasSession(options: HttpOptions): Promise<boolean> {
 // ── runtime transport ────────────────────────────────────────────────────────
 
 const RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
+const MAX_RECENT_RUN_DEFINITIONS = 16;
+type RunDefinitionRecord = Pick<RunSnapshot, 'definition' | 'source'>;
 
 export class HttpSseTransport implements RuntimeTransport {
   private readonly http: Http;
   private readonly recovery?: { commands: CommandRecovery; starts: StartRecovery };
   private readonly pendingAutoIds = new Map<string, string>();
+  private readonly runDefinitions = new Map<string, Promise<RunDefinitionRecord | null>>();
 
   constructor(
     options: HttpOptions,
@@ -850,10 +854,36 @@ export class HttpSseTransport implements RuntimeTransport {
   }
 
   async getRunDefinition(runId: string): Promise<CorralDefinition | null> {
-    const response = await this.http.request(`/runs/${encodeURIComponent(runId)}`);
-    if (response.status === 404) return null;
-    if (!response.ok) throw await apiError(response);
-    return ((await response.json()) as { definition: CorralDefinition }).definition;
+    return (await this.runDefinitionRecord(runId))?.definition ?? null;
+  }
+
+  async getRunSource(runId: string): Promise<RunSnapshot['source']> {
+    return (await this.runDefinitionRecord(runId))?.source ?? null;
+  }
+
+  private async runDefinitionRecord(runId: string): Promise<RunDefinitionRecord | null> {
+    const cached = this.runDefinitions.get(runId);
+    if (cached) return cached;
+    const path = `/runs/${encodeURIComponent(runId)}`;
+    const request = this.http.request(path).then(async (response) => {
+      if (response.status === 404) return null;
+      if (!response.ok) throw await apiError(response);
+      const { definition, source } = (await response.json()) as RunDefinitionRecord;
+      return { definition, source };
+    });
+    // Both readers share the immutable response, including while its request is in flight.
+    if (this.runDefinitions.size >= MAX_RECENT_RUN_DEFINITIONS) {
+      const oldest = this.runDefinitions.keys().next();
+      if (!oldest.done) this.runDefinitions.delete(oldest.value);
+    }
+    this.runDefinitions.set(runId, request);
+    let record: RunDefinitionRecord | null = null;
+    try {
+      record = await request;
+      return record;
+    } finally {
+      if (!record && this.runDefinitions.get(runId) === request) this.runDefinitions.delete(runId);
+    }
   }
 
   getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
@@ -1311,6 +1341,13 @@ export class RestCorralRepository implements CorralRepository {
       return this.write('/corrals', 'POST', {
         ...body,
         ...(request.projectId ? { projectId: request.projectId } : {}),
+        createId: request.createId,
+      });
+    if (request.createId !== undefined)
+      return Promise.resolve({
+        ok: false,
+        error: 'validation_error',
+        message: 'createId is only valid on the first save.',
       });
     return this.write(`/corrals/${encodeURIComponent(request.definition.id)}`, 'PUT', body, {
       'if-match': `"${request.expectedDefinitionRevision}"`,
@@ -1452,6 +1489,8 @@ export class RestCorralRepository implements CorralRepository {
     }
     if (response.ok) return (await response.json()) as SaveResult;
     const error = await apiError(response);
+    if (response.status === 400 && error.code === 'SCHEMA_INVALID')
+      return { ok: false, error: 'validation_error', message: error.message };
     if (response.status === 404) return { ok: false, error: 'not_found', message: error.message };
     if (response.status === 409) {
       return { ok: false, error: 'revision_conflict', message: error.message };
@@ -2292,7 +2331,12 @@ export class HarnessApi {
     const selection =
       'profileId' in input
         ? { binding: input }
-        : { roleId: input.id, binding: input.harness, skills: input.skills };
+        : {
+            roleId: input.id,
+            binding: input.harness,
+            skills: input.skills,
+            mcpTools: input.mcpTools,
+          };
     return this.http.json('/harness/preview', {
       method: 'POST',
       body: JSON.stringify({ ...selection, projectId, runOverride }),

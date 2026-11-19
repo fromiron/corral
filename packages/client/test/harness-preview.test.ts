@@ -13,13 +13,14 @@ it('sends role selections including an explicit empty list without leaking the r
   });
   const binding = { profileId: 'writer', revision: 2 };
   const skills = [{ resourceHash: 'a'.repeat(64), entry: 'skills/style/SKILL.md' }];
-  const role = { id: 'writer_role', skills, harness: binding, prompt: 'private' };
+  const mcpTools = [{ serverId: 'docs', name: 'mcp__docs__echo' }];
+  const role = { id: 'writer_role', skills, harness: binding, mcpTools, prompt: 'private' };
   await api.preview(role, 'project');
-  await api.preview({ id: 'reader_role', skills: [] }, 'project');
+  await api.preview({ id: 'reader_role', skills: [], mcpTools: [] }, 'project');
   await api.preview(binding, 'project', binding);
   expect(requests).toEqual([
-    { projectId: 'project', roleId: 'writer_role', binding, skills },
-    { projectId: 'project', roleId: 'reader_role', skills: [] },
+    { projectId: 'project', roleId: 'writer_role', binding, skills, mcpTools },
+    { projectId: 'project', roleId: 'reader_role', skills: [], mcpTools: [] },
     { projectId: 'project', binding, runOverride: binding },
   ]);
 });

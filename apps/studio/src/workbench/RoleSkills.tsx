@@ -3,6 +3,7 @@ import type {
   HarnessBindingRef,
   HarnessEntryView,
   RoleHarnessPreview,
+  RoleMcpToolRef,
   RoleSkillRef,
 } from '@corral/contracts';
 import {
@@ -41,6 +42,7 @@ export interface RoleSkillsProps {
   projectId: string;
   roleId?: string;
   harness?: HarnessBindingRef | undefined;
+  mcpTools?: RoleMcpToolRef[] | undefined;
 }
 
 function useHarnessRevision() {
@@ -101,6 +103,7 @@ function ServerRoleSkills({
   value,
   roleId = 'role',
   harness,
+  mcpTools,
   projectId,
   mode,
   targetLabel,
@@ -144,6 +147,7 @@ function ServerRoleSkills({
         id: roleId,
         ...(harness && { harness }),
         ...(value && { skills: [...value] }),
+        ...(mcpTools && { mcpTools }),
       };
       void api.preview(role, projectId).then(
         async (result) => {
@@ -181,7 +185,7 @@ function ServerRoleSkills({
     return () => {
       active = false;
     };
-  }, [api, harness, roleId, value, projectId, revision]);
+  }, [api, harness, roleId, value, mcpTools, projectId, revision]);
   function label(ref: RoleSkillRef) {
     const known = byKey.get(keyOf(ref))?.name;
     if (known) return known;

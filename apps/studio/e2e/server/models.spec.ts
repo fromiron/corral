@@ -10,6 +10,7 @@ import {
   openLibrary,
   openLibraryTeams,
   openTestRun,
+  saveNewTeam,
   teamCanvas,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -332,48 +333,48 @@ test('asks the signed-in model for a team draft once and opens it after review',
 }) => {
   corral.fake?.replyText(
     JSON.stringify({
-      name: 'Launch note',
-      pattern: 'write_review',
-      brief: 'Announce the new API.',
-      criteria: ['Mention the release date.'],
-      roles: [
-        { slot: 'planner', name: 'Outliner', duty: 'List the key points.' },
-        { slot: 'writer', name: 'Copywriter', duty: 'Write the announcement.' },
-        { slot: 'reviewer', name: 'Editor', duty: 'Check tone and facts.' },
-      ],
-      reviewRounds: 1,
-      finalApproval: false,
+      kind: 'plan',
+      plan: {
+        name: 'Launch note',
+        pattern: 'write_review',
+        brief: 'Announce the new API.',
+        criteria: ['Mention the release date.'],
+        roles: [
+          { slot: 'planner', name: 'Outliner', duty: 'List the key points.' },
+          { slot: 'writer', name: 'Copywriter', duty: 'Write the announcement.' },
+          { slot: 'reviewer', name: 'Editor', duty: 'Check tone and facts.' },
+        ],
+        reviewRounds: 1,
+        finalApproval: false,
+      },
+      reason: 'The writer can use the outline and revise the announcement after review.',
     }),
   );
   await corral.open('/');
-  await page.evaluate(async (redirect) => {
-    const { csrfToken } = await (await fetch('/api/v1/session')).json();
-    const headers = { 'x-corral-csrf': csrfToken };
-    await fetch('/api/v1/model-auth/openai/login', { method: 'POST', headers });
-    await fetch('/api/v1/model-auth/openai/login/callback', {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ url: redirect }),
-    });
-  }, FAKE_REDIRECT_OK);
+  await signInOpenAI(page);
   await page.reload();
   await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
-  await dialog.getByLabel('What should the team do?').fill('Announce the new API');
-  // The button itself says what asking costs.
-  await expect(dialog.getByRole('button', { name: 'Ask the model' })).toContainText('1 request');
+  await page.getByRole('link', { name: 'Draft from a goal' }).click();
+  await page
+    .getByRole('textbox', { name: 'Request to build the team', exact: true })
+    .fill('Announce the new API.');
+  await expect(page.getByText('Test A', { exact: true })).toBeVisible();
   const draftRequest = page.waitForRequest(
-    (request) => request.url().endsWith('/api/v1/team-drafts') && request.method() === 'POST',
+    (request) => request.url().endsWith('/api/v1/team-assistant') && request.method() === 'POST',
   );
-  await dialog.getByRole('button', { name: 'Ask the model' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   const draftBody = (await draftRequest).postDataJSON();
-  await expect(dialog.getByLabel('Corral name')).toHaveValue('Launch note');
-  await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
-  await dialog.getByRole('button', { name: 'Open in editor' }).click();
-  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await expect(page.getByText('Copywriter', { exact: true })).toBeVisible();
+  await expect(page.getByText('Write the announcement.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/new\/edit(?:\?|$)/);
+  for (const name of ['Outliner', 'Copywriter', 'Editor']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(1);
+  }
+  await saveNewTeam(page);
   await openFlowGraph(page);
-  await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node="write"]')).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node="write"]')).toContainText('Copywriter');
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
   // Selecting the tab reads the first page; there is no separate load button.
@@ -385,7 +386,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   const replay = await page.evaluate(async (body) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     return (
-      await fetch('/api/v1/team-drafts', {
+      await fetch('/api/v1/team-assistant', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
         body: JSON.stringify(body),

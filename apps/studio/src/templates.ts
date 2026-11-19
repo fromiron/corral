@@ -1,10 +1,9 @@
-import { type CorralDefinition, FILE_TOOLS, type TeamPattern } from '@corral/contracts';
+import { type CorralDefinition, FILE_TOOLS } from '@corral/contracts';
 import {
   type CorralRepository,
   type CorralSummary,
   compileDefinition,
   DEFAULT_PROJECT_ID,
-  isTemplatePattern,
   PATTERN_TEMPLATES,
   type PlanStep,
   type RolePresetId,
@@ -144,33 +143,17 @@ export function draftWording(messages: unknown): TeamWording {
   };
 }
 
-/**
- * A pattern's name, the same as its template card's on the Library page: the single agent card
- * for single, the template's card for the five; the two without a card have the draft's names.
- */
-export function patternName(messages: unknown, pattern: TeamPattern): string {
-  const { TeamDraft, Workspace } = messages as {
-    TeamDraft: { patterns: Record<string, string> };
-    Workspace: { template: Record<string, { name: string } | undefined> };
-  };
-  const card =
-    pattern === 'single'
-      ? 'starter'
-      : isTemplatePattern(pattern)
-        ? PATTERN_TEMPLATES[pattern]
-        : null;
-  return card
-    ? (Workspace.template[card]?.name ?? pattern)
-    : (TeamDraft.patterns[pattern] ?? pattern);
-}
-
 /** The definition a template saves, under `corralId`. */
 export function templateDefinition(
   id: WorkspaceTemplateId,
   corralId: string,
   text: TemplateText,
 ): CorralDefinition {
-  if (id === 'blank') return emptyDraft('untitled', text.blankName).definition;
+  if (id === 'blank')
+    return {
+      ...emptyDraft(corralId, text.blankName).definition,
+      input: { brief: '', criteria: [] },
+    };
   if (isTeamTemplate(id)) return teamTemplate(id, corralId, text.wording(id));
   return demoDefinition(id, corralId, text.demo(id));
 }
@@ -261,37 +244,21 @@ export function templateCopyName(
   return uniqueName;
 }
 
-/** Saves a new Corral from a template and returns its id, or an error message. */
+/** A conversation (or demo seed) materializes its chosen runnable template immediately. */
 export async function createFromTemplate(
   repository: CorralRepository,
-  id: WorkspaceTemplateId,
+  id: Exclude<WorkspaceTemplateId, 'blank'>,
   text: TemplateText,
   projectId?: string,
-  copyName?: string,
-  input?: CorralDefinition['input'],
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
-  if (
-    id === 'blank' &&
-    (!input?.brief.trim() || !input.criteria.some((criterion) => criterion.trim()))
-  )
-    return { ok: false, message: 'Enter a request and completion criterion.' };
-  const suffix = globalThis.crypto.randomUUID().slice(0, 8);
-  const draft = {
-    definition: templateDefinition(id, `${id.replaceAll('-', '_')}_${suffix}`, text),
-  };
-  const name = copyName?.trim() || draft.definition.name;
+  const definition = templateDefinition(id, id.replaceAll('-', '_'), text);
   const uniqueName = templateCopyName(
-    name,
+    definition.name,
     projectId ?? DEFAULT_PROJECT_ID,
     await repository.list(),
   );
   const result = await repository.save({
-    ...draft,
-    definition: {
-      ...draft.definition,
-      name: uniqueName,
-      ...(id === 'blank' && input ? { input } : {}),
-    },
+    definition: { ...definition, name: uniqueName },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),
   });
@@ -313,7 +280,7 @@ export async function createDemoExamples(
     templates: TemplateText;
   },
 ): Promise<string | null> {
-  const plan: { name: string; template: WorkspaceTemplateId; sessions: string[] }[] = [
+  const plan: { name: string; template: DemoTemplateId; sessions: string[] }[] = [
     { name: text.projects[0], template: 'research-team', sessions: text.sessions.slice(0, 3) },
     { name: text.projects[1], template: 'starter', sessions: text.sessions.slice(3, 6) },
   ];

@@ -36,6 +36,7 @@ import type { ResultOffer, TeamSelection } from './TeamGraphCanvas.tsx';
 
 interface TeamCompositionProps {
   definition: CorralDefinition;
+  hasWorkAgent: boolean;
   order: ReadonlyMap<string, number>;
   selection: TeamSelection;
   collapsed: ReadonlySet<string>;
@@ -303,9 +304,12 @@ const graphIssue: Partial<Record<Diagnostic['code'], true>> = {
   UNREACHABLE: true,
 };
 const firstLine = (text?: string) => text?.trim().split(/\r?\n/, 1)[0];
+const firstSentence = (text?: string) =>
+  text?.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim();
 
 export function TeamComposition({
   definition,
+  hasWorkAgent,
   order,
   selection,
   collapsed,
@@ -325,6 +329,7 @@ export function TeamComposition({
   const t = useTranslations('TeamEditor');
   const c = useTranslations('TeamEditor.composition');
   const editor = useTranslations('Editor');
+  const inspector = useTranslations('Inspector');
   const ports = useTranslations('Canvas.ports');
   const codes = useTranslations('Validation.codes');
   const schema = useTranslations('Validation.schema');
@@ -345,12 +350,13 @@ export function TeamComposition({
   }, [diagnostics]);
   const chosen = new Set(selection.nodes);
   const actionClass = cn(size.type.caption, 'h-auto min-h-7 whitespace-normal px-2 py-1');
-  function graphAction(id: string) {
+  function graphAction(id: string, main = false) {
     return (
       onShowInGraph && (
         <Button
           variant="ghost"
           tabIndex={-1}
+          data-composition-main={main ? '' : undefined}
           className={actionClass}
           onClick={() => onShowInGraph(id)}
         >
@@ -459,7 +465,7 @@ export function TeamComposition({
 
   function agentContent(node: Extract<CorralNode, { type: 'agent' }>): RowContent {
     const task = seatTask(definition, node.id);
-    const duty = firstLine(
+    const duty = firstSentence(
       task
         ? task.text || task.base || ''
         : definition.roles.find((r) => r.id === node.roleId)?.prompt,
@@ -502,12 +508,14 @@ export function TeamComposition({
       return (
         <li key={`parallel:${row.sourceId}:${row.port}`}>
           <div
+            data-composition-row
             className={cn(
               size.type.caption,
               'flex items-center gap-2 px-2 py-1 text-muted-foreground',
             )}
           >
             <Split aria-hidden size={16} /> {name}
+            {graphAction(row.sourceId, true)}
           </div>
           <ul aria-label={name} className={rail}>
             {row.branches.map((branch) => (
@@ -541,7 +549,15 @@ export function TeamComposition({
             : row.maxIterations && t('rounds', { count: row.maxIterations }));
         return nodeRow(
           node,
-          { name: node.label, summary: limit || (row.kind === 'team' ? t('inline') : undefined) },
+          {
+            name: node.label,
+            summary:
+              row.kind === 'loop'
+                ? [limit, row.requiredReview && c('noSubmissionIfNotPassed')]
+                    .filter(Boolean)
+                    .join(' · ')
+                : t('inline'),
+          },
           {
             disclosure: open,
             graph: unconnected,
@@ -578,10 +594,9 @@ export function TeamComposition({
       { graph: unconnected || row.kind === 'reference' },
     );
   }
-  const hasAgent = definition.nodes.some((n) => n.type === 'agent');
   const add = (
     <Button
-      variant={hasAgent ? 'ghost' : 'primary'}
+      variant={hasWorkAgent ? 'ghost' : 'primary'}
       tabIndex={-1}
       data-composition-main=""
       onClick={onAdd}
@@ -593,19 +608,21 @@ export function TeamComposition({
   const shared = roster.advice.shared;
   return (
     <div {...navigation}>
-      <div data-composition-row className="flex justify-end px-2 pb-1">
-        <button
-          type="button"
-          className={cn(focusRing, 'rounded-full')}
-          tabIndex={-1}
-          data-composition-main=""
-          disabled={Boolean(validationStatus)}
-          aria-pressed={sheetView === 'problems'}
-          onClick={onProblems}
-        >
-          <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
-        </button>
-      </div>
+      {hasWorkAgent && (
+        <div data-composition-row className="flex justify-end px-2 pb-1">
+          <button
+            type="button"
+            className={cn(focusRing, 'rounded-full')}
+            tabIndex={-1}
+            data-composition-main=""
+            disabled={Boolean(validationStatus)}
+            aria-pressed={sheetView === 'problems'}
+            onClick={onProblems}
+          >
+            <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
+          </button>
+        </div>
+      )}
       <p id={hint} className="sr-only">
         {c('keyboard')}
       </p>
@@ -630,7 +647,7 @@ export function TeamComposition({
         />
         {roster.steps.map((row) => step(row))}
         <li data-composition-row>
-          {hasAgent ? add : <EmptyState title={c('empty')} action={add} />}
+          {hasWorkAgent ? add : <EmptyState title={c('empty')} action={add} />}
         </li>
         {roster.unconnected.length > 0 && (
           <li>
@@ -657,7 +674,11 @@ export function TeamComposition({
                   : binding?.kind === 'run_input'
                     ? c('request')
                     : binding?.artifactVersionId;
-                return c('received', { name: b.name, source: source ?? c('unknownSource') });
+                const received = c('received', {
+                  name: b.name,
+                  source: source ?? c('unknownSource'),
+                });
+                return b.review ? `${received} · ${inspector('requireReview')}` : received;
               })
               .join(' · ');
           return nodeRow(
@@ -671,9 +692,16 @@ export function TeamComposition({
           name={c('advice')}
           summary={
             shared
-              ? shared.kind === 'all'
-                ? c('wholeTeam')
-                : c('selectedWorkers', { count: shared.nodeIds.length })
+              ? [
+                  shared.kind === 'all'
+                    ? c('wholeTeam')
+                    : c('selectedWorkers', { count: shared.nodeIds.length }),
+                  roster.advice.artifactReview && c('outputReview'),
+                  roster.advice.observationInterval !== null &&
+                    c('observesEvery', { count: roster.advice.observationInterval }),
+                ]
+                  .filter(Boolean)
+                  .join(' · ')
               : t('sharedOutrider.add')
           }
           selected={sheetView === 'sharedOutrider'}

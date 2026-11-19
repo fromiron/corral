@@ -38,6 +38,7 @@ import {
   HarnessPublish,
   HarnessResource,
   type HarnessResourceView,
+  isHarnessMcpTool,
   ManagedHook,
   McpServerDraft,
   type PackageInspection,
@@ -46,6 +47,9 @@ import {
   ResourcePath,
   ROLE_SKILLS_MINIMAL_BINDING,
   type RoleHarnessPreview,
+  RoleHarnessResolutionError,
+  type RoleMcpToolProblem,
+  type RoleMcpToolProblemReason,
   type RoleSkillProblem,
   type RoleSkillRef,
   WorkTool,
@@ -133,12 +137,17 @@ const MINIMAL_PROFILE_V1: HarnessProfile = {
   mcpServerIds: [],
 };
 
-class RoleResolutionError extends Error {
-  readonly problem: RoleSkillProblem;
-  constructor(problem: RoleSkillProblem) {
-    super(`Harness unavailable for role ${problem.roleId}: ${problem.reason}`);
-    this.problem = problem;
-  }
+/** An explicit MCP pick cannot create a native role policy. */
+function roleBinding(role: HarnessPreviewRole, runOverride?: HarnessBindingRef) {
+  if (role.harness) return role.harness;
+  if (runOverride) throw new Error('run work style requires a role with a bound harness');
+  if (role.skills) return ROLE_SKILLS_MINIMAL_BINDING;
+  if (role.mcpTools?.length)
+    throw new RoleHarnessResolutionError(null, {
+      roleId: role.id,
+      tools: role.mcpTools.map((ref) => ({ ...ref, reason: 'execution_policy_required' })),
+    });
+  return null;
 }
 
 class ResourceVerificationError extends Error {
@@ -1008,18 +1017,18 @@ export class HarnessService {
     runOverride?: HarnessBindingRef,
   ): RoleHarnessPreview {
     if ('profileId' in input) return this.resolveLayers(input, projectId, runOverride);
-    if (!input.harness && runOverride)
-      throw new Error('run work style requires a role with a bound harness');
-    if (!input.harness && !input.skills) return { snapshot: null, problem: null };
     try {
-      return this.resolveLayers(
-        input.harness ?? ROLE_SKILLS_MINIMAL_BINDING,
-        projectId,
-        runOverride,
-        input,
-      );
+      const binding = roleBinding(input, runOverride);
+      return binding
+        ? this.resolveLayers(binding, projectId, runOverride, input)
+        : { snapshot: null, problem: null };
     } catch (error) {
-      if (error instanceof RoleResolutionError) return { snapshot: null, problem: error.problem };
+      if (error instanceof RoleHarnessResolutionError)
+        return {
+          snapshot: null,
+          problem: error.problem,
+          ...(error.mcpProblem ? { mcpProblem: error.mcpProblem } : {}),
+        };
       throw error;
     }
   }
@@ -1126,11 +1135,15 @@ export class HarnessService {
     roleId: string,
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
   ): EffectiveHarnessSnapshot | null {
-    const skills = definition.roles.find((role) => role.id === roleId)?.skills;
-    if (!binding && options?.runOverride)
-      throw new Error('run work style requires a role with a bound harness');
-    if (!binding && !skills) return null;
-    const role = { id: roleId, harness: binding, skills };
+    const selections = definition.roles.find((role) => role.id === roleId);
+    const role = {
+      id: roleId,
+      harness: binding,
+      skills: selections?.skills,
+      mcpTools: selections?.mcpTools,
+    };
+    const base = roleBinding(role, options?.runOverride);
+    if (!base) return null;
     const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
     if (
       evaluation &&
@@ -1156,7 +1169,7 @@ export class HarnessService {
     if (options?.sessionId && (!session || (row && row.project_id !== session.project_id)))
       throw new Error('harness project does not match session');
     return this.resolveLayers(
-      binding ?? ROLE_SKILLS_MINIMAL_BINDING,
+      base,
       session?.project_id ?? row?.project_id ?? 'default',
       options?.runOverride,
       role,
@@ -1180,11 +1193,9 @@ export class HarnessService {
     const policy = layers.some((layer) => layer.profile.policy === 'strict')
       ? 'strict'
       : 'trusted-native';
-    const allowedTools = [...new Set(layers[0]?.profile.allowedTools ?? [])].filter((name) =>
+    let allowedTools = [...new Set(layers[0]?.profile.allowedTools ?? [])].filter((name) =>
       layers.every((layer) => layer.profile.allowedTools.includes(name)),
     );
-    if (policy === 'strict' && allowedTools.includes('codemode'))
-      throw new Error('codemode requires trusted-native policy');
     const selection = (key: 'checkIds' | 'lspServerIds' | 'mcpServerIds') => {
       const specified = layers.flatMap((layer) => (layer.profile[key] ? [layer.profile[key]] : []));
       return [...new Set(specified[0] ?? [])].filter((id) =>
@@ -1194,12 +1205,49 @@ export class HarnessService {
     const checkIds = selection('checkIds'),
       lspServerIds = selection('lspServerIds');
     let mcpServerIds = selection('mcpServerIds');
+    const config =
+      projectId &&
+      (checkIds.length || lspServerIds.length || mcpServerIds.length || role?.mcpTools?.length)
+        ? this.projectTools.latest(projectId)
+        : null;
+    const enabledServer = (server: RegisteredMcpServer) =>
+      server.enabled !== false &&
+      (!server.sourcePackageHash ||
+        this.store.packageManagement(server.sourcePackageHash).status === 'enabled');
+    let mcpProblem: RoleMcpToolProblem | undefined;
+    if (role?.mcpTools) {
+      const tools: RoleMcpToolProblem['tools'] = [];
+      const pickedNames = new Set<string>();
+      const pickedServers = new Set<string>();
+      for (const ref of role.mcpTools) {
+        const server = config?.mcpServers?.find((s) => s.id === ref.serverId);
+        let reason: RoleMcpToolProblemReason | undefined;
+        if (!role.harness || policy === 'strict') reason = 'execution_policy_required';
+        else if (!server) reason = 'server_missing';
+        else if (!enabledServer(server)) reason = 'server_disabled';
+        else if (!mcpServerIds.includes(ref.serverId)) reason = 'server_not_selected';
+        else if (!allowedTools.includes(ref.name)) reason = 'tool_not_allowed';
+        if (reason) tools.push({ ...ref, reason });
+        else {
+          pickedNames.add(ref.name);
+          pickedServers.add(ref.serverId);
+        }
+      }
+      if (tools.length) mcpProblem = { roleId: role.id, tools };
+      mcpServerIds = mcpServerIds.filter((id) => pickedServers.has(id));
+      allowedTools = allowedTools.filter(
+        (name) => !isHarnessMcpTool(name) || pickedNames.has(name),
+      );
+    }
+    if (policy === 'strict' && allowedTools.includes('codemode')) {
+      if (mcpProblem) throw new RoleHarnessResolutionError(null, mcpProblem);
+      throw new Error('codemode requires trusted-native policy');
+    }
     let disabledMcp = false;
     if (mcpServerIds.length && policy === 'strict')
       throw new Error('MCP requires trusted-native policy');
     let projectTools: EffectiveHarnessSnapshot['projectTools'];
     if (projectId && (checkIds.length || lspServerIds.length || mcpServerIds.length)) {
-      const config = this.projectTools.latest(projectId);
       if (
         !config ||
         checkIds.some((id) => !config.checks.some((check) => check.id === id)) ||
@@ -1209,10 +1257,7 @@ export class HarnessService {
         throw new Error('selected project tool is not registered');
       const enabled = mcpServerIds.filter((id) => {
         const server = config.mcpServers?.find((server) => server.id === id);
-        const available =
-          server?.enabled !== false &&
-          (!server?.sourcePackageHash ||
-            this.store.packageManagement(server.sourcePackageHash).status === 'enabled');
+        const available = server !== undefined && enabledServer(server);
         if (
           available &&
           server?.sourcePackageHash &&
@@ -1371,12 +1416,16 @@ export class HarnessService {
         const reason = problems.get(key);
         return reason ? [{ ...ref, reason }] : [];
       });
-      throw new RoleResolutionError({
-        roleId: role.id,
-        reason: needsExecutionPolicy ? 'execution_policy_required' : 'unusable_skills',
-        entries,
-      });
+      throw new RoleHarnessResolutionError(
+        {
+          roleId: role.id,
+          reason: needsExecutionPolicy ? 'execution_policy_required' : 'unusable_skills',
+          entries,
+        },
+        mcpProblem,
+      );
     }
+    if (mcpProblem) throw new RoleHarnessResolutionError(null, mcpProblem);
     if (resources.some((resource) => resource.kind === 'extension'))
       diagnostics.push('native_code_unmanaged', 'extension_prompt_determined_at_runtime');
     const tools = staticToolDescriptors(allowedTools, projectTools);

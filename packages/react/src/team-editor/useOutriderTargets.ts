@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 
 export type ReadHarnessAsk = (role: HarnessPreviewRole) => Promise<boolean | undefined>;
 
-/** Preview each distinct policy and skill selection, including those in saved reference teams. */
+/** Preview each distinct policy and role selection, including those in saved reference teams. */
 export function useOutriderTargets(
   definition: CorralDefinition,
   enabled: boolean,
@@ -26,11 +26,13 @@ export function useOutriderTargets(
     const missing = new Map<string, HarnessPreviewRole>();
     const rows = enabled
       ? sharedOutriderTargets(definition, resolve, (role) => {
-          const { harness, skills } = role;
+          const { harness, skills, mcpTools } = role;
           const key = JSON.stringify([
             harness?.profileId,
             harness?.revision,
             skills && [...new Set(skills.map((s) => `${s.resourceHash}:${s.entry}`))].sort(),
+            mcpTools &&
+              [...new Set(mcpTools.map((tool) => `${tool.serverId}:${tool.name}`))].sort(),
           ]);
           const allowed = checked?.scope === scope ? checked.permissions.get(key) : undefined;
           if (allowed === undefined && !missing.has(key)) missing.set(key, role);

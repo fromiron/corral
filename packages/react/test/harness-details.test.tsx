@@ -62,7 +62,15 @@ it('shows the pinned resource, final context, payload and unmanaged call evidenc
                 skillMode: 'auto',
               },
             ],
-            allowedTools: ['echo'],
+            projectTools: {
+              projectId: 'project',
+              revision: 2,
+              hash: 'c'.repeat(64),
+              checkIds: [],
+              lspServerIds: [],
+              mcpServerIds: ['issues'],
+            },
+            allowedTools: ['echo', 'mcp__issues__search'],
             tools: [],
             diagnostics: [],
             layers: [
@@ -141,5 +149,6 @@ it('shows the pinned resource, final context, payload and unmanaged call evidenc
   expect(screen.getByText('1'.repeat(64))).toBeInTheDocument();
   expect(screen.getByText(/echo.*Unmanaged native/)).toBeInTheDocument();
   expect(screen.getByText('Run · one-time · r3')).toBeInTheDocument();
-  expect(screen.getByText('Allowed tool names: echo')).toBeInTheDocument();
+  expect(screen.getByText('MCP connections: issues')).toBeInTheDocument();
+  expect(screen.getByText('Allowed tool names: echo, mcp__issues__search')).toBeInTheDocument();
 });

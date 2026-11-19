@@ -5,7 +5,9 @@ import researchTeam from '../../../examples/research-team.corral.json' with { ty
 import {
   createKeyValueAgentLibrary,
   createKeyValueCorralRepository,
+  definitionHash,
   type KeyValueStore,
+  planSave,
 } from '../src/index.ts';
 import {
   describeAgentLibraryContract,
@@ -39,6 +41,113 @@ function setup() {
 }
 
 describeCorralRepositoryContract('key-value (browser)', () => setup().repo);
+
+it('stable creation retries an interrupted first save without reporting an unlisted team', async () => {
+  const { repo, store } = setup();
+  const createId = 'corral_0001';
+  const request = {
+    createId,
+    definition: { ...team(), id: createId },
+    expectedDefinitionRevision: null,
+  };
+  const setItem = store.setItem.bind(store);
+  store.setItem = (key, value) => {
+    if (key === 'corral:v1:index') throw new Error('quota exceeded');
+    setItem(key, value);
+  };
+  expect(await repo.save(request)).toMatchObject({ ok: false, error: 'storage_unavailable' });
+  expect(await repo.get(createId)).toBeNull();
+  store.setItem = setItem;
+  const saved = await repo.save(request);
+  expect(saved).toMatchObject({ ok: true, changed: { definition: true } });
+  expect((await repo.list()).map((team) => team.corralId)).toEqual([createId]);
+  expect(await repo.getRevision(createId, 1)).toEqual(request.definition);
+});
+
+describe('planSave stable creation', () => {
+  const createId = 'corral_editor-draft';
+  const definition = { ...team(), id: createId };
+  const request = { definition, createId, expectedDefinitionRevision: null };
+  const now = '2026-11-01T00:00:00.000Z';
+  const original = {
+    corralId: createId,
+    projectId: 'default',
+    name: definition.name,
+    definition,
+    definitionHash: definitionHash(definition),
+    definitionRevision: 1,
+    updatedAt: now,
+  };
+  const edited = { ...definition, name: 'Edited later' };
+  const current = {
+    ...original,
+    name: edited.name,
+    definition: edited,
+    definitionHash: definitionHash(edited),
+    definitionRevision: 2,
+    updatedAt: '2026-11-02T00:00:00.000Z',
+  };
+  const invalid = { ok: false, error: 'validation_error' };
+  const conflict = { ok: false, error: 'revision_conflict' };
+  const replay = { ok: true, record: current, changed: { definition: false } };
+
+  it.each([
+    {
+      label: 'new id',
+      saved: null,
+      input: request,
+      expected: { ok: true, record: original, changed: { definition: true } },
+    },
+    { label: 'exact replay after edit', saved: current, input: request, expected: replay },
+    {
+      label: 'different first definition even when it matches the current one',
+      saved: current,
+      input: { ...request, definition: edited },
+      expected: conflict,
+    },
+    {
+      label: 'foreign project',
+      saved: original,
+      input: { ...request, projectId: 'other' },
+      expected: conflict,
+    },
+    ...['role_draft', 'corral_', 'corral_a/b', `corral_${'x'.repeat(114)}`].map((id) => ({
+      label: `malformed team id: ${id}`,
+      saved: null,
+      input: { ...request, definition: { ...definition, id }, createId: id },
+      expected: invalid,
+    })),
+    {
+      label: 'definition id mismatch',
+      saved: null,
+      input: { ...request, createId: 'corral_other' },
+      expected: invalid,
+    },
+    {
+      label: 'createId on an edit',
+      saved: original,
+      input: { ...request, expectedDefinitionRevision: 1 },
+      expected: invalid,
+    },
+    {
+      label: 'no createId allocates another id even for a known definition',
+      saved: current,
+      input: { definition, expectedDefinitionRevision: null },
+      expected: {
+        ok: true,
+        record: { corralId: 'corral_allocated', definitionRevision: 1 },
+        changed: { definition: true },
+      },
+    },
+  ])('$label', ({ saved, input, expected }) => {
+    const result = planSave(saved, input, {
+      now,
+      newCorralId: () => 'corral_allocated',
+      firstDefinitionHash: () => original.definitionHash,
+    });
+    expect(result).toMatchObject(expected);
+  });
+});
 
 function librarySetup() {
   const { store, repo: projects } = setup();

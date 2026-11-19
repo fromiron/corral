@@ -10,6 +10,7 @@ import {
   FILE_TOOLS,
   type ModelProfileSnapshot,
   ModelRequestRecord,
+  matchesRoleMcpSelection,
   ROLE_SKILLS_MINIMAL_BINDING,
 } from '@corral/contracts';
 import type { Channel } from './channel.ts';
@@ -67,12 +68,16 @@ export class PiAgentAdapter implements AgentAdapter {
       (input.role.skills !== undefined ? ROLE_SKILLS_MINIMAL_BINDING : undefined);
     // An advisor starts without its role's work style (features/advisor.md, 계약), so it runs on
     // the core worker only; one handed a work style is a host error, not an SDK execution.
-    if (input.assignment.kind === 'advisor' && (binding || input.harness))
+    if (
+      input.assignment.kind === 'advisor' &&
+      (binding || input.harness || input.role.mcpTools !== undefined)
+    )
       throw new Error('an advisor runs without a work style');
     if (input.assignment.kind === 'advisor' && !host.nextReview)
       throw new Error('the host gives this advisor no reviews');
-    if (binding) {
+    if (binding || input.role.mcpTools?.length) {
       if (
+        !binding ||
         !input.harness ||
         !this.options.spawnSdk ||
         !this.options.harness ||
@@ -83,7 +88,8 @@ export class PiAgentAdapter implements AgentAdapter {
         !EffectiveHarnessSnapshot.safeParse(input.harness).success ||
         input.harness.binding.profileId !== binding.profileId ||
         input.harness.binding.revision !== binding.revision ||
-        (!input.role.harness && input.harness.policy !== 'strict')
+        (!input.role.harness && input.harness.policy !== 'strict') ||
+        !matchesRoleMcpSelection(input.role, input.harness)
       )
         throw new Error('the harness runtime is unavailable or unresolved');
       try {
@@ -421,6 +427,7 @@ class WorkerExecution {
         ...(this.resources
           ? {
               harness: this.input.harness,
+              ...(role.mcpTools !== undefined ? { roleMcpSelection: true } : {}),
               resources: this.resources,
               ...(this.input.model.contextPolicy
                 ? {

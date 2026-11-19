@@ -3,6 +3,7 @@ import type {
   HarnessBindingRef,
   HarnessOverrides,
   HarnessProfileView,
+  RoleMcpToolRef,
   RoleSkillRef,
 } from '@corral/contracts';
 import { Button, Select } from '@corral/react/design-kit';
@@ -10,7 +11,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
 import { useServices } from '../services.tsx';
-import { RoleHarnessProblem } from './HarnessRoleSettings.tsx';
+import { McpPreviewProblem, RoleHarnessProblem } from './HarnessRoleSettings.tsx';
 
 export function RunHarnessOverrides({
   roles,
@@ -19,7 +20,13 @@ export function RunHarnessOverrides({
   onChange,
   disabled = false,
 }: {
-  roles: { roleId: string; name: string; harness?: HarnessBindingRef; skills?: RoleSkillRef[] }[];
+  roles: {
+    roleId: string;
+    name: string;
+    harness?: HarnessBindingRef;
+    skills?: RoleSkillRef[];
+    mcpTools?: RoleMcpToolRef[];
+  }[];
   projectId: string;
   value: HarnessOverrides;
   onChange(value: HarnessOverrides): void;
@@ -37,7 +44,7 @@ export function RunHarnessOverrides({
   } | null>(null);
   const selectionKey = JSON.stringify([
     projectId,
-    roles.map((role) => [role.roleId, role.harness, role.skills]),
+    roles.map((role) => [role.roleId, role.harness, role.skills, role.mcpTools]),
     value,
   ]);
   const request = useRef(0);
@@ -128,10 +135,15 @@ export function RunHarnessOverrides({
                   const version = ++request.current;
                   setPreview({ key });
                   const result =
-                    role.skills === undefined
+                    role.skills === undefined && role.mcpTools === undefined
                       ? api.preview(binding, projectId, chosen)
                       : api.preview(
-                          { id: role.roleId, harness: binding, skills: role.skills },
+                          {
+                            id: role.roleId,
+                            harness: binding,
+                            ...(role.skills && { skills: role.skills }),
+                            ...(role.mcpTools && { mcpTools: role.mcpTools }),
+                          },
                           projectId,
                           chosen,
                         );
@@ -155,8 +167,15 @@ export function RunHarnessOverrides({
           <div data-testid="run-harness-preview">
             {preview.value?.snapshot ? (
               <HarnessPreviewView preview={preview.value} />
-            ) : preview.value?.problem ? (
-              <RoleHarnessProblem problem={preview.value.problem} skills={preview.skills} />
+            ) : preview.value?.problem || preview.value?.mcpProblem ? (
+              <>
+                {preview.value.problem && (
+                  <RoleHarnessProblem problem={preview.value.problem} skills={preview.skills} />
+                )}
+                {preview.value.mcpProblem && (
+                  <McpPreviewProblem problem={preview.value.mcpProblem} />
+                )}
+              </>
             ) : preview.error || preview.value ? (
               <p role="alert">{t('error')}</p>
             ) : (

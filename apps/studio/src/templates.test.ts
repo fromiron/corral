@@ -58,6 +58,14 @@ describe('library templates (docs/specs/features/library.md)', () => {
     ]);
   });
 
+  it('seeds an empty team in the screen language without example input', () => {
+    const blank = templateDefinition('blank', 'corral_empty', korean);
+    expect(blank.id).toBe('corral_empty');
+    expect(blank.name).toBe(korean.blankName);
+    expect(blank.input).toEqual({ brief: '', criteria: [] });
+    expect(blank.nodes).toEqual([]);
+  });
+
   // The empty canvas has no nodes, so it cannot be a runnable definition.
   const runnable = WORKSPACE_TEMPLATES.filter((id) => id !== 'blank');
 

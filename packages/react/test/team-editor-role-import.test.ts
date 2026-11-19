@@ -289,22 +289,12 @@ describe('replacing the role, not the seat', () => {
     const store = createEditorStore(before);
     const preview = previewReplaceAgent(before, 'agent_1', source);
     if (!preview.ok) throw new Error(preview.reason);
-    expect(preview.changed).toEqual(
-      expect.arrayContaining([
-        'prompt',
-        'reasoning',
-        'modelProfile',
-        'allowedWorkTools',
-        'outputContract',
-        'skills',
-        'harness',
-      ]),
-    );
+    expect(preview.changed).toEqual(['instructions', 'model', 'permissions', 'skills', 'format']);
     expect(preview.kept).toEqual(
       expect.arrayContaining([
         'id',
         'label',
-        'stepInstruction',
+        'task',
         'inputBindings',
         'controlEdges',
         'capabilityLinks',
@@ -340,6 +330,86 @@ describe('replacing the role, not the seat', () => {
     expect(store.getState().past).toHaveLength(1);
     store.getState().undo();
     expect(store.getState().draft).toBe(before);
+  });
+
+  it.each(['handmade', 'step', 'origin'] as const)(
+    'keeps the %s seat’s task through preview, replacement and undo',
+    (kind) => {
+      const sentence = 'Write a two-sentence invitation.';
+      const initial =
+        kind === 'origin'
+          ? addAtEnd(emptyDraft(), {
+              role: writer().role,
+              origin: { kind: 'preset', presetId: 'write' },
+            }).draft
+          : flow();
+      let before = updateNode(initial, 'agent_1', { prompt: sentence });
+      if (kind === 'step')
+        before = patchNode(before, 'agent_1', { stepInstruction: 'Invite the neighbors.' });
+      const preset = roleFromPreset('plan', 'plan', messages.TeamTemplates.presets.plan);
+      const source: AgentSource = { role: preset, origin: { kind: 'preset', presetId: 'plan' } };
+      const expectedTask =
+        kind === 'handmade' ? sentence : kind === 'step' ? 'Invite the neighbors.' : '';
+      const preview = previewReplaceAgent(before, 'agent_1', source);
+      if (!preview.ok) throw new Error(preview.reason);
+      const { draft } = ok(replaceAgent(before, 'agent_1', source));
+      expect(preview.draft.definition).toEqual(draft.definition);
+      expect(seatTask(draft.definition, 'agent_1')).toEqual({
+        target: 'step',
+        text: expectedTask,
+        base: preset.prompt,
+      });
+      expect(preview.kept).toContain('task');
+      if (kind === 'origin') expect(agent(draft, 'agent_1')).not.toHaveProperty('stepInstruction');
+      else expect(agent(draft, 'agent_1').stepInstruction).toBe(expectedTask);
+      expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
+      const store = createEditorStore(before);
+      store.getState().applyDraft(draft);
+      store.getState().undo();
+      expect(store.getState().draft.definition).toBe(before.definition);
+      expect(store.getState().canUndo).toBe(false);
+    },
+  );
+
+  it('previews an MCP-only change as permissions and keeps each copy independent of its original', () => {
+    const source = writer();
+    const tool = { serverId: 'issues', name: 'mcp__issues__search' };
+    source.role.mcpTools = [tool];
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const first = roleOf(draft, nodeId);
+    expect(first.mcpTools).toEqual([{ ...tool }]);
+    expect(first.mcpTools).not.toBe(source.role.mcpTools);
+    expect(first.mcpTools?.[0]).not.toBe(tool);
+
+    tool.name = 'mcp__issues__update';
+    expect(first.mcpTools?.[0]?.name).toBe('mcp__issues__search');
+    const preview = previewReplaceAgent(draft, nodeId, source);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['permissions']);
+    const replacement = roleOf(preview.draft, nodeId);
+    expect(replacement.mcpTools).toEqual([tool]);
+    expect(replacement.mcpTools?.[0]).not.toBe(tool);
+    const same = previewReplaceAgent(preview.draft, nodeId, structuredClone(source));
+    if (!same.ok) throw new Error(same.reason);
+    expect(same.changed).toEqual([]);
+    expect(same.draft).toBe(preview.draft);
+  });
+
+  it('does not describe name or provenance as a capability change', () => {
+    const initial = writer();
+    const { draft, nodeId } = addAtEnd(emptyDraft(), initial);
+    const other: AgentSource = {
+      role: { ...initial.role, name: 'A second writer' },
+      origin: { kind: 'library', agentId: 'other_writer', revision: 1 },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, other);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual([]);
+    expect(roleOf(preview.draft, nodeId)).toMatchObject({
+      name: other.role.name,
+      origin: other.origin,
+    });
+    expect(agent(preview.draft, nodeId).label).toBe(initial.role.name);
   });
 
   it('refuses to orphan an owner but leaves a shared owner with the remaining seat', () => {

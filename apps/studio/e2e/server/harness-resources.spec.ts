@@ -287,9 +287,15 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
     await page.getByRole('button', { name: 'Trust for use', exact: true }).click();
-    await page.getByRole('link', { name: 'Connect in Harnesses', exact: true }).click();
+    // The edited copy is not yet used. Its predecessor links directly to the policy to update.
+    const policies = page.getByRole('region', { name: 'Execution policies', exact: true });
+    await expect(policies).toContainText('No execution policies use this version.');
+    await page.getByRole('button', { name: 'Previous version', exact: true }).click();
+    await policies.getByRole('link', { name: 'Evidence writer · r1', exact: true }).click();
     await expect(page).toHaveURL(/settings=harness/);
-    await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Evidence writer · r1', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     const replacement = page.getByRole('checkbox', {
       name: 'Use skill writing',
       exact: true,

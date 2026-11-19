@@ -80,6 +80,11 @@ export function HarnessDetails({
                 ))}
               </dl>
             ) : null}
+            {snapshot.projectTools?.mcpServerIds?.length ? (
+              <p className="break-words text-caption text-muted-foreground">
+                {t('appliedMcp', { ids: snapshot.projectTools.mcpServerIds.join(', ') })}
+              </p>
+            ) : null}
             <p className="break-words text-caption text-muted-foreground">
               {t('allowedTools')}: {snapshot.allowedTools.join(', ') || t('noTools')}
             </p>

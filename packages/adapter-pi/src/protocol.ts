@@ -14,6 +14,7 @@ import {
   Identifier,
   ImageInput,
   ItemRef,
+  isHarnessMcpTool,
   McpChallenge,
   MeetingRunOrigin,
   ModelRequestRecord,
@@ -28,6 +29,7 @@ import {
   RuntimeContext,
   SessionConversation,
   TaskBrief,
+  ToolDescriptor,
   WorkAgentNode,
 } from '@corral/contracts';
 import { z } from 'zod';
@@ -48,6 +50,18 @@ const head = {
 const RequestId = z.string().regex(/^req_\d{1,9}$/);
 const Text = z.string().max(4 * 1024 * 1024);
 const Count = z.int().min(0).nullable();
+
+// Pi drops unavailable names before its authorization hook. Forward only well-formed MCP
+// names excluded by this snapshot (all MCP on the core worker) for the host's denial.
+// No arguments or executable authorization are needed for an unavailable tool.
+export function unavailableMcpProposal(name: string, allowedTools?: readonly string[]) {
+  if (
+    isHarnessMcpTool(name) &&
+    !allowedTools?.includes(name) &&
+    ToolDescriptor.shape.name.safeParse(name).success
+  )
+    return { type: 'authorize_tool', name, args: {} } as const;
+}
 
 export const WorkerUsage = z.strictObject({
   inputTokens: Count,
@@ -399,6 +413,8 @@ export const SdkStartFrame = StartFrame.extend({
   // An advisor starts without a work style, so it only ever runs on the core worker.
   assignment: WorkAssignment,
   harness: EffectiveHarnessSnapshot,
+  /** Legacy roles report the full registry; an explicit selection reports only its MCP tools. */
+  roleMcpSelection: z.literal(true).optional(),
   resources: SdkResources,
 });
 export type SdkStartFrame = z.infer<typeof SdkStartFrame>;

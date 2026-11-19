@@ -7,6 +7,7 @@ import {
   openFlowGraph,
   openLibrary,
   requestBox,
+  saveNewTeam,
   startTestRun,
   teamNode,
 } from '../workbench.ts';
@@ -255,16 +256,26 @@ test('a worker observation proposal saves only after preview and reloads with it
 }) => {
   await corral.open('/');
   await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
-  await dialog
-    .getByLabel('What should the team do?')
-    .fill('Watch work in progress while writing an invitation.');
-  await dialog.getByRole('button', { name: 'Suggest a Corral' }).click();
-  await expect(dialog.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
-  await expect(dialog.getByText(/every 3/)).toContainText('additional model requests');
-  await dialog.getByRole('button', { name: 'Open in editor', exact: true }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await page.getByRole('link', { name: 'Draft from a goal', exact: true }).click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('assistant') === '1',
+  );
+  let modelRequests = 0;
+  page.on('request', (request) => {
+    if (request.url().endsWith('/api/v1/team-assistant')) modelRequests++;
+  });
+  await page
+    .getByRole('textbox', { name: 'Request to build the team', exact: true })
+    .fill('One writer should write an invitation. Watch work in progress.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(page.getByText('Local example', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Alternatives and settings', exact: true }).click();
+  await expect(page.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
+  await expect(page.getByText(/every 3/)).toContainText('additional model requests');
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  expect(modelRequests).toBe(0);
+  expect(await call(page, '/corrals', undefined, 'GET')).toHaveLength(0);
+  await saveNewTeam(page);
   await page.reload();
   await openFlowGraph(page);
   await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();

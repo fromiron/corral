@@ -271,6 +271,29 @@ describe('delegation: spawn and await', () => {
 });
 
 describe('questions answered by new responder tasks', () => {
+  it('completes with zero shared questions, responder executions or advisor requests when nobody asks the shared Outrider', async () => {
+    const definition = linearCorral(['writer']);
+    const advisorProfile = 'advisor-model';
+    definition.sharedOutrider = {
+      modelProfile: advisorProfile,
+      principles: 'Check the evidence when asked.',
+      targets: { kind: 'all' },
+      artifactReview: true,
+    };
+    const { transport, started } = runtime({ collaborate: false });
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, settled);
+
+    expect(final.status).toBe('succeeded');
+    const writer = started.find((input) => input.nodeId === 'writer');
+    expect(writer?.capabilities.askTo).toHaveLength(1);
+    expect(Object.values(final.questions).filter((q) => q.sharedOutrider)).toHaveLength(0);
+    expect(Object.values(final.executions).map((e) => e.nodeId)).toEqual(['writer']);
+    const requests = Object.values(final.modelCalls);
+    expect(requests.filter((request) => request.profile === advisorProfile)).toHaveLength(0);
+    expect(requests.map((request) => request.executionId)).toEqual([writer?.executionId]);
+  });
+
   it('the writer asks, a new responder task answers once, and the answer reaches the draft', async () => {
     const { transport, started } = runtime();
     const { runId, events } = await run(transport);

@@ -36,6 +36,7 @@ import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow
 import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
 import { operationId } from '../workbench/harness/Target.tsx';
 import { RoleSkills, useSkillLabel } from '../workbench/RoleSkills.tsx';
+import { RoleTools } from '../workbench/RoleTools.tsx';
 import { useImageProfiles } from '../workbench/useImageProfiles.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
@@ -180,8 +181,20 @@ function OriginalDialog({
                   targetLabel={role.name}
                   roleId={role.id}
                   harness={role.harness}
+                  mcpTools={role.mcpTools}
                   value={role.skills}
                   onApply={(skills) => current.editor.getState().updateNode(nodeId, { skills })}
+                />
+              )}
+              roleTools={(role, nodeId, { revealPolicy }) => (
+                <RoleTools
+                  key={nodeId}
+                  role={role}
+                  projectId={projectId}
+                  mode="original"
+                  targetLabel={role.name}
+                  revealPolicy={revealPolicy}
+                  onApply={(mcpTools) => current.editor.getState().updateNode(nodeId, { mcpTools })}
                 />
               )}
               roleSettings={(agent, nodeId) => (

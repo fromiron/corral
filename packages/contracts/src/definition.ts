@@ -93,6 +93,25 @@ export type RoleOrigin = z.infer<typeof RoleOrigin>;
 export const RoleSkillRef = z.strictObject({ resourceHash: ContentHash, entry: ResourcePath });
 export type RoleSkillRef = z.infer<typeof RoleSkillRef>;
 
+/**
+ * One exact MCP tool of one registered server (docs/specs/features/role-tools.md). `name` is the
+ * identifier allowlists and run events use, so it carries the server's namespace.
+ */
+export const RoleMcpToolRef = z
+  .strictObject({
+    serverId: z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),
+    name: z
+      .string()
+      .min(1)
+      .max(64)
+      .regex(/^[A-Za-z0-9_]+$/),
+  })
+  .refine((ref) => ref.name.startsWith(`mcp__${ref.serverId}__`), {
+    message: 'MCP tool does not belong to this server',
+    path: ['name'],
+  });
+export type RoleMcpToolRef = z.infer<typeof RoleMcpToolRef>;
+
 export const AgentRole = z.strictObject({
   id: Identifier,
   name: z.string().min(1),
@@ -111,6 +130,12 @@ export const AgentRole = z.strictObject({
    * (docs/specs/harness-contract.md, "역할의 스킬 선택").
    */
   skills: z.array(RoleSkillRef).max(64).optional(),
+  /**
+   * The MCP tools this role may use. Absent inherits, an empty list selects none, a list keeps
+   * exactly those tools; the selection only narrows what the role's policy allows
+   * (docs/specs/harness-contract.md, "역할의 MCP 도구 선택").
+   */
+  mcpTools: z.array(RoleMcpToolRef).max(64).optional(),
   origin: RoleOrigin.optional(),
   /**
    * the agent's last reply without a tool call is its result. It is offered neither

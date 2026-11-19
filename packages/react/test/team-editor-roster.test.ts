@@ -2,6 +2,8 @@ import {
   type ControlEdge,
   CorralDefinition,
   type CorralNode,
+  DEFAULT_ADVISOR_REVIEW,
+  isWorkAgent,
   type WorkAgentNode,
 } from '@corral/contracts';
 import { TEAM_TEMPLATE_ROLES, type TeamTemplateId, teamTemplate } from '@corral/core';
@@ -201,7 +203,7 @@ describe('team composition roster', () => {
       steps: [],
       unconnected: [],
       outputs: [],
-      advice: { shared: null, observerIds: [] },
+      advice: { shared: null, artifactReview: false, observationInterval: null, observerIds: [] },
     });
     const r = roster(draft('only', [agent('only')]));
     expect(ids(r.steps)).toEqual(['only']);
@@ -430,6 +432,8 @@ describe('team composition roster', () => {
     expect(ids(r.steps)).toEqual(['writer']);
     expect(r.advice).toEqual({
       observerIds: ['observer'],
+      artifactReview: false,
+      observationInterval: null,
       shared: { kind: 'selected', nodeIds: ['writer'] },
     });
     expect(r.outputs).toEqual(
@@ -447,5 +451,61 @@ describe('team composition roster', () => {
       ]),
     );
     expect(r.outputs).toHaveLength(2);
+  });
+
+  it('ties each review to the actual received binding, reviewer, producer and loop limit', () => {
+    const d = template('plan-implement-review');
+    const output = d.nodes.find((n) => n.type === 'output');
+    const loop = d.nodes.find((n) => n.type === 'loop');
+    if (!output || !loop) throw new Error('Expected template output and loop');
+    loop.maxIterations = 7;
+    const binding = { kind: 'task_output' as const, name: 'report', sourceNodeId: 'implement' };
+    output.inputBindings = [binding, { ...binding, bindingId: 'reviewed' }];
+    output.requiredReviews = [
+      {
+        bindingId: 'reviewed',
+        bindingName: 'report',
+        sourceNodeId: 'implement',
+        reviewerNodeId: 'review',
+        loopNodeId: loop.id,
+        decisionNodeId: 'review_decision',
+      },
+    ];
+    d.sharedOutrider = {
+      modelProfile: 'model-a',
+      principles: 'Review carefully.',
+      targets: { kind: 'all' },
+      artifactReview: true,
+      observation: { targets: { kind: 'all' }, review: { ...DEFAULT_ADVISOR_REVIEW, interval: 5 } },
+    };
+    freeze(d);
+    const model = roster(d);
+    expect(model.outputs[0]?.bindings[0]?.review).toBeUndefined();
+    expect(model.outputs[0]?.bindings[1]?.review?.facts).toMatchObject({
+      loop: { id: loop.id },
+      reviewer: { id: 'review', label: 'review' },
+      producer: { id: 'implement', label: 'implement' },
+      maxRounds: 7,
+    });
+    expect(model.advice).toMatchObject({ artifactReview: true, observationInterval: 5 });
+  });
+
+  it('does not promise review facts when a policy has a missing decision or a non-working reviewer', () => {
+    const d = template('plan-implement-review');
+    const out = d.nodes.find((n) => n.type === 'output');
+    const reviewer = d.nodes.find((n) => n.id === 'review');
+    if (!out || !isWorkAgent(reviewer)) throw new Error('Expected reviewer and Output');
+    const gate = {
+      bindingName: 'draft',
+      sourceNodeId: 'implement',
+      loopNodeId: 'review_loop',
+      reviewerNodeId: 'review',
+      decisionNodeId: 'missing',
+    };
+    out.requiredReviews = [gate];
+    expect(roster(d).outputs[0]?.bindings[0]?.review).toMatchObject({ gate, facts: null });
+    gate.decisionNodeId = 'review_decision';
+    reviewer.invocation = 'callable';
+    expect(roster(d).outputs[0]?.bindings[0]?.review).toMatchObject({ gate, facts: null });
   });
 });

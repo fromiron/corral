@@ -1202,9 +1202,13 @@ describe('team editor: choosing an agent', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
     await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
     const preview = within(screen.getByRole('dialog'));
+    expect(
+      preview.getByRole('heading', { name: 'Replace with the agent “Release check”' }),
+    ).toBeVisible();
     expect(preview.getByRole('heading', { name: 'What changes' })).toBeVisible();
     expect(preview.getByText('Base instructions')).toBeVisible();
     expect(preview.getByText('Result format')).toBeVisible();
+    expect(preview.queryByText('Role and source')).toBeNull();
     expect(preview.getByRole('heading', { name: 'What stays' })).toBeVisible();
     expect(preview.getByText(/Seat name, task, received materials, connections/)).toBeVisible();
     expect(editor.getState().draft).toBe(draft);

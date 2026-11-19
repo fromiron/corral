@@ -1,4 +1,4 @@
-import type { RoleRunOverrides } from '@corral/contracts';
+import type { CorralDefinition, RoleRunOverrides } from '@corral/contracts';
 import { type HarnessOverrides, type StartFrom, TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { type ReactNode, type Ref, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -9,9 +9,8 @@ import { compileDraft, type DraftCompilation } from '../editor/model.ts';
 import type { SavedRevision } from '../run/session.ts';
 
 /**
- * Starts a run of the current draft, or says why it cannot run. With `beforeStart` the run
- * starts from the revision it returns (the local server runs saved revisions only); null means
- * the draft could not be saved and nothing starts.
+ * Starts a runnable draft. A host that saves first returns the committed draft (demo) or
+ * a pinned revision (server); null means saving failed and nothing starts.
  */
 export function RunControls({
   startMock,
@@ -37,7 +36,7 @@ export function RunControls({
   onOpen?: () => void;
   modelConnections?: ReactNode;
   onStarted?: (runId: string) => void;
-  beforeStart?: () => Promise<SavedRevision | null>;
+  beforeStart?: () => Promise<SavedRevision | CorralDefinition | null>;
   /** null while a required pinned revision cannot yet be checked. */
   validation?: DraftCompilation | null;
   onShowProblems?: (() => void) | undefined;
@@ -98,14 +97,14 @@ export function RunControls({
     startingRef.current = true;
     setStarting(true);
     try {
-      const saved = beforeStart ? await beforeStart() : undefined;
-      if (saved === null) return;
+      const source = beforeStart ? await beforeStart() : undefined;
+      if (source === null) return;
       onOpen?.();
       await session
         .getState()
         .start(
-          compiled.definition,
-          saved,
+          source && 'nodes' in source ? source : compiled.definition,
+          source && 'corralId' in source ? source : undefined,
           requested,
           startFrom
             ? { runId: startFrom.runId, artifactVersionId: startFrom.artifactVersionId }

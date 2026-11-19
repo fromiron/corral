@@ -265,10 +265,14 @@ export interface CorralSummary {
   updatedAt: string;
 }
 
+export const CorralCreateId = Identifier.regex(/^corral_.+/);
+
 export interface SaveRequest {
   definition: CorralDefinition;
   /** null creates a new Corral; otherwise the revision this edit started from. */
   expectedDefinitionRevision: number | null;
+  /** Claim the draft's own id on its first save. Absent for imports, which get a new id. */
+  createId?: string;
   /** Where a new Corral goes; the default project when absent. Ignored on edits. */
   projectId?: string;
 }
@@ -277,7 +281,7 @@ export type SaveResult =
   | { ok: true; record: CorralRecord; changed: { definition: boolean } }
   | {
       ok: false;
-      error: 'revision_conflict' | 'not_found' | 'storage_unavailable';
+      error: 'revision_conflict' | 'not_found' | 'validation_error' | 'storage_unavailable';
       message: string;
     };
 
@@ -924,16 +928,51 @@ export function parseCorralRecord(value: unknown, corralId: string): CorralRecor
 export function planSave(
   current: CorralRecord | null,
   request: SaveRequest,
-  context: { now: string; newCorralId: () => string },
+  context: {
+    now: string;
+    newCorralId: () => string;
+    firstDefinitionHash: (corralId: string) => string | null;
+  },
 ): SaveResult {
-  if (request.expectedDefinitionRevision === null) {
-    // A new Corral always gets its own id, even when imported from a file.
-    return planCreate(
-      request.definition,
-      context.newCorralId(),
-      context.now,
-      request.projectId ?? DEFAULT_PROJECT_ID,
-    );
+  const { createId, definition, expectedDefinitionRevision } = request;
+  if (
+    createId !== undefined &&
+    (expectedDefinitionRevision !== null ||
+      !CorralCreateId.safeParse(createId).success ||
+      createId !== definition.id)
+  ) {
+    return {
+      ok: false,
+      error: 'validation_error',
+      message: 'createId must match the draft’s Corral ID and is only valid on the first save.',
+    };
+  }
+  if (expectedDefinitionRevision === null) {
+    const projectId = request.projectId ?? DEFAULT_PROJECT_ID;
+    if (createId === undefined || !current) {
+      return planCreate(definition, createId ?? context.newCorralId(), context.now, projectId);
+    }
+    if (current.projectId === projectId) {
+      const firstHash =
+        current.definitionRevision === 1
+          ? current.definitionHash
+          : context.firstDefinitionHash(createId);
+      if (firstHash === null) {
+        return {
+          ok: false,
+          error: 'storage_unavailable',
+          message: 'The first saved Corral revision cannot be read.',
+        };
+      }
+      if (firstHash === definitionHash(definition)) {
+        return { ok: true, record: current, changed: { definition: false } };
+      }
+    }
+    return {
+      ok: false,
+      error: 'revision_conflict',
+      message: 'This Corral ID already belongs to a different first save.',
+    };
   }
   if (!current)
     return {
@@ -1089,9 +1128,14 @@ export function createKeyValueCorralRepository(
     const raw = store.getItem(recordKey(corralId));
     return raw === null ? null : parseCorralRecord(safeJson(raw), corralId);
   };
+  const firstDefinitionHash = (corralId: string): string | null => {
+    const raw = store.getItem(revisionKey(corralId, 1));
+    if (raw === null) return null;
+    const draft = CorralDefinitionDraft.safeParse(safeJson(raw));
+    return draft.success ? definitionHash(draft.data) : null;
+  };
   const write = (record: CorralRecord): SaveResult | null => {
     try {
-      store.setItem(recordKey(record.corralId), JSON.stringify(record));
       store.setItem(
         revisionKey(record.corralId, record.definitionRevision),
         JSON.stringify(record.definition),
@@ -1099,6 +1143,8 @@ export function createKeyValueCorralRepository(
       const index = readIndex();
       if (!index.includes(record.corralId))
         store.setItem(INDEX_KEY, JSON.stringify([...index, record.corralId]));
+      // Publish the record last: a retry must not see success before history and list exist.
+      store.setItem(recordKey(record.corralId), JSON.stringify(record));
       return null;
     } catch (error) {
       return {
@@ -1109,7 +1155,11 @@ export function createKeyValueCorralRepository(
     }
   };
 
-  const context = () => ({ now: options.clock.nowIso(), newCorralId: options.newCorralId });
+  const context = () => ({
+    now: options.clock.nowIso(),
+    newCorralId: options.newCorralId,
+    firstDefinitionHash,
+  });
   const persist = (result: SaveResult): SaveResult =>
     result.ok && result.changed.definition ? (write(result.record) ?? result) : result;
 
@@ -1145,7 +1195,9 @@ export function createKeyValueCorralRepository(
         if (refused) return refused;
       }
       const current =
-        request.expectedDefinitionRevision === null ? null : read(request.definition.id);
+        request.expectedDefinitionRevision === null && request.createId === undefined
+          ? null
+          : read(request.definition.id);
       return persist(planSave(current, request, context()));
     },
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import type { HarnessPreview, RoleHarnessPreview } from '@corral/client';
-import type { RoleSkillRef } from '@corral/contracts';
+import type { RoleMcpToolRef, RoleSkillRef } from '@corral/contracts';
 import { act } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
@@ -47,8 +47,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function renderSelection(skills?: RoleSkillRef[]) {
-  const writer = { roleId: 'writer', name: 'Writer', harness: binding, ...(skills && { skills }) };
+async function renderSelection(skills?: RoleSkillRef[], mcpTools?: RoleMcpToolRef[]) {
+  const writer = {
+    roleId: 'writer',
+    name: 'Writer',
+    harness: binding,
+    ...(skills && { skills }),
+    ...(mcpTools && { mcpTools }),
+  };
   const reader = { roleId: 'reader', name: 'Reader', skills: [style] };
   await act(async () => {
     root.render(
@@ -88,6 +94,19 @@ it.each([
     checked.snapshot.snapshotHash,
   );
 });
+
+it.each([{ mcpTools: [] }, { mcpTools: [{ serverId: 'issues', name: 'mcp__issues__find' }] }])(
+  'preserves an explicit tool selection in the role override preview: $mcpTools',
+  async ({ mcpTools }) => {
+    await renderSelection(undefined, mcpTools);
+    await previewWriter();
+    expect(api.preview).toHaveBeenCalledExactlyOnceWith(
+      { id: 'writer', harness: binding, mcpTools },
+      'project',
+      runOverride,
+    );
+  },
+);
 
 it('keeps a bound role without a skill selection on its binding preview and excludes an unbound role', async () => {
   await renderSelection();

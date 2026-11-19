@@ -41,6 +41,7 @@ import {
   withDefinition,
   withSuggestedBinding,
 } from '../editor/model.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // Structural edits for the team editor (docs/specs/features/team-graph.md). Every gesture is a
 // pure function of the draft: the canvas, the structure tree and the command menu only choose
@@ -74,6 +75,7 @@ export type EditRejection =
   | 'selfConnection'
   | 'callableInControlFlow'
   | 'invalidSourcePort'
+  | 'reviewExhausted'
   | 'invalidTargetPort'
   | 'invalidResultSource'
   | 'invalidResultInput'
@@ -198,6 +200,12 @@ export function checkPorts(
   const source = nodes.get(request.source);
   const target = nodes.get(request.target);
   if (!source || !target) return { ok: false, reason: 'unknownNode' };
+  if (
+    source.type === 'loop' &&
+    request.sourcePort === 'exhausted' &&
+    requiredReviewLoopIds(definition.nodes).has(source.id)
+  )
+    return { ok: false, reason: 'reviewExhausted' };
   if (source.id === target.id && !isBox(source)) return { ok: false, reason: 'selfConnection' };
   const callable = (n: CorralNode) => n.type === 'agent' && n.invocation === 'callable';
   if (callable(source) || callable(target)) return { ok: false, reason: 'callableInControlFlow' };
@@ -921,7 +929,7 @@ export function setRequiredOutputReview(
   outputId: string,
   bindingName: string,
   sourceNodeId: string,
-  enabled: boolean,
+  labels: { loop: string; reviewer: string; decision: string } | false,
   inputIndex?: number,
   policyId?: string,
 ): EditResult {
@@ -946,11 +954,12 @@ export function setRequiredOutputReview(
     if (g.bindingName !== bindingName || g.sourceNodeId !== sourceNodeId) return false;
     return inputIndex === undefined || reviewedOutputBinding(output, g) === selected;
   });
-  if (enabled === Boolean(current)) return { ok: true, draft };
+  if (labels && current) return { ok: true, draft };
   const allGates = initial.nodes.flatMap((n) =>
     n.type === 'output' ? (n.requiredReviews ?? []) : [],
   );
-  if (current) {
+  if (!labels) {
+    if (!current) return { ok: true, draft };
     const remaining = gates.filter((g) => g !== current);
     let next = patchNode(draft, outputId, {
       requiredReviews: remaining.length ? remaining : undefined,
@@ -1022,6 +1031,16 @@ export function setRequiredOutputReview(
     );
     if (!isWorkAgent(reviewer) || !decision)
       return { ok: false, reason: 'requiredReviewNeedsSource' };
+    const usedLabels = new Set(initial.nodes.map((node) => node.label));
+    const newLabel = (base: string) => {
+      let name = base;
+      for (let i = 2; usedLabels.has(name); i++) name = `${base} ${i}`;
+      usedLabels.add(name);
+      return name;
+    };
+    const loopLabel = newLabel(labels.loop);
+    const reviewerLabel = newLabel(labels.reviewer);
+    const decisionLabel = newLabel(labels.decision);
     gate = {
       bindingName,
       sourceNodeId,
@@ -1035,9 +1054,12 @@ export function setRequiredOutputReview(
         (e) => !(e.source === loopNodeId && e.sourcePort === 'exhausted'),
       ),
       nodes: next.definition.nodes.map((n) => {
+        if (n.id === loopNodeId) return { ...n, label: loopLabel };
+        if (n.id === decision.id) return { ...n, label: decisionLabel };
         if (n.id === reviewer.id)
           return {
             ...n,
+            label: reviewerLabel,
             inputBindings: [
               { kind: 'task_output' as const, name: 'draft', sourceNodeId },
               { kind: 'run_input' as const, name: 'criteria' },
@@ -1071,6 +1093,7 @@ export function setRequiredOutputReview(
         r.id === reviewer.roleId
           ? {
               ...r,
+              name: reviewerLabel,
               prompt: outrider.principles,
               modelProfile: outrider.modelProfile,
               allowedWorkTools: ['write_artifact'],
@@ -1276,7 +1299,7 @@ export function addAgent(draft: EditorDraft, source: AgentSource, at: Placement)
 const keptSeatFields = [
   'id',
   'label',
-  'stepInstruction',
+  'task',
   'inputBindings',
   'controlEdges',
   'capabilityLinks',
@@ -1284,7 +1307,25 @@ const keptSeatFields = [
   'outriderTargets',
 ] as const;
 
-type RoleField = Exclude<keyof AgentRole, 'id'>;
+type RoleSetting = Exclude<keyof AgentRole, 'id' | 'name' | 'origin'>;
+export type ReplacementChange = 'instructions' | 'model' | 'permissions' | 'skills' | 'format';
+const replacementGroups = [
+  ['instructions', ['prompt']],
+  ['model', ['modelProfile', 'reasoning']],
+  [
+    'permissions',
+    [
+      'allowedWorkTools',
+      'allowedCollaborationTools',
+      'mcpTools',
+      'harness',
+      'imageProfile',
+      'editingMode',
+    ],
+  ],
+  ['skills', ['skills']],
+  ['format', ['outputContract', 'answer']],
+] as const satisfies readonly (readonly [ReplacementChange, readonly RoleSetting[]])[];
 
 /** The prospective draft is the preview: closing it is free; applying it takes one undo. */
 export function previewReplaceAgent(
@@ -1298,7 +1339,7 @@ export function previewReplaceAgent(
       ok: true;
       draft: EditorDraft;
       nodeId: string;
-      changed: RoleField[];
+      changed: ReplacementChange[];
       kept: typeof keptSeatFields;
     } {
   const { definition } = draft;
@@ -1306,13 +1347,17 @@ export function previewReplaceAgent(
   if (!isWorkAgent(seat)) return { ok: false, reason: 'roleNeedsAgent' };
   if (isAdvisorRole(source.role)) return { ok: false, reason: 'advisorRole' };
   const previous = definition.roles.find((r) => r.id === seat.roleId);
-  const fields = new Set([...Object.keys(previous ?? {}), ...Object.keys(source.role), 'origin']);
-  fields.delete('id');
-  const changed = ([...fields] as RoleField[]).filter(
-    (key) => !sameRoleField(previous?.[key], key === 'origin' ? source.origin : source.role[key]),
-  );
+  const changed: ReplacementChange[] = [];
+  for (const [category, fields] of replacementGroups)
+    if (fields.some((key) => !sameRoleField(previous?.[key], source.role[key])))
+      changed.push(category);
   const preview = { ok: true as const, nodeId, changed, kept: keptSeatFields };
-  if (!changed.length) return { ...preview, draft };
+  if (
+    !changed.length &&
+    previous?.name === source.role.name &&
+    sameRoleField(previous.origin, source.origin)
+  )
+    return { ...preview, draft };
 
   const shared = definition.nodes.some(
     (n) => n.id !== nodeId && n.type === 'agent' && n.roleId === seat.roleId,
@@ -1322,6 +1367,9 @@ export function previewReplaceAgent(
     return { ok: false, reason: 'movePlanOwner' };
   const { id, counters } = nextId(draft, 'role');
   const role = copyAgentRole(source, id);
+  const task = seatTask(definition, nodeId);
+  const replacement = { ...seat, roleId: id };
+  if (task?.target === 'role' && task.text.trim()) replacement.stepInstruction = task.text;
   const next: EditorDraft = {
     counters,
     definition: {
@@ -1331,7 +1379,7 @@ export function previewReplaceAgent(
         previous && !shared
           ? definition.roles.map((r) => (r === previous ? role : r))
           : [...definition.roles, role],
-      nodes: definition.nodes.map((n) => (n === seat ? { ...seat, roleId: id } : n)),
+      nodes: definition.nodes.map((n) => (n === seat ? replacement : n)),
     },
   };
   const errors = compileDefinition(next.definition, options).diagnostics.filter(

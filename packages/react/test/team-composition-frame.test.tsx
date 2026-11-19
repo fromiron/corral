@@ -291,3 +291,27 @@ it('keeps a manually panned graph after a hidden edit that does not move any ste
   await user.click(switchView());
   expect(stage.style.transform).toBe(panned);
 });
+
+it('opens the graph at the fan-out node, not the first parallel branch', async () => {
+  const d = teamTemplate('parallel-review', 'audit', {
+    name: 'Audit',
+    brief: 'Review the change',
+    criteria: [],
+    roles: {
+      scope: { name: 'Scope', duty: 'Scope the change' },
+      correctness: { name: 'Correctness', duty: 'Check correctness' },
+      security: { name: 'Security', duty: 'Check security' },
+      synthesis: { name: 'Synthesis', duty: 'Synthesize the reviews' },
+    },
+    labels: { loop: 'Loop', decision: 'Decision', join: 'Gather', output: 'Output' },
+  });
+  const { user, editor } = mount(draftFromDefinition(d));
+  const group = screen.getByRole('list', { name: 'In parallel' });
+  await user.click(
+    within(required(group.parentElement)).getByRole('button', { name: 'Show in flow graph' }),
+  );
+  expect(screen.getByRole('application', { name: messages.TeamEditor.canvas })).toBeVisible();
+  expect(card('scope')).toHaveAttribute('aria-pressed', 'true');
+  expect(card('correctness')).toHaveAttribute('aria-pressed', 'false');
+  expect(editor.getState().past).toHaveLength(0);
+});

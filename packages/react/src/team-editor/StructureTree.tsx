@@ -1,6 +1,6 @@
 import type { CorralDefinition, CorralNode } from '@corral/contracts';
 import { type Diagnostic, isBox } from '@corral/core';
-import { type DragEvent as ReactDragEvent, useState } from 'react';
+import { type DragEvent as ReactDragEvent, useMemo, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Button, Keycap, KitBadge, useSize } from '../design-kit/index.ts';
 import { focusRing } from '../design-kit/lib/focus.ts';
@@ -17,6 +17,7 @@ import {
   TriangleAlert,
 } from '../ui/icons.ts';
 import { KIND_ICON, kindOf } from './kinds.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 // The team as an outline: every step in flow order, boxes with their members inside. Dragging a
@@ -28,11 +29,9 @@ const NODE_DRAG_TYPE = 'application/x-corral-node';
 export function ProblemCountBadge({
   diagnostics,
   validationStatus,
-  emptyGraph = false,
 }: {
   diagnostics: readonly Diagnostic[];
   validationStatus?: string | undefined;
-  emptyGraph?: boolean;
 }) {
   const t = useTranslations('TeamEditor');
   return (
@@ -46,16 +45,14 @@ export function ProblemCountBadge({
             : 'gray'
       }
     >
-      {validationStatus ??
-        (emptyGraph && diagnostics.length
-          ? t('startGraph')
-          : t('problems', { count: diagnostics.length }))}
+      {validationStatus ?? t('problems', { count: diagnostics.length })}
     </KitBadge>
   );
 }
 
 export interface StructureTreeProps {
   definition: CorralDefinition;
+  hasWorkAgent: boolean;
   diagnostics: readonly Diagnostic[];
   validationStatus?: string | undefined;
   /** Flow order of the nodes, as the canvas lays them out. */
@@ -78,6 +75,7 @@ export interface StructureTreeProps {
 
 export function StructureTree({
   definition,
+  hasWorkAgent,
   diagnostics,
   validationStatus,
   order,
@@ -97,6 +95,7 @@ export function StructureTree({
   const t = useTranslations('TeamEditor');
   const size = useSize();
   const [over, setOver] = useState<string | null>(null);
+  const reviewLoops = useMemo(() => requiredReviewLoopIds(definition.nodes), [definition.nodes]);
   const selected = new Set(selection.nodes);
   const worst = new Map<string, Diagnostic['severity']>();
   for (const d of diagnostics) {
@@ -131,6 +130,7 @@ export function StructureTree({
     // A reference team's inside lives in its own editor, so here it neither opens nor takes steps.
     const box = isBox(node) && !(node.type === 'team' && node.source.kind === 'reference');
     const open = box && !collapsed.has(node.id);
+    const reviewLoop = node.type === 'loop' && reviewLoops.has(node.id);
     const severity = worst.get(node.id);
     const dropping = over === node.id;
     return (
@@ -167,7 +167,8 @@ export function StructureTree({
             className={cn(
               focusRing,
               size.type.body,
-              'flex h-8 min-w-0 grow items-center gap-2 rounded-md px-1 text-left text-foreground',
+              'flex min-h-8 min-w-0 grow items-center gap-2 rounded-md px-1 text-left text-foreground',
+              reviewLoop && 'py-1',
             )}
             onDragStart={(event) => {
               event.dataTransfer.setData(NODE_DRAG_TYPE, node.id);
@@ -185,7 +186,14 @@ export function StructureTree({
             }}
           >
             <Icon size={14} aria-hidden className="shrink-0 text-muted-foreground" />
-            <span className="truncate">{node.label}</span>
+            <span className="min-w-0">
+              <span className="block truncate">{node.label}</span>
+              {reviewLoop && (
+                <span className={cn(size.type.caption, 'block text-muted-foreground')}>
+                  {t('noFinalSubmission')}
+                </span>
+              )}
+            </span>
             {severity ? (
               <span
                 className={cn(
@@ -229,19 +237,17 @@ export function StructureTree({
         >
           {definition.name}
         </span>
-        <button
-          type="button"
-          disabled={Boolean(validationStatus)}
-          aria-pressed={view === 'problems'}
-          className={cn(focusRing, 'rounded-full')}
-          onClick={onProblems}
-        >
-          <ProblemCountBadge
-            diagnostics={diagnostics}
-            validationStatus={validationStatus}
-            emptyGraph={definition.nodes.length === 0}
-          />
-        </button>
+        {hasWorkAgent && (
+          <button
+            type="button"
+            disabled={Boolean(validationStatus)}
+            aria-pressed={view === 'problems'}
+            className={cn(focusRing, 'rounded-full')}
+            onClick={onProblems}
+          >
+            <ProblemCountBadge diagnostics={diagnostics} validationStatus={validationStatus} />
+          </button>
+        )}
         <Button variant="ghost" size="icon-compact" aria-label={t('addStep')} onClick={onAdd}>
           <Plus />
         </Button>

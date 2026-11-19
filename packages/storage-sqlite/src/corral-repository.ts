@@ -75,6 +75,9 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       definition: db.prepare(
         'SELECT definition_json FROM definition_versions WHERE corral_id = ? AND revision = ?',
       ),
+      firstDefinitionHash: db.prepare(
+        'SELECT definition_hash FROM definition_versions WHERE corral_id = ? AND revision = 1',
+      ),
       upsertCorral: db.prepare(
         `INSERT INTO corrals (id, name, definition_revision, updated_at, project_id)
          VALUES (@id, @name, @definitionRevision, @updatedAt, @projectId)
@@ -168,7 +171,7 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   }
 
   async save(request: SaveRequest): Promise<SaveResult> {
-    return this.db.transaction(() => this.saveRequest(request))();
+    return this.db.transaction(() => this.saveRequest(request)).immediate();
   }
 
   /**
@@ -227,7 +230,9 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       if (refused) return refused;
     }
     const current =
-      request.expectedDefinitionRevision === null ? null : this.read(request.definition.id);
+      request.expectedDefinitionRevision === null && request.createId === undefined
+        ? null
+        : this.read(request.definition.id);
     return this.persist(planSave(current, request, this.context()));
   }
 
@@ -377,8 +382,19 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
   }
 
   private context() {
-    return { now: this.clock.nowIso(), newCorralId: this.newCorralId };
+    return {
+      now: this.clock.nowIso(),
+      newCorralId: this.newCorralId,
+      firstDefinitionHash: this.firstDefinitionHash,
+    };
   }
+
+  private readonly firstDefinitionHash = (corralId: string): string | null => {
+    const row = this.sql.firstDefinitionHash.get(corralId) as
+      | { definition_hash: string }
+      | undefined;
+    return row?.definition_hash ?? null;
+  };
 
   private read(corralId: string): CorralRecord | null {
     const row = this.sql.corral.get(corralId) as

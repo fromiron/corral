@@ -21,7 +21,7 @@
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문은 필요 시 조회 |
-| POST /corrals | 정의, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
+| POST /corrals | `{ definition, projectId?, createId? }` | 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`, 프로젝트를 생략하면 기본 프로젝트다. `createId`가 없으면 새 id를 발급하고, 있으면 [팀 편집기의 첫 저장 규칙](features/canvas.md#계약)을 따른다. 형식이나 정의 id가 맞지 않으면 `SCHEMA_INVALID`, 기존 팀과 충돌하면 `REVISION_CONFLICT`다. |
 | GET /corrals/:id | — | 현재 definition/revision |
 | GET /corrals/:id/revisions/:revision | — | 그 revision의 저장된 definition. 없는 팀·revision은 `TARGET_NOT_FOUND` |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |

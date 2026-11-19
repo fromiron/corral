@@ -4,10 +4,12 @@ import {
   type CorralNode,
   isWorkAgent,
   type LoopNode,
+  type RequiredOutputReview,
   type SharedOutrider,
   type TeamSource,
+  type WorkAgentNode,
 } from '@corral/contracts';
-import { decisionPortsOf, isBox } from '@corral/core';
+import { decisionPortsOf, isBox, reviewedOutputBinding } from '@corral/core';
 
 interface CalledRow {
   kind: 'called';
@@ -28,7 +30,7 @@ interface DecisionBranch {
 export type RosterStep = { nodeId: string } & (
   | { kind: 'agent' | 'callable'; calls: CalledRow[] }
   | { kind: 'decision'; branches: DecisionBranch[] }
-  | ({ kind: 'loop'; children: RosterRow[] } & Pick<
+  | ({ kind: 'loop'; requiredReview: boolean; children: RosterRow[] } & Pick<
       LoopNode,
       'maxIterations' | 'limitPolicy' | 'stallDetection'
     >)
@@ -52,9 +54,64 @@ export interface Roster {
   outputs: {
     nodeId: string;
     connected: boolean;
-    bindings: { name: string; producerId: string | null }[];
+    bindings: ReceivedResult[];
   }[];
-  advice: { shared: SharedOutrider['targets'] | null; observerIds: string[] };
+  advice: {
+    shared: SharedOutrider['targets'] | null;
+    artifactReview: boolean;
+    observationInterval: number | null;
+    observerIds: string[];
+  };
+}
+
+export interface RequiredReviewFacts {
+  loop: LoopNode;
+  reviewer: WorkAgentNode;
+  producer: CorralNode;
+  maxRounds: number | null;
+}
+
+type ReceivedResult = {
+  name: string;
+  producerId: string | null;
+  review?: { gate: RequiredOutputReview; facts: RequiredReviewFacts | null };
+};
+
+/** Only an Output's explicit policy makes a Loop end without a final submission. */
+export function requiredReviewLoopIds(nodes: readonly CorralNode[]) {
+  const ids = new Set<string>();
+  for (const node of nodes) {
+    if (node.type === 'output' && node.requiredReviews)
+      for (const gate of node.requiredReviews) ids.add(gate.loopNodeId);
+  }
+  return ids;
+}
+
+export function requiredReviewFacts(
+  gate: RequiredOutputReview,
+  node: (id: string) => CorralNode | undefined,
+): RequiredReviewFacts | null {
+  const loop = node(gate.loopNodeId);
+  const reviewer = node(gate.reviewerNodeId);
+  const decision = node(gate.decisionNodeId);
+  const producer = node(gate.sourceNodeId);
+  if (
+    loop?.type !== 'loop' ||
+    reviewer?.type !== 'agent' ||
+    reviewer.invocation !== 'scheduled' ||
+    reviewer.parentId !== loop.id ||
+    decision?.type !== 'decision' ||
+    decision.mode !== 'review' ||
+    decision.parentId !== loop.id ||
+    !(
+      (producer?.type === 'agent' && producer.invocation === 'scheduled') ||
+      (producer?.type === 'team' && producer.source.kind === 'reference')
+    )
+  )
+    return null;
+  const unlimited = loop.limitPolicy?.kind === 'unlimited';
+  if (!unlimited && !loop.maxIterations) return null;
+  return { loop, reviewer, producer, maxRounds: unlimited ? null : (loop.maxIterations ?? null) };
 }
 
 type Wires = Map<string, Map<string, ControlEdge[]>>;
@@ -233,6 +290,8 @@ function fillScope(
  * every node, binding, call and control edge is visited a bounded number of times. */
 export function rosterOf(definition: CorralDefinition, order: ReadonlyMap<string, number>): Roster {
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
+  const reviewLoops = requiredReviewLoopIds(definition.nodes);
+  const nodeById = (id: string) => nodes.get(id);
   const slots: (CorralNode | undefined)[] = new Array(nodes.size);
   const missing: CorralNode[] = [];
   for (const n of nodes.values()) {
@@ -295,7 +354,12 @@ export function rosterOf(definition: CorralDefinition, order: ReadonlyMap<string
     steps: [],
     unconnected: [],
     outputs: [],
-    advice: { shared: definition.sharedOutrider?.targets ?? null, observerIds: [] },
+    advice: {
+      shared: definition.sharedOutrider?.targets ?? null,
+      artifactReview: definition.sharedOutrider?.artifactReview === true,
+      observationInterval: definition.sharedOutrider?.observation?.review.interval ?? null,
+      observerIds: [],
+    },
   };
   const steps = new Map<string, RosterStep>();
   const members = new Map<string | null, string[]>();
@@ -303,17 +367,25 @@ export function rosterOf(definition: CorralDefinition, order: ReadonlyMap<string
     const nodeId = n.id;
     let step: RosterStep;
     switch (n.type) {
-      case 'output':
+      case 'output': {
+        const gates = n.requiredReviews?.length
+          ? new Map(n.requiredReviews.map((g) => [reviewedOutputBinding(n, g), g]))
+          : null;
         result.outputs.push({
           nodeId,
           connected: reached.has(nodeId),
-          bindings: n.inputBindings.map((b) => ({
-            name: b.name,
-            producerId: b.sourceNodeId && nodes.has(b.sourceNodeId) ? b.sourceNodeId : null,
-          })),
+          bindings: n.inputBindings.map((b) => {
+            const gate = gates?.get(b);
+            return {
+              name: b.name,
+              producerId: b.sourceNodeId && nodes.has(b.sourceNodeId) ? b.sourceNodeId : null,
+              ...(gate && { review: { gate, facts: requiredReviewFacts(gate, nodeById) } }),
+            };
+          }),
         });
         if (reached.has(nodeId)) append(members, n.parentId ?? null, nodeId);
         continue;
+      }
       case 'agent':
         if (n.invocation === 'observer') {
           result.advice.observerIds.push(nodeId);
@@ -350,6 +422,7 @@ export function rosterOf(definition: CorralDefinition, order: ReadonlyMap<string
         step = {
           kind: 'loop',
           nodeId,
+          requiredReview: reviewLoops.has(nodeId),
           maxIterations: n.maxIterations,
           limitPolicy: n.limitPolicy,
           stallDetection: n.stallDetection,

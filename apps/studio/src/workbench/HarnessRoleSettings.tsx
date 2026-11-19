@@ -2,6 +2,7 @@ import type { RoleHarnessPreview } from '@corral/client';
 import type {
   AgentRole,
   HarnessProfileView,
+  RoleMcpToolProblem,
   RoleSkillProblem,
   RoleSkillRef,
 } from '@corral/contracts';
@@ -44,6 +45,19 @@ export function RoleHarnessProblem({
   );
 }
 
+export function McpPreviewProblem({ problem }: { problem: RoleMcpToolProblem }) {
+  const t = useTranslations('TeamEditor.roleTools');
+  return (
+    <ul role="alert" className="grid gap-1 text-caption text-destructive">
+      {problem.tools.map(({ name, serverId, reason }) => (
+        <li key={`${serverId}:${name}`} className="break-words">
+          {serverId} · {name.slice(`mcp__${serverId}__`.length)}: {t(`reason.${reason}`)}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export function HarnessRoleSettings({
   role,
   nodeId,
@@ -64,7 +78,14 @@ export function HarnessRoleSettings({
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const selection = role.harness ? `${role.harness.profileId}:${role.harness.revision}` : '';
-  const contextKey = JSON.stringify([projectId, nodeId, role.id, selection, role.skills]);
+  const contextKey = JSON.stringify([
+    projectId,
+    nodeId,
+    role.id,
+    selection,
+    role.skills,
+    role.mcpTools,
+  ]);
   const request = useRef(0);
   useEffect(() => {
     if (!api) return;
@@ -167,7 +188,7 @@ export function HarnessRoleSettings({
           ) : null}
         </>
       ) : null}
-      {role.harness || role.skills ? (
+      {role.harness || role.skills || role.mcpTools?.length ? (
         <Button
           variant="tertiary"
           size="compact"
@@ -202,6 +223,9 @@ export function HarnessRoleSettings({
       ) : null}
       {preview && !preview.snapshot && preview.problem ? (
         <RoleHarnessProblem problem={preview.problem} skills={role.skills} />
+      ) : null}
+      {preview && !preview.snapshot && preview.mcpProblem ? (
+        <McpPreviewProblem problem={preview.mcpProblem} />
       ) : null}
       {preview?.snapshot ? (
         <>

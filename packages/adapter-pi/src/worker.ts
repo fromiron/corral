@@ -35,6 +35,7 @@ import {
   HostFrame,
   LEGACY_PROTOCOL_VERSION as PROTOCOL_VERSION,
   type StartFrame,
+  unavailableMcpProposal,
 } from './protocol.ts';
 import {
   assertReasoningCapabilities,
@@ -759,8 +760,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       },
     });
 
-    agent.subscribe((event) => {
+    agent.subscribe(async (event) => {
       if (!permit) return;
+      if (event.type === 'tool_execution_start' && !cancelled) {
+        const proposal = unavailableMcpProposal(event.toolName);
+        if (proposal) await call(proposal);
+      }
       if (event.type === 'message_update') text?.event(event.assistantMessageEvent);
       if (event.type === 'message_end' && event.message.role === 'assistant') {
         const message = event.message as AssistantMessage;

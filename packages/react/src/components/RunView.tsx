@@ -1,6 +1,18 @@
-import { TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
+import { type CorralDefinition, TERMINAL_EXECUTION_STATUSES } from '@corral/contracts';
 import { isSessionAdvisor, type RunProjection } from '@corral/core';
-import { useCallback, useEffect, useLayoutEffect, useMemo, useState } from 'react';
+import {
+  type ComponentProps,
+  type Ref,
+  useCallback,
+  useEffect,
+  useId,
+  useImperativeHandle,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
+import { flushSync } from 'react-dom';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -29,7 +41,9 @@ import { executionIntervals } from '../run/history.ts';
 import { executionWatching } from '../run/presence.ts';
 import { projectionPresence } from '../run/projectionPresence.ts';
 import type { RunSessionStore, StreamText } from '../run/session.ts';
+import { selectTeamRecord } from '../run/teamRecord.ts';
 import { requestOpen } from '../run/transcript.ts';
+import { AdviceReviewRecord } from './AdviceReviewRecord.tsx';
 import { executionAgentStatus, runAgentStatus } from './agentStatus.ts';
 import { FailureNotice } from './FailureNotice.tsx';
 import { HarnessDetails } from './HarnessDetails.tsx';
@@ -37,7 +51,7 @@ import { PresenceBadge, usePresenceWord } from './PresenceBadge.tsx';
 import { QuestionsPanel } from './QuestionsPanel.tsx';
 import { ReasoningSummary } from './ReasoningSummary.tsx';
 import { RunActions } from './RunActions.tsx';
-import { LoopEscalationText, RunReason } from './RunText.tsx';
+import { EventText, LoopEscalationText, RunReason } from './RunText.tsx';
 import { SafeMarkdown } from './SafeMarkdown.tsx';
 import { TermHint } from './TermHint.tsx';
 import { UsageInspector } from './UsageInspector.tsx';
@@ -50,6 +64,7 @@ export function RunView({
   onStartFrom,
   prices,
   skillLabel,
+  readTeam,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
@@ -58,11 +73,44 @@ export function RunView({
   /** List prices for the cost estimate. */
   prices?: ModelPrices | undefined;
   skillLabel?: Parameters<typeof HarnessDetails>[0]['skillLabel'];
+  /** Reads the authored revision pinned to this run, not today's team definition. */
+  readTeam?: ((runId: string) => Promise<CorralDefinition | null>) | undefined;
 }) {
   const t = useTranslations('Run');
   const projection = useRunDisplay(session, (s) => s.projection);
   const definition = useStore(session, (s) => s.definition);
   const nameOf = useAgentName(definition);
+  const events = useRunDisplay(session, (s) => s.events);
+  const runId = projection?.runId;
+  const startDefinition = useStore(session, (s) => (s.runId === runId ? s.startDefinition : null));
+  const [saved, setSaved] = useState<{ runId: string; definition: CorralDefinition | null } | null>(
+    null,
+  );
+  useEffect(() => {
+    if (!runId || !readTeam) return;
+    let current = true;
+    void readTeam(runId).then(
+      (definition) => {
+        if (current) setSaved({ runId, definition });
+      },
+      () => {
+        if (current) setSaved({ runId, definition: null });
+      },
+    );
+    return () => {
+      current = false;
+    };
+  }, [runId, readTeam]);
+  const team =
+    readTeam && runId && saved?.runId !== runId
+      ? null
+      : ((saved?.runId === runId ? saved?.definition : null) ?? startDefinition ?? null);
+  const record = useMemo(
+    () => selectTeamRecord(projection, team, events, definition),
+    [projection, team, events, definition],
+  );
+  const questionsId = useId();
+  const inspectRound = useRef<OpenRound>(null);
   const startError = useStore(session, (s) => s.startError);
   const definitionError = useStore(session, (s) => s.definitionError);
   const streamError = useStore(session, (s) => s.streamError);
@@ -119,9 +167,28 @@ export function RunView({
               {t('reasonPrefix')} <RunReason code={projection.statusReason} nodeLabel={nameOf} />
             </p>
           ) : null}
-          <ExecutionTree session={session} onSteer={onSteer} steers />
-          {onOpenArtifact ? (
-            <QuestionsPanel session={session} onOpenArtifact={onOpenArtifact} />
+          {record ? (
+            <AdviceReviewRecord
+              record={record}
+              questionsId={onOpenArtifact ? questionsId : null}
+              onRound={(loopId, iterationId) => inspectRound.current?.(loopId, iterationId)}
+              onOpenArtifact={onOpenArtifact}
+              events={events}
+              describe={(event) => (
+                <EventText
+                  event={event}
+                  labelOf={(id) => nameOf(projection.executions[id ?? '']?.nodeId ?? id ?? '')}
+                  nodeLabel={nameOf}
+                  context={{ directiveOrigin: (id) => projection.directives[id]?.origin }}
+                />
+              )}
+            />
+          ) : null}
+          <ExecutionTree session={session} onSteer={onSteer} steers inspectRound={inspectRound} />
+          {onOpenArtifact && Object.keys(projection.questions).length ? (
+            <div id={questionsId} tabIndex={-1}>
+              <QuestionsPanel session={session} onOpenArtifact={onOpenArtifact} />
+            </div>
           ) : null}
           <RunOutput
             session={session}
@@ -326,6 +393,7 @@ export function ExecutionTree({
   rounds,
   titled = true,
   steers = false,
+  inspectRound,
 }: {
   session: RunSessionStore;
   onSteer: (executionId: string) => void;
@@ -343,6 +411,8 @@ export function ExecutionTree({
   wideCards?: boolean;
   /** The inspected rounds when other views of the work flow share them; otherwise its own. */
   rounds?: RoundInspection;
+  /** Opens a recorded round without changing the execution the person can steer. */
+  inspectRound?: Ref<OpenRound>;
   /** Fixed clock for a past view, ms. Omitted, open spans run to the present. */
   now?: number;
 }) {
@@ -665,7 +735,10 @@ export function ExecutionTree({
     children: (childrenOf.get(null) ?? []).flatMap((id) => node(id) ?? []),
   };
   return (
-    <AgentTree
+    <RoundLinkedTree
+      inspectRound={inspectRound}
+      choose={choose}
+      element={treeElement}
       ref={treeRef}
       root={root}
       title={tree('title')}
@@ -685,6 +758,39 @@ export function ExecutionTree({
       {...(now === undefined ? {} : { now })}
     />
   );
+}
+
+type OpenRound = (loopId: string, iterationId: string) => void;
+
+function RoundLinkedTree({
+  inspectRound,
+  choose,
+  element,
+  ...tree
+}: ComponentProps<typeof AgentTree> & {
+  inspectRound: Ref<OpenRound> | undefined;
+  choose: OpenRound;
+  element: HTMLElement | null;
+}) {
+  const [folded, setFolded] = useState<string[]>([]);
+  useImperativeHandle(inspectRound, () => (loopId, iterationId) => {
+    const path = new Set<string>();
+    const find = (node: AgentTreeNode): boolean => {
+      if (node.cardProps?.['data-loop-id'] !== loopId && !node.children?.some(find)) return false;
+      path.add(node.id);
+      return true;
+    };
+    if (!find(tree.root)) return;
+    flushSync(() => {
+      choose(loopId, iterationId);
+      setFolded((previous) => previous.filter((id) => !path.has(id)));
+    });
+    const card = Array.from(element?.querySelectorAll<HTMLElement>('[data-loop-id]') ?? []).find(
+      (item) => item.dataset.loopId === loopId,
+    );
+    card?.querySelector<HTMLElement>('[role="combobox"]')?.focus();
+  });
+  return <AgentTree {...tree} collapsed={folded} onCollapsedChange={setFolded} />;
 }
 
 /** The kit AgentTree's card width, gap between branches and indent per level. */

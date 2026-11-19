@@ -57,6 +57,7 @@ import {
   type ModelProfileSnapshot,
   type ModelRequestIntent,
   ModelRequestRecord,
+  matchesRoleMcpSelection,
   type OutputNode,
   type ParentQuestionMessage,
   type PreviewToolName,
@@ -75,6 +76,8 @@ import {
   ReviewArtifact,
   type ReviewRecipeRevision,
   ROLE_SKILLS_MINIMAL_BINDING,
+  RoleHarnessResolutionError,
+  RoleMcpToolProblemReason,
   type RoutingBackend,
   RunCommand,
   RunCommandArgs,
@@ -237,7 +240,7 @@ const START_SCOPE = '*';
 const TOOL_POLICY_VERSION = 'role-allowlist@1';
 
 function needsHarness(role: AgentRole): boolean {
-  return role.harness !== undefined || role.skills !== undefined;
+  return role.harness !== undefined || role.skills !== undefined || Boolean(role.mcpTools?.length);
 }
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
@@ -618,6 +621,8 @@ interface LiveRun {
   boundaryWaiters: Set<() => void>;
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
+  /** Native effects started by the MCP extension, still awaiting their own completion. */
+  openMcpCalls?: Map<string, string>;
   /** The run's advisors (features/advisor.md); empty when the definition has none. */
   advisors: AdvisorRuntime;
 }
@@ -1209,7 +1214,11 @@ export class Coordinator {
           state.role.id,
           source.sessionId ? { sessionId: source.sessionId } : undefined,
         );
-        if (!resolved || resolved.snapshotHash !== manifest.harnessHash)
+        if (
+          !resolved ||
+          resolved.snapshotHash !== manifest.harnessHash ||
+          !matchesRoleMcpSelection(state.role, resolved)
+        )
           blockers.push('resources_changed');
       } else if (manifest.harnessHash !== null) blockers.push('resources_changed');
     } catch {
@@ -2063,13 +2072,24 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'run work style requires a role with a bound harness',
         });
-    // Observers use Coordinator tools, never an SDK work style. Do not accept
-    // a skill selection their execution cannot honor.
-    for (const { roleId } of Object.values(planned.plan.advisors)) {
-      if (planned.definition.roles.some((role) => role.id === roleId && role.skills !== undefined))
+    // Observers and shared consultants never receive an MCP work style. Even an authored
+    // empty selection is invalid for them; do not silently discard it as a no-op.
+    for (const node of planned.definition.nodes) {
+      if (
+        node.type !== 'agent' ||
+        (node.invocation !== 'observer' && !sharedOutriderNodeIds?.includes(node.id))
+      )
+        continue;
+      const role = planned.definition.roles.find((candidate) => candidate.id === node.roleId)!;
+      if (role.mcpTools !== undefined)
         return refuse({
           code: 'CAPABILITY_DENIED',
-          message: `observer role ${roleId} cannot select skills`,
+          message: `Outrider role ${role.id} cannot select MCP tools`,
+        });
+      if (node.invocation === 'observer' && role.skills !== undefined)
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `observer role ${role.id} cannot select skills`,
         });
     }
     for (const role of planned.definition.roles) {
@@ -2091,6 +2111,11 @@ export class Coordinator {
           (snapshot.policy === 'strict' && snapshot.resources.some((r) => r.kind === 'extension'))
         )
           throw new Error('invalid binding');
+        if (!matchesRoleMcpSelection(role, snapshot))
+          return refuse({
+            code: 'CAPABILITY_DENIED',
+            message: `resolved harness for role ${role.id} does not match its MCP tool selection`,
+          });
         if (
           reviewOnly &&
           (snapshot.resources.some((resource) => resource.kind === 'extension') ||
@@ -2119,7 +2144,18 @@ export class Coordinator {
               'Linux isolation requires a content-only strict harness; native tools are unavailable',
           });
         harnesses[role.id] = snapshot;
-      } catch {
+      } catch (error) {
+        const problem = error instanceof RoleHarnessResolutionError ? error.mcpProblem : undefined;
+        if (problem?.roleId === role.id) {
+          const reasons = RoleMcpToolProblemReason.options.filter((reason) =>
+            problem.tools.some((tool) => tool.reason === reason),
+          );
+          if (reasons.length)
+            return refuse({
+              code: 'CAPABILITY_DENIED',
+              message: `MCP tool selection for role ${role.id} refused: ${reasons.join(', ')}`,
+            });
+        }
         return refuse({
           code: 'CAPABILITY_DENIED',
           message: `harness for role ${role.id} is unavailable, untrusted or incompatible`,
@@ -6347,10 +6383,26 @@ export class Coordinator {
       }
       // A model request still open when its agent stopped may or may not have been billed.
       if (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) continue;
+      const mcpCallId = effect.kind === 'tool' ? run.openMcpCalls?.get(effect.effectId) : undefined;
+      // Confirmed worker termination closes our side of an MCP request. It does not establish
+      // what happened on the remote server. Unconfirmed termination remains unknown.
+      const mcpCancelled = mcpCallId !== undefined && cancelled && outcome === 'cancelled';
+      if (mcpCancelled)
+        drafts.push({
+          type: 'tool.finished',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            toolCallId: mcpCallId,
+            resultRef: null,
+            error: 'cancelled',
+          },
+        });
+      if (mcpCallId !== undefined) run.openMcpCalls!.delete(effect.effectId);
       drafts.push({
         type: 'effect.settled',
         executionId: input.executionId,
-        payload: { effectId: effect.effectId, outcome: 'unknown' },
+        payload: { effectId: effect.effectId, outcome: mcpCancelled ? 'cancelled' : 'unknown' },
       });
     }
     for (const directiveId of run.projection.directiveOrder) {
@@ -9280,7 +9332,9 @@ export class Coordinator {
                   )
                     throw new Error('native call changed while awaiting permission');
                 }
-                if (descriptors.get(call.proposal.name)?.source === 'extension:pi-mcp@1.3.0') {
+                const source = descriptors.get(call.proposal.name)?.source;
+                const mcp = source === 'extension:pi-mcp@1.3.0';
+                if (mcp) {
                   if (!this.harnesses?.checkMcpTool) throw new Error('MCP trust unavailable');
                   await this.harnesses.checkMcpTool(input, call.proposal.name, call.proposal.args);
                   requireActive();
@@ -9291,8 +9345,7 @@ export class Coordinator {
                   )
                     throw new Error('native call changed');
                 }
-                const codemode =
-                  descriptors.get(call.proposal.name)?.source === 'extension:pi-codemode@1.3.0';
+                const codemode = source === 'extension:pi-codemode@1.3.0';
                 if (codemode && this.codemodeWorkers.size >= 2)
                   throw new Error('codemode worker capacity reached');
                 const effectId = this.ids.next('effect');
@@ -9316,6 +9369,10 @@ export class Coordinator {
                 ]);
                 call.ran = true;
                 nativeEffects.set(toolCallId, effectId);
+                if (mcp) {
+                  run.openMcpCalls ??= new Map();
+                  run.openMcpCalls.set(effectId, toolCallId);
+                }
                 if (codemode) this.codemodeWorkers.set(effectId, { runId: run.runId, executionId });
               } finally {
                 call.claimed = false;
@@ -9340,6 +9397,7 @@ export class Coordinator {
                 { type: 'effect.settled', executionId, payload: { effectId, outcome } },
               ]);
               nativeEffects.delete(toolCallId);
+              run.openMcpCalls?.delete(effectId);
               this.codemodeWorkers.delete(effectId);
               for (const listener of nativeCloseListeners.get(toolCallId) ?? []) listener();
               nativeCloseListeners.delete(toolCallId);

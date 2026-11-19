@@ -75,8 +75,13 @@ export function sharedOutriderTargets(
         Math.min(limits.maxSpawns, limits.maxDelegationDepth)
       )
         row.unavailable = 'questions';
-      else if (role && (harness || role.skills !== undefined)) {
-        const mayAsk = harnessMayAsk?.({ id: role.id, harness, skills: role.skills });
+      else if (role && (harness || role.skills !== undefined || role.mcpTools?.length)) {
+        const mayAsk = harnessMayAsk?.({
+          id: role.id,
+          harness,
+          skills: role.skills,
+          mcpTools: role.mcpTools,
+        });
         if (mayAsk === false) row.unavailable = 'harness';
         else if (mayAsk === undefined) row.permissionPending = true;
       }

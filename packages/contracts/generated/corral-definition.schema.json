@@ -452,6 +452,30 @@
               "additionalProperties": false
             }
           },
+          "mcpTools": {
+            "maxItems": 64,
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "serverId": {
+                  "type": "string",
+                  "pattern": "^[a-z][a-z0-9_]{0,39}$"
+                },
+                "name": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 64,
+                  "pattern": "^[A-Za-z0-9_]+$"
+                }
+              },
+              "required": [
+                "serverId",
+                "name"
+              ],
+              "additionalProperties": false
+            }
+          },
           "origin": {
             "oneOf": [
               {

@@ -3,6 +3,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page, test } from '@playwright/test';
 import {
   addCustomAgent,
+  collapseTeamAssistant,
   newTeam,
   openFlowGraph,
   openLibraryTeams,
@@ -25,7 +26,9 @@ async function newCorral(page: Page, query = '') {
   await openLibraryTeams(page);
   await newTeam(page);
   await openFlowGraph(page);
-  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9]+\/edit/);
+  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9-]+\/edit$/);
+  await expect(canvas(page)).toBeVisible();
+  await expect(nodes(page)).toHaveCount(0);
 }
 
 const canvas = (page: Page) => page.locator('[data-team-canvas]');
@@ -59,6 +62,65 @@ async function buildAgentToOutput(page: Page) {
   await expect(edges(page)).toHaveCount(1);
   await expect(noProblems(page)).toBeVisible();
 }
+
+test('leaving a new Corral prompts only for an edited draft and never creates a team', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await openLibraryTeams(page);
+  const create = page.getByRole('link', { name: 'New Corral', exact: true });
+  const library = page.getByTestId('app-sidebar').getByRole('link', { name: 'Library' });
+  const prompts: string[] = [];
+  let discard = false;
+  page.on('dialog', async (dialog) => {
+    prompts.push(dialog.message());
+    if (discard) await dialog.accept();
+    else await dialog.dismiss();
+  });
+
+  await create.click();
+  await expect(page).toHaveURL(
+    (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('project') === 'default',
+  );
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+  await expect(page.getByText('Not saved yet', { exact: true })).toBeVisible();
+  await collapseTeamAssistant(page);
+  await library.click();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
+  expect(prompts).toEqual([]);
+
+  await create.click();
+  await collapseTeamAssistant(page);
+  const roster = page.getByRole('list', { name: 'Team composition', exact: true });
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  const brief = settings(page).getByRole('textbox', { name: 'Brief', exact: true });
+  await expect(brief).toHaveValue('');
+  await expect(settings(page).getByRole('textbox', { name: /^Criteria/ })).toHaveValue('');
+  await brief.fill('Leave this request unsaved.');
+  await library.click();
+  await expect
+    .poll(() => prompts)
+    .toEqual(['Leave without saving? Your unsaved changes will be lost.']);
+  await expect(brief).toHaveValue('Leave this request unsaved.');
+  discard = true;
+  await library.click();
+  await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
+  expect(prompts).toHaveLength(2);
+
+  await create.click();
+  await collapseTeamAssistant(page);
+  await roster.getByRole('button', { name: /^Request\b/ }).click();
+  await expect(brief).toHaveValue('');
+  await expect(page.getByRole('button', { name: 'Save', exact: true })).toBeDisabled();
+});
+
+test('Save and mock test creates the team before running the browser draft', async ({ page }) => {
+  await page.goto('/corrals/new/edit?project=default&template=starter&delay=0');
+  await page.getByRole('button', { name: 'Save and mock test', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/corral_[a-z0-9-]+\/edit$/);
+  await expect(page.getByTestId('revisions')).toHaveText('Version 1');
+  await expect(page.getByTestId('run-status')).toHaveText('Completed');
+});
 
 test('steps dropped on an empty canvas and connected run as drawn', async ({ page }) => {
   const errors = await trackErrors(page);
@@ -97,7 +159,7 @@ test('a saved team survives a settings detour and a reload, and saving it unchan
   await expect(save).toBeDisabled();
 
   // An edit undone back to the saved team leaves nothing to save.
-  await addCustomAgent(page, 'Another agent');
+  await addCustomAgent(page, 'Another agent', 'unconnected');
   await expect(save).toBeEnabled();
   await page.getByRole('button', { name: 'Undo', exact: true }).click();
   await expect(save).toBeDisabled();
