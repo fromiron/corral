@@ -31,6 +31,7 @@ import {
   outputPortsOf,
   requiredBranchesOf,
 } from './ports.ts';
+import { requiredOutputReviewDiagnostics } from './required-output-review.ts';
 
 export { vertexOf, wouldCreateCycle } from './cycles.ts';
 export * from './ports.ts';
@@ -81,6 +82,7 @@ export type DiagnosticCode =
   | 'CAPABILITY_NOT_ALLOWED'
   | 'DEPTH_EXCEEDED'
   | 'BINDING_SOURCE'
+  | 'REQUIRED_OUTPUT_REVIEW'
   | 'REVIEW_CONTRACT'
   | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE'
@@ -265,10 +267,12 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkAdvisors(context);
   checkReferences(context, options, [...teams, definition.sourceTeam?.corralId ?? definition.id]);
   checkStructure(context);
+
   // Problems that make graph analysis meaningless stop here; the rest are reported together.
   if (context.diagnostics.some((d) => BLOCKING.has(d.code))) return fail(context.diagnostics);
   const graph = analyzeGraph(context);
   if (!graph) return fail(context.diagnostics);
+  context.diagnostics.push(...requiredOutputReviewDiagnostics(context));
   checkCapabilities(context, graph);
   checkBindings(context, graph);
   checkReviewerCriteria(context);
@@ -479,6 +483,8 @@ class Context {
   readonly outgoing = new Map<string, ControlEdge[]>();
   readonly incoming = new Map<string, ControlEdge[]>();
   /** What each Join gathers, found by the parallel check. */
+  /** Which parallel arm arrives on an edge to a gathering Join; alternate routes may share an arm. */
+  readonly joinBranches = new Map<string, { branch: number; width: number }>();
   readonly gathers = new Map<string, { port: string; width: number }>();
 
   constructor(definition: CorralDefinition) {
@@ -1153,6 +1159,10 @@ function checkParallel(
       continue;
     }
     c.gathers.set(node.id, { port, width });
+    for (const edge of into.get(node.id) ?? []) {
+      const branch = carried.get(edge.id)?.get(port)?.values().next().value;
+      if (branch !== undefined) c.joinBranches.set(edge.id, { branch, width });
+    }
   }
 
   const writers = c.definition.nodes.filter(

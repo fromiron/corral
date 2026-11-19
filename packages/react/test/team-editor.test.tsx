@@ -74,6 +74,29 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
 };
 
 describe('team editor', () => {
+  it('configures and removes a required review for the shown output and producer in one edit', async () => {
+    const definition = chain(1);
+    const output = ok(placeStep(definition, 'output', { kind: 'after', nodeId: 'agent_1' }));
+    output.draft.definition.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check the evidence.',
+      targets: { kind: 'all' },
+    };
+    const editor = renderEditor(output.draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(output.nodeId));
+    const toggle = screen.getByRole('switch', { name: /submit after review passes/i });
+    expect(toggle).toHaveAccessibleDescription(/Agent 1/);
+    toggle.focus();
+    await user.keyboard(' ');
+    expect(screen.getByRole('switch', { name: /submit after review passes/i })).toBeChecked();
+    expect(editor.getState().past).toEqual([output.draft]);
+    await user.keyboard(' ');
+    expect(editor.getState().draft.definition.nodes.map((n) => n.id)).toEqual(
+      output.draft.definition.nodes.map((n) => n.id),
+    );
+  });
+
   it('keeps artifact review off until requested and saves, reopens and undoes the exact setting', async () => {
     const editor = renderEditor(chain(2));
     const user = userEvent.setup();

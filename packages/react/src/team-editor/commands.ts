@@ -80,7 +80,9 @@ export type EditRejection =
   | 'watchNeedsAdvisor'
   | 'watchNeedsAgent'
   | 'advisorRole'
-  | 'invalidSharedOutrider';
+  | 'invalidSharedOutrider'
+  | 'requiredReviewNeedsSource'
+  | 'requiredReviewNeedsOutrider';
 
 export type EditResult =
   | { ok: true; draft: EditorDraft; nodeId?: string }
@@ -823,6 +825,153 @@ function loopAround(
     });
   }
   return { ok: true, draft: next, nodeId: loop };
+}
+
+/** Creates or removes the review of one particular input. A producer can serve multiple outputs. */
+export function setRequiredOutputReview(
+  draft: EditorDraft,
+  outputId: string,
+  bindingName: string,
+  sourceNodeId: string,
+  enabled: boolean,
+): EditResult {
+  const initial = draft.definition;
+  const output = initial.nodes.find((n) => n.id === outputId);
+  if (output?.type !== 'output') return { ok: false, reason: 'unknownNode' };
+  const gates = output.requiredReviews ?? [];
+  const current = gates.find(
+    (g) => g.bindingName === bindingName && g.sourceNodeId === sourceNodeId,
+  );
+  if (enabled === Boolean(current)) return { ok: true, draft };
+  const allGates = initial.nodes.flatMap((n) =>
+    n.type === 'output' ? (n.requiredReviews ?? []) : [],
+  );
+  if (current) {
+    const remaining = gates.filter((g) => g !== current);
+    let next = patchNode(draft, outputId, {
+      requiredReviews: remaining.length ? remaining : undefined,
+    });
+    if (allGates.some((g) => g !== current && g.loopNodeId === current.loopNodeId))
+      return { ok: true, draft: next };
+    // The pattern put the reviewer between the producer and the Loop exit. Restore those exits
+    // before unwrapping so branches after the Loop keep their original destinations.
+    const byId = nodesOf(next.definition);
+    const reviewer = byId.get(current.reviewerNodeId);
+    const decision = byId.get(current.decisionNodeId);
+    if (
+      byId.get(current.loopNodeId)?.type === 'loop' &&
+      reviewer?.parentId === current.loopNodeId &&
+      decision?.parentId === current.loopNodeId
+    ) {
+      const intoReview = next.definition.controlEdges.filter(
+        (e) => e.target === reviewer.id && e.targetPort === 'in',
+      );
+      next = withEdges(
+        next,
+        (e) => intoReview.some((prior) => prior.id === e.id),
+        intoReview.map((e) => ({
+          source: e.source,
+          sourcePort: e.sourcePort,
+          target: current.loopNodeId,
+          targetPort: 'exit',
+        })),
+        [],
+      );
+      next = removeItems(next, [reviewer.id, decision.id, current.loopNodeId]);
+    }
+    return { ok: true, draft: next };
+  }
+  const outrider = initial.sharedOutrider;
+  if (!outrider) return { ok: false, reason: 'requiredReviewNeedsOutrider' };
+  const producer = initial.nodes.find((n) => n.id === sourceNodeId);
+  const sourceBinding = output.inputBindings.find(
+    (b) => b.kind === 'task_output' && b.name === bindingName && b.sourceNodeId === sourceNodeId,
+  );
+  if (
+    !sourceBinding ||
+    !(
+      (producer?.type === 'agent' && producer.invocation === 'scheduled') ||
+      (producer?.type === 'team' && producer.source.kind === 'reference')
+    )
+  ) {
+    return { ok: false, reason: 'requiredReviewNeedsSource' };
+  }
+  let next = draft;
+  let gate = allGates.find((g) => g.sourceNodeId === sourceNodeId);
+  if (!gate) {
+    const result = applyPattern(draft, 'reviewLoop', [sourceNodeId]);
+    if (!result.ok || !result.nodeId) return result;
+    const loopNodeId = result.nodeId;
+    next = result.draft;
+    const reviewer = next.definition.nodes.find(
+      (n) => isWorkAgent(n) && n.parentId === loopNodeId && n.id !== sourceNodeId,
+    );
+    const decision = next.definition.nodes.find(
+      (n) => n.type === 'decision' && n.mode === 'review' && n.parentId === loopNodeId,
+    );
+    if (!isWorkAgent(reviewer) || !decision)
+      return { ok: false, reason: 'requiredReviewNeedsSource' };
+    gate = {
+      bindingName,
+      sourceNodeId,
+      loopNodeId,
+      reviewerNodeId: reviewer.id,
+      decisionNodeId: decision.id,
+    };
+    next = withDefinition(next, {
+      ...next.definition,
+      controlEdges: next.definition.controlEdges.filter(
+        (e) => !(e.source === loopNodeId && e.sourcePort === 'exhausted'),
+      ),
+      nodes: next.definition.nodes.map((n) => {
+        if (n.id === reviewer.id)
+          return {
+            ...n,
+            inputBindings: [
+              { kind: 'task_output' as const, name: 'draft', sourceNodeId },
+              { kind: 'run_input' as const, name: 'criteria' },
+            ],
+          };
+        // A producer can already have feedback from an enclosing review Loop.
+        if (
+          n.id !== sourceNodeId ||
+          !isWorkAgent(n) ||
+          n.inputBindings.some(
+            (b) => b.kind === 'previous_iteration_output' && b.sourceNodeId === reviewer.id,
+          )
+        )
+          return n;
+        let name = 'review';
+        for (let i = 2; n.inputBindings.some((b) => b.name === name); i++) name = `review_${i}`;
+        return {
+          ...n,
+          inputBindings: [
+            ...n.inputBindings,
+            {
+              kind: 'previous_iteration_output' as const,
+              name,
+              sourceNodeId: reviewer.id,
+              optional: true,
+            },
+          ],
+        };
+      }),
+      roles: next.definition.roles.map((r) =>
+        r.id === reviewer.roleId
+          ? {
+              ...r,
+              prompt: outrider.principles,
+              modelProfile: outrider.modelProfile,
+              allowedWorkTools: ['write_artifact'],
+            }
+          : r,
+      ),
+    });
+  }
+  return {
+    ok: true,
+    draft: patchNode(next, outputId, { requiredReviews: [...gates, { ...gate, bindingName }] }),
+  };
 }
 
 /** Runs a copy of the agent beside it from the same step, and joins the two before what followed. */

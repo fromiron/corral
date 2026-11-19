@@ -55,6 +55,36 @@ function expandOne(
   const outputs = saved.nodes.filter((n): n is OutputNode => n.type === 'output');
   const outputIds = new Set(outputs.map((o) => o.id));
   const inputs = team.inputBindings ?? [];
+  const producers = new Set(
+    outputs.flatMap((o) =>
+      o.inputBindings.flatMap((b) => (b.sourceNodeId ? [b.sourceNodeId] : [])),
+    ),
+  );
+  const reviewers = new Set(
+    doc.nodes.flatMap((n) =>
+      n.type === 'output'
+        ? (n.requiredReviews ?? [])
+            .filter((g) => g.sourceNodeId === team.id)
+            .map((g) => g.reviewerNodeId)
+        : [],
+    ),
+  );
+  // A pinned team's actual producer receives feedback from the caller's Loop on its next round.
+  function workerInputs(nodeId: string, bindings: InputBinding[]): InputBinding[] {
+    const result = bindings.flatMap(inner);
+    if (!producers.has(nodeId)) return result;
+    for (const reviewer of reviewers) {
+      let name = 'review';
+      for (let i = 2; result.some((b) => b.name === name); i++) name = `review_${i}`;
+      result.push({
+        kind: 'previous_iteration_output',
+        name,
+        sourceNodeId: reviewer,
+        optional: true,
+      });
+    }
+    return result;
+  }
 
   /** A saved binding as the expanded member reads it. */
   const inner = (binding: InputBinding): InputBinding[] => {
@@ -96,7 +126,7 @@ function expandOne(
             : {
                 ...base,
                 roleId: name(base.roleId),
-                inputBindings: base.inputBindings.flatMap(inner),
+                inputBindings: workerInputs(node.id, base.inputBindings),
               },
         );
         break;
@@ -180,7 +210,24 @@ function expandOne(
   const nodes = doc.nodes.flatMap((node): CorralNode[] => {
     if (node.id === team.id) return [{ ...box, source: { kind: 'inline' } }, ...members];
     if (!('inputBindings' in node) || !node.inputBindings) return [node];
-    return [{ ...node, inputBindings: node.inputBindings.flatMap(reading) } as CorralNode];
+    const expandedBindings = node.inputBindings.flatMap(reading);
+    if (node.type === 'output' && node.requiredReviews) {
+      const requiredReviews = node.requiredReviews.flatMap((gate) => {
+        if (gate.sourceNodeId !== team.id) return [gate];
+        const input = node.inputBindings.find(
+          (b) => b.name === gate.bindingName && b.sourceNodeId === gate.sourceNodeId,
+        );
+        return input
+          ? reading(input).flatMap((b) =>
+              b.sourceNodeId
+                ? [{ ...gate, bindingName: b.name, sourceNodeId: b.sourceNodeId }]
+                : [],
+            )
+          : [gate];
+      });
+      return [{ ...node, inputBindings: expandedBindings, requiredReviews }];
+    }
+    return [{ ...node, inputBindings: expandedBindings } as CorralNode];
   });
 
   return {

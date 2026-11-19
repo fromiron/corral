@@ -1327,6 +1327,44 @@
               },
               "requireApproval": {
                 "type": "boolean"
+              },
+              "requiredReviews": {
+                "minItems": 1,
+                "maxItems": 20,
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "bindingName": {
+                      "type": "string",
+                      "minLength": 1
+                    },
+                    "sourceNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "loopNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "reviewerNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    },
+                    "decisionNodeId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                    }
+                  },
+                  "required": [
+                    "bindingName",
+                    "sourceNodeId",
+                    "loopNodeId",
+                    "reviewerNodeId",
+                    "decisionNodeId"
+                  ],
+                  "additionalProperties": false
+                }
               }
             },
             "required": [

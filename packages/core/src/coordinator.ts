@@ -56,6 +56,7 @@ import {
   type ModelProfileSnapshot,
   type ModelRequestIntent,
   ModelRequestRecord,
+  type OutputNode,
   type ParentQuestionMessage,
   type PreviewToolName,
   ProtectedContext,
@@ -1911,6 +1912,10 @@ export class Coordinator {
         .join('; ');
       return refuse({ code: 'GRAPH_INVALID', message });
     }
+    const requiredReviewSources = {
+      ...(recovery?.source ?? branch?.source)?.snapshot.requiredReviewSources,
+      ...planned.requiredReviewSources,
+    };
     const sharedOutriderNodeIds =
       planned.sharedOutriderNodeIds ??
       (recovery?.source ?? branch?.source)?.snapshot.sharedOutriderNodeIds;
@@ -2222,6 +2227,7 @@ export class Coordinator {
     const snapshot: RunSnapshot = {
       ...(sharedOutriderNodeIds?.length ? { sharedOutriderNodeIds } : {}),
       ...(artifactReviewNodeIds?.length ? { artifactReviewNodeIds } : {}),
+      ...(Object.keys(requiredReviewSources).length ? { requiredReviewSources } : {}),
       ...(branch
         ? {
             branchedFrom: {
@@ -6569,6 +6575,55 @@ export class Coordinator {
     }
   }
 
+  /** Bind a final version to the strict decision that passed that exact reviewed artifact. */
+  private checkRequiredOutputReviews(
+    run: LiveRun,
+    gates: OutputNode['requiredReviews'],
+    awaitingSubmission?: ReadonlyMap<string, string[]>,
+  ) {
+    const candidates = new Map<string, string[]>();
+    for (const gate of gates ?? []) {
+      const candidateIds = this.submittedOutputOf(run, gate.sourceNodeId);
+      const expected = awaitingSubmission?.get(gate.sourceNodeId);
+      if (
+        expected &&
+        (expected.length !== candidateIds.length ||
+          candidateIds.some((id) => !expected.includes(id)))
+      ) {
+        throw new Error(
+          'required_output_review: the submitted candidate changed while awaiting finalization',
+        );
+      }
+      candidates.set(gate.sourceNodeId, candidateIds);
+      const branch = Object.values(run.projection.workflowBranches ?? {}).findLast(
+        (b) => b.nodeId === gate.decisionNodeId,
+      );
+      const passed = new Set(
+        branch?.selectedPort === 'pass'
+          ? branch.evidenceRefs.flatMap((ref) => {
+              const review = ref.kind === 'review' ? run.projection.reviews[ref.id] : undefined;
+              return review &&
+                !review.stale &&
+                review.verdict === 'pass' &&
+                review.criteriaVersionId === run.criteriaVersionId
+                ? [review.targetVersionId]
+                : [];
+            })
+          : [],
+      );
+      if (
+        run.pendingCriteriaVersionId ||
+        !candidateIds.length ||
+        candidateIds.some((id) => !passed.has(id))
+      ) {
+        throw new Error(
+          'required_output_review: no passing review for the submitted candidate version',
+        );
+      }
+    }
+    return candidates;
+  }
+
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     await this.boundary(run);
     // The run does not end while a review is queued or running: advisors finish first.
@@ -6580,6 +6635,7 @@ export class Coordinator {
       b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
+    const requiredCandidates = this.checkRequiredOutputReviews(run, output.requiredReviews);
     let approvalId: string | null = null;
     if (output.requireApproval) {
       // Final approval binds the exact draft, its latest review and the criteria.
@@ -6628,6 +6684,7 @@ export class Coordinator {
       this.failRun(run, `termination_unconfirmed: ${nodeId}`);
       return;
     }
+    this.checkRequiredOutputReviews(run, output.requiredReviews, requiredCandidates);
     // The output and the run's success are one fact: readers never see one without the other.
     // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
@@ -6706,6 +6763,37 @@ export class Coordinator {
     const recorded = this.recordReview(run, reviewVersionId);
     const recipeLoopId = node?.parentId;
     const recipe = recipeLoopId ? run.recipes.get(recipeLoopId) : undefined;
+    const strictSources = run.snapshot.requiredReviewSources?.[nodeId];
+    if (strictSources) {
+      const candidates = strictSources.flatMap((id) =>
+        this.submittedOutputOf(
+          run,
+          id,
+          round && this.loopOf(run, id) ? (at) => this.sameRound(run, at, round) : undefined,
+        ),
+      );
+      const reviews = [recorded, ...bound.slice(1).map((id) => this.recordReview(run, id))];
+      if (
+        run.pendingCriteriaVersionId ||
+        !candidates.length ||
+        !reviews.length ||
+        candidates.some((id) => !reviews.some((r) => r.targetVersionId === id)) ||
+        reviews.some((r) => r.verdict === 'inconclusive' || !candidates.includes(r.targetVersionId))
+      ) {
+        throw new Error(
+          'required_output_review: no valid review for the current candidate and criteria',
+        );
+      }
+      if (!recipe)
+        return choice(
+          reviews.every((r) => r.verdict === 'pass') ? 'pass' : 'revise',
+          'review_verdict',
+          [
+            ...bound.map((id) => ({ kind: 'review' as const, id })),
+            ...candidates.map((id) => ({ kind: 'artifact' as const, id })),
+          ],
+        );
+    }
     if (recipe && recipeLoopId) {
       const candidateExecution =
         run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);

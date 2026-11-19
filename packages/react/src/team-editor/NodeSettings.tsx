@@ -46,7 +46,7 @@ import {
 } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
 import { X } from '../ui/icons.ts';
-import { patchNode, removeItems, watchAgent } from './commands.ts';
+import { patchNode, removeItems, setRequiredOutputReview, watchAgent } from './commands.ts';
 import { OutputSources } from './OutputSources.tsx';
 
 // The settings of one step that the team editor's sheet shows: role, model, tools, inputs and
@@ -238,6 +238,9 @@ export function NodeSettings({
 
       {node.type === 'loop' ? loopSettings?.(node) : null}
       {node.type === 'output' ? (
+        <RequiredReviews output={node} editor={editor} draft={draft} />
+      ) : null}
+      {node.type === 'output' ? (
         <KitSwitch
           label={t('requireApproval')}
           checked={node.requireApproval}
@@ -258,6 +261,76 @@ export function NodeSettings({
         <Calls editor={editor} nodeId={node.id} draft={draft} />
       ) : null}
     </div>
+  );
+}
+
+function RequiredReviews({
+  output,
+  editor,
+  draft,
+}: {
+  output: Extract<CorralNode, { type: 'output' }>;
+  editor: EditorStore;
+  draft: EditorDraft;
+}) {
+  const t = useTranslations('Inspector');
+  const id = useId();
+  const rejected = useTranslations('TeamEditor.rejected');
+  const [reason, setReason] = useState<string | null>(null);
+  const bindings = output.inputBindings.flatMap((b) =>
+    b.kind === 'task_output' && b.sourceNodeId
+      ? [{ bindingName: b.name, sourceNodeId: b.sourceNodeId }]
+      : [],
+  );
+  // Keep a changed/deleted source's old policy reachable for explicit removal.
+  for (const g of output.requiredReviews ?? []) {
+    if (!bindings.some((b) => b.bindingName === g.bindingName && b.sourceNodeId === g.sourceNodeId))
+      bindings.push(g);
+  }
+  return (
+    <>
+      {bindings.map((b, i) => {
+        const checked = (output.requiredReviews ?? []).some(
+          (g) => g.bindingName === b.bindingName && g.sourceNodeId === b.sourceNodeId,
+        );
+        const source =
+          draft.definition.nodes.find((n) => n.id === b.sourceNodeId)?.label ?? b.sourceNodeId;
+        const disabled = !checked && !draft.definition.sharedOutrider;
+        const descriptionId = `${id}-required-${i}`;
+        return (
+          <div key={b.bindingName + ' / ' + b.sourceNodeId} className="grid gap-1">
+            <KitSwitch
+              label={t('requireReview')}
+              checked={checked}
+              disabled={disabled}
+              aria-describedby={descriptionId}
+              onToggle={() => {
+                const result = setRequiredOutputReview(
+                  editor.getState().draft,
+                  output.id,
+                  b.bindingName,
+                  b.sourceNodeId,
+                  !checked,
+                );
+                if (result.ok) {
+                  editor.getState().applyDraft(result.draft);
+                  setReason(null);
+                } else setReason(rejected(result.reason));
+              }}
+            />
+            <p id={descriptionId} className="text-caption text-muted-foreground">
+              {t('requiredReviewSource', { binding: b.bindingName, source })}
+              {disabled ? ' ' + rejected('requiredReviewNeedsOutrider') : ''}
+            </p>
+          </div>
+        );
+      })}
+      {reason ? (
+        <p role="alert" className="text-caption text-destructive">
+          {reason}
+        </p>
+      ) : null}
+    </>
   );
 }
 

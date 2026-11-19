@@ -969,7 +969,12 @@ export function withDefinition(draft: EditorDraft, definition: CorralDefinition)
 
 /** Keeps the entry pointing where the flow starts: a scheduled agent, else a Loop or Team. */
 function entryOf(definition: CorralDefinition): string {
-  const targets = new Set(definition.controlEdges.map((e) => e.target));
+  // An exit or repeat returns control from inside a box. It does not start that box.
+  const targets = new Set(
+    definition.controlEdges
+      .filter((e) => e.targetPort === 'in' || e.targetPort === 'enter')
+      .map((e) => e.target),
+  );
   const starts = definition.nodes.filter((n) => !n.parentId && !targets.has(n.id));
   const candidates = [
     ...starts.filter((n) => n.type === 'agent' && n.invocation === 'scheduled'),

@@ -133,6 +133,38 @@ test('a worker observation proposal saves only after preview and reloads with it
   ).toHaveValue('3');
 });
 
+test('a required output review checks the saved candidate before publishing it', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const definition = linearCorral(['writer']);
+  definition.sharedOutrider = {
+    modelProfile: 'model-a',
+    principles: 'Check the sources.',
+    targets: { kind: 'all' },
+  };
+  const { record } = await call(page, '/corrals', { definition });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  await teamNode(page, 'output').click();
+  const gate = editorSettings(page).getByRole('switch', { name: 'Submit after review passes' });
+  await expect(gate).toHaveAccessibleDescription(/writer/);
+  await gate.click();
+  await expect(gate).toBeChecked();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('revisions')).toContainText('Version 2');
+  await page.reload();
+  await teamNode(page, 'output').click();
+  await expect(gate).toBeChecked();
+  await page.getByRole('button', { name: 'Test run', exact: true }).click();
+  await page
+    .getByRole('complementary', { name: 'Test run' })
+    .getByRole('button', { name: 'Run', exact: true })
+    .click();
+  await expect(page.getByTestId('run-output')).toContainText('writer', { timeout: 25_000 });
+  expect(corral.errors).toEqual([]);
+});
+
 test('pinned harness names survive two revision upgrades and reload without upgrading the binding', async ({
   page,
   corral,
