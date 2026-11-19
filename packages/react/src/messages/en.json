@@ -6033,6 +6033,7 @@
       "scope": "Who can ask",
       "workers": "Workers",
       "canAsk": "Can ask the shared Outrider",
+      "permissionUnconfirmed": "Work style question permission is unconfirmed.",
       "excluded": "Outside the shared Outrider’s scope",
       "noWorkers": "Add a working agent to consult the Outrider.",
       "model": "Outrider model",
@@ -6044,6 +6045,7 @@
       "limits": {
         "depth": "Asking would exceed this team’s delegation depth.",
         "questions": "The team’s question limit is zero.",
+        "harness": "This work style does not allow questions.",
         "spawns": "Asking would exceed this team’s limit on started agents."
       }
     },

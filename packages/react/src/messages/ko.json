@@ -6033,6 +6033,7 @@
       "scope": "질문할 수 있는 작업자",
       "workers": "작업자",
       "canAsk": "공통 Outrider에 질문 가능",
+      "permissionUnconfirmed": "작업 방식에서 질문을 허용하는지 아직 확인되지 않았습니다.",
       "excluded": "공통 Outrider 질문 대상에서 제외됨",
       "noWorkers": "작업 에이전트를 추가하면 공통 Outrider에 질문할 수 있습니다.",
       "model": "Outrider 모델",
@@ -6044,6 +6045,7 @@
       "limits": {
         "depth": "질문하면 팀의 위임 깊이 한도를 초과합니다.",
         "questions": "팀의 질문 한도가 0입니다.",
+        "harness": "이 작업 방식에서는 질문을 허용하지 않습니다.",
         "spawns": "질문하면 팀에서 시작할 수 있는 에이전트 수를 초과합니다."
       }
     },

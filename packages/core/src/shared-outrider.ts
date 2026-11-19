@@ -1,4 +1,9 @@
-import { CorralDefinition, isWorkAgent, type RunLimits } from '@corral/contracts';
+import {
+  CorralDefinition,
+  type HarnessBindingRef,
+  isWorkAgent,
+  type RunLimits,
+} from '@corral/contracts';
 import { workerDepths } from './compiler/call-depth.ts';
 import type { ResolveTeam } from './expand-teams.ts';
 
@@ -7,13 +12,16 @@ export interface SharedOutriderTarget {
   label: string;
   /** The authored reference containing this worker, including through nested references. */
   referenceNodeId?: string;
-  unavailable?: 'depth' | 'questions' | 'spawns';
+  harness?: HarnessBindingRef;
+  permissionPending?: true;
+  unavailable?: 'depth' | 'questions' | 'spawns' | 'harness';
 }
 
 /** Authored workers, including pinned references. Safe to inspect a still-incomplete editor draft. */
 export function sharedOutriderTargets(
   definition: CorralDefinition,
   resolve?: ResolveTeam,
+  harnessMayAsk?: (binding: HarnessBindingRef) => boolean | undefined,
   limits: RunLimits = definition.limits,
 ): SharedOutriderTarget[] {
   const rows: SharedOutriderTarget[] = [];
@@ -47,10 +55,12 @@ export function sharedOutriderTargets(
           );
       }
       if (!isWorkAgent(node)) continue;
+      const harness = team.roles.find((role) => role.id === node.roleId)?.harness;
       const depth = depths.get(node.id) ?? Number.POSITIVE_INFINITY;
       const row: SharedOutriderTarget = {
         nodeId: prefix + node.id,
         label: [...labels, node.label].join(' / '),
+        ...(harness ? { harness } : {}),
         ...(referenceNodeId ? { referenceNodeId } : {}),
       };
       if (limits.maxQuestions === 0) row.unavailable = 'questions';
@@ -61,6 +71,11 @@ export function sharedOutriderTargets(
         Math.min(limits.maxSpawns, limits.maxDelegationDepth)
       )
         row.unavailable = 'questions';
+      else if (harness) {
+        const mayAsk = harnessMayAsk?.(harness);
+        if (mayAsk === false) row.unavailable = 'harness';
+        else if (mayAsk === undefined) row.permissionPending = true;
+      }
       rows.push(row);
     }
   }
@@ -88,7 +103,7 @@ export function materializeSharedOutrider(
   const selected =
     sharedOutrider.targets.kind === 'selected' ? new Set(sharedOutrider.targets.nodeIds) : null;
   const targets = new Set(
-    sharedOutriderTargets(source, resolve, limits)
+    sharedOutriderTargets(source, resolve, undefined, limits)
       .filter((row) => !row.unavailable && (!selected || selected.has(row.nodeId)))
       .map((row) => row.nodeId),
   );

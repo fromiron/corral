@@ -157,8 +157,11 @@ describe('shared Outrider consultations', () => {
     expect(unknown[1]).not.toHaveProperty('permissionPending');
     const blocked = sharedOutriderTargets(definition, undefined, () => false);
     expect(blocked[0]?.unavailable).toBe('harness');
-    const allowed = sharedOutriderTargets(definition, undefined, (binding) =>
-      binding.profileId === harness.profileId && binding.revision === harness.revision);
+    const allowed = sharedOutriderTargets(
+      definition,
+      undefined,
+      (binding) => binding.profileId === harness.profileId && binding.revision === harness.revision,
+    );
     expect(allowed[0]).not.toHaveProperty('unavailable');
     expect(allowed[0]).not.toHaveProperty('permissionPending');
   });

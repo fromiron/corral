@@ -1,4 +1,6 @@
 // @vitest-environment jsdom
+
+import type { HarnessBindingRef } from '@corral/contracts';
 import {
   type CorralRecord,
   type CorralRepository,
@@ -128,13 +130,21 @@ function ok(result: ReturnType<typeof placeStep>): { draft: EditorDraft; nodeId:
 }
 
 /** A saved team: agent 1 → agent 2, and an empty Loop to move a step into. */
-async function savedTeam(repository: CorralRepository): Promise<CorralRecord> {
+async function savedTeam(
+  repository: CorralRepository,
+  binding?: HarnessBindingRef,
+): Promise<CorralRecord> {
   const a = ok(placeStep(emptyDraft('stacked', 'Stacked team'), 'agent', { kind: 'empty' }));
   const b = ok(placeStep(a.draft, 'agent', { kind: 'after', nodeId: a.nodeId }));
   const { draft } = ok(placeStep(b.draft, 'loop', { kind: 'empty' }));
   await repository.createProject({ name: 'Project' });
   const saved = await repository.save({
-    definition: draft.definition,
+    definition: binding
+      ? {
+          ...draft.definition,
+          roles: draft.definition.roles.map((role) => ({ ...role, harness: binding })),
+        }
+      : draft.definition,
     expectedDefinitionRevision: null,
     projectId: 'project_1',
   });
@@ -145,10 +155,20 @@ async function savedTeam(repository: CorralRepository): Promise<CorralRecord> {
 type Host = 'route' | 'session';
 
 /** Mounts the editor in its host at `width` and waits for its canvas to draw. */
-async function mount(host: Host, width: number) {
+async function mount(
+  host: Host,
+  width: number,
+  harness?: {
+    binding: HarnessBindingRef;
+    preview: (
+      binding: HarnessBindingRef,
+      project: string,
+    ) => Promise<{ snapshot: { allowedTools: string[] } }>;
+  },
+) {
   hostWidth = width;
   const repository = memoryRepository();
-  const record = await savedTeam(repository);
+  const record = await savedTeam(repository, harness?.binding);
   fixture.record = record;
   fixture.services = {
     mode: 'browser',
@@ -158,7 +178,7 @@ async function mount(host: Host, width: number) {
     runModes: {},
     saveRunMode: () => Promise.resolve(),
     models: null,
-    harnesses: null,
+    harnesses: harness ? { preview: harness.preview, profileManagement: async () => [] } : null,
     live: false,
     persistent: true,
   };
@@ -254,6 +274,32 @@ const HOSTS: [Host, number][] = [
 ];
 
 describe('team editor hosts: stacked below 960px', () => {
+  it('shows pinned Harness ask permission for the project in the shared Outrider roster and worker settings', async () => {
+    const binding = { profileId: 'restricted', revision: 2 };
+    let finishPreview!: (value: { snapshot: { allowedTools: string[] } }) => void;
+    const first = new Promise<{ snapshot: { allowedTools: string[] } }>((resolve) => {
+      finishPreview = resolve;
+    });
+    const preview = vi
+      .fn()
+      .mockReturnValueOnce(first)
+      .mockResolvedValue({ snapshot: { allowedTools: ['ask'] } });
+    await mount('route', 390, { binding, preview });
+    await click(named(outline(), 'Add shared Outrider'));
+    expect(sheet().textContent).toContain('Work style question permission is unconfirmed.');
+    expect(preview).toHaveBeenCalledExactlyOnceWith(binding, 'project_1');
+    await act(async () => finishPreview({ snapshot: { allowedTools: ['read_file'] } }));
+    expect(sheet().textContent).toContain('This work style does not allow questions.');
+    await click(named(sheet(), 'Apply'));
+    await click(named(outline(), 'Agent 1'));
+    expect(sheet().textContent).toContain('This work style does not allow questions.');
+    expect(sheet().textContent).not.toContain('Can ask the shared Outrider');
+    await act(async () => {
+      window.dispatchEvent(new Event('corral:harness-changed'));
+    });
+    expect(preview).toHaveBeenCalledTimes(2);
+    expect(sheet().textContent).toContain('Can ask the shared Outrider');
+  });
   it.each(['route', 'session'] as const)(
     '%s: stacks at 959px of its own width and lays out beside at 960px, under its path bar',
     async (host) => {

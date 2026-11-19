@@ -10,7 +10,6 @@ import {
   type RolePresetId,
   type RunStats,
   roleFromPreset,
-  sharedOutriderTargets,
 } from '@corral/core';
 import { AnimatePresence, motion, useReducedMotion } from 'motion/react';
 import {
@@ -82,6 +81,7 @@ import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
 import { STEP_DRAG_TYPE, TeamGraphCanvas, type TeamSelection } from './TeamGraphCanvas.tsx';
+import { type ReadHarnessAsk, useOutriderTargets } from './useOutriderTargets.ts';
 
 // The team editor (docs/specs/features/team-graph.md): the structure outline, the auto-laid-out
 // canvas, a floating settings sheet and a command menu, all editing one draft in the editor
@@ -102,6 +102,8 @@ export interface TeamEditorProps {
   resolveTeam?: ((corralId: string, definitionRevision: number) => unknown) | undefined;
   /** Whether a work style a copied role names resolves here; without it none does. */
   resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
+  /** Reads the effective ask permission at this project's pinned work style revision. */
+  readHarnessAsk?: ReadHarnessAsk | undefined;
   onOpenTeam?: ((corralId: string) => void) | undefined;
   /** Run stats of the saved revision, laid over the canvas while the host shows them. */
   runStats?: { stats: RunStats; definition: CorralDefinition } | null | undefined;
@@ -137,6 +139,7 @@ export function TeamEditor({
   teams = NO_TEAMS,
   resolveTeam,
   resolvesHarness,
+  readHarnessAsk,
   onOpenTeam,
   runStats = null,
   onOpenRun,
@@ -190,12 +193,11 @@ export function TeamEditor({
   const [view, setView] = useState<Exclude<SheetView, 'selection'> | null>(null);
   // A settings sheet may still be animating out when reopened; each visit starts a fresh form.
   const [outriderFormKey, setOutriderFormKey] = useState(0);
-  const outriderTargets = useMemo(
-    () =>
-      definition.sharedOutrider || view === 'sharedOutrider'
-        ? sharedOutriderTargets(definition, resolveTeam)
-        : [],
-    [definition, resolveTeam, view],
+  const outriderTargets = useOutriderTargets(
+    definition,
+    Boolean(definition.sharedOutrider) || view === 'sharedOutrider',
+    resolveTeam,
+    readHarnessAsk,
   );
   const [dragging, setDragging] = useState<StepKind | null>(null);
   // The command menu, or the roles it copies from.

@@ -143,6 +143,8 @@ export function SharedOutriderSettings({
                 )}
                 {target.unavailable ? (
                   <p className="text-muted-foreground">{t(`limits.${target.unavailable}`)}</p>
+                ) : target.permissionPending ? (
+                  <p className="text-muted-foreground">{t('permissionUnconfirmed')}</p>
                 ) : null}
               </li>
             );

@@ -239,7 +239,7 @@ function Editor({
   const canUndo = useStore(editor, (s) => s.canUndo);
   const canRedo = useStore(editor, (s) => s.canRedo);
   const teams = useSavedTeams(record, draft.definition);
-  const resolvesHarness = useHarnessResolver();
+  const { resolvesHarness, readHarnessAsk } = useHarnessResolver(record.projectId);
   const [runOpen, setRunOpen] = useState(Boolean(startFrom || guide));
   const [statsOn, setStatsOn] = useState(false);
   const revision = saved.record.definitionRevision;
@@ -453,6 +453,7 @@ function Editor({
               teams={teams.references}
               resolveTeam={teams.resolve}
               resolvesHarness={resolvesHarness}
+              readHarnessAsk={readHarnessAsk}
               onOpenTeam={(corralId) =>
                 void navigate({ to: '/corrals/$corralId/edit', params: { corralId } })
               }
@@ -507,7 +508,7 @@ function Editor({
  * Whether a work style a copied role names is one this installation keeps. Saved revisions stay,
  * so any revision up to a profile's latest resolves. The browser demo has no work styles.
  */
-function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined {
+function useHarnessResolver(projectId: string) {
   const { harnesses } = useServices();
   const [latest, setLatest] = useState<ReadonlyMap<string, number> | null>(null);
   useEffect(() => {
@@ -532,11 +533,16 @@ function useHarnessResolver(): ((ref: HarnessBindingRef) => boolean) | undefined
     };
   }, [harnesses]);
   return useMemo(
-    () =>
-      latest
+    () => ({
+      resolvesHarness: latest
         ? (ref: HarnessBindingRef) => (latest.get(ref.profileId) ?? 0) >= ref.revision
         : undefined,
-    [latest],
+      readHarnessAsk: harnesses
+        ? async (binding: HarnessBindingRef) =>
+            (await harnesses.preview(binding, projectId)).snapshot.allowedTools.includes('ask')
+        : undefined,
+    }),
+    [latest, harnesses, projectId],
   );
 }
 

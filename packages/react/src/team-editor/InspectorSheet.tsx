@@ -426,7 +426,9 @@ export function InspectorSheet({
               ? t('sharedOutrider.excluded')
               : askTarget.unavailable
                 ? t(`sharedOutrider.limits.${askTarget.unavailable}`)
-                : t('sharedOutrider.canAsk')}
+                : askTarget.permissionPending
+                  ? t('sharedOutrider.permissionUnconfirmed')
+                  : t('sharedOutrider.canAsk')}
           </p>
         ) : null}
         <NodeSettings

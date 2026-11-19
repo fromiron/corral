@@ -5775,6 +5775,11 @@ export class Coordinator {
       return { nodeId: id, label: target?.label ?? id };
     };
     const callables = run.plan.callables[spec.nodeId] ?? { delegate: [], question: [] };
+    const workStyle = run.snapshot.harnesses?.[role.id];
+    const questions =
+      workStyle && !workStyle.allowedTools.includes('ask')
+        ? callables.question.filter((id) => !run.snapshot.sharedOutriderNodeIds?.includes(id))
+        : callables.question;
     const parent = spec.parentExecutionId
       ? run.projection.executions[spec.parentExecutionId]
       : undefined;
@@ -5850,7 +5855,7 @@ export class Coordinator {
       capabilities: {
         delegateTo: callables.delegate.map(label),
         askTo: [
-          ...callables.question.filter((id) => !mayAskParent || id !== parent.nodeId).map(label),
+          ...questions.filter((id) => !mayAskParent || id !== parent.nodeId).map(label),
           ...(mayAskParent ? [{ ...label(parent.nodeId), delivery: 'parent' as const }] : []),
         ],
         ...(callables.replyToChildren ? { replyToChildren: true } : {}),

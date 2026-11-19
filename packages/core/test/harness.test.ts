@@ -65,6 +65,7 @@ function setup(
     isolation?: boolean;
     permissionMode?: PermissionMode;
     commandTools?: boolean;
+    sharedOutrider?: boolean;
     harness?: Partial<NonNullable<ConstructorParameters<typeof Coordinator>[0]['harnesses']>>;
   } = {},
 ) {
@@ -122,6 +123,12 @@ function setup(
   });
   const definition = linearCorral(['writer']);
   definition.roles[0]!.harness = snapshot.binding;
+  if (options.sharedOutrider)
+    definition.sharedOutrider = {
+      modelProfile: 'model-a',
+      principles: 'Answer the question.',
+      targets: { kind: 'all' },
+    };
   if (options.reviewOnly) definition.input.taskScope = 'review_only';
   if (options.plans) definition.roles[0]!.allowedCollaborationTools.push('update_plan');
   if (options.fileTools) definition.roles[0]!.allowedWorkTools = ['read_file', 'write_file'];
@@ -627,6 +634,23 @@ describe('worktree command and preset Coordinator path (ABS-01/02)', () => {
 });
 
 describe('Coordinator harness boundary (H2)', () => {
+  it('offers a shared consultation only when the pinned worker harness permits ask', async () => {
+    const denied = setup(true, snapshot, { sharedOutrider: true });
+    await denied.started.wait();
+    const absent = denied.input().capabilities.askTo;
+    denied.done.open();
+    const allowed = setup(
+      true,
+      { ...snapshot, allowedTools: ['echo', 'ask'] },
+      { sharedOutrider: true },
+    );
+    await allowed.started.wait();
+    const present = allowed.input().capabilities.askTo;
+    allowed.done.open();
+    expect(absent).toEqual([]);
+    expect(present).toHaveLength(1);
+  });
+
   it('isolated model profiles cannot launch native harnesses or host command recipes', () => {
     const native = setup(true, snapshot, { isolation: true });
     expect(native.result.runId).toBeNull();
