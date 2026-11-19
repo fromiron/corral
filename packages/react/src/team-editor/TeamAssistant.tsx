@@ -6,7 +6,7 @@ import {
   PATTERN_TEMPLATES,
 } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef } from 'react';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -360,14 +360,12 @@ export function TeamAssistant({
   editor,
   host,
   start,
-  narrow,
   onApplied,
   compileOptions,
 }: {
   editor: EditorStore;
   host: TeamAssistantHost;
   start?: { open: boolean } | undefined;
-  narrow: boolean;
   onApplied(row: string): void;
   compileOptions?: Pick<CompileOptions, 'resolveTeam' | 'knownModelProfiles'> | undefined;
 }) {
@@ -398,6 +396,24 @@ export function TeamAssistant({
   const busy = Boolean(state.pending);
   const stale = Boolean(proposal && proposal.base !== draft);
   const lastTurn = turns.at(-1);
+  const surface = useRef<HTMLElement>(null);
+  const [narrow, setNarrow] = useState(false);
+  useLayoutEffect(() => {
+    // The editor frame stays mounted when the conversation moves into or out of its sheet.
+    const frame = surface.current?.parentElement;
+    if (!frame) return;
+    const measure = () => {
+      const width = frame.clientWidth;
+      if (width === 0) return; // A hidden editor does not have a layout to switch to.
+      const rem =
+        Number.parseFloat(getComputedStyle(frame.ownerDocument.documentElement).fontSize) || 16;
+      setNarrow(width < 30 * rem);
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, []);
   const field = useRef<HTMLTextAreaElement>(null);
   const entry = useRef<HTMLButtonElement>(null);
   const composing = useRef(false);
@@ -735,7 +751,11 @@ export function TeamAssistant({
   );
   if (narrow)
     return (
-      <section aria-label={open ? undefined : title} className="shrink-0 border-t border-border">
+      <section
+        ref={surface}
+        aria-label={open ? undefined : title}
+        className="shrink-0 border-t border-border"
+      >
         <Dialog
           open={open}
           onOpenChange={(next, details) => {
@@ -767,7 +787,7 @@ export function TeamAssistant({
               return entry.current;
             }}
             closeLabel={t('collapse')}
-            className="inset-x-0 bottom-0 top-auto left-1/2 flex h-[85dvh] max-h-[85dvh] w-full max-w-full flex-col overflow-hidden rounded-b-none p-0 pb-[env(safe-area-inset-bottom)]"
+            className="bottom-0 top-auto flex h-[85dvh] max-h-[85dvh] w-full max-w-[45rem] flex-col overflow-hidden rounded-b-none p-0 pb-[env(safe-area-inset-bottom)]"
           >
             <DialogTitle className="shrink-0 px-4 py-3 pe-14">{title}</DialogTitle>
             <section className="flex min-h-0 flex-1 flex-col" aria-label={title}>
@@ -779,6 +799,7 @@ export function TeamAssistant({
     );
   return (
     <motion.section
+      ref={surface}
       aria-label={title}
       initial={false}
       animate={{ height: open ? (proposal || question ? '60%' : '50%') : 'auto' }}

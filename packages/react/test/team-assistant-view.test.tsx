@@ -3,7 +3,7 @@ import { Gate } from '@corral/testkit';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
-import { expect, it, vi } from 'vitest';
+import { expect, it, onTestFinished, vi } from 'vitest';
 import { StudioStoresProvider } from '../src/context.tsx';
 import { emptyDraft } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
@@ -47,13 +47,7 @@ function setup({
             assistantStart={{ open }}
           />
         ) : (
-          <TeamAssistant
-            editor={editor}
-            host={host}
-            narrow={narrow}
-            start={{ open }}
-            onApplied={vi.fn()}
-          />
+          <TeamAssistant editor={editor} host={host} start={{ open }} onApplied={vi.fn()} />
         )}
       </StudioStoresProvider>
     </IntlProvider>,
@@ -185,6 +179,10 @@ it('prevents applying a stale proposal; retry keeps the manual change and recomp
 });
 
 it('opens a named narrow sheet by keyboard, previews a local example and hands focus to its first real row after applying', async () => {
+  const width = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(360);
+  onTestFinished(() => {
+    width.mockRestore();
+  });
   const { user, editor } = setup({ integrated: true, narrow: true });
   const entry = button('Build the team with AI');
   entry.focus();

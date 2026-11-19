@@ -1212,7 +1212,6 @@ export function TeamEditor({
           editor={editor}
           host={assistant}
           start={assistantStart}
-          narrow={stacked}
           compileOptions={compileOptions}
           onApplied={(row) => {
             // Show the affected row, not its narrow drill-in. Restore focus after both the

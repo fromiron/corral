@@ -75,8 +75,9 @@ const observers = new Set<() => void>();
 function widthOf(element: HTMLElement): number {
   if (element.closest('[hidden]')) return 0;
   if (element.hasAttribute('data-team-canvas')) return 600;
-  if (element.firstElementChild?.hasAttribute('data-layout')) {
-    const run = element.parentElement?.querySelector(
+  const column = element.closest('[data-layout]')?.parentElement ?? element;
+  if (column.firstElementChild?.hasAttribute('data-layout')) {
+    const run = column.parentElement?.querySelector(
       `:scope > aside[aria-label="${m.testRun}"]:not([hidden])`,
     );
     return hostWidth - (run ? RUN_WIDTH : 0);
@@ -376,6 +377,40 @@ const viewTab = (name: string) =>
   );
 
 describe('team editor views', () => {
+  it('expands the assistant inline in the 640px editor beside the open test run', async () => {
+    await mount('route', 640 + RUN_WIDTH);
+    await prepareRun();
+    resize();
+    expect(shown(testRun())).toBe(true);
+    expect(editorRoot().clientWidth).toBe(640);
+    expect(layoutOf()).toBe('stacked');
+    await click(named(editorRoot(), messages.TeamAssistant.editTitle));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    expect(
+      editorRoot().querySelector(`textarea[aria-label="${messages.TeamAssistant.editRequest}"]`),
+    ).toBe(document.activeElement);
+    await click(named(editorRoot(), messages.TeamAssistant.choice.describe));
+    expect(shown(testRun())).toBe(true);
+  });
+
+  it('uses a keyboard-accessible assistant sheet in a 360px session team tab, but stays inline at 30rem', async () => {
+    await mount('session', 480);
+    await click(named(editorRoot(), messages.TeamAssistant.editTitle));
+    expect(document.querySelector('[role="dialog"]')).toBeNull();
+    await click(named(editorRoot(), messages.TeamAssistant.collapse));
+    resize(360);
+    const entry = named(editorRoot(), messages.TeamAssistant.editTitle);
+    await click(entry);
+    const dialog = region('[role="dialog"]');
+    expect(dialog).toBeTruthy();
+    const input = dialog.querySelector('textarea');
+    await vi.waitFor(() => expect(document.activeElement).toBe(input));
+    await act(async () => {
+      input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    });
+    await vi.waitFor(() => expect(document.activeElement).toBe(entry));
+  });
+
   it('offers only examples and choices when there is no server to connect a model to', async () => {
     const draft = await mount('route', 1280);
     const before = draft();

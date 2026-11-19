@@ -131,7 +131,14 @@ function example(scene: Scene, locale: Locale, narrow = false): Story {
       const element = await page.findByRole(narrow ? 'dialog' : 'region', {
         name: editing(scene) ? t.editTitle : t.createTitle,
       });
-      if (narrow) await waitFor(() => expect(getComputedStyle(element).opacity).toBe('1'));
+      if (narrow) {
+        await waitFor(() => expect(getComputedStyle(element).opacity).toBe('1'));
+        const bounds = element.getBoundingClientRect();
+        const viewport = canvasElement.ownerDocument.documentElement;
+        const rem = Number.parseFloat(getComputedStyle(viewport).fontSize);
+        await expect(bounds.width).toBeLessThanOrEqual(45 * rem + 1);
+        await expect(bounds.left + bounds.width / 2).toBeCloseTo(viewport.clientWidth / 2, 0);
+      }
       const region = within(element);
       const input = region.getByRole('textbox', {
         name: editing(scene) ? t.editRequest : t.createRequest,
