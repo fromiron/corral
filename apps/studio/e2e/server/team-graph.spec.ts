@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CorralDefinition } from '@corral/contracts';
+import type { CorralDefinition, TargetPort } from '@corral/contracts';
 import type { Coordinator } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
@@ -51,7 +51,12 @@ const agent = (id: string, label: string, from: string | null, parentId?: string
   outputName: 'text',
   ...(parentId ? { parentId } : {}),
 });
-const edge = (source: string, sourcePort: string, target: string, targetPort = 'in') => ({
+const edge = (
+  source: string,
+  sourcePort: string,
+  target: string,
+  targetPort: TargetPort = 'in',
+) => ({
   id: `${source}_${sourcePort}_${target}_${targetPort}`,
   source,
   sourcePort,
