@@ -131,6 +131,39 @@ describe('shared Outrider consultations', () => {
     expect(result.definition.roles).toEqual(definition.roles);
   });
 
+  it('watches actual workers independently of barriers to asking, without watching the shared responder', () => {
+    const doc = linearCorral(['planner', 'writer']);
+    const controls = { interval: 2, maxRequestsPerReview: 5 };
+    const definition = {
+      ...doc,
+      limits: { ...doc.limits, maxQuestions: 0 },
+      sharedOutrider: {
+        ...policy,
+        targets: { kind: 'selected' as const, nodeIds: [] },
+        observation: { targets: { kind: 'all' as const }, review: controls },
+      },
+    };
+    const result = planRun(definition);
+    if (!result.ok) throw new Error(JSON.stringify(result.issues));
+    expect(result.plan.callables).toEqual({});
+    expect(Object.values(result.plan.advisors)).toMatchObject([
+      { watches: ['planner', 'writer'], review: controls },
+    ]);
+    expect(definition.nodes).toEqual(doc.nodes);
+    const noTargets = planRun({
+      ...definition,
+      sharedOutrider: {
+        ...policy,
+        observation: {
+          targets: { kind: 'selected', nodeIds: [] },
+          review: controls,
+        },
+      },
+    });
+    if (!noTargets.ok) throw new Error(JSON.stringify(noTargets.issues));
+    expect(noTargets.plan.advisors).toEqual({});
+  });
+
   it('accounts for a question spent reaching the worker, keeping workers reached by delegation eligible', () => {
     const definition = collaborationCorral();
     definition.limits = { ...definition.limits, maxQuestions: 1 };

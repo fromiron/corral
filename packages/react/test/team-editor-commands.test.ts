@@ -59,6 +59,32 @@ describe('team shared Outrider settings', () => {
     targets: { kind: 'all' },
   };
 
+  it('removes stale observation targets on deletion and treats reordered observer selections as the same edit', () => {
+    const draft = chain(3);
+    const observation = {
+      targets: { kind: 'selected' as const, nodeIds: ['agent_2', 'agent_3'] },
+      review: { interval: 1, maxRequestsPerReview: 4 },
+    };
+    const configured = ok(setSharedOutrider(draft, { ...settings, observation })).draft;
+    expect(
+      ok(
+        setSharedOutrider(configured, {
+          ...settings,
+          observation: {
+            ...observation,
+            targets: { kind: 'selected', nodeIds: ['agent_3', 'agent_2'] },
+          },
+        }),
+      ).draft,
+    ).toBe(configured);
+    const removed = removeItems(configured, ['agent_2']);
+    expect(removed.definition.sharedOutrider?.targets).toEqual({ kind: 'all' });
+    expect(removed.definition.sharedOutrider?.observation?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['agent_3'],
+    });
+  });
+
   it('forgets deleted selected workers before the same ID can be reused on reopen', () => {
     const a = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
     const out = ok(placeStep(a.draft, 'output', { kind: 'after', nodeId: a.nodeId }));

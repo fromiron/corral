@@ -88,9 +88,17 @@ export type EditResult =
 
 /** A selected target list is a set; picking the same workers in another order is no edit. */
 function orderedOutriderSettings(settings: SharedOutrider): SharedOutrider {
-  if (settings.targets.kind === 'all') return settings;
-  const nodeIds = [...new Set(settings.targets.nodeIds)].sort();
-  return { ...settings, targets: { kind: 'selected', nodeIds } };
+  const ordered = (scope: SharedOutrider['targets']): SharedOutrider['targets'] =>
+    scope.kind === 'all'
+      ? scope
+      : { kind: 'selected', nodeIds: [...new Set(scope.nodeIds)].sort() };
+  return {
+    ...settings,
+    targets: ordered(settings.targets),
+    ...(settings.observation
+      ? { observation: { ...settings.observation, targets: ordered(settings.observation.targets) } }
+      : {}),
+  };
 }
 
 /** Store only the authored intent. The runtime derives the callable and its grants on its copy. */

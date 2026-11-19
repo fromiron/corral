@@ -54,6 +54,49 @@ test('shared Outrider settings survive reload and removal is reversible in the e
   expect(corral.errors).toEqual([]);
 });
 
+test('automatic observation can be saved for one worker and switched off independently', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const { record } = await call(page, '/corrals', {
+    definition: linearCorral(['planner', 'writer']),
+  });
+  await page.goto(`${corral.server.url}/corrals/${record.corralId}/edit`);
+  await page.getByRole('button', { name: 'Add shared Outrider', exact: true }).click();
+  const settings = editorSettings(page);
+  const toggle = settings.getByRole('checkbox', { name: 'Observe work in progress', exact: true });
+  await expect(toggle).not.toBeChecked();
+  await toggle.click();
+  const watched = settings.getByRole('group', { name: 'Workers to observe', exact: true });
+  await watched.getByRole('radio', { name: 'Select workers' }).click();
+  await watched.getByRole('checkbox', { name: 'writer', exact: true }).click();
+  const interval = settings.getByRole('spinbutton', { name: 'Review interval (model requests)' });
+  await interval.fill('0');
+  await expect(interval).toHaveAttribute('aria-invalid', 'true');
+  await expect(settings.getByRole('button', { name: 'Apply', exact: true })).toBeDisabled();
+  await interval.fill('2');
+  await expect(settings.getByText(/additional model requests/i)).toBeVisible();
+  await settings.getByRole('button', { name: 'Apply', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('revisions')).toContainText(/2/);
+  await page.reload();
+  const configured = page.getByRole('button', { name: 'Outrider · Entire team', exact: true });
+  await configured.click();
+  await expect(toggle).toBeChecked();
+  await expect(watched.getByRole('checkbox', { name: 'writer' })).toBeChecked();
+  await expect(watched.getByRole('checkbox', { name: 'planner' })).not.toBeChecked();
+  await expect(interval).toHaveValue('2');
+  await toggle.click();
+  await settings.getByRole('button', { name: 'Apply', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page.getByTestId('revisions')).toContainText(/3/);
+  await page.reload();
+  await configured.click();
+  await expect(toggle).not.toBeChecked();
+  await expect(settings.getByRole('radio', { name: 'Entire team' })).toBeChecked();
+});
+
 test('pinned harness names survive two revision upgrades and reload without upgrading the binding', async ({
   page,
   corral,

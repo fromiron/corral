@@ -115,6 +115,8 @@
 
 ## PR 5. 자동 관찰을 선택적으로 켜기
 
+팀 설정과 실행에서 독립적인 관찰 대상을 저장하고 검증했다. 목표 초안에서의 선택과 저장 전 미리보기 연결이 다음 단계다.
+
 팀 설정에서 `진행 중 자동 관찰`을 켜면 관찰 대상, 사용할 모델, 검토 간격과 호출이 발생하는 시점을 볼 수 있다. 기존 `observer → advise` 경로를 사용한다. 참고·우려·중단 권고의 전달, 마지막 검토와 종료된 대상 처리, 사용량 표시와 Run 중지 동작은 [Outrider 명세](../specs/features/advisor.md)와 [Reins 명세](../specs/features/reins.md)를 따른다. 작업 과정에는 작업자가 요청해 받은 답과 Outrider가 관찰 중 보낸 의견을 구별해 표시한다. 모델에 전달된 의견을 반영 완료로 표시하지 않는다.
 
 **인수 검증.** 요청형만 켠 팀에서 질문이 없으면 Outrider 호출은 0회다. 관찰을 켜면 선택된 대상에서만 검토가 시작된다. 다음 실행에서 관찰을 끈 뒤에도 작업자가 질문하면 답을 받는다. 기존 관찰 전용 팀과 대화 설정의 Outrider는 이전과 같은 시점에 동작해야 한다. [관찰 서비스](../../packages/core/src/advisor/service.ts) · [관찰 테스트](../../packages/core/test/advisor.test.ts) · [대화 Outrider 테스트](../../packages/core/test/session-advisor.test.ts)

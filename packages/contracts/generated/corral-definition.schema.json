@@ -33,6 +33,74 @@
     "sharedOutrider": {
       "type": "object",
       "properties": {
+        "observation": {
+          "type": "object",
+          "properties": {
+            "targets": {
+              "oneOf": [
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "all"
+                    }
+                  },
+                  "required": [
+                    "kind"
+                  ],
+                  "additionalProperties": false
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "kind": {
+                      "type": "string",
+                      "const": "selected"
+                    },
+                    "nodeIds": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
+                      }
+                    }
+                  },
+                  "required": [
+                    "kind",
+                    "nodeIds"
+                  ],
+                  "additionalProperties": false
+                }
+              ]
+            },
+            "review": {
+              "type": "object",
+              "properties": {
+                "interval": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 9007199254740991
+                },
+                "maxRequestsPerReview": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 64
+                }
+              },
+              "required": [
+                "interval",
+                "maxRequestsPerReview"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "required": [
+            "targets",
+            "review"
+          ],
+          "additionalProperties": false
+        },
         "modelProfile": {
           "type": "string",
           "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"

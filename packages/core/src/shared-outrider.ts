@@ -3,7 +3,9 @@ import {
   type HarnessBindingRef,
   isWorkAgent,
   type RunLimits,
+  type SharedOutrider,
 } from '@corral/contracts';
+import { ADVISOR_COLLABORATION_TOOLS } from './advisor/tools.ts';
 import { workerDepths } from './compiler/call-depth.ts';
 import type { ResolveTeam } from './expand-teams.ts';
 
@@ -91,6 +93,61 @@ function freshId(used: Set<string>, base: string): string {
   return id;
 }
 
+function withSharedObservation(
+  definition: CorralDefinition,
+  shared: SharedOutrider,
+  workers: readonly SharedOutriderTarget[],
+): CorralDefinition {
+  const observation = shared.observation;
+  if (!observation) return definition;
+  // A worker needs no question permission to be observed. Only authored work nodes are eligible.
+  const selected =
+    observation.targets.kind === 'selected' ? new Set(observation.targets.nodeIds) : undefined;
+  const watches = workers.filter(({ nodeId }) => !selected || selected.has(nodeId));
+  if (!watches.length) return definition;
+  const roleId = freshId(new Set(definition.roles.map((r) => r.id)), 'shared_observer_role');
+  const nodeId = freshId(new Set(definition.nodes.map((n) => n.id)), 'shared_observer');
+  const links = new Set(
+    [...definition.controlEdges, ...definition.capabilityLinks].map((edge) => edge.id),
+  );
+  return {
+    ...definition,
+    roles: [
+      ...definition.roles,
+      {
+        id: roleId,
+        name: 'Outrider',
+        prompt: shared.principles,
+        modelProfile: shared.modelProfile,
+        allowedWorkTools: [],
+        allowedCollaborationTools: [...ADVISOR_COLLABORATION_TOOLS],
+        outputContract: 'notes',
+      },
+    ],
+    nodes: [
+      ...definition.nodes,
+      {
+        id: nodeId,
+        type: 'agent',
+        label: 'Outrider',
+        invocation: 'observer',
+        outputName: 'notes',
+        roleId,
+        review: observation.review,
+      },
+    ],
+    capabilityLinks: [
+      ...definition.capabilityLinks,
+      ...watches.map((worker, i) => ({
+        id: freshId(links, `shared_watch_${i + 1}`),
+        kind: 'advise' as const,
+        sourceNodeId: nodeId,
+        targetNodeId: worker.nodeId,
+      })),
+    ],
+  };
+}
+
 /** Materializes one scope into its execution copy. Its source always contains the original nodes. */
 export function materializeSharedOutrider(
   expanded: CorralDefinition,
@@ -98,12 +155,14 @@ export function materializeSharedOutrider(
   resolve: ResolveTeam | undefined,
   limits: RunLimits,
 ): { definition: CorralDefinition; responderId?: string } {
-  const { sharedOutrider, ...definition } = expanded;
+  const { sharedOutrider, ...authored } = expanded;
   if (!sharedOutrider) return { definition: expanded };
+  const roster = sharedOutriderTargets(source, resolve, undefined, limits);
+  const definition = withSharedObservation(authored, sharedOutrider, roster);
   const selected =
     sharedOutrider.targets.kind === 'selected' ? new Set(sharedOutrider.targets.nodeIds) : null;
   const targets = new Set(
-    sharedOutriderTargets(source, resolve, undefined, limits)
+    roster
       .filter((row) => !row.unavailable && (!selected || selected.has(row.nodeId)))
       .map((row) => row.nodeId),
   );

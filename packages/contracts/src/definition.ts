@@ -131,16 +131,19 @@ export type AdvisorReview = z.infer<typeof AdvisorReview>;
 /** An absent `review` (docs/specs/features/advisor.md). */
 export const DEFAULT_ADVISOR_REVIEW: AdvisorReview = { interval: 3, maxRequestsPerReview: 8 };
 
+const OutriderTargets = z.discriminatedUnion('kind', [
+  z.strictObject({ kind: z.literal('all') }),
+  z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),
+]);
+
 /** A team's on-demand consultant. Targets are the intent, including future workers in all mode. */
 export const SharedOutrider = z.strictObject({
+  observation: z.strictObject({ targets: OutriderTargets, review: AdvisorReview }).optional(),
   modelProfile: AgentRole.shape.modelProfile,
   principles: AgentRole.shape.prompt,
   /** Enables advisory review of a version explicitly selected by the asker. */
   artifactReview: z.literal(true).optional(),
-  targets: z.discriminatedUnion('kind', [
-    z.strictObject({ kind: z.literal('all') }),
-    z.strictObject({ kind: z.literal('selected'), nodeIds: z.array(Identifier) }),
-  ]),
+  targets: OutriderTargets,
 });
 export type SharedOutrider = z.infer<typeof SharedOutrider>;
 

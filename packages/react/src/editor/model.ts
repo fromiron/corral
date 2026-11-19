@@ -14,6 +14,7 @@ import {
   type LoopNode,
   type ObserverAgentNode,
   type OutputContract,
+  type SharedOutrider,
   type TargetPort,
 } from '@corral/contracts';
 import {
@@ -666,12 +667,15 @@ export function removeNode(
   const usedRoles = new Set(nodes.flatMap((n) => (n.type === 'agent' ? [n.roleId] : [])));
   const { planOwnerRoleId, ...remainingDefinition } = definition;
   const shared = definition.sharedOutrider;
-  if (shared?.targets.kind === 'selected') {
+  if (
+    shared &&
+    (shared.targets.kind === 'selected' || shared.observation?.targets.kind === 'selected')
+  ) {
     const removedRef = removed.type === 'team' && removed.source.kind === 'reference';
     const referenceMembers = new Set(
       outriderTargets.filter((row) => row.referenceNodeId === nodeId).map((row) => row.nodeId),
     );
-    const nodeIds = shared.targets.nodeIds.filter((id) => {
+    const keepId = (id: string) => {
       if (id === nodeId) return false;
       if (!removedRef || !id.startsWith(`${nodeId}.`)) return true;
       if (referenceMembers.has(id)) return false;
@@ -684,10 +688,21 @@ export function removeNode(
             node.source.kind === 'reference' &&
             id.startsWith(`${node.id}.`)),
       );
-    });
-    if (nodeIds.length !== shared.targets.nodeIds.length) {
-      remainingDefinition.sharedOutrider = { ...shared, targets: { kind: 'selected', nodeIds } };
-    }
+    };
+    const keepTargets = (scope: SharedOutrider['targets']): SharedOutrider['targets'] =>
+      scope.kind === 'all' ? scope : { kind: 'selected', nodeIds: scope.nodeIds.filter(keepId) };
+    remainingDefinition.sharedOutrider = {
+      ...shared,
+      targets: keepTargets(shared.targets),
+      ...(shared.observation
+        ? {
+            observation: {
+              ...shared.observation,
+              targets: keepTargets(shared.observation.targets),
+            },
+          }
+        : {}),
+    };
   }
   return withDefinition(draft, {
     ...remainingDefinition,
