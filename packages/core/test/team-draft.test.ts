@@ -13,6 +13,7 @@ import {
   draftFromPlan,
   isReadOnlyTeam,
   PATTERN_TEMPLATES,
+  planAfterModel,
   planFromGoal,
   planRun,
   planWithPattern,
@@ -473,6 +474,25 @@ it.each([
 });
 
 describe('work observation in a goal draft', () => {
+  it('preserves explicit work observation even when the model omits it or its response needs local recovery', () => {
+    const goal = 'Let the writer ask for feedback when needed and watch work in progress.';
+    const local = planFromGoal(goal, wording);
+    if (!local) throw new Error('Expected a suggestion');
+    const { observeWork: _omitted, ...model } = local;
+    expect(planAfterModel(goal, model, wording)).toMatchObject({
+      plan: { observeWork: true, outrider: 'artifact_review' },
+      recovery: null,
+    });
+    expect(planAfterModel(goal, null, wording)).toMatchObject({
+      plan: { observeWork: true, outrider: 'artifact_review' },
+      recovery: 'unusable',
+    });
+    expect(planAfterModel('Watch work in progress.', null, wording)).toMatchObject({
+      plan: { observeWork: true },
+      recovery: 'unusable',
+    });
+  });
+
   it.each([
     ['진행 중 자동 관찰을 켜고 작성자가 원고 리뷰를 요청할 수 있게', 'artifact_review'],
     ['자동 관찰을 켜 줘.', undefined],

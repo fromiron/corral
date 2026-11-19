@@ -276,6 +276,14 @@ export function requestsWorkObservation(goal: string): boolean {
   });
 }
 
+/** Keep an independently requested observation setting when accepting a model's other choices. */
+export function withWorkObservation(plan: TeamPlan, enabled: boolean): TeamPlan {
+  if (Boolean(plan.observeWork) === enabled) return plan;
+  if (enabled) return { ...plan, observeWork: true };
+  const { observeWork: _unrequested, ...rest } = plan;
+  return rest;
+}
+
 /** The local suggestion: no model call. Null for an empty goal. */
 export function planFromGoal(goal: string, wording: TeamWording): TeamPlan | null {
   const brief = goal.trim();
@@ -342,15 +350,17 @@ export function planAfterModel(
   wording: TeamWording,
 ): { plan: TeamPlan | null; recovery: 'incompatible' | 'unusable' | null } {
   const local = planFromGoal(goal, wording);
+  if (!proposed && local?.observeWork) return { plan: local, recovery: 'unusable' };
+  const modelPlan = proposed && withWorkObservation(proposed, Boolean(local?.observeWork));
   if (
     local?.pattern !== 'single' ||
     (local.outrider !== 'consultation' && local.outrider !== 'artifact_review') ||
     hasExplicitTeamStructure(goal)
   )
-    return { plan: proposed, recovery: null };
+    return { plan: modelPlan, recovery: null };
 
   if (proposed?.pattern === 'single' && proposed.outrider === local.outrider)
-    return { plan: proposed, recovery: null };
+    return { plan: modelPlan, recovery: null };
   return { plan: local, recovery: proposed ? 'incompatible' : 'unusable' };
 }
 

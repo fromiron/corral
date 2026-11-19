@@ -6,7 +6,7 @@ import {
   type TeamPattern,
   TeamPlan,
 } from '@corral/contracts';
-import { requestsWorkObservation } from '@corral/core';
+import { requestsWorkObservation, withWorkObservation } from '@corral/core';
 
 // one model request turns a goal into a team plan. The answer is untrusted text: only
 // a JSON object that passes the TeamPlan contract is used, and the text itself is never sent
@@ -74,9 +74,7 @@ export function planFromAnswer(text: string, goal?: string): TeamPlan | null {
       : value,
   );
   if (!parsed.success) return null;
-  if (goal !== undefined && parsed.data.observeWork && !requestsWorkObservation(goal)) {
-    const { observeWork: _unrequested, ...plan } = parsed.data;
-    return plan;
-  }
-  return parsed.data;
+  return goal === undefined
+    ? parsed.data
+    : withWorkObservation(parsed.data, requestsWorkObservation(goal));
 }
