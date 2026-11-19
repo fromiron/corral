@@ -34,7 +34,6 @@ export interface StructureTreeProps {
   onSelect: (selection: TeamSelection) => void;
   collapsed: ReadonlySet<string>;
   onToggle: (boxId: string) => void;
-  canMove: (nodeId: string, parentId: string | null) => boolean;
   onMove: (nodeId: string, parentId: string | null) => void;
   onAdd: () => void;
   onTeamSettings: () => void;
@@ -56,7 +55,6 @@ export function StructureTree({
   onSelect,
   collapsed,
   onToggle,
-  canMove,
   onMove,
   onAdd,
   onTeamSettings,
@@ -93,7 +91,8 @@ export function StructureTree({
       setOver(null);
       if (!nodeId) return;
       event.preventDefault();
-      if (canMove(nodeId, parentId)) onMove(nodeId, parentId);
+      event.stopPropagation();
+      onMove(nodeId, parentId);
     },
   });
 

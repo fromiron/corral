@@ -113,10 +113,10 @@ function onScreen(element: HTMLElement) {
   const stage = document.querySelector('[data-graph-stage]') as HTMLElement;
   const [, x, y, k] =
     /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\((-?[\d.]+)\)/.exec(stage.style.transform) ?? [];
-  return {
-    x: Number(x) + Number.parseFloat(element.style.left) * Number(k),
-    y: Number(y) + Number.parseFloat(element.style.top) * Number(k),
-  };
+  const translated = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(element.style.transform);
+  const left = translated ? Number(translated[1]) : Number.parseFloat(element.style.left);
+  const top = translated ? Number(translated[2]) : Number.parseFloat(element.style.top);
+  return { x: Number(x) + left * Number(k), y: Number(y) + top * Number(k) };
 }
 
 const follows = (a: Element, b: Element) =>
@@ -167,7 +167,24 @@ describe('team editor: stacked', () => {
     expect(edges(draft)).not.toContain('agent_1:out>agent_2');
   });
 
-  it('moves a step into a Loop when its outline row is dropped on the Loop’s row', () => {
+  it('explains why a step cannot be dropped after an Output without changing history', () => {
+    const output = ok(placeStep(team(), 'output', { kind: 'after', nodeId: 'agent_2' }));
+    const { editor } = renderEditor(output.draft, true);
+    const data = transfer();
+    const agent = paletteStep('agent');
+    drag('dragStart', agent, data);
+    const at = onScreen(canvasNode(output.nodeId));
+    const point = { x: at.x + 8, y: at.y + 8 };
+    drag('dragOver', canvas(), data, point);
+    expect(screen.getByText(m.rejected.noNextStep)).toBeVisible();
+    drag('drop', canvas(), data, point);
+    drag('dragEnd', agent, data);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(editor.getState().canUndo).toBe(false);
+    expect(editor.getState().draft).toBe(output.draft);
+  });
+
+  it('moves a step into a Loop after confirming the boundary changes on an outline drop', async () => {
     const draft = team({ loop: true });
     const loopId = draft.definition.nodes.find((n) => n.type === 'loop')?.id as string;
     expect(setParent(draft, 'agent_2', loopId).ok).toBe(true);
@@ -181,6 +198,9 @@ describe('team editor: stacked', () => {
     drag('dragOver', target, data);
     drag('drop', target, data);
     drag('dragEnd', row, data);
+    const preview = screen.getByRole('dialog', { name: 'Preview connections' });
+    expect(editor.getState().draft).toBe(draft);
+    await userEvent.setup().click(within(preview).getByRole('button', { name: 'Apply' }));
     expect(editor.getState().draft.definition.nodes.find((n) => n.id === 'agent_2')?.parentId).toBe(
       loopId,
     );
@@ -228,6 +248,10 @@ describe('team editor: stacked', () => {
     await user.keyboard('{Enter}');
     await user.keyboard('{Control>}k{/Control}');
     await user.keyboard(`Move into ${loop?.label}`);
+    await user.keyboard('{Enter}');
+    const preview = await screen.findByRole('dialog', { name: 'Preview connections' });
+    const confirm = within(preview).getByRole('button', { name: 'Apply' });
+    await act(async () => confirm.focus());
     await user.keyboard('{Enter}');
     expect(state().nodes.find((n) => n.id === 'agent_3')?.parentId).toBe(loop?.id);
     // Delete the output.

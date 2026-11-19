@@ -615,6 +615,7 @@ export function setParent(draft: EditorDraft, id: string, parentId: string | nul
   const nodes = nodesOf(draft.definition);
   const node = nodes.get(id);
   if (!node) return { ok: false, reason: 'unknownNode' };
+  if ((node.parentId ?? null) === parentId) return { ok: true, draft };
   if (parentId !== null) {
     if (isAdvisor(node)) return { ok: false, reason: 'advisorOutsideBoxes' };
     const box = nodes.get(parentId);

@@ -43,7 +43,9 @@ export interface TeamSelection {
 
 export const STEP_DRAG_TYPE = 'application/x-corral-step';
 
-type Check = { ok: true } | { ok: false; reason: EditRejection };
+type Check =
+  | { ok: true; label?: string; affected?: string[] }
+  | { ok: false; reason: EditRejection };
 
 export interface ResultOffer {
   source: CorralNode;
@@ -62,6 +64,7 @@ export interface TeamGraphCanvasProps {
   /** The step being dragged from the palette, while it is. */
   dragging: StepKind | null;
   canPlace: (kind: StepKind, at: Placement) => Check;
+  highlightedEdges?: readonly string[] | undefined;
   onPlace: (kind: StepKind, at: Placement) => void;
   /** Asks which step to add at this place (the command menu). */
   onRequestAdd: (at: Placement) => void;
@@ -146,6 +149,7 @@ export function TeamGraphCanvas({
   onToggle,
   dragging,
   canPlace,
+  highlightedEdges,
   onPlace,
   onRequestAdd,
   canConnect,
@@ -309,7 +313,7 @@ export function TeamGraphCanvas({
     event.preventDefault();
     const at = placementAt(toStage(event.clientX, event.clientY));
     setDrop(null);
-    if (canPlace(kind, at).ok) onPlace(kind, at);
+    onPlace(kind, at);
   };
 
   // ── connecting by dragging a port ────────────────────────────────────────
@@ -554,8 +558,9 @@ export function TeamGraphCanvas({
     return '';
   };
   const outPorts = routed.ports.filter((p) => p.side === 'out');
+  const highlighted = new Set(drop?.check.ok ? drop.check.affected : highlightedEdges);
   const edgeStroke = (id: string) =>
-    selection.edge === id
+    selection.edge === id || highlighted.has(id)
       ? 'var(--emphasis)'
       : problems.get(id)?.severity === 'error'
         ? 'var(--destructive)'
@@ -743,7 +748,9 @@ export function TeamGraphCanvas({
                     d={edge.path}
                     fill="none"
                     stroke={stroke}
-                    strokeWidth={selection.edge === edge.id ? 2 : 1.5}
+                    strokeWidth={
+                      highlighted.has(edge.id) ? 3 : selection.edge === edge.id ? 2 : 1.5
+                    }
                     // Told apart by shape, not colour: control solid, calls dashed, an
                     // advisor's watch dash-dot.
                     strokeDasharray={DASHES[edge.kind]}
@@ -1081,6 +1088,11 @@ export function TeamGraphCanvas({
             {t('addOtherStep')}
           </Button>
         </div>
+      ) : null}
+      {drop?.check.ok && drop.check.label ? (
+        <p className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-md border border-border bg-card px-2 py-1 text-sm shadow-sm">
+          {drop.check.label}
+        </p>
       ) : null}
       {refusal && viewport ? (
         <p

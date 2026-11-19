@@ -150,6 +150,174 @@ describe('team editor', () => {
     expect(switches()[1]).not.toBeChecked();
   });
 
+  it('previews placement on a fan-out, cancels without history, then applies those exact transition edges once', async () => {
+    const base = chain(3);
+    const branch = base.definition.controlEdges[1];
+    if (!branch) throw new Error('fixture needs two connections');
+    const draft = {
+      ...base,
+      definition: {
+        ...base.definition,
+        controlEdges: [
+          ...base.definition.controlEdges.slice(0, 1),
+          { ...branch, source: 'agent_1' },
+        ],
+      },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode('agent_1'));
+    const palette = screen.getByRole('toolbar', { name: 'Steps' });
+    expect(within(palette).getByText('Add after Agent 1')).toBeVisible();
+    const add = within(palette).getByRole('button', { name: 'Add Agent' });
+    await user.click(add);
+    const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() => expect(within(dialog).getByText(/Agent 4.*Agent 3/)).toBeVisible());
+    await waitFor(() => expect(within(dialog).getByText(/Agent 4.*Agent 2/)).toBeVisible());
+    expect(editor.getState().draft).toBe(draft);
+    await user.keyboard('{Escape}');
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(add);
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Preview connections' })).getByRole('button', {
+        name: 'Apply',
+      }),
+    );
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(draft, 'agent', { kind: 'after', nodeId: 'agent_1' })).draft,
+    );
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(draft);
+  });
+
+  it('selects the intended incoming connection or explicitly adds an unconnected step at an Output', async () => {
+    const connected = ok(placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' })).draft;
+    const draft = {
+      ...connected,
+      definition: {
+        ...connected.definition,
+        controlEdges: [
+          ...connected.definition.controlEdges,
+          {
+            id: 'extra',
+            source: 'agent_1',
+            sourcePort: 'error' as const,
+            target: 'output_1',
+            targetPort: 'in' as const,
+          },
+        ],
+      },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const add = within(screen.getByRole('toolbar', { name: 'Steps' })).getByRole('button', {
+      name: 'Add Agent',
+    });
+    await user.click(canvasNode('output_1'));
+    await user.click(add);
+    let dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: /Agent 1.*[Ee]rror.*Output/ }));
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(draft, 'agent', { kind: 'edge', edgeId: 'extra' })).draft,
+    );
+    act(() => editor.getState().undo());
+    await user.click(canvasNode('output_1'));
+    await user.click(add);
+    dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    await user.click(within(dialog).getByRole('button', { name: 'Add without connecting' }));
+    expect(editor.getState().draft).toEqual(ok(placeStep(draft, 'agent', { kind: 'empty' })).draft);
+  });
+
+  it('previews placement that would disconnect a successor and a Loop boundary move from the keyboard', async () => {
+    const draft = ok(placeStep(chain(2), 'loop', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const selected = draft.definition.controlEdges[0];
+    if (!selected) throw new Error('fixture needs a connection');
+    const edge = document.querySelector(`[data-edge="${selected.id}"] path`);
+    if (!edge) throw new Error('missing selectable edge');
+    await act(async () => fireEvent.click(edge));
+    const palette = screen.getByRole('toolbar', { name: 'Steps' });
+    expect(within(palette).getByText('Add between Agent 1 and Agent 2')).toBeVisible();
+    await user.click(within(palette).getByRole('button', { name: 'Add Output' }));
+    let dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() =>
+      expect(within(dialog).getByText('Agent 1 · out → Agent 2 · in')).toBeVisible(),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.click(canvasNode('agent_2'));
+    await user.keyboard('{Control>}k{/Control}');
+    await user.click(screen.getByRole('option', { name: /Move into Loop/ }));
+    dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() =>
+      expect(within(dialog).getByText('Agent 1 · out → Agent 2 · in')).toBeVisible(),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Preview wrapping in a new Loop' }),
+    );
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft).toEqual(ok(wrapIn(draft, ['agent_2'], 'loop')).draft);
+  });
+
+  it('offers only a separate step for an Output with no incoming connection', async () => {
+    const output = ok(placeStep(emptyDraft(), 'output', { kind: 'empty' }));
+    const editor = renderEditor(output.draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(output.nodeId));
+    await user.click(screen.getByRole('button', { name: 'Find a step' }));
+    await user.click(await screen.findByRole('option', { name: /Add Agent/ }));
+    const dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    expect(within(dialog).queryByText('Insert before Output')).toBeNull();
+    await waitFor(() =>
+      expect(within(dialog).getByText('This Output has no incoming connection.')).toBeVisible(),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(output.draft);
+    expect(editor.getState().canUndo).toBe(false);
+  });
+
+  it('previews only the affected decision port and leaves the other branch intact', async () => {
+    const rule = ok(placeStep(chain(3), 'rule', { kind: 'empty' }));
+    const edges = [
+      {
+        id: 'first',
+        source: rule.nodeId,
+        sourcePort: 'yes',
+        target: 'agent_1',
+        targetPort: 'in' as const,
+      },
+      {
+        id: 'second',
+        source: rule.nodeId,
+        sourcePort: 'yes',
+        target: 'agent_2',
+        targetPort: 'in' as const,
+      },
+      {
+        id: 'kept',
+        source: rule.nodeId,
+        sourcePort: 'no',
+        target: 'agent_3',
+        targetPort: 'in' as const,
+      },
+    ];
+    const draft = { ...rule.draft, definition: { ...rule.draft.definition, controlEdges: edges } };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(rule.nodeId));
+    await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    expect(within(dialog).queryByText(/Agent 3/)).toBeNull();
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(5);
+    await user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft.definition.controlEdges).toContain(edges[2]);
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(draft, 'agent', { kind: 'after', nodeId: rule.nodeId })).draft,
+    );
+  });
+
   it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
     const draft = chain(2);
     const editor = renderEditor(draft);

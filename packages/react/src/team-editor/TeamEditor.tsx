@@ -82,6 +82,8 @@ import type {
   ProfileOption,
   RoleSettings,
 } from './NodeSettings.tsx';
+import { PlacementDialog } from './PlacementDialog.tsx';
+import { type PlacementPrompt, placementDiff } from './placement-preview.ts';
 import { RunStatsFigures } from './RunStatsFigures.tsx';
 import { statFigures } from './runStats.ts';
 import { StructureTree } from './StructureTree.tsx';
@@ -222,6 +224,9 @@ export function TeamEditor({
     resolveTeam,
     readHarnessAsk,
   );
+  const [prompt, setPrompt] = useState<PlacementPrompt | null>(null);
+  const [placementError, setPlacementError] = useState('');
+  const [paletteKind, setPaletteKind] = useState<StepKind | null>(null);
   const [dragging, setDragging] = useState<StepKind | null>(null);
   // The command menu, or the roles it copies from.
   const [menu, setMenu] = useState<{ open: boolean; at: Placement | null; roles: boolean }>({
@@ -238,6 +243,7 @@ export function TeamEditor({
   }, [dropped, draft]);
 
   const select = useCallback((next: TeamSelection) => {
+    setPlacementError('');
     setSelection(next);
     setDropped(null);
     setInserted(null);
@@ -259,7 +265,11 @@ export function TeamEditor({
     });
   }, []);
   const apply = (result: EditResult) => {
-    if (!result.ok) return;
+    if (!result.ok) {
+      setPlacementError(t(`rejected.${result.reason}`));
+      return;
+    }
+    setPlacementError('');
     const before = editor.getState().draft;
     editor.getState().applyDraft(result.draft);
     if (!result.nodeId) return;
@@ -308,29 +318,93 @@ export function TeamEditor({
       return { kind: 'after', nodeId: only.id };
     return { kind: 'empty' };
   };
-  const placeName = (at: Placement, kind?: StepKind) => {
-    if (kind === 'observer')
-      return at.kind === 'after' && isWorkAgent(nodes.get(at.nodeId))
-        ? t('addWatching', { name: nodes.get(at.nodeId)?.label ?? at.nodeId })
-        : undefined;
+  const selectedOutput = (kind: StepKind, explicit?: Placement) => {
+    if (kind === 'observer' || explicit || selection.nodes.length !== 1) return undefined;
+    const selected = nodes.get(selection.nodes[0] as string);
+    return selected?.type === 'output' ? selected : undefined;
+  };
+  const placeName = (at: Placement, kind?: StepKind): string => {
+    if (kind === 'observer' && at.kind === 'after' && isWorkAgent(nodes.get(at.nodeId)))
+      return t('addWatching', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
+    if (kind === 'observer') return t('placement.standalone');
     switch (at.kind) {
       case 'after':
-        return t('addAfter', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
+        return t('placement.after', { name: nodes.get(at.nodeId)?.label ?? at.nodeId });
       case 'into':
-        return t('addInto', { name: nodes.get(at.boxId)?.label ?? at.boxId });
-      case 'edge':
-        return t('addOnEdge');
+        return t('placement.inside', { name: nodes.get(at.boxId)?.label ?? at.boxId });
+      case 'edge': {
+        const edge = definition.controlEdges.find((e) => e.id === at.edgeId);
+        return edge
+          ? t('placement.between', {
+              source: nodes.get(edge.source)?.label ?? edge.source,
+              target: nodes.get(edge.target)?.label ?? edge.target,
+            })
+          : t('rejected.unknownNode');
+      }
       case 'empty':
-        return undefined;
+        return t('placement.standalone');
     }
   };
-  const canPlace = useCallback(
-    (kind: StepKind, at: Placement) => {
-      const result = placeStep(editor.getState().draft, kind, at);
-      return result.ok ? ({ ok: true } as const) : result;
-    },
-    [editor],
-  );
+  const requestStep = (kind: StepKind, where?: Placement, reference?: TeamReference) => {
+    const base = editor.getState().draft;
+    const output = selectedOutput(kind, where);
+    setPlacementError('');
+    if (output) {
+      setPrompt({
+        kind: 'output',
+        base,
+        outputId: output.id,
+        step: kind,
+        ...(reference ? { reference } : {}),
+      });
+      return;
+    }
+    const location = where ?? placement(kind);
+    const result = placeStep(base, kind, location, reference ? { reference } : {});
+    if (result.ok) {
+      const diff = placementDiff(base, result);
+      if (diff.removed.length > 1 || diff.disconnects) {
+        setPrompt({ kind: 'preview', base, result, diff, location: placeName(location, kind) });
+        return;
+      }
+    }
+    setPrompt(null);
+    apply(result);
+  };
+  const requestMove = (nodeId: string, parentId: string | null) => {
+    const base = editor.getState().draft;
+    const result = setParent(base, nodeId, parentId);
+    if (result.ok && result.draft !== base) {
+      const diff = placementDiff(base, result, true);
+      if (diff.boundary.length) {
+        const parent = parentId ? nodes.get(parentId) : undefined;
+        const from = nodes.get(nodeId)?.parentId;
+        const loop = parent?.type === 'loop' || (!!from && nodes.get(from)?.type === 'loop');
+        const wrap = loop ? wrapIn(base, [nodeId], 'loop') : null;
+        const location = parent ? t('moveInto', { box: parent.label }) : t('moveOut');
+        setPrompt({ kind: 'preview', base, result, diff, location, ...(wrap?.ok ? { wrap } : {}) });
+        return;
+      }
+    }
+    apply(result);
+  };
+  const currentPrompt = () => {
+    if (prompt?.base === editor.getState().draft) return true;
+    setPrompt(null);
+    setPlacementError(t('placement.changed'));
+    return false;
+  };
+  const canPlace = (kind: StepKind, where: Placement) => {
+    const base = editor.getState().draft;
+    const result = placeStep(base, kind, where);
+    if (!result.ok) return result;
+    const diff = placementDiff(base, result);
+    return {
+      ok: true as const,
+      label: placeName(where, kind),
+      affected: diff.removed.map((e) => e.id),
+    };
+  };
   const canConnect = useCallback(
     (request: PortRequest) => checkPorts(editor.getState().draft, request),
     [editor],
@@ -361,21 +435,26 @@ export function TeamEditor({
   // ── command menu ──────────────────────────────────────────────────────────
   const at = menu.at ?? placement();
   const commands: CommandMenuItemData[] = [];
+  const placementLabels = new Map<StepKind, string>();
   for (const kind of ADDABLE) {
     const where = kind === 'observer' ? (menu.at ?? placement(kind)) : at;
     const result = placeStep(draft, kind, where);
     const Icon = KIND_ICON[kind];
+    const description = result.ok
+      ? selectedOutput(kind, menu.at ?? undefined)
+        ? t('placement.chooseOutput')
+        : placeName(where, kind)
+      : t(`rejected.${result.reason}`);
+    placementLabels.set(kind, description);
     commands.push({
       value: `add:${kind}`,
       label: t('addKind', { kind: t(`kinds.${kind}`) }),
-      description: result.ok
-        ? (placeName(where, kind) ?? t(`kindDescriptions.${kind}`))
-        : t(`rejected.${result.reason}`),
+      description,
       icon: Icon,
       group: t('groups.add'),
       disabled: !result.ok,
       keywords: [kind, t(`kinds.${kind}`)],
-      onSelect: () => apply(result),
+      onSelect: () => requestStep(kind, menu.at ?? undefined),
     });
   }
   for (const pattern of PATTERNS) {
@@ -421,7 +500,7 @@ export function TeamEditor({
       group: t('savedTeams'),
       disabled: !result.ok,
       keywords: [team.name],
-      onSelect: () => apply(result),
+      onSelect: () => requestStep('team', menu.at ?? undefined, team),
     });
   }
   if (selection.nodes.length) {
@@ -444,21 +523,23 @@ export function TeamEditor({
         label: t('moveOut'),
         icon: Boxes,
         group: t('groups.structure'),
-        onSelect: () => apply(setParent(draft, selection.nodes[0] as string, null)),
+        onSelect: () => requestMove(selection.nodes[0] as string, null),
       });
     if (selection.nodes.length === 1) {
       const nodeId = selection.nodes[0] as string;
       for (const box of definition.nodes) {
         if (!isBox(box) || box.id === nodes.get(nodeId)?.parentId) continue;
         const result = setParent(draft, nodeId, box.id);
-        if (!result.ok) continue;
+
         commands.push({
           value: `move:${box.id}`,
           label: t('moveInto', { box: box.label }),
           icon: Boxes,
           group: t('groups.structure'),
           keywords: [box.label],
-          onSelect: () => apply(result),
+          disabled: !result.ok,
+          ...(result.ok ? {} : { description: t(`rejected.${result.reason}`) }),
+          onSelect: () => requestMove(nodeId, box.id),
         });
       }
     }
@@ -540,7 +621,7 @@ export function TeamEditor({
   // ⌘K belongs to the editor while focus is inside it; elsewhere it is the app's palette.
   const onKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
     const mod = event.metaKey || event.ctrlKey;
-    if (!mod || event.nativeEvent.isComposing) return;
+    if (!mod || event.nativeEvent.isComposing || prompt) return;
     const key = event.key.toLowerCase();
     if (key === 'k') {
       event.preventDefault();
@@ -680,8 +761,7 @@ export function TeamEditor({
         }}
         collapsed={collapsed}
         onToggle={toggle}
-        canMove={(nodeId, parentId) => setParent(draft, nodeId, parentId).ok}
-        onMove={(nodeId, parentId) => apply(setParent(draft, nodeId, parentId))}
+        onMove={requestMove}
         onAdd={() => openMenu(null)}
         onTeamSettings={() => {
           if (view !== 'team') reveal();
@@ -704,18 +784,17 @@ export function TeamEditor({
         onCommands={() => openMenu(null)}
         view={view}
       />
-      {/* Beside, the palette and the settings float over the canvas; stacked, this box gives
-          way and its parts are rows of the editor's column. */}
-      <div className={stacked ? 'contents' : 'relative min-h-0'}>
+      <div
+        className={stacked ? 'contents' : 'relative grid min-h-0 grid-rows-[auto_minmax(0,1fr)]'}
+      >
         <div
           role="toolbar"
           aria-label={t('palette')}
-          className={
-            stacked
-              ? 'flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-3 py-1.5'
-              : 'absolute top-3 left-3 z-10 flex gap-0.5 rounded-xl border border-border bg-card p-1 shadow-sm'
-          }
+          className="flex min-w-0 shrink-0 flex-wrap items-center gap-0.5 border-b border-border bg-card px-3 py-1.5"
         >
+          <Button size="compact" variant="secondary" onClick={() => openMenu(null)}>
+            {t('placement.search')}
+          </Button>
           {ADDABLE.map((kind) => {
             const Icon = KIND_ICON[kind];
             return (
@@ -725,19 +804,34 @@ export function TeamEditor({
                 size="icon-compact"
                 draggable
                 aria-label={t('addKind', { kind: t(`kinds.${kind}`) })}
-                title={`${t(`kinds.${kind}`)} — ${t(`kindDescriptions.${kind}`)}`}
+                title={`${t(`kinds.${kind}`)} · ${t(`kindDescriptions.${kind}`)} · ${placementLabels.get(kind)}`}
+                onFocus={() => setPaletteKind(kind)}
+                onBlur={() => setPaletteKind(null)}
+                onPointerEnter={() => setPaletteKind(kind)}
+                onPointerLeave={() => setPaletteKind(null)}
                 onDragStart={(event) => {
                   event.dataTransfer.setData(STEP_DRAG_TYPE, kind);
                   event.dataTransfer.effectAllowed = 'copy';
                   setDragging(kind);
                 }}
                 onDragEnd={() => setDragging(null)}
-                onClick={() => apply(placeStep(draft, kind, placement(kind)))}
+                onClick={() => requestStep(kind)}
               >
                 <Icon />
               </Button>
             );
           })}
+          <span className="flex min-w-0 flex-wrap gap-x-2 px-1 text-xs text-muted-foreground">
+            {paletteKind ? (
+              <span className="font-medium text-foreground">{t(`kinds.${paletteKind}`)}</span>
+            ) : null}
+            <span>{placementLabels.get(paletteKind ?? 'agent')}</span>
+          </span>
+          {placementError ? (
+            <span role="status" className="px-1 text-sm text-destructive">
+              {placementError}
+            </span>
+          ) : null}
         </div>
         {/* Stacked, the canvas takes 60% of the editor's height and at least 400px, three rows
             of cards at full size, but always 6rem less than the editor: it keeps touch for
@@ -747,7 +841,7 @@ export function TeamEditor({
           className={
             stacked
               ? 'relative isolate h-[60%] min-h-[min(400px,calc(100%_-_6rem))] shrink-0'
-              : 'relative isolate h-full'
+              : 'relative isolate col-start-1 row-start-2 min-h-0'
           }
         >
           <TeamGraphCanvas
@@ -759,7 +853,12 @@ export function TeamEditor({
             onToggle={toggle}
             dragging={dragging}
             canPlace={canPlace}
-            onPlace={(kind, where) => apply(placeStep(editor.getState().draft, kind, where))}
+            onPlace={requestStep}
+            highlightedEdges={
+              prompt?.kind === 'preview'
+                ? [...prompt.diff.removed, ...prompt.diff.boundary].map((e) => e.id)
+                : undefined
+            }
             onRequestAdd={openMenu}
             canConnect={canConnect}
             onConnect={(request) => apply(connectPorts(editor.getState().draft, request))}
@@ -776,7 +875,9 @@ export function TeamEditor({
               key="sheet"
               ref={settingsBox}
               className={
-                stacked ? undefined : 'pointer-events-none absolute top-3 right-3 bottom-3'
+                stacked
+                  ? undefined
+                  : 'pointer-events-none relative col-start-1 row-start-2 m-3 min-h-0 justify-self-end'
               }
               // Beside, it slides in from the side it floats on; stacked, it rises into its row.
               initial={
@@ -835,6 +936,38 @@ export function TeamEditor({
           {notice}
         </p>
       </div>
+      {prompt ? (
+        <PlacementDialog
+          prompt={prompt}
+          returnFocus={() =>
+            scroller.current?.querySelector<HTMLElement>(
+              '[data-team-canvas] [data-node][aria-pressed="true"]',
+            ) ?? true
+          }
+          cancel={() => setPrompt(null)}
+          choose={(where) => {
+            if (prompt.kind === 'output' && currentPrompt())
+              requestStep(prompt.step, where, prompt.reference);
+          }}
+          confirm={() => {
+            if (prompt.kind === 'preview' && currentPrompt()) {
+              setPrompt(null);
+              apply(prompt.result);
+            }
+          }}
+          previewWrap={() => {
+            if (prompt.kind === 'preview' && prompt.wrap && currentPrompt())
+              setPrompt({
+                kind: 'preview',
+                base: prompt.base,
+                result: prompt.wrap,
+                diff: placementDiff(prompt.base, prompt.wrap),
+                location: prompt.location,
+                wrapping: true,
+              });
+          }}
+        />
+      ) : null}
       <CommandMenuDialog
         open={menu.open}
         onOpenChange={(open) => setMenu((current) => ({ ...current, open }))}
