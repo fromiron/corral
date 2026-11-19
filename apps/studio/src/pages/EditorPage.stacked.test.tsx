@@ -286,13 +286,13 @@ describe('team editor hosts: stacked below 960px', () => {
       .mockResolvedValue({ snapshot: { allowedTools: ['ask'] } });
     await mount('route', 390, { binding, preview });
     await click(named(outline(), 'Add shared Outrider'));
-    expect(sheet().textContent).toContain('Work style question permission is unconfirmed.');
+    expect(sheet().textContent).toContain('Harness question permission is unconfirmed.');
     expect(preview).toHaveBeenCalledExactlyOnceWith(binding, 'project_1');
     await act(async () => finishPreview({ snapshot: { allowedTools: ['read_file'] } }));
-    expect(sheet().textContent).toContain('This work style does not allow questions.');
+    expect(sheet().textContent).toContain('This Harness does not allow questions.');
     await click(named(sheet(), 'Apply'));
     await click(named(outline(), 'Agent 1'));
-    expect(sheet().textContent).toContain('This work style does not allow questions.');
+    expect(sheet().textContent).toContain('This Harness does not allow questions.');
     expect(sheet().textContent).not.toContain('Can ask the shared Outrider');
     await act(async () => {
       window.dispatchEvent(new Event('corral:harness-changed'));
