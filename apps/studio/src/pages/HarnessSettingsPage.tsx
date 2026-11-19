@@ -20,7 +20,7 @@ import {
   Textarea,
 } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../services.tsx';
 import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
@@ -191,6 +191,13 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
   const [notice, setNotice] = useState('');
   const confirmation = useManagementConfirmation();
   const [refreshFailed, setRefreshFailed] = useState(false);
+  const carriedUsage = useRef(navigation.item);
+  const openUsage = useEffectEvent((profile: HarnessProfileRevision, archived: boolean) => {
+    // Never replace a choice or a draft the person made while the request was pending.
+    if (dirty || selected) return;
+    setArchived(archived);
+    void choose(profile);
+  });
   useEffect(() => {
     if (!api) return;
     let active = true;
@@ -207,6 +214,25 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
           setEntries(entries);
           setProfiles(p);
           setToolsState({ projectId, value: tools });
+          const usage = carriedUsage.current;
+          if (usage) {
+            const current = p.find((profile) => usage.startsWith(`${profile.profileId}:`));
+            const revision = current && Number(usage.slice(current.profileId.length + 1));
+            if (current && revision && Number.isSafeInteger(revision) && revision > 0) {
+              const exact =
+                revision === current.revision
+                  ? Promise.resolve(current)
+                  : api.profile({ profileId: current.profileId, revision });
+              void exact.then(
+                (profile) => {
+                  if (!active) return;
+                  carriedUsage.current = undefined;
+                  openUsage(profile, Boolean(current.archivedAt));
+                },
+                () => active && setError(t('loadFailed')),
+              );
+            }
+          }
         }
       },
       () => active && setError(t('loadFailed')),
@@ -425,10 +451,14 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                       <li key={p.profileId}>
                         <Button
                           variant="ghost"
-                          aria-pressed={selected?.profileId === p.profileId}
+                          aria-pressed={
+                            selected?.profileId === p.profileId && selected.revision === p.revision
+                          }
                           className={cn(
                             'w-full justify-start',
-                            selected?.profileId === p.profileId && CHOSEN_BUTTON_ROW,
+                            selected?.profileId === p.profileId &&
+                              selected.revision === p.revision &&
+                              CHOSEN_BUTTON_ROW,
                           )}
                           onClick={() => choose(p)}
                         >
@@ -441,6 +471,11 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
               </div>
               {selected ? (
                 <div className="flex flex-col gap-3">
+                  {meta && selected.revision !== meta.revision ? (
+                    <p className="text-body">
+                      {selected.name} · r{selected.revision}
+                    </p>
+                  ) : null}
                   <div className="flex flex-wrap gap-2">
                     <Button
                       variant="tertiary"

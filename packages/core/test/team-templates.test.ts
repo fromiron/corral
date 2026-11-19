@@ -1,6 +1,7 @@
 import {
   type CorralDefinition,
   CorralDefinition as Definition,
+  isWorkAgent,
   type RunEvent,
 } from '@corral/contracts';
 import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
@@ -15,6 +16,7 @@ import {
   planRun,
   ROLE_PRESET_IDS,
   ROLE_PRESETS,
+  ROLE_RULES,
   type RolePresetId,
   type RunProjection,
   roleFromPreset,
@@ -111,18 +113,15 @@ describe('role presets', () => {
     });
   });
 
-  it('become a role with the name and duty in the screen language', () => {
-    const role = roleFromPreset('security_review', 'security', {
-      name: '보안 검토',
-      duty: '변경의 보안 문제를 찾습니다.',
-    });
+  it('takes the screen-language name without needing a duty', () => {
+    const role = roleFromPreset('security_review', 'security', '보안 검토');
     expect(role).toMatchObject({
       id: 'security',
       name: '보안 검토',
       modelProfile: 'model-b',
       outputContract: 'review',
     });
-    expect(role.prompt.startsWith('변경의 보안 문제를 찾습니다.')).toBe(true);
+    expect(role.prompt).toContain(ROLE_RULES);
     // The table is data: a role made from it never shares its tool lists.
     role.allowedWorkTools.push('write_file');
     expect(ROLE_PRESETS.security_review.allowedWorkTools).not.toContain('write_file');
@@ -165,6 +164,23 @@ describe('team templates', () => {
     expect(isReadOnlyTeam(definition)).toBe(roles.length === 0);
   });
 
+  it.each(TEAM_TEMPLATE_IDS)('%s keeps each template duty on its seat', (id) => {
+    const definition = build(id);
+    const presets: Record<string, RolePresetId> = TEAM_TEMPLATE_ROLES[id];
+    const seats = definition.nodes.filter(isWorkAgent);
+    expect(seats.map((node) => [node.roleId, node.stepInstruction])).toEqual(
+      Object.keys(presets).map((slot) => [slot, `Do the ${slot} part.`]),
+    );
+    const readNote =
+      ' When the session has a working copy, read the files with the file tools before relying on them.';
+    const changeNote =
+      ' Make the changes with the file tools, and say what you changed and how you checked it.';
+    for (const role of definition.roles) {
+      const notes = readNote + (presets[role.id] === 'implement' ? changeNote : '');
+      expect(role.prompt).toBe(ROLE_RULES + notes);
+    }
+  });
+
   it.each(TEAM_TEMPLATE_IDS)('%s takes each role from its preset', (id) => {
     const definition = build(id);
     const presets = TEAM_TEMPLATE_ROLES[id] as Record<string, RolePresetId>;
@@ -200,9 +216,9 @@ describe('team templates', () => {
       },
     });
     expect(definition.roles.map((role) => role.name)).toEqual(['원인 조사', '수정', '검토']);
-    expect(definition.roles.find((role) => role.id === 'fix')?.prompt).toMatch(
-      /^원인을 고칩니다\./,
-    );
+    expect(definition.nodes.find((node) => node.id === 'fix')).toMatchObject({
+      stepInstruction: '원인을 고칩니다.',
+    });
     const labelsOf = Object.fromEntries(definition.nodes.map((node) => [node.type, node.label]));
     expect(labelsOf).toMatchObject({ loop: '검토 루프', decision: '검토 판정', output: '결과' });
     expect(

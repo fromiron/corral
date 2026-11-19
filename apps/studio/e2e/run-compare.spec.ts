@@ -1,5 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { editorSettings, openLibrary, openProject, startTestRun } from './workbench.ts';
+import {
+  editorSettings,
+  openFlowGraph,
+  openProject,
+  saveTemplateCopy,
+  startTestRun,
+} from './workbench.ts';
 
 // Roadmap 16: two runs of a Corral side by side, picked from the workspace's run list.
 
@@ -7,10 +13,8 @@ test('compares runs with readable narrow figures and accessible identities', asy
   await page.goto('/compare?delay=50');
   await page.getByRole('link', { name: 'Choose two runs', exact: true }).click();
   await expect(page.getByRole('tab', { name: /^Runs/ })).toHaveAttribute('aria-selected', 'true');
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await saveTemplateCopy(page);
+  await openFlowGraph(page);
   for (const brief of ['Compare two pens.', 'Compare three pens.']) {
     const settings = editorSettings(page);
     if (!(await settings.getByRole('heading', { name: 'Team settings' }).isVisible()))

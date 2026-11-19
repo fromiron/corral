@@ -113,10 +113,10 @@ function onScreen(element: HTMLElement) {
   const stage = document.querySelector('[data-graph-stage]') as HTMLElement;
   const [, x, y, k] =
     /translate\((-?[\d.]+)px, (-?[\d.]+)px\) scale\((-?[\d.]+)\)/.exec(stage.style.transform) ?? [];
-  return {
-    x: Number(x) + Number.parseFloat(element.style.left) * Number(k),
-    y: Number(y) + Number.parseFloat(element.style.top) * Number(k),
-  };
+  const translated = /translate\((-?[\d.]+)px, (-?[\d.]+)px\)/.exec(element.style.transform);
+  const left = translated ? Number(translated[1]) : Number.parseFloat(element.style.left);
+  const top = translated ? Number(translated[2]) : Number.parseFloat(element.style.top);
+  return { x: Number(x) + left * Number(k), y: Number(y) + top * Number(k) };
 }
 
 const follows = (a: Element, b: Element) =>
@@ -125,6 +125,17 @@ const follows = (a: Element, b: Element) =>
   !b.contains(a);
 
 describe('team editor: stacked', () => {
+  it('opens settings explicitly from a card and restores focus and selection to that card', async () => {
+    renderEditor(team(), true);
+    const user = userEvent.setup();
+    const card = canvasNode('agent_2');
+    await user.click(card);
+    await user.click(screen.getByRole('button', { name: 'Open B settings' }));
+    expect(within(sheet()).getByDisplayValue('B')).toHaveFocus();
+    await user.click(within(sheet()).getByRole('button', { name: m.close }));
+    expect(card).toHaveFocus();
+    expect(screen.getByRole('button', { name: 'Open B settings' })).toBeVisible();
+  });
   it('reads the outline, the palette, the canvas and the chosen step’s settings in that order', () => {
     renderEditor(team(), true);
     expect(layoutOf()).toBe('stacked');
@@ -142,6 +153,25 @@ describe('team editor: stacked', () => {
     const regions = [outline(), palette(), canvas(), sheet()];
     for (let i = 1; i < regions.length; i++)
       expect(follows(regions[i - 1] as Element, regions[i] as Element)).toBe(true);
+  });
+
+  it('drops the Agent tile as a default step without opening the picker or adding an Output', () => {
+    const before = emptyDraft('drag-agent', 'Drag agent');
+    const { editor } = renderEditor(before, true);
+    const agent = paletteStep('agent');
+    const data = transfer();
+    const point = { x: 320, y: 160 };
+    drag('dragStart', agent, data);
+    drag('dragOver', canvas(), data, point);
+    drag('drop', canvas(), data, point);
+    drag('dragEnd', agent, data);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(editor.getState().draft).toEqual(
+      ok(placeStep(before, 'agent', { kind: 'empty' })).draft,
+    );
+    expect(editor.getState().draft.definition.nodes.map((node) => node.type)).toEqual(['agent']);
+    editor.getState().undo();
+    expect(editor.getState().draft).toBe(before);
   });
 
   it('puts a palette step dropped on the connection between A and B between them', () => {
@@ -167,7 +197,24 @@ describe('team editor: stacked', () => {
     expect(edges(draft)).not.toContain('agent_1:out>agent_2');
   });
 
-  it('moves a step into a Loop when its outline row is dropped on the Loop’s row', () => {
+  it('explains why a step cannot be dropped after an Output without changing history', () => {
+    const output = ok(placeStep(team(), 'output', { kind: 'after', nodeId: 'agent_2' }));
+    const { editor } = renderEditor(output.draft, true);
+    const data = transfer();
+    const agent = paletteStep('agent');
+    drag('dragStart', agent, data);
+    const at = onScreen(canvasNode(output.nodeId));
+    const point = { x: at.x + 8, y: at.y + 8 };
+    drag('dragOver', canvas(), data, point);
+    expect(screen.getByText(m.rejected.noNextStep)).toBeVisible();
+    drag('drop', canvas(), data, point);
+    drag('dragEnd', agent, data);
+    expect(screen.queryByRole('dialog')).toBeNull();
+    expect(editor.getState().canUndo).toBe(false);
+    expect(editor.getState().draft).toBe(output.draft);
+  });
+
+  it('moves a step into a Loop after confirming the boundary changes on an outline drop', async () => {
     const draft = team({ loop: true });
     const loopId = draft.definition.nodes.find((n) => n.type === 'loop')?.id as string;
     expect(setParent(draft, 'agent_2', loopId).ok).toBe(true);
@@ -181,6 +228,9 @@ describe('team editor: stacked', () => {
     drag('dragOver', target, data);
     drag('drop', target, data);
     drag('dragEnd', row, data);
+    const preview = screen.getByRole('dialog', { name: 'Preview connections' });
+    expect(editor.getState().draft).toBe(draft);
+    await userEvent.setup().click(within(preview).getByRole('button', { name: 'Apply' }));
     expect(editor.getState().draft.definition.nodes.find((n) => n.id === 'agent_2')?.parentId).toBe(
       loopId,
     );
@@ -228,6 +278,10 @@ describe('team editor: stacked', () => {
     await user.keyboard('{Enter}');
     await user.keyboard('{Control>}k{/Control}');
     await user.keyboard(`Move into ${loop?.label}`);
+    await user.keyboard('{Enter}');
+    const preview = await screen.findByRole('dialog', { name: 'Preview connections' });
+    const confirm = within(preview).getByRole('button', { name: 'Apply' });
+    await act(async () => confirm.focus());
     await user.keyboard('{Enter}');
     expect(state().nodes.find((n) => n.id === 'agent_3')?.parentId).toBe(loop?.id);
     // Delete the output.
@@ -328,7 +382,7 @@ describe('team editor: the wheel over the canvas', () => {
 describe('team editor: settings opened from outside the canvas', () => {
   /** The editor's own scrolling, watched; jsdom does not scroll. */
   function watchScroll() {
-    const root = document.querySelector('[data-layout]') as HTMLElement;
+    const root = document.querySelector('[data-graph-scroll]') as HTMLElement;
     const scrollTo = vi.fn();
     root.scrollTo = scrollTo as unknown as typeof root.scrollTo;
     return scrollTo;

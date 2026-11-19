@@ -1,9 +1,12 @@
 import type { Page } from '@playwright/test';
 import {
+  addCustomAgent,
   chooseModel,
   expectTeamSaved,
   newTeam,
+  openFlowGraph,
   openLibraryTeams,
+  openSeatAdvanced,
   openTestRun,
   teamCanvas,
 } from '../workbench.ts';
@@ -16,6 +19,11 @@ async function choose(page: Page, label: string, option: string) {
   await page.getByRole('option', { name: option, exact: true }).click();
 }
 
+async function openImport(page: Page) {
+  await page.getByRole('button', { name: 'More actions', exact: true }).click();
+  await page.getByRole('menuitem', { name: 'Import Markdown agent', exact: true }).click();
+}
+
 test('reviewed Markdown agent import survives save/reload and is one undoable edit', async ({
   page,
   corral,
@@ -24,12 +32,12 @@ test('reviewed Markdown agent import survives save/reload and is one undoable ed
   await corral.open('/');
   await openLibraryTeams(page);
   await newTeam(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await openFlowGraph(page);
+  await addCustomAgent(page);
+  await openSeatAdvanced(page);
   await page.getByRole('switch', { name: /Can change files/ }).check();
-  // The agent is still selected, so the output is placed after it and connected.
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
   await expect(teamCanvas(page).locator('[data-edge]')).toHaveCount(1);
-  await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
+  await openImport(page);
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
   await dialog.getByLabel('Markdown source', { exact: true }).fill(`---
 name: explorer
@@ -81,17 +89,15 @@ Read the supplied code and report the evidence.`);
       parentQuestions: true,
     }),
   );
-  await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
+  await openImport(page);
   await page.keyboard.press('Escape');
   await expect(dialog).not.toBeVisible();
-  await expect(
-    page.getByRole('button', { name: 'Import Markdown agent', exact: true }),
-  ).toBeFocused();
+  await expect(page.getByRole('button', { name: 'More actions', exact: true })).toBeFocused();
   // Existing generic simulated agent follows the imported graph through Coordinator tools.
   // This verifies delegation/result orchestration, not a real model's decision quality.
   await openTestRun(page);
   await choose(page, 'Agents', 'Simulated (no model or extension calls)');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Start mock test', exact: true }).click();
   await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20000 });
   const run = corral.server.coordinator.listRuns()[0];
   expect(run).toBeDefined();
@@ -163,7 +169,7 @@ Read the supplied code and report the evidence.`);
     return call('submit_result', { artifactVersionIds: [written.artifactVersionId] });
   });
   await choose(page, 'Agents', 'Live models (uses your sign-in)');
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect.poll(() => corral.server.coordinator.listRuns().length, { timeout: 20000 }).toBe(2);
   const liveRun = corral.server.coordinator.listRuns().find((item) => item.runId !== run.runId);
   if (!liveRun) throw new Error('Live run was not created');
@@ -196,9 +202,11 @@ test('Markdown Edit imports a reviewed Hashline role with parent file permission
   await corral.open('/');
   await openLibraryTeams(page);
   await newTeam(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await openFlowGraph(page);
+  await addCustomAgent(page);
+  await openSeatAdvanced(page);
   await page.getByRole('switch', { name: /Can change files/ }).check();
-  await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
+  await openImport(page);
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
   await dialog.getByLabel('Markdown source', { exact: true }).fill(`---
 name: fixer
@@ -263,11 +271,13 @@ test('Bash import inherits a verified local parent work style without trusting s
   });
   await openLibraryTeams(page);
   await newTeam(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await openFlowGraph(page);
+  await addCustomAgent(page);
+  await openSeatAdvanced(page);
   await page.getByRole('switch', { name: /Run shell commands/ }).check();
   await page.getByRole('combobox', { name: 'Harnesses', exact: true }).click();
   await page.getByRole('option', { name: 'Local shell style · r1', exact: true }).click();
-  await page.getByRole('button', { name: 'Import Markdown agent', exact: true }).click();
+  await openImport(page);
   const dialog = page.getByRole('dialog', { name: 'Import a callable agent' });
   await dialog.getByLabel('Markdown source', { exact: true }).fill(`---
 name: test-runner

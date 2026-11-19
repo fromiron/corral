@@ -111,7 +111,9 @@ const CheckboxGroup = forwardRef<HTMLDivElement, CheckboxGroupProps>(
           onKeyDown={(e) => {
             // Not [role="checkbox"]: the inner primitive has that role too.
             const items = Array.from(
-              containerRef.current?.querySelectorAll('[data-fluid-hover-index]') ?? [],
+              containerRef.current?.querySelectorAll(
+                '[data-fluid-hover-index]:not([aria-disabled=true])',
+              ) ?? [],
             ) as HTMLElement[];
             const currentIdx = items.indexOf(e.target as HTMLElement);
             if (currentIdx === -1) return;
@@ -178,17 +180,18 @@ interface CheckboxItemProps extends HTMLAttributes<HTMLDivElement> {
   label: string;
   index: number;
   checked: boolean;
+  disabled?: boolean;
   onToggle: () => void;
 }
 
 const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
-  ({ label, index, checked, onToggle, className, ...props }, ref) => {
+  ({ label, index, checked, disabled = false, onToggle, tabIndex, className, ...props }, ref) => {
     const internalRef = useRef<HTMLDivElement>(null);
     const { registerItem, activeIndex } = useCheckboxGroup();
 
     useRegisterFluidHoverItem(registerItem, index, internalRef);
 
-    const isActive = activeIndex === index;
+    const isActive = !disabled && activeIndex === index;
     const shape = useShape();
     const sizeClasses = useSize();
     const compact = sizeClasses.variant === 'compact';
@@ -202,13 +205,18 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
           else if (ref) (ref as React.MutableRefObject<HTMLDivElement | null>).current = node;
         }}
         data-fluid-hover-index={index}
-        // Every row is a tab stop (no roving tabindex) and carries the role.
-        tabIndex={0}
+        // Disabled rows leave keyboard navigation. A caller may opt into programmatic focus.
+        tabIndex={disabled ? (tabIndex === -1 ? -1 : undefined) : (tabIndex ?? 0)}
         role="checkbox"
         aria-checked={checked}
+        aria-disabled={disabled || undefined}
         aria-label={label}
-        onClick={onToggle}
+        onClick={disabled ? undefined : onToggle}
         onMouseDown={(e) => {
+          if (disabled) {
+            e.preventDefault();
+            return;
+          }
           // Clicking the square would focus the hidden primitive and break
           // arrow-key nav, so focus the row instead (unless an interactive
           // child was clicked).
@@ -228,12 +236,13 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         onKeyDown={(e) => {
           if (e.key === ' ' || e.key === 'Enter') {
             e.preventDefault();
-            onToggle();
+            if (!disabled) onToggle();
           }
         }}
         className={cn(
           // Fixed height so text-box trim on the label can't shrink the row.
           `relative z-10 flex ${sizeClasses.control} items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.px} cursor-pointer outline-none`,
+          disabled && 'cursor-not-allowed opacity-50',
           className,
         )}
         {...props}
@@ -241,6 +250,7 @@ const CheckboxItem = forwardRef<HTMLDivElement, CheckboxItemProps>(
         <span inert aria-hidden="true" className="pointer-events-none inline-flex shrink-0">
           <CheckboxPrimitive.Root
             checked={checked}
+            disabled={disabled}
             // Hidden from AT and tab order: the row is already the checkbox.
             tabIndex={-1}
             aria-hidden

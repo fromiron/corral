@@ -8,12 +8,6 @@ import {
   CardContent,
   CardFooter,
   CardHeader,
-  Dialog,
-  DialogFooter,
-  DialogHeader,
-  DialogPanel,
-  DialogPopup,
-  DialogTitle,
   EmptyState,
   fontWeights,
   KitCardTitle,
@@ -32,24 +26,22 @@ import {
 import { ChevronRight, Info } from '@corral/react/icons';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
 import { projectName, projectsChanged } from '../projects.ts';
 import { useServices } from '../services.tsx';
-import { TeamDraftDialog } from '../TeamDraftDialog.tsx';
-import { TemplateCopyDialog } from '../TemplateCopyDialog.tsx';
 import {
   roleSteps,
   templateDefinition,
   useTemplateText,
   WORKSPACE_TEMPLATES,
-  type WorkspaceTemplateId,
 } from '../templates.ts';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
 import { chooseNewSessionTeam } from '../workbench/newSessionDraft.ts';
 import { useSessionAge } from '../workbench/useSessionAge.ts';
 
 // The library's saved teams and templates for one project (docs/specs/features/library.md).
-// Creating, importing, duplicating, moving and deleting use the existing Corral API.
+// Importing, duplicating, moving and deleting use the existing Corral API.
 
 function Errors({ errors }: { errors: string[] }) {
   const t = useTranslations('Workspace');
@@ -73,6 +65,7 @@ export function LibraryTeams({
   corrals,
   onChanged,
   onBrowseTemplates,
+  toolbar,
 }: {
   projectId: string;
   project: ProjectSummary | undefined;
@@ -80,7 +73,9 @@ export function LibraryTeams({
   corrals: CorralSummary[];
   onChanged: () => void;
   /** Switches the library to its Templates tab. */
-  onBrowseTemplates: (draft?: boolean) => void;
+  onBrowseTemplates: () => void;
+  /** The library's toolbar row, where this view's actions stand. */
+  toolbar: HTMLElement | null;
 }) {
   const t = useTranslations('Workspace');
   const tl = useTranslations('Library');
@@ -90,7 +85,6 @@ export function LibraryTeams({
   const navigate = useNavigate();
   const ago = useSessionAge();
   const importInput = useRef<HTMLInputElement>(null);
-  const [creating, setCreating] = useState<'choose' | 'blank' | null>(null);
   const [selection, select] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -179,6 +173,9 @@ export function LibraryTeams({
 
   const storage =
     mode === 'server' ? t('storedOnServer') : persistent ? t('storedLocally') : t('notPersistent');
+  const newTeamLink = (
+    <Link to="/corrals/new/edit" search={{ project: projectId }} disabled={busy} />
+  );
   const importButton = (
     <>
       <Tooltip content={t('importHint')} className="max-w-xs">
@@ -206,61 +203,28 @@ export function LibraryTeams({
   );
   return (
     <div className="flex flex-col gap-6">
-      {creating === 'choose' ? (
-        <Dialog open onOpenChange={(open) => !open && setCreating(null)}>
-          <DialogPopup>
-            <DialogHeader>
-              <DialogTitle>{t('new')}</DialogTitle>
-            </DialogHeader>
-            <DialogPanel className="grid gap-2">
-              <Button variant="secondary" onClick={() => onBrowseTemplates(true)}>
-                {t('draftFromGoal')}
-              </Button>
-              <Button variant="secondary" onClick={() => onBrowseTemplates()}>
-                {t('chooseTemplate')}
-              </Button>
-              <Button variant="secondary" onClick={() => setCreating('blank')}>
-                {t('chooseBlank')}
-              </Button>
-            </DialogPanel>
-            <DialogFooter>
-              <Button variant="tertiary" onClick={() => setCreating(null)}>
-                {t('cancel')}
-              </Button>
-            </DialogFooter>
-          </DialogPopup>
-        </Dialog>
-      ) : null}
-      {creating === 'blank' ? (
-        <TemplateCopyDialog
-          template="blank"
-          projectId={projectId}
-          corrals={corrals}
-          onClose={() => setCreating(null)}
-          onSaved={async (corralId) => {
-            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
-          }}
-        />
-      ) : null}
-      {teams.length ? (
-        // The list's actions; the Teams tab above already names the list and counts it.
-        <div className="flex min-h-9 flex-wrap items-center justify-end gap-2">
-          {/* Where teams are kept is worth knowing once, not a line under the list. */}
-          <Tooltip content={storage} className="max-w-xs">
-            <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
-              <Info aria-hidden />
-            </Button>
-          </Tooltip>
-          {archived ? null : (
+      {teams.length && toolbar
+        ? // The list's actions; the Teams tab beside them already names the list and counts it.
+          createPortal(
             <>
-              {importButton}
-              <Button size="compact" disabled={busy} onClick={() => setCreating('choose')}>
-                {t('new')}
-              </Button>
-            </>
-          )}
-        </div>
-      ) : null}
+              {/* Where teams are kept is worth knowing once, not a line under the list. */}
+              <Tooltip content={storage} className="max-w-xs">
+                <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+                  <Info aria-hidden />
+                </Button>
+              </Tooltip>
+              {archived ? null : (
+                <>
+                  {importButton}
+                  <Button size="compact" render={newTeamLink}>
+                    {t('new')}
+                  </Button>
+                </>
+              )}
+            </>,
+            toolbar,
+          )
+        : null}
       {archived ? (
         <p role="note" className="text-body text-warning">
           {tp('archivedNote')}
@@ -274,10 +238,8 @@ export function LibraryTeams({
           </div>
           {archived ? null : (
             <div className="flex flex-wrap justify-center gap-2">
-              <Button disabled={busy} onClick={() => setCreating('choose')}>
-                {t('new')}
-              </Button>
-              <Button variant="tertiary" onClick={() => onBrowseTemplates()}>
+              <Button render={newTeamLink}>{t('new')}</Button>
+              <Button variant="tertiary" onClick={onBrowseTemplates}>
                 {tl('teams.browseTemplates')}
               </Button>
               {importButton}
@@ -431,32 +393,19 @@ function MoveCorral({
   );
 }
 
-/**
- * Team templates for the project, and the "draft a team from a goal" dialog while the address
- * asks for it (the library's toolbar opens it).
- */
+/** The template cards: start a conversation or edit an unsaved copy in this project. */
 export function LibraryTemplates({
   projectId,
   project,
-  corrals,
-  drafting,
-  blank,
-  onDraftClosed,
 }: {
   projectId: string;
   project: ProjectSummary | undefined;
-  corrals: CorralSummary[];
-  drafting: boolean;
-  blank: boolean;
-  onDraftClosed: () => void;
 }) {
   const t = useTranslations('Workspace');
   const tp = useTranslations('Projects');
   const format = useFormatter();
   const text = useTemplateText();
   const navigate = useNavigate();
-  const [copyTemplate, setCopyTemplate] = useState<WorkspaceTemplateId | null>(null);
-  const activeTemplate = blank ? 'blank' : copyTemplate;
   // Each card shows the team its template makes: the roles in order, and whether any may
   // change files or run commands.
   const templates = useMemo(
@@ -475,82 +424,77 @@ export function LibraryTemplates({
       </p>
     );
   return (
-    <>
-      <div className="@container">
-        <div className="grid gap-2 @2xl:grid-cols-2">
-          {templates.map(({ id, steps, readOnly }) => (
-            <article key={id} aria-labelledby={`template-${id}`}>
-              <Card className="h-full">
-                <CardHeader>
-                  <h3 id={`template-${id}`}>
-                    <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
-                  </h3>
-                  {readOnly ? (
-                    <CardAction className="row-span-1">
-                      <Badge variant="secondary" size="sm">
-                        {t('readOnly')}
-                      </Badge>
-                    </CardAction>
-                  ) : null}
-                </CardHeader>
-                {steps.length ? (
-                  <CardContent>
-                    <ol
-                      aria-label={t('templateRoles')}
-                      className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-caption text-muted-foreground"
-                    >
-                      {steps.map((names, index) => (
-                        <li key={names.join()} className="flex items-center gap-1">
-                          {index ? <ChevronRight aria-hidden className="size-3 shrink-0" /> : null}
-                          {format.list(names, { type: 'conjunction' })}
-                        </li>
-                      ))}
-                    </ol>
-                  </CardContent>
+    <div className="@container">
+      <div className="grid gap-2 @2xl:grid-cols-2">
+        {templates.map(({ id, steps, readOnly }) => (
+          <article key={id} aria-labelledby={`template-${id}`}>
+            <Card className="h-full">
+              <CardHeader>
+                <h3 id={`template-${id}`}>
+                  <KitCardTitle>{t(`template.${id}.name`)}</KitCardTitle>
+                </h3>
+                {readOnly ? (
+                  <CardAction className="row-span-1">
+                    <Badge variant="secondary" size="sm">
+                      {t('readOnly')}
+                    </Badge>
+                  </CardAction>
                 ) : null}
-                <CardFooter className="mt-auto">
-                  {id === 'blank' ? null : (
-                    <Button
-                      variant="tertiary"
-                      aria-label={t('templateNewConversation', { name: t(`template.${id}.name`) })}
-                      onClick={() => {
-                        // The project's new conversation opens with this team chosen.
-                        chooseNewSessionTeam(projectId, `template:${id}`);
-                        void navigate({
-                          to: '/projects/$projectId',
-                          params: { projectId },
-                          search: { newSession: true },
-                        });
-                      }}
-                    >
-                      {t('newConversation')}
-                    </Button>
-                  )}
-                  <Button
-                    variant="ghost"
-                    aria-label={t('templateEditCopy', { name: t(`template.${id}.name`) })}
-                    onClick={() => setCopyTemplate(id)}
+              </CardHeader>
+              {steps.length ? (
+                <CardContent>
+                  <ol
+                    aria-label={t('templateRoles')}
+                    className="flex flex-wrap items-center gap-x-1 gap-y-0.5 text-caption text-muted-foreground"
                   >
-                    {t('editCopy')}
+                    {steps.map((names, index) => (
+                      <li key={names.join()} className="flex items-center gap-1">
+                        {index ? <ChevronRight aria-hidden className="size-3 shrink-0" /> : null}
+                        {format.list(names, { type: 'conjunction' })}
+                      </li>
+                    ))}
+                  </ol>
+                </CardContent>
+              ) : null}
+              <CardFooter className="mt-auto">
+                {id === 'blank' ? null : (
+                  <Button
+                    variant="tertiary"
+                    aria-label={t('templateNewConversation', { name: t(`template.${id}.name`) })}
+                    onClick={() => {
+                      // The project's new conversation opens with this team chosen.
+                      chooseNewSessionTeam(projectId, `template:${id}`);
+                      void navigate({
+                        to: '/projects/$projectId',
+                        params: { projectId },
+                        search: { newSession: true },
+                      });
+                    }}
+                  >
+                    {t('newConversation')}
                   </Button>
-                </CardFooter>
-              </Card>
-            </article>
-          ))}
-        </div>
+                )}
+                <Button
+                  variant="ghost"
+                  aria-label={t('templateEditCopy', { name: t(`template.${id}.name`) })}
+                  render={
+                    <Link
+                      to="/corrals/new/edit"
+                      search={
+                        id === 'blank'
+                          ? { project: projectId }
+                          : { project: projectId, template: id }
+                      }
+                    />
+                  }
+                >
+                  {t('editCopy')}
+                </Button>
+              </CardFooter>
+            </Card>
+          </article>
+        ))}
       </div>
-      {activeTemplate ? (
-        <TemplateCopyDialog
-          template={activeTemplate}
-          projectId={projectId}
-          corrals={corrals}
-          onClose={blank ? onDraftClosed : () => setCopyTemplate(null)}
-          onSaved={async (corralId) => {
-            await navigate({ to: '/corrals/$corralId/edit', params: { corralId } });
-          }}
-        />
-      ) : null}
-      {drafting ? <TeamDraftDialog onClose={onDraftClosed} projectId={projectId} /> : null}
-    </>
+    </div>
   );
 }

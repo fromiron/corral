@@ -7,7 +7,9 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { HarnessRoleSettings } from './HarnessRoleSettings.tsx';
 
-const services = vi.hoisted(() => ({ harnesses: { profileManagement: async () => [] } }));
+const services = vi.hoisted(() => ({
+  harnesses: { profileManagement: async () => [], preview: vi.fn() },
+}));
 vi.mock('../services.tsx', () => ({ useServices: () => services }));
 vi.mock('@corral/react', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@corral/react')>()),
@@ -69,4 +71,37 @@ it('puts the work style icon right after the Inspector label', async () => {
   expect(link?.textContent).toBe(messages.Harness.manageShort);
   expect(link?.getAttribute('aria-label')).toBe(messages.Harness.manage);
   expect(messages.Harness.manageShort).not.toContain(messages.Terms.harness.name);
+});
+
+it('previews skills without a bound profile and clears an outdated problem after a selection change', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  const root = createRoot(container);
+  cleanups.push(() => act(() => root.unmount()));
+  const skills = [{ resourceHash: 'a'.repeat(64), entry: 'skills/writing/SKILL.md' }];
+  const role = { id: 'writer', skills } as AgentRole;
+  const render = async (next: AgentRole) =>
+    act(async () => {
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <HarnessRoleSettings role={next} nodeId="n1" projectId="p1" />
+        </IntlProvider>,
+      );
+    });
+  await render(role);
+  const button = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent === messages.Harness.preview,
+  );
+  expect(button).toBeDefined();
+  services.harnesses.preview.mockResolvedValueOnce({
+    snapshot: null,
+    problem: { roleId: role.id, reason: 'execution_policy_required', entries: [] },
+  });
+  await act(async () => button!.click());
+  expect(services.harnesses.preview).toHaveBeenCalledWith(role, 'p1');
+  expect(container.querySelector('[role=alert]')?.textContent).toBe(
+    messages.Harness.roleNeedsPolicy,
+  );
+  await render({ ...role, skills: [] });
+  expect(container.querySelector('[role=alert]')).toBeNull();
 });

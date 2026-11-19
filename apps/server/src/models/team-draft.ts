@@ -6,6 +6,7 @@ import {
   type TeamPattern,
   TeamPlan,
 } from '@corral/contracts';
+import { requestsWorkObservation, withWorkObservation } from '@corral/core';
 
 // one model request turns a goal into a team plan. The answer is untrusted text: only
 // a JSON object that passes the TeamPlan contract is used, and the text itself is never sent
@@ -36,9 +37,7 @@ const PATTERN_USE: Record<TeamPattern, string> = {
     'a framer states the question and two options, each option is researched at the same time, then a comparison recommends one. Choosing between technical options.',
 };
 
-export const DRAFT_SYSTEM_PROMPT = `You design a small team of AI agents for a goal. Answer with one JSON object and nothing else.
-
-Fields (use exactly these, no others):
+export const TEAM_PLAN_PROMPT = `Fields (use exactly these, no others):
 - name: a short title for the team (at most ${TEAM_LIMITS.name} characters)
 - pattern: one of ${quoted(TEAM_PATTERNS)}
 - brief: the task as the team will receive it (at most ${TEAM_LIMITS.brief} characters)
@@ -47,15 +46,20 @@ Fields (use exactly these, no others):
 - reviewRounds: 1 to 3, only for ${quoted(REVIEW_LOOP_PATTERNS)}; leave it out for the other patterns
 - finalApproval: true or false; false unless the goal itself asks that a person approve the result before it is final
 - outrider: optional. Use "consultation" when workers should ask a shared expert for advice when needed, and "artifact_review" when they should ask for feedback on a draft and then revise and submit it themselves. Use "clarify_review" when the goal asks for review before submission and does not say whether passing is necessary. Use "required_review" only when the goal explicitly says passing review is required to submit. Omit outrider if the goal makes none of these requests.
+- observeWork: optional. Set to true only if the goal explicitly asks the Outrider to observe the workers while they work. Omit for on-request advice or artifact review alone, or if the goal rules out automatic observation. This is independent of outrider.
 - Describe who produces and submits each result in the role's duty. An on-request Outrider is shared advice, not one of the roles in the pattern. Do not add a sequential reviewer or review loop for that advice alone. A worker who revises and submits their own result needs no separate reviewer.
 
 Patterns:
 ${TEAM_PATTERNS.map((pattern) => `- "${pattern}": ${PATTERN_USE[pattern]} Roles: ${TEAM_SLOTS[pattern].join(', ')}`).join('\n')}
 
-Pick the smallest pattern that fits. An on-request adviser or manuscript feedback does not require planning, research, implementation or sequential review roles. Use "single" for the underlying task unless the goal asks for distinct roles or a work sequence. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents. Write in the language of the goal.`;
+Pick the smallest pattern that fits. An on-request adviser or manuscript feedback does not require planning, research, implementation or sequential review roles. Use "single" for the underlying task unless the goal asks for distinct roles or a work sequence. A small edit that needs no review round (a line or two, wording, comments, a rename) is "single" even when it changes code or documents.`;
+
+export const DRAFT_SYSTEM_PROMPT = `You design a small team of AI agents for a goal. Answer with one JSON object and nothing else.
+
+${TEAM_PLAN_PROMPT} Write in the language of the goal.`;
 
 /** The plan in a model's answer, or null when there is none that fits. */
-export function planFromAnswer(text: string): TeamPlan | null {
+export function planFromAnswer(text: string, goal?: string): TeamPlan | null {
   const start = text.indexOf('{');
   const end = text.lastIndexOf('}');
   if (start < 0 || end <= start) return null;
@@ -71,5 +75,8 @@ export function planFromAnswer(text: string): TeamPlan | null {
       ? { finalApproval: false, ...value }
       : value,
   );
-  return parsed.success ? parsed.data : null;
+  if (!parsed.success) return null;
+  return goal === undefined
+    ? parsed.data
+    : withWorkObservation(parsed.data, requestsWorkObservation(goal));
 }

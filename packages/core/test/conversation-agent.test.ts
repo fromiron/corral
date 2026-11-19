@@ -1,4 +1,10 @@
-import type { EffectiveHarnessSnapshot, RunEvent } from '@corral/contracts';
+import {
+  type AgentStartInput,
+  canonicalJson,
+  type EffectiveHarnessSnapshot,
+  isWorkAgent,
+  type RunEvent,
+} from '@corral/contracts';
 import {
   FakeClock,
   Gate,
@@ -11,12 +17,14 @@ import {
   applyProgressEvent,
   Coordinator,
   conversationDefinition,
+  corralRoster,
   createAutoStarter,
   emptyProgress,
   explainDefinition,
   InMemoryRunStore,
   InProcessTransport,
   NO_PROGRESS_TURNS,
+  sha256Hex,
   waitForProjection,
 } from '../src/index.ts';
 
@@ -346,6 +354,14 @@ describe('team selector', () => {
       { fileTools: false },
     );
     const definition = started[0]!.definition;
+    // Recorded before session delegates carried seat instructions. This also freezes the
+    // lead's guidance, every delegate prompt, callable id, capability and input binding.
+    expect(sha256Hex(canonicalJson(corralRoster(corral)))).toBe(
+      'c4e61f1b39db2c22502499036aeeaf1ea9aafee6064072c80d84195575dd9d9c',
+    );
+    expect(sha256Hex(canonicalJson(definition))).toBe(
+      'c3a9b5b2e4468eeda8281dbee82af3ec191bdf41a94fd6f95b0bc3cf2ded9012',
+    );
     const [lead, ...roster] = definition.roles;
     expect(roster.map((role) => role.name)).toEqual(corral.roles.map((role) => role.name));
     expect(roster.every((role) => role.answer === 'final_reply')).toBe(true);
@@ -360,6 +376,103 @@ describe('team selector', () => {
     corral.name = 'Renamed later';
     expect(definition.sourceTeam?.name).not.toBe(corral.name);
     expect(definition.controlEdges.every((edge) => !edge.source.startsWith('team_'))).toBe(true);
+  });
+
+  it.each([
+    { case: 'one seat', instructions: ['Check the amounts.'], split: false },
+    { case: 'identical jobs', instructions: ['Check dates.', 'Check dates.'], split: false },
+    { case: 'different jobs', instructions: ['Audit costs.', 'Audit risks.'], split: true },
+    { case: 'one unspecified job', instructions: ['Review the sources.', undefined], split: true },
+  ])('delivers saved-seat jobs in chat ($case)', async ({ instructions, split }) => {
+    // One seat id collides with the unrelated role's legacy delegate id. The other can be
+    // as long as an authored id permits, including when deriving a capability link id.
+    const ids = ['team_other_role', 's'.repeat(120)].slice(0, instructions.length);
+    const corral = linearCorral([...ids, 'other']);
+    const writer = corral.roles[0];
+    const otherRole = corral.roles.at(-1);
+    if (!writer || !otherRole) throw new Error('missing fixture roles');
+    writer.id = 'writer';
+    writer.name = 'Writer';
+    corral.roles = [writer, otherRole];
+    const seats = corral.nodes.filter(isWorkAgent).slice(0, instructions.length);
+    seats.forEach((seat, i) => {
+      seat.roleId = writer.id;
+      seat.label = `Seat ${i + 1}`;
+      if (instructions[i] !== undefined) seat.stepInstruction = instructions[i];
+    });
+
+    const inputs: AgentStartInput[] = [];
+    const coordinator = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        script: async (input, host) => {
+          inputs.push(input);
+          if (input.assignment.kind === 'scheduled') {
+            const spawned = await host.invokeTool({
+              name: 'spawn_subagents',
+              args: {
+                tasks: input.capabilities.delegateTo.map(({ nodeId }) => ({
+                  targetNodeId: nodeId,
+                  brief: 'Report findings.',
+                })),
+              },
+            });
+            if (!spawned.ok) throw new Error(spawned.error.message);
+            const awaited = await host.invokeTool({
+              name: 'await_tasks',
+              args: { taskIds: spawned.result.taskIds },
+            });
+            if (!awaited.ok) throw new Error(awaited.error.message);
+          }
+          return null;
+        },
+      }),
+    });
+    const starter = createAutoStarter({
+      corral: () => ({ definition: corral, definitionRevision: 3 }),
+      startRun: (request) => coordinator.startRun(request),
+    });
+    const { runId, receipt } = await starter.start(
+      {
+        commandId: 'start',
+        sessionId: 'session_team',
+        brief: 'Compare findings.',
+        mode: 'mock',
+        choice,
+        team: { corralId: corral.id },
+      },
+      { fileTools: false },
+    );
+    if (!runId) throw new Error(JSON.stringify(receipt.error));
+    const final = await waitForProjection(new InProcessTransport(coordinator), runId, (p) =>
+      ['succeeded', 'failed'].includes(p.status),
+    );
+    expect(final.status).toBe('succeeded');
+    const [lead, ...delegates] = inputs;
+    if (!lead) throw new Error('missing lead');
+    expect(lead.stepInstruction).toBeUndefined();
+    const targets = lead.capabilities.delegateTo;
+    expect(targets.map(({ label }) => label)).toEqual([
+      ...(split ? seats.map(({ label }) => label) : ['Writer']),
+      'other',
+    ]);
+    expect(targets.at(-1)?.nodeId).toBe('team_other_role');
+    if (!split) expect(targets[0]?.nodeId).toBe('team_writer');
+    expect(delegates).toHaveLength(targets.length);
+    targets.forEach(({ nodeId, label }, i) => {
+      expect(lead.role.prompt).toContain(`${label} (${nodeId})`);
+      const delegate = delegates.find((input) => input.nodeId === nodeId);
+      const other = label === 'other';
+      expect(delegate?.assignment.kind).toBe('delegated');
+      expect(delegate?.role.id).toBe(other ? 'team_other_role' : 'team_writer');
+      expect(delegate?.stepInstruction).toBe(other ? undefined : instructions[i]);
+    });
+    for (const instruction of new Set(instructions))
+      if (instruction !== undefined)
+        expect(JSON.stringify(inputs).split(instruction)).toHaveLength(2);
   });
 
   it('a saved team’s other models are prepared before the start', async () => {

@@ -92,3 +92,21 @@ describe('planFromAnswer', () => {
     for (const value of bad) expect(planFromAnswer(JSON.stringify(value))).toBeNull();
   });
 });
+
+it('accepts an independent observation proposal from the model for an explicit goal', () => {
+  expect(DRAFT_SYSTEM_PROMPT).toMatch(/observeWork:.*explicit/i);
+  const plan = answer('single', { observeWork: true, outrider: 'artifact_review' });
+  expect(planFromAnswer(JSON.stringify(plan))).toEqual(plan);
+  expect(planFromAnswer(JSON.stringify({ ...plan, observeWork: 'yes' }))).toBeNull();
+  expect(planFromAnswer(JSON.stringify(answer('single')))).not.toHaveProperty('observeWork');
+});
+
+it('leaves an unsolicited model observation proposal off for the original goal', () => {
+  const plan = answer('single', { observeWork: true, outrider: 'artifact_review' });
+  expect(
+    planFromAnswer(JSON.stringify(plan), 'Let the writer ask for feedback only.')?.observeWork,
+  ).toBeUndefined();
+  expect(
+    planFromAnswer(JSON.stringify(plan), 'Watch work in progress and allow feedback on request.'),
+  ).toEqual(plan);
+});

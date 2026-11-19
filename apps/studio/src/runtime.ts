@@ -119,6 +119,7 @@ export function createDemoRuntime(repository?: Pick<CorralRepository, 'getRevisi
     getMeetingAnswer: (...args) => request('getMeetingAnswer', args),
     listRuns: () => request('listRuns', []),
     getRunDefinition: (...args) => request('getRunDefinition', args),
+    getRunSource: (...args) => request('getRunSource', args),
     getRunStats: (...args) => request('getRunStats', args),
     subscribe(runId, afterSeq, handlers) {
       const id = ++nextId;

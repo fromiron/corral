@@ -261,6 +261,77 @@ async function submit(host: AgentHost, text: string): Promise<AgentSettlement> {
 }
 
 describe('reviews', () => {
+  it('only observes selected shared Outrider targets and preserves on-demand consultation after disabling it', async () => {
+    const definition = linearCorral(['writer', 'editor']);
+    const shared = {
+      modelProfile: 'model-a',
+      principles: 'Explain weaknesses in the evidence.',
+      targets: { kind: 'all' as const },
+    };
+    definition.sharedOutrider = shared;
+    const ordinary: NonNullable<ScriptedAgentOptions['script']> = async (input, host) => {
+      await call(host, input.nodeId);
+      return submit(host, input.nodeId);
+    };
+    const scripts = { writer: ordinary, editor: ordinary };
+    const off = setup({ definition, scripts });
+    await off.ended();
+    expect(off.projection().status).toBe('succeeded');
+    expect(off.reviews).toEqual([]);
+    expect(Object.values(off.projection().executions).map((e) => e.nodeId)).toEqual([
+      'writer',
+      'editor',
+    ]);
+
+    const on = setup({
+      definition: {
+        ...definition,
+        sharedOutrider: {
+          ...shared,
+          observation: {
+            targets: { kind: 'selected', nodeIds: ['editor'] },
+            review: { interval: 1, maxRequestsPerReview: 4 },
+          },
+        },
+      },
+      scripts,
+      advisor: {
+        advise: () => [{ severity: 'concern', note: 'One claim lacks supporting evidence.' }],
+      },
+    });
+    await on.ended();
+    expect(on.projection().status).toBe('succeeded');
+    expect(on.reviews.length).toBeGreaterThan(0);
+    expect(
+      on.reviews.every(
+        (review) => on.projection().executions[review.targetExecutionId]?.nodeId === 'editor',
+      ),
+    ).toBe(true);
+    expect(on.events().some((event) => event.type === 'advice.admitted')).toBe(true);
+    expect(on.events().some((event) => event.type === 'message.question_created')).toBe(false);
+
+    const next = setup({
+      definition,
+      scripts: {
+        ...scripts,
+        writer: async (input, host) => {
+          const [target] = input.capabilities.askTo;
+          if (!target) throw new Error('Missing shared consultation');
+          await call(host, 'Ask about the evidence.');
+          const result = await host.invokeTool({
+            name: 'ask',
+            args: { targetNodeId: target.nodeId, body: 'Which evidence?' },
+          });
+          if (!result.ok) throw new Error(result.error.message);
+          return submit(host, 'Returned to work.');
+        },
+      },
+    });
+    await next.ended();
+    expect(next.projection().status).toBe('succeeded');
+    expect(next.reviews).toEqual([]);
+    expect(next.events().some((event) => event.type === 'message.answer_committed')).toBe(true);
+  });
   it('a review starts when the watched execution finished the interval of requests', async () => {
     const s = setup({ turns: { writer: 3 } });
     await s.ended();

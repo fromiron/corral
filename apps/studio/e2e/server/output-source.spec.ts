@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { linearCorral } from '@corral/testkit';
-import { editorSettings, teamNode } from '../workbench.ts';
+import { addCustomAgent, editorSettings, startTestRun, teamNode } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({
@@ -32,7 +32,7 @@ for (const width of [1280, 390]) {
     await expect(output).toContainText('Result to receive · writer');
     const outline = page.getByRole('complementary', { name: 'Corral structure' });
     await outline.getByRole('button', { name: 'writer', exact: true }).click();
-    await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+    await addCustomAgent(page);
     const offer = page.getByRole('button', { name: 'Use Agent 1’s result' });
     await expect(offer).toBeInViewport();
     await expect(output).toContainText('Result to receive · writer');
@@ -66,9 +66,7 @@ for (const width of [1280, 390]) {
       expect(
         saved.definition.nodes.find((node: { id: string }) => node.id === 'output').inputBindings,
       ).toEqual([{ name: 'final', kind: 'task_output', sourceNodeId: source }]);
-      await page.getByRole('button', { name: 'Test run', exact: true }).click();
-      const panel = page.getByRole('complementary', { name: 'Test run' });
-      await panel.getByRole('button', { name: 'Run', exact: true }).click();
+      const panel = await startTestRun(page);
       await expect(panel.getByTestId('run-output')).toContainText(
         source === 'writer' ? 'Original manuscript.' : 'Edited manuscript.',
       );
@@ -96,7 +94,7 @@ for (const width of [1280, 390]) {
       expect(Object.keys(projection.nodeExecutions)).toEqual(
         expect.arrayContaining(['writer', 'agent_1']),
       );
-      await page.getByRole('button', { name: 'Close test run', exact: true }).click();
+      await panel.getByRole('button', { name: 'Close test panel', exact: true }).click();
       await expect(teamNode(page, 'output')).toContainText('Result to receive');
     }
     await outline.getByRole('button', { name: 'Output', exact: true }).click();
