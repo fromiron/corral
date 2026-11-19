@@ -183,17 +183,19 @@ export const StackedShort: Story = {
 
 /**
  * 540px, a panel beside the conversation: the palette wraps inside the width, nothing scrolls
- * sideways, and an outline row dropped on the Loop's row moves the step into the Loop.
+ * sideways, and dropping a connected step into a Loop previews its boundary crossing before
+ * moving it.
  */
 export const StackedNarrow: Story = {
   args: { width: 540, loop: true },
-  play: async ({ canvasElement }) => {
+  play: async ({ canvasElement, userEvent }) => {
     const { editor, outline, palette } = regions(canvasElement);
     await waitFor(() => expect(card(canvasElement, 'agent_1')).toBeTruthy());
     await expect(rect(palette).right).toBeLessThanOrEqual(rect(editor).right + 0.5);
     for (const button of within(palette).getAllByRole('button'))
       await expect(rect(button).right).toBeLessThanOrEqual(rect(editor).right + 0.5);
     await expect(editor.scrollWidth).toBeLessThanOrEqual(editor.clientWidth);
+    const original = shown?.getState().draft;
     const row = within(outline).getByRole('button', { name: 'B' });
     const target = within(outline).getByRole('button', { name: 'Loop' });
     const data = new DataTransfer();
@@ -202,6 +204,13 @@ export const StackedNarrow: Story = {
     target.dispatchEvent(dragEvent('dragover', data, centre(target)));
     target.dispatchEvent(dragEvent('drop', data, centre(target)));
     row.dispatchEvent(dragEvent('dragend', data));
+    const dialog = await within(canvasElement.ownerDocument.body).findByRole('dialog', {
+      name: m.placement.previewTitle,
+    });
+    await expect(shown?.getState().draft).toBe(original);
+    await expect(within(dialog).getByRole('heading', { name: m.placement.boundary })).toBeVisible();
+    await expect(within(dialog).getByRole('listitem')).toHaveTextContent('A · out → B · in');
+    await userEvent.click(within(dialog).getByRole('button', { name: m.placement.apply }));
     const loop = shown?.getState().draft.definition.nodes.find((n) => n.type === 'loop');
     const moved = shown?.getState().draft.definition.nodes.find((n) => n.id === 'agent_2');
     await expect(moved?.parentId).toBe(loop?.id);
@@ -209,21 +218,23 @@ export const StackedNarrow: Story = {
 };
 
 /**
- * 1200px: the outline beside the canvas, the palette over its top left corner and the settings
- * floating over its right side, leaving the canvas at least 320px.
+ * 1200px: the outline sits beside the palette and canvas. The palette occupies the row above
+ * the canvas, and the settings stay inside the canvas, leaving at least 320px uncovered.
  */
 export const Beside: Story = {
   args: { width: 1200, stacked: false },
   play: async ({ canvasElement }) => {
     const { outline, palette, canvas } = regions(canvasElement);
     await expect(rect(outline).right).toBeLessThanOrEqual(rect(canvas).left + 0.5);
-    await expect(rect(palette).top).toBeGreaterThanOrEqual(rect(canvas).top);
-    await expect(rect(palette).left).toBeGreaterThanOrEqual(rect(canvas).left);
-    await expect(rect(palette).bottom).toBeLessThan(rect(canvas).bottom);
+    await expect(rect(outline).right).toBeLessThanOrEqual(rect(palette).left + 0.5);
+    await expect(Math.abs(rect(palette).left - rect(canvas).left)).toBeLessThanOrEqual(0.5);
+    await expect(Math.abs(rect(palette).right - rect(canvas).right)).toBeLessThanOrEqual(0.5);
+    await expect(rect(palette).bottom).toBeLessThanOrEqual(rect(canvas).top + 0.5);
     const sheet = await selectStep(canvasElement, 'agent_1');
     await expect(rect(sheet).right).toBeLessThanOrEqual(rect(canvas).right);
     await expect(rect(sheet).left - rect(canvas).left).toBeGreaterThanOrEqual(320);
-    await expect(rect(sheet).top).toBeLessThan(rect(canvas).bottom);
+    await expect(rect(sheet).top).toBeGreaterThanOrEqual(rect(canvas).top - 0.5);
+    await expect(rect(sheet).bottom).toBeLessThanOrEqual(rect(canvas).bottom + 0.5);
   },
 };
 
