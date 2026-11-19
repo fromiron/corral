@@ -1,4 +1,4 @@
-import type { CorralDefinition, OutputNode } from '@corral/contracts';
+import { type CorralDefinition, isWorkAgent, type OutputNode } from '@corral/contracts';
 import {
   Coordinator,
   type CoordinatorDeps,
@@ -444,12 +444,12 @@ it('accepts an all join after the reviewed branch and identifies a bypass throug
 it('keeps a writer’s existing review input and supplies this gate’s feedback under a free name', async () => {
   const { draft } = setup();
   const writer = draft.definition.nodes.find((n) => n.id === 'writer');
-  if (writer?.type !== 'agent') throw Error('missing fixture writer');
+  if (!isWorkAgent(writer)) throw Error('missing fixture writer');
   writer.inputBindings.push({ kind: 'task_output', name: 'review', sourceNodeId: 'planner' });
   const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', true);
   if (!enabled.ok) throw Error(enabled.reason);
   const source = enabled.draft.definition.nodes.find((n) => n.id === 'writer');
-  expect(source?.type === 'agent' && source.inputBindings).toEqual(
+  expect(isWorkAgent(source) && source.inputBindings).toEqual(
     expect.arrayContaining([
       { kind: 'task_output', name: 'review', sourceNodeId: 'planner' },
       expect.objectContaining({
