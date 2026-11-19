@@ -90,7 +90,7 @@ it('installs an atomic version-bound review around the original writer and prese
   });
   expect(output.requireApproval).toBe(false);
   expect(output.inputBindings).toEqual([
-    { kind: 'task_output', name: 'final', sourceNodeId: 'writer' },
+    { kind: 'task_output', name: 'final', sourceNodeId: 'writer', bindingId: gate.bindingId },
   ]);
   expect(compileDefinition(next.definition).diagnostics).toEqual([]);
   expect(importDefinition(exportDefinition(next))).toMatchObject({
@@ -259,7 +259,10 @@ it('separates two bindings of the same producer and retains the remaining review
   const removed = setRequiredOutputReview(result.draft, 'output', 'final', 'writer', false);
   if (!removed.ok) throw Error(removed.reason);
   const rest = removed.draft.definition.nodes.find((n) => n.type === 'output');
-  expect(rest?.requiredReviews).toEqual([{ ...gate, bindingName: 'also' }]);
+  const kept = rest?.inputBindings.find((b) => b.name === 'also')?.bindingId;
+  expect(kept).toBeDefined();
+  expect(kept).not.toBe(gate.bindingId);
+  expect(rest?.requiredReviews).toEqual([{ ...gate, bindingId: kept, bindingName: 'also' }]);
   expect(compileDefinition(removed.draft.definition).ok).toBe(true);
 });
 
@@ -338,6 +341,32 @@ it('keeps required reviews enforced within an expanded pinned team', async () =>
   expect(run.receipt.receipt.status).toBe('applied');
   expect((await run.end()).status).toBe('failed');
   expect(run.store.readEvents(run.runId, 0).some((e) => e.type === 'output.finalized')).toBe(false);
+});
+
+it('expands only the selected duplicate input of a reference with two distinct results', () => {
+  const inner = linearCorral(['first', 'second'], 'inner');
+  const innerOutput = inner.nodes.find((n) => n.type === 'output')!;
+  innerOutput.inputBindings.push({ kind: 'task_output', name: 'first', sourceNodeId: 'first' });
+  const draft = draftFromDefinition({
+    ...referenceTeam(),
+    sharedOutrider: { modelProfile: 'model-a', principles: 'Review.', targets: { kind: 'all' } },
+  });
+  const outer = draft.definition.nodes.find((n) => n.type === 'output')!;
+  outer.inputBindings.push({ ...outer.inputBindings[0]! });
+  const enabled = setRequiredOutputReview(draft, 'output', 'final', 'writer', true, 1);
+  if (!enabled.ok) throw Error(enabled.reason);
+  const planned = planRun(enabled.draft.definition, { resolveTeam: () => inner });
+  if (!planned.ok) throw Error(JSON.stringify(planned.issues));
+  const result = planned.definition.nodes.find((n) => n.type === 'output')!;
+  expect(result.inputBindings.map((b) => b.sourceNodeId)).toEqual([
+    'writer.second',
+    'writer.first',
+    'writer.second',
+    'writer.first',
+  ]);
+  const ids = result.inputBindings.map((b) => b.bindingId);
+  expect(new Set(ids).size).toBe(4);
+  expect(result.requiredReviews?.map((g) => g.bindingId)).toEqual(ids.slice(2));
 });
 
 it('reviews an output from a pinned team without modifying its saved revision', async () => {

@@ -12,7 +12,9 @@ import {
   type OutputContract,
   type ReasoningCapabilities,
   ReasoningLevel,
+  type RequiredOutputReview,
 } from '@corral/contracts';
+import { reviewedOutputBinding } from '@corral/core';
 import { type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -277,28 +279,45 @@ function RequiredReviews({
   const id = useId();
   const rejected = useTranslations('TeamEditor.rejected');
   const [reason, setReason] = useState<string | null>(null);
-  const bindings = output.inputBindings.flatMap((b) =>
+  const gates = output.requiredReviews ?? [];
+  const bindings: {
+    bindingName: string;
+    sourceNodeId: string;
+    index?: number;
+    gate?: RequiredOutputReview;
+  }[] = output.inputBindings.flatMap((b, index) =>
     b.kind === 'task_output' && b.sourceNodeId
-      ? [{ bindingName: b.name, sourceNodeId: b.sourceNodeId }]
+      ? [
+          {
+            bindingName: b.name,
+            sourceNodeId: b.sourceNodeId,
+            index,
+            gate: gates.find((g) => reviewedOutputBinding(output, g) === b),
+          },
+        ]
       : [],
   );
-  // Keep a changed/deleted source's old policy reachable for explicit removal.
-  for (const g of output.requiredReviews ?? []) {
-    if (!bindings.some((b) => b.bindingName === g.bindingName && b.sourceNodeId === g.sourceNodeId))
-      bindings.push(g);
+  // A deleted or changed input still has a policy that the user must release explicitly.
+  for (const gate of gates) {
+    if (!bindings.some((b) => b.gate === gate)) bindings.push({ ...gate, gate });
   }
   return (
     <>
       {bindings.map((b, i) => {
-        const checked = (output.requiredReviews ?? []).some(
-          (g) => g.bindingName === b.bindingName && g.sourceNodeId === b.sourceNodeId,
-        );
+        const checked = !!b.gate;
         const source =
           draft.definition.nodes.find((n) => n.id === b.sourceNodeId)?.label ?? b.sourceNodeId;
         const disabled = !checked && !draft.definition.sharedOutrider;
         const descriptionId = `${id}-required-${i}`;
         return (
-          <div key={b.bindingName + ' / ' + b.sourceNodeId} className="grid gap-1">
+          <div
+            key={
+              b.index === undefined
+                ? 'policy-' + (b.gate?.bindingId ?? b.bindingName + '/' + b.sourceNodeId)
+                : 'input-' + b.index
+            }
+            className="grid gap-1"
+          >
             <KitSwitch
               label={t('requireReview')}
               checked={checked}
@@ -311,6 +330,8 @@ function RequiredReviews({
                   b.bindingName,
                   b.sourceNodeId,
                   !checked,
+                  b.index,
+                  b.gate?.bindingId,
                 );
                 if (result.ok) {
                   editor.getState().applyDraft(result.draft);
@@ -319,6 +340,10 @@ function RequiredReviews({
               }}
             />
             <p id={descriptionId} className="text-caption text-muted-foreground">
+              {b.index !== undefined &&
+              output.inputBindings.filter((input) => input.name === b.bindingName).length > 1
+                ? t('requiredReviewPosition', { position: b.index + 1 }) + ' · '
+                : ''}
               {t('requiredReviewSource', { binding: b.bindingName, source })}
               {disabled ? ' ' + rejected('requiredReviewNeedsOutrider') : ''}
             </p>

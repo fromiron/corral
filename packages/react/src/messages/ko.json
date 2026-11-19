@@ -228,6 +228,7 @@
       "rule": "필수 작업 제출"
     },
     "requireReview": "검토 통과 후 제출",
+    "requiredReviewPosition": "출력 입력 {position}번",
     "requiredReviewSource": "{binding} · 수정이 필요하면 {source}에게 돌아갑니다.",
     "requireApproval": "최종 승인 받기",
     "loopMembership": "속한 Loop",

@@ -124,6 +124,32 @@ describe('team editor', () => {
     expect(editor.getState().draft).toBe(enabled);
   });
 
+  it('only checks the selected duplicate result and distinguishes both switches to a keyboard user', async () => {
+    const after = ok(placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' }));
+    const binding = { kind: 'task_output', name: 'final', sourceNodeId: 'agent_1' };
+    const draft = patchNode(after.draft, after.nodeId, {
+      inputBindings: [{ ...binding }, { ...binding }],
+    });
+    draft.definition.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check the evidence.',
+      targets: { kind: 'all' },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(after.nodeId));
+    const switches = () => screen.getAllByRole('switch', { name: /submit after review passes/i });
+    expect(switches()[0]).toHaveAccessibleDescription(/Output input 1/);
+    expect(switches()[1]).toHaveAccessibleDescription(/Output input 2/);
+    switches()[1]!.focus();
+    await user.keyboard(' ');
+    expect(switches()[0]).not.toBeChecked();
+    expect(switches()[1]).toBeChecked();
+    expect(editor.getState().past).toEqual([draft]);
+    await user.keyboard(' ');
+    expect(switches()[1]).not.toBeChecked();
+  });
+
   it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
     const draft = chain(2);
     const editor = renderEditor(draft);

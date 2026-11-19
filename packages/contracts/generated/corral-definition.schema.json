@@ -1316,6 +1316,10 @@
                     },
                     "optional": {
                       "type": "boolean"
+                    },
+                    "bindingId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                     }
                   },
                   "required": [
@@ -1338,6 +1342,10 @@
                     "bindingName": {
                       "type": "string",
                       "minLength": 1
+                    },
+                    "bindingId": {
+                      "type": "string",
+                      "pattern": "^[A-Za-z][A-Za-z0-9_.:-]{0,119}$"
                     },
                     "sourceNodeId": {
                       "type": "string",

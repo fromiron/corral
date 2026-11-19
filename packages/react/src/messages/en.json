@@ -228,6 +228,7 @@
       "rule": "Required tasks submitted"
     },
     "requireReview": "Submit after review passes",
+    "requiredReviewPosition": "Output input {position}",
     "requiredReviewSource": "{binding} · {source} revises the candidate if requested.",
     "requireApproval": "Ask for final approval",
     "loopMembership": "Inside Loop",

@@ -7,6 +7,7 @@ import {
   type OutputNode,
   type TeamNode,
 } from '@corral/contracts';
+import { reviewedOutputBinding } from './compiler/required-output-review.ts';
 
 // Reference Teams expand at run start (docs/specs/features/team-graph.md, "팀 실행"): the
 // pinned saved team is copied into its Team box under `<Team id>.<id>`, and the run then
@@ -112,7 +113,7 @@ function expandOne(
           ...placed(node),
           mode: 'approval',
           rule: 'human_approval',
-          inputBindings: node.inputBindings.flatMap(inner),
+          inputBindings: node.inputBindings.flatMap(({ bindingId: _id, ...b }) => inner(b)),
         });
       continue;
     }
@@ -195,7 +196,9 @@ function expandOne(
       });
 
   // What the saved Outputs collect is what reading the Team gives.
-  const collected = outputs.flatMap((o) => o.inputBindings.flatMap(inner));
+  const collected = outputs.flatMap((o) =>
+    o.inputBindings.flatMap(({ bindingId: _id, ...b }) => inner(b)),
+  );
   const several = outputs.length > 1;
   const reading = (binding: InputBinding): InputBinding[] =>
     binding.kind === 'task_output' && binding.sourceNodeId === team.id
@@ -210,23 +213,39 @@ function expandOne(
   const nodes = doc.nodes.flatMap((node): CorralNode[] => {
     if (node.id === team.id) return [{ ...box, source: { kind: 'inline' } }, ...members];
     if (!('inputBindings' in node) || !node.inputBindings) return [node];
-    const expandedBindings = node.inputBindings.flatMap(reading);
-    if (node.type === 'output' && node.requiredReviews) {
+    if (
+      node.type === 'output' &&
+      node.requiredReviews &&
+      node.inputBindings.some((b) => b.kind === 'task_output' && b.sourceNodeId === team.id)
+    ) {
+      // One authored input can expand into several producers. Assign identities in the run copy
+      // and carry each policy only to the children of its original input.
+      let index = 0;
+      const groups = node.inputBindings.map((b) =>
+        reading(b).map((input) => ({
+          ...input,
+          bindingId: 'expanded-' + ++index,
+        })),
+      );
       const requiredReviews = node.requiredReviews.flatMap((gate) => {
-        if (gate.sourceNodeId !== team.id) return [gate];
-        const input = node.inputBindings.find(
-          (b) => b.name === gate.bindingName && b.sourceNodeId === gate.sourceNodeId,
+        const original = reviewedOutputBinding(node, gate);
+        if (!original) return [{ ...gate, bindingId: 'missing-required-input' }];
+        return groups[node.inputBindings.indexOf(original)]!.flatMap((b) =>
+          b.sourceNodeId
+            ? [
+                {
+                  ...gate,
+                  bindingName: b.name,
+                  sourceNodeId: b.sourceNodeId,
+                  bindingId: b.bindingId,
+                },
+              ]
+            : [],
         );
-        return input
-          ? reading(input).flatMap((b) =>
-              b.sourceNodeId
-                ? [{ ...gate, bindingName: b.name, sourceNodeId: b.sourceNodeId }]
-                : [],
-            )
-          : [gate];
       });
-      return [{ ...node, inputBindings: expandedBindings, requiredReviews }];
+      return [{ ...node, inputBindings: groups.flat(), requiredReviews }];
     }
+    const expandedBindings = node.inputBindings.flatMap(reading);
     return [{ ...node, inputBindings: expandedBindings } as CorralNode];
   });
 

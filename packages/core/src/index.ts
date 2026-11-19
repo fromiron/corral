@@ -16,6 +16,7 @@ export * from './attachments.ts';
 export * from './auto-team.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
+export { reviewedOutputBinding } from './compiler/required-output-review.ts';
 export * from './config.ts';
 export {
   Coordinator,

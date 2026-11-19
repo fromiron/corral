@@ -272,6 +272,7 @@ export type JoinNode = z.infer<typeof JoinNode>;
 /** A required review belongs to one named input and one producer on this Output. */
 export const RequiredOutputReview = z.strictObject({
   bindingName: InputBinding.shape.name,
+  bindingId: Identifier.optional(),
   sourceNodeId: Identifier,
   loopNodeId: Identifier,
   reviewerNodeId: Identifier,
@@ -282,7 +283,10 @@ export type RequiredOutputReview = z.infer<typeof RequiredOutputReview>;
 export const OutputNode = z.strictObject({
   ...nodeBase,
   type: z.literal('output'),
-  inputBindings: bindings(1),
+  inputBindings: z
+    .array(InputBinding.extend({ bindingId: Identifier.optional() }))
+    .min(1)
+    .max(20),
   requireApproval: z.boolean(),
   requiredReviews: z.array(RequiredOutputReview).min(1).max(20).optional(),
 });

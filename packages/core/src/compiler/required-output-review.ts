@@ -8,6 +8,19 @@ import type {
 import type { Diagnostic } from './index.ts';
 import { isBox } from './ports.ts';
 
+/** Imported policies without a binding ID can only refer to an unambiguously named input. */
+export function reviewedOutputBinding(output: OutputNode, gate: RequiredOutputReview) {
+  const candidates = output.inputBindings.filter((b) =>
+    gate.bindingId ? b.bindingId === gate.bindingId : b.name === gate.bindingName,
+  );
+  const bound = candidates.length === 1 ? candidates[0] : undefined;
+  return bound?.kind === 'task_output' &&
+    bound.name === gate.bindingName &&
+    bound.sourceNodeId === gate.sourceNodeId
+    ? bound
+    : undefined;
+}
+
 interface ReviewContext {
   definition: CorralDefinition;
   nodes: ReadonlyMap<string, CorralNode>;
@@ -70,13 +83,8 @@ function validateGate(
   const reviewer = byId.get(gate.reviewerNodeId),
     decision = byId.get(gate.decisionNodeId),
     loop = byId.get(gate.loopNodeId);
-  const bound = output.inputBindings.find(
-    (b) =>
-      b.name === gate.bindingName &&
-      b.kind === 'task_output' &&
-      b.sourceNodeId === gate.sourceNodeId,
-  );
-  if (!bound) return problem('The required review no longer matches the source of this output.');
+  if (!reviewedOutputBinding(output, gate))
+    return problem('The required review no longer matches the source of this output.');
   if (
     loop?.type !== 'loop' ||
     reviewer?.type !== 'agent' ||

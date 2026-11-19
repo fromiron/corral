@@ -17,6 +17,7 @@ import {
   isWithin,
   outputPortsOf,
   outputSources,
+  reviewedOutputBinding,
   type SharedOutriderTarget,
   sourceSide,
   wouldCreateCycle,
@@ -834,14 +835,30 @@ export function setRequiredOutputReview(
   bindingName: string,
   sourceNodeId: string,
   enabled: boolean,
+  inputIndex?: number,
+  policyId?: string,
 ): EditResult {
   const initial = draft.definition;
   const output = initial.nodes.find((n) => n.id === outputId);
   if (output?.type !== 'output') return { ok: false, reason: 'unknownNode' };
   const gates = output.requiredReviews ?? [];
-  const current = gates.find(
-    (g) => g.bindingName === bindingName && g.sourceNodeId === sourceNodeId,
+  const matches = output.inputBindings.filter(
+    (b) => b.kind === 'task_output' && b.name === bindingName && b.sourceNodeId === sourceNodeId,
   );
+  const selected =
+    inputIndex === undefined
+      ? matches.length === 1
+        ? matches[0]
+        : undefined
+      : output.inputBindings[inputIndex];
+  const current = gates.find((g) => {
+    if (policyId)
+      return (
+        g.bindingId === policyId && g.bindingName === bindingName && g.sourceNodeId === sourceNodeId
+      );
+    if (g.bindingName !== bindingName || g.sourceNodeId !== sourceNodeId) return false;
+    return inputIndex === undefined || reviewedOutputBinding(output, g) === selected;
+  });
   if (enabled === Boolean(current)) return { ok: true, draft };
   const allGates = initial.nodes.flatMap((n) =>
     n.type === 'output' ? (n.requiredReviews ?? []) : [],
@@ -850,6 +867,15 @@ export function setRequiredOutputReview(
     const remaining = gates.filter((g) => g !== current);
     let next = patchNode(draft, outputId, {
       requiredReviews: remaining.length ? remaining : undefined,
+      ...(current.bindingId && !remaining.some((g) => g.bindingId === current.bindingId)
+        ? {
+            inputBindings: output.inputBindings.map((b) => {
+              if (b.bindingId !== current.bindingId) return b;
+              const { bindingId: _released, ...rest } = b;
+              return rest;
+            }),
+          }
+        : {}),
     });
     if (allGates.some((g) => g !== current && g.loopNodeId === current.loopNodeId))
       return { ok: true, draft: next };
@@ -884,9 +910,7 @@ export function setRequiredOutputReview(
   const outrider = initial.sharedOutrider;
   if (!outrider) return { ok: false, reason: 'requiredReviewNeedsOutrider' };
   const producer = initial.nodes.find((n) => n.id === sourceNodeId);
-  const sourceBinding = output.inputBindings.find(
-    (b) => b.kind === 'task_output' && b.name === bindingName && b.sourceNodeId === sourceNodeId,
-  );
+  const sourceBinding = selected && matches.includes(selected) ? selected : undefined;
   if (
     !sourceBinding ||
     !(
@@ -968,9 +992,22 @@ export function setRequiredOutputReview(
       ),
     });
   }
+  // Unrelated inputs can have identical names and producers. Only this row receives the policy.
+  const used = new Set([...gates, ...output.inputBindings].map((b) => b.bindingId));
+  let bindingId = sourceBinding.bindingId;
+  if (!bindingId) {
+    let i = 1;
+    while (used.has('input-' + i)) i++;
+    bindingId = 'input-' + i;
+  }
   return {
     ok: true,
-    draft: patchNode(next, outputId, { requiredReviews: [...gates, { ...gate, bindingName }] }),
+    draft: patchNode(next, outputId, {
+      inputBindings: output.inputBindings.map((b) =>
+        b === sourceBinding ? { ...b, bindingId } : b,
+      ),
+      requiredReviews: [...gates, { ...gate, bindingName, bindingId }],
+    }),
   };
 }
 
