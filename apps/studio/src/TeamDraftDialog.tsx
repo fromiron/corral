@@ -140,12 +140,13 @@ export function TeamDraftDialog({
     plan?.outrider === 'required_review' && base
       ? base.nodes.flatMap((output) =>
           output.type === 'output'
-            ? output.inputBindings.flatMap((binding) => {
+            ? output.inputBindings.flatMap((binding, index) => {
                 if (binding.kind !== 'task_output' || !binding.sourceNodeId) return [];
                 const sourceId = binding.sourceNodeId;
                 return [
                   {
-                    key: JSON.stringify([output.id, binding.name, sourceId]),
+                    key: JSON.stringify([output.id, index, binding.name, sourceId]),
+                    index,
                     outputId: output.id,
                     output: output.label,
                     bindingName: binding.name,
@@ -168,6 +169,7 @@ export function TeamDraftDialog({
         target.bindingName,
         target.sourceId,
         true,
+        target.index,
       );
       if (!change.ok) {
         preview = null;
@@ -328,7 +330,13 @@ export function TeamDraftDialog({
               <div className="grid gap-1 rounded fill-group p-3 text-body">
                 <h3 className="text-subtitle">{t('beforeSaving')}</h3>
                 <p>{t(isReadOnlyTeam(preview) ? 'readOnlyWork' : 'changesWork')}</p>
-                <p>{t(confirmed.length || hasReviewLoop(plan.pattern) ? 'hasReviewRound' : 'noReviewRound')}</p>
+                <p>
+                  {t(
+                    confirmed.length || hasReviewLoop(plan.pattern)
+                      ? 'hasReviewRound'
+                      : 'noReviewRound',
+                  )}
+                </p>
                 <Switch
                   label={shared('observe')}
                   checked={Boolean(plan.observeWork)}

@@ -266,14 +266,19 @@ it('separates two bindings of the same producer and retains the remaining review
   expect(compileDefinition(removed.draft.definition).ok).toBe(true);
 });
 
-it('preserves normal output from an ordinary team and a shared Outrider without a required review', async () => {
-  const { draft } = setup();
-  const run = start(draft.definition);
-  const p = await run.end();
-  expect(p.status).toBe('succeeded');
-  expect(p.reviews).toEqual({});
-  expect(p.output?.artifactVersionIds).toHaveLength(1);
-});
+it.each([false, true])(
+  'preserves normal submission when on-demand artifact review is %s and mandatory review is absent',
+  async (onDemand) => {
+    const { draft } = setup();
+    if (onDemand && draft.definition.sharedOutrider)
+      draft.definition.sharedOutrider.artifactReview = true;
+    const run = start(draft.definition);
+    const p = await run.end();
+    expect(p.status).toBe('succeeded');
+    expect(p.reviews).toEqual({});
+    expect(p.output?.artifactVersionIds).toHaveLength(1);
+  },
+);
 
 it('refuses to finalize a new writer version even after V1 passed', async () => {
   const { next, gate } = setup();
