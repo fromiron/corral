@@ -74,6 +74,8 @@ test('automatic observation can be saved for one worker and switched off indepen
   const settings = editorSettings(page);
   const toggle = settings.getByRole('checkbox', { name: 'Observe work in progress', exact: true });
   await expect(toggle).not.toBeChecked();
+  const requestedReview = settings.getByRole('switch', { name: 'Artifact review', exact: true });
+  await requestedReview.click();
   await toggle.click();
   const watched = settings.getByRole('group', { name: 'Workers to observe', exact: true });
   await watched.getByRole('radio', { name: 'Select workers' }).click();
@@ -91,6 +93,7 @@ test('automatic observation can be saved for one worker and switched off indepen
   const configured = page.getByRole('button', { name: 'Outrider · Entire team', exact: true });
   await configured.click();
   await expect(toggle).toBeChecked();
+  await expect(requestedReview).toBeChecked();
   await expect(watched.getByRole('checkbox', { name: 'writer' })).toBeChecked();
   await expect(watched.getByRole('checkbox', { name: 'planner' })).not.toBeChecked();
   await expect(interval).toHaveValue('2');
@@ -102,6 +105,7 @@ test('automatic observation can be saved for one worker and switched off indepen
   await configured.click();
   await expect(toggle).not.toBeChecked();
   await expect(settings.getByRole('radio', { name: 'Entire team' })).toBeChecked();
+  await expect(requestedReview).toBeChecked();
 });
 
 test('a worker observation proposal saves only after preview and reloads with its review interval', async ({
