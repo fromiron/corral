@@ -2,10 +2,10 @@ import { expect, type Page, test } from '@playwright/test';
 import {
   chooseTeam,
   newTeam,
-  openLibrary,
   openLibraryTeams,
   projectTab,
   savedTeams,
+  saveTemplateCopy,
   startTestRun,
 } from './workbench.ts';
 
@@ -14,7 +14,7 @@ import {
 // Teams are kept per project in the library (library.md), which shows the project opened last.
 
 const switcher = (page: Page) =>
-  page.getByRole('banner').getByRole('button', { name: 'Go to project', exact: true });
+  page.getByRole('banner').getByRole('button', { name: /^Go to project: / });
 /** Opens a project from the sidebar, where every active project is listed by name. */
 const openProject = (page: Page, name: string) =>
   page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();
@@ -33,10 +33,7 @@ async function singleAgentRun(page: Page) {
   const projectLocation = await page
     .getByRole('navigation', { name: 'Current location' })
     .innerText();
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await saveTemplateCopy(page);
   await startTestRun(page);
   await expect(page.getByTestId('run-status')).toContainText('Completed', { timeout: 20_000 });
   await page.getByRole('link', { name: 'Open run page', exact: true }).click();
@@ -112,7 +109,7 @@ test('two projects may share a name; a Corral moves; an archived project is hidd
   await expect(page.getByRole('note')).toContainText('archived');
   await openLibraryTeams(page);
   await expect(page.getByRole('note')).toContainText('archived');
-  await expect(page.getByRole('button', { name: 'New Corral' })).toBeHidden();
+  await expect(page.getByRole('link', { name: 'New Corral', exact: true })).toBeHidden();
   await page.goto(`/projects/${first}`);
   await page.getByRole('button', { name: 'Hide the sidebar', exact: true }).click();
   await switcher(page).click();

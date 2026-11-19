@@ -48,6 +48,7 @@ import {
   type ImageGenerationResult,
   ImageInput,
   type InputBinding,
+  isWorkAgent,
   LspQuery,
   MessageBranchPoint,
   type MessageBranchPreview,
@@ -56,6 +57,8 @@ import {
   type ModelProfileSnapshot,
   type ModelRequestIntent,
   ModelRequestRecord,
+  matchesRoleMcpSelection,
+  type OutputNode,
   type ParentQuestionMessage,
   type PreviewToolName,
   ProtectedContext,
@@ -72,6 +75,9 @@ import {
   ResumeRuntimeRequest,
   ReviewArtifact,
   type ReviewRecipeRevision,
+  ROLE_SKILLS_MINIMAL_BINDING,
+  RoleHarnessResolutionError,
+  RoleMcpToolProblemReason,
   type RoutingBackend,
   RunCommand,
   RunCommandArgs,
@@ -232,6 +238,10 @@ const RUNTIME = { kind: 'runtime', id: 'coordinator' } as const;
 const START_SCOPE = '*';
 /** Recorded with every allowed tool call: role allowlists plus argument checks. */
 const TOOL_POLICY_VERSION = 'role-allowlist@1';
+
+function needsHarness(role: AgentRole): boolean {
+  return role.harness !== undefined || role.skills !== undefined || Boolean(role.mcpTools?.length);
+}
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
 type EventDraft = {
@@ -448,7 +458,7 @@ export interface CoordinatorDeps {
 /** Resolves immutable, trusted revisions without importing extension code. */
 export interface HarnessResolver {
   resolve(
-    binding: HarnessBindingRef,
+    binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
     options?: { runOverride?: HarnessBindingRef; sessionId?: string },
@@ -611,6 +621,8 @@ interface LiveRun {
   boundaryWaiters: Set<() => void>;
   cancelListeners: Map<string, Set<() => void>>;
   toolOutcomes: Map<string, Set<Promise<ToolOutcome>>>;
+  /** Native effects started by the MCP extension, still awaiting their own completion. */
+  openMcpCalls?: Map<string, string>;
   /** The run's advisors (features/advisor.md); empty when the definition has none. */
   advisors: AdvisorRuntime;
 }
@@ -1195,14 +1207,18 @@ export class Coordinator {
     );
     if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
     try {
-      if (state.role.harness) {
+      if (needsHarness(state.role)) {
         const resolved = this.harnesses?.resolve(
           state.role.harness,
           source.snapshot.definition,
           state.role.id,
           source.sessionId ? { sessionId: source.sessionId } : undefined,
         );
-        if (!resolved || resolved.snapshotHash !== manifest.harnessHash)
+        if (
+          !resolved ||
+          resolved.snapshotHash !== manifest.harnessHash ||
+          !matchesRoleMcpSelection(state.role, resolved)
+        )
           blockers.push('resources_changed');
       } else if (manifest.harnessHash !== null) blockers.push('resources_changed');
     } catch {
@@ -1822,7 +1838,7 @@ export class Coordinator {
         parsed.data.capabilityLinks.length ||
         parsed.data.roles.some(
           (role) =>
-            role.harness ||
+            needsHarness(role) ||
             role.allowedWorkTools.some((tool) => tool !== 'write_artifact') ||
             role.allowedCollaborationTools.some((tool) => tool !== 'submit_result'),
         )
@@ -1911,6 +1927,10 @@ export class Coordinator {
         .join('; ');
       return refuse({ code: 'GRAPH_INVALID', message });
     }
+    const requiredReviewSources = {
+      ...(recovery?.source ?? branch?.source)?.snapshot.requiredReviewSources,
+      ...planned.requiredReviewSources,
+    };
     const sharedOutriderNodeIds =
       planned.sharedOutriderNodeIds ??
       (recovery?.source ?? branch?.source)?.snapshot.sharedOutriderNodeIds;
@@ -2052,8 +2072,29 @@ export class Coordinator {
           code: 'CAPABILITY_DENIED',
           message: 'run work style requires a role with a bound harness',
         });
+    // Observers and shared consultants never receive an MCP work style. Even an authored
+    // empty selection is invalid for them; do not silently discard it as a no-op.
+    for (const node of planned.definition.nodes) {
+      if (
+        node.type !== 'agent' ||
+        (node.invocation !== 'observer' && !sharedOutriderNodeIds?.includes(node.id))
+      )
+        continue;
+      const role = planned.definition.roles.find((candidate) => candidate.id === node.roleId)!;
+      if (role.mcpTools !== undefined)
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `Outrider role ${role.id} cannot select MCP tools`,
+        });
+      if (node.invocation === 'observer' && role.skills !== undefined)
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: `observer role ${role.id} cannot select skills`,
+        });
+    }
     for (const role of planned.definition.roles) {
-      if (!role.harness) continue;
+      if (!needsHarness(role)) continue;
+      const binding = role.harness ?? ROLE_SKILLS_MINIMAL_BINDING;
       try {
         const snapshot = EffectiveHarnessSnapshot.parse(
           this.harnesses?.resolve(role.harness, planned.definition, role.id, {
@@ -2064,11 +2105,17 @@ export class Coordinator {
           }),
         );
         if (
-          snapshot.binding.profileId !== role.harness.profileId ||
-          snapshot.binding.revision !== role.harness.revision ||
+          snapshot.binding.profileId !== binding.profileId ||
+          snapshot.binding.revision !== binding.revision ||
+          (!role.harness && snapshot.policy !== 'strict') ||
           (snapshot.policy === 'strict' && snapshot.resources.some((r) => r.kind === 'extension'))
         )
           throw new Error('invalid binding');
+        if (!matchesRoleMcpSelection(role, snapshot))
+          return refuse({
+            code: 'CAPABILITY_DENIED',
+            message: `resolved harness for role ${role.id} does not match its MCP tool selection`,
+          });
         if (
           reviewOnly &&
           (snapshot.resources.some((resource) => resource.kind === 'extension') ||
@@ -2097,7 +2144,18 @@ export class Coordinator {
               'Linux isolation requires a content-only strict harness; native tools are unavailable',
           });
         harnesses[role.id] = snapshot;
-      } catch {
+      } catch (error) {
+        const problem = error instanceof RoleHarnessResolutionError ? error.mcpProblem : undefined;
+        if (problem?.roleId === role.id) {
+          const reasons = RoleMcpToolProblemReason.options.filter((reason) =>
+            problem.tools.some((tool) => tool.reason === reason),
+          );
+          if (reasons.length)
+            return refuse({
+              code: 'CAPABILITY_DENIED',
+              message: `MCP tool selection for role ${role.id} refused: ${reasons.join(', ')}`,
+            });
+        }
         return refuse({
           code: 'CAPABILITY_DENIED',
           message: `harness for role ${role.id} is unavailable, untrusted or incompatible`,
@@ -2222,6 +2280,7 @@ export class Coordinator {
     const snapshot: RunSnapshot = {
       ...(sharedOutriderNodeIds?.length ? { sharedOutriderNodeIds } : {}),
       ...(artifactReviewNodeIds?.length ? { artifactReviewNodeIds } : {}),
+      ...(Object.keys(requiredReviewSources).length ? { requiredReviewSources } : {}),
       ...(branch
         ? {
             branchedFrom: {
@@ -5818,6 +5877,22 @@ export class Coordinator {
             JSON.parse(this.store.getArtifactText(run.runId, SESSION_CONVERSATION) ?? 'null'),
           )
         : undefined;
+    // Some pinned Outputs have been inlined. Their strict decision-to-candidate mapping is
+    // already on the run snapshot, and the decision binding identifies its actual reviewer.
+    const requiredSources = new Set<string>();
+    if (role.outputContract === 'review' && run.snapshot.requiredReviewSources) {
+      for (const decision of definition.nodes) {
+        if (
+          decision.type !== 'decision' ||
+          !decision.inputBindings.some(
+            (b) => b.kind === 'task_output' && b.sourceNodeId === spec.nodeId,
+          )
+        )
+          continue;
+        for (const source of run.snapshot.requiredReviewSources[decision.id] ?? [])
+          requiredSources.add(source);
+      }
+    }
     const input: AgentStartInput = {
       sessionId: this.store.getRun(run.runId)?.sessionId ?? undefined,
       ...(conversation ? { conversation } : {}),
@@ -5844,6 +5919,9 @@ export class Coordinator {
       nodeId: spec.nodeId,
       attemptNo,
       role,
+      ...(isWorkAgent(node) && node.stepInstruction
+        ? { stepInstruction: node.stepInstruction }
+        : {}),
       ...(!advisor && run.snapshot.harnesses?.[role.id]
         ? { harness: run.snapshot.harnesses[role.id] }
         : {}),
@@ -5883,9 +5961,44 @@ export class Coordinator {
           run,
           item ? [{ kind: 'run_input', name: 'criteria' }] : bindings,
           spec.iterationId,
+          requiredSources,
         ),
       ],
     };
+    if (requiredSources.size) {
+      const { iterationId } = spec;
+      const targetVersions = new Set(
+        [...requiredSources].flatMap((source) =>
+          this.submittedOutputOf(
+            run,
+            source,
+            iterationId && this.loopOf(run, source)
+              ? (round) => this.sameRound(run, round, iterationId)
+              : undefined,
+          ),
+        ),
+      );
+      const examples = [...targetVersions].map((targetArtifactVersionId) =>
+        JSON.stringify({
+          targetArtifactVersionId,
+          criteriaVersionId: input.criteriaVersionId,
+          verdict: 'inconclusive',
+          issues: [],
+          evidenceRefs: [],
+        }),
+      );
+      input.inputs.push({
+        name: 'required_review',
+        kind: 'run_input',
+        artifactVersionId: null,
+        text: [
+          'Evaluate each listed version against the criteria. Write one JSON review per version with write_artifact. The examples below give its exact target and criteria IDs.',
+          ...examples,
+          'Set verdict to pass, revise or inconclusive according to the candidate. For revise, include at least one issue in the format specified in your output contract.',
+          'Call submit_result once with exactly the version IDs returned for those JSON reviews. Keep any commentary inside the review issues.',
+        ].join('\n'),
+      });
+    }
     const recipeLoop = spec.iterationId
       ? run.projection.iterations[spec.iterationId]?.loopNodeId
       : undefined;
@@ -6109,6 +6222,7 @@ export class Coordinator {
     run: LiveRun,
     bindings: InputBinding[],
     iterationId: string | null,
+    requiredSources?: ReadonlySet<string>,
   ): ResolvedInput[] {
     const { brief, criteria } = run.snapshot.definition.input;
     const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
@@ -6121,27 +6235,29 @@ export class Coordinator {
         return [{ name: binding.name, kind: 'run_input', artifactVersionId: null, text }];
       }
       const source = binding.sourceNodeId ?? '';
-      let versionId: string | undefined;
+      let versions: (string | undefined)[] = [];
       if (binding.kind === 'task_output') {
-        // Inside a Loop, a producer in a Loop is read from this round: the round itself, a Loop
-        // round around it, or a nested Loop's round inside it, never an earlier round.
+        // Ordinary bindings read the first submitted version. A required reviewer must see
+        // every candidate the Output will publish, in its submitted order.
         const scoped = iterationId !== null && this.loopOf(run, source) !== null;
-        versionId = this.submittedOutputOf(
+        const submitted = this.submittedOutputOf(
           run,
           source,
           scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
-        )[0];
-      }
-      if (binding.kind === 'previous_iteration_output' && previousRound) {
-        versionId = this.submittedOutputOf(run, source, previousRound)[0];
-      }
-      if (binding.kind === 'explicit_version') versionId = binding.artifactVersionId;
-      const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
-      if (!versionId || text === null) {
-        if (binding.optional) return [];
+        );
+        versions = requiredSources?.has(source) ? submitted : submitted.slice(0, 1);
+      } else if (binding.kind === 'previous_iteration_output' && previousRound) {
+        versions = this.submittedOutputOf(run, source, previousRound).slice(0, 1);
+      } else if (binding.kind === 'explicit_version') versions = [binding.artifactVersionId];
+      const resolved = versions.flatMap((versionId) => {
+        const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
+        return versionId && text !== null
+          ? [{ name: binding.name, kind: binding.kind, artifactVersionId: versionId, text }]
+          : [];
+      });
+      if (!resolved.length && !binding.optional)
         throw new Error(`input "${binding.name}" (${binding.kind}) has no submitted version`);
-      }
-      return [{ name: binding.name, kind: binding.kind, artifactVersionId: versionId, text }];
+      return resolved;
     });
   }
 
@@ -6267,10 +6383,26 @@ export class Coordinator {
       }
       // A model request still open when its agent stopped may or may not have been billed.
       if (effect.kind !== 'model_request' && !(input.harness && effect.kind === 'tool')) continue;
+      const mcpCallId = effect.kind === 'tool' ? run.openMcpCalls?.get(effect.effectId) : undefined;
+      // Confirmed worker termination closes our side of an MCP request. It does not establish
+      // what happened on the remote server. Unconfirmed termination remains unknown.
+      const mcpCancelled = mcpCallId !== undefined && cancelled && outcome === 'cancelled';
+      if (mcpCancelled)
+        drafts.push({
+          type: 'tool.finished',
+          executionId: input.executionId,
+          payload: {
+            executionId: input.executionId,
+            toolCallId: mcpCallId,
+            resultRef: null,
+            error: 'cancelled',
+          },
+        });
+      if (mcpCallId !== undefined) run.openMcpCalls!.delete(effect.effectId);
       drafts.push({
         type: 'effect.settled',
         executionId: input.executionId,
-        payload: { effectId: effect.effectId, outcome: 'unknown' },
+        payload: { effectId: effect.effectId, outcome: mcpCancelled ? 'cancelled' : 'unknown' },
       });
     }
     for (const directiveId of run.projection.directiveOrder) {
@@ -6569,6 +6701,55 @@ export class Coordinator {
     }
   }
 
+  /** Bind a final version to the strict decision that passed that exact reviewed artifact. */
+  private checkRequiredOutputReviews(
+    run: LiveRun,
+    gates: OutputNode['requiredReviews'],
+    awaitingSubmission?: ReadonlyMap<string, string[]>,
+  ) {
+    const candidates = new Map<string, string[]>();
+    for (const gate of gates ?? []) {
+      const candidateIds = this.submittedOutputOf(run, gate.sourceNodeId);
+      const expected = awaitingSubmission?.get(gate.sourceNodeId);
+      if (
+        expected &&
+        (expected.length !== candidateIds.length ||
+          candidateIds.some((id) => !expected.includes(id)))
+      ) {
+        throw new Error(
+          'required_output_review: the submitted candidate changed while awaiting finalization',
+        );
+      }
+      candidates.set(gate.sourceNodeId, candidateIds);
+      const branch = Object.values(run.projection.workflowBranches ?? {}).findLast(
+        (b) => b.nodeId === gate.decisionNodeId,
+      );
+      const passed = new Set(
+        branch?.selectedPort === 'pass'
+          ? branch.evidenceRefs.flatMap((ref) => {
+              const review = ref.kind === 'review' ? run.projection.reviews[ref.id] : undefined;
+              return review &&
+                !review.stale &&
+                review.verdict === 'pass' &&
+                review.criteriaVersionId === run.criteriaVersionId
+                ? [review.targetVersionId]
+                : [];
+            })
+          : [],
+      );
+      if (
+        run.pendingCriteriaVersionId ||
+        !candidateIds.length ||
+        candidateIds.some((id) => !passed.has(id))
+      ) {
+        throw new Error(
+          'required_output_review: no passing review for the submitted candidate version',
+        );
+      }
+    }
+    return candidates;
+  }
+
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
     await this.boundary(run);
     // The run does not end while a review is queued or running: advisors finish first.
@@ -6580,6 +6761,7 @@ export class Coordinator {
       b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
+    const requiredCandidates = this.checkRequiredOutputReviews(run, output.requiredReviews);
     let approvalId: string | null = null;
     if (output.requireApproval) {
       // Final approval binds the exact draft, its latest review and the criteria.
@@ -6628,6 +6810,7 @@ export class Coordinator {
       this.failRun(run, `termination_unconfirmed: ${nodeId}`);
       return;
     }
+    this.checkRequiredOutputReviews(run, output.requiredReviews, requiredCandidates);
     // The output and the run's success are one fact: readers never see one without the other.
     // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
@@ -6706,6 +6889,37 @@ export class Coordinator {
     const recorded = this.recordReview(run, reviewVersionId);
     const recipeLoopId = node?.parentId;
     const recipe = recipeLoopId ? run.recipes.get(recipeLoopId) : undefined;
+    const strictSources = run.snapshot.requiredReviewSources?.[nodeId];
+    if (strictSources) {
+      const candidates = strictSources.flatMap((id) =>
+        this.submittedOutputOf(
+          run,
+          id,
+          round && this.loopOf(run, id) ? (at) => this.sameRound(run, at, round) : undefined,
+        ),
+      );
+      const reviews = [recorded, ...bound.slice(1).map((id) => this.recordReview(run, id))];
+      if (
+        run.pendingCriteriaVersionId ||
+        !candidates.length ||
+        !reviews.length ||
+        candidates.some((id) => !reviews.some((r) => r.targetVersionId === id)) ||
+        reviews.some((r) => r.verdict === 'inconclusive' || !candidates.includes(r.targetVersionId))
+      ) {
+        throw new Error(
+          'required_output_review: no valid review for the current candidate and criteria',
+        );
+      }
+      if (!recipe)
+        return choice(
+          reviews.every((r) => r.verdict === 'pass') ? 'pass' : 'revise',
+          'review_verdict',
+          [
+            ...bound.map((id) => ({ kind: 'review' as const, id })),
+            ...candidates.map((id) => ({ kind: 'artifact' as const, id })),
+          ],
+        );
+    }
     if (recipe && recipeLoopId) {
       const candidateExecution =
         run.projection.nodeExecutions[recipe.recipe.candidateNodeId]?.at(-1);
@@ -9118,7 +9332,9 @@ export class Coordinator {
                   )
                     throw new Error('native call changed while awaiting permission');
                 }
-                if (descriptors.get(call.proposal.name)?.source === 'extension:pi-mcp@1.3.0') {
+                const source = descriptors.get(call.proposal.name)?.source;
+                const mcp = source === 'extension:pi-mcp@1.3.0';
+                if (mcp) {
                   if (!this.harnesses?.checkMcpTool) throw new Error('MCP trust unavailable');
                   await this.harnesses.checkMcpTool(input, call.proposal.name, call.proposal.args);
                   requireActive();
@@ -9129,8 +9345,7 @@ export class Coordinator {
                   )
                     throw new Error('native call changed');
                 }
-                const codemode =
-                  descriptors.get(call.proposal.name)?.source === 'extension:pi-codemode@1.3.0';
+                const codemode = source === 'extension:pi-codemode@1.3.0';
                 if (codemode && this.codemodeWorkers.size >= 2)
                   throw new Error('codemode worker capacity reached');
                 const effectId = this.ids.next('effect');
@@ -9154,6 +9369,10 @@ export class Coordinator {
                 ]);
                 call.ran = true;
                 nativeEffects.set(toolCallId, effectId);
+                if (mcp) {
+                  run.openMcpCalls ??= new Map();
+                  run.openMcpCalls.set(effectId, toolCallId);
+                }
                 if (codemode) this.codemodeWorkers.set(effectId, { runId: run.runId, executionId });
               } finally {
                 call.claimed = false;
@@ -9178,6 +9397,7 @@ export class Coordinator {
                 { type: 'effect.settled', executionId, payload: { effectId, outcome } },
               ]);
               nativeEffects.delete(toolCallId);
+              run.openMcpCalls?.delete(effectId);
               this.codemodeWorkers.delete(effectId);
               for (const listener of nativeCloseListeners.get(toolCallId) ?? []) listener();
               nativeCloseListeners.delete(toolCallId);

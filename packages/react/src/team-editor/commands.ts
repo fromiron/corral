@@ -1,22 +1,30 @@
 import {
+  type AgentNode,
   type AgentRole,
   type ControlEdge,
   type CorralDefinition,
   type CorralNode,
   canonicalJson,
-  type HarnessBindingRef,
+  type InputBinding,
   isWorkAgent,
+  type OutputNode,
+  type RoleOrigin,
   SharedOutrider,
   type TargetPort,
+  type WorkAgentNode,
 } from '@corral/contracts';
 import {
   boxBoundaryViolation,
+  type CompileOptions,
+  compileDefinition,
   DECISION_RULE,
+  type Diagnostic,
   inputPortsOf,
   isBox,
   isWithin,
   outputPortsOf,
   outputSources,
+  reviewedOutputBinding,
   type SharedOutriderTarget,
   sourceSide,
   wouldCreateCycle,
@@ -27,11 +35,16 @@ import {
   duplicateNode,
   type EditorDraft,
   watchAgent as linkWatch,
+  newWorkAgent,
   nextId,
   removeNode,
+  sameRoleField,
+  updateNode,
   withDefinition,
   withSuggestedBinding,
 } from '../editor/model.ts';
+import { outlineOrder } from './layout.ts';
+import { requiredReviewLoopIds } from './roster.ts';
 
 // Structural edits for the team editor (docs/specs/features/team-graph.md). Every gesture is a
 // pure function of the draft: the canvas, the structure tree and the command menu only choose
@@ -51,18 +64,21 @@ export type StepKind =
   | 'join'
   | 'output';
 
-/** Where a new step goes: on a connection, after a node, into a box, or on its own. */
+/** A graph placement, or the shared approach to a composition's final Output. */
 export type Placement =
   | { kind: 'empty' }
   | { kind: 'edge'; edgeId: string }
+  | { kind: 'beforeOutput'; outputId: string }
   | { kind: 'after'; nodeId: string }
   | { kind: 'into'; boxId: string };
 
 export type EditRejection =
+  | 'unknownConnection'
   | 'unknownNode'
   | 'selfConnection'
   | 'callableInControlFlow'
   | 'invalidSourcePort'
+  | 'reviewExhausted'
   | 'invalidTargetPort'
   | 'invalidResultSource'
   | 'invalidResultInput'
@@ -76,15 +92,21 @@ export type EditRejection =
   | 'noPredecessor'
   | 'oneAgentOnly'
   | 'roleNeedsAgent'
+  | 'movePlanOwner'
+  | 'replacementCompileError'
   | 'advisorOutsideBoxes'
   | 'watchNeedsAdvisor'
   | 'watchNeedsAgent'
   | 'advisorRole'
-  | 'invalidSharedOutrider';
+  | 'invalidSharedOutrider'
+  | 'requiredReviewNeedsSource'
+  | 'requiredReviewNeedsOutrider';
 
-export type EditResult =
-  | { ok: true; draft: EditorDraft; nodeId?: string }
-  | { ok: false; reason: EditRejection };
+export type EditResult = { ok: true; draft: EditorDraft; nodeId?: string } | EditFailure;
+
+type EditFailure =
+  | { ok: false; reason: Exclude<EditRejection, 'replacementCompileError'> }
+  | { ok: false; reason: 'replacementCompileError'; diagnostic: Diagnostic };
 
 /** A selected target list is a set; picking the same workers in another order is no edit. */
 function orderedOutriderSettings(settings: SharedOutrider): SharedOutrider {
@@ -128,8 +150,8 @@ export interface TeamReference {
   corralId: string;
   definitionRevision: number;
   name: string;
-  /** The roles of that revision, once the host has read them. */
-  roles?: readonly AgentRole[];
+  /** Reusable agents with their first seat's task at that revision. */
+  agents?: readonly SavedAgentSource[];
 }
 
 export interface PortRequest {
@@ -162,12 +184,31 @@ export function primaryIn(node: CorralNode): TargetPort | null {
 export function checkPorts(
   draft: EditorDraft,
   request: PortRequest,
-): { ok: true } | { ok: false; reason: EditRejection } {
+  replaceEdgeId?: string,
+): { ok: true } | { ok: false; reason: Exclude<EditRejection, 'replacementCompileError'> } {
   const { definition } = draft;
+  const old =
+    replaceEdgeId === undefined
+      ? undefined
+      : definition.controlEdges.find((edge) => edge.id === replaceEdgeId);
+  if (
+    replaceEdgeId !== undefined &&
+    (!old || old.source !== request.source || old.sourcePort !== request.sourcePort)
+  )
+    return { ok: false, reason: 'unknownConnection' };
+  const remaining = old
+    ? definition.controlEdges.filter((edge) => edge.id !== old.id)
+    : definition.controlEdges;
   const nodes = nodesOf(definition);
   const source = nodes.get(request.source);
   const target = nodes.get(request.target);
   if (!source || !target) return { ok: false, reason: 'unknownNode' };
+  if (
+    source.type === 'loop' &&
+    request.sourcePort === 'exhausted' &&
+    requiredReviewLoopIds(definition.nodes).has(source.id)
+  )
+    return { ok: false, reason: 'reviewExhausted' };
   if (source.id === target.id && !isBox(source)) return { ok: false, reason: 'selfConnection' };
   const callable = (n: CorralNode) => n.type === 'agent' && n.invocation === 'callable';
   if (callable(source) || callable(target)) return { ok: false, reason: 'callableInControlFlow' };
@@ -176,7 +217,7 @@ export function checkPorts(
   if (!inputPortsOf(target).includes(request.targetPort))
     return { ok: false, reason: 'invalidTargetPort' };
   if (
-    definition.controlEdges.some(
+    remaining.some(
       (e) =>
         e.source === request.source &&
         e.sourcePort === request.sourcePort &&
@@ -188,14 +229,27 @@ export function checkPorts(
   if (boxBoundaryViolation(nodes, request)) return { ok: false, reason: 'boxBoundary' };
   if (request.targetPort === 'repeat' && source.type !== 'decision')
     return { ok: false, reason: 'repeatNeedsDecision' };
-  if (wouldCreateCycle(definition.nodes, definition.controlEdges, request))
-    return { ok: false, reason: 'cycle' };
+  if (wouldCreateCycle(definition.nodes, remaining, request)) return { ok: false, reason: 'cycle' };
   return { ok: true };
 }
 
-export function connectPorts(draft: EditorDraft, request: PortRequest): EditResult {
-  const check = checkPorts(draft, request);
+export function connectPorts(
+  draft: EditorDraft,
+  request: PortRequest,
+  replaceEdgeId?: string,
+): EditResult {
+  const check = checkPorts(draft, request, replaceEdgeId);
   if (!check.ok) return check;
+  if (replaceEdgeId !== undefined) {
+    const old = draft.definition.controlEdges.find((e) => e.id === replaceEdgeId);
+    if (old?.target === request.target && old.targetPort === request.targetPort)
+      return { ok: true, draft };
+    const controlEdges = draft.definition.controlEdges.map((e) =>
+      e.id === replaceEdgeId ? { ...e, ...request } : e,
+    );
+    const definition = withSuggestedBinding({ ...draft.definition, controlEdges }, request.target);
+    return { ok: true, draft: withDefinition(draft, definition) };
+  }
   const { id, counters } = nextId(draft, 'edge');
   let definition: CorralDefinition = {
     ...draft.definition,
@@ -209,9 +263,10 @@ export function connectPorts(draft: EditorDraft, request: PortRequest): EditResu
 
 function createStep(
   draft: EditorDraft,
-  kind: StepKind,
+  kind: Exclude<StepKind, 'observer'>,
   parentId: string | null,
   reference?: TeamReference,
+  decisionLabel?: string,
 ): { draft: EditorDraft; nodeId: string } {
   const placed = (
     created: { draft: EditorDraft; nodeId: string },
@@ -239,9 +294,6 @@ function createStep(
   };
   const numbered = (base: string, index: number) => (index === 1 ? base : `${base} ${index}`);
   switch (kind) {
-    case 'observer':
-      // Never in a box: an advisor sits outside the flow.
-      return addAdvisor(draft);
     case 'agent':
     case 'output':
       return placed(addNode(draft, kind));
@@ -257,7 +309,11 @@ function createStep(
           ? {
               id: node.id,
               type: 'decision',
-              label: node.label,
+              label: numbered(
+                decisionLabel ?? { review: 'Review', approval: 'Approval', rule: 'Rule' }[kind],
+                draft.definition.nodes.filter((n) => n.type === 'decision' && n.mode === kind)
+                  .length + 1,
+              ),
               ...(node.parentId ? { parentId: node.parentId } : {}),
               mode: kind,
               rule: DECISION_RULE[kind],
@@ -346,13 +402,14 @@ export function placeStep(
   draft: EditorDraft,
   kind: StepKind,
   at: Placement,
-  options: { reference?: TeamReference } = {},
+  options: { reference?: TeamReference; decisionLabel?: string } = {},
 ): EditResult {
-  const { definition } = draft;
-  const nodes = nodesOf(definition);
   if (kind === 'observer') {
     // Never put into the flow: placed on an agent it watches that agent, anywhere else nobody.
-    const watched = at.kind === 'after' ? nodes.get(at.nodeId) : undefined;
+    const watched =
+      at.kind === 'after'
+        ? draft.definition.nodes.find((node) => node.id === at.nodeId)
+        : undefined;
     if (at.kind === 'after' && !watched) return { ok: false, reason: 'unknownNode' };
     const created = addAdvisor(draft);
     const linked = isWorkAgent(watched)
@@ -360,29 +417,62 @@ export function placeStep(
       : null;
     return { ok: true, nodeId: created.nodeId, draft: linked?.ok ? linked.draft : created.draft };
   }
+  return placeFlowStep(draft, kind, at, (parentId) =>
+    createStep(draft, kind, parentId, options.reference, options.decisionLabel),
+  );
+}
+
+function placeFlowStep(
+  draft: EditorDraft,
+  kind: Exclude<StepKind, 'observer'>,
+  at: Placement,
+  create: (parentId: string | null) => { draft: EditorDraft; nodeId: string },
+): EditFailure | { ok: true; draft: EditorDraft; nodeId: string } {
+  const { definition } = draft;
+  const nodes = nodesOf(definition);
   switch (at.kind) {
     case 'empty': {
-      const created = createStep(draft, kind, null, options.reference);
+      const created = create(null);
       return { ok: true, ...created };
     }
-    case 'edge': {
-      const edge = definition.controlEdges.find((e) => e.id === at.edgeId);
-      if (!edge) return { ok: false, reason: 'unknownNode' };
+    case 'edge':
+    case 'beforeOutput': {
+      const incoming =
+        at.kind === 'beforeOutput'
+          ? finalApproach(definition, at.outputId)
+          : definition.controlEdges.filter((e) => e.id === at.edgeId);
+      const [edge] = incoming;
+      if (!edge)
+        return { ok: false, reason: at.kind === 'edge' ? 'unknownNode' : 'unknownConnection' };
       const decision = ['review', 'approval', 'rule', 'check', 'router'].includes(kind);
       if (edge.targetPort === 'repeat' && !decision)
         return { ok: false, reason: 'repeatNeedsDecision' };
-      const created = createStep(draft, kind, sourceSide(nodes, edge), options.reference);
-      const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
+      const created = create(sourceSide(nodes, edge));
+      const step = created.draft.definition.nodes.find(
+        (n) => n.id === created.nodeId,
+      ) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
+      const output = at.kind === 'beforeOutput' ? nodes.get(at.outputId) : undefined;
+      const materials =
+        output?.type === 'output' && isWorkAgent(step)
+          ? finalResultInputs(output, step.inputBindings, nodes)
+          : null;
       return {
         ok: true,
         nodeId: created.nodeId,
         draft: withEdges(
-          created.draft,
-          (e) => e.id === edge.id,
+          materials
+            ? patchNode(created.draft, step.id, { inputBindings: materials })
+            : created.draft,
+          (e) => (at.kind === 'beforeOutput' ? e.target === at.outputId : e.id === edge.id),
           [
-            { source: edge.source, sourcePort: edge.sourcePort, target: step.id, targetPort: into },
+            ...incoming.map(({ source, sourcePort }) => ({
+              source,
+              sourcePort,
+              target: step.id,
+              targetPort: into,
+            })),
             ...(out
               ? [
                   {
@@ -394,7 +484,7 @@ export function placeStep(
                 ]
               : []),
           ],
-          [step.id],
+          materials ? [] : [step.id],
         ),
       };
     }
@@ -404,7 +494,7 @@ export function placeStep(
       const port = primaryOut(before);
       if (!port || (before.type === 'agent' && before.invocation === 'callable'))
         return { ok: false, reason: 'noNextStep' };
-      const created = createStep(draft, kind, before.parentId ?? null, options.reference);
+      const created = create(before.parentId ?? null);
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const into = primaryIn(step) as TargetPort;
       const out = primaryOut(step);
@@ -447,8 +537,8 @@ export function placeStep(
           nodes.get(e.source)?.parentId === box.id,
       );
       if (body.length > 0 && lastStep)
-        return placeStep(draft, kind, { kind: 'edge', edgeId: lastStep.id }, options);
-      const created = createStep(draft, kind, box.id, options.reference);
+        return placeFlowStep(draft, kind, { kind: 'edge', edgeId: lastStep.id }, create);
+      const created = create(box.id);
       if (body.length > 0) return { ok: true, ...created };
       const step = nodesOf(created.draft.definition).get(created.nodeId) as CorralNode;
       const out = primaryOut(step);
@@ -612,6 +702,7 @@ export function setParent(draft: EditorDraft, id: string, parentId: string | nul
   const nodes = nodesOf(draft.definition);
   const node = nodes.get(id);
   if (!node) return { ok: false, reason: 'unknownNode' };
+  if ((node.parentId ?? null) === parentId) return { ok: true, draft };
   if (parentId !== null) {
     if (isAdvisor(node)) return { ok: false, reason: 'advisorOutsideBoxes' };
     const box = nodes.get(parentId);
@@ -708,6 +799,7 @@ export function applyPattern(
   pattern: Pattern,
   ids: readonly string[],
   at: Placement = { kind: 'empty' },
+  reviewLabel?: string,
 ): EditResult {
   let next = draft;
   let targets = [...ids];
@@ -717,7 +809,9 @@ export function applyPattern(
     next = created.draft;
     targets = [created.nodeId as string];
   }
-  return pattern === 'parallel' ? splitParallel(next, targets) : loopAround(next, targets, pattern);
+  return pattern === 'parallel'
+    ? splitParallel(next, targets)
+    : loopAround(next, targets, pattern, reviewLabel);
 }
 
 /** Wraps the steps in a Loop that ends in a verdict: pass leaves, revise or fail goes round. */
@@ -725,6 +819,7 @@ function loopAround(
   draft: EditorDraft,
   ids: string[],
   pattern: 'reviewLoop' | 'checkLoop',
+  reviewLabel?: string,
 ): EditResult {
   const wrapped = wrapIn(draft, ids, 'loop');
   if (!wrapped.ok) return wrapped;
@@ -769,7 +864,13 @@ function loopAround(
       ),
     });
   }
-  const verdictStep = createStep(next, pattern === 'reviewLoop' ? 'review' : 'check', loop);
+  const verdictStep = createStep(
+    next,
+    pattern === 'reviewLoop' ? 'review' : 'check',
+    loop,
+    undefined,
+    reviewLabel,
+  );
   next = verdictStep.draft;
   const verdict = verdictStep.nodeId;
   const first = reviewer ?? verdict;
@@ -823,6 +924,204 @@ function loopAround(
     });
   }
   return { ok: true, draft: next, nodeId: loop };
+}
+
+/** Creates or removes the review of one particular input. A producer can serve multiple outputs. */
+export function setRequiredOutputReview(
+  draft: EditorDraft,
+  outputId: string,
+  bindingName: string,
+  sourceNodeId: string,
+  labels: { loop: string; reviewer: string; decision: string } | false,
+  inputIndex?: number,
+  policyId?: string,
+): EditResult {
+  const initial = draft.definition;
+  const output = initial.nodes.find((n) => n.id === outputId);
+  if (output?.type !== 'output') return { ok: false, reason: 'unknownNode' };
+  const gates = output.requiredReviews ?? [];
+  const matches = output.inputBindings.filter(
+    (b) => b.kind === 'task_output' && b.name === bindingName && b.sourceNodeId === sourceNodeId,
+  );
+  const selected =
+    inputIndex === undefined
+      ? matches.length === 1
+        ? matches[0]
+        : undefined
+      : output.inputBindings[inputIndex];
+  const current = gates.find((g) => {
+    if (policyId)
+      return (
+        g.bindingId === policyId && g.bindingName === bindingName && g.sourceNodeId === sourceNodeId
+      );
+    if (g.bindingName !== bindingName || g.sourceNodeId !== sourceNodeId) return false;
+    return inputIndex === undefined || reviewedOutputBinding(output, g) === selected;
+  });
+  if (labels && current) return { ok: true, draft };
+  const allGates = initial.nodes.flatMap((n) =>
+    n.type === 'output' ? (n.requiredReviews ?? []) : [],
+  );
+  if (!labels) {
+    if (!current) return { ok: true, draft };
+    const remaining = gates.filter((g) => g !== current);
+    let next = patchNode(draft, outputId, {
+      requiredReviews: remaining.length ? remaining : undefined,
+      ...(current.bindingId && !remaining.some((g) => g.bindingId === current.bindingId)
+        ? {
+            inputBindings: output.inputBindings.map((b) => {
+              if (b.bindingId !== current.bindingId) return b;
+              const { bindingId: _released, ...rest } = b;
+              return rest;
+            }),
+          }
+        : {}),
+    });
+    if (allGates.some((g) => g !== current && g.loopNodeId === current.loopNodeId))
+      return { ok: true, draft: next };
+    // The pattern put the reviewer between the producer and the Loop exit. Restore those exits
+    // before unwrapping so branches after the Loop keep their original destinations.
+    const byId = nodesOf(next.definition);
+    const reviewer = byId.get(current.reviewerNodeId);
+    const decision = byId.get(current.decisionNodeId);
+    if (
+      byId.get(current.loopNodeId)?.type === 'loop' &&
+      reviewer?.parentId === current.loopNodeId &&
+      decision?.parentId === current.loopNodeId
+    ) {
+      const intoReview = next.definition.controlEdges.filter(
+        (e) => e.target === reviewer.id && e.targetPort === 'in',
+      );
+      next = withEdges(
+        next,
+        (e) => intoReview.some((prior) => prior.id === e.id),
+        intoReview.map((e) => ({
+          source: e.source,
+          sourcePort: e.sourcePort,
+          target: current.loopNodeId,
+          targetPort: 'exit',
+        })),
+        [],
+      );
+      next = removeItems(next, [reviewer.id, decision.id, current.loopNodeId]);
+    }
+    return { ok: true, draft: next };
+  }
+  const outrider = initial.sharedOutrider;
+  if (!outrider) return { ok: false, reason: 'requiredReviewNeedsOutrider' };
+  const producer = initial.nodes.find((n) => n.id === sourceNodeId);
+  const sourceBinding = selected && matches.includes(selected) ? selected : undefined;
+  if (
+    !sourceBinding ||
+    !(
+      (producer?.type === 'agent' && producer.invocation === 'scheduled') ||
+      (producer?.type === 'team' && producer.source.kind === 'reference')
+    )
+  ) {
+    return { ok: false, reason: 'requiredReviewNeedsSource' };
+  }
+  let next = draft;
+  let gate = allGates.find((g) => g.sourceNodeId === sourceNodeId);
+  if (!gate) {
+    const result = applyPattern(draft, 'reviewLoop', [sourceNodeId]);
+    if (!result.ok || !result.nodeId) return result;
+    const loopNodeId = result.nodeId;
+    next = result.draft;
+    const reviewer = next.definition.nodes.find(
+      (n) => isWorkAgent(n) && n.parentId === loopNodeId && n.id !== sourceNodeId,
+    );
+    const decision = next.definition.nodes.find(
+      (n) => n.type === 'decision' && n.mode === 'review' && n.parentId === loopNodeId,
+    );
+    if (!isWorkAgent(reviewer) || !decision)
+      return { ok: false, reason: 'requiredReviewNeedsSource' };
+    const usedLabels = new Set(initial.nodes.map((node) => node.label));
+    const newLabel = (base: string) => {
+      let name = base;
+      for (let i = 2; usedLabels.has(name); i++) name = `${base} ${i}`;
+      usedLabels.add(name);
+      return name;
+    };
+    const loopLabel = newLabel(labels.loop);
+    const reviewerLabel = newLabel(labels.reviewer);
+    const decisionLabel = newLabel(labels.decision);
+    gate = {
+      bindingName,
+      sourceNodeId,
+      loopNodeId,
+      reviewerNodeId: reviewer.id,
+      decisionNodeId: decision.id,
+    };
+    next = withDefinition(next, {
+      ...next.definition,
+      controlEdges: next.definition.controlEdges.filter(
+        (e) => !(e.source === loopNodeId && e.sourcePort === 'exhausted'),
+      ),
+      nodes: next.definition.nodes.map((n) => {
+        if (n.id === loopNodeId) return { ...n, label: loopLabel };
+        if (n.id === decision.id) return { ...n, label: decisionLabel };
+        if (n.id === reviewer.id)
+          return {
+            ...n,
+            label: reviewerLabel,
+            inputBindings: [
+              { kind: 'task_output' as const, name: 'draft', sourceNodeId },
+              { kind: 'run_input' as const, name: 'criteria' },
+            ],
+          };
+        // A producer can already have feedback from an enclosing review Loop.
+        if (
+          n.id !== sourceNodeId ||
+          !isWorkAgent(n) ||
+          n.inputBindings.some(
+            (b) => b.kind === 'previous_iteration_output' && b.sourceNodeId === reviewer.id,
+          )
+        )
+          return n;
+        let name = 'review';
+        for (let i = 2; n.inputBindings.some((b) => b.name === name); i++) name = `review_${i}`;
+        return {
+          ...n,
+          inputBindings: [
+            ...n.inputBindings,
+            {
+              kind: 'previous_iteration_output' as const,
+              name,
+              sourceNodeId: reviewer.id,
+              optional: true,
+            },
+          ],
+        };
+      }),
+      roles: next.definition.roles.map((r) =>
+        r.id === reviewer.roleId
+          ? {
+              ...r,
+              name: reviewerLabel,
+              prompt: outrider.principles,
+              modelProfile: outrider.modelProfile,
+              allowedWorkTools: ['write_artifact'],
+            }
+          : r,
+      ),
+    });
+  }
+  // Unrelated inputs can have identical names and producers. Only this row receives the policy.
+  const used = new Set([...gates, ...output.inputBindings].map((b) => b.bindingId));
+  let bindingId = sourceBinding.bindingId;
+  if (!bindingId) {
+    let i = 1;
+    while (used.has('input-' + i)) i++;
+    bindingId = 'input-' + i;
+  }
+  return {
+    ok: true,
+    draft: patchNode(next, outputId, {
+      inputBindings: output.inputBindings.map((b) =>
+        b === sourceBinding ? { ...b, bindingId } : b,
+      ),
+      requiredReviews: [...gates, { ...gate, bindingName, bindingId }],
+    }),
+  };
 }
 
 /** Runs a copy of the agent beside it from the same step, and joins the two before what followed. */
@@ -887,87 +1186,312 @@ function splitParallel(draft: EditorDraft, ids: string[]): EditResult {
 
 // ── roles ────────────────────────────────────────────────────────────────────
 
-const isAdvisorRole = (role: AgentRole) => role.allowedCollaborationTools.includes('advise');
+const isAdvisorRole = (role: Pick<AgentRole, 'allowedCollaborationTools'>) =>
+  role.allowedCollaborationTools.includes('advise');
 
-/** The roles of a team another team may copy: not those its advisors run. */
-export function importableRoles(definition: {
-  nodes: readonly CorralNode[];
-  roles: readonly AgentRole[];
-}): AgentRole[] {
-  const advisors = new Set(
-    definition.nodes.flatMap((n) => (isAdvisor(n) && n.type === 'agent' ? [n.roleId] : [])),
-  );
-  return definition.roles.filter((role) => !advisors.has(role.id) && !isAdvisorRole(role));
-}
+type SavedAgentSource = AgentSource & { role: AgentRole };
 
-export interface RoleImportOptions {
-  /** Whether a work style reference resolves here; one that does not is left out. */
-  resolvesHarness?: ((ref: HarnessBindingRef) => boolean) | undefined;
-}
-
-export type RoleImportResult =
-  | { ok: true; draft: EditorDraft; nodeId: string; droppedHarness: boolean }
-  | { ok: false; reason: EditRejection };
-
-/**
- * Copies a role onto one agent under a new role id: its instructions, model, reasoning, tools,
- * output contract and work style. The agent keeps its name, inputs, connections and call links.
- * Other agents that ran its previous role keep that role; a previous role no agent runs any
- * more goes, as it does when its agent is removed. With nothing selected, a new agent named
- * after the role is added at `at` first. The source is only read and never linked: a model
- * profile is kept as it is, and a work style this place cannot resolve is left out.
- */
-export function importRole(
-  draft: EditorDraft,
-  source: AgentRole,
-  ids: readonly string[],
-  at: Placement = { kind: 'empty' },
-  options: RoleImportOptions = {},
-): RoleImportResult {
-  // An advisor's role carries `advise`, which no working agent may hold.
-  if (isAdvisorRole(source)) return { ok: false, reason: 'advisorRole' };
-  let next = draft;
-  let targetId = ids.length === 1 ? (ids[0] as string) : null;
-  if (ids.length === 0) {
-    const created = placeStep(draft, 'agent', at);
-    if (!created.ok) return created;
-    next = created.draft;
-    targetId = created.nodeId as string;
+/** Copy each non-advisor role once, with its first seat's instructions in flow order. */
+export function importableAgents(definition: CorralDefinition): SavedAgentSource[] {
+  const advisors = new Set<string>();
+  const first = new Map<string, WorkAgentNode>();
+  let order: Map<string, number> | undefined;
+  for (const node of definition.nodes) {
+    if (node.type !== 'agent') continue;
+    if (!isWorkAgent(node)) {
+      advisors.add(node.roleId);
+      continue;
+    }
+    const prior = first.get(node.roleId);
+    if (prior) {
+      order ??= outlineOrder(definition);
+      if ((order.get(prior.id) ?? Infinity) <= (order.get(node.id) ?? Infinity)) continue;
+    }
+    first.set(node.roleId, node);
   }
-  const target = targetId ? nodesOf(next.definition).get(targetId) : undefined;
-  // An advisor's role holds advisor tools only; a working agent's role would not fit it.
-  if (target?.type !== 'agent' || isAdvisor(target)) return { ok: false, reason: 'roleNeedsAgent' };
-  const label = ids.length === 0 ? source.name : target.label;
-  const { id: roleId, counters } = nextId(next, 'role');
-  const {
-    id: _sourceId,
-    name: _sourceName,
-    harness,
-    ...fields
-  } = JSON.parse(JSON.stringify(source)) as AgentRole;
-  const keep = harness !== undefined && (options.resolvesHarness?.(harness) ?? false);
-  const role: AgentRole = { id: roleId, name: label, ...fields, ...(keep ? { harness } : {}) };
-  const previous = target.roleId;
-  const nodes = next.definition.nodes.map((n) =>
-    n.id === target.id ? { ...target, label, roleId } : n,
-  );
-  const stillUsed = nodes.some((n) => n.type === 'agent' && n.roleId === previous);
-  // The copy takes the previous role's place in the list, or sits right after it.
-  const roles = next.definition.roles.flatMap((r) =>
-    r.id !== previous ? [r] : stillUsed ? [r, role] : [role],
-  );
-  if (!roles.includes(role)) roles.push(role);
-  const { planOwnerRoleId, ...definition } = next.definition;
-  const owner = planOwnerRoleId === previous && !stillUsed ? undefined : planOwnerRoleId;
+  return definition.roles
+    .filter((role) => !advisors.has(role.id) && !isAdvisorRole(role))
+    .map((role) => {
+      const stepInstruction = first.get(role.id)?.stepInstruction;
+      // With no separate instruction the role prompt itself is the task, not a second copy.
+      return stepInstruction ? { role, stepInstruction } : { role };
+    });
+}
+
+export interface AgentSource {
+  role: Omit<AgentRole, 'id' | 'origin'>;
+  origin?: RoleOrigin;
+  stepInstruction?: string;
+}
+
+/** Start the seat with the submitted materials, not the producer nearest in control flow. */
+function finalResultInputs(
+  output: OutputNode,
+  defaults: InputBinding[],
+  nodes: ReadonlyMap<string, CorralNode>,
+): InputBinding[] | null {
+  const optionalBySource = new Map<string, boolean>();
+  for (const { kind, sourceNodeId, optional } of output.inputBindings) {
+    if (kind !== 'task_output' || !sourceNodeId) continue;
+    // Multiple submission aliases for one producer still describe one material.
+    optionalBySource.set(
+      sourceNodeId,
+      (optionalBySource.get(sourceNodeId) ?? true) && optional === true,
+    );
+  }
+  if (!optionalBySource.size) return null;
+  const inputs = [...defaults];
+  const names = new Set(inputs.map((b) => b.name));
+  for (const [sourceNodeId, optional] of optionalBySource) {
+    const producer = nodes.get(sourceNodeId);
+    const base = producer?.type === 'agent' ? producer.outputName : 'result';
+    let name = base;
+    for (let i = 2; names.has(name); i++) name = `${base}_${i}`;
+    names.add(name);
+    inputs.push({ kind: 'task_output', name, sourceNodeId, ...(optional ? { optional } : {}) });
+  }
+  return inputs;
+}
+
+/** All routes into a final Output can move together only when they come from the same step. */
+function finalApproach(definition: CorralDefinition, outputId: string): ControlEdge[] {
+  const incoming = definition.controlEdges.filter((e) => e.target === outputId);
+  const first = incoming[0];
+  return first && incoming.every((e) => e.source === first.source) ? incoming : [];
+}
+
+export function compositionPlacement(definition: CorralDefinition): Placement {
+  const outputs = definition.nodes.filter((node) => node.type === 'output');
+  const only = outputs.length === 1 ? outputs[0] : undefined;
+  return only && finalApproach(definition, only.id).length
+    ? { kind: 'beforeOutput', outputId: only.id }
+    : { kind: 'empty' };
+}
+
+function copyAgentRole(source: AgentSource, id: string): AgentRole {
+  const role: AgentRole = structuredClone({ ...source.role, id });
+  // A saved team's role is structurally assignable to the source type. Only the explicit
+  // origin of this copy counts, never an id or origin left inside source.role.
+  if (source.origin) role.origin = structuredClone(source.origin);
+  else delete role.origin;
+  return role;
+}
+
+export function addAgent(draft: EditorDraft, source: AgentSource, at: Placement): EditResult {
+  if (isAdvisorRole(source.role)) return { ok: false, reason: 'advisorRole' };
+  const placed = placeFlowStep(draft, 'agent', at, (parentId) => {
+    const seat = nextId(draft, 'agent');
+    const fresh = nextId({ ...draft, counters: seat.counters }, 'role');
+    const role = copyAgentRole(source, fresh.id);
+    const node = newWorkAgent(seat.id, role);
+    if (parentId) node.parentId = parentId;
+    if (source.stepInstruction?.trim()) node.stepInstruction = source.stepInstruction;
+    return {
+      nodeId: node.id,
+      draft: withDefinition(
+        { ...draft, counters: fresh.counters },
+        {
+          ...draft.definition,
+          roles: [...draft.definition.roles, role],
+          nodes: [...draft.definition.nodes, node],
+        },
+      ),
+    };
+  });
+  if (!placed.ok || draft.definition.nodes.some((n) => isWorkAgent(n) || n.type === 'output'))
+    return placed;
+  const node = placed.draft.definition.nodes.find((n) => n.id === placed.nodeId);
+  if (!isWorkAgent(node)) return { ok: false, reason: 'roleNeedsAgent' };
+  const output = createStep(placed.draft, 'output', node.parentId ?? null);
+  const bound = patchNode(output.draft, output.nodeId, {
+    inputBindings: [{ kind: 'task_output', name: node.outputName, sourceNodeId: node.id }],
+  });
   return {
-    ok: true,
-    nodeId: target.id,
-    droppedHarness: harness !== undefined && !keep,
-    draft: withDefinition(
-      { ...next, counters },
-      { ...definition, ...(owner ? { planOwnerRoleId: owner } : {}), nodes, roles },
+    ...placed,
+    draft: withEdges(
+      bound,
+      () => false,
+      [{ source: node.id, sourcePort: 'out', target: output.nodeId, targetPort: 'in' }],
+      [],
     ),
   };
+}
+
+const keptSeatFields = [
+  'id',
+  'label',
+  'task',
+  'inputBindings',
+  'controlEdges',
+  'capabilityLinks',
+  'outputBindings',
+  'outriderTargets',
+] as const;
+
+type RoleSetting = Exclude<keyof AgentRole, 'id' | 'name' | 'origin'>;
+export type ReplacementChange =
+  | 'task'
+  | 'instructions'
+  | 'model'
+  | 'permissions'
+  | 'skills'
+  | 'format';
+const replacementGroups = [
+  ['instructions', ['prompt']],
+  ['model', ['modelProfile', 'reasoning']],
+  [
+    'permissions',
+    [
+      'allowedWorkTools',
+      'allowedCollaborationTools',
+      'mcpTools',
+      'harness',
+      'imageProfile',
+      'editingMode',
+    ],
+  ],
+  ['skills', ['skills']],
+  ['format', ['outputContract', 'answer']],
+] as const satisfies readonly (readonly [ReplacementChange, readonly RoleSetting[]])[];
+
+/** The prospective draft is the preview: closing it is free; applying it takes one undo. */
+export function previewReplaceAgent(
+  draft: EditorDraft,
+  nodeId: string,
+  source: AgentSource,
+  options?: CompileOptions,
+):
+  | EditFailure
+  | {
+      ok: true;
+      draft: EditorDraft;
+      nodeId: string;
+      changed: ReplacementChange[];
+      kept: readonly (typeof keptSeatFields)[number][];
+    } {
+  const { definition } = draft;
+  const seat = definition.nodes.find((n) => n.id === nodeId);
+  if (!isWorkAgent(seat)) return { ok: false, reason: 'roleNeedsAgent' };
+  if (isAdvisorRole(source.role)) return { ok: false, reason: 'advisorRole' };
+  const previous = definition.roles.find((r) => r.id === seat.roleId);
+  const changed: ReplacementChange[] = [];
+  for (const [category, fields] of replacementGroups)
+    if (fields.some((key) => !sameRoleField(previous?.[key], source.role[key])))
+      changed.push(category);
+  const task = seatTask(definition, nodeId);
+  const singlePrompt = !source.origin && !source.stepInstruction;
+  const incomingTask =
+    source.origin?.kind === 'library'
+      ? undefined
+      : (source.stepInstruction ?? (singlePrompt ? source.role.prompt : undefined));
+  const fillsTask = !task?.text.trim() && !!incomingTask?.trim();
+  if (fillsTask) changed.push('task');
+  const kept = fillsTask ? keptSeatFields.filter((field) => field !== 'task') : keptSeatFields;
+  const preview = { ok: true as const, nodeId, changed, kept };
+  if (
+    !changed.length &&
+    previous?.name === source.role.name &&
+    sameRoleField(previous.origin, source.origin)
+  )
+    return { ...preview, draft };
+
+  const shared = definition.nodes.some(
+    (n) => n.id !== nodeId && n.type === 'agent' && n.roleId === seat.roleId,
+  );
+  const movesOwner = definition.planOwnerRoleId === seat.roleId && !shared;
+  if (movesOwner && !source.role.allowedCollaborationTools.includes('update_plan'))
+    return { ok: false, reason: 'movePlanOwner' };
+  const { id, counters } = nextId(draft, 'role');
+  const role = copyAgentRole(source, id);
+  const replacement = { ...seat, roleId: id };
+  if (fillsTask) {
+    if (source.stepInstruction) replacement.stepInstruction = source.stepInstruction;
+    else delete replacement.stepInstruction; // The incoming role prompt is the whole task.
+  } else if (
+    task?.target === 'role' &&
+    task.text.trim() &&
+    !(singlePrompt && task.text === source.role.prompt)
+  ) {
+    replacement.stepInstruction = task.text;
+  }
+  const next: EditorDraft = {
+    counters,
+    definition: {
+      ...definition,
+      ...(movesOwner ? { planOwnerRoleId: id } : {}),
+      roles:
+        previous && !shared
+          ? definition.roles.map((r) => (r === previous ? role : r))
+          : [...definition.roles, role],
+      nodes: definition.nodes.map((n) => (n === seat ? replacement : n)),
+    },
+  };
+  const errors = compileDefinition(next.definition, options).diagnostics.filter(
+    (d) => d.severity === 'error',
+  );
+  if (errors.length) {
+    const location = (d: Diagnostic) =>
+      JSON.stringify([d.code, d.nodeId, d.edgeId, d.linkId, d.schemaPath]);
+    const existing = new Set(
+      compileDefinition(definition, options)
+        .diagnostics.filter((d) => d.severity === 'error')
+        .map(location),
+    );
+    const diagnostic = errors.find((d) => !existing.has(location(d)));
+    if (diagnostic) return { ok: false, reason: 'replacementCompileError', diagnostic };
+  }
+  return { ...preview, draft: next };
+}
+
+export function replaceAgent(
+  draft: EditorDraft,
+  nodeId: string,
+  source: AgentSource,
+  options?: CompileOptions,
+): EditResult {
+  return previewReplaceAgent(draft, nodeId, source, options);
+}
+
+export function setStepInstruction(draft: EditorDraft, nodeId: string, text: string): EditResult {
+  const seat = draft.definition.nodes.find((n) => n.id === nodeId);
+  if (!isWorkAgent(seat)) return { ok: false, reason: 'roleNeedsAgent' };
+  const stepInstruction = text.trim() ? text : undefined;
+  return {
+    ok: true,
+    nodeId,
+    draft:
+      seat.stepInstruction === stepInstruction
+        ? draft
+        : patchNode(draft, nodeId, { stepInstruction }),
+  };
+}
+
+/** Roster rows and graph cards share the first sentence of the seat task, or the role fallback. */
+export function seatTaskSummary(definition: CorralDefinition, node: AgentNode) {
+  const text =
+    (isWorkAgent(node) ? node.stepInstruction : undefined) ??
+    definition.roles.find((role) => role.id === node.roleId)?.prompt;
+  return text?.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim() ?? '';
+}
+
+export function seatTask(
+  definition: CorralDefinition,
+  nodeId: string,
+): { target: 'role' | 'step'; text: string; base: string | null } | null {
+  const seat = definition.nodes.find((n) => n.id === nodeId);
+  if (!isWorkAgent(seat)) return null;
+  const role = definition.roles.find((r) => r.id === seat.roleId);
+  if (!role) return null;
+  return seat.stepInstruction !== undefined || role.origin
+    ? { target: 'step', text: seat.stepInstruction ?? '', base: role.prompt }
+    : { target: 'role', text: role.prompt, base: null };
+}
+
+export function setSeatTask(draft: EditorDraft, nodeId: string, text: string): EditResult {
+  const task = seatTask(draft.definition, nodeId);
+  if (!task) return { ok: false, reason: 'roleNeedsAgent' };
+  if (task.target === 'step') return setStepInstruction(draft, nodeId, text);
+  return { ok: true, nodeId, draft: updateNode(draft, nodeId, { prompt: text }) };
 }
 
 // ── settings ─────────────────────────────────────────────────────────────────

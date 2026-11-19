@@ -10,6 +10,25 @@ import { mcpFailureKind } from '../workbench/mcpFailure.ts';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 
+export interface McpConnectionCheck {
+  launch: Awaited<ReturnType<HarnessApi['inspectMcpServer']>>;
+  status: Awaited<ReturnType<HarnessApi['mcpAuthStatus']>>;
+}
+
+/** Inspect the existing launch/auth boundary without starting a probe. */
+export async function inspectMcpConnection(
+  api: HarnessApi,
+  projectId: string,
+  serverId: string,
+  sessionId: string,
+): Promise<McpConnectionCheck> {
+  const [launch, status] = await Promise.all([
+    api.inspectMcpServer(projectId, serverId, sessionId ? { sessionId } : {}),
+    api.mcpAuthStatus(projectId, serverId),
+  ]);
+  return { launch, status };
+}
+
 export function McpConnection({
   api,
   projectId,
@@ -17,6 +36,7 @@ export function McpConnection({
   manage = true,
   onProbe,
   disabled = false,
+  externalCheck,
 }: {
   api: HarnessApi;
   projectId: string;
@@ -24,10 +44,17 @@ export function McpConnection({
   manage?: boolean;
   onProbe(result: McpProbeResult | null): void;
   disabled?: boolean;
+  /** The tool picker already inspected each connection, including the chosen working copy. */
+  externalCheck?: {
+    result: McpConnectionCheck | null;
+    sessionId: string;
+    onSessionChange(id: string): void;
+  };
 }) {
   const t = useTranslations('Harness'),
     r = useTranslations('Resources'),
     n = useTranslations('Navigation'),
+    picker = useTranslations('TeamEditor.toolPicker'),
     f = useTranslations('Failure');
   const navigation = useSettingsNavigation();
   const { repository, workspaces } = useServices();
@@ -54,38 +81,43 @@ export function McpConnection({
       owned = false;
     };
   }, [projectId, repository, workspaces, server.transport]);
-  const [sessionId, setSessionId] = useState('');
+  const [ownSessionId, setSessionId] = useState('');
+  const sessionId = externalCheck?.sessionId ?? ownSessionId;
   const [probeId, setProbeId] = useState<string | null>(null);
-  const probeRef = useRef<string | null>(null);
+  const probeRef = useRef<{ id: string; discarded: boolean; cancelSent: boolean } | null>(null);
   const sessionRef = useRef(sessionId);
   sessionRef.current = sessionId;
-  const [launch, setLaunch] = useState<Awaited<ReturnType<HarnessApi['inspectMcpServer']>> | null>(
-    null,
-  );
-  const [status, setStatus] = useState<Awaited<ReturnType<HarnessApi['mcpAuthStatus']>> | null>(
-    null,
-  );
+  const [ownLaunch, setLaunch] = useState<McpConnectionCheck['launch'] | null>(null);
+  const [ownStatus, setStatus] = useState<McpConnectionCheck['status'] | null>(null);
+  const launch = externalCheck ? externalCheck.result?.launch : ownLaunch;
+  const status = externalCheck ? externalCheck.result?.status : ownStatus;
   const [login, setLogin] = useState<{ loginId: string; url: string } | null>(null);
   const [token, setToken] = useState(''),
     [busy, setBusy] = useState(false),
     [error, setError] = useState('');
   const active = useRef(true);
+  const checked = externalCheck?.result;
   useEffect(() => {
+    // The picker replaces this evidence when the copy, trust, auth or project configuration changes.
+    void checked;
     active.current = true;
+    setProbeId(null);
+    setError('');
     return () => {
       active.current = false;
-      if (probeRef.current) void api.cancelMcpProbe(probeRef.current).catch(() => {});
+      const probe = probeRef.current;
+      probeRef.current = null;
+      if (probe && !probe.cancelSent) void api.cancelMcpProbe(probe.id).catch(() => {});
     };
-  }, [api]);
+  }, [api, checked]);
+  const externallyChecked = externalCheck !== undefined;
   useEffect(() => {
+    if (externallyChecked) return;
     let owned = true;
     setLaunch(null);
     setStatus(null);
-    void Promise.all([
-      api.inspectMcpServer(projectId, server.id, sessionId ? { sessionId } : {}),
-      api.mcpAuthStatus(projectId, server.id),
-    ]).then(
-      ([launch, status]) => {
+    void inspectMcpConnection(api, projectId, server.id, sessionId).then(
+      ({ launch, status }) => {
         if (owned) {
           setLaunch(launch);
           setStatus(status);
@@ -96,7 +128,7 @@ export function McpConnection({
     return () => {
       owned = false;
     };
-  }, [api, projectId, server.id, sessionId]);
+  }, [api, projectId, server.id, sessionId, externallyChecked]);
   useEffect(() => {
     if (!login) return;
     let ended = false,
@@ -156,7 +188,8 @@ export function McpConnection({
             disabled={disabled || busy || !!probeId}
             className="h-9 w-full sm:w-72"
             onValueChange={(value) => {
-              setSessionId(value);
+              if (externalCheck) externalCheck.onSessionChange(value);
+              else setSessionId(value);
               onProbe(null);
             }}
             options={[
@@ -386,13 +419,15 @@ export function McpConnection({
             </>
           ) : null}
         </>
-      ) : (
+      ) : externalCheck ? null : (
         <p className="text-caption text-muted-foreground">{r('configureMcpFirst')}</p>
       )}
       <section className="settings-row">
-        <div>
-          <h3>{r('probeHint')}</h3>
-        </div>
+        {!externalCheck && (
+          <div>
+            <h3>{r('probeHint')}</h3>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2">
           <Button
             variant="tertiary"
@@ -400,14 +435,19 @@ export function McpConnection({
               disabled ||
               busy ||
               !!probeId ||
+              server.enabled === false ||
+              launch?.server.enabled === false ||
               !launch?.trustedAt ||
-              status?.state === 'missing' ||
+              !status ||
+              status.state === 'missing' ||
               (server.transport === 'stdio' && !sessionId)
             }
             onClick={() => {
-              if (!launch) return;
+              if (!launch?.trustedAt || !status || status.state === 'missing' || probeRef.current)
+                return;
               const id = operationId();
-              probeRef.current = id;
+              const probe = { id, discarded: false, cancelSent: false };
+              probeRef.current = probe;
               setProbeId(id);
               setError('');
               onProbe(null);
@@ -422,32 +462,48 @@ export function McpConnection({
                   (result) => {
                     if (
                       active.current &&
-                      probeRef.current === id &&
+                      probeRef.current === probe &&
+                      !probe.discarded &&
                       sessionRef.current === sessionId
-                    )
-                      onProbe(result);
+                    ) {
+                      if (
+                        result.operationId === id &&
+                        result.configRevision === launch.configRevision &&
+                        result.fingerprint === launch.fingerprint
+                      ) {
+                        onProbe(result);
+                      } else {
+                        setError('MCP probe failed');
+                      }
+                    }
                   },
                   (e) => {
-                    if (active.current && probeRef.current === id) setError(e.message);
+                    if (active.current && probeRef.current === probe && !probe.discarded)
+                      setError(e.message);
                   },
                 )
                 .finally(() => {
-                  if (active.current && probeRef.current === id) {
+                  if (active.current && probeRef.current === probe) {
                     setProbeId(null);
                     probeRef.current = null;
                   }
                 });
             }}
           >
-            {r(probeId ? 'probeRunning' : 'probe')}
+            {probeId ? r('probeRunning') : externalCheck ? picker('probe') : r('probe')}
           </Button>
           {probeId ? (
             <Button
               variant="ghost"
               onClick={() => {
-                void api
-                  .cancelMcpProbe(probeId)
-                  .catch((e) => active.current && setError(e.message));
+                const probe = probeRef.current;
+                if (!probe || probe.cancelSent) return;
+                probe.discarded = true;
+                probe.cancelSent = true;
+                void api.cancelMcpProbe(probe.id).catch((e) => {
+                  probe.cancelSent = false;
+                  if (active.current && probeRef.current === probe) setError(e.message);
+                });
               }}
             >
               {r('cancelProbe')}

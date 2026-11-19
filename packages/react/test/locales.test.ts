@@ -89,13 +89,14 @@ describe('Korean messages (UX-A5)', () => {
     );
   });
 
-  it('names role import in both languages', () => {
+  it('names the agent picker and replacement errors in both languages', () => {
     const keys = [
-      'TeamEditor.importRole',
-      'TeamEditor.importRoleTitle',
-      'TeamEditor.rolePresets',
-      'TeamEditor.roleSearch',
-      'TeamEditor.workStyleDropped',
+      'TeamEditor.agentPicker.add',
+      'TeamEditor.agentPicker.replaceTitle',
+      'TeamEditor.agentPicker.builtin',
+      'TeamEditor.agentPicker.search',
+      'TeamEditor.rejected.movePlanOwner',
+      'TeamEditor.rejected.replacementCompileError',
       'TeamEditor.rejected.roleNeedsAgent',
     ];
     expect(keys.filter((key) => !enLeaves.has(key))).toEqual([]);
@@ -152,15 +153,27 @@ describe('Korean messages (UX-A5)', () => {
 
   // The product speaks in the 합니다/하세요 register; a 해요체 ending (해요, 돼요, 예요, 이에요,
   // 어요, 아요, 네요, 죠) is a slip. Nouns that end in 요 (필요, 중요, 주요, 개요) are not endings.
+  const assistantQuestions = {
+    'TeamAssistant.createPrompt': '이 팀이 어떤 일을 하면 좋을까요?',
+    'TeamAssistant.editPrompt': '이 팀에서 무엇을 바꿀까요?',
+  };
+  it.each(Object.entries(assistantQuestions))(
+    'preserves the specified invitation in %s',
+    (key, text) => {
+      expect(koLeaves.get(key)).toBe(text);
+    },
+  );
   it('ends sentences in the 합니다/하세요 register, never 해요체', () => {
     const word = /([가-힣]+[요죠])(?![가-힣])/g;
     const nouns = /(필요|중요|주요|개요|수요|소요|강요)$/;
-    const slips = [...koLeaves].flatMap(([key, message]) =>
-      [...parseIcu(message).text.matchAll(word)]
-        .map((match) => match[1] as string)
-        .filter((ending) => !ending.endsWith('세요') && !nouns.test(ending))
-        .map((ending) => `${key}: ${ending}`),
-    );
+    const slips = [...koLeaves]
+      .filter(([key]) => !Object.hasOwn(assistantQuestions, key))
+      .flatMap(([key, message]) =>
+        [...parseIcu(message).text.matchAll(word)]
+          .map((match) => match[1] as string)
+          .filter((ending) => !ending.endsWith('세요') && !nouns.test(ending))
+          .map((ending) => `${key}: ${ending}`),
+      );
     expect(slips).toEqual([]);
   });
 });

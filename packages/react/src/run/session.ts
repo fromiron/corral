@@ -29,8 +29,10 @@ import type { RunRecovery } from './recovery.ts';
 
 export interface RunSessionState {
   runId: string | null;
-  /** The definition this run started from (labels for the run view). */
+  /** The execution copy, including any materialized advisors and referenced team members. */
   definition: CorralDefinition | null;
+  /** The authored start argument for this run, before planning expands its definition. */
+  startDefinition?: CorralDefinition | null;
   definitionError: string | null;
   projection: RunProjection | null;
   /** Initial snapshot sequence to read before mounting graphs; null while fetching, undefined when ready. */
@@ -347,6 +349,7 @@ export function createRunSession(
       set({
         runId: null,
         definition: null,
+        startDefinition: null,
         definitionError: null,
         projection: null,
         initialLoadSeq: undefined,
@@ -559,7 +562,7 @@ export function createRunSession(
             });
             return;
           }
-          set({ runId, definition: null });
+          set({ runId, definition: null, startDefinition: definition });
           await follow(runId, version);
           await refreshDefinition(runId, version);
         } catch (error) {

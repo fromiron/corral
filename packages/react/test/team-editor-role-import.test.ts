@@ -1,382 +1,580 @@
-import { type AgentRole, type CorralDefinition, DEFAULT_LIMITS } from '@corral/contracts';
-import {
-  type CorralRecord,
-  compileDefinition,
-  ROLE_PRESET_IDS,
-  type RolePresetId,
-  roleFromPreset,
-} from '@corral/core';
+import { type AgentRole, isWorkAgent } from '@corral/contracts';
+import { compileDefinition, ROLE_PRESET_IDS, roleFromPreset, teamTemplate } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import { connectCapability, type EditorDraft, emptyDraft } from '../src/editor/model.ts';
+import {
+  connectCapability,
+  draftFromDefinition,
+  type EditorDraft,
+  emptyDraft,
+  updateNode,
+} from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
-import { type EditResult, importRole, patchNode, placeStep } from '../src/team-editor/commands.ts';
+import {
+  type AgentSource,
+  addAgent,
+  applyPattern,
+  compositionPlacement,
+  type EditResult,
+  patchNode,
+  placeStep,
+  previewReplaceAgent,
+  replaceAgent,
+  seatTask,
+  setSeatTask,
+  setStepInstruction,
+} from '../src/team-editor/commands.ts';
 
-// Copying a role onto an agent (docs/specs/features/canvas.md, 역할 가져오기): a copy under a
-// new role id, never a link to where it came from.
-
-function ok(result: EditResult): { draft: EditorDraft; nodeId: string } {
-  if (!result.ok) throw new Error(`refused: ${result.reason}`);
+function ok(result: EditResult) {
+  if (!result.ok) throw new Error(result.reason);
   return { draft: result.draft, nodeId: result.nodeId ?? '' };
 }
-const refused = (result: EditResult) => (result.ok ? 'accepted' : result.reason);
+
 const agent = (draft: EditorDraft, id: string) => {
-  const found = draft.definition.nodes.find((n) => n.id === id);
-  if (found?.type !== 'agent' || found.invocation === 'observer')
-    throw new Error(`${id} is not a working agent`);
+  const found = draft.definition.nodes.find((node) => node.id === id);
+  if (!isWorkAgent(found)) throw new Error(`Missing agent: ${id}`);
   return found;
 };
 const roleOf = (draft: EditorDraft, id: string) =>
-  draft.definition.roles.find((r) => r.id === agent(draft, id).roleId) as AgentRole;
-const wiring = (draft: EditorDraft) =>
-  draft.definition.controlEdges
-    .map((e) => `${e.source}.${e.sourcePort}>${e.target}.${e.targetPort}`)
-    .sort();
-
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === 'object') {
-    for (const inner of Object.values(value)) deepFreeze(inner);
-    Object.freeze(value);
-  }
-  return value;
-}
-
-/** A saved team of the project with a "Review" role, as the repository hands it out. */
-function savedTeam(): CorralRecord {
-  const definition: CorralDefinition = {
-    schemaVersion: '0.1',
-    id: 'team_t',
-    name: 'T',
-    entryNodeId: 'reviewer',
-    input: { brief: 'Review the change.', criteria: ['Name the evidence.'] },
-    roles: [
-      {
-        id: 'review',
-        name: 'Review',
-        prompt: 'Check the change against the criteria.',
-        modelProfile: 'model-b',
-        reasoning: { mode: 'fixed', level: 'high' },
-        allowedWorkTools: ['write_artifact', 'list_files', 'read_file'],
-        allowedCollaborationTools: ['read_artifact', 'submit_result'],
-        outputContract: 'review',
-        editingMode: 'hashline',
-        harness: { profileId: 'careful', revision: 3 },
-      },
-    ],
-    nodes: [
-      {
-        id: 'reviewer',
-        type: 'agent',
-        label: 'Review',
-        roleId: 'review',
-        invocation: 'scheduled',
-        inputBindings: [{ kind: 'run_input', name: 'criteria' }],
-        outputName: 'review',
-      },
-    ],
-    controlEdges: [],
-    capabilityLinks: [],
-    limits: DEFAULT_LIMITS,
-  };
+  draft.definition.roles.find((role) => role.id === agent(draft, id).roleId) as AgentRole;
+const standalone = { kind: 'empty' } as const;
+const skill = { resourceHash: 'a'.repeat(64), entry: 'writing/SKILL.md' };
+function writer(): AgentSource {
   return {
-    corralId: 'team_t',
-    projectId: 'project_a',
-    name: 'T',
-    definition,
-    definitionRevision: 4,
-    definitionHash: 'a'.repeat(64),
-    updatedAt: '2026-11-10T00:00:00.000Z',
+    role: {
+      name: 'Writer',
+      prompt: 'Write the announcement.',
+      modelProfile: 'model-b',
+      outputContract: 'draft',
+      allowedWorkTools: ['write_artifact', 'read_file'],
+      allowedCollaborationTools: ['submit_result', 'update_plan'],
+      reasoning: { mode: 'fixed', level: 'high' },
+      editingMode: 'hashline',
+      harness: { profileId: 'elsewhere', revision: 3 },
+      skills: [skill],
+    },
+    origin: { kind: 'library', agentId: 'writer', revision: 4 },
+    stepInstruction: 'Use a friendly tone.',
   };
 }
-const reviewRole = (record: CorralRecord) => record.definition.roles[0] as AgentRole;
-
-const briefAndCriteria = {
-  inputBindings: [
-    { kind: 'run_input', name: 'brief' },
-    { kind: 'run_input', name: 'criteria' },
-  ],
-};
-
-/**
- * agent_1 → agent_2 → Output, both agents running agent_1's role, and agent_1 delegating to a
- * callable helper. agent_1 reads the brief and the criteria.
- */
-function team(): EditorDraft {
-  let { draft } = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
-  draft = patchNode(draft, 'agent_1', briefAndCriteria);
-  draft = ok(placeStep(draft, 'agent', { kind: 'after', nodeId: 'agent_1' })).draft;
-  draft = ok(placeStep(draft, 'output', { kind: 'after', nodeId: 'agent_2' })).draft;
-  draft = patchNode(draft, 'agent_2', { roleId: agent(draft, 'agent_1').roleId });
-  const helper = ok(placeStep(draft, 'agent', { kind: 'empty' }));
-  draft = patchNode(helper.draft, helper.nodeId, { invocation: 'callable' });
-  const linked = connectCapability(draft, 'agent_1', helper.nodeId, 'delegate');
-  if (!linked.ok) throw new Error(linked.reason);
-  return linked.draft;
+function flow() {
+  const first = ok(placeStep(emptyDraft(), 'agent', standalone));
+  return ok(placeStep(first.draft, 'output', { kind: 'after', nodeId: first.nodeId })).draft;
+}
+function addAtEnd(draft: EditorDraft, source: AgentSource) {
+  return ok(addAgent(draft, source, compositionPlacement(draft.definition)));
 }
 
-/** One agent reading the brief and the criteria, then the Output: it compiles with no diagnostic. */
-function plainTeam(): EditorDraft {
-  let { draft } = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
-  draft = ok(placeStep(draft, 'output', { kind: 'after', nodeId: 'agent_1' })).draft;
-  return patchNode(draft, 'agent_1', briefAndCriteria);
-}
-
-const preset = (id: RolePresetId) =>
-  roleFromPreset(id, id, messages.TeamTemplates.presets[id] as { name: string; duty: string });
-
-describe('importing a role onto the selected agent', () => {
-  it('copies the role and keeps the agent: name, inputs, connections and call links', () => {
-    const before = team();
-    const record = savedTeam();
-    const source = reviewRole(record);
-    const result = importRole(before, source, ['agent_1'], undefined, {
-      resolvesHarness: () => true,
+describe('adding a copy to a team', () => {
+  it('inserts after a selected seat without editing it or the final result choice', () => {
+    const before = flow();
+    const source = writer();
+    const result = ok(addAgent(before, source, { kind: 'after', nodeId: 'agent_1' }));
+    const { draft, nodeId } = result;
+    expect(agent(draft, 'agent_1')).toBe(agent(before, 'agent_1'));
+    expect(roleOf(draft, 'agent_1')).toBe(roleOf(before, 'agent_1'));
+    expect(agent(draft, nodeId)).toMatchObject({
+      label: 'Writer',
+      stepInstruction: source.stepInstruction,
+      inputBindings: [
+        { kind: 'run_input', name: 'brief' },
+        { kind: 'task_output', sourceNodeId: 'agent_1' },
+      ],
     });
-    const { draft, nodeId } = ok(result);
-    expect(nodeId).toBe('agent_1');
-    const role = roleOf(draft, 'agent_1');
-    expect(role).toMatchObject({
-      prompt: source.prompt,
-      modelProfile: 'model-b',
-      reasoning: { mode: 'fixed', level: 'high' },
-      allowedWorkTools: source.allowedWorkTools,
-      allowedCollaborationTools: source.allowedCollaborationTools,
-      outputContract: 'review',
-      editingMode: 'hashline',
-      harness: { profileId: 'careful', revision: 3 },
-    });
-    expect(role.id).not.toBe(source.id);
-    expect(role.id).not.toBe(agent(before, 'agent_1').roleId);
-    const { roleId: _before, ...kept } = agent(before, 'agent_1');
-    const { roleId: _after, ...now } = agent(draft, 'agent_1');
-    expect(now).toEqual(kept);
-    expect(wiring(draft)).toEqual(wiring(before));
-    expect(draft.definition.capabilityLinks).toEqual(before.definition.capabilityLinks);
-  });
-
-  it('leaves another agent that ran the same role as it was', () => {
-    const before = team();
-    const shared = roleOf(before, 'agent_2');
-    const { draft } = ok(importRole(before, reviewRole(savedTeam()), ['agent_1']));
-    expect(agent(draft, 'agent_2')).toEqual(agent(before, 'agent_2'));
-    expect(roleOf(draft, 'agent_2')).toEqual(shared);
-  });
-
-  it('drops the previous role when no agent runs it any more, as removing its agent does', () => {
-    const before = plainTeam();
-    const previous = agent(before, 'agent_1').roleId;
-    const owned = { ...before.definition, planOwnerRoleId: previous };
-    const { draft } = ok(
-      importRole({ ...before, definition: owned }, reviewRole(savedTeam()), ['agent_1']),
+    expect(draft.definition.nodes.find((n) => n.type === 'output')).toBe(
+      before.definition.nodes.find((n) => n.type === 'output'),
     );
-    expect(draft.definition.roles.map((r) => r.id)).not.toContain(previous);
-    expect(draft.definition.roles).toHaveLength(1);
-    expect(draft.definition.planOwnerRoleId).toBeUndefined();
+    expect(roleOf(draft, nodeId)).toMatchObject({ ...source.role, origin: source.origin });
+    expect(roleOf(draft, nodeId).skills).not.toBe(source.role.skills);
+    expect(roleOf(draft, nodeId).harness).not.toBe(source.role.harness);
+    const again = addAtEnd(draft, source);
+    expect(again.nodeId).not.toBe(nodeId);
+    expect(roleOf(again.draft, again.nodeId).id).not.toBe(roleOf(draft, nodeId).id);
+    expect(again.draft.definition.roles).toHaveLength(3);
   });
 
-  it('gives every import its own role id', () => {
-    const source = reviewRole(savedTeam());
-    const first = ok(importRole(team(), source, ['agent_1'])).draft;
-    const second = ok(importRole(first, source, ['agent_2'])).draft;
-    const again = ok(importRole(second, source, ['agent_1'])).draft;
-    const ids = [roleOf(first, 'agent_1').id, roleOf(second, 'agent_2').id];
-    expect(new Set(ids).size).toBe(2);
-    expect(roleOf(again, 'agent_1').id).not.toBe(ids[0]);
-    expect(new Set(again.definition.roles.map((r) => r.id)).size).toBe(
-      again.definition.roles.length,
-    );
-  });
-
-  it('copies a role onto a callable agent too', () => {
-    const draft = team();
-    const helper = draft.definition.nodes.find(
-      (n) => n.type === 'agent' && n.invocation === 'callable',
-    ) as { id: string };
-    const { draft: next } = ok(importRole(draft, preset('research'), [helper.id]));
-    expect(roleOf(next, helper.id).outputContract).toBe('notes');
-  });
-
-  it('refuses anything but one agent', () => {
-    const draft = team();
-    const source = reviewRole(savedTeam());
-    expect(refused(importRole(draft, source, ['agent_1', 'agent_2']))).toBe('roleNeedsAgent');
-    const output = draft.definition.nodes.find((n) => n.type === 'output') as { id: string };
-    expect(refused(importRole(draft, source, [output.id]))).toBe('roleNeedsAgent');
-  });
-
-  it('is one undo step that brings the previous role back exactly', () => {
-    const before = team();
-    const editor = createEditorStore(before);
-    editor
-      .getState()
-      .applyDraft(ok(importRole(before, reviewRole(savedTeam()), ['agent_1'])).draft);
-    expect(editor.getState().canUndo).toBe(true);
-    editor.getState().undo();
-    expect(editor.getState().draft).toBe(before);
-    expect(editor.getState().canUndo).toBe(false);
-  });
-});
-
-describe('importing a role with nothing selected', () => {
-  it('adds an agent at the insertion place and names it after the role', () => {
-    const before = plainTeam();
-    const result = importRole(before, preset('implement'), [], {
-      kind: 'after',
-      nodeId: 'agent_1',
-    });
-    const { draft, nodeId } = ok(result);
-    expect(nodeId).not.toBe('agent_1');
-    expect(agent(draft, nodeId).label).toBe('Implementation');
-    expect(roleOf(draft, nodeId)).toMatchObject({
-      name: 'Implementation',
-      outputContract: 'draft',
-      allowedWorkTools: preset('implement').allowedWorkTools,
-    });
-    expect(wiring(draft)).toContain(`agent_1.out>${nodeId}.in`);
-    // The new agent's own default role is not left behind.
-    const used = new Set(
-      draft.definition.nodes.flatMap((n) => (n.type === 'agent' ? [n.roleId] : [])),
-    );
-    expect(draft.definition.roles.every((r) => used.has(r.id))).toBe(true);
-  });
-});
-
-describe('the source of an imported role', () => {
-  it('is only read: the saved record and its revision stay as they were', () => {
-    const record = deepFreeze(savedTeam());
-    const snapshot = structuredClone(record);
-    ok(importRole(team(), reviewRole(record), ['agent_1']));
-    ok(importRole(team(), reviewRole(record), [], { kind: 'empty' }));
-    expect(record).toEqual(snapshot);
-    expect(record.definitionRevision).toBe(4);
-  });
-
-  it('changing the source afterwards does not reach the copy', () => {
-    const record = savedTeam();
-    const { draft } = ok(importRole(team(), reviewRole(record), ['agent_1']));
-    const copied = structuredClone(roleOf(draft, 'agent_1'));
-    const source = reviewRole(record);
-    source.prompt = 'Something else entirely.';
-    source.allowedWorkTools.push('run_command');
-    source.allowedCollaborationTools.push('spawn_subagents');
-    source.reasoning = { mode: 'auto' };
-    if (source.harness) source.harness.revision = 9;
-    expect(roleOf(draft, 'agent_1')).toEqual(copied);
-  });
-});
-
-describe('what an imported role keeps and leaves out', () => {
-  it('keeps a model profile this project does not have, and the diagnostic reports it', () => {
-    const source = { ...preset('implement'), modelProfile: 'model-z' };
-    const { draft, nodeId } = ok(importRole(plainTeam(), source, [], { kind: 'empty' }));
-    expect(roleOf(draft, nodeId).modelProfile).toBe('model-z');
-    const compiled = compileDefinition(draft.definition, {
-      knownModelProfiles: ['model-a', 'model-b'],
-    });
-    expect(compiled.diagnostics).toContainEqual(
-      expect.objectContaining({ code: 'UNKNOWN_MODEL_PROFILE', nodeId }),
-    );
-  });
-
-  it('leaves out a work style this place cannot resolve and says so', () => {
-    const source = reviewRole(savedTeam());
-    const dropped = importRole(team(), source, ['agent_1'], undefined, {
-      resolvesHarness: () => false,
-    });
-    if (!dropped.ok) throw new Error(dropped.reason);
-    expect(dropped.droppedHarness).toBe(true);
-    expect(roleOf(dropped.draft, 'agent_1')).not.toHaveProperty('harness');
-
-    const unresolved = importRole(team(), source, ['agent_1']);
-    if (!unresolved.ok) throw new Error(unresolved.reason);
-    expect(unresolved.droppedHarness).toBe(true);
-    expect(roleOf(unresolved.draft, 'agent_1')).not.toHaveProperty('harness');
-
-    const asked: unknown[] = [];
-    const kept = importRole(team(), source, ['agent_1'], undefined, {
-      resolvesHarness: (ref) => {
-        asked.push(ref);
-        return true;
-      },
-    });
-    if (!kept.ok) throw new Error(kept.reason);
-    expect(kept.droppedHarness).toBe(false);
-    expect(asked).toEqual([{ profileId: 'careful', revision: 3 }]);
-
-    const none = importRole(team(), preset('plan'), ['agent_1']);
-    if (!none.ok) throw new Error(none.reason);
-    expect(none.droppedHarness).toBe(false);
-  });
-
-  it('does not carry over what only the previous role had', () => {
-    let draft = plainTeam();
-    const previous = agent(draft, 'agent_1').roleId;
-    draft = {
-      ...draft,
-      definition: {
-        ...draft.definition,
-        roles: draft.definition.roles.map((r) =>
-          r.id === previous
-            ? {
-                ...r,
-                reasoning: { mode: 'auto' },
-                harness: { profileId: 'old', revision: 1 },
-                imageProfile: 'image-a',
-                allowedWorkTools: [...r.allowedWorkTools, 'generate_image'],
-              }
-            : r,
-        ),
-      },
+  it('never collides with an existing imported role id derived from the new node id', () => {
+    const before = flow();
+    const existing = { ...roleOf(before, 'agent_1'), id: 'agent_2_role' };
+    const draft = {
+      ...before,
+      definition: { ...before.definition, roles: [...before.definition.roles, existing] },
     };
-    const { draft: next } = ok(importRole(draft, preset('plan'), ['agent_1']));
-    const role = roleOf(next, 'agent_1');
-    expect(role).not.toHaveProperty('reasoning');
-    expect(role).not.toHaveProperty('harness');
-    expect(role).not.toHaveProperty('imageProfile');
-    expect(role.allowedWorkTools).toEqual(preset('plan').allowedWorkTools);
+    const added = addAtEnd(draft, writer());
+    expect(roleOf(added.draft, added.nodeId).id).not.toBe(existing.id);
+    expect(added.draft.definition.roles).toContain(existing);
   });
 
-  it('keeps the inputs of an agent that becomes a reviewer; the reviewer warning says what is missing', () => {
-    let draft = plainTeam();
-    draft = patchNode(draft, 'agent_1', { inputBindings: [{ kind: 'run_input', name: 'brief' }] });
-    const { draft: next } = ok(importRole(draft, preset('review'), ['agent_1']));
-    expect(agent(next, 'agent_1').inputBindings).toEqual([{ kind: 'run_input', name: 'brief' }]);
-    expect(compileDefinition(next.definition).diagnostics).toEqual([
-      expect.objectContaining({ code: 'REVIEW_WITHOUT_CRITERIA', nodeId: 'agent_1' }),
+  it('adds the first producer and bound result together, including a reviewer after an observer', () => {
+    const before = ok(placeStep(emptyDraft(), 'observer', standalone)).draft;
+    const source = writer();
+    source.role.outputContract = 'review';
+    const { draft, nodeId } = addAtEnd(before, source);
+    expect(draft.definition.nodes).toHaveLength(3);
+    expect(draft.definition.nodes.find((n) => n.type === 'output')).toMatchObject({
+      inputBindings: [{ kind: 'task_output', name: 'text', sourceNodeId: nodeId }],
+    });
+    expect(draft.definition.controlEdges).toMatchObject([{ source: nodeId, target: 'output_1' }]);
+  });
+
+  it.each(['implement-review', 'plan-implement-review', 'bug-fix'] as const)(
+    'inserts one seat on both final Loop routes in %s, without changing its submission',
+    (id) => {
+      const definition = teamTemplate(id, 'example', {
+        name: id,
+        brief: 'Prepare a result.',
+        criteria: ['Reviewed'],
+        labels: { loop: 'Review loop', decision: 'Decision', join: 'Gather', output: 'Output' },
+        roles: {
+          ...messages.TeamTemplates.presets,
+          ...messages.TeamTemplates.templates['bug-fix'].roles,
+        },
+      });
+      const store = createEditorStore(draftFromDefinition(definition));
+      const original = store.getState().draft;
+      const output = original.definition.nodes.find((n) => n.type === 'output');
+      if (!output) throw new Error('Missing final result');
+      const { draft, nodeId } = addAtEnd(original, writer());
+      expect(draft.definition.controlEdges.filter((e) => e.target === nodeId)).toMatchObject([
+        { source: 'review_loop', sourcePort: 'next', targetPort: 'in' },
+        { source: 'review_loop', sourcePort: 'exhausted', targetPort: 'in' },
+      ]);
+      expect(draft.definition.controlEdges.filter((e) => e.target === output.id)).toMatchObject([
+        { source: nodeId, sourcePort: 'out', targetPort: 'in' },
+      ]);
+      expect(draft.definition.nodes.find((n) => n.id === output.id)).toBe(output);
+      expect(agent(draft, nodeId).inputBindings).toEqual([
+        { kind: 'run_input', name: 'brief' },
+        {
+          kind: 'task_output',
+          name: 'draft',
+          sourceNodeId: id === 'bug-fix' ? 'fix' : 'implement',
+        },
+      ]);
+      expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
+      store.getState().applyDraft(draft);
+      store.getState().undo();
+      expect(store.getState().draft.definition).toBe(original.definition);
+      expect(store.getState().canUndo).toBe(false);
+    },
+  );
+
+  it('receives the planner’s output before the single-agent team’s final result', () => {
+    const before = patchNode(flow(), 'agent_1', { label: 'Planner', outputName: 'plan' });
+    const { draft, nodeId } = addAtEnd(before, writer());
+    expect(draft.definition.controlEdges).toMatchObject([
+      { source: 'agent_1', target: nodeId },
+      { source: nodeId, target: 'output_1' },
+    ]);
+    expect(agent(draft, nodeId).inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+      { kind: 'task_output', name: 'plan', sourceNodeId: 'agent_1' },
+    ]);
+    expect(draft.definition.nodes.find((n) => n.type === 'output')).toBe(
+      before.definition.nodes[1],
+    );
+  });
+
+  it('takes each final producer once, using distinct output names instead of submission aliases', () => {
+    const first = patchNode(flow(), 'agent_1', { outputName: 'brief' });
+    const second = ok(placeStep(first, 'agent', { kind: 'after', nodeId: 'agent_1' }));
+    const renamed = patchNode(second.draft, second.nodeId, { outputName: 'brief' });
+    const before = patchNode(renamed, 'output_1', {
+      inputBindings: [
+        { kind: 'task_output', sourceNodeId: 'agent_1', name: 'summary', optional: true },
+        { kind: 'task_output', sourceNodeId: 'agent_1', name: 'copy' },
+        { kind: 'task_output', sourceNodeId: second.nodeId, name: 'appendix', optional: true },
+      ],
+    });
+    const { draft, nodeId } = addAtEnd(before, writer());
+    expect(agent(draft, nodeId).inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+      { kind: 'task_output', name: 'brief_2', sourceNodeId: 'agent_1' },
+      { kind: 'task_output', name: 'brief_3', sourceNodeId: second.nodeId, optional: true },
+    ]);
+    expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
+
+    const finalEdge = before.definition.controlEdges.find((e) => e.target === 'output_1');
+    if (!finalEdge) throw new Error('Missing final edge');
+    const onEdge = ok(addAgent(before, writer(), { kind: 'edge', edgeId: finalEdge.id }));
+    expect(agent(onEdge.draft, onEdge.nodeId).inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+      { kind: 'task_output', name: 'brief_2', sourceNodeId: second.nodeId },
     ]);
   });
 
-  it.each(ROLE_PRESET_IDS)('the %s preset in a valid team still compiles strictly', (id) => {
-    const before = plainTeam();
-    expect(compileDefinition(before.definition).diagnostics).toEqual([]);
-    const onAgent = ok(importRole(before, preset(id), ['agent_1'])).draft;
-    const compiled = compileDefinition(onAgent.definition);
-    expect(compiled.ok).toBe(true);
-    expect(compiled.diagnostics).toEqual([]);
-    const placed = ok(
-      importRole(before, preset(id), [], { kind: 'after', nodeId: 'agent_1' }),
-    ).draft;
-    expect(compileDefinition(placed.definition).ok).toBe(true);
+  it('suggests the nearest upstream producer when the Output has no result binding', () => {
+    const before = patchNode(flow(), 'output_1', { inputBindings: [] });
+    const { draft, nodeId } = addAtEnd(before, writer());
+    expect(agent(draft, nodeId).inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+      { kind: 'task_output', name: 'text', sourceNodeId: 'agent_1' },
+    ]);
+    expect(draft.definition.nodes.find((n) => n.type === 'output')).toBe(
+      before.definition.nodes[1],
+    );
+  });
+
+  it.each(['twoOutputs', 'differentSources', 'disconnectedOutput', 'noOutput'])(
+    'adds an unconnected agent without changing existing inputs or edges: %s',
+    (shape) => {
+      let before = flow();
+      if (shape === 'twoOutputs') before = ok(placeStep(before, 'output', standalone)).draft;
+      if (shape === 'differentSources') {
+        const sibling = ok(placeStep(before, 'agent', standalone));
+        const [incoming] = before.definition.controlEdges;
+        if (!incoming) throw new Error('Missing final connection');
+        before = {
+          ...sibling.draft,
+          definition: {
+            ...sibling.draft.definition,
+            controlEdges: [incoming, { ...incoming, id: 'another', source: sibling.nodeId }],
+          },
+        };
+      }
+      if (shape === 'disconnectedOutput')
+        before = ok(placeStep(emptyDraft(), 'output', standalone)).draft;
+      if (shape === 'noOutput') before = ok(placeStep(emptyDraft(), 'agent', standalone)).draft;
+      expect(compositionPlacement(before.definition)).toEqual(standalone);
+      const { draft, nodeId } = addAtEnd(before, writer());
+      expect(draft.definition.controlEdges).toBe(before.definition.controlEdges);
+      expect(draft.definition.nodes.filter((n) => n.id !== nodeId)).toEqual(
+        before.definition.nodes,
+      );
+      expect(agent(draft, nodeId).inputBindings).toEqual([{ kind: 'run_input', name: 'brief' }]);
+    },
+  );
+
+  it('starts an empty composition with one agent, Output, connection and bound result', () => {
+    const { draft, nodeId } = addAtEnd(emptyDraft(), writer());
+    expect(draft.definition.nodes).toMatchObject([
+      { id: nodeId, type: 'agent' },
+      { type: 'output', inputBindings: [{ kind: 'task_output', sourceNodeId: nodeId }] },
+    ]);
+    expect(draft.definition.controlEdges).toMatchObject([{ source: nodeId, target: 'output_1' }]);
+  });
+
+  it('keeps an unavailable model profile for the host diagnostic', () => {
+    const source = writer();
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    expect(
+      compileDefinition(draft.definition, { knownModelProfiles: ['other'] }).diagnostics,
+    ).toContainEqual(expect.objectContaining({ code: 'UNKNOWN_MODEL_PROFILE', nodeId }));
+  });
+});
+
+describe('replacing the role, not the seat', () => {
+  function owned() {
+    let draft = patchNode(flow(), 'agent_1', {
+      stepInstruction: 'The seat task.',
+      label: 'My seat',
+    });
+    draft = updateNode(draft, 'agent_1', { teamPlanOwner: true });
+    const observer = ok(placeStep(draft, 'observer', { kind: 'after', nodeId: 'agent_1' }));
+    return {
+      ...observer.draft,
+      definition: {
+        ...observer.draft.definition,
+        sharedOutrider: {
+          modelProfile: 'model-a',
+          principles: 'Point out risks.',
+          targets: { kind: 'selected' as const, nodeIds: ['agent_1'] },
+        },
+      },
+    };
+  }
+  it('keeps authored seat fields, relationships and result, and moves the sole owner', () => {
+    const before = owned();
+    const source = writer();
+    const store = createEditorStore(before);
+    const preview = previewReplaceAgent(before, 'agent_1', source);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['instructions', 'model', 'permissions', 'skills', 'format']);
+    expect(preview.kept).toEqual(
+      expect.arrayContaining([
+        'id',
+        'label',
+        'task',
+        'inputBindings',
+        'controlEdges',
+        'capabilityLinks',
+        'outputBindings',
+        'outriderTargets',
+      ]),
+    );
+    // Cancelling the preview never touched the store.
+    expect(store.getState().draft).toBe(before);
+    expect(store.getState().past).toEqual([]);
+    const { draft } = ok(replaceAgent(before, 'agent_1', source));
+    const newRole = roleOf(draft, 'agent_1');
+    expect(newRole).toMatchObject({ ...source.role, origin: source.origin });
+    expect(newRole.harness).not.toBe(source.role.harness);
+    expect(newRole.id).not.toBe(before.definition.planOwnerRoleId);
+    expect(draft.definition.planOwnerRoleId).toBe(newRole.id);
+    expect(draft.definition.roles.map((r) => r.id)).not.toContain(
+      before.definition.planOwnerRoleId,
+    );
+    expect(agent(draft, 'agent_1')).toEqual({ ...agent(before, 'agent_1'), roleId: newRole.id });
+    expect(draft.definition.nodes.find((n) => n.type === 'output')).toBe(
+      before.definition.nodes[1],
+    );
+    expect(draft.definition.capabilityLinks).toBe(before.definition.capabilityLinks);
+    expect(draft.definition.controlEdges).toBe(before.definition.controlEdges);
+    expect(draft.definition.sharedOutrider).toBe(before.definition.sharedOutrider);
+    store.getState().applyDraft(draft);
+    const same = ok(
+      replaceAgent(draft, 'agent_1', { ...structuredClone(source), stepInstruction: 'Ignored' }),
+    );
+    expect(same.draft).toBe(draft);
+    store.getState().applyDraft(same.draft);
+    expect(store.getState().past).toHaveLength(1);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(before);
+  });
+
+  it.each(['handmade', 'step', 'origin'] as const)(
+    'keeps the %s seat’s task through preview, replacement and undo',
+    (kind) => {
+      const sentence = 'Write a two-sentence invitation.';
+      const initial =
+        kind === 'origin'
+          ? addAtEnd(emptyDraft(), {
+              role: writer().role,
+              origin: { kind: 'preset', presetId: 'write' },
+            }).draft
+          : flow();
+      let before = updateNode(initial, 'agent_1', { prompt: sentence });
+      if (kind === 'step')
+        before = patchNode(before, 'agent_1', { stepInstruction: 'Invite the neighbors.' });
+      const { name, duty } = messages.TeamTemplates.presets.plan;
+      const preset = roleFromPreset('plan', 'plan', name);
+      const source: AgentSource = {
+        role: preset,
+        origin: { kind: 'preset', presetId: 'plan' },
+        stepInstruction: duty,
+      };
+      const expectedTask =
+        kind === 'handmade' ? sentence : kind === 'step' ? 'Invite the neighbors.' : duty;
+      const preview = previewReplaceAgent(before, 'agent_1', source);
+      if (!preview.ok) throw new Error(preview.reason);
+      const { draft } = ok(replaceAgent(before, 'agent_1', source));
+      expect(preview.draft.definition).toEqual(draft.definition);
+      expect(seatTask(draft.definition, 'agent_1')).toEqual({
+        target: 'step',
+        text: expectedTask,
+        base: preset.prompt,
+      });
+      expect(preview.kept.includes('task')).toBe(kind !== 'origin');
+      expect(preview.changed.includes('task')).toBe(kind === 'origin');
+      expect(agent(draft, 'agent_1').stepInstruction).toBe(expectedTask);
+      expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
+      const store = createEditorStore(before);
+      store.getState().applyDraft(draft);
+      store.getState().undo();
+      expect(store.getState().draft.definition).toBe(before.definition);
+      expect(store.getState().canUndo).toBe(false);
+    },
+  );
+
+  it('fills only the missing task when choosing the same preset, but not a library original', () => {
+    const source: AgentSource = {
+      role: writer().role,
+      origin: { kind: 'preset', presetId: 'write' },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const preview = previewReplaceAgent(draft, nodeId, { ...source, stepInstruction: 'Draft it.' });
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['task']);
+    expect(preview.kept).not.toContain('task');
+    expect(agent(preview.draft, nodeId).stepInstruction).toBe('Draft it.');
+    const library = previewReplaceAgent(draft, nodeId, {
+      role: source.role,
+      origin: { kind: 'library', agentId: 'writer', revision: 4 },
+    });
+    if (!library.ok) throw new Error(library.reason);
+    expect(library.changed).not.toContain('task');
+    expect(seatTask(library.draft.definition, nodeId)?.text).toBe('');
+  });
+
+  it('fills an empty seat from another team’s handmade role without duplicating its one prompt', () => {
+    const { draft, nodeId } = addAtEnd(emptyDraft(), {
+      role: writer().role,
+      origin: { kind: 'preset', presetId: 'write' },
+    });
+    const preview = previewReplaceAgent(draft, nodeId, { role: writer().role });
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['task']);
+    expect(preview.kept).not.toContain('task');
+    expect(seatTask(preview.draft.definition, nodeId)).toMatchObject({
+      target: 'role',
+      text: writer().role.prompt,
+    });
+    expect(agent(preview.draft, nodeId)).not.toHaveProperty('stepInstruction');
+  });
+
+  it('previews an MCP-only change as permissions and keeps each copy independent of its original', () => {
+    const source = writer();
+    const tool = { serverId: 'issues', name: 'mcp__issues__search' };
+    source.role.mcpTools = [tool];
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const first = roleOf(draft, nodeId);
+    expect(first.mcpTools).toEqual([{ ...tool }]);
+    expect(first.mcpTools).not.toBe(source.role.mcpTools);
+    expect(first.mcpTools?.[0]).not.toBe(tool);
+
+    tool.name = 'mcp__issues__update';
+    expect(first.mcpTools?.[0]?.name).toBe('mcp__issues__search');
+    const preview = previewReplaceAgent(draft, nodeId, source);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['permissions']);
+    const replacement = roleOf(preview.draft, nodeId);
+    expect(replacement.mcpTools).toEqual([tool]);
+    expect(replacement.mcpTools?.[0]).not.toBe(tool);
+    const same = previewReplaceAgent(preview.draft, nodeId, structuredClone(source));
+    if (!same.ok) throw new Error(same.reason);
+    expect(same.changed).toEqual([]);
+    expect(same.draft).toBe(preview.draft);
+  });
+
+  it('does not describe name or provenance as a capability change', () => {
+    const initial = writer();
+    const { draft, nodeId } = addAtEnd(emptyDraft(), initial);
+    const other: AgentSource = {
+      role: { ...initial.role, name: 'A second writer' },
+      origin: { kind: 'library', agentId: 'other_writer', revision: 1 },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, other);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual([]);
+    expect(roleOf(preview.draft, nodeId)).toMatchObject({
+      name: other.role.name,
+      origin: other.origin,
+    });
+    expect(agent(preview.draft, nodeId).label).toBe(initial.role.name);
+  });
+
+  it('refuses to orphan an owner but leaves a shared owner with the remaining seat', () => {
+    const source = writer();
+    source.role.allowedCollaborationTools = ['submit_result'];
+    const before = owned();
+    const store = createEditorStore(before);
+    for (const command of [previewReplaceAgent, replaceAgent]) {
+      expect(command(store.getState().draft, 'agent_1', source)).toMatchObject({
+        ok: false,
+        reason: 'movePlanOwner',
+      });
+    }
+    expect(store.getState().draft).toBe(before);
+    expect(store.getState().past).toEqual([]);
+    const other = ok(placeStep(before, 'agent', { kind: 'after', nodeId: 'agent_1' }));
+    const shared = patchNode(other.draft, other.nodeId, {
+      roleId: agent(before, 'agent_1').roleId,
+    });
+    const { draft } = ok(replaceAgent(shared, 'agent_1', source));
+    expect(draft.definition.planOwnerRoleId).toBe(before.definition.planOwnerRoleId);
+    expect(roleOf(draft, other.nodeId)).toBe(roleOf(before, 'agent_1'));
+  });
+
+  it('rejects the first new error even if its code already existed on another link', () => {
+    const before = flow();
+    const second = ok(placeStep(before, 'agent', { kind: 'after', nodeId: 'agent_1' }));
+    const helper = ok(placeStep(second.draft, 'agent', standalone));
+    const callable = updateNode(helper.draft, helper.nodeId, { invocation: 'callable' });
+    const firstLink = connectCapability(callable, 'agent_1', helper.nodeId, 'delegate');
+    if (!firstLink.ok) throw new Error(firstLink.reason);
+    const secondLink = connectCapability(firstLink.draft, second.nodeId, helper.nodeId, 'delegate');
+    if (!secondLink.ok) throw new Error(secondLink.reason);
+    const draft = {
+      ...secondLink.draft,
+      definition: {
+        ...secondLink.draft.definition,
+        roles: secondLink.draft.definition.roles.map((r) =>
+          r.id === roleOf(before, 'agent_1').id ? roleOf(before, 'agent_1') : r,
+        ),
+      },
+    };
+    expect(compileDefinition(draft.definition).diagnostics).toContainEqual(
+      expect.objectContaining({ code: 'CAPABILITY_NOT_ALLOWED', linkId: firstLink.linkId }),
+    );
+    const store = createEditorStore(draft);
+    const source = writer();
+    expect(replaceAgent(draft, second.nodeId, source)).toMatchObject({
+      ok: false,
+      reason: 'replacementCompileError',
+      diagnostic: { code: 'CAPABILITY_NOT_ALLOWED', linkId: secondLink.linkId },
+    });
+    expect(store.getState().draft).toBe(draft);
+    expect(store.getState().past).toEqual([]);
+    // An unrelated existing error must not prevent replacing the callable.
+    expect(replaceAgent(draft, helper.nodeId, source).ok).toBe(true);
+  });
+
+  it('names the downstream review decision whose required output contract is lost', () => {
+    const { draft } = ok(applyPattern(flow(), 'reviewLoop', ['agent_1']));
+    const reviewer = draft.definition.nodes.find(
+      (n) => isWorkAgent(n) && roleOf(draft, n.id).outputContract === 'review',
+    );
+    const decision = draft.definition.nodes.find((n) => n.type === 'decision');
+    if (!reviewer || !decision) throw new Error('Missing review gate');
+    expect(replaceAgent(draft, reviewer.id, writer())).toMatchObject({
+      ok: false,
+      reason: 'replacementCompileError',
+      diagnostic: { code: 'REVIEW_CONTRACT', nodeId: decision.id },
+    });
   });
 
   it.each(ROLE_PRESET_IDS)(
-    'the %s preset reports only an unresolved model or a call link its tools lack',
+    'copies the %s preset without changing the source or explicit inputs',
     (id) => {
-      const { draft } = ok(importRole(team(), preset(id), ['agent_1']));
-      const codes = compileDefinition(draft.definition, {
-        knownModelProfiles: ['model-a'],
-      }).diagnostics.map((d) => d.code);
-      const before = new Set(
-        compileDefinition(team().definition, { knownModelProfiles: ['model-a'] }).diagnostics.map(
-          (d) => d.code,
-        ),
+      const source = roleFromPreset(id, id, messages.TeamTemplates.presets[id].name);
+      const before = flow();
+      const { draft } = ok(
+        replaceAgent(before, 'agent_1', { role: source, origin: { kind: 'preset', presetId: id } }),
       );
-      const added = new Set(codes.filter((code) => !before.has(code)));
-      for (const code of added)
-        expect(['UNKNOWN_MODEL_PROFILE', 'CAPABILITY_NOT_ALLOWED']).toContain(code);
-      // The presets have no delegation tool, so the kept delegate link is reported.
-      expect(codes).toContain('CAPABILITY_NOT_ALLOWED');
-      if (preset(id).modelProfile !== 'model-a') expect(codes).toContain('UNKNOWN_MODEL_PROFILE');
+      expect(compileDefinition(draft.definition).ok).toBe(true);
+      expect(agent(draft, 'agent_1').inputBindings).toBe(agent(before, 'agent_1').inputBindings);
+      expect(roleOf(draft, 'agent_1').id).not.toBe(source.id);
+      expect(roleOf(draft, 'agent_1').allowedWorkTools).not.toBe(source.allowedWorkTools);
     },
   );
+});
+
+describe('the task field', () => {
+  it.each([false, true])(
+    'uses the existing step instruction with or without origin: %s',
+    (origin) => {
+      const source = writer();
+      if (!origin) delete source.origin;
+      const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+      expect(seatTask(draft.definition, nodeId)).toEqual({
+        target: 'step',
+        text: source.stepInstruction,
+        base: source.role.prompt,
+      });
+      const edited = ok(setSeatTask(draft, nodeId, '  New task\n')).draft;
+      expect(agent(edited, nodeId).stepInstruction).toBe('  New task\n');
+      expect(ok(setStepInstruction(edited, nodeId, '  New task\n')).draft).toBe(edited);
+      const cleared = ok(setStepInstruction(edited, nodeId, ' \n')).draft;
+      expect(agent(cleared, nodeId)).not.toHaveProperty('stepInstruction');
+      expect(ok(setStepInstruction(cleared, nodeId, '')).draft).toBe(cleared);
+      expect(seatTask(cleared.definition, nodeId)).toEqual(
+        origin
+          ? { target: 'step', text: '', base: source.role.prompt }
+          : { target: 'role', text: source.role.prompt, base: null },
+      );
+    },
+  );
+  it('edits only the selected legacy seat and does not fork its role for the same task', () => {
+    const first = flow();
+    const second = ok(placeStep(first, 'agent', { kind: 'after', nodeId: 'agent_1' }));
+    const shared = patchNode(second.draft, second.nodeId, {
+      roleId: agent(first, 'agent_1').roleId,
+    });
+    const role = roleOf(first, 'agent_1');
+    expect(ok(setSeatTask(shared, 'agent_1', role.prompt)).draft).toBe(shared);
+    const changed = ok(setSeatTask(shared, 'agent_1', 'Write an invitation.')).draft;
+    expect(roleOf(changed, 'agent_1').prompt).toBe('Write an invitation.');
+    expect(agent(changed, 'agent_1')).not.toHaveProperty('stepInstruction');
+    expect(roleOf(changed, second.nodeId)).toBe(role);
+  });
 });

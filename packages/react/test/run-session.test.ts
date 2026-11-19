@@ -255,6 +255,22 @@ describe('initial run replay readiness', () => {
 });
 
 describe('run session', () => {
+  it('retains the authored team of this test run, not the materialized copy or another run', async () => {
+    const store = session();
+    const team = linearCorral(['writer']);
+    team.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check facts.',
+      targets: { kind: 'all' },
+    };
+    await store.getState().start(team);
+    expect(store.getState().startDefinition?.sharedOutrider).toEqual(team.sharedOutrider);
+    expect(store.getState().definition?.sharedOutrider).toBeUndefined();
+    await store.getState().open('run_missing');
+    expect(store.getState().startDefinition).toBeNull();
+    store.getState().dispose();
+  });
+
   it('shares an in-flight same-run open and starts a fresh read after disposal', async () => {
     const reads: ((definition: CorralDefinition | null) => void)[] = [];
     const getRunDefinition = vi.fn(

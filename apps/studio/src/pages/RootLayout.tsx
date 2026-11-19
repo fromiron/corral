@@ -25,7 +25,7 @@ import {
   useRouter,
   useRouterState,
 } from '@tanstack/react-router';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
 import { CommandLayer } from '../CommandPalette.tsx';
 import { OPEN_PALETTE, useRegisterCommands } from '../commandRegistry.ts';
@@ -34,8 +34,13 @@ import { useServices } from '../services.tsx';
 import { SESSION_MISSING } from '../sessionConnection.ts';
 import { useShortcutBindings } from '../shortcutBindings.ts';
 import { shortcutLabel } from '../shortcuts.ts';
+import type { WorkspaceTemplateId } from '../templates.ts';
 import { documentStore } from '../workbench/documents/store.ts';
-import { hasUnsavedEditorCopy } from '../workbench/editorDraft.ts';
+import {
+  hasUnsavedEditorCopy,
+  newEditorName,
+  subscribeEditorCopies,
+} from '../workbench/editorDraft.ts';
 import { NEW_MEETING, NewMeetingHost } from '../workbench/NewMeeting.tsx';
 import {
   SettingsNavigationContext,
@@ -107,6 +112,7 @@ function RootFrame() {
         projectId?: string;
         session?: { title: string; projectId: string };
         definition?: { name: string };
+        newTemplate?: WorkspaceTemplateId;
       }
     | undefined;
   const overlaySearch = validateSettingsOverlay(location.search);
@@ -205,9 +211,24 @@ function RootFrame() {
       : undefined,
   };
   // Outside a project the path is the screen's own name; inside, project then this page.
+  const workspace = useTranslations('Workspace');
+  const newName = useSyncExternalStore(
+    useCallback(
+      (notify) => (data?.newTemplate ? subscribeEditorCopies(repository, notify) : () => {}),
+      [repository, data?.newTemplate],
+    ),
+    () => (data?.newTemplate && projectId ? newEditorName(repository, projectId) : undefined),
+  );
+  const draftTitle = data?.newTemplate
+    ? (newName ??
+      workspace(data.newTemplate === 'blank' ? 'newName' : `template.${data.newTemplate}.name`))
+    : undefined;
   const pageTitle = outside
     ? ''
-    : (data?.session?.title ?? data?.definition?.name ?? (selectedRun ? tn('runDetails') : ''));
+    : (draftTitle ??
+      data?.session?.title ??
+      data?.definition?.name ??
+      (selectedRun ? tn('runDetails') : ''));
   const [mobileOpen, setMobileOpen] = useState(false);
   const [narrow, setNarrow] = useState(() => matchMedia('(max-width: 1023px)').matches);
   const shape = useShape();

@@ -70,7 +70,7 @@ for (const locale of ['en', 'ko'] as const) {
     ).toEqual({ profileId: 'evidence', revision: 1 });
   });
 
-  test(`template duplicate name is previewed before save in ${locale}`, async ({
+  test(`first save resolves and announces a duplicate template name in ${locale}`, async ({
     page,
     corral,
   }) => {
@@ -92,36 +92,39 @@ for (const locale of ['en', 'ko'] as const) {
       .getByRole('tab', { name: locale === 'en' ? 'Templates' : '템플릿', exact: true })
       .click();
     await page
-      .getByRole('button', {
+      .getByRole('link', {
         name: locale === 'en' ? `Edit a copy of ${name}` : `${name} 사본 편집`,
         exact: true,
       })
       .click();
-    const dialog = page.getByRole('dialog', {
-      name: locale === 'en' ? 'Save a Corral copy' : 'Corral 사본 저장',
-    });
-    const input = dialog.getByRole('textbox', {
-      name: locale === 'en' ? 'Corral name' : 'Corral 이름',
+    await expect(page).toHaveURL(/\/corrals\/new\/edit\?/);
+    const roster = page.getByRole('list', {
+      name: locale === 'en' ? 'Team composition' : '팀 구성',
       exact: true,
     });
+    await roster.getByRole('button', { name: locale === 'en' ? /^Request\b/ : /^요청/ }).click();
+    const input = page.getByRole('textbox', {
+      name: locale === 'en' ? 'Name' : '이름',
+      exact: true,
+    });
+    const announcement = page.getByRole('status').filter({ hasText: `${name} (2)` });
     await expect(input).toHaveValue(name);
-    await expect(dialog.getByRole('status')).toContainText(`${name} (2)`);
+    await expect(announcement).toHaveCount(0);
     await input.fill('Different name');
-    await expect(dialog.getByRole('status')).toHaveCount(0);
+    await expect(input).toHaveValue('Different name');
     await input.fill(name);
-    await expect(dialog.getByRole('status')).toContainText(`${name} (2)`);
-    await dialog
-      .getByRole('button', {
-        name: locale === 'en' ? 'Save copy and edit' : '사본 저장하고 편집',
-        exact: true,
-      })
+    expect(await call(page, '/corrals', undefined, 'GET')).toHaveLength(1);
+    await page
+      .getByRole('button', { name: locale === 'en' ? 'Save' : '저장', exact: true })
       .click();
-    await expect(page).toHaveURL(/\/edit$/);
+    await expect(page).toHaveURL(/\/corrals\/(?!new\/)[^/?#]+\/edit$/);
+    await expect(announcement).toHaveCount(1);
     // The editor names the open team in its heading; the name field is in its settings.
     await expect(
       page.getByRole('heading', { level: 1, name: `${name} (2)`, exact: true }),
     ).toBeVisible();
     const teams = await call(page, '/corrals', undefined, 'GET');
+    expect(teams).toHaveLength(2);
     expect(teams.map((team: { name: string }) => team.name)).toEqual(
       expect.arrayContaining([name, `${name} (2)`]),
     );

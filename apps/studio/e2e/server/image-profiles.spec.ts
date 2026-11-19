@@ -1,4 +1,12 @@
-import { modelSettingsTab, newTeam, openLibraryTeams, openProject } from '../workbench.ts';
+import {
+  addCustomAgent,
+  modelSettingsTab,
+  newTeam,
+  openFlowGraph,
+  openLibraryTeams,
+  openProject,
+  openSeatAdvanced,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, reasoningApi: true });
@@ -46,7 +54,9 @@ test('image profile CRUD and role configuration persist through the normal setti
   await openProject(page, 'My project');
   await openLibraryTeams(page);
   await newTeam(page);
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
+  await openFlowGraph(page);
+  await addCustomAgent(page);
+  await openSeatAdvanced(page);
   await page.getByRole('switch', { name: /Generate images/ }).check();
   await page.getByRole('combobox', { name: 'Image profile', exact: true }).click();
   await page

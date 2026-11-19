@@ -10,7 +10,7 @@ import {
   type OutputContract,
   type WorkTool,
 } from '@corral/contracts';
-import { rolePrompt } from './role-prompt.ts';
+import { ROLE_RULES } from './role-prompt.ts';
 
 // The library's team templates (docs/specs/features/library.md). A template's roles come from
 // role presets: a preset fixes a role's tools, output contract and model slot; its name and duty
@@ -92,18 +92,14 @@ const READ_NOTE =
 const CHANGE_NOTE =
   ' Make the changes with the file tools, and say what you changed and how you checked it.';
 
-/** A role from a preset, under `roleId`, with the name and duty in the screen language. */
-export function roleFromPreset(
-  presetId: RolePresetId,
-  roleId: string,
-  wording: RoleWording,
-): AgentRole {
+/** The preset's reusable settings. The localized duty belongs to the seat, not the role. */
+export function roleFromPreset(presetId: RolePresetId, roleId: string, name: string): AgentRole {
   const chosen = ROLE_PRESETS[presetId];
   const changes = chosen.allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never));
   return {
     id: roleId,
-    name: wording.name,
-    prompt: `${rolePrompt(wording.duty)}${READ_NOTE}${changes ? CHANGE_NOTE : ''}`,
+    name,
+    prompt: `${ROLE_RULES}${READ_NOTE}${changes ? CHANGE_NOTE : ''}`,
     modelProfile: chosen.modelProfile,
     allowedWorkTools: [...chosen.allowedWorkTools],
     allowedCollaborationTools: [...chosen.allowedCollaborationTools],
@@ -173,13 +169,15 @@ export function teamTemplate<T extends TeamTemplateId>(
 ): CorralDefinition {
   const presets: Readonly<Record<string, RolePresetId>> = TEAM_TEMPLATE_ROLES[id];
   const words = wording.roles as Readonly<Record<string, RoleWording | undefined>>;
-  const roles = Object.entries(presets).map(([roleId, presetId]) => {
+  const roleWording = (roleId: string) => {
     const named = words[roleId];
     if (!named) throw new Error(`the ${id} wording has no ${roleId}`);
-    return roleFromPreset(presetId, roleId, named);
-  });
-  const name = (roleId: string) => words[roleId]?.name ?? roleId;
-  const shape = SHAPES[id](new Shape(name, wording.labels));
+    return named;
+  };
+  const roles = Object.entries(presets).map(([roleId, presetId]) =>
+    roleFromPreset(presetId, roleId, roleWording(roleId).name),
+  );
+  const shape = SHAPES[id](new Shape(roleWording, wording.labels));
   return {
     schemaVersion: '0.1',
     id: corralId,
@@ -214,18 +212,20 @@ const earlier = (sourceNodeId: string, name: string): InputBinding => ({
 class Shape {
   readonly nodes: CorralNode[] = [];
   readonly edges: ControlEdge[] = [];
-  private readonly roleName: (roleId: string) => string;
+  private readonly roleWording: (roleId: string) => RoleWording;
   private readonly labels: TeamTemplateLabels;
-  constructor(roleName: (roleId: string) => string, labels: TeamTemplateLabels) {
-    this.roleName = roleName;
+  constructor(roleWording: (roleId: string) => RoleWording, labels: TeamTemplateLabels) {
+    this.roleWording = roleWording;
     this.labels = labels;
   }
 
   agent(id: string, inputBindings: InputBinding[], outputName: string, parentId?: string) {
+    const { name, duty } = this.roleWording(id);
     this.nodes.push({
       id,
       type: 'agent',
-      label: this.roleName(id),
+      label: name,
+      stepInstruction: duty,
       roleId: id,
       invocation: 'scheduled',
       inputBindings,
