@@ -1466,12 +1466,20 @@ export function setStepInstruction(draft: EditorDraft, nodeId: string, text: str
   };
 }
 
+/**
+ * A list's one-line summary of instructions (agent-library.md 11): the first line up to a full
+ * stop, question or exclamation mark followed by a space, or the whole first line.
+ */
+export function firstSentence(text: string): string {
+  return text.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim() ?? '';
+}
+
 /** Roster rows and graph cards share the first sentence of the seat task, or the role fallback. */
 export function seatTaskSummary(definition: CorralDefinition, node: AgentNode) {
   const text =
     (isWorkAgent(node) ? node.stepInstruction : undefined) ??
     definition.roles.find((role) => role.id === node.roleId)?.prompt;
-  return text?.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim() ?? '';
+  return text === undefined ? '' : firstSentence(text);
 }
 
 export function seatTask(
