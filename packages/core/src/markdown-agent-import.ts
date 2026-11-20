@@ -189,6 +189,12 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
       const indent = Math.min(
         ...block.filter((row) => row.trim()).map((row) => row.length - row.trimStart().length),
       );
+      // A list field read as text would silently become an empty list.
+      if (key === 'tools' || key === 'skills') {
+        result.errors.push(`${key} must be a list, not a block of text.`);
+        fields.set(key, []);
+        continue;
+      }
       fields.set(
         key,
         block

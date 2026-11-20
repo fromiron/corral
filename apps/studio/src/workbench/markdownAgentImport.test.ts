@@ -227,6 +227,18 @@ describe('Markdown agent import', () => {
     }
     expect(parseMarkdownAgent(source).skills).toEqual([]);
   });
+  it('refuses a block scalar for tools or skills instead of reading an empty list', () => {
+    for (const block of ['|', '>', '|-', '>+']) {
+      const skills = parseMarkdownAgent(
+        source.replace('model:', `skills: ${block}\n  break-it\n  change-impact\nmodel:`),
+      );
+      expect(skills.errors).toContain('skills must be a list, not a block of text.');
+      const tools = parseMarkdownAgent(
+        source.replace('tools: [Read, Glob]', `tools: ${block}\n  Read\n  Glob`),
+      );
+      expect(tools.errors).toContain('tools must be a list, not a block of text.');
+    }
+  });
   it('reads metadata as a one-level map of strings and refuses anything else', () => {
     const withMetadata = (block: string) =>
       parseMarkdownAgent(source.replace('model:', `metadata:${block}\nmodel:`));
