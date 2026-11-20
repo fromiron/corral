@@ -3120,6 +3120,7 @@
     "unknownLicense": "License not declared",
     "noTools": "No tools allowed",
     "applied": "Applied Harnesses",
+    "librarySkills": "Other usable skills · {count}",
     "loaded": "Loaded",
     "requests": "Model requests ({count}; latest 200 shown)",
     "contextHash": "Final context hash",

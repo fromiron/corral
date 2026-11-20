@@ -3120,6 +3120,7 @@
     "unknownLicense": "라이선스 미표기",
     "noTools": "허용 도구 없음",
     "applied": "적용된 Harness",
+    "librarySkills": "그 밖에 쓸 수 있는 스킬 · {count}",
     "loaded": "로드됨",
     "requests": "모델 요청 ({count}개 · 최근 200개 표시)",
     "contextHash": "최종 문맥 해시",

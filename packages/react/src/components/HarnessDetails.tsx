@@ -1,10 +1,12 @@
-import type { RoleSkillRef } from '@corral/contracts';
+import type { EffectiveHarnessSnapshot, RoleSkillRef } from '@corral/contracts';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { fontWeights } from '../design-kit/index.ts';
 import { roleName } from '../run/advisor.ts';
 import { useRunDisplay } from '../run/display.tsx';
 import type { RunSessionStore } from '../run/session.ts';
+
+type Resource = EffectiveHarnessSnapshot['resources'][number];
 
 /** Committed references and hashes only; previews never stand in for what actually ran. */
 export function HarnessDetails({
@@ -41,6 +43,46 @@ export function HarnessDetails({
   );
   const uiHistory = events.filter((event) => event.type.startsWith('extension.ui_'));
   if (!harnesses && !requests.length && !uiHistory.length) return null;
+  const resourceRow = (resource: Resource, index: number) => {
+    const key = `${resource.hash}:${resource.entry ?? index}`;
+    const evidence = (
+      <>
+        <p className="text-caption">
+          {resource.name} · {resource.version}
+        </p>
+        {resource.skillName ? (
+          <p className="text-caption text-muted-foreground">{resource.skillName}</p>
+        ) : null}
+        <code className="break-all text-2xs">{resource.hash}</code>
+      </>
+    );
+    if (resource.kind !== 'skill') return <div key={key}>{evidence}</div>;
+    const name = resource.entry
+      ? skillLabel?.({ resourceHash: resource.hash, entry: resource.entry })
+      : null;
+    return (
+      <details key={key}>
+        <summary className="cursor-pointer break-words text-caption">
+          {name ?? resource.skillName ?? resource.name}
+          {resource.skillMode ? ` · ${t(resource.skillMode)}` : ''}
+        </summary>
+        {evidence}
+      </details>
+    );
+  };
+  // Skills nothing bound are one fold per role, so the rows above stay the role's own.
+  const library = (resources: Resource[]) => {
+    const others = resources.filter((resource) => resource.library);
+    if (!others.length) return null;
+    return (
+      <details>
+        <summary className="cursor-pointer text-caption">
+          {t('librarySkills', { count: others.length })}
+        </summary>
+        <div className="mt-1 flex flex-col gap-1 pl-3">{others.map(resourceRow)}</div>
+      </details>
+    );
+  };
   return (
     <details className="mb-4 rounded-lg fill-group p-3" data-testid="harness-details">
       <summary
@@ -91,33 +133,8 @@ export function HarnessDetails({
             {snapshot.policy === 'trusted-native' ? (
               <p className="text-caption text-warning">{t('nativeWarning')}</p>
             ) : null}
-            {snapshot.resources.map((resource, index) => {
-              const key = `${resource.hash}:${resource.entry ?? index}`;
-              const evidence = (
-                <>
-                  <p className="text-caption">
-                    {resource.name} · {resource.version}
-                  </p>
-                  {resource.skillName ? (
-                    <p className="text-caption text-muted-foreground">{resource.skillName}</p>
-                  ) : null}
-                  <code className="break-all text-2xs">{resource.hash}</code>
-                </>
-              );
-              if (resource.kind !== 'skill') return <div key={key}>{evidence}</div>;
-              const name = resource.entry
-                ? skillLabel?.({ resourceHash: resource.hash, entry: resource.entry })
-                : null;
-              return (
-                <details key={key}>
-                  <summary className="cursor-pointer break-words text-caption">
-                    {name ?? resource.skillName ?? resource.name}
-                    {resource.skillMode ? ` · ${t(resource.skillMode)}` : ''}
-                  </summary>
-                  {evidence}
-                </details>
-              );
-            })}
+            {snapshot.resources.filter((resource) => !resource.library).map(resourceRow)}
+            {library(snapshot.resources)}
             <p className="break-all font-mono text-2xs text-muted-foreground">
               {snapshot.snapshotHash}
             </p>
