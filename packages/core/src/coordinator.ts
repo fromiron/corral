@@ -243,6 +243,21 @@ function needsHarness(role: AgentRole): boolean {
   return role.harness !== undefined || role.skills !== undefined || Boolean(role.mcpTools?.length);
 }
 
+/**
+ * What continuing an earlier run compares (harness-contract.md, "이전 실행에서 이어 갈 때"): the
+ * snapshot without the other usable library skills and the diagnostic their cut leaves. An entry
+ * a snapshot did not mark as a library skill is bound. Absent stays null.
+ */
+function boundHarnessHash(snapshot: EffectiveHarnessSnapshot | null | undefined): string | null {
+  if (!snapshot) return null;
+  const { snapshotHash: _snapshotHash, ...body } = snapshot;
+  return hashOf({
+    ...body,
+    resources: body.resources.filter((resource) => !resource.library),
+    diagnostics: body.diagnostics.filter((code) => code !== 'library_skills_truncated'),
+  });
+}
+
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
 type EventDraft = {
   [T in RunEventType]: {
@@ -461,7 +476,8 @@ export interface HarnessResolver {
     binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
-    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+    /** `library: false` leaves out the other usable library skills (an evaluation run). */
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string; library?: false },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
   /**
@@ -1207,6 +1223,12 @@ export class Coordinator {
     );
     if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
     try {
+      // The checkpoint ran on its run's snapshot; only that snapshot's bound part must still hold.
+      // A checkpoint with no harness hash ran with no harness (an advisor's, say).
+      const recorded =
+        manifest.harnessHash === null ? undefined : source.snapshot.harnesses?.[state.role.id];
+      if (manifest.harnessHash !== null && recorded?.snapshotHash !== manifest.harnessHash)
+        blockers.push('resources_changed');
       if (needsHarness(state.role)) {
         const resolved = this.harnesses?.resolve(
           state.role.harness,
@@ -1216,7 +1238,7 @@ export class Coordinator {
         );
         if (
           !resolved ||
-          resolved.snapshotHash !== manifest.harnessHash ||
+          boundHarnessHash(resolved) !== boundHarnessHash(recorded) ||
           !matchesRoleMcpSelection(state.role, resolved)
         )
           blockers.push('resources_changed');
@@ -1353,10 +1375,11 @@ export class Coordinator {
       const modelHashes = Object.fromEntries(
         Object.entries(source.snapshot.models).map(([id, model]) => [id, hashOf(model)]),
       );
+      // A branch compares only bound resources; it takes the library as it is then.
       const harnessHashes = Object.fromEntries(
         definition.roles.map((role) => [
           role.id,
-          source.snapshot.harnesses?.[role.id]?.snapshotHash ?? null,
+          boundHarnessHash(source.snapshot.harnesses?.[role.id]),
         ]),
       );
       const preview: MessageBranchPreview = {
@@ -1540,8 +1563,14 @@ export class Coordinator {
     const files = recovery?.manifest.files ?? null;
     const modelHash =
       recovery?.manifest.modelHash ?? hashOf(source.snapshot.models[role.modelProfile]);
+    const recorded = source.snapshot.harnesses?.[role.id];
+    // A checkpoint hash its run's snapshot does not carry is compared as is, as before: a
+    // resolution passes only when it is that exact snapshot.
+    const checkpointHash = recovery?.manifest.harnessHash ?? null;
     const harnessHash =
-      recovery?.manifest.harnessHash ?? source.snapshot.harnesses?.[role.id]?.snapshotHash ?? null;
+      checkpointHash !== null && checkpointHash !== recorded?.snapshotHash
+        ? checkpointHash
+        : boundHarnessHash(recorded);
     const preview: MessageBranchPreview = {
       hash: hashOf({
         point,
@@ -2110,6 +2139,7 @@ export class Coordinator {
               ? { runOverride: request.harnessOverrides[role.id] }
               : {}),
             ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+            ...('evaluation' in request && request.evaluation ? { library: false as const } : {}),
           }),
         );
         if (
@@ -2224,20 +2254,30 @@ export class Coordinator {
           message: "check decisions need the session's working copy",
         });
     }
-    if (
-      recovery &&
-      (hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
-        (harnesses[recovery.state.role.id]?.snapshotHash ?? null) !== recovery.manifest.harnessHash)
-    )
-      return refuse({
-        code: 'CAPABILITY_DENIED',
-        message: 'model or resources changed after recovery preview',
-      });
+    if (recovery) {
+      // Like the model, a recovered run continues on the snapshot it started with when the
+      // bound resources still hold; the library may have changed since.
+      const roleId = recovery.state.role.id;
+      const checkpointHash = recovery.manifest.harnessHash;
+      const recorded =
+        checkpointHash === null ? undefined : recovery.source.snapshot.harnesses?.[roleId];
+      if (
+        hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
+        (checkpointHash !== null && recorded?.snapshotHash !== checkpointHash) ||
+        boundHarnessHash(harnesses[roleId]) !== boundHarnessHash(recorded)
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'model or resources changed after recovery preview',
+        });
+      if (recorded)
+        harnesses[roleId] = JSON.parse(canonicalJson(recorded)) as EffectiveHarnessSnapshot;
+    }
     if (
       branch &&
       (Object.entries(branch.modelHashes).some(([id, hash]) => hashOf(models[id]) !== hash) ||
         Object.entries(branch.harnessHashes).some(
-          ([id, hash]) => (harnesses[id]?.snapshotHash ?? null) !== hash,
+          ([id, hash]) => boundHarnessHash(harnesses[id]) !== hash,
         ))
     )
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });

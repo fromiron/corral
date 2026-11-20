@@ -5,7 +5,12 @@ import { PiAgentAdapter, processChannel, sdkProcessChannel, WorkerTool } from '@
 import type { HarnessProfile, RoleSkillRef } from '@corral/contracts';
 import { Coordinator, InMemoryRunStore, InProcessTransport, waitForProjection } from '@corral/core';
 import { openDatabase } from '@corral/storage-sqlite';
-import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
+import {
+  FakeClock,
+  linearCorral,
+  ScriptedAgentAdapter,
+  SequentialIdFactory,
+} from '@corral/testkit';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import { roleSkillCases } from '../../../packages/core/test/harness-role-skill-cases.ts';
 import { HarnessService } from '../src/harness/service.ts';
@@ -534,4 +539,136 @@ it('a library skill revoked after a run started is left out of a later worker st
   expect(runtime.skills.map((skill) => skill.name)).not.toContain('required');
   service.trust(refs.second!.resourceHash, false);
   await expect(service.runtimeResources({ harness: pinned, inputs: [] })).rejects.toThrow(/trust/);
+});
+
+// harness-contract.md, "스냅샷" and "이전 실행에서 이어 갈 때".
+it('library skills are marked, and a library change alone does not refuse a branch', async () => {
+  db.prepare(
+    `INSERT INTO work_sessions (id, project_id, title, objective, pinned, revision, created_at, updated_at, entries_json)
+     VALUES ('branch_session', 'default', 'Branch', 'Branch', 0, 1, ?, ?, '[]')`,
+  ).run(new Date(0).toISOString(), new Date(0).toISOString());
+  const store = new InMemoryRunStore();
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    store,
+    harnesses: service,
+    agents: new ScriptedAgentAdapter({ turns: 1 }),
+  });
+  const transport = new InProcessTransport(coordinator);
+  const ended = (runId: string) =>
+    waitForProjection(transport, runId, (run) =>
+      ['succeeded', 'failed', 'cancelled'].includes(run.status),
+    );
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.skills = [refs.second!];
+  const source = coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'source',
+    definition,
+    mode: 'mock',
+  });
+  expect(source.receipt.error).toBeUndefined();
+  await ended(source.runId!);
+  const before = store.getRun(source.runId!)!.snapshot.harnesses!.writer_role!;
+  const picked = before.resources.find((resource) => resource.selectedByRole);
+  expect(picked).toMatchObject({ skillName: 'second' });
+  expect(picked).not.toHaveProperty('library');
+  expect(before.resources.filter((resource) => resource.library).length).toBe(
+    before.resources.length - 1,
+  );
+  const point = { sourceRunId: source.runId!, requestStart: true as const };
+  const preview = coordinator.branchPreview(point);
+  const added = await install('later', ['later']);
+  const prepare = async () => ({ sessionId: 'branch_session' });
+  const branch = await coordinator.branchRun(
+    { ...point, commandId: 'branch_library', expectedHash: preview.hash },
+    prepare,
+  );
+  expect(branch.receipt.error).toBeUndefined();
+  const after = store.getRun(branch.runId!)!.snapshot.harnesses!.writer_role!;
+  expect(after.snapshotHash).not.toBe(before.snapshotHash);
+  expect(after.resources).toContainEqual(
+    expect.objectContaining({ hash: added, skillName: 'later', library: true }),
+  );
+  await ended(branch.runId!);
+  // A bound change, here the person's default policy, still refuses the branch.
+  defaults();
+  expect(
+    await coordinator.branchRun(
+      { ...point, commandId: 'branch_bound', expectedHash: preview.hash },
+      prepare,
+    ),
+  ).toMatchObject({
+    runId: null,
+    receipt: { error: { message: 'branch model or resources changed' } },
+  });
+});
+
+it('a skill read lists no explicit skill, which a request can still read by name', async () => {
+  const source = join(root, 'marked-read');
+  mkdirSync(join(source, 'skills', 'manual'), { recursive: true });
+  writeFileSync(
+    join(source, 'package.json'),
+    JSON.stringify({ name: 'marked-read', version: '1.0.0', pi: { skills: ['./skills'] } }),
+  );
+  writeFileSync(
+    join(source, 'skills/manual/SKILL.md'),
+    '---\nname: manual\ndescription: Run only on request.\ndisable-model-invocation: true\n---\nBody',
+  );
+  service.install((await service.reviewPackage('local', source)).reviewId);
+  const snapshot = service.preview({ id: 'writer', skills: [refs.second!] }, 'default').snapshot!;
+  expect(snapshot.resources).toContainEqual(
+    expect.objectContaining({ skillName: 'manual', skillMode: 'explicit' }),
+  );
+  const read = service.readSkill(snapshot, 'skills/second/SKILL.md');
+  const listed = (read.boundSkills as { name: string }[]).map((skill) => skill.name);
+  expect(listed).toContain('first');
+  expect(listed).not.toContain('manual');
+  expect(service.readSkill(snapshot, 'skills/manual/SKILL.md').text).toContain('Body');
+});
+
+it('a pinned harness that leaves out an optional skill says so; unusable library skills do not', async () => {
+  const optional = (ref: RoleSkillRef) => ({
+    ...ref,
+    kind: 'skill' as const,
+    required: false,
+    skillMode: 'auto' as const,
+  });
+  const pinned = (resources: RoleSkillRef[]) => {
+    const profileId = `optional-${resources.length}`;
+    service.saveProfile(profileId, 0, { ...profile, resources: resources.map(optional) });
+    return service.preview({ id: 'writer', harness: { profileId, revision: 1 } }, 'default')
+      .snapshot!;
+  };
+  expect(pinned([refs.first!]).diagnostics).not.toContain('optional_skill_skipped');
+  for (const unusable of [refs.untrusted!, refs.missing!, refs.disabled!, refs.conflict!]) {
+    const snapshot = pinned([refs.required!, unusable]);
+    expect(snapshot.diagnostics.filter((code) => code === 'optional_skill_skipped')).toEqual([
+      'optional_skill_skipped',
+    ]);
+    expect(snapshot.resources.some((r) => r.hash === unusable.resourceHash)).toBe(false);
+    db.exec('ROLLBACK TO role_case');
+  }
+  const several = pinned([refs.untrusted!, refs.missing!, refs.disabled!]);
+  expect(several.diagnostics.filter((code) => code === 'optional_skill_skipped')).toHaveLength(1);
+  // The library already holds an untrusted and a disabled package, and they add nothing.
+  expect(
+    service.preview({ id: 'writer', harness: bound }, 'default').snapshot!.diagnostics,
+  ).not.toContain('optional_skill_skipped');
+});
+
+it('a superseded entry loses to an older one no version follows, though it was installed last', async () => {
+  const older = await install('solo-old', ['solo']);
+  const newer = await install('solo-new', ['solo']);
+  const entry = 'skills/solo/SKILL.md';
+  service.store.manageEntry({ resourceHash: newer, entry, kind: 'skill' }, 0, false, {
+    resourceHash: older,
+    entry,
+    kind: 'skill',
+  });
+  const snapshot = service.preview({ id: 'writer', skills: [] }, 'default').snapshot!;
+  expect(snapshot.resources.filter((r) => r.skillName === 'solo')).toEqual([
+    expect.objectContaining({ hash: older, library: true }),
+  ]);
 });

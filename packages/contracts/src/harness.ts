@@ -112,6 +112,11 @@ export const HarnessResourceRef = z.strictObject({
   required: z.boolean(),
   /** Present only when this exact entry is in the role's own skill selection. */
   selectedByRole: z.literal(true).optional(),
+  /**
+   * Present only on an other usable library skill, which no layer and no selection bound
+   * (harness-contract.md, "그 밖에 쓸 수 있는 스킬"). An entry without it is bound.
+   */
+  library: z.literal(true).optional(),
   skillMode: z.enum(['auto', 'explicit', 'mandatory']).optional(),
   entry: ResourcePath.optional(),
   skillName: Identifier.optional(),

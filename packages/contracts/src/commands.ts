@@ -303,6 +303,11 @@ export const StartRunRequest = z.strictObject({
     .optional(),
   /** one meeting answer. Only the meeting service sets it; HTTP starts refuse it. */
   meeting: MeetingRunOrigin.optional(),
+  /**
+   * Set by the evaluation runner: each role keeps exactly the skills its harness and selection
+   * fix, without the other usable library skills (harness-contract.md, "그 밖에 쓸 수 있는 스킬").
+   */
+  evaluation: z.literal(true).optional(),
 });
 export type StartRunRequest = z.infer<typeof StartRunRequest>;
 

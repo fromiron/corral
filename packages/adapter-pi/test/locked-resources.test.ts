@@ -119,3 +119,53 @@ it('a shared pack hash does not authorize an unbound sibling skill', () => {
   rmSync(join(s.source, entry));
   expect(() => lockResources(resources, s.snapshot, s.worker)).toThrow();
 });
+
+// harness-contract.md, "그 밖에 쓸 수 있는 스킬": a skill nobody required or picked whose body is
+// not text is left out; a required or picked one still stops the start, naming the skill.
+it('leaves out an unbound skill whose body is not UTF-8 and refuses a bound one by name', () => {
+  const s = setup();
+  const latin1 = Buffer.from('---\nname: café\n---\ncaf\xe9', 'latin1');
+  const bodies: Record<string, Buffer> = { text: Buffer.from('plain'), latin: latin1 };
+  const files = Object.entries(bodies).map(([name, body]) => {
+    const path = `skills/${name}/SKILL.md`;
+    mkdirSync(join(s.source, 'skills', name), { recursive: true });
+    writeFileSync(join(s.source, path), body);
+    return {
+      path,
+      hash: createHash('sha256').update(body).digest('hex'),
+      bytes: body.length,
+    };
+  });
+  const resourceHash = hash(canonicalJson(files));
+  const bind = (marks: { required?: boolean; selectedByRole?: true; library?: true }) => {
+    s.snapshot.resources = Object.keys(bodies).map((name) => ({
+      hash: resourceHash,
+      name: 'pack',
+      version: '1.0.0',
+      kind: 'skill' as const,
+      required: false,
+      entry: `skills/${name}/SKILL.md`,
+      skillName: name,
+      skillMode: 'auto' as const,
+      ...(name === 'latin' ? marks : { library: true as const }),
+    }));
+    const resources: SdkResources = {
+      extensions: [],
+      startupCommands: [],
+      bundles: [{ root: s.source, hash: resourceHash, files }],
+      skills: Object.keys(bodies).map((name) => ({
+        name,
+        description: `Use ${name}.`,
+        entry: `skills/${name}/SKILL.md`,
+        mode: 'auto' as const,
+        content: '',
+        hash: resourceHash,
+      })),
+    };
+    return () => lockResources(resources, s.snapshot, s.worker);
+  };
+  expect(bind({ library: true })().skills.map((skill) => skill.name)).toEqual(['text']);
+  expect(bind({})().skills.map((skill) => skill.name)).toEqual(['text']);
+  expect(bind({ selectedByRole: true })).toThrow('skill latin is not UTF-8 text');
+  expect(bind({ required: true })).toThrow('skill latin is not UTF-8 text');
+});

@@ -84,3 +84,34 @@ it('a library just under the cap is bound whole with no diagnostic', async () =>
   expect(snapshot.resources).toHaveLength(240);
   expect(snapshot.diagnostics).not.toContain('library_skills_truncated');
 }, 60_000);
+
+// A fixed library resolves to one recorded snapshot: its marks, its order and its hash. Record it
+// again only for a deliberate change to the snapshot's form, never to make a failure pass.
+it('a fixed library resolves to one recorded snapshot', async () => {
+  const { service, hashes } = await library(2, 2);
+  const picked = { resourceHash: hashes[0]!, entry: 'skills/p0-s00/SKILL.md' };
+  const snapshot = service.preview({ id: 'writer', skills: [picked] }, 'default').snapshot!;
+  const skill = (pack: number, k: number, marks: object) => ({
+    pack,
+    name: `pack-${pack}`,
+    version: '1.0.0',
+    kind: 'skill',
+    required: false,
+    entry: `skills/p${pack}-s0${k}/SKILL.md`,
+    skillMode: 'auto',
+    skillName: `p${pack}-s0${k}`,
+    ...marks,
+  });
+  expect(
+    snapshot.resources.map(({ hash, ...rest }) => ({ pack: hashes.indexOf(hash), ...rest })),
+  ).toEqual([
+    skill(0, 0, { selectedByRole: true }),
+    skill(0, 1, { library: true }),
+    skill(1, 0, { library: true }),
+    skill(1, 1, { library: true }),
+  ]);
+  expect(snapshot.diagnostics).toEqual([]);
+  expect(snapshot.snapshotHash).toBe(
+    'c4da36fd2d51574ff32a6afb4b90273c4278cf4b6aaa7c4f200a8364f5f75e2e',
+  );
+});

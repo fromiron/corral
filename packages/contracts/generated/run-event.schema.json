@@ -3475,6 +3475,10 @@
                           "type": "boolean",
                           "const": true
                         },
+                        "library": {
+                          "type": "boolean",
+                          "const": true
+                        },
                         "skillMode": {
                           "type": "string",
                           "enum": [

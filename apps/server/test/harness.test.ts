@@ -321,6 +321,54 @@ describe('resource discovery, trust and resolution (H3)', () => {
     );
     expect(existsSync(s.marker)).toBe(false);
   });
+  // skill-library.md item 7: saving back to earlier text makes that entry the latest again.
+  it('saving a skill back to an earlier text makes that entry the latest again', async () => {
+    const s = setup();
+    const original = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
+    const key = (resourceHash: string) => ({
+      resourceHash,
+      entry: 'skills/writing/SKILL.md',
+      kind: 'skill' as const,
+    });
+    const edit = async (base: string, text: string, name = 'Writing') =>
+      s.service.install(
+        (
+          await s.service.reviewDocument({
+            kind: 'skill',
+            name,
+            base: key(base),
+            content: `---\nname: writing\ndescription: Write clearly.\n---\n${text}`,
+          })
+        ).reviewId,
+      ).hash;
+    const successor = (hash: string) => s.service.store.entryManagement(key(hash)).successor;
+    const delivered = () =>
+      s.service
+        .preview({ id: 'writer', skills: [] }, 'default')
+        .snapshot!.resources.find((resource) => resource.skillName === 'writing')?.hash;
+    const a = await edit(original.hash, 'A');
+    const b = await edit(a, 'B');
+    expect(await edit(b, 'A')).toBe(a);
+    expect(successor(a)).toBeNull();
+    expect(successor(b)).toEqual(key(a));
+    expect(delivered()).toBe(a);
+    // Three steps back: the restored entry no longer points into the chain it left.
+    const c = await edit(a, 'C');
+    const d = await edit(c, 'D');
+    expect(await edit(d, 'A')).toBe(a);
+    expect(successor(a)).toBeNull();
+    expect([successor(c), successor(d)]).toEqual([key(d), key(a)]);
+    expect(
+      s.service
+        .entries()
+        .filter((entry) => entry.successor)
+        .map((entry) => entry.resourceHash)
+        .sort(),
+    ).toEqual([original.hash, b, c, d].sort());
+    expect(delivered()).toBe(a);
+    // The display name is part of the saved package: another name is another entry.
+    expect(await edit(b, 'A', 'Other writing')).not.toBe(a);
+  });
   it('publishes one revision/default atomically and refuses stale or reused operations', async () => {
     const { service } = setup();
     const profile: HarnessProfile = {
