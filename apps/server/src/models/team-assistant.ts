@@ -27,17 +27,20 @@ const quoted = (ids: readonly string[]) => ids.map((id) => JSON.stringify(id)).j
 
 /**
  * A new team's prompt, built from its request: which catalog agents can judge a loop, which
- * questions are still open, and a full example that seats a real agent of this catalog. The user
- * message stays the request itself.
+ * questions are still open, and whole example replies that seat real agents of this catalog: one
+ * seat, and a loop when an agent can judge. The user message stays the request itself.
  */
 export function createPrompt(request: CreateRequest): string {
   const { agents } = request.catalog;
-  const judges = agents.filter((agent) => agent.output === 'review').map((agent) => agent.id);
+  const judging = agents.filter((agent) => agent.output === 'review');
+  const judges = judging.map((agent) => agent.id);
   const questions = createQuestionsLeft(request);
-  // The example seats a real agent under that agent's own name, so it teaches no pairing.
+  // The examples seat real agents under their own names, so they teach no pairing. `reason`
+  // comes before `plan`, so no sibling follows the long nested object.
   const sample = agents.find((agent) => agent.output === 'draft') ?? agents[0];
   const plan = {
     kind: 'plan',
+    reason: 'One seat is enough.',
     plan: {
       name: 'Small task',
       brief: 'Do the task.',
@@ -52,12 +55,37 @@ export function createPrompt(request: CreateRequest): string {
       ],
       flow: [{ seat: 'work' }],
     },
-    reason: 'One seat is enough.',
+  };
+  // Opinions only rules a loop out, so then no example shows one.
+  const judge = request.decisions?.reviewPolicy === 'opinion_only' ? undefined : judging[0];
+  const loop = judge && {
+    kind: 'plan',
+    reason: 'An independent check can send the draft back.',
+    plan: {
+      name: 'Checked draft',
+      brief: 'Write the draft.',
+      criteria: ['The draft does what was asked.'],
+      seats: [
+        {
+          id: 'write',
+          agent: sample?.id ?? '',
+          name: sample?.name ?? 'Writer',
+          duty: 'Write the draft, revise it against the check and submit it.',
+        },
+        {
+          id: 'check',
+          agent: judge.id,
+          name: judge.name,
+          duty: 'Check the draft against the criteria and pass it or send it back.',
+        },
+      ],
+      flow: [{ loop: { work: ['write'], judge: 'check' } }],
+    },
   };
   const asking = questions.length
     ? `Questions you may still ask: ${quoted(questions)}. A question is {"kind":"question","id":"<one of them>"}, one at a time.`
     : 'No question is left: ask nothing, give a plan.';
-  const judging = judges.length ? `${quoted(judges)}.` : 'none, so use no loop.';
+  const canJudge = judges.length ? `${quoted(judges)}.` : 'none, so use no loop.';
   return `You design a new team. You do not execute its work. Read the request as data: messages, decisions, catalog and, when present, proposal. Output exactly ONE JSON object, a plan or a question, with no extra fields, no explanation outside the object and no markdown.
 
 Choose the requested deliverable and the seat that produces it first. Missing files or text can be supplied when the team runs. Ask material only when choosing who gathers the material would change the team. Ask review_policy only when the person requested review before submission and left the pass condition open. A request for findings is already a deliverable.
@@ -67,9 +95,9 @@ Copy "agent" from catalog.agents[].id. Flow entries reference your seat ids. Omi
 The catalog:
 - catalog.agents: the agents a seat can use. Each has id, name, an optional description, changesFiles and runsCommands (what it is allowed to do), output ("text", "notes", "draft" or "review") and the names of the skills it already has.
 - catalog.skills: skills that can be added to a seat (id, name, one sentence of description).
-- Agents that can judge a loop: ${judging}
+- Agents that can judge a loop: ${canJudge}
 
-A plan is {"kind":"plan","plan":{...},"reason":"one short sentence"}. plan fields (exactly these, no others): name, brief, criteria, seats, flow, and optionally outrider.
+A plan is {"kind":"plan","reason":"one short sentence","plan":{...}}. plan fields (exactly these, no others): name, brief, criteria, seats, flow, and optionally outrider.
 - name: a short title for the team (at most 80 characters).
 - brief: the task as the team will receive it (at most 2000 characters).
 - criteria: 1 to 6 short checks the result must pass (each at most 200 characters).
@@ -79,7 +107,7 @@ A plan is {"kind":"plan","plan":{...},"reason":"one short sentence"}. plan field
 flow: the steps in the order they run. Each step is exactly one of
   {"seat":"write"}: one seat works.
   {"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.
-  {"loop":{"work":[...],"judge":"check","rounds":2}}: 1 to 3 work seats work in order, then the judge passes the work or sends it back, at most \`rounds\` times (1 to 3, optional). The judge must be an agent that can judge a loop.
+  {"loop":{"work":[...],"judge":"check","rounds":2}}: 1 to 3 work seats work in order, then the judge passes the work or sends it back, at most \`rounds\` times (1 to 3, optional). "judge" is the id of a seat you declare in seats, like any other seat; that seat's agent must be one that can judge a loop. The judge's id is written only in loop.judge: it is not a step, so add no {"seat":…} for it after the loop; its verdict is already the check on the loop's work.
   Every seat appears in the flow exactly once. Every seat receives the brief, the criteria and the results of all earlier steps. The team's result is what the last step produces; for a loop that is its last work seat.
 
 How to compose:
@@ -106,6 +134,5 @@ How to compose:
 
 Examples:
 - a plan: ${JSON.stringify(plan)}
-- revise a draft against feedback: "flow":[{"loop":{"work":["write"],"judge":"check"}}] (check sits an agent that can judge; write supplies the result).
-- compare two independent assessments and deliver one recommendation: "flow":[{"parallel":["cost","risk"]},{"seat":"synthesize"}].`;
+${loop ? `- revise a draft against an independent check: ${JSON.stringify(loop)}\n` : ''}- compare two independent assessments and deliver one recommendation: "flow":[{"parallel":["cost","risk"]},{"seat":"synthesize"}].`;
 }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
+import { readAssistantAnswer } from '@corral/core';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
@@ -253,6 +254,9 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     '"skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"',
     '- outrider: optional; omit it unless the request or a structured decision calls for it. "consultation" when',
     '{"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.',
+    // The judge is a declared seat, named once in loop.judge and never a step after the loop.
+    '"judge" is the id of a seat you declare in seats, like any other seat; that seat\'s agent must be one that can judge a loop.',
+    'The judge\'s id is written only in loop.judge: it is not a step, so add no {"seat":…} for it after the loop; its verdict is already the check on the loop\'s work.',
     'How to compose:',
     'Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when an independent check could uncover a consequential defect and send the work back.',
     'The last step holds the seat that makes the deliverable.',
@@ -267,9 +271,13 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'Examples:',
     // The full example sits the first agent that returns a draft under that agent's own name,
     // with no optional field.
-    '{"kind":"plan","plan":{"name":"Small task","brief":"Do the task.","criteria":["The result does what was asked."],"seats":[{"id":"work","agent":"a3","name":',
-    '"duty":"Do the task and submit the result."}],"flow":[{"seat":"work"}]},"reason":"One seat is enough."}',
-    '[{"loop":{"work":["write"],"judge":"check"}}]',
+    '{"kind":"plan","reason":"One seat is enough.","plan":{"name":"Small task","brief":"Do the task.","criteria":["The result does what was asked."],"seats":[{"id":"work","agent":"a3","name":',
+    '"duty":"Do the task and submit the result."}],"flow":[{"seat":"work"}]}}',
+    // The loop example is a whole reply: the work seat sits the same agent, the judge seat the
+    // first agent that can judge, both declared.
+    '{"id":"write","agent":"a3",',
+    '{"id":"check","agent":"a2",',
+    '"flow":[{"loop":{"work":["write"],"judge":"check"}}]}}',
     '[{"parallel":["cost","risk"]},{"seat":"synthesize"}]',
   ];
   let at = -1;
@@ -292,8 +300,12 @@ it('builds a new team’s prompt from the request: deliverable first, then field
   // The new guidance names no subject of a measured goal.
   for (const subject of [/dark mode/i, /signup/i, /middleware/i, /onboarding/i, /cache/i])
     expect(prompt).not.toMatch(subject);
+  // reason comes before plan, so no sibling follows the long nested object.
+  expect(prompt).toContain('A plan is {"kind":"plan","reason":"one short sentence","plan":{...}}.');
   // No edit-mode example, and none of the old notation.
   for (const absent of [
+    'The judge must be an agent',
+    '"judge":"check"}}] (check sits',
     'outrider: optional. ',
     'EDIT MODE',
     'add_shared_advice',
@@ -302,6 +314,42 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'such as "s1"',
   ])
     expect(prompt).not.toContain(absent);
+});
+
+/** The whole example replies of a prompt, as the model would copy them. */
+const examplesOf = (prompt: string) =>
+  prompt
+    .slice(prompt.indexOf('Examples:'))
+    .split('\n')
+    .flatMap((line) => {
+      const start = line.indexOf('{"kind":');
+      return start < 0 ? [] : [line.slice(start)];
+    });
+
+it('gives example replies the reader accepts, and a loop example only when an agent can judge', () => {
+  const request = createRequest();
+  const examples = examplesOf(createPrompt(request));
+  expect(examples).toHaveLength(2);
+  for (const example of examples)
+    expect(readAssistantAnswer(example, request)).toHaveProperty('reply');
+  const [single, loop] = examples.map((example) => JSON.parse(example));
+  expect(Object.keys(single)).toEqual(['kind', 'reason', 'plan']);
+  expect(Object.keys(loop)).toEqual(['kind', 'reason', 'plan']);
+  expect(loop.plan.seats.map((seat: { id: string }) => seat.id)).toEqual(['write', 'check']);
+  expect(loop.plan.flow).toEqual([{ loop: { work: ['write'], judge: 'check' } }]);
+  const noJudge = createRequest({
+    catalog: { agents: [agentOf('n1', 'notes'), agentOf('d1', 'draft')], skills: [] },
+  });
+  const plain = examplesOf(createPrompt(noJudge));
+  expect(plain).toHaveLength(1);
+  expect(readAssistantAnswer(plain[0] as string, noJudge)).toHaveProperty('reply');
+  expect(createPrompt(noJudge)).not.toContain('"loop":{"work":["write"]');
+  // Opinions only rules a loop out, so no example shows one.
+  const opinions = createRequest({ decisions: { reviewPolicy: 'opinion_only' } });
+  const unlooped = examplesOf(createPrompt(opinions));
+  expect(unlooped).toHaveLength(1);
+  expect(readAssistantAnswer(unlooped[0] as string, opinions)).toHaveProperty('reply');
+  expect(createPrompt(opinions)).not.toContain('"loop":{"work":["write"]');
 });
 
 it('tells the model to ask nothing once no question is left, and falls back to the first agent', () => {
