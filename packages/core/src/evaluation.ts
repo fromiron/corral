@@ -88,9 +88,12 @@ export async function executeOnce(
     onStart,
     wallNow = Date.now,
     now = Date.now,
+    evaluation = false,
   }: {
     signal: EvaluationSignal;
     stopOnInput?: boolean;
+    /** An evaluation run keeps exactly the skills its definition fixes (`runSuite` sets it). */
+    evaluation?: boolean;
     onStart?: (runId: string) => void;
     auto?: Pick<AutoStart, 'choice'>;
     sessionId?: string;
@@ -108,6 +111,7 @@ export async function executeOnce(
     definition,
     mode,
     ...(sessionId ? { sessionId } : {}),
+    ...(evaluation ? { evaluation: true as const } : {}),
   };
   const { runId, receipt } = auto
     ? await createAutoStarter({
@@ -505,6 +509,7 @@ export async function runSuite(
           throw new Error('evaluation workspace does not match the pinned commit');
         const result = await executeOnce(transport, definition, mode, {
           ...options,
+          evaluation: true,
           ...(workspace ? { sessionId: workspace.sessionId } : {}),
         });
         const delivered = result.skillEvidence.delivered;

@@ -461,7 +461,8 @@ export interface HarnessResolver {
     binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
-    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+    /** `library: false` leaves out the other usable library skills (an evaluation run). */
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string; library?: false },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
   /**
@@ -2110,6 +2111,7 @@ export class Coordinator {
               ? { runOverride: request.harnessOverrides[role.id] }
               : {}),
             ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+            ...('evaluation' in request && request.evaluation ? { library: false as const } : {}),
           }),
         );
         if (

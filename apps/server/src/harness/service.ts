@@ -1252,7 +1252,7 @@ export class HarnessService {
     binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
-    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string; library?: false },
   ): EffectiveHarnessSnapshot | null {
     const selections = definition.roles.find((role) => role.id === roleId);
     const role = {
@@ -1265,7 +1265,7 @@ export class HarnessService {
     if (!base) return null;
     const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
     // An evaluation compares fixed groups: it never receives library skills, with or without a
-    // workspace session.
+    // workspace session. A sealed definition also skips the person's and project's defaults.
     const sealed =
       evaluation !== undefined &&
       binding !== undefined &&
@@ -1292,7 +1292,7 @@ export class HarnessService {
       session?.project_id ?? row?.project_id ?? 'default',
       options?.runOverride,
       role,
-      !sealed,
+      !sealed && options?.library !== false,
     ).snapshot;
   }
 
