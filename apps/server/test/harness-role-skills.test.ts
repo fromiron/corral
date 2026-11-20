@@ -627,3 +627,33 @@ it('a skill read lists no explicit skill, which a request can still read by name
   expect(listed).not.toContain('manual');
   expect(service.readSkill(snapshot, 'skills/manual/SKILL.md').text).toContain('Body');
 });
+
+it('a pinned harness that leaves out an optional skill says so; unusable library skills do not', async () => {
+  const optional = (ref: RoleSkillRef) => ({
+    ...ref,
+    kind: 'skill' as const,
+    required: false,
+    skillMode: 'auto' as const,
+  });
+  const pinned = (resources: RoleSkillRef[]) => {
+    const profileId = `optional-${resources.length}`;
+    service.saveProfile(profileId, 0, { ...profile, resources: resources.map(optional) });
+    return service.preview({ id: 'writer', harness: { profileId, revision: 1 } }, 'default')
+      .snapshot!;
+  };
+  expect(pinned([refs.first!]).diagnostics).not.toContain('optional_skill_skipped');
+  for (const unusable of [refs.untrusted!, refs.missing!, refs.disabled!, refs.conflict!]) {
+    const snapshot = pinned([refs.required!, unusable]);
+    expect(snapshot.diagnostics.filter((code) => code === 'optional_skill_skipped')).toEqual([
+      'optional_skill_skipped',
+    ]);
+    expect(snapshot.resources.some((r) => r.hash === unusable.resourceHash)).toBe(false);
+    db.exec('ROLLBACK TO role_case');
+  }
+  const several = pinned([refs.untrusted!, refs.missing!, refs.disabled!]);
+  expect(several.diagnostics.filter((code) => code === 'optional_skill_skipped')).toHaveLength(1);
+  // The library already holds an untrusted and a disabled package, and they add nothing.
+  expect(
+    service.preview({ id: 'writer', harness: bound }, 'default').snapshot!.diagnostics,
+  ).not.toContain('optional_skill_skipped');
+});

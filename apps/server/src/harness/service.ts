@@ -1511,6 +1511,8 @@ export class HarnessService {
     if (disabledMcp) diagnostics.push('mcp_server_disabled');
     let needsExecutionPolicy = false;
     let mandatoryBytes = 0;
+    // A layer-bound optional skill that cannot be used is left out, and the snapshot says so once.
+    let skippedOptional = false;
     for (const [key, selectedResource] of ordered) {
       const picked = picks?.has(key);
       // An optional skill nobody picked never blocks a start: when it cannot be used it is left out.
@@ -1529,6 +1531,7 @@ export class HarnessService {
         if (requiredResource(selectedResource))
           throw new Error('required package is disabled or removed');
         diagnostics.push('package_disabled');
+        if (loose) skippedOptional = true;
         continue;
       }
       let resource = verified.get(selectedResource.resourceHash);
@@ -1536,7 +1539,10 @@ export class HarnessService {
         try {
           resource = this.verify(selectedResource.resourceHash);
         } catch (error) {
-          if (loose && error instanceof ResourceVerificationError) continue;
+          if (loose && error instanceof ResourceVerificationError) {
+            skippedOptional = true;
+            continue;
+          }
           if (!picked || !(error instanceof ResourceVerificationError)) throw error;
           problems.set(key, error.reason);
           continue;
@@ -1544,7 +1550,10 @@ export class HarnessService {
         verified.set(resource.hash, resource);
       }
       if (!resource.trustedAt) {
-        if (loose) continue;
+        if (loose) {
+          skippedOptional = true;
+          continue;
+        }
         if (!picked) throw new Error('resource requires trust before binding');
         problems.set(key, 'untrusted');
         continue;
@@ -1560,13 +1569,19 @@ export class HarnessService {
       } else {
         const skill = resource.skills.find((skill) => skill.entry === selectedResource.entry);
         if (!skill) {
-          if (loose) continue;
+          if (loose) {
+            skippedOptional = true;
+            continue;
+          }
           if (!picked) throw new Error('unknown or duplicate skill name');
           problems.set(key, 'missing');
           continue;
         }
         const priorKey = names.get(skill.name);
-        if (priorKey && loose) continue;
+        if (priorKey && loose) {
+          skippedOptional = true;
+          continue;
+        }
         if (priorKey) {
           const prior = selected.get(priorKey)!;
           const conflict = [priorKey, key].filter((candidate) => picks?.has(candidate));
@@ -1607,6 +1622,7 @@ export class HarnessService {
           : {}),
       });
     }
+    if (skippedOptional) diagnostics.push('optional_skill_skipped');
     if (library && !problems.size && !needsExecutionPolicy) {
       const room = Math.max(0, MAX_SNAPSHOT_RESOURCES - resources.length);
       const { skills, truncated } = this.librarySkills(names, selected, verified, room);
