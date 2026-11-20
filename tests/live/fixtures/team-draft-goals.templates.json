@@ -1,0 +1,66 @@
+{
+  "split": "templates",
+  "note": "Goals for the patterns that follow the preset-built templates, with the patterns a careful person would accept. Labels were written before any model run.",
+  "goals": [
+    {
+      "id": "tpl-01",
+      "goal": "주문 금액 계산이 세 파일에 흩어져 있어. 동작은 그대로 두고 한 곳으로 모아 줘",
+      "accept": ["refactor"]
+    },
+    {
+      "id": "tpl-02",
+      "goal": "Split the 900-line UserService into smaller modules without changing its behavior",
+      "accept": ["refactor"]
+    },
+    {
+      "id": "tpl-03",
+      "goal": "Clean up the duplicated date-formatting helpers into one module",
+      "accept": ["refactor", "implement_review"]
+    },
+    {
+      "id": "tpl-04",
+      "goal": "주문 목록 화면이 1,000건이 넘으면 여는 데 2초가 걸려. 빠르게 해 줘",
+      "accept": ["performance"]
+    },
+    {
+      "id": "tpl-05",
+      "goal": "The search endpoint's p95 latency doubled after the last release; make it fast again",
+      "accept": ["performance", "bug_fix"]
+    },
+    {
+      "id": "tpl-06",
+      "goal": "결제 재시도 로직이 어떻게 동작하는지, 왜 재시도 간격이 30초인지 조사해서 설명서로 정리해 줘",
+      "accept": ["code_investigation"]
+    },
+    {
+      "id": "tpl-07",
+      "goal": "Explain how the plugin loader discovers and initializes plugins and why it loads them lazily; write it up for new contributors",
+      "accept": ["code_investigation"]
+    },
+    {
+      "id": "tpl-08",
+      "goal": "이 함수가 뭘 하는지 한 줄로 설명해 줘",
+      "accept": ["single"]
+    },
+    {
+      "id": "tpl-09",
+      "goal": "Rename the variables in utils.ts so they are clearer",
+      "accept": ["single"]
+    },
+    {
+      "id": "tpl-10",
+      "goal": "방금 만든 캐시 변경을 깨뜨려 봐. 실제로 재현되는 문제만 보고해 줘",
+      "accept": ["adversarial_review"]
+    },
+    {
+      "id": "tpl-11",
+      "goal": "Stress-test this migration script for ways it can lose data; do not fix anything",
+      "accept": ["adversarial_review"]
+    },
+    {
+      "id": "tpl-12",
+      "goal": "CSV 내보내기 기능을 추가해 줘. 큰 파일에서도 메모리가 터지지 않아야 해",
+      "accept": ["implement_review", "feature"]
+    }
+  ]
+}
