@@ -1226,6 +1226,91 @@ async function run(definition: CorralDefinition, review?: () => string) {
 }
 const ran = (p: RunProjection, nodeId: string) =>
   (p.nodeExecutions[nodeId] ?? []).map((id) => p.executions[id]?.status);
+/** The run's end, with the last event that names an error when it did not succeed. */
+const ending = ({ final, events }: Awaited<ReturnType<typeof run>>) =>
+  final.status === 'succeeded'
+    ? 'succeeded'
+    : `${final.status}: ${JSON.stringify(events.filter((e) => JSON.stringify(e).includes('rror')).at(-1))}`;
+
+describe('mock runs of every flow of up to four steps', () => {
+  const runsToOutput = async (kinds: Kind[]) => {
+    const { seats, flow } = sweep(kinds);
+    const definition = draft(compose(seats, flow));
+    for (const review of [undefined, () => 'revise']) {
+      const result = await run(definition, review);
+      expect(ending(result)).toBe('succeeded');
+      expect(result.events.filter((e) => e.type === 'output.finalized')).toHaveLength(1);
+    }
+  };
+  const loops = (kinds: Kind[]) => kinds.filter((kind) => kind === 'loop').length;
+  it.each(
+    ALL_FLOWS.filter((kinds) => loops(kinds) < 2).map(
+      (kinds) => [kinds.join(' → '), kinds] as const,
+    ),
+  )('%s runs to its Output, on pass and at the round cap', async (_name, kinds) =>
+    runsToOutput(kinds),
+  );
+  // Not hidden: a seat in a later Loop reads an earlier Loop's seats, and the Coordinator looks
+  // for that result only in the reader's own round, so the run fails with `input "s1"
+  // (task_output) has no submitted version`. The compiler accepts the shape; the spec allows it.
+  it.fails.each(
+    ALL_FLOWS.filter((kinds) => loops(kinds) >= 2).map(
+      (kinds) => [kinds.join(' → '), kinds] as const,
+    ),
+  )(
+    '%s fails at run time: a later loop cannot read an earlier one (reported)',
+    async (_name, kinds) => runsToOutput(kinds),
+  );
+
+  it('the step after a loop reads the last round’s work, on pass and at the cap', async () => {
+    const definition = draft(
+      compose(
+        [
+          seat('write', 'writer agent'),
+          seat('check', 'reviewer agent'),
+          seat('edit', 'writer agent'),
+        ],
+        [{ loop: { work: ['write'], judge: 'check' } }, { seat: 'edit' }],
+      ),
+    );
+    for (const review of [undefined, () => 'revise']) {
+      const { final, events } = await run(definition, review);
+      expect(final.status).toBe('succeeded');
+      const versions = (label: string) =>
+        (final.nodeExecutions[nodeNamed(definition, label).id] ?? []).map(
+          (id) =>
+            final.tasks[final.executions[id]?.taskId ?? '']?.submittedArtifactVersionIds ?? [],
+        );
+      const [first, second] = versions('write');
+      expect(versions('write')).toHaveLength(2);
+      const [editExecution] = final.nodeExecutions[nodeNamed(definition, 'edit').id] ?? [];
+      const read = events.flatMap((e) =>
+        e.type === 'model.request_prepared' && e.payload.executionId === editExecution
+          ? e.payload.inputArtifactVersionIds
+          : [],
+      );
+      expect(read).toEqual(expect.arrayContaining(second ?? ['?']));
+      for (const version of first ?? []) expect(read).not.toContain(version);
+    }
+  });
+
+  it('seats the model calls brief and criteria still run, beside the run inputs', async () => {
+    const definition = strict(
+      draft(
+        compose(
+          [seat('brief', 'architect agent'), seat('criteria', 'writer agent')],
+          [{ seat: 'brief' }, { seat: 'criteria' }],
+        ),
+      ),
+    );
+    expect(nodeNamed(definition, 'criteria').inputBindings).toEqual([
+      { kind: 'run_input', name: 'brief' },
+      { kind: 'task_output', name: 'brief', sourceNodeId: nodeNamed(definition, 'brief').id },
+      { kind: 'run_input', name: 'criteria' },
+    ]);
+    expect((await run(definition)).final.status).toBe('succeeded');
+  });
+});
 
 describe('mock runs of composed teams', () => {
   const loopThenGroup = () =>
