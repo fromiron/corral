@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SHAPE_ISSUES,
   TeamAssistantReply,
   TeamAssistantRequest,
   TeamAssistantResponse,
@@ -293,6 +294,51 @@ describe('an unusable team proposal', () => {
     expect(unusableTeamProposal('shape')).toBe(
       'The model did not return a usable team proposal. (shape)',
     );
+  });
+
+  it('reads back every reason the server can give, a place in the shape included', () => {
+    const codes = [
+      'empty',
+      'cut_off',
+      'not_json',
+      'shape',
+      'kind',
+      'unknown_agent',
+      'judge_without_review',
+      'loop_with_opinion_only',
+      'decision_conflict',
+    ];
+    const places = ['$', 'reason', 'plan.criteria.2', 'plan.flow.3.loop.work.2', 'plan.*.0'];
+    const shapes = places.flatMap((place) =>
+      SHAPE_ISSUES.map((issue) => `shape:${place}:${issue}`),
+    );
+    for (const reason of [...codes, ...shapes])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason))).toBe(reason);
+    expect(SHAPE_ISSUES).toEqual(
+      expect.arrayContaining([
+        'missing',
+        'type',
+        'too_long',
+        'too_many',
+        'extra_field',
+        'no_variant',
+      ]),
+    );
+  });
+
+  it('reads no reason from text outside the grammar', () => {
+    for (const reason of [
+      'shape:plan.criteria.2',
+      'shape::missing',
+      'shape:plan criteria:missing',
+      'shape:plan.criteria.2:Too long',
+      'shape:plan.criteria.2:unheard_of',
+      'shape:plan.my-key:missing',
+      'shape:plan..2:missing',
+      'Shape:plan.name:missing',
+      'not json',
+    ])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason)), reason).toBeNull();
   });
 
   it('reads the reason back: empty without one, null for any other message', () => {

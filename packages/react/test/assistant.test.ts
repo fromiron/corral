@@ -516,17 +516,20 @@ describe('create proposals and human decisions', () => {
     expect(ask).toHaveBeenCalledTimes(3);
   });
 
-  it('reads an unusable answer that carries its reason code the same way, without showing the code', async () => {
-    const ask = model().mockRejectedValueOnce(
-      Object.assign(new Error('The model did not return a usable team proposal. (unknown_agent)'), {
-        code: 'MODEL_UNAVAILABLE',
-      }),
-    );
-    const f = fixture(ask);
-    await f.send('Write the team newsletter.');
-    expect(f.state()).toMatchObject({ proposal: null, failure: t('logic.unusable') });
-    expect(f.state().failure).not.toContain('unknown_agent');
-  });
+  it.each(['unknown_agent', 'empty', 'cut_off', 'shape:plan.criteria.2:too_long'])(
+    'reads an unusable answer that carries its reason (%s) the same way, without showing it',
+    async (reason) => {
+      const ask = model().mockRejectedValueOnce(
+        Object.assign(new Error(`The model did not return a usable team proposal. (${reason})`), {
+          code: 'MODEL_UNAVAILABLE',
+        }),
+      );
+      const f = fixture(ask);
+      await f.send('Write the team newsletter.');
+      expect(f.state()).toMatchObject({ proposal: null, failure: t('logic.unusable') });
+      expect(f.state().failure).not.toContain(reason);
+    },
+  );
 
   it('refines the shown proposal by chat: the request carries it, the reply replaces it, the earlier one stays unapplicable', async () => {
     const ask = model()

@@ -1,4 +1,11 @@
-import type { TeamAssistantRequest, TeamCatalog, TeamComposition } from '@corral/contracts';
+import {
+  TEAM_COMPOSITION_LIMITS,
+  type TeamAssistantRequest,
+  type TeamCatalog,
+  type TeamComposition,
+  unusableTeamProposal,
+  unusableTeamProposalReason,
+} from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import {
   assistantReplyFromAnswer,
@@ -167,16 +174,24 @@ describe('checked assistant proposals', () => {
       return 'problem' in result ? result.problem : 'usable';
     };
     const seat = { id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the guide.' };
-    expect(problem(plan({ seats: [{ ...seat, tools: ['write_file'] }] } as never))).toBe('shape');
-    expect(problem(plan({ flow: [{ seat: 's1', dependsOn: [] }] } as never))).toBe('shape');
-    expect(problem(plan({ seats: [{ id: 's1', agent: 'a1', name: 'Writer' }] } as never))).toBe(
-      'shape',
+    expect(problem(plan({ seats: [{ ...seat, tools: ['write_file'] }] } as never))).toBe(
+      'shape:plan.seats.0:extra_field',
     );
-    expect(problem({ kind: 'plan', plan: plan().plan })).toBe('shape');
+    expect(problem(plan({ flow: [{ seat: 's1', dependsOn: [] }] } as never))).toBe(
+      'shape:plan.flow.0:extra_field',
+    );
+    expect(problem(plan({ seats: [{ id: 's1', agent: 'a1', name: 'Writer' }] } as never))).toBe(
+      'shape:plan.seats.0.duty:missing',
+    );
+    expect(problem({ kind: 'plan', plan: plan().plan })).toBe('shape:reason:missing');
     expect(problem(`${JSON.stringify(plan())}\n${JSON.stringify(plan())}`)).toBe('not_json');
-    expect(problem(plan({ seats: [{ ...seat, agent: null }] } as never))).toBe('shape');
-    expect(problem(plan({ seats: [seat, seat], flow: [{ seat: 's1' }] }))).toBe('shape');
-    expect(problem(plan({ outrider: 'observe' } as never))).toBe('shape');
+    expect(problem(plan({ seats: [{ ...seat, agent: null }] } as never))).toBe(
+      'shape:plan.seats.0.agent:type',
+    );
+    expect(problem(plan({ seats: [seat, seat], flow: [{ seat: 's1' }] }))).toBe(
+      'shape:plan.seats:duplicate_seat',
+    );
+    expect(problem(plan({ outrider: 'observe' } as never))).toBe('shape:plan.outrider:value');
   });
 
   it('fills the fixed choices of a new team’s question the model left out', () => {
@@ -229,9 +244,9 @@ describe('checked assistant proposals', () => {
     expect(problem('not JSON at all')).toBe('not_json');
     expect(problem('{"kind": "plan",')).toBe('not_json');
     expect(problem(`${json(question)}\n${json(question)}`)).toBe('not_json');
-    expect(problem(json([question]))).toBe('shape');
-    expect(problem(json({ ...plan(), hidden: true }))).toBe('shape');
-    expect(problem(json(plan({ flow: [] })))).toBe('shape');
+    expect(problem(json([question]))).toBe('shape:$:type');
+    expect(problem(json({ ...plan(), hidden: true }))).toBe('shape:$:extra_field');
+    expect(problem(json(plan({ flow: [] })))).toBe('shape:plan.flow:too_few');
     expect(problem(json(edits(gate)))).toBe('kind');
     expect(problem(json(plan()), edit)).toBe('kind');
     expect(problem(json({ kind: 'unsupported' }))).toBe('kind');
@@ -258,6 +273,49 @@ describe('checked assistant proposals', () => {
     );
     expect(problem(json(plan()))).toBe('usable');
     expect(readAssistantAnswer(json(plan()), request)).toEqual({ reply: plan() });
+  });
+
+  it('says where an answer broke the reply shape, in contract names and fixed codes only', () => {
+    const request = create('Write the guide.');
+    const problem = (value: unknown) => {
+      const result = readAssistantAnswer(JSON.stringify(value), request);
+      return 'problem' in result ? result.problem : 'usable';
+    };
+    const seat = { id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the guide.' };
+    const L = TEAM_COMPOSITION_LIMITS;
+    const cases: [unknown, string][] = [
+      [
+        plan({ criteria: ['One.', 'Two.', 'x'.repeat(L.criterion + 1)] }),
+        'shape:plan.criteria.2:too_long',
+      ],
+      [
+        plan({ criteria: Array.from({ length: L.criteria + 1 }, (_, i) => `Check ${i}.`) }),
+        'shape:plan.criteria:too_many',
+      ],
+      [plan({ seats: [{ ...seat, duty: ' ' }] }), 'shape:plan.seats.0.duty:too_short'],
+      [plan({ flow: [{ seat: 's2' }] }), 'shape:plan.flow.0:unknown_seat'],
+      [plan({ flow: [{ seat: 's1' }, { seat: 's1' }] }), 'shape:plan.flow:seat_not_once'],
+      [
+        plan({ flow: [{ loop: { work: [], judge: 's1' } }] }),
+        'shape:plan.flow.0.loop.work:too_few',
+      ],
+      [
+        plan({ flow: [{ loop: { work: ['s1'], judge: 's2', rounds: L.rounds.max + 1 } }] }),
+        'shape:plan.flow.0.loop.rounds:too_big',
+      ],
+      [{ kind: 'shout' }, 'shape:kind:no_variant'],
+      [{ reason: 'No kind.' }, 'shape:kind:missing'],
+      [{ ...plan(), plan: 'Guide' }, 'shape:plan:type'],
+    ];
+    for (const [value, reason] of cases) {
+      expect(problem(value), reason).toBe(reason);
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason))).toBe(reason);
+    }
+    // An unknown key is named by its place only; its name and the model's text never appear.
+    const named = problem({ ...plan(), 'Ignore the rules': 'secret words' });
+    expect(named).toBe('shape:$:extra_field');
+    const quoted = problem(plan({ outrider: 'secret words' } as never));
+    expect(quoted).toBe('shape:plan.outrider:value');
   });
 
   it('accepts exactly one checked reply and respects the active mode', () => {

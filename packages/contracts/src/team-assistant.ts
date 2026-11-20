@@ -169,11 +169,39 @@ export function unusableTeamProposal(reason?: string): string {
   return reason ? `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (${reason})` : UNUSABLE_TEAM_PROPOSAL_MESSAGE;
 }
 
+/**
+ * What a `shape` reason says was wrong at its place: a fixed code for the schema's own check,
+ * never its message or the value it received.
+ */
+export const SHAPE_ISSUES = [
+  'missing',
+  'type',
+  'value',
+  'too_long',
+  'too_short',
+  'too_many',
+  'too_few',
+  'too_big',
+  'too_small',
+  'extra_field',
+  'no_variant',
+  'duplicate_seat',
+  'unknown_seat',
+  'seat_not_once',
+  'invalid',
+] as const;
+export type ShapeIssue = (typeof SHAPE_ISSUES)[number];
+
+// A reason is a code, or `shape:<place>:<issue>`: the place is `$` for the whole answer, or
+// contract field names, indexes and `*` for any other path element, joined by dots.
+const PLACE = String.raw`(?:\$|(?:[A-Za-z]+|\d+|\*)(?:\.(?:[A-Za-z]+|\d+|\*))*)`;
+const REASON = new RegExp(`^(?:[a-z_]+|shape:${PLACE}:(?:${SHAPE_ISSUES.join('|')}))$`);
+
 /** The reason code of that failure, `''` when it names none, or null for any other message. */
 export function unusableTeamProposalReason(message: string): string | null {
   if (message === UNUSABLE_TEAM_PROPOSAL_MESSAGE) return '';
   const prefix = `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (`;
   if (!message.startsWith(prefix) || !message.endsWith(')')) return null;
   const reason = message.slice(prefix.length, -1);
-  return /^[a-z_]+$/.test(reason) ? reason : null;
+  return REASON.test(reason) ? reason : null;
 }

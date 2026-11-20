@@ -683,15 +683,14 @@ export class ModelRegistry implements ModelResolver {
       { maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS, timeoutMs: TEAM_ASSISTANT_TIMEOUT_MS },
     );
     if (!answer.ok) return answer;
-    // The reason names only a code: none of the answer's or the conversation's text.
+    // The reason names only a code and a place: none of the answer's or the conversation's text.
+    // A whole reply is used however the answer stopped; otherwise an answer stopped at the
+    // output limit is cut off, and one with no text is empty.
     const read = readAssistantAnswer(answer.text, request);
-    return 'reply' in read
-      ? { ok: true, reply: read.reply, model: answer.modelName }
-      : {
-          ok: false,
-          code: 'MODEL_UNAVAILABLE',
-          message: unusableTeamProposal(read.problem),
-        };
+    if ('reply' in read) return { ok: true, reply: read.reply, model: answer.modelName };
+    const reason =
+      answer.stopReason === 'length' ? 'cut_off' : answer.text.trim() ? read.problem : 'empty';
+    return { ok: false, code: 'MODEL_UNAVAILABLE', message: unusableTeamProposal(reason) };
   }
 
   private async requestTeamText(
@@ -700,7 +699,14 @@ export class ModelRegistry implements ModelResolver {
     operation: { id: string; signal?: AbortSignal },
     limits: { maxTokens: number; timeoutMs: number },
   ): Promise<
-    TeamModelResult<{ text: string; provider: string; modelId: string; modelName: string }>
+    TeamModelResult<{
+      text: string;
+      /** How the completed answer stopped: `length` when it reached the output limit. */
+      stopReason: AssistantMessage['stopReason'];
+      provider: string;
+      modelId: string;
+      modelName: string;
+    }>
   > {
     // The first model of the list that can run, named profiles first: the one the team editor
     // names beside its input (apps/studio/src/workbench/modelReadiness.ts reads the same rule).
@@ -728,23 +734,35 @@ export class ModelRegistry implements ModelResolver {
         message,
       }) as const;
     let text: string;
-    const operationId = operation?.id ?? randomUUID();
+    let stopReason: AssistantMessage['stopReason'];
+    const operationId = operation.id;
+    const sized = resolution.snapshot.contextPolicy
+      ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
+      : model;
+    // The lowest level the model offers: off where it can be switched off; none if it has none.
+    const lowest = reasoningCapabilities(sized).levels[0];
+    const request = reasoningRequest(
+      sized,
+      {
+        maxTokens: limits.maxTokens,
+        cacheRetention: resolution.snapshot.cachePolicy?.retention,
+        signal: operation.signal
+          ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
+          : AbortSignal.timeout(limits.timeoutMs),
+      },
+      fixedReasoning(
+        lowest ? { mode: 'fixed', level: lowest } : { mode: 'provider_default' },
+        'team_assistant',
+      ),
+    );
     try {
       const answer = await this.managedStream(
-        resolution.snapshot.contextPolicy
-          ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
-          : model,
+        request.model,
         {
           systemPrompt,
           messages: [{ role: 'user', content: input, timestamp: this.now() }],
         },
-        {
-          maxTokens: limits.maxTokens,
-          cacheRetention: resolution.snapshot.cachePolicy?.retention,
-          signal: operation?.signal
-            ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
-            : AbortSignal.timeout(limits.timeoutMs),
-        },
+        request.options,
         {
           requestId: operationId,
           owner: { kind: 'draft', id: operationId },
@@ -766,6 +784,7 @@ export class ModelRegistry implements ModelResolver {
         );
       }
       text = answer.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+      stopReason = answer.stopReason;
     } catch {
       return unavailable(
         'The model request outcome is unconfirmed. This operation will not be sent again.',
@@ -774,7 +793,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       void this.refreshStatus(provider);
     }
-    return { ok: true, text, provider, modelId, modelName: model.name };
+    return { ok: true, text, stopReason, provider, modelId, modelName: model.name };
   }
 
   /**

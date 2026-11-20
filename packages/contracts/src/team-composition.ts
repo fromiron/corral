@@ -119,13 +119,23 @@ export const TeamComposition = z
   .superRefine((composition, ctx) => {
     const ids = composition.seats.map((seat) => seat.id);
     if (new Set(ids).size !== ids.length)
-      ctx.addIssue({ code: 'custom', path: ['seats'], message: 'seat ids are unique' });
+      ctx.addIssue({
+        code: 'custom',
+        path: ['seats'],
+        message: 'seat ids are unique',
+        params: { issue: 'duplicate_seat' },
+      });
     const known = new Set(ids);
     const named = new Map<string, number>();
     composition.flow.forEach((step, index) => {
       for (const id of stepSeats(step)) {
         if (!known.has(id))
-          ctx.addIssue({ code: 'custom', path: ['flow', index], message: `no seat ${id}` });
+          ctx.addIssue({
+            code: 'custom',
+            path: ['flow', index],
+            message: `no seat ${id}`,
+            params: { issue: 'unknown_seat' },
+          });
         named.set(id, (named.get(id) ?? 0) + 1);
       }
     });
@@ -135,6 +145,7 @@ export const TeamComposition = z
           code: 'custom',
           path: ['flow'],
           message: `seat ${id} appears in the flow exactly once`,
+          params: { issue: 'seat_not_once' },
         });
   });
 export type TeamComposition = z.infer<typeof TeamComposition>;

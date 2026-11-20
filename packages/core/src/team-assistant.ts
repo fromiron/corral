@@ -2,6 +2,8 @@ import {
   assistantKindAllowed,
   hasAssistantTarget,
   TeamAssistantReply as Reply,
+  SHAPE_ISSUES,
+  type ShapeIssue,
   TEAM_COMPOSITION_LIMITS,
   type TeamAssistantRequest,
   type TeamAssistantTarget,
@@ -18,12 +20,13 @@ type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
 
 /**
  * Why a model answer cannot be used, with none of its text: no single JSON value (`not_json`), not
- * a reply (`shape`), a kind this mode does not take (`kind`), a composition the catalog cannot seat,
- * or a reply that contradicts what the person already decided or was asked (`decision_conflict`).
+ * a reply (`shape:<place>:<issue>`, its first problem), a kind this mode does not take (`kind`), a
+ * composition the catalog cannot seat, or a reply that contradicts what the person already decided
+ * or was asked (`decision_conflict`).
  */
 export type TeamAssistantProblem =
   | 'not_json'
-  | 'shape'
+  | `shape:${string}:${ShapeIssue}`
   | 'kind'
   | TeamCompositionProblem
   | 'decision_conflict';
@@ -329,8 +332,99 @@ export function readAssistantAnswer(
   } catch {
     return { problem: 'not_json' };
   }
-  const parsed = Reply.safeParse(
-    request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value,
-  );
-  return parsed.success ? checkAssistantReply(parsed.data, request) : { problem: 'shape' };
+  // The place of a shape problem is read in the value that was parsed.
+  const candidate = request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value;
+  const parsed = Reply.safeParse(candidate);
+  if (parsed.success) return checkAssistantReply(parsed.data, request);
+  const [first] = parsed.error.issues;
+  return { problem: first ? shapeProblem(first, candidate) : 'shape:$:invalid' };
+}
+
+/** The reply's own field names: a path element outside them is never repeated. */
+const REPLY_FIELDS = new Set([
+  'kind',
+  'id',
+  'choices',
+  'outputId',
+  'index',
+  'plan',
+  'reason',
+  'edits',
+  'brief',
+  'topic',
+  'name',
+  'criteria',
+  'seats',
+  'flow',
+  'outrider',
+  'agent',
+  'duty',
+  'skills',
+  'seat',
+  'parallel',
+  'loop',
+  'work',
+  'judge',
+  'rounds',
+]);
+const SHAPE_ISSUE_SET: ReadonlySet<string> = new Set(SHAPE_ISSUES);
+
+type ReplyIssue = (typeof Reply extends { safeParse(v: unknown): infer R }
+  ? Extract<R, { success: false }>
+  : never)['error']['issues'][number];
+
+/**
+ * Where the first issue is and which fixed code names it, built from the path and the issue code
+ * alone: never the issue message, the value received, or an unknown key's name.
+ */
+function shapeProblem(issue: ReplyIssue, value: unknown): `shape:${string}:${ShapeIssue}` {
+  const place = issue.path.length
+    ? issue.path
+        .map((part) =>
+          typeof part === 'number' ? String(part) : REPLY_FIELDS.has(String(part)) ? part : '*',
+        )
+        .join('.')
+    : '$';
+  const absent =
+    issue.path.reduce<unknown>(
+      (at, part) =>
+        at !== null && typeof at === 'object'
+          ? (at as Record<PropertyKey, unknown>)[part]
+          : undefined,
+      value,
+    ) === undefined;
+  return `shape:${place}:${shapeIssue(issue, absent)}`;
+}
+
+function shapeIssue(issue: ReplyIssue, absent: boolean): ShapeIssue {
+  switch (issue.code) {
+    case 'invalid_type':
+      return absent ? 'missing' : 'type';
+    case 'invalid_union':
+      return absent ? 'missing' : 'no_variant';
+    case 'invalid_value':
+      return 'value';
+    case 'unrecognized_keys':
+      return 'extra_field';
+    case 'too_big':
+      return issue.origin === 'string'
+        ? 'too_long'
+        : issue.origin === 'array'
+          ? 'too_many'
+          : 'too_big';
+    case 'too_small':
+      return issue.origin === 'string'
+        ? 'too_short'
+        : issue.origin === 'array'
+          ? 'too_few'
+          : 'too_small';
+    case 'custom': {
+      const named = (issue.params as { issue?: unknown } | undefined)?.issue;
+      return typeof named === 'string' && SHAPE_ISSUE_SET.has(named)
+        ? (named as ShapeIssue)
+        : 'invalid';
+    }
+    default:
+      return 'invalid';
+  }
 }
