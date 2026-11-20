@@ -187,7 +187,7 @@ flowchart LR
 
 ### ABS-11 — Markdown 서브에이전트 import
 
-- explorer/code-reviewer/test-runner/fixer/ui-designer를 포함한 문서 후보를 preview한다. parser는 frontmatter의 이름·설명·prompt·tool·model을 읽고 오류/미지원 필드를 표시한다.
+- explorer/code-reviewer/test-runner/fixer/ui-designer를 포함한 문서 후보를 preview한다. parser는 frontmatter의 이름·설명·prompt·tool·model·skills·metadata를 읽고 오류/미지원 필드를 표시한다. `skills`와 `metadata`의 처리는 [에이전트 라이브러리](features/agent-library.md#정의의-선택-필드)가 정한다.
 - `Read/Glob/Grep/Bash/Edit/Write/Task…`를 Corral의 실제 capability와 매핑한다. 이름만 비슷한 도구를 자동 동등 취급하지 않는다. 없는 도구를 선택한 정의는 import 단계에서 알려 준다.
 - 저장 결과는 Corral definition의 callable Agent와 명시한 capability link다. 실행 중 임의 역할 생성이나 별도 sidecar 위임 큐를 만들지 않는다.
 - 자식은 부모 capability의 부분집합과 기존 depth/spawn 상한을 따른다. 고정 상한 10을 그대로 두지 않는다.
