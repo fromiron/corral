@@ -56,7 +56,8 @@ export function createPrompt(request: CreateRequest): string {
       flow: [{ seat: 'work' }],
     },
   };
-  const judge = judging[0];
+  // Opinions only rules a loop out, so then no example shows one.
+  const judge = request.decisions?.reviewPolicy === 'opinion_only' ? undefined : judging[0];
   const loop = judge && {
     kind: 'plan',
     reason: 'An independent check can send the draft back.',

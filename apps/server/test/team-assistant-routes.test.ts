@@ -344,6 +344,12 @@ it('gives example replies the reader accepts, and a loop example only when an ag
   expect(plain).toHaveLength(1);
   expect(readAssistantAnswer(plain[0] as string, noJudge)).toHaveProperty('reply');
   expect(createPrompt(noJudge)).not.toContain('"loop":{"work":["write"]');
+  // Opinions only rules a loop out, so no example shows one.
+  const opinions = createRequest({ decisions: { reviewPolicy: 'opinion_only' } });
+  const unlooped = examplesOf(createPrompt(opinions));
+  expect(unlooped).toHaveLength(1);
+  expect(readAssistantAnswer(unlooped[0] as string, opinions)).toHaveProperty('reply');
+  expect(createPrompt(opinions)).not.toContain('"loop":{"work":["write"]');
 });
 
 it('tells the model to ask nothing once no question is left, and falls back to the first agent', () => {
