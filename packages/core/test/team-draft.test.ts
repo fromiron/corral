@@ -445,6 +445,136 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(shape(goal)).toBe(pattern);
   });
 
+  // The idea behind a pattern, not one phrasing of it: each group names the pattern by what the
+  // goal asks for, and its near misses ask for something smaller or different.
+  it.each([
+    // A slowdown wants speed back, however it is put: a regression, a number, no "optimize".
+    [
+      "Checkout got noticeably slower after Tuesday's deploy; get it back to how it was",
+      'performance',
+    ],
+    [
+      'Our p99 for the image upload API went from 300 ms to 1.2 s. Bring it back down.',
+      'performance',
+    ],
+    ['Fix the latency regression in the search endpoint', 'performance'],
+    ['대시보드 첫 화면이 지난 업데이트 이후로 두 배는 느려졌어. 원래대로 돌려 줘', 'performance'],
+    ['로그인 API 응답이 오래 걸려. 빨리 되게 해 줘', 'performance'],
+    ['앱 시작이 업데이트 후로 5초나 걸려. 예전처럼 빨라지게 해 줘', 'performance'],
+    [
+      'The nightly build went from 8 minutes to 20 minutes after the dependency upgrade',
+      'performance',
+    ],
+    // Asking a part of the software to be fast says by itself that it is slow.
+    ['Make the CSV import fast; it chokes on files over 50 MB', 'performance'],
+    // Asking why it is slow, or writing about speed, is not a request to make it faster.
+    [
+      'Why did the search page get slower after the release? Just tell me the likely cause',
+      'single',
+    ],
+    ['어제 배포 후 느려진 원인이 뭘까?', 'single'],
+    ['Write a blog post about how we cut the p95 latency in half', 'write_review'],
+    ['Is 200 ms p95 good for a search API?', 'single'],
+    // When it was seen is not that it got slower; a comparison is not a slowdown.
+    ["Measure the search endpoint's latency after the deploy", 'single'],
+    ['배포 후 성능을 측정해 줘', 'single'],
+    ['Check memory usage after the upgrade', 'single'],
+    ['Is Python slower than Go?', 'single'],
+    // Getting around faster with a new feature is the feature.
+    ['Add keyboard shortcuts to the settings page so I can get around faster', 'implement_review'],
+  ] as const)('a speed goal: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    // How a part of the code works, or why it is that way, even when written up as a document.
+    [
+      'How does the job scheduler decide which worker gets a task, and why does it skip retries on weekends? Put the answer in a short doc for the team',
+      'code_investigation',
+    ],
+    [
+      'Document how the config parser resolves environment overrides and why it reads files in that order',
+      'code_investigation',
+    ],
+    [
+      'Write a guide for new hires explaining how the billing module computes proration',
+      'code_investigation',
+    ],
+    [
+      '알림 발송 로직이 어떤 순서로 실행되는지, 왜 그렇게 짜였는지 조사해서 문서로 정리해 줘',
+      'code_investigation',
+    ],
+    [
+      '동기화 큐가 실패한 작업을 어떻게 다시 넣는지, 그리고 왜 최대 다섯 번까지만 시도하는지 커밋 기록까지 보고 써 줘',
+      'code_investigation',
+    ],
+    [
+      'How does our rate limiter count requests across instances, and why does it use Redis for that?',
+      'code_investigation',
+    ],
+    // A short answer about one piece of code, or a general question, is one agent's answer.
+    ['Explain this function in one sentence', 'single'],
+    ['이 메서드가 하는 일을 간단히 설명해 줘', 'single'],
+    ['Explain how a hash map works', 'single'],
+    ['Write a user guide explaining how to export reports', 'write_review'],
+  ] as const)('a goal about existing code: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    // Trying to make finished work fail, and keeping only what was shown.
+    [
+      "Find the ways this upload handler can corrupt files. Don't fix anything, just show me each one running",
+      'adversarial_review',
+    ],
+    ['Red-team the new session-timeout change: what are its blind spots?', 'adversarial_review'],
+    ['새로 넣은 정렬 기능을 부숴 봐. 고치지 말고 재현되는 것만 알려 줘', 'adversarial_review'],
+    [
+      '결제 웹훅 핸들러가 중복 처리로 꼬일 수 있는 경우를 찾아 줘. 고치지는 마',
+      'adversarial_review',
+    ],
+    [
+      'Try to break the new checkout flow and report only failures you can reproduce',
+      'adversarial_review',
+    ],
+    // Finding failures to fix them is a fix; attacking a document is a document's review.
+    ['Find the cases where the CSV import fails and fix them', 'bug_fix'],
+    ['Find the ways the importer can crash and fix them', 'bug_fix'],
+    ['Try to break my argument in this essay', 'write_review'],
+    ['이 기획서의 허점을 찾아 줘', 'write_review'],
+    // The attack's own word names nothing to attack.
+    [
+      'Stress-test our pricing assumptions against competitors with sources',
+      'research_write_review',
+    ],
+  ] as const)('a goal to break work: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    // Words that also name things outside code are not code by themselves.
+    ['Review the video script without changing anything', 'write_review'],
+    ['Review my class notes; don’t edit them', 'write_review'],
+    ['Clean up the interview scripts', 'single'],
+    // A script named by its job is code.
+    ["Try to break the deploy script I just wrote; don't fix it", 'adversarial_review'],
+    // "Don't fix anything" asks for no fix; it names no change to attack.
+    ["Poke holes in my startup idea; don't fix anything", 'single'],
+  ] as const)('code or not: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it('changes to a document are not finished work to attack', () => {
+    expect(shape('Poke holes in the changes to the onboarding guide')).not.toBe(
+      'adversarial_review',
+    );
+  });
+
+  it('a vulnerability (취약점) is not a weak point (약점) to attack', () => {
+    expect(shape('이 브랜치 코드의 보안 취약점을 찾아 줘')).not.toBe('adversarial_review');
+    expect(shape('이 브랜치 코드의 약점을 찾아 줘')).toBe('adversarial_review');
+  });
+
   it('one open question is not a choice between two options', () => {
     // A single "-ㄹ지" asks how or whether, and a noun ending in 지 is not an alternative.
     expect(shape('캐시를 어떻게 무효화할지 결정해 줘')).not.toBe('tech_decision');

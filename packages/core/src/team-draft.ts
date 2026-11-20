@@ -106,10 +106,11 @@ const SUGGESTED_NAME_LENGTH = 48;
 
 // The template patterns, reached only from words that leave little doubt.
 const REVIEW_CODE = /\b(review\w*|audit\w*|inspect\w*)\b|검토|리뷰|점검/i;
+/** A part of a codebase, by the names its pieces go by. */
 const CODE =
-  /\b(code|codebase|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|implementation|repo\w*|librar\w*|components?|handlers?)\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트/i;
+  /\b(code|codebase|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|implementation|repos?|repositor(y|ies)|librar\w*|components?|handlers?|loaders?|parsers?|schedulers?|plugins?|schemas?|limiters?|resolvers?|serializers?|validators?|routers?|interceptors?|reducers?|controllers?|renderers?|webhooks?|cron|(build|deploy\w*|migration|shell|bash|python|node|install\w*|setup|seed|ci) scripts?)\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트|로직|로더|파서|스케줄러|플러그인|메[서소]드|핸들러|쿼리|스키마|리미터|라우터|컨트롤러|리졸버|웹훅/i;
 const NO_CHANGE =
-  /\b(without (chang|modif|edit|touch|fix)\w*|(don['’]?t|do not|never) (change|modify|edit|touch|fix)\w*|read[- ]only|findings only|only report\w*|report (the )?findings|no (changes|edits|fixes))\b|고치지\s*말|수정하지\s*말|바꾸지\s*말|변경하지\s*말|건드리지\s*말|손대지\s*말|읽기\s*전용/i;
+  /\b(without (chang|modif|edit|touch|fix)\w*|(don['’]?t|do not|never) (change|modify|edit|touch|fix)\w*|read[- ]only|findings only|only report\w*|report (the )?findings|no (changes|edits|fixes))\b|(고치|수정하|바꾸|변경하|건드리|손대)지\s*(는\s*|도\s*)?(말|마)|읽기\s*전용/i;
 const CORRECTNESS = /\b(correctness|logic errors?)\b|정확성|논리\s*오류/i;
 const BUG =
   /\b(bugs?|crash\w*|errors?|exceptions?|fail\w*|broken|regressions?|flaky|intermittent\w*|timeouts?|hangs?|freez\w*|leaks?)\b|버그|오류|에러|장애|크래시|죽는|죽어|깨지|깨져|실패|안\s?되|멈추|멈춰|타임아웃|먹통/i;
@@ -137,9 +138,17 @@ const DOCUMENT =
 const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
 const SOFTWARE =
   /\b(pages?|screens?|forms?|buttons?|toggles?|apps?|features?|cach\w*|database|db|tests?|settings|ui|cli|validation|login|sign[- ]?up|export|import|search)\b|화면|양식|폼|버튼|토글|앱|기능|캐시|데이터베이스|테스트|설정|로그인|가입|내보내기|검색/i;
-/** Trying to break a change and keeping only what was shown. */
+/** Trying to break finished work, or keeping only the problems a run shows. */
 const ADVERSARIAL =
-  /\b(adversarial\w*|try(ing)? to break|break (it|the (change|code|diff)\w*)|stress[- ]test\w*|red[- ]team\w*|poke holes)\b|반증|깨뜨려|깨트려|허점/i;
+  /\b(adversarial\w*|(try|tries|trying|attempt\w*) to break|(?<!(n['’]t|not|never) )break (it|this|them|the (change|code|diff|fix|patch|feature)\w*)|stress[- ]test\w*|red[- ]team\w*|poke holes|blind spots?|attack (it|this|them|the (change|code|diff|fix|patch|feature)\w*)|only (report |show |list |tell me )?(what|the (problems?|issues?|bugs?|failures?)) (you|that) (can )?(show|reproduce|demonstrate)|(only|just) (the )?reproducible|reproducible (problems?|issues?|bugs?|failures?) only)\b|반증|깨뜨려|깨트려|깨\s*봐|깨\s*보|부숴|부수어|부서뜨려|공격해|허점|(?<!취)약점|사각지대|반례|재현(되는|된|할\s*수\s*있는|\s*가능한)\s*(문제|것|버그|결함|오류)만/i;
+/** Looking for the ways a piece of work can fail: an attack when nothing is to be fixed. */
+const FAILURE_HUNT =
+  /\b((ways?|cases?|inputs?|scenarios?|conditions?|places?)\b.{0,40}\b(can|could|might|would|may|will)\b.{0,20}\b(fail|break|crash|lose|corrupt|leak|hang|go wrong|misbehave|double)\w*|what (can|could|might) (go wrong|break|fail)|failure modes?)\b|(생길|날|터질|깨질|실패할|틀릴|유실될|날아갈|꼬일|망가질|잘못될|죽을|멈출)\s*수\s*(도\s*)?있는\s*(경우|상황|입력|조건|지점|방법|곳|시나리오)/i;
+/** Something that runs, besides code and the software's named parts. */
+const RUNS = /\b(flows?|apis?|services?)\b|흐름|서비스/i;
+/** A change made to something: finished work when it is not a document's. */
+const CHANGE_MADE =
+  /\b((the|this|my|your|our|that|these|those|new|recent|latest|last)\s+([\w'’-]+\s+){0,3}(changes?|diffs?|patch(es)?|fix(es)?)|changes|diffs|patches|fixes)\b|변경(?!하)|패치|수정\s*사항/i;
 /** The behavior stays while the code's shape moves: a refactoring, not a change. */
 const BEHAVIOR_KEPT =
   /\b(without chang\w* (its |the |any )?(behaviou?r|functionality|what it does|output)|(behaviou?r|functionality) (stays|unchanged|the same)|keep(ing)? (the |its )?(behaviou?r|functionality))\b|동작은?\s*(그대로|유지|바꾸지|같게)|동작을?\s*(바꾸지|유지)/i;
@@ -150,12 +159,29 @@ const RESHAPE =
   /\b(move|moving|merge|split|extract\w*|combin\w*|one place|single place)\b|모아|모으|합쳐|합치|나눠|나누|분리|옮겨|옮기|한\s*곳/i;
 /** What is slow: a measure of time or load, or the word for it. */
 const SLOW =
-  /\b(performance|latency|throughput|slow\w*|sluggish|lagg\w*|load(ing)? times?|response times?|memory usage|cpu usage|takes? (over |about |nearly |almost )?(\d[\d.,]*|a few|several|one|two|three|four|five|ten) ?(ms|milliseconds?|s|seconds?|minutes?))\b|성능|속도|지연|느려|느린|느리|버벅|로딩|응답\s*시간|메모리\s*사용|\d[\d.,]*\s*(초|분|밀리초|ms)(가|이)?\s*(넘게\s*|이상\s*)?걸/i;
+  /\b(performance|latency|throughput|p\d{2,3}|percentiles?|slow\w*|sluggish|lagg\w*|load(ing)? times?|response times?|memory usage|cpu usage|takes? (over |about |nearly |almost )?(\d[\d.,]*|a few|several|one|two|three|four|five|ten) ?(ms|milliseconds?|s|seconds?|minutes?)|(takes?|taking|took) (too |so |far too |way too )?(long|forever|ages)|from \d[\d.,]* ?(ms|milliseconds?|s|sec(ond)?s?|min(ute)?s?|hours?) to \d[\d.,]*)\b|성능|속도|지연|느려|느린|느리|버벅|로딩|응답\s*시간|메모리\s*사용|오래\s*걸|\d[\d.,]*\s*(초|분|밀리초|ms)(가|이|나|이나|씩|도)?\s*(넘게\s*|이상\s*)?걸/i;
+/** Wanting it better or back to how it was: with a slowdown, a wish for speed. */
 const FASTER =
-  /\b(faster|quicker|speed\w* up|optimi[sz]\w*|improv\w*|reduc\w*|cut|lower|boost\w*)\b|빠르게|빨라|최적화|개선|줄여|줄이|낮춰|낮추/i;
+  /\b(faster|quicker|speed\w* up|optimi[sz]\w*|improv\w*|reduc\w*|cut|lower|boost\w*|(bring|get|put) (it|them|this|that) (back|down)|back (down )?to (normal|how it was|what it was|before))\b|빠르게|빨라|빨리|최적화|개선|줄여|줄이|낮춰|낮추|원래대로|원래\s*속도|되돌려|예전처럼|전처럼/i;
+/** Asking that a thing be made fast, which says by itself that it is slow. */
+const SPEED_WISH =
+  /\b(speed (it|them|this|that|things|the [\w'’-]+(?: [\w'’-]+){0,3}) up|speed up (the|our|this|its) [\w'’-]+|fast again|make (it|them|this|that|things|the [\w'’-]+(?: [\w'’-]+){0,3}) (fast|faster|quick|quicker|snappy|responsive))\b|(빨라지게|빠르게)\s*(해|만들어)\s*(줘|주세요|줄래)/i;
+/** It got slower than it was: a growth in time, not just when it was seen. */
+const SLOWED =
+  /\b(doubled|tripled|(\d+(\.\d+)?x|\d+ times|twice as) (slower|longer)|regress\w*|(got|gotten|getting|became|become|grown|grew) (\w+ )?slower|slower (since|after|than (before|it was|it used to|last))|went (up )?from .{1,24} to)\b|두\s*배|세\s*배|늘었|늘어났|느려졌/i;
+/** Asking only what caused something. */
+const CAUSE = /\b(why|cause[sd]?|reasons?)\b|왜(?!곡)|원인|이유/i;
 /** Asking how the code works or why it came to be that way. */
 const EXPLAIN =
-  /\b(explain\w*|walk (me |us )?through|how (does|do|is|are) .{1,80}\b(works?|handled|implemented|wired|built|done)|trace how|why (does|do|is|was|did) .{1,80}\b(written|designed|built|implemented|this way|structured))\b|설명|어떻게\s*(동작|작동|처리|구현|돌아가)|동작\s*방식|작동\s*방식|흐름을?\s*(파악|추적|따라)/i;
+  /\b(explain\w*|walk (me |us )?through|how (does|do|did|is|are) .{1,80}\b(works?|handled|implemented|wired|built|done)|how (does|do|did) (the|this|our|its|their|a|an)\b|how (the|this|our|its|their) [\w-]+(?: [\w-]+){0,4} \w+s|trace how|why (does|do|did|is|are|was|were) (it|they|this|that|the|our|its|we)\b|why (it|they|we|the|this|that) \w+)\b|설명|어떻게\s*(동작|작동|처리|구현|돌아가)|(어떻게|왜(?!곡))[^.?!]{0,40}?(는지|인지|은지|던지)|어떤\s*(순서|방식|과정|원리|경로)로|동작\s*방식|작동\s*방식|흐름을?\s*(파악|추적|따라)/i;
+/** A short answer: one line, a sentence, briefly. */
+const BRIEF_ANSWER =
+  /\b(briefly|in (one|a single|a|two) (line|sentence|word|phrase)s?|one[- ]?liner|in short|short answer|tl;?dr|quick (answer|question|explanation)|in a nutshell)\b|한\s*(줄|문장|마디)|간단히|간단하게|짧게|요점만/i;
+/** One small piece of code: a function, a line, an expression. */
+const ONE_PIECE =
+  /\b(this|that|the following) (function|method|line|regexp?|regular expression|expression|variable|snippet|statement|condition|one-liner|query|loop)\b|(이|그|저|다음)\s+(함수|메[서소]드|줄|한\s*줄|정규식|정규\s*표현식|변수|조건문|쿼리|반복문)/i;
+/** Where code's past is kept. */
+const HISTORY = /\b(commits?|history|blame|git log|changelog)\b|커밋|기록|이력|히스토리/i;
 /** Explaining is not changing: a goal that also asks for a change is a change. */
 const CHANGE_ASKED =
   /\b(add|adds|adding|implement|create|change|modify|update|rewrite|fix\w*)\b|추가해|추가하|구현해|구현하|만들어|바꿔|고쳐|수정해|수정하/i;
@@ -177,24 +203,52 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   // "Without changing behavior" asks for a refactoring, not for leaving the code alone.
   const keepsCode = NO_CHANGE.test(brief.replace(new RegExp(BEHAVIOR_KEPT.source, 'gi'), ' '));
   const code = CODE.test(brief);
+  const document = DOCUMENT.test(brief);
+  const software = SOFTWARE.test(brief);
+  if (code && REVIEW_CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief)))
+    return 'adversarial_review';
+  // Breaking finished work that runs: code, a part of the software, a change or a flow.
+  const attacks =
+    ADVERSARIAL.test(brief) || (FAILURE_HUNT.test(brief) && (keepsCode || !FIX.test(brief)));
+  // The thing attacked is not the attack's own word: "stress-test" names no test.
+  const attacked = brief.replace(/stress[- ]test\w*/gi, ' ');
   if (
-    code &&
-    ((REVIEW_CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief))) || ADVERSARIAL.test(brief))
+    attacks &&
+    (code ||
+      SOFTWARE.test(attacked) ||
+      RUNS.test(attacked) ||
+      (CHANGE_MADE.test(attacked) && !document))
   )
     return 'adversarial_review';
   // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
   if (isSecurityReview(brief)) return null;
   if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
     return 'tech_decision';
-  const document = DOCUMENT.test(brief);
-  const software = SOFTWARE.test(brief);
-  if (document && (WRITE.test(brief) || (!code && !software && FIX.test(brief)))) return null;
+  // How a part of the code works or why it is so, unless a short answer about one piece does.
+  const explainsCode =
+    code &&
+    EXPLAIN.test(brief) &&
+    !CHANGE_ASKED.test(brief) &&
+    !BRIEF_ANSWER.test(brief) &&
+    !(ONE_PIECE.test(brief) && !HISTORY.test(brief));
+  // A document written about the code still starts from reading the code.
+  if (document && (WRITE.test(brief) || (!code && !software && FIX.test(brief))))
+    return explainsCode ? 'code_investigation' : null;
   // A document alone is not code, whatever is asked of it.
   const aboutCode = !document || code || software;
+  const slow = SLOW.test(brief) || ((code || software) && SPEED_WISH.test(brief));
+  // A slowdown wants its speed back, however it is put: a wish for speed, a fix, or a regression
+  // reported without asking only for its cause.
+  const wantsSpeed =
+    SPEED_WISH.test(brief) ||
+    FASTER.test(brief) ||
+    FIX.test(brief) ||
+    (SLOWED.test(brief) && !CAUSE.test(brief));
+  // A regression in speed is a slowdown, not a failure.
+  const failing = BUG.test(slow ? brief.replace(/\bregress\w*/gi, ' ') : brief);
   // Fixing changes code; finding a cause without fixing it is research.
-  if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
-  if (SLOW.test(brief) && (FASTER.test(brief) || FIX.test(brief)) && !keepsCode && aboutCode)
-    return 'performance';
+  if (failing && FIX.test(brief) && !keepsCode) return 'bug_fix';
+  if (slow && wantsSpeed && !keepsCode && aboutCode) return 'performance';
   if (
     (REFACTOR.test(brief) ||
       (RESTRUCTURE.test(brief) && code) ||
@@ -203,7 +257,7 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     aboutCode
   )
     return 'refactor';
-  if (EXPLAIN.test(brief) && code && !CHANGE_ASKED.test(brief)) return 'code_investigation';
+  if (explainsCode) return 'code_investigation';
   if (IMPLEMENT.test(brief) && !(document && !software))
     return PLAN_FIRST.test(brief) ? 'feature' : 'implement_review';
   return null;
