@@ -686,7 +686,9 @@ export class ModelRegistry implements ModelResolver {
     // The reason names only a code and a place: none of the answer's or the conversation's text.
     // A whole reply is used however the answer stopped; otherwise an answer stopped at the
     // output limit is cut off, and one with no text is empty.
-    const read = readAssistantAnswer(answer.text, request);
+    const read = readAssistantAnswer(answer.text, request, {
+      endedNormally: answer.stopReason === 'stop',
+    });
     if ('reply' in read) return { ok: true, reply: read.reply, model: answer.modelName };
     const reason =
       answer.stopReason === 'length' ? 'cut_off' : answer.text.trim() ? read.problem : 'empty';

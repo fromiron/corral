@@ -340,22 +340,62 @@ export function assistantReplyFromAnswer(
   return 'reply' in read ? read.reply : null;
 }
 
-/** The checked reply in a model answer, or why there is none. */
-export function readAssistantAnswer(
-  text: string,
-  request: TeamAssistantRequest,
-): TeamAssistantReading {
-  let value: unknown;
+/** One complete JSON value of an answer, cut out of its envelope, or undefined. */
+function jsonValue(text: string): { value: unknown } | undefined {
   // Read one complete JSON value, never an object nested inside an array or a second
   // reply. The outer envelope (a fence or surrounding explanation) is not executable.
   const start = text.search(/[[{]/);
   const end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
-  if (start < 0 || end <= start) return { problem: 'not_json' };
+  if (start < 0 || end <= start) return undefined;
   try {
-    value = JSON.parse(text.slice(start, end + 1));
+    return { value: JSON.parse(text.slice(start, end + 1)) };
   } catch {
-    return { problem: 'not_json' };
+    return undefined;
   }
+}
+
+/**
+ * Whether the text from its first bracket to its end is one object left open by exactly its own
+ * closing brace: every string closed, every inner bracket closed in order, and the outermost
+ * `{` never closed.
+ */
+function oneBraceShort(text: string): boolean {
+  const start = text.search(/[[{]/);
+  if (start < 0 || text[start] !== '{') return false;
+  const open: string[] = [];
+  let inString = false;
+  for (let i = start; i < text.length; i++) {
+    const char = text[i];
+    if (inString) {
+      if (char === '\\') i++;
+      else if (char === '"') inString = false;
+    } else if (char === '"') inString = true;
+    else if (char === '{' || char === '[') open.push(char);
+    else if (char === '}' || char === ']') {
+      if (open.length <= 1 || open.at(-1) !== (char === '}' ? '{' : '[')) return false;
+      open.pop();
+    }
+  }
+  return !inString && open.length === 1;
+}
+
+/**
+ * The checked reply in a model answer, or why there is none. A new team's answer that ended
+ * normally (`endedNormally`, known only to the caller) and is exactly its outermost closing brace
+ * short is closed and read; nothing else is repaired.
+ */
+export function readAssistantAnswer(
+  text: string,
+  request: TeamAssistantRequest,
+  options: { endedNormally?: boolean } = {},
+): TeamAssistantReading {
+  const json =
+    jsonValue(text) ??
+    (request.mode === 'create' && options.endedNormally && oneBraceShort(text)
+      ? jsonValue(`${text}}`)
+      : undefined);
+  if (!json) return { problem: 'not_json' };
+  const { value } = json;
   // The place of a shape problem is read in the value that was parsed.
   const candidate = request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value;
   const parsed = Reply.safeParse(candidate);

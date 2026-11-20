@@ -525,6 +525,30 @@ it('says an answer was empty, or cut off at the output limit, without retry', as
   expect(fake.seen.hostRequests).toHaveLength(5);
 });
 
+it('closes a new team’s answer one outer brace short only when it ended normally', async () => {
+  const { fake, call } = await setup();
+  const short = JSON.stringify({
+    kind: 'plan',
+    reason: proposal.reason,
+    plan: proposal.plan,
+  }).slice(0, -1);
+  fake.setResponses([fauxAssistantMessage(short, { stopReason: 'stop' })]);
+  expect(await call(assistant, create('short-stop', 'Write a notice.'))).toEqual({
+    status: 200,
+    body: { reply: proposal, model: 'Test A' },
+  });
+  // Stopped at the output limit: cut off, never closed.
+  fake.setResponses([fauxAssistantMessage(short, { stopReason: 'length' })]);
+  expect(await call(assistant, create('short-length', 'Write a notice.'))).toMatchObject(
+    unusable('cut_off'),
+  );
+  // An edit's answer is never closed.
+  const edits = JSON.stringify({ kind: 'edits', edits: [required], reason: 'Gate it.' });
+  fake.setResponses([fauxAssistantMessage(edits.slice(0, -1), { stopReason: 'stop' })]);
+  expect(await call(assistant, edit('short-edit'))).toMatchObject(unusable('not_json'));
+  expect(fake.seen.hostRequests).toHaveLength(3);
+});
+
 it('respects the structured opinion-only decision even when the model requests a valid review gate', async () => {
   const { fake, call } = await setup();
   const request = edit('opinion');

@@ -354,20 +354,29 @@ describe('checked assistant proposals', () => {
     ).toEqual({ problem: 'shape:$:extra_field' });
   });
 
-  it('refuses two near-miss answer shapes as not JSON, for now', () => {
+  it('closes a new team’s answer that ended normally one outer brace short, and nothing else', () => {
     const request = create('Write the guide.');
-    const problem = (text: string) => {
-      const result = readAssistantAnswer(text, request);
+    const problem = (text: string, on: TeamAssistantRequest = request, endedNormally = true) => {
+      const result = readAssistantAnswer(text, on, { endedNormally });
       return 'problem' in result ? result.problem : 'usable';
     };
     const fields =
       '"name":"Guide","brief":"Write a guide.","criteria":["Explain the steps."],' +
       '"seats":[{"id":"write","agent":"a1","name":"Writer","duty":"Write the guide."}]';
+    const whole = `{"kind":"plan","reason":"One writer.","plan":{${fields},"flow":[{"seat":"write"}]}}`;
+    // A shape seen in a live answer: a whole plan that closed plan and stopped, one `}` short.
+    expect(readAssistantAnswer(whole.slice(0, -1), request, { endedNormally: true })).toEqual(
+      readAssistantAnswer(whole, request),
+    );
+    expect(problem(whole.slice(0, -1))).toBe('usable');
     // A shape seen in a live answer: a whole plan whose reason sits inside plan, the text one
-    // closing brace short. Refused on purpose for now; reading it is a later, deliberate change.
-    expect(
-      problem(`{"kind":"plan","plan":{${fields},"flow":[{"seat":"write"}],"reason":"One writer."}`),
-    ).toBe('not_json');
+    // closing brace short. Read on purpose since the reader closes that one brace (it was refused
+    // as not JSON before) and reads the reason in its own place.
+    const reasonInside = `{"kind":"plan","plan":{${fields},"flow":[{"seat":"write"}],"reason":"One writer."}`;
+    expect(problem(reasonInside)).toBe('usable');
+    // Without knowing that the answer ended normally, the reader closes nothing.
+    expect(readAssistantAnswer(reasonInside, request)).toEqual({ problem: 'not_json' });
+    expect(problem(reasonInside, request, false)).toBe('not_json');
     // A shape seen in a live answer: a whole object whose flow names a seat it does not have,
     // followed by a note with another bracketed fragment. Refused on purpose for now.
     expect(
@@ -376,6 +385,23 @@ describe('checked assistant proposals', () => {
           'Note: if the seat is renamed, the flow becomes [{"seat":"write"}].',
       ),
     ).toBe('not_json');
+    // Two closers short, inside a string, a missing `]`: not closed.
+    expect(problem(whole.slice(0, -2))).toBe('not_json');
+    expect(
+      problem(`{"kind":"plan","plan":{${fields},"flow":[{"seat":"write"}]},"reason":"One wri`),
+    ).toBe('not_json');
+    expect(
+      problem(
+        `{"kind":"plan","reason":"x","plan":{${fields},"flow":[{"seat":"write"}],"outrider":"consul`,
+      ),
+    ).toBe('not_json');
+    expect(
+      problem(`{"kind":"plan","reason":"One writer.","plan":{${fields},"flow":[{"seat":"write"}}}`),
+    ).toBe('not_json');
+    // Edit mode closes nothing.
+    const edits = JSON.stringify({ kind: 'edits', edits: [gate], reason: 'Require review.' });
+    expect(problem(edits, edit)).toBe('usable');
+    expect(problem(edits.slice(0, -1), edit)).toBe('not_json');
   });
 
   it('accepts exactly one checked reply and respects the active mode', () => {
