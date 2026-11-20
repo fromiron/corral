@@ -100,6 +100,7 @@ port.onFrame((raw) => {
           name: skill.name,
           description: skill.description,
           entry: local(skill.filePath),
+          ...(skill.disableModelInvocation ? { disableModelInvocation: true } : {}),
         })),
       });
       port.send({ type: 'inspected', inspection });

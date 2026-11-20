@@ -368,7 +368,13 @@ export const HarnessResource = z.strictObject({
   extensions: z.array(ResourcePath).max(64),
   skills: z
     .array(
-      z.strictObject({ name: Identifier, description: z.string().max(1000), entry: ResourcePath }),
+      z.strictObject({
+        name: Identifier,
+        description: z.string().max(1000),
+        entry: ResourcePath,
+        /** `disable-model-invocation: true` in SKILL.md: only an explicit command uses it. */
+        disableModelInvocation: z.boolean().optional(),
+      }),
     )
     .max(64),
   files: z
