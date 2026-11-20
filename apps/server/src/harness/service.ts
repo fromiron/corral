@@ -39,6 +39,7 @@ import {
   HarnessResource,
   type HarnessResourceView,
   isHarnessMcpTool,
+  MAX_SNAPSHOT_RESOURCES,
   ManagedHook,
   McpServerDraft,
   type PackageInspection,
@@ -1539,8 +1540,12 @@ export class HarnessService {
           : {}),
       });
     }
-    if (library && !problems.size && !needsExecutionPolicy)
-      resources.push(...this.librarySkills(names, selected, verified));
+    if (library && !problems.size && !needsExecutionPolicy) {
+      const room = Math.max(0, MAX_SNAPSHOT_RESOURCES - resources.length);
+      const { skills, truncated } = this.librarySkills(names, selected, verified, room);
+      resources.push(...skills);
+      if (truncated) diagnostics.push('library_skills_truncated');
+    }
     if (role && picks && (problems.size || needsExecutionPolicy)) {
       const entries = [...picks].flatMap(([key, ref]) => {
         const reason = problems.get(key);
@@ -1596,17 +1601,20 @@ export class HarnessService {
   /**
    * The usable library skills whose internal name no bound skill has: one per name, preferring
    * an entry with no successor, then the most recently installed. Unusable entries are skipped.
+   * Only `room` entries are kept, those of the most recently installed packages first.
    */
   private librarySkills(
     names: ReadonlyMap<string, string>,
     selected: ReadonlyMap<string, unknown>,
     verified: Map<string, HarnessResourceView>,
-  ): EffectiveHarnessSnapshot['resources'] {
+    room: number,
+  ): { skills: EffectiveHarnessSnapshot['resources']; truncated: boolean } {
+    const order = this.store.installOrder();
     const candidates = new Map<
       string,
       { resource: HarnessResourceView; skill: HarnessResource['skills'][number]; next: boolean }[]
     >();
-    for (const hash of this.store.installOrder()) {
+    for (const hash of order) {
       if (this.store.packageManagement(hash).status !== 'enabled') continue;
       const resource = this.store.getResource(hash);
       if (!resource?.trustedAt) continue;
@@ -1636,7 +1644,7 @@ export class HarnessService {
         return false;
       }
     };
-    const chosen: EffectiveHarnessSnapshot['resources'] = [];
+    const chosen: (EffectiveHarnessSnapshot['resources'][number] & { recency: number })[] = [];
     for (const name of [...candidates.keys()].sort()) {
       // Install order is kept within each group by the stable sort.
       const list = candidates.get(name)!.sort((a, b) => Number(a.next) - Number(b.next));
@@ -1651,9 +1659,16 @@ export class HarnessService {
         entry: pick.skill.entry,
         skillMode: pick.skill.disableModelInvocation ? 'explicit' : 'auto',
         skillName: pick.skill.name,
+        recency: order.indexOf(pick.resource.hash),
       });
     }
-    return chosen;
+    // Cut by install recency, then keep the name order `chosen` was built in.
+    const fits = new Set(chosen.toSorted((a, b) => a.recency - b.recency).slice(0, room));
+    const kept = chosen.filter((skill) => fits.has(skill));
+    return {
+      skills: kept.map(({ recency: _recency, ...skill }) => skill),
+      truncated: kept.length < chosen.length,
+    };
   }
 
   private verify(resourceHash: string): HarnessResourceView {

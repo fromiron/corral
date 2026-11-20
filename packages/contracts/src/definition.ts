@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { ImageAttachments } from './attachments.ts';
-import { ContentHash, HarnessBindingRef, HarnessResourceRef, ResourcePath } from './harness.ts';
+import {
+  ContentHash,
+  HarnessBindingRef,
+  HarnessResourceRef,
+  MAX_SNAPSHOT_RESOURCES,
+  ResourcePath,
+} from './harness.ts';
 import { Identifier, SchemaVersion } from './ids.ts';
 import { ReasoningLevel, ReasoningPolicy } from './reasoning.ts';
 import { ReviewRecipeRevision } from './review-recipe.ts';
@@ -447,7 +453,7 @@ export const TaskBrief = z.strictObject({
   sourceRefs: z
     .array(z.strictObject({ name: z.string().min(1), artifactVersionId: Identifier.nullable() }))
     .max(1000),
-  resources: z.array(HarnessResourceRef).max(64),
+  resources: z.array(HarnessResourceRef).max(MAX_SNAPSHOT_RESOURCES),
 });
 export type TaskBrief = z.infer<typeof TaskBrief>;
 

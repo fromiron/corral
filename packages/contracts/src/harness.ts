@@ -116,6 +116,8 @@ export const HarnessResourceRef = z.strictObject({
   entry: ResourcePath.optional(),
   skillName: Identifier.optional(),
 });
+/** Bound skills and extensions one snapshot (and one task brief) can carry. */
+export const MAX_SNAPSHOT_RESOURCES = 256;
 export const EffectiveHarnessSnapshot = z.strictObject({
   binding: HarnessBindingRef,
   snapshotHash: ContentHash,
@@ -124,7 +126,7 @@ export const EffectiveHarnessSnapshot = z.strictObject({
   policy: z.enum(['strict', 'trusted-native']),
   /** With an implicit minimal role layer, no startup commands are inherited or executed. */
   startupCommandPolicy: z.literal('none').optional(),
-  resources: z.array(HarnessResourceRef).max(64),
+  resources: z.array(HarnessResourceRef).max(MAX_SNAPSHOT_RESOURCES),
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),
   tools: z.array(ToolDescriptor).max(128),
   permissionPolicies: z.array(ToolPermissionPolicy).max(4).optional(),
