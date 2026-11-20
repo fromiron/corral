@@ -100,7 +100,9 @@ function cutWhole(text: string, max: number): string {
 let sentences: Intl.Segmenter | undefined;
 function firstSentence(text: string): string {
   sentences ??= new Intl.Segmenter('und', { granularity: 'sentence' });
-  const first = sentences.segment(text).containing(0)?.segment ?? text;
+  // Leading blank lines would make an empty first sentence.
+  const trimmed = text.trim();
+  const first = sentences.segment(trimmed).containing(0)?.segment ?? trimmed;
   return cutWhole(first.trim(), SKILL_SENTENCE);
 }
 

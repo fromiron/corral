@@ -3,8 +3,9 @@ import { OutputContract } from './definition.ts';
 
 // A new team the model composes (docs/specs/features/team-assistant.md, "팀 구성 제안"). The
 // catalog lists what the editor can pick by hand; the composition seats catalog agents and shapes
-// the flow from three step kinds. Neither carries a tool, a permission, a prompt body or a path:
-// those come from the chosen agents and the editor's defaults when the composition is assembled.
+// the flow from three step kinds. Neither carries a tool, a permission, a path or a prompt body
+// (an agent without a description is described by its first sentence only): those come from the
+// chosen agents and the editor's defaults when the composition is assembled.
 
 /**
  * A short name that means something only inside one request or one answer. No node takes it as

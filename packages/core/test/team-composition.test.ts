@@ -370,6 +370,8 @@ describe('teamCatalog', () => {
         saved({ description: '   ', prompt: 'Checks links. More.' }),
         plain(`${'p'.repeat(170)}. Second sentence.`),
         plain('One sentence only'),
+        // Instructions that open with blank lines are read from their first words.
+        plain('\n\nYou check releases. More.'),
         // A bundled agent sends its file's description as it is.
         { ...builtin('writer'), description: 'b'.repeat(500) },
       ],
@@ -382,6 +384,7 @@ describe('teamCatalog', () => {
       'Checks links.',
       'p'.repeat(160),
       'One sentence only',
+      'You check releases.',
       'b'.repeat(500),
     ]);
     expect(TeamCatalog.parse(cut)).toEqual(cut);
