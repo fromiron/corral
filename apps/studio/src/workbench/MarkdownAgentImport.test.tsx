@@ -230,3 +230,31 @@ it('without a skill library shows every named skill as not attached', async () =
   const text = await render(null);
   expect(text).toContain('Skills not found, not attached: break-it, ghost');
 });
+
+it('does not attach a skill whose package is off or whose pack is not trusted', async () => {
+  const base = entry('break-it', 'a');
+  const disabled = await render({
+    entries: vi.fn(async () => [base]),
+    packages: vi.fn(async () => [{ resource: base.resource, status: 'disabled' }] as never),
+  });
+  expect(disabled).toContain('Skills not found, not attached: break-it, ghost');
+  await disposals.pop()!();
+  const untrusted = await render({
+    entries: vi.fn(async () => [
+      entry('break-it', 'a', { resource: { ...base.resource, trustedAt: null } }),
+    ]),
+    packages: vi.fn(async () => []),
+  });
+  expect(untrusted).toContain('Skills not found, not attached: break-it, ghost');
+});
+
+it('says the named skills were not checked when the skill library cannot be read', async () => {
+  const text = await render({
+    entries: vi.fn(async () => {
+      throw new Error('offline');
+    }),
+    packages: vi.fn(async () => []),
+  });
+  expect(text).toContain('Skills not checked, not attached: break-it, ghost');
+  expect(text).not.toContain('Skills: break-it');
+});

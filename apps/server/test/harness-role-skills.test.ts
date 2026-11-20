@@ -657,3 +657,18 @@ it('a pinned harness that leaves out an optional skill says so; unusable library
     service.preview({ id: 'writer', harness: bound }, 'default').snapshot!.diagnostics,
   ).not.toContain('optional_skill_skipped');
 });
+
+it('a superseded entry loses to an older one no version follows, though it was installed last', async () => {
+  const older = await install('solo-old', ['solo']);
+  const newer = await install('solo-new', ['solo']);
+  const entry = 'skills/solo/SKILL.md';
+  service.store.manageEntry({ resourceHash: newer, entry, kind: 'skill' }, 0, false, {
+    resourceHash: older,
+    entry,
+    kind: 'skill',
+  });
+  const snapshot = service.preview({ id: 'writer', skills: [] }, 'default').snapshot!;
+  expect(snapshot.resources.filter((r) => r.skillName === 'solo')).toEqual([
+    expect.objectContaining({ hash: older, library: true }),
+  ]);
+});
