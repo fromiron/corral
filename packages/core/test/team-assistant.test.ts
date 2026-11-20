@@ -1,6 +1,6 @@
 import {
   TEAM_COMPOSITION_LIMITS,
-  type TeamAssistantRequest,
+  TeamAssistantRequest,
   type TeamCatalog,
   type TeamComposition,
   unusableTeamProposal,
@@ -520,6 +520,43 @@ describe('checked assistant proposals', () => {
     const twice = { ...request, messages: [...request.messages, ...exchange, ...exchange] };
     expect(read(question, twice)).toBeNull();
     expect(read(plan(), twice)).toEqual(plan());
+  });
+
+  it('counts the questions of the whole conversation however long refinement makes it', () => {
+    const asked = (questionId: 'material' | 'review_policy') => ({
+      role: 'assistant' as const,
+      questionId,
+      content: 'Choose one.',
+    });
+    // The conversation the endpoint accepts, `length` messages: the given start, then refinements.
+    const conversation = (start: TeamAssistantRequest['messages'], length: number) => [
+      ...start,
+      ...Array.from({ length: length - start.length }, (_, i) => ({
+        role: 'user' as const,
+        content: `Refinement ${i + 1}.`,
+      })),
+    ];
+    const whole = <T extends TeamAssistantRequest>(request: T): T =>
+      TeamAssistantRequest.parse(request) as T;
+    const goal = { role: 'user' as const, content: 'Make a local newsletter.' };
+    const answer = { role: 'user' as const, content: 'The team.' };
+    // Two questions at the very start of thirty messages: a third is still refused.
+    const twoAsked = conversation([goal, asked('material'), answer, asked('review_policy')], 30);
+    expect(twoAsked).toHaveLength(30);
+    const created = whole({ ...create('Make a local newsletter.'), messages: twoAsked });
+    expect(createQuestionsLeft(created)).toEqual([]);
+    expect(read(question, created)).toBeNull();
+    const which = { kind: 'question', id: 'review_target', choices: [other, target] };
+    expect(read(which, whole({ ...edit, messages: twoAsked }))).toBeNull();
+    // A question asked in turn 2 is still the one already asked at message 30.
+    const onceAsked = conversation([goal, asked('review_policy')], 30);
+    expect(createQuestionsLeft(whole({ ...created, messages: onceAsked }))).toEqual(['material']);
+    expect(
+      read(
+        { kind: 'question', id: 'review_policy', choices: ['opinion_only', 'required'] },
+        whole({ ...edit, messages: onceAsked }),
+      ),
+    ).toEqual({ kind: 'unsupported' });
   });
 
   it('never makes a required gate from an opinion-only decision in either mode', () => {

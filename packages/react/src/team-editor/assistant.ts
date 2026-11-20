@@ -409,7 +409,7 @@ export function createAssistantActions(
       }
       const common = {
         operationId: host.newOperationId(),
-        messages: intent.messages.slice(-12),
+        messages: intent.messages,
         ...(Object.keys(decisions).length > 0 && { decisions }),
       };
       request =

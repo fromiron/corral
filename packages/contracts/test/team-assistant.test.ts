@@ -101,17 +101,22 @@ describe('team assistant request', () => {
       expect(TeamAssistantRequest.safeParse(invalid).success).toBe(false);
   });
 
-  it('bounds the conversation and requires an operation id', () => {
-    const messages = Array.from({ length: 12 }, (_, i) => ({
-      ...(i === 1 ? { role: 'assistant', questionId: 'material' } : { role: 'user' }),
-      content: 'a'.repeat(2000),
-    }));
-    expect(TeamAssistantRequest.safeParse({ ...create, messages }).success).toBe(true);
+  it('takes the whole conversation, each message bounded, and requires an operation id', () => {
+    const conversation = (length: number) =>
+      Array.from({ length }, (_, i) => ({
+        ...(i === 1 ? { role: 'assistant', questionId: 'material' } : { role: 'user' }),
+        content: 'a'.repeat(2000),
+      }));
+    // No count limit: a conversation that grows by refinement is sent whole.
+    for (const length of [12, 13, 40])
+      expect(
+        TeamAssistantRequest.safeParse({ ...create, messages: conversation(length) }).success,
+      ).toBe(true);
     for (const invalid of [
       { ...create, operationId: undefined },
       { ...create, operationId: '' },
       { ...create, messages: [] },
-      { ...create, messages: [...messages, message] },
+      { ...create, messages: [...conversation(39), { ...message, content: 'a'.repeat(2001) }] },
       { ...create, messages: [{ ...message, content: 'a'.repeat(2001) }] },
       { ...create, messages: [{ ...message, content: '' }] },
       { ...create, messages: [{ ...message, role: 'system' }] },

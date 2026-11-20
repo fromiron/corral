@@ -757,6 +757,26 @@ describe('create proposals and human decisions', () => {
     expect(f.editor.getState().draft.definition.name).toBe(crew.name);
   });
 
+  it('sends the whole conversation however many refinements follow, the first request and its question included', async () => {
+    const ask = model().mockResolvedValueOnce(response(material)).mockResolvedValue(proposed);
+    const f = fixture(ask);
+    await f.send('Write a notice.');
+    await f.actions.answer('team', 'Have the team research it');
+    expect(f.state().proposal?.plan).toEqual(notice);
+    const refinements = Array.from({ length: 13 }, (_, i) => `Refinement ${i + 1}.`);
+    for (const text of refinements) await f.send(text);
+    expect(ask).toHaveBeenCalledTimes(15);
+    const last = ask.mock.calls.at(-1)?.[0];
+    expect(last).toMatchObject({ mode: 'create', proposal: notice });
+    // The question shown at the start still counts: its turn is sent with its id.
+    expect(last?.messages).toEqual([
+      { role: 'user', content: 'Write a notice.' },
+      { role: 'assistant', questionId: 'material', content: t('question.material') },
+      { role: 'user', content: 'Have the team research it' },
+      ...refinements.map((content) => ({ role: 'user', content })),
+    ]);
+  });
+
   it('refines against the catalog the shown proposal was composed from, not a new reading', async () => {
     const ask = model()
       .mockResolvedValueOnce(proposed)

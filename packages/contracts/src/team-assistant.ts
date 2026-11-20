@@ -43,6 +43,7 @@ const QuestionId = z.enum(['material', 'review_policy', 'review_target']);
 const MessageContent = z.string().min(1).max(2000);
 const requestFields = {
   operationId: z.string().min(1).max(200),
+  // The whole conversation, however long refinement makes it: no count limit.
   messages: z
     .array(
       z.discriminatedUnion('role', [
@@ -54,8 +55,7 @@ const requestFields = {
         }),
       ]),
     )
-    .min(1)
-    .max(12),
+    .min(1),
   decisions: z
     .strictObject({
       material: Material.optional(),
