@@ -56,14 +56,16 @@ export function createPrompt(request: CreateRequest): string {
       flow: [{ seat: 'work' }],
     },
   };
-  // Opinions only rules a loop out, so then no example shows one.
-  const judge = request.decisions?.reviewPolicy === 'opinion_only' ? undefined : judging[0];
+  // Opinions only rules out a loop and a gate, so then no example shows either.
+  const opinionsOnly = request.decisions?.reviewPolicy === 'opinion_only';
+  const judge = opinionsOnly ? undefined : judging[0];
   const loop = judge && {
     kind: 'plan',
-    reason: 'The request asks for an independent check before submission.',
+    reason: 'The editor can send the draft back for one revision.',
     plan: {
-      name: 'Draft checked before submission',
-      brief: 'Write the draft; another seat must check it before it is submitted.',
+      name: 'Draft and revision',
+      brief:
+        'Write the draft. Another seat reviews it, and the writer revises it once if changes are requested.',
       criteria: ['The draft does what was asked.'],
       seats: [
         {
@@ -80,6 +82,25 @@ export function createPrompt(request: CreateRequest): string {
         },
       ],
       flow: [{ loop: { work: ['write'], judge: 'check' } }],
+    },
+  };
+  const gate = !opinionsOnly && {
+    kind: 'plan',
+    reason: 'The notice needs review approval before submission.',
+    plan: {
+      name: 'Service notice',
+      brief: 'Write a notice about the service interruption. Submit it only if it passes review.',
+      criteria: ['The notice explains the service interruption.'],
+      seats: [
+        {
+          id: 'work',
+          agent: sample?.id ?? '',
+          name: sample?.name ?? 'Worker',
+          duty: 'Write the notice.',
+        },
+      ],
+      flow: [{ seat: 'work' }],
+      outrider: 'required_review',
     },
   };
   const asking = questions.length
@@ -102,22 +123,21 @@ A plan is {"kind":"plan","reason":"one short sentence","plan":{...}}. plan field
 - brief: the task as the team will receive it (at most 2000 characters).
 - criteria: 1 to 6 short checks the result must pass (each at most 200 characters).
 - seats: 1 to 8 entries {"id": a short word you choose for the seat, such as "build" or "verify"; it only links the seat to the flow, "agent": a catalog agent id, "name": a short job title (at most 40 characters), "duty": what this seat does in this team, in one or two sentences (at most 400 characters), "skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"}.
-- outrider: omit it unless the person explicitly asks for expert advice on request ("consultation"), feedback on a draft on request ("artifact_review"), or a pass that is required before submission ("required_review"); a structured review-policy decision takes precedence. Corral supplies the reviewer, so write only the policy string, for example "outrider":"required_review". An on-request adviser is shared advice, not a seat: do not add a reviewer or a loop for it alone. A request for advice only, even without a named deliverable, is a complete goal.
+- outrider: omit it unless the person explicitly asks for expert advice on request ("consultation"), feedback on a draft on request ("artifact_review"), or a pass that is required before submission ("required_review"); a structured review-policy decision takes precedence. Corral supplies the adviser or reviewer for the selected policy, so write only the policy string, for example "outrider":"consultation", and add no seat or flow step for it. A request for advice only, even without a named deliverable, is a complete goal.
 
 flow: the steps in the order they run. Each step is exactly one of
   {"seat":"write"}: one seat works.
   {"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.
-  {"loop":{"work":[...],"judge":"check","rounds":2}}: Each round runs the 1 to 3 work seats in order, then the judge passes the work or requests changes. \`rounds\` counts work runs including the first (1 to 3, default 2), so one allowed revision means "rounds":2. "judge" is the id of a seat you declare in seats, like any other seat; that seat's agent must be one that can judge a loop. Within flow, reference the judge's seat exactly once, in loop.judge: it is not a step, so add no {"seat":…} for it after the loop; its verdict is already the check on the loop's work.
+  {"loop":{"work":[...],"judge":"check","rounds":2}}: Each round runs the 1 to 3 work seats in order, then the judge passes the work or requests changes. \`rounds\` counts the first work run plus the allowed revisions (1 to 3 runs, default 2), so one send-back means "rounds":2 and two send-backs mean "rounds":3. "judge" is the id of a seat you declare in seats, like any other seat; that seat's agent must be one that can judge a loop. Within flow, reference the judge's seat exactly once, in loop.judge: it is not a step, so add no {"seat":…} for it after the loop; its verdict is already the check on the loop's work.
   Every seat appears in the flow exactly once. Every seat receives the brief, the criteria and the results of all earlier steps. The team's result is what the last step produces; for a loop that is its last work seat.
 
 How to compose:
 - Use the smallest team that does the job. One seat is a complete team for a small or single-skill task. A request for one writer to write a notice needs no question.
-- Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when the producing seat's own checks leave a consequential failure untested, so that an independent check can send the work back.
+- Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when the producing seat's own checks leave a consequential failure untested, so that an independent check can send the work back. When the person explicitly makes passing review a condition of submitting the team's deliverable, set "outrider":"required_review" because a judged loop forwards its last candidate at the round cap even if changes are still needed. Add a judged loop alongside the gate only when the request also calls for a distinct revision stage, since the gate already returns work needing changes to its producer.
 - The last step holds the seat that makes the deliverable.
-- A checker of a change or a document is the judge of a loop around the work, never a plain seat after it. End with a reviewing agent only when the review itself is the deliverable.
+- For bounded revision, put the checker in loop.judge. End with a reviewing agent only when the review itself is the deliverable.
 - Have reviewers inspect the evidence directly. Split independent concerns when useful, and combine the findings when the person wants one ranked report.
 - A last step that is a side-by-side group returns each seat's result, so add a seat after it only when one combined result is wanted.
-- A loop is bounded revision: at the round cap the last candidate goes on. "required_review" is the separate gate for a result that must pass before submission.
 - Promise that a result must pass only with "required_review": not in a duty, a criterion or the reason otherwise.
 - Each duty names what it reads from earlier seats.
 - A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.
@@ -133,5 +153,5 @@ How to compose:
 
 Examples:
 - a plan: ${JSON.stringify(plan)}
-${loop ? `- a draft that another seat must check before it is submitted: ${JSON.stringify(loop)}\n` : ''}- compare two independent assessments and deliver one recommendation: "flow":[{"parallel":["cost","risk"]},{"seat":"synthesize"}].`;
+${loop ? `- review and revise a draft: ${JSON.stringify(loop)}\n` : ''}${gate ? `- a notice that requires approval: ${JSON.stringify(gate)}\n` : ''}- compare two independent assessments and deliver one recommendation: "flow":[{"parallel":["cost","risk"]},{"seat":"synthesize"}].`;
 }

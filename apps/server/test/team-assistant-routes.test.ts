@@ -252,19 +252,18 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'Copy "agent" from catalog.agents[].id. Flow entries reference your seat ids. Omit optional fields you do not need. Write the team name, brief, criteria, seat names, duties and reason in the language of the goal unless the person asks for another language. Keep code identifiers as written.',
     '"id": a short word you choose for the seat, such as "build" or "verify"; it only links the seat to the flow',
     '"skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"',
-    '- outrider: omit it unless the person explicitly asks for expert advice on request ("consultation"), feedback on a draft on request ("artifact_review"), or a pass that is required before submission ("required_review"); a structured review-policy decision takes precedence. Corral supplies the reviewer, so write only the policy string, for example "outrider":"required_review". An on-request adviser is shared advice, not a seat: do not add a reviewer or a loop for it alone.',
+    '- outrider: omit it unless the person explicitly asks for expert advice on request ("consultation"), feedback on a draft on request ("artifact_review"), or a pass that is required before submission ("required_review"); a structured review-policy decision takes precedence. Corral supplies the adviser or reviewer for the selected policy, so write only the policy string, for example "outrider":"consultation", and add no seat or flow step for it. A request for advice only, even without a named deliverable, is a complete goal.',
     '{"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.',
     // The judge is a declared seat, named once in loop.judge and never a step after the loop.
-    '{"loop":{"work":[...],"judge":"check","rounds":2}}: Each round runs the 1 to 3 work seats in order, then the judge passes the work or requests changes. `rounds` counts work runs including the first (1 to 3, default 2), so one allowed revision means "rounds":2. "judge" is the id of a seat you declare in seats, like any other seat; that seat\'s agent must be one that can judge a loop.',
+    '{"loop":{"work":[...],"judge":"check","rounds":2}}: Each round runs the 1 to 3 work seats in order, then the judge passes the work or requests changes. `rounds` counts the first work run plus the allowed revisions (1 to 3 runs, default 2), so one send-back means "rounds":2 and two send-backs mean "rounds":3. "judge" is the id of a seat you declare in seats, like any other seat; that seat\'s agent must be one that can judge a loop.',
     '"judge" is the id of a seat you declare in seats, like any other seat; that seat\'s agent must be one that can judge a loop.',
     'Within flow, reference the judge\'s seat exactly once, in loop.judge: it is not a step, so add no {"seat":…} for it after the loop; its verdict is already the check on the loop\'s work.',
     'How to compose:',
-    "Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when the producing seat's own checks leave a consequential failure untested, so that an independent check can send the work back.",
+    'Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when the producing seat\'s own checks leave a consequential failure untested, so that an independent check can send the work back. When the person explicitly makes passing review a condition of submitting the team\'s deliverable, set "outrider":"required_review" because a judged loop forwards its last candidate at the round cap even if changes are still needed. Add a judged loop alongside the gate only when the request also calls for a distinct revision stage, since the gate already returns work needing changes to its producer.',
     'The last step holds the seat that makes the deliverable.',
-    'A checker of a change or a document is the judge of a loop around the work, never a plain seat after it. End with a reviewing agent only when the review itself is the deliverable.',
+    '- For bounded revision, put the checker in loop.judge. End with a reviewing agent only when the review itself is the deliverable.',
     'Have reviewers inspect the evidence directly. Split independent concerns when useful, and combine the findings when the person wants one ranked report.',
     "A last step that is a side-by-side group returns each seat's result, so add a seat after it only when one combined result is wanted.",
-    'A loop is bounded revision: at the round cap the last candidate goes on. "required_review" is the separate gate for a result that must pass before submission.',
     'Promise that a result must pass only with "required_review": not in a duty, a criterion or the reason otherwise.',
     'Each duty names what it reads from earlier seats.',
     'A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.',
@@ -275,11 +274,14 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     '"duty":"Do the task and submit the result."}],"flow":[{"seat":"work"}]}}',
     // The loop example is a whole reply: the work seat sits the same agent, the judge seat the
     // first agent that can judge, both declared.
-    // Its brief asks for the independent check, so it teaches no judge for an ordinary draft.
-    '"brief":"Write the draft; another seat must check it before it is submitted."',
+    // It is about review and revision, not a condition of submission.
+    '- review and revise a draft: {"kind":"plan","reason":"The editor can send the draft back for one revision.","plan":{"name":"Draft and revision","brief":"Write the draft. Another seat reviews it, and the writer revises it once if changes are requested."',
     '{"id":"write","agent":"a3",',
     '{"id":"check","agent":"a2",',
     '"flow":[{"loop":{"work":["write"],"judge":"check"}}]}}',
+    // The gate: one seat and the required review.
+    '- a notice that requires approval: {"kind":"plan","reason":"The notice needs review approval before submission.","plan":{"name":"Service notice","brief":"Write a notice about the service interruption. Submit it only if it passes review.","criteria":["The notice explains the service interruption."],"seats":[{"id":"work","agent":"a3",',
+    '"duty":"Write the notice."}],"flow":[{"seat":"work"}],"outrider":"required_review"}}',
     '[{"parallel":["cost","risk"]},{"seat":"synthesize"}]',
   ];
   let at = -1;
@@ -314,6 +316,15 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'Add a gatherer',
     'should be able to',
     'written only in loop.judge',
+    'Corral supplies the reviewer, so',
+    'An on-request adviser is shared advice',
+    'counts work runs including the first',
+    'A loop is bounded revision',
+    'A checker of a change or a document is the judge of a loop',
+    'a draft that another seat must check',
+    'another seat must check it before it is submitted',
+    'asks for an independent check before submission',
+    'Draft checked before submission',
     'EDIT MODE',
     'add_shared_advice',
     'require_review',
@@ -333,30 +344,41 @@ const examplesOf = (prompt: string) =>
       return start < 0 ? [] : [line.slice(start)];
     });
 
-it('gives example replies the reader accepts, and a loop example only when an agent can judge', () => {
+it('gives example replies the reader accepts: a loop only when an agent can judge, a gate unless opinions only', () => {
   const request = createRequest();
   const examples = examplesOf(createPrompt(request));
-  expect(examples).toHaveLength(2);
+  expect(examples).toHaveLength(3);
   for (const example of examples)
     expect(readAssistantAnswer(example, request)).toHaveProperty('reply');
-  const [single, loop] = examples.map((example) => JSON.parse(example));
+  const [single, loop, gate] = examples.map((example) => JSON.parse(example));
   expect(Object.keys(single)).toEqual(['kind', 'reason', 'plan']);
   expect(Object.keys(loop)).toEqual(['kind', 'reason', 'plan']);
+  expect(Object.keys(gate)).toEqual(['kind', 'reason', 'plan']);
   expect(loop.plan.seats.map((seat: { id: string }) => seat.id)).toEqual(['write', 'check']);
   expect(loop.plan.flow).toEqual([{ loop: { work: ['write'], judge: 'check' } }]);
+  // The gate is read as written: one seat and the required review.
+  const read = readAssistantAnswer(examples[2] as string, request);
+  expect('reply' in read && read.reply.kind === 'plan' && read.reply.plan.outrider).toBe(
+    'required_review',
+  );
+  expect(gate.plan.seats).toHaveLength(1);
+  // No agent can judge: the gate, and no loop.
   const noJudge = createRequest({
     catalog: { agents: [agentOf('n1', 'notes'), agentOf('d1', 'draft')], skills: [] },
   });
   const plain = examplesOf(createPrompt(noJudge));
-  expect(plain).toHaveLength(1);
-  expect(readAssistantAnswer(plain[0] as string, noJudge)).toHaveProperty('reply');
+  expect(plain).toHaveLength(2);
+  for (const example of plain)
+    expect(readAssistantAnswer(example, noJudge)).toHaveProperty('reply');
   expect(createPrompt(noJudge)).not.toContain('"loop":{"work":["write"]');
-  // Opinions only rules a loop out, so no example shows one.
+  expect(createPrompt(noJudge)).toContain('"outrider":"required_review"}}');
+  // Opinions only rules out a loop and a gate, so no example shows either.
   const opinions = createRequest({ decisions: { reviewPolicy: 'opinion_only' } });
   const unlooped = examplesOf(createPrompt(opinions));
   expect(unlooped).toHaveLength(1);
   expect(readAssistantAnswer(unlooped[0] as string, opinions)).toHaveProperty('reply');
   expect(createPrompt(opinions)).not.toContain('"loop":{"work":["write"]');
+  expect(createPrompt(opinions)).not.toContain('"outrider":"required_review"}}');
 });
 
 it('tells the model to ask nothing once no question is left, and falls back to the first agent', () => {
