@@ -1,4 +1,5 @@
 import type { AgentRole, LibraryAgentRole } from '@corral/contracts';
+import { builtinSkillName } from '@corral/core';
 import {
   type ReactNode,
   type RefObject,
@@ -252,7 +253,12 @@ export function AgentPicker({
                 <ul className="divide-y divide-border">
                   {rows.map(({ key, source, team }) => {
                     const skills = source.role.skills ?? [];
-                    const labels = skills.map((skill) => skillLabel?.(skill));
+                    // A built-in agent's skills are known by name even before the library loads.
+                    const labels = skills.map(
+                      (skill) =>
+                        skillLabel?.(skill) ??
+                        (source.origin?.kind === 'preset' ? builtinSkillName(skill) : null),
+                    );
                     const id = `${rowPrefix}-${key}`;
                     return (
                       <li key={key}>

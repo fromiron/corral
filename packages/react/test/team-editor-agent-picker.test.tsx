@@ -124,7 +124,7 @@ it('searches only the active group, opens built-in for an empty library, and res
   await user.click(tab(/Built-in/));
   await user.type(search(), 'each claim');
   expect(button('Writing')).toHaveAccessibleDescription(
-    `${messages.TeamTemplates.presets.writer.duty}2 skills`,
+    `${messages.TeamTemplates.presets.writer.duty}plain-prose · doc-writing`,
   );
   expect(screen.queryByRole('button', { name: 'Design' })).toBeNull();
   fireEvent.keyDown(search(), { key: 'Escape', isComposing: true });
@@ -371,3 +371,23 @@ it.each([
     else expect(screen.queryByText(/^Source:/)).toBeNull();
   },
 );
+
+it('shows each built-in agent with its duty and the names of its skills', async () => {
+  const { user } = mount({ agentLibrary: { ...library, agents: [] } });
+  await user.click(add());
+  expect(tab(/Built-in/)).toHaveAttribute('aria-selected', 'true');
+  const rows = within(screen.getByRole('dialog')).getAllByRole('button', {
+    description: /./,
+  });
+  expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(
+    Object.values(messages.TeamTemplates.presets).map((preset) => preset.name),
+  );
+  // Without a resolved skill library the generated names still read, never a bare count.
+  expect(button('Implementation')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.builder.duty}smallest-change · engineering-principles · failing-test-first · prove-it · corral-change-report`,
+  );
+  expect(button('Verification')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.verifier.duty}prove-it · measure-first · corral-verification · corral-review`,
+  );
+  expect(screen.getByRole('dialog')).not.toHaveTextContent(/\d skills/);
+});
