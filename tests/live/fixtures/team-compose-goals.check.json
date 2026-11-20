@@ -1,6 +1,6 @@
 {
   "split": "check",
-  "note": "Eight requests the prompt was never tuned on, written with their expectations before any run that uses them. They are sent in file order, which mixes the kinds so that one timeout cannot remove a kind. A case with repeat: true is sent a second time with a new operation id. catalog names the agents offered: \"bundled\" is the bundled crew, any other name adds that list from `agents` to it. In a proposal, a seat's agent is written by its name and resolved against the catalog when the case is sent. expect: reply \"plan\" means a question is a miss, \"plan_or_question\" accepts the named question; changes true needs a seat that changes files and false forbids one; submitters are the agents allowed to produce the last step; loop is \"warranted\", \"allowed\" or \"none\"; uses must each hold a seat; keeps and drops are agents of the sent proposal that must stay or go; outrider lists the accepted values, \"none\" for absent. The machine-read flags are a first pass: every answer is also read by a person.",
+  "note": "Nine requests the prompt was never tuned on, written with their expectations before any run that uses them. They are sent in file order, which mixes the kinds so that one timeout cannot remove a kind. A case with repeat: true is sent a second time with a new operation id. catalog names the agents offered: \"bundled\" is the bundled crew, any other name adds that list from `agents` to it. A library agent is sent as Studio sends one, without a description: the descriptions here are for the person who rates. In a proposal, a seat's agent is written by its name and resolved against the catalog when the case is sent. expect: reply \"plan\" means a question is a miss, \"plan_or_question\" accepts the named question; changes true needs a seat that changes files and false forbids one; submitters are the agents allowed to produce the last step; oneResult means the last step is a single seat; loop is \"warranted\", \"allowed\" or \"none\"; judges are the agents allowed to judge the loop; rounds is the loop's cap, counting an absent value as 2; uses must each hold a seat; keeps and drops are agents of the sent proposal that must stay or go; outrider lists the accepted values, \"none\" for absent. The machine-read flags are a first pass: every answer is also read by a person, with the case's rater line.",
   "agents": {
     "legal": [
       {
@@ -49,7 +49,8 @@
         "loop": "allowed",
         "maxSeats": 2,
         "outrider": ["none"]
-      }
+      },
+      "rater": "One self-checking Builder is the fit; a second seat needs a reason the request gives."
     },
     {
       "id": "check-05",
@@ -57,16 +58,20 @@
       "lang": "ko",
       "catalog": "legal",
       "repeat": true,
-      "messages": ["개정된 이용약관을 영어로 번역하고, 법무 검토를 통과한 것만 내보내 줘"],
+      "messages": [
+        "개정된 이용약관을 영어로 번역한 다음 법무 검토를 받고, 지적 사항을 반영해 고쳐 줘"
+      ],
       "expect": {
         "reply": "plan",
         "changes": false,
         "uses": ["번역가", "법무 검토자"],
         "submitters": ["번역가"],
         "loop": "warranted",
-        "maxSeats": 3,
-        "outrider": ["required_review", "none"]
-      }
+        "judges": ["법무 검토자"],
+        "maxSeats": 2,
+        "outrider": ["none"]
+      },
+      "rater": "The two library agents hold the seats: the translator revises against the legal reviewer's findings and submits. Passing is not made a condition, so no gate and no promise that it must pass."
     },
     {
       "id": "check-02",
@@ -81,8 +86,10 @@
         "changes": false,
         "loop": "none",
         "maxSeats": 3,
-        "outrider": ["none"]
-      }
+        "outrider": ["none"],
+        "oneResult": true
+      },
+      "rater": "One list ordered by severity that covers both the Dockerfile and the CI workflow. Reviewers read the files themselves; no seat that only prepares for them."
     },
     {
       "id": "check-07",
@@ -106,7 +113,11 @@
             "duty": "설정 화면에 언어 선택 메뉴를 구현하고 변경 내용을 제출한다."
           }
         ],
-        "flow": [{ "seat": "build" }]
+        "flow": [
+          {
+            "seat": "build"
+          }
+        ]
       },
       "expect": {
         "reply": "plan",
@@ -116,7 +127,8 @@
         "loop": "warranted",
         "maxSeats": 2,
         "outrider": ["none"]
-      }
+      },
+      "rater": "The Builder, the language choice and the criterion that the choice survives reopening all stay. A distinct agent verifies as the judge of a loop around the Builder."
     },
     {
       "id": "check-03",
@@ -133,7 +145,8 @@
         "loop": "none",
         "maxSeats": 2,
         "outrider": ["none"]
-      }
+      },
+      "rater": "Either the material question, or a plan that says who gathers the price changes or which sources the person supplies. Missing competitor names can wait until the team runs."
     },
     {
       "id": "check-06",
@@ -146,11 +159,12 @@
       "expect": {
         "reply": "plan",
         "uses": ["Data Analyst"],
-        "submitters": ["Writer", "Chart Maker"],
+        "submitters": ["Writer", "Chart Maker", "Data Analyst"],
         "loop": "allowed",
         "maxSeats": 3,
         "outrider": ["none"]
-      }
+      },
+      "rater": "The last seat delivers the whole one-page report with both charts. Charts alone or funnel notes alone miss."
     },
     {
       "id": "check-04",
@@ -159,16 +173,18 @@
       "catalog": "bundled",
       "repeat": true,
       "messages": [
-        "Write the postmortem for last night's checkout outage from the timeline I'll paste, have a second person critique the draft, and revise it once against that critique."
+        "Write the postmortem for last night's checkout outage from the timeline I'll paste, have a second person critique the draft, and revise it once if the critic requests changes."
       ],
       "expect": {
         "reply": "plan",
         "changes": false,
         "submitters": ["Writer"],
         "loop": "warranted",
+        "rounds": 2,
         "maxSeats": 2,
         "outrider": ["none"]
-      }
+      },
+      "rater": "A Writer judged by a reviewing agent, capped at two rounds: the first draft is round one and a pass ends the loop."
     },
     {
       "id": "check-08",
@@ -207,8 +223,16 @@
           }
         ],
         "flow": [
-          { "seat": "research" },
-          { "loop": { "work": ["write"], "judge": "check", "rounds": 2 } }
+          {
+            "seat": "research"
+          },
+          {
+            "loop": {
+              "work": ["write"],
+              "judge": "check",
+              "rounds": 2
+            }
+          }
         ]
       },
       "expect": {
@@ -220,7 +244,26 @@
         "loop": "none",
         "maxSeats": 2,
         "outrider": ["none"]
-      }
+      },
+      "rater": "Researcher then Writer stay, with the common comparison points and the reasoned recommendation. The review duty, the loop and any gate are gone. Seat ids and rewording do not matter."
+    },
+    {
+      "id": "check-09",
+      "kind": "must_pass",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": [
+        "Add rate limiting to the public API. It must not be submitted unless a security review passes."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "allowed",
+        "maxSeats": 3,
+        "outrider": ["required_review"]
+      },
+      "rater": "Passing is stated as a condition, so the plan carries the required review gate. A judged loop alone forwards its last candidate at the cap and does not meet the request."
     }
   ]
 }
