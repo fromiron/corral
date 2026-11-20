@@ -635,3 +635,31 @@ it('keeps the model name on an edit it proposed, apart from a change one of the 
   const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
   expect(within(preview).getByText('Proposal from Test model')).toBeVisible();
 });
+
+it('turns Retry and Propose again off when no model is left to ask', async () => {
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValueOnce(planned(sequence, 'A cause, a fix and a note.'))
+    .mockRejectedValueOnce(
+      Object.assign(new Error('The model did not return a usable team proposal.'), {
+        code: 'MODEL_UNAVAILABLE',
+      }),
+    );
+  const { user, disconnect, reconnect } = setup({ ask, open: true });
+  await user.type(field(), 'Fix the login bug.{Enter}');
+  await screen.findByRole('region', { name: 'Proposal from Test model' });
+  disconnect();
+  expect(button('Propose again')).toBeDisabled();
+  reconnect();
+  await user.click(button('Propose again'));
+  await screen.findByRole('alert');
+  disconnect();
+  expect(button(en.TeamDraft.retry)).toBeDisabled();
+  expect(ask).toHaveBeenCalledTimes(2);
+});
+
+it('keeps Propose again for a change one of the choices made, which needs no model', async () => {
+  const { user } = setup({ existing: true, open: true });
+  await user.click(button('Add advice on demand'));
+  expect(button('Propose again')).toBeEnabled();
+});

@@ -558,6 +558,8 @@ export function TeamAssistant({
     // Beside the work area the conversation covers nothing, so it stays for the next change.
     if (!side) actions.setOpen(false);
   }
+  // Asking again goes to the model, unless a choice made the change: without one it is off.
+  const retryOff = !connected && state.intent?.kind === 'model';
   const localReply = question?.source === 'choice';
   const paidSend = connected && !localReply;
   // Until the model list arrives nothing is said about models: the input waits, unable to send.
@@ -748,7 +750,7 @@ export function TeamAssistant({
                 <Button
                   size="compact"
                   variant="tertiary"
-                  disabled={busy}
+                  disabled={busy || retryOff}
                   onClick={() => void actions.retry()}
                 >
                   {t('again')}
@@ -762,7 +764,11 @@ export function TeamAssistant({
               <p role="alert" className="text-destructive">
                 {failure}
               </p>
-              <Button variant="tertiary" disabled={busy} onClick={() => void actions.retry()}>
+              <Button
+                variant="tertiary"
+                disabled={busy || retryOff}
+                onClick={() => void actions.retry()}
+              >
                 {td('retry')}
               </Button>
             </div>
