@@ -22,17 +22,17 @@ import type {
   TeamAssistantResponse,
   TeamPlan,
 } from '@corral/contracts';
-import { canonicalJson, UNUSABLE_TEAM_PLAN_MESSAGE } from '@corral/contracts';
+import { canonicalJson, UNUSABLE_TEAM_PLAN_MESSAGE, unusableTeamProposal } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
-  assistantReplyFromAnswer,
   autoRouterPrompt,
   FALLBACK_OUTPUT_TOKENS,
   fixedReasoning,
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
+  readAssistantAnswer,
   resolveProfileContext,
 } from '@corral/core';
 import { accountModelStream, withSessionAffinityOptions } from '@corral/pi-runtime-port';
@@ -67,8 +67,9 @@ import {
 } from './endpoints.ts';
 import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
 import {
+  createPrompt,
+  TEAM_ASSISTANT_EDIT_PROMPT,
   TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
-  TEAM_ASSISTANT_SYSTEM_PROMPT,
   TEAM_ASSISTANT_TIMEOUT_MS,
 } from './team-assistant.ts';
 import {
@@ -704,19 +705,20 @@ export class ModelRegistry implements ModelResolver {
   ): Promise<TeamModelResult<TeamAssistantResponse>> {
     const { operationId, ...input } = request;
     const answer = await this.requestTeamText(
-      TEAM_ASSISTANT_SYSTEM_PROMPT,
+      request.mode === 'create' ? createPrompt(request) : TEAM_ASSISTANT_EDIT_PROMPT,
       JSON.stringify(input),
       { id: operationId, signal },
       { maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS, timeoutMs: TEAM_ASSISTANT_TIMEOUT_MS },
     );
     if (!answer.ok) return answer;
-    const reply = assistantReplyFromAnswer(answer.text, request);
-    return reply
-      ? { ok: true, reply, model: answer.modelName }
+    // The reason names only a code: none of the answer's or the conversation's text.
+    const read = readAssistantAnswer(answer.text, request);
+    return 'reply' in read
+      ? { ok: true, reply: read.reply, model: answer.modelName }
       : {
           ok: false,
           code: 'MODEL_UNAVAILABLE',
-          message: 'The model did not return a usable team proposal.',
+          message: unusableTeamProposal(read.problem),
         };
   }
 

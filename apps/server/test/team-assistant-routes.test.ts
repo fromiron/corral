@@ -3,11 +3,13 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { canonicalJson } from '@corral/contracts';
+import { canonicalJson, type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
 import {
+  createPrompt,
+  TEAM_ASSISTANT_EDIT_PROMPT,
   TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
   TEAM_ASSISTANT_TIMEOUT_MS,
 } from '../src/models/team-assistant.ts';
@@ -125,6 +127,16 @@ const proposal = { kind: 'plan', plan, reason: 'Only a writer is needed.' };
 const question = { kind: 'question', id: 'material', choices: ['person', 'team'] };
 const required = { kind: 'require_review', outputId: 'out', index: 2 };
 const failedAnswer = { status: 502, body: { error: { code: 'MODEL_UNAVAILABLE' } } };
+/** The failure that names why the answer could not be used, and nothing of the answer. */
+const unusable = (problem: string) => ({
+  status: 502,
+  body: {
+    error: {
+      code: 'MODEL_UNAVAILABLE',
+      message: unusableTeamProposal(problem),
+    },
+  },
+});
 
 it('returns a plan immediately for a sufficient goal and records one body-free managed attempt', async () => {
   const { fake, call } = await setup();
@@ -175,18 +187,139 @@ it('refuses a composition that seats an agent outside the catalog or names tools
   const { fake, call } = await setup();
   const seat = plan.seats[0];
   const cases = [
-    { ...proposal, plan: { ...plan, seats: [{ ...seat, agent: 'a9' }] } },
-    { ...proposal, plan: { ...plan, seats: [{ ...seat, skills: ['s9'] }] } },
-    { ...proposal, plan: { ...plan, seats: [{ ...seat, tools: ['write_file'] }] } },
-    { ...proposal, plan: legacyPlan },
-  ];
-  for (const [i, reply] of cases.entries()) {
+    [{ ...proposal, plan: { ...plan, seats: [{ ...seat, agent: 'a9' }] } }, 'unknown_agent'],
+    [{ ...proposal, plan: { ...plan, seats: [{ ...seat, tools: ['write_file'] }] } }, 'shape'],
+    [{ ...proposal, plan: legacyPlan }, 'shape'],
+  ] as const;
+  for (const [i, [reply, problem]] of cases.entries()) {
     fake.replyText(JSON.stringify(reply));
     expect(await call(assistant, create(`outside-${i}`, 'Write a notice.'))).toMatchObject(
-      failedAnswer,
+      unusable(problem),
     );
   }
   expect(fake.seen.hostRequests).toHaveLength(cases.length);
+});
+
+it('drops a skill the catalog does not list, or one named twice, and returns the plan', async () => {
+  const { fake, call } = await setup();
+  const seat = plan.seats[0];
+  fake.replyText(
+    JSON.stringify({
+      ...proposal,
+      plan: { ...plan, seats: [{ ...seat, skills: ['s9', 's1', 's1'] }] },
+    }),
+  );
+  expect(await call(assistant, create('skills', 'Write a notice.'))).toEqual({
+    status: 200,
+    body: {
+      model: 'Test A',
+      reply: { ...proposal, plan: { ...plan, seats: [{ ...seat, skills: ['s1'] }] } },
+    },
+  });
+});
+
+type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
+const agentOf = (id: string, output: 'draft' | 'review' | 'notes', name = id) => ({
+  id,
+  name,
+  changesFiles: false,
+  runsCommands: false,
+  output,
+  skills: [],
+});
+const createRequest = (more: Partial<CreateRequest> = {}): CreateRequest => ({
+  operationId: 'prompt',
+  mode: 'create',
+  messages: [{ role: 'user', content: 'Write a notice.' }],
+  catalog: {
+    agents: [
+      agentOf('a1', 'notes'),
+      agentOf('a2', 'review'),
+      agentOf('a3', 'draft'),
+      agentOf('a4', 'review'),
+    ],
+    skills: [],
+  },
+  ...more,
+});
+
+it('builds a new team’s prompt from the request: deliverable first, then fields, flow, composing and examples', () => {
+  const prompt = createPrompt(createRequest());
+  const order = [
+    'Choose the requested deliverable and the seat that produces it first. Missing files or text can be supplied when the team runs. Ask material only when choosing who gathers the material would change the team. Ask review_policy only when the person requested review before submission and left the pass condition open. A request for findings is already a deliverable.',
+    'Copy "agent" from catalog.agents[].id. Flow entries reference your seat ids. Omit optional fields you do not need. Write the team name, brief, criteria, seat names, duties and reason in the language of the goal unless the person asks for another language. Keep code identifiers as written.',
+    '"id": a short word you choose for the seat, such as "build" or "verify"; it only links the seat to the flow',
+    '"skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"',
+    '{"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.',
+    'How to compose:',
+    'The last step holds the seat that makes the deliverable.',
+    'A checker of a change or a document is the judge of a loop around the work, never a plain seat after it.',
+    'End with a reviewing agent only when the review itself is the deliverable.',
+    "A last step that is a side-by-side group returns each seat's result, so add a seat after it only when one combined result is wanted.",
+    'A loop is bounded revision: at the round cap the last candidate goes on. "required_review" is the separate gate for a result that must pass before submission.',
+    'Each duty names what it reads from earlier seats.',
+    'A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.',
+    'Examples:',
+    // The full example sits the first agent that returns a draft, with no optional field.
+    '{"kind":"plan","plan":{"name":"Notice","brief":"Write the notice.","criteria":["Cover the event details."],"seats":[{"id":"write","agent":"a3","name":"Writer","duty":"Write and submit the notice."}],"flow":[{"seat":"write"}]},"reason":"One writer is enough."}',
+    '[{"loop":{"work":["write"],"judge":"check"}}]',
+    '[{"parallel":["cost","risk"]},{"seat":"synthesize"}]',
+  ];
+  let at = -1;
+  for (const line of order) {
+    const found = prompt.indexOf(line);
+    expect(found, line).toBeGreaterThan(at);
+    at = found;
+  }
+  // From this request: who can judge a loop, and which questions are still open.
+  expect(prompt).toContain('Agents that can judge a loop: "a2", "a4".');
+  expect(prompt).toContain('Questions you may still ask: "material", "review_policy".');
+  // No edit-mode example, and none of the old notation.
+  for (const absent of [
+    'EDIT MODE',
+    'add_shared_advice',
+    'require_review',
+    'Never the first step',
+    'such as "s1"',
+  ])
+    expect(prompt).not.toContain(absent);
+});
+
+it('tells the model to ask nothing once no question is left, and falls back to the first agent', () => {
+  const asked = createRequest({
+    messages: [
+      { role: 'user', content: 'Write the newsletter.' },
+      { role: 'assistant', questionId: 'material', content: 'Who supplies it?' },
+      { role: 'user', content: 'Recommend a choice.' },
+    ],
+    decisions: { reviewPolicy: 'required' },
+  });
+  expect(createPrompt(asked)).toContain('No question is left: ask nothing, give a plan.');
+  expect(createPrompt(asked)).not.toContain('Questions you may still ask');
+  const noDraft = createRequest({
+    catalog: { agents: [agentOf('n1', 'notes'), agentOf('n2', 'notes')], skills: [] },
+  });
+  expect(createPrompt(noDraft)).toContain('"agent":"n1"');
+  expect(createPrompt(noDraft)).toContain('Agents that can judge a loop: none, so use no loop.');
+});
+
+it('sends a new team its own prompt and an edit the edit prompt', async () => {
+  const { fake, call } = await setup();
+  const systemOf = (index: number) => {
+    const turns = JSON.parse(fake.seen.hostRequests[index]?.text ?? '[]') as {
+      role: string;
+      content: unknown;
+    }[];
+    return JSON.stringify(turns.filter(({ role }) => role !== 'user'));
+  };
+  fake.replyText(JSON.stringify(proposal));
+  await call(assistant, create('own-prompt', 'Write a notice.'));
+  fake.replyText(JSON.stringify({ kind: 'describe', topic: 'submitter' }));
+  await call(assistant, edit('edit-prompt'));
+  expect(systemOf(0)).toContain('Choose the requested deliverable');
+  expect(systemOf(0)).not.toContain('EDIT MODE');
+  expect(systemOf(1)).toContain('EDIT MODE');
+  expect(systemOf(1)).toContain(JSON.stringify(TEAM_ASSISTANT_EDIT_PROMPT).slice(1, 80));
 });
 
 it('asks the first model of a connected provider when there is no named profile', async () => {
@@ -278,15 +411,16 @@ it('rejects whole invalid replies, unknown targets and mode mismatches without r
   const { fake, call } = await setup();
   const edits = [{ kind: 'add_shared_advice' }, { ...required, index: 0 }];
   const cases = [
-    [create('extra', 'Write it.'), { ...proposal, extra: 'private-raw-answer' }],
-    [edit('target'), { kind: 'edits', edits, reason: 'Add review.' }],
-    [edit('plan'), proposal],
-    [create('describe', 'Who submits?'), { kind: 'describe', topic: 'submitter' }],
+    [create('extra', 'Write it.'), { ...proposal, extra: 'private-raw-answer' }, 'shape'],
+    [edit('target'), { kind: 'edits', edits, reason: 'private-raw-answer' }, 'decision_conflict'],
+    [edit('plan'), { ...proposal, reason: 'private-raw-answer' }, 'kind'],
+    [create('describe', 'Who submits?'), { kind: 'describe', topic: 'submitter' }, 'kind'],
+    [create('prose', 'Write it.'), 'private-raw-answer, not an object', 'not_json'],
   ] as const;
-  for (const [request, reply] of cases) {
-    fake.replyText(JSON.stringify(reply));
+  for (const [request, reply, problem] of cases) {
+    fake.replyText(typeof reply === 'string' ? reply : JSON.stringify(reply));
     const result = await call(assistant, request);
-    expect(result).toMatchObject(failedAnswer);
+    expect(result).toMatchObject(unusable(problem));
     expect(JSON.stringify(result.body)).not.toContain('private-raw-answer');
   }
   expect(fake.seen.hostRequests).toHaveLength(cases.length);
