@@ -1,4 +1,5 @@
-import type { TeamAssistantReply, TeamAssistantResponse, TeamPlan } from '@corral/contracts';
+import type { TeamAssistantReply, TeamAssistantResponse, TeamComposition } from '@corral/contracts';
+import { compileDefinition, teamCatalog } from '@corral/core';
 import { Gate, linearCorral } from '@corral/testkit';
 import { describe, expect, it, vi } from 'vitest';
 import { draftFromDefinition, emptyDraft } from '../src/editor/model.ts';
@@ -10,6 +11,7 @@ import {
   type TeamAssistantHost,
 } from '../src/team-editor/assistant.ts';
 import { targetLabel } from '../src/team-editor/assistant-proposal.ts';
+import { agent, choices, crew, notice } from './team-composition-fixtures.ts';
 
 const wording = en.TeamDraft.wording;
 const t = (key: string, values?: Record<string, string | number>) =>
@@ -29,27 +31,8 @@ const policy: TeamAssistantReply = {
   id: 'review_policy',
   choices: ['opinion_only', 'required'],
 };
-const plan: TeamPlan = {
-  name: 'Notice',
-  brief: 'Write a notice.',
-  pattern: 'single',
-  criteria: ['Name the date.'],
-  roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the notice.' }],
-  finalApproval: false,
-};
-const writeReview: TeamPlan = {
-  name: 'Report',
-  brief: 'Write and review a report.',
-  pattern: 'write_review',
-  criteria: ['Cite the sources.'],
-  roles: [
-    { slot: 'planner', name: 'Planner', duty: 'Outline the report.' },
-    { slot: 'writer', name: 'Writer', duty: 'Write the report.' },
-    { slot: 'reviewer', name: 'Reviewer', duty: 'Check the report.' },
-  ],
-  reviewRounds: 1,
-  finalApproval: false,
-};
+const plan: TeamComposition = notice;
+const sent = teamCatalog(choices.agents, choices.skills).catalog;
 const proposed = response({
   kind: 'plan',
   plan,
@@ -61,10 +44,14 @@ const review = response({
   reason: 'Review the final result.',
 });
 const team = () => draftFromDefinition(linearCorral(['Planner', 'Writer']));
-function fixture(ask: TeamAssistantHost['ask'] = null, draft = emptyDraft()) {
+function fixture(
+  ask: TeamAssistantHost['ask'] = null,
+  draft = emptyDraft(),
+  choose: TeamAssistantHost['choices'] = vi.fn(async () => choices),
+) {
   const editor = createEditorStore(draft);
   let id = 0;
-  const host = { wording, ask, newOperationId: () => `operation-${++id}` };
+  const host = { wording, ask, choices: choose, newOperationId: () => `operation-${++id}` };
   const conversation = assistantConversation(editor, { open: true });
   const actions = createAssistantActions(editor, host, t);
   const send = (input: string) => {
@@ -122,6 +109,8 @@ describe('a conversation belongs to one working copy', () => {
       .mockResolvedValueOnce(proposed);
     const f = fixture(ask);
     const old = f.send('Cancelled goal');
+    // The request leaves once the catalog is read.
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(1));
     const signal = ask.mock.calls[0]![1];
     await f.actions.send();
     expect(ask).toHaveBeenCalledTimes(1);
@@ -241,7 +230,7 @@ describe('the explicit model request boundary', () => {
     await f.send('Write a notice');
     f.actions.setInput('Unfinished, not for the model');
     const first = f.actions.answer('team', 'Research it');
-    expect(ask).toHaveBeenCalledTimes(2);
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
     expect(ask.mock.calls[1]?.[0]).toMatchObject({
       decisions: { material: 'team' },
       messages: [
@@ -369,6 +358,8 @@ describe('the explicit model request boundary', () => {
     f.editor.getState().setName('Changed while disconnected');
     await f.actions.retry();
     expect(ask.mock.calls[1]![0]).toEqual(ask.mock.calls[0]![0]);
+    // The reply is read against the catalog that was sent, not a newly loaded one.
+    expect(f.host.choices).toHaveBeenCalledTimes(1);
     expect(f.state().proposal?.origin).toBe('model');
     expect(f.actions.apply()).toBeNull();
   });
@@ -418,48 +409,90 @@ describe('create proposals and human decisions', () => {
     expect(f.editor.getState().past).toHaveLength(0);
   });
 
-  it('shows the model’s own answer; Corral does not reread the goal’s words to replace it', async () => {
-    const goal = '작성자 한 명으로 이 안내문을 써 줘';
-    const ask = model()
-      .mockResolvedValueOnce(response(material))
-      .mockResolvedValueOnce(response({ kind: 'plan', plan: writeReview, reason: 'Review it.' }));
+  it('sends what the editor can pick by hand with every new team request, and none with an edit', async () => {
+    const ask = model().mockResolvedValueOnce(response(material)).mockResolvedValueOnce(proposed);
     const f = fixture(ask);
-    await f.send(goal);
-    expect(f.state().question?.id).toBe('material');
-    await f.send('A different notice.');
-    expect(f.state().proposal).toMatchObject({
-      origin: 'model',
-      plan: { pattern: 'write_review' },
-    });
-    expect(f.state().proposal).not.toHaveProperty('recovery');
+    await f.send('Write a notice.');
+    await f.actions.answer('person', 'I have the notes');
+    expect(ask.mock.calls.map(([request]) => request)).toMatchObject([
+      { mode: 'create', catalog: sent },
+      { mode: 'create', catalog: sent },
+    ]);
+    expect(JSON.stringify(sent)).not.toMatch(/resourceHash|allowedWorkTools|prompt/);
+    const edit = fixture(model().mockResolvedValue(response({ kind: 'unsupported' })), team());
+    await edit.send('Change something.');
+    const request = (edit.host.ask as ReturnType<typeof model>).mock.calls[0]![0];
+    expect(request).not.toHaveProperty('catalog');
+    expect(edit.host.choices).not.toHaveBeenCalled();
   });
 
-  it('never lets a model answer turn on gates, observation or human approval after a denied policy', async () => {
-    const goal = '작성자가 필요할 때만 전문가에게 자문한다. 검토 통과나 자동 관찰은 필요 없다';
+  it('sends nothing when the catalog cannot be read, and Retry reads it again', async () => {
+    const choose = vi
+      .fn<TeamAssistantHost['choices']>()
+      .mockRejectedValueOnce(new Error('offline'))
+      .mockResolvedValue(choices);
+    const ask = model().mockResolvedValue(proposed);
+    const f = fixture(ask, emptyDraft(), choose);
+    await f.send('Write a notice.');
+    expect(ask).not.toHaveBeenCalled();
+    expect(f.state()).toMatchObject({ proposal: null, pending: null, failure: t('logic.catalog') });
+    await f.actions.retry();
+    expect(choose).toHaveBeenCalledTimes(2);
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(f.state().proposal?.plan).toEqual(notice);
+  });
+
+  it('shows the model’s own composition: seats, side-by-side work and a judged loop', async () => {
     const ask = model().mockResolvedValue(
-      response({
-        kind: 'plan',
-        plan: {
-          ...writeReview,
-          observeWork: true,
-          finalApproval: true,
-          outrider: 'required_review',
-        },
-        reason: 'Require review.',
-      }),
+      response({ kind: 'plan', plan: crew, reason: 'Two checks, then a judged summary.' }),
     );
     const f = fixture(ask);
-    await f.send(goal);
+    await f.send('Review the pull request.');
     const preview = f.state().proposal!;
-    expect(preview.origin).toBe('model');
-    expect(preview.plan).toMatchObject({ outrider: 'consultation', finalApproval: false });
-    expect(preview.plan?.observeWork).toBeFalsy();
+    expect(preview).toMatchObject({ origin: 'model', plan: crew, canApply: true });
+    expect(compileDefinition(preview.result.definition).diagnostics).toEqual([]);
+    expect(f.actions.apply()).toBe(preview.focus);
+    expect(f.editor.getState().draft.definition.roles.map((r) => r.name)).toEqual(
+      crew.seats.map((seat) => seat.name),
+    );
+  });
+
+  it('refuses a composition outside the sent catalog or the schema, whole, with retry', async () => {
+    for (const reply of [
+      { kind: 'plan', plan: { ...notice, seats: [{ ...notice.seats[0]!, agent: 'a99' }] } },
+      { kind: 'plan', plan: { ...notice, observeWork: true } },
+      { kind: 'plan', plan: { ...notice, seats: [{ ...notice.seats[0]!, tools: ['x'] }] } },
+    ]) {
+      const ask = model().mockResolvedValue({
+        reply: { ...reply, reason: 'Try this.' },
+        model: 'Test model',
+      } as TeamAssistantResponse);
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      expect(f.state()).toMatchObject({ proposal: null, failure: t('logic.unusable') });
+      expect(ask).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('turns observation on only from the proposal’s switch, and nothing turns on human approval', async () => {
+    const ask = model().mockResolvedValue(
+      response({ kind: 'plan', plan: { ...notice, outrider: 'consultation' }, reason: 'Ask.' }),
+    );
+    const f = fixture(ask);
+    await f.send('Write a notice. Watch work in progress.');
+    const first = f.state().proposal!;
+    expect(first.result.definition.sharedOutrider).toBeDefined();
+    expect(first.result.definition.sharedOutrider?.observation).toBeUndefined();
     expect(
-      preview.result.definition.nodes.some(
-        (node) => node.type === 'output' && node.requireApproval,
-      ),
+      first.result.definition.nodes.some((node) => node.type === 'output' && node.requireApproval),
     ).toBe(false);
-    expect(preview.result.definition.sharedOutrider).not.toHaveProperty('observation');
+    f.actions.observe(true);
+    expect(f.state().proposal?.result.definition.sharedOutrider?.observation).toBeDefined();
+    expect(f.state().decisions.observeWork).toBe(true);
+    f.actions.observe(false);
+    expect(f.state().proposal?.result.definition.sharedOutrider?.observation).toBeUndefined();
+    expect(ask).toHaveBeenCalledTimes(1);
+    expect(f.editor.getState().canUndo).toBe(false);
   });
 
   it('shows failure and retry for an unusable answer, and sends a new request only on retry', async () => {
@@ -483,90 +516,86 @@ describe('create proposals and human decisions', () => {
     expect(ask).toHaveBeenCalledTimes(3);
   });
 
-  it('does not substitute one worker for an explicit division of labor after an unusable advice proposal', async () => {
-    const ask = model().mockRejectedValue(
-      Object.assign(new Error('The model did not return a usable team proposal.'), {
+  it('reads an unusable answer that carries its reason code the same way, without showing the code', async () => {
+    const ask = model().mockRejectedValueOnce(
+      Object.assign(new Error('The model did not return a usable team proposal. (unknown_agent)'), {
         code: 'MODEL_UNAVAILABLE',
       }),
     );
     const f = fixture(ask);
-    await f.send(
-      'Give a planner and a writer distinct roles. They can ask for expert advice when needed.',
-    );
-    expect(f.state().proposal).toBeNull();
-    expect(f.state().failure).toBe(t('logic.unusable'));
-    expect(ask).toHaveBeenCalledTimes(1);
+    await f.send('Write the team newsletter.');
+    expect(f.state()).toMatchObject({ proposal: null, failure: t('logic.unusable') });
+    expect(f.state().failure).not.toContain('unknown_agent');
   });
 
-  it('shows a valid model plan for on-demand advice as the model’s, never a local stand-in', async () => {
-    const ask = model().mockResolvedValue(
-      response({ kind: 'plan', plan: writeReview, reason: 'Every report needs a reviewer.' }),
-    );
-    const f = fixture(ask);
-    await f.send('Write a notice and consult an expert when needed.');
-    expect(f.state().proposal).toMatchObject({
-      origin: 'model',
-      plan: { outrider: 'consultation' },
-    });
-    expect(f.state().proposal).not.toHaveProperty('recovery');
-  });
-
-  it('adjusts a model proposal without another request: previews only, keeps observation and drops the confirmation on a pattern change', async () => {
-    const ask = model().mockResolvedValueOnce(proposed);
-    const f = fixture(ask);
-    await f.send('Write a notice.');
-    expect(f.state().proposal?.origin).toBe('model');
-    f.actions.observe(true);
-    f.actions.reviewPolicy('required');
-    expect(f.state().proposal?.canApply).toBe(false);
-    const first = f.state().proposal!.targets[0]!;
-    f.actions.confirmTarget({ outputId: first.outputId, index: first.index });
-    expect(f.state().proposal?.canApply).toBe(true);
-    f.actions.pattern('write_review');
-    expect(f.state().proposal).toMatchObject({
-      canApply: false,
-      plan: { pattern: 'write_review', observeWork: true, outrider: 'required_review' },
-    });
-    f.actions.reviewPolicy('opinion_only');
-    expect(f.state().proposal).toMatchObject({
-      canApply: true,
-      plan: { pattern: 'single', outrider: 'artifact_review' },
-    });
-    f.actions.observe(false);
-    expect(f.state().proposal?.plan?.observeWork).toBeFalsy();
-    expect(ask).toHaveBeenCalledTimes(1);
-    expect(f.editor.getState().canUndo).toBe(false);
-  });
-
-  it('keeps confirmed results on matching regenerated plans, but never confirms a renamed producer by its array position', async () => {
+  it('refines the shown proposal by chat: the request carries it, the reply replaces it, the earlier one stays unapplicable', async () => {
     const ask = model()
       .mockResolvedValueOnce(proposed)
-      .mockResolvedValueOnce(proposed)
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now with checks.' }));
+    const f = fixture(ask);
+    await f.send('Write a notice.');
+    f.actions.observe(true);
+    const shown = f.state().proposal!;
+    await f.send('Add a check before it goes out.');
+    expect(ask.mock.calls[1]![0]).toMatchObject({
+      mode: 'create',
+      catalog: sent,
+      proposal: notice,
+      decisions: { observeWork: true },
+      messages: [
+        { role: 'user', content: 'Write a notice.' },
+        { role: 'user', content: 'Add a check before it goes out.' },
+      ],
+    });
+    expect(f.state().proposal?.plan).toEqual(crew);
+    expect(f.state().proposal?.result.definition.sharedOutrider?.observation).toBeDefined();
+    const earlier = f.state().turns.find((turn) => turn.proposal);
+    expect(earlier?.proposal).toBe(shown);
+    const focus = f.state().proposal?.focus;
+    expect(f.actions.apply()).toBe(focus);
+    expect(f.editor.getState().draft.definition.name).toBe(crew.name);
+  });
+
+  it('keeps a confirmed result on a regenerated proposal, but never confirms a renamed producer by its position', async () => {
+    const required: TeamComposition = { ...plan, outrider: 'required_review' };
+    const ask = model()
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: required, reason: 'Gate it.' }))
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: required, reason: 'Gate it.' }))
       .mockResolvedValueOnce(
         response({
           kind: 'plan',
           reason: 'A different producer writes it.',
-          plan: { ...plan, roles: [{ slot: 'worker', name: 'Editor', duty: 'Edit it.' }] },
+          plan: { ...required, seats: [{ ...required.seats[0]!, name: 'Editor' }] },
         }),
       );
     const f = fixture(ask);
-    await f.send('Prepare the notice');
-    f.actions.reviewPolicy('required');
+    await f.send('Prepare the notice; it must pass review.');
+    expect(f.state().proposal?.canApply).toBe(false);
     f.actions.confirmTarget(f.state().proposal!.targets[0]);
+    expect(f.state().proposal?.canApply).toBe(true);
     await f.actions.retry();
-    expect(ask.mock.calls[1]![0].decisions).toEqual({ reviewPolicy: 'required' });
     expect(f.state().proposal?.canApply).toBe(true);
     await f.actions.retry();
     expect(f.state().decisions.reviewTarget).toBeUndefined();
     expect(f.state().proposal?.canApply).toBe(false);
   });
 
-  it('refuses a model plan that contradicts the person’s material choice, with retry', async () => {
+  it('passes the person’s material choice to the model and takes its composition as it is', async () => {
     const ask = model().mockResolvedValueOnce(response(material)).mockResolvedValueOnce(proposed);
     const f = fixture(ask);
     await f.send('A newsletter');
     await f.actions.answer('team', 'The team finds the material');
     expect(ask.mock.calls[1]![0].decisions).toMatchObject({ material: 'team' });
+    expect(f.state().proposal?.plan).toEqual(notice);
+  });
+
+  it('refuses a loop after the person chose opinions only', async () => {
+    const ask = model()
+      .mockResolvedValueOnce(response(policy))
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Judge it.' }));
+    const f = fixture(ask);
+    await f.send('Write a summary and have it reviewed before it goes out.');
+    await f.actions.answer('opinion_only', 'Feedback only');
     expect(f.state()).toMatchObject({ proposal: null, failure: t('logic.unusable') });
   });
 });

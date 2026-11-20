@@ -1,19 +1,19 @@
 import {
   hasAssistantTarget,
-  hasReviewLoop,
   type TeamAssistantReply,
   type TeamAssistantRequest,
   TeamAssistantResponse,
   type TeamAssistantTarget,
-  type TeamPattern,
-  type TeamPlan,
+  type TeamComposition,
 } from '@corral/contracts';
 import {
   type CompileOptions,
-  planWithPattern,
+  type ComposableAgent,
+  type ComposableSkill,
+  type ResolvedCatalog,
   reconcileAssistantReply,
   type TeamWording,
-  withWorkObservation,
+  teamCatalog,
 } from '@corral/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { EditorDraft } from '../editor/model.ts';
@@ -37,6 +37,11 @@ export interface TeamAssistantHost {
   /** The model list has not arrived yet: whether a model can run is not known. */
   modelPending?: boolean;
   newOperationId(): string;
+  /**
+   * What the editor can pick by hand ("add agent" and "add skill"), read when a new team is
+   * requested: the model composes the team from these alone.
+   */
+  choices(): Promise<{ agents: readonly ComposableAgent[]; skills: readonly ComposableSkill[] }>;
   wording: TeamWording;
   onConnectModel?(): void;
   onBrowseTemplates?(): void;
@@ -44,7 +49,13 @@ export interface TeamAssistantHost {
 
 type Decisions = NonNullable<TeamAssistantRequest['decisions']>;
 type Messages = TeamAssistantRequest['messages'];
-type Turn = { id: number; role: 'user' | 'assistant'; text: string };
+type Turn = {
+  id: number;
+  role: 'user' | 'assistant';
+  text: string;
+  /** A proposal the conversation moved past: it stays readable and cannot be applied. */
+  proposal?: Proposal;
+};
 type Mode = TeamAssistantRequest['mode'];
 type Choice = 'describe' | 'add_shared_advice' | 'require_review' | 'set_brief';
 type Question = {
@@ -57,11 +68,14 @@ type MessageIntent = {
   kind: 'model';
   mode: Mode;
   messages: [UserMessage, ...Messages];
+  /** The shown composition the person asks to change. */
+  proposal?: TeamComposition;
 };
 type ChoiceIntent = { kind: 'choice'; choice: Choice; brief?: string };
 type Intent = MessageIntent | ChoiceIntent;
-type Receipt = { base: EditorDraft; request: TeamAssistantRequest };
-type Unanswered = Pick<Conversation, 'question' | 'decisions' | 'intent' | 'turns'>;
+type Receipt = { base: EditorDraft; request: TeamAssistantRequest; resolved?: ResolvedCatalog };
+type ConfirmedTarget = TeamAssistantTarget & { name: string; producerName: string };
+type Unanswered = Pick<Conversation, 'question' | 'proposal' | 'decisions' | 'intent' | 'turns'>;
 
 export interface Conversation {
   /**
@@ -82,8 +96,8 @@ export interface Conversation {
   intent: Intent | null;
   // A lost HTTP response is not proof that the server didn't execute the operation.
   receipt: Receipt | null;
-  chosenPattern: TeamPattern | null;
-  confirmedPlan: TeamPlan | null;
+  /** The result a person confirmed for a required review, as it was named when confirmed. */
+  confirmedTarget: ConfirmedTarget | null;
   cancel(): void;
 }
 
@@ -95,9 +109,7 @@ export interface AssistantActions {
   setOpen(open: boolean): void;
   chooseEdit(choice: Choice): void;
   answer(value: string | TeamAssistantTarget, label: string): Promise<void>;
-  pattern(value: TeamPattern): void;
   observe(value: boolean): void;
-  reviewPolicy(value: 'opinion_only' | 'required'): void;
   confirmTarget(target: TeamAssistantTarget | undefined): void;
   apply(): string | null;
 }
@@ -120,8 +132,7 @@ export function assistantConversation(editor: EditorStore, start?: { open: boole
     initialName: editor.getState().draft.definition.name,
     intent: null,
     receipt: null,
-    chosenPattern: null,
-    confirmedPlan: null,
+    confirmedTarget: null,
     cancel() {
       const { pending } = get();
       if (!pending) return;
@@ -157,12 +168,22 @@ function withoutTarget(decisions: Decisions): Decisions {
   return rest;
 }
 
+/** The server's word for an answer it could not use; a reason code may follow it, never shown. */
+function isUnusableAnswer(message: string): boolean {
+  return message.startsWith('The model did not return a usable team proposal');
+}
+
 function appendTurn(turns: Turn[], role: Turn['role'], text: string): Turn[] {
   return [...turns, { id: (turns.at(-1)?.id ?? 0) + 1, role, text }];
 }
 
 function turnsWithProposal(state: Conversation): Turn[] {
-  return state.proposal ? appendTurn(state.turns, 'assistant', state.proposal.reason) : state.turns;
+  const { proposal } = state;
+  if (!proposal) return state.turns;
+  const turns = appendTurn(state.turns, 'assistant', proposal.reason);
+  // A new team's proposal stays in the conversation as it was shown.
+  if (proposal.plan) turns[turns.length - 1] = { ...(turns.at(-1) as Turn), proposal };
+  return turns;
 }
 
 /** Actions read the working copy at invocation, not at the time the view rendered. */
@@ -214,29 +235,39 @@ export function createAssistantActions(
 
   function previewPlan(
     base: EditorDraft,
-    plan: TeamPlan,
-    options: { reason: string; target?: TeamAssistantTarget | undefined },
+    plan: TeamComposition,
+    options: {
+      reason: string;
+      resolved: ResolvedCatalog;
+      target?: TeamAssistantTarget | undefined;
+    },
+    decisions: Decisions = getState().decisions,
   ) {
-    const { initialName, confirmedPlan, decisions } = getState();
-    let target = options.target;
-    if (!('target' in options) && decisions.reviewTarget) {
-      // Pattern wiring is deterministic. A regenerated plan can reuse a confirmation
-      // only if it still describes the same people filling the same positions.
-      if (
-        plan.outrider === 'required_review' &&
-        confirmedPlan?.pattern === plan.pattern &&
-        confirmedPlan.roles.every((role) =>
-          plan.roles.some((r) => r.slot === role.slot && r.name === role.name),
-        )
-      ) {
-        target = decisions.reviewTarget;
-      } else {
-        setState({ decisions: withoutTarget(decisions), confirmedPlan: null });
-      }
-    }
-    present(
-      createProposal(base, plan, { ...options, target, initialName, wording, t, compileOptions }),
+    const { initialName, confirmedTarget } = getState();
+    const build = (target: TeamAssistantTarget | undefined) =>
+      createProposal(base, plan, {
+        ...options,
+        target,
+        observe: decisions.observeWork,
+        initialName,
+        wording,
+        t,
+        compileOptions,
+      });
+    if ('target' in options || !decisions.reviewTarget) return present(build(options.target));
+    // A regenerated proposal keeps a confirmation only while the confirmed result is still the
+    // same result of the same producer; otherwise the person confirms again.
+    const open = build(undefined);
+    const same = open.targets.some(
+      (row) =>
+        row.outputId === confirmedTarget?.outputId &&
+        row.index === confirmedTarget.index &&
+        row.name === confirmedTarget.name &&
+        row.producerName === confirmedTarget.producerName,
     );
+    if (same) return present(build(decisions.reviewTarget));
+    setState({ decisions: withoutTarget(decisions), confirmedTarget: null });
+    present(open);
   }
 
   function previewEdits(
@@ -277,6 +308,7 @@ export function createAssistantActions(
     intent: MessageIntent,
     request: TeamAssistantRequest,
     raw: unknown,
+    resolved: ResolvedCatalog | undefined,
   ) {
     const parsed = TeamAssistantResponse.safeParse(raw);
     if (!parsed.success) return unusable();
@@ -287,16 +319,10 @@ export function createAssistantActions(
     switch (reply.kind) {
       case 'question':
         return askQuestion({ id: reply.id, choices: reply.choices, source: 'model' }, intent);
-      case 'plan': {
-        const { chosenPattern } = getState();
-        let plan = reply.plan;
-        if (chosenPattern && chosenPattern !== plan.pattern)
-          plan = planWithPattern(plan, chosenPattern, wording);
-        previewPlan(base, plan, {
-          reason: chosenPattern ? t(`rationale.${plan.pattern}`) : reply.reason,
-        });
-        return;
-      }
+      case 'plan':
+        // A plan is allowed only in create mode, whose request carried the catalog.
+        if (!resolved) return unusable();
+        return previewPlan(base, reply.plan, { reason: reply.reason, resolved });
       case 'edits':
         return previewEdits(base, reply.edits, reply.reason, 'model');
       case 'describe':
@@ -315,8 +341,8 @@ export function createAssistantActions(
     if (intent.mode !== mode) {
       // A manual first role (or undo of a creation) changes the allowed response kinds.
       // Do not send previous-mode questions or choices as if they described this team.
-      intent = { ...intent, mode, messages: [intent.messages[0]] };
-      setState({ decisions: {}, chosenPattern: null });
+      intent = { kind: 'model', mode, messages: [intent.messages[0]] };
+      setState({ decisions: {}, confirmedTarget: null });
       before = undefined;
     }
     setState({
@@ -326,23 +352,6 @@ export function createAssistantActions(
       failure: null,
       receipt: null,
     });
-    let request = receipt?.request;
-    if (!request) {
-      const team = mode === 'edit' ? summarize(base) : undefined;
-      let { decisions } = getState();
-      // Create confirmations point into the preview, never into the wire summary.
-      if (mode === 'create') decisions = withoutTarget(decisions);
-      else if (decisions.reviewTarget && !hasAssistantTarget(team, decisions.reviewTarget)) {
-        decisions = withoutTarget(decisions);
-        setState({ decisions });
-      }
-      request = {
-        operationId: host.newOperationId(),
-        messages: intent.messages.slice(-12),
-        ...(Object.keys(decisions).length > 0 && { decisions }),
-        ...(team ? { mode: 'edit', team } : { mode: 'create' }),
-      };
-    }
     const controller = new AbortController();
     const active = () =>
       getState().pending?.controller === controller && !controller.signal.aborted;
@@ -350,13 +359,66 @@ export function createAssistantActions(
     // composer may have been edited in the meantime). A second answer replaces the cancelled turn.
     const unanswered = before && {
       question: before.question,
+      proposal: before.proposal,
       decisions: before.decisions,
       intent: before.intent,
       turns: before.turns,
     };
+    let request = receipt?.request;
+    let resolved = receipt?.resolved;
     setState({
-      pending: { operationId: request.operationId, controller, ...(unanswered && { unanswered }) },
+      pending: {
+        operationId: request?.operationId ?? '',
+        controller,
+        ...(unanswered && { unanswered }),
+      },
     });
+    if (!request) {
+      const team = mode === 'edit' ? summarize(base) : undefined;
+      let catalog: ReturnType<typeof teamCatalog> | undefined;
+      if (!team) {
+        // A new team is composed from what the editor offers now. The reply is read against
+        // exactly the catalog this request carries.
+        try {
+          const { agents, skills } = await host.choices();
+          catalog = teamCatalog(agents, skills);
+        } catch {
+          if (!active()) return;
+          setState({ pending: null, question: null, failure: t('logic.catalog') });
+          return;
+        }
+        if (!active()) return;
+        resolved = catalog;
+      }
+      let { decisions } = getState();
+      // Create confirmations point into the preview, never into the wire summary.
+      if (mode === 'create') decisions = withoutTarget(decisions);
+      else if (decisions.reviewTarget && !hasAssistantTarget(team, decisions.reviewTarget)) {
+        decisions = withoutTarget(decisions);
+        setState({ decisions });
+      }
+      const common = {
+        operationId: host.newOperationId(),
+        messages: intent.messages.slice(-12),
+        ...(Object.keys(decisions).length > 0 && { decisions }),
+      };
+      request =
+        team || !catalog
+          ? { ...common, mode: 'edit', team: team ?? summarize(base) }
+          : {
+              ...common,
+              mode: 'create',
+              catalog: catalog.catalog,
+              ...(intent.proposal && { proposal: intent.proposal }),
+            };
+      setState({
+        pending: {
+          operationId: request.operationId,
+          controller,
+          ...(unanswered && { unanswered }),
+        },
+      });
+    }
     try {
       let result: TeamAssistantResponse;
       try {
@@ -368,7 +430,7 @@ export function createAssistantActions(
         if (
           code === 'MODEL_UNAVAILABLE' &&
           error instanceof Error &&
-          error.message === 'The model did not return a usable team proposal.'
+          isUnusableAnswer(error.message)
         ) {
           unusable();
         } else if (!code || code === 'REQUEST_OUTCOME_UNKNOWN') {
@@ -377,14 +439,14 @@ export function createAssistantActions(
           setState({
             question: null,
             failure: t('logic.unknown'),
-            receipt: !code ? { request, base } : null,
+            receipt: !code ? { request, base, ...(resolved && { resolved }) } : null,
           });
         } else {
           failed(error);
         }
         return;
       }
-      if (active()) receive(base, intent, request, result);
+      if (active()) receive(base, intent, request, result, resolved);
     } catch (error) {
       if (active()) failed(error);
     } finally {
@@ -435,21 +497,22 @@ export function createAssistantActions(
     }
   }
 
-  function adjust(plan: TeamPlan, reason: string, decisions: Decisions, pattern?: TeamPattern) {
+  /** Rebuild the shown proposal from the same composition with the person's new choices. */
+  function adjust(reason: string, decisions: Decisions) {
     const { proposal } = getState();
-    if (
-      !proposal?.plan ||
-      proposal.origin === 'choice' ||
-      proposal.base !== editor.getState().draft
-    )
-      return;
+    const { plan, resolved } = proposal ?? {};
+    if (!proposal || !plan || !resolved || proposal.base !== editor.getState().draft) return;
     try {
-      previewPlan(proposal.base, plan, { reason, target: decisions.reviewTarget });
-      setState({
+      previewPlan(
+        proposal.base,
+        plan,
+        { reason, resolved, target: decisions.reviewTarget },
         decisions,
-        confirmedPlan: decisions.reviewTarget ? plan : null,
-        ...(pattern && { chosenPattern: pattern }),
-      });
+      );
+      const target = proposal.targets.find(
+        (row) => decisions.reviewTarget && sameTarget(row, decisions.reviewTarget),
+      );
+      setState({ decisions, confirmedTarget: target ?? null });
     } catch (error) {
       failed(error);
     }
@@ -462,10 +525,11 @@ export function createAssistantActions(
     const local = state.question?.source === 'choice' && state.intent?.kind === 'choice';
     if (!text || state.pending || (!local && !host.ask)) return;
     const mode = modeOf(editor.getState().draft);
-    const continuation =
-      state.question && state.intent?.kind !== 'choice' && state.intent?.mode === mode
-        ? state.intent
-        : null;
+    const intent =
+      state.intent?.kind === 'model' && state.intent.mode === mode ? state.intent : null;
+    // A message under a new team's proposal asks to change it: the request carries it.
+    const refined = mode === 'create' && intent ? state.proposal?.plan : undefined;
+    const continuation = state.question || refined ? intent : null;
     setState({ input: '', turns: appendTurn(turnsWithProposal(state), 'user', text) });
     if (state.question?.source === 'choice' && state.intent?.kind === 'choice') {
       if (state.question.id === 'brief') {
@@ -494,13 +558,15 @@ export function createAssistantActions(
       }
       return;
     }
-    if (!continuation) setState({ decisions: {}, chosenPattern: null });
+    if (!continuation) setState({ decisions: {}, confirmedTarget: null });
     const message: UserMessage = { role: 'user', content: text };
+    const proposal = refined ?? continuation?.proposal;
     return run(
       {
         kind: 'model',
         mode,
         messages: continuation ? [...continuation.messages, message] : [message],
+        ...(proposal && { proposal }),
       },
       null,
       continuation ? state : undefined,
@@ -546,7 +612,7 @@ export function createAssistantActions(
       setState({
         turns: appendTurn(turnsWithProposal(state), 'user', t(`choice.${choice}`)),
         decisions: choice === 'require_review' ? { reviewPolicy: 'required' } : {},
-        chosenPattern: null,
+        confirmedTarget: null,
       });
       runChoice({ kind: 'choice', choice });
     },
@@ -602,46 +668,19 @@ export function createAssistantActions(
         state,
       );
     },
-    pattern(value: TeamPattern) {
-      const { proposal, decisions } = getState();
-      if (proposal?.plan && proposal.plan.pattern !== value) {
-        adjust(
-          planWithPattern(proposal.plan, value, wording),
-          t(`rationale.${value}`),
-          withoutTarget(decisions),
-          value,
-        );
-      }
-    },
     observe(value: boolean) {
       const { proposal, decisions } = getState();
       if (proposal?.plan)
-        adjust(
-          withWorkObservation(proposal.plan, value),
-          t(value ? 'logic.observeOn' : 'logic.observeOff'),
-          { ...decisions, observeWork: value },
-        );
-    },
-    reviewPolicy(value: 'opinion_only' | 'required') {
-      const { proposal, decisions } = getState();
-      if (!proposal?.plan) return;
-      const plan =
-        value === 'opinion_only' &&
-        (hasReviewLoop(proposal.plan.pattern) || proposal.plan.pattern === 'adversarial_review')
-          ? planWithPattern(proposal.plan, 'single', wording)
-          : proposal.plan;
-      adjust(
-        { ...plan, outrider: value === 'required' ? 'required_review' : 'artifact_review' },
-        t(value === 'required' ? 'logic.required' : 'logic.opinion'),
-        { ...withoutTarget(decisions), reviewPolicy: value },
-        plan.pattern !== proposal.plan.pattern ? plan.pattern : undefined,
-      );
+        adjust(t(value ? 'logic.observeOn' : 'logic.observeOff'), {
+          ...decisions,
+          observeWork: value,
+        });
     },
     confirmTarget(target: TeamAssistantTarget | undefined) {
       const { proposal, decisions } = getState();
       if (proposal?.plan?.outrider !== 'required_review') return;
       if (target && !proposal.targets.some((option) => sameTarget(option, target))) return;
-      adjust(proposal.plan, t('logic.required'), {
+      adjust(t('logic.required'), {
         ...withoutTarget(decisions),
         ...(target && { reviewTarget: { outputId: target.outputId, index: target.index } }),
       });
@@ -658,13 +697,12 @@ export function createAssistantActions(
         return null;
       editor.getState().applyDraft(proposal.result);
       setState({
-        turns: turnsWithProposal(state),
+        turns: appendTurn(state.turns, 'assistant', proposal.reason),
         proposal: null,
         intent: null,
         receipt: null,
         decisions: {},
-        chosenPattern: null,
-        confirmedPlan: null,
+        confirmedTarget: null,
       });
       return proposal.focus;
     },

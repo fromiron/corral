@@ -1,12 +1,16 @@
-import { TEAM_PATTERNS, type TeamAssistantTarget, type TeamPlan } from '@corral/contracts';
-import {
-  type CompileOptions,
-  isReadOnlyTeam,
-  isTemplatePattern,
-  PATTERN_TEMPLATES,
-} from '@corral/core';
+import type { CompositionStep, TeamAssistantTarget, TeamComposition } from '@corral/contracts';
+import type { CompileOptions, ResolvedCatalog } from '@corral/core';
 import { motion, useReducedMotion } from 'motion/react';
-import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import {
@@ -21,8 +25,6 @@ import {
   DialogTrigger,
   InputMessage,
   KitBadge,
-  RadioGroup,
-  RadioItem,
   Switch,
   Tooltip,
   useShape,
@@ -35,7 +37,17 @@ import { surfaceClasses, surfaceHoverClasses } from '../design-kit/lib/surface-c
 import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { Bot, ChevronDown, ChevronRight, PanelRight, Sparkles } from '../ui/icons.ts';
+import {
+  Bot,
+  ChevronDown,
+  ChevronRight,
+  Flag,
+  PanelRight,
+  Repeat2,
+  ShieldCheck,
+  Sparkles,
+  Split,
+} from '../ui/icons.ts';
 import {
   type AssistantActions,
   assistantConversation,
@@ -50,175 +62,207 @@ import {
   summarize,
   targetLabel,
 } from './assistant-proposal.ts';
-import { outlineOrder } from './layout.ts';
-import { type RosterRow, rosterOf } from './roster.ts';
 
 export type { TeamAssistantHost } from './assistant.ts';
 
 const edits = ['describe', 'add_shared_advice', 'require_review', 'set_brief'] as const;
 const optionClass = 'h-auto min-h-7 max-w-full whitespace-normal text-start';
+// The composition list's indent for what a step holds.
+const rail = 'ps-3.5';
 
 function sameTarget(a: TeamAssistantTarget | undefined, b: TeamAssistantTarget) {
   return a?.outputId === b.outputId && a.index === b.index;
 }
 
-/** Read the same flow tree as the composition list. Parallel workers are not a sequence. */
-function flowOf({ result }: Proposal, t: AssistantText) {
-  const { definition } = result;
-  const names = new Map(definition.nodes.map((node) => [node.id, node.label]));
-  const steps = (rows: RosterRow[]): string =>
-    rows
-      .map((row): string => {
-        if (row.kind === 'parallel') {
-          return t('parallelFlow', { steps: row.branches.map((b) => steps(b.rows)).join(' + ') });
-        }
-        if (row.kind === 'loop') {
-          const inner = steps(row.children);
-          return row.maxIterations === undefined
-            ? `${names.get(row.nodeId)}: ${inner}`
-            : t('loopFlow', { steps: inner, count: row.maxIterations });
-        }
-        if (row.kind === 'team') return steps(row.children);
-        return names.get(row.nodeId) ?? row.nodeId;
-      })
-      .join(' → ');
-  return steps(rosterOf(definition, outlineOrder(definition)).steps);
+/** One seat: its name, the agent it uses, its duty in one line and the skills added to it. */
+function SeatRow({
+  seatId,
+  plan,
+  resolved,
+  judge,
+  t,
+}: {
+  seatId: string;
+  plan: TeamComposition;
+  resolved: ResolvedCatalog;
+  judge?: boolean;
+  t: AssistantText;
+}) {
+  const seat = plan.seats.find((candidate) => candidate.id === seatId);
+  if (!seat) return null;
+  const agent = resolved.agentById.get(seat.agent)?.role.name;
+  const skills = (seat.skills ?? []).flatMap((id) => {
+    const name = resolved.skillById.get(id)?.name;
+    return name ? [name] : [];
+  });
+  return (
+    <li className="flex min-w-0 gap-2">
+      <Bot aria-hidden className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
+      <div className="grid min-w-0 flex-1 gap-0.5">
+        <div className="flex min-w-0 flex-wrap items-baseline gap-x-2">
+          <span
+            data-seat-name
+            className="min-w-0 truncate"
+            title={seat.name}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {seat.name}
+          </span>
+          {agent && agent !== seat.name && (
+            <span className="min-w-0 truncate text-caption text-muted-foreground">{agent}</span>
+          )}
+          {judge && (
+            <span className="inline-flex items-center gap-1 self-center text-caption text-muted-foreground">
+              <ShieldCheck aria-hidden size={12} />
+              {t('judge')}
+            </span>
+          )}
+        </div>
+        <p className="truncate text-muted-foreground" title={seat.duty}>
+          {seat.duty}
+        </p>
+        {skills.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {skills.map((name) => (
+              <KitBadge key={name} size="compact">
+                {name}
+              </KitBadge>
+            ))}
+          </div>
+        )}
+      </div>
+    </li>
+  );
+}
+
+/** A step that holds several seats: work side by side, or a loop's rounds. */
+function StepGroup({
+  icon,
+  label,
+  children,
+}: {
+  icon: ReactNode;
+  label: string;
+  children: ReactNode;
+}) {
+  const id = useId();
+  return (
+    <li className="grid min-w-0 gap-1">
+      <span id={id} className="flex items-center gap-1.5 text-caption text-muted-foreground">
+        {icon}
+        {label}
+      </span>
+      <ul aria-labelledby={id} className={cn('grid min-w-0 gap-1.5', rail)}>
+        {children}
+      </ul>
+    </li>
+  );
+}
+
+/** The composed team in the order it works, ending in the result and who submits it. */
+function CompositionFlow({
+  proposal,
+  plan,
+  resolved,
+  t,
+}: {
+  proposal: Proposal;
+  plan: TeamComposition;
+  resolved: ResolvedCatalog;
+  t: AssistantText;
+}) {
+  // A team that ends in work side by side receives each seat's result.
+  const results = useMemo(
+    () =>
+      summarize(proposal.result).outputs.flatMap((output) =>
+        output.results.map((result) => ({
+          key: `${output.outputId}/${result.index}`,
+          text: t('resultBy', { name: result.name, producer: result.producerName }),
+        })),
+      ),
+    [proposal.result, t],
+  );
+  const seat = (seatId: string, judge?: boolean) => (
+    <SeatRow key={seatId} seatId={seatId} plan={plan} resolved={resolved} judge={judge} t={t} />
+  );
+  const step = (item: CompositionStep, index: number) => {
+    if ('seat' in item) return seat(item.seat);
+    if ('parallel' in item)
+      return (
+        <StepGroup
+          key={index}
+          icon={<Split aria-hidden size={14} />}
+          label={t('TeamEditor.composition.parallel')}
+        >
+          {item.parallel.map((seatId) => seat(seatId))}
+        </StepGroup>
+      );
+    const { work, judge, rounds } = item.loop;
+    return (
+      <StepGroup
+        key={index}
+        icon={<Repeat2 aria-hidden size={14} />}
+        label={t('rounds', { count: rounds ?? 2 })}
+      >
+        {work.map((seatId) => seat(seatId))}
+        {seat(judge, true)}
+      </StepGroup>
+    );
+  };
+  return (
+    <ol className="grid min-w-0 gap-1.5">
+      {plan.flow.map(step)}
+      {results.map((result) => (
+        <li key={result.key} className="flex min-w-0 items-center gap-2 text-muted-foreground">
+          <Flag aria-hidden className="size-4 shrink-0" />
+          <span className="min-w-0">{result.text}</span>
+        </li>
+      ))}
+    </ol>
+  );
 }
 
 function PlanPreview({
   proposal,
   plan,
+  resolved,
   actions,
   t,
   disabled,
   target,
-  templates,
 }: {
   proposal: Proposal;
-  plan: TeamPlan;
+  plan: TeamComposition;
+  resolved: ResolvedCatalog;
   actions: AssistantActions;
   t: AssistantText;
   disabled: boolean;
   target: TeamAssistantTarget | undefined;
-  templates: boolean;
 }) {
   const root = useTranslations();
   const td = useTranslations('TeamDraft');
   const id = useId();
-  const { definition } = proposal.result;
-  const shared = definition.sharedOutrider;
-  const flow = useMemo(() => flowOf(proposal, t), [proposal, t]);
-  const results = useMemo(
-    () =>
-      summarize(proposal.result)
-        .outputs.flatMap((output) =>
-          output.results.map((result) =>
-            t('resultBy', { name: result.name, producer: result.producerName }),
-          ),
-        )
-        .join(' · '),
-    [proposal.result, t],
-  );
-  const patternOptions = useMemo(
-    () =>
-      TEAM_PATTERNS.flatMap((pattern) => {
-        if (isTemplatePattern(pattern) && !templates && pattern !== plan.pattern) return [];
-        const card =
-          pattern === 'single'
-            ? 'starter'
-            : isTemplatePattern(pattern)
-              ? PATTERN_TEMPLATES[pattern]
-              : null;
-        return [
-          {
-            value: pattern,
-            label: card ? root(`Workspace.template.${card}.name`) : td(`patterns.${pattern}`),
-            hint: card ? root(`Workspace.template.${card}.body`) : t(`difference.${pattern}`),
-          },
-        ];
-      }),
-    [plan.pattern, root, t, td, templates],
-  );
+  const shared = proposal.result.definition.sharedOutrider;
   return (
-    <div className="grid min-w-0 gap-1">
-      <ul aria-label={td('rolesLabel')} className="grid min-w-0 gap-y-1">
-        {definition.roles.map((role) => {
-          const duty =
-            plan.roles.find((r) => r.slot === role.id)?.duty ?? role.prompt.split('\n', 1)[0];
-          return (
-            <li key={role.id} className="flex min-w-0 items-baseline gap-2">
-              <Bot aria-hidden className="size-4 shrink-0 self-center text-muted-foreground" />
-              <span
-                className="max-w-[40%] shrink-0 truncate"
-                title={role.name}
-                style={{ fontVariationSettings: fontWeights.semibold }}
-              >
-                {role.name}
-              </span>
-              <span className="min-w-0 truncate" title={duty}>
-                {duty}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
-      <p>{t('flowResult', { flow, results })}</p>
+    <div className="grid min-w-0 gap-2">
+      <CompositionFlow proposal={proposal} plan={plan} resolved={resolved} t={t} />
       <p className="text-muted-foreground">{proposal.reason}</p>
       {shared && (
         <p className="text-caption text-muted-foreground">
           {td(shared.artifactReview ? 'artifactAdvice' : 'sharedAdvice')}
         </p>
       )}
-      {definition.nodes.some((n) => n.type === 'output' && n.requireApproval) && (
-        <p>{t('approval')}</p>
-      )}
-      {/* The options take the card's width, not the kit's 18rem column. */}
+      {/* The settings take the card's width, not the kit's 18rem column. */}
       <Accordion size="compact" className="w-full">
         <AccordionItem value="options" highlight="trigger" disabled={disabled}>
           <AccordionTrigger>{t('options')}</AccordionTrigger>
           <AccordionContent>
             <div className="grid gap-2">
-              <p>
-                {t('criteria')}: {plan.criteria.join(' · ')}
-              </p>
-              <div className="min-w-0">
-                <h4 id={`${id}-pattern`} className="text-caption">
-                  {td('patternLabel')}
-                </h4>
-                <RadioGroup
-                  className="w-full"
-                  aria-labelledby={`${id}-pattern`}
-                  value={plan.pattern}
-                  aria-disabled={disabled}
-                  inert={disabled}
-                  onValueChange={(value) => {
-                    const option = patternOptions.find((p) => p.value === value);
-                    if (!disabled && option) actions.pattern(option.value);
-                  }}
-                >
-                  {patternOptions.map((option, i) => (
-                    <RadioItem
-                      key={option.value}
-                      index={i}
-                      value={option.value}
-                      className="h-auto min-h-8 py-1 text-start"
-                      label={`${option.label} — ${option.hint}`}
-                      aria-label={option.label}
-                      aria-description={option.hint}
-                    />
-                  ))}
-                </RadioGroup>
-              </div>
-              <div className="grid gap-1 text-caption text-muted-foreground">
-                <p>{td(isReadOnlyTeam(definition) ? 'readOnlyWork' : 'changesWork')}</p>
-                <p>
-                  {td(
-                    definition.nodes.some((n) => n.type === 'loop')
-                      ? 'hasReviewRound'
-                      : 'noReviewRound',
-                  )}
-                </p>
-              </div>
+              <ul className="grid list-disc gap-0.5 ps-5">
+                {plan.criteria.map((criterion) => (
+                  <li key={criterion}>{criterion}</li>
+                ))}
+              </ul>
               <div className="grid gap-1">
                 <Switch
                   label={root('TeamEditor.sharedOutrider.observe')}
@@ -240,27 +284,6 @@ function PlanPreview({
           </AccordionContent>
         </AccordionItem>
       </Accordion>
-      {plan.outrider === 'clarify_review' && (
-        <div className="grid gap-1">
-          <p>{td('reviewQuestion')}</p>
-          <div className="flex flex-wrap gap-2">
-            <Button
-              variant="tertiary"
-              disabled={disabled}
-              onClick={() => actions.reviewPolicy('opinion_only')}
-            >
-              {td('reviewFeedback')}
-            </Button>
-            <Button
-              variant="tertiary"
-              disabled={disabled}
-              onClick={() => actions.reviewPolicy('required')}
-            >
-              {td('reviewRequired')}
-            </Button>
-          </div>
-        </div>
-      )}
       {plan.outrider === 'required_review' &&
         proposal.targets.map((candidate) => {
           const hint = `${id}-${candidate.outputId}-${candidate.index}`;
@@ -282,6 +305,33 @@ function PlanPreview({
           );
         })}
     </div>
+  );
+}
+
+/** A proposal a later one replaced: it reads as it was shown and cannot be applied. */
+function EarlierProposal({
+  proposal,
+  plan,
+  resolved,
+  t,
+}: {
+  proposal: Proposal;
+  plan: TeamComposition;
+  resolved: ResolvedCatalog;
+  t: AssistantText;
+}) {
+  return (
+    <Accordion size="compact" className="w-full rounded-lg border border-border px-3">
+      <AccordionItem value="earlier" highlight="trigger">
+        <AccordionTrigger>{plan.name}</AccordionTrigger>
+        <AccordionContent>
+          <div className="grid min-w-0 gap-2 pb-2">
+            <CompositionFlow proposal={proposal} plan={plan} resolved={resolved} t={t} />
+            <p className="text-muted-foreground">{proposal.reason}</p>
+          </div>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
   );
 }
 
@@ -598,19 +648,31 @@ export function TeamAssistant({
         )}
       >
         <div className="grid min-w-0 gap-2">
-          {turns.map((turn) => (
-            <p
-              key={turn.id}
-              className={
-                turn.role === 'user'
-                  ? 'max-w-[90%] justify-self-end whitespace-pre-wrap rounded-md bg-muted px-3 py-1.5 text-foreground'
-                  : 'whitespace-pre-wrap'
-              }
-            >
-              <span className="sr-only">{t(turn.role === 'user' ? 'yourRequest' : 'reply')}: </span>
-              {turn.text}
-            </p>
-          ))}
+          {turns.map((turn) =>
+            turn.proposal?.plan && turn.proposal.resolved ? (
+              <EarlierProposal
+                key={turn.id}
+                proposal={turn.proposal}
+                plan={turn.proposal.plan}
+                resolved={turn.proposal.resolved}
+                t={t}
+              />
+            ) : (
+              <p
+                key={turn.id}
+                className={
+                  turn.role === 'user'
+                    ? 'max-w-[90%] justify-self-end whitespace-pre-wrap rounded-md bg-muted px-3 py-1.5 text-foreground'
+                    : 'whitespace-pre-wrap'
+                }
+              >
+                <span className="sr-only">
+                  {t(turn.role === 'user' ? 'yourRequest' : 'reply')}:{' '}
+                </span>
+                {turn.text}
+              </p>
+            ),
+          )}
           {proposal && (
             <section
               data-assistant-preview
@@ -629,15 +691,15 @@ export function TeamAssistant({
                   {proposal.origin !== 'choice' && <KitBadge size="compact">{origin}</KitBadge>}
                 </div>
                 {!proposal.plan && <p className="text-muted-foreground">{proposal.reason}</p>}
-                {proposal.plan && (
+                {proposal.plan && proposal.resolved && (
                   <PlanPreview
                     proposal={proposal}
                     plan={proposal.plan}
+                    resolved={proposal.resolved}
                     actions={actions}
                     t={t}
                     disabled={stale || busy}
                     target={state.decisions.reviewTarget}
-                    templates={Boolean(host.wording.templates)}
                   />
                 )}
                 {proposal.briefChange && (
