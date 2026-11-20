@@ -12,6 +12,8 @@ import {
   draftFromDefinition,
   type EditorDraft,
   emptyDraft,
+  exportDefinition,
+  importDefinition,
   updateNode,
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
@@ -97,6 +99,23 @@ describe('adding a copy to a team', () => {
     expect(again.nodeId).not.toBe(nodeId);
     expect(roleOf(again.draft, again.nodeId).id).not.toBe(roleOf(draft, nodeId).id);
     expect(again.draft.definition.roles).toHaveLength(3);
+  });
+
+  it('copies a saved agent’s description, kept over JSON export and import; a built-in copy has none', () => {
+    const source = writer();
+    const description = 'Writes announcements. Use it for public notes.';
+    const added = addAtEnd(flow(), { ...source, role: { ...source.role, description } });
+    expect(roleOf(added.draft, added.nodeId).description).toBe(description);
+    const reopened = importDefinition(exportDefinition(added.draft));
+    if (!reopened.ok) throw new Error(reopened.errors.join(', '));
+    expect(reopened.draft.definition).toEqual(added.draft.definition);
+    const { id: _id, ...preset } = roleFromPreset('writer', 'writer', 'Writing');
+    const builtin = addAtEnd(flow(), {
+      role: preset,
+      origin: { kind: 'preset', presetId: 'writer' },
+      stepInstruction: 'Write the notice.',
+    });
+    expect(roleOf(builtin.draft, builtin.nodeId)).not.toHaveProperty('description');
   });
 
   it('never collides with an existing imported role id derived from the new node id', () => {

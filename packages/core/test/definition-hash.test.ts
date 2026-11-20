@@ -34,6 +34,23 @@ describe('definitionHash', () => {
     );
   });
 
+  it('hashes a definition without a description as before, and one with it keeps it', () => {
+    const definition = parse(researchTeam);
+    const before = definitionHash(definition);
+    const edited = clone(definition) as unknown as { roles: Record<string, unknown>[] };
+    const role = edited.roles[0];
+    if (!role) throw new Error('fixture has no role');
+    role.description = 'Finds the sources. Use it before writing.';
+    const described = parse(edited);
+    expect(described.roles[0]?.description).toBe('Finds the sources. Use it before writing.');
+    expect(definitionHash(described)).not.toBe(before);
+    // A JSON round trip keeps it and the hash.
+    const reopened = parse(JSON.parse(JSON.stringify(described)));
+    expect(reopened).toEqual(described);
+    expect(definitionHash(reopened)).toBe(definitionHash(described));
+    expect(definitionHash(parse(JSON.parse(JSON.stringify(definition))))).toBe(before);
+  });
+
   it('ignores key order, but changes with the prompt', () => {
     const definition = parse(researchTeam);
     const reordered = parse(reverseKeys(definition));
