@@ -108,12 +108,29 @@ describe('subagents domain owner adapter', () => {
       const role = imported?.roles.at(-1);
       assert(imported && role);
       const [instructions] = role.prompt.split('\n\nCorral import tool mapping:');
-      expect(instructions).toBe(
-        `Imported callable agent: Reviewer\n\n${duty ? `${duty}\n\n` : ''}Work`,
-      );
+      expect(instructions).toBe(`${duty ? `${duty}\n\n` : ''}Work`);
       expect(imported.nodes.at(-1)).not.toHaveProperty('stepInstruction');
+      // A source role without a description gives the copy none.
+      expect(role).not.toHaveProperty('description');
     },
   );
+  it('keeps the source role’s description on the imported copy, out of its instructions', async () => {
+    const { adapter, source, bindings, before, repository } = await setup();
+    const description = 'Reviews the release notes. Use it before publishing.';
+    const snapshot = {
+      ...source,
+      definition: {
+        ...source.definition,
+        roles: source.definition.roles.map((role) => ({ ...role, description })),
+      },
+    };
+    const preview = await adapter.preview(snapshot, bindings);
+    await adapter.apply(preview.value, before.revision, 'import');
+    const role = (await repository.get('target'))?.definition.roles.at(-1);
+    assert(role);
+    expect(role.description).toBe(description);
+    expect(role.prompt).not.toContain(description);
+  });
   it('requires explicit local team, parent and model bindings before import', async () => {
     const { adapter, source, bindings } = await setup();
     await expect(adapter.preview(source, {})).rejects.toThrow(/Bind/);

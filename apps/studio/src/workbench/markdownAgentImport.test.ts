@@ -288,7 +288,13 @@ describe('Markdown agent import', () => {
     expect(imported.definition.roles[0]?.allowedCollaborationTools).toContain('spawn_subagents');
     expect(imported.definition.limits).toEqual(DEFAULT_LIMITS);
     expect(imported.definition.controlEdges).toEqual(definition.controlEdges);
-    expect(imported.definition.roles.at(-1)?.prompt).toContain('Inspect source');
+    // The frontmatter description is the role's description; the body alone is its instructions.
+    const role = imported.definition.roles.at(-1);
+    expect(role?.description).toBe('Inspect source');
+    expect(
+      role?.prompt.startsWith('Report paths and evidence.\n\nCorral import tool mapping:'),
+    ).toBe(true);
+    expect(role?.prompt).not.toContain('Inspect source');
     const compiled = compileDefinition(imported.definition, { knownModelProfiles: ['connected'] });
     expect(compiled.ok).toBe(true);
     if (compiled.ok) expect(compiled.plan.callables.parent?.delegate).toEqual(['import_a1']);
