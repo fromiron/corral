@@ -271,6 +271,14 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     expect(found, line).toBeGreaterThan(at);
     at = found;
   }
+  // The earlier guidance the new text does not replace stays.
+  for (const kept of [
+    'A request for advice only, even without a named deliverable, is a complete goal.',
+    'A request for one writer to write a notice needs no question.',
+    'Use parallel for independent attempts or independent views of the same input.',
+    'If that answer is still unclear, propose a plan if possible.',
+  ])
+    expect(prompt).toContain(kept);
   // From this request: who can judge a loop, and which questions are still open.
   expect(prompt).toContain('Agents that can judge a loop: "a2", "a4".');
   expect(prompt).toContain('Questions you may still ask: "material", "review_policy".');
