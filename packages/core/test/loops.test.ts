@@ -1318,6 +1318,7 @@ describe('an Output inside a Loop', () => {
     expect(versionsOf(final, 'x_write')).toHaveLength(1);
     expect(rounds(final, 'loop_o').map(([no]) => no)).toEqual([1, 2]);
     expect(final.status).toBe('failed');
+    expect(final.statusReason).toContain('output has no submitted version');
     expect(final.output).toBeNull();
     expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
   });
@@ -1451,10 +1452,15 @@ describe('an Output inside a Loop', () => {
     expect(versionsOf(final, 'p')).toHaveLength(2);
     expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass']);
     expect(final.status).toBe('failed');
+    expect(final.statusReason).toContain('required_output_review');
     expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
   });
 
-  it('after the person approves round 1’s candidate, a gate that revised round 2’s new one refuses it', async () => {
+  /**
+   * Round 1 passes the gate and reaches the Output, which asks the person. While it waits, round 2
+   * writes a new candidate and, with `decides`, the gate revises it. Then the person approves.
+   */
+  const approvedThenRound2 = async (decides: boolean) => {
     const definition = gated(true);
     let asked = () => {};
     const approvalAsked = new Promise<void>((resolve) => {
@@ -1474,8 +1480,7 @@ describe('an Output inside a Loop', () => {
         const finalizing = c.finalize('output');
         await approvalAsked;
         await c.loopLeft('loop_o', 1, 'revise');
-        // Round 2 writes a new candidate and the gate asks for its revision.
-        await outerRound(c, 2, true);
+        await outerRound(c, 2, decides);
         ready();
         await finalizing;
       },
@@ -1504,9 +1509,22 @@ describe('an Output inside a Loop', () => {
     });
     const final = await waitForProjection(transport, runId, finished);
     expect(versionsOf(final, 'p')).toHaveLength(2);
+    return { final, events, first };
+  };
+
+  it('after the person approves round 1’s candidate, a gate that revised round 2’s new one refuses it', async () => {
+    const { final, events } = await approvedThenRound2(true);
     expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass', 'revise']);
     expect(final.status).toBe('failed');
+    expect(final.statusReason).toContain('required_output_review');
     expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
+  });
+
+  it('after the person approves round 1’s candidate, the check reads round 1 again and finalises it', async () => {
+    const { final, first } = await approvedThenRound2(false);
+    expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass']);
+    expect(final.status).toBe('succeeded');
+    expect(final.output?.artifactVersionIds).toEqual([first]);
   });
 });
 
