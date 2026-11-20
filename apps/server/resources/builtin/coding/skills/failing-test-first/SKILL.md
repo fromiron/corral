@@ -10,7 +10,7 @@ A test you have never seen fail has not shown that it can.
 
 ## When to use it
 
-Use it when the behavior can be exercised through a public interface in a quick local test. Skip it when the only possible test needs outside systems, takes minutes, or would assert something you cannot state exactly. When you skip, say why, and say what check you used instead.
+Use it when the behavior can be exercised through a public interface in a quick local test. Skip it when the only possible test needs outside systems, takes minutes, or would assert something you cannot state exactly. When you skip, say why, and say what check you used instead. If you cannot run tests, write the test only if it is cheap, and report it as not run.
 
 ## Steps
 
@@ -18,15 +18,14 @@ Use it when the behavior can be exercised through a public interface in a quick 
 2. **Run it and watch it fail.** Read the failure message. It must fail because the behavior is missing or wrong. A failure from a typo, a missing import or broken set-up is the wrong failure; repair the test and run it again.
 3. **Make it pass** with the smallest change. See the smallest-change skill.
 4. **Run the neighbors.** The existing tests for the same area must still pass.
-5. **Try two experiments in your head.** Sabotage the behavior: the test must go red. Rewrite the inside and keep the behavior: the test must stay green. If either answer is wrong, rewrite the test.
-6. **Record the test before the fix.** Where you control the history, the test goes in first, so a reader can see it fail and then pass.
+5. **Question the test.** Would it fail if the behavior broke? Would it still pass if the inside were rewritten and the behavior kept? If either answer is no, rewrite it.
+6. **If you are asked to commit, the test goes in first,** so a reader of the history can see it fail and then pass.
 
 ## Do not
 
-- Assert on a value the test itself constructed.
-- Work out the expected result with the code being tested.
-- Replace the thing under test with a fake.
-- Assert on calls between internal functions.
+- Take the expected result from the code being tested, or from data the test set up itself.
+- Assert on anything a caller could not observe.
+- Test a stand-in in place of the real thing.
 - Loosen or delete a failing test in order to finish.
 
 ## Hand back

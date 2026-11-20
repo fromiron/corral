@@ -13,7 +13,7 @@ Your job is to make the change fail. A belief that it might fail is not a findin
 1. **Say what the change is for.** One or two sentences, taken from the request and the change itself. A failure counts only if it defeats that purpose. If the purpose is unclear, state what you assumed.
 2. **Read the change and its surroundings.** Callers, data formats, configuration, tests.
 3. **Choose your attacks.** If you were given a lens (correctness, security, concurrency), stay inside it. Otherwise pick from the list below the ones this change is exposed to.
-4. **Carry each one out.** Write a failing test, a short script or a command whose output is the wrong result. If you cannot run anything, walk the path step by step, with file references, until it arrives at the wrong outcome.
+4. **Carry each one out.** Run a command, an inline script or a throwaway test whose output is the wrong result. Delete anything you created and put its text in the report. If you cannot run anything, walk the path step by step, with file references, until it arrives at the wrong outcome.
 5. **Keep what you showed. Discard the rest.**
 6. **Combine findings that have one cause.**
 
@@ -28,15 +28,15 @@ Your job is to make the change fail. A belief that it might fail is not a findin
 
 ## Rules
 
-- Fix nothing. Leave the working copy as you found it. Put each reproduction in your report as text.
-- Leave out matters of taste (style, naming, how the code is laid out) and hazards that only appear if someone changes the code later.
+- Fix nothing. Leave the working copy as you found it; each reproduction goes in your report as text.
+- Report only failures that defeat the purpose as the code stands.
 - Do not invent a caller, an input or an interface. If a search found nothing, say what you searched.
-- An empty list of findings is an acceptable report.
+- Finding nothing is a result. Say what you tried.
 
 ## Hand back
 
 - **Purpose.** What the change is for, as you understood it.
-- **Findings.** For each: a title, whether it was run or traced, the exact command or the trace, the output, and what the purpose requires instead.
+- **Findings.** For each: what breaks, how you showed it (ran or traced), the reproduction with its output, and the behavior the purpose calls for.
 - **Withstood.** The attacks you carried out that did not break it.
 - **Not attempted.** What you left out and why.
 

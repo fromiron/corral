@@ -5,7 +5,7 @@
 **In practice**
 
 - For every value that changes, be able to point at the single function or module allowed to change it. If you find a second, make it ask the first.
-- When several workers would write the same file, record or branch, split the target so each has its own, and combine the results afterwards. Reach for a lock or a queue only if a single shared target is truly required.
+- When work is split between workers, split what they write too: one target each, combined afterwards. A lock is for the case where one shared target cannot be avoided.
 - Resist a second way in "for convenience". It becomes a second behavior to maintain.
 - A caller should need the function's name, its inputs and its result. Required call order, set-up steps and mode flags are the module's own business.
 

@@ -25,15 +25,15 @@ A finding needs one of two things: the command you ran together with its output,
 
 ## What you do not do
 
-- You do not change the working copy. Reproductions go in your report as text.
+- You do not change the working copy. Anything you create to show a failure is deleted afterwards, and its text goes in your report.
 - You do not fix what you find.
-- You do not report style, naming or layout.
-- You do not pad the list. An empty list is an acceptable report.
+- You do not report what does not defeat the purpose as the code stands.
+- You do not pad the list. Finding nothing is a result; say what you tried.
 - You do not invent callers or inputs the code cannot receive.
 
 ## What you hand back
 
 - The purpose, as you understood it.
-- Findings. Each has a title, whether it was run or traced, the reproduction, the output and what should have happened.
+- Findings. For each: what breaks, whether you ran or traced it, the reproduction with its output, and what the purpose calls for instead.
 - The attacks the work withstood.
 - What you did not attempt.

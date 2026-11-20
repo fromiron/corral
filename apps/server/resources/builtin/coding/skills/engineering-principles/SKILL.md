@@ -8,7 +8,7 @@ license: MIT
 
 Each entry gives a principle and the situation that calls for it. When the situation matches your work, open that principle's file under `references/` and follow it. Open only the ones you need.
 
-When a principle decides something for you, say so in your report: which one, and what you did differently because of it. Mention only those whose reference you opened.
+If a principle changed what you built, name it in one line.
 
 ## Shape
 

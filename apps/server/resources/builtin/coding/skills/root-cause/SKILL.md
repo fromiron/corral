@@ -10,23 +10,18 @@ A fix with no reproduced cause behind it is a guess. A guess that happens to wor
 
 ## Steps
 
-1. **Reproduce it.** Use the surface where it was reported: the same command, screen, input and build. If it will not reproduce, narrow the conditions, construct the trigger, or add logging until it does. If you cannot run anything, follow the path by reading and label every conclusion as traced.
+1. **Reproduce it** where it was reported: the same command, screen, input and build. If it will not reproduce, change one condition at a time (input, build, timing, data) until it does, and note which one mattered. If it still will not reproduce, say so and label the cause unconfirmed. If you cannot run anything, follow the path by reading and label every conclusion traced.
 2. **Write down expected and observed.** Quote the exact output. A vague symptom leads to a vague cause.
 3. **List the possible causes.** Beside each, name an observation that would rule it out.
-4. **Halve the problem.** Make the observation that removes the most possibilities. Repeat. When you do not know what the program's state is, log it and read the log. Do not reason about what it "must" be.
-5. **Stop when one mechanism is left** and you can switch the failure on and off at will.
-6. **Walk back to the first wrong step.** Ask what caused each step, and stop only at a place where the code decided wrongly. Then ask whether the input or state that set it off is one the system is meant to accept. If it is, the code that broke must cope. If it is not, find what let it through.
-7. **Look for relatives.** The same mistake tends to sit wherever the same pattern was copied.
+4. **Narrow.** Pick the check that splits the remaining causes most evenly, run it, and cross off what it excludes. Take the program's state from its output; do not reason about what it "must" be. Repeat until one mechanism is left and you can switch the failure on and off at will.
+5. **Find where it first went wrong.** From the failure, ask what caused each step, and stop at code that decided wrongly. Then ask whether the input or state that set it off is one the system is meant to accept. If it is, that code must cope. If it is not, the fault is whatever let it through.
+6. **Search for the same mistake elsewhere.** It tends to sit wherever the pattern was copied.
 
 ## If you are also fixing it
 
-- Ship only what the evidence calls for. A safeguard added just in case is untested speculation; leave it out.
-- If a theory turns out wrong, undo the edits you made while following it.
-- Confirm with the original reproduction, on the same surface. A green unit test covers the branch it exercises. Only the original reproduction shows the reported failure is gone.
-
-## You are covering the bug up if you
-
-Add a null check at the crash site, a retry, an empty catch, a clamp or a fallback default for a condition that should never arise. Each is a real fix only when the condition is a normal one.
+- Each line of the fix answers something you observed. Edits made for a theory that failed come out.
+- A check, retry or default added at the point of failure repairs nothing unless the condition it absorbs is a normal one. For any other condition it hides the fault.
+- Confirm where the failure was reported, with the same steps. Nothing else shows the reported failure is gone.
 
 ## Hand back
 
@@ -35,4 +30,4 @@ Add a null check at the crash site, a retry, an empty catch, a clamp or a fallba
 - What you ruled out and how.
 - If fixed: the output of the same reproduction before and after.
 - What you could not reproduce or check.
-- If the cause was slow to find, what would have exposed it quickly: a log line or an assertion that is always on.
+- If the cause took long to find, what would have made it visible earlier.

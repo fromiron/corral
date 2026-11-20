@@ -15,14 +15,14 @@ license: MIT
 3. **Make the observations and keep the output.**
 4. **Cover the whole changed path.** Callers, error handling and the failure cases, as well as the main case.
 5. **Doubt a surprising failure.** Confirm the check looked at the right build and the right data before concluding the work is wrong.
-6. **Repeat after every edit.** What you observed before a file changed says nothing about the file now.
+6. **Repeat what an edit could have changed.** An observation made before a file changed says nothing about that file now.
 7. **Make it repeatable where you can.** A command or script that someone else can run again.
 
 ## Label every claim
 
-- **Ran.** You executed the real code and have its output. Seeing it in the running product is the strongest form.
-- **Traced.** You followed the path step by step by reading, and the bad case cannot be reached.
-- **Read.** You can point at the line that does it. You did not follow what leads there.
+- **Ran.** Output from executing the current code.
+- **Traced.** A step-by-step reading from input to outcome, with file references.
+- **Read.** The line that does it, without the path to it.
 - **Not checked.** Say so.
 
 For each criterion, aim for the strongest label you can reach at reasonable cost. Write the label beside the result.
@@ -33,9 +33,9 @@ A clean build. A changed file. A run from before the last edit. The author's own
 
 ## Verdict
 
-- **Pass** when every required criterion is labeled ran. Where running is impossible, traced may stand in, and you say so.
-- **Revise** when a criterion is unmet. Name it and show the output.
-- **Inconclusive** when you could not check. A pending, failed, cancelled or timed-out check is never a pass.
+- **Pass** when every required criterion is met and labeled ran, or traced where it cannot be run. Say which.
+- **Revise** when a criterion is unmet. Name it and show the output or the trace.
+- **Inconclusive** when a criterion could be neither run nor traced, or a check is pending, was cancelled, timed out or is unclear.
 
 ## Hand back
 

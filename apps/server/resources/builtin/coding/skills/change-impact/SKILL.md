@@ -1,38 +1,32 @@
 ---
 name: change-impact
-description: "Finds the damage a change can do beyond its own diff and proves the single fact its safety depends on. Use when about to ship a small-looking change, when reviewing a diff you do not yet trust, or when asked what else a change affects."
+description: "Finds the damage a change can do beyond its own diff and tests the one assumption its safety depends on. Use when asked what else a change affects, or before shipping a change to shared code, stored data or an interface."
 license: MIT
 ---
 
 # Change impact
 
-A list of callers is cheap; any search produces one. The useful work is finding the damage a search does not reveal, and establishing the fact that keeps the change safe.
-
-An assessment reads equally well whether it is right or wrong. So do not deliver an assessment alone. Deliver the fact and the evidence for it.
+Review already covers what a diff and its callers show. This skill covers the rest: the one assumption the change leans on, and the places a search does not look.
 
 ## Steps
 
-1. **Understand the change.** What it adds, alters and removes. Then what behaves differently without the diff saying so: a default, an ordering, an error that used to be swallowed.
-2. **Find the safety fact.** A change that looks risky is usually safe for one reason: "this only deletes entries nothing can reach", "every caller passes a non-empty list". Write that reason as a single sentence that could turn out false. If it is true, most of the worry goes with it. Spend your effort here before listing possibilities.
-3. **Go past the search results.**
+1. **State the assumption.** A change that looks risky is usually safe for one reason: "this only deletes entries nothing can reach", "every caller passes a non-empty list". Write that reason as one sentence that can be false. If you cannot write it, you do not yet know why the change is safe; read until you can.
+2. **Test it first.** A short script or test on the real code path that fails when the assumption is false. Run it. If you cannot run it, trace the path and label the result traced. If your role may not change files, keep the script out of the working copy and put its text in your report.
+3. **Look where a search does not.**
+   - Behavior the diff changes without saying so: a default, an ordering, an error that used to be swallowed.
    - Data that outlives the code: stored records, files on disk, messages in a queue, a format another program reads.
    - Settings, switches and environment values.
    - Timing: start-up, shutdown, retries, the order in which asynchronous work finishes.
    - The library underneath: open the code of the exact version in use, and any local patch to it.
    - Code several calls away that depends on a side effect.
-4. **Assess each risk plainly.** How it would break, where (file and line), how likely, how costly, how to check. Keep the ones you confirmed. List separately the ones you examined and ruled out.
-5. **Establish the safety fact.** Write a short test or script that exercises the actual code path and stops with an error when the fact does not hold. Run it. If you cannot run it, trace it and label it traced.
+4. **Sort what you found** into confirmed, ruled out and not established. For a confirmed risk, say where it breaks (file and line) and how to check it.
 
 ## Rules
 
 - Report only callers and interfaces you found in the code.
 - A search with no results is a result. Say what you searched and where.
-- If the safety fact is not established, write "not established". Do not soften it.
+- An assumption you could not test is "not established". Do not soften it.
 
 ## Hand back
 
-- **The change in plain terms.** Including what is not obvious from the diff.
-- **The safety fact.** The sentence, whether it was run, traced or only read, and the evidence.
-- **Open risks.** Each with how it breaks, where, likelihood, cost and the check.
-- **Ruled out.** What you examined and why it is fine.
-- **Check to run first.** The cheapest one that would catch a real problem, with any script you wrote.
+The assumption, its status (ran, traced or not established) and the evidence. Confirmed risks, each with where it breaks and how to check. What you ruled out and why. The first check to run: the cheapest one that would catch a real problem, with any script you wrote.
