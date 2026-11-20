@@ -14,6 +14,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_AGENTS,
   BUILTIN_SKILLS,
+  builtinComposableAgents,
   type ComposableAgent,
   type ComposableSkill,
   Coordinator,
@@ -236,9 +237,9 @@ describe('teamCatalog', () => {
     for (const skill of SKILLS) expect(resolved.skillById.get(skill.name)).toBe(skill);
   });
 
-  it('gives a repeated skill name -2, -3, and cuts an id to 40 characters', () => {
+  it('gives a repeated skill name -2, -3, and cuts an id to 64 characters', () => {
     const named = (name: string) => ({ ...librarySkill, name });
-    const long = 'x'.repeat(45);
+    const long = 'x'.repeat(70);
     const { catalog: listed, skillById } = teamCatalog(
       [builtin('writer')],
       [named('plain'), named('plain'), named('plain-2'), named('plain'), named(long), named(long)],
@@ -248,8 +249,8 @@ describe('teamCatalog', () => {
       'plain-2',
       'plain-2-2',
       'plain-3',
-      'x'.repeat(40),
-      `${'x'.repeat(38)}-2`,
+      'x'.repeat(64),
+      `${'x'.repeat(62)}-2`,
     ]);
     expect(listed.skills.map((s) => s.name)).toEqual([
       'plain',
@@ -318,16 +319,30 @@ describe('teamCatalog', () => {
     for (const agent of BUILTIN_AGENTS) expect(text).not.toContain(agent.prompt.slice(0, 60));
   });
 
-  it('cuts a skill description to 300 characters and sends an empty one empty', () => {
+  it('sends a skill description’s first sentence, at most 160 characters, and an empty one empty', () => {
     const { catalog: cut } = teamCatalog(
       [builtin('writer')],
       [
-        { ...librarySkill, description: 'x'.repeat(301) },
+        { ...librarySkill, description: 'Writes plainly. Use when a reader is new. More.' },
+        { ...librarySkill, name: 'long', description: `${'x'.repeat(170)}. Second.` },
+        { ...librarySkill, name: 'one', description: 'No full stop at all' },
         { ...librarySkill, name: 'plain', description: '' },
       ],
     );
-    expect(cut.skills.map((s) => s.description)).toEqual(['x'.repeat(300), '']);
+    expect(cut.skills.map((s) => s.description)).toEqual([
+      'Writes plainly.',
+      'x'.repeat(160),
+      'No full stop at all',
+      '',
+    ]);
     expect(TeamCatalog.parse(cut)).toEqual(cut);
+    // The bundled skills go by name, one sentence each.
+    const bundled = teamCatalog([builtin('writer')], builtinSkills).catalog.skills;
+    for (const [i, skill] of bundled.entries()) {
+      expect(skill.id).toBe(builtinSkills[i]?.name);
+      expect(skill.description.length).toBeLessThanOrEqual(160);
+      expect(builtinSkills[i]?.description.startsWith(skill.description)).toBe(true);
+    }
   });
 
   it('carries at most 64 agents and 256 skills', () => {
@@ -343,6 +358,25 @@ describe('teamCatalog', () => {
     expect(big.agentById.size).toBe(64);
     expect(big.skillById.size).toBe(256);
     expect(TeamCatalog.parse(big.catalog)).toEqual(big.catalog);
+  });
+
+  it('offers the ten bundled agents as the editor adds them: described, built in, named by the screen', () => {
+    const agents = builtinComposableAgents((id) => `${id} seat`);
+    expect(agents.map((a) => a.role.name)).toEqual(ROLE_PRESET_IDS.map((id) => `${id} seat`));
+    for (const [i, agent] of agents.entries()) {
+      const id = ROLE_PRESET_IDS[i] as RolePresetId;
+      const { id: _id, ...role } = roleFromPreset(id, id, `${id} seat`);
+      expect(agent).toEqual({
+        role,
+        origin: { kind: 'preset', presetId: id },
+        description: BUILTIN_AGENTS.find((b) => b.id === id)?.description,
+        builtin: true,
+      });
+      expect(agent.description).toBeTruthy();
+    }
+    const listed = teamCatalog(agents, builtinSkills).catalog.agents;
+    expect(listed.find((a) => a.name === 'judge seat')).toMatchObject({ output: 'draft' });
+    expect(listed.find((a) => a.name === 'reviewer seat')).toMatchObject({ output: 'review' });
   });
 
   it('leaves out an advisor role, which no seat may take', () => {
@@ -439,7 +473,6 @@ describe('draftFromComposition', () => {
       invocation: 'scheduled',
     });
     expect(definition.entryNodeId).toBe(nodeNamed(definition, 'Writer').id);
-    // The last step gets the criteria too.
     expect(inputsOf(definition, 'Writer')).toEqual(['brief', 'criteria']);
     expect(resultsOf(definition)).toEqual(['Writer']);
     expect(outputOf(definition)).toMatchObject({ label: 'Output', requireApproval: false });
@@ -459,8 +492,8 @@ describe('draftFromComposition', () => {
         ),
       ),
     );
-    expect(inputsOf(definition, 'plan')).toEqual(['brief']);
-    expect(inputsOf(definition, 'research')).toEqual(['brief', 'plan']);
+    expect(inputsOf(definition, 'plan')).toEqual(['brief', 'criteria']);
+    expect(inputsOf(definition, 'research')).toEqual(['brief', 'plan', 'criteria']);
     expect(inputsOf(definition, 'write')).toEqual(['brief', 'plan', 'research', 'criteria']);
     expect(edgesOf(definition)).toEqual([
       'plan.out -> research.in',
@@ -614,7 +647,13 @@ describe('draftFromComposition', () => {
         'Review loop.exhausted -> explain.in',
         'explain.out -> Output.in',
       ]);
-      expect(inputsOf(definition, 'build')).toEqual(['brief', 'plan', 'prev:build', 'prev:verify']);
+      expect(inputsOf(definition, 'build')).toEqual([
+        'brief',
+        'plan',
+        'prev:build',
+        'prev:verify',
+        'criteria',
+      ]);
       expect(inputsOf(definition, 'verify')).toEqual(['brief', 'plan', 'build', 'criteria']);
       // After the loop: every seat of the loop, work and judge.
       expect(inputsOf(definition, 'explain')).toEqual([
@@ -810,7 +849,7 @@ describe('draftFromComposition', () => {
       expect(join).toMatchObject({ label: 'Gather', policy: 'all', parentId: 'team_1' });
       for (const id of ['a', 'b']) {
         expect(nodeNamed(definition, id).parentId).toBe('team_1');
-        expect(inputsOf(definition, id)).toEqual(['brief']);
+        expect(inputsOf(definition, id)).toEqual(['brief', 'criteria']);
       }
       expect(nodeNamed(definition, 'verdict').parentId).toBeUndefined();
       expect(edgesOf(definition)).toEqual([
@@ -898,7 +937,7 @@ describe('draftFromComposition', () => {
       ]);
       // Seats side by side do not read each other.
       for (const id of ['a', 'b', 'c'])
-        expect(inputsOf(definition, id)).toEqual(['brief', 'scope']);
+        expect(inputsOf(definition, id)).toEqual(['brief', 'scope', 'criteria']);
       expect(inputsOf(definition, 'verdict')).toEqual([
         'brief',
         'scope',
@@ -1198,7 +1237,7 @@ describe('draftFromComposition', () => {
     });
   });
 
-  it('a seat that returns a review gets the criteria wherever it sits', () => {
+  it('every seat receives the criteria, wherever it sits and whatever it returns', () => {
     const definition = strict(
       draft(
         compose(
@@ -1215,8 +1254,8 @@ describe('draftFromComposition', () => {
     );
     expect(inputsOf(definition, 'critique')).toEqual(['brief', 'write', 'criteria']);
     expect(inputsOf(definition, 'a')).toEqual(['brief', 'write', 'critique', 'criteria']);
-    expect(inputsOf(definition, 'b')).toEqual(['brief', 'write', 'critique']);
-    expect(inputsOf(definition, 'write')).toEqual(['brief']);
+    expect(inputsOf(definition, 'b')).toEqual(['brief', 'write', 'critique', 'criteria']);
+    expect(inputsOf(definition, 'write')).toEqual(['brief', 'criteria']);
   });
 
   it('two seats that change files side by side are usable and leave only the writers’ warning', () => {

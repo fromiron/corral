@@ -15,7 +15,13 @@ import {
   type TeamCatalog,
   type TeamComposition,
 } from '@corral/contracts';
-import { builtinSkillName } from './team-templates.ts';
+import { BUILTIN_AGENTS } from './builtin-crew.ts';
+import {
+  builtinSkillName,
+  ROLE_PRESET_IDS,
+  type RolePresetId,
+  roleFromPreset,
+} from './team-templates.ts';
 
 // A team the model composed from the editor's catalog becomes a definition
 // (docs/specs/features/team-assistant.md, "팀 구성 제안"). The catalog and the assembly share one
@@ -54,11 +60,36 @@ const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sameSkill = (a: RoleSkillRef, b: RoleSkillRef) =>
   a.resourceHash === b.resourceHash && a.entry === b.entry;
 
-/** The longest catalog id (`ShortId`). */
-const ID_LENGTH = 40;
+/**
+ * The ten bundled agents as "add agent" offers them, in the spec's order: each preset's role under
+ * the name the screen gives it, its bundled description, and built in.
+ */
+export function builtinComposableAgents(nameOf: (id: RolePresetId) => string): ComposableAgent[] {
+  return ROLE_PRESET_IDS.map((id) => {
+    const { id: _id, ...role } = roleFromPreset(id, id, nameOf(id));
+    const description = BUILTIN_AGENTS.find((agent) => agent.id === id)?.description;
+    return {
+      role,
+      origin: { kind: 'preset', presetId: id },
+      ...(description ? { description } : {}),
+      builtin: true,
+    };
+  });
+}
+
+/** The longest skill id (`SkillRef`). */
+const ID_LENGTH = 64;
+/** A skill's description goes as its first sentence, cut to this length. */
+const SKILL_SENTENCE = 160;
+let sentences: Intl.Segmenter | undefined;
+function firstSentence(text: string): string {
+  sentences ??= new Intl.Segmenter('und', { granularity: 'sentence' });
+  const first = sentences.segment(text).containing(0)?.segment ?? text;
+  return first.trim().slice(0, SKILL_SENTENCE);
+}
 
 /**
- * A skill's id is its name; a name already listed gets `-2`, `-3`, … and every id is cut to fit 40
+ * A skill's id is its name; a name already listed gets `-2`, `-3`, … and every id is cut to fit 64
  * characters with its suffix.
  */
 function skillIds(names: readonly string[]): string[] {
@@ -116,7 +147,7 @@ export function teamCatalog(
       return {
         id,
         name: skill.name,
-        description: skill.description.slice(0, TEAM_COMPOSITION_LIMITS.skillDescription),
+        description: firstSentence(skill.description),
       };
     }),
   };
@@ -317,14 +348,12 @@ export function draftFromComposition(
   let entry = '';
   const earlier: string[] = [];
   const last = composition.flow.length - 1;
-  composition.flow.forEach((step, index) => {
+  composition.flow.forEach((step) => {
     const before = [brief, ...earlier.map(read)];
-    // The criteria go to the last step and to every seat that returns a review.
-    const criteriaFor = (seatId: string) =>
-      index === last || seatOf(seatId).agent.role.outputContract === 'review' ? [criteria] : [];
 
     if ('seat' in step) {
-      const id = seatNode(step.seat, [...before, ...criteriaFor(step.seat)]);
+      // Every seat receives the criteria: an early one also needs to know what done means.
+      const id = seatNode(step.seat, [...before, criteria]);
       if (exits.length) connect(exits, id);
       else entry = id;
       exits = [{ source: id, sourcePort: 'out' }];
@@ -350,7 +379,7 @@ export function draftFromComposition(
       }
       // Seats side by side do not read each other.
       const ids = step.parallel.map((seatId, i) =>
-        seatNode(seatId, [...before, ...criteriaFor(seatId)], {
+        seatNode(seatId, [...before, criteria], {
           place: i + 1,
           ...(team ? { parentId: team } : {}),
         }),
@@ -371,13 +400,7 @@ export function draftFromComposition(
       const ids = work.map((seatId, i) =>
         seatNode(
           seatId,
-          [
-            ...before,
-            ...work.slice(0, i).map(read),
-            lastRound(seatId),
-            lastRound(judge),
-            ...criteriaFor(seatId),
-          ],
+          [...before, ...work.slice(0, i).map(read), lastRound(seatId), lastRound(judge), criteria],
           { parentId: loop },
         ),
       );
