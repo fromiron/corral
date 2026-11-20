@@ -527,6 +527,21 @@ it('says an answer was empty, or cut off at the output limit, without retry', as
   expect(fake.seen.hostRequests).toHaveLength(5);
 });
 
+it('drops one surplus closing brace only when the answer ended normally', async () => {
+  const { fake, call } = await setup();
+  const surplus = `${JSON.stringify({ kind: 'plan', reason: proposal.reason, plan: proposal.plan })}}`;
+  fake.setResponses([fauxAssistantMessage(surplus, { stopReason: 'stop' })]);
+  expect(await call(assistant, create('surplus-stop', 'Write a notice.'))).toEqual({
+    status: 200,
+    body: { reply: proposal, model: 'Test A' },
+  });
+  fake.setResponses([fauxAssistantMessage(surplus, { stopReason: 'length' })]);
+  expect(await call(assistant, create('surplus-length', 'Write a notice.'))).toMatchObject(
+    unusable('cut_off'),
+  );
+  expect(fake.seen.hostRequests).toHaveLength(2);
+});
+
 it('closes a new team’s answer one outer brace short only when it ended normally', async () => {
   const { fake, call } = await setup();
   const short = JSON.stringify({

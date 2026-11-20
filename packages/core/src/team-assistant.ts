@@ -380,20 +380,37 @@ function oneBraceShort(text: string): boolean {
 }
 
 /**
+ * The value of an answer that is one whole object and then exactly one surplus closing brace:
+ * the brace is dropped and everything from the first bracket on must parse, so nothing that
+ * trails the object is ignored.
+ */
+function oneBraceOver(text: string): { value: unknown } | undefined {
+  const trimmed = text.trimEnd();
+  const start = trimmed.search(/[[{]/);
+  if (start < 0 || trimmed[start] !== '{' || !trimmed.endsWith('}')) return undefined;
+  try {
+    return { value: JSON.parse(trimmed.slice(start, -1)) };
+  } catch {
+    return undefined;
+  }
+}
+
+/**
  * The checked reply in a model answer, or why there is none. A new team's answer that ended
  * normally (`endedNormally`, known only to the caller) and is exactly its outermost closing brace
- * short is closed and read; nothing else is repaired.
+ * short is closed and read, and one with exactly one surplus closing brace after the whole object
+ * is read without it; nothing else is repaired.
  */
 export function readAssistantAnswer(
   text: string,
   request: TeamAssistantRequest,
   options: { endedNormally?: boolean } = {},
 ): TeamAssistantReading {
+  const repairable = request.mode === 'create' && options.endedNormally;
   const json =
     jsonValue(text) ??
-    (request.mode === 'create' && options.endedNormally && oneBraceShort(text)
-      ? jsonValue(`${text}}`)
-      : undefined);
+    (repairable && oneBraceShort(text) ? jsonValue(`${text}}`) : undefined) ??
+    (repairable ? oneBraceOver(text) : undefined);
   if (!json) return { problem: 'not_json' };
   const { value } = json;
   // The place of a shape problem is read in the value that was parsed.
