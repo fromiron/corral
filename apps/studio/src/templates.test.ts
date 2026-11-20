@@ -175,12 +175,20 @@ describe('library templates (docs/specs/features/library.md)', () => {
         string,
         string
       >;
+      // The skill a seat cannot do without, unless its agent already names it.
+      const extra: Record<string, string[]> = {
+        'refactor/pin': ['behavior-pin'],
+        'refactor/reshape': ['behavior-pin'],
+        'performance/improve': ['measure-first'],
+      };
       for (const text of [english, korean]) {
         for (const role of templateDefinition(id, 'x', text).roles) {
           const agent = BUILTIN_AGENTS.find((candidate) => candidate.id === seats[role.id]);
           assert(agent, role.id);
+          const named = agent.skills.map((skill) => skill.name);
+          const added = (extra[`${id}/${role.id}`] ?? []).filter((name) => !named.includes(name));
           const names = (role.skills ?? []).map((ref) => builtinSkillName(ref));
-          expect(names.slice(0, agent.skills.length)).toEqual(agent.skills.map((s) => s.name));
+          expect([`${id}/${role.id}`, names]).toEqual([`${id}/${role.id}`, [...named, ...added]]);
           expect(role).not.toHaveProperty('harness');
         }
       }
