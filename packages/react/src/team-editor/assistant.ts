@@ -43,7 +43,8 @@ export interface TeamAssistantHost {
    * requested: the model composes the team from these alone.
    */
   choices(): Promise<{ agents: readonly ComposableAgent[]; skills: readonly ComposableSkill[] }>;
-  wording: TeamWording;
+  /** The names of the steps a composed team adds, in the screen language. */
+  wording: Pick<TeamWording, 'labels'>;
   onConnectModel?(): void;
   onBrowseTemplates?(): void;
 }

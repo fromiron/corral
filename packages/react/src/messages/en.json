@@ -1686,37 +1686,7 @@
     "asking": "Asking the model…",
     "askCost": "1 request",
     "retry": "Try again",
-    "patterns": {
-      "write_review": "Write and review",
-      "research_write_review": "Research, write and review"
-    },
     "wording": {
-      "roles": {
-        "worker": {
-          "name": "Assistant",
-          "duty": "Do the task in the brief and write the result."
-        },
-        "planner": {
-          "name": "Planner",
-          "duty": "Outline the points and structure the brief needs, as short notes for the writer."
-        },
-        "researcher": {
-          "name": "Researcher",
-          "duty": "Gather the facts and sources the brief needs and write them up as notes."
-        },
-        "writer": {
-          "name": "Writer",
-          "duty": "Write what the brief asks for from the notes, and revise it after each review."
-        },
-        "reviewer": {
-          "name": "Reviewer",
-          "duty": "Review the exact draft against the criteria and answer pass, or revise with reasons."
-        }
-      },
-      "criteria": {
-        "direct": "Answer the brief directly.",
-        "sources": "Name the source behind each main claim."
-      },
       "labels": {
         "outriderPrinciples": "Check the evidence against the requested result and suggest concrete corrections.",
         "loop": "Review loop",

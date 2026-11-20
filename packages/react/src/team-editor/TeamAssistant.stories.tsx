@@ -1,11 +1,11 @@
-import type { TeamComposition, TeamPlan } from '@corral/contracts';
+import type { TeamComposition } from '@corral/contracts';
 import {
   BUILTIN_SKILLS,
   builtinComposableAgents,
-  draftFromPlan,
+  draftFromComposition,
   ROLE_PRESET_IDS,
   type RolePresetId,
-  type TeamWording,
+  teamCatalog,
 } from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useMemo } from 'react';
@@ -35,24 +35,6 @@ type Scene =
 type Locale = keyof typeof catalogs;
 
 const editing = (scene: Scene) => scene === 'edit' || scene === 'goal';
-
-/** The plan a model might answer for a goal: a planner, a writer and a reviewer. */
-function samplePlan(brief: string, wording: TeamWording): TeamPlan {
-  const { planner, writer, reviewer } = wording.roles;
-  return {
-    name: brief.slice(0, 40),
-    brief,
-    pattern: 'write_review',
-    criteria: [wording.criteria.direct],
-    roles: [
-      { slot: 'planner', ...planner },
-      { slot: 'writer', ...writer },
-      { slot: 'reviewer', ...reviewer },
-    ],
-    reviewRounds: 1,
-    finalApproval: false,
-  };
-}
 
 type Messages = (typeof catalogs)[Locale];
 
@@ -144,16 +126,18 @@ function AssistantStory({
   const wording = messages.TeamDraft.wording;
   const editor = useMemo(() => {
     const draft = editing(scene)
-      ? draftFromDefinition(
-          draftFromPlan(
-            samplePlan(messages.TeamAssistant.examples.compare, wording),
+      ? // The team the model composed for this goal, already applied.
+        draftFromDefinition(
+          draftFromComposition(
+            composedTeam(messages.TeamAssistant.examples.compare, locale),
             'story',
-            wording.labels,
-          ).definition,
+            teamCatalog(storyChoices(messages).agents, storyChoices(messages).skills),
+            { ...wording.labels, join: messages.TeamEditor.kinds.join },
+          ),
         )
       : emptyDraft('story', messages.Workspace.newName);
     return createEditorStore(draft);
-  }, [scene, messages, wording]);
+  }, [scene, messages, wording, locale]);
   const session = useMemo(() => sessionStore(), []);
   const host = useMemo<TeamAssistantHost>(
     () => ({

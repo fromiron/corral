@@ -122,8 +122,8 @@ export function useTemplateText(): TemplateText {
 }
 
 /** The words the team assistant's proposals use: the step labels a drafted plan names. */
-export function draftWording(messages: unknown): TeamWording {
-  return (messages as { TeamDraft: { wording: TeamWording } }).TeamDraft.wording;
+export function draftWording(messages: unknown): Pick<TeamWording, 'labels'> {
+  return (messages as { TeamDraft: { wording: Pick<TeamWording, 'labels'> } }).TeamDraft.wording;
 }
 
 /** The definition a template saves, under `corralId`. */

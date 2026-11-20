@@ -358,7 +358,7 @@ export function createProposal(
   base: EditorDraft,
   plan: TeamComposition,
   options: ProposalOptions & {
-    wording: TeamWording;
+    wording: Pick<TeamWording, 'labels'>;
     initialName: string;
     resolved: SentCatalog;
     target?: TeamAssistantTarget | undefined;

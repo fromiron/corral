@@ -1686,37 +1686,7 @@
     "asking": "모델에게 묻는 중…",
     "askCost": "요청 1회",
     "retry": "다시 시도",
-    "patterns": {
-      "write_review": "작성·검토",
-      "research_write_review": "조사·작성·검토"
-    },
     "wording": {
-      "roles": {
-        "worker": {
-          "name": "도우미",
-          "duty": "브리프의 작업을 하고 결과를 작성한다."
-        },
-        "planner": {
-          "name": "기획자",
-          "duty": "브리프에 필요한 요점과 구성을 작성자를 위한 짧은 노트로 정리한다."
-        },
-        "researcher": {
-          "name": "조사자",
-          "duty": "브리프에 필요한 사실과 출처를 모아 노트로 정리한다."
-        },
-        "writer": {
-          "name": "작성자",
-          "duty": "노트를 바탕으로 브리프가 요구하는 결과물을 쓰고, 검토마다 고친다."
-        },
-        "reviewer": {
-          "name": "검토자",
-          "duty": "받은 초안을 기준에 맞춰 검토하고 통과 또는 이유와 함께 수정 요청으로 답한다."
-        }
-      },
-      "criteria": {
-        "direct": "브리프에 직접 답한다.",
-        "sources": "주요 주장마다 근거 출처를 밝힌다."
-      },
       "labels": {
         "outriderPrinciples": "요청한 결과에 비춰 근거를 확인하고 구체적인 수정 의견을 제안하세요.",
         "loop": "검토 Loop",
