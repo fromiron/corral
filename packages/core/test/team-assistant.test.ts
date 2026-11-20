@@ -318,6 +318,42 @@ describe('checked assistant proposals', () => {
     expect(quoted).toBe('shape:plan.outrider:value');
   });
 
+  it('reads a new team’s field written one level off in its own place, unless it is in both', () => {
+    const request = create('Write the guide.');
+    const readValue = (value: unknown) => readAssistantAnswer(JSON.stringify(value), request);
+    const { reason, plan: inner } = plan();
+    // reason inside plan, the reply having none: the reply's reason.
+    expect(readValue({ kind: 'plan', plan: { ...inner, reason } })).toEqual({ reply: plan() });
+    // outrider beside plan, the plan having none: the plan's.
+    expect(readValue({ ...plan(), outrider: 'required_review' })).toEqual({
+      reply: plan({ outrider: 'required_review' }),
+    });
+    // Several plan fields beside plan.
+    const { flow, criteria, ...rest } = inner;
+    expect(readValue({ kind: 'plan', reason, plan: rest, flow, criteria })).toEqual({
+      reply: plan(),
+    });
+    // The moved value is checked as if written in place.
+    expect(
+      readValue({ kind: 'plan', reason, plan: rest, flow: [{ seat: 'nobody' }], criteria }),
+    ).toEqual({ problem: 'shape:plan.flow.0:unknown_seat' });
+    // In both places: not repaired, refused as today.
+    expect(readValue({ ...plan(), plan: { ...inner, reason: 'Another sentence.' } })).toEqual({
+      problem: 'shape:plan:extra_field',
+    });
+    expect(
+      readValue({ ...plan({ outrider: 'consultation' }), outrider: 'required_review' }),
+    ).toEqual({ problem: 'shape:$:extra_field' });
+    // A key that is no plan field stays an extra field.
+    expect(readValue({ ...plan(), tools: ['write_file'] })).toEqual({
+      problem: 'shape:$:extra_field',
+    });
+    // Only a new team's plan: a question keeps its strict shape.
+    expect(
+      readValue({ kind: 'question', id: 'material', choices: ['person', 'team'], reason }),
+    ).toEqual({ problem: 'shape:$:extra_field' });
+  });
+
   it('refuses two near-miss answer shapes as not JSON, for now', () => {
     const request = create('Write the guide.');
     const problem = (text: string) => {

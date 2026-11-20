@@ -149,7 +149,8 @@ function lenientCreateAnswer(value: unknown, catalog: TeamCatalog): unknown {
     return value;
   }
   if (value.kind !== 'plan' || !isRecord(value.plan)) return value;
-  const plan = withoutNull(value.plan, 'outrider');
+  const placed = inPlace(value, value.plan);
+  const plan = withoutNull(placed.plan, 'outrider');
   const seats = Array.isArray(plan.seats)
     ? plan.seats.map((seat) =>
         isRecord(seat) ? seatSkills(withoutNull(seat, 'skills'), catalog) : seat,
@@ -162,7 +163,30 @@ function lenientCreateAnswer(value: unknown, catalog: TeamCatalog): unknown {
           : step,
       )
     : plan.flow;
-  return { ...value, plan: { ...plan, seats, flow } };
+  return { ...placed.reply, plan: { ...plan, seats, flow } };
+}
+
+/** The plan's own fields: each has one place, inside `plan`. */
+const PLAN_FIELDS = ['name', 'brief', 'criteria', 'seats', 'flow', 'outrider'] as const;
+
+/**
+ * A plan reply with each field written one level off read in its own place: `reason` inside
+ * `plan` is the reply's, a plan field beside `plan` is the plan's. A field written in both places
+ * is left where it is, so the strict parse refuses it.
+ */
+function inPlace(reply: Loose, plan: Loose): { reply: Loose; plan: Loose } {
+  const outer = { ...reply };
+  const inner = { ...plan };
+  if (Object.hasOwn(inner, 'reason') && !Object.hasOwn(outer, 'reason')) {
+    outer.reason = inner.reason;
+    delete inner.reason;
+  }
+  for (const key of PLAN_FIELDS)
+    if (Object.hasOwn(outer, key) && !Object.hasOwn(inner, key)) {
+      inner[key] = outer[key];
+      delete outer[key];
+    }
+  return { reply: outer, plan: inner };
 }
 
 /**
