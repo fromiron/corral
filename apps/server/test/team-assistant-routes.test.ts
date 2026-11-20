@@ -614,6 +614,28 @@ it('allows one material question with fixed choices, but not a third question', 
   expect(fake.seen.hostRequests).toHaveLength(2);
 });
 
+it('accepts a conversation longer than twelve messages and sends the model every one of them', async () => {
+  const { fake, call } = await setup();
+  const messages = [
+    { role: 'user', content: 'Write the neighbourhood notice.' },
+    { role: 'assistant', questionId: 'material', content: 'Who supplies the material?' },
+    { role: 'user', content: 'I will attach it.' },
+    ...Array.from({ length: 13 }, (_, i) => ({
+      role: 'user',
+      content: `Refinement number ${i + 1}: shorten the notice.`,
+    })),
+  ];
+  expect(messages.length).toBeGreaterThan(12);
+  fake.replyText(JSON.stringify(proposal));
+  expect(await call(assistant, { ...create('long', ''), messages })).toEqual({
+    status: 200,
+    body: { model: 'Test A', reply: proposal },
+  });
+  expect(fake.seen.hostRequests).toHaveLength(1);
+  const sent = fake.seen.hostRequests[0]?.text ?? '';
+  for (const message of messages) expect(sent).toContain(message.content);
+});
+
 it('accepts a typed policy answer and does not send the person through the same question again', async () => {
   const { fake, call } = await setup();
   const base = edit('typed');

@@ -80,6 +80,14 @@ describe('TeamPlan patterns', () => {
     }
   });
 
+  it('takes only the three Outrider requests and refuses the removed clarify_review', () => {
+    for (const outrider of ['consultation', 'artifact_review', 'required_review'])
+      expect(TeamPlan.safeParse({ ...planFor('single'), outrider }).success, outrider).toBe(true);
+    expect(TeamPlan.safeParse({ ...planFor('single'), outrider: 'clarify_review' }).success).toBe(
+      false,
+    );
+  });
+
   it('refuses any field the plan does not have: tools, edges, limits, role tools', () => {
     const bad = [
       { ...planFor('single'), tools: ['run_command'] },
