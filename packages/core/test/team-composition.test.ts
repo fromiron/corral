@@ -588,8 +588,8 @@ describe('draftFromComposition', () => {
         'Review loop.next -> Output.in',
         'Review loop.exhausted -> Output.in',
       ]);
-      // The work reads its last round and the last review; the judge reads the work, the
-      // criteria and the brief; as the last step the work also gets the criteria.
+      // The work reads its last round and the last review; the judge reads the work first, then
+      // the brief and the criteria; as the last step the work also gets the criteria.
       expect(inputsOf(definition, 'write')).toEqual([
         'brief',
         'prev:write',
@@ -604,7 +604,9 @@ describe('draftFromComposition', () => {
         expect.objectContaining({ optional: true }),
         expect.objectContaining({ optional: true }),
       ]);
-      expect(inputsOf(definition, 'check')).toEqual(['brief', 'write', 'criteria']);
+      expect(inputsOf(definition, 'check')).toEqual(['write', 'brief', 'criteria']);
+      // The reviewed work is named draft, whatever its output.
+      expect(nodeNamed(definition, 'check').inputBindings[0]?.name).toBe('draft');
       // The team's result is the work's, not the review.
       expect(resultsOf(definition)).toEqual(['write']);
     });
@@ -654,7 +656,7 @@ describe('draftFromComposition', () => {
         'prev:verify',
         'criteria',
       ]);
-      expect(inputsOf(definition, 'verify')).toEqual(['brief', 'plan', 'build', 'criteria']);
+      expect(inputsOf(definition, 'verify')).toEqual(['build', 'brief', 'plan', 'criteria']);
       // After the loop: every seat of the loop, work and judge.
       expect(inputsOf(definition, 'explain')).toEqual([
         'brief',
@@ -742,7 +744,15 @@ describe('draftFromComposition', () => {
         'prev:j2',
         'criteria',
       ]);
-      expect(inputsOf(definition, 'j2')).toEqual(['brief', 'w1', 'j1', 'w2', 'criteria']);
+      // The second judge reviews the second loop's work; the first loop's draft is draft_2.
+      expect(inputsOf(definition, 'j2')).toEqual(['w2', 'brief', 'w1', 'j1', 'criteria']);
+      expect(nodeNamed(definition, 'j2').inputBindings.map((b) => b.name)).toEqual([
+        'draft',
+        'brief',
+        'draft_2',
+        'review',
+        'criteria',
+      ]);
       expect(resultsOf(definition)).toEqual(['w2']);
     });
 
@@ -797,12 +807,13 @@ describe('draftFromComposition', () => {
         'prev:check',
         'criteria',
       ]);
+      // The judge reviews the round's last work, then reads the rest.
       expect(inputsOf(definition, 'check')).toEqual([
+        'polish',
         'brief',
         'scope',
         'draft',
         'build',
-        'polish',
         'criteria',
       ]);
       // Two drafts and the seat's own last round on one reader: draft, draft_2, draft_3.
@@ -1009,11 +1020,11 @@ describe('draftFromComposition', () => {
         'criteria',
       ]);
       expect(inputsOf(definition, 'check')).toEqual([
+        'write',
         'brief',
         'scope',
         'a',
         'b',
-        'write',
         'criteria',
       ]);
     });
@@ -1499,6 +1510,102 @@ describe('mock runs of every flow of up to four steps', () => {
     ]);
     expect((await run(definition)).final.status).toBe('succeeded');
   });
+});
+
+describe('a loop’s judge reviews the round’s last work', () => {
+  /** Each version a seat submitted, one list per execution, in run order. */
+  const submitted = (definition: CorralDefinition, final: RunProjection, label: string) =>
+    (final.nodeExecutions[nodeNamed(definition, label).id] ?? []).map(
+      (id) => final.tasks[final.executions[id]?.taskId ?? '']?.submittedArtifactVersionIds ?? [],
+    );
+  /** Per round of each loop: the version the judge's review targeted, and the last work's. */
+  const rounds = (definition: CorralDefinition, final: RunProjection, loops: [string, string][]) =>
+    loops.flatMap(([work, judge]) => {
+      const reviews = Object.values(final.reviews);
+      const made = submitted(definition, final, work);
+      return submitted(definition, final, judge).map((versions, round) => ({
+        target: reviews.find((r) => versions.includes(r.reviewVersionId))?.targetVersionId,
+        last: made[round]?.at(-1),
+      }));
+    });
+
+  it.each([
+    [
+      'a draft before a loop of drafts',
+      [
+        seat('build', 'builder agent'),
+        seat('write', 'writer agent'),
+        seat('check', 'reviewer agent'),
+      ],
+      [{ seat: 'build' }, { loop: { work: ['write'], judge: 'check' } }],
+      [['write', 'check']],
+    ],
+    [
+      'notes before a loop of notes',
+      [
+        seat('plan', 'architect agent'),
+        seat('probe', 'investigator agent'),
+        seat('check', 'reviewer agent'),
+      ],
+      [{ seat: 'plan' }, { loop: { work: ['probe'], judge: 'check' } }],
+      [['probe', 'check']],
+    ],
+    [
+      'a draft before a loop of notes',
+      [
+        seat('build', 'builder agent'),
+        seat('probe', 'investigator agent'),
+        seat('check', 'reviewer agent'),
+      ],
+      [{ seat: 'build' }, { loop: { work: ['probe'], judge: 'check' } }],
+      [['probe', 'check']],
+    ],
+    [
+      'two work seats',
+      [
+        seat('build', 'builder agent'),
+        seat('write', 'writer agent'),
+        seat('check', 'reviewer agent'),
+      ],
+      [{ loop: { work: ['build', 'write'], judge: 'check' } }],
+      [['write', 'check']],
+    ],
+    [
+      'two loops in a row',
+      [
+        seat('w1', 'writer agent'),
+        seat('j1', 'reviewer agent'),
+        seat('w2', 'builder agent'),
+        seat('j2', 'verifier agent'),
+      ],
+      [{ loop: { work: ['w1'], judge: 'j1' } }, { loop: { work: ['w2'], judge: 'j2' } }],
+      [
+        ['w1', 'j1'],
+        ['w2', 'j2'],
+      ],
+    ],
+    [
+      'a loop as the first step',
+      [seat('write', 'writer agent'), seat('check', 'reviewer agent')],
+      [{ loop: { work: ['write'], judge: 'check' } }],
+      [['write', 'check']],
+    ],
+  ] as [string, Seat[], Step[], [string, string][]][])(
+    '%s: every round’s review targets that round’s last work',
+    async (_name, seats, flow, loops) => {
+      const definition = strict(draft(compose(seats, flow)));
+      for (const review of [undefined, () => 'revise']) {
+        const { final } = await run(definition, review);
+        expect(final.status).toBe('succeeded');
+        const seen = rounds(definition, final, loops);
+        expect(seen.length).toBeGreaterThanOrEqual(loops.length * 2);
+        for (const { target, last } of seen) {
+          expect(last).toBeDefined();
+          expect(target).toBe(last);
+        }
+      }
+    },
+  );
 });
 
 describe('mock runs of composed teams', () => {
