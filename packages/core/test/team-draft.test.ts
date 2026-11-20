@@ -576,6 +576,88 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
   });
 
   it.each([
+    // Asking for code to be made, changed or removed needs a seat that writes files.
+    ['Break this function into smaller pieces', 'refactor'],
+    ['이 함수를 더 작은 함수 여러 개로 쪼개 줘', 'refactor'],
+    ['Add a test for the case where the request will fail', 'implement_review'],
+    ['주문 API가 실패할 수 있는 경우를 처리하는 코드를 추가해 줘', 'implement_review'],
+    ['허점 없이 가입 양식 검증을 구현해 줘', 'implement_review'],
+    ['함수에 설명 주석을 달아 줘', 'single'],
+    ['Add an option to select the export format', 'implement_review'],
+    ['두 가지 옵션을 모두 선택하면 폼이 죽는 버그를 고쳐 줘', 'bug_fix'],
+    // A change the goal describes, or one it asks whether to make, asks for none.
+    ['This PR adds a retry queue. Try to break it', 'adversarial_review'],
+    ['Red-team the latest update to the billing module', 'adversarial_review'],
+    ['새로 구현한 정렬 함수를 깨뜨려 봐', 'adversarial_review'],
+    ['Should we add Redis or a CDN in front of the API? Recommend one', 'tech_decision'],
+  ] as const)('a change asked of the code: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    ['Write tests for the edge cases that could crash the importer', 'adversarial_review'],
+    ['Review the payment module for correctness and fix what you find', 'adversarial_review'],
+    ['Delete the unused handler and explain why it existed', 'code_investigation'],
+    ['Write a docstring explaining how the parser handles errors', 'code_investigation'],
+    [
+      'Explain how the session cache evicts entries, then rewrite it to use LRU',
+      'code_investigation',
+    ],
+  ] as const)('a change asked of the code: %s is not %s', (goal, pattern) => {
+    expect(shape(goal)).not.toBe(pattern);
+  });
+
+  it.each([
+    // A resource or a speed named in an ordinary change is not a slowdown.
+    '프로그램을 개선해 줘',
+    '텔레그램 알림 연동을 고쳐 줘',
+    '프로그램 설정 화면의 오타를 수정해 줘',
+    'Fix the Dockerfile so the container image builds',
+    'Fix the memory settings page layout',
+    'Fix the upload limit so files over 10 MB are rejected',
+    '업로드 용량 제한을 10MB로 수정해 줘',
+    '배송 지연 안내 문구를 수정해 줘',
+    'Make the page responsive',
+    'Improve the error messages on the performance dashboard',
+  ])('names no slowdown: %s is not performance', (goal) => {
+    expect(shape(goal)).not.toBe('performance');
+  });
+
+  it.each([
+    // An explicit refactoring stays one, whatever else it mentions.
+    ['Refactor the slow report module to improve readability', 'refactor'],
+    // A speed or a resource that should come down, said outright.
+    ['Reduce the latency of the search endpoint', 'performance'],
+    ['번들 크기를 줄여 줘', 'performance'],
+    ['램 사용량이 너무 많아. 줄여 줘', 'performance'],
+    ['Fix the slow checkout query', 'performance'],
+    // Running out of memory or spiking the CPU says it is heavy; a leak is a bug.
+    ['The server runs out of memory under load; fix it', 'performance'],
+    ['CPU usage spikes to 100% on every deploy; investigate and fix it', 'performance'],
+    ['메모리 누수를 고쳐 줘', 'bug_fix'],
+  ] as const)('a speed or size said outright: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    // A concept, a why-only question, or a plea for help is not tracing existing code.
+    ['Explain what a pure function is', 'single'],
+    ['Explain the difference between a library and a framework', 'single'],
+    ['How do webhooks work?', 'single'],
+    ['Explain how React components work', 'single'],
+    ['순수 함수가 뭔지 설명해 줘', 'single'],
+    ['코드 리뷰가 왜 필요한지 설명해 줘', 'single'],
+    ['이 코드가 왜 안 되는지 모르겠어. 봐 줘', 'single'],
+    // Tracing a part of the code, or writing down why it is so, is.
+    ['Trace how a request flows through the API gateway middleware', 'code_investigation'],
+    ['Document why the config loader reads files in that order', 'code_investigation'],
+    ['Explain how session expiry is handled in the auth module', 'code_investigation'],
+    ['Explain how the auth middleware adds the session cookie', 'code_investigation'],
+  ] as const)('a question near the code: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
     // Lighter is performance too: a resource that grew too large and should come down.
     ["The dashboard's memory use climbs past 2 GB after an hour; bring it down", 'performance'],
     ['Our JS bundle is 4 MB now. Make it smaller.', 'performance'],
@@ -662,25 +744,47 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(planFromGoal('Implement a CSV export', wording)?.finalApproval).toBe(false);
   });
 
-  it('keeps the security PR review as its own recognized task', () => {
-    const security = {
-      ...wording,
-      securityReview: {
-        name: 'Security PR review',
-        roles: {
-          researcher: { name: 'Security reviewer', duty: 'Review the PR for security issues.' },
-          writer: { name: 'Findings author', duty: 'Write the findings.' },
-          reviewer: { name: 'Independent verifier', duty: 'Verify each finding.' },
-        },
-        criteria: { evidence: 'Evidence.', verification: 'Verified.', approval: 'Approve.' },
+  const security: TeamWording = {
+    ...wording,
+    securityReview: {
+      name: 'Security PR review',
+      roles: {
+        researcher: { name: 'Security reviewer', duty: 'Review the PR for security issues.' },
+        writer: { name: 'Findings author', duty: 'Write the findings.' },
+        reviewer: { name: 'Independent verifier', duty: 'Verify each finding.' },
       },
-    };
+      criteria: { evidence: 'Evidence.', verification: 'Verified.', approval: 'Approve.' },
+    },
+  };
+
+  it('keeps the security PR review as its own recognized task', () => {
     const goal =
       'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve';
     expect(planFromGoal(goal, security)).toMatchObject({
       name: 'Security PR review',
       pattern: 'research_write_review',
     });
+  });
+
+  it.each([
+    'Security review of this PR',
+    'Security review of the PR. Do not change anything.',
+    '보안 관점에서 PR을 검토해 줘. 고치지는 마',
+  ])(
+    'a security PR review is the recognized task whether or not it forbids changes: %s',
+    (goal) => {
+      expect(planFromGoal(goal, security)).toMatchObject({
+        name: 'Security PR review',
+        pattern: 'research_write_review',
+      });
+    },
+  );
+
+  it('a PR review for correctness as well as security is a review of the code', () => {
+    expect(
+      planFromGoal('Review this PR for correctness and security; do not change anything', security)
+        ?.pattern,
+    ).toBe('adversarial_review');
   });
 
   it('without the templates’ wording it picks among the three earlier patterns, as before', () => {
