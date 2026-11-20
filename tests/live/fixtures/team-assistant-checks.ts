@@ -25,7 +25,10 @@ import {
 /** An agent of the person's library, as the check file describes it. */
 export interface CheckAgent {
   name: string;
-  /** For the person who rates only: a library agent is sent without a description. */
+  /**
+   * For the person who rates only, never sent: the library agent has no description of its own
+   * and its instructions are its name, so the catalog describes it by its name.
+   */
   description?: string;
   changesFiles: boolean;
   runsCommands: boolean;
@@ -114,14 +117,14 @@ const READ_TOOLS: WorkTool[] = ['write_artifact', 'list_files', 'read_file'];
 
 /**
  * A library agent as Studio sends one (apps/studio/src/workbench/teamChoices.ts): its role under
- * its name, an origin of kind `library`, and no description.
+ * its name, an origin of kind `library`, and no description. The catalog then sends the first
+ * sentence of its instructions, which is its name: the rater's description stays out.
  */
 export function libraryAgent(agent: CheckAgent, index: number): ComposableAgent {
   return {
     role: {
       name: agent.name,
-      // The prompt stays on the editor's side; the catalog never carries it.
-      prompt: agent.description ?? agent.name,
+      prompt: agent.name,
       modelProfile: 'model-a',
       allowedWorkTools: [
         ...READ_TOOLS,

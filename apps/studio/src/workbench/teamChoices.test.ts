@@ -1,6 +1,11 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryView, LibraryAgent, PackageView } from '@corral/contracts';
-import { builtinComposableAgents, ROLE_PRESET_IDS, roleFromPreset } from '@corral/core';
+import {
+  builtinComposableAgents,
+  ROLE_PRESET_IDS,
+  roleFromPreset,
+  teamCatalog,
+} from '@corral/core';
 import { expect, it, vi } from 'vitest';
 import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { teamChoices } from './teamChoices.ts';
@@ -29,6 +34,8 @@ const skill = (name: string, hash: string, changes: Partial<HarnessEntryView> = 
     ...changes,
   }) as HarnessEntryView;
 
+const RELEASE_WRITER = 'Writes the release notes. Use it last.';
+
 function library(agentId: string, name: string, changes: Partial<LibraryAgent> = {}): LibraryAgent {
   const { id: _id, origin: _origin, ...role } = roleFromPreset('writer', 'x', name);
   return {
@@ -46,7 +53,9 @@ function library(agentId: string, name: string, changes: Partial<LibraryAgent> =
 it('lists what the editor can pick by hand: built-in agents, then the project’s own, and usable skills', async () => {
   const agents = {
     list: vi.fn(async () => [
-      library('mine', 'Release writer'),
+      library('mine', 'Release writer', {
+        role: { ...library('mine', 'Release writer').role, description: RELEASE_WRITER },
+      }),
       library('old', 'Archived writer', { archivedAt: '2026-11-20T00:00:00.000Z' }),
     ]),
   };
@@ -87,6 +96,10 @@ it('lists what the editor can pick by hand: built-in agents, then the project’
     origin: { kind: 'library', agentId: 'mine', revision: 2 },
   });
   expect(choices.agents.at(-1)).not.toHaveProperty('description');
+  // A saved agent's own description goes to the team proposal's catalog.
+  expect(teamCatalog(choices.agents, choices.skills).catalog.agents.at(-1)?.description).toBe(
+    RELEASE_WRITER,
+  );
   expect(choices.skills).toEqual([
     {
       ref: { resourceHash: 'h1', entry: 'skills/doc-writing/SKILL.md' },

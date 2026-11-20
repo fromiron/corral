@@ -32,7 +32,10 @@ import {
 export interface ComposableAgent {
   role: Omit<AgentRole, 'id' | 'origin'>;
   origin?: RoleOrigin;
-  /** Built-in agents have one; a saved agent of the library has none. */
+  /**
+   * A built-in agent's bundled description, read for a built-in agent only: any other agent is
+   * described by its role (`catalogDescription`).
+   */
   description?: string;
   /** A built-in agent. Without the flag, a preset origin says so. */
   builtin?: boolean;
@@ -79,13 +82,40 @@ export function builtinComposableAgents(nameOf: (id: RolePresetId) => string): C
 
 /** The longest skill id (`SkillRef`). */
 const ID_LENGTH = 64;
-/** A skill's description goes as its first sentence, cut to this length. */
+/** A first sentence (a skill's description, an undescribed agent's instructions) is cut to this. */
 const SKILL_SENTENCE = 160;
+/** A saved agent's own description is cut to this. */
+const AGENT_DESCRIPTION = 400;
+
+/** The text cut to `max` UTF-16 units between whole characters, then trimmed. */
+function cutWhole(text: string, max: number): string {
+  let cut = '';
+  for (const char of text) {
+    if (cut.length + char.length > max) break;
+    cut += char;
+  }
+  return cut.trim();
+}
+
 let sentences: Intl.Segmenter | undefined;
 function firstSentence(text: string): string {
   sentences ??= new Intl.Segmenter('und', { granularity: 'sentence' });
   const first = sentences.segment(text).containing(0)?.segment ?? text;
-  return first.trim().slice(0, SKILL_SENTENCE);
+  return cutWhole(first.trim(), SKILL_SENTENCE);
+}
+
+/**
+ * What the catalog says an agent does (team-assistant.md, "카탈로그"): a built-in agent's bundled
+ * description as it is; any other agent's own description cut to 400 characters, or without one
+ * the first sentence of its instructions cut to 160. Nothing else of the instructions is sent.
+ */
+function catalogDescription(agent: ComposableAgent): string | undefined {
+  const builtin = agent.builtin ?? agent.origin?.kind === 'preset';
+  if (builtin) return agent.description || undefined;
+  const own = agent.role.description
+    ? cutWhole(agent.role.description.trim(), AGENT_DESCRIPTION)
+    : '';
+  return own || firstSentence(agent.role.prompt) || undefined;
 }
 
 /**
@@ -107,7 +137,8 @@ function skillIds(names: readonly string[]): string[] {
  * The catalog for a new team request: at most 64 agents and 256 skills in the order given. Agents
  * go under ids that mean something only in this request, skills under their names. It carries
  * names, descriptions, output contracts and whether an agent changes files or runs commands; never
- * a prompt, tool name, hash or path. An advisor role is left out: no seat may take one.
+ * a tool name, hash or path, and of a prompt only an undescribed agent's first sentence. An
+ * advisor role is left out: no seat may take one.
  */
 export function teamCatalog(
   agents: readonly ComposableAgent[],
@@ -131,10 +162,11 @@ export function teamCatalog(
         const name = skillName(ref);
         return name ? [name] : [];
       });
+      const description = catalogDescription(agent);
       return {
         id,
         name: agent.role.name,
-        ...(agent.description ? { description: agent.description } : {}),
+        ...(description ? { description } : {}),
         changesFiles: tools.some((tool) => FILE_CHANGES.has(tool)),
         runsCommands: tools.some((tool) => COMMANDS.has(tool)),
         output: agent.role.outputContract,

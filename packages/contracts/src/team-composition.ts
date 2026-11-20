@@ -37,7 +37,10 @@ const L = TEAM_COMPOSITION_LIMITS;
 export const CatalogAgent = z.strictObject({
   id: ShortId,
   name: z.string().min(1),
-  /** A saved agent of the person's library has none. */
+  /**
+   * A bundled agent's file description; for any other agent its own description, or the first
+   * sentence of its instructions without one.
+   */
   description: z.string().min(1).optional(),
   changesFiles: z.boolean(),
   runsCommands: z.boolean(),
