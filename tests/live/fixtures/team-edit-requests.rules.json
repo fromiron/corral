@@ -1,0 +1,192 @@
+{
+  "split": "edit-rules",
+  "note": "Requests to change an existing team, written with their expectations before their first run. They ask one thing: what the word rules applied after the model's answer (adviceIntentFromGoal in packages/core/src/team-draft.ts) change, and whether the change is right. Each case names a team under `teams`, its user messages in order and, when the person has already chosen, `decisions`. `expect.reply` lists the reply kinds that are right; `question` the question ids that are right when the reply is a question; `has` the edit kinds an `edits` reply must hold and `hasNot` the kinds it must not; `gate` the result a require_review edit must name; `topic` the topic of a describe reply. `rater` says why, for the person who reads the answers. A case with `repeat` is sent twice.",
+  "teams": {
+    "one": {
+      "roles": [
+        { "nodeId": "planner", "name": "Planner" },
+        { "nodeId": "writer", "name": "Writer" }
+      ],
+      "outputs": [
+        { "outputId": "output", "results": [{ "index": 0, "name": "notice", "producerName": "Writer" }] }
+      ],
+      "hasSharedOutrider": false,
+      "brief": "Write a notice for the neighbourhood autumn bike picnic."
+    },
+    "one-ko": {
+      "roles": [
+        { "nodeId": "planner", "name": "기획자" },
+        { "nodeId": "writer", "name": "작성자" }
+      ],
+      "outputs": [
+        { "outputId": "output", "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }] }
+      ],
+      "hasSharedOutrider": false,
+      "brief": "동네 가을 자전거 소풍 안내문을 작성한다."
+    },
+    "two": {
+      "roles": [
+        { "nodeId": "researcher", "name": "Researcher" },
+        { "nodeId": "writer", "name": "Writer" },
+        { "nodeId": "editor", "name": "Editor" }
+      ],
+      "outputs": [
+        {
+          "outputId": "output",
+          "results": [
+            { "index": 0, "name": "report", "producerName": "Writer" },
+            { "index": 1, "name": "summary", "producerName": "Editor" }
+          ]
+        }
+      ],
+      "hasSharedOutrider": false,
+      "brief": "Research the three bike routes and write a report with a one-page summary."
+    },
+    "advised-ko": {
+      "roles": [
+        { "nodeId": "planner", "name": "기획자" },
+        { "nodeId": "writer", "name": "작성자" }
+      ],
+      "outputs": [
+        { "outputId": "output", "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }] }
+      ],
+      "hasSharedOutrider": true,
+      "brief": "동네 가을 자전거 소풍 안내문을 작성한다."
+    }
+  },
+  "edits": [
+    {
+      "id": "edit-01",
+      "kind": "negated_review_with_advice",
+      "lang": "ko",
+      "team": "one-ko",
+      "repeat": true,
+      "messages": ["검토 통과는 필요 없어. 작성자가 필요할 때만 조언받을 수 있게 해 줘."],
+      "expect": { "reply": ["edits"], "has": ["add_shared_advice"], "hasNot": ["require_review"] },
+      "rater": "Advice on request and nothing else. A gate here is the miss the negation rule exists to stop."
+    },
+    {
+      "id": "edit-02",
+      "kind": "negated_review_with_advice",
+      "lang": "en",
+      "team": "one",
+      "repeat": true,
+      "messages": ["No review gate, please. Just let the writer ask for advice when it is needed."],
+      "expect": { "reply": ["edits"], "has": ["add_shared_advice"], "hasNot": ["require_review"] },
+      "rater": "Advice on request and nothing else."
+    },
+    {
+      "id": "edit-03",
+      "kind": "negated_review_other_change",
+      "lang": "ko",
+      "team": "one-ko",
+      "repeat": true,
+      "messages": ["검토나 승인은 필요 없고, 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."],
+      "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review", "add_shared_advice"] },
+      "rater": "Only the brief changes. The person asked for no review and no advice."
+    },
+    {
+      "id": "edit-04",
+      "kind": "negated_review_other_change",
+      "lang": "en",
+      "team": "one",
+      "repeat": true,
+      "messages": ["We don't need a review step. Just change the goal to: write a notice for the winter walking group."],
+      "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review", "add_shared_advice"] },
+      "rater": "Only the brief changes."
+    },
+    {
+      "id": "edit-05",
+      "kind": "negated_review_only",
+      "lang": "en",
+      "team": "one",
+      "messages": ["The notice does not need to pass any review before it goes out."],
+      "expect": { "reply": ["describe", "unsupported", "edits"], "hasNot": ["require_review"] },
+      "rater": "The team has no review, so nothing needs to change. Any answer without a gate is right; a gate is the miss."
+    },
+    {
+      "id": "edit-06",
+      "kind": "ambiguous_review",
+      "lang": "ko",
+      "team": "one-ko",
+      "repeat": true,
+      "messages": ["제출 전에 검토받게 해 줘."],
+      "expect": { "reply": ["question"], "question": ["review_policy"] },
+      "rater": "Opinion or a condition of submitting is not said: the person is asked which (spec flow 15)."
+    },
+    {
+      "id": "edit-07",
+      "kind": "ambiguous_review",
+      "lang": "en",
+      "team": "one",
+      "repeat": true,
+      "messages": ["Have the notice reviewed before it is submitted."],
+      "expect": { "reply": ["question"], "question": ["review_policy"] },
+      "rater": "Opinion or a condition of submitting is not said: the person is asked which."
+    },
+    {
+      "id": "edit-08",
+      "kind": "must_pass_one_result",
+      "lang": "ko",
+      "team": "one-ko",
+      "messages": ["검토를 통과해야만 제출되게 해 줘."],
+      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "rater": "Passing is stated and the team has one result: the gate on it, with no question."
+    },
+    {
+      "id": "edit-09",
+      "kind": "must_pass_one_result",
+      "lang": "en",
+      "team": "one",
+      "messages": ["The notice may be submitted only after it passes a review."],
+      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "rater": "Passing is stated and the team has one result: the gate on it, with no question."
+    },
+    {
+      "id": "edit-10",
+      "kind": "must_pass_several_results",
+      "lang": "en",
+      "team": "two",
+      "messages": ["The work must pass review before it is submitted."],
+      "expect": { "reply": ["question"], "question": ["review_target"] },
+      "rater": "Two results could be gated and none is named: the person is asked which."
+    },
+    {
+      "id": "edit-11",
+      "kind": "negated_observation_must_pass",
+      "lang": "ko",
+      "team": "one-ko",
+      "messages": ["자동 관찰은 필요 없어. 대신 안내문은 검토를 통과해야 제출되게 해 줘."],
+      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "rater": "Only observation is declined. The gate is asked for and must be there."
+    },
+    {
+      "id": "edit-12",
+      "kind": "advice_only",
+      "lang": "en",
+      "team": "one",
+      "messages": ["Let the writer ask an expert for advice whenever it gets stuck."],
+      "expect": { "reply": ["edits"], "has": ["add_shared_advice"], "hasNot": ["require_review"] },
+      "rater": "Advice on request. No gate and no question."
+    },
+    {
+      "id": "edit-13",
+      "kind": "negated_review_team_has_advice",
+      "lang": "ko",
+      "team": "advised-ko",
+      "messages": ["리뷰 단계는 넣지 마. 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."],
+      "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review"] },
+      "rater": "Only the brief changes. The team already has advice on request, so adding it again changes nothing and is not a miss."
+    },
+    {
+      "id": "edit-14",
+      "kind": "chosen_opinion_only",
+      "lang": "ko",
+      "team": "one-ko",
+      "messages": ["발행 전에 검토받게 해 줘."],
+      "decisions": { "reviewPolicy": "opinion_only" },
+      "expect": { "reply": ["edits"], "has": ["add_shared_advice"], "hasNot": ["require_review"] },
+      "rater": "The person chose opinion only. Decided by the structured choice, not by words: a control that must not move."
+    }
+  ]
+}
