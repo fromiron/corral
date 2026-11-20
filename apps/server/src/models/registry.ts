@@ -721,8 +721,15 @@ export class ModelRegistry implements ModelResolver {
   ): Promise<
     TeamModelResult<{ text: string; provider: string; modelId: string; modelName: string }>
   > {
-    const profile = this.profiles[0];
-    const resolution = profile ? this.resolve(profile.id, 'live') : null;
+    // The first model of the list that can run, named profiles first: the one the team editor
+    // names beside its input (apps/studio/src/workbench/modelReadiness.ts reads the same rule).
+    const profile = this.profilesView().find(
+      (view) =>
+        view.available &&
+        view.method !== null &&
+        !(view.method === 'oauth' && view.subscriptionSupported === false),
+    );
+    const resolution = profile ? this.resolve(profile.profileId, 'live') : null;
     if (!resolution?.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId) {
       return {
         ok: false,

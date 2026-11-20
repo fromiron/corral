@@ -20,7 +20,12 @@ afterEach(async () => {
 });
 
 async function setup(
-  options: { live?: boolean; signedIn?: boolean; tokensPerSecond?: number } = {},
+  options: {
+    live?: boolean;
+    signedIn?: boolean;
+    tokensPerSecond?: number;
+    profiles?: { id: string; provider: string; model: string }[];
+  } = {},
 ) {
   const root = mkdtempSync(join(tmpdir(), 'corral-team-assistant-'));
   roots.push(root);
@@ -29,7 +34,7 @@ async function setup(
   mkdirSync(state, { recursive: true });
   writeFileSync(
     join(state, 'config.json'),
-    JSON.stringify({ schemaVersion: '0.1', modelProfiles: FAKE_PROFILES }),
+    JSON.stringify({ schemaVersion: '0.1', modelProfiles: options.profiles ?? FAKE_PROFILES }),
   );
   const fake = fakeOpenAI({
     configDir: join(root, 'config'),
@@ -110,6 +115,32 @@ it('returns a plan immediately for a sufficient goal and records one body-free m
   });
   expect(recorded).not.toContain('Write this notice');
   expect(recorded).not.toContain(proposal.reason);
+});
+
+it('asks the first model of a connected provider when there is no named profile', async () => {
+  const { fake, call } = await setup({ profiles: [] });
+  const profiles = await call('/model-profiles');
+  expect(profiles.body[0]).toMatchObject({ source: 'connection', modelName: 'Test A' });
+  fake.replyText(JSON.stringify(proposal));
+  expect(await call(assistant, create('connection-only', 'Write a notice.'))).toEqual({
+    status: 200,
+    body: { model: 'Test A', reply: proposal },
+  });
+  expect(fake.seen.hostRequests).toHaveLength(1);
+});
+
+it('skips a named profile that cannot run and asks the first one that can', async () => {
+  const { fake, call } = await setup({
+    profiles: [
+      { id: 'retired', provider: 'openai', model: 'gpt-retired' },
+      { id: 'model-b', provider: 'openai', model: 'gpt-test-b' },
+    ],
+  });
+  fake.replyText(JSON.stringify(proposal));
+  expect(await call(assistant, create('second-profile', 'Write a notice.'))).toEqual({
+    status: 200,
+    body: { model: 'Test B', reply: proposal },
+  });
 });
 
 it('allows one material question with fixed choices, but not a third question', async () => {
