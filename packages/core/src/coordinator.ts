@@ -5281,7 +5281,7 @@ export class Coordinator {
               parentIterationId: this.openRoundOf(run, loopId),
               no,
               // What the previous round of this entry hands to this one, fixed now.
-              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loop.members, loopId),
+              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loopId),
               criteriaVersionId: run.criteriaVersionId,
             },
           },
@@ -6007,6 +6007,7 @@ export class Coordinator {
         ...spec.given,
         ...this.resolveInputs(
           run,
+          spec.nodeId,
           item ? [{ kind: 'run_input', name: 'criteria' }] : bindings,
           spec.iterationId,
           requiredSources,
@@ -6268,12 +6269,12 @@ export class Coordinator {
 
   private resolveInputs(
     run: LiveRun,
+    readerNodeId: string,
     bindings: InputBinding[],
     iterationId: string | null,
     requiredSources?: ReadonlySet<string>,
   ): ResolvedInput[] {
     const { brief, criteria } = run.snapshot.definition.input;
-    const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
     return bindings.flatMap((binding): ResolvedInput[] => {
       if (binding.kind === 'run_input') {
         const text =
@@ -6294,8 +6295,12 @@ export class Coordinator {
           scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
         );
         versions = requiredSources?.has(source) ? submitted : submitted.slice(0, 1);
-      } else if (binding.kind === 'previous_iteration_output' && previousRound) {
-        versions = this.submittedOutputOf(run, source, previousRound).slice(0, 1);
+      } else if (binding.kind === 'previous_iteration_output') {
+        const previous = this.carriedFrom(run, readerNodeId, source, iterationId);
+        if (previous)
+          versions = this.submittedOutputOf(run, source, (round) =>
+            this.inRound(run, round, previous),
+          ).slice(0, 1);
       } else if (binding.kind === 'explicit_version') versions = [binding.artifactVersionId];
       const resolved = versions.flatMap((versionId) => {
         const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
@@ -6315,6 +6320,87 @@ export class Coordinator {
     if (!current || current.no <= 1) return null;
     const rounds = run.projection.loopIterations[current.loopNodeId] ?? [];
     return rounds[rounds.indexOf(iterationId) - 1] ?? null;
+  }
+
+  /**
+   * The round a reader in round `iterationId` reads `source`'s previous_iteration_output from
+   * (technical-design §9.2): the round before, in the same entry, of the innermost Loop the two
+   * share. The one exception: on a required review gate's first round, the producer the gate
+   * wraps reads its own result from the round before of the Loop around the gate. Null on that
+   * Loop's first round, and when the two share no Loop.
+   */
+  private carriedFrom(
+    run: LiveRun,
+    readerNodeId: string,
+    source: string,
+    iterationId: string | null,
+  ): string | null {
+    const { iterations } = run.projection;
+    let round = iterationId;
+    // The reader's own round holds its own steps; for another source, the first of the reader's
+    // rounds (its own, then those around it) whose Loop also holds the source.
+    if (source !== readerNodeId) {
+      const shared = new Set(this.loopsAround(run, source));
+      while (round && !shared.has(iterations[round]?.loopNodeId ?? ''))
+        round = iterations[round]?.parentIterationId ?? null;
+    } else if (
+      round &&
+      iterations[round]?.no === 1 &&
+      this.gateAround(run, iterations[round]?.loopNodeId ?? '', readerNodeId)
+    ) {
+      round = iterations[round]?.parentIterationId ?? null;
+    }
+    return round ? this.previousRound(run, round) : null;
+  }
+
+  /**
+   * The Loops whose round start pins the reader's previous_iteration_output of `source`: the
+   * innermost Loop the two share and, for a gate's producer reading itself, the Loop around the
+   * gate as well (its first round reads from there).
+   */
+  private carriedBy(run: LiveRun, readerNodeId: string, source: string): string[] {
+    const theirs = new Set(this.loopsAround(run, source));
+    const ours = this.loopsAround(run, readerNodeId);
+    const shared = ours.find((loopId) => theirs.has(loopId));
+    if (!shared) return [];
+    const around = ours[1];
+    return source === readerNodeId && around && this.gateAround(run, shared, readerNodeId)
+      ? [shared, around]
+      : [shared];
+  }
+
+  /** Whether an execution in `round` ran in round `within` or in a Loop round nested in it. */
+  private inRound(run: LiveRun, round: string | null, within: string): boolean {
+    for (let id = round; id; id = run.projection.iterations[id]?.parentIterationId ?? null)
+      if (id === within) return true;
+    return false;
+  }
+
+  /** The Loops around a node in the definition, innermost first. */
+  private loopsAround(run: LiveRun, nodeId: string): string[] {
+    const { nodes } = run.snapshot.definition;
+    const loops: string[] = [];
+    const seen = new Set<string>();
+    for (let at = nodes.find((n) => n.id === nodeId)?.parentId; at && !seen.has(at); ) {
+      seen.add(at);
+      const box = nodes.find((n) => n.id === at);
+      if (box?.type === 'loop') loops.push(at);
+      at = box?.parentId;
+    }
+    return loops;
+  }
+
+  /**
+   * Whether `loopId` is a required review's Loop around the producer `nodeId`: the Loop that holds
+   * a gate Decision the run snapshot maps to that producer (features/shared-outrider.md,
+   * "제출 전 필수 검토"). Gates of expanded reference Teams are on the snapshot as well.
+   */
+  private gateAround(run: LiveRun, loopId: string, nodeId: string): boolean {
+    const { nodes } = run.snapshot.definition;
+    return Object.entries(run.snapshot.requiredReviewSources ?? {}).some(
+      ([decisionId, sources]) =>
+        sources.includes(nodeId) && nodes.find((n) => n.id === decisionId)?.parentId === loopId,
+    );
   }
 
   /**
@@ -6339,27 +6425,18 @@ export class Coordinator {
     );
   }
 
-  /**
-   * The latest completed submission of a node, optionally within one Loop round (an id) or
-   * within the rounds a predicate accepts.
-   */
+  /** The latest completed submission of a node, optionally within the rounds a predicate accepts. */
   private submittedOutputOf(
     run: LiveRun,
     nodeId: string,
-    within?: string | ((round: string | null) => boolean),
+    within?: (round: string | null) => boolean,
   ): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
     // A node a fork did not run again reads as the result the fork copied for it.
     if (!executions.length) return stepResult(run.projection, nodeId);
     for (const executionId of [...executions].reverse()) {
       const execution = run.projection.executions[executionId];
-      if (
-        within !== undefined &&
-        (typeof within === 'string'
-          ? execution?.iterationId !== within
-          : !within(execution?.iterationId ?? null))
-      )
-        continue;
+      if (within && !within(execution?.iterationId ?? null)) continue;
       const task = run.projection.tasks[execution?.taskId ?? ''];
       if (task?.status === 'completed') return task.submittedArtifactVersionIds;
     }
@@ -6760,15 +6837,23 @@ export class Coordinator {
     }
   }
 
-  /** Bind a final version to the strict decision that passed that exact reviewed artifact. */
+  /**
+   * Bind a final version to the strict decision that passed that exact reviewed artifact. The
+   * candidates are read in the rounds `visible` accepts for each source (the Output's round).
+   */
   private checkRequiredOutputReviews(
     run: LiveRun,
     gates: OutputNode['requiredReviews'],
+    visible: (source: string) => ((round: string | null) => boolean) | undefined,
     awaitingSubmission?: ReadonlyMap<string, string[]>,
   ) {
     const candidates = new Map<string, string[]>();
     for (const gate of gates ?? []) {
-      const candidateIds = this.submittedOutputOf(run, gate.sourceNodeId);
+      const candidateIds = this.submittedOutputOf(
+        run,
+        gate.sourceNodeId,
+        visible(gate.sourceNodeId),
+      );
       const expected = awaitingSubmission?.get(gate.sourceNodeId);
       if (
         expected &&
@@ -6810,6 +6895,14 @@ export class Coordinator {
   }
 
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
+    // An Output inside a Loop reads the round that reached it, as a task_output there would,
+    // also when it checks again after a person's approval; a top-level one reads every round
+    // (technical-design §9.2).
+    const round = this.openRoundOf(run, outputNodeId);
+    const visible = (source: string) =>
+      round && this.loopOf(run, source)
+        ? (at: string | null) => this.sameRound(run, at, round)
+        : undefined;
     await this.boundary(run);
     // The run does not end while a review is queued or running: advisors finish first.
     if (!(await this.advisorsFinished(run))) return;
@@ -6817,14 +6910,27 @@ export class Coordinator {
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
-      b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
+      b.kind === 'task_output'
+        ? this.submittedOutputOf(run, b.sourceNodeId ?? '', visible(b.sourceNodeId ?? ''))
+        : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
-    const requiredCandidates = this.checkRequiredOutputReviews(run, output.requiredReviews);
+    const requiredCandidates = this.checkRequiredOutputReviews(
+      run,
+      output.requiredReviews,
+      visible,
+    );
     let approvalId: string | null = null;
     if (output.requireApproval) {
-      // Final approval binds the exact draft, its latest review and the criteria.
-      const review = this.latestReview(run);
+      // Final approval binds the exact draft, its latest review and the criteria: the latest
+      // valid review of a version being finalised, or none (technical-design §9.3).
+      const review =
+        Object.values(run.projection.reviews).findLast(
+          (r) =>
+            !r.stale &&
+            r.criteriaVersionId === run.criteriaVersionId &&
+            versions.includes(r.targetVersionId),
+        )?.reviewVersionId ?? null;
       const requested = this.requestApproval(run, 'final_output', [
         ...versions,
         ...(review ? [review] : []),
@@ -6869,7 +6975,7 @@ export class Coordinator {
       this.failRun(run, `termination_unconfirmed: ${nodeId}`);
       return;
     }
-    this.checkRequiredOutputReviews(run, output.requiredReviews, requiredCandidates);
+    this.checkRequiredOutputReviews(run, output.requiredReviews, visible, requiredCandidates);
     // The output and the run's success are one fact: readers never see one without the other.
     // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
@@ -7246,6 +7352,7 @@ export class Coordinator {
     try {
       inputs = this.resolveInputs(
         run,
+        nodeId,
         (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [],
         iterationId,
       ).flatMap((input) => (input.artifactVersionId ? [input.artifactVersionId] : []));
@@ -7934,18 +8041,28 @@ export class Coordinator {
     );
   }
 
-  /** Versions the previous round hands to the next through previous_iteration_output. */
-  private carriedInto(run: LiveRun, members: string[], loopId: string): string[] {
+  /**
+   * Versions the previous round hands to the next through previous_iteration_output: every
+   * binding whose value this Loop's round before carries, on its members and on the steps of the
+   * boxes inside it, in plan order.
+   */
+  private carriedInto(run: LiveRun, loopId: string): string[] {
     const previous =
       run.rounds.get(loopId)?.iterationId ?? run.projection.loopIterations[loopId]?.at(-1);
     if (!previous) return [];
     const definition = run.snapshot.definition;
-    return members.flatMap((memberId) => {
-      const node = definition.nodes.find((n) => n.id === memberId);
+    const within = (members: string[]): string[] =>
+      members.flatMap((id) => [id, ...within(run.plan.boxes[id]?.members ?? [])]);
+    return within(run.plan.loops[loopId]?.members ?? []).flatMap((readerId) => {
+      const node = definition.nodes.find((n) => n.id === readerId);
       const bindings = (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [];
       return bindings.flatMap((b) =>
-        b.kind === 'previous_iteration_output' && b.sourceNodeId
-          ? this.submittedOutputOf(run, b.sourceNodeId, previous)
+        b.kind === 'previous_iteration_output' &&
+        b.sourceNodeId &&
+        this.carriedBy(run, readerId, b.sourceNodeId).includes(loopId)
+          ? this.submittedOutputOf(run, b.sourceNodeId, (round) =>
+              this.inRound(run, round, previous),
+            )
           : [],
       );
     });
@@ -10565,15 +10682,18 @@ export class Coordinator {
     };
   }
 
-  /** The latest version the same node wrote in the previous round of its Loop. */
+  /**
+   * The latest version the same node wrote in the round its own previous_iteration_output reads
+   * (technical-design §9.2): the previous round of its Loop, rounds nested in it included.
+   */
   private previousRoundOutput(run: LiveRun, input: AgentStartInput) {
     if (input.item) return null;
-    const iterationId = run.projection.executions[input.executionId]?.iterationId;
-    const previous = iterationId ? this.previousRound(run, iterationId) : null;
+    const iterationId = run.projection.executions[input.executionId]?.iterationId ?? null;
+    const previous = this.carriedFrom(run, input.nodeId, input.nodeId, iterationId);
     if (!previous) return null;
     const authors = new Set(
       Object.values(run.projection.executions)
-        .filter((e) => e.nodeId === input.nodeId && e.iterationId === previous)
+        .filter((e) => e.nodeId === input.nodeId && this.inRound(run, e.iterationId, previous))
         .map((e) => e.executionId),
     );
     return (
