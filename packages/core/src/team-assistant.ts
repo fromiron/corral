@@ -46,7 +46,10 @@ const reviewPolicyQuestion = {
 
 // If structure changes, the model's old reason (e.g. "passing review is required") is
 // no longer an explanation of the checked proposal. Only describe the person's setting.
-function policyReason(policy: TeamComposition['outrider'], korean: boolean): string {
+function policyReason(
+  policy: TeamComposition['outrider'] | AdviceIntent['outrider'],
+  korean: boolean,
+): string {
   switch (policy) {
     case 'required_review':
       return korean
