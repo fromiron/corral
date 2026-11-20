@@ -20,9 +20,8 @@ import type {
   ReasoningCapabilities,
   TeamAssistantRequest,
   TeamAssistantResponse,
-  TeamPlan,
 } from '@corral/contracts';
-import { canonicalJson, UNUSABLE_TEAM_PLAN_MESSAGE, unusableTeamProposal } from '@corral/contracts';
+import { canonicalJson, unusableTeamProposal } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
@@ -72,12 +71,6 @@ import {
   TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
   TEAM_ASSISTANT_TIMEOUT_MS,
 } from './team-assistant.ts';
-import {
-  DRAFT_MAX_OUTPUT_TOKENS,
-  DRAFT_SYSTEM_PROMPT,
-  DRAFT_TIMEOUT_MS,
-  planFromAnswer,
-} from './team-draft.ts';
 
 // Model profiles and sign-in for the local server. Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
@@ -91,8 +84,7 @@ type TeamModelResult<T> =
       message: string;
     };
 
-type TeamDraftResponse = { plan: TeamPlan; model: { provider: string; modelId: string } };
-export type TeamOperationResult = TeamModelResult<TeamDraftResponse | TeamAssistantResponse>;
+export type TeamOperationResult = TeamModelResult<TeamAssistantResponse>;
 
 export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
@@ -679,26 +671,6 @@ export class ModelRegistry implements ModelResolver {
     return auth?.auth.apiKey ?? null;
   }
 
-  /**
-   * A team plan for a goal from one request to the first profile's model. Outside any
-   * Run: the person asked for it, and it is capped in output tokens and time.
-   */
-  async draftTeam(
-    goal: string,
-    operation?: { id: string; signal?: AbortSignal },
-  ): Promise<TeamModelResult<TeamDraftResponse>> {
-    const answer = await this.requestTeamText(DRAFT_SYSTEM_PROMPT, goal, operation);
-    if (!answer.ok) return answer;
-    const plan = planFromAnswer(answer.text, goal);
-    return plan
-      ? { ok: true, plan, model: { provider: answer.provider, modelId: answer.modelId } }
-      : {
-          ok: false,
-          code: 'MODEL_UNAVAILABLE',
-          message: `${UNUSABLE_TEAM_PLAN_MESSAGE}; use the local suggestion`,
-        };
-  }
-
   async assistTeam(
     request: TeamAssistantRequest,
     signal?: AbortSignal,
@@ -725,11 +697,8 @@ export class ModelRegistry implements ModelResolver {
   private async requestTeamText(
     systemPrompt: string,
     input: string,
-    operation?: { id: string; signal?: AbortSignal },
-    limits: { maxTokens: number; timeoutMs: number } = {
-      maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
-      timeoutMs: DRAFT_TIMEOUT_MS,
-    },
+    operation: { id: string; signal?: AbortSignal },
+    limits: { maxTokens: number; timeoutMs: number },
   ): Promise<
     TeamModelResult<{ text: string; provider: string; modelId: string; modelName: string }>
   > {
@@ -792,7 +761,7 @@ export class ModelRegistry implements ModelResolver {
         return unavailable(
           uncertain
             ? 'The model request outcome is unconfirmed. This operation will not be sent again.'
-            : 'The model request failed; generate a new draft or use the local suggestion.',
+            : 'The model request failed.',
           uncertain,
         );
       }

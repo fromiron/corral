@@ -246,7 +246,6 @@ import {
   type StreamFrame,
   type TeamAssistantRequest,
   type TeamAssistantResponse,
-  type TeamPlan,
   TerminalStreamMessage,
   type UpdateLibraryAgent,
   type VerificationReport,
@@ -1871,21 +1870,6 @@ export class ModelsApi {
     change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
   ): Promise<ModelConfig> {
     return this.http.json('/model-config', { method: 'PUT', body: JSON.stringify(change) });
-  }
-
-  /** A team plan for a goal from one model request; only a checked plan comes back. */
-  draftTeam(
-    goal: string,
-    options: { operationId?: string; signal?: AbortSignal } = {},
-  ): Promise<{ plan: TeamPlan; model: { provider: string; modelId: string } }> {
-    return this.http.json('/team-drafts', {
-      method: 'POST',
-      signal: options.signal,
-      body: JSON.stringify({
-        goal,
-        operationId: options.operationId ?? globalThis.crypto.randomUUID(),
-      }),
-    });
   }
 
   assistTeam(request: TeamAssistantRequest, signal?: AbortSignal): Promise<TeamAssistantResponse> {
