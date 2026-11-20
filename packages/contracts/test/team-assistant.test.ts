@@ -7,6 +7,9 @@ import {
   TeamAssistantTeam,
   type TeamCatalog,
   type TeamComposition,
+  UNUSABLE_TEAM_PROPOSAL_MESSAGE,
+  unusableTeamProposal,
+  unusableTeamProposalReason,
 } from '../src/index.ts';
 
 const target: TeamAssistantTarget = { outputId: 'final', index: 3 };
@@ -280,5 +283,29 @@ describe('team assistant reply', () => {
       { ...response, reply: 'unsupported' },
     ])
       expect(TeamAssistantResponse.safeParse(invalid).success).toBe(false);
+  });
+});
+
+describe('an unusable team proposal', () => {
+  it('keeps the fixed sentence and puts a reason code after it in parentheses', () => {
+    expect(UNUSABLE_TEAM_PROPOSAL_MESSAGE).toBe('The model did not return a usable team proposal.');
+    expect(unusableTeamProposal()).toBe(UNUSABLE_TEAM_PROPOSAL_MESSAGE);
+    expect(unusableTeamProposal('shape')).toBe(
+      'The model did not return a usable team proposal. (shape)',
+    );
+  });
+
+  it('reads the reason back: empty without one, null for any other message', () => {
+    for (const reason of ['not_json', 'shape', 'kind', 'unknown_agent', 'decision_conflict'])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason))).toBe(reason);
+    expect(unusableTeamProposalReason(UNUSABLE_TEAM_PROPOSAL_MESSAGE)).toBe('');
+    for (const other of [
+      'The model did not return a usable team proposal',
+      'The model did not return a usable team proposal. (Shape)',
+      'The model did not return a usable team proposal. (shape) more',
+      'Model is unavailable.',
+      '',
+    ])
+      expect(unusableTeamProposalReason(other)).toBeNull();
   });
 });

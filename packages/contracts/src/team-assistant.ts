@@ -160,3 +160,20 @@ export const TeamAssistantResponse = z.strictObject({
   model: z.string().min(1),
 });
 export type TeamAssistantResponse = z.infer<typeof TeamAssistantResponse>;
+
+/** The failure of a model answer that cannot be used as a team proposal. */
+export const UNUSABLE_TEAM_PROPOSAL_MESSAGE = 'The model did not return a usable team proposal.';
+
+/** The failure message, with the reason code after it in parentheses; never the answer's text. */
+export function unusableTeamProposal(reason?: string): string {
+  return reason ? `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (${reason})` : UNUSABLE_TEAM_PROPOSAL_MESSAGE;
+}
+
+/** The reason code of that failure, `''` when it names none, or null for any other message. */
+export function unusableTeamProposalReason(message: string): string | null {
+  if (message === UNUSABLE_TEAM_PROPOSAL_MESSAGE) return '';
+  const prefix = `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (`;
+  if (!message.startsWith(prefix) || !message.endsWith(')')) return null;
+  const reason = message.slice(prefix.length, -1);
+  return /^[a-z_]+$/.test(reason) ? reason : null;
+}

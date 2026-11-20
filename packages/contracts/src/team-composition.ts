@@ -47,8 +47,11 @@ export const CatalogAgent = z.strictObject({
 });
 export type CatalogAgent = z.infer<typeof CatalogAgent>;
 
+/** A skill goes by its name, and a bundled skill's name may be 64 characters. */
+export const SkillRef = z.string().min(1).max(64);
+
 export const CatalogSkill = z.strictObject({
-  id: ShortId,
+  id: SkillRef,
   name: z.string().min(1),
   description: z.string().max(L.skillDescription),
 });
@@ -78,7 +81,7 @@ export const CompositionSeat = z.strictObject({
   /** The seat's duty: the step instruction of its node. */
   duty: Text(L.duty),
   /** Catalog skill ids added to the agent's own skills. */
-  skills: z.array(ShortId).max(L.seatSkillIds).optional(),
+  skills: z.array(SkillRef).max(L.seatSkillIds).optional(),
 });
 export type CompositionSeat = z.infer<typeof CompositionSeat>;
 

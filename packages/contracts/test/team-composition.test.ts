@@ -66,6 +66,12 @@ describe('TeamCatalog', () => {
     expect(TeamCatalog.safeParse(long(301)).success).toBe(false);
   });
 
+  it('lists a skill under an id of up to 64 characters, its name', () => {
+    const withId = (id: string) => ({ ...catalog(), skills: [skill(id)] });
+    expect(TeamCatalog.safeParse(withId('x'.repeat(64))).success).toBe(true);
+    expect(TeamCatalog.safeParse(withId('x'.repeat(65))).success).toBe(false);
+  });
+
   it('refuses ids used twice in one list, but the lists are apart', () => {
     expect(TeamCatalog.safeParse({ agents: [agent('a1'), agent('a1')], skills: [] }).success).toBe(
       false,
@@ -181,6 +187,10 @@ describe('TeamComposition', () => {
     accepts(withSkills(many(16)));
     accepts(withSkills(['s1', 's1']));
     rejects(withSkills(many(17)));
+    // A skill goes by its name, and a bundled skill's name may be 64 characters.
+    accepts(withSkills(['x'.repeat(64)]));
+    rejects(withSkills(['x'.repeat(65)]));
+    rejects(withSkills(['']));
   });
 
   it('holds 2 to 4 seats side by side, 1 to 3 working seats and 1 to 3 rounds in a loop', () => {
