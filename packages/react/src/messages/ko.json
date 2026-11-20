@@ -1599,6 +1599,7 @@
     "cancel": "취소",
     "apply": "초안에 적용",
     "again": "다시 제안",
+    "earlier": "이전 제안",
     "stale": "초안이 바뀌었습니다",
     "resultBy": "{name} · {producer} 제출",
     "rounds": "최대 {count}회",

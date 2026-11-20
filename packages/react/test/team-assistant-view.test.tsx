@@ -488,7 +488,7 @@ it('refines a proposal in the conversation: the new one replaces it and the earl
   expect(within(shown).getByRole('heading', { name: 'Security review' })).toBeVisible();
   // The earlier proposal stays in the conversation as it was, without a way to apply it.
   const log = screen.getByRole('log');
-  const earlier = within(log).getByRole('button', { name: 'Fix the login bug' });
+  const earlier = within(log).getByRole('button', { name: en.TeamAssistant.earlier });
   expect(shown).not.toContainElement(earlier);
   await user.click(earlier);
   await waitFor(() => expect(within(log).getByText('Cause finder')).toBeVisible());

@@ -323,7 +323,7 @@ function EarlierProposal({
   return (
     <Accordion size="compact" className="w-full rounded-lg border border-border px-3">
       <AccordionItem value="earlier" highlight="trigger">
-        <AccordionTrigger>{plan.name}</AccordionTrigger>
+        <AccordionTrigger>{t('earlier')}</AccordionTrigger>
         <AccordionContent>
           <div className="grid min-w-0 gap-2 pb-2">
             <CompositionFlow proposal={proposal} plan={plan} resolved={resolved} t={t} />
