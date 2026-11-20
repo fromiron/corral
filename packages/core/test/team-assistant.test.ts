@@ -318,6 +318,30 @@ describe('checked assistant proposals', () => {
     expect(quoted).toBe('shape:plan.outrider:value');
   });
 
+  it('reads a new team’s flat answer, with no plan key, as that plan', () => {
+    const request = create('Write the guide.');
+    const readValue = (value: unknown, on: TeamAssistantRequest = request) =>
+      readAssistantAnswer(JSON.stringify(value), on);
+    const { reason, plan: inner } = plan();
+    expect(readValue({ kind: 'plan', reason, ...inner })).toEqual({ reply: plan() });
+    expect(readValue({ kind: 'plan', reason, ...inner, outrider: 'consultation' })).toEqual({
+      reply: plan({ outrider: 'consultation' }),
+    });
+    // Only when the plan key is absent: null or a string is refused as today.
+    expect(readValue({ kind: 'plan', reason, plan: null, ...inner })).toEqual({
+      problem: 'shape:plan:type',
+    });
+    expect(readValue({ kind: 'plan', reason, plan: 'Guide', ...inner })).toEqual({
+      problem: 'shape:plan:type',
+    });
+    // No plan and none of its fields.
+    expect(readValue({ kind: 'plan', reason })).toEqual({ problem: 'shape:plan:missing' });
+    // Edit mode is unchanged: a flat plan there is still a kind it does not take.
+    expect(readValue({ kind: 'plan', reason, ...inner }, edit)).toEqual({
+      problem: 'shape:plan:missing',
+    });
+  });
+
   it('reads a new team’s field written one level off in its own place, unless it is in both', () => {
     const request = create('Write the guide.');
     const readValue = (value: unknown) => readAssistantAnswer(JSON.stringify(value), request);

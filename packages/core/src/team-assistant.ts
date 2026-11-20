@@ -148,8 +148,12 @@ function lenientCreateAnswer(value: unknown, catalog: TeamCatalog): unknown {
       return { ...value, choices: [...CHOICES[id]] };
     return value;
   }
-  if (value.kind !== 'plan' || !isRecord(value.plan)) return value;
-  const placed = inPlace(value, value.plan);
+  if (value.kind !== 'plan') return value;
+  // A flat answer writes no plan key at all and its fields beside where plan would be.
+  const flat =
+    !Object.hasOwn(value, 'plan') && PLAN_FIELDS.some((key) => Object.hasOwn(value, key));
+  if (!flat && !isRecord(value.plan)) return value;
+  const placed = inPlace(value, isRecord(value.plan) ? value.plan : {});
   const plan = withoutNull(placed.plan, 'outrider');
   const seats = Array.isArray(plan.seats)
     ? plan.seats.map((seat) =>
