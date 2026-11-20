@@ -604,3 +604,26 @@ it('library skills are marked, and a library change alone does not refuse a bran
     receipt: { error: { message: 'branch model or resources changed' } },
   });
 });
+
+it('a skill read lists no explicit skill, which a request can still read by name', async () => {
+  const source = join(root, 'marked-read');
+  mkdirSync(join(source, 'skills', 'manual'), { recursive: true });
+  writeFileSync(
+    join(source, 'package.json'),
+    JSON.stringify({ name: 'marked-read', version: '1.0.0', pi: { skills: ['./skills'] } }),
+  );
+  writeFileSync(
+    join(source, 'skills/manual/SKILL.md'),
+    '---\nname: manual\ndescription: Run only on request.\ndisable-model-invocation: true\n---\nBody',
+  );
+  service.install((await service.reviewPackage('local', source)).reviewId);
+  const snapshot = service.preview({ id: 'writer', skills: [refs.second!] }, 'default').snapshot!;
+  expect(snapshot.resources).toContainEqual(
+    expect.objectContaining({ skillName: 'manual', skillMode: 'explicit' }),
+  );
+  const read = service.readSkill(snapshot, 'skills/second/SKILL.md');
+  const listed = (read.boundSkills as { name: string }[]).map((skill) => skill.name);
+  expect(listed).toContain('first');
+  expect(listed).not.toContain('manual');
+  expect(service.readSkill(snapshot, 'skills/manual/SKILL.md').text).toContain('Body');
+});

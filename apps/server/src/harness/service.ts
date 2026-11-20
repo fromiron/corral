@@ -1042,8 +1042,15 @@ export class HarnessService {
       text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       sha256: file.hash,
       resourceHash: ref.hash,
+      // An explicit skill is used only when a request names it, so it is not listed.
       boundSkills: snapshot.resources
-        .filter((resource) => resource.kind === 'skill' && resource.skillName && resource.entry)
+        .filter(
+          (resource) =>
+            resource.kind === 'skill' &&
+            resource.skillName &&
+            resource.entry &&
+            resource.skillMode !== 'explicit',
+        )
         .map((resource) => ({
           name: resource.skillName,
           path: `skills/${resource.skillName}/SKILL.md`,
