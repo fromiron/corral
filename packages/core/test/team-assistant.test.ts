@@ -1,12 +1,45 @@
-import {
-  TEAM_SLOTS,
-  type TeamAssistantRequest,
-  type TeamPattern,
-  type TeamPlan,
-} from '@corral/contracts';
+import type { TeamAssistantRequest, TeamCatalog, TeamComposition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import { assistantReplyFromAnswer } from '../src/index.ts';
 
+// The catalog a new team request carries: what the editor can pick by hand.
+const catalog: TeamCatalog = {
+  agents: [
+    {
+      id: 'a1',
+      name: 'Writer',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'draft',
+      skills: [],
+    },
+    {
+      id: 'a2',
+      name: 'Reviewer',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'review',
+      skills: [],
+    },
+    {
+      id: 'a3',
+      name: 'Researcher',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'notes',
+      skills: [],
+    },
+    {
+      id: 'a4',
+      name: 'Judge',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'draft',
+      skills: [],
+    },
+  ],
+  skills: [{ id: 's1', name: 'plain-language', description: 'Writes plainly.' }],
+};
 const create = (
   content: string,
   decisions?: TeamAssistantRequest['decisions'],
@@ -14,7 +47,8 @@ const create = (
   operationId: 'assistant',
   mode: 'create',
   messages: [{ role: 'user', content }],
-  decisions,
+  catalog,
+  ...(decisions ? { decisions } : {}),
 });
 const target = { outputId: 'out', index: 3 };
 const other = { outputId: 'out', index: 0 };
@@ -37,19 +71,29 @@ const edit: TeamAssistantRequest = {
     ],
   },
 };
-const plan = (pattern: TeamPattern = 'single', changes?: Partial<TeamPlan>) => ({
+/** A composed plan: one writer, unless the changes say otherwise. */
+const plan = (changes: Partial<TeamComposition> = {}) => ({
   kind: 'plan',
   reason: 'One author can write the guide.',
   plan: {
     name: 'Guide',
     brief: 'Write a guide.',
     criteria: ['Explain the steps.'],
-    pattern,
-    roles: TEAM_SLOTS[pattern].map((slot) => ({ slot, name: slot, duty: 'Write the guide.' })),
-    finalApproval: false,
+    seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the guide.' }],
+    flow: [{ seat: 's1' }],
     ...changes,
   },
 });
+/** A writer judged by a reviewer in a loop. */
+const judged = (changes: Partial<TeamComposition> = {}) =>
+  plan({
+    seats: [
+      { id: 'w', agent: 'a1', name: 'Writer', duty: 'Write the guide.' },
+      { id: 'r', agent: 'a2', name: 'Reviewer', duty: 'Check the guide.' },
+    ],
+    flow: [{ loop: { work: ['w'], judge: 'r' } }],
+    ...changes,
+  });
 const edits = (...items: unknown[]) => ({
   kind: 'edits',
   edits: items,
@@ -64,6 +108,7 @@ describe('checked assistant proposals', () => {
   it('accepts exactly one checked reply and respects the active mode', () => {
     const request = create('One author to write the guide.');
     expect(read(plan(), request)).toEqual(plan());
+    expect(read(judged(), request)).toEqual(judged());
     expect(read(plan(), edit)).toBeNull();
     expect(read(edits(gate), request)).toBeNull();
     expect(read({ kind: 'describe', topic: 'submitter' }, request)).toBeNull();
@@ -131,23 +176,18 @@ describe('checked assistant proposals', () => {
 
   it('never makes a required gate from an opinion-only decision in either mode', () => {
     const decisions = { reviewPolicy: 'opinion_only' } as const;
-    const reply = read(
-      plan('single', { outrider: 'required_review' }),
-      create('Require review.', decisions),
-    );
-    expect(reply).toMatchObject({
+    const reply = read(plan({ outrider: 'required_review' }), create('Require review.', decisions));
+    expect(reply).toMatchObject({ kind: 'plan', plan: { outrider: 'artifact_review' } });
+    expect(reply?.kind === 'plan' && reply.reason).not.toBe(plan().reason);
+    expect(read(plan(), create('Write it.', decisions))).toMatchObject({
       kind: 'plan',
-      plan: { pattern: 'single', outrider: 'artifact_review' },
+      plan: { outrider: 'artifact_review' },
     });
     const changed = read(edits(gate), { ...edit, decisions });
     expect(changed).toMatchObject({ kind: 'edits', edits: [{ kind: 'add_shared_advice' }] });
     expect(changed?.kind === 'edits' && changed.reason).not.toBe(edits(gate).reason);
-    expect(
-      read(
-        plan('write_review', { outrider: 'required_review' }),
-        create('Request a review.', decisions),
-      ),
-    ).toBeNull();
+    // A judged loop is a pass condition: the person ruled it out.
+    expect(read(judged(), create('Request a review.', decisions))).toBeNull();
     expect(
       read(edits({ kind: 'set_brief', brief: 'New goal' }), { ...edit, decisions }),
     ).toMatchObject({
@@ -176,7 +216,7 @@ describe('checked assistant proposals', () => {
     const advice = edits({ kind: 'add_shared_advice' });
     expect(read(advice, { ...edit, messages })).toEqual(advice);
     const request = { ...create('Newsletter'), messages };
-    const proposed = plan('single', { outrider: 'artifact_review' });
+    const proposed = plan({ outrider: 'artifact_review' });
     expect(read(proposed, request)).toEqual(proposed);
     expect(read(proposed, { ...request, decisions: { reviewPolicy: 'required' } })).toMatchObject({
       kind: 'plan',
@@ -189,7 +229,7 @@ describe('checked assistant proposals', () => {
     };
     expect(read(repeated, { ...edit, messages })).toEqual({ kind: 'unsupported' });
     expect(read(repeated, request)).toBeNull();
-    expect(read(plan('single', { outrider: 'clarify_review' }), request)).toBeNull();
+    expect(read(plan({ outrider: 'clarify_review' } as never), request)).toBeNull();
   });
 
   it('does not repeat a target question after a typed result selection', () => {
@@ -242,43 +282,67 @@ describe('checked assistant proposals', () => {
     ).toBeNull();
   });
 
-  it('keeps material choices and explicit observation settings above a conflicting model or keyword', () => {
-    expect(
-      read(plan('research_write_review'), create('Research the guide.', { material: 'person' })),
-    ).toBeNull();
-    expect(
-      read(plan('write_review'), create('I provide the guide.', { material: 'team' })),
-    ).toBeNull();
-    const enabled = read(plan(), create('No automatic observation.', { observeWork: true }));
-    expect(enabled).toMatchObject({ kind: 'plan', plan: { observeWork: true } });
-    const disabled = read(
-      plan('single', { observeWork: true, finalApproval: true }),
-      create('Watch work in progress.', { observeWork: false }),
+  it('refuses a composition the catalog cannot seat', () => {
+    const request = create('Write the guide.');
+    const seat = { id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the guide.' };
+    expect(read(plan({ seats: [{ ...seat, agent: 'a99' }] }), request)).toBeNull();
+    expect(read(plan({ seats: [{ ...seat, skills: ['s1'] }] }), request)).toMatchObject({
+      kind: 'plan',
+    });
+    expect(read(plan({ seats: [{ ...seat, skills: ['s9'] }] }), request)).toBeNull();
+    // Only an agent with the review contract can judge.
+    const judgedBy = (agent: string) =>
+      judged({
+        seats: [
+          { id: 'w', agent: 'a1', name: 'Writer', duty: 'Write the guide.' },
+          { id: 'r', agent, name: 'Judge', duty: 'Judge the guide.' },
+        ],
+      });
+    expect(read(judgedBy('a4'), request)).toBeNull();
+    expect(read(judgedBy('a2'), request)).toMatchObject({ kind: 'plan' });
+    // No tool, observation or approval field reaches a plan.
+    for (const extra of [
+      { seats: [{ ...seat, tools: ['write_file'] }] },
+      { observeWork: true },
+      { finalApproval: true },
+    ])
+      expect(read(plan(extra as never), request)).toBeNull();
+  });
+
+  it('a required pass the person chose becomes the plan’s policy', () => {
+    const reply = read(judged(), create('Get it checked.', { reviewPolicy: 'required' }));
+    expect(reply).toMatchObject({ kind: 'plan', plan: { outrider: 'required_review' } });
+    expect(reply?.kind === 'plan' && reply.reason).not.toBe(judged().reason);
+    const already = plan({ outrider: 'required_review' });
+    expect(read(already, create('Get it checked.', { reviewPolicy: 'required' }))).toEqual(already);
+  });
+
+  it('passes the material choice and observation to the model, not to a structural check', () => {
+    const researched = plan({
+      seats: [
+        { id: 'r', agent: 'a3', name: 'Researcher', duty: 'Find sources.' },
+        { id: 'w', agent: 'a1', name: 'Writer', duty: 'Write the guide.' },
+      ],
+      flow: [{ seat: 'r' }, { seat: 'w' }],
+    });
+    expect(read(researched, create('I provide the guide.', { material: 'person' }))).toEqual(
+      researched,
     );
-    expect(disabled).toMatchObject({ kind: 'plan', plan: { finalApproval: false } });
-    expect(disabled).not.toHaveProperty('plan.observeWork');
+    expect(read(plan(), create('Research it.', { material: 'team' }))).toEqual(plan());
+    expect(read(plan(), create('Watch work in progress.', { observeWork: true }))).toEqual(plan());
   });
 
   it.each([
     '작성자가 필요할 때만 전문가에게 자문한다. 검토 통과나 자동 관찰은 필요 없다.',
     'The writer consults an expert when needed. No review pass or automatic observation is needed.',
-  ])('keeps optional consultation and no review step or observation for %s', (goal) => {
+    'Get a review before publishing.',
+  ])('does not read the goal’s words to change a new team’s composition: %s', (goal) => {
     const request = create(goal);
-    const matching = plan('single', { outrider: 'consultation' });
-    expect(read(matching, request)).toEqual(matching);
-    const corrected = read(
-      plan('write_review', { reviewRounds: 2, observeWork: true, outrider: 'required_review' }),
-      request,
-    );
-    expect(corrected).toMatchObject({
-      kind: 'plan',
-      plan: {
-        pattern: 'single',
-        roles: [{ slot: 'worker', name: 'writer' }],
-        outrider: 'consultation',
-      },
-    });
-    expect(corrected).not.toHaveProperty('plan.reviewRounds');
-    expect(corrected).not.toHaveProperty('plan.observeWork');
+    for (const reply of [
+      plan({ outrider: 'consultation' }),
+      judged({ outrider: 'required_review' }),
+      plan(),
+    ])
+      expect(read(reply, request)).toEqual(reply);
   });
 });
