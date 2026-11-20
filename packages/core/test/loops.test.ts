@@ -686,7 +686,7 @@ describe('reading a step of another Loop', () => {
   /** `reader` also reads `source` as a task output. */
   const reading = (nodes: CorralNode[], reader: string, source: string) =>
     nodes.map((node) =>
-      node.id === reader && node.type === 'agent'
+      node.id === reader && node.type === 'agent' && 'inputBindings' in node
         ? {
             ...node,
             inputBindings: [
