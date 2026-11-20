@@ -226,15 +226,41 @@ const ofType = <T extends CorralNode['type']>(definition: CorralDefinition, type
 // ── the catalog ──────────────────────────────────────────────────────────────
 
 describe('teamCatalog', () => {
-  it('lists the agents and skills under short ids, in the order given', () => {
+  it('lists the agents under short ids and the skills under their names, in the order given', () => {
     expect(TeamCatalog.parse(catalog)).toEqual(catalog);
     expect(catalog.agents.map((a) => a.id)).toEqual(AGENTS.map((_, i) => `a${i + 1}`));
-    expect(catalog.skills.map((s) => s.id)).toEqual(SKILLS.map((_, i) => `s${i + 1}`));
+    expect(catalog.skills.map((s) => s.id)).toEqual(SKILLS.map((s) => s.name));
     expect(catalog.agents.map((a) => a.name)).toEqual(AGENTS.map((a) => a.role.name));
     for (const [i, agent] of AGENTS.entries())
       expect(resolved.agentById.get(`a${i + 1}`)).toBe(agent);
-    for (const [i, skill] of SKILLS.entries())
-      expect(resolved.skillById.get(`s${i + 1}`)).toBe(skill);
+    for (const skill of SKILLS) expect(resolved.skillById.get(skill.name)).toBe(skill);
+  });
+
+  it('gives a repeated skill name -2, -3, and cuts an id to 40 characters', () => {
+    const named = (name: string) => ({ ...librarySkill, name });
+    const long = 'x'.repeat(45);
+    const { catalog: listed, skillById } = teamCatalog(
+      [builtin('writer')],
+      [named('plain'), named('plain'), named('plain-2'), named('plain'), named(long), named(long)],
+    );
+    expect(listed.skills.map((s) => s.id)).toEqual([
+      'plain',
+      'plain-2',
+      'plain-2-2',
+      'plain-3',
+      'x'.repeat(40),
+      `${'x'.repeat(38)}-2`,
+    ]);
+    expect(listed.skills.map((s) => s.name)).toEqual([
+      'plain',
+      'plain',
+      'plain-2',
+      'plain',
+      long,
+      long,
+    ]);
+    expect(skillById.size).toBe(6);
+    expect(TeamCatalog.parse(listed)).toEqual(listed);
   });
 
   it('describes each agent by what it changes, runs and returns, and the skills it has', () => {
@@ -356,12 +382,12 @@ describe('compositionProblem', () => {
     expect(() => draft(composition)).toThrow(TeamCompositionError);
   });
 
-  it('refuses a skill the catalog does not list', () => {
+  it('leaves a skill the catalog does not list to the server, which drops it; the assembly refuses it', () => {
     const composition = usable();
     composition.seats[0] = seat('write', 'writer agent', {
       skills: [skillId('release-notes'), 's999'],
     });
-    expect(compositionProblem(composition, catalog)).toBe('unknown_skill');
+    expect(compositionProblem(composition, catalog)).toBe(null);
     expect(() => draft(composition)).toThrow(/unknown_skill/);
   });
 
@@ -1161,7 +1187,7 @@ describe('draftFromComposition', () => {
         criteria: ['c'],
         seats: [
           { id: 'one', agent: 'a1', name: 'One', duty: 'd' },
-          { id: 'two', agent: 'a1', name: 'Two', duty: 'd', skills: ['s1'] },
+          { id: 'two', agent: 'a1', name: 'Two', duty: 'd', skills: ['release-notes'] },
         ],
         flow: [{ seat: 'one' }, { seat: 'two' }],
       });

@@ -54,11 +54,29 @@ const copy = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const sameSkill = (a: RoleSkillRef, b: RoleSkillRef) =>
   a.resourceHash === b.resourceHash && a.entry === b.entry;
 
+/** The longest catalog id (`ShortId`). */
+const ID_LENGTH = 40;
+
 /**
- * The catalog for a new team request: at most 64 agents and 256 skills in the order given, under
- * ids that mean something only in this request. It carries names, descriptions, output contracts
- * and whether an agent changes files or runs commands; never a prompt, tool name, hash or path.
- * An advisor role is left out: no seat may take one.
+ * A skill's id is its name; a name already listed gets `-2`, `-3`, … and every id is cut to fit 40
+ * characters with its suffix.
+ */
+function skillIds(names: readonly string[]): string[] {
+  const taken = new Set<string>();
+  return names.map((name) => {
+    const fit = (suffix: string) => `${name.slice(0, ID_LENGTH - suffix.length)}${suffix}`;
+    let id = fit('');
+    for (let i = 2; taken.has(id); i++) id = fit(`-${i}`);
+    taken.add(id);
+    return id;
+  });
+}
+
+/**
+ * The catalog for a new team request: at most 64 agents and 256 skills in the order given. Agents
+ * go under ids that mean something only in this request, skills under their names. It carries
+ * names, descriptions, output contracts and whether an agent changes files or runs commands; never
+ * a prompt, tool name, hash or path. An advisor role is left out: no seat may take one.
  */
 export function teamCatalog(
   agents: readonly ComposableAgent[],
@@ -72,6 +90,7 @@ export function teamCatalog(
     skills.find((skill) => sameSkill(skill.ref, ref))?.name ?? builtinSkillName(ref);
   const agentById = new Map<string, ComposableAgent>();
   const skillById = new Map<string, ComposableSkill>();
+  const ids = skillIds(listedSkills.map((skill) => skill.name));
   const catalog: TeamCatalog = {
     agents: listedAgents.map((agent, index) => {
       const id = `a${index + 1}`;
@@ -92,7 +111,7 @@ export function teamCatalog(
       };
     }),
     skills: listedSkills.map((skill, index) => {
-      const id = `s${index + 1}`;
+      const id = ids[index] as string;
       skillById.set(id, skill);
       return {
         id,
@@ -104,7 +123,11 @@ export function teamCatalog(
   return { catalog, agentById, skillById };
 }
 
-/** Why a well-formed composition still cannot be used; the whole answer is dropped. */
+/**
+ * Why a well-formed composition still cannot be used; the whole answer is dropped. A skill the
+ * catalog does not list never sinks an answer: the server drops it (`unknown_skill` is only the
+ * assembly's own refusal of a plan nobody normalised).
+ */
 export type TeamCompositionProblem =
   | 'unknown_agent'
   | 'unknown_skill'
@@ -114,12 +137,13 @@ export type TeamCompositionProblem =
 function catalogProblem(
   composition: TeamComposition,
   outputOf: (agentId: string) => OutputContract | undefined,
-  hasSkill: (skillId: string) => boolean,
+  hasSkill?: (skillId: string) => boolean,
 ): TeamCompositionProblem | null {
   const seats = new Map(composition.seats.map((seat) => [seat.id, seat]));
   for (const seat of composition.seats) if (!outputOf(seat.agent)) return 'unknown_agent';
-  for (const seat of composition.seats)
-    if (!(seat.skills ?? []).every(hasSkill)) return 'unknown_skill';
+  if (hasSkill)
+    for (const seat of composition.seats)
+      if (!(seat.skills ?? []).every(hasSkill)) return 'unknown_skill';
   for (const step of composition.flow) {
     if (!('loop' in step)) continue;
     const judge = seats.get(step.loop.judge);
@@ -129,7 +153,7 @@ function catalogProblem(
 }
 
 /**
- * The spec's unusable compositions that the schema cannot see: an id the catalog does not list,
+ * The spec's unusable compositions that the schema cannot see: an agent the catalog does not list,
  * a judge that returns no review, and a loop the person ruled out by asking for opinions only.
  */
 export function compositionProblem(
@@ -138,12 +162,7 @@ export function compositionProblem(
   decisions?: TeamAssistantRequest['decisions'],
 ): TeamCompositionProblem | null {
   const agents = new Map(catalog.agents.map((agent) => [agent.id, agent.output]));
-  const skills = new Set(catalog.skills.map((skill) => skill.id));
-  const problem = catalogProblem(
-    composition,
-    (id) => agents.get(id),
-    (id) => skills.has(id),
-  );
+  const problem = catalogProblem(composition, (id) => agents.get(id));
   if (problem) return problem;
   if (decisions?.reviewPolicy === 'opinion_only' && composition.flow.some((step) => 'loop' in step))
     return 'loop_with_opinion_only';

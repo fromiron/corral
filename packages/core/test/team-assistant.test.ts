@@ -1,6 +1,6 @@
 import type { TeamAssistantRequest, TeamCatalog, TeamComposition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
-import { assistantReplyFromAnswer } from '../src/index.ts';
+import { assistantReplyFromAnswer, readAssistantAnswer } from '../src/index.ts';
 
 // The catalog a new team request carries: what the editor can pick by hand.
 const catalog: TeamCatalog = {
@@ -105,6 +105,77 @@ const read = (value: unknown, request: TeamAssistantRequest) =>
   assistantReplyFromAnswer(JSON.stringify(value), request);
 
 describe('checked assistant proposals', () => {
+  it('normalises a seat’s skills: catalog ids only, none the agent has, each once, at most four', () => {
+    const skilled: TeamCatalog = {
+      agents: [{ ...(catalog.agents[0] as TeamCatalog['agents'][number]), skills: ['own'] }],
+      skills: ['own', 'one', 'two', 'three', 'four', 'five'].map((id) => ({
+        id: id === 'own' ? 'own-2' : id,
+        name: id,
+        description: '',
+      })),
+    };
+    const request: TeamAssistantRequest = {
+      operationId: 'assistant',
+      mode: 'create',
+      messages: [{ role: 'user', content: 'Write the guide.' }],
+      catalog: skilled,
+    };
+    const seat = { id: 'write', agent: 'a1', name: 'Writer', duty: 'Write the guide.' };
+    const withSkills = (skills: string[]) =>
+      plan({ seats: [{ ...seat, skills }], flow: [{ seat: 'write' }] });
+    expect(
+      read(withSkills(['ghost', 'one', 'own-2', 'one', 'two', 'three', 'four', 'five']), request),
+    ).toEqual(withSkills(['one', 'two', 'three', 'four']));
+    // Nothing left is no skills at all; a seat that named none is left as it is.
+    expect(read(withSkills(['ghost', 'own-2']), request)).toEqual(
+      plan({ seats: [seat], flow: [{ seat: 'write' }] }),
+    );
+    expect(read(plan({ seats: [seat], flow: [{ seat: 'write' }] }), request)).toEqual(
+      plan({ seats: [seat], flow: [{ seat: 'write' }] }),
+    );
+  });
+
+  it('names why an answer cannot be used, never with its text', () => {
+    const request = create('Write the guide.');
+    const problem = (text: string, on: TeamAssistantRequest = request) => {
+      const result = readAssistantAnswer(text, on);
+      return 'problem' in result ? result.problem : 'usable';
+    };
+    const json = (value: unknown) => JSON.stringify(value);
+    expect(problem('not JSON at all')).toBe('not_json');
+    expect(problem('{"kind": "plan",')).toBe('not_json');
+    expect(problem(`${json(question)}\n${json(question)}`)).toBe('not_json');
+    expect(problem(json([question]))).toBe('shape');
+    expect(problem(json({ ...plan(), hidden: true }))).toBe('shape');
+    expect(problem(json(plan({ flow: [] })))).toBe('shape');
+    expect(problem(json(edits(gate)))).toBe('kind');
+    expect(problem(json(plan()), edit)).toBe('kind');
+    expect(problem(json({ kind: 'unsupported' }))).toBe('kind');
+    expect(problem(json(plan({ seats: [{ id: 's1', agent: 'a99', name: 'W', duty: 'd' }] })))).toBe(
+      'unknown_agent',
+    );
+    expect(
+      problem(
+        json(
+          judged({
+            seats: [
+              { id: 'w', agent: 'a1', name: 'Writer', duty: 'Write the guide.' },
+              { id: 'r', agent: 'a4', name: 'Judge', duty: 'Judge the guide.' },
+            ],
+          }),
+        ),
+      ),
+    ).toBe('judge_without_review');
+    expect(problem(json(judged()), create('Write it.', { reviewPolicy: 'opinion_only' }))).toBe(
+      'loop_with_opinion_only',
+    );
+    expect(problem(json(question), create('Write it.', { material: 'person' }))).toBe(
+      'decision_conflict',
+    );
+    expect(problem(json(plan()))).toBe('usable');
+    expect(readAssistantAnswer(json(plan()), request)).toEqual({ reply: plan() });
+  });
+
   it('accepts exactly one checked reply and respects the active mode', () => {
     const request = create('One author to write the guide.');
     expect(read(plan(), request)).toEqual(plan());
@@ -289,7 +360,10 @@ describe('checked assistant proposals', () => {
     expect(read(plan({ seats: [{ ...seat, skills: ['s1'] }] }), request)).toMatchObject({
       kind: 'plan',
     });
-    expect(read(plan({ seats: [{ ...seat, skills: ['s9'] }] }), request)).toBeNull();
+    // An unknown skill never sinks the team: it is dropped.
+    expect(read(plan({ seats: [{ ...seat, skills: ['s9'] }] }), request)).toEqual(
+      plan({ seats: [seat] }),
+    );
     // Only an agent with the review contract can judge.
     const judgedBy = (agent: string) =>
       judged({

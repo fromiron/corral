@@ -2,17 +2,35 @@ import {
   assistantKindAllowed,
   hasAssistantTarget,
   TeamAssistantReply as Reply,
+  TEAM_COMPOSITION_LIMITS,
   type TeamAssistantRequest,
   type TeamAssistantTarget,
+  type TeamCatalog,
   type TeamComposition,
 } from '@corral/contracts';
-import { compositionProblem } from './team-composition.ts';
+import { compositionProblem, type TeamCompositionProblem } from './team-composition.ts';
 import { type AdviceIntent, adviceIntentFromGoal } from './team-draft.ts';
 
 type PlanReply = Extract<Reply, { kind: 'plan' }>;
 type EditsReply = Extract<Reply, { kind: 'edits' }>;
 type EditRequest = Extract<TeamAssistantRequest, { mode: 'edit' }>;
 type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
+
+/**
+ * Why a model answer cannot be used, with none of its text: no single JSON value (`not_json`), not
+ * a reply (`shape`), a kind this mode does not take (`kind`), a composition the catalog cannot seat,
+ * or a reply that contradicts what the person already decided or was asked (`decision_conflict`).
+ */
+export type TeamAssistantProblem =
+  | 'not_json'
+  | 'shape'
+  | 'kind'
+  | TeamCompositionProblem
+  | 'decision_conflict';
+
+export type TeamAssistantReading = { reply: Reply } | { problem: TeamAssistantProblem };
+const conflict = (reply: Reply | null): TeamAssistantReading =>
+  reply ? { reply } : { problem: 'decision_conflict' };
 
 /** Assistant turns in the current proposal are the questions already shown to the person. */
 export function canAskAssistantQuestion(messages: TeamAssistantRequest['messages']): boolean {
@@ -68,23 +86,54 @@ function policyReason(
 }
 
 /**
+ * A seat's skills as the catalog can add them: ids it lists, none its agent already has, each once,
+ * the first four. A seat left with none names none.
+ */
+function normalisedSkills(plan: TeamComposition, catalog: TeamCatalog): TeamComposition {
+  const skillName = new Map(catalog.skills.map((skill) => [skill.id, skill.name]));
+  const seats = plan.seats.map((seat) => {
+    if (!seat.skills) return seat;
+    const own = new Set(catalog.agents.find((agent) => agent.id === seat.agent)?.skills ?? []);
+    const kept = [
+      ...new Set(
+        seat.skills.filter((id) => {
+          const name = skillName.get(id);
+          return name !== undefined && !own.has(name);
+        }),
+      ),
+    ].slice(0, TEAM_COMPOSITION_LIMITS.seatSkills);
+    const { skills: _skills, ...rest } = seat;
+    return kept.length ? { ...rest, skills: kept } : rest;
+  });
+  return { ...plan, seats };
+}
+
+/**
  * A new team as the model composed it, checked against the catalog it was composed from and the
  * person's review policy. The goal's words are the model's to read: nothing here re-reads them.
  */
-function reconcilePlan(reply: PlanReply, request: CreateRequest, korean: boolean): Reply | null {
+function reconcilePlan(
+  reply: PlanReply,
+  request: CreateRequest,
+  korean: boolean,
+): TeamAssistantReading {
   const { decisions } = request;
-  if (compositionProblem(reply.plan, request.catalog, decisions)) return null;
+  const problem = compositionProblem(reply.plan, request.catalog, decisions);
+  if (problem) return { problem };
+  const plan = normalisedSkills(reply.plan, request.catalog);
   const policy =
     decisions?.reviewPolicy === 'required'
       ? 'required_review'
       : decisions?.reviewPolicy === 'opinion_only'
         ? 'artifact_review'
         : undefined;
-  if (!policy || reply.plan.outrider === policy) return reply;
+  if (!policy || plan.outrider === policy) return { reply: { ...reply, plan } };
   return {
-    kind: 'plan',
-    plan: { ...reply.plan, outrider: policy },
-    reason: policyReason(policy, korean),
+    reply: {
+      kind: 'plan',
+      plan: { ...plan, outrider: policy },
+      reason: policyReason(policy, korean),
+    },
   };
 }
 
@@ -160,17 +209,23 @@ function reconcileEdits(
 
 /** Check the reply in its proposal context. Structured decisions take priority over goal text. */
 export function reconcileAssistantReply(reply: Reply, request: TeamAssistantRequest): Reply | null {
-  if (!assistantKindAllowed(request.mode, reply.kind)) return null;
+  const checked = checkAssistantReply(reply, request);
+  return 'reply' in checked ? checked.reply : null;
+}
+
+function checkAssistantReply(reply: Reply, request: TeamAssistantRequest): TeamAssistantReading {
+  if (!assistantKindAllowed(request.mode, reply.kind)) return { problem: 'kind' };
   const team = request.mode === 'edit' ? request.team : undefined;
   const decisions = request.decisions;
-  if (decisions?.reviewTarget && !hasAssistantTarget(team, decisions.reviewTarget)) return null;
+  if (decisions?.reviewTarget && !hasAssistantTarget(team, decisions.reviewTarget))
+    return { problem: 'decision_conflict' };
   if (reply.kind === 'question') {
     switch (reply.id) {
       case 'material':
-        if (decisions?.material) return null;
+        if (decisions?.material) return conflict(null);
         break;
       case 'review_policy':
-        if (decisions?.reviewPolicy) return null;
+        if (decisions?.reviewPolicy) return conflict(null);
         break;
       case 'review_target':
         if (
@@ -179,20 +234,20 @@ export function reconcileAssistantReply(reply: Reply, request: TeamAssistantRequ
           decisions?.reviewPolicy === 'opinion_only' ||
           reply.choices.some((choice) => !hasAssistantTarget(team, choice))
         )
-          return null;
+          return conflict(null);
         break;
     }
-    return boundedQuestion(request, reply);
+    return conflict(boundedQuestion(request, reply));
   }
-  if (reply.kind === 'describe' || reply.kind === 'unsupported') return reply;
+  if (reply.kind === 'describe' || reply.kind === 'unsupported') return { reply };
   const users = request.messages.filter((message) => message.role === 'user');
   const korean = /[가-힣]/.test(users.at(-1)?.content ?? '');
   if (reply.kind === 'plan')
-    return request.mode === 'create' ? reconcilePlan(reply, request, korean) : null;
-  if (request.mode !== 'edit') return null;
+    return request.mode === 'create' ? reconcilePlan(reply, request, korean) : { problem: 'kind' };
+  if (request.mode !== 'edit') return { problem: 'kind' };
   // Edits to an existing team still read its review and observation intent from the words.
   const intent = adviceIntentFromGoal(users.map((message) => message.content).join('\n'));
-  return reconcileEdits(reply, request, intent, korean);
+  return conflict(reconcileEdits(reply, request, intent, korean));
 }
 
 /** Never extract partial edits or execute strings from untrusted model text. */
@@ -200,17 +255,26 @@ export function assistantReplyFromAnswer(
   text: string,
   request: TeamAssistantRequest,
 ): Reply | null {
+  const read = readAssistantAnswer(text, request);
+  return 'reply' in read ? read.reply : null;
+}
+
+/** The checked reply in a model answer, or why there is none. */
+export function readAssistantAnswer(
+  text: string,
+  request: TeamAssistantRequest,
+): TeamAssistantReading {
   let value: unknown;
   // Read one complete JSON value, never an object nested inside an array or a second
   // reply. The outer envelope (a fence or surrounding explanation) is not executable.
   const start = text.search(/[[{]/);
   const end = Math.max(text.lastIndexOf('}'), text.lastIndexOf(']'));
-  if (start < 0 || end <= start) return null;
+  if (start < 0 || end <= start) return { problem: 'not_json' };
   try {
     value = JSON.parse(text.slice(start, end + 1));
   } catch {
-    return null;
+    return { problem: 'not_json' };
   }
   const parsed = Reply.safeParse(value);
-  return parsed.success ? reconcileAssistantReply(parsed.data, request) : null;
+  return parsed.success ? checkAssistantReply(parsed.data, request) : { problem: 'shape' };
 }
