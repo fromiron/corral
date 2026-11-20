@@ -349,11 +349,13 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     LIGHTER.test(brief) ||
     FIX.test(brief) ||
     (SLOWED.test(brief) && !CAUSE.test(brief));
-  // A measure named without a complaint needs a wish for less of it: a fix or an edit is not one.
+  // A measure named without a complaint needs a wish for less of it: a fix or an edit is not one,
+  // and inside a request to add or build something the wish says what the new thing is for.
   const wantsLess =
-    MEASURE_WISHED.test(brief) ||
-    (measured && FASTER.test(brief)) ||
-    (RESOURCE.test(brief) && LIGHTER.test(brief));
+    !IMPLEMENT.test(brief) &&
+    (MEASURE_WISHED.test(brief) ||
+      (measured && FASTER.test(brief)) ||
+      (RESOURCE.test(brief) && LIGHTER.test(brief)));
   // A regression in speed is a slowdown, not a failure.
   const failing = BUG.test(slow ? brief.replace(/\bregress\w*/gi, ' ') : brief);
   // Fixing changes code; finding a cause without fixing it is research.

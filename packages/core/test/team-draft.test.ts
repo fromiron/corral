@@ -630,6 +630,10 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     'The 10 MB upload limit is too large; lower it to 5 MB',
     '업로드 용량 제한이 너무 커. 5MB로 낮춰 줘',
     '로딩 스피너를 작게 해 줘',
+    // A wish for less that describes what a new feature does is that feature, not a slowdown.
+    '이미지 용량을 줄여 주는 기능을 추가해 줘',
+    'Add a feature that compresses images to reduce file size',
+    'Build an importer that uses less memory than the old one',
   ])('names no slowdown: %s is not performance', (goal) => {
     expect(shape(goal)).not.toBe('performance');
   });
