@@ -5,7 +5,12 @@ import { PiAgentAdapter, processChannel, sdkProcessChannel, WorkerTool } from '@
 import type { HarnessProfile, RoleSkillRef } from '@corral/contracts';
 import { Coordinator, InMemoryRunStore, InProcessTransport, waitForProjection } from '@corral/core';
 import { openDatabase } from '@corral/storage-sqlite';
-import { FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
+import {
+  FakeClock,
+  linearCorral,
+  ScriptedAgentAdapter,
+  SequentialIdFactory,
+} from '@corral/testkit';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import { roleSkillCases } from '../../../packages/core/test/harness-role-skill-cases.ts';
 import { HarnessService } from '../src/harness/service.ts';
@@ -534,4 +539,68 @@ it('a library skill revoked after a run started is left out of a later worker st
   expect(runtime.skills.map((skill) => skill.name)).not.toContain('required');
   service.trust(refs.second!.resourceHash, false);
   await expect(service.runtimeResources({ harness: pinned, inputs: [] })).rejects.toThrow(/trust/);
+});
+
+// harness-contract.md, "스냅샷" and "이전 실행에서 이어 갈 때".
+it('library skills are marked, and a library change alone does not refuse a branch', async () => {
+  db.prepare(
+    `INSERT INTO work_sessions (id, project_id, title, objective, pinned, revision, created_at, updated_at, entries_json)
+     VALUES ('branch_session', 'default', 'Branch', 'Branch', 0, 1, ?, ?, '[]')`,
+  ).run(new Date(0).toISOString(), new Date(0).toISOString());
+  const store = new InMemoryRunStore();
+  const coordinator = new Coordinator({
+    clock: new FakeClock(),
+    ids: new SequentialIdFactory(),
+    store,
+    harnesses: service,
+    agents: new ScriptedAgentAdapter({ turns: 1 }),
+  });
+  const transport = new InProcessTransport(coordinator);
+  const ended = (runId: string) =>
+    waitForProjection(transport, runId, (run) =>
+      ['succeeded', 'failed', 'cancelled'].includes(run.status),
+    );
+  const definition = linearCorral(['writer']);
+  definition.roles[0]!.skills = [refs.second!];
+  const source = coordinator.startRun({
+    schemaVersion: '0.1',
+    commandId: 'source',
+    definition,
+    mode: 'mock',
+  });
+  expect(source.receipt.error).toBeUndefined();
+  await ended(source.runId!);
+  const before = store.getRun(source.runId!)!.snapshot.harnesses!.writer_role!;
+  const picked = before.resources.find((resource) => resource.selectedByRole);
+  expect(picked).toMatchObject({ skillName: 'second' });
+  expect(picked).not.toHaveProperty('library');
+  expect(before.resources.filter((resource) => resource.library).length).toBe(
+    before.resources.length - 1,
+  );
+  const point = { sourceRunId: source.runId!, requestStart: true as const };
+  const preview = coordinator.branchPreview(point);
+  const added = await install('later', ['later']);
+  const prepare = async () => ({ sessionId: 'branch_session' });
+  const branch = await coordinator.branchRun(
+    { ...point, commandId: 'branch_library', expectedHash: preview.hash },
+    prepare,
+  );
+  expect(branch.receipt.error).toBeUndefined();
+  const after = store.getRun(branch.runId!)!.snapshot.harnesses!.writer_role!;
+  expect(after.snapshotHash).not.toBe(before.snapshotHash);
+  expect(after.resources).toContainEqual(
+    expect.objectContaining({ hash: added, skillName: 'later', library: true }),
+  );
+  await ended(branch.runId!);
+  // A bound change, here the person's default policy, still refuses the branch.
+  defaults();
+  expect(
+    await coordinator.branchRun(
+      { ...point, commandId: 'branch_bound', expectedHash: preview.hash },
+      prepare,
+    ),
+  ).toMatchObject({
+    runId: null,
+    receipt: { error: { message: 'branch model or resources changed' } },
+  });
 });

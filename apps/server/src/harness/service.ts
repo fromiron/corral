@@ -1660,6 +1660,7 @@ export class HarnessService {
         version: pick.resource.version,
         kind: 'skill',
         required: false,
+        library: true,
         entry: pick.skill.entry,
         skillMode: pick.skill.disableModelInvocation ? 'explicit' : 'auto',
         skillName: pick.skill.name,
