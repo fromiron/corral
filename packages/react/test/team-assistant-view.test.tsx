@@ -19,6 +19,7 @@ function setup({
   narrow = false,
   integrated = false,
   server = true,
+  modelPending = false,
 }: {
   ask?: TeamAssistantHost['ask'];
   existing?: boolean;
@@ -28,6 +29,8 @@ function setup({
   integrated?: boolean;
   /** False for the browser demo: there are no model settings to open. */
   server?: boolean;
+  /** The model list has not arrived yet. */
+  modelPending?: boolean;
 } = {}) {
   const editor = createEditorStore(existing ? researchTeamDraft() : emptyDraft());
   const session = sessionStore();
@@ -39,6 +42,7 @@ function setup({
     newOperationId: () => `assistant-${++nextId}`,
     wording: en.TeamDraft.wording,
     ...(server && { onConnectModel }),
+    ...(modelPending && { modelPending }),
   };
   const dock = (assistant: TeamAssistantHost) => (
     <IntlProvider locale="en" messages={en} timeZone="UTC">
@@ -71,6 +75,8 @@ function setup({
     disconnect: () => rerender(dock({ ...host, ask: null })),
     reconnect: () => rerender(dock(host)),
     withModel: (model: TeamAssistantHost['ask']) => rerender(dock({ ...host, ask: model })),
+    listArrived: (model: TeamAssistantHost['ask']) =>
+      rerender(dock({ ...host, ask: model, modelPending: false })),
   };
 }
 
@@ -373,4 +379,30 @@ it('leaves the focus alone when a column that opened by itself gets its model af
   expect(field('edit')).toBeVisible();
   expect(field('edit')).not.toHaveFocus();
   expect(document.body).toHaveFocus();
+});
+
+it('says nothing about models while the model list has not arrived, and sends nothing', async () => {
+  const { user, listArrived } = setup({ open: true, modelPending: true });
+  expect(screen.queryByRole('button', { name: 'Connect a model' })).toBeNull();
+  expect(screen.queryByText(/request|model/i, { selector: 'span' })).toBeNull();
+  await user.type(field(), 'Write a notice.');
+  expect(button('Send')).toBeDisabled();
+  expect(button('Send')).not.toHaveAttribute('aria-description');
+  await user.keyboard('{Enter}');
+  expect(field()).toHaveValue('Write a notice.');
+  expect(screen.getByRole('log')).not.toHaveTextContent('Write a notice.');
+  // The list arrives empty: now the request is switched off.
+  listArrived(null);
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(button('Connect a model')).toBeVisible();
+});
+
+it('turns the waiting input into a working one when the list brings a model', async () => {
+  const ask = vi.fn().mockResolvedValue(question);
+  const { user, listArrived } = setup({ open: true, modelPending: true });
+  await user.type(field(), 'Write a newsletter.');
+  listArrived(ask);
+  expect(button('Send')).toBeEnabled();
+  await user.click(button('Send'));
+  expect(ask).toHaveBeenCalledTimes(1);
 });

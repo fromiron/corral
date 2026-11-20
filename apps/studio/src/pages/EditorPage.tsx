@@ -308,6 +308,8 @@ function Editor({
       ask:
         models && assistantModel ? (request, signal) => models.assistTeam(request, signal) : null,
       ...(assistantModel ? { modelLabel: assistantModel.modelName ?? assistantModel.label } : {}),
+      // Until the list arrives the editor does not know whether a model can run.
+      ...(live && !localAssistant && profiles === null && { modelPending: true }),
       wording,
       newOperationId: () => crypto.randomUUID(),
       ...(live &&
@@ -317,6 +319,7 @@ function Editor({
     };
   }, [
     assistantModel,
+    profiles,
     services.models,
     wording,
     navigate,

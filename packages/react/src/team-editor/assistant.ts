@@ -34,6 +34,8 @@ export interface TeamAssistantHost {
     | ((request: TeamAssistantRequest, signal: AbortSignal) => Promise<TeamAssistantResponse>)
     | null;
   modelLabel?: string;
+  /** The model list has not arrived yet: whether a model can run is not known. */
+  modelPending?: boolean;
   newOperationId(): string;
   wording: TeamWording;
   onConnectModel?(): void;

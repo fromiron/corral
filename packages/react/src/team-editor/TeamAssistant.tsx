@@ -510,8 +510,10 @@ export function TeamAssistant({
   }
   const localReply = question?.source === 'choice';
   const paidSend = connected && !localReply;
+  // Until the model list arrives nothing is said about models: the input waits, unable to send.
+  const modelPending = !connected && Boolean(host.modelPending);
   // Only a choice's own question takes typed text without a model.
-  const inputOff = !connected && !localReply;
+  const inputOff = !connected && !localReply && !modelPending;
   const modelName = host.modelLabel || td('ask');
   const cost = paidSend ? `${modelName} · ${td('askCost')}` : null;
   const origin =
@@ -799,8 +801,8 @@ export function TeamAssistant({
           onValueChange={actions.setInput}
           onSend={() => void actions.send()}
           sendLabel={t('send')}
-          sendDescription={cost ?? td('noModelCall')}
-          sendDisabled={busy}
+          sendDescription={cost ?? (modelPending && !localReply ? undefined : td('noModelCall'))}
+          sendDisabled={busy || (modelPending && !localReply)}
           placeholder={t(creating ? 'createPlaceholder' : 'editPlaceholder')}
           textareaProps={{
             'aria-label': t(creating ? 'createRequest' : 'editRequest'),
