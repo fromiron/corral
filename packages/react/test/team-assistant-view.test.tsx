@@ -22,7 +22,8 @@ function setup({
 }: {
   ask?: TeamAssistantHost['ask'];
   existing?: boolean;
-  open?: boolean;
+  /** Null: nobody chose, so the place decides. */
+  open?: boolean | null;
   narrow?: boolean;
   integrated?: boolean;
   /** False for the browser demo: there are no model settings to open. */
@@ -48,10 +49,15 @@ function setup({
             view="composition"
             stacked={narrow}
             assistant={assistant}
-            assistantStart={{ open }}
+            assistantStart={open === null ? undefined : { open }}
           />
         ) : (
-          <TeamAssistant editor={editor} host={assistant} start={{ open }} onApplied={vi.fn()} />
+          <TeamAssistant
+            editor={editor}
+            host={assistant}
+            start={open === null ? undefined : { open }}
+            onApplied={vi.fn()}
+          />
         )}
       </StudioStoresProvider>
     </IntlProvider>
@@ -64,6 +70,7 @@ function setup({
     user: userEvent.setup(),
     disconnect: () => rerender(dock({ ...host, ask: null })),
     reconnect: () => rerender(dock(host)),
+    withModel: (model: TeamAssistantHost['ask']) => rerender(dock({ ...host, ask: model })),
   };
 }
 
@@ -352,4 +359,18 @@ it('opens a named narrow sheet by keyboard, previews a model proposal and hands 
   );
   await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
   expect(editor.getState().past).toHaveLength(1);
+});
+
+it('leaves the focus alone when a column that opened by itself gets its model after mounting', () => {
+  const width = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(1600);
+  onTestFinished(() => {
+    width.mockRestore();
+  });
+  // Profiles load after the editor: the first render has no model.
+  const { withModel } = setup({ existing: true, integrated: true, open: null });
+  expect(button('Connect a model')).not.toHaveFocus();
+  withModel(vi.fn());
+  expect(field('edit')).toBeVisible();
+  expect(field('edit')).not.toHaveFocus();
+  expect(document.body).toHaveFocus();
 });

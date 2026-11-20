@@ -454,8 +454,13 @@ export function TeamAssistant({
   useEffect(() => {
     wasMounted.current = true;
   }, []);
+  // Asked for by a press in the conversation; the place may turn before it renders (below).
+  const focusWanted = useRef(false);
   // Without a model the switched-off request stands where the input is, and takes its focus.
-  const focusInput = () => (field.current ?? connect.current)?.focus();
+  const focusInput = () => {
+    focusWanted.current = true;
+    (field.current ?? connect.current)?.focus();
+  };
   useLayoutEffect(() => {
     // Only a chosen opening takes the focus; a column that stands open by itself leaves it,
     // and so does one whose first use (a choice pressed in it) made the opening chosen.
@@ -517,15 +522,16 @@ export function TeamAssistant({
   const compact = useSize().variant === 'compact';
   const wasOff = useRef(inputOff);
   useLayoutEffect(() => {
-    // The request's place turned between the input and the switched-off control (a choice
-    // opened its question, a model came or went): a focus that was in it moves along.
+    // The press that asked for the request's focus turned its place (a choice opened its
+    // question, or answered it): the focus follows to what stands there now. A model that comes
+    // or goes by itself moves no focus.
     if (wasOff.current === inputOff) return;
     wasOff.current = inputOff;
-    const section = surface.current;
-    const active = section?.ownerDocument.activeElement;
-    if (active === section?.ownerDocument.body || section?.contains(active ?? null))
-      (field.current ?? connect.current)?.focus();
+    if (focusWanted.current) (field.current ?? connect.current)?.focus();
   }, [inputOff]);
+  useLayoutEffect(() => {
+    focusWanted.current = false;
+  });
   const waiting = proposal ? t('proposalWaiting') : question ? t('questionWaiting') : null;
   const chooseEntry = side ? (
     // In its rail the entry is the icon alone; the tooltip and the name say what it opens.
@@ -763,7 +769,7 @@ export function TeamAssistant({
           aria-disabled={!host.onConnectModel || undefined}
           onClick={host.onConnectModel}
           className={cn(
-            'flex w-full shrink-0 flex-col gap-1 p-2 text-start text-muted-foreground transition-[box-shadow,color,background-color] duration-80',
+            'flex w-full shrink-0 flex-col gap-1 p-2 text-start text-muted-foreground transition-[box-shadow,color,background-color] duration-(--duration-fast)',
             surfaceClasses(2, 2),
             shape.container,
             focusRing,
