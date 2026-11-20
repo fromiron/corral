@@ -297,12 +297,8 @@ function Editor({
     return view;
   }, [services, projectId, corralId]);
   const profiles = useModelProfiles();
-  // The endpoint uses the first named profile, not the first available provider model.
-  const firstProfile = profiles?.[0];
-  const assistantModel =
-    !localAssistant && live && firstProfile?.source === 'profile' && firstProfile.available
-      ? firstProfile
-      : null;
+  // The endpoint asks the first model of the list that can run: named profiles, then connections.
+  const assistantModel = (!localAssistant && live && profiles?.find((p) => p.available)) || null;
   const messages = useMessages();
   const wording = useMemo(() => draftWording(messages), [messages]);
   const settings = useSettingsNavigation();
