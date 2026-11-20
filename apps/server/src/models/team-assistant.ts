@@ -24,8 +24,19 @@ Structured decisions override all text. Never add tools, permissions or connecti
 
 type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
 const quoted = (ids: readonly string[]) => ids.map((id) => JSON.stringify(id)).join(', ');
-/** An example seat's name, cut to the seat name limit so a long agent name stays readable. */
-const seatName = (name: string) => name.slice(0, TEAM_COMPOSITION_LIMITS.seatName);
+/**
+ * An example seat's name: the catalog name trimmed and cut to the seat name limit between whole
+ * characters, or the example's own name when nothing is left. A name that already fits is
+ * unchanged.
+ */
+function seatName(name: string | undefined, fallback: string): string {
+  let cut = '';
+  for (const char of (name ?? '').trim()) {
+    if (cut.length + char.length > TEAM_COMPOSITION_LIMITS.seatName) break;
+    cut += char;
+  }
+  return cut.trimEnd() || fallback;
+}
 
 /**
  * A new team's prompt, built from its request: which catalog agents can judge a loop, which
@@ -52,7 +63,7 @@ export function createPrompt(request: CreateRequest): string {
         {
           id: 'work',
           agent: sample?.id ?? '',
-          name: seatName(sample?.name ?? 'Worker'),
+          name: seatName(sample?.name, 'Worker'),
           duty: 'Do the task and submit the result.',
         },
       ],
@@ -74,13 +85,13 @@ export function createPrompt(request: CreateRequest): string {
         {
           id: 'write',
           agent: sample?.id ?? '',
-          name: seatName(sample?.name ?? 'Writer'),
+          name: seatName(sample?.name, 'Writer'),
           duty: 'Write the draft, revise it against the check and submit it.',
         },
         {
           id: 'check',
           agent: judge.id,
-          name: seatName(judge.name),
+          name: seatName(judge.name, 'Reviewer'),
           duty: 'Check the draft against the criteria and pass it or send it back.',
         },
       ],
@@ -98,7 +109,7 @@ export function createPrompt(request: CreateRequest): string {
         {
           id: 'work',
           agent: sample?.id ?? '',
-          name: seatName(sample?.name ?? 'Worker'),
+          name: seatName(sample?.name, 'Worker'),
           duty: 'Write the notice.',
         },
       ],
