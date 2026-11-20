@@ -447,8 +447,24 @@ it('sends a new team its own prompt and an edit the edit prompt', async () => {
   expect(systemOf(1)).toContain('EDIT MODE');
   expect(systemOf(1)).toContain(JSON.stringify(TEAM_ASSISTANT_EDIT_PROMPT).slice(1, 80));
   // The edit prompt is sent only in edit mode: it carries nothing about a new team.
-  for (const createOnly of ['create mode', 'catalog', 'proposal ('])
+  for (const createOnly of [
+    'create mode',
+    'catalog',
+    'proposal (',
+    'edit-mode request',
+    'The two fixed choice lists above',
+    '(edit only)',
+    'only in plan and edits',
+  ])
     expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain(createOnly);
+  for (const sentence of [
+    'Use unsupported only for a request outside these capabilities.',
+    'The fixed choice list above is exhaustive.',
+    'For review_target, choices are two or three distinct existing',
+    'Include one short reason sentence only in edits.',
+    'After two questions give a proposal, not another question.',
+  ])
+    expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(sentence);
 });
 
 it('asks the first model of a connected provider when there is no named profile', async () => {
