@@ -15,7 +15,13 @@ import {
   type TeamCatalog,
   type TeamComposition,
 } from '@corral/contracts';
-import { builtinSkillName } from './team-templates.ts';
+import { BUILTIN_AGENTS } from './builtin-crew.ts';
+import {
+  builtinSkillName,
+  ROLE_PRESET_IDS,
+  type RolePresetId,
+  roleFromPreset,
+} from './team-templates.ts';
 
 // A team the model composed from the editor's catalog becomes a definition
 // (docs/specs/features/team-assistant.md, "팀 구성 제안"). The catalog and the assembly share one
@@ -55,10 +61,53 @@ const sameSkill = (a: RoleSkillRef, b: RoleSkillRef) =>
   a.resourceHash === b.resourceHash && a.entry === b.entry;
 
 /**
- * The catalog for a new team request: at most 64 agents and 256 skills in the order given, under
- * ids that mean something only in this request. It carries names, descriptions, output contracts
- * and whether an agent changes files or runs commands; never a prompt, tool name, hash or path.
- * An advisor role is left out: no seat may take one.
+ * The ten bundled agents as "add agent" offers them, in the spec's order: each preset's role under
+ * the name the screen gives it, its bundled description, and built in.
+ */
+export function builtinComposableAgents(nameOf: (id: RolePresetId) => string): ComposableAgent[] {
+  return ROLE_PRESET_IDS.map((id) => {
+    const { id: _id, ...role } = roleFromPreset(id, id, nameOf(id));
+    const description = BUILTIN_AGENTS.find((agent) => agent.id === id)?.description;
+    return {
+      role,
+      origin: { kind: 'preset', presetId: id },
+      ...(description ? { description } : {}),
+      builtin: true,
+    };
+  });
+}
+
+/** The longest skill id (`SkillRef`). */
+const ID_LENGTH = 64;
+/** A skill's description goes as its first sentence, cut to this length. */
+const SKILL_SENTENCE = 160;
+let sentences: Intl.Segmenter | undefined;
+function firstSentence(text: string): string {
+  sentences ??= new Intl.Segmenter('und', { granularity: 'sentence' });
+  const first = sentences.segment(text).containing(0)?.segment ?? text;
+  return first.trim().slice(0, SKILL_SENTENCE);
+}
+
+/**
+ * A skill's id is its name; a name already listed gets `-2`, `-3`, … and every id is cut to fit 64
+ * characters with its suffix.
+ */
+function skillIds(names: readonly string[]): string[] {
+  const taken = new Set<string>();
+  return names.map((name) => {
+    const fit = (suffix: string) => `${name.slice(0, ID_LENGTH - suffix.length)}${suffix}`;
+    let id = fit('');
+    for (let i = 2; taken.has(id); i++) id = fit(`-${i}`);
+    taken.add(id);
+    return id;
+  });
+}
+
+/**
+ * The catalog for a new team request: at most 64 agents and 256 skills in the order given. Agents
+ * go under ids that mean something only in this request, skills under their names. It carries
+ * names, descriptions, output contracts and whether an agent changes files or runs commands; never
+ * a prompt, tool name, hash or path. An advisor role is left out: no seat may take one.
  */
 export function teamCatalog(
   agents: readonly ComposableAgent[],
@@ -72,6 +121,7 @@ export function teamCatalog(
     skills.find((skill) => sameSkill(skill.ref, ref))?.name ?? builtinSkillName(ref);
   const agentById = new Map<string, ComposableAgent>();
   const skillById = new Map<string, ComposableSkill>();
+  const ids = skillIds(listedSkills.map((skill) => skill.name));
   const catalog: TeamCatalog = {
     agents: listedAgents.map((agent, index) => {
       const id = `a${index + 1}`;
@@ -92,19 +142,23 @@ export function teamCatalog(
       };
     }),
     skills: listedSkills.map((skill, index) => {
-      const id = `s${index + 1}`;
+      const id = ids[index] as string;
       skillById.set(id, skill);
       return {
         id,
         name: skill.name,
-        description: skill.description.slice(0, TEAM_COMPOSITION_LIMITS.skillDescription),
+        description: firstSentence(skill.description),
       };
     }),
   };
   return { catalog, agentById, skillById };
 }
 
-/** Why a well-formed composition still cannot be used; the whole answer is dropped. */
+/**
+ * Why a well-formed composition still cannot be used; the whole answer is dropped. A skill the
+ * catalog does not list never sinks an answer: the server drops it (`unknown_skill` is only the
+ * assembly's own refusal of a plan nobody normalised).
+ */
 export type TeamCompositionProblem =
   | 'unknown_agent'
   | 'unknown_skill'
@@ -114,12 +168,13 @@ export type TeamCompositionProblem =
 function catalogProblem(
   composition: TeamComposition,
   outputOf: (agentId: string) => OutputContract | undefined,
-  hasSkill: (skillId: string) => boolean,
+  hasSkill?: (skillId: string) => boolean,
 ): TeamCompositionProblem | null {
   const seats = new Map(composition.seats.map((seat) => [seat.id, seat]));
   for (const seat of composition.seats) if (!outputOf(seat.agent)) return 'unknown_agent';
-  for (const seat of composition.seats)
-    if (!(seat.skills ?? []).every(hasSkill)) return 'unknown_skill';
+  if (hasSkill)
+    for (const seat of composition.seats)
+      if (!(seat.skills ?? []).every(hasSkill)) return 'unknown_skill';
   for (const step of composition.flow) {
     if (!('loop' in step)) continue;
     const judge = seats.get(step.loop.judge);
@@ -129,7 +184,7 @@ function catalogProblem(
 }
 
 /**
- * The spec's unusable compositions that the schema cannot see: an id the catalog does not list,
+ * The spec's unusable compositions that the schema cannot see: an agent the catalog does not list,
  * a judge that returns no review, and a loop the person ruled out by asking for opinions only.
  */
 export function compositionProblem(
@@ -138,12 +193,7 @@ export function compositionProblem(
   decisions?: TeamAssistantRequest['decisions'],
 ): TeamCompositionProblem | null {
   const agents = new Map(catalog.agents.map((agent) => [agent.id, agent.output]));
-  const skills = new Set(catalog.skills.map((skill) => skill.id));
-  const problem = catalogProblem(
-    composition,
-    (id) => agents.get(id),
-    (id) => skills.has(id),
-  );
+  const problem = catalogProblem(composition, (id) => agents.get(id));
   if (problem) return problem;
   if (decisions?.reviewPolicy === 'opinion_only' && composition.flow.some((step) => 'loop' in step))
     return 'loop_with_opinion_only';
@@ -164,6 +214,8 @@ export interface TeamCompositionLabels {
   loop: string;
   decision: string;
   join: string;
+  /** The Team that holds a group side by side as the first step; without it, the Join's label. */
+  group?: string;
   output: string;
   outriderPrinciples?: string;
 }
@@ -182,10 +234,11 @@ type Exits = { source: string; sourcePort: string }[];
 
 /**
  * The composition as a new definition under `corralId`. Steps run in order; a group side by side
- * fans out from the step before and meets at a Join; a loop is a Loop whose work runs in order,
- * then the judge, then a review decision, and it goes on to the next step whether the judge passed
- * the work or the rounds ran out. Node ids come from the flow (`seat_1`, `loop_1`, `decision_1`,
- * `join_1`, `output`), never from the model's seat ids.
+ * fans out from the step before and meets at a Join; as the first step it sits in an inline Team,
+ * the one entry, whose body fans out and whose Join is its exit. A loop is a Loop whose work runs
+ * in order, then the judge, then a review decision, and it goes on to the next step whether the
+ * judge passed the work or the rounds ran out. Node ids come from the flow (`seat_1`, `loop_1`,
+ * `decision_1`, `team_1`, `join_1`, `output`), never from the model's seat ids.
  */
 export function draftFromComposition(
   composition: TeamComposition,
@@ -249,9 +302,9 @@ export function draftFromComposition(
   const connect = (exits: Exits, target: string, targetPort: ControlEdge['targetPort'] = 'in') => {
     for (const exit of exits) edge(exit.source, exit.sourcePort, target, targetPort);
   };
-  const join = (policy: 'all' | 'any') => {
+  const join = (policy: 'all' | 'any', parentId?: string) => {
     const id = `join_${++joins}`;
-    nodes.push({ id, type: 'join', label: labels.join, policy });
+    nodes.push({ id, type: 'join', label: labels.join, policy, ...(parentId ? { parentId } : {}) });
     return id;
   };
 
@@ -295,14 +348,12 @@ export function draftFromComposition(
   let entry = '';
   const earlier: string[] = [];
   const last = composition.flow.length - 1;
-  composition.flow.forEach((step, index) => {
+  composition.flow.forEach((step) => {
     const before = [brief, ...earlier.map(read)];
-    // The criteria go to the last step and to every seat that returns a review.
-    const criteriaFor = (seatId: string) =>
-      index === last || seatOf(seatId).agent.role.outputContract === 'review' ? [criteria] : [];
 
     if ('seat' in step) {
-      const id = seatNode(step.seat, [...before, ...criteriaFor(step.seat)]);
+      // Every seat receives the criteria: an early one also needs to know what done means.
+      const id = seatNode(step.seat, [...before, criteria]);
       if (exits.length) connect(exits, id);
       else entry = id;
       exits = [{ source: id, sourcePort: 'out' }];
@@ -314,14 +365,30 @@ export function draftFromComposition(
         connect(exits, relay);
         exits = [{ source: relay, sourcePort: 'out' }];
       }
+      // The entry is one node: a first group sits in a Team that fans out from its body.
+      const team = exits.length ? undefined : 'team_1';
+      if (team) {
+        nodes.push({
+          id: team,
+          type: 'team',
+          label: labels.group ?? labels.join,
+          source: { kind: 'inline' },
+        });
+        entry = team;
+        exits = [{ source: team, sourcePort: 'body' }];
+      }
       // Seats side by side do not read each other.
       const ids = step.parallel.map((seatId, i) =>
-        seatNode(seatId, [...before, ...criteriaFor(seatId)], { place: i + 1 }),
+        seatNode(seatId, [...before, criteria], {
+          place: i + 1,
+          ...(team ? { parentId: team } : {}),
+        }),
       );
       for (const id of ids) connect(exits, id);
-      const gather = join('all');
+      const gather = join('all', team);
       for (const id of ids) edge(id, 'out', gather);
-      exits = [{ source: gather, sourcePort: 'out' }];
+      if (team) edge(gather, 'out', team, 'exit');
+      exits = [team ? { source: team, sourcePort: 'next' } : { source: gather, sourcePort: 'out' }];
     } else {
       const { work, judge, rounds } = step.loop;
       const loop = `loop_${++loops}`;
@@ -333,13 +400,7 @@ export function draftFromComposition(
       const ids = work.map((seatId, i) =>
         seatNode(
           seatId,
-          [
-            ...before,
-            ...work.slice(0, i).map(read),
-            lastRound(seatId),
-            lastRound(judge),
-            ...criteriaFor(seatId),
-          ],
+          [...before, ...work.slice(0, i).map(read), lastRound(seatId), lastRound(judge), criteria],
           { parentId: loop },
         ),
       );

@@ -67,6 +67,11 @@ describe('a required review on a composed team', () => {
       [seat('plan', 'architect'), seat('a', 'researcher'), seat('b', 'explainer')],
       [{ seat: 'plan' }, { parallel: ['a', 'b'] }],
     ],
+    [
+      'a group side by side that is also the first step',
+      [seat('a', 'researcher'), seat('b', 'explainer')],
+      [{ parallel: ['a', 'b'] }],
+    ],
   ] as const)('whose last step is %s takes it on every received result', (_name, seats, flow) => {
     const draft = composed([...seats], flow);
     const output = draft.definition.nodes.find((n): n is OutputNode => n.type === 'output');
