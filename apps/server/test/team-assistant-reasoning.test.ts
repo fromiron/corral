@@ -56,22 +56,26 @@ async function sentBody(baseUrl: string, model: string, request: TeamAssistantRe
   await registry.refreshStatus();
   const bodies: Record<string, unknown>[] = [];
   const spy = vi.spyOn(models, 'streamSimple').mockImplementation((chosen, context, options) =>
-    streamSimple(chosen as never, context as never, {
-      ...options,
-      apiKey: 'fixture-key',
-      maxRetries: 0,
-      fetch: async (_input: unknown, init?: RequestInit) => {
-        bodies.push(JSON.parse(String(init?.body)));
-        return new Response(
-          [
-            `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: '{"kind":"describe","topic":"submitter"}' }, finish_reason: 'stop' }] })}`,
-            'data: [DONE]',
-            '',
-          ].join('\n\n'),
-          { headers: { 'content-type': 'text/event-stream' } },
-        );
-      },
-    } as never),
+    streamSimple(
+      chosen as never,
+      context as never,
+      {
+        ...options,
+        apiKey: 'fixture-key',
+        maxRetries: 0,
+        fetch: async (_input: unknown, init?: RequestInit) => {
+          bodies.push(JSON.parse(String(init?.body)));
+          return new Response(
+            [
+              `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: '{"kind":"describe","topic":"submitter"}' }, finish_reason: 'stop' }] })}`,
+              'data: [DONE]',
+              '',
+            ].join('\n\n'),
+            { headers: { 'content-type': 'text/event-stream' } },
+          );
+        },
+      } as never,
+    ),
   );
   try {
     await registry.assistTeam(request);
