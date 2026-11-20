@@ -189,6 +189,7 @@ export class HarnessService {
   private readonly download: (source: string, directory: string) => Promise<PackageInspection>;
   private readonly reviews = new Map<string, ResourceReview>();
   private readonly builtin: { root: string; manifest: BuiltinManifest };
+  private readonly warn: (message: string) => void;
 
   constructor(options: {
     root: string;
@@ -200,9 +201,12 @@ export class HarnessService {
     download?: (source: string, directory: string) => Promise<PackageInspection>;
     /** The bundled packs and their manifest; tests pass fixture packs. */
     builtin?: { root: string; manifest: BuiltinManifest };
+    /** The server log, for bundled packs that did not install. */
+    warn?: (message: string) => void;
   }) {
     this.root = resolve(options.root);
     this.builtin = options.builtin ?? BUILTIN;
+    this.warn = options.warn ?? (() => {});
     this.newId = options.newId ?? randomUUID;
     this.mcp = options.mcp;
     this.mcp?.setPackageVerifier((hash) => {
@@ -711,6 +715,8 @@ export class HarnessService {
         }
       }),
     );
+    // Pack ids only: an error's message can name local paths.
+    if (failed.length) this.warn(`bundled skill packs not installed: ${failed.sort().join(', ')}`);
     return { installed, failed };
   }
 

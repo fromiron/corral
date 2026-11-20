@@ -639,6 +639,7 @@ async function createCorralServer(
     db,
     clock,
     root: join(workspace.root, '.corral', 'harness'),
+    warn: (message) => console.warn(message),
   });
   resources.defer(() => harnesses.dispose());
   // Bundled packs are installed before the first request; a pack that fails does not stop start.

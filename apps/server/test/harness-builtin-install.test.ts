@@ -142,11 +142,26 @@ it('skips a pack whose content does not match the manifest and installs the othe
   const alpha = await s.pack('alpha', '1.0.0', { one: 'A' });
   const beta = await s.pack('beta', '1.0.0', { two: 'B' });
   writeFileSync(join(s.packs, 'beta', 'skills/two/SKILL.md'), 'changed after the manifest');
-  const service = s.service();
-  await expect(service.installBuiltins()).resolves.not.toThrow();
+  const warnings: string[] = [];
+  const db = openDatabase(':memory:');
+  databases.push(db);
+  const service = new HarnessService({
+    root: join(s.root, 'data'),
+    db,
+    clock: new FakeClock(),
+    inspect,
+    builtin: { root: s.packs, manifest: s.manifest },
+    warn: (message) => warnings.push(message),
+  });
+  await expect(service.installBuiltins()).resolves.toEqual({
+    installed: ['alpha'],
+    failed: ['beta'],
+  });
   expect(service.store.getResource(alpha)).not.toBeNull();
   expect(service.store.getResource(beta)).toBeNull();
   expect(service.store.listResources().map((resource) => resource.hash)).toEqual([alpha]);
+  // Only the failed pack's id is logged, never a path or its content.
+  expect(warnings).toEqual(['bundled skill packs not installed: beta']);
 });
 
 it('a new bundled version links and archives earlier bundled entries a person has not handled', async () => {
