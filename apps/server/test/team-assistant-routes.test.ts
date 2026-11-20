@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
+import {
+  assistantKindAllowed,
+  TeamAssistantReply,
+  type TeamAssistantRequest,
+  unusableTeamProposal,
+} from '@corral/contracts';
 import {
   BUILTIN_SKILLS,
   builtinComposableAgents,
@@ -517,6 +522,39 @@ it('sends a new team its own prompt and an edit the edit prompt', async () => {
     'After two questions give a proposal, not another question.',
   ])
     expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(sentence);
+});
+
+it('teaches an edit to ask when passing is left open and to gate when submission depends on it', () => {
+  const examples = [
+    `Examples:\nIn both examples, the team's only result is a handout with outputId "handouts" and index 2.`,
+    `- "Review the handout before sending it." → {"kind":"question","id":"review_policy","choices":["opinion_only","required"]}`,
+    `- "Send the handout only after it passes review." → {"kind":"edits","edits":[{"kind":"require_review","outputId":"handouts","index":2}],"reason":"The handout must pass review before it can be sent."}`,
+    `- describe: {"kind":"describe","topic":"submitter"}\n- unsupported: {"kind":"unsupported"}\n`,
+  ];
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(examples.join('\n'));
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(
+    "If the person asks for review before submission and leaves open whether the result must pass, ask review_policy. If submission depends on passing, propose require_review immediately for the selected result or the team's only result. Ask review_target only when several results could be gated and the target is still unclear.\nQUESTION RULES:",
+  );
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(
+    'A reviewPolicy decision of opinion_only asks for add_shared_advice, not a gate, reviewer, review target or question. Declining a review gate does not by itself request advice.',
+  );
+  // The bare examples are gone: advice is no longer the model's example of an edit.
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain(
+    'The author can ask for feedback without blocking submission.',
+  );
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain('- question: ');
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain('- edits: ');
+  // Each example answer is one reply an edit takes, by the contract.
+  const answers = [...TEAM_ASSISTANT_EDIT_PROMPT.matchAll(/^- ".*" → (\{.*\})$/gm)].map(
+    ([, json]) => TeamAssistantReply.parse(JSON.parse(json ?? '')),
+  );
+  expect(answers.map((reply) => reply.kind)).toEqual(['question', 'edits']);
+  for (const reply of answers) expect(assistantKindAllowed('edit', reply.kind)).toBe(true);
+  expect(answers[1]).toEqual({
+    kind: 'edits',
+    edits: [{ kind: 'require_review', outputId: 'handouts', index: 2 }],
+    reason: 'The handout must pass review before it can be sent.',
+  });
 });
 
 it('asks the first model of a connected provider when there is no named profile', async () => {
