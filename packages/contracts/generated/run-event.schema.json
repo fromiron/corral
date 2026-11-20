@@ -2499,7 +2499,7 @@
           "type": "object",
           "properties": {
             "skills": {
-              "maxItems": 64,
+              "maxItems": 256,
               "type": "array",
               "items": {
                 "type": "object",

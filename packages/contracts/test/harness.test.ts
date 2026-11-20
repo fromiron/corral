@@ -119,3 +119,23 @@ it('requires both exact name and server sets on a pinned role selection', () => 
     ).toBe(false);
   }
 });
+
+import { MAX_SNAPSHOT_RESOURCES, ProviderPayloadRecord } from '../src/harness.ts';
+
+// A role may hold as many skills as a snapshot holds resources, and a request may carry the text
+// of every one of them; the record of that request must not be the thing that fails.
+it('a payload record names as many skills as a snapshot can hold', () => {
+  const record = (count: number) => ({
+    modelCallId: 'call_1',
+    payloadHash: 'a'.repeat(64),
+    payloadBytes: 10,
+    skills: Array.from({ length: count }, (_, index) => ({
+      name: `skill-${index}`,
+      resourceHash: 'b'.repeat(64),
+      bodyHash: 'c'.repeat(64),
+      bytes: 1,
+    })),
+  });
+  expect(ProviderPayloadRecord.safeParse(record(MAX_SNAPSHOT_RESOURCES)).success).toBe(true);
+  expect(ProviderPayloadRecord.safeParse(record(MAX_SNAPSHOT_RESOURCES + 1)).success).toBe(false);
+});

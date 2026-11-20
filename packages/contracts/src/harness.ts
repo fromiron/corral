@@ -320,7 +320,7 @@ export const ProviderPayloadRecord = z.strictObject({
         bytes: z.int().min(1),
       }),
     )
-    .max(64)
+    .max(MAX_SNAPSHOT_RESOURCES)
     .optional(),
   reasoning: ReasoningWire.optional(),
   modelCallId: Identifier,
