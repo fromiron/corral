@@ -118,7 +118,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 ### 루프 실행
 
 - **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호와 정체 비교를 새로 시작한다.
-- **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 같은 진입의 바로 앞 회차에서만 오며, 1회차에는 없다.
+- **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 읽는 쪽과 내는 쪽이 함께 든 가장 안쪽 Loop의, 같은 진입의 바로 앞 회차에서만 오며 그 Loop의 1회차에는 없다([기술 설계](../technical-design.md) §9.2).
 - **다시 돌기.** Decision이 `repeat`로 보내면 차례로 확인한다.
   1. 이번 진입에서 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 한도 정책을 적용한 뒤에는 그 뒤에 끝난 회차만 센다. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. `unlimited`인 Loop는 패치가 없으면 상한이 없다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
   2. 정체했다: `stalled`.
@@ -234,6 +234,16 @@ Scenario: 안쪽 루프는 바깥 회차마다 1회차부터 다시 돈다
   Then B의 회차는 A의 회차마다 1부터 시작하고 부모 회차로 그 A 회차를 기록한다
   And 같은 단계가 A의 서로 다른 회차에서 각각 새 Task로 실행된다
   And B의 1회차는 앞 진입의 산출물을 이전 회차 출력으로 받지 않는다
+
+Scenario: 바깥 루프의 수정 의견은 안쪽 루프의 작업에 닿는다
+  Given Loop A 안에 Loop B가 있고 B 안의 작성자가 A의 검토 결과를 이전 회차 출력으로 읽으며 A의 검토가 첫 회차에 revise를 고른다
+  When 실행한다
+  Then A의 2회차에서 B의 1회차로 도는 작성자는 A의 1회차 검토 결과를 받는다
+
+Scenario: 바깥 루프의 작업은 안쪽 루프가 앞 회차에 마지막으로 낸 것을 읽는다
+  Given Loop A 안에 Loop B가 있고 A의 작업이 B 안의 작성자를 이전 회차 출력으로 읽으며 B가 A의 1회차에서 두 번 돈다
+  When A가 2회차를 시작한다
+  Then A의 그 작업은 B의 작성자가 A의 1회차에서 마지막으로 낸 것을 받는다
 
 Scenario: 바깥 루프의 출구로 바로 나가면 안쪽 회차도 끝난다
   Given Loop B 안의 검토가 pass를 바깥 Loop A의 exit에 잇는다
