@@ -114,6 +114,8 @@ it('package trust gates new owned MCP launches without changing standalone MCP t
     await s.files.trustMcpServer('default', 'standalone', standalone.fingerprint, true);
     const probe = (serverId: string, fingerprint: string, operationId: string) =>
       mcp.probe('default', serverId, { fingerprint, operationId, configRevision: 1 });
+    // Install trusts the package; a person's revocation is what closes the gate.
+    s.service.trust(s.resource.hash, false);
     await expect(probe('owned', owned.fingerprint, 'untrusted_package')).rejects.toThrow(
       'package requires trust',
     );
@@ -154,7 +156,7 @@ it('exports safe installed references and applies library state through owners w
       'vault_plugins',
     );
     expect(s.service.store.packageManagement(s.resource.hash).status).toBe('disabled');
-    expect(s.service.store.getResource(s.resource.hash)?.trustedAt).toBeNull();
+    expect(s.service.store.getResource(s.resource.hash)?.trustedAt).toBe(s.resource.trustedAt);
     expect(await s.adapters.plugins.receipt?.('vault_plugins')).toEqual(result);
     expect(
       await s.adapters.plugins.apply(imported.value, packages.revision, 'vault_plugins'),

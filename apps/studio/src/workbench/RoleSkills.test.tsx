@@ -72,7 +72,8 @@ const api = {
     resource: { skills: [{ entry: 'skills/SKILL.md' }] },
   })),
   install: vi.fn(async () => {
-    const item = { ...entry('Just saved', 'f', false), entry: 'skills/SKILL.md' };
+    // The server trusts a package when it installs it.
+    const item = { ...entry('Just saved', 'f'), entry: 'skills/SKILL.md' };
     entries = [...entries, item];
     return { hash: item.resourceHash, skills: [{ entry: item.entry }] };
   }),
@@ -229,9 +230,7 @@ it('preserves disabled and archived choices; untrusted and disabled show the rea
   expect(apply).not.toHaveBeenCalled();
   expect(editor.getState().draft).toBe(draft);
 });
-it.each([true, false])(
-  'keeps a created skill in the library after cancelling; explicit trust=%s',
-  async (trusted) => {
+it('keeps a created skill in the library after cancelling; a saved skill is checked at once', async () => {
     const { editor, draft, apply } = await show();
     await click('Add skills');
     expect(document.querySelector('[aria-label="Retired"]')).toBeNull();
@@ -241,10 +240,11 @@ it.each([true, false])(
     await fill('Display name', 'Just saved');
     await fill(en.Resources.description, 'When checking');
     await fill('Instructions', 'Check the details.');
-    await click(trusted ? 'Save and trust' : 'Save without trust');
+    await click('Save');
+    expect(api.trust).not.toHaveBeenCalled();
     const row = check('Just saved');
-    expect(row.getAttribute('aria-checked')).toBe(String(trusted));
-    expect(description(row)).toContain(trusted ? 'Saved · not applied' : 'Needs trust');
+    expect(row.getAttribute('aria-checked')).toBe('true');
+    expect(description(row)).toContain('Saved · not applied');
     expect(document.activeElement).toBe(row);
     expect(check('Alpha').getAttribute('aria-checked')).toBe('true');
     await click('Cancel');
@@ -252,8 +252,7 @@ it.each([true, false])(
     expect(apply).not.toHaveBeenCalled();
     expect(editor.getState().draft).toBe(draft);
     expect(editor.getState().past).toHaveLength(0);
-  },
-);
+});
 it('preserves unusable refs until explicit recovery; deselecting the last writes an empty array', async () => {
   api.preview.mockResolvedValue({
     snapshot: null,

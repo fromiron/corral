@@ -909,7 +909,11 @@ export class HarnessService {
           throw new Error('installed resource integrity changed');
         rmSync(review.directory, { recursive: true, force: true });
       } else renameSync(review.directory, destination);
-      const installed = this.store.putResource(review.resource);
+      // The install review is the person's check: a new hash is trusted when it is installed.
+      // A hash already stored keeps its trust decision, so a revocation is never undone here.
+      const known = this.store.getResource(review.resource.hash) !== null;
+      let installed = this.store.putResource(review.resource);
+      if (!known) installed = this.store.trustResource(installed.hash, true);
       if (review.display) {
         const key = {
           resourceHash: installed.hash,

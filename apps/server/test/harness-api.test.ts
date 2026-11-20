@@ -449,17 +449,24 @@ it('resource API requires review and trust, pins revisions and protects local pa
     return { status: response.status, body: await response.json() };
   };
   expect((await fetch(`${server.url}/api/v1/harness/resources`)).status).toBe(401);
-  expect((await call('/resources')).body).toEqual([]);
+  const fixtures = async () =>
+    ((await call('/resources')).body as { name: string }[]).filter(
+      (resource) => resource.name === 'fixture',
+    );
+  expect(await fixtures()).toEqual([]);
   const reviewed = await call('/reviews', { source, kind: 'local' });
   expect(reviewed.status).toBe(200);
   expect(JSON.stringify(reviewed.body)).not.toContain(source);
   expect(existsSync(marker)).toBe(false);
-  expect((await call('/resources')).body).toEqual([]);
+  expect(await fixtures()).toEqual([]);
   const installed = await call('/resources', { reviewId: reviewed.body.reviewId });
-  expect(installed.body.trustedAt).toBeNull();
+  expect(installed.body.trustedAt).not.toBeNull();
   expect((await call('/resources', { reviewId: reviewed.body.reviewId })).body).toEqual(
     installed.body,
   );
+  expect(
+    (await call(`/resources/${installed.body.hash}/trust`, { trusted: false }, 'PUT')).status,
+  ).toBe(200);
   const profile = {
     name: 'Writer',
     policy: 'trusted-native',

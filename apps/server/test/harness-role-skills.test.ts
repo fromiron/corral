@@ -47,7 +47,8 @@ async function install(bundle: string, names: string[], previousHash?: string) {
   }
   const review = await service.reviewPackage('local', source, previousHash);
   const resource = service.install(review.reviewId);
-  if (bundle !== 'untrusted') service.trust(resource.hash, true);
+  // Install trusts every package; only a person's revocation leaves one untrusted.
+  if (bundle === 'untrusted') service.trust(resource.hash, false);
   for (const skill of resource.skills)
     refs[bundle === 'library' ? skill.name : bundle] = {
       resourceHash: resource.hash,
