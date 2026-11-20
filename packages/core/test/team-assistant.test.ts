@@ -1,6 +1,10 @@
 import type { TeamAssistantRequest, TeamCatalog, TeamComposition } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
-import { assistantReplyFromAnswer, readAssistantAnswer } from '../src/index.ts';
+import {
+  assistantReplyFromAnswer,
+  createQuestionsLeft,
+  readAssistantAnswer,
+} from '../src/index.ts';
 
 // The catalog a new team request carries: what the editor can pick by hand.
 const catalog: TeamCatalog = {
@@ -133,6 +137,86 @@ describe('checked assistant proposals', () => {
     expect(read(plan({ seats: [seat], flow: [{ seat: 'write' }] }), request)).toEqual(
       plan({ seats: [seat], flow: [{ seat: 'write' }] }),
     );
+  });
+
+  it('reads a null optional field as absent and keeps everything else strict', () => {
+    const request = create('Write the guide.');
+    const loose = judged();
+    const nulls = {
+      ...loose,
+      plan: {
+        ...loose.plan,
+        outrider: null,
+        seats: loose.plan.seats.map((seat) => ({ ...seat, skills: null })),
+        flow: [{ loop: { work: ['w'], judge: 'r', rounds: null } }],
+      },
+    };
+    expect(read(nulls, request)).toEqual(judged());
+    // A long skill reference is a name like any other: unknown here, so dropped.
+    const named = plan({
+      seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'd', skills: ['x'.repeat(64)] }],
+    });
+    expect(read(named, request)).toEqual(
+      plan({ seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'd' }] }),
+    );
+    const problem = (value: unknown, on: TeamAssistantRequest = request) => {
+      const result = readAssistantAnswer(
+        typeof value === 'string' ? value : JSON.stringify(value),
+        on,
+      );
+      return 'problem' in result ? result.problem : 'usable';
+    };
+    const seat = { id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the guide.' };
+    expect(problem(plan({ seats: [{ ...seat, tools: ['write_file'] }] } as never))).toBe('shape');
+    expect(problem(plan({ flow: [{ seat: 's1', dependsOn: [] }] } as never))).toBe('shape');
+    expect(problem(plan({ seats: [{ id: 's1', agent: 'a1', name: 'Writer' }] } as never))).toBe(
+      'shape',
+    );
+    expect(problem({ kind: 'plan', plan: plan().plan })).toBe('shape');
+    expect(problem(`${JSON.stringify(plan())}\n${JSON.stringify(plan())}`)).toBe('not_json');
+    expect(problem(plan({ seats: [{ ...seat, agent: null }] } as never))).toBe('shape');
+    expect(problem(plan({ seats: [seat, seat], flow: [{ seat: 's1' }] }))).toBe('shape');
+    expect(problem(plan({ outrider: 'observe' } as never))).toBe('shape');
+  });
+
+  it('fills the fixed choices of a new team’s question the model left out', () => {
+    const request = create('Write the newsletter.');
+    expect(read({ kind: 'question', id: 'material' }, request)).toEqual(question);
+    expect(read({ kind: 'question', id: 'material', choices: null }, request)).toEqual(question);
+    expect(read({ kind: 'question', id: 'review_policy' }, request)).toEqual({
+      kind: 'question',
+      id: 'review_policy',
+      choices: ['opinion_only', 'required'],
+    });
+    expect(
+      read({ kind: 'question', id: 'material', choices: ['person', 'person'] }, request),
+    ).toBeNull();
+    expect(read({ kind: 'question', id: 'material', choices: ['person'] }, request)).toBeNull();
+    // An edit's questions still carry their choices.
+    expect(read({ kind: 'question', id: 'review_policy' }, edit)).toBeNull();
+  });
+
+  it('leaves a new team the questions not yet asked or decided, and none after two', () => {
+    const asked = (...ids: ('material' | 'review_policy')[]): TeamAssistantRequest['messages'] => [
+      { role: 'user', content: 'Write the newsletter.' },
+      ...ids.flatMap((questionId) => [
+        { role: 'assistant' as const, questionId, content: 'Choose one.' },
+        { role: 'user' as const, content: 'Recommend a choice.' },
+      ]),
+    ];
+    const request = (
+      messages: TeamAssistantRequest['messages'],
+      decisions?: TeamAssistantRequest['decisions'],
+    ) => ({ ...create('Write the newsletter.', decisions), messages }) as TeamAssistantRequest;
+    expect(createQuestionsLeft(request(asked()))).toEqual(['material', 'review_policy']);
+    expect(createQuestionsLeft(request(asked('material')))).toEqual(['review_policy']);
+    expect(createQuestionsLeft(request(asked(), { reviewPolicy: 'required' }))).toEqual([
+      'material',
+    ]);
+    expect(
+      createQuestionsLeft(request(asked(), { material: 'team', reviewPolicy: 'required' })),
+    ).toEqual([]);
+    expect(createQuestionsLeft(request(asked('material', 'review_policy')))).toEqual([]);
   });
 
   it('names why an answer cannot be used, never with its text', () => {

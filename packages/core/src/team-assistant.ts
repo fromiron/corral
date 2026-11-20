@@ -39,6 +39,23 @@ export function canAskAssistantQuestion(messages: TeamAssistantRequest['messages
   return true;
 }
 
+/**
+ * The questions a new team's model may still ask: none after two, none already shown and none the
+ * person already decided.
+ */
+export function createQuestionsLeft(
+  request: TeamAssistantRequest,
+): ('material' | 'review_policy')[] {
+  if (!canAskAssistantQuestion(request.messages)) return [];
+  const decided = {
+    material: request.decisions?.material,
+    review_policy: request.decisions?.reviewPolicy,
+  };
+  return (['material', 'review_policy'] as const).filter(
+    (id) => !decided[id] && !alreadyAsked(request, id),
+  );
+}
+
 function alreadyAsked(
   request: TeamAssistantRequest,
   id: Extract<Reply, { kind: 'question' }>['id'],
@@ -85,27 +102,64 @@ function policyReason(
   }
 }
 
+type Loose = Record<string, unknown>;
+const isRecord = (value: unknown): value is Loose =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+/** A `null` optional field is the field left out. */
+function withoutNull(record: Loose, key: string): Loose {
+  const { [key]: value, ...rest } = record;
+  return value === null ? rest : record;
+}
+const CHOICES = { material: ['person', 'team'], review_policy: ['opinion_only', 'required'] };
+
 /**
  * A seat's skills as the catalog can add them: ids it lists, none its agent already has, each once,
  * the first four. A seat left with none names none.
  */
-function normalisedSkills(plan: TeamComposition, catalog: TeamCatalog): TeamComposition {
+function seatSkills(seat: Loose, catalog: TeamCatalog): Loose {
+  if (!Array.isArray(seat.skills)) return seat;
   const skillName = new Map(catalog.skills.map((skill) => [skill.id, skill.name]));
-  const seats = plan.seats.map((seat) => {
-    if (!seat.skills) return seat;
-    const own = new Set(catalog.agents.find((agent) => agent.id === seat.agent)?.skills ?? []);
-    const kept = [
-      ...new Set(
-        seat.skills.filter((id) => {
-          const name = skillName.get(id);
-          return name !== undefined && !own.has(name);
-        }),
-      ),
-    ].slice(0, TEAM_COMPOSITION_LIMITS.seatSkills);
-    const { skills: _skills, ...rest } = seat;
-    return kept.length ? { ...rest, skills: kept } : rest;
-  });
-  return { ...plan, seats };
+  const own = new Set(catalog.agents.find((agent) => agent.id === seat.agent)?.skills ?? []);
+  const kept = [
+    ...new Set(
+      seat.skills.filter((id): id is string => {
+        const name = typeof id === 'string' ? skillName.get(id) : undefined;
+        return name !== undefined && !own.has(name);
+      }),
+    ),
+  ].slice(0, TEAM_COMPOSITION_LIMITS.seatSkills);
+  const { skills: _skills, ...rest } = seat;
+  return kept.length ? { ...rest, skills: kept } : rest;
+}
+
+/**
+ * A new team's answer with the notation that does not change the team read leniently, before the
+ * strict parse: a `null` skills, outrider or rounds is absent, a seat's skills are cleaned up, and
+ * a question without choices gets its fixed ones. Everything else is left for the schema to judge.
+ */
+function lenientCreateAnswer(value: unknown, catalog: TeamCatalog): unknown {
+  if (!isRecord(value)) return value;
+  if (value.kind === 'question') {
+    const id = value.id;
+    if ((id === 'material' || id === 'review_policy') && (value.choices ?? null) === null)
+      return { ...value, choices: [...CHOICES[id]] };
+    return value;
+  }
+  if (value.kind !== 'plan' || !isRecord(value.plan)) return value;
+  const plan = withoutNull(value.plan, 'outrider');
+  const seats = Array.isArray(plan.seats)
+    ? plan.seats.map((seat) =>
+        isRecord(seat) ? seatSkills(withoutNull(seat, 'skills'), catalog) : seat,
+      )
+    : plan.seats;
+  const flow = Array.isArray(plan.flow)
+    ? plan.flow.map((step) =>
+        isRecord(step) && isRecord(step.loop)
+          ? { ...step, loop: withoutNull(step.loop, 'rounds') }
+          : step,
+      )
+    : plan.flow;
+  return { ...value, plan: { ...plan, seats, flow } };
 }
 
 /**
@@ -120,14 +174,14 @@ function reconcilePlan(
   const { decisions } = request;
   const problem = compositionProblem(reply.plan, request.catalog, decisions);
   if (problem) return { problem };
-  const plan = normalisedSkills(reply.plan, request.catalog);
+  const { plan } = reply;
   const policy =
     decisions?.reviewPolicy === 'required'
       ? 'required_review'
       : decisions?.reviewPolicy === 'opinion_only'
         ? 'artifact_review'
         : undefined;
-  if (!policy || plan.outrider === policy) return { reply: { ...reply, plan } };
+  if (!policy || plan.outrider === policy) return { reply };
   return {
     reply: {
       kind: 'plan',
@@ -275,6 +329,8 @@ export function readAssistantAnswer(
   } catch {
     return { problem: 'not_json' };
   }
-  const parsed = Reply.safeParse(value);
+  const parsed = Reply.safeParse(
+    request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value,
+  );
   return parsed.success ? checkAssistantReply(parsed.data, request) : { problem: 'shape' };
 }
