@@ -6922,8 +6922,15 @@ export class Coordinator {
     );
     let approvalId: string | null = null;
     if (output.requireApproval) {
-      // Final approval binds the exact draft, its latest review and the criteria.
-      const review = this.latestReview(run);
+      // Final approval binds the exact draft, its latest review and the criteria: the latest
+      // valid review of a version being finalised, or none (technical-design §9.3).
+      const review =
+        Object.values(run.projection.reviews).findLast(
+          (r) =>
+            !r.stale &&
+            r.criteriaVersionId === run.criteriaVersionId &&
+            versions.includes(r.targetVersionId),
+        )?.reviewVersionId ?? null;
       const requested = this.requestApproval(run, 'final_output', [
         ...versions,
         ...(review ? [review] : []),
