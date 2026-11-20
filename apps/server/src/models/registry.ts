@@ -702,7 +702,7 @@ export class ModelRegistry implements ModelResolver {
     TeamModelResult<{
       text: string;
       /** How the completed answer stopped: `length` when it reached the output limit. */
-      stopReason: string;
+      stopReason: AssistantMessage['stopReason'];
       provider: string;
       modelId: string;
       modelName: string;
@@ -734,7 +734,7 @@ export class ModelRegistry implements ModelResolver {
         message,
       }) as const;
     let text: string;
-    let stopReason: string;
+    let stopReason: AssistantMessage['stopReason'];
     const operationId = operation.id;
     const sized = resolution.snapshot.contextPolicy
       ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }

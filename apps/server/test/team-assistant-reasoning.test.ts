@@ -1,4 +1,4 @@
-import type { TeamAssistantRequest } from '@corral/contracts';
+import { type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
 import { createModels, InMemoryCredentialStore } from '@earendil-works/pi-ai';
 import { streamSimple } from '@earendil-works/pi-ai/api/openai-completions';
 import { expect, it, vi } from 'vitest';
@@ -37,8 +37,16 @@ const edit: TeamAssistantRequest = {
   team: { roles: [], outputs: [], hasSharedOutrider: false, brief: '' },
 };
 
-/** The body the assistant route sends for one model, through Pi's real chat completions client. */
-async function sentBody(baseUrl: string, model: string, request: TeamAssistantRequest) {
+/** One assistant exchange through Pi's real chat completions client: the body sent, the result. */
+async function exchange(
+  baseUrl: string,
+  model: string,
+  request: TeamAssistantRequest,
+  answer: { content: string; finish: string } = {
+    content: '{"kind":"describe","topic":"submitter"}',
+    finish: 'stop',
+  },
+) {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
     credentials,
@@ -67,7 +75,7 @@ async function sentBody(baseUrl: string, model: string, request: TeamAssistantRe
           bodies.push(JSON.parse(String(init?.body)));
           return new Response(
             [
-              `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: '{"kind":"describe","topic":"submitter"}' }, finish_reason: 'stop' }] })}`,
+              `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: answer.content }, finish_reason: answer.finish }] })}`,
               'data: [DONE]',
               '',
             ].join('\n\n'),
@@ -78,13 +86,17 @@ async function sentBody(baseUrl: string, model: string, request: TeamAssistantRe
     ),
   );
   try {
-    await registry.assistTeam(request);
+    const result = await registry.assistTeam(request);
+    expect(bodies).toHaveLength(1);
+    return { body: bodies[0] as Record<string, unknown>, result };
   } finally {
     spy.mockRestore();
   }
-  expect(bodies).toHaveLength(1);
-  return bodies[0] as Record<string, unknown>;
 }
+
+/** The body the assistant route sends for one model. */
+const sentBody = async (baseUrl: string, model: string, request: TeamAssistantRequest) =>
+  (await exchange(baseUrl, model, request)).body;
 
 it.each([create, edit])('Hive DeepSeek is asked with reasoning off ($mode)', async (request) => {
   const body = await sentBody('https://api-cdn.thehive.ai/api/v3', DEEPSEEK, request);
@@ -107,3 +119,11 @@ it.each([create, edit])(
     expect(body).not.toHaveProperty('thinking');
   },
 );
+
+it('reads a reply the provider stopped at the output limit as cut off', async () => {
+  const { result } = await exchange('https://api-cdn.thehive.ai/api/v3', GLM, create, {
+    content: '{"kind":"plan","plan":{"name":"Not',
+    finish: 'length',
+  });
+  expect(result).toMatchObject({ ok: false, message: unusableTeamProposal('cut_off') });
+});
