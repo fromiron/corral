@@ -164,6 +164,8 @@ export interface TeamCompositionLabels {
   loop: string;
   decision: string;
   join: string;
+  /** The Team that holds a group side by side as the first step; without it, the Join's label. */
+  group?: string;
   output: string;
   outriderPrinciples?: string;
 }
@@ -182,10 +184,11 @@ type Exits = { source: string; sourcePort: string }[];
 
 /**
  * The composition as a new definition under `corralId`. Steps run in order; a group side by side
- * fans out from the step before and meets at a Join; a loop is a Loop whose work runs in order,
- * then the judge, then a review decision, and it goes on to the next step whether the judge passed
- * the work or the rounds ran out. Node ids come from the flow (`seat_1`, `loop_1`, `decision_1`,
- * `join_1`, `output`), never from the model's seat ids.
+ * fans out from the step before and meets at a Join; as the first step it sits in an inline Team,
+ * the one entry, whose body fans out and whose Join is its exit. A loop is a Loop whose work runs
+ * in order, then the judge, then a review decision, and it goes on to the next step whether the
+ * judge passed the work or the rounds ran out. Node ids come from the flow (`seat_1`, `loop_1`,
+ * `decision_1`, `team_1`, `join_1`, `output`), never from the model's seat ids.
  */
 export function draftFromComposition(
   composition: TeamComposition,
@@ -249,9 +252,9 @@ export function draftFromComposition(
   const connect = (exits: Exits, target: string, targetPort: ControlEdge['targetPort'] = 'in') => {
     for (const exit of exits) edge(exit.source, exit.sourcePort, target, targetPort);
   };
-  const join = (policy: 'all' | 'any') => {
+  const join = (policy: 'all' | 'any', parentId?: string) => {
     const id = `join_${++joins}`;
-    nodes.push({ id, type: 'join', label: labels.join, policy });
+    nodes.push({ id, type: 'join', label: labels.join, policy, ...(parentId ? { parentId } : {}) });
     return id;
   };
 
@@ -314,14 +317,30 @@ export function draftFromComposition(
         connect(exits, relay);
         exits = [{ source: relay, sourcePort: 'out' }];
       }
+      // The entry is one node: a first group sits in a Team that fans out from its body.
+      const team = exits.length ? undefined : 'team_1';
+      if (team) {
+        nodes.push({
+          id: team,
+          type: 'team',
+          label: labels.group ?? labels.join,
+          source: { kind: 'inline' },
+        });
+        entry = team;
+        exits = [{ source: team, sourcePort: 'body' }];
+      }
       // Seats side by side do not read each other.
       const ids = step.parallel.map((seatId, i) =>
-        seatNode(seatId, [...before, ...criteriaFor(seatId)], { place: i + 1 }),
+        seatNode(seatId, [...before, ...criteriaFor(seatId)], {
+          place: i + 1,
+          ...(team ? { parentId: team } : {}),
+        }),
       );
       for (const id of ids) connect(exits, id);
-      const gather = join('all');
+      const gather = join('all', team);
       for (const id of ids) edge(id, 'out', gather);
-      exits = [{ source: gather, sourcePort: 'out' }];
+      if (team) edge(gather, 'out', team, 'exit');
+      exits = [team ? { source: team, sourcePort: 'next' } : { source: gather, sourcePort: 'out' }];
     } else {
       const { work, judge, rounds } = step.loop;
       const loop = `loop_${++loops}`;

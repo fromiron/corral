@@ -42,6 +42,7 @@ const labels = {
   loop: 'Review loop',
   decision: 'Review decision',
   join: 'Gather',
+  group: 'Side by side',
   output: 'Output',
 };
 
@@ -758,6 +759,90 @@ describe('draftFromComposition', () => {
   });
 
   describe('side by side', () => {
+    it('a group as the first step: a Team holds it, is the entry and leads on once all are done', () => {
+      const definition = strict(
+        draft(
+          compose(
+            [
+              seat('a', 'researcher agent'),
+              seat('b', 'investigator agent'),
+              seat('verdict', 'writer agent'),
+            ],
+            [{ parallel: ['a', 'b'] }, { seat: 'verdict' }],
+          ),
+        ),
+      );
+      const [team] = ofType(definition, 'team');
+      expect(team).toEqual({
+        id: 'team_1',
+        type: 'team',
+        label: 'Side by side',
+        source: { kind: 'inline' },
+      });
+      expect(definition.entryNodeId).toBe('team_1');
+      const [join] = ofType(definition, 'join');
+      expect(join).toMatchObject({ label: 'Gather', policy: 'all', parentId: 'team_1' });
+      for (const id of ['a', 'b']) {
+        expect(nodeNamed(definition, id).parentId).toBe('team_1');
+        expect(inputsOf(definition, id)).toEqual(['brief']);
+      }
+      expect(nodeNamed(definition, 'verdict').parentId).toBeUndefined();
+      expect(edgesOf(definition)).toEqual([
+        'Side by side.body -> a.in',
+        'Side by side.body -> b.in',
+        'a.out -> Gather.in',
+        'b.out -> Gather.in',
+        'Gather.out -> Side by side.exit',
+        'Side by side.next -> verdict.in',
+        'verdict.out -> Output.in',
+      ]);
+      expect(inputsOf(definition, 'verdict')).toEqual(['brief', 'a', 'b', 'criteria']);
+    });
+
+    it('a first group with no label of its own takes the Join’s; alone, it hands the team its results', () => {
+      const { group: _group, ...noGroup } = labels;
+      const definition = strict(
+        draftFromComposition(
+          compose(
+            [seat('a', 'researcher agent'), seat('b', 'researcher agent')],
+            [{ parallel: ['a', 'b'] }],
+          ),
+          'composed_1',
+          resolved,
+          noGroup,
+        ),
+      );
+      expect(ofType(definition, 'team').map((n) => n.label)).toEqual(['Gather']);
+      expect(resultsOf(definition)).toEqual(['a', 'b']);
+      for (const id of ['a', 'b']) expect(inputsOf(definition, id)).toEqual(['brief', 'criteria']);
+      expect(edgesOf(definition).at(-1)).toBe('Gather.next -> Output.in');
+    });
+
+    it('a first group followed by a loop: the Team enters the Loop', () => {
+      const definition = strict(
+        draft(
+          compose(
+            [
+              seat('a', 'researcher agent'),
+              seat('b', 'investigator agent'),
+              seat('write', 'writer agent'),
+              seat('check', 'reviewer agent'),
+            ],
+            [{ parallel: ['a', 'b'] }, { loop: { work: ['write'], judge: 'check' } }],
+          ),
+        ),
+      );
+      expect(edgesOf(definition)).toContain('Side by side.next -> Review loop.enter');
+      expect(inputsOf(definition, 'write')).toEqual([
+        'brief',
+        'a',
+        'b',
+        'prev:write',
+        'prev:check',
+        'criteria',
+      ]);
+    });
+
     it('a group in the middle fans out from the step before and meets at a Join', () => {
       const definition = strict(
         draft(
@@ -1174,8 +1259,7 @@ function* flows(steps: number, prefix: Kind[] = []): Generator<Kind[]> {
     yield prefix;
     return;
   }
-  for (const kind of ['seat', 'parallel', 'loop'] as const)
-    if (prefix.length || kind !== 'parallel') yield* flows(steps, [...prefix, kind]);
+  for (const kind of ['seat', 'parallel', 'loop'] as const) yield* flows(steps, [...prefix, kind]);
 }
 const ALL_FLOWS = [1, 2, 3, 4].flatMap((n) => [...flows(n)]);
 const WORKERS = ROLE_PRESET_IDS.map((id) => `${id} agent`);
@@ -1211,9 +1295,9 @@ function sweep(kinds: Kind[], { loopWork = 1, groupSize = 2, writers = false } =
 }
 
 describe('every flow of up to four steps', () => {
-  it('counts 80 flows, none starting side by side', () => {
-    expect(ALL_FLOWS).toHaveLength(80);
-    expect(ALL_FLOWS.some((kinds) => kinds[0] === 'parallel')).toBe(false);
+  it('counts 120 flows, 40 of them starting side by side', () => {
+    expect(ALL_FLOWS).toHaveLength(120);
+    expect(ALL_FLOWS.filter((kinds) => kinds[0] === 'parallel')).toHaveLength(40);
   });
 
   it.each(ALL_FLOWS.map((kinds) => [kinds.join(' → '), kinds] as const))(
