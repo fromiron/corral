@@ -151,7 +151,7 @@ How to compose:
 - Use parallel for independent attempts or independent views of the same input.
 - Seats whose agents change files should not work side by side, unless the goal asks for independent attempts at the same change.
 - Add a skill to a seat only when its description fits the seat's duty and the agent does not already have it.
-- A negated review pass or automatic observation is NOT a request for review or observation: add no loop, no judge and no required_review for it. Use no plan field for observation, add no outrider, judge or loop for the requester's own sign-off, and set "outrider":"required_review" when the request explicitly requires another reviewer's approval before submission or release.
+- A negated review pass or automatic observation is NOT a request for review or observation: add no loop, no judge and no required_review for it. There is no field for observation or human approval.
 - decisions.material says who supplies the material: "person" means the person provides it, "team" means the team finds it. decisions.reviewPolicy "opinion_only" means no loop; "required" means passing a review is required. Structured decisions override all text.
 - An assistant message's questionId marks a question already shown; the user message after it is the answer. If that answer is still unclear, propose a plan if possible.
 - If input.proposal is present, the person is asking you to change that proposal. Return the whole revised plan.

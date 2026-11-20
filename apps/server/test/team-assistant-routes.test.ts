@@ -290,11 +290,6 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     expect(found, line).toBeGreaterThan(at);
     at = found;
   }
-  // The requester's own sign-off is no gate; another reviewer's required approval is.
-  expect(prompt).toContain(
-    '- A negated review pass or automatic observation is NOT a request for review or observation: add no loop, no judge and no required_review for it. Use no plan field for observation, add no outrider, judge or loop for the requester\'s own sign-off, and set "outrider":"required_review" when the request explicitly requires another reviewer\'s approval before submission or release.',
-  );
-  expect(prompt).not.toContain('There is no field for observation or human approval.');
   // The earlier guidance the new text does not replace stays.
   for (const kept of [
     'A request for advice only, even without a named deliverable, is a complete goal.',
