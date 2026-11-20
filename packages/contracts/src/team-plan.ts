@@ -56,9 +56,7 @@ export const TeamPlan = z
     /** Explicitly watch the workers while they work, independently of their review policy. */
     observeWork: z.literal(true).optional(),
     /** Requested shared consultation; unresolved policies are shown before a draft can be saved. */
-    outrider: z
-      .enum(['consultation', 'artifact_review', 'clarify_review', 'required_review'])
-      .optional(),
+    outrider: z.enum(['consultation', 'artifact_review', 'required_review']).optional(),
   })
   .superRefine((plan, ctx) => {
     const wanted: readonly string[] = TEAM_SLOTS[plan.pattern];
