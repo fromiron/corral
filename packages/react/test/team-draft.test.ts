@@ -1,13 +1,9 @@
 import { isWorkAgent, TeamPlan } from '@corral/contracts';
-import { compileDefinition, planFromGoal } from '@corral/core';
+import { compileDefinition } from '@corral/core';
 import { describe, expect, it } from 'vitest';
-import en from '../src/messages/en.json' with { type: 'json' };
-import ko from '../src/messages/ko.json' with { type: 'json' };
-import { draftFromPlan, type TeamWording } from '../src/team/draft.ts';
+import { draftFromPlan } from '../src/team/draft.ts';
 
-// a goal becomes a small team plan; the plan becomes a Corral the compiler accepts.
-
-const wording = (messages: typeof en): TeamWording => messages.TeamDraft.wording;
+// A small team plan of a base pattern becomes a Corral the compiler accepts.
 
 const plan = (overrides: Partial<TeamPlan> = {}): TeamPlan => ({
   name: 'Vendor comparison',
@@ -111,108 +107,5 @@ describe('draftFromPlan', () => {
       expect(role.allowedWorkTools).toEqual(['write_artifact']);
       expect(role.allowedCollaborationTools).toEqual(['read_artifact', 'submit_result']);
     }
-  });
-});
-
-describe('planFromGoal, the local suggestion', () => {
-  it('picks the team shape from the goal’s words, in English and Korean', () => {
-    const shape = (goal: string, messages = en) =>
-      planFromGoal(goal, wording(messages))?.pattern ?? null;
-    expect(shape('Compare SQLite and PostgreSQL for an internal tool')).toBe(
-      'research_write_review',
-    );
-    expect(shape('Write a launch announcement for the new API')).toBe('write_review');
-    expect(shape('Translate this paragraph into French')).toBe('single');
-    expect(shape('사내 도구용 SQLite와 PostgreSQL 비교 조사', ko)).toBe('research_write_review');
-    expect(shape('신규 API 출시 안내문 작성', ko)).toBe('write_review');
-    const drafted = planFromGoal('Compare SQLite and PostgreSQL', wording(en));
-    expect(drafted && TeamPlan.safeParse(drafted).success).toBe(true);
-    expect(drafted?.brief).toBe('Compare SQLite and PostgreSQL');
-    const korean = planFromGoal('출시 안내문 작성', wording(ko));
-    expect(korean?.roles.map((r) => r.name)).toEqual([
-      ko.TeamDraft.wording.roles.planner.name,
-      ko.TeamDraft.wording.roles.writer.name,
-      ko.TeamDraft.wording.roles.reviewer.name,
-    ]);
-  });
-
-  it('recognizes security PR review in both languages and preserves the complete brief', () => {
-    for (const [goal, messages, name] of [
-      [
-        'Review a pull request for security issues, then have a second agent double check the findings and write a summary for me to approve',
-        en,
-        'Security PR review',
-      ],
-      [
-        'PR 보안 문제를 검토하고 다른 에이전트가 발견 사항을 확인한 뒤 승인할 요약을 작성해 줘',
-        ko,
-        'PR 보안 검토',
-      ],
-    ] as const) {
-      const suggested = planFromGoal(goal, wording(messages));
-      expect(suggested?.name).toBe(name);
-      expect(suggested?.brief).toBe(goal);
-      expect(suggested?.pattern).toBe('research_write_review');
-      expect(suggested?.roles[0]?.name).not.toBe(messages.TeamDraft.wording.roles.researcher.name);
-      expect(suggested?.roles[0]?.duty).toMatch(/security|보안/);
-      expect(suggested?.criteria.join(' ')).toMatch(/evidence|근거/);
-      // Even a goal that mentions approving does not turn the approval on; the person can.
-      expect(suggested?.finalApproval).toBe(false);
-      expect(suggested && TeamPlan.safeParse(suggested).success).toBe(true);
-      if (!suggested) throw new Error('Expected a security review plan');
-      const definition = draftFromPlan(suggested, 'security_review').definition;
-      expect(compileDefinition(definition).ok).toBe(true);
-      expect(
-        definition.roles.every((role) => role.allowedWorkTools.join(',') === 'write_artifact'),
-      ).toBe(true);
-    }
-    expect(planFromGoal('Write a security awareness announcement', wording(en))?.pattern).toBe(
-      'write_review',
-    );
-  });
-
-  it('asks for no final approval in any pattern; a person who wants one turns it on', () => {
-    const goals = [
-      ['Translate this paragraph into French', en, 'single'],
-      ['Write a launch announcement for the new API', en, 'write_review'],
-      ['Compare SQLite and PostgreSQL for an internal tool', en, 'research_write_review'],
-      ['신규 API 출시 안내문 작성', ko, 'write_review'],
-      ['사내 도구용 SQLite와 PostgreSQL 비교 조사', ko, 'research_write_review'],
-    ] as const;
-    for (const [goal, messages, pattern] of goals) {
-      const suggested = planFromGoal(goal, wording(messages));
-      expect(suggested?.pattern).toBe(pattern);
-      expect(suggested?.finalApproval, goal).toBe(false);
-      if (!suggested) throw new Error(`Expected a plan for ${goal}`);
-      const { definition } = draftFromPlan(suggested, 'drafted_default');
-      expect(definition.nodes.find((n) => n.type === 'output')).toMatchObject({
-        requireApproval: false,
-      });
-      expect(definition.nodes.some((n) => n.type === 'decision' && n.mode === 'approval')).toBe(
-        false,
-      );
-      const asked = draftFromPlan({ ...suggested, finalApproval: true }, 'drafted_asked');
-      expect(asked.definition.nodes.find((n) => n.type === 'output')).toMatchObject({
-        requireApproval: true,
-      });
-    }
-  });
-
-  it('keeps general team names short while retaining the goal in the brief', () => {
-    const goal =
-      'Write a launch announcement. Include a detailed explanation of every new feature and a migration checklist.';
-    const suggested = planFromGoal(goal, wording(en));
-    expect(suggested?.name).toBe('Write a launch announcement');
-    expect(suggested?.brief).toBe(goal);
-    expect(
-      planFromGoal(`Write ${'a detailed '.repeat(8)}report`, wording(en))?.name.length,
-    ).toBeLessThanOrEqual(48);
-  });
-
-  it('an empty goal gives no plan; a long goal is cut to fit', () => {
-    expect(planFromGoal('   ', wording(en))).toBeNull();
-    const long = planFromGoal(`Write ${'very '.repeat(600)}long`, wording(en));
-    expect(long && TeamPlan.safeParse(long).success).toBe(true);
-    expect(long?.name.length).toBeLessThanOrEqual(80);
   });
 });
