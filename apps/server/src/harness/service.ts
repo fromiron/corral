@@ -159,6 +159,17 @@ class ResourceVerificationError extends Error {
 }
 
 const resourceKey = (ref: RoleSkillRef) => `${ref.resourceHash}:${ref.entry}`;
+
+type BuiltinManifest = Record<
+  string,
+  { hash: string; files: number; skills: number; source: string }
+>;
+const BUILTIN = {
+  root: fileURLToPath(new URL('../../resources/builtin/', import.meta.url)),
+  manifest: builtinManifest as BuiltinManifest,
+};
+/** Recorded only when the startup pass installs a bundled version; a person's import never is. */
+const builtinMark = (id: string, hash = '') => `builtin:${id}:${hash}`;
 const requiredResource = (ref: HarnessProfile['resources'][number]) =>
   ref.required || ref.skillMode === 'mandatory';
 
@@ -174,6 +185,7 @@ export class HarnessService {
   private readonly inspect: (directory: string) => Promise<PackageInspection>;
   private readonly download: (source: string, directory: string) => Promise<PackageInspection>;
   private readonly reviews = new Map<string, ResourceReview>();
+  private readonly builtin: { root: string; manifest: BuiltinManifest };
 
   constructor(options: {
     root: string;
@@ -183,8 +195,11 @@ export class HarnessService {
     clock: Clock;
     inspect?: (directory: string) => Promise<PackageInspection>;
     download?: (source: string, directory: string) => Promise<PackageInspection>;
+    /** The bundled packs and their manifest; tests pass fixture packs. */
+    builtin?: { root: string; manifest: BuiltinManifest };
   }) {
     this.root = resolve(options.root);
+    this.builtin = options.builtin ?? BUILTIN;
     this.newId = options.newId ?? randomUUID;
     this.mcp = options.mcp;
     this.mcp?.setPackageVerifier((hash) => {
@@ -646,10 +661,62 @@ export class HarnessService {
     );
   }
 
+  /**
+   * Server start: install each bundled pack version the store does not have yet
+   * (docs/specs/features/builtin-crew.md, "설치"). A stored hash is left alone whatever a person
+   * did with it. A pack that fails, or does not match the manifest, is skipped; the rest install.
+   */
+  async installBuiltins(): Promise<{ installed: string[]; failed: string[] }> {
+    const installed: string[] = [];
+    const failed: string[] = [];
+    await Promise.all(
+      Object.entries(this.builtin.manifest).map(async ([id, manifest]) => {
+        if (this.store.getResource(manifest.hash)) return;
+        try {
+          const review = await this.discoverBuiltin(id);
+          this.db.transaction(() => {
+            const resource = this.install(review.reviewId);
+            const mark = builtinMark(id, resource.hash);
+            const earlier = this.store
+              .receiptIds(builtinMark(id))
+              .filter((operationId) => operationId !== mark)
+              .map((operationId) => operationId.slice(builtinMark(id).length));
+            this.store.receipt(mark, { id, hash: resource.hash }, () => ({ id }));
+            for (const hash of earlier) this.supersedeBuiltin(hash, resource);
+          })();
+          installed.push(id);
+        } catch {
+          failed.push(id);
+        }
+      }),
+    );
+    return { installed, failed };
+  }
+
+  /** Archive an earlier bundled version's entries, linking same-named ones to the new version. */
+  private supersedeBuiltin(hash: string, next: HarnessResourceView) {
+    const previous = this.store.getResource(hash);
+    for (const skill of previous?.skills ?? []) {
+      const key = { resourceHash: hash, entry: skill.entry, kind: 'skill' as const };
+      const state = this.store.entryManagement(key);
+      // An entry a person archived or linked keeps their choice.
+      if (state.archivedAt !== null || state.successor !== null) continue;
+      const successor = next.skills.find((candidate) => candidate.name === skill.name);
+      this.store.manageEntry(
+        key,
+        state.managementRevision,
+        true,
+        successor ? { resourceHash: next.hash, entry: successor.entry, kind: 'skill' } : undefined,
+      );
+    }
+  }
+
   async discoverBuiltin(id: string) {
-    if (!Object.hasOwn(builtinManifest, id)) throw new Error('unknown built-in pack');
-    const manifest = builtinManifest[id as keyof typeof builtinManifest];
-    const source = fileURLToPath(new URL(`../../resources/builtin/${id}/`, import.meta.url));
+    if (!Object.hasOwn(this.builtin.manifest, id)) throw new Error('unknown built-in pack');
+    const manifest = this.builtin.manifest[id]!;
+    const source = join(this.builtin.root, id);
+    if (relative(this.builtin.root, source).split(sep)[0] !== id)
+      throw new Error('unknown built-in pack');
     const review = await this.discoverLocal(source);
     if (
       review.resource.hash !== manifest.hash ||
@@ -937,6 +1004,10 @@ export class HarnessService {
       const known = this.store.getResource(review.resource.hash) !== null;
       let installed = this.store.putResource(review.resource);
       if (!known) installed = this.store.trustResource(installed.hash, true);
+      // Installing again is how a person brings back a package they removed.
+      const status = this.store.packageManagement(installed.hash);
+      if (status.status === 'removed')
+        this.store.managePackage(installed.hash, status.managementRevision, 'enabled');
       if (review.display) {
         const key = {
           resourceHash: installed.hash,

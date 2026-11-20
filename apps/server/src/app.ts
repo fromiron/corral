@@ -641,6 +641,8 @@ async function createCorralServer(
     root: join(workspace.root, '.corral', 'harness'),
   });
   resources.defer(() => harnesses.dispose());
+  // Bundled packs are installed before the first request; a pack that fails does not stop start.
+  await harnesses.installBuiltins();
 
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());

@@ -6,6 +6,7 @@ import { processChannel } from '@corral/adapter-pi';
 import { InProcessTransport, waitForProjection } from '@corral/core';
 import { linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
+import builtinManifest from '../resources/builtin/manifest.json' with { type: 'json' };
 import { type CorralServer, startCorralServer } from '../src/app.ts';
 import { fakeOpenAI } from '../src/testing.ts';
 import { oauthFixture } from './fixtures/mcp-oauth.ts';
@@ -454,6 +455,12 @@ it('resource API requires review and trust, pins revisions and protects local pa
       (resource) => resource.name === 'fixture',
     );
   expect(await fixtures()).toEqual([]);
+  // The server installed every bundled pack before its first request, each trusted.
+  const bundled = (await call('/resources')).body as { hash: string; trustedAt: string | null }[];
+  for (const { hash } of Object.values(builtinManifest))
+    expect(bundled.find((resource) => resource.hash === hash)?.trustedAt).toEqual(
+      expect.any(String),
+    );
   const reviewed = await call('/reviews', { source, kind: 'local' });
   expect(reviewed.status).toBe(200);
   expect(JSON.stringify(reviewed.body)).not.toContain(source);
