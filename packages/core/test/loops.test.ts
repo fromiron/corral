@@ -684,14 +684,19 @@ describe('reading a step of another Loop', () => {
     }
   };
   /** `reader` also reads `source` as a task output. */
-  const reading = (nodes: CorralNode[], reader: string, source: string) =>
+  const reading = (nodes: CorralNode[], reader: string, source: string, optional = false) =>
     nodes.map((node) =>
       node.id === reader && node.type === 'agent' && 'inputBindings' in node
         ? {
             ...node,
             inputBindings: [
               ...node.inputBindings,
-              { kind: 'task_output' as const, name: 'earlier', sourceNodeId: source },
+              {
+                kind: 'task_output' as const,
+                name: 'earlier',
+                sourceNodeId: source,
+                ...(optional ? { optional } : {}),
+              },
             ],
           }
         : node,
@@ -823,5 +828,160 @@ describe('reading a step of another Loop', () => {
     readsInStep(events, submitted(final, 'b_review'), inner3, (i) => i);
     // A nested Loop's step, from the newest inner round of the reader's own outer round.
     readsInStep(events, submitted(final, 'a_review'), inner3, (i) => (i === 0 ? 1 : 2));
+  });
+
+  // A rule Decision whose answer comes from the script.
+  const gate = (id: string, read: string, parentId: string): CorralNode => ({
+    id,
+    type: 'decision',
+    label: id,
+    mode: 'rule',
+    rule: 'required_tasks_submitted',
+    inputBindings: [{ kind: 'task_output', name: 'work', sourceNodeId: read }],
+    parentId,
+  });
+  /**
+   * Loop O runs Loop X and then Loop Y in round 1; in round 2 the gate skips X. Y's writer reads
+   * X's writer: in round 2 there is nothing of that round to read.
+   */
+  const skipped = (optional: boolean) => {
+    const x = reviewedBody('loop_x', 'x');
+    const y = reviewedBody('loop_y', 'y');
+    return team(
+      reading(
+        [
+          research,
+          loop('loop_o'),
+          gate('o_gate', 'research', 'loop_o'),
+          loop('loop_x', {}, 'loop_o'),
+          ...x.nodes,
+          loop('loop_y', {}, 'loop_o'),
+          ...y.nodes,
+          reviewer('o_review', 'y_write', 'loop_o'),
+          decision('o_decision', 'o_review', 'loop_o'),
+          output('y_write'),
+        ],
+        'y_write',
+        'x_write',
+        optional,
+      ),
+      [
+        edge('research', 'out', 'loop_o', 'enter'),
+        edge('loop_o', 'body', 'o_gate'),
+        edge('o_gate', 'yes', 'loop_x', 'enter'),
+        edge('o_gate', 'no', 'loop_y', 'enter'),
+        ...x.edges,
+        edge('loop_x', 'next', 'loop_y', 'enter'),
+        ...y.edges,
+        edge('loop_y', 'next', 'o_review'),
+        edge('o_review', 'out', 'o_decision'),
+        edge('o_decision', 'pass', 'loop_o', 'exit'),
+        edge('o_decision', 'revise', 'loop_o', 'repeat'),
+        edge('loop_o', 'next', 'output'),
+      ],
+    );
+  };
+  const skipping = () =>
+    runtime(
+      scripted({
+        o_gate: ['yes', 'no'],
+        x_decision: ['pass'],
+        y_decision: ['pass', 'pass'],
+        o_decision: ['revise', 'pass'],
+      }),
+    );
+
+  // Pins the rule's boundary; it held before this rule as well.
+  it('a step skipped in this outer round is not read from an earlier outer round', async () => {
+    const required = skipped(false);
+    expect(compileDefinition(required).diagnostics.filter((d) => d.severity === 'error')).toEqual(
+      [],
+    );
+    const failing = skipping();
+    const first = await run(failing, required);
+    const failed = await waitForProjection(failing, first.runId, finished);
+    expect(failed.status).toBe('failed');
+    expect(JSON.stringify(first.events)).toContain('has no submitted version');
+
+    const transport = skipping();
+    const { runId, events } = await run(transport, skipped(true));
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    const xs = submitted(final, 'x_write');
+    const ys = submitted(final, 'y_write');
+    expect([xs.length, ys.length]).toEqual([1, 2]);
+    expect(given(events, ys[0]?.id)).toEqual(expect.arrayContaining(xs[0]?.versions ?? ['?']));
+    for (const version of xs[0]?.versions ?? [])
+      expect(given(events, ys[1]?.id)).not.toContain(version);
+  });
+});
+
+// The built-in verdict: a review Decision reads the verdict from the review it is bound to, never
+// from another bound output (docs/specs/features/team-graph.md).
+describe('a review Decision bound to more than the review', () => {
+  const settled = (p: RunProjection) => finished(p) || p.status === 'awaiting_user';
+  /** `decisionId` reads `extra` first and its own review second. */
+  const boundFirst = (nodes: CorralNode[], decisionId: string, extra: string) =>
+    nodes.map((node) =>
+      node.id === decisionId && node.type === 'decision'
+        ? {
+            ...node,
+            inputBindings: [
+              { kind: 'task_output' as const, name: 'context', sourceNodeId: extra },
+              ...node.inputBindings,
+            ],
+          }
+        : node,
+    );
+
+  it('follows the review when it also reads a step of an earlier Loop', async () => {
+    const a = reviewedBody('loop_a', 'a');
+    const b = reviewedBody('loop_b', 'b');
+    const definition = team(
+      boundFirst(
+        [research, loop('loop_a'), ...a.nodes, loop('loop_b'), ...b.nodes, output('b_write')],
+        'b_decision',
+        'a_write',
+      ),
+      [
+        edge('research', 'out', 'loop_a', 'enter'),
+        ...a.edges,
+        edge('loop_a', 'next', 'loop_b', 'enter'),
+        ...b.edges,
+        edge('loop_b', 'next', 'output'),
+      ],
+    );
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(undefined);
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+    expect(rounds(final, 'loop_b')).toEqual([
+      [1, 'revise'],
+      [2, 'pass'],
+    ]);
+    expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
+  });
+
+  it('follows the review when it also reads a step outside every Loop', async () => {
+    const b = reviewedBody('loop_b', 'b');
+    const definition = team(
+      boundFirst(
+        [research, loop('loop_b'), ...b.nodes, output('b_write')],
+        'b_decision',
+        'research',
+      ),
+      [edge('research', 'out', 'loop_b', 'enter'), ...b.edges, edge('loop_b', 'next', 'output')],
+    );
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(undefined);
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, settled);
+    expect(final.status).toBe('succeeded');
+    expect(rounds(final, 'loop_b')).toEqual([
+      [1, 'revise'],
+      [2, 'pass'],
+    ]);
+    expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
   });
 });
