@@ -21,15 +21,15 @@ Everything else goes, whatever it looks like: code that was commented out, a his
 ## Steps
 
 1. **Fix the scope.** The changed lines by default. Widen to the file or the module only when asked.
-2. **Put each comment in scope to the three grounds.** No ground, no comment.
-3. **Check the ones that pass.** Is the outside fact true today? Look up the rule a suppression names. Open the link. If you cannot confirm it, remove the comment and list it as a flag. The ask-the-record skill covers how to check.
-4. **Read an apology for confusing code as a defect report.** When a comment exists only because the project's own code is hard to follow, the code is at fault. Name the symbol and suggest the rename or the reshape. Remove the comment.
+2. **Put each comment in scope to the three grounds.** No ground, no comment. The one exception is in step 4.
+3. **Check the ones that pass.** Is the outside fact true today? Look up the rule a suppression names. Open the link. If you checked and it is false, remove the comment. If you could not check, keep it and list it as a flag. The ask-the-record skill covers how to check.
+4. **Read an apology for confusing code as a defect report.** When a comment exists only because the project's own code is hard to follow, the code is at fault. Name the symbol and suggest the rename or the reshape. The comment stays until the code changes; list it as a flag.
 5. **Remove the rest.**
 
 ## Rules
 
 - Change comments only. Behavior, names and structure stay as they are.
-- A removed comment does not come back in a shorter form.
+- Do not rewrite a comment that fails the three grounds. Remove it.
 - Leave comments alone in code you were not asked to touch.
 - If you are not allowed to change files, report the same lists and edit nothing.
 

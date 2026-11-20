@@ -14,10 +14,9 @@ Reading code tells you where time might go. Only a measurement tells you where i
 2. **Take a baseline before changing anything.** Several runs. Record the variation as well as the average. Note whether runs were cold or warm.
 3. **Find what limits it.** Profile or trace. Use the code to form a theory and the measurement to confirm it.
 4. **Question the figure.** Use the list below. A figure that fails one question is not ready to report.
-5. **Try remedies in order of cost.** Use the second list below. Stop at the first that reaches the target.
-6. **Change one thing, then measure again** by the same method.
-7. **Compare like with like.** Same input, build mode, machine and number of samples. Report the difference together with the variation.
-8. **Check the whole journey.** A faster inner step that does not shorten what the person waits for has not helped them.
+5. **If you are improving it, try remedies in order of cost.** Use the second list below. Change one thing, measure again by the same method, and stop at the first remedy that reaches the target.
+6. **Compare like with like.** Same input, build mode, machine and number of samples. Report the difference together with the variation.
+7. **Check the whole journey.** A faster inner step that does not shorten what the person waits for has not helped them.
 
 ## Questions for every figure
 
@@ -46,4 +45,4 @@ Reading code tells you where time might go. Only a measurement tells you where i
 
 ## Hand back
 
-The method, the baseline, the limit you found, the change, the figure afterwards, the difference with its variation, and what was not measured.
+The method, the baseline and the limit you found. If something was changed: the change, the figure afterwards and the difference with its variation. Then what was not measured.

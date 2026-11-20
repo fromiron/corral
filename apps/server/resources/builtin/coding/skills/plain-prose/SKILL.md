@@ -1,6 +1,6 @@
 ---
 name: plain-prose
-description: "Writes or rewrites text so a busy reader gets the point from the first lines: outcome first, one claim per sentence, no filler, and every claim marked with how it was established. Use when drafting a report, summary, answer, review or message, or when asked to tighten or de-fluff existing text."
+description: "Writes or rewrites text so a busy reader gets the point from the first lines: outcome first, one claim per sentence, no filler, and in a report every claim marked with how it was established. Use when drafting a report, summary, answer, review or message, or when asked to tighten or de-fluff existing text."
 license: MIT
 ---
 
@@ -13,9 +13,9 @@ The reader has little time and cannot ask you what you meant. Give them the resu
 - **Start with the outcome.** What happened, what you found or what you recommend. Background follows, and only as much as the reader needs to act.
 - **One claim per sentence.** Short sentences. Subject, verb, object.
 - **Be specific.** Name the file, the number, the command, the person. "Login fails for accounts created before March" tells the reader more than "there are some authentication issues".
-- **Mark how you know.** Each claim is one of: ran, traced, read, not checked. Say which, once, close to the claim.
+- **Mark how you know.** In a report on work or findings, each claim is one of: ran, traced, read, not checked. Say which, once, close to the claim. In a document for other readers, leave the labels out and list what is unverified beside it.
 - **Use ordinary words.** "Use", "help", "show", "start". Use a term of art only where it is the exact name of the thing, and keep to one term for one thing.
-- **Check it yourself.** If you can verify a statement, verify it. Do not hand the reader a task you could have done.
+- **Check it yourself.** If you can verify a statement, verify it first.
 
 ## Cut on sight
 

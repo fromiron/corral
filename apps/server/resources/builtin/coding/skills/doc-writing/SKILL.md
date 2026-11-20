@@ -16,7 +16,7 @@ A document fails when it tries to teach, instruct, list and justify all at once.
    - Tutorial: a beginner follows it once and ends with something working.
    - Explanation: someone wants to understand why it is built this way.
    Material that belongs to another kind goes in another document. Link to it.
-2. **Collect the facts before the wording.** Read the code, run the commands, open the sources. Do not document behavior you assume.
+2. **Collect the facts before the wording.** Read the code, open the sources, and run the commands if you can. Do not document behavior you assume.
 3. **Put the answer at the top.** The first screen says what this is, who it is for and what they get.
 4. **Shape it to the job.** Numbered steps for a procedure, with one action in each. A table for facts that share columns. Paragraphs for reasoning.
 5. **Write the sentences.** Settle on one term for each thing, define it where it first appears and do not vary it. Say who does what, in the present tense. Keep idiom and wordplay out; many readers translate.
@@ -29,7 +29,7 @@ Write it in this order: the problem that prompted the change; what the change do
 
 ## A commit message
 
-The subject line is an instruction that says what the commit does, in about fifty characters: "Reject empty team names". The body says why the change was needed and anything a future reader could not work out from the diff. Do not narrate the diff.
+Follow the project's commit convention if it has one. Otherwise the subject line is an instruction that says what the commit does, in about fifty characters: "Reject empty team names". The body says why the change was needed and anything a future reader could not work out from the diff. Do not narrate the diff.
 
 ## Rules
 

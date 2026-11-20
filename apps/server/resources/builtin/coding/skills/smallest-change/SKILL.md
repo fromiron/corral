@@ -12,11 +12,10 @@ The smallest change is the one with the fewest things a reviewer has to take on 
 
 1. **Restate the request.** One sentence for the goal. A second for the least you could change to reach it. If you cannot write the second sentence, you do not understand the request yet.
 2. **Read before writing.** Open the code you will change and everything that depends on it: callers, exports, tests, fixtures, configuration. List what has to change together.
-3. **Look for something to remove.** An unreachable branch, a duplicate helper, a check made twice. Removing first often shrinks the change.
+3. **Look for something to remove in the code you have to change.** An unreachable branch, a duplicate helper, a check made twice. Removing first often shrinks the change. Leftovers next to it go in your notes.
 4. **Reuse in this order.** The pattern the project already uses. Then what the language or platform provides. Then a dependency that is already installed. Add a new dependency only for a substantial problem, never for a few lines.
-5. **Decide once.** When several places need the same answer, work it out in one spot and hand them the value.
-6. **Write it** in the style and naming of the code around it.
-7. **Read your own diff.** Every hunk must trace back to the request. Revert the ones that do not.
+5. **Write it** in the style and naming of the code around it. A condition the change needs in several places is computed once and passed along.
+6. **Read your own diff.** Every hunk must trace back to the request. Revert the ones that do not.
 
 ## Not part of the change
 
@@ -32,7 +31,7 @@ The smallest change is the one with the fewest things a reviewer has to take on 
 - The validation, error handling, cancellation and cleanup the old code had.
 - Accessibility and user data.
 - Every part of the request. A shorter diff is no reason to put off something that was asked for.
-- One meaningful test for behavior that is not trivial. See the failing-test-first skill.
+- A test for behavior that is not trivial, where the project has tests. See the failing-test-first skill.
 
 ## Hand back
 

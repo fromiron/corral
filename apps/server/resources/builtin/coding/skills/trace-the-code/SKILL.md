@@ -20,11 +20,7 @@ An explanation built from names and folder layout is a guess about the code. Fol
 
 ## Write it up
 
-- **Purpose.** Two to four sentences: what this part is for and how it goes about it.
-- **Vocabulary.** The terms the code uses, a line each.
-- **The path.** The case you followed, in order, with file references.
-- **Map.** A short table of path and responsibility.
-- **Surprises.** Hidden ordering, unexpected defaults, code that looks wrong and is depended on.
+Answer the question in a few sentences. Then give the path you followed, with file references, defining each term where it first appears. End with where to look next: which file owns what, and anything that behaves differently from how it reads.
 
 ## Rules
 

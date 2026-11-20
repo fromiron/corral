@@ -14,4 +14,4 @@
 
 **You skipped it when** adding a case means editing a conditional in four files, two fields must be updated together and nothing makes that happen, or different functions disagree about whether a list can be empty.
 
-**Leave it alone when** the code is short, used in one place and not expected to grow. A new layer that removes no condition and prevents no invalid value is cost without benefit.
+**Not every piece of code needs this.** A few lines with one caller are fine as they are. Add structure only where it removes a condition or rules out an invalid value.

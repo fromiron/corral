@@ -34,6 +34,7 @@ Restate the task in a sentence. Then write down a handful of criteria, each one 
 
 ## When the candidates are findings
 
+- There is no base to stand on. The result is the merged list.
 - Keep a finding that comes with a run or a step-by-step trace.
 - Where several findings come from one cause, combine them and keep the clearest reproduction.
 - A finding only one candidate raised is not weaker for that. Weigh the evidence and ignore the count.
