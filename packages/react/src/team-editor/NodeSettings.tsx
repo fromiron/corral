@@ -1256,8 +1256,14 @@ function Materials({
                 .map((n) => ({ value: n.id, label: t('previousMaterial', { producer: n.label }) }));
               break;
             case 'run_input':
-              label = request.label;
-              current = request.value;
+              // The team's criteria are their own material, not a second copy of the request.
+              if (binding.name === 'criteria') {
+                label = t('teamCriteria');
+                current = '@criteria';
+              } else {
+                label = request.label;
+                current = request.value;
+              }
               options = choices;
               break;
             case 'explicit_version':

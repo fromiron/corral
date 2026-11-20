@@ -247,6 +247,7 @@
     "receives": "Receives",
     "skills": "Skills",
     "teamRequest": "Team request",
+    "teamCriteria": "Completion criteria",
     "submittedMaterial": "{producer} · {result}",
     "teamResult": "Team result",
     "chooseMaterial": "Choose material to receive",

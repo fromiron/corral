@@ -289,6 +289,21 @@ describe('work seat settings', () => {
     expect(screen.getByRole('combobox', { name: 'Add material' })).toBeVisible();
   });
 
+  it('names the criteria input apart from the team request, as the team names its criteria', () => {
+    open(
+      patchNode(team(), 'agent_1', {
+        inputBindings: [
+          { kind: 'run_input', name: 'brief' },
+          { kind: 'run_input', name: 'criteria' },
+        ],
+      }),
+      { selection: { nodes: ['agent_1'], edge: null } },
+    );
+    expect(button('Remove Team request')).toBeVisible();
+    expect(button(`Remove ${messages.Inspector.teamCriteria}`)).toBeVisible();
+    expect(messages.Inspector.teamCriteria).not.toBe(messages.Inspector.teamRequest);
+  });
+
   it('offers a named choice for required material with a missing source', async () => {
     const { seat } = open(
       patchNode(team(), 'agent_2', {

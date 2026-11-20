@@ -247,6 +247,7 @@
     "receives": "받는 자료",
     "skills": "사용할 스킬",
     "teamRequest": "팀 요청",
+    "teamCriteria": "완료 기준",
     "submittedMaterial": "{producer} · {result}",
     "teamResult": "팀 결과",
     "chooseMaterial": "받을 자료 선택",

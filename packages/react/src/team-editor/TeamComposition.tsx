@@ -682,7 +682,9 @@ export function TeamComposition({
                 const source = b.producerId
                   ? nodes.get(b.producerId)?.label
                   : binding?.kind === 'run_input'
-                    ? c('request')
+                    ? binding.name === 'criteria'
+                      ? inspector('teamCriteria')
+                      : c('request')
                     : binding?.artifactVersionId;
                 const received = c('received', {
                   name: b.name,
