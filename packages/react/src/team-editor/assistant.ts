@@ -620,7 +620,8 @@ export function createAssistantActions(
         }
       }
       if (next.kind === 'choice') runChoice(next);
-      else await run(next, receipt);
+      // Asking again for a shown proposal keeps it to come back to if the request is cancelled.
+      else await run(next, receipt, proposal ? getState() : undefined);
     },
     chooseEdit(choice: Choice) {
       const state = getState();

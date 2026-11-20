@@ -651,6 +651,37 @@ describe('create proposals and human decisions', () => {
       });
     });
 
+    it('brings back the refined proposal when Propose again is cancelled, and refines that one', async () => {
+      const ask = model()
+        .mockResolvedValueOnce(proposed)
+        .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now reviewed.' }))
+        .mockImplementationOnce(waiting)
+        .mockResolvedValueOnce(proposed);
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      await f.send('Add a review too.');
+      const shown = f.state().proposal;
+      expect(shown?.plan).toEqual(crew);
+      void f.actions.retry();
+      await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(3));
+      f.actions.cancel();
+      expect(f.state().proposal).toBe(shown);
+      await f.send('Make the summary shorter.');
+      expect(ask.mock.calls[3]?.[0]).toMatchObject({ mode: 'create', proposal: crew });
+    });
+
+    it('brings back a first proposal when Propose again is cancelled', async () => {
+      const ask = model().mockResolvedValueOnce(proposed).mockImplementationOnce(waiting);
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      const shown = f.state().proposal;
+      void f.actions.retry();
+      await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+      f.actions.cancel();
+      expect(f.state().proposal).toBe(shown);
+      expect(f.state().failure).toBeNull();
+    });
+
     it('starts fresh after a cancelled first request that had failed', async () => {
       const ask = model()
         .mockRejectedValueOnce(refused())
