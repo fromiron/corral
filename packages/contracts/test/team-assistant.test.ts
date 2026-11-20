@@ -5,7 +5,8 @@ import {
   TeamAssistantResponse,
   TeamAssistantTarget,
   TeamAssistantTeam,
-  type TeamPlan,
+  type TeamCatalog,
+  type TeamComposition,
 } from '../src/index.ts';
 
 const target: TeamAssistantTarget = { outputId: 'final', index: 3 };
@@ -19,18 +20,51 @@ const team: TeamAssistantTeam = {
   hasSharedOutrider: false,
 };
 const message = { role: 'user', content: 'Prepare a report.' } as const;
-const create: TeamAssistantRequest = { mode: 'create', operationId: '0-a', messages: [message] };
-const edit: TeamAssistantRequest = { ...create, mode: 'edit', team };
-const plan: TeamPlan = {
+const catalog: TeamCatalog = {
+  agents: [
+    {
+      id: 'a1',
+      name: 'Writer',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'draft',
+      skills: [],
+    },
+  ],
+  skills: [],
+};
+const create: TeamAssistantRequest = {
+  mode: 'create',
+  operationId: '0-a',
+  messages: [message],
+  catalog,
+};
+const { catalog: _catalog, ...withoutCatalog } = create;
+const edit: TeamAssistantRequest = { ...withoutCatalog, mode: 'edit', team };
+const plan: TeamComposition = {
   name: 'Writing',
-  pattern: 'single',
   brief: 'Prepare a report.',
-  finalApproval: false,
   criteria: ['A report is ready.'],
-  roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the report.' }],
+  seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the report.' }],
+  flow: [{ seat: 's1' }],
 };
 
 describe('team assistant request', () => {
+  it('a new team carries the catalog and may carry the proposal it revises; an edit carries neither', () => {
+    expect(TeamAssistantRequest.safeParse(create).success).toBe(true);
+    expect(TeamAssistantRequest.safeParse({ ...create, proposal: plan }).success).toBe(true);
+    for (const invalid of [
+      withoutCatalog,
+      { ...create, catalog: { agents: [], skills: [] } },
+      { ...create, catalog: { ...catalog, teams: [] } },
+      { ...create, proposal: { ...plan, pattern: 'single' } },
+      { ...create, proposal: { ...plan, flow: [{ parallel: ['s1', 's1'] }] } },
+      { ...edit, catalog },
+      { ...edit, proposal: plan },
+    ])
+      expect(TeamAssistantRequest.safeParse(invalid).success).toBe(false);
+  });
+
   it('accepts edit decisions only for results at their original input index', () => {
     const decisions = {
       material: 'person',
@@ -192,6 +226,23 @@ describe('team assistant reply', () => {
     for (const reply of [
       { kind: 'plan', plan, reason, extra: true },
       { kind: 'plan', plan: { ...plan, grants: [] }, reason },
+      {
+        kind: 'plan',
+        plan: { ...plan, seats: [{ ...plan.seats[0], tools: ['write_file'] }] },
+        reason,
+      },
+      {
+        kind: 'plan',
+        plan: {
+          name: 'Writing',
+          pattern: 'single',
+          brief: 'Prepare a report.',
+          finalApproval: false,
+          criteria: ['A report is ready.'],
+          roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the report.' }],
+        },
+        reason,
+      },
       { kind: 'edits', edits: [], reason },
       { kind: 'edits', edits: ['add_shared_advice'], reason },
       { kind: 'edits', edits: [{ kind: 'require_review', target }], reason },

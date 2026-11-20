@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
-import { TeamPlan } from './team-plan.ts';
+import { TeamCatalog, TeamComposition } from './team-composition.ts';
 
 const InputIndex = z.int().nonnegative();
 export const TeamAssistantTarget = z.strictObject({ outputId: Identifier, index: InputIndex });
@@ -67,7 +67,15 @@ const requestFields = {
 };
 export const TeamAssistantRequest = z
   .discriminatedUnion('mode', [
-    z.strictObject({ ...requestFields, mode: z.literal('create'), team: z.never().optional() }),
+    // A new team is composed from what the editor can pick by hand; `proposal` is the shown
+    // composition the person asks to change.
+    z.strictObject({
+      ...requestFields,
+      mode: z.literal('create'),
+      team: z.never().optional(),
+      catalog: TeamCatalog,
+      proposal: TeamComposition.optional(),
+    }),
     z.strictObject({ ...requestFields, mode: z.literal('edit'), team: TeamAssistantTeam }),
   ])
   .refine(
@@ -129,7 +137,7 @@ const Reason = z
 
 export const TeamAssistantReply = z.discriminatedUnion('kind', [
   Question,
-  z.strictObject({ kind: z.literal('plan'), plan: TeamPlan, reason: Reason }),
+  z.strictObject({ kind: z.literal('plan'), plan: TeamComposition, reason: Reason }),
   z.strictObject({ kind: z.literal('edits'), edits: z.array(Edit).min(1), reason: Reason }),
   z.strictObject({
     kind: z.literal('describe'),

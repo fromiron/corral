@@ -6916,23 +6916,35 @@ export class Coordinator {
         required.map((t) => ({ kind: 'task', id: t.taskId })),
       );
     }
-    const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
-      b.kind === 'task_output' && b.sourceNodeId
-        ? this.submittedOutputOf(
-            run,
-            b.sourceNodeId,
-            round && this.loopOf(run, b.sourceNodeId)
-              ? (at) => this.sameRound(run, at, round)
-              : undefined,
-          )
-        : [],
-    );
+    const { definition } = run.snapshot;
+    const bindings = node?.type === 'decision' ? node.inputBindings : [];
+    // The compiler's criterion for what a review Decision reads: an agent with the review
+    // contract. Any other output it is bound to is context, never the verdict.
+    const reviews = (sourceNodeId: string | undefined) => {
+      const source = definition.nodes.find((n) => n.id === sourceNodeId);
+      return (
+        source?.type === 'agent' &&
+        definition.roles.find((r) => r.id === source.roleId)?.outputContract === 'review'
+      );
+    };
+    const submittedTo = (from: typeof bindings) =>
+      from.flatMap((b) =>
+        b.kind === 'task_output' && b.sourceNodeId
+          ? this.submittedOutputOf(
+              run,
+              b.sourceNodeId,
+              round && this.loopOf(run, b.sourceNodeId)
+                ? (at) => this.sameRound(run, at, round)
+                : undefined,
+            )
+          : [],
+      );
     if (mode === 'approval') {
       const review = this.latestReview(run);
       const requested = this.requestApproval(
         run,
         'user_action',
-        [...bound, ...(review ? [review] : [])],
+        [...submittedTo(bindings), ...(review ? [review] : [])],
         undefined,
         undefined,
         nodeId,
@@ -6943,6 +6955,7 @@ export class Coordinator {
     }
 
     // Review: the verdict counts only for the draft and criteria actually reviewed.
+    const bound = submittedTo(bindings.filter((b) => reviews(b.sourceNodeId)));
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);

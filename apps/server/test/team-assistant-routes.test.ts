@@ -7,6 +7,10 @@ import { canonicalJson } from '@corral/contracts';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
+import {
+  TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
+  TEAM_ASSISTANT_TIMEOUT_MS,
+} from '../src/models/team-assistant.ts';
 import { FAKE_PROFILES, fakeOpenAI } from '../src/testing.ts';
 
 const assistant = '/team-assistant';
@@ -69,13 +73,30 @@ async function setup(
   return { fake, call, dbPath: join(state, 'corral.db') };
 }
 
+// What the editor can pick by hand, sent with every new team request.
+const catalog = {
+  agents: [
+    {
+      id: 'a1',
+      name: 'Writer',
+      description: 'Writes documents.',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'draft',
+      skills: [],
+    },
+  ],
+  skills: [{ id: 's1', name: 'plain-language', description: 'Writes plainly.' }],
+};
 const create = (operationId: string, content: string) => ({
   operationId,
   mode: 'create',
   messages: [{ role: 'user', content }],
+  catalog,
 });
 const edit = (operationId: string) => ({
-  ...create(operationId, 'Review the notice before publishing.'),
+  operationId,
+  messages: [{ role: 'user', content: 'Review the notice before publishing.' }],
   mode: 'edit',
   team: {
     roles: [{ nodeId: 'writer', name: 'Writer' }],
@@ -85,6 +106,14 @@ const edit = (operationId: string) => ({
   },
 });
 const plan = {
+  name: 'Notice writer',
+  brief: 'Write a notice.',
+  criteria: ['Clear notice.'],
+  seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'Write and submit the notice.' }],
+  flow: [{ seat: 's1' }],
+};
+// The draft route's plan, kept by a legacy record.
+const legacyPlan = {
   pattern: 'single',
   name: 'Notice writer',
   brief: 'Write a notice.',
@@ -115,6 +144,49 @@ it('returns a plan immediately for a sufficient goal and records one body-free m
   });
   expect(recorded).not.toContain('Write this notice');
   expect(recorded).not.toContain(proposal.reason);
+});
+
+it('sends the catalog and the shown proposal to the model as data, with the route’s own allowance', async () => {
+  const { fake, call } = await setup();
+  const revised = { ...plan, name: 'Notice team' };
+  fake.replyText(JSON.stringify({ ...proposal, plan: revised }));
+  const request = { ...create('revise', 'Add a second writer.'), proposal: plan };
+  expect(await call(assistant, request)).toMatchObject({
+    status: 200,
+    body: { reply: { kind: 'plan', plan: revised } },
+  });
+  const [sent] = fake.seen.hostRequests;
+  // The route's own allowance and timeout, apart from the draft route's; the fake model caps
+  // every request at 500 output tokens, so only the constants show them.
+  expect([TEAM_ASSISTANT_MAX_OUTPUT_TOKENS, TEAM_ASSISTANT_TIMEOUT_MS]).toEqual([6000, 90_000]);
+  expect(sent?.maxTokens).toBe(500);
+  const turns = JSON.parse(sent?.text ?? '[]') as { role: string; content: unknown }[];
+  const system = JSON.stringify(turns.filter(({ role }) => role !== 'user'));
+  const user = JSON.stringify(turns.find(({ role }) => role === 'user')?.content);
+  expect(user).toContain('Writes documents.');
+  expect(user).toContain('Notice writer');
+  expect(user).not.toContain('operationId');
+  // The prompt composes from the catalog; it names no fixed pattern.
+  expect(system).toContain('catalog');
+  expect(system).not.toContain('research_write_review');
+});
+
+it('refuses a composition that seats an agent outside the catalog or names tools', async () => {
+  const { fake, call } = await setup();
+  const seat = plan.seats[0];
+  const cases = [
+    { ...proposal, plan: { ...plan, seats: [{ ...seat, agent: 'a9' }] } },
+    { ...proposal, plan: { ...plan, seats: [{ ...seat, skills: ['s9'] }] } },
+    { ...proposal, plan: { ...plan, seats: [{ ...seat, tools: ['write_file'] }] } },
+    { ...proposal, plan: legacyPlan },
+  ];
+  for (const [i, reply] of cases.entries()) {
+    fake.replyText(JSON.stringify(reply));
+    expect(await call(assistant, create(`outside-${i}`, 'Write a notice.'))).toMatchObject(
+      failedAnswer,
+    );
+  }
+  expect(fake.seen.hostRequests).toHaveLength(cases.length);
 });
 
 it('asks the first model of a connected provider when there is no named profile', async () => {
@@ -255,6 +327,7 @@ it('coalesces identical sends and replays persisted outcomes, but refuses change
   const pair = await Promise.all([call(assistant, request), call(assistant, request)]);
   expect(pair).toEqual([expected, expected]);
   const reordered = {
+    catalog: { skills: catalog.skills, agents: catalog.agents },
     messages: request.messages,
     mode: request.mode,
     operationId: request.operationId,
@@ -292,12 +365,15 @@ it('preserves legacy draft results, even for a draft goal spelling the JSON of a
     ).run(
       operationId,
       createHash('sha256').update(goal).digest('hex'),
-      JSON.stringify({ ok: true, plan, model }),
+      JSON.stringify({ ok: true, plan: legacyPlan, model }),
     );
   } finally {
     db.close();
   }
-  expect(await call(draft, { operationId, goal })).toEqual({ status: 200, body: { plan, model } });
+  expect(await call(draft, { operationId, goal })).toEqual({
+    status: 200,
+    body: { plan: legacyPlan, model },
+  });
   expect(await call(assistant, request)).toMatchObject({
     status: 409,
     body: { error: { code: 'REVISION_CONFLICT' } },

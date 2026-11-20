@@ -1,17 +1,18 @@
 import {
   assistantKindAllowed,
   hasAssistantTarget,
-  hasReviewLoop,
   TeamAssistantReply as Reply,
   type TeamAssistantRequest,
   type TeamAssistantTarget,
-  type TeamPlan,
+  type TeamComposition,
 } from '@corral/contracts';
-import { type AdviceIntent, adviceIntentFromGoal, withWorkObservation } from './team-draft.ts';
+import { compositionProblem } from './team-composition.ts';
+import { type AdviceIntent, adviceIntentFromGoal } from './team-draft.ts';
 
 type PlanReply = Extract<Reply, { kind: 'plan' }>;
 type EditsReply = Extract<Reply, { kind: 'edits' }>;
 type EditRequest = Extract<TeamAssistantRequest, { mode: 'edit' }>;
+type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
 
 /** Assistant turns in the current proposal are the questions already shown to the person. */
 export function canAskAssistantQuestion(messages: TeamAssistantRequest['messages']): boolean {
@@ -45,7 +46,10 @@ const reviewPolicyQuestion = {
 
 // If structure changes, the model's old reason (e.g. "passing review is required") is
 // no longer an explanation of the checked proposal. Only describe the person's setting.
-function policyReason(policy: TeamPlan['outrider'], korean: boolean): string {
+function policyReason(
+  policy: TeamComposition['outrider'] | AdviceIntent['outrider'],
+  korean: boolean,
+): string {
   switch (policy) {
     case 'required_review':
       return korean
@@ -63,69 +67,25 @@ function policyReason(policy: TeamPlan['outrider'], korean: boolean): string {
   }
 }
 
-function reconcilePlan(
-  reply: PlanReply,
-  request: TeamAssistantRequest,
-  intent: AdviceIntent,
-  korean: boolean,
-): Reply | null {
-  const decisions = request.decisions;
-  // A typed clarification lets the model resolve what was ambiguous in the original goal.
-  const inferred =
-    intent.outrider === 'clarify_review' && alreadyAsked(request, 'review_policy')
-      ? undefined
-      : intent.outrider;
+/**
+ * A new team as the model composed it, checked against the catalog it was composed from and the
+ * person's review policy. The goal's words are the model's to read: nothing here re-reads them.
+ */
+function reconcilePlan(reply: PlanReply, request: CreateRequest, korean: boolean): Reply | null {
+  const { decisions } = request;
+  if (compositionProblem(reply.plan, request.catalog, decisions)) return null;
   const policy =
     decisions?.reviewPolicy === 'required'
       ? 'required_review'
       : decisions?.reviewPolicy === 'opinion_only'
         ? 'artifact_review'
-        : inferred;
-  if (
-    policy === 'clarify_review' ||
-    (!policy && reply.plan.outrider === 'clarify_review' && !intent.singleWithoutReview)
-  )
-    return boundedQuestion(request, reviewPolicyQuestion);
-
-  let plan = reply.plan;
-  if (intent.singleWithoutReview && plan.pattern !== 'single') {
-    // The writer of a write/review proposal is the producer; do not guess a producer
-    // in unrelated patterns or retain the sequential reviewer in the proposal.
-    const writer = plan.roles.find((role) => role.slot === 'writer');
-    if (!writer) return null;
-    const { reviewRounds: _rounds, ...rest } = plan;
-    plan = { ...rest, pattern: 'single', roles: [{ ...writer, slot: 'worker' }] };
-  }
-  if (
-    decisions?.reviewPolicy === 'opinion_only' &&
-    (hasReviewLoop(plan.pattern) || plan.pattern === 'adversarial_review')
-  )
-    return null;
-  // Structural evidence only: never infer a material choice from model-generated prose.
-  if (decisions?.material) {
-    const researches = plan.pattern === 'research_write_review' || plan.pattern === 'tech_decision';
-    if ((decisions.material === 'team') !== researches) return null;
-  }
-  if (policy && plan.outrider !== policy) plan = { ...plan, outrider: policy };
-  else if (!policy && intent.singleWithoutReview && plan.outrider) {
-    const { outrider: _denied, ...rest } = plan;
-    plan = rest;
-  }
-  // There is no human-approval choice in this assistant. It belongs in the editor.
-  if (plan.finalApproval) plan = { ...plan, finalApproval: false };
-  const checked = withWorkObservation(plan, decisions?.observeWork ?? intent.observeWork);
-  if (checked === reply.plan) return reply;
-  const reason =
-    plan === reply.plan
-      ? checked.observeWork
-        ? korean
-          ? '요청한 대로 작업을 진행하는 동안 관찰합니다.'
-          : 'Work is observed while it is in progress, as requested.'
-        : korean
-          ? '자동 관찰을 요청하지 않아 관찰 단계는 넣지 않습니다.'
-          : 'Automatic observation is off because it was not requested.'
-      : policyReason(checked.outrider, korean);
-  return { kind: 'plan', plan: checked, reason };
+        : undefined;
+  if (!policy || reply.plan.outrider === policy) return reply;
+  return {
+    kind: 'plan',
+    plan: { ...reply.plan, outrider: policy },
+    reason: policyReason(policy, korean),
+  };
 }
 
 function reconcileEdits(
@@ -227,9 +187,12 @@ export function reconcileAssistantReply(reply: Reply, request: TeamAssistantRequ
   if (reply.kind === 'describe' || reply.kind === 'unsupported') return reply;
   const users = request.messages.filter((message) => message.role === 'user');
   const korean = /[가-힣]/.test(users.at(-1)?.content ?? '');
+  if (reply.kind === 'plan')
+    return request.mode === 'create' ? reconcilePlan(reply, request, korean) : null;
+  if (request.mode !== 'edit') return null;
+  // Edits to an existing team still read its review and observation intent from the words.
   const intent = adviceIntentFromGoal(users.map((message) => message.content).join('\n'));
-  if (reply.kind === 'plan') return reconcilePlan(reply, request, intent, korean);
-  return request.mode === 'edit' ? reconcileEdits(reply, request, intent, korean) : null;
+  return reconcileEdits(reply, request, intent, korean);
 }
 
 /** Never extract partial edits or execute strings from untrusted model text. */

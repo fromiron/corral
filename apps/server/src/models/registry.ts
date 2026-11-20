@@ -66,7 +66,11 @@ import {
   type ValueSource,
 } from './endpoints.ts';
 import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
-import { TEAM_ASSISTANT_SYSTEM_PROMPT } from './team-assistant.ts';
+import {
+  TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
+  TEAM_ASSISTANT_SYSTEM_PROMPT,
+  TEAM_ASSISTANT_TIMEOUT_MS,
+} from './team-assistant.ts';
 import {
   DRAFT_MAX_OUTPUT_TOKENS,
   DRAFT_SYSTEM_PROMPT,
@@ -699,10 +703,12 @@ export class ModelRegistry implements ModelResolver {
     signal?: AbortSignal,
   ): Promise<TeamModelResult<TeamAssistantResponse>> {
     const { operationId, ...input } = request;
-    const answer = await this.requestTeamText(TEAM_ASSISTANT_SYSTEM_PROMPT, JSON.stringify(input), {
-      id: operationId,
-      signal,
-    });
+    const answer = await this.requestTeamText(
+      TEAM_ASSISTANT_SYSTEM_PROMPT,
+      JSON.stringify(input),
+      { id: operationId, signal },
+      { maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS, timeoutMs: TEAM_ASSISTANT_TIMEOUT_MS },
+    );
     if (!answer.ok) return answer;
     const reply = assistantReplyFromAnswer(answer.text, request);
     return reply
@@ -718,6 +724,10 @@ export class ModelRegistry implements ModelResolver {
     systemPrompt: string,
     input: string,
     operation?: { id: string; signal?: AbortSignal },
+    limits: { maxTokens: number; timeoutMs: number } = {
+      maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
+      timeoutMs: DRAFT_TIMEOUT_MS,
+    },
   ): Promise<
     TeamModelResult<{ text: string; provider: string; modelId: string; modelName: string }>
   > {
@@ -758,11 +768,11 @@ export class ModelRegistry implements ModelResolver {
           messages: [{ role: 'user', content: input, timestamp: this.now() }],
         },
         {
-          maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
+          maxTokens: limits.maxTokens,
           cacheRetention: resolution.snapshot.cachePolicy?.retention,
           signal: operation?.signal
-            ? AbortSignal.any([operation.signal, AbortSignal.timeout(DRAFT_TIMEOUT_MS)])
-            : AbortSignal.timeout(DRAFT_TIMEOUT_MS),
+            ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
+            : AbortSignal.timeout(limits.timeoutMs),
         },
         {
           requestId: operationId,
