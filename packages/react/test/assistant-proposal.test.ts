@@ -205,7 +205,7 @@ it('assembles side-by-side seats and a judged loop that compile, each seat with 
 it('makes no proposal from a composition the sent catalog cannot resolve', () => {
   const stranger = { ...plan, seats: [{ ...plan.seats[0]!, agent: 'a99' }] };
   expect(() => createProposal(fresh(), stranger, create)).toThrow(t('logic.unusable'));
-  const unknownSkill = { ...plan, seats: [{ ...plan.seats[0]!, skills: ['s9'] }] };
+  const unknownSkill = { ...plan, seats: [{ ...plan.seats[0]!, skills: ['no-such-skill'] }] };
   expect(() => createProposal(fresh(), unknownSkill, create)).toThrow(t('logic.unusable'));
 });
 

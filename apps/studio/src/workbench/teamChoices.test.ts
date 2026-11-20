@@ -1,9 +1,9 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryView, LibraryAgent, PackageView } from '@corral/contracts';
-import { BUILTIN_AGENTS, ROLE_PRESET_IDS, roleFromPreset, teamCatalog } from '@corral/core';
+import { builtinComposableAgents, ROLE_PRESET_IDS, roleFromPreset } from '@corral/core';
 import { expect, it, vi } from 'vitest';
 import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { builtinComposableAgents, teamChoices } from './teamChoices.ts';
+import { teamChoices } from './teamChoices.ts';
 
 const presetName = (id: (typeof ROLE_PRESET_IDS)[number]) => en.TeamTemplates.presets[id].name;
 
@@ -43,24 +43,6 @@ function library(agentId: string, name: string, changes: Partial<LibraryAgent> =
   };
 }
 
-it('offers the built-in agents in their order, named on screen and described as bundled', () => {
-  const agents = builtinComposableAgents(presetName);
-  expect(agents.map((agent) => agent.role.name)).toEqual(ROLE_PRESET_IDS.map(presetName));
-  for (const [index, id] of ROLE_PRESET_IDS.entries()) {
-    expect(agents[index]).toMatchObject({
-      origin: { kind: 'preset', presetId: id },
-      builtin: true,
-      description: BUILTIN_AGENTS.find((agent) => agent.id === id)?.description,
-    });
-  }
-  // The judge that merges answers is told apart from the reviewer by its description.
-  const { catalog } = teamCatalog(agents, []);
-  const judge = catalog.agents.find((agent) => agent.name === presetName('judge'));
-  const reviewer = catalog.agents.find((agent) => agent.name === presetName('reviewer'));
-  expect(judge?.description).toBeTruthy();
-  expect(judge?.description).not.toBe(reviewer?.description);
-});
-
 it('lists what the editor can pick by hand: built-in agents, then the project’s own, and usable skills', async () => {
   const agents = {
     list: vi.fn(async () => [
@@ -93,6 +75,10 @@ it('lists what the editor can pick by hand: built-in agents, then the project’
     presetName,
   });
   expect(agents.list).toHaveBeenCalledWith('project');
+  // The bundled agents first, as core lists them with their descriptions, then the project's own.
+  expect(choices.agents.slice(0, ROLE_PRESET_IDS.length)).toEqual(
+    builtinComposableAgents(presetName),
+  );
   expect(choices.agents.map((agent) => agent.role.name)).toEqual([
     ...ROLE_PRESET_IDS.map(presetName),
     'Release writer',
