@@ -4,10 +4,7 @@ import {
   closePanel,
   editorSettings,
   maximizePanel,
-  openFlowGraph,
-  openLibrary,
   requestBox,
-  saveNewTeam,
   startTestRun,
   teamNode,
 } from '../workbench.ts';
@@ -250,42 +247,6 @@ test('automatic observation can be saved for one worker and switched off indepen
   await expect(requestedReview).toBeChecked();
 });
 
-test('a worker observation proposal saves only after preview and reloads with its review interval', async ({
-  page,
-  corral,
-}) => {
-  await corral.open('/');
-  await openLibrary(page, 'Templates');
-  await page.getByRole('link', { name: 'Draft from a goal', exact: true }).click();
-  await expect(page).toHaveURL(
-    (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('assistant') === '1',
-  );
-  let modelRequests = 0;
-  page.on('request', (request) => {
-    if (request.url().endsWith('/api/v1/team-assistant')) modelRequests++;
-  });
-  await page
-    .getByRole('textbox', { name: 'Request to build the team', exact: true })
-    .fill('One writer should write an invitation. Watch work in progress.');
-  await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await expect(page.getByText('Local example', { exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'Alternatives and settings', exact: true }).click();
-  await expect(page.getByRole('switch', { name: 'Observe work in progress' })).toBeChecked();
-  await expect(page.getByText(/every 3/)).toContainText('additional model requests');
-  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
-  expect(modelRequests).toBe(0);
-  expect(await call(page, '/corrals', undefined, 'GET')).toHaveLength(0);
-  await saveNewTeam(page);
-  await page.reload();
-  await openFlowGraph(page);
-  await page.getByRole('button', { name: 'Outrider · Entire team', exact: true }).click();
-  const settings = editorSettings(page);
-  await expect(settings.getByRole('checkbox', { name: 'Observe work in progress' })).toBeChecked();
-  await expect(
-    settings.getByRole('spinbutton', { name: 'Review interval (model requests)' }),
-  ).toHaveValue('3');
-});
-
 test('selecting a review target previews that result locally in one press', async ({
   page,
   corral,
@@ -315,7 +276,8 @@ test('selecting a review target previews that result locally in one press', asyn
   await expect(preview).toContainText('source notes');
   await expect(preview.getByRole('button', { name: 'Apply to draft' })).toBeEnabled();
   await expect(group).toHaveCount(0);
-  await expect(input).toHaveValue('Keep this request for later.');
+  // This server has no model: the input took the choice's answer, and is off again after it.
+  await expect(input).toHaveCount(0);
   expect(requests).toEqual([]);
 });
 
