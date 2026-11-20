@@ -31,8 +31,14 @@ export function modelsChanged() {
 }
 
 export function useModelProfiles(): ProfileInfo[] | null {
+  const read = useModelProfileRead();
+  return read === 'failed' ? null : read;
+}
+
+/** The profiles, null while they load, or `failed` when the list could not be read. */
+export function useModelProfileRead(): ProfileInfo[] | null | 'failed' {
   const { models } = useServices();
-  const [profiles, setProfiles] = useState<ProfileInfo[] | null>(null);
+  const [profiles, setProfiles] = useState<ProfileInfo[] | null | 'failed'>(null);
   const [tick, setTick] = useState(0);
   useEffect(() => {
     const again = () => setTick((n) => n + 1);
@@ -64,7 +70,7 @@ export function useModelProfiles(): ProfileInfo[] | null {
             available: profileReady(p),
           })),
         ),
-      () => live && setProfiles(null),
+      () => live && setProfiles('failed'),
     );
     return () => {
       live = false;

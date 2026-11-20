@@ -442,6 +442,24 @@ describe('team editor views', () => {
     expect(named(editorRoot(), 'Connect a model')).toBeFalsy();
   });
 
+  it('offers Connect a model, not a waiting input, when the model list cannot be read', async () => {
+    const assistTeam = vi.fn();
+    await mount('route', 1280, () => ({
+      live: true,
+      models: {
+        catalog: async () => [],
+        profiles: async () => {
+          throw new Error('offline');
+        },
+        assistTeam,
+      },
+    }));
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    await vi.waitFor(() => expect(named(editorRoot(), 'Connect a model')).toBeTruthy());
+    expect(editorRoot().querySelector('textarea')).toBeNull();
+    expect(assistTeam).not.toHaveBeenCalled();
+  });
+
   it('opens the model settings from the switched-off request when no model can run', async () => {
     const assistTeam = vi.fn();
     const profile = { source: 'profile', providerName: 'Provider', available: true };
