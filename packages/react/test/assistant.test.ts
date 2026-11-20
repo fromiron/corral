@@ -590,6 +590,114 @@ describe('create proposals and human decisions', () => {
     expect(ask.mock.calls[1]?.[0]).not.toHaveProperty('proposal');
   });
 
+  describe('a cancel after a failed refinement does not end it', () => {
+    const refused = () =>
+      Object.assign(new Error('The model did not return a usable team proposal. (shape)'), {
+        code: 'MODEL_UNAVAILABLE',
+      });
+    const waiting = () => new Promise<never>(() => {});
+    const refining = {
+      mode: 'create',
+      catalog: sent,
+      proposal: notice,
+      decisions: { observeWork: true },
+    };
+
+    it('continues it when a typed follow-up was cancelled', async () => {
+      const ask = model()
+        .mockResolvedValueOnce(proposed)
+        .mockRejectedValueOnce(refused())
+        .mockImplementationOnce(waiting)
+        .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now reviewed.' }));
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      f.actions.observe(true);
+      await f.send('Add a review too.');
+      void f.send('A review before it goes out.');
+      await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(3));
+      f.actions.cancel();
+      await f.send('Have a reviewer check it.');
+      expect(ask.mock.calls[3]?.[0]).toMatchObject({
+        ...refining,
+        messages: [
+          { role: 'user', content: 'Write a notice.' },
+          { role: 'user', content: 'Add a review too.' },
+          { role: 'user', content: 'Have a reviewer check it.' },
+        ],
+      });
+    });
+
+    it('continues it when a Retry was cancelled', async () => {
+      const ask = model()
+        .mockResolvedValueOnce(proposed)
+        .mockRejectedValueOnce(refused())
+        .mockImplementationOnce(waiting)
+        .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now reviewed.' }));
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      f.actions.observe(true);
+      await f.send('Add a review too.');
+      void f.actions.retry();
+      await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(3));
+      f.actions.cancel();
+      await f.send('Have a reviewer check it.');
+      expect(ask.mock.calls[3]?.[0]).toMatchObject({
+        ...refining,
+        messages: [
+          { role: 'user', content: 'Write a notice.' },
+          { role: 'user', content: 'Add a review too.' },
+          { role: 'user', content: 'Have a reviewer check it.' },
+        ],
+      });
+    });
+
+    it('starts fresh after a cancelled first request that had failed', async () => {
+      const ask = model()
+        .mockRejectedValueOnce(refused())
+        .mockImplementationOnce(waiting)
+        .mockResolvedValueOnce(proposed);
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      void f.actions.retry();
+      await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+      f.actions.cancel();
+      await f.send('Write an invitation.');
+      expect(ask.mock.calls[2]?.[0].messages).toEqual([
+        { role: 'user', content: 'Write an invitation.' },
+      ]);
+      expect(ask.mock.calls[2]?.[0]).not.toHaveProperty('proposal');
+    });
+
+    it('does not carry the proposal into an edit once a hand edit gave the team a step', async () => {
+      const ask = model()
+        .mockResolvedValueOnce(proposed)
+        .mockRejectedValueOnce(refused())
+        .mockResolvedValueOnce(response({ kind: 'unsupported' }));
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      await f.send('Add a review too.');
+      f.editor.getState().applyDraft(team());
+      await f.send('What does it do?');
+      const request = ask.mock.calls[2]?.[0];
+      expect(request?.mode).toBe('edit');
+      expect(request?.messages).toEqual([{ role: 'user', content: 'What does it do?' }]);
+      expect(request).not.toHaveProperty('proposal');
+      expect(request).not.toHaveProperty('catalog');
+    });
+
+    it('does not carry the proposal into another editor', async () => {
+      const ask = model().mockResolvedValueOnce(proposed).mockRejectedValueOnce(refused());
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      await f.send('Add a review too.');
+      const other = fixture(model().mockResolvedValueOnce(proposed));
+      await other.send('Write an invitation.');
+      const request = vi.mocked(other.host.ask)?.mock.calls[0]?.[0];
+      expect(request?.messages).toEqual([{ role: 'user', content: 'Write an invitation.' }]);
+      expect(request).not.toHaveProperty('proposal');
+    });
+  });
+
   it('refines the shown proposal by chat: the request carries it, the reply replaces it, the earlier one stays unapplicable', async () => {
     const ask = model()
       .mockResolvedValueOnce(proposed)
