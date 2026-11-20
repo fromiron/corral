@@ -1,4 +1,5 @@
-import type { TeamAssistantResponse } from '@corral/contracts';
+import { type TeamAssistantResponse, unusableTeamProposal } from '@corral/contracts';
+import { compileDefinition, readAssistantAnswer } from '@corral/core';
 import { Gate } from '@corral/testkit';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -11,7 +12,7 @@ import en from '../src/messages/en.json' with { type: 'json' };
 import { researchTeamDraft, sessionStore } from '../src/stories/fixtures.tsx';
 import { TeamAssistant, type TeamAssistantHost } from '../src/team-editor/TeamAssistant.tsx';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
-import { agent, agentName, choices, crew, sequence } from './team-composition-fixtures.ts';
+import { agent, agentName, choices, crew, notice, sequence } from './team-composition-fixtures.ts';
 
 function setup({
   ask = null,
@@ -497,16 +498,95 @@ it('refines a proposal in the conversation: the new one replaces it and the earl
   ]);
 });
 
-it('shows each result of a team that ends in parallel work on its own line', async () => {
-  const ends: typeof crew = {
-    ...crew,
-    seats: crew.seats.slice(0, 3),
-    flow: [{ seat: 'scope' }, { parallel: ['x', 'y'] }],
+/**
+ * The endpoint as it reads a model's answer (core `readAssistantAnswer`): lenient notation is
+ * normalised against the sent catalog, and an unusable answer is the server's failure.
+ */
+const served =
+  (answer: unknown): NonNullable<TeamAssistantHost['ask']> =>
+  async (request) => {
+    const read = readAssistantAnswer(JSON.stringify(answer), request);
+    if ('problem' in read)
+      throw Object.assign(new Error(unusableTeamProposal(read.problem)), {
+        code: 'MODEL_UNAVAILABLE',
+      });
+    return { reply: read.reply, model: 'Test model' };
   };
-  const ask = vi
-    .fn<NonNullable<TeamAssistantHost['ask']>>()
-    .mockResolvedValue(planned(ends, 'Two checks, each reported.'));
-  const { user } = setup({ ask, open: true });
+
+const strictErrors = (definition: Parameters<typeof compileDefinition>[0]) =>
+  compileDefinition(definition).diagnostics.filter((issue) => issue.severity === 'error');
+
+it('shows and applies only the added skills the catalog lists and the agent does not have yet', async () => {
+  const answer = {
+    kind: 'plan',
+    reason: 'One writer.',
+    plan: {
+      ...notice,
+      seats: [{ ...notice.seats[0], skills: ['doc-writing', 'no-such-skill', 'break-it'] }],
+    },
+  };
+  const { user, editor } = setup({ ask: served(answer), open: true });
+  await user.type(field(), 'Write a notice.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  const seat = within(preview).getByText('Notice writer').closest('li');
+  expect(seat).toHaveTextContent('break-it');
+  expect(seat).not.toHaveTextContent('doc-writing');
+  expect(seat).not.toHaveTextContent('no-such-skill');
+  await user.click(button('Apply to draft'));
+  const { definition } = editor.getState().draft;
+  const skills = (definition.roles[0]?.skills ?? []).map((ref) => ref.entry);
+  expect(skills.filter((entry) => entry.includes('break-it'))).toHaveLength(1);
+  expect(skills.filter((entry) => entry.includes('doc-writing'))).toHaveLength(1);
+  expect(strictErrors(definition)).toEqual([]);
+});
+
+it('shows, applies and compiles a team that starts with work in parallel', async () => {
+  const answer = {
+    kind: 'plan',
+    reason: 'Two checks first, then a summary.',
+    plan: {
+      ...crew,
+      seats: crew.seats.filter((seat) => ['x', 'y', 'w'].includes(seat.id)),
+      flow: [{ parallel: ['x', 'y'] }, { seat: 'w' }],
+    },
+  };
+  const { user, editor } = setup({ ask: served(answer), open: true, integrated: true });
+  await user.type(field(), 'Check this pull request.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  const together = within(preview).getByRole('list', { name: en.TeamEditor.composition.parallel });
+  expect(within(together).getAllByRole('listitem').map(seatName)).toEqual([
+    'Injection check',
+    'Secrets check',
+  ]);
+  expect(within(preview).getByText(/submitted by Summary/)).toBeVisible();
+  await user.click(button('Apply to draft'));
+  const { definition } = editor.getState().draft;
+  expect(strictErrors(definition)).toEqual([]);
+  expect(definition.nodes.filter((n) => n.type === 'agent').map((n) => n.label)).toEqual([
+    'Injection check',
+    'Secrets check',
+    'Summary',
+  ]);
+  // The group's Team is named as a Team, not after the Join inside it.
+  expect(definition.nodes.find((n) => n.type === 'team')?.label).toBe(en.TeamEditor.kinds.team);
+  expect(definition.nodes.filter((n) => n.label === en.TeamEditor.kinds.join)).toHaveLength(1);
+  // The composition list shows the two seats and the summary after them.
+  const list = screen.getByRole('list', { name: 'Team composition' });
+  for (const name of ['Injection check', 'Secrets check', 'Summary'])
+    expect(within(list).getAllByText(name, { exact: true }).length).toBeGreaterThan(0);
+});
+
+it('shows each result of a team that ends in parallel work on its own line, and applies one result each', async () => {
+  const answer = {
+    kind: 'plan',
+    reason: 'Two checks, each reported.',
+    plan: {
+      ...crew,
+      seats: crew.seats.slice(0, 3),
+      flow: [{ seat: 'scope' }, { parallel: ['x', 'y'] }],
+    },
+  };
+  const { user, editor } = setup({ ask: served(answer), open: true });
   await user.type(field(), 'Check this pull request.{Enter}');
   const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
   const results = within(preview).getAllByText(/submitted by/);
@@ -514,4 +594,16 @@ it('shows each result of a team that ends in parallel work on its own line', asy
     'Injection check',
     'Secrets check',
   ]);
+  await user.click(button('Apply to draft'));
+  const { definition } = editor.getState().draft;
+  const output = definition.nodes.find((node) => node.type === 'output');
+  const labels = new Map(definition.nodes.map((node) => [node.id, node.label]));
+  expect(
+    output?.type === 'output'
+      ? output.inputBindings.map((binding) =>
+          binding.kind === 'task_output' ? labels.get(binding.sourceNodeId ?? '') : binding.kind,
+        )
+      : [],
+  ).toEqual(['Injection check', 'Secrets check']);
+  expect(strictErrors(definition)).toEqual([]);
 });

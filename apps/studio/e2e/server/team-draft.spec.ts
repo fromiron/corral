@@ -209,6 +209,56 @@ test('a composed proposal is refined in the conversation, fills the unsaved draf
   expect(corral.fake?.seen.hostRequests).toHaveLength(0);
 });
 
+test('a team that starts with work in parallel is applied, saved without problems and drawn in both views', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await answerWith(
+    page,
+    (agent) => ({
+      name: 'Two checks',
+      brief: 'Check the pull request two ways, then summarize.',
+      criteria: ['Each finding names the file and line.'],
+      seats: [
+        {
+          id: 'c',
+          agent: agent('Challenge'),
+          name: 'Injection check',
+          duty: 'Look for injection flaws.',
+        },
+        {
+          id: 'k',
+          agent: agent('Challenge'),
+          name: 'Secrets check',
+          duty: 'Look for leaked secrets.',
+        },
+        {
+          id: 'w',
+          agent: agent('Writing'),
+          name: 'Summary writer',
+          duty: 'Keep the confirmed findings.',
+        },
+      ],
+      flow: [{ parallel: ['c', 'k'] }, { seat: 'w' }],
+    }),
+    'Both checks start from the brief, and one summary follows.',
+  );
+  const input = await draftFromGoal(page);
+  await propose(page, input, 'Check the pull request for injection and leaked secrets.');
+  const shown = page.getByRole('region', { name: 'Proposal from Test A' });
+  await expect(shown.getByRole('list', { name: 'In parallel', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  for (const seat of ['Injection check', 'Secrets check', 'Summary writer'])
+    await expect(page.getByRole('button', { name: seat, exact: true })).toBeVisible();
+  await saveNewTeam(page);
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
+  await openFlowGraph(page);
+  const graph = page.getByRole('application', { name: 'Corral graph' });
+  for (const seat of ['Injection check', 'Secrets check', 'Summary writer'])
+    await expect(graph).toContainText(seat);
+});
+
 test('a proposal with opt-in artifact review saves it as a shared Outrider setting', async ({
   page,
   corral,
