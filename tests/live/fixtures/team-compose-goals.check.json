@@ -1,0 +1,226 @@
+{
+  "split": "check",
+  "note": "Eight requests the prompt was never tuned on, written with their expectations before any run that uses them. They are sent in file order, which mixes the kinds so that one timeout cannot remove a kind. A case with repeat: true is sent a second time with a new operation id. catalog names the agents offered: \"bundled\" is the bundled crew, any other name adds that list from `agents` to it. In a proposal, a seat's agent is written by its name and resolved against the catalog when the case is sent. expect: reply \"plan\" means a question is a miss, \"plan_or_question\" accepts the named question; changes true needs a seat that changes files and false forbids one; submitters are the agents allowed to produce the last step; loop is \"warranted\", \"allowed\" or \"none\"; uses must each hold a seat; keeps and drops are agents of the sent proposal that must stay or go; outrider lists the accepted values, \"none\" for absent. The machine-read flags are a first pass: every answer is also read by a person.",
+  "agents": {
+    "legal": [
+      {
+        "name": "번역가",
+        "description": "한국어 문서를 영어로 옮긴다. 용어집을 따르고 원문의 조항 번호를 유지한다.",
+        "changesFiles": false,
+        "runsCommands": false,
+        "output": "draft"
+      },
+      {
+        "name": "법무 검토자",
+        "description": "약관과 계약 문구를 법적 위험의 관점에서 검토하고 통과 여부를 판정한다.",
+        "changesFiles": false,
+        "runsCommands": false,
+        "output": "review"
+      }
+    ],
+    "analytics": [
+      {
+        "name": "Data Analyst",
+        "description": "Runs queries and scripts over exported data and reports the numbers with how they were computed.",
+        "changesFiles": false,
+        "runsCommands": true,
+        "output": "notes"
+      },
+      {
+        "name": "Chart Maker",
+        "description": "Turns a table of numbers into chart image files with labelled axes.",
+        "changesFiles": true,
+        "runsCommands": true,
+        "output": "draft"
+      }
+    ]
+  },
+  "cases": [
+    {
+      "id": "check-01",
+      "kind": "build",
+      "lang": "ko",
+      "catalog": "bundled",
+      "messages": ["검색 결과 목록에 페이지네이션을 넣어 줘. 한 페이지에 20개씩이면 돼"],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "allowed",
+        "maxSeats": 2,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-05",
+      "kind": "library_agents",
+      "lang": "ko",
+      "catalog": "legal",
+      "repeat": true,
+      "messages": ["개정된 이용약관을 영어로 번역하고, 법무 검토를 통과한 것만 내보내 줘"],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "uses": ["번역가", "법무 검토자"],
+        "submitters": ["번역가"],
+        "loop": "warranted",
+        "maxSeats": 3,
+        "outrider": ["required_review", "none"]
+      }
+    },
+    {
+      "id": "check-02",
+      "kind": "findings_only",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": [
+        "Audit our Dockerfile and the CI workflow for security problems. Don't change anything; list what you find, most severe first."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "loop": "none",
+        "maxSeats": 3,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-07",
+      "kind": "refinement",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "설정 화면에 언어 선택 메뉴를 추가해 줘",
+        "구현한 다음에 따로 검증하는 사람을 붙여 줘"
+      ],
+      "proposal": {
+        "name": "언어 선택 메뉴 추가",
+        "brief": "설정 화면에 언어 선택 메뉴를 추가한다.",
+        "criteria": ["설정 화면에서 언어를 고를 수 있다.", "고른 언어가 다시 열어도 유지된다."],
+        "seats": [
+          {
+            "id": "build",
+            "agent": "Builder",
+            "name": "구현 담당",
+            "duty": "설정 화면에 언어 선택 메뉴를 구현하고 변경 내용을 제출한다."
+          }
+        ],
+        "flow": [{ "seat": "build" }]
+      },
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "keeps": ["Builder"],
+        "submitters": ["Builder"],
+        "loop": "warranted",
+        "maxSeats": 2,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-03",
+      "kind": "material",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": ["경쟁사 세 곳의 최근 가격 변경을 정리한 브리핑 문서를 만들어 줘"],
+      "expect": {
+        "reply": "plan_or_question",
+        "question": "material",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "none",
+        "maxSeats": 2,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-06",
+      "kind": "library_agents",
+      "lang": "en",
+      "catalog": "analytics",
+      "messages": [
+        "Work out last month's signup funnel from the CSV export I'll attach and give me a one-page report with two charts."
+      ],
+      "expect": {
+        "reply": "plan",
+        "uses": ["Data Analyst"],
+        "submitters": ["Writer", "Chart Maker"],
+        "loop": "allowed",
+        "maxSeats": 3,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-04",
+      "kind": "revision",
+      "lang": "en",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "Write the postmortem for last night's checkout outage from the timeline I'll paste, have a second person critique the draft, and revise it once against that critique."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "warranted",
+        "maxSeats": 2,
+        "outrider": ["none"]
+      }
+    },
+    {
+      "id": "check-08",
+      "kind": "refinement",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": [
+        "Compare three vector databases for our search feature and write a recommendation",
+        "Drop the review step, I'll read it myself. Keep the rest as it is."
+      ],
+      "proposal": {
+        "name": "Vector database recommendation",
+        "brief": "Compare three vector databases for our search feature and write a recommendation.",
+        "criteria": [
+          "Three databases are compared on the same points.",
+          "The recommendation names one database and says why."
+        ],
+        "seats": [
+          {
+            "id": "research",
+            "agent": "Researcher",
+            "name": "Database researcher",
+            "duty": "Gather sourced facts on three vector databases for a search feature."
+          },
+          {
+            "id": "write",
+            "agent": "Writer",
+            "name": "Recommendation writer",
+            "duty": "Write the comparison and the recommendation from the researcher's facts."
+          },
+          {
+            "id": "check",
+            "agent": "Reviewer",
+            "name": "Recommendation reviewer",
+            "duty": "Check the draft against the researcher's facts and pass it or send it back."
+          }
+        ],
+        "flow": [
+          { "seat": "research" },
+          { "loop": { "work": ["write"], "judge": "check", "rounds": 2 } }
+        ]
+      },
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "keeps": ["Researcher", "Writer"],
+        "drops": ["Reviewer"],
+        "submitters": ["Writer"],
+        "loop": "none",
+        "maxSeats": 2,
+        "outrider": ["none"]
+      }
+    }
+  ]
+}
