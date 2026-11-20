@@ -18,23 +18,27 @@ function setup({
   open = false,
   narrow = false,
   integrated = false,
+  server = true,
 }: {
   ask?: TeamAssistantHost['ask'];
   existing?: boolean;
   open?: boolean;
   narrow?: boolean;
   integrated?: boolean;
+  /** False for the browser demo: there are no model settings to open. */
+  server?: boolean;
 } = {}) {
   const editor = createEditorStore(existing ? researchTeamDraft() : emptyDraft());
   const session = sessionStore();
   let nextId = 0;
-  const host = {
+  const onConnectModel = vi.fn();
+  const host: TeamAssistantHost = {
     ask,
     modelLabel: 'Test model',
     newOperationId: () => `assistant-${++nextId}`,
     wording: en.TeamDraft.wording,
-    onConnectModel: vi.fn(),
-  } satisfies TeamAssistantHost;
+    ...(server && { onConnectModel }),
+  };
   const dock = (assistant: TeamAssistantHost) => (
     <IntlProvider locale="en" messages={en} timeZone="UTC">
       <StudioStoresProvider editor={editor} session={session}>
@@ -56,8 +60,10 @@ function setup({
   return {
     editor,
     host,
+    onConnectModel,
     user: userEvent.setup(),
     disconnect: () => rerender(dock({ ...host, ask: null })),
+    reconnect: () => rerender(dock(host)),
   };
 }
 
@@ -105,7 +111,11 @@ it('keeps the conversation and unsent input across collapse, returning focus to 
   expect(
     within(screen.getByRole('log')).getByText('I’ll provide the material', { selector: 'p' }),
   ).toBeVisible();
-  expect(screen.getByText('Make a weekly neighborhood newsletter.')).toBeVisible();
+  expect(
+    within(screen.getByRole('log')).getByText('Make a weekly neighborhood newsletter.', {
+      selector: 'p',
+    }),
+  ).toBeVisible();
   await user.clear(field());
   await user.keyboard('{Escape}');
   expect(button('Build the team with AI')).toHaveFocus();
@@ -146,20 +156,62 @@ it('quotes a question choice before sending and disables choices until cancel or
   ).toHaveLength(1);
 });
 
-it('removes the cost caption on disconnect and continues the same question locally in one press', async () => {
+it('turns the request into Connect a model on disconnect and brings the typed text back with the model', async () => {
   const ask = vi.fn().mockResolvedValue(question);
-  const { user, disconnect } = setup({ ask, open: true });
+  const { user, disconnect, reconnect, onConnectModel } = setup({ ask, open: true });
   await user.type(field(), 'Write a newsletter.{Enter}');
   await screen.findByRole('group', { name: en.TeamAssistant.question.material });
-  expect(button(en.TeamAssistant.choice.team)).toHaveAccessibleDescription(
-    'Test model · 1 request',
-  );
+  await user.type(field(), 'My unfinished note');
   disconnect();
-  expect(button(en.TeamAssistant.choice.team)).not.toHaveAccessibleDescription();
+  expect(screen.queryByRole('textbox')).toBeNull();
   expect(screen.queryByText(/1 request/)).toBeNull();
-  await user.click(button(en.TeamAssistant.choice.team));
-  expect(screen.getByRole('region', { name: 'Local example' })).toBeVisible();
+  expect(button(en.TeamAssistant.choice.team)).toBeDisabled();
+  expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+  await user.click(button('Connect a model'));
+  expect(onConnectModel).toHaveBeenCalledTimes(1);
   expect(ask).toHaveBeenCalledTimes(1);
+  reconnect();
+  expect(field()).toHaveValue('My unfinished note');
+  expect(button(en.TeamAssistant.choice.team)).toBeEnabled();
+});
+
+it('offers one Connect a model control in place of the request when no model can run', async () => {
+  const { user, onConnectModel } = setup({ open: true });
+  expect(screen.queryByRole('textbox')).toBeNull();
+  const connect = button('Connect a model');
+  expect(connect).toHaveFocus();
+  expect(screen.queryByRole('button', { name: 'Send' })).toBeNull();
+  expect(screen.queryByRole('button', { name: /weekly neighborhood newsletter/i })).toBeNull();
+  expect(screen.queryByText(/No model/i)).toBeNull();
+  expect(screen.queryByRole('button', { name: /local example/i })).toBeNull();
+  expect(screen.getAllByRole('button', { name: 'Connect a model' })).toHaveLength(1);
+  await user.click(connect);
+  expect(onConnectModel).toHaveBeenCalledTimes(1);
+});
+
+it('cannot be pressed in the browser demo, which has no model settings to open', () => {
+  setup({ open: true, server: false });
+  expect(screen.queryByRole('textbox')).toBeNull();
+  const off = button('Available on the local server');
+  expect(off).toHaveAttribute('aria-disabled', 'true');
+  expect(off).toHaveFocus();
+  expect(screen.queryByRole('button', { name: 'Connect a model' })).toBeNull();
+});
+
+it('keeps the four edit choices without a model, taking a new goal in the input they open', async () => {
+  const { user, editor } = setup({ existing: true, open: true });
+  expect(screen.queryByRole('textbox')).toBeNull();
+  await user.click(button('Who submits the result?'));
+  expect(screen.getByRole('log')).toHaveTextContent(/submits “draft”/);
+  await user.click(button('Change the goal'));
+  expect(field('edit')).toHaveFocus();
+  expect(button('Send')).toHaveAttribute('aria-description', 'No model call');
+  await user.type(field('edit'), 'Compare three libraries.{Enter}');
+  await user.click(button('Apply to draft'));
+  expect(editor.getState().draft.definition.input.brief).toBe('Compare three libraries.');
+  await user.click(button('Edit the team with AI'));
+  expect(screen.queryByRole('textbox')).toBeNull();
+  expect(button('Connect a model')).toHaveFocus();
 });
 
 it('does not send during Korean composition, duplicate a pending request, or show its late answer after cancel', async () => {
@@ -243,12 +295,27 @@ it('prevents applying a stale proposal; retry keeps the manual change and recomp
   expect(ask).not.toHaveBeenCalled();
 });
 
-it('opens a named narrow sheet by keyboard, previews a local example and hands focus to its first real row after applying', async () => {
+it('opens a named narrow sheet by keyboard, previews a model proposal and hands focus to its first real row after applying', async () => {
   const width = vi.spyOn(Element.prototype, 'clientWidth', 'get').mockReturnValue(360);
   onTestFinished(() => {
     width.mockRestore();
   });
-  const { user, editor } = setup({ integrated: true, narrow: true });
+  const ask = vi.fn<NonNullable<TeamAssistantHost['ask']>>().mockResolvedValue({
+    model: 'Test model',
+    reply: {
+      kind: 'plan',
+      plan: {
+        name: 'Guide',
+        brief: 'Write this guide.',
+        pattern: 'single',
+        criteria: ['Explain each step.'],
+        roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the guide.' }],
+        finalApproval: false,
+      },
+      reason: 'One writer is enough.',
+    },
+  });
+  const { user, editor } = setup({ ask, integrated: true, narrow: true });
   const entry = button('Build the team with AI');
   entry.focus();
   await user.keyboard('{Enter}');
@@ -262,7 +329,7 @@ it('opens a named narrow sheet by keyboard, previews a local example and hands f
   const transcript = within(screen.getByRole('dialog')).getByRole('log');
   Object.defineProperty(transcript, 'scrollHeight', { value: 600 });
   await user.keyboard('Use one writer to write this guide.{Enter}');
-  const preview = await screen.findByRole('region', { name: 'Local example' });
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
   expect(
     within(preview).getByText(/Flow: Writer · Final result: draft submitted by Writer/),
   ).toBeVisible();

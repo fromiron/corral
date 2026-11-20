@@ -221,7 +221,6 @@ export {
 } from './run/work-plan-snapshot.ts';
 export {
   draftFromPlan,
-  planFromGoal,
   type TeamDraft,
   type TeamLabels,
   type TeamWording,

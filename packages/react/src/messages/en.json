@@ -1588,10 +1588,8 @@
       "guide": "Use one writer to write this guide."
     },
     "templates": "Start from a template",
-    "local": "Local example",
-    "useLocal": "Use local example",
-    "noModel": "No model connected. You can still use local examples and choices.",
     "connect": "Connect a model",
+    "localServer": "Available on the local server",
     "modelProposal": "Proposal from {model}",
     "changes": "Proposed changes",
     "send": "Send",
@@ -1634,7 +1632,6 @@
       "unsupported": "I can describe the team, change its goal, add advice or require a passing review. For other changes, use Team composition or Flow graph.",
       "noChange": "The draft already has this setting.",
       "hasAdvice": "This team already has a shared Outrider.",
-      "writerDuty": "Write and submit the requested text.",
       "observeOn": "You chose automatic observation for all workers.",
       "observeOff": "You chose to leave automatic observation off.",
       "opinion": "Workers can request feedback without making review a condition for submission.",
@@ -1647,7 +1644,6 @@
     },
     "rationale": {
       "single": "One agent can complete and submit the work without a handoff.",
-      "provided": "Since you’re providing the material, one writer can turn it into the final text.",
       "write_review": "The writer can revise the draft against an independent review before submitting it.",
       "research_write_review": "A researcher gathers the sources so the writer and reviewer can work from the same evidence.",
       "implement_review": "A separate reviewer can check the implementation against the requested change.",
@@ -1696,8 +1692,6 @@
     }
   },
   "TeamDraft": {
-    "localAfterInvalidModel": "The model did not return a usable plan. Showing a local suggestion for your request.",
-    "localAfterMismatchedModel": "The model’s roles or review policy did not match your request. Showing a local example instead.",
     "reviewQuestion": "Should the team get feedback, or must the work pass review before submission?",
     "reviewFeedback": "Get feedback only",
     "reviewRequired": "Pass before submitting",

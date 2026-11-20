@@ -1,4 +1,5 @@
-import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/core';
+import type { TeamPlan } from '@corral/contracts';
+import { draftFromPlan, type TeamWording } from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useMemo } from 'react';
 import { expect, waitFor, within } from 'storybook/test';
@@ -21,16 +22,29 @@ type Scene =
   | 'stale'
   | 'failure'
   | 'offline'
+  | 'demo'
   | 'edit'
   | 'goal';
 type Locale = keyof typeof catalogs;
 
 const editing = (scene: Scene) => scene === 'edit' || scene === 'goal';
 
-function samplePlan(brief: string, wording: TeamWording) {
-  const plan = planFromGoal(brief, wording);
-  if (!plan) throw new Error('A story needs a goal');
-  return plan;
+/** The plan a model might answer for a goal: a planner, a writer and a reviewer. */
+function samplePlan(brief: string, wording: TeamWording): TeamPlan {
+  const { planner, writer, reviewer } = wording.roles;
+  return {
+    name: brief.slice(0, 40),
+    brief,
+    pattern: 'write_review',
+    criteria: [wording.criteria.direct],
+    roles: [
+      { slot: 'planner', ...planner },
+      { slot: 'writer', ...writer },
+      { slot: 'reviewer', ...reviewer },
+    ],
+    reviewRounds: 1,
+    finalApproval: false,
+  };
 }
 
 /** Only the request boundary is simulated. Play functions operate the mounted editor, including its undoable working copy. */
@@ -69,8 +83,10 @@ function AssistantStory({
       wording,
       modelLabel: 'Storybook',
       newOperationId: () => crypto.randomUUID(),
+      // The browser demo has no model settings to open.
+      ...(scene !== 'demo' && { onConnectModel: () => {} }),
       ask:
-        scene === 'offline'
+        scene === 'offline' || scene === 'demo'
           ? null
           : async (request) => {
               if (scene === 'failure') throw new TypeError('Connection closed');
@@ -147,6 +163,17 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         await expect(bounds.left + bounds.width / 2).toBeCloseTo(viewport.clientWidth / 2, 0);
       }
       const region = within(element);
+      if (scene === 'offline' || scene === 'demo') {
+        // No model: the request is switched off. On a server its place opens the model settings.
+        await expect(region.getByText(t.createPrompt)).toBeVisible();
+        await expect(region.queryByRole('textbox')).toBeNull();
+        await expect(region.queryByRole('button', { name: t.examples.newsletter })).toBeNull();
+        const place = region.getByRole('button', {
+          name: scene === 'demo' ? t.localServer : t.connect,
+        });
+        await expect(place).toHaveAttribute('aria-disabled', scene === 'demo' ? 'true' : null);
+        return;
+      }
       const input = region.getByRole('textbox', {
         name: editing(scene) ? t.editRequest : t.createRequest,
       });
@@ -169,9 +196,8 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         await expect(region.getByRole('button', { name: t.choice.describe })).toBeVisible();
         return;
       }
-      if (scene === 'opening' || scene === 'offline') {
+      if (scene === 'opening') {
         await expect(region.getByText(t.createPrompt)).toBeVisible();
-        if (scene === 'offline') await expect(region.getByText(t.noModel)).toBeVisible();
         return;
       }
       await userEvent.click(region.getByRole('button', { name: t.examples.newsletter }));
@@ -226,6 +252,8 @@ export const UnconfirmedRequest = example('failure', 'en');
 export const UnconfirmedRequestKorean = example('failure', 'ko');
 export const NoModel = example('offline', 'en');
 export const NoModelKorean = example('offline', 'ko');
+export const BrowserDemo = example('demo', 'en');
+export const BrowserDemoKorean = example('demo', 'ko');
 export const EditChoices = example('edit', 'en');
 export const EditChoicesKorean = example('edit', 'ko');
 export const GoalChange = example('goal', 'en');

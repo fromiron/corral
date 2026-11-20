@@ -1,9 +1,9 @@
 import { isWorkAgent, TeamPlan } from '@corral/contracts';
-import { compileDefinition } from '@corral/core';
+import { compileDefinition, planFromGoal } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import en from '../src/messages/en.json' with { type: 'json' };
 import ko from '../src/messages/ko.json' with { type: 'json' };
-import { draftFromPlan, planFromGoal, type TeamWording } from '../src/team/draft.ts';
+import { draftFromPlan, type TeamWording } from '../src/team/draft.ts';
 
 // a goal becomes a small team plan; the plan becomes a Corral the compiler accepts.
 

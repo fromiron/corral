@@ -40,8 +40,7 @@ export interface Proposal {
   targets: Target[];
   briefChange?: { before: string; after: string };
   changes: string[];
-  origin: 'choice' | 'model' | 'local';
-  recovery?: 'incompatible' | 'unusable';
+  origin: 'choice' | 'model';
 }
 
 interface ProposalOptions {
@@ -352,9 +351,7 @@ export function createProposal(
   options: ProposalOptions & {
     wording: TeamWording;
     initialName: string;
-    origin: 'local' | 'model';
     target?: TeamAssistantTarget | undefined;
-    recovery?: Proposal['recovery'];
   },
 ): Proposal {
   const { t, target } = options;
@@ -408,12 +405,12 @@ export function createProposal(
     plan,
     targets,
     changes: [],
-    origin: options.origin,
+    // A new team's plan comes from the model alone.
+    origin: 'model',
     focus: definition.nodes.find(isWorkAgent)!.id,
     canApply:
       plan.outrider !== 'clarify_review' &&
       (plan.outrider !== 'required_review' || Boolean(target)),
-    ...(options.recovery ? { recovery: options.recovery } : {}),
   };
 }
 

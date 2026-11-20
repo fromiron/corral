@@ -9,10 +9,7 @@ import {
   type TeamPlan,
 } from '@corral/contracts';
 import {
-  adviceIntentFromGoal,
   type CompileOptions,
-  planAfterModel,
-  planFromGoal,
   planWithPattern,
   reconcileAssistantReply,
   type TeamWording,
@@ -55,7 +52,7 @@ type Question = {
 };
 type UserMessage = Extract<Messages[number], { role: 'user' }>;
 type MessageIntent = {
-  kind: 'model' | 'local';
+  kind: 'model';
   mode: Mode;
   messages: [UserMessage, ...Messages];
 };
@@ -94,7 +91,6 @@ export interface AssistantActions {
   cancel(): void;
   setInput(input: string): void;
   setOpen(open: boolean): void;
-  suggestLocal(): void;
   chooseEdit(choice: Choice): void;
   answer(value: string | TeamAssistantTarget, label: string): Promise<void>;
   pattern(value: TeamPattern): void;
@@ -142,17 +138,6 @@ export function assistantConversation(editor: EditorStore, start?: { open: boole
   });
   conversations.set(editor, conversation);
   return conversation;
-}
-
-// The goal suggester distinguishes writing from research, but a person can specify the
-// writer outright. Do not add the default sequential reviewer or ask who supplies material.
-const ONE_WRITER =
-  /\b(?:one|single|sole|only)\s+(?:writer|author)\b|\b(?:writer|author)\s+(?:alone|only)\b|(?:작성자|작가|필자)\s*(?:단\s*)?(?:한\s*명|1\s*명|혼자)|(?:한\s*명|1\s*명)의?\s*(?:작성자|작가|필자)/i;
-const OTHER_ROLE =
-  /\b(?:another|second)\s+(?:agent|author|writer)|\b(?:researcher|planner|editor|reviewer|tester|implementer)\b|조사자|기획자|검토자|편집자|구현자/i;
-
-function singleWriter(goal: string) {
-  return ONE_WRITER.test(goal) && !OTHER_ROLE.test(goal);
 }
 
 function sameTarget(a: TeamAssistantTarget, b: TeamAssistantTarget) {
@@ -228,12 +213,7 @@ export function createAssistantActions(
   function previewPlan(
     base: EditorDraft,
     plan: TeamPlan,
-    options: {
-      origin: 'local' | 'model';
-      reason: string;
-      recovery?: 'incompatible' | 'unusable';
-      target?: TeamAssistantTarget | undefined;
-    },
+    options: { reason: string; target?: TeamAssistantTarget | undefined },
   ) {
     const { initialName, confirmedPlan, decisions } = getState();
     let target = options.target;
@@ -285,82 +265,8 @@ export function createAssistantActions(
     });
   }
 
-  // Local suggestions always start with the original goal, not the last button label.
-  // Explicit choices outrank both the goal matcher and the model. A local fallback
-  // that cannot satisfy them is a failure, not a silently different team.
-  function localPlan(
-    base: EditorDraft,
-    intent: MessageIntent,
-    recovery?: 'unusable' | 'incompatible',
-  ) {
-    const goal = intent.messages[0].content;
-    const { decisions, chosenPattern } = getState();
-    let plan = planFromGoal(goal, wording);
-    if (!plan) return;
-    const wantsWriter =
-      !chosenPattern &&
-      decisions.material !== 'team' &&
-      (singleWriter(goal) ||
-        (decisions.material === 'person' &&
-          (plan.pattern === 'write_review' || plan.pattern === 'research_write_review')));
-    const research = plan.pattern === 'research_write_review' || plan.pattern === 'tech_decision';
-    let pattern = plan.pattern;
-    if (decisions.material === 'team' && !research) pattern = 'research_write_review';
-    if (decisions.material === 'person' && research) pattern = 'single';
-    if (wantsWriter || decisions.reviewPolicy === 'opinion_only') pattern = 'single';
-    pattern = chosenPattern ?? pattern;
-    if (
-      decisions.material === 'team' &&
-      pattern !== 'research_write_review' &&
-      pattern !== 'tech_decision'
-    ) {
-      failed(new Error(t('logic.unusable')));
-      return;
-    }
-    if (pattern !== plan.pattern) plan = planWithPattern(plan, pattern, wording);
-    if (
-      plan.pattern === 'single' &&
-      (wantsWriter || plan.roles[0]?.name === wording.roles.writer.name)
-    ) {
-      plan = {
-        ...plan,
-        roles: [{ slot: 'worker', name: wording.roles.writer.name, duty: t('logic.writerDuty') }],
-      };
-    }
-    if (decisions.reviewPolicy)
-      plan = {
-        ...plan,
-        outrider: decisions.reviewPolicy === 'required' ? 'required_review' : 'artifact_review',
-      };
-    if (decisions.observeWork !== undefined)
-      plan = withWorkObservation(plan, decisions.observeWork);
-    let reason = t(`rationale.${plan.pattern}`);
-    if (plan.outrider === 'required_review') reason = t('logic.required');
-    else if (plan.outrider === 'consultation') reason = t('logic.advice');
-    else if (plan.outrider === 'artifact_review') reason = t('logic.opinion');
-    else if (plan.pattern === 'single' && decisions.material === 'person' && wantsWriter)
-      reason = t('rationale.provided');
-    previewPlan(base, plan, { origin: 'local', reason, ...(recovery && { recovery }) });
-  }
-
-  function unusable(
-    base: EditorDraft,
-    intent: MessageIntent,
-    recovery: 'unusable' | 'incompatible',
-  ) {
-    if (intent.mode === 'create') {
-      const goal = intent.messages[0].content;
-      const { outrider } = adviceIntentFromGoal(goal);
-      // Optional advice does not license replacing an explicitly divided workflow
-      // with one worker. The legacy draft resolver decides when that recovery fits.
-      if (
-        (outrider !== 'consultation' && outrider !== 'artifact_review') ||
-        planAfterModel(goal, null, wording).plan
-      ) {
-        localPlan(base, intent, recovery);
-        return;
-      }
-    }
+  // An answer that cannot be used is a failure with Retry; nothing stands in for it.
+  function unusable() {
     failed(new Error(t('logic.unusable')));
   }
 
@@ -371,36 +277,20 @@ export function createAssistantActions(
     raw: unknown,
   ) {
     const parsed = TeamAssistantResponse.safeParse(raw);
-    if (!parsed.success) return unusable(base, intent, 'unusable');
+    if (!parsed.success) return unusable();
     const { model, reply: original } = parsed.data;
     setState({ model });
     const reply = reconcileAssistantReply(original, request);
-    if (!reply)
-      return unusable(base, intent, original.kind === 'plan' ? 'incompatible' : 'unusable');
-    const goal = intent.messages[0].content;
+    if (!reply) return unusable();
     switch (reply.kind) {
       case 'question':
-        if (request.mode === 'create' && singleWriter(goal)) {
-          const ambiguous = adviceIntentFromGoal(goal).outrider === 'clarify_review';
-          if (reply.id !== 'review_policy' || !ambiguous)
-            return localPlan(base, intent, 'incompatible');
-        }
         return askQuestion({ id: reply.id, choices: reply.choices, source: 'model' }, intent);
       case 'plan': {
-        const { decisions, chosenPattern } = getState();
-        if (singleWriter(goal) && decisions.material !== 'team' && reply.plan.pattern !== 'single')
-          return localPlan(base, intent, 'incompatible');
-        // Preserve legacy on-demand-only recovery, unless a later user turn has
-        // supplied a different structure or policy that the goal alone cannot know.
-        if (intent.messages.length === 1 && !decisions.material && !decisions.reviewPolicy) {
-          const resolved = planAfterModel(goal, reply.plan, wording);
-          if (resolved.recovery) return localPlan(base, intent, resolved.recovery);
-        }
+        const { chosenPattern } = getState();
         let plan = reply.plan;
         if (chosenPattern && chosenPattern !== plan.pattern)
           plan = planWithPattern(plan, chosenPattern, wording);
         previewPlan(base, plan, {
-          origin: 'model',
           reason: chosenPattern ? t(`rationale.${plan.pattern}`) : reply.reason,
         });
         return;
@@ -415,6 +305,9 @@ export function createAssistantActions(
   }
 
   async function run(intent: MessageIntent, receipt: Receipt | null = null, before?: Unanswered) {
+    // Without a model nothing is sent, and nothing is guessed in its place.
+    const { ask } = host;
+    if (!ask) return;
     const base = receipt?.base ?? editor.getState().draft;
     const mode = modeOf(base);
     if (intent.mode !== mode) {
@@ -431,15 +324,6 @@ export function createAssistantActions(
       failure: null,
       receipt: null,
     });
-    if (intent.kind === 'local' || !host.ask) {
-      try {
-        if (mode === 'edit') say(t('logic.unsupported'));
-        else localPlan(base, intent);
-      } catch (error) {
-        failed(error);
-      }
-      return;
-    }
     let request = receipt?.request;
     if (!request) {
       const team = mode === 'edit' ? summarize(base) : undefined;
@@ -474,7 +358,7 @@ export function createAssistantActions(
     try {
       let result: TeamAssistantResponse;
       try {
-        result = await host.ask(request, controller.signal);
+        result = await ask(request, controller.signal);
       } catch (error) {
         if (!active()) return;
         const code =
@@ -484,7 +368,7 @@ export function createAssistantActions(
           error instanceof Error &&
           error.message === 'The model did not return a usable team proposal.'
         ) {
-          unusable(base, intent, 'unusable');
+          unusable();
         } else if (!code || code === 'REQUEST_OUTCOME_UNKNOWN') {
           // If even the receipt was lost, Retry first retrieves the same operation.
           // A confirmed unknown is terminal; only explicit Retry starts a new one.
@@ -558,12 +442,7 @@ export function createAssistantActions(
     )
       return;
     try {
-      previewPlan(proposal.base, plan, {
-        origin: proposal.origin,
-        reason,
-        ...(proposal.recovery && { recovery: proposal.recovery }),
-        target: decisions.reviewTarget,
-      });
+      previewPlan(proposal.base, plan, { reason, target: decisions.reviewTarget });
       setState({
         decisions,
         confirmedPlan: decisions.reviewTarget ? plan : null,
@@ -574,10 +453,12 @@ export function createAssistantActions(
     }
   }
 
-  function startInput(local: boolean) {
+  function startInput() {
     const state = getState();
     const text = state.input.trim().slice(0, 2000);
-    if (!text || state.pending) return;
+    // A choice's own question takes its answer here without a model; anything else needs one.
+    const local = state.question?.source === 'choice' && state.intent?.kind === 'choice';
+    if (!text || state.pending || (!local && !host.ask)) return;
     const mode = modeOf(editor.getState().draft);
     const continuation =
       state.question && state.intent?.kind !== 'choice' && state.intent?.mode === mode
@@ -615,7 +496,7 @@ export function createAssistantActions(
     const message: UserMessage = { role: 'user', content: text };
     return run(
       {
-        kind: local || !host.ask ? 'local' : 'model',
+        kind: 'model',
         mode,
         messages: continuation ? [...continuation.messages, message] : [message],
       },
@@ -633,10 +514,7 @@ export function createAssistantActions(
       setState({ input });
     },
     async send() {
-      await startInput(false);
-    },
-    suggestLocal() {
-      if (modeOf(editor.getState().draft) === 'create') void startInput(true);
+      await startInput();
     },
     async retry() {
       const { pending, receipt, intent, proposal, failure, decisions } = getState();
@@ -674,6 +552,8 @@ export function createAssistantActions(
       const state = getState();
       const { question, intent, decisions, pending } = state;
       if (!question || pending || !intent || question.id === 'brief') return;
+      // A new team's question waits for the model to come back; nothing answers it locally.
+      if (!host.ask && intent.kind !== 'choice' && intent.mode === 'create') return;
       const next = { ...decisions };
       if (question.id === 'material') delete next.material;
       else if (question.id === 'review_policy') delete next.reviewPolicy;
@@ -714,7 +594,6 @@ export function createAssistantActions(
       await run(
         {
           ...intent,
-          kind: host.ask ? 'model' : 'local',
           messages: [...intent.messages, { role: 'user', content: label.slice(0, 2000) }],
         },
         null,

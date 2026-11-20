@@ -35,8 +35,8 @@ function localizedText(locale: string, catalog: typeof ko): AssistantText {
 const t: AssistantText = (key, values) => (values ? `${key} ${canonicalJson(values)}` : key);
 const edit = { reason: 'Review the selected result.', origin: 'choice' as const, t };
 const create = {
-  ...edit,
-  origin: 'local' as const,
+  reason: edit.reason,
+  t,
   wording: en.TeamDraft.wording,
   initialName: 'Untitled',
 };
@@ -177,6 +177,9 @@ it('builds a create preview with the real draft compiler, retaining the editor i
   });
   expect(custom.focus).toBe('work');
   expect(custom.canApply).toBe(true);
+  // A team proposal comes from the model alone; there is no local origin or recovery.
+  expect(custom.origin).toBe('model');
+  expect(custom).not.toHaveProperty('recovery');
   expect(() => createProposal(handEdited(), plan, create)).toThrow();
 });
 

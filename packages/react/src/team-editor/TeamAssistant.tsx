@@ -25,9 +25,13 @@ import {
   RadioItem,
   Switch,
   Tooltip,
+  useShape,
+  useSize,
 } from '../design-kit/index.ts';
+import { focusRing } from '../design-kit/lib/focus.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
+import { surfaceClasses, surfaceHoverClasses } from '../design-kit/lib/surface-classes.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
@@ -437,6 +441,7 @@ export function TeamAssistant({
   const chosen = state.open;
   const open = chosen ?? side;
   const field = useRef<HTMLTextAreaElement>(null);
+  const connect = useRef<HTMLButtonElement>(null);
   const entry = useRef<HTMLButtonElement>(null);
   const composing = useRef(false);
   const returnToEntry = useRef(false);
@@ -449,14 +454,16 @@ export function TeamAssistant({
   useEffect(() => {
     wasMounted.current = true;
   }, []);
-  const focusInput = () => field.current?.focus();
+  // Without a model the switched-off request stands where the input is, and takes its focus.
+  const focusInput = () => (field.current ?? connect.current)?.focus();
   useLayoutEffect(() => {
     // Only a chosen opening takes the focus; a column that stands open by itself leaves it,
     // and so does one whose first use (a choice pressed in it) made the opening chosen.
     if (narrow) return;
     const section = surface.current;
     if (chosen) {
-      if (!section?.contains(section.ownerDocument.activeElement)) field.current?.focus();
+      if (!section?.contains(section.ownerDocument.activeElement))
+        (field.current ?? connect.current)?.focus();
     } else if (returnToEntry.current) entry.current?.focus();
     returnToEntry.current = false;
   }, [chosen, narrow]);
@@ -498,14 +505,27 @@ export function TeamAssistant({
   }
   const localReply = question?.source === 'choice';
   const paidSend = connected && !localReply;
+  // Only a choice's own question takes typed text without a model.
+  const inputOff = !connected && !localReply;
   const modelName = host.modelLabel || td('ask');
   const cost = paidSend ? `${modelName} · ${td('askCost')}` : null;
   const origin =
     proposal?.origin === 'model'
       ? t('modelProposal', { model: state.model || modelName })
-      : proposal?.origin === 'local'
-        ? t('local')
-        : t('changes');
+      : t('changes');
+  const shape = useShape();
+  const compact = useSize().variant === 'compact';
+  const wasOff = useRef(inputOff);
+  useLayoutEffect(() => {
+    // The request's place turned between the input and the switched-off control (a choice
+    // opened its question, a model came or went): a focus that was in it moves along.
+    if (wasOff.current === inputOff) return;
+    wasOff.current = inputOff;
+    const section = surface.current;
+    const active = section?.ownerDocument.activeElement;
+    if (active === section?.ownerDocument.body || section?.contains(active ?? null))
+      (field.current ?? connect.current)?.focus();
+  }, [inputOff]);
   const waiting = proposal ? t('proposalWaiting') : question ? t('questionWaiting') : null;
   const chooseEntry = side ? (
     // In its rail the entry is the icon alone; the tooltip and the name say what it opens.
@@ -590,15 +610,6 @@ export function TeamAssistant({
               className="grid gap-2 rounded-lg border border-border px-3 py-2"
             >
               {stale && <p style={{ fontVariationSettings: fontWeights.semibold }}>{t('stale')}</p>}
-              {proposal.recovery && (
-                <p>
-                  {td(
-                    proposal.recovery === 'unusable'
-                      ? 'localAfterInvalidModel'
-                      : 'localAfterMismatchedModel',
-                  )}
-                </p>
-              )}
               <div className="grid gap-2 text-foreground">
                 <div className="flex min-w-0 flex-wrap items-baseline gap-2">
                   <h3
@@ -666,7 +677,7 @@ export function TeamAssistant({
                   disabled={busy}
                   onClick={() => void actions.retry()}
                 >
-                  {proposal.recovery && !stale ? td('retry') : t('again')}
+                  {t('again')}
                 </Button>
               </div>
             </section>
@@ -689,7 +700,8 @@ export function TeamAssistant({
             draft={draft}
             actions={actions}
             decisions={state.decisions}
-            disabled={busy}
+            // A new team's question waits for the model; an edit's continues without one.
+            disabled={busy || (!connected && question.source === 'model' && creating)}
             costId={cost ? `${id}-cost` : undefined}
             focus={focusInput}
             t={t}
@@ -708,7 +720,8 @@ export function TeamAssistant({
             </div>
             <div className="flex flex-wrap items-center gap-2">
               {creating
-                ? (['newsletter', 'guide', 'compare'] as const).map((example) => (
+                ? !inputOff &&
+                  (['newsletter', 'guide', 'compare'] as const).map((example) => (
                     <Button
                       key={example}
                       size="compact"
@@ -740,70 +753,88 @@ export function TeamAssistant({
           </div>
         )}
       </div>
-      <InputMessage
-        className="shrink-0"
-        maxRows={3}
-        inputRef={field}
-        value={input}
-        onValueChange={actions.setInput}
-        onSend={() => void actions.send()}
-        sendLabel={t('send')}
-        sendDescription={cost ?? td('noModelCall')}
-        sendDisabled={busy}
-        placeholder={t(creating ? 'createPlaceholder' : 'editPlaceholder')}
-        textareaProps={{
-          'aria-label': t(creating ? 'createRequest' : 'editRequest'),
-          maxLength: 2000,
-          onCompositionStart: () => {
-            composing.current = true;
-          },
-          onCompositionEnd: () => {
-            composing.current = false;
-          },
-          onKeyDownCapture: (e) => {
-            if (
-              (e.key === 'Enter' || e.key === 'Escape') &&
-              (composing.current || e.nativeEvent.isComposing || e.keyCode === 229)
-            )
-              e.stopPropagation();
-          },
-        }}
-        leftSlot={
-          <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
-            {!connected && <span>{t('noModel')}</span>}
-            {!connected && host.onConnectModel && (
-              <Button variant="ghost" onClick={host.onConnectModel}>
-                {t('connect')}
-              </Button>
-            )}
-            {/* Read as one line, "model · one request": the choices take it as their description.
-              The model keeps its own element, as wherever else its name is shown. */}
-            {paidSend && (
-              <span id={`${id}-cost`}>
-                <span>{modelName}</span> · <span>{td('askCost')}</span>
-              </span>
-            )}
-            {connected && creating && !question && (
-              <Button
-                variant="ghost"
-                disabled={busy || !input.trim()}
-                onClick={actions.suggestLocal}
-              >
-                {t('useLocal')}
-              </Button>
-            )}
-          </div>
-        }
-        renderAction={
-          busy
-            ? () => (
-                <Button variant="tertiary" onClick={cancel}>
-                  {t('cancel')}
-                </Button>
+      {inputOff ? (
+        // The request is switched off: one control in the input's place and size, which opens
+        // the model settings, or in the browser demo says where the request works.
+        <button
+          ref={connect}
+          type="button"
+          // Unavailable but still focusable, so opening the conversation lands on it.
+          aria-disabled={!host.onConnectModel || undefined}
+          onClick={host.onConnectModel}
+          className={cn(
+            'flex w-full shrink-0 flex-col gap-1 p-2 text-start text-muted-foreground transition-[box-shadow,color,background-color] duration-80',
+            surfaceClasses(2, 2),
+            shape.container,
+            focusRing,
+            host.onConnectModel
+              ? cn(surfaceHoverClasses(2, 2), 'hover:text-foreground')
+              : 'cursor-default',
+          )}
+        >
+          <span
+            className={
+              compact
+                ? 'px-1.5 py-1.5 text-[length:var(--fs-subtitle-compact,13px)] leading-[var(--lh-subtitle-compact,18px)]'
+                : 'px-2 py-2 text-[length:var(--fs-subtitle,14px)] leading-[var(--lh-subtitle,20px)]'
+            }
+          >
+            {t(host.onConnectModel ? 'connect' : 'localServer')}
+          </span>
+          {/* The height of the input's action row, which is empty here. */}
+          <span aria-hidden className={compact ? 'h-6' : 'h-7'} />
+        </button>
+      ) : (
+        <InputMessage
+          className="shrink-0"
+          maxRows={3}
+          inputRef={field}
+          value={input}
+          onValueChange={actions.setInput}
+          onSend={() => void actions.send()}
+          sendLabel={t('send')}
+          sendDescription={cost ?? td('noModelCall')}
+          sendDisabled={busy}
+          placeholder={t(creating ? 'createPlaceholder' : 'editPlaceholder')}
+          textareaProps={{
+            'aria-label': t(creating ? 'createRequest' : 'editRequest'),
+            maxLength: 2000,
+            onCompositionStart: () => {
+              composing.current = true;
+            },
+            onCompositionEnd: () => {
+              composing.current = false;
+            },
+            onKeyDownCapture: (e) => {
+              if (
+                (e.key === 'Enter' || e.key === 'Escape') &&
+                (composing.current || e.nativeEvent.isComposing || e.keyCode === 229)
               )
-            : undefined
-        }
-      />
+                e.stopPropagation();
+            },
+          }}
+          leftSlot={
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 text-caption text-muted-foreground">
+              {/* Read as one line, "model · one request": the choices take it as their description.
+                The model keeps its own element, as wherever else its name is shown. */}
+              {paidSend && (
+                <span id={`${id}-cost`}>
+                  <span>{modelName}</span> · <span>{td('askCost')}</span>
+                </span>
+              )}
+            </div>
+          }
+          renderAction={
+            busy
+              ? () => (
+                  <Button variant="tertiary" onClick={cancel}>
+                    {t('cancel')}
+                  </Button>
+                )
+              : undefined
+          }
+        />
+      )}
     </div>
   );
   if (narrow)
@@ -833,7 +864,7 @@ export function TeamAssistant({
             ref={sheet}
             id={id}
             position="top"
-            initialFocus={field}
+            initialFocus={inputOff ? connect : field}
             finalFocus={() => {
               const row = focusRow.current;
               focusRow.current = null;
