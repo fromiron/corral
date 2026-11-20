@@ -185,7 +185,7 @@ type Exits = { source: string; sourcePort: string }[];
  * fans out from the step before and meets at a Join; a loop is a Loop whose work runs in order,
  * then the judge, then a review decision, and it goes on to the next step whether the judge passed
  * the work or the rounds ran out. Node ids come from the flow (`seat_1`, `loop_1`, `decision_1`,
- * `join_1`, `output`), never from the model's seat ids; an input is named after the seat it reads.
+ * `join_1`, `output`), never from the model's seat ids.
  */
 export function draftFromComposition(
   composition: TeamComposition,
@@ -211,18 +211,29 @@ export function draftFromComposition(
     if (!seat || !agent || !nodeId) throw new Error(`the flow names no usable seat ${seatId}`);
     return { seat, agent, nodeId };
   };
+  // An input is named after its producer's output, as the editor names one it suggests.
   const read = (seatId: string): InputBinding => ({
     kind: 'task_output',
-    name: seatId,
+    name: seatOf(seatId).agent.role.outputContract,
     sourceNodeId: seatOf(seatId).nodeId,
   });
   // Round one has no previous round, so these are optional.
   const lastRound = (seatId: string): InputBinding => ({
     kind: 'previous_iteration_output',
-    name: seatId,
+    name: seatOf(seatId).agent.role.outputContract,
     sourceNodeId: seatOf(seatId).nodeId,
     optional: true,
   });
+  /** A name already taken on the same reader gets `_2`, `_3`, … (editor `withSuggestedBinding`). */
+  const named = (inputs: InputBinding[]): InputBinding[] => {
+    const names = new Set<string>();
+    return inputs.map((binding) => {
+      let name = binding.name;
+      for (let i = 2; names.has(name); i++) name = `${binding.name}_${i}`;
+      names.add(name);
+      return name === binding.name ? binding : { ...binding, name };
+    });
+  };
 
   const nodes: CorralNode[] = [];
   const edges: ControlEdge[] = [];
@@ -273,7 +284,7 @@ export function draftFromComposition(
       stepInstruction: seat.duty,
       roleId: nodeId,
       invocation: 'scheduled',
-      inputBindings: inputs,
+      inputBindings: named(inputs),
       outputName: role.outputContract,
       ...(parentId ? { parentId } : {}),
     });
@@ -365,7 +376,7 @@ export function draftFromComposition(
     id: 'output',
     type: 'output',
     label: labels.output,
-    inputBindings: results.map(read),
+    inputBindings: named(results.map(read)),
     requireApproval: false,
   });
   connect(exits, 'output');

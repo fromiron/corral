@@ -150,6 +150,37 @@ function strict(definition: CorralDefinition) {
   return definition;
 }
 
+const FILE_TOOLS = ['write_file', 'delete_file', 'move_file'];
+/**
+ * A usable composition compiles strictly with no error; its only diagnostics are the editor's
+ * PARALLEL_WRITERS warnings on the seats of a group with two or more file-changing seats.
+ * Returns them as [code, severity, seat name].
+ */
+function writersOnly(composition: TeamComposition, definition: CorralDefinition) {
+  expect(Definition.parse(definition)).toEqual(definition);
+  const compiled = compileDefinition(definition, PROFILES);
+  expect(compiled.ok).toBe(true);
+  expect(planRun(definition).ok).toBe(true);
+  const seats = new Map(composition.seats.map((s) => [s.id, s]));
+  const writes = (seatId: string) =>
+    resolved.agentById
+      .get(seats.get(seatId)?.agent ?? '')
+      ?.role.allowedWorkTools.some((tool) => FILE_TOOLS.includes(tool)) ?? false;
+  const expected = composition.flow.flatMap((step) => {
+    const group = 'parallel' in step ? step.parallel.filter(writes) : [];
+    return group.length >= 2
+      ? group.map((id) => ['PARALLEL_WRITERS', 'warning', seats.get(id)?.name])
+      : [];
+  });
+  const got = compiled.diagnostics.map((d) => [
+    d.code,
+    d.severity,
+    definition.nodes.find((n) => n.id === d.nodeId)?.label,
+  ]);
+  expect(got).toEqual(expected);
+  return got;
+}
+
 // ── reading a definition ─────────────────────────────────────────────────────
 
 const nodeNamed = (definition: CorralDefinition, label: string) => {
@@ -450,12 +481,12 @@ describe('draftFromComposition', () => {
       'seat_4',
       'seat_5',
     ]);
-    // An input is named after the seat it reads, as the model named it.
+    // An input is named after its producer's output, as the editor names it, never by seat id.
     expect(nodeNamed(definition, 'a').inputBindings.map((b) => b.name)).toEqual([
       'brief',
-      'output',
-      'loop_1',
-      'join_1',
+      'notes',
+      'draft',
+      'review',
       'criteria',
     ]);
     expect(new Set(definition.controlEdges.map((e) => e.id)).size).toBe(
@@ -708,6 +739,19 @@ describe('draftFromComposition', () => {
         'polish',
         'criteria',
       ]);
+      // Two drafts and the seat's own last round on one reader: draft, draft_2, draft_3.
+      expect(nodeNamed(definition, 'polish').inputBindings.map((b) => b.name)).toEqual([
+        'brief',
+        'notes',
+        'draft',
+        'draft_2',
+        'draft_3',
+        'review',
+        'criteria',
+      ]);
+      expect(ofType(definition, 'decision')[0]?.inputBindings.map((b) => b.name)).toEqual([
+        'review',
+      ]);
       // The loop's result is its last working seat's.
       expect(resultsOf(definition)).toEqual(['polish']);
     });
@@ -776,7 +820,8 @@ describe('draftFromComposition', () => {
       ]);
       expect(resultsOf(definition)).toEqual(['option_a', 'option_b']);
       const names = outputOf(definition).inputBindings.map((b) => b.name);
-      expect(names).toEqual(['option_a', 'option_b']);
+      // Two results of the same kind, named as the editor's received results are.
+      expect(names).toEqual(['notes', 'notes_2']);
       expect(
         outputOf(definition).inputBindings.every((b) => b.kind === 'task_output' && !b.optional),
       ).toBe(true);
@@ -1063,22 +1108,19 @@ describe('draftFromComposition', () => {
     expect(inputsOf(definition, 'write')).toEqual(['brief']);
   });
 
-  it('two seats that change files side by side: the compiler warns, and nothing else', () => {
-    // docs/specs/features/team-assistant.md promises no diagnostic for every usable composition;
-    // the compiler warns PARALLEL_WRITERS here. Reported, not hidden.
-    const definition = draft(
-      compose(
-        [seat('plan', 'architect agent'), seat('a', 'builder agent'), seat('b', 'builder agent')],
-        [{ seat: 'plan' }, { parallel: ['a', 'b'] }],
-      ),
+  it('two seats that change files side by side are usable and leave only the writers’ warning', () => {
+    const composition = compose(
+      [
+        seat('plan', 'architect agent'),
+        seat('a', 'builder agent'),
+        seat('b', 'builder agent'),
+        seat('c', 'researcher agent'),
+      ],
+      [{ seat: 'plan' }, { parallel: ['a', 'b', 'c'] }],
     );
-    expect(
-      compileDefinition(definition, PROFILES).diagnostics.map((d) => [
-        d.code,
-        d.severity,
-        labelOf(definition, d.nodeId),
-      ]),
-    ).toEqual([
+    expect(compositionProblem(composition, catalog)).toBe(null);
+    const definition = draft(composition);
+    expect(writersOnly(composition, definition)).toEqual([
       ['PARALLEL_WRITERS', 'warning', 'a'],
       ['PARALLEL_WRITERS', 'warning', 'b'],
     ]);
@@ -1139,19 +1181,27 @@ const ALL_FLOWS = [1, 2, 3, 4].flatMap((n) => [...flows(n)]);
 const WORKERS = ROLE_PRESET_IDS.map((id) => `${id} agent`);
 const JUDGES = ['reviewer agent', 'verifier agent', 'House reviewer'];
 
-/** Seats and steps for a list of kinds; agents rotate over every built-in agent. */
-function sweep(kinds: Kind[], { loopWork = 1, groupSize = 2 } = {}) {
+/**
+ * Seats and steps for a list of kinds; agents rotate over every built-in agent. With `writers`,
+ * every seat side by side is a builder, which changes files.
+ */
+function sweep(kinds: Kind[], { loopWork = 1, groupSize = 2, writers = false } = {}) {
   const seats: Seat[] = [];
   let worker = 0;
   let judge = 0;
-  const next = () => {
+  const next = (agent?: string) => {
     const id = `s${seats.length + 1}`;
-    seats.push(seat(id, WORKERS[worker++ % WORKERS.length] as string));
+    seats.push(seat(id, agent ?? (WORKERS[worker++ % WORKERS.length] as string)));
     return id;
   };
   const flow = kinds.map((kind): Step => {
     if (kind === 'seat') return { seat: next() };
-    if (kind === 'parallel') return { parallel: Array.from({ length: groupSize }, next) };
+    if (kind === 'parallel')
+      return {
+        parallel: Array.from({ length: groupSize }, () =>
+          next(writers ? 'builder agent' : undefined),
+        ),
+      };
     const work = Array.from({ length: loopWork }, next);
     const id = `s${seats.length + 1}`;
     seats.push(seat(id, JUDGES[judge++ % JUDGES.length] as string));
@@ -1167,17 +1217,21 @@ describe('every flow of up to four steps', () => {
   });
 
   it.each(ALL_FLOWS.map((kinds) => [kinds.join(' → '), kinds] as const))(
-    '%s compiles strictly with no diagnostic',
+    '%s compiles strictly with no error, and no warning but the writers’',
     (_name, kinds) => {
       for (const sizes of [
         { loopWork: 1, groupSize: 2 },
         { loopWork: 2, groupSize: 3 },
+        { loopWork: 1, groupSize: 2, writers: true },
       ]) {
         const { seats, flow } = sweep(kinds, sizes);
         if (seats.length > 8) continue;
         const composition = compose(seats, flow);
         expect(compositionProblem(composition, catalog)).toBe(null);
-        const definition = strict(draft(composition));
+        const definition = draft(composition);
+        const warned = writersOnly(composition, definition);
+        // The rotation never puts two writers side by side; the writers' sweep always does.
+        expect(warned.length > 0).toBe(sizes.writers === true && kinds.includes('parallel'));
         const agents = definition.nodes.filter((n) => n.type === 'agent');
         expect(agents).toHaveLength(seats.length);
         expect(ofType(definition, 'loop')).toHaveLength(kinds.filter((k) => k === 'loop').length);
@@ -1242,23 +1296,9 @@ describe('mock runs of every flow of up to four steps', () => {
       expect(result.events.filter((e) => e.type === 'output.finalized')).toHaveLength(1);
     }
   };
-  const loops = (kinds: Kind[]) => kinds.filter((kind) => kind === 'loop').length;
-  it.each(
-    ALL_FLOWS.filter((kinds) => loops(kinds) < 2).map(
-      (kinds) => [kinds.join(' → '), kinds] as const,
-    ),
-  )('%s runs to its Output, on pass and at the round cap', async (_name, kinds) =>
-    runsToOutput(kinds),
-  );
-  // Not hidden: a seat in a later Loop reads an earlier Loop's seats, and the Coordinator looks
-  // for that result only in the reader's own round, so the run fails with `input "s1"
-  // (task_output) has no submitted version`. The compiler accepts the shape; the spec allows it.
-  it.fails.each(
-    ALL_FLOWS.filter((kinds) => loops(kinds) >= 2).map(
-      (kinds) => [kinds.join(' → '), kinds] as const,
-    ),
-  )(
-    '%s fails at run time: a later loop cannot read an earlier one (reported)',
+  // A flow with several loops has later loops read the earlier ones' seats.
+  it.each(ALL_FLOWS.map((kinds) => [kinds.join(' → '), kinds] as const))(
+    '%s runs to its Output, on pass and at the round cap',
     async (_name, kinds) => runsToOutput(kinds),
   );
 
@@ -1294,7 +1334,7 @@ describe('mock runs of every flow of up to four steps', () => {
     }
   });
 
-  it('seats the model calls brief and criteria still run, beside the run inputs', async () => {
+  it('seats the model calls brief and criteria name no input after themselves', async () => {
     const definition = strict(
       draft(
         compose(
@@ -1305,7 +1345,7 @@ describe('mock runs of every flow of up to four steps', () => {
     );
     expect(nodeNamed(definition, 'criteria').inputBindings).toEqual([
       { kind: 'run_input', name: 'brief' },
-      { kind: 'task_output', name: 'brief', sourceNodeId: nodeNamed(definition, 'brief').id },
+      { kind: 'task_output', name: 'notes', sourceNodeId: nodeNamed(definition, 'brief').id },
       { kind: 'run_input', name: 'criteria' },
     ]);
     expect((await run(definition)).final.status).toBe('succeeded');
