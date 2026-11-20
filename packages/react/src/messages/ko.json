@@ -212,6 +212,7 @@
     "imageProfileMissing": "저장된 목록에 없음",
     "heading": "속성",
     "label": "이름",
+    "description": "설명",
     "brief": "실행 지시문",
     "delete": "노드 삭제",
     "duplicate": "복제",

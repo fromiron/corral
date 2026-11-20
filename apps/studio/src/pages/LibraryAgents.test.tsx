@@ -114,6 +114,19 @@ function dialog() {
   if (!el) throw new Error('Missing dialog');
   return el;
 }
+/** A text field of the dialog by its accessible name: its aria-label or its label's text. */
+function field(name: string, scope: ParentNode = dialog()) {
+  const el = [...scope.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>('input, textarea')]
+    .filter((control) => control.type !== 'checkbox' && control.type !== 'radio')
+    .find(
+      (control) =>
+        control.getAttribute('aria-label') === name ||
+        [...(control.labels ?? [])].some((label) => label.textContent?.trim() === name),
+    );
+  if (!el) throw new Error(`Missing field: ${name}`);
+  return el;
+}
+const instructions = (scope?: ParentNode) => field('Base instructions', scope);
 async function type(el: HTMLInputElement | HTMLTextAreaElement | null, text: string) {
   if (!el) throw new Error('Missing field');
   await act(async () => {
@@ -156,7 +169,7 @@ it('filters names and full instructions locally and shows exact skill names in t
   expect(rows(host)).toEqual(['Writer', 'Planner']);
   expect([...host.querySelectorAll('th')].map((el) => el.textContent)).toEqual([
     'Name',
-    'Task',
+    'Description',
     'Skills',
     'Last changed',
   ]);
@@ -181,6 +194,68 @@ it('filters names and full instructions locally and shows exact skill names in t
   expect(list).toHaveBeenCalledTimes(1);
 });
 
+it('describes an agent between its name and instructions; the table, detail, search and copies use it', async () => {
+  const create = vi.spyOn(agents, 'create');
+  const { toolbar, host } = await show();
+  await click('Create agent', toolbar);
+  expect(field('Description').getAttribute('maxlength')).toBe('2000');
+  expect(field('Description').getAttribute('placeholder')).toBeNull();
+  await type(field('Name'), 'Digest maker');
+  await type(field('Description'), '  Writes the weekly digest. Use it on Fridays.  ');
+  await type(instructions(), 'Collect the notes.\nWrite the digest.');
+  await click('Save agent');
+  expect(create.mock.calls[0]?.[1].role).toMatchObject({
+    name: 'Digest maker',
+    description: 'Writes the weekly digest. Use it on Fridays.',
+    prompt: 'Collect the notes.\nWrite the digest.',
+  });
+  const summary = () => host.querySelector<HTMLTableRowElement>('tbody tr')?.cells[1]?.textContent;
+  expect(summary()).toBe('Writes the weekly digest. Use it on Fridays.');
+  // The chosen agent's detail shows the description once, under its name, with no second label.
+  const detail = host.querySelector('section[aria-label="Agent details"]');
+  expect(detail?.textContent).toContain('Writes the weekly digest. Use it on Fridays.');
+  expect(detail?.textContent).not.toContain('Description');
+  const search = host.querySelector<HTMLInputElement>('input[aria-label="Search agents"]');
+  await type(search, 'FRIDAYS');
+  expect(rows(host)).toEqual(['Digest maker']);
+  await type(search, 'collect the notes');
+  expect(rows(host)).toEqual(['Digest maker']);
+  await type(search, '');
+  await click('Duplicate');
+  expect(create.mock.calls.at(-1)?.[1].role).toMatchObject({
+    name: 'Digest maker copy',
+    description: 'Writes the weekly digest. Use it on Fridays.',
+  });
+  // Clearing the description leaves the first sentence of the instructions in the table.
+  await click('Digest maker');
+  await click('Edit');
+  expect(field('Description').value).toBe('Writes the weekly digest. Use it on Fridays.');
+  await type(field('Description'), '   ');
+  await click('Save agent');
+  const saved = (await agents.list('default')).find((agent) => agent.role.name === 'Digest maker');
+  expect(saved?.role).not.toHaveProperty('description');
+  expect(saved?.revision).toBe(2);
+  expect(summary()).toBe('Collect the notes.');
+  expect(host.querySelector('section[aria-label="Agent details"]')?.textContent).not.toContain(
+    'Writes the weekly digest',
+  );
+});
+
+it('asks before closing when only the description changed', async () => {
+  const original = await seed('Writer', { description: 'Writes summaries.' });
+  const update = vi.spyOn(agents, 'update');
+  await show(original.agentId);
+  await click('Edit');
+  await type(field('Description'), 'Writes long summaries.');
+  await click('Cancel');
+  expect(button('Keep editing')).toBeTruthy();
+  await click('Discard changes');
+  expect(update).not.toHaveBeenCalled();
+  expect((await agents.get('default', original.agentId))?.role.description).toBe(
+    'Writes summaries.',
+  );
+});
+
 it('edits only original fields, requires name and instructions and reuses the creation receipt after a lost response', async () => {
   const actualCreate = agents.create;
   const create = vi.spyOn(agents, 'create').mockImplementationOnce(async (...args) => {
@@ -191,7 +266,12 @@ it('edits only original fields, requires name and instructions and reuses the cr
   const { toolbar, host } = await show();
   await click('Create agent', toolbar);
   const form = dialog();
-  expect(form.querySelector('textarea')?.getAttribute('aria-label')).toBe('Base instructions');
+  // Name, description, then the base instructions, in reading and keyboard order.
+  expect([...form.querySelectorAll('input, textarea')].slice(0, 3)).toEqual([
+    field('Name', form),
+    field('Description', form),
+    instructions(form),
+  ]);
   expect(form.textContent).toContain(messages.Library.resources.localOnly);
   for (const label of ['Receives', 'Runs', 'Calls', 'Task']) {
     expect(
@@ -204,10 +284,10 @@ it('edits only original fields, requires name and instructions and reuses the cr
   expect(save.disabled).toBe(true);
   await type(form.querySelector('input'), 'Maker');
   expect(save.disabled).toBe(true);
-  await type(form.querySelector('textarea'), 'Build a digest.');
+  await type(instructions(form), 'Build a digest.');
   await click('Save agent', form);
   expect(form.querySelector('[role="alert"]')?.textContent).toMatch(/try again/i);
-  expect(form.querySelector('textarea')?.value).toBe('Build a digest.');
+  expect(instructions(form).value).toBe('Build a digest.');
   await click('Save agent', form);
   expect(document.querySelector('[role="dialog"]')).toBeNull();
   expect(create).toHaveBeenCalledTimes(2);
@@ -215,6 +295,8 @@ it('edits only original fields, requires name and instructions and reuses the cr
   expect(first?.[1].role).toMatchObject({ name: 'Maker', prompt: 'Build a digest.' });
   expect(first?.[1].role).not.toHaveProperty('id');
   expect(first?.[1].role).not.toHaveProperty('origin');
+  // An empty description is no description.
+  expect(first?.[1].role).not.toHaveProperty('description');
   expect(first?.[1].operationId).toBeTruthy();
   expect(create.mock.calls[1]).toEqual(first);
   expect(rows(host)).toEqual(['Maker']);
@@ -224,17 +306,17 @@ it('keeps stale edits until the person explicitly reloads the original', async (
   const original = await seed();
   await show(original.agentId);
   await click('Edit');
-  await type(dialog().querySelector('textarea'), 'My version.');
+  await type(instructions(), 'My version.');
   await agents.update('default', original.agentId, {
     role: { ...role, prompt: 'Other version.' },
     expectedRevision: 1,
   });
   await click('Save agent');
   expect(dialog().querySelector('[role="alert"]')?.textContent).toMatch(/changed/i);
-  expect(dialog().querySelector('textarea')?.value).toBe('My version.');
+  expect(instructions().value).toBe('My version.');
   await click('Reload original');
-  expect(dialog().querySelector('textarea')?.value).toBe('Other version.');
-  await type(dialog().querySelector('textarea'), 'Merged version.');
+  expect(instructions().value).toBe('Other version.');
+  await type(instructions(), 'Merged version.');
   await click('Save agent');
   expect((await agents.get('default', original.agentId))?.role.prompt).toBe('Merged version.');
 });
@@ -245,10 +327,10 @@ it('asks before closing dirty inputs and keeps the original untouched on discard
     update = vi.spyOn(agents, 'update');
   await show(original.agentId);
   await click('Edit');
-  await type(dialog().querySelector('textarea'), 'Unsaved draft.');
+  await type(instructions(), 'Unsaved draft.');
   await click('Cancel');
   await click('Keep editing');
-  expect(dialog().querySelector('textarea')?.value).toBe('Unsaved draft.');
+  expect(instructions().value).toBe('Unsaved draft.');
   await click('Cancel');
   await click('Discard changes');
   expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -295,20 +377,20 @@ it('reconciles a lost create with changed inputs instead of hiding the saved ori
   const { host, toolbar } = await show();
   await click('Create agent', toolbar);
   await type(dialog().querySelector('input'), 'Editor');
-  await type(dialog().querySelector('textarea'), 'Check the sources.');
+  await type(instructions(), 'Check the sources.');
   await click('Save agent');
-  await type(dialog().querySelector('textarea'), 'Check the dates.');
+  await type(instructions(), 'Check the dates.');
   await click('Save agent');
   expect(dialog().querySelector('[role="alert"]')?.textContent).toMatch(
     /earlier version was saved/i,
   );
-  expect(dialog().querySelector('textarea')?.value).toBe('Check the dates.');
+  expect(instructions().value).toBe('Check the dates.');
   await click('Cancel');
   await click('Discard changes');
   expect(rows(host)).toEqual(['Editor']);
   await click('Create agent', toolbar);
   await type(dialog().querySelector('input'), 'Planner');
-  await type(dialog().querySelector('textarea'), 'Plan the review.');
+  await type(instructions(), 'Plan the review.');
   await click('Save agent');
   expect(create.mock.calls[2]?.[1].operationId).not.toBe(create.mock.calls[0]?.[1].operationId);
   expect(rows(host)).toEqual(['Editor', 'Planner']);
@@ -321,13 +403,13 @@ it('keeps invalid settings in the form and allows correcting them', async () => 
     .mockResolvedValueOnce({ ok: false, error: 'invalid', message: 'Internal validation details' });
   await show(saved.agentId);
   await click('Edit');
-  await type(dialog().querySelector('textarea'), 'Invalid submission.');
+  await type(instructions(), 'Invalid submission.');
   await click('Save agent');
   expect(dialog().querySelector('[role="alert"]')?.textContent).toMatch(
     /check the name, instructions/i,
   );
-  expect(dialog().querySelector('textarea')?.value).toBe('Invalid submission.');
-  await type(dialog().querySelector('textarea'), 'Corrected instructions.');
+  expect(instructions().value).toBe('Invalid submission.');
+  await type(instructions(), 'Corrected instructions.');
   await click('Save agent');
   expect(update).toHaveBeenLastCalledWith('default', saved.agentId, {
     expectedRevision: 1,

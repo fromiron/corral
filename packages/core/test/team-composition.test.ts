@@ -58,7 +58,9 @@ const builtin = (id: RolePresetId): ComposableAgent => {
     builtin: true,
   };
 };
-const SENTINEL_PROMPT = 'SENTINEL-PROMPT: you are the project’s own release checker.';
+// A saved agent without a description goes by its first sentence; the rest stays on this side.
+const RELEASE_SENTENCE = 'You check the project’s releases.';
+const SENTINEL_PROMPT = `${RELEASE_SENTENCE} SENTINEL-PROMPT: you are the project’s own release checker.`;
 const LIBRARY_HASH = 'a'.repeat(64);
 const library: ComposableAgent = {
   role: {
@@ -77,6 +79,7 @@ const library: ComposableAgent = {
 const libraryReviewer: ComposableAgent = {
   role: {
     name: 'House reviewer',
+    description: 'Reviews a draft against the house rules. Use it as the judge of a loop.',
     prompt: 'Review against the house rules.',
     modelProfile: 'model-a',
     allowedWorkTools: ['read_file', 'write_artifact'],
@@ -288,10 +291,14 @@ describe('teamCatalog', () => {
       runsCommands: false,
       output: 'review',
     });
-    // A saved agent has no description: only its name and the other fields go.
+    // A saved agent goes with its description, or its instructions' first sentence without one.
+    expect(catalog.agents.find((a) => a.name === 'House reviewer')).toMatchObject({
+      description: libraryReviewer.role.description,
+    });
     expect(catalog.agents.find((a) => a.name === 'Release checker')).toEqual({
       id: agentId('Release checker'),
       name: 'Release checker',
+      description: RELEASE_SENTENCE,
       changesFiles: false,
       runsCommands: false,
       output: 'notes',
@@ -299,9 +306,12 @@ describe('teamCatalog', () => {
     });
   });
 
-  it('sends no prompt body, tool name, hash or path', () => {
+  it('sends no prompt body beyond an undescribed agent’s first sentence, no tool name, hash or path', () => {
     const text = JSON.stringify(catalog);
+    expect(text).toContain(RELEASE_SENTENCE);
     expect(text).not.toContain('SENTINEL-PROMPT');
+    // A described agent's instructions do not go at all.
+    expect(text).not.toContain(libraryReviewer.role.prompt);
     expect(text).not.toContain(LIBRARY_HASH);
     expect(text).not.toContain('SKILL.md');
     for (const tool of [
@@ -343,6 +353,41 @@ describe('teamCatalog', () => {
       expect(skill.description.length).toBeLessThanOrEqual(160);
       expect(builtinSkills[i]?.description.startsWith(skill.description)).toBe(true);
     }
+  });
+
+  it('sends a saved agent’s description cut to 400 whole characters, else its first sentence cut to 160', () => {
+    const saved = (role: Partial<AgentRole>): ComposableAgent => ({
+      role: { ...libraryReviewer.role, ...role },
+      origin: { kind: 'library', agentId: 'saved', revision: 1 },
+    });
+    const { description: _none, ...undescribed } = libraryReviewer.role;
+    const plain = (prompt: string): ComposableAgent => ({ role: { ...undescribed, prompt } });
+    const { catalog: cut } = teamCatalog(
+      [
+        saved({ description: `${'x'.repeat(399)}🐎 and more` }),
+        saved({ description: `${'y'.repeat(399)} ${'z'.repeat(10)}` }),
+        saved({ description: '  Checks links. Use it last.  ' }),
+        saved({ description: '   ', prompt: 'Checks links. More.' }),
+        plain(`${'p'.repeat(170)}. Second sentence.`),
+        plain('One sentence only'),
+        // Instructions that open with blank lines are read from their first words.
+        plain('\n\nYou check releases. More.'),
+        // A bundled agent sends its file's description as it is.
+        { ...builtin('writer'), description: 'b'.repeat(500) },
+      ],
+      [],
+    );
+    expect(cut.agents.map((a) => a.description)).toEqual([
+      'x'.repeat(399),
+      'y'.repeat(399),
+      'Checks links. Use it last.',
+      'Checks links.',
+      'p'.repeat(160),
+      'One sentence only',
+      'You check releases.',
+      'b'.repeat(500),
+    ]);
+    expect(TeamCatalog.parse(cut)).toEqual(cut);
   });
 
   it('carries at most 64 agents and 256 skills', () => {
@@ -1176,6 +1221,10 @@ describe('draftFromComposition', () => {
         origin: { kind: 'library', agentId: 'release_checker', revision: 3 },
       });
       expect(nodeNamed(definition, 'Release check').stepInstruction).toBe('Do the check part.');
+      // A saved agent's description comes with its copy; a built-in agent's copy has none.
+      expect(roleOf(definition, 'Review').description).toBe(libraryReviewer.role.description);
+      for (const label of ['Scope', 'Build', 'Release check'])
+        expect(roleOf(definition, label)).not.toHaveProperty('description');
     });
 
     it('a role never shares a list with its agent or with another seat of the same agent', () => {

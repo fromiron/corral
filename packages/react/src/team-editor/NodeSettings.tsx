@@ -300,6 +300,35 @@ function PromptField({
   );
 }
 
+/** What a saved agent does and when to use it: one or two sentences, optional. */
+function DescriptionField({
+  editor,
+  nodeId,
+  role,
+}: {
+  editor: EditorStore;
+  nodeId: string;
+  role: AgentRole;
+}) {
+  const t = useTranslations('Inspector');
+  const session = useEditSession(editor);
+  const id = useId();
+  return (
+    <div className="grid gap-1">
+      <label className="text-caption" htmlFor={id}>
+        {t('description')}
+      </label>
+      <Textarea
+        id={id}
+        value={role.description ?? ''}
+        maxLength={2000}
+        onChange={(e) => editor.getState().updateNode(nodeId, { description: e.target.value })}
+        {...session}
+      />
+    </div>
+  );
+}
+
 function RoleModel({
   editor,
   nodeId,
@@ -503,7 +532,10 @@ export function RoleForm({
         variant === 'seat' ? (
           <SeatInstructions editor={editor} draft={draft} nodeId={nodeId} role={role} />
         ) : (
-          <PromptField editor={editor} role={role} nodeId={nodeId} label={t('base')} />
+          <>
+            <DescriptionField editor={editor} role={role} nodeId={nodeId} />
+            <PromptField editor={editor} role={role} nodeId={nodeId} label={t('base')} />
+          </>
         )
       ) : null}
       {variant === 'seat' ? <Materials editor={editor} node={node} draft={draft} /> : null}

@@ -212,6 +212,7 @@
     "imageProfileMissing": "Not in the saved list",
     "heading": "Properties",
     "label": "Name",
+    "description": "Description",
     "brief": "Run brief",
     "delete": "Delete node",
     "duplicate": "Duplicate",

@@ -189,6 +189,7 @@ export function AgentPicker({
     ({ source }) =>
       !text ||
       source.role.name.toLocaleLowerCase().includes(text) ||
+      !!source.role.description?.toLocaleLowerCase().includes(text) ||
       (source.stepInstruction ?? source.role.prompt).toLocaleLowerCase().includes(text),
   );
   const result = typeof face === 'object' ? preview?.(face) : undefined;
@@ -279,7 +280,9 @@ export function AgentPicker({
                             <span id={`${id}-detail`} className="grid gap-1 text-muted-foreground">
                               {team && <span className="text-caption">{team}</span>}
                               <span className="line-clamp-2 whitespace-pre-line break-words text-body">
-                                {source.stepInstruction ?? source.role.prompt}
+                                {source.role.description ??
+                                  source.stepInstruction ??
+                                  source.role.prompt}
                               </span>
                               {skills.length > 0 && (
                                 <span className="break-words text-caption">

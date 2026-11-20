@@ -121,6 +121,12 @@ export type RoleMcpToolRef = z.infer<typeof RoleMcpToolRef>;
 export const AgentRole = z.strictObject({
   id: Identifier,
   name: z.string().min(1),
+  /**
+   * What this agent does and when to use it: the `description` of the Markdown agent format.
+   * Lists, pickers and the team proposal's catalog read it; a run never does
+   * (docs/specs/features/agent-library.md).
+   */
+  description: z.string().min(1).max(2000).optional(),
   prompt: z.string().min(1).max(20000),
   modelProfile: Identifier,
   reasoning: ReasoningPolicy.optional(),

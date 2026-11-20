@@ -79,6 +79,32 @@ export function describeAgentLibraryContract(
       expect(await agents.list('default')).toEqual([changed]);
     });
 
+    it('keeps a description, and a changed or removed description is a new revision', async () => {
+      const { agents } = setup();
+      const described = { ...role, description: 'Writes the summary. Use it after research.' };
+      const first = saved(
+        await agents.create('default', { role: described, operationId: 'described' }),
+      );
+      expect(first.role).toEqual(described);
+      expect(await agents.get('default', first.agentId)).toEqual(first);
+      const changed = saved(
+        await agents.update('default', first.agentId, {
+          role: { ...described, description: 'Writes the release notes.' },
+          expectedRevision: 1,
+        }),
+      );
+      expect(changed).toMatchObject({
+        revision: 2,
+        role: { description: 'Writes the release notes.' },
+      });
+      const removed = saved(
+        await agents.update('default', first.agentId, { role, expectedRevision: 2 }),
+      );
+      expect(removed.revision).toBe(3);
+      expect(removed.role).not.toHaveProperty('description');
+      expect(await agents.list('default')).toEqual([removed]);
+    });
+
     it('archives and restores without changing the role or its revision', async () => {
       const { agents, clock } = setup();
       const first = saved(await agents.create('default', create));

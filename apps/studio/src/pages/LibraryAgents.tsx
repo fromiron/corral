@@ -6,6 +6,7 @@ import {
   createRunSession,
   type EditorStore,
   emptyDraft,
+  firstSentence,
   RoleForm,
   StudioStoresProvider,
 } from '@corral/react';
@@ -18,6 +19,7 @@ import {
   DialogTitle,
   EmptyState,
   Input,
+  KitCardDescription,
   KitCardTitle,
   Switch,
   Table,
@@ -99,6 +101,11 @@ function OriginalDialog({
   if (!role) throw new Error('Missing agent in the private editor');
   const { id: _id, origin: _origin, ...fields } = role;
   const valid = Boolean(fields.name.trim() && fields.prompt.trim());
+  /** What is saved: the description without surrounding blanks. */
+  function original(): LibraryAgentRole {
+    const { description, ...rest } = fields;
+    return description?.trim() ? { ...rest, description: description.trim() } : rest;
+  }
 
   function close() {
     if (busy) return;
@@ -112,9 +119,9 @@ function OriginalDialog({
       const result = current.original
         ? await agents.update(projectId, current.original.agentId, {
             expectedRevision: current.original.revision,
-            role: fields,
+            role: original(),
           })
-        : await agents.create(projectId, { role: fields, operationId: operation });
+        : await agents.create(projectId, { role: original(), operationId: operation });
       if (result.ok) onSaved(result.agent);
       else {
         setError(result.error);
@@ -343,6 +350,7 @@ export function LibraryAgents({
       (archived || !archivedAt) &&
       (!query ||
         role.name.toLocaleLowerCase().includes(query) ||
+        !!role.description?.toLocaleLowerCase().includes(query) ||
         role.prompt.toLocaleLowerCase().includes(query)),
   );
   const index = filtered.findIndex((item) => item.agentId === selection);
@@ -434,7 +442,7 @@ export function LibraryAgents({
             <TableHeader>
               <TableRow className={index === 0 ? ABOVE_CHOSEN_TABLE_ROW : undefined}>
                 <TableHead className="w-1/4">{t('Inspector.label')}</TableHead>
-                <TableHead>{t('Inspector.task')}</TableHead>
+                <TableHead>{t('Inspector.description')}</TableHead>
                 <TableHead className="w-px whitespace-nowrap">{t('Library.view.skills')}</TableHead>
                 <TableHead className="w-px whitespace-nowrap">
                   {t('Library.agents.updated')}
@@ -475,7 +483,7 @@ export function LibraryAgents({
                     </button>
                   </TableCell>
                   <TableCell className="max-w-0 truncate">
-                    {agent.role.prompt.split('\n', 1)[0]}
+                    {agent.role.description ?? firstSentence(agent.role.prompt)}
                   </TableCell>
                   <TableCell>{agent.role.skills?.length ?? 0}</TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -490,10 +498,18 @@ export function LibraryAgents({
               aria-label={t('Library.agents.detail')}
               className="grid min-w-0 content-start gap-4"
             >
-              {/* As in the Teams and Skills details: the name, what can be done, then what it holds. */}
-              <h2>
-                <KitCardTitle>{chosen.role.name}</KitCardTitle>
-              </h2>
+              {/* As in the Teams and Skills details: the name, what can be done, then what it holds.
+                  The description reads as the name's own line, so it takes no heading. */}
+              <div className="grid gap-1">
+                <h2>
+                  <KitCardTitle>{chosen.role.name}</KitCardTitle>
+                </h2>
+                {chosen.role.description ? (
+                  <KitCardDescription className="whitespace-pre-wrap break-words">
+                    {chosen.role.description}
+                  </KitCardDescription>
+                ) : null}
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   variant="tertiary"

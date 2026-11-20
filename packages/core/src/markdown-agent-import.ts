@@ -83,6 +83,7 @@ export function builtinAgentTools(tools: readonly string[]): {
 
 export interface MarkdownAgent {
   name: string;
+  /** The imported role's description; an empty one gives it none. */
   description: string;
   prompt: string;
   model: string;
@@ -422,7 +423,9 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       {
         id: roleId,
         name: candidate.name,
-        prompt: `${candidate.description}\n\n${candidate.prompt}\n\nCorral import tool mapping:\n${candidate.tools.map((source) => `${source}: ${excluded.has(source) ? 'excluded; the parent handles user input and run control' : mappings[source] === 'omit' ? 'excluded; do not attempt this tool' : source === 'Edit' && editingMode === 'hashline' ? 'read_hashline, then edit_hashline using the returned file tag' : mappings[source]}`).join('\n')}\nUse only the effective Corral tool names. Return results through write_artifact and submit_result. If clarification or user input is needed, call ask with targetNodeId "${parentNodeId}" to the parent who delegated this task. Wait for the reply and continue this same task before submitting the result. The parent handles user input and run control. Agent questions and replies do not grant human approval or additional permissions.`,
+        // The frontmatter description is the role's own; the body alone is its instructions.
+        ...(candidate.description ? { description: candidate.description } : {}),
+        prompt: `${candidate.prompt}\n\nCorral import tool mapping:\n${candidate.tools.map((source) => `${source}: ${excluded.has(source) ? 'excluded; the parent handles user input and run control' : mappings[source] === 'omit' ? 'excluded; do not attempt this tool' : source === 'Edit' && editingMode === 'hashline' ? 'read_hashline, then edit_hashline using the returned file tag' : mappings[source]}`).join('\n')}\nUse only the effective Corral tool names. Return results through write_artifact and submit_result. If clarification or user input is needed, call ask with targetNodeId "${parentNodeId}" to the parent who delegated this task. Wait for the reply and continue this same task before submitting the result. The parent handles user input and run control. Agent questions and replies do not grant human approval or additional permissions.`,
         modelProfile,
         ...(work.includes('generate_image') && parentRole.imageProfile
           ? { imageProfile: parentRole.imageProfile }

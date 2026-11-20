@@ -1,4 +1,9 @@
-import { type AgentRole, isWorkAgent, type LibraryAgent } from '@corral/contracts';
+import {
+  type AgentRole,
+  isWorkAgent,
+  type LibraryAgent,
+  LibraryAgentRole,
+} from '@corral/contracts';
 import { roleFromPreset } from '@corral/core';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -44,10 +49,15 @@ function mount(
   props: Partial<TeamEditorProps> = {},
   from: AgentRole['origin'] | null = origin,
   stepInstruction = 'Team-only sentence',
+  changes: Partial<AgentRole> = {},
 ) {
   const seat = addAgent(
     emptyDraft(),
-    { role: { ...original.role, name: 'Planner' }, ...(from && { origin: from }), stepInstruction },
+    {
+      role: { ...original.role, name: 'Planner', ...changes },
+      ...(from && { origin: from }),
+      stepInstruction,
+    },
     { kind: 'empty' },
   );
   if (!seat.ok || !seat.nodeId) throw Error('missing seat');
@@ -108,6 +118,25 @@ it('adds the same original twice without replacing the selected seat; a copied r
     editor.getState().undo();
   });
   expect(editor.getState().draft).toBe(before);
+});
+
+it('shows a saved agent’s description in its row, finds it by it or its instructions, and copies it', async () => {
+  const description = 'Edits long manuscripts. Use it after the first draft.';
+  const { editor, user } = mount({
+    agentLibrary: {
+      ...library,
+      agents: [{ ...original, role: { ...original.role, description } }],
+    },
+  });
+  await user.click(add());
+  expect(button(/^Writer/)).toHaveAccessibleDescription(description);
+  await user.type(search(), 'FIRST DRAFT');
+  expect(button(/^Writer/)).toHaveAccessibleDescription(description);
+  await user.clear(search());
+  await user.type(search(), 'polish the');
+  await user.click(button(/^Writer/));
+  const copy = editor.getState().draft.definition.roles.at(-1);
+  expect(copy).toMatchObject({ description, prompt: original.role.prompt });
 });
 
 it('searches only the active group, opens built-in for an empty library, and restores focus on cancel', async () => {
@@ -330,6 +359,21 @@ it('saves only reusable role fields, preserves input on failure and never edits 
   expect(screen.getByText('Agent saved to library.')).toBeInTheDocument();
   expect(editor.getState().draft).toBe(before);
   expect(editor.getState().past).toEqual([]);
+});
+
+it('saves a copy’s description to the library with it', async () => {
+  const save = vi.fn().mockResolvedValue({ ok: true });
+  const description = 'Plans the chapters. Use it first.';
+  mount({ beginSaveAgent: () => save }, origin, 'Team-only sentence', { description });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: messages.Inspector.seatActions }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Save to library' }));
+  await user.click(button('Save agent'));
+  expect(LibraryAgentRole.parse(save.mock.calls[0]?.[0])).toEqual({
+    ...original.role,
+    name: 'Planner',
+    description,
+  });
 });
 
 it.each([

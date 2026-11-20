@@ -888,6 +888,15 @@ describe('check cases, without a model', () => {
       ...Object.values(file.agents).flatMap((list) => list.map((agent) => agent.description)),
       ...file.cases.map((entry) => entry.rater),
     ].filter((text): text is string => !!text);
+    const raterSentences = Object.values(file.agents).flatMap((list) =>
+      list.flatMap((agent) =>
+        (agent.description ?? '')
+          .split(/(?<=[.!?])\s+/)
+          .map((sentence) => sentence.trim())
+          .filter(Boolean),
+      ),
+    );
+    expect(raterSentences.length).toBeGreaterThan(Object.values(file.agents).flat().length);
     for (const entry of file.cases) {
       const { catalog: sent } = caseCatalog(file, entry, bundledAgents, bundledSkills);
       const proposal = entry.proposal && proposalFor(entry.proposal, sent);
@@ -897,18 +906,22 @@ describe('check cases, without a model', () => {
       expect(request.mode === 'create' && request.proposal).toEqual(proposal);
       const sentText = JSON.stringify(request);
       for (const text of forRater) expect(sentText).not.toContain(text);
+      // Not a sentence of the rater's agent descriptions goes either.
+      for (const sentence of raterSentences) expect(sentText).not.toContain(sentence);
     }
   });
 
-  it('sends a library agent as Studio does: named, with its abilities and output, never described', () => {
+  it('sends a library agent as Studio does: named, with its abilities and output, described by its name', () => {
     expect(legal.catalog.agents.slice(0, bundled.catalog.agents.length)).toEqual(
       bundled.catalog.agents,
     );
     const added = legal.catalog.agents.slice(bundled.catalog.agents.length);
+    // A library agent without a description goes by its instructions' first sentence: here its name.
     expect(added).toEqual([
       {
         id: expect.any(String),
         name: '번역가',
+        description: '번역가',
         changesFiles: false,
         runsCommands: false,
         output: 'draft',
@@ -917,6 +930,7 @@ describe('check cases, without a model', () => {
       {
         id: expect.any(String),
         name: '법무 검토자',
+        description: '법무 검토자',
         changesFiles: false,
         runsCommands: false,
         output: 'review',
@@ -924,9 +938,11 @@ describe('check cases, without a model', () => {
       },
     ]);
     expect(JSON.stringify(legal.catalog)).not.toContain('약관과 계약 문구');
+    expect(JSON.stringify(legal.catalog)).not.toContain('한국어 문서를 영어로 옮긴다');
     const reviewer = legal.agentById.get(agentIdByName(legal.catalog, '법무 검토자'));
     expect(reviewer?.origin?.kind).toBe('library');
     expect(reviewer).not.toHaveProperty('description');
+    expect(reviewer?.role).not.toHaveProperty('description');
     // The bundled agents keep the description the editor gives them.
     expect(bundled.catalog.agents.every((agent) => !!agent.description)).toBe(true);
     const analytics = caseCatalog(file, caseOf('check-06'), bundledAgents, bundledSkills).catalog;

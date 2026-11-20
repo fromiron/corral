@@ -129,7 +129,8 @@ export function createSubagentsVaultAdapter(options: {
       const tools = [...new Set([...role.allowedWorkTools, ...role.allowedCollaborationTools])];
       const candidate: MarkdownAgent = {
         name: role.name,
-        description: `Imported callable agent: ${role.name}`,
+        // The copy keeps the source role's own description, or has none.
+        description: role.description ?? '',
         prompt: seatPrompt(role.prompt, node.stepInstruction),
         tools,
         skills: [],

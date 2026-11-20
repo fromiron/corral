@@ -537,6 +537,23 @@ describe('worker lifecycle and protocol checks', () => {
     await handle.waitForSettlement();
   });
 
+  it('never sends a role’s description to the worker: the start frame is the same without it', async () => {
+    const frames: unknown[] = [];
+    for (const description of [undefined, 'Writes the summary. Use it after research.']) {
+      const { adapter, worker, received } = scriptedWorker();
+      const input = startInput();
+      if (description) input.role = { ...input.role, description };
+      const handle = await adapter.start(input, recordingHost().host);
+      worker.send({ type: 'ready', protocolVersion: PROTOCOL_VERSION });
+      await tick();
+      frames.push(StartFrame.parse(received.find((message) => message.type === 'start')));
+      worker.kill();
+      await handle.waitForSettlement();
+    }
+    expect(frames[1]).toEqual(frames[0]);
+    expect(JSON.stringify(frames[1])).not.toContain('Use it after research');
+  });
+
   it('file previews require read permission and app/browser tools require a trusted harness', async () => {
     for (const readable of [false, true]) {
       const { adapter, worker, received } = scriptedWorker();

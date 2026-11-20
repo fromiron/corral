@@ -40,6 +40,18 @@ describe('agent library contracts', () => {
     expect(LibraryAgent.safeParse({ ...record, operationId: 'internal' }).success).toBe(false);
   });
 
+  it('keeps the description of a saved agent', () => {
+    const described = { ...role, description: 'Writes the summary. Use it after research.' };
+    const body = { role: described, operationId: 'create_writer' };
+    expect(CreateLibraryAgent.parse(body)).toEqual(body);
+    expect(UpdateLibraryAgent.parse({ role: described, expectedRevision: 1 }).role).toEqual(
+      described,
+    );
+    expect(
+      CreateLibraryAgent.safeParse({ ...body, role: { ...role, description: '' } }).success,
+    ).toBe(false);
+  });
+
   it('requires a revision and at least one mutation, including restore', () => {
     for (const body of [
       { expectedRevision: 1 },
