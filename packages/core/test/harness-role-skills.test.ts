@@ -188,11 +188,39 @@ describe('role-selected skills at the Coordinator boundary', () => {
     s.stop.open();
   });
 
-  it('rejects an unavailable resolver before a Run exists, even for an empty list', () => {
-    const s = setup();
-    expect(s.start(writer([]))).toMatchObject(denied);
+  it.each([{ keys: [] }, { keys: ['first'] }])(
+    'a mock run with no resolver runs a skills-only role without skills ($keys)',
+    async ({ keys }) => {
+      const s = setup();
+      const definition = writer(keys);
+      expect(s.start(definition).receipt.error).toBeUndefined();
+      const { input } = await s.execution();
+      expect(input).not.toHaveProperty('harness');
+      expect(s.store.getRun(input.runId)!.snapshot).not.toHaveProperty('harnesses');
+      s.stop.open();
+    },
+  );
+
+  it('a live run with no resolver refuses a skills-only role before a Run exists', () => {
+    const s = setup(undefined, { models: fixtureModel() });
+    expect(s.start(writer(['first']), { mode: 'live' })).toMatchObject(denied);
+    expect(s.start(writer([]), { mode: 'live', commandId: 'start_empty' })).toMatchObject(denied);
     expect(s.store.listRuns()).toEqual([]);
   });
+
+  it.each(['mock', 'live'] as const)(
+    'a %s run with no resolver refuses a role with a pinned harness',
+    (mode) => {
+      const s = setup(undefined, { models: fixtureModel() });
+      const definition = writer(['first']);
+      definition.roles[0]!.harness = bound;
+      expect(s.start(definition, { mode })).toMatchObject(denied);
+      const pinnedOnly = writer();
+      pinnedOnly.roles[0]!.harness = bound;
+      expect(s.start(pinnedOnly, { mode, commandId: 'start_pinned' })).toMatchObject(denied);
+      expect(s.store.listRuns()).toEqual([]);
+    },
+  );
 
   it.each([
     { tag: 'profile', changed: { binding: bound } },

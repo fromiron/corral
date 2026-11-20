@@ -6,6 +6,7 @@ import { processChannel } from '@corral/adapter-pi';
 import { InProcessTransport, waitForProjection } from '@corral/core';
 import { linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it } from 'vitest';
+import builtinManifest from '../resources/builtin/manifest.json' with { type: 'json' };
 import { type CorralServer, startCorralServer } from '../src/app.ts';
 import { fakeOpenAI } from '../src/testing.ts';
 import { oauthFixture } from './fixtures/mcp-oauth.ts';
@@ -449,17 +450,30 @@ it('resource API requires review and trust, pins revisions and protects local pa
     return { status: response.status, body: await response.json() };
   };
   expect((await fetch(`${server.url}/api/v1/harness/resources`)).status).toBe(401);
-  expect((await call('/resources')).body).toEqual([]);
+  const fixtures = async () =>
+    ((await call('/resources')).body as { name: string }[]).filter(
+      (resource) => resource.name === 'fixture',
+    );
+  expect(await fixtures()).toEqual([]);
+  // The server installed every bundled pack before its first request, each trusted.
+  const bundled = (await call('/resources')).body as { hash: string; trustedAt: string | null }[];
+  for (const { hash } of Object.values(builtinManifest))
+    expect(bundled.find((resource) => resource.hash === hash)?.trustedAt).toEqual(
+      expect.any(String),
+    );
   const reviewed = await call('/reviews', { source, kind: 'local' });
   expect(reviewed.status).toBe(200);
   expect(JSON.stringify(reviewed.body)).not.toContain(source);
   expect(existsSync(marker)).toBe(false);
-  expect((await call('/resources')).body).toEqual([]);
+  expect(await fixtures()).toEqual([]);
   const installed = await call('/resources', { reviewId: reviewed.body.reviewId });
-  expect(installed.body.trustedAt).toBeNull();
+  expect(installed.body.trustedAt).not.toBeNull();
   expect((await call('/resources', { reviewId: reviewed.body.reviewId })).body).toEqual(
     installed.body,
   );
+  expect(
+    (await call(`/resources/${installed.body.hash}/trust`, { trusted: false }, 'PUT')).status,
+  ).toBe(200);
   const profile = {
     name: 'Writer',
     policy: 'trusted-native',

@@ -65,6 +65,17 @@ export class SqliteHarnessStore {
     return row ? (JSON.parse(row.result_json) as T) : undefined;
   }
 
+  /** Operation IDs recorded with this exact prefix, oldest first. */
+  receiptIds(prefix: string): string[] {
+    return (
+      this.db
+        .prepare(
+          'SELECT operation_id FROM harness_management_receipts WHERE substr(operation_id, 1, ?) = ? ORDER BY rowid',
+        )
+        .all(prefix.length, prefix) as { operation_id: string }[]
+    ).map((row) => row.operation_id);
+  }
+
   entryManagement(
     key: HarnessEntryKey,
   ): HarnessManagementState & { successor: HarnessEntryKey | null; displayName: string | null } {
@@ -364,6 +375,15 @@ export class SqliteHarnessStore {
       const resource = this.getResource(row.hash);
       return resource ? [resource] : [];
     });
+  }
+
+  /** Installed hashes, most recently installed first (insertion order, not the review time). */
+  installOrder(): string[] {
+    return (
+      this.db.prepare('SELECT hash FROM harness_resources ORDER BY rowid DESC').all() as {
+        hash: string;
+      }[]
+    ).map((row) => row.hash);
   }
 
   trustResource(hash: string, trusted: boolean): HarnessResourceView {

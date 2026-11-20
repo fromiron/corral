@@ -47,7 +47,8 @@ async function install(bundle: string, names: string[], previousHash?: string) {
   }
   const review = await service.reviewPackage('local', source, previousHash);
   const resource = service.install(review.reviewId);
-  if (bundle !== 'untrusted') service.trust(resource.hash, true);
+  // Install trusts every package; only a person's revocation leaves one untrusted.
+  if (bundle === 'untrusted') service.trust(resource.hash, false);
   for (const skill of resource.skills)
     refs[bundle === 'library' ? skill.name : bundle] = {
       resourceHash: resource.hash,
@@ -132,12 +133,11 @@ it.each(roleSkillCases)('$title', (row) => {
   }
   const snapshot = result.snapshot!;
   expect(snapshot.binding).toEqual(row.bound ? bound : minimal);
-  expect(snapshot.resources).toHaveLength(row.expected.length);
+  const others = row.others ?? [];
+  expect(snapshot.resources).toHaveLength(row.expected.length + others.length);
   if (role.harness && !role.skills) {
+    // A binding preview and the bound role's run resolve the same way, library skills included.
     expect(result).toEqual(service.preview(role.harness, 'default'));
-    expect(snapshot.snapshotHash).toBe(
-      '932b5bd7419e71ac518441fb40cd8074df96335d091e237c9249b6c11308ae42',
-    );
     for (const resource of snapshot.resources)
       expect(resource).not.toHaveProperty('selectedByRole');
   }
@@ -148,9 +148,19 @@ it.each(roleSkillCases)('$title', (row) => {
         entry: refs[key]!.entry,
         required: key === 'mandatory' || key === 'required',
         skillMode: key === 'mandatory' || key === 'explicit' ? key : 'auto',
+        ...(row.skills?.includes(key) ? { selectedByRole: true } : {}),
       }),
     );
   }
+  for (const key of others) {
+    const resource = snapshot.resources.find(
+      (item) => item.hash === refs[key]!.resourceHash && item.entry === refs[key]!.entry,
+    );
+    expect(resource, key).toMatchObject({ required: false, skillMode: 'auto' });
+    expect(resource).not.toHaveProperty('selectedByRole');
+  }
+  const names = snapshot.resources.map((resource) => resource.skillName);
+  expect(new Set(names).size).toBe(names.length);
   if (row.defaults) {
     expect(snapshot.allowedTools).toEqual(['read']);
     expect(snapshot.policy).toBe('strict');
@@ -158,16 +168,16 @@ it.each(roleSkillCases)('$title', (row) => {
   }
 });
 
-it('pins separate skill sets per role, creates only one immutable minimal base and no defaults', async () => {
+it('pins separate skill selections per role, creates only one immutable minimal base and no defaults', async () => {
   const definition = linearCorral(['writer', 'editor']);
   const [writer, editor] = definition.roles;
   writer!.skills = [refs.first!, refs.first!];
   editor!.skills = [refs.second!];
   const snapshots = definition.roles.map((role) => service.preview(role, 'default').snapshot!);
-  expect(snapshots.map((s) => s.resources.map((r) => r.skillName))).toEqual([
-    ['first'],
-    ['second'],
-  ]);
+  expect(
+    snapshots.map((s) => s.resources.filter((r) => r.selectedByRole).map((r) => r.skillName)),
+  ).toEqual([['first'], ['second']]);
+  expect(snapshots[0]!.resources.filter((r) => r.skillName === 'first')).toHaveLength(1);
   expect(snapshots[0]!.snapshotHash).not.toBe(snapshots[1]!.snapshotHash);
   expect(service.store.listProfiles().map((p) => p.profileId)).toEqual([
     minimal.profileId,
@@ -187,15 +197,19 @@ it('pins separate skill sets per role, creates only one immutable minimal base a
   });
   for (const scope of ['personal', 'project'] as const)
     expect(service.store.getDefault(scope, 'default').revision).toBe(0);
-  expect(await service.runtimeResources({ harness: snapshots[0]!, inputs: [] })).toMatchObject({
-    extensions: [],
-    startupCommands: [],
-    skills: [{ name: 'first', mode: 'auto', content: '' }],
-  });
+  const runtime = await service.runtimeResources({ harness: snapshots[0]!, inputs: [] });
+  expect(runtime).toMatchObject({ extensions: [], startupCommands: [] });
+  expect(runtime.skills).toContainEqual(
+    expect.objectContaining({ name: 'first', mode: 'auto', content: '' }),
+  );
   expect(service.readSkill(snapshots[0]!, 'skills/first/SKILL.md').resourceHash).toBe(
     refs.first!.resourceHash,
   );
-  expect(() => service.readSkill(snapshots[0]!, 'skills/second/SKILL.md')).toThrow('not bound');
+  // A library skill the role did not pick is bound in its snapshot, so it can be read.
+  expect(service.readSkill(snapshots[0]!, 'skills/second/SKILL.md').resourceHash).toBe(
+    refs.second!.resourceHash,
+  );
+  expect(() => service.readSkill(snapshots[0]!, 'skills/untrusted/SKILL.md')).toThrow('not bound');
 });
 
 it('returns each unusable exact ref once and never reports unselected optional entries', () => {
@@ -316,7 +330,8 @@ it('starts the SDK role without the optional default extension or its startup co
   const role = definition.roles[0]!;
   role.skills = [refs.first!];
   const preview = service.preview(role, 'default').snapshot!;
-  expect(preview.resources.map((ref) => ref.kind)).toEqual(['skill']);
+  expect(preview.resources.some((ref) => ref.kind === 'extension')).toBe(false);
+  expect(preview.resources.filter((ref) => ref.selectedByRole)).toHaveLength(1);
   expect(await service.runtimeResources({ harness: preview, inputs: [] })).toMatchObject({
     extensions: [],
     startupCommands: [],
@@ -324,7 +339,7 @@ it('starts the SDK role without the optional default extension or its startup co
   expect(preview.startupCommandPolicy).toBe('none');
   expect(service.resolve(undefined, definition, role.id)).toEqual(preview);
   const pinned = service.preview({ ...role, harness: bound }, 'default').snapshot!;
-  expect(pinned.resources.map((ref) => ref.kind)).toEqual(['extension', 'skill']);
+  expect(pinned.resources.filter((ref) => ref.kind === 'extension')).toHaveLength(1);
   expect(pinned).not.toHaveProperty('startupCommandPolicy');
   expect((await service.runtimeResources({ harness: pinned, inputs: [] })).startupCommands).toEqual(
     ['/e:init'],
@@ -366,4 +381,131 @@ it('starts the SDK role without the optional default extension or its startup co
   );
   expect(final.status).toBe('succeeded');
   expect(store.readEvents(runId!, 0).some((event) => event.type === 'harness.loaded')).toBe(true);
+});
+
+it('one unusable library skill neither blocks a start nor enters the snapshot', async () => {
+  const broken = await install('broken', ['fragile']);
+  const retired = await install('retired', ['retired']);
+  const off = await install('off', ['off']);
+  const revoked = await install('revoked', ['revoked']);
+  writeFileSync(
+    join(root, 'data', 'resources', `sha256-${broken}`, 'skills/fragile/SKILL.md'),
+    'x',
+  );
+  service.archiveEntry({ ...refs.retired!, kind: 'skill' }, 0, true, 'archive-retired');
+  await service.managePackage(off, 0, 'disabled', 'disable-off');
+  service.trust(revoked, false);
+  for (const role of [
+    { id: 'writer', skills: [refs.second!] },
+    { id: 'writer', skills: [] },
+    { id: 'writer', harness: bound },
+  ]) {
+    const snapshot = service.preview(role, 'default').snapshot!;
+    const hashes = snapshot.resources.map((resource) => resource.hash);
+    for (const hash of [broken, retired, off, revoked, refs.untrusted!.resourceHash])
+      expect(hashes).not.toContain(hash);
+    expect(hashes).toContain(refs.first!.resourceHash);
+  }
+  expect(service.store.getResource(retired)?.trustedAt).not.toBeNull();
+});
+
+it('an integrity mismatch revokes trust and still refuses a start for a picked skill', async () => {
+  const hash = await install('tampered', ['tampered']);
+  const role = { id: 'writer', skills: [refs.tampered!] };
+  expect(service.preview(role, 'default').snapshot).not.toBeNull();
+  writeFileSync(join(root, 'data', 'resources', `sha256-${hash}`, 'skills/tampered/SKILL.md'), 'x');
+  expect(service.preview(role, 'default')).toEqual({
+    snapshot: null,
+    problem: {
+      roleId: 'writer',
+      reason: 'unusable_skills',
+      entries: [{ ...refs.tampered, reason: 'untrusted' }],
+    },
+  });
+  expect(service.store.getResource(hash)?.trustedAt).toBeNull();
+});
+
+it('two installed versions of a pack yield one entry per name and no refusal', async () => {
+  await install('copy', ['first', 'second']);
+  const snapshot = service.preview({ id: 'writer', skills: [refs.second!] }, 'default').snapshot!;
+  const named = (name: string) => snapshot.resources.filter((r) => r.skillName === name);
+  expect(named('second')).toEqual([expect.objectContaining({ hash: refs.second!.resourceHash })]);
+  // The picked name wins; among the others, the most recently installed copy is bound.
+  expect(named('first')).toEqual([expect.objectContaining({ hash: refs.copy!.resourceHash })]);
+});
+
+it('installing another usable skill changes the snapshot hash of every resolved role', async () => {
+  const roles = [
+    { id: 'writer', skills: [refs.second!] },
+    { id: 'writer', harness: bound },
+  ];
+  const before = roles.map((role) => service.preview(role, 'default').snapshot!.snapshotHash);
+  const added = await install('added', ['added']);
+  roles.forEach((role, index) => {
+    const after = service.preview(role, 'default').snapshot!;
+    expect(after.snapshotHash).not.toBe(before[index]);
+    expect(after.resources).toContainEqual(
+      expect.objectContaining({ hash: added, skillName: 'added', skillMode: 'auto' }),
+    );
+  });
+});
+
+it('a skill marked disable-model-invocation is explicit unless the role picks it', async () => {
+  const source = join(root, 'marked');
+  mkdirSync(join(source, 'skills', 'manual'), { recursive: true });
+  writeFileSync(
+    join(source, 'package.json'),
+    JSON.stringify({ name: 'marked', version: '1.0.0', pi: { skills: ['./skills'] } }),
+  );
+  writeFileSync(
+    join(source, 'skills/manual/SKILL.md'),
+    '---\nname: manual\ndescription: Run only on request.\ndisable-model-invocation: true\n---\nBody',
+  );
+  const resource = service.install((await service.reviewPackage('local', source)).reviewId);
+  const ref = { resourceHash: resource.hash, entry: 'skills/manual/SKILL.md' };
+  const bind = (skills: RoleSkillRef[]) =>
+    service
+      .preview({ id: 'writer', skills }, 'default')
+      .snapshot!.resources.find((r) => r.hash === resource.hash);
+  expect(bind([refs.second!])).toMatchObject({ skillName: 'manual', skillMode: 'explicit' });
+  expect(bind([ref])).toMatchObject({ skillMode: 'auto', selectedByRole: true });
+  const runtime = await service.runtimeResources({
+    harness: service.preview({ id: 'writer', skills: [] }, 'default').snapshot!,
+    inputs: [],
+  });
+  expect(runtime.skills.find((skill) => skill.name === 'manual')?.mode).toBe('explicit');
+});
+
+it('an evaluation run keeps exactly its fixed profile and receives no library skills', () => {
+  service.saveProfile('evaluation', 0, {
+    name: 'Evaluation',
+    policy: 'strict',
+    allowedTools: ['read', 'read_artifact', 'write_artifact', 'submit_result'],
+    startupCommands: [],
+    resources: [{ ...refs.first!, kind: 'skill', required: true, skillMode: 'auto' }],
+  });
+  const definition = linearCorral(['writer']);
+  const role = definition.roles[0]!;
+  role.harness = { profileId: 'evaluation', revision: 1 };
+  const release = service.sealEvaluationDefinition(definition);
+  try {
+    const snapshot = service.resolve(role.harness, definition, role.id)!;
+    expect(snapshot.resources.map((resource) => resource.skillName)).toEqual(['first']);
+  } finally {
+    release();
+  }
+  expect(service.resolve(role.harness, definition, role.id)!.resources.length).toBeGreaterThan(1);
+});
+
+it('a library skill revoked after a run started is left out of a later worker start', async () => {
+  const pinned = service.preview({ id: 'writer', skills: [refs.second!] }, 'default').snapshot!;
+  expect(pinned.resources).toContainEqual(
+    expect.objectContaining({ hash: refs.conflict!.resourceHash, skillName: 'required' }),
+  );
+  service.trust(refs.conflict!.resourceHash, false);
+  const runtime = await service.runtimeResources({ harness: pinned, inputs: [] });
+  expect(runtime.skills.map((skill) => skill.name)).toContain('second');
+  expect(runtime.skills.map((skill) => skill.name)).not.toContain('required');
+  service.trust(refs.second!.resourceHash, false);
+  await expect(service.runtimeResources({ harness: pinned, inputs: [] })).rejects.toThrow(/trust/);
 });

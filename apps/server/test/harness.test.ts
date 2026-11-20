@@ -101,8 +101,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const s = setup();
     const review = await s.service.reviewPackage('local', s.source);
     const installed = s.service.install(review.reviewId);
-    expect(installed.trustedAt).toBeNull();
-    s.service.trust(installed.hash, true);
+    expect(installed.trustedAt).not.toBeNull();
     const profile = s.service.saveProfile('package-test', 0, s.profile(installed.hash));
     const binding = { profileId: profile.profileId, revision: profile.revision };
     const pinned = s.service.preview(binding, 'default').snapshot;
@@ -136,17 +135,17 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(s.service.preview(binding, 'default').snapshot.resources).toEqual(pinned.resources);
     expect(existsSync(s.marker)).toBe(false);
   });
-  it('reviews an upgrade by immutable file diff and never carries trust into changed bytes', async () => {
+  it('reviews an upgrade by immutable file diff and keeps each hash its own trust decision', async () => {
     const s = setup();
     const original = s.service.install((await s.service.reviewPackage('local', s.source)).reviewId);
-    s.service.trust(original.hash, true);
     writeFileSync(join(s.source, 'extensions/echo.ts'), 'export default () => {};');
     const updated = await s.service.reviewPackage('local', s.source, original.hash);
     expect(updated.previous?.hash).toBe(original.hash);
     expect(updated.changes).toEqual({ added: [], removed: [], changed: ['extensions/echo.ts'] });
     const saved = s.service.install(updated.reviewId);
     expect(saved.hash).not.toBe(original.hash);
-    expect(saved.trustedAt).toBeNull();
+    expect(saved.trustedAt).not.toBeNull();
+    s.service.trust(saved.hash, false);
     expect(s.service.store.getResource(original.hash)?.trustedAt).not.toBeNull();
     expect(
       s.service.store.entryManagement({
@@ -155,6 +154,43 @@ describe('resource discovery, trust and resolution (H3)', () => {
         kind: 'extension',
       }).successor,
     ).toEqual({ resourceHash: saved.hash, entry: 'extensions/echo.ts', kind: 'extension' });
+  });
+  it('trusts a package with a skill and an extension at install, but runs its code only under a native policy that selects it', async () => {
+    const s = setup();
+    const installed = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
+    expect(installed.trustedAt).not.toBeNull();
+    const skill = { resourceHash: installed.hash, entry: 'skills/writing/SKILL.md' };
+    const picked = s.service.preview({ id: 'writer', skills: [skill] }, 'default').snapshot!;
+    expect(picked.resources).toContainEqual(
+      expect.objectContaining({ hash: installed.hash, kind: 'skill', selectedByRole: true }),
+    );
+    expect(picked.resources.some((resource) => resource.kind === 'extension')).toBe(false);
+    expect((await s.service.runtimeResources({ harness: picked, inputs: [] })).extensions).toEqual(
+      [],
+    );
+    const strict = { ...s.profile(installed.hash), policy: 'strict' as const };
+    expect(() => s.service.saveProfile('strict-writer', 0, strict)).toThrow(/strict|native/i);
+    expect(existsSync(s.marker)).toBe(false);
+  });
+  it('install never restores a trust decision a person revoked, and approval re-verifies', async () => {
+    const s = setup();
+    const first = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
+    s.service.trust(first.hash, false);
+    const again = s.service.install((await s.service.discoverLocal(s.source)).reviewId);
+    expect(again.hash).toBe(first.hash);
+    expect(again.trustedAt).toBeNull();
+    const restarted = new HarnessService({
+      root: s.resourceRoot,
+      db: s.db,
+      clock: new FakeClock(),
+    });
+    expect(restarted.store.getResource(first.hash)?.trustedAt).toBeNull();
+    writeFileSync(
+      join(s.resourceRoot, 'resources', `sha256-${first.hash}`, 'skills/writing/SKILL.md'),
+      'changed',
+    );
+    expect(() => s.service.trust(first.hash, true)).toThrow(/integrity/);
+    expect(s.service.store.getResource(first.hash)?.trustedAt).toBeNull();
   });
   it('cancellation belongs to a review operation, not shared content', async () => {
     const s = setup();
@@ -253,7 +289,6 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const s = setup();
     const review = await s.service.discoverLocal(s.source);
     const first = s.service.install(review.reviewId);
-    s.service.trust(first.hash, true);
     s.service.saveProfile('writer', 0, s.profile(first.hash));
     const before = s.service.preview({ profileId: 'writer', revision: 1 }, 'default');
     const key = {
@@ -270,7 +305,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     const second = s.service.install(changed.reviewId);
     expect(s.service.install(changed.reviewId).hash).toBe(second.hash);
     expect(second.hash).not.toBe(first.hash);
-    expect(second.trustedAt).toBeNull();
+    expect(second.trustedAt).not.toBeNull();
     expect(s.service.readEntry(key).content).toContain('Keep sources.');
     expect(s.service.preview({ profileId: 'writer', revision: 1 }, 'default')).toEqual(before);
     expect(second.files.find((file) => file.path === 'extensions/echo.ts')).toEqual(
@@ -559,7 +594,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(JSON.stringify(review)).not.toContain('do-not-copy');
     expect(readFileSync(join(s.source, 'auth.json'), 'utf8')).toBe(secret);
     expect(existsSync(s.marker)).toBe(false);
-    expect(s.service.install(review.reviewId).trustedAt).toBeNull();
+    expect(s.service.install(review.reviewId).trustedAt).not.toBeNull();
     const db = openDatabase(':memory:');
     databases.push(db);
     const actual = new HarnessService({ root: `${s.resourceRoot}-pi`, db, clock: new FakeClock() });
@@ -600,7 +635,8 @@ describe('resource discovery, trust and resolution (H3)', () => {
     expect(s.service.store.listResources()).toEqual([]);
     expect(existsSync(s.marker)).toBe(false);
     const resource = s.service.install(review.reviewId);
-    expect(resource.trustedAt).toBeNull();
+    expect(resource.trustedAt).not.toBeNull();
+    s.service.trust(resource.hash, false);
     expect(() => s.service.saveProfile('writer', 0, s.profile(resource.hash))).toThrow(/trust/i);
     s.service.trust(resource.hash, true);
     const profile = s.service.saveProfile('writer', 0, s.profile(resource.hash));
@@ -700,7 +736,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
   });
 });
 
-it('bundled content is reviewed and pinned, only selected entries are exposed, and sibling paths stay scoped', async () => {
+it('bundled content is reviewed and pinned, only bound entries are exposed, and sibling paths stay scoped', async () => {
   const s = setup();
   const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
   for (const [id, count] of [
@@ -714,11 +750,18 @@ it('bundled content is reviewed and pinned, only selected entries are exposed, a
     expect(review.resource.extensions).toEqual([]);
     expect(review.resource.license).toBe('MIT');
     const resource = service.install(review.reviewId);
-    expect(resource.trustedAt).toBeNull();
-    service.trust(resource.hash, true);
+    expect(resource.trustedAt).not.toBeNull();
     if (id !== 'design') continue;
     const skills = resource.skills.filter((skill) =>
       ['design-workflow', 'review-components'].includes(skill.name),
+    );
+    // Every other usable library skill is bound too; an archived one is not, so it stays unreadable.
+    const audit = resource.skills.find((skill) => skill.name === 'audit-design')!;
+    service.archiveEntry(
+      { resourceHash: resource.hash, entry: audit.entry, kind: 'skill' },
+      0,
+      true,
+      'archive-audit-design',
     );
     service.saveProfile('design', 0, {
       name: 'Design review',
