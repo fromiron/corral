@@ -74,7 +74,7 @@ A plan is {"kind":"plan","plan":{...},"reason":"one short sentence"}. plan field
 - brief: the task as the team will receive it (at most 2000 characters).
 - criteria: 1 to 6 short checks the result must pass (each at most 200 characters).
 - seats: 1 to 8 entries {"id": a short word you choose for the seat, such as "build" or "verify"; it only links the seat to the flow, "agent": a catalog agent id, "name": a short job title (at most 40 characters), "duty": what this seat does in this team, in one or two sentences (at most 400 characters), "skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"}.
-- outrider: optional. "consultation" when workers should be able to ask a shared expert for advice when needed; "artifact_review" when they should be able to ask for feedback on a draft and then revise and submit it themselves; "required_review" only when the goal explicitly says passing a review is required before submission. An on-request adviser is shared advice, not a seat: do not add a reviewer or a loop for it alone. A request for advice only, even without a named deliverable, is a complete goal.
+- outrider: optional; omit it unless the request or a structured decision calls for it. "consultation" when workers should be able to ask a shared expert for advice when needed; "artifact_review" when they should be able to ask for feedback on a draft and then revise and submit it themselves; "required_review" only when the goal explicitly says passing a review is required before submission. An on-request adviser is shared advice, not a seat: do not add a reviewer or a loop for it alone. A request for advice only, even without a named deliverable, is a complete goal.
 
 flow: the steps in the order they run. Each step is exactly one of
   {"seat":"write"}: one seat works.
@@ -84,11 +84,15 @@ flow: the steps in the order they run. Each step is exactly one of
 
 How to compose:
 - Use the smallest team that does the job. One seat is a complete team for a small or single-skill task. A request for one writer to write a notice needs no question.
+- Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when an independent check could uncover a consequential defect and send the work back.
 - The last step holds the seat that makes the deliverable.
 - A checker of a change or a document is the judge of a loop around the work, never a plain seat after it. End with a reviewing agent only when the review itself is the deliverable.
+- Have reviewers inspect the evidence directly. Split independent concerns when useful, and combine the findings when the person wants one ranked report.
 - A last step that is a side-by-side group returns each seat's result, so add a seat after it only when one combined result is wanted.
 - A loop is bounded revision: at the round cap the last candidate goes on. "required_review" is the separate gate for a result that must pass before submission.
+- Promise that a result must pass only with "required_review": not in a duty, a criterion or the reason otherwise.
 - Each duty names what it reads from earlier seats.
+- Use material the person supplies when the team runs. Add a gatherer when evidence must be found in sources the team can reach.
 - A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.
 - A goal that asks to create, change, fix or delete code or files needs a seat whose agent has changesFiles true. A goal that only asks to explain, review, compare or decide does not.
 - Use parallel for independent attempts or independent views of the same input.

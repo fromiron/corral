@@ -251,14 +251,18 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'Copy "agent" from catalog.agents[].id. Flow entries reference your seat ids. Omit optional fields you do not need. Write the team name, brief, criteria, seat names, duties and reason in the language of the goal unless the person asks for another language. Keep code identifiers as written.',
     '"id": a short word you choose for the seat, such as "build" or "verify"; it only links the seat to the flow',
     '"skills": optional, at most 4 ids from catalog.skills, written exactly as their "id"',
+    '- outrider: optional; omit it unless the request or a structured decision calls for it. "consultation" when',
     '{"parallel":[...]}: 2 to 4 seats work side by side from what came before, or from the brief when it is the first step; the next step reads all of them.',
     'How to compose:',
+    'Give the producing seat the routine checks it can do itself (running the tests, rereading its draft). Add a seat when its result changes the next decision, such as finding the cause of a failure before fixing it. Use a judge when an independent check could uncover a consequential defect and send the work back.',
     'The last step holds the seat that makes the deliverable.',
-    'A checker of a change or a document is the judge of a loop around the work, never a plain seat after it.',
-    'End with a reviewing agent only when the review itself is the deliverable.',
+    'A checker of a change or a document is the judge of a loop around the work, never a plain seat after it. End with a reviewing agent only when the review itself is the deliverable.',
+    'Have reviewers inspect the evidence directly. Split independent concerns when useful, and combine the findings when the person wants one ranked report.',
     "A last step that is a side-by-side group returns each seat's result, so add a seat after it only when one combined result is wanted.",
     'A loop is bounded revision: at the round cap the last candidate goes on. "required_review" is the separate gate for a result that must pass before submission.',
+    'Promise that a result must pass only with "required_review": not in a duty, a criterion or the reason otherwise.',
     'Each duty names what it reads from earlier seats.',
+    'Use material the person supplies when the team runs. Add a gatherer when evidence must be found in sources the team can reach.',
     'A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.',
     'Examples:',
     // The full example sits the first agent that returns a draft under that agent's own name,
@@ -285,8 +289,12 @@ it('builds a new team’s prompt from the request: deliverable first, then field
   // From this request: who can judge a loop, and which questions are still open.
   expect(prompt).toContain('Agents that can judge a loop: "a2", "a4".');
   expect(prompt).toContain('Questions you may still ask: "material", "review_policy".');
+  // The new guidance names no subject of a measured goal.
+  for (const subject of [/dark mode/i, /signup/i, /middleware/i, /onboarding/i, /cache/i])
+    expect(prompt).not.toMatch(subject);
   // No edit-mode example, and none of the old notation.
   for (const absent of [
+    'outrider: optional. ',
     'EDIT MODE',
     'add_shared_advice',
     'require_review',
