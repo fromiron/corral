@@ -57,7 +57,7 @@ Corral은 바로 쓸 수 있는 스킬과 에이전트를 함께 싣는다. 템�
   - `SKILL.md`의 frontmatter는 `name`, `description`과 선택 필드 `license`, `compatibility`, `metadata`만 쓴다. `name`은 소문자·숫자·하이픈 1–64자이고 하이픈으로 시작하거나 끝나지 않으며 하이픈이 이어지지 않고 폴더 이름과 같다. `description`은 1–1,024자이고 무엇을 하는지와 언제 쓰는지를 적는다.
   - 본문은 500줄 이하다. 긴 참고 자료는 `references/`에 두고 스킬 폴더 기준 상대 경로로 가리킨다. 참조는 한 단계다.
   - 다른 스킬은 이름으로 가리킨다. `../`로 시작하는 경로를 쓰지 않는다.
-  - `disable-model-invocation`을 쓰지 않는다. 스크립트·실행 파일·확장을 넣지 않는다.
+  - 기본 제공 스킬은 모두 에이전트가 스스로 골라 쓰는 스킬이므로 `disable-model-invocation`을 두지 않는다. 스크립트·실행 파일·확장을 넣지 않는다.
   - Corral 밖에서 뜻이 통하지 않는 스킬만 이름에 `corral-`을 붙이고 `compatibility`에 Corral을 적는다.
 - **묶음**은 Pi 패키지다. `package.json`의 `pi.skills`가 스킬 폴더를 가리키고 `pi.extensions`는 없다. 묶음마다 `LICENSE`와 `NOTICE.md`가 있다.
 - **에이전트**는 `agents/<name>.md`다. Agent Skills 명세는 에이전트 형식을 정하지 않으므로 여러 도구가 함께 읽는 Markdown 에이전트 형식을 쓴다.
