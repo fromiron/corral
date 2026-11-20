@@ -6837,15 +6837,23 @@ export class Coordinator {
     }
   }
 
-  /** Bind a final version to the strict decision that passed that exact reviewed artifact. */
+  /**
+   * Bind a final version to the strict decision that passed that exact reviewed artifact. The
+   * candidates are read in the rounds `visible` accepts for each source (the Output's round).
+   */
   private checkRequiredOutputReviews(
     run: LiveRun,
     gates: OutputNode['requiredReviews'],
+    visible: (source: string) => ((round: string | null) => boolean) | undefined,
     awaitingSubmission?: ReadonlyMap<string, string[]>,
   ) {
     const candidates = new Map<string, string[]>();
     for (const gate of gates ?? []) {
-      const candidateIds = this.submittedOutputOf(run, gate.sourceNodeId);
+      const candidateIds = this.submittedOutputOf(
+        run,
+        gate.sourceNodeId,
+        visible(gate.sourceNodeId),
+      );
       const expected = awaitingSubmission?.get(gate.sourceNodeId);
       if (
         expected &&
@@ -6887,6 +6895,14 @@ export class Coordinator {
   }
 
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
+    // An Output inside a Loop reads the round that reached it, as a task_output there would,
+    // also when it checks again after a person's approval; a top-level one reads every round
+    // (technical-design §9.2).
+    const round = this.openRoundOf(run, outputNodeId);
+    const visible = (source: string) =>
+      round && this.loopOf(run, source)
+        ? (at: string | null) => this.sameRound(run, at, round)
+        : undefined;
     await this.boundary(run);
     // The run does not end while a review is queued or running: advisors finish first.
     if (!(await this.advisorsFinished(run))) return;
@@ -6894,10 +6910,16 @@ export class Coordinator {
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
-      b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
+      b.kind === 'task_output'
+        ? this.submittedOutputOf(run, b.sourceNodeId ?? '', visible(b.sourceNodeId ?? ''))
+        : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
-    const requiredCandidates = this.checkRequiredOutputReviews(run, output.requiredReviews);
+    const requiredCandidates = this.checkRequiredOutputReviews(
+      run,
+      output.requiredReviews,
+      visible,
+    );
     let approvalId: string | null = null;
     if (output.requireApproval) {
       // Final approval binds the exact draft, its latest review and the criteria.
@@ -6946,7 +6968,7 @@ export class Coordinator {
       this.failRun(run, `termination_unconfirmed: ${nodeId}`);
       return;
     }
-    this.checkRequiredOutputReviews(run, output.requiredReviews, requiredCandidates);
+    this.checkRequiredOutputReviews(run, output.requiredReviews, visible, requiredCandidates);
     // The output and the run's success are one fact: readers never see one without the other.
     // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
