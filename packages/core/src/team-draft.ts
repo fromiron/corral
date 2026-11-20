@@ -108,8 +108,12 @@ const SUGGESTED_NAME_LENGTH = 48;
 const REVIEW_CODE = /\b(review\w*|audit\w*|inspect\w*)\b|검토|리뷰|점검/i;
 /** A part of a codebase, by the names its pieces go by. */
 const CODE_EN = String.raw`code|codebase|prs?|pull[ -]?requests?|diffs?|branch\w*|commits?|modules?|middleware|functions?|endpoints?|implementation|repos?|repositor(?:y|ies)|librar\w*|components?|handlers?|loaders?|parsers?|schedulers?|plugins?|schemas?|limiters?|resolvers?|serializers?|validators?|routers?|interceptors?|reducers?|controllers?|renderers?|webhooks?|cron|(?:build|deploy\w*|migration|shell|bash|python|node|install\w*|setup|seed|ci) scripts?`;
-const CODE = new RegExp(
-  String.raw`\b(?:${CODE_EN})\b|코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트|로직|로더|파서|스케줄러|플러그인|메[서소]드|핸들러|쿼리|스키마|리미터|라우터|컨트롤러|리졸버|웹훅`,
+const CODE_KO =
+  '코드|브랜치|커밋|모듈|함수|미들웨어|구현|엔드포인트|라이브러리|컴포넌트|로직|로더|파서|스케줄러|플러그인|메[서소]드|핸들러|쿼리|스키마|리미터|라우터|컨트롤러|리졸버|웹훅';
+const CODE = new RegExp(String.raw`\b(?:${CODE_EN})\b|${CODE_KO}`, 'i');
+/** A part of this codebase in particular: "the auth module", "our parser"; Korean has no article. */
+const NAMED_CODE = new RegExp(
+  String.raw`\b(?:the|this|that|these|those|our|its|their|my|your)\s+(?:[\w'’.-]+\s+){0,2}?(?:${CODE_EN})\b|${CODE_KO}`,
   'i',
 );
 const NO_CHANGE =
@@ -156,9 +160,13 @@ const CHANGE_MADE =
 const BEHAVIOR_KEPT =
   /\b(without chang\w* (its |the |any )?(behaviou?r|functionality|what it does|output)|(behaviou?r|functionality) (stays|unchanged|the same)|keep(ing)? (the |its )?(behaviou?r|functionality)|(must|should|may|can|will)(n['’]t| not|not) (change|alter|break|affect) (its |the |any )?(behaviou?r|functionality|output|results?|what it does)|(no|zero) (behaviou?r(al)?|functional) changes?|behaviou?r[- ]preserving|keep(ing)? (all |every |the )?(\w+ )?tests? (green|passing)|(all|every|the) tests? (must |should |have to |need to )?(still )?pass)\b|(동작|기능|결과|출력|행동)(은|는|이|가|을|를)?\s*(지금과\s*|기존과\s*|전과\s*)?(그대로|유지|바꾸지|같게|같아야|똑같|동일|(바뀌|달라지|변하)(면\s*안|지\s*않))|테스트(는|가|를)?\s*(전부|모두|다)?\s*(통과|깨지면\s*안|깨지지\s*않)/i;
 const REFACTOR = /\b(refactor\w*)\b|리팩터|리팩토링/i;
-/** Reshaping code as such, including splitting it into smaller pieces. */
 const RESTRUCTURE =
-  /\b(restructur\w*|untangl\w*|consolidat\w*|decoupl\w*|clean(ing)? up|(break|split)\w*( [\w'’-]+){0,4}? (up )?into (smaller|separate|several|multiple|individual)\b)\b|구조를?\s*(바꿔|바꾸|개선|정리)|구조\s*개선|(작은|여러|잘게)[^.?!]{0,16}?(으로|로)\s*(나눠|나누|쪼개|분리)|쪼개/i;
+  /\b(restructur\w*|untangl\w*|consolidat\w*|decoupl\w*|clean(ing)? up)\b|구조를?\s*(바꿔|바꾸|개선|정리)|구조\s*개선/i;
+/** Splitting code into smaller pieces; splitting a PR or a commit reshapes the change instead. */
+const SPLIT =
+  /\b(break|split)\w*( [\w'’-]+){0,4}? (up )?into (smaller|separate|several|multiple|individual)\b|(작은|여러|잘게)[^.?!]{0,16}?(으로|로)\s*(나눠|나누|쪼개|분리)|쪼개/i;
+const CHANGE_UNIT =
+  /\b(prs?|pull[ -]?requests?|diffs?|commits?|patch(es)?|changesets?)\b|커밋|풀\s*리퀘|패치/i;
 const RESHAPE =
   /\b(move|moving|merge|split|extract\w*|combin\w*|one place|single place|into (one|a single|a shared) [\w-]+|tidy\w*|de-?dup\w*|de-?duplicat\w*)\b|정리|모아|모으|합쳐|합치|나눠|나누|분리|옮겨|옮기|한\s*곳/i;
 /** Saying that it is slow or runs out of room: a complaint, not the topic of speed. */
@@ -167,9 +175,13 @@ const SLOW =
 /** Speed as a topic: the names of a measure of time. */
 const SPEED_EN = String.raw`performance|latency|throughput|p\d{2,3}|percentiles?|load(?:ing)? times?|response times?|startup times?|speed`;
 const SPEED_KO = String.raw`성능|속도|지연|로딩|응답\s*시간|처리\s*시간`;
-/** A resource the software uses, by its size or its use; 램 not inside a longer word. */
-const RESOURCE_EN = String.raw`memory|ram|heap|footprint|bundles?|binary size|(?:file|image|payload|build|docker image|app|package|bundle) sizes?|cpu (?:use|usage|load|time|spikes?)|cpu at \d+|disk (?:use|usage|space)|storage (?:use|usage)|(?:docker|container) images?|\d[\d.,]* ?(?:kb|mb|gb|tb|kib|mib|gib)`;
-const RESOURCE_KO = String.raw`메모리|(?<![가-힣])램|(?<![가-힣])힙(?!합)|용량|번들|디스크|저장\s*공간|CPU\s*사용`;
+/**
+ * A resource the software uses, by its size or its use; 램 not inside a longer word, and a size
+ * that is a limit's value is no resource.
+ */
+const RESOURCE_EN = String.raw`memory|ram|heap|footprint|bundles?|binary size|(?:file|image|payload|build|docker image|app|package|bundle) sizes?|cpu (?:use|usage|load|time|spikes?)|cpu at \d+|disk (?:use|usage|space)|storage (?:use|usage)|(?:docker|container) images?`;
+const RESOURCE_KO = String.raw`메모리|(?<![가-힣])램|(?<![가-힣])힙(?!합)|용량(?!\s*(?:제한|한도|상한|초과))|번들|디스크|저장\s*공간|CPU\s*사용`;
+const RESOURCE = new RegExp(String.raw`\b(?:${RESOURCE_EN})\b|${RESOURCE_KO}`, 'i');
 const MEASURED = new RegExp(
   String.raw`\b(?:${SPEED_EN}|${RESOURCE_EN})\b|${SPEED_KO}|${RESOURCE_KO}`,
   'i',
@@ -204,18 +216,19 @@ const HOW_IT_WORKS = new RegExp(
     String.raw`|어떻게\s*(?:동작|작동|처리|구현|돌아가|실행|계산|결정|저장|호출|연결|구성|전달|흘러)|어떤\s*(?:순서|방식|과정|원리|경로)로|(?:동작|작동)\s*(?:방식|원리|과정|순서)|흐름을?\s*(?:파악|추적|따라)`,
   'i',
 );
-/** Any how, which counts beside tracing, history or a write-up; "how to" asks for usage. */
-const HOW = /\bhow\b(?! to\b)|어떻게/i;
-/** Why the code is so; "why it is needed" asks about a practice, not this code. */
+/** Any how, which counts beside tracing or a write-up; "how to" and "how we" ask about people. */
+const HOW =
+  /\bhow\b(?! to\b| (we|i|you|they|people|teams?|users?|developers?|engineers?|others?)\b)|어떻게/i;
+/** Why the code is so; "why it is needed" asks about a practice, "why we" about people. */
 const WHY =
-  /\bwhy (does|do|did|is|are|was|were) (it|they|this|that|the|our|its|we)\b|\bwhy (it|they|we|the|this|that) \w+|왜(?!곡)[^.?!]{0,40}?(는지|인지|은지|던지)/i;
+  /\bwhy (does|do|did|is|are|was|were) (it|they|this|that|the|our|its)\b|\bwhy (it|they|the|this|that) \w+|왜(?!곡)[^.?!]{0,40}?(는지|인지|은지|던지)/i;
 const VALUE =
   /\b(need|needs|necessary|important|matters?|should|worth|useful|good|bad|better)\b|필요한지|필요할까|중요한지|중요할까|좋은지|좋을지|나쁜지|(해|써)야\s*(하는지|할까|하나)/i;
 /** Following the code's path: tracing or investigating it. */
 const TRACE =
   /\b(trac(e|es|ed|ing)|investigat\w*|dig (into|through)|look into)\b|조사|추적|파악|따라가/i;
 const FLOW =
-  /\b(flows?|paths?|order|sequence|call (chain|graph|stack)|lifecycle)\b|흐름|경로|순서|과정/i;
+  /\b(flows?|paths?|in (what|which|that) order|sequence|call (chain|graph|stack)|lifecycle)\b|흐름|경로|순서|과정/i;
 const EXPLAIN = /\b(explain\w*|describ\w*)\b|설명/i;
 /** Writing up what was found, besides naming a document. */
 const WRITE_UP =
@@ -228,6 +241,12 @@ const ONE_PIECE =
   /\b(this|that|the following) (function|method|line|regexp?|regular expression|expression|variable|snippet|statement|condition|one-liner|query|loop)\b|(이|그|저|다음)\s+(함수|메[서소]드|줄|한\s*줄|정규식|정규\s*표현식|변수|조건문|쿼리|반복문)/i;
 /** Where code's past is kept. */
 const HISTORY = /\b(commits?|history|blame|git log|changelog)\b|커밋|기록|이력|히스토리/i;
+/** Reading that past as a source, not naming a commit as a concept. */
+const HISTORY_READ =
+  /\b(commit (history|log)s?|git (log|history|blame)|blame|changelog|history of)\b|커밋\s*(기록|로그|이력|내역)|(변경|수정)\s*(이력|기록|내역)|이력|히스토리|(커밋|기록)(을|를)?\s*(보고|살펴|찾아|뒤져|따라)/i;
+/** A written deliverable besides a document: making one is not a change to the code. */
+const DELIVERABLE =
+  /\b(rationale|comparisons?|comparison (table|matrix)|pros and cons|recommendations?|summary)\b|비교|근거|요약|장단점|도표|(?<![가-힣])표(?:로|를|도|가)?(?![가-힣])/i;
 /**
  * A change asked of the code: a verb said as a request ("add", "and fix", "추가해 줘"), not one
  * that describes a change ("this PR adds") or asks whether to make it ("should we add").
@@ -235,18 +254,18 @@ const HISTORY = /\b(commits?|history|blame|git log|changelog)\b|커밋|기록|�
 const CHANGE_ASKED =
   /(?:^|[.;:!?,\n]\s*|\b(?:and|then|please|also|just|now|first|you|let['’]?s|go ahead and|(?:you|me|us) to|need to|want to)\s+)(?:add|implement|create|delete|remove|rename|rewrite|modify|change|update|edit|replace|fix|patch|write (?:(?:a|an|the|some|more|new|unit|integration|regression|e2e|end-to-end) )*(?:tests?|code|functions?|docstrings?|comments?|scripts?))\b|(?:추가|구현|삭제|제거|수정|변경)(?:해|하고|해서|하세요|하라|해라|하자)|(?:고쳐|바꿔|지워|없애|넣어|만들어)(?!졌|진|져)|달아(?!나)|(?:테스트|코드|함수|주석|스크립트)(?:를|을)?\s*(?:작성|써|짜)/gi;
 
-/** A change asked of the code; making or editing a document is not one. */
+/** A change asked of the code; making or editing a document or another write-up is not one. */
 function asksForChange(brief: string): boolean {
   for (const match of brief.matchAll(CHANGE_ASKED)) {
     const end = match.index + match[0].length;
     // English names its object after the verb, Korean before it.
-    const after =
-      brief
-        .slice(end)
-        .split(/[.;!?\n]/)[0]
-        ?.slice(0, 40) ?? '';
-    const before = brief.slice(Math.max(0, match.index - 16), match.index);
-    if (!DOCUMENT.test(/[가-힣]/.test(match[0]) ? before : after)) return true;
+    const object = /[가-힣]/.test(match[0])
+      ? brief.slice(Math.max(0, match.index - 16), match.index)
+      : (brief
+          .slice(end)
+          .split(/[.;!?\n]/)[0]
+          ?.slice(0, 40) ?? '');
+    if (!DOCUMENT.test(object) && !DELIVERABLE.test(object)) return true;
   }
   return false;
 }
@@ -294,19 +313,23 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   if (isSecurityReview(brief)) return null;
   if (!asksChange && DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
     return 'tech_decision';
-  // Tracing how a part of the code works or why it is so: a how-it-works question about a definite
-  // part, or tracing, history or a write-up with a how or a why. A short answer about one piece,
-  // a concept or a why alone is one agent's answer.
+  // Tracing how a part of the code works or how it came to be: a how-it-works question about a
+  // definite part; tracing a named part by its how, why or path; its history read for a how or a
+  // why; or a write-up of why it is so or how a named part works. A short answer about one piece,
+  // a concept, or a why alone is one agent's answer.
   const why = WHY.test(brief) && !VALUE.test(brief);
+  const how = HOW.test(brief);
+  const named = NAMED_CODE.test(brief);
   const investigates =
     code &&
     !asksChange &&
     !BRIEF_ANSWER.test(brief) &&
     !(ONE_PIECE.test(brief) && !HISTORY.test(brief)) &&
     (HOW_IT_WORKS.test(brief) ||
-      (TRACE.test(brief) && (HOW.test(brief) || why || FLOW.test(brief))) ||
-      (HISTORY.test(brief) && (HOW.test(brief) || why || EXPLAIN.test(brief))) ||
-      ((document || WRITE_UP.test(brief)) && (HOW.test(brief) || why)));
+      (TRACE.test(brief) && named && (how || why || FLOW.test(brief))) ||
+      (HISTORY.test(brief) && why) ||
+      (HISTORY_READ.test(brief) && (how || EXPLAIN.test(brief))) ||
+      ((document || WRITE_UP.test(brief)) && (why || (how && named))));
   // A document written about the code still starts from reading the code.
   if (document && (WRITE.test(brief) || (!code && !software && FIX.test(brief))))
     return investigates ? 'code_investigation' : null;
@@ -328,7 +351,9 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     (SLOWED.test(brief) && !CAUSE.test(brief));
   // A measure named without a complaint needs a wish for less of it: a fix or an edit is not one.
   const wantsLess =
-    MEASURE_WISHED.test(brief) || (measured && (FASTER.test(brief) || LIGHTER.test(brief)));
+    MEASURE_WISHED.test(brief) ||
+    (measured && FASTER.test(brief)) ||
+    (RESOURCE.test(brief) && LIGHTER.test(brief));
   // A regression in speed is a slowdown, not a failure.
   const failing = BUG.test(slow ? brief.replace(/\bregress\w*/gi, ' ') : brief);
   // Fixing changes code; finding a cause without fixing it is research.
@@ -337,7 +362,9 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   if (REFACTOR.test(brief) && !keepsCode && aboutCode) return 'refactor';
   if (((slow && wantsRelief) || wantsLess) && !keepsCode && aboutCode) return 'performance';
   if (
-    ((RESTRUCTURE.test(brief) && code) || (BEHAVIOR_KEPT.test(brief) && RESHAPE.test(brief))) &&
+    ((RESTRUCTURE.test(brief) && code) ||
+      (SPLIT.test(brief) && code && !CHANGE_UNIT.test(brief)) ||
+      (BEHAVIOR_KEPT.test(brief) && RESHAPE.test(brief))) &&
     !keepsCode &&
     aboutCode
   )

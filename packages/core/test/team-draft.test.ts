@@ -590,6 +590,10 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     ['Red-team the latest update to the billing module', 'adversarial_review'],
     ['새로 구현한 정렬 함수를 깨뜨려 봐', 'adversarial_review'],
     ['Should we add Redis or a CDN in front of the API? Recommend one', 'tech_decision'],
+    // Making a written deliverable is not a change to the code.
+    ['Should we choose Kafka or SQS? Recommend one and add a short rationale', 'tech_decision'],
+    ['Decide between Redux and Zustand. Create a comparison table.', 'tech_decision'],
+    ['Redux와 Zustand 중 무엇을 쓸지 결정해 줘. 비교 표도 만들어 줘', 'tech_decision'],
   ] as const)('a change asked of the code: %s is %s', (goal, pattern) => {
     expect(shape(goal)).toBe(pattern);
   });
@@ -603,6 +607,9 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
       'Explain how the session cache evicts entries, then rewrite it to use LRU',
       'code_investigation',
     ],
+    // Splitting a PR or a commit reshapes the change, not the code.
+    ['Split this PR into smaller PRs', 'refactor'],
+    ['이 커밋을 여러 개로 쪼개 줘', 'refactor'],
   ] as const)('a change asked of the code: %s is not %s', (goal, pattern) => {
     expect(shape(goal)).not.toBe(pattern);
   });
@@ -619,6 +626,10 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     '배송 지연 안내 문구를 수정해 줘',
     'Make the page responsive',
     'Improve the error messages on the performance dashboard',
+    // A size that is a limit's value, or a speed word naming a UI part, is not a resource.
+    'The 10 MB upload limit is too large; lower it to 5 MB',
+    '업로드 용량 제한이 너무 커. 5MB로 낮춰 줘',
+    '로딩 스피너를 작게 해 줘',
   ])('names no slowdown: %s is not performance', (goal) => {
     expect(shape(goal)).not.toBe('performance');
   });
@@ -635,6 +646,7 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     ['The server runs out of memory under load; fix it', 'performance'],
     ['CPU usage spikes to 100% on every deploy; investigate and fix it', 'performance'],
     ['메모리 누수를 고쳐 줘', 'bug_fix'],
+    ['앱 용량이 너무 커졌어. 줄여 줘', 'performance'],
   ] as const)('a speed or size said outright: %s is %s', (goal, pattern) => {
     expect(shape(goal)).toBe(pattern);
   });
@@ -648,11 +660,24 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     ['순수 함수가 뭔지 설명해 줘', 'single'],
     ['코드 리뷰가 왜 필요한지 설명해 줘', 'single'],
     ['이 코드가 왜 안 되는지 모르겠어. 봐 줘', 'single'],
+    // A code word that is also history's, research about other projects, or a story about the
+    // team names no part of this code to trace.
+    ['Explain what a commit is', 'single'],
+    ['커밋과 브랜치의 차이를 설명해 줘', 'single'],
+    [
+      'Investigate how other open-source projects handle plugin sandboxing and write a summary with sources',
+      'research_write_review',
+    ],
+    ['Write a blog post about how we migrated the repo to pnpm', 'write_review'],
+    ['Investigate the flaky test in the order module', 'research_write_review'],
+    ['How do I write a commit message?', 'write_review'],
     // Tracing a part of the code, or writing down why it is so, is.
     ['Trace how a request flows through the API gateway middleware', 'code_investigation'],
     ['Document why the config loader reads files in that order', 'code_investigation'],
     ['Explain how session expiry is handled in the auth module', 'code_investigation'],
     ['Explain how the auth middleware adds the session cookie', 'code_investigation'],
+    ['Write up how session tokens get refreshed by our auth middleware', 'code_investigation'],
+    ['Explain the git history of the auth module', 'code_investigation'],
   ] as const)('a question near the code: %s is %s', (goal, pattern) => {
     expect(shape(goal)).toBe(pattern);
   });
