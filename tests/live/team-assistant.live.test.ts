@@ -299,7 +299,10 @@ interface GoalRecord {
   id: string;
   kind: TeamAssistantReply['kind'] | 'invalid' | 'error';
   questionId?: string;
-  /** The refusal's reason code, `''` when it names none, or the error code of another failure. */
+  /**
+   * The refusal's whole reason (`cut_off`, `shape:plan.criteria.2:too_long`, …), `''` when it
+   * names none, or the error code of another failure.
+   */
   reason?: string;
   seats: number;
   flow: string[];
@@ -320,6 +323,8 @@ interface GoalRecord {
   attempts: number;
   /** The composed team as the editor received it, with each seat's agent named, for reading. */
   composition?: TeamComposition;
+  /** The plan's reason sentence, where a plan can promise what its team does not enforce. */
+  planReason?: string;
 }
 
 const HANGUL = /[가-힣]/;
@@ -382,6 +387,8 @@ function summaryOf(profileId: string, goals: Goal[], records: GoalRecord[]) {
     goodPlanIds: good.map((r) => r.id),
     questionsOnNow: now.filter((r) => r.kind === 'question').length,
     questionsOnEither: either.filter((r) => r.kind === 'question').length,
+    /** Goals the model never answered: a timeout, a sign-in or a refused request. */
+    noAnswers: records.filter((r) => r.kind === 'error').length,
     refusals,
   };
 }
@@ -396,6 +403,7 @@ it.skipIf(!live || !goalsPath)(
       for (const profileId of new Set(profiles)) {
         const records: GoalRecord[] = [];
         await withLiveProfile(profileId, 100_000 * goals.length, async ({ api }) => {
+          let unanswered = 0;
           for (const entry of goals) {
             const operationId = `assistant_goal_${randomUUID()}`;
             const request: TeamAssistantRequest = {
@@ -461,6 +469,7 @@ it.skipIf(!live || !goalsPath)(
                     },
                   }
                 : {}),
+              ...(reply?.kind === 'plan' ? { planReason: reply.reason } : {}),
               compiles: plan ? compiles(plan) : false,
               languageMatches: plan ? languageMatches(entry, plan) : null,
               ms,
@@ -476,9 +485,10 @@ it.skipIf(!live || !goalsPath)(
             };
             records.push(record);
             console.log(JSON.stringify(record));
-            // No answer at all (a timeout, a sign-in or a refused model): stop this model rather
-            // than spend the rest of the set on the same failure.
-            if (record.kind === 'error') break;
+            // No answer at all (a timeout, a sign-in or a refused model) twice in a row: stop this
+            // model rather than spend the rest of the set on the same failure. One alone may pass.
+            unanswered = record.kind === 'error' ? unanswered + 1 : 0;
+            if (unanswered >= 2) break;
           }
         });
         const summary = summaryOf(profileId, goals, records);
