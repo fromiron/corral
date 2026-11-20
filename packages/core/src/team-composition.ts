@@ -404,9 +404,14 @@ export function draftFromComposition(
           { parentId: loop },
         ),
       );
-      const judgeId = seatNode(judge, [...before, ...work.map(read), criteria], {
-        parentId: loop,
-      });
+      // The judge reviews the round's last work: it comes first and is named `draft`, the input a
+      // reviewer takes as its target, whatever its output; an earlier draft becomes `draft_2`.
+      const reviewed = work.at(-1) as string;
+      const judgeId = seatNode(
+        judge,
+        [{ ...read(reviewed), name: 'draft' }, ...before, ...work.slice(0, -1).map(read), criteria],
+        { parentId: loop },
+      );
       nodes.push({
         id: decision,
         type: 'decision',

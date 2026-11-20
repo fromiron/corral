@@ -675,13 +675,7 @@ export class ModelRegistry implements ModelResolver {
     request: TeamAssistantRequest,
     signal?: AbortSignal,
   ): Promise<TeamModelResult<TeamAssistantResponse>> {
-    const { operationId, ...input } = request;
-    const answer = await this.requestTeamText(
-      request.mode === 'create' ? createPrompt(request) : TEAM_ASSISTANT_EDIT_PROMPT,
-      JSON.stringify(input),
-      { id: operationId, signal },
-      { maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS, timeoutMs: TEAM_ASSISTANT_TIMEOUT_MS },
-    );
+    const answer = await this.requestTeamText(request, signal);
     if (!answer.ok) return answer;
     // The reason names only a code and a place: none of the answer's or the conversation's text.
     // A whole reply is used however the answer stopped; otherwise an answer stopped at the
@@ -695,21 +689,21 @@ export class ModelRegistry implements ModelResolver {
     return { ok: false, code: 'MODEL_UNAVAILABLE', message: unusableTeamProposal(reason) };
   }
 
+  /** The model's text for one assistant request, with how it stopped and the model's name. */
   private async requestTeamText(
-    systemPrompt: string,
-    input: string,
-    operation: { id: string; signal?: AbortSignal },
-    limits: { maxTokens: number; timeoutMs: number },
+    request: TeamAssistantRequest,
+    signal?: AbortSignal,
   ): Promise<
     TeamModelResult<{
       text: string;
       /** How the completed answer stopped: `length` when it reached the output limit. */
       stopReason: AssistantMessage['stopReason'];
-      provider: string;
-      modelId: string;
       modelName: string;
     }>
   > {
+    const { operationId, ...input } = request;
+    const systemPrompt =
+      request.mode === 'create' ? createPrompt(request) : TEAM_ASSISTANT_EDIT_PROMPT;
     // The first model of the list that can run, named profiles first: the one the team editor
     // names beside its input (apps/studio/src/workbench/modelReadiness.ts reads the same rule).
     const profile = this.profilesView().find(
@@ -737,20 +731,19 @@ export class ModelRegistry implements ModelResolver {
       }) as const;
     let text: string;
     let stopReason: AssistantMessage['stopReason'];
-    const operationId = operation.id;
     const sized = resolution.snapshot.contextPolicy
       ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
       : model;
     // The lowest level the model offers: off where it can be switched off; none if it has none.
     const lowest = reasoningCapabilities(sized).levels[0];
-    const request = reasoningRequest(
+    const sent = reasoningRequest(
       sized,
       {
-        maxTokens: limits.maxTokens,
+        maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
         cacheRetention: resolution.snapshot.cachePolicy?.retention,
-        signal: operation.signal
-          ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
-          : AbortSignal.timeout(limits.timeoutMs),
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(TEAM_ASSISTANT_TIMEOUT_MS)])
+          : AbortSignal.timeout(TEAM_ASSISTANT_TIMEOUT_MS),
       },
       fixedReasoning(
         lowest ? { mode: 'fixed', level: lowest } : { mode: 'provider_default' },
@@ -759,12 +752,12 @@ export class ModelRegistry implements ModelResolver {
     );
     try {
       const answer = await this.managedStream(
-        request.model,
+        sent.model,
         {
           systemPrompt,
-          messages: [{ role: 'user', content: input, timestamp: this.now() }],
+          messages: [{ role: 'user', content: JSON.stringify(input), timestamp: this.now() }],
         },
-        request.options,
+        sent.options,
         {
           requestId: operationId,
           owner: { kind: 'draft', id: operationId },
@@ -795,7 +788,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       void this.refreshStatus(provider);
     }
-    return { ok: true, text, stopReason, provider, modelId, modelName: model.name };
+    return { ok: true, text, stopReason, modelName: model.name };
   }
 
   /**

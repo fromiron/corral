@@ -148,8 +148,12 @@ function lenientCreateAnswer(value: unknown, catalog: TeamCatalog): unknown {
       return { ...value, choices: [...CHOICES[id]] };
     return value;
   }
-  if (value.kind !== 'plan' || !isRecord(value.plan)) return value;
-  const placed = inPlace(value, value.plan);
+  if (value.kind !== 'plan') return value;
+  // A flat answer writes no plan key at all and its fields beside where plan would be.
+  const flat =
+    !Object.hasOwn(value, 'plan') && PLAN_FIELDS.some((key) => Object.hasOwn(value, key));
+  if (!flat && !isRecord(value.plan)) return value;
+  const placed = inPlace(value, isRecord(value.plan) ? value.plan : {});
   const plan = withoutNull(placed.plan, 'outrider');
   const seats = Array.isArray(plan.seats)
     ? plan.seats.map((seat) =>
@@ -329,15 +333,6 @@ function checkAssistantReply(reply: Reply, request: TeamAssistantRequest): TeamA
   // Edits to an existing team still read its review and observation intent from the words.
   const intent = adviceIntentFromGoal(users.map((message) => message.content).join('\n'));
   return conflict(reconcileEdits(reply, request, intent, korean));
-}
-
-/** Never extract partial edits or execute strings from untrusted model text. */
-export function assistantReplyFromAnswer(
-  text: string,
-  request: TeamAssistantRequest,
-): Reply | null {
-  const read = readAssistantAnswer(text, request);
-  return 'reply' in read ? read.reply : null;
 }
 
 /** One complete JSON value of an answer, cut out of its envelope, or undefined. */
