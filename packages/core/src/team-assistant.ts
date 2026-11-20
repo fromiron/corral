@@ -332,12 +332,12 @@ export function readAssistantAnswer(
   } catch {
     return { problem: 'not_json' };
   }
-  const parsed = Reply.safeParse(
-    request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value,
-  );
+  // The place of a shape problem is read in the value that was parsed.
+  const candidate = request.mode === 'create' ? lenientCreateAnswer(value, request.catalog) : value;
+  const parsed = Reply.safeParse(candidate);
   if (parsed.success) return checkAssistantReply(parsed.data, request);
   const [first] = parsed.error.issues;
-  return { problem: first ? shapeProblem(first, value) : 'shape:$:invalid' };
+  return { problem: first ? shapeProblem(first, candidate) : 'shape:$:invalid' };
 }
 
 /** The reply's own field names: a path element outside them is never repeated. */
