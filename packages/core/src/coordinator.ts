@@ -2094,6 +2094,14 @@ export class Coordinator {
     }
     for (const role of planned.definition.roles) {
       if (!needsHarness(role)) continue;
+      // With no resolver (the browser demo), a mock run treats a skills-only role as having none.
+      if (
+        !this.harnesses &&
+        request.mode === 'mock' &&
+        role.harness === undefined &&
+        !role.mcpTools?.length
+      )
+        continue;
       const binding = role.harness ?? ROLE_SKILLS_MINIMAL_BINDING;
       try {
         const snapshot = EffectiveHarnessSnapshot.parse(
