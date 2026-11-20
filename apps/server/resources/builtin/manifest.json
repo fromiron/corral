@@ -1,12 +1,12 @@
 {
   "core": {
-    "hash": "dc5cf01aa0f95df472ea0a7820e79f45c888cf8b4070abdf87939db34159fa0a",
+    "hash": "9ccc048466afb914dcfac0468ea871784028918d67cb868b546982e53d1dc4f9",
     "files": 9,
     "skills": 6,
     "source": "Corral 1.1.0"
   },
   "coding": {
-    "hash": "27beb7aeeecda5c7874fa2980518f5957bf9d893ca583817eb9427b26aefae65",
+    "hash": "a0fc802249cf17397119ade47035dfd7a62c9dd6882586f86be9f51587d5fe4c",
     "files": 37,
     "skills": 16,
     "source": "Corral 2.0.0"
