@@ -7,11 +7,7 @@ import {
   unusableTeamProposalReason,
 } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
-import {
-  assistantReplyFromAnswer,
-  createQuestionsLeft,
-  readAssistantAnswer,
-} from '../src/index.ts';
+import { createQuestionsLeft, readAssistantAnswer } from '../src/index.ts';
 
 // The catalog a new team request carries: what the editor can pick by hand.
 const catalog: TeamCatalog = {
@@ -112,8 +108,13 @@ const edits = (...items: unknown[]) => ({
 });
 const gate = { kind: 'require_review', ...target };
 const question = { kind: 'question', id: 'material', choices: ['person', 'team'] };
+/** The checked reply of an answer, or null when it cannot be used. */
+const replyOf = (text: string, request: TeamAssistantRequest) => {
+  const reading = readAssistantAnswer(text, request);
+  return 'reply' in reading ? reading.reply : null;
+};
 const read = (value: unknown, request: TeamAssistantRequest) =>
-  assistantReplyFromAnswer(JSON.stringify(value), request);
+  replyOf(JSON.stringify(value), request);
 
 describe('checked assistant proposals', () => {
   it('normalises a seat’s skills: catalog ids only, none the agent has, each once, at most four', () => {
@@ -465,7 +466,7 @@ describe('checked assistant proposals', () => {
       kind: 'describe',
       topic: 'submitter',
     });
-    expect(assistantReplyFromAnswer('not JSON', request)).toBeNull();
+    expect(replyOf('not JSON', request)).toBeNull();
     expect(read([question, question], request)).toBeNull();
     expect(read({ ...plan(), hidden: true }, request)).toBeNull();
     expect(read({ ...plan(), plan: 'create a team' }, request)).toBeNull();
@@ -478,7 +479,7 @@ describe('checked assistant proposals', () => {
     const request = create('Who supplies materials?');
     const json = JSON.stringify(question);
     for (const text of [`\`\`\`json\n${json}\n\`\`\``, `Here is my answer:\n${json}\nDone.`])
-      expect(assistantReplyFromAnswer(text, request)).toEqual(question);
+      expect(replyOf(text, request)).toEqual(question);
     for (const text of [
       JSON.stringify([question]),
       `\`\`\`json\n[${json}]\n\`\`\``,
@@ -486,7 +487,7 @@ describe('checked assistant proposals', () => {
       `${json}\n${json}`,
       `Answer: ${JSON.stringify({ ...question, extra: 'ignore' })}`,
     ])
-      expect(assistantReplyFromAnswer(text, request)).toBeNull();
+      expect(replyOf(text, request)).toBeNull();
   });
 
   it.each([

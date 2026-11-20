@@ -335,15 +335,6 @@ function checkAssistantReply(reply: Reply, request: TeamAssistantRequest): TeamA
   return conflict(reconcileEdits(reply, request, intent, korean));
 }
 
-/** Never extract partial edits or execute strings from untrusted model text. */
-export function assistantReplyFromAnswer(
-  text: string,
-  request: TeamAssistantRequest,
-): Reply | null {
-  const read = readAssistantAnswer(text, request);
-  return 'reply' in read ? read.reply : null;
-}
-
 /** One complete JSON value of an answer, cut out of its envelope, or undefined. */
 function jsonValue(text: string): { value: unknown } | undefined {
   // Read one complete JSON value, never an object nested inside an array or a second
