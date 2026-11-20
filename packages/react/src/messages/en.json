@@ -1606,7 +1606,6 @@
     "rounds": "Up to {count, plural, one {# round} other {# rounds}}",
     "judge": "Judge",
     "options": "Criteria and settings",
-    "criteria": "Completion criteria",
     "yourRequest": "Your request",
     "reply": "Team assistant",
     "choice": {
@@ -1633,7 +1632,6 @@
       "hasAdvice": "This team already has a shared Outrider.",
       "observeOn": "You chose automatic observation for all workers.",
       "observeOff": "You chose to leave automatic observation off.",
-      "opinion": "Workers can request feedback without making review a condition for submission.",
       "required": "The result must pass review before submission.",
       "brief": "Replace the team’s goal with the one you entered.",
       "advice": "Workers can consult a shared Outrider without adding a step.",

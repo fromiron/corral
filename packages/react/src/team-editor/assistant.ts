@@ -4,6 +4,7 @@ import {
   type TeamAssistantRequest,
   TeamAssistantResponse,
   type TeamAssistantTarget,
+  type TeamAssistantTeam,
   type TeamComposition,
   unusableTeamProposalReason,
 } from '@corral/contracts';
@@ -378,26 +379,31 @@ export function createAssistantActions(
       },
     });
     if (!request) {
-      const team = mode === 'edit' ? summarize(base) : undefined;
-      let catalog: SentCatalog | undefined = intent.catalog;
-      if (!team && !catalog) {
+      // An edit is read against the team; a new team against the catalog it is composed from.
+      let to: { team: TeamAssistantTeam } | { catalog: SentCatalog };
+      if (mode === 'edit') to = { team: summarize(base) };
+      else {
         // A new team is composed from what the editor offers now. The reply is read against
         // exactly the catalog this request carries; a refinement keeps its proposal's.
-        try {
-          const { agents, skills } = await host.choices();
-          catalog = teamCatalog(agents, skills);
-        } catch {
+        let catalog = intent.catalog;
+        if (!catalog) {
+          try {
+            const { agents, skills } = await host.choices();
+            catalog = teamCatalog(agents, skills);
+          } catch {
+            if (!active()) return;
+            setState({ pending: null, question: null, failure: t('logic.catalog') });
+            return;
+          }
           if (!active()) return;
-          setState({ pending: null, question: null, failure: t('logic.catalog') });
-          return;
         }
-        if (!active()) return;
+        resolved = catalog;
+        to = { catalog };
       }
-      if (!team) resolved = catalog;
       let { decisions } = getState();
       // Create confirmations point into the preview, never into the wire summary.
-      if (mode === 'create') decisions = withoutTarget(decisions);
-      else if (decisions.reviewTarget && !hasAssistantTarget(team, decisions.reviewTarget)) {
+      if ('catalog' in to) decisions = withoutTarget(decisions);
+      else if (decisions.reviewTarget && !hasAssistantTarget(to.team, decisions.reviewTarget)) {
         decisions = withoutTarget(decisions);
         setState({ decisions });
       }
@@ -407,14 +413,14 @@ export function createAssistantActions(
         ...(Object.keys(decisions).length > 0 && { decisions }),
       };
       request =
-        team || !catalog
-          ? { ...common, mode: 'edit', team: team ?? summarize(base) }
-          : {
+        'catalog' in to
+          ? {
               ...common,
               mode: 'create',
-              catalog: catalog.catalog,
+              catalog: to.catalog.catalog,
               ...(intent.proposal && { proposal: intent.proposal }),
-            };
+            }
+          : { ...common, mode: 'edit', team: to.team };
       setState({
         pending: {
           operationId: request.operationId,
