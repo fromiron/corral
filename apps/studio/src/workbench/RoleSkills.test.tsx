@@ -231,27 +231,27 @@ it('preserves disabled and archived choices; untrusted and disabled show the rea
   expect(editor.getState().draft).toBe(draft);
 });
 it('keeps a created skill in the library after cancelling; a saved skill is checked at once', async () => {
-    const { editor, draft, apply } = await show();
-    await click('Add skills');
-    expect(document.querySelector('[aria-label="Retired"]')).toBeNull();
-    await toggle('Alpha');
-    await click('Create skill');
-    expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
-    await fill('Display name', 'Just saved');
-    await fill(en.Resources.description, 'When checking');
-    await fill('Instructions', 'Check the details.');
-    await click('Save');
-    expect(api.trust).not.toHaveBeenCalled();
-    const row = check('Just saved');
-    expect(row.getAttribute('aria-checked')).toBe('true');
-    expect(description(row)).toContain('Saved · not applied');
-    expect(document.activeElement).toBe(row);
-    expect(check('Alpha').getAttribute('aria-checked')).toBe('true');
-    await click('Cancel');
-    expect(entries.find((e) => e.name === 'Just saved')).toBeDefined();
-    expect(apply).not.toHaveBeenCalled();
-    expect(editor.getState().draft).toBe(draft);
-    expect(editor.getState().past).toHaveLength(0);
+  const { editor, draft, apply } = await show();
+  await click('Add skills');
+  expect(document.querySelector('[aria-label="Retired"]')).toBeNull();
+  await toggle('Alpha');
+  await click('Create skill');
+  expect(document.querySelectorAll('[role="dialog"]')).toHaveLength(1);
+  await fill('Display name', 'Just saved');
+  await fill(en.Resources.description, 'When checking');
+  await fill('Instructions', 'Check the details.');
+  await click('Save');
+  expect(api.trust).not.toHaveBeenCalled();
+  const row = check('Just saved');
+  expect(row.getAttribute('aria-checked')).toBe('true');
+  expect(description(row)).toContain('Saved · not applied');
+  expect(document.activeElement).toBe(row);
+  expect(check('Alpha').getAttribute('aria-checked')).toBe('true');
+  await click('Cancel');
+  expect(entries.find((e) => e.name === 'Just saved')).toBeDefined();
+  expect(apply).not.toHaveBeenCalled();
+  expect(editor.getState().draft).toBe(draft);
+  expect(editor.getState().past).toHaveLength(0);
 });
 it('preserves unusable refs until explicit recovery; deselecting the last writes an empty array', async () => {
   api.preview.mockResolvedValue({

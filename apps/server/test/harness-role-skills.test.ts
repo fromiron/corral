@@ -497,6 +497,32 @@ it('an evaluation run keeps exactly its fixed profile and receives no library sk
   expect(service.resolve(role.harness, definition, role.id)!.resources.length).toBeGreaterThan(1);
 });
 
+it('an evaluation run in a workspace session also receives no library skills', () => {
+  service.saveProfile('evaluation', 0, {
+    name: 'Evaluation',
+    policy: 'strict',
+    allowedTools: ['read', 'read_artifact', 'write_artifact', 'submit_result'],
+    startupCommands: [],
+    resources: [{ ...refs.first!, kind: 'skill', required: true, skillMode: 'auto' }],
+  });
+  db.prepare(
+    `INSERT INTO work_sessions (id, project_id, title, objective, pinned, revision, created_at, updated_at, entries_json)
+     VALUES ('evaluation_session', 'default', 'Evaluation', 'Evaluate', 0, 1, ?, ?, '[]')`,
+  ).run(new Date(0).toISOString(), new Date(0).toISOString());
+  const definition = linearCorral(['writer']);
+  const role = definition.roles[0]!;
+  role.harness = { profileId: 'evaluation', revision: 1 };
+  const release = service.sealEvaluationDefinition(definition);
+  try {
+    const snapshot = service.resolve(role.harness, definition, role.id, {
+      sessionId: 'evaluation_session',
+    })!;
+    expect(snapshot.resources.map((resource) => resource.skillName)).toEqual(['first']);
+  } finally {
+    release();
+  }
+});
+
 it('a library skill revoked after a run started is left out of a later worker start', async () => {
   const pinned = service.preview({ id: 'writer', skills: [refs.second!] }, 'default').snapshot!;
   expect(pinned.resources).toContainEqual(

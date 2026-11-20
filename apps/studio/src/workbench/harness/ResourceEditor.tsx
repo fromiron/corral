@@ -202,10 +202,10 @@ export function ResourceEditor({
         setInstalled(result);
         setError(
           creatingSkill
-              ? t('skillSaveFailed')
-              : failure instanceof Error
-                ? failure.message
-                : h('error'),
+            ? t('skillSaveFailed')
+            : failure instanceof Error
+              ? failure.message
+              : h('error'),
         );
       }
     } finally {

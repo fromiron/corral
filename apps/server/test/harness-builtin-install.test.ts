@@ -267,3 +267,22 @@ it('inspects each bundled version once per process, and never content that diffe
   expect(changed.store.getResource(alpha)).toBeNull();
   expect(calls).toBe(2);
 });
+
+it('a bundled version already in the store before the startup pass is still superseded later', async () => {
+  const s = setup();
+  const v1 = await s.pack('alpha', '1.0.0', { kept: 'old' });
+  const first = s.service();
+  first.install((await first.discoverBuiltin('alpha')).reviewId);
+  first.trust(v1, false);
+  await first.installBuiltins();
+  // The stored hash keeps its state, revocation included.
+  expect(first.store.getResource(v1)?.trustedAt).toBeNull();
+  expect(first.store.entryManagement(s.entry(v1, 'kept')).managementRevision).toBe(0);
+  const v2 = await s.pack('alpha', '2.0.0', { kept: 'new' });
+  const second = s.service();
+  await second.installBuiltins();
+  expect(second.store.entryManagement(s.entry(v1, 'kept'))).toMatchObject({
+    archivedAt: expect.any(String),
+    successor: s.entry(v2, 'kept'),
+  });
+});
