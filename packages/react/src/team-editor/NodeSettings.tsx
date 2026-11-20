@@ -300,6 +300,9 @@ function PromptField({
   );
 }
 
+// One or two sentences: two lines to start, four at most before it scrolls.
+const descriptionSize = '[&>textarea]:min-h-[calc(2lh+1rem)] [&>textarea]:max-h-[calc(4lh+1rem)]';
+
 /** What a saved agent does and when to use it: one or two sentences, optional. */
 function DescriptionField({
   editor,
@@ -322,6 +325,7 @@ function DescriptionField({
         id={id}
         value={role.description ?? ''}
         maxLength={2000}
+        className={descriptionSize}
         onChange={(e) => editor.getState().updateNode(nodeId, { description: e.target.value })}
         {...session}
       />
