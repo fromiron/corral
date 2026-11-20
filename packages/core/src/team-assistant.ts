@@ -33,7 +33,7 @@ export type TeamAssistantReading = { reply: Reply } | { problem: TeamAssistantPr
 const conflict = (reply: Reply | null): TeamAssistantReading =>
   reply ? { reply } : { problem: 'decision_conflict' };
 
-/** Assistant turns in the current proposal are the questions already shown to the person. */
+/** Assistant turns in the current conversation are the questions already shown to the person. */
 export function canAskAssistantQuestion(messages: TeamAssistantRequest['messages']): boolean {
   let asked = 0;
   for (const message of messages) if (message.role === 'assistant' && ++asked === 2) return false;
