@@ -201,6 +201,8 @@ it('offers one Connect a model control in place of the request when no model can
   expect(screen.queryByText(/No model/i)).toBeNull();
   expect(screen.queryByRole('button', { name: /local example/i })).toBeNull();
   expect(screen.getAllByRole('button', { name: 'Connect a model' })).toHaveLength(1);
+  // It opens the model settings, so it points like the kit's buttons.
+  expect(connect).toHaveClass('cursor-pointer');
   await user.click(connect);
   expect(onConnectModel).toHaveBeenCalledTimes(1);
 });
@@ -210,6 +212,8 @@ it('cannot be pressed in the browser demo, which has no model settings to open',
   expect(screen.queryByRole('textbox')).toBeNull();
   const off = button('Available on the local server');
   expect(off).toHaveAttribute('aria-disabled', 'true');
+  expect(off).toHaveClass('cursor-default');
+  expect(off).not.toHaveClass('cursor-pointer');
   expect(off).toHaveFocus();
   expect(screen.queryByRole('button', { name: 'Connect a model' })).toBeNull();
 });

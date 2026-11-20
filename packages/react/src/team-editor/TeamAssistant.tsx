@@ -838,7 +838,7 @@ export function TeamAssistant({
             shape.container,
             focusRing,
             host.onConnectModel
-              ? cn(surfaceHoverClasses(2, 2), 'hover:text-foreground')
+              ? cn(surfaceHoverClasses(2, 2), 'cursor-pointer hover:text-foreground')
               : 'cursor-default',
           )}
         >
