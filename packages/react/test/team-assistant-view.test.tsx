@@ -611,3 +611,27 @@ it('shows each result of a team that ends in parallel work on its own line, and 
   ).toEqual(['Injection check', 'Secrets check']);
   expect(strictErrors(definition)).toEqual([]);
 });
+
+it('names the model once for a new team: beside the input, not again on the proposal', async () => {
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValue(planned(sequence, 'A cause, a fix and a note.'));
+  const { user } = setup({ ask, open: true });
+  await user.type(field(), 'Fix the login bug.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  const title = within(preview).getByRole('heading', { name: 'Fix the login bug' });
+  expect(title.parentElement).toHaveTextContent(/^Fix the login bug$/);
+  expect(preview).not.toHaveTextContent('Test model');
+  expect(screen.getByText('Test model', { selector: 'span' })).toBeVisible();
+});
+
+it('keeps the model name on an edit it proposed, apart from a change one of the choices made', async () => {
+  const ask = vi.fn<NonNullable<TeamAssistantHost['ask']>>().mockResolvedValue({
+    model: 'Test model',
+    reply: { kind: 'edits', edits: [{ kind: 'add_shared_advice' }], reason: 'Advice on demand.' },
+  });
+  const { user } = setup({ existing: true, ask, open: true });
+  await user.type(field('edit'), 'Let the writer ask for advice.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  expect(within(preview).getByText('Proposal from Test model')).toBeVisible();
+});

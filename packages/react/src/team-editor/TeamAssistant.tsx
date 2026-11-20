@@ -688,7 +688,11 @@ export function TeamAssistant({
                   >
                     {proposal.plan ? proposal.result.definition.name : t('changes')}
                   </h3>
-                  {proposal.origin !== 'choice' && <KitBadge size="compact">{origin}</KitBadge>}
+                  {/* A new team's proposal is always the model's, named once beside the input; an
+                    edit's chip tells the model's change from one a choice made. */}
+                  {proposal.origin !== 'choice' && !proposal.plan && (
+                    <KitBadge size="compact">{origin}</KitBadge>
+                  )}
                 </div>
                 {!proposal.plan && <p className="text-muted-foreground">{proposal.reason}</p>}
                 {proposal.plan && proposal.resolved && (
