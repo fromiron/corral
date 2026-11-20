@@ -45,17 +45,13 @@ async function installSkill(
     await api('/harness/resources', { reviewId: review.reviewId }),
   );
   expect(installed.hash).toBe(review.resource.hash);
-  expect(installed.trustedAt).toBeNull();
-  const trusted = await json<HarnessResourceView>(
-    await api(`/harness/resources/${installed.hash}/trust`, { trusted: true }, 'PUT'),
-  );
-  expect(trusted.hash).toBe(installed.hash);
-  expect(trusted.trustedAt !== null).toBe(true);
-  expect(trusted.skills.length).toBe(1);
-  const [entry] = trusted.skills;
-  if (!entry) throw new Error('No skill in trusted document');
+  // A package is trusted when it is installed; no separate approval step.
+  expect(installed.trustedAt !== null).toBe(true);
+  expect(installed.skills.length).toBe(1);
+  const [entry] = installed.skills;
+  if (!entry) throw new Error('No skill in installed document');
   expect(entry.name).toBe(name);
-  return { resourceHash: trusted.hash, entry: entry.entry } satisfies RoleSkillRef;
+  return { resourceHash: installed.hash, entry: entry.entry } satisfies RoleSkillRef;
 }
 
 // Body delivery and listing are different facts. Observe only the advertised names on the real
@@ -65,12 +61,12 @@ function catalog(text: string) {
   return {
     selected: listing.includes(`<name>${selectedName}</name>`),
     other: listing.includes(`<name>${otherName}</name>`),
+    // What the list of usable skills costs in every request: how many it names and its size.
+    names: listing.split('<name>').length - 1,
+    bytes: Buffer.byteLength(listing),
   };
 }
-interface Listing {
-  selected: boolean;
-  other: boolean;
-}
+type Listing = ReturnType<typeof catalog>;
 function observeListings(live: LiveModels) {
   const byPayload = new Map<string, { context: Listing; wire: Listing }>();
   const stream = live.models.streamSimple.bind(live.models);
@@ -100,7 +96,7 @@ async function saveTeam(api: LiveProfileServer['api'], definition: CorralDefinit
 }
 
 it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
-  'a saved writer advertises only its selected auto skill; the unbound writer stays on the legacy path',
+  'a saved writer is offered its selected skill and the other usable skills; the unbound writer stays on the legacy path',
   async () => {
     const profileId = process.env.CORRAL_WORKER_PROFILE ?? 'deepseek-hive';
     const live = createLiveModels();
@@ -148,9 +144,17 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
         );
         const alternativeSnapshot = alternative.snapshot;
         if (!alternativeSnapshot) throw new Error('Other skill could not be resolved');
+        // What a selection binds is its own entry; the rest of the library comes marked as such.
         expect(
-          alternativeSnapshot.resources.map((r) => ({ resourceHash: r.hash, entry: r.entry })),
+          alternativeSnapshot.resources
+            .filter((r) => !r.library)
+            .map((r) => ({ resourceHash: r.hash, entry: r.entry })),
         ).toEqual([other]);
+        expect(
+          alternativeSnapshot.resources.some(
+            (r) => r.library && r.hash === selected.resourceHash && r.entry === selected.entry,
+          ),
+        ).toBe(true);
         const coordinator = server.coordinator;
         const transport = new InProcessTransport(coordinator);
         const results = [];
@@ -173,15 +177,15 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
           const harness = snapshot.harnesses?.[writer.id];
           const reads = new Set<string>();
           const bodies = new Set<string>();
+          // Which skills the agent chose to read is its own call; the names are kept as a fact.
+          const readNames = new Set<string>();
           const payloads: string[] = [];
-          let unexpectedSkill = false;
           let stepSections = 0;
           const stop = transport.subscribe(runId, 0, {
             onEvent(event) {
               if (event.type === 'skill.read') {
-                const { resourceHash, skillName, bodyHash } = event.payload;
-                unexpectedSkill ||=
-                  resourceHash !== selected.resourceHash || skillName !== selectedName;
+                const { skillName, bodyHash } = event.payload;
+                readNames.add(skillName);
                 reads.add(bodyHash);
               }
               if (
@@ -191,11 +195,7 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
                 stepSections++;
               if (event.type !== 'model.payload_recorded') return;
               payloads.push(event.payload.payloadHash);
-              for (const skill of event.payload.skills ?? []) {
-                unexpectedSkill ||=
-                  skill.resourceHash !== selected.resourceHash || skill.name !== selectedName;
-                bodies.add(skill.bodyHash);
-              }
+              for (const skill of event.payload.skills ?? []) bodies.add(skill.bodyHash);
             },
           });
           try {
@@ -226,12 +226,16 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
               resources: harness?.resources.length ?? 0,
               selectedEntryPinned:
                 harness?.resources.some(
-                  (r) => r.hash === selected.resourceHash && r.entry === selected.entry,
+                  (r) =>
+                    r.selectedByRole &&
+                    r.hash === selected.resourceHash &&
+                    r.entry === selected.entry,
                 ) ?? false,
-              otherEntryPinned:
+              otherEntryOffered:
                 harness?.resources.some(
-                  (r) => r.hash === other.resourceHash && r.entry === other.entry,
+                  (r) => r.library && r.hash === other.resourceHash && r.entry === other.entry,
                 ) ?? false,
+              libraryEntries: harness?.resources.filter((r) => r.library).length ?? 0,
               otherResolutionDiffers: harness
                 ? alternativeSnapshot.snapshotHash !== harness.snapshotHash
                 : null,
@@ -240,6 +244,7 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
               payloadRecords: payloads.length,
               stepSections,
               read: reads.size > 0,
+              readNames: [...readNames].sort(),
               bodySent: bodies.size > 0,
             };
             results.push(report);
@@ -250,21 +255,31 @@ it.skipIf(process.env.CORRAL_ROLE_SKILLS_LIVE !== '1')(
             expect(attempts.nextCursor).toBeNull();
             expect(report.requests).toBeGreaterThan(0);
             expect(report.stepSections).toBeGreaterThan(0);
-            expect(report.contextListing).toEqual({ selected: teamId === 'A', other: false });
-            expect(report.payloadListing).toEqual({ selected: teamId === 'A', other: false });
-            expect(unexpectedSkill).toBe(false);
+            // The role's Harness is resolved only for the writer that selects a skill; that
+            // writer is offered every usable skill, the one it did not select included.
+            const offered = teamId === 'A';
+            for (const listing of [report.contextListing, report.payloadListing]) {
+              expect(listing?.selected).toBe(offered);
+              expect(listing?.other).toBe(offered);
+              if (!offered) expect(listing?.names).toBe(0);
+            }
             expect(reads).toEqual(bodies);
             if (teamId === 'A') {
               expect(harness?.binding).toEqual({ profileId: 'role-skills-minimal', revision: 1 });
               expect(harness?.policy).toBe('strict');
               expect(
-                harness?.resources.map((r) => ({
-                  resourceHash: r.hash,
-                  entry: r.entry,
-                  kind: r.kind,
-                  mode: r.skillMode,
-                })),
+                harness?.resources
+                  .filter((r) => !r.library)
+                  .map((r) => ({
+                    resourceHash: r.hash,
+                    entry: r.entry,
+                    kind: r.kind,
+                    mode: r.skillMode,
+                  })),
               ).toEqual([{ ...selected, kind: 'skill', mode: 'auto' }]);
+              expect(report.selectedEntryPinned).toBe(true);
+              expect(report.otherEntryOffered).toBe(true);
+              expect(report.contextListing?.names).toBe(report.resources);
               expect(report.otherResolutionDiffers).toBe(true);
             } else {
               expect(
