@@ -381,12 +381,32 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
       ],
     ],
     [
+      'refactor',
+      [
+        'Refactor the payment module into smaller functions',
+        'The order total is calculated in three files. Move it into one place without changing behavior.',
+        '결제 모듈을 리팩터링해 줘',
+        '주문 금액 계산이 세 파일에 흩어져 있어. 동작은 그대로 두고 한 곳으로 모아 줘',
+      ],
+    ],
+    [
+      'performance',
+      [
+        'The order list takes two seconds to open past 1,000 rows. Make it faster.',
+        'Improve the performance of the search endpoint',
+        '주문 목록이 1,000건을 넘으면 여는 데 2초가 걸려. 더 빠르게 해 줘',
+        '검색 API의 응답 속도를 개선해 줘',
+      ],
+    ],
+    [
       'adversarial_review',
       [
         'Audit the auth module for security issues without changing the code',
         'Review the payment service code for correctness and security; do not modify anything',
         '인증 모듈 코드를 수정하지 말고 보안 관점에서 리뷰해 줘',
         '이 브랜치의 변경을 정확성과 보안 측면에서 검토해 줘',
+        'Try to break the changes on this branch and report only what you can show',
+        '이 브랜치의 변경을 반증해 줘. 실행해서 보인 문제만 알려 줘',
       ],
     ],
     [
@@ -400,7 +420,30 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
         '상태 관리를 Redux로 유지할지 Zustand로 바꿀지 결정해 줘',
       ],
     ],
+    [
+      'code_investigation',
+      [
+        'Explain how the auth middleware handles sessions',
+        'Walk me through how the retry logic in the sync module works',
+        '실행 취소가 코드에서 어떻게 처리되는지 설명해 줘',
+        '이 모듈이 왜 이런 구조가 됐는지 커밋 기록을 보고 설명해 줘',
+      ],
+    ],
   ];
+
+  // Words close to a new pattern's that still ask for less work, so the smaller pattern stays.
+  it.each([
+    ['Rename the `fetchUser` helper to `loadUser` across the repo', 'single'],
+    ['이 문단을 빠르게 번역해 줘', 'single'],
+    ['Why is the app slow?', 'single'],
+    ['Compare the performance of SQLite and PostgreSQL', 'research_write_review'],
+    ['Write a design doc for the new export feature', 'write_review'],
+    ['Write a report on how we made the search faster', 'write_review'],
+    ['Explain what a race condition is', 'single'],
+    ['Review the onboarding guide and try to break its examples', 'write_review'],
+  ] as const)('%s stays %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
 
   it('one open question is not a choice between two options', () => {
     // A single "-ㄹ지" asks how or whether, and a noun ending in 지 is not an alternative.

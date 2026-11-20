@@ -137,6 +137,28 @@ const DOCUMENT =
 const WRITE = /\b(write|writing|draft\w*|summar\w*)\b|작성|써\s*줘|써줘|요약/i;
 const SOFTWARE =
   /\b(pages?|screens?|forms?|buttons?|toggles?|apps?|features?|cach\w*|database|db|tests?|settings|ui|cli|validation|login|sign[- ]?up|export|import|search)\b|화면|양식|폼|버튼|토글|앱|기능|캐시|데이터베이스|테스트|설정|로그인|가입|내보내기|검색/i;
+/** Trying to break a change and keeping only what was shown. */
+const ADVERSARIAL =
+  /\b(adversarial\w*|try(ing)? to break|break (it|the (change|code|diff)\w*)|stress[- ]test\w*|red[- ]team\w*|poke holes)\b|반증|깨뜨려|깨트려|허점/i;
+/** The behavior stays while the code's shape moves: a refactoring, not a change. */
+const BEHAVIOR_KEPT =
+  /\b(without chang\w* (its |the |any )?(behaviou?r|functionality|what it does|output)|(behaviou?r|functionality) (stays|unchanged|the same)|keep(ing)? (the |its )?(behaviou?r|functionality))\b|동작은?\s*(그대로|유지|바꾸지|같게)|동작을?\s*(바꾸지|유지)/i;
+const REFACTOR = /\b(refactor\w*)\b|리팩터|리팩토링/i;
+const RESTRUCTURE =
+  /\b(restructur\w*|untangl\w*|consolidat\w*|decoupl\w*|clean(ing)? up)\b|구조를?\s*(바꿔|바꾸|개선|정리)|구조\s*개선/i;
+const RESHAPE =
+  /\b(move|moving|merge|split|extract\w*|combin\w*|one place|single place)\b|모아|모으|합쳐|합치|나눠|나누|분리|옮겨|옮기|한\s*곳/i;
+/** What is slow: a measure of time or load, or the word for it. */
+const SLOW =
+  /\b(performance|latency|throughput|slow\w*|sluggish|lagg\w*|load(ing)? times?|response times?|memory usage|cpu usage|takes? (over |about |nearly |almost )?(\d[\d.,]*|a few|several|one|two|three|four|five|ten) ?(ms|milliseconds?|s|seconds?|minutes?))\b|성능|속도|지연|느려|느린|느리|버벅|로딩|응답\s*시간|메모리\s*사용|\d[\d.,]*\s*(초|분|밀리초|ms)(가|이)?\s*(넘게\s*|이상\s*)?걸/i;
+const FASTER =
+  /\b(faster|quicker|speed\w* up|optimi[sz]\w*|improv\w*|reduc\w*|cut|lower|boost\w*)\b|빠르게|빨라|최적화|개선|줄여|줄이|낮춰|낮추/i;
+/** Asking how the code works or why it came to be that way. */
+const EXPLAIN =
+  /\b(explain\w*|walk (me |us )?through|how (does|do|is|are) .{1,80}\b(works?|handled|implemented|wired|built|done)|trace how|why (does|do|is|was|did) .{1,80}\b(written|designed|built|implemented|this way|structured))\b|설명|어떻게\s*(동작|작동|처리|구현|돌아가)|동작\s*방식|작동\s*방식|흐름을?\s*(파악|추적|따라)/i;
+/** Explaining is not changing: a goal that also asks for a change is a change. */
+const CHANGE_ASKED =
+  /\b(add|adds|adding|implement|create|change|modify|update|rewrite|fix\w*)\b|추가해|추가하|구현해|구현하|만들어|바꿔|고쳐|수정해|수정하/i;
 
 const isSecurityReview = (brief: string) =>
   SECURITY.test(brief) && PULL_REQUEST.test(brief) && REVIEW.test(brief);
@@ -152,22 +174,37 @@ export function basePatternFromGoal(goal: string): BasePattern {
 }
 
 function templatePatternFromGoal(brief: string): TemplatePattern | null {
-  const keepsCode = NO_CHANGE.test(brief);
-  if (REVIEW_CODE.test(brief) && CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief)))
+  // "Without changing behavior" asks for a refactoring, not for leaving the code alone.
+  const keepsCode = NO_CHANGE.test(brief.replace(new RegExp(BEHAVIOR_KEPT.source, 'gi'), ' '));
+  const code = CODE.test(brief);
+  if (
+    code &&
+    ((REVIEW_CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief))) || ADVERSARIAL.test(brief))
+  )
     return 'adversarial_review';
   // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
   if (isSecurityReview(brief)) return null;
   if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
     return 'tech_decision';
   const document = DOCUMENT.test(brief);
-  if (
-    document &&
-    (WRITE.test(brief) || (!CODE.test(brief) && !SOFTWARE.test(brief) && FIX.test(brief)))
-  )
-    return null;
+  const software = SOFTWARE.test(brief);
+  if (document && (WRITE.test(brief) || (!code && !software && FIX.test(brief)))) return null;
+  // A document alone is not code, whatever is asked of it.
+  const aboutCode = !document || code || software;
   // Fixing changes code; finding a cause without fixing it is research.
   if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
-  if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
+  if (SLOW.test(brief) && (FASTER.test(brief) || FIX.test(brief)) && !keepsCode && aboutCode)
+    return 'performance';
+  if (
+    (REFACTOR.test(brief) ||
+      (RESTRUCTURE.test(brief) && code) ||
+      (BEHAVIOR_KEPT.test(brief) && RESHAPE.test(brief))) &&
+    !keepsCode &&
+    aboutCode
+  )
+    return 'refactor';
+  if (EXPLAIN.test(brief) && code && !CHANGE_ASKED.test(brief)) return 'code_investigation';
+  if (IMPLEMENT.test(brief) && !(document && !software))
     return PLAN_FIRST.test(brief) ? 'feature' : 'implement_review';
   return null;
 }
