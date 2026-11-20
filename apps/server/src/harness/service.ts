@@ -1044,12 +1044,23 @@ export class HarnessService {
         );
       }
       if (review.previous && review.previous.resourceHash !== installed.hash) {
+        const saved = { ...review.previous, resourceHash: installed.hash };
+        // Saving back to text saved before makes that entry the latest again
+        // (skill-library.md item 7): it leaves the chain it pointed into.
+        const restored = this.store.entryManagement(saved);
+        if (restored.successor)
+          this.store.manageEntry(
+            saved,
+            restored.managementRevision,
+            restored.archivedAt !== null,
+            null,
+          );
         const current = this.store.entryManagement(review.previous);
         this.store.manageEntry(
           review.previous,
           current.managementRevision,
           current.archivedAt !== null,
-          { ...review.previous, resourceHash: installed.hash },
+          saved,
         );
       }
       if (review.previousPackageHash && review.previousPackageHash !== installed.hash) {

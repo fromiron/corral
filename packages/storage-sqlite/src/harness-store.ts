@@ -99,16 +99,18 @@ export class SqliteHarnessStore {
     };
   }
 
+  /** `successor` undefined keeps the current link; null clears it. */
   manageEntry(
     key: HarnessEntryKey,
     expectedRevision: number,
     archived: boolean,
-    successor?: HarnessEntryKey,
+    successor?: HarnessEntryKey | null,
     displayName?: string,
   ) {
     const current = this.entryManagement(key);
     if (current.managementRevision !== expectedRevision)
       throw new Error('management revision changed');
+    const next = successor === undefined ? current.successor : successor;
     this.db
       .prepare(`INSERT INTO harness_entry_management VALUES (?, ?, ?, ?, ?, ?, ?)
       ON CONFLICT(hash, entry, kind) DO UPDATE SET revision = excluded.revision, archived_at = excluded.archived_at, successor_json = excluded.successor_json, display_name = excluded.display_name`)
@@ -118,7 +120,7 @@ export class SqliteHarnessStore {
         key.kind,
         expectedRevision + 1,
         archived ? this.clock.nowIso() : null,
-        JSON.stringify(successor ?? current.successor),
+        next ? JSON.stringify(next) : null,
         displayName ?? current.displayName,
       );
     return this.entryManagement(key);
