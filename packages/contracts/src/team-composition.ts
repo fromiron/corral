@@ -24,7 +24,10 @@ export const TEAM_COMPOSITION_LIMITS = {
   seats: 8,
   seatName: 40,
   duty: 400,
+  /** Skills a seat keeps once the server normalises its ids. */
   seatSkills: 4,
+  /** Skill ids a seat may name; unknown, repeated or extra ones are dropped. */
+  seatSkillIds: 16,
   parallel: { min: 2, max: 4 },
   loopWork: { min: 1, max: 3 },
   rounds: { min: 1, max: 3 },
@@ -75,11 +78,7 @@ export const CompositionSeat = z.strictObject({
   /** The seat's duty: the step instruction of its node. */
   duty: Text(L.duty),
   /** Catalog skill ids added to the agent's own skills. */
-  skills: z
-    .array(ShortId)
-    .max(L.seatSkills)
-    .refine((ids) => new Set(ids).size === ids.length, { message: 'a skill is added once' })
-    .optional(),
+  skills: z.array(ShortId).max(L.seatSkillIds).optional(),
 });
 export type CompositionSeat = z.infer<typeof CompositionSeat>;
 
@@ -134,13 +133,5 @@ export const TeamComposition = z
           path: ['flow'],
           message: `seat ${id} appears in the flow exactly once`,
         });
-    const [first] = composition.flow;
-    // Work side by side branches from an earlier step's result.
-    if (first && 'parallel' in first)
-      ctx.addIssue({
-        code: 'custom',
-        path: ['flow', 0],
-        message: 'the first step is not parallel',
-      });
   });
 export type TeamComposition = z.infer<typeof TeamComposition>;

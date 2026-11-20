@@ -173,12 +173,14 @@ describe('TeamComposition', () => {
     rejects(composition({ seats: [], flow: [] }));
   });
 
-  it('adds up to four distinct skills to a seat', () => {
+  it('takes up to sixteen skill ids on a seat, repeats included, for the server to normalise', () => {
     const withSkills = (skills: string[]) =>
       composition({ seats: [seat('plan', { skills }), seat('write'), seat('check')] });
+    const many = (n: number) => Array.from({ length: n }, (_, i) => `skill-${i + 1}`);
     accepts(withSkills([]));
-    rejects(withSkills(['s1', 's2', 's3', 's4', 's5']));
-    rejects(withSkills(['s1', 's1']));
+    accepts(withSkills(many(16)));
+    accepts(withSkills(['s1', 's1']));
+    rejects(withSkills(many(17)));
   });
 
   it('holds 2 to 4 seats side by side, 1 to 3 working seats and 1 to 3 rounds in a loop', () => {
@@ -271,8 +273,14 @@ describe('TeamComposition', () => {
     );
   });
 
-  it('refuses parallel as the first step', () => {
-    rejects(composition({ flow: [{ parallel: ['plan', 'write'] }, { seat: 'check' }] }));
+  it('takes a group of seats side by side as the first step', () => {
+    accepts(composition({ flow: [{ parallel: ['plan', 'write'] }, { seat: 'check' }] }));
+    accepts(
+      composition({
+        seats: [seat('plan'), seat('write')],
+        flow: [{ parallel: ['plan', 'write'] }],
+      }),
+    );
   });
 
   it('refuses any field beyond the shape: no tools, no observation, no approval', () => {
