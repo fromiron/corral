@@ -36,9 +36,9 @@ const library = {
 };
 const origin = { kind: 'library' as const, agentId: 'author', revision: 2 };
 const writingBase = roleFromPreset(
-  'write',
-  'write',
-  messages.TeamTemplates.presets.write.name,
+  'writer',
+  'writer',
+  messages.TeamTemplates.presets.writer.name,
 ).prompt;
 function mount(
   props: Partial<TeamEditorProps> = {},
@@ -123,8 +123,10 @@ it('searches only the active group, opens built-in for an empty library, and res
   expect(screen.getByRole('dialog')).not.toHaveTextContent('Project: Harbor');
   await user.click(tab(/Built-in/));
   await user.type(search(), 'each claim');
-  expect(button('Writing')).toHaveAccessibleDescription(messages.TeamTemplates.presets.write.duty);
-  expect(screen.queryByRole('button', { name: 'Plan' })).toBeNull();
+  expect(button('Writing')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.writer.duty}2 skills`,
+  );
+  expect(screen.queryByRole('button', { name: 'Design' })).toBeNull();
   fireEvent.keyDown(search(), { key: 'Escape', isComposing: true });
   expect(search()).toBeVisible();
   await user.keyboard('{Escape}');
@@ -136,10 +138,10 @@ it('searches only the active group, opens built-in for an empty library, and res
   const { roles, nodes } = editor.getState().draft.definition;
   expect(roles.at(-1)).toMatchObject({
     prompt: writingBase,
-    origin: { kind: 'preset', presetId: 'write' },
+    origin: { kind: 'preset', presetId: 'writer' },
   });
   expect(nodes.filter(isWorkAgent).at(-1)?.stepInstruction).toBe(
-    messages.TeamTemplates.presets.write.duty,
+    messages.TeamTemplates.presets.writer.duty,
   );
 });
 
@@ -267,7 +269,7 @@ it.each(['Built-in', 'Other teams'] as const)(
     await user.click(button('Replace'));
     const { nodes, roles } = editor.getState().draft.definition;
     expect(nodes.find(isWorkAgent)?.stepInstruction).toBe(
-      group === 'Built-in' ? messages.TeamTemplates.presets.write.duty : teamTask,
+      group === 'Built-in' ? messages.TeamTemplates.presets.writer.duty : teamTask,
     );
     expect(roles[0]?.prompt).toBe(group === 'Built-in' ? writingBase : original.role.prompt);
     expect(editor.getState().past).toEqual([before]);
@@ -333,7 +335,7 @@ it('saves only reusable role fields, preserves input on failure and never edits 
 it.each([
   {
     kind: 'preset',
-    from: { kind: 'preset', presetId: 'plan' } as const,
+    from: { kind: 'preset', presetId: 'architect' } as const,
     step: 'Compare the candidates.',
     expected: `Compare the candidates.\n\n${original.role.prompt}`,
   },
@@ -356,8 +358,10 @@ it.each([
 
 it.each([
   [origin, 'Source: Writer · r2'],
-  [{ kind: 'preset', presetId: 'plan' } as const, 'Source: Plan'],
+  [{ kind: 'preset', presetId: 'architect' } as const, 'Source: Design'],
   [{ ...origin, agentId: 'unknown' }, null],
+  // A saved team from before the presets were the built-in agents: the row goes, the seat stays.
+  [{ kind: 'preset', presetId: 'plan' } as const, null],
 ])(
   'only identifies a known origin from this project in advanced settings',
   async (from, expected) => {

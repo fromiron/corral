@@ -882,7 +882,10 @@ describe('test run validation and recovery in the editor', () => {
       'review',
     ]);
     for (const input of inputs) {
-      const duty = messages.TeamTemplates.presets[input.nodeId as 'implement' | 'review'].duty;
+      const agent = ({ implement: 'builder', review: 'reviewer' } as const)[
+        input.nodeId as 'implement' | 'review'
+      ];
+      const duty = messages.TeamTemplates.presets[agent].duty;
       expect(input.assignment.kind).toBe('scheduled');
       expect(input.stepInstruction).toBe(duty);
       expect(input.role.prompt).toBe(team.roles.find((role) => role.id === input.role.id)?.prompt);

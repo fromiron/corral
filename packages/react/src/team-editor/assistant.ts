@@ -746,7 +746,7 @@ export function createAssistantActions(
       if (!proposal?.plan) return;
       const plan =
         value === 'opinion_only' &&
-        (hasReviewLoop(proposal.plan.pattern) || proposal.plan.pattern === 'parallel_review')
+        (hasReviewLoop(proposal.plan.pattern) || proposal.plan.pattern === 'adversarial_review')
           ? planWithPattern(proposal.plan, 'single', wording)
           : proposal.plan;
       adjust(

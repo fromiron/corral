@@ -711,21 +711,33 @@
         "name": "Implement and review",
         "body": "Makes the change, then fixes it until the review passes, for up to two rounds, then goes on with the last change."
       },
-      "plan-implement-review": {
-        "name": "Plan, implement and review",
-        "body": "Plans the change first, then implements it until the review passes, for up to two rounds, then goes on with the last change."
+      "feature": {
+        "name": "Feature",
+        "body": "Settles the shape first, implements it, then fixes it until verification passes, for up to two rounds, then goes on with the last change."
       },
       "bug-fix": {
         "name": "Bug fix",
-        "body": "Finds the cause and fixes it, then fixes again until the review passes, for up to two rounds, then goes on with the last fix."
+        "body": "Finds the cause and fixes it, then fixes again until the same reproduction passes verification, for up to two rounds, then goes on with the last fix."
       },
-      "parallel-review": {
-        "name": "Parallel code review",
-        "body": "Reviews correctness and security at the same time, then merges the findings."
+      "refactor": {
+        "name": "Refactoring",
+        "body": "Pins the current behavior with tests, changes the structure, then fixes it until verification shows the behavior unchanged, for up to two rounds, then goes on with the last change."
+      },
+      "performance": {
+        "name": "Performance",
+        "body": "Measures a baseline, improves it, then measures again and fixes until the number is better, for up to two rounds, then goes on with the last change."
+      },
+      "adversarial-review": {
+        "name": "Adversarial review",
+        "body": "Two different models try to break the change at the same time, and only the problems they showed are merged."
       },
       "tech-decision": {
         "name": "Technical decision",
-        "body": "Researches two options at the same time and writes a comparison that recommends one."
+        "body": "Researches two options at the same time, weighs them on the same points and picks one."
+      },
+      "code-investigation": {
+        "name": "Code investigation",
+        "body": "Traces how the code works and why it came to be that way at the same time, then writes one explanation."
       },
       "blank": {
         "name": "Empty",
@@ -1466,10 +1478,13 @@
       "research-team": "Research team",
       "starter": "Single agent",
       "implement-review": "Implement and review",
-      "plan-implement-review": "Plan, implement and review",
+      "feature": "Feature",
       "bug-fix": "Bug fix",
-      "parallel-review": "Parallel code review",
+      "refactor": "Refactoring",
+      "performance": "Performance",
+      "adversarial-review": "Adversarial review",
       "tech-decision": "Technical decision",
+      "code-investigation": "Code investigation",
       "blank": "Empty"
     },
     "goCorrals": "Go to project home",
@@ -1636,10 +1651,13 @@
       "write_review": "The writer can revise the draft against an independent review before submitting it.",
       "research_write_review": "A researcher gathers the sources so the writer and reviewer can work from the same evidence.",
       "implement_review": "A separate reviewer can check the implementation against the requested change.",
-      "plan_implement_review": "A plan gives the implementer and reviewer the same list of changes to work from.",
-      "bug_fix": "Finding the cause first gives the fixer and reviewer a specific fault to address.",
-      "parallel_review": "Separate correctness and security checks can run on the same code at the same time.",
-      "tech_decision": "Two investigations provide evidence for comparing the options."
+      "feature": "Settling the shape first gives the implementer and verifier the same design to work from.",
+      "bug_fix": "Finding the cause first gives the fixer and verifier a specific fault to address.",
+      "refactor": "Pinning the current behavior first lets the verifier show the restructuring changed nothing.",
+      "performance": "Measuring a baseline first lets the verifier show the change made it faster.",
+      "adversarial_review": "Two different models trying to break the same change find problems one would miss.",
+      "tech_decision": "Two investigations provide evidence for comparing the options.",
+      "code_investigation": "Tracing the code and reading its record together explain both how it works and why."
     },
     "facts": {
       "submitted": "{producer} submits “{name}” as the final result.",
@@ -1760,35 +1778,43 @@
   },
   "TeamTemplates": {
     "presets": {
-      "implement": {
+      "architect": {
+        "name": "Design",
+        "duty": "Read the brief and the code it touches, then settle the shape of the change: the data shape and boundaries, the files to change, the order and how the result will be checked. Do not change code."
+      },
+      "builder": {
         "name": "Implementation",
-        "duty": "Make the change the brief asks for in the working copy. In a later round, fix what the review asked for."
+        "duty": "Make the change the brief asks for in the working copy and check it yourself. In a later round, fix what was sent back."
       },
-      "plan": {
-        "name": "Plan",
-        "duty": "Read the brief and the code it touches, then write a short plan: the steps, the files to change and how the result will be checked."
-      },
-      "review": {
-        "name": "Review",
-        "duty": "Check the change against the brief and the criteria. Pass it, or say exactly what to fix and why."
-      },
-      "investigate": {
+      "investigator": {
         "name": "Cause investigation",
         "duty": "Find the cause of the problem in the brief: reproduce it, trace it to the code and note the evidence. Do not fix it yet."
       },
-      "correctness_review": {
-        "name": "Correctness review",
-        "duty": "Check the change for logic errors, missed edge cases and missing tests. Tie each finding to specific code."
+      "reviewer": {
+        "name": "Review",
+        "duty": "Check the change against the brief and the criteria. Pass it, or say exactly what to fix and why."
       },
-      "security_review": {
-        "name": "Security review",
-        "duty": "Check the change for security problems. Record the affected code, evidence, impact and uncertainty of each finding."
+      "adversary": {
+        "name": "Challenge",
+        "duty": "Try to break the change. Report only problems you showed by running or by tracing step by step, each with the command, its output and the result you expected."
       },
-      "research": {
+      "verifier": {
+        "name": "Verification",
+        "duty": "Run the result and check it against the brief and the criteria. Pass it, or name each unmet criterion with the evidence from the run."
+      },
+      "judge": {
+        "name": "Judging",
+        "duty": "Weigh the results that arrived side by side against the same criteria. Pick one, and say what to take from the other, what was dropped and why."
+      },
+      "explainer": {
+        "name": "Explanation",
+        "duty": "Read the code the question points at and say how it works. Tie each claim to a file and line."
+      },
+      "researcher": {
         "name": "Research",
         "duty": "Collect the facts and sources the question needs, noting where each one came from."
       },
-      "write": {
+      "writer": {
         "name": "Writing",
         "duty": "Write the result from the inputs you were given, keeping each claim tied to its source."
       }
@@ -1796,6 +1822,8 @@
     "labels": {
       "loop": "Review loop",
       "decision": "Review decision",
+      "verifyLoop": "Verification loop",
+      "verifyDecision": "Verification decision",
       "join": "Join",
       "output": "Output"
     },
@@ -1859,12 +1887,18 @@
           "checked": "Say what changed and how it was checked."
         }
       },
-      "plan-implement-review": {
+      "feature": {
         "brief": "Add a CSV export to the reports page.",
         "criteria": {
-          "plan": "Follow the plan, or say where and why the work left it.",
+          "design": "Follow the design, or say where and why the work left it.",
           "request": "Do what the brief asks, and nothing it does not.",
-          "checked": "Say what changed and how it was checked."
+          "proven": "The changed behavior is checked by running it."
+        },
+        "roles": {
+          "implement": {
+            "name": "Implementation",
+            "duty": "Following the design, make the change the brief asks for in the working copy and check it yourself. In a later round, fix what verification sent back."
+          }
         }
       },
       "bug-fix": {
@@ -1876,24 +1910,78 @@
         "roles": {
           "fix": {
             "name": "Fix",
-            "duty": "Fix the cause the investigation found, in the working copy. In a later round, fix what the review asked for."
+            "duty": "Fix the cause the investigation found, in the working copy. In a later round, fix what verification sent back."
+          },
+          "verify": {
+            "name": "Verification",
+            "duty": "Run the reproduction the investigation left and check that the problem is gone. Pass it, or describe what still fails with the evidence from the run."
           }
         }
       },
-      "parallel-review": {
+      "refactor": {
+        "brief": "The order total is calculated in three files. Move it into one place without changing behavior.",
+        "criteria": {
+          "same": "Behavior does not change, and the evidence for that is given.",
+          "simpler": "A reader has fewer steps to follow."
+        },
+        "roles": {
+          "pin": {
+            "name": "Behavior pin",
+            "duty": "Before any structure moves, pin the current behavior with tests. Note what is pinned and the result of running it. Do not change the structure yet."
+          },
+          "reshape": {
+            "name": "Restructuring",
+            "duty": "Change the structure while the pinned behavior holds. Remove dead code first and run the tests after each small step. In a later round, fix what verification sent back."
+          },
+          "verify": {
+            "name": "Verification",
+            "duty": "Check with the pinned tests and a real run that behavior is unchanged. Pass it, or describe what changed with the evidence from the run."
+          }
+        }
+      },
+      "performance": {
+        "brief": "The order list takes two seconds to open past 1,000 rows. Make it faster.",
+        "criteria": {
+          "measured": "Give the before and after numbers, measured the same way.",
+          "cause": "Show the slow part with a measurement before changing it."
+        },
+        "roles": {
+          "baseline": {
+            "name": "Baseline",
+            "duty": "Reproduce the slow behavior in the brief and measure a baseline. Note the method, the number and where the time goes. Do not fix it yet."
+          },
+          "improve": {
+            "name": "Improvement",
+            "duty": "Fix what the measurement points at, cheapest change first. In a later round, fix what the re-measurement sent back."
+          },
+          "measure": {
+            "name": "Re-measurement",
+            "duty": "Measure again the same way as the baseline. Pass it if the number improved; otherwise give both numbers and what still limits it."
+          }
+        }
+      },
+      "adversarial-review": {
         "brief": "Review the changes on the current branch.",
         "criteria": {
-          "evidence": "Tie each finding to specific code and evidence.",
-          "certainty": "Separate confirmed problems from unverified concerns."
+          "evidence": "Each finding carries the command and its output, or a step-by-step trace.",
+          "certainty": "Separate shown problems from concerns that were not shown."
         },
         "roles": {
           "scope": {
             "name": "Scope",
-            "duty": "Read the change and list what the reviewers must look at: the files, the behavior that changed and the risky parts."
+            "duty": "Read the change and say what it is meant to do and where to look: the files, the behavior that changed and the risky parts."
           },
-          "synthesis": {
-            "name": "Synthesis",
-            "duty": "Merge the two reviews into one report: remove duplicates, keep the evidence of each finding and order them by severity."
+          "attack_a": {
+            "name": "Challenge A",
+            "duty": "Try to break the change, starting with logic errors, missed edge cases and callers it breaks. Report only what you showed by running or tracing."
+          },
+          "attack_b": {
+            "name": "Challenge B",
+            "duty": "Try to break the change, starting with bad input, permissions and boundaries, things happening at once and state after a failure. Report only what you showed by running or tracing."
+          },
+          "verdict": {
+            "name": "Verdict",
+            "duty": "Merge the two challenges into one report. Keep only findings with evidence, merge those that share a cause, list what was dropped and why, and order by severity."
           }
         }
       },
@@ -1908,17 +1996,42 @@
             "name": "Framing",
             "duty": "Frame the decision: the question, the two options to compare (A and B) and what matters in choosing."
           },
-          "research_a": {
+          "option_a": {
             "name": "Option A research",
             "duty": "Research option A from the framing: what it does well, its limits and its costs, with sources."
           },
-          "research_b": {
+          "option_b": {
             "name": "Option B research",
             "duty": "Research option B from the framing: what it does well, its limits and its costs, with sources."
           },
-          "compare": {
-            "name": "Comparison",
-            "duty": "Compare the two options point by point from the research, and end with a recommendation."
+          "decide": {
+            "name": "Decision",
+            "duty": "Weigh the two researches on the same points and pick one option. Say what to take from the other and what would change the choice."
+          }
+        }
+      },
+      "code-investigation": {
+        "brief": "Explain how run cancellation is handled.",
+        "criteria": {
+          "cited": "Tie each claim to a file and line, or to its source in the record.",
+          "unknown": "Say what the record does not answer, apart from inference."
+        },
+        "roles": {
+          "scope": {
+            "name": "Scope",
+            "duty": "Read the question and set the scope: the files to start from, the modules involved and the questions to settle."
+          },
+          "trace": {
+            "name": "Trace",
+            "duty": "Follow the code in scope and say how it works today. Tie each claim to a file and line."
+          },
+          "history": {
+            "name": "History",
+            "duty": "Find in the record why the code has this shape. Quote what the documents, comments and change history say, and mark inference as inference."
+          },
+          "write": {
+            "name": "Writing",
+            "duty": "Turn the two investigations into one explanation: overview, key concepts, how it works, where things live and gotchas, keeping the sources."
           }
         }
       }

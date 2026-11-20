@@ -27,14 +27,20 @@ const PATTERN_USE: Record<TeamPattern, string> = {
     'a researcher gathers facts and sources first, then write and review in rounds. Writing that depends on outside facts, sources or a comparison, when no choice between options is asked for.',
   implement_review:
     'an implementer changes the code, then a reviewer checks the change and sends it back until it passes. Adding or changing a feature in code when the change is clear.',
-  plan_implement_review:
-    'a planner reads the code and writes the steps and files to change, then implement and review in rounds. Code changes that need a plan first: a design, a migration, staged or multi-part work.',
+  feature:
+    'a designer reads the code and settles the shape of the change first, then an implementer builds it and a verifier runs it against the criteria and sends it back until it passes. Code changes that need a design first: a new feature, a migration, staged or multi-part work.',
   bug_fix:
-    'an investigator reproduces the problem and finds its cause, a fixer fixes the cause, and a reviewer checks the fix in rounds. Code that fails, crashes or behaves wrongly and must be repaired.',
-  parallel_review:
-    'a scope step lists what to look at, correctness and security reviews run at the same time, then a synthesis merges their findings into one report. Reviewing existing code or a change without modifying it.',
+    'an investigator reproduces the problem and finds its cause, a fixer fixes the cause, and a verifier runs the same reproduction and sends the fix back until the problem is gone. Code that fails, crashes or behaves wrongly and must be repaired.',
+  refactor:
+    'one step pins the current behavior with tests, a second changes the structure, and a verifier checks with the pinned tests that behavior did not change, sending it back until it holds. Restructuring, consolidating or cleaning up code without changing what it does.',
+  performance:
+    'an investigator measures a baseline and finds where the time goes, an implementer improves it, and a verifier measures again the same way and sends it back until the number is better. Making code faster or lighter when the goal says what is slow.',
+  adversarial_review:
+    'a scope step says what the change is meant to do and where to look, two challengers on different models try to break it at the same time, then a judge keeps only the problems they showed. Reviewing existing code or a change without modifying it.',
   tech_decision:
-    'a framer states the question and two options, each option is researched at the same time, then a comparison recommends one. Choosing between technical options.',
+    'a framer states the question and two options, each option is researched at the same time, then a judge weighs them on the same points and picks one. Choosing between technical options.',
+  code_investigation:
+    'a scope step sets what to look at, one step traces how the code works while another finds in the record why it came to be that way, then a writer turns both into one explanation. Explaining how existing code works or why it is the way it is, without changing it.',
 };
 
 export const TEAM_PLAN_PROMPT = `Fields (use exactly these, no others):

@@ -23,15 +23,18 @@ import {
 /** The three patterns drafted here; auto mode uses their shapes. */
 export type BasePattern = 'single' | 'write_review' | 'research_write_review';
 type BaseSlot = PatternSlot<BasePattern>;
-/** The five patterns that are the library templates of the same name. */
+/** The eight patterns that are the library templates of the same name. */
 export type TemplatePattern = Exclude<TeamPattern, BasePattern>;
 
 export const PATTERN_TEMPLATES: Readonly<Record<TemplatePattern, TeamTemplateId>> = {
   implement_review: 'implement-review',
-  plan_implement_review: 'plan-implement-review',
+  feature: 'feature',
   bug_fix: 'bug-fix',
-  parallel_review: 'parallel-review',
+  refactor: 'refactor',
+  performance: 'performance',
+  adversarial_review: 'adversarial-review',
   tech_decision: 'tech-decision',
+  code_investigation: 'code-investigation',
 };
 
 export const isTemplatePattern = (pattern: TeamPattern): pattern is TemplatePattern =>
@@ -70,6 +73,9 @@ export interface TeamLabels {
   outriderPrinciples?: string;
   /** The Join where the parallel patterns' branches meet. */
   join?: string;
+  /** The Loop and decision of the patterns whose work a verification judges. */
+  verifyLoop?: string;
+  verifyDecision?: string;
 }
 
 const DEFAULT_OUTRIDER_PRINCIPLES =
@@ -80,6 +86,8 @@ const ENGLISH_LABELS: TeamLabels = {
   decision: 'Review decision',
   output: 'Output',
   join: 'Join',
+  verifyLoop: 'Verification loop',
+  verifyDecision: 'Verification decision',
 };
 
 export interface TeamDraft {
@@ -146,7 +154,7 @@ export function basePatternFromGoal(goal: string): BasePattern {
 function templatePatternFromGoal(brief: string): TemplatePattern | null {
   const keepsCode = NO_CHANGE.test(brief);
   if (REVIEW_CODE.test(brief) && CODE.test(brief) && (keepsCode || CORRECTNESS.test(brief)))
-    return 'parallel_review';
+    return 'adversarial_review';
   // A security PR review is a recognized task of its own (docs/specs/features/canvas.md).
   if (isSecurityReview(brief)) return null;
   if (DECISION.test(brief) && (OPTIONS.test(brief) || twoAlternatives(brief)))
@@ -160,7 +168,7 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   // Fixing changes code; finding a cause without fixing it is research.
   if (BUG.test(brief) && FIX.test(brief) && !keepsCode) return 'bug_fix';
   if (IMPLEMENT.test(brief) && !(document && !SOFTWARE.test(brief)))
-    return PLAN_FIRST.test(brief) ? 'plan_implement_review' : 'implement_review';
+    return PLAN_FIRST.test(brief) ? 'feature' : 'implement_review';
   return null;
 }
 
@@ -447,6 +455,8 @@ function templateDraft(
     labels: {
       loop: labels.loop,
       decision: labels.decision,
+      verifyLoop: labels.verifyLoop ?? 'Verification loop',
+      verifyDecision: labels.verifyDecision ?? 'Verification decision',
       join: labels.join ?? 'Join',
       output: labels.output,
     },

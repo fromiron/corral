@@ -98,7 +98,7 @@ function reconcilePlan(
   }
   if (
     decisions?.reviewPolicy === 'opinion_only' &&
-    (hasReviewLoop(plan.pattern) || plan.pattern === 'parallel_review')
+    (hasReviewLoop(plan.pattern) || plan.pattern === 'adversarial_review')
   )
     return null;
   // Structural evidence only: never infer a material choice from model-generated prose.

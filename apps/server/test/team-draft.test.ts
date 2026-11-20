@@ -9,8 +9,10 @@ const LOOPS = new Set<TeamPattern>([
   'write_review',
   'research_write_review',
   'implement_review',
-  'plan_implement_review',
+  'feature',
   'bug_fix',
+  'refactor',
+  'performance',
 ]);
 const answer = (pattern: TeamPattern, extra: Record<string, unknown> = {}) => ({
   name: `A ${pattern} team`,
@@ -24,7 +26,7 @@ const answer = (pattern: TeamPattern, extra: Record<string, unknown> = {}) => ({
 });
 
 describe('the draft prompt', () => {
-  it('names all eight patterns with their roles from the contract', () => {
+  it('names all eleven patterns with their roles from the contract', () => {
     for (const pattern of TEAM_PATTERNS) {
       const line = DRAFT_SYSTEM_PROMPT.split('\n').find((text) =>
         text.startsWith(`- "${pattern}":`),
@@ -32,6 +34,16 @@ describe('the draft prompt', () => {
       expect(line, pattern).toBeDefined();
       expect(line).toContain(`Roles: ${TEAM_SLOTS[pattern].join(', ')}`);
     }
+    expect(DRAFT_SYSTEM_PROMPT.split('\n').filter((text) => /^- "\w+":/.test(text))).toHaveLength(
+      11,
+    );
+    // Only rounds of a judged Loop: the four verification patterns take them too.
+    const rounds = DRAFT_SYSTEM_PROMPT.split('\n').find((text) =>
+      text.startsWith('- reviewRounds:'),
+    );
+    for (const pattern of TEAM_PATTERNS)
+      expect([pattern, rounds?.includes(`"${pattern}"`)]).toEqual([pattern, LOOPS.has(pattern)]);
+    expect(DRAFT_SYSTEM_PROMPT).not.toMatch(/plan_implement_review|parallel_review/);
     expect(DRAFT_SYSTEM_PROMPT).toContain('Pick the smallest pattern that fits.');
     expect(DRAFT_SYSTEM_PROMPT).toContain('Write in the language of the goal.');
   });
@@ -76,7 +88,7 @@ describe('planFromAnswer', () => {
   it('yields no plan for tools, edges, an unknown pattern or the wrong roles', () => {
     const bad = [
       answer('implement_review', { tools: ['write_file', 'run_command'] }),
-      answer('parallel_review', { edges: [{ source: 'scope', target: 'synthesis' }] }),
+      answer('adversarial_review', { edges: [{ source: 'scope', target: 'verdict' }] }),
       answer('tech_decision', { controlEdges: [] }),
       answer('bug_fix', {
         roles: answer('bug_fix').roles.map((role) => ({
@@ -87,7 +99,34 @@ describe('planFromAnswer', () => {
       { ...answer('bug_fix'), pattern: 'debug_and_fix' },
       { ...answer('implement_review'), pattern: 'implement-review' },
       answer('implement_review', { roles: answer('write_review').roles }),
-      answer('parallel_review', { reviewRounds: 2 }),
+      answer('adversarial_review', { reviewRounds: 2 }),
+      answer('code_investigation', { reviewRounds: 1 }),
+      // The patterns this one replaced, with their own old slots or with the new ones.
+      { ...answer('feature'), pattern: 'plan_implement_review' },
+      {
+        ...answer('feature'),
+        pattern: 'plan_implement_review',
+        roles: ['plan', 'implement', 'review'].map((slot) => ({ slot, name: slot, duty: slot })),
+      },
+      { ...answer('adversarial_review'), pattern: 'parallel_review' },
+      {
+        ...answer('adversarial_review'),
+        pattern: 'parallel_review',
+        roles: ['scope', 'correctness', 'security', 'synthesis'].map((slot) => ({
+          slot,
+          name: slot,
+          duty: slot,
+        })),
+      },
+      // A plan whose slots belong to another pattern.
+      answer('bug_fix', { roles: answer('feature').roles }),
+      answer('tech_decision', {
+        roles: ['frame', 'research_a', 'research_b', 'compare'].map((slot) => ({
+          slot,
+          name: slot,
+          duty: slot,
+        })),
+      }),
     ];
     for (const value of bad) expect(planFromAnswer(JSON.stringify(value))).toBeNull();
   });

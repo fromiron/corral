@@ -1,5 +1,11 @@
 import { type AgentRole, isWorkAgent } from '@corral/contracts';
-import { compileDefinition, ROLE_PRESET_IDS, roleFromPreset, teamTemplate } from '@corral/core';
+import {
+  compileDefinition,
+  ROLE_PRESET_IDS,
+  roleFromPreset,
+  TEAM_TEMPLATE_ROLES,
+  teamTemplate,
+} from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import {
   connectCapability,
@@ -117,18 +123,30 @@ describe('adding a copy to a team', () => {
     expect(draft.definition.controlEdges).toMatchObject([{ source: nodeId, target: 'output_1' }]);
   });
 
-  it.each(['implement-review', 'plan-implement-review', 'bug-fix'] as const)(
+  it.each([
+    ['implement-review', 'implement'],
+    ['feature', 'implement'],
+    ['bug-fix', 'fix'],
+    ['refactor', 'reshape'],
+    ['performance', 'improve'],
+  ] as const)(
     'inserts one seat on both final Loop routes in %s, without changing its submission',
-    (id) => {
+    (id, worker) => {
       const definition = teamTemplate(id, 'example', {
         name: id,
         brief: 'Prepare a result.',
         criteria: ['Reviewed'],
-        labels: { loop: 'Review loop', decision: 'Decision', join: 'Gather', output: 'Output' },
-        roles: {
-          ...messages.TeamTemplates.presets,
-          ...messages.TeamTemplates.templates['bug-fix'].roles,
+        labels: {
+          loop: 'Review loop',
+          decision: 'Decision',
+          verifyLoop: 'Verification loop',
+          verifyDecision: 'Verification decision',
+          join: 'Gather',
+          output: 'Output',
         },
+        roles: Object.fromEntries(
+          Object.keys(TEAM_TEMPLATE_ROLES[id]).map((key) => [key, { name: key, duty: key }]),
+        ) as never,
       });
       const store = createEditorStore(draftFromDefinition(definition));
       const original = store.getState().draft;
@@ -148,7 +166,7 @@ describe('adding a copy to a team', () => {
         {
           kind: 'task_output',
           name: 'draft',
-          sourceNodeId: id === 'bug-fix' ? 'fix' : 'implement',
+          sourceNodeId: worker,
         },
       ]);
       expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
@@ -340,17 +358,17 @@ describe('replacing the role, not the seat', () => {
         kind === 'origin'
           ? addAtEnd(emptyDraft(), {
               role: writer().role,
-              origin: { kind: 'preset', presetId: 'write' },
+              origin: { kind: 'preset', presetId: 'writer' },
             }).draft
           : flow();
       let before = updateNode(initial, 'agent_1', { prompt: sentence });
       if (kind === 'step')
         before = patchNode(before, 'agent_1', { stepInstruction: 'Invite the neighbors.' });
-      const { name, duty } = messages.TeamTemplates.presets.plan;
-      const preset = roleFromPreset('plan', 'plan', name);
+      const { name, duty } = messages.TeamTemplates.presets.architect;
+      const preset = roleFromPreset('architect', 'architect', name);
       const source: AgentSource = {
         role: preset,
-        origin: { kind: 'preset', presetId: 'plan' },
+        origin: { kind: 'preset', presetId: 'architect' },
         stepInstruction: duty,
       };
       const expectedTask =
@@ -379,7 +397,7 @@ describe('replacing the role, not the seat', () => {
   it('fills only the missing task when choosing the same preset, but not a library original', () => {
     const source: AgentSource = {
       role: writer().role,
-      origin: { kind: 'preset', presetId: 'write' },
+      origin: { kind: 'preset', presetId: 'writer' },
     };
     const { draft, nodeId } = addAtEnd(emptyDraft(), source);
     const preview = previewReplaceAgent(draft, nodeId, { ...source, stepInstruction: 'Draft it.' });
@@ -399,7 +417,7 @@ describe('replacing the role, not the seat', () => {
   it('fills an empty seat from another team’s handmade role without duplicating its one prompt', () => {
     const { draft, nodeId } = addAtEnd(emptyDraft(), {
       role: writer().role,
-      origin: { kind: 'preset', presetId: 'write' },
+      origin: { kind: 'preset', presetId: 'writer' },
     });
     const preview = previewReplaceAgent(draft, nodeId, { role: writer().role });
     if (!preview.ok) throw new Error(preview.reason);

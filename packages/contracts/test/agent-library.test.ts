@@ -17,7 +17,7 @@ describe('agent library contracts', () => {
     expect(CreateLibraryAgent.parse(body)).toEqual(body);
     for (const extra of [
       { id: 'writer' },
-      { origin: { kind: 'preset', presetId: 'write' } },
+      { origin: { kind: 'preset', presetId: 'writer' } },
       { stepInstruction: 'Team only' },
     ]) {
       expect(CreateLibraryAgent.safeParse({ ...body, role: { ...role, ...extra } }).success).toBe(

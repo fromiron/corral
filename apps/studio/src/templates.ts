@@ -28,10 +28,13 @@ export type WorkspaceTemplateId = DemoTemplateId | TeamTemplateId | 'blank';
 export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
   'starter',
   'implement-review',
-  'plan-implement-review',
+  'feature',
   'bug-fix',
-  'parallel-review',
+  'refactor',
+  'performance',
+  'adversarial-review',
   'tech-decision',
+  'code-investigation',
   'research-team',
   'blank',
 ];
@@ -120,7 +123,7 @@ export function useTemplateText(): TemplateText {
 }
 
 /**
- * The words a draft from a goal uses: the draft's own three patterns, and the five template
+ * The words a draft from a goal uses: the draft's own three patterns, and the eight template
  * patterns worded as the library templates of the same name.
  */
 export function draftWording(messages: unknown): TeamWording {
@@ -137,7 +140,12 @@ export function draftWording(messages: unknown): TeamWording {
   ) as NonNullable<TeamWording['templates']>;
   return {
     ...TeamDraft.wording,
-    labels: { ...TeamDraft.wording.labels, join: TeamTemplates.labels.join },
+    labels: {
+      ...TeamDraft.wording.labels,
+      join: TeamTemplates.labels.join,
+      verifyLoop: TeamTemplates.labels.verifyLoop,
+      verifyDecision: TeamTemplates.labels.verifyDecision,
+    },
     templates,
   };
 }

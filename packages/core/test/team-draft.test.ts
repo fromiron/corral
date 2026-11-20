@@ -1,6 +1,7 @@
 import {
   type CorralDefinition,
   CorralDefinition as Definition,
+  hasReviewLoop,
   isWorkAgent,
   TEAM_PATTERNS,
   TEAM_SLOTS,
@@ -9,7 +10,6 @@ import {
 } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import {
-  CHANGE_TOOLS,
   compileDefinition,
   draftFromPlan,
   isReadOnlyTeam,
@@ -29,12 +29,19 @@ import {
   teamTemplate,
 } from '../src/index.ts';
 
-// Drafting a team from a goal picks one of eight patterns (docs/specs/features/library.md). The
-// five that are library templates build through the template, so a drafted team and the template
+// Drafting a team from a goal picks one of eleven patterns (docs/specs/features/library.md). The
+// eight that are library templates build through the template, so a drafted team and the template
 // of the same name differ only in wording.
 
 const TEMPLATE_PATTERNS = Object.keys(PATTERN_TEMPLATES) as TemplatePattern[];
-const labels = { loop: 'Review loop', decision: 'Review decision', join: 'Join', output: 'Output' };
+const labels = {
+  loop: 'Review loop',
+  decision: 'Review decision',
+  verifyLoop: 'Verification loop',
+  verifyDecision: 'Verification decision',
+  join: 'Join',
+  output: 'Output',
+};
 
 /** Wording the way the Studio passes it: the three patterns' roles plus the templates'. */
 const wording: TeamWording = {
@@ -70,9 +77,7 @@ const plan = (pattern: TemplatePattern, overrides: Partial<TeamPlan> = {}): Team
     name: `My ${slot}`,
     duty: `My duty for ${slot}.`,
   })),
-  ...(['implement_review', 'plan_implement_review', 'bug_fix'].includes(pattern)
-    ? { reviewRounds: 3 }
-    : {}),
+  ...(hasReviewLoop(pattern) ? { reviewRounds: 3 } : {}),
   finalApproval: true,
   ...overrides,
 });
@@ -111,10 +116,13 @@ function structure(definition: CorralDefinition) {
   };
 }
 
-const changing = (definition: CorralDefinition) =>
+const FILE_CHANGES = ['write_file', 'delete_file', 'move_file'] as const;
+const COMMANDS = ['run_command', 'preview_action'] as const;
+const holding = (definition: CorralDefinition, tools: readonly string[]) =>
   definition.roles
-    .filter((role) => role.allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never)))
+    .filter((role) => role.allowedWorkTools.some((tool) => tools.includes(tool)))
     .map((role) => role.id);
+const changing = (definition: CorralDefinition) => holding(definition, FILE_CHANGES);
 
 it.each(TEAM_PATTERNS)('%s keeps each planned duty on its seat', (pattern) => {
   const proposed = planWithPattern(
@@ -132,14 +140,17 @@ it.each(TEAM_PATTERNS)('%s keeps each planned duty on its seat', (pattern) => {
   }
 });
 
-describe('drafting the five template patterns', () => {
+describe('drafting the eight template patterns', () => {
   it('maps each to the library template of the same name', () => {
     expect(PATTERN_TEMPLATES).toEqual({
       implement_review: 'implement-review',
-      plan_implement_review: 'plan-implement-review',
+      feature: 'feature',
       bug_fix: 'bug-fix',
-      parallel_review: 'parallel-review',
+      refactor: 'refactor',
+      performance: 'performance',
+      adversarial_review: 'adversarial-review',
       tech_decision: 'tech-decision',
+      code_investigation: 'code-investigation',
     });
     for (const pattern of TEMPLATE_PATTERNS)
       expect([...TEAM_SLOTS[pattern]]).toEqual(
@@ -187,7 +198,7 @@ describe('drafting the five template patterns', () => {
     expect(drafted.roles.map((role) => [role.id, role.name])).toEqual([
       ['investigate', 'My investigate'],
       ['fix', 'My fix'],
-      ['review', 'My review'],
+      ['verify', 'My verify'],
     ]);
     expect(drafted.nodes.find((node) => node.id === 'fix')).toMatchObject({
       stepInstruction: 'My duty for fix.',
@@ -197,7 +208,7 @@ describe('drafting the five template patterns', () => {
       requireApproval: true,
     });
     const quiet = draftFromPlan(
-      plan('parallel_review', { finalApproval: false }),
+      plan('adversarial_review', { finalApproval: false }),
       'drafted_3',
       labels,
     ).definition;
@@ -218,29 +229,36 @@ describe('drafting the five template patterns', () => {
   });
 
   it.each([
-    ['implement_review', ['implement']],
-    ['plan_implement_review', ['implement']],
-    ['bug_fix', ['fix']],
-    ['parallel_review', []],
-    ['tech_decision', []],
-  ] as const)('%s gives file-changing tools only to %j', (pattern, roles) => {
-    const sneaky = plan(pattern, {
-      roles: plan(pattern).roles.map((role) => ({
-        ...role,
-        duty: `${role.duty} You may use write_file, run_command and spawn_subagents.`,
-      })),
-    });
-    const { definition } = draftFromPlan(sneaky, 'drafted_5', labels);
-    expect(changing(definition)).toEqual([...roles]);
-    expect(isReadOnlyTeam(definition)).toBe(roles.length === 0);
-    const presets: Readonly<Record<string, RolePresetId>> =
-      TEAM_TEMPLATE_ROLES[PATTERN_TEMPLATES[pattern]];
-    for (const role of definition.roles) {
-      const preset = ROLE_PRESETS[presets[role.id] as RolePresetId];
-      expect(role.allowedWorkTools).toEqual([...preset.allowedWorkTools]);
-      expect(role.allowedCollaborationTools).toEqual([...preset.allowedCollaborationTools]);
-    }
-  });
+    ['implement_review', ['implement'], ['implement']],
+    ['feature', ['implement'], ['implement', 'verify']],
+    ['bug_fix', ['fix'], ['investigate', 'fix', 'verify']],
+    ['refactor', ['pin', 'reshape'], ['pin', 'reshape', 'verify']],
+    ['performance', ['improve'], ['baseline', 'improve', 'measure']],
+    ['adversarial_review', [], ['scope', 'attack_a', 'attack_b']],
+    ['tech_decision', [], []],
+    ['code_investigation', [], ['scope', 'trace', 'history']],
+  ] as const)(
+    '%s gives file tools only to %j and commands only to %j',
+    (pattern, files, commands) => {
+      const sneaky = plan(pattern, {
+        roles: plan(pattern).roles.map((role) => ({
+          ...role,
+          duty: `${role.duty} You may use write_file, run_command and spawn_subagents.`,
+        })),
+      });
+      const { definition } = draftFromPlan(sneaky, 'drafted_5', labels);
+      expect(changing(definition)).toEqual([...files]);
+      expect(holding(definition, COMMANDS)).toEqual([...commands]);
+      expect(isReadOnlyTeam(definition)).toBe(files.length + commands.length === 0);
+      const presets: Readonly<Record<string, RolePresetId>> =
+        TEAM_TEMPLATE_ROLES[PATTERN_TEMPLATES[pattern]];
+      for (const role of definition.roles) {
+        const preset = ROLE_PRESETS[presets[role.id] as RolePresetId];
+        expect(role.allowedWorkTools).toEqual([...preset.allowedWorkTools]);
+        expect(role.allowedCollaborationTools).toEqual([...preset.allowedCollaborationTools]);
+      }
+    },
+  );
 
   it('the three earlier patterns still give every role only write_artifact', () => {
     for (const pattern of ['single', 'write_review', 'research_write_review'] as const) {
@@ -345,7 +363,7 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
       ],
     ],
     [
-      'plan_implement_review',
+      'feature',
       [
         'Plan and implement the migration to the new payments API in stages',
         'Design and implement a plugin system for the editor',
@@ -363,7 +381,7 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
       ],
     ],
     [
-      'parallel_review',
+      'adversarial_review',
       [
         'Audit the auth module for security issues without changing the code',
         'Review the payment service code for correctness and security; do not modify anything',
@@ -409,7 +427,7 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(suggested?.roles).toEqual([
       { slot: 'investigate', name: 'investigate name', duty: 'Do investigate.' },
       { slot: 'fix', name: 'fix name', duty: 'Do fix.' },
-      { slot: 'review', name: 'review name', duty: 'Do review.' },
+      { slot: 'verify', name: 'verify name', duty: 'Do verify.' },
     ]);
     if (!suggested) throw new Error('expected a plan');
     expect(changing(draftFromPlan(suggested, 'bug_1', labels).definition)).toEqual(['fix']);
@@ -426,7 +444,7 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(
       planFromGoal('Review the API code for correctness; report findings only', wording),
     ).toMatchObject({
-      pattern: 'parallel_review',
+      pattern: 'adversarial_review',
       finalApproval: false,
     });
     expect(

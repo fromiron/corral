@@ -20,7 +20,14 @@ function template(id: TeamTemplateId) {
     roles: Object.fromEntries(
       Object.keys(TEAM_TEMPLATE_ROLES[id]).map((k) => [k, { name: k, duty: k }]),
     ),
-    labels: { loop: 'Review loop', decision: 'Decision', join: 'Gather', output: 'Output' },
+    labels: {
+      loop: 'Review loop',
+      decision: 'Decision',
+      verifyLoop: 'Verification loop',
+      verifyDecision: 'Verification decision',
+      join: 'Gather',
+      output: 'Output',
+    },
   });
 }
 
@@ -69,19 +76,21 @@ function freeze(value: unknown) {
 
 describe('team composition roster', () => {
   it.each([
-    ['implement-review', [], 'implement'],
-    ['plan-implement-review', ['plan'], 'implement'],
-    ['bug-fix', ['investigate'], 'fix'],
+    ['implement-review', [], 'implement', 'review'],
+    ['feature', ['design'], 'implement', 'verify'],
+    ['bug-fix', ['investigate'], 'fix', 'verify'],
+    ['refactor', ['pin'], 'reshape', 'verify'],
+    ['performance', ['baseline'], 'improve', 'measure'],
   ] as const)(
-    '%s: groups the review rounds and follows decision ports through the Loop boundary',
-    (id, prefix, worker) => {
+    '%s: groups the judged rounds and follows decision ports through the Loop boundary',
+    (id, prefix, worker, judge) => {
       const { steps, outputs, unconnected } = roster(template(id));
       expect(ids(steps)).toEqual([...prefix, 'review_loop']);
       const loop = steps.at(-1);
       expect(loop?.kind).toBe('loop');
       if (loop?.kind !== 'loop') throw new Error('expected a Loop');
       expect(loop.maxIterations).toBe(2);
-      expect(ids(loop.children)).toEqual([worker, 'review', 'review_decision']);
+      expect(ids(loop.children)).toEqual([worker, judge, 'review_decision']);
       expect(loop.children.at(-1)).toMatchObject({
         kind: 'decision',
         branches: [
@@ -97,8 +106,9 @@ describe('team composition roster', () => {
   );
 
   it.each([
-    ['parallel-review', 'scope', 'correctness', 'security', 'synthesis'],
-    ['tech-decision', 'frame', 'research_a', 'research_b', 'compare'],
+    ['adversarial-review', 'scope', 'attack_a', 'attack_b', 'verdict'],
+    ['tech-decision', 'frame', 'option_a', 'option_b', 'decide'],
+    ['code-investigation', 'scope', 'trace', 'history', 'write'],
   ] as const)(
     '%s: keeps the branches together and the Join and following stages outside',
     (id, source, a, b, last) => {
@@ -454,7 +464,7 @@ describe('team composition roster', () => {
   });
 
   it('ties each review to the actual received binding, reviewer, producer and loop limit', () => {
-    const d = template('plan-implement-review');
+    const d = template('implement-review');
     const output = d.nodes.find((n) => n.type === 'output');
     const loop = d.nodes.find((n) => n.type === 'loop');
     if (!output || !loop) throw new Error('Expected template output and loop');
@@ -491,7 +501,7 @@ describe('team composition roster', () => {
   });
 
   it('does not promise review facts when a policy has a missing decision or a non-working reviewer', () => {
-    const d = template('plan-implement-review');
+    const d = template('implement-review');
     const out = d.nodes.find((n) => n.type === 'output');
     const reviewer = d.nodes.find((n) => n.id === 'review');
     if (!out || !isWorkAgent(reviewer)) throw new Error('Expected reviewer and Output');

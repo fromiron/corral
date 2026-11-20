@@ -40,17 +40,17 @@
     {
       "id": "final-08",
       "goal": "Implement pagination for the orders endpoint with tests",
-      "accept": ["implement_review", "plan_implement_review"]
+      "accept": ["implement_review", "feature"]
     },
     {
       "id": "final-09",
       "goal": "모놀리식 서버에서 알림 기능을 별도 서비스로 분리해야 해. 계획을 세우고 구현해 줘",
-      "accept": ["plan_implement_review"]
+      "accept": ["feature"]
     },
     {
       "id": "final-10",
       "goal": "Plan and implement role-based access control across the admin pages",
-      "accept": ["plan_implement_review"]
+      "accept": ["feature"]
     },
     {
       "id": "final-11",
@@ -65,12 +65,12 @@
     {
       "id": "final-13",
       "goal": "이번 릴리스 브랜치의 변경을 버그와 보안 취약점 관점에서 따로 검토하고 결과를 합쳐 줘",
-      "accept": ["parallel_review"]
+      "accept": ["adversarial_review"]
     },
     {
       "id": "final-14",
       "goal": "Audit the file upload handler for security and correctness problems without changing code",
-      "accept": ["parallel_review"]
+      "accept": ["adversarial_review"]
     },
     {
       "id": "final-15",
@@ -95,12 +95,12 @@
     {
       "id": "final-19",
       "goal": "검색 기능을 Elasticsearch로 옮기는 작업을 설계부터 구현까지 진행해 줘",
-      "accept": ["plan_implement_review"]
+      "accept": ["feature"]
     },
     {
       "id": "final-20",
       "goal": "Check this SQL migration for mistakes before we run it",
-      "accept": ["parallel_review", "single"]
+      "accept": ["adversarial_review", "single"]
     }
   ]
 }
