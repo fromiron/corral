@@ -6317,15 +6317,26 @@ export class Coordinator {
     return rounds[rounds.indexOf(iterationId) - 1] ?? null;
   }
 
-  /** Whether `round` is `reader`, a Loop round around it, or a round nested inside it. */
+  /**
+   * Whether a step's execution in `round` is visible to a reader in round `reader`: the two are
+   * in the same pass through every Loop they share. Each of the reader's rounds (its own and the
+   * rounds around it) whose Loop also holds `round` must be one of `round`'s own rounds. So the
+   * same round, a round around the reader, the rounds nested in the reader's round, and any
+   * round of a Loop the reader does not share. An execution outside every Loop has no round.
+   */
   private sameRound(run: LiveRun, round: string | null, reader: string): boolean {
+    if (round === null) return false;
     const { iterations } = run.projection;
     const chain = (from: string | null) => {
       const ids: string[] = [];
       for (let id = from; id; id = iterations[id]?.parentIterationId ?? null) ids.push(id);
       return ids;
     };
-    return chain(reader).includes(round ?? '') || chain(round).includes(reader);
+    const theirs = chain(round);
+    const loops = new Set(theirs.map((id) => iterations[id]?.loopNodeId));
+    return chain(reader).every(
+      (id) => !loops.has(iterations[id]?.loopNodeId) || theirs.includes(id),
+    );
   }
 
   /**

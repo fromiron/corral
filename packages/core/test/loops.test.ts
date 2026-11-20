@@ -648,3 +648,180 @@ describe('loop execution', () => {
     expect(new Set(writes.map((e) => e?.taskId)).size).toBe(2);
   });
 });
+
+// docs/specs/technical-design.md §9.2: a task_output reads the named preceding task's submitted
+// completion. A reader in a Loop round reads a looped source's latest completion in the same pass
+// through every Loop the two share; sharing none, its latest completion.
+describe('reading a step of another Loop', () => {
+  /** The versions an execution was given, as its model request records them. */
+  const given = (events: RunEvent[], executionId: string | undefined) =>
+    events.flatMap((e) =>
+      e.type === 'model.request_prepared' && e.payload.executionId === executionId
+        ? e.payload.inputArtifactVersionIds
+        : [],
+    );
+  /** Each execution of a node and the versions it submitted, oldest first. */
+  const submitted = (p: RunProjection, nodeId: string) =>
+    (p.nodeExecutions[nodeId] ?? []).map((id) => ({
+      id,
+      versions: p.tasks[p.executions[id]?.taskId ?? '']?.submittedArtifactVersionIds ?? [],
+    }));
+  /** Each reader execution was given its own round's source version and not the other's. */
+  const readsInStep = (
+    events: RunEvent[],
+    readers: { id: string }[],
+    sources: { versions: string[] }[],
+    pick: (i: number) => number,
+  ) => {
+    for (const [i, read] of readers.entries()) {
+      const mine = sources[pick(i)]?.versions ?? [];
+      expect(mine.length).toBeGreaterThan(0);
+      expect(given(events, read.id)).toEqual(expect.arrayContaining(mine));
+      for (const [j, other] of sources.entries())
+        if (j !== pick(i))
+          for (const version of other.versions)
+            expect(given(events, read.id)).not.toContain(version);
+    }
+  };
+  /** `reader` also reads `source` as a task output. */
+  const reading = (nodes: CorralNode[], reader: string, source: string) =>
+    nodes.map((node) =>
+      node.id === reader && node.type === 'agent' && 'inputBindings' in node
+        ? {
+            ...node,
+            inputBindings: [
+              ...node.inputBindings,
+              { kind: 'task_output' as const, name: 'earlier', sourceNodeId: source },
+            ],
+          }
+        : node,
+    );
+
+  it('a step in a later Loop reads the earlier Loop’s last completed round', async () => {
+    const a = reviewedBody('loop_a', 'a');
+    const b = reviewedBody('loop_b', 'b');
+    const definition = team(
+      reading(
+        [research, loop('loop_a'), ...a.nodes, loop('loop_b'), ...b.nodes, output('b_write')],
+        'b_write',
+        'a_write',
+      ),
+      [
+        edge('research', 'out', 'loop_a', 'enter'),
+        ...a.edges,
+        edge('loop_a', 'next', 'loop_b', 'enter'),
+        ...b.edges,
+        edge('loop_b', 'next', 'output'),
+      ],
+    );
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(
+      scripted({ a_decision: ['revise', 'pass'], b_decision: ['revise', 'pass'] }),
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    const writes = submitted(final, 'a_write');
+    expect(writes).toHaveLength(2);
+    // Both rounds of the later Loop read the earlier Loop's second round.
+    readsInStep(events, submitted(final, 'b_write'), writes, () => 1);
+  });
+
+  it('two Loops inside one outer Loop read each other within the same outer round', async () => {
+    const x = reviewedBody('loop_x', 'x');
+    const y = reviewedBody('loop_y', 'y');
+    const definition = team(
+      reading(
+        [
+          research,
+          loop('loop_o'),
+          loop('loop_x', {}, 'loop_o'),
+          ...x.nodes,
+          loop('loop_y', {}, 'loop_o'),
+          ...y.nodes,
+          reviewer('o_review', 'y_write', 'loop_o'),
+          decision('o_decision', 'o_review', 'loop_o'),
+          output('y_write'),
+        ],
+        'y_write',
+        'x_write',
+      ),
+      [
+        edge('research', 'out', 'loop_o', 'enter'),
+        edge('loop_o', 'body', 'loop_x', 'enter'),
+        ...x.edges,
+        edge('loop_x', 'next', 'loop_y', 'enter'),
+        ...y.edges,
+        edge('loop_y', 'next', 'o_review'),
+        edge('o_review', 'out', 'o_decision'),
+        edge('o_decision', 'pass', 'loop_o', 'exit'),
+        edge('o_decision', 'revise', 'loop_o', 'repeat'),
+        edge('loop_o', 'next', 'output'),
+      ],
+    );
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(
+      scripted({
+        x_decision: ['pass', 'pass'],
+        y_decision: ['pass', 'pass'],
+        o_decision: ['revise', 'pass'],
+      }),
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    const xs = submitted(final, 'x_write');
+    const ys = submitted(final, 'y_write');
+    expect([xs.length, ys.length]).toEqual([2, 2]);
+    // Outer round 2 reads x from outer round 2, not from round 1.
+    readsInStep(events, ys, xs, (i) => i);
+  });
+
+  it('a step reads its own round, an enclosing Loop’s round and a nested Loop’s, as before', async () => {
+    const inner = reviewedBody('loop_b', 'b');
+    const definition = team(
+      reading(
+        [
+          research,
+          loop('loop_a'),
+          writer('a_write', 'loop_a'),
+          loop('loop_b', {}, 'loop_a'),
+          ...inner.nodes,
+          reviewer('a_review', 'b_write', 'loop_a'),
+          decision('a_decision', 'a_review', 'loop_a'),
+          output('b_write'),
+        ],
+        'b_write',
+        'a_write',
+      ),
+      [
+        edge('research', 'out', 'loop_a', 'enter'),
+        edge('loop_a', 'body', 'a_write'),
+        edge('a_write', 'out', 'loop_b', 'enter'),
+        ...inner.edges,
+        edge('loop_b', 'next', 'a_review'),
+        edge('a_review', 'out', 'a_decision'),
+        edge('a_decision', 'pass', 'loop_a', 'exit'),
+        edge('a_decision', 'revise', 'loop_a', 'repeat'),
+        edge('loop_a', 'next', 'output'),
+      ],
+    );
+    expect(compileDefinition(definition).diagnostics).toEqual([]);
+    const transport = runtime(
+      scripted({ a_decision: ['revise', 'pass'], b_decision: ['revise', 'pass', 'pass'] }),
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    // Outer round 1 runs the inner Loop twice, outer round 2 once.
+    const outer = submitted(final, 'a_write');
+    const inner3 = submitted(final, 'b_write');
+    expect([outer.length, inner3.length]).toEqual([2, 3]);
+    // The enclosing Loop's step, from the reader's own outer round.
+    readsInStep(events, inner3, outer, (i) => (i < 2 ? 0 : 1));
+    // The same inner round's draft goes to its reviewer.
+    readsInStep(events, submitted(final, 'b_review'), inner3, (i) => i);
+    // A nested Loop's step, from the newest inner round of the reader's own outer round.
+    readsInStep(events, submitted(final, 'a_review'), inner3, (i) => (i === 0 ? 1 : 2));
+  });
+});
