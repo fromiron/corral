@@ -318,6 +318,30 @@ describe('checked assistant proposals', () => {
     expect(quoted).toBe('shape:plan.outrider:value');
   });
 
+  it('refuses two near-miss answer shapes as not JSON, for now', () => {
+    const request = create('Write the guide.');
+    const problem = (text: string) => {
+      const result = readAssistantAnswer(text, request);
+      return 'problem' in result ? result.problem : 'usable';
+    };
+    const fields =
+      '"name":"Guide","brief":"Write a guide.","criteria":["Explain the steps."],' +
+      '"seats":[{"id":"write","agent":"a1","name":"Writer","duty":"Write the guide."}]';
+    // A shape seen in a live answer: a whole plan whose reason sits inside plan, the text one
+    // closing brace short. Refused on purpose for now; reading it is a later, deliberate change.
+    expect(
+      problem(`{"kind":"plan","plan":{${fields},"flow":[{"seat":"write"}],"reason":"One writer."}`),
+    ).toBe('not_json');
+    // A shape seen in a live answer: a whole object whose flow names a seat it does not have,
+    // followed by a note with another bracketed fragment. Refused on purpose for now.
+    expect(
+      problem(
+        `{"kind":"plan","plan":{${fields},"flow":[{"seat":"draft"}]},"reason":"One writer."}\n\n` +
+          'Note: if the seat is renamed, the flow becomes [{"seat":"write"}].',
+      ),
+    ).toBe('not_json');
+  });
+
   it('accepts exactly one checked reply and respects the active mode', () => {
     const request = create('One author to write the guide.');
     expect(read(plan(), request)).toEqual(plan());
