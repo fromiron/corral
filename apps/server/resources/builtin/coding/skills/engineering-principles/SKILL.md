@@ -12,7 +12,7 @@ When a principle decides something for you, say so in your report: which one, an
 
 ## Shape
 
-- **Data shape first.** You are about to add behaviour or state and have not yet decided how the data is held. [references/data-shape-first.md](references/data-shape-first.md). Procedure: the shape-first skill.
+- **Data shape first.** You are about to add behavior or state and have not yet decided how the data is held. [references/data-shape-first.md](references/data-shape-first.md). Procedure: the shape-first skill.
 - **Redesign, don't bolt on.** Something new is being asked of code that was not built for it. [references/redesign-dont-bolt-on.md](references/redesign-dont-bolt-on.md)
 - **Subtract first.** The area you are about to extend contains leftovers. [references/subtract-first.md](references/subtract-first.md). Procedure: the smallest-change skill.
 - **One owner.** Two parts of the system change the same value, or there are two ways to reach one outcome. [references/one-owner.md](references/one-owner.md)
@@ -29,7 +29,7 @@ When a principle decides something for you, say so in your report: which one, an
 
 - **The real artifact.** You are about to report that something works. [references/the-real-artifact.md](references/the-real-artifact.md). Procedure: the prove-it skill.
 - **The first wrong step.** A failure has been found and the nearest fix is a check at the point of failure. [references/the-first-wrong-step.md](references/the-first-wrong-step.md). Procedure: the root-cause skill.
-- **Behaviour, not internals.** A test is being added, edited or questioned. [references/behaviour-not-internals.md](references/behaviour-not-internals.md). Procedures: the failing-test-first and behavior-pin skills.
+- **Behavior, not internals.** A test is being added, edited or questioned. [references/behavior-not-internals.md](references/behavior-not-internals.md). Procedures: the failing-test-first and behavior-pin skills.
 - **No figure without its cause.** A figure is about to be quoted or used to decide something. [references/no-figure-without-cause.md](references/no-figure-without-cause.md). Procedure: the measure-first skill.
 - **Verifiable units.** The task is too big to confirm in one go, or repeats one edit many times. [references/verifiable-units.md](references/verifiable-units.md)
 - **Question the premise.** A second attempt has failed in the same way as the first. [references/question-the-premise.md](references/question-the-premise.md)

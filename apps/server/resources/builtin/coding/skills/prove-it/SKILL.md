@@ -33,7 +33,7 @@ A clean build. A changed file. A run from before the last edit. The author's own
 
 ## Verdict
 
-- **Pass** when every required criterion is labelled ran. Where running is impossible, traced may stand in, and you say so.
+- **Pass** when every required criterion is labeled ran. Where running is impossible, traced may stand in, and you say so.
 - **Revise** when a criterion is unmet. Name it and show the output.
 - **Inconclusive** when you could not check. A pending, failed, cancelled or timed-out check is never a pass.
 

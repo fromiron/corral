@@ -32,7 +32,7 @@ The smallest change is the one with the fewest things a reviewer has to take on 
 - The validation, error handling, cancellation and cleanup the old code had.
 - Accessibility and user data.
 - Every part of the request. A shorter diff is no reason to put off something that was asked for.
-- One meaningful test for behaviour that is not trivial. See the failing-test-first skill.
+- One meaningful test for behavior that is not trivial. See the failing-test-first skill.
 
 ## Hand back
 

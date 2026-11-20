@@ -1,6 +1,6 @@
 ---
 name: root-cause
-description: "Finds why something fails before fixing it: reproduce the failure, narrow the cause with evidence from the running system, and locate the first place it went wrong. Use when debugging a defect, a regression, a flaky test or any behaviour that differs from what was expected."
+description: "Finds why something fails before fixing it: reproduce the failure, narrow the cause with evidence from the running system, and locate the first place it went wrong. Use when debugging a defect, a regression, a flaky test or any behavior that differs from what was expected."
 license: MIT
 ---
 

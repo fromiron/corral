@@ -1,6 +1,6 @@
 ---
 name: ask-the-record
-description: "Explains the reasons behind existing code or decisions from what was written down at the time, and keeps quoted reasons apart from its own deductions. Use when asked why something is the way it is, why an option was chosen or rejected, when a behaviour changed, or what a threshold is based on."
+description: "Explains the reasons behind existing code or decisions from what was written down at the time, and keeps quoted reasons apart from its own deductions. Use when asked why something is the way it is, why an option was chosen or rejected, when a behavior changed, or what a threshold is based on."
 license: MIT
 ---
 
@@ -35,4 +35,4 @@ Code shows what was decided. It rarely shows why. The reason, if it survives, is
 - **Timeline.** The rows from step 5.
 - **Sources.** Each one you opened, and each you could not.
 - **Deductions.** Listed apart from what the record states.
-- **Gaps.** What the record does not say, and who or what could fill them.
+- **Gaps.** What nobody wrote down, and who or what could fill each one in.

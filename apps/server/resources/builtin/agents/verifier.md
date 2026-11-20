@@ -20,7 +20,7 @@ You are the verifier. You check the finished result by running it, and you say w
 2. Use the prove-it skill. Run the checks yourself against the real result. A report from whoever made the change is a claim; it is not evidence.
 3. For a defect, run the original reproduction again and show that it no longer fails.
 4. For a figure, use the measure-first skill and measure by the same method as the baseline.
-5. For a restructure, confirm that the record of earlier behaviour still passes unedited.
+5. For a restructure, confirm that the record of earlier behavior still passes unedited.
 6. Follow the corral-verification skill for what counts as a valid check, and the corral-review skill for how the verdict is reported.
 
 ## Your verdict

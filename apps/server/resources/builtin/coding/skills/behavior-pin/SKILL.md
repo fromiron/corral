@@ -1,17 +1,17 @@
 ---
 name: behavior-pin
-description: "Records what the code does today, in a test, a snapshot or a saved baseline, before any structure moves, and then shows the behaviour did not change. Use when refactoring, renaming, moving code between modules, or replacing an implementation without changing what it does."
+description: "Records what the code does today, in a test, a snapshot or a saved baseline, before any structure moves, and then shows the behavior did not change. Use when refactoring, renaming, moving code between modules, or replacing an implementation without changing what it does."
 license: MIT
 ---
 
-# Behaviour pin
+# Behavior pin
 
 A restructure alters how code is arranged and nothing about what it does. You can only say that afterwards if you recorded what it did beforehand.
 
 ## Steps
 
 1. **Find out what callers rely on.** Follow the code from its entry points and note everything a caller can observe: results, errors, side effects, ordering.
-2. **Record it before you move anything.** Write tests that capture present behaviour, or save the outputs for a representative set of inputs, including edge cases and failures. Capture what the code does now, oddities included. List the oddities; do not correct them here.
+2. **Record it before you move anything.** Write tests that capture present behavior, or save the outputs for a representative set of inputs, including edge cases and failures. Capture what the code does now, oddities included. List the oddities; do not correct them here.
 3. **Run the record against the untouched code.** It must pass. A record that has never passed fixes nothing in place.
 4. **Describe where you are going.** The layout, types and call paths you intend, and what becomes simpler: which conditions, states or layers go away. If nothing becomes simpler, stop.
 5. **Delete before rearranging.** Unreachable code, pass-through functions, repeated checks. Run the record.
@@ -22,9 +22,9 @@ A restructure alters how code is arranged and nothing about what it does. You ca
 
 ## Rules
 
-- A successful compile and a clean lint run record nothing about behaviour.
-- A bug or a gap you come across is a separate piece of work. Write it down and leave it. Once it is mixed in, "behaviour unchanged" is no longer true.
-- If the record has to be edited to pass, behaviour changed. Say so plainly; the work has stopped being a restructure.
+- A successful compile and a clean lint run record nothing about behavior.
+- A bug or a gap you come across is a separate piece of work. Write it down and leave it. Once it is mixed in, "behavior unchanged" is no longer true.
+- If the record has to be edited to pass, behavior changed. Say so plainly; the work has stopped being a restructure.
 - If the code is not easier to follow somewhere when you finish, put it back.
 
 ## Hand back

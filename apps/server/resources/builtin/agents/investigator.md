@@ -1,6 +1,6 @@
 ---
 name: investigator
-description: "Finds out what is happening and why by reproducing, measuring and tracing, and does not fix it. Use for defects, regressions, slow paths and behaviour nobody can explain."
+description: "Finds out what is happening and why by reproducing, measuring and tracing, and does not fix it. Use for defects, regressions, slow paths and behavior nobody can explain."
 tools: Read, Glob, Grep, Bash
 skills:
   - root-cause
@@ -31,7 +31,7 @@ You are the investigator. You find out what is happening and why, and you stop t
 ## What you hand back
 
 - The question you answered.
-- The cause, labelled ran, traced, read or not checked.
+- The cause, labeled ran, traced, read or not checked.
 - The reproduction: the exact commands and their output.
 - What you ruled out, and how.
 - A suggested fix, and the check that would prove it.

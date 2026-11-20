@@ -1,48 +1,55 @@
 ---
 name: pick-and-graft
-description: "Compares several independent answers to the same task against fixed criteria, picks one as the base and carries over the best parts of the others. Use when judging parallel attempts at a design, an implementation, a review or a document, or when merging several reports of findings into one."
+description: "Compares several independent answers to the same task against criteria fixed in advance, stands the result on one of them and brings in the better parts of the others. Use when judging parallel attempts at a design, an implementation, a review or a document, or when merging several reports of findings into one."
 license: MIT
 ---
 
 # Pick and graft
 
-Several attempts at one task rarely contain one that is best in every respect. They also should not be blended: an average of three designs is a fourth design nobody thought through. Choose one to stand on, then take from the others what is plainly better.
+Several attempts at one task rarely include one that is best in every respect. Blending them is worse: the average of three designs is a fourth design that nobody thought through. Stand on one attempt and borrow from the rest.
 
-## Steps
+## Before you read
 
-1. **Fix the task and the criteria before you read.** Restate the task in a sentence. Write three to six criteria you could mark as met or not met: correctness against the request, behaviour at the edges, how much it changes, how easy it is to extend, what evidence comes with it. Take them from the request. Do not derive them from whichever candidate you read first.
-2. **Read every candidate in full.** Do not stop at the first good one.
-3. **Mark each candidate against each criterion.** Cite the place in the candidate that earns the mark. A candidate's statement that it works is not evidence. A command with its output is. If you can run commands and the candidates can be run, run the same check on each.
-4. **Choose the base.** Pick the one the next person can build on most safely. That is usually the candidate that is correct with the least surface, which may not be the most complete. On a tie, take the smaller one.
-5. **Graft.** From each other candidate, take at most one or two things the base lacks: a case it missed, a clearer name, a check, a better paragraph. Rework each into the base's own terms and structure. Do not paste it in unchanged.
-6. **Check the combined result as a whole.** A graft can contradict the base. Reread it, or rerun the checks.
+Restate the task in a sentence. Then write down a handful of criteria, each one something you could mark met or not met: does it do what was asked, how does it behave at the edges, how much does it change, how easily can it be extended, what evidence comes with it. Take the criteria from the request. If you write them after reading, the first candidate you liked will have written them for you.
 
-## Reading the spread
+## Mark the candidates
 
-- **Candidates agree.** A good sign for the shared part. Verify it once and spend your attention on the differences.
-- **Candidates diverge widely.** The task was probably underspecified. Say what was missing from the request. Do not settle it by averaging.
+1. Read every candidate to the end, including the ones that start badly.
+2. Mark each candidate against each criterion. Beside every mark, cite the place in the candidate that earned it.
+3. Do not accept a candidate's word about itself. "Tested and working" is a claim. A command with its output is evidence.
+4. If you can run commands and the candidates can be run, put the same check to each of them.
 
-## Merging findings
+## Read the spread before you choose
 
-When the candidates are reports of problems:
+- **They agree.** The shared part is probably right. Verify it once, then give your attention to where they differ.
+- **They differ in detail.** This is the normal case. Carry on.
+- **They differ in kind.** The request left something open, and each candidate filled it in differently. Name what was left open and hand that back. Merging answers to different questions produces an answer to none of them.
+
+## Build the result
+
+1. **Choose what to stand on.** Prefer the candidate that is correct and gives the next person the least to keep track of. It is often not the most complete one. When two are level, take the smaller.
+2. **Borrow sparingly.** From each of the others, take only what the base plainly lacks: a case it missed, a clearer name, a check, a better paragraph. If you are importing most of another candidate, you chose the wrong base.
+3. **Rewrite what you borrow** in the base's own terms and structure, so the result reads as one author's work.
+4. **Check the whole.** A borrowed part can contradict the base. Reread the result from the top, or run the checks again.
+
+## When the candidates are findings
 
 - Keep a finding that comes with a run or a step-by-step trace.
-- Merge findings that have the same cause, and keep the clearest reproduction.
-- List what you dropped, with the reason: no evidence, a duplicate, or outside the task.
-- A finding raised by one reviewer alone is not weaker for that. Judge the evidence, not the count.
+- Where several findings come from one cause, combine them and keep the clearest reproduction.
+- A finding only one candidate raised is not weaker for that. Weigh the evidence and ignore the count.
+- Record each finding you drop and the reason: no evidence, a duplicate, or outside the task.
 
 ## Rules
 
 - Do not build a compromise that no candidate proposed.
 - Do not reward length or confidence.
-- Do not hide which candidate each part came from.
+- Do not hide where a part came from.
 
 ## Hand back
 
-- The criteria.
-- A table of candidates against criteria, with a reference for each mark.
-- The base, and why.
-- Each graft and where it came from.
-- What you rejected, and why.
 - The combined result.
-- What remains unverified.
+- Provenance: which candidate it stands on, and which parts came from which others.
+- The marks: candidates against criteria, with the reference for each.
+- What you set aside from each candidate, and why.
+- What the spread told you about the request.
+- What is still unverified.

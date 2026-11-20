@@ -11,15 +11,15 @@ A document fails when it tries to teach, instruct, list and justify all at once.
 ## Steps
 
 1. **Name the reader and the job.** Who opens this, and what do they need to walk away able to do? Choose one kind:
-   - Tutorial: a beginner follows it once and ends with something working.
-   - How-to: someone who knows the basics completes a specific task.
    - Reference: someone looks up an exact fact and leaves.
+   - How-to: someone who knows the basics completes a specific task.
+   - Tutorial: a beginner follows it once and ends with something working.
    - Explanation: someone wants to understand why it is built this way.
    Material that belongs to another kind goes in another document. Link to it.
-2. **Collect the facts before the wording.** Read the code, run the commands, open the sources. Do not document behaviour you assume.
+2. **Collect the facts before the wording.** Read the code, run the commands, open the sources. Do not document behavior you assume.
 3. **Put the answer at the top.** The first screen says what this is, who it is for and what they get.
 4. **Shape it to the job.** Numbered steps for a procedure, with one action in each. A table for facts that share columns. Paragraphs for reasoning.
-5. **Write the sentences.** Present tense. Active voice. The same word for the same thing every time. Define a term where it first appears. Avoid idiom and wordplay; many readers translate.
+5. **Write the sentences.** Settle on one term for each thing, define it where it first appears and do not vary it. Say who does what, in the present tense. Keep idiom and wordplay out; many readers translate.
 6. **Use real examples.** The smallest one that runs. Show the command and the output it gives. Never a placeholder the reader must decode.
 7. **Test it.** Follow your own steps on a clean start if you can run commands. Open every link. If you could not, say which parts are untested.
 

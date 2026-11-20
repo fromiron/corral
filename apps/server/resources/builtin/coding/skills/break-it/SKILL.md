@@ -13,7 +13,7 @@ Your job is to make the change fail. A belief that it might fail is not a findin
 1. **Say what the change is for.** One or two sentences, taken from the request and the change itself. A failure counts only if it defeats that purpose. If the purpose is unclear, state what you assumed.
 2. **Read the change and its surroundings.** Callers, data formats, configuration, tests.
 3. **Choose your attacks.** If you were given a lens (correctness, security, concurrency), stay inside it. Otherwise pick from the list below the ones this change is exposed to.
-4. **Carry each one out.** Write a failing test, a short script or a command that shows the wrong behaviour. If you cannot run anything, walk the path step by step, with file references, until it arrives at the wrong outcome.
+4. **Carry each one out.** Write a failing test, a short script or a command whose output is the wrong result. If you cannot run anything, walk the path step by step, with file references, until it arrives at the wrong outcome.
 5. **Keep what you showed. Discard the rest.**
 6. **Combine findings that have one cause.**
 

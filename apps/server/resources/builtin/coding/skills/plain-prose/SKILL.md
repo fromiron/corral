@@ -19,16 +19,10 @@ The reader has little time and cannot ask you what you meant. Give them the resu
 
 ## Cut on sight
 
-- Opening lines that announce what the text is about to do. Closing lines that repeat it.
-- Praise, apology and enthusiasm.
-- Hedges stacked on hedges. State the uncertainty once, in the place it applies.
-- Words that add force without adding information: "very", "really", "extremely", "crucial".
-- A contrast with a position nobody took.
-- Lists of three assembled for rhythm when there are two points, or four.
-- Questions you then answer yourself.
-- A colon or a dash used to stage a small reveal.
-- Bold scattered through running text. Headings on an answer of a few lines. Symbols used as bullets.
-- The same sentence shape several times in a row.
+- **At the edges of the text.** A first line that announces what is coming. A last line that repeats what was said. Apology, enthusiasm and compliments to the reader.
+- **Inside the sentence.** Doubt expressed twice; say it once, where it applies. Words that add force and no information: "very", "really", "extremely".
+- **Shapes used for effect.** The same sentence pattern several times running. A pause staged before a small reveal. A question you go on to answer yourself. Three items where the content has two, or four. A contrast with a position nobody took.
+- **Decoration.** Headings on an answer of a few lines. Emphasis scattered through running text. Symbols standing in for bullets.
 
 ## Keep
 
