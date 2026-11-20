@@ -524,11 +524,12 @@ it('sends a new team its own prompt and an edit the edit prompt', async () => {
     expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(sentence);
 });
 
-it('teaches an edit to ask when passing is left open and to gate when submission depends on it', () => {
+it('teaches an edit to ask when passing is left open, to gate when submission depends on it, and to add advice on request', () => {
   const examples = [
-    `Examples:\nIn both examples, the team's only result is a handout with outputId "handouts" and index 2.`,
+    `Examples:\nIn all three examples, the team's only result is a handout with outputId "handouts" and index 2.`,
     `- "Review the handout before sending it." → {"kind":"question","id":"review_policy","choices":["opinion_only","required"]}`,
     `- "Send the handout only after it passes review." → {"kind":"edits","edits":[{"kind":"require_review","outputId":"handouts","index":2}],"reason":"The handout must pass review before it can be sent."}`,
+    `- "Let the team consult an expert when questions come up while drafting the handout." → {"kind":"edits","edits":[{"kind":"add_shared_advice"}],"reason":"You asked for expert advice on demand while drafting the handout."}`,
     `- describe: {"kind":"describe","topic":"submitter"}\n- unsupported: {"kind":"unsupported"}\n`,
   ];
   expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(examples.join('\n'));
@@ -538,7 +539,8 @@ it('teaches an edit to ask when passing is left open and to gate when submission
   expect(TEAM_ASSISTANT_EDIT_PROMPT).toContain(
     'A reviewPolicy decision of opinion_only asks for add_shared_advice, not a gate, reviewer, review target or question. Declining a review gate does not by itself request advice.',
   );
-  // The bare examples are gone: advice is no longer the model's example of an edit.
+  // The bare examples are gone, and the lead-in counts every example.
+  expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain('In both examples');
   expect(TEAM_ASSISTANT_EDIT_PROMPT).not.toContain(
     'The author can ask for feedback without blocking submission.',
   );
@@ -548,12 +550,17 @@ it('teaches an edit to ask when passing is left open and to gate when submission
   const answers = [...TEAM_ASSISTANT_EDIT_PROMPT.matchAll(/^- ".*" → (\{.*\})$/gm)].map(
     ([, json]) => TeamAssistantReply.parse(JSON.parse(json ?? '')),
   );
-  expect(answers.map((reply) => reply.kind)).toEqual(['question', 'edits']);
+  expect(answers.map((reply) => reply.kind)).toEqual(['question', 'edits', 'edits']);
   for (const reply of answers) expect(assistantKindAllowed('edit', reply.kind)).toBe(true);
   expect(answers[1]).toEqual({
     kind: 'edits',
     edits: [{ kind: 'require_review', outputId: 'handouts', index: 2 }],
     reason: 'The handout must pass review before it can be sent.',
+  });
+  expect(answers[2]).toEqual({
+    kind: 'edits',
+    edits: [{ kind: 'add_shared_advice' }],
+    reason: 'You asked for expert advice on demand while drafting the handout.',
   });
 });
 
