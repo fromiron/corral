@@ -212,6 +212,14 @@ describe('TeamComposition', () => {
     rejects(composition({ flow: [] }));
   });
 
+  it('takes any seat id of 1 to 40 characters', () => {
+    const only = (id: string) =>
+      composition({ seats: [seat(id, { name: 'Only' })], flow: [{ seat: id }] });
+    for (const id of ['1', '기획자', 'plan step', 'x'.repeat(40)]) accepts(only(id));
+    for (const id of ['', 'x'.repeat(41)]) rejects(only(id));
+    rejects(composition({ seats: [seat('plan', { agent: '' })], flow: [{ seat: 'plan' }] }));
+  });
+
   it('refuses a seat id used twice', () => {
     rejects(composition({ seats: [seat('plan'), seat('plan'), seat('write'), seat('check')] }));
   });

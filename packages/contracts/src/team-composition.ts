@@ -6,8 +6,11 @@ import { OutputContract } from './definition.ts';
 // the flow from three step kinds. Neither carries a tool, a permission, a prompt body or a path:
 // those come from the chosen agents and the editor's defaults when the composition is assembled.
 
-/** A short name that means something only inside one request or one answer. */
-const ShortId = z.string().regex(/^[A-Za-z][A-Za-z0-9_-]{0,39}$/);
+/**
+ * A short name that means something only inside one request or one answer. No node takes it as
+ * its id, so it needs no form beyond its length.
+ */
+const ShortId = z.string().min(1).max(40);
 const Text = (max: number) => z.string().trim().min(1).max(max);
 
 export const TEAM_COMPOSITION_LIMITS = {
