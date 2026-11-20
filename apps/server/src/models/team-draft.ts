@@ -12,7 +12,9 @@ import { requestsWorkObservation, withWorkObservation } from '@corral/core';
 // a JSON object that passes the TeamPlan contract is used, and the text itself is never sent
 // back or logged. Tools and wiring are not part of the plan.
 
-export const DRAFT_MAX_OUTPUT_TOKENS = 1500;
+// A plan is at most a few hundred tokens; the rest is room for a reasoning model, whose
+// thinking counts against the same allowance and otherwise cuts the answer off.
+export const DRAFT_MAX_OUTPUT_TOKENS = 3000;
 export const DRAFT_TIMEOUT_MS = 60_000;
 
 const quoted = (patterns: readonly TeamPattern[]) => patterns.map((p) => `"${p}"`).join(', ');
