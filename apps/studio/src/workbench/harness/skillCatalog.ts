@@ -14,6 +14,15 @@ export async function loadSkillCatalog(api: HarnessApi): Promise<SkillCatalog> {
   };
 }
 
+/** A skill "add skill" lets a person pick: trusted, switched on and not archived. */
+export function usableSkill(entry: HarnessEntryView, catalog: SkillCatalog): boolean {
+  return (
+    !entry.archivedAt &&
+    !catalog.disabled.has(entry.resourceHash) &&
+    Boolean(entry.resource.trustedAt)
+  );
+}
+
 export function skillState(
   entry: HarnessEntryView,
   disabled: ReadonlySet<string>,

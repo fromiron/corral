@@ -85,6 +85,7 @@ import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { RunSetupSummary } from '../workbench/RunSetupSummary.tsx';
+import { teamChoices } from '../workbench/teamChoices.ts';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { useImageProfiles } from '../workbench/useImageProfiles.ts';
 import { useModelProfiles } from '../workbench/useModels.ts';
@@ -302,8 +303,10 @@ function Editor({
   const messages = useMessages();
   const wording = useMemo(() => draftWording(messages), [messages]);
   const settings = useSettingsNavigation();
+  const presetText = useTranslations('TeamTemplates.presets');
   const assistant = useMemo<TeamAssistantHost>(() => {
     const models = services.models;
+    const { agents, harnesses } = services;
     return {
       ask:
         models && assistantModel ? (request, signal) => models.assistTeam(request, signal) : null,
@@ -311,6 +314,14 @@ function Editor({
       // Until the list arrives the editor does not know whether a model can run.
       ...(live && !localAssistant && profiles === null && { modelPending: true }),
       wording,
+      // Read when a new team is asked for, so the catalog is what "add agent" offers then.
+      choices: () =>
+        teamChoices({
+          projectId,
+          agents,
+          harnesses,
+          presetName: (id) => presetText(`${id}.name`),
+        }),
       newOperationId: () => crypto.randomUUID(),
       ...(live &&
         !localAssistant && { onConnectModel: () => void navigate(settings.link('models')) }),
@@ -320,7 +331,8 @@ function Editor({
   }, [
     assistantModel,
     profiles,
-    services.models,
+    services,
+    presetText,
     wording,
     navigate,
     settings,
