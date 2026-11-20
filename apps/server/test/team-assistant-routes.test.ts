@@ -1,9 +1,15 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
-import { readAssistantAnswer } from '@corral/core';
+import {
+  BUILTIN_SKILLS,
+  builtinComposableAgents,
+  readAssistantAnswer,
+  teamCatalog,
+} from '@corral/core';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
@@ -389,6 +395,52 @@ it('gives example replies the reader accepts: a loop only when an agent can judg
   expect(createPrompt(opinions)).not.toContain('Agents that can judge a loop');
   expect(createPrompt(request)).toContain('- Agents that can judge a loop: "a2", "a4".');
   expect(createPrompt(noJudge)).toContain('- Agents that can judge a loop: none, so use no loop.');
+});
+
+// The prompts as measured: a catalog whose names are trimmed and fit the seat name limit gets
+// these exact prompts, byte for byte.
+const PIN_DEFAULT = 'fa5ffb8798a81abcbb5f9a02a557a5b81178b60f8f25cd7cb43f0ff317b74b4a';
+const PIN_CREW = 'b40f80e4b22226f8774b3fa4f13a4599e6caf1d1ce9661ecc5982ac0f215d5ee';
+const sha = (text: string) => createHash('sha256').update(text).digest('hex');
+
+it('keeps the prompt byte for byte for a catalog whose names already fit', () => {
+  expect(sha(createPrompt(createRequest()))).toBe(PIN_DEFAULT);
+  const crew = teamCatalog(
+    builtinComposableAgents((id) => `${id.charAt(0).toUpperCase()}${id.slice(1)}`),
+    BUILTIN_SKILLS.map((skill) => ({
+      ref: { resourceHash: skill.resourceHash, entry: skill.entry },
+      name: skill.name,
+      description: skill.description,
+    })),
+  ).catalog;
+  expect(sha(createPrompt(createRequest({ catalog: crew })))).toBe(PIN_CREW);
+});
+
+it.each([
+  ['a surrogate pair straddling the cut', `${'a'.repeat(39)}😀tail`, `${'a'.repeat(39)}`],
+  ['a whitespace-only name', '   ', undefined],
+  ['forty leading spaces', `${' '.repeat(40)}Writer agent`, 'Writer agent'],
+])('reads every example seat name with %s, and keeps agent ids', (_name, name, expected) => {
+  const request = createRequest({
+    catalog: { agents: [agentOf('d1', 'draft', name), agentOf('r1', 'review', name)], skills: [] },
+  });
+  const examples = examplesOf(createPrompt(request));
+  expect(examples).toHaveLength(3);
+  for (const example of examples) {
+    expect(readAssistantAnswer(example, request)).toHaveProperty('reply');
+    for (const seat of JSON.parse(example).plan.seats as { agent: string; name: string }[]) {
+      expect(['d1', 'r1']).toContain(seat.agent);
+      // No lone surrogate, nothing to trim, never empty: the cut name or the example's own.
+      expect(seat.name).toBe(seat.name.trim());
+      expect(seat.name.length).toBeGreaterThan(0);
+      expect(seat.name.length).toBeLessThanOrEqual(40);
+      expect(seat.name).toBe(expected ?? seat.name);
+      if (expected === undefined) expect(['Worker', 'Writer', 'Reviewer']).toContain(seat.name);
+      expect(
+        /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/.test(seat.name),
+      ).toBe(false);
+    }
+  }
 });
 
 it('cuts every example seat name to the seat name limit, so a long agent name stays readable', () => {
