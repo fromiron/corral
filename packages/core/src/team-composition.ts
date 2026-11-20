@@ -114,10 +114,16 @@ function firstSentence(text: string): string {
 function catalogDescription(agent: ComposableAgent): string | undefined {
   const builtin = agent.builtin ?? agent.origin?.kind === 'preset';
   if (builtin) return agent.description || undefined;
-  const own = agent.role.description
-    ? cutWhole(agent.role.description.trim(), AGENT_DESCRIPTION)
-    : '';
-  return own || firstSentence(agent.role.prompt) || undefined;
+  const own = agentDescription(agent.role);
+  return (own && cutWhole(own, AGENT_DESCRIPTION)) || firstSentence(agent.role.prompt) || undefined;
+}
+
+/**
+ * A role's description as lists, pickers, the replace preview and the catalog read it: trimmed,
+ * and none when it is blank (agent-library.md, "정의의 선택 필드").
+ */
+export function agentDescription(role: Pick<AgentRole, 'description'>): string | undefined {
+  return role.description?.trim() || undefined;
 }
 
 /**

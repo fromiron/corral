@@ -6593,6 +6593,7 @@
       "retained": "자리 이름,{task, select, kept { 맡은 일,} other {}} 받는 자료, 연결, 최종 결과 선택, 자문 대상",
       "fields": {
         "task": "맡은 일",
+        "description": "설명",
         "instructions": "기본 지시",
         "model": "모델과 추론",
         "permissions": "도구와 권한",

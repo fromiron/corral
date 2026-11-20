@@ -1,5 +1,5 @@
 import { canonicalJson, type LibraryAgent, type LibraryAgentRole } from '@corral/contracts';
-import type { AgentLibraryResult } from '@corral/core';
+import { type AgentLibraryResult, agentDescription } from '@corral/core';
 import {
   addAgent,
   createEditorStore,
@@ -350,11 +350,12 @@ export function LibraryAgents({
       (archived || !archivedAt) &&
       (!query ||
         role.name.toLocaleLowerCase().includes(query) ||
-        !!role.description?.toLocaleLowerCase().includes(query) ||
+        !!agentDescription(role)?.toLocaleLowerCase().includes(query) ||
         role.prompt.toLocaleLowerCase().includes(query)),
   );
   const index = filtered.findIndex((item) => item.agentId === selection);
   const chosen = filtered[index];
+  const chosenDescription = chosen && agentDescription(chosen.role);
   const skills = chosen?.role.skills ?? [];
   const names = skills.flatMap((ref) => skillLabel(ref) ?? []);
   const missing = skills.length - names.length;
@@ -483,7 +484,7 @@ export function LibraryAgents({
                     </button>
                   </TableCell>
                   <TableCell className="max-w-0 truncate">
-                    {agent.role.description ?? firstSentence(agent.role.prompt)}
+                    {agentDescription(agent.role) ?? firstSentence(agent.role.prompt)}
                   </TableCell>
                   <TableCell>{agent.role.skills?.length ?? 0}</TableCell>
                   <TableCell className="whitespace-nowrap">
@@ -504,9 +505,9 @@ export function LibraryAgents({
                 <h2>
                   <KitCardTitle>{chosen.role.name}</KitCardTitle>
                 </h2>
-                {chosen.role.description ? (
+                {chosenDescription ? (
                   <KitCardDescription className="whitespace-pre-wrap break-words">
-                    {chosen.role.description}
+                    {chosenDescription}
                   </KitCardDescription>
                 ) : null}
               </div>

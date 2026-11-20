@@ -14,6 +14,7 @@ import {
   type WorkAgentNode,
 } from '@corral/contracts';
 import {
+  agentDescription,
   boxBoundaryViolation,
   type CompileOptions,
   compileDefinition,
@@ -1331,12 +1332,14 @@ const keptSeatFields = [
 type RoleSetting = Exclude<keyof AgentRole, 'id' | 'name' | 'origin'>;
 export type ReplacementChange =
   | 'task'
+  | 'description'
   | 'instructions'
   | 'model'
   | 'permissions'
   | 'skills'
   | 'format';
 const replacementGroups = [
+  ['description', ['description']],
   ['instructions', ['prompt']],
   ['model', ['modelProfile', 'reasoning']],
   [
@@ -1375,9 +1378,13 @@ export function previewReplaceAgent(
   if (isAdvisorRole(source.role)) return { ok: false, reason: 'advisorRole' };
   const previous = definition.roles.find((r) => r.id === seat.roleId);
   const changed: ReplacementChange[] = [];
+  // A blank description reads as none, so it changes nothing on screen.
+  const same = (key: RoleSetting) =>
+    key === 'description'
+      ? agentDescription(previous ?? {}) === agentDescription(source.role)
+      : sameRoleField(previous?.[key], source.role[key]);
   for (const [category, fields] of replacementGroups)
-    if (fields.some((key) => !sameRoleField(previous?.[key], source.role[key])))
-      changed.push(category);
+    if (!fields.every(same)) changed.push(category);
   const task = seatTask(definition, nodeId);
   const singlePrompt = !source.origin && !source.stepInstruction;
   const incomingTask =
@@ -1467,11 +1474,17 @@ export function setStepInstruction(draft: EditorDraft, nodeId: string, text: str
 }
 
 /**
- * A list's one-line summary of instructions (agent-library.md 11): the first line up to a full
- * stop, question or exclamation mark followed by a space, or the whole first line.
+ * A list's one-line summary of instructions (agent-library.md 11): past any blank lines before
+ * the text, the first line up to a full stop, question or exclamation mark followed by a space, or
+ * the whole first line. The catalog's first sentence (core `teamCatalog`) skips them alike.
  */
 export function firstSentence(text: string): string {
-  return text.split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]?.trim() ?? '';
+  return (
+    text
+      .trimStart()
+      .split(/[\r\n\u2028\u2029]|(?<=[.!?。？！])\s/, 1)[0]
+      ?.trim() ?? ''
+  );
 }
 
 /** Roster rows and graph cards share the first sentence of the seat task, or the role fallback. */

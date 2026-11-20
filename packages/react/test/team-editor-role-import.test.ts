@@ -490,6 +490,67 @@ describe('replacing the role, not the seat', () => {
     expect(agent(preview.draft, nodeId).label).toBe(initial.role.name);
   });
 
+  it('lists a changed description first and carries the new one, as when the original was edited', () => {
+    const source = writer();
+    const first: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+      origin: { kind: 'library', agentId: 'writer', revision: 1 },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), first);
+    // The original's description was edited: revision 2, nothing else changed.
+    const edited: AgentSource = {
+      ...first,
+      role: { ...first.role, description: 'Writes public announcements.' },
+      origin: { kind: 'library', agentId: 'writer', revision: 2 },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, edited);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['description']);
+    expect(roleOf(preview.draft, nodeId).description).toBe('Writes public announcements.');
+  });
+
+  it('takes the description away when the new agent has none, and lists it before the instructions', () => {
+    const source = writer();
+    const described: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), described);
+    const { id: _id, ...preset } = roleFromPreset('writer', 'writer', 'Writing');
+    const builtin: AgentSource = { role: preset, origin: { kind: 'preset', presetId: 'writer' } };
+    const preview = previewReplaceAgent(draft, nodeId, builtin);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed.slice(0, 2)).toEqual(['description', 'instructions']);
+    const { draft: replaced } = ok(replaceAgent(draft, nodeId, builtin));
+    expect(roleOf(replaced, nodeId)).not.toHaveProperty('description');
+  });
+
+  it('replaces a source that differs only in its description, in one undo step', () => {
+    const source = writer();
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const described: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, described);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['description']);
+    expect(preview.draft).not.toBe(draft);
+    const store = createEditorStore(draft);
+    store.getState().applyDraft(ok(replaceAgent(draft, nodeId, described)).draft);
+    expect(roleOf(store.getState().draft, nodeId).description).toBe('Writes announcements.');
+    expect(store.getState().past).toEqual([draft]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(draft);
+    // A blank description reads as none: choosing the same agent again is the same content.
+    const blank: AgentSource = { ...source, role: { ...source.role, description: '   ' } };
+    const again = previewReplaceAgent(draft, nodeId, blank);
+    if (!again.ok) throw new Error(again.reason);
+    expect(again.changed).toEqual([]);
+    expect(again.draft).toBe(draft);
+  });
+
   it('refuses to orphan an owner but leaves a shared owner with the remaining seat', () => {
     const source = writer();
     source.role.allowedCollaborationTools = ['submit_result'];

@@ -17,6 +17,7 @@ import {
   applyPattern,
   connectPorts,
   type EditResult,
+  firstSentence,
   importableAgents,
   patchNode,
   placeStep,
@@ -52,6 +53,15 @@ function chain(length = 3): EditorDraft {
     ({ draft, nodeId } = ok(placeStep(draft, 'agent', { kind: 'after', nodeId })));
   return draft;
 }
+
+describe('a list’s first sentence', () => {
+  it('skips blank lines before the instructions, then reads the first line to its first stop', () => {
+    expect(firstSentence('\n\n  Plan the chapters. Then outline.')).toBe('Plan the chapters.');
+    expect(firstSentence('\r\n\u2028Check the links\nThen report.')).toBe('Check the links');
+    expect(firstSentence('Write it. Then check.')).toBe('Write it.');
+    expect(firstSentence('   ')).toBe('');
+  });
+});
 
 describe('editing a selected connection', () => {
   it('replaces only the selected edge, retains its ID and preserves the prior graph on Undo', () => {

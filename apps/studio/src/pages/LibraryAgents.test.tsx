@@ -241,6 +241,19 @@ it('describes an agent between its name and instructions; the table, detail, sea
   );
 });
 
+it('reads a blank description as none and skips blank lines before the first sentence', async () => {
+  const blank = await seed('Writer', {
+    description: '   ',
+    prompt: '\n\nWrite a summary. Then stop.',
+  });
+  const { host } = await show(blank.agentId);
+  expect(host.querySelector<HTMLTableRowElement>('tbody tr')?.cells[1]?.textContent).toBe(
+    'Write a summary.',
+  );
+  const detail = host.querySelector('section[aria-label="Agent details"]');
+  expect(detail?.querySelector('[data-slot="card-description"]')).toBeNull();
+});
+
 it('asks before closing when only the description changed', async () => {
   const original = await seed('Writer', { description: 'Writes summaries.' });
   const update = vi.spyOn(agents, 'update');

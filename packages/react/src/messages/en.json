@@ -6593,6 +6593,7 @@
       "retained": "Seat name,{task, select, kept { task,} other {}} received materials, connections, final result selection and advice target.",
       "fields": {
         "task": "Task",
+        "description": "Description",
         "instructions": "Base instructions",
         "model": "Model and reasoning",
         "permissions": "Tools and permissions",

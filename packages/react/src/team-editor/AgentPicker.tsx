@@ -1,5 +1,5 @@
 import type { AgentRole, LibraryAgentRole } from '@corral/contracts';
-import { builtinSkillName } from '@corral/core';
+import { agentDescription, builtinSkillName } from '@corral/core';
 import {
   type ReactNode,
   type RefObject,
@@ -189,7 +189,7 @@ export function AgentPicker({
     ({ source }) =>
       !text ||
       source.role.name.toLocaleLowerCase().includes(text) ||
-      !!source.role.description?.toLocaleLowerCase().includes(text) ||
+      !!agentDescription(source.role)?.toLocaleLowerCase().includes(text) ||
       (source.stepInstruction ?? source.role.prompt).toLocaleLowerCase().includes(text),
   );
   const result = typeof face === 'object' ? preview?.(face) : undefined;
@@ -280,8 +280,8 @@ export function AgentPicker({
                             <span id={`${id}-detail`} className="grid gap-1 text-muted-foreground">
                               {team && <span className="text-caption">{team}</span>}
                               <span className="line-clamp-2 whitespace-pre-line break-words text-body">
-                                {source.role.description ??
-                                  source.stepInstruction ??
+                                {source.stepInstruction ??
+                                  agentDescription(source.role) ??
                                   source.role.prompt}
                               </span>
                               {skills.length > 0 && (

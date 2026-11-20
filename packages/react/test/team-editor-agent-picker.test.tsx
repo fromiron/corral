@@ -204,10 +204,11 @@ it('keeps built-ins and custom creation usable on a failed library read, with ex
 const teamTask = 'Compare the quotations in the interview.';
 const laterTask = 'Index the appendices.';
 const handmadeTask = 'Check footnotes.';
-function otherTeam() {
+function otherTeam(description?: string) {
   const skills = [{ resourceHash: 'a'.repeat(64), entry: 'writing/SKILL.md' }];
-  const shared = { ...original.role, id: 'writer', skills };
-  const handmade = { ...original.role, id: 'notes', prompt: handmadeTask };
+  const described = description ? { description } : {};
+  const shared = { ...original.role, ...described, id: 'writer', skills };
+  const handmade = { ...original.role, ...described, id: 'notes', prompt: handmadeTask };
   const observer: AgentRole = {
     ...original.role,
     id: 'advisor',
@@ -274,6 +275,58 @@ it('shows loading, distinct descriptions and resolved skill names rather than an
   expect(editor.getState().draft.definition.nodes.filter(isWorkAgent).at(-1)?.stepInstruction).toBe(
     teamTask,
   );
+});
+
+it('summarises a row by its seat’s task, then its description, then its instructions, and finds it by any', async () => {
+  const { user } = mount({ teams: [otherTeam('Edits manuscripts.')] });
+  await user.click(add());
+  await user.click(tab(/Other teams/));
+  const writers = () =>
+    within(screen.getByRole('dialog')).getAllByRole('button', { name: 'Writer' });
+  // The first seat's task stands for the role that seat uses; the seat without one shows the description.
+  expect(writers()[0]).toHaveAccessibleDescription(/Compare the quotations/);
+  expect(writers()[0]).not.toHaveAccessibleDescription(/Edits manuscripts/);
+  expect(writers()[1]).toHaveAccessibleDescription(/Edits manuscripts/);
+  expect(writers()[1]).not.toHaveAccessibleDescription(/Check footnotes/);
+  for (const words of ['edits manuscripts', 'quotations', 'check footnotes']) {
+    await user.clear(search());
+    await user.type(search(), words);
+    expect(writers().length).toBeGreaterThan(0);
+  }
+});
+
+it('reads a blank description as none', async () => {
+  const { user } = mount({
+    agentLibrary: {
+      ...library,
+      agents: [{ ...original, role: { ...original.role, description: '  ' } }],
+    },
+  });
+  await user.click(add());
+  expect(button(/^Writer/)).toHaveAccessibleDescription(original.role.prompt);
+});
+
+it('names a changed description in the replace preview and carries it on replace', async () => {
+  const edited = {
+    ...original,
+    revision: 3,
+    role: { ...original.role, name: 'Planner', description: 'Plans the whole book.' },
+  };
+  const { user, editor, before } = mount(
+    { agentLibrary: { ...library, agents: [edited] } },
+    origin,
+    'Team-only sentence',
+    { description: 'Plans the chapters.' },
+  );
+  await user.click(screen.getByRole('button', { name: messages.Inspector.seatActions }));
+  await user.click(await screen.findByRole('menuitem', { name: messages.Inspector.replaceAgent }));
+  await user.click(button('Planner'));
+  expect(within(screen.getByRole('dialog')).getByRole('list')).toHaveTextContent(
+    messages.TeamEditor.agentPicker.fields.description,
+  );
+  await user.click(button('Replace'));
+  expect(editor.getState().draft.definition.roles[0]?.description).toBe('Plans the whole book.');
+  expect(editor.getState().past).toEqual([before]);
 });
 
 it.each(['Built-in', 'Other teams'] as const)(
