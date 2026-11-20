@@ -132,6 +132,8 @@ export function createSubagentsVaultAdapter(options: {
         description: `Imported callable agent: ${role.name}`,
         prompt: seatPrompt(role.prompt, node.stepInstruction),
         tools,
+        skills: [],
+        metadata: {},
         model: role.modelProfile,
         errors: [],
       };

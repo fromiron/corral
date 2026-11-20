@@ -210,6 +210,46 @@ describe('Markdown agent import', () => {
     ).toBeGreaterThan(0);
     expect(toolTargets('constructor')).toEqual([]);
   });
+  it('reads skills in the same list syntaxes as tools', () => {
+    for (const list of [
+      'skills: break-it, change-impact',
+      'skills: [break-it, "change-impact"]',
+      'skills:\n  - break-it\n  - change-impact\n  - break-it',
+    ]) {
+      const parsed = parseMarkdownAgent(source.replace('model:', `${list}\nmodel:`));
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.skills).toEqual(['break-it', 'change-impact']);
+    }
+    expect(parseMarkdownAgent(source).skills).toEqual([]);
+  });
+  it('reads metadata as a one-level map of strings and refuses anything else', () => {
+    const withMetadata = (block: string) =>
+      parseMarkdownAgent(source.replace('model:', `metadata:${block}\nmodel:`));
+    const parsed = withMetadata(
+      '\n  corral-output: "notes"\n  corral-model-slot: a\n  note: \'x\'',
+    );
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.metadata).toEqual({
+      'corral-output': 'notes',
+      'corral-model-slot': 'a',
+      note: 'x',
+    });
+    expect(parseMarkdownAgent(source).metadata).toEqual({});
+    for (const block of [
+      '\n  nested:\n    key: value',
+      '\n  slot: 1',
+      '\n  flag: true',
+      '\n  empty:',
+      '\n  - listed',
+      '\n  a: b\n  a: c',
+      ' inline',
+      '',
+    ])
+      expect(withMetadata(block).errors, JSON.stringify(block)).not.toEqual([]);
+    expect(parseMarkdownAgent(source.replace('model:', 'temperature: 1\nmodel:')).errors).toContain(
+      'Unsupported field: temperature',
+    );
+  });
   it('creates a callable node and explicit parent delegate link without altering limits or control flow', () => {
     const imported = importAgent();
     const child = imported.definition.nodes.at(-1);

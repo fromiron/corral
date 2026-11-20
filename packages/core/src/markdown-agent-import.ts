@@ -57,11 +57,21 @@ export interface MarkdownAgent {
   prompt: string;
   model: string;
   tools: string[];
+  /** Skill names; an import attaches the same-named usable skills (agent-library.md). */
+  skills: string[];
+  /** Read and kept, never used by an import. */
+  metadata: Record<string, string>;
   errors: string[];
 }
 
-/** Deliberately bounded frontmatter: flat strings, literal/folded blocks and string lists.
- * Unsupported YAML constructs/fields fail visibly rather than being interpreted differently.
+const FIELDS = ['name', 'description', 'prompt', 'model', 'tools', 'skills', 'metadata'];
+// What YAML 1.2 reads as a null, boolean or number, plus flow and block collections.
+const NON_STRING =
+  /^(?:~|null|Null|NULL|true|True|TRUE|false|False|FALSE|[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|0o[0-7]+|0x[0-9a-fA-F]+|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$|^[[|>]/;
+
+/** Deliberately bounded frontmatter: flat strings, literal/folded blocks, string lists and one
+ * indented map of strings. Unsupported YAML constructs/fields fail visibly rather than being
+ * interpreted differently.
  */
 export function parseMarkdownAgent(source: string): MarkdownAgent {
   const result: MarkdownAgent = {
@@ -70,6 +80,8 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     prompt: '',
     model: '',
     tools: [],
+    skills: [],
+    metadata: {},
     errors: [],
   };
   if (utf8Length(source) > MAX_AGENT_MARKDOWN_BYTES) {
@@ -85,7 +97,7 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     result.errors.push('Expected a closed --- frontmatter block.');
     return result;
   }
-  const fields = new Map<string, string | string[]>();
+  const fields = new Map<string, string | string[] | Record<string, string>>();
   const scalar = (value: string): string => {
     const text = value.trim();
     if (text.startsWith('"')) {
@@ -115,10 +127,32 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     }
     const key = match[1] ?? '';
     const value = match[2] ?? '';
-    if (!['name', 'description', 'prompt', 'model', 'tools'].includes(key))
-      result.errors.push(`Unsupported field: ${key}`);
+    if (!FIELDS.includes(key)) result.errors.push(`Unsupported field: ${key}`);
     if (fields.has(key)) result.errors.push(`Duplicate field: ${key}`);
-    if (/^[|>][-+]?$/.test(value)) {
+    if (key === 'metadata') {
+      const map: Record<string, string> = {};
+      const invalid = (line: number) =>
+        result.errors.push(`metadata must be an indented map of string values (line ${line}).`);
+      if (value.trim()) invalid(i + 1);
+      let indent: number | undefined;
+      while (i + 1 < end && (/^\s/.test(lines[i + 1] ?? '') || !lines[i + 1]?.trim())) {
+        const row = lines[++i] ?? '';
+        if (!row.trim() || row.trimStart().startsWith('#')) continue;
+        const depth = row.length - row.trimStart().length;
+        indent ??= depth;
+        const entry = /^([A-Za-z0-9][A-Za-z0-9_.-]*):\s*(.*)$/.exec(row.trimStart());
+        const raw = entry?.[2]?.trim() ?? '';
+        if (depth !== indent || !entry || !raw || NON_STRING.test(raw)) {
+          invalid(i + 1);
+          continue;
+        }
+        const name = entry[1] ?? '';
+        if (Object.hasOwn(map, name)) result.errors.push(`Duplicate metadata key: ${name}`);
+        map[name] = scalar(raw);
+      }
+      if (indent === undefined && !value.trim()) invalid(i + 1);
+      fields.set(key, map);
+    } else if (/^[|>][-+]?$/.test(value)) {
       const block: string[] = [];
       while (i + 1 < end && (/^\s/.test(lines[i + 1] ?? '') || !lines[i + 1]?.trim()))
         block.push(lines[++i] ?? '');
@@ -132,7 +166,7 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
           .join(value.startsWith('>') ? ' ' : '\n')
           .trim(),
       );
-    } else if (key === 'tools') {
+    } else if (key === 'tools' || key === 'skills') {
       let values: string[];
       if (!value) {
         values = [];
@@ -158,6 +192,11 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
   else result.prompt ||= body;
   const tools = fields.get('tools');
   if (Array.isArray(tools)) result.tools = [...new Set(tools)];
+  const skills = fields.get('skills');
+  if (Array.isArray(skills)) result.skills = [...new Set(skills)];
+  const metadata = fields.get('metadata');
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata))
+    result.metadata = metadata;
   if (!fields.has('tools')) result.errors.push('Declare tools explicitly (tools: [] for none).');
   for (const tool of result.tools) {
     if (!knownTool(tool)) result.errors.push(`Unknown tool: ${tool}`);
