@@ -18,6 +18,7 @@ import {
   Coordinator,
   compileDefinition,
   type DecisionPolicy,
+  type GraphRunner,
   InProcessTransport,
   planRun,
   type RunProjection,
@@ -1221,6 +1222,291 @@ describe('a previous round’s output across nested Loops', () => {
     expect(inputs.get(y1?.id ?? '')).toEqual({});
     expect(inputs.get(y2?.id ?? '')).toEqual({ beside: x2?.versions });
     expect(pins(events, 'loop_o')).toEqual([[], x2?.versions]);
+  });
+});
+
+// docs/specs/technical-design.md §9.2: an Output inside a Loop reads each source in the round that
+// reached it, as a task_output of that round would; a source that did not submit there adds
+// nothing. Required-review candidates are read in that round too, at the first check and at the
+// check after a person's approval.
+describe('an Output inside a Loop', () => {
+  const rule = (id: string, read: string, parentId: string): CorralNode => ({
+    id,
+    type: 'decision',
+    label: id,
+    mode: 'rule',
+    rule: 'required_tasks_submitted',
+    inputBindings: [{ kind: 'task_output', name: 'work', sourceNodeId: read }],
+    parentId,
+  });
+  /** Each version a node submitted, one list per execution, oldest first. */
+  const versionsOf = (p: RunProjection, nodeId: string) =>
+    (p.nodeExecutions[nodeId] ?? []).map(
+      (id) => p.tasks[p.executions[id]?.taskId ?? '']?.submittedArtifactVersionIds ?? [],
+    );
+  /**
+   * Loop O: the gate runs Loop X then Loop Y (`withY`), or skips X; `o_end` then reaches the
+   * Output inside O or goes round again. The Output reads `sources` in order.
+   */
+  const skipping = (sources: string[], withY: boolean) => {
+    const x = reviewedBody('loop_x', 'x');
+    const y = reviewedBody('loop_y', 'y');
+    const after = withY ? 'loop_y' : 'o_end';
+    const afterPort = withY ? 'enter' : 'in';
+    return team(
+      [
+        research,
+        loop('loop_o'),
+        rule('o_gate', 'research', 'loop_o'),
+        loop('loop_x', {}, 'loop_o'),
+        ...x.nodes,
+        ...(withY ? [loop('loop_y', {}, 'loop_o'), ...y.nodes] : []),
+        rule('o_end', 'research', 'loop_o'),
+        rule('o_leave', 'research', 'loop_o'),
+        {
+          id: 'after',
+          type: 'output',
+          label: 'after',
+          inputBindings: [{ kind: 'task_output', name: 'after', sourceNodeId: 'research' }],
+          requireApproval: false,
+        },
+        {
+          id: 'output',
+          type: 'output',
+          label: 'output',
+          parentId: 'loop_o',
+          inputBindings: sources.map((sourceNodeId) => ({
+            kind: 'task_output' as const,
+            name: sourceNodeId,
+            sourceNodeId,
+          })),
+          requireApproval: false,
+        },
+      ],
+      [
+        edge('research', 'out', 'loop_o', 'enter'),
+        edge('loop_o', 'body', 'o_gate'),
+        edge('o_gate', 'yes', 'loop_x', 'enter'),
+        edge('o_gate', 'no', after, afterPort),
+        ...x.edges,
+        edge('loop_x', 'next', after, afterPort),
+        ...(withY ? [...y.edges, edge('loop_y', 'next', 'o_end')] : []),
+        edge('o_end', 'yes', 'output'),
+        edge('o_end', 'no', 'o_leave'),
+        edge('o_leave', 'yes', 'loop_o', 'exit'),
+        edge('o_leave', 'no', 'loop_o', 'repeat'),
+        edge('loop_o', 'next', 'after'),
+      ],
+    );
+  };
+
+  it('fails without finalizing when its only source did not run in the round that reached it', async () => {
+    const definition = skipping(['x_write'], false);
+    expect(compileDefinition(definition).diagnostics.filter((d) => d.severity === 'error')).toEqual(
+      [],
+    );
+    const transport = runtime(
+      scripted({
+        o_gate: ['yes', 'no'],
+        x_decision: ['pass'],
+        o_end: ['no', 'yes'],
+        o_leave: ['no'],
+      }),
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(versionsOf(final, 'x_write')).toHaveLength(1);
+    expect(rounds(final, 'loop_o').map(([no]) => no)).toEqual([1, 2]);
+    expect(final.status).toBe('failed');
+    expect(final.output).toBeNull();
+    expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
+  });
+
+  it('publishes, in binding order, only what its sources submitted in the round that reached it', async () => {
+    const definition = skipping(['research', 'x_write', 'y_write'], true);
+    expect(compileDefinition(definition).diagnostics.filter((d) => d.severity === 'error')).toEqual(
+      [],
+    );
+    const transport = runtime(
+      scripted({
+        o_gate: ['yes', 'no'],
+        x_decision: ['pass'],
+        y_decision: ['pass', 'pass'],
+        o_end: ['no', 'yes'],
+        o_leave: ['no'],
+      }),
+    );
+    const { runId } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    const [notes] = versionsOf(final, 'research');
+    const [, y2] = versionsOf(final, 'y_write');
+    expect(versionsOf(final, 'x_write')).toHaveLength(1);
+    // research is outside every Loop: its last submission. X did not run in round 2.
+    expect(final.output?.artifactVersionIds).toEqual([...(notes ?? []), ...(y2 ?? [])]);
+  });
+
+  /** Loop O holds a required-review gate around `p` and the Output that publishes `p`. */
+  const gated = (requireApproval: boolean) =>
+    team(
+      [
+        loop('loop_o'),
+        loop('gate', {}, 'loop_o'),
+        writer('p', 'gate'),
+        reviewer('r', 'p', 'gate'),
+        decision('d', 'r', 'gate'),
+        rule('o_end', 'p', 'loop_o'),
+        rule('o_leave', 'p', 'loop_o'),
+        {
+          id: 'after',
+          type: 'output',
+          label: 'after',
+          inputBindings: [{ kind: 'task_output', name: 'after', sourceNodeId: 'p' }],
+          requireApproval: false,
+        },
+        {
+          ...output('p'),
+          parentId: 'loop_o',
+          requireApproval,
+          requiredReviews: [
+            {
+              bindingName: 'final',
+              sourceNodeId: 'p',
+              loopNodeId: 'gate',
+              reviewerNodeId: 'r',
+              decisionNodeId: 'd',
+            },
+          ],
+        },
+      ],
+      [
+        edge('loop_o', 'body', 'gate', 'enter'),
+        edge('gate', 'body', 'p'),
+        edge('p', 'out', 'r'),
+        edge('r', 'out', 'd'),
+        edge('d', 'pass', 'gate', 'exit'),
+        edge('d', 'revise', 'gate', 'repeat'),
+        edge('gate', 'next', 'o_end'),
+        edge('o_end', 'yes', 'output'),
+        edge('o_end', 'no', 'o_leave'),
+        edge('o_leave', 'yes', 'loop_o', 'exit'),
+        edge('o_leave', 'no', 'loop_o', 'repeat'),
+        edge('loop_o', 'next', 'after'),
+      ],
+      'loop_o',
+    );
+  /** A Coordinator whose run follows `script` instead of walking the plan. */
+  const scriptedRun = (
+    definition: CorralDefinition,
+    review: ScriptedAgentOptions['review'],
+    script: (c: Parameters<GraphRunner['run']>[1]) => Promise<void>,
+  ) => {
+    const clock = new FakeClock();
+    const transport = new InProcessTransport(
+      new Coordinator({
+        clock,
+        ids: new SequentialIdFactory(),
+        timers: clock,
+        agents: new ScriptedAgentAdapter({ turns: 1, collaborate: false, review }),
+        runner: {
+          run: async (_plan, c) => {
+            await script(c);
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        },
+      }),
+    );
+    return transport;
+  };
+  const g1 = { loopId: 'gate', no: 1 };
+  /** Round `no` of Loop O: the gate's first round writes, reviews and, with a verdict, decides. */
+  const outerRound = async (c: Parameters<GraphRunner['run']>[1], no: number, decides: boolean) => {
+    await c.loopEntered('loop_o', no);
+    await c.loopEntered('gate', 1);
+    await c.activate('p', g1);
+    if (!decides) return;
+    await c.activate('r', g1);
+    await c.decide('d', g1);
+  };
+
+  it('a gate that passed round 1’s candidate does not admit round 2’s new one', async () => {
+    const definition = gated(false);
+    expect(compileDefinition(definition).diagnostics.filter((d) => d.severity === 'error')).toEqual(
+      [],
+    );
+    const transport = scriptedRun(
+      definition,
+      () => 'pass',
+      async (c) => {
+        await outerRound(c, 1, true);
+        await c.loopLeft('gate', 1, 'pass');
+        await c.loopLeft('loop_o', 1, 'revise');
+        // Round 2 writes a new candidate and reaches the Output without the gate deciding on it.
+        await outerRound(c, 2, false);
+        await c.finalize('output');
+      },
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(versionsOf(final, 'p')).toHaveLength(2);
+    expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass']);
+    expect(final.status).toBe('failed');
+    expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
+  });
+
+  it('after the person approves round 1’s candidate, a gate that revised round 2’s new one refuses it', async () => {
+    const definition = gated(true);
+    let asked = () => {};
+    const approvalAsked = new Promise<void>((resolve) => {
+      asked = resolve;
+    });
+    let ready = () => {};
+    const readyToApprove = new Promise<void>((resolve) => {
+      ready = resolve;
+    });
+    let reviews = 0;
+    const transport = scriptedRun(
+      definition,
+      () => (++reviews === 1 ? 'pass' : 'revise'),
+      async (c) => {
+        await outerRound(c, 1, true);
+        await c.loopLeft('gate', 1, 'pass');
+        const finalizing = c.finalize('output');
+        await approvalAsked;
+        await c.loopLeft('loop_o', 1, 'revise');
+        // Round 2 writes a new candidate and the gate asks for its revision.
+        await outerRound(c, 2, true);
+        ready();
+        await finalizing;
+      },
+    );
+    const { runId, events } = await run(transport, definition);
+    const waiting = await waitForProjection(transport, runId, (p) =>
+      Object.values(p.approvals).some((a) => a.kind === 'final_output' && a.status === 'pending'),
+    );
+    const approval = Object.values(waiting.approvals).find((a) => a.kind === 'final_output');
+    const [[first] = []] = versionsOf(waiting, 'p');
+    expect(approval?.subjectVersionIds[0]).toBe(first);
+    asked();
+    await readyToApprove;
+    const now = (await transport.getSnapshot(runId)).projection;
+    await transport.sendCommand({
+      schemaVersion: '0.1',
+      commandId: 'cmd_approve_round_1',
+      runId,
+      type: 'resolve_approval',
+      expectedControlRevision: now.controlRevision,
+      payload: {
+        approvalId: approval?.approvalId ?? '',
+        decision: 'approve',
+        subjectVersionId: first ?? '',
+      },
+    });
+    const final = await waitForProjection(transport, runId, finished);
+    expect(versionsOf(final, 'p')).toHaveLength(2);
+    expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass', 'revise']);
+    expect(final.status).toBe('failed');
+    expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
   });
 });
 
