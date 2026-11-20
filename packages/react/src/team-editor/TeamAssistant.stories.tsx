@@ -171,7 +171,8 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         const place = region.getByRole('button', {
           name: scene === 'demo' ? t.localServer : t.connect,
         });
-        await expect(place).toHaveAttribute('aria-disabled', scene === 'demo' ? 'true' : null);
+        if (scene === 'demo') await expect(place).toHaveAttribute('aria-disabled', 'true');
+        else await expect(place).not.toHaveAttribute('aria-disabled');
         return;
       }
       const input = region.getByRole('textbox', {
