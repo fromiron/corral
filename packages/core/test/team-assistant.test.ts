@@ -354,6 +354,30 @@ describe('checked assistant proposals', () => {
     ).toEqual({ problem: 'shape:$:extra_field' });
   });
 
+  it('drops one surplus closing brace after a new team’s whole answer that ended normally', () => {
+    const request = create('Write the guide.');
+    const problem = (text: string, on: TeamAssistantRequest = request, endedNormally = true) => {
+      const result = readAssistantAnswer(text, on, { endedNormally });
+      return 'problem' in result ? result.problem : 'usable';
+    };
+    const whole = JSON.stringify({ kind: 'plan', reason: plan().reason, plan: plan().plan });
+    // A shape seen in a live answer: a whole plan, then one `}` too many.
+    expect(readAssistantAnswer(`${whole}}\n`, request, { endedNormally: true })).toEqual({
+      reply: plan(),
+    });
+    expect(problem(`Here it is: ${whole}}`)).toBe('usable');
+    // Without knowing it ended normally, and in edit mode, nothing is dropped.
+    expect(problem(`${whole}}`, request, false)).toBe('not_json');
+    expect(readAssistantAnswer(`${whole}}`, request)).toEqual({ problem: 'not_json' });
+    const edits = JSON.stringify({ kind: 'edits', edits: [gate], reason: 'Require review.' });
+    expect(problem(`${edits}}`, edit)).toBe('not_json');
+    // Two surplus braces, an unfinished second object, prose after the brace, a surplus `]`.
+    expect(problem(`${whole}}}`)).toBe('not_json');
+    expect(problem(`${whole}{"x":}`)).toBe('not_json');
+    expect(problem(`${whole}} That is the team.`)).toBe('not_json');
+    expect(problem(`${whole}]`)).toBe('not_json');
+  });
+
   it('closes a new team’s answer that ended normally one outer brace short, and nothing else', () => {
     const request = create('Write the guide.');
     const problem = (text: string, on: TeamAssistantRequest = request, endedNormally = true) => {
