@@ -13,6 +13,26 @@ import { workerModelBridge } from '../../../packages/adapter-pi/src/model-bridge
 import { endpointsFrom, registerEndpoints } from '../src/models/endpoints.ts';
 import { ModelRegistry } from '../src/models/registry.ts';
 
+/** A new team request under one logical id: the auxiliary model request of the assistant. */
+const proposal = (operationId: string) => ({
+  operationId,
+  mode: 'create' as const,
+  messages: [{ role: 'user' as const, content: 'Synthetic goal' }],
+  catalog: {
+    agents: [
+      {
+        id: 'a1',
+        name: 'Writer',
+        changesFiles: false,
+        runsCommands: false,
+        output: 'draft' as const,
+        skills: [],
+      },
+    ],
+    skills: [],
+  },
+});
+
 it('an execution broker uses its reported input anchor and does not share it with another execution', async () => {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
@@ -197,7 +217,7 @@ it('auxiliary retry attempts retain one logical request and distinct physical id
     return stream;
   });
   try {
-    await registry.draftTeam('Synthetic goal', { id: 'logical_draft' });
+    await registry.assistTeam(proposal('logical_draft'));
     const attempts = [...records.values()];
     expect(attempts.map((a) => a.intent.requestId)).toEqual(['logical_draft', 'logical_draft']);
     expect(attempts.map((a) => a.intent.retryIndex)).toEqual([0, 1]);
@@ -214,7 +234,7 @@ it('auxiliary retry attempts retain one logical request and distinct physical id
   }
 });
 
-/** A draft whose first provider stream optionally starts, shows `first`, then loses its connection. */
+/** A proposal whose first provider stream optionally starts, shows `first`, then loses its connection. */
 async function draftAfterLostConnection(started: boolean, first: 'thinking' | 'text' | 'none') {
   const credentials = new InMemoryCredentialStore();
   const models = createModels({
@@ -303,14 +323,14 @@ async function draftAfterLostConnection(started: boolean, first: 'thinking' | 't
     return stream;
   });
   try {
-    const answer = await registry.draftTeam('Synthetic goal', { id: 'logical_draft' });
+    const answer = await registry.assistTeam(proposal('logical_draft'));
     return { answer, calls, attempts: [...records.values()] };
   } finally {
     spy.mockRestore();
   }
 }
 
-it('retries a draft whose response was lost after only reasoning, recording a transport failure', async () => {
+it('retries a proposal whose response was lost after only reasoning, recording a transport failure', async () => {
   const { calls, attempts } = await draftAfterLostConnection(true, 'thinking');
   expect(calls).toBe(2);
   expect(attempts[0]?.failure?.code).toBe('TRANSPORT');
@@ -319,7 +339,7 @@ it('retries a draft whose response was lost after only reasoning, recording a tr
   expect(JSON.stringify(attempts)).not.toContain('terminated');
 });
 
-it('reports a draft lost after body text as failed, not as an unknown outcome', async () => {
+it('reports a proposal lost after body text as failed, not as an unknown outcome', async () => {
   const { answer, calls, attempts } = await draftAfterLostConnection(true, 'text');
   expect(calls).toBe(1);
   expect(answer).toMatchObject({ ok: false, code: 'MODEL_UNAVAILABLE' });
@@ -327,7 +347,7 @@ it('reports a draft lost after body text as failed, not as an unknown outcome', 
   expect(attempts[0]?.usage.source).toBe('unknown');
 });
 
-it('keeps a draft whose connection was lost before any response event an unknown outcome', async () => {
+it('keeps a proposal whose connection was lost before any response event an unknown outcome', async () => {
   const { answer, calls, attempts } = await draftAfterLostConnection(false, 'none');
   expect(calls).toBe(1);
   expect(answer).toMatchObject({ ok: false, code: 'REQUEST_OUTCOME_UNKNOWN' });

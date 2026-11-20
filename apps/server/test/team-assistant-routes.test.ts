@@ -16,7 +16,6 @@ import {
 import { FAKE_PROFILES, fakeOpenAI } from '../src/testing.ts';
 
 const assistant = '/team-assistant';
-const draft = '/team-drafts';
 const token = 'assistant-test-bootstrap-0123456789';
 const roots: string[] = [];
 const servers: CorralServer[] = [];
@@ -114,7 +113,7 @@ const plan = {
   seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'Write and submit the notice.' }],
   flow: [{ seat: 's1' }],
 };
-// The draft route's plan, kept by a legacy record.
+// The plan of the removed pattern drafts: not a composition.
 const legacyPlan = {
   pattern: 'single',
   name: 'Notice writer',
@@ -496,35 +495,6 @@ it('coalesces identical sends and replays persisted outcomes, but refuses change
   expect(fake.seen.hostRequests).toHaveLength(1);
 });
 
-it('preserves legacy draft results, even for a draft goal spelling the JSON of an assistant request', async () => {
-  const { fake, call, dbPath } = await setup();
-  const request = create('legacy', 'Write a notice.');
-  const { operationId } = request;
-  const goal = canonicalJson(request);
-  const model = { provider: 'openai', modelId: 'gpt-test-a' };
-  const db = new DatabaseSync(dbPath);
-  try {
-    db.prepare(
-      'INSERT INTO model_operations(operation_id, fingerprint, result_json) VALUES (?, ?, ?)',
-    ).run(
-      operationId,
-      createHash('sha256').update(goal).digest('hex'),
-      JSON.stringify({ ok: true, plan: legacyPlan, model }),
-    );
-  } finally {
-    db.close();
-  }
-  expect(await call(draft, { operationId, goal })).toEqual({
-    status: 200,
-    body: { plan: legacyPlan, model },
-  });
-  expect(await call(assistant, request)).toMatchObject({
-    status: 409,
-    body: { error: { code: 'REVISION_CONFLICT' } },
-  });
-  expect(fake.seen.hostRequests).toHaveLength(0);
-});
-
 it('aborts the actual model stream on disconnect and does not resend on replay', async () => {
   const { fake, call } = await setup({ tokensPerSecond: 1 });
   const request = create('closed', 'Write a notice.');
@@ -551,15 +521,19 @@ it('aborts the actual model stream on disconnect and does not resend on replay',
 });
 
 it.each([
-  { live: false, status: 501 },
-  { signedIn: false, status: 403 },
-])('has the draft route’s no-model error ($status)', async (options) => {
-  const { fake, call } = await setup(options);
-  const expected = await call(draft, { goal: 'Write a notice.' });
-  expect(expected.status).toBe(options.status);
-  expect(await call(assistant, create('offline', 'Write a notice.'))).toEqual(expected);
-  expect(fake.seen.hostRequests).toHaveLength(0);
-});
+  { live: false, status: 501, code: 'COMMAND_NOT_SUPPORTED' },
+  { signedIn: false, status: 403, code: 'CAPABILITY_DENIED' },
+])(
+  'refuses without a usable model before any request ($status)',
+  async ({ status, code, ...options }) => {
+    const { fake, call } = await setup(options);
+    expect(await call(assistant, create('offline', 'Write a notice.'))).toMatchObject({
+      status,
+      body: { error: { code } },
+    });
+    expect(fake.seen.hostRequests).toHaveLength(0);
+  },
+);
 
 it('refuses an invalid edit summary before contacting the model', async () => {
   const { fake, call } = await setup();

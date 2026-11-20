@@ -327,25 +327,24 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
   });
 });
 
-test('asks the signed-in model for a team draft once and opens it after review', async ({
+test('asks the signed-in model for a team proposal once and opens it after review', async ({
   page,
   corral,
 }) => {
   corral.fake?.replyText(
     JSON.stringify({
       kind: 'plan',
+      // The catalog lists the built-in agents first: a1 architect, a4 reviewer, a10 writer.
       plan: {
         name: 'Launch note',
-        pattern: 'write_review',
         brief: 'Announce the new API.',
         criteria: ['Mention the release date.'],
-        roles: [
-          { slot: 'planner', name: 'Outliner', duty: 'List the key points.' },
-          { slot: 'writer', name: 'Copywriter', duty: 'Write the announcement.' },
-          { slot: 'reviewer', name: 'Editor', duty: 'Check tone and facts.' },
+        seats: [
+          { id: 'outline', agent: 'a1', name: 'Outliner', duty: 'List the key points.' },
+          { id: 'write', agent: 'a10', name: 'Copywriter', duty: 'Write the announcement.' },
+          { id: 'check', agent: 'a4', name: 'Editor', duty: 'Check tone and facts.' },
         ],
-        reviewRounds: 1,
-        finalApproval: false,
+        flow: [{ seat: 'outline' }, { loop: { work: ['write'], judge: 'check', rounds: 1 } }],
       },
       reason: 'The writer can use the outline and revise the announcement after review.',
     }),
@@ -373,8 +372,9 @@ test('asks the signed-in model for a team draft once and opens it after review',
   }
   await saveNewTeam(page);
   await openFlowGraph(page);
-  await expect(teamCanvas(page).locator('[data-node="write"]')).toHaveCount(1);
-  await expect(teamCanvas(page).locator('[data-node="write"]')).toContainText('Copywriter');
+  // The composed team's nodes are named by the flow: the writer is the second seat.
+  await expect(teamCanvas(page).locator('[data-node="seat_2"]')).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node="seat_2"]')).toContainText('Copywriter');
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
   // Selecting the tab reads the first page; there is no separate load button.
@@ -423,11 +423,10 @@ test('one question choice sends one model request and preserves the unsent compo
       kind: 'plan',
       plan: {
         name: 'Newsletter',
-        pattern: 'single',
         brief: 'Write the newsletter using the material provided.',
         criteria: ['Use the supplied dates.'],
-        roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the newsletter.' }],
-        finalApproval: false,
+        seats: [{ id: 'write', agent: 'a10', name: 'Writer', duty: 'Write the newsletter.' }],
+        flow: [{ seat: 'write' }],
       },
       reason: 'One writer can use the supplied material.',
     }),

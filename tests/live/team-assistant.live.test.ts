@@ -318,6 +318,8 @@ interface GoalRecord {
   outputTokens?: number;
   /** Physical model requests recorded for the operation. */
   attempts: number;
+  /** The composed team as the editor received it, with each seat's agent named, for reading. */
+  composition?: TeamComposition;
 }
 
 const HANGUL = /[가-힣]/;
@@ -448,6 +450,17 @@ it.skipIf(!live || !goalsPath)(
                 (sum, seat) => sum + (seat.skills?.length ?? 0),
                 0,
               ),
+              ...(plan
+                ? {
+                    composition: {
+                      ...plan,
+                      seats: plan.seats.map((seat) => ({
+                        ...seat,
+                        agent: agentOf(seat.id)?.name ?? seat.agent,
+                      })),
+                    },
+                  }
+                : {}),
               compiles: plan ? compiles(plan) : false,
               languageMatches: plan ? languageMatches(entry, plan) : null,
               ms,
