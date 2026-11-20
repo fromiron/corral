@@ -3,6 +3,7 @@ import {
   type CorralDefinition,
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
+  type RoleSkillRef,
   WorkTool,
 } from '@corral/contracts';
 
@@ -239,6 +240,41 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
   return result;
 }
 
+/** A usable skill entry (installed, its package on, trusted, not archived) an import can attach. */
+export interface ImportableSkill extends RoleSkillRef {
+  /** The skill's own name from its SKILL.md, not a display name. */
+  name: string;
+  /** A later version is linked to this entry. */
+  superseded: boolean;
+  /** When its package was installed. */
+  installedAt: string;
+}
+
+/**
+ * A Markdown agent's `skills` as the imported role's skill choice (agent-library.md, "정의의 선택
+ * 필드"). Each name takes one same-named usable skill, chosen as harness-contract.md chooses the
+ * other usable skills: an entry no later version follows, then the latest installed. A name
+ * nothing answers comes back in `unresolved` for the review to show; it is never dropped silently.
+ */
+export function attachSkillsByName(
+  names: readonly string[],
+  usable: readonly ImportableSkill[],
+): { skills: RoleSkillRef[]; unresolved: string[] } {
+  const skills: RoleSkillRef[] = [];
+  const unresolved: string[] = [];
+  for (const name of names) {
+    const pick = usable
+      .filter((skill) => skill.name === name)
+      .sort(
+        (a, b) =>
+          Number(a.superseded) - Number(b.superseded) || b.installedAt.localeCompare(a.installedAt),
+      )[0];
+    if (pick) skills.push({ resourceHash: pick.resourceHash, entry: pick.entry });
+    else unresolved.push(name);
+  }
+  return { skills, unresolved };
+}
+
 export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   draft: T;
   candidate: MarkdownAgent;
@@ -250,6 +286,8 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   /** Preserves an explicit Corral role setting when importing a settings snapshot. */
   editingMode?: 'pi' | 'hashline' | undefined;
   parentHarness?: Pick<EffectiveHarnessSnapshot, 'binding' | 'policy' | 'allowedTools'> | undefined;
+  /** The skills `attachSkillsByName` found; none leaves the role without a skill choice. */
+  skills?: readonly RoleSkillRef[] | undefined;
 }): T {
   const { draft, candidate, parentNodeId, modelProfile, profiles, mappings, suffix } = input;
   if (candidate.errors.length) throw new Error(candidate.errors.join('\n'));
@@ -385,6 +423,8 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
           : {}),
         ...(parentRole.harness ? { harness: { ...parentRole.harness } } : {}),
         ...(editingMode ? { editingMode } : {}),
+        // An empty choice would still switch the role to harness resolution.
+        ...(input.skills?.length ? { skills: input.skills.map((ref) => ({ ...ref })) } : {}),
         allowedWorkTools: work,
         allowedCollaborationTools: collaboration,
         outputContract: 'text',

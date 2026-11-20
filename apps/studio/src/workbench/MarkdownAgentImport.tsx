@@ -13,7 +13,9 @@ import { type RefObject, useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
+import { loadSkillCatalog, type SkillCatalog, skillState } from './harness/skillCatalog.ts';
 import {
+  attachSkillsByName,
   importMarkdownAgent,
   MAX_AGENT_MARKDOWN_BYTES,
   parseMarkdownAgent,
@@ -51,6 +53,47 @@ export function MarkdownAgentImport({
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
   const candidate = useMemo(() => parseMarkdownAgent(source), [source]);
+  const [catalog, setCatalog] = useState<SkillCatalog | 'failed' | null>(null);
+  const wantsSkills = candidate.skills.length > 0;
+  useEffect(() => {
+    setCatalog(null);
+    if (!open || !harnesses || !wantsSkills) return;
+    let active = true;
+    void loadSkillCatalog(harnesses).then(
+      (next) => active && setCatalog(next),
+      () => active && setCatalog('failed'),
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, harnesses, wantsSkills]);
+  // Usable: installed, package on, trusted and not archived. Names are the skills' own names.
+  const usableSkills = useMemo(
+    () =>
+      catalog && catalog !== 'failed'
+        ? catalog.entries.flatMap((entry) => {
+            const state = skillState(entry, catalog.disabled);
+            if (state !== null && state !== 'newVersion') return [];
+            const own = entry.resource.skills.find((skill) => skill.entry === entry.entry);
+            return [
+              {
+                name: own?.name ?? entry.name,
+                resourceHash: entry.resourceHash,
+                entry: entry.entry,
+                superseded: entry.successor !== null,
+                installedAt: entry.resource.createdAt,
+              },
+            ];
+          })
+        : [],
+    [catalog],
+  );
+  const skillMatch = useMemo(
+    () => attachSkillsByName(candidate.skills, usableSkills),
+    [candidate.skills, usableSkills],
+  );
+  const checkingSkills = Boolean(harnesses) && wantsSkills && catalog === null;
+  const attachedSkills = candidate.skills.filter((name) => !skillMatch.unresolved.includes(name));
   const [suffix, setSuffix] = useState(() => crypto.randomUUID());
   const parent = parents.find((node) => node.id === parentNodeId);
   const role = draft.definition.roles.find((role) => role.id === parent?.roleId);
@@ -78,7 +121,7 @@ export function MarkdownAgentImport({
   const available = profiles?.filter((profile) => profile.available) ?? [];
   let preview: EditorDraft | null = null;
   let error = '';
-  if (source.trim()) {
+  if (source.trim() && !checkingSkills) {
     try {
       preview = importMarkdownAgent({
         draft,
@@ -89,6 +132,7 @@ export function MarkdownAgentImport({
         mappings,
         suffix,
         parentHarness: currentHarness?.snapshot,
+        skills: skillMatch.skills,
       });
     } catch (failure) {
       error = failure instanceof Error ? failure.message : String(failure);
@@ -183,6 +227,20 @@ export function MarkdownAgentImport({
                   {text('Requested model', '문서에 지정된 모델')}:{' '}
                   {candidate.model || text('Not specified', '없음')}
                 </p>
+                {checkingSkills || attachedSkills.length ? (
+                  <p className="text-caption text-muted-foreground">
+                    {text('Skills', '스킬')}:{' '}
+                    {checkingSkills ? text('Checking…', '확인 중…') : attachedSkills.join(', ')}
+                  </p>
+                ) : null}
+                {!checkingSkills && skillMatch.unresolved.length ? (
+                  <p className="text-caption text-muted-foreground">
+                    {catalog === 'failed'
+                      ? text('Skills not checked, not attached', '확인하지 못해 붙이지 않은 스킬')
+                      : text('Skills not found, not attached', '찾지 못해 붙이지 않은 스킬')}
+                    : {skillMatch.unresolved.join(', ')}
+                  </p>
+                ) : null}
               </section>
             ) : null}
             <div className="flex flex-col gap-1 text-body">

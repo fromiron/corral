@@ -56,7 +56,9 @@ export * from './limits.ts';
 export {
   type AgentImportDraft,
   type AgentImportProfile,
+  attachSkillsByName,
   builtinAgentTools,
+  type ImportableSkill,
   importMarkdownAgent,
   MARKDOWN_TOOL_ALIASES,
   MAX_AGENT_MARKDOWN_BYTES,
