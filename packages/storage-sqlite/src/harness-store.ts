@@ -366,6 +366,15 @@ export class SqliteHarnessStore {
     });
   }
 
+  /** Installed hashes, most recently installed first (insertion order, not the review time). */
+  installOrder(): string[] {
+    return (
+      this.db.prepare('SELECT hash FROM harness_resources ORDER BY rowid DESC').all() as {
+        hash: string;
+      }[]
+    ).map((row) => row.hash);
+  }
+
   trustResource(hash: string, trusted: boolean): HarnessResourceView {
     const resource = this.getResource(hash);
     if (!resource) throw new Error('resource not found');

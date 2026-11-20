@@ -736,7 +736,7 @@ describe('resource discovery, trust and resolution (H3)', () => {
   });
 });
 
-it('bundled content is reviewed and pinned, only selected entries are exposed, and sibling paths stay scoped', async () => {
+it('bundled content is reviewed and pinned, only bound entries are exposed, and sibling paths stay scoped', async () => {
   const s = setup();
   const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
   for (const [id, count] of [
@@ -754,6 +754,14 @@ it('bundled content is reviewed and pinned, only selected entries are exposed, a
     if (id !== 'design') continue;
     const skills = resource.skills.filter((skill) =>
       ['design-workflow', 'review-components'].includes(skill.name),
+    );
+    // Every other usable library skill is bound too; an archived one is not, so it stays unreadable.
+    const audit = resource.skills.find((skill) => skill.name === 'audit-design')!;
+    service.archiveEntry(
+      { resourceHash: resource.hash, entry: audit.entry, kind: 'skill' },
+      0,
+      true,
+      'archive-audit-design',
     );
     service.saveProfile('design', 0, {
       name: 'Design review',

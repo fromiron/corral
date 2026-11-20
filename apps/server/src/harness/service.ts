@@ -786,8 +786,31 @@ export class HarnessService {
       bundles: [],
     };
     const bundled = new Set<string>();
+    const checked = new Map<string, HarnessResourceView | Error>();
     for (const ref of input.harness.resources) {
-      const resource = this.verify(ref.hash);
+      let resource = checked.get(ref.hash);
+      if (!resource) {
+        try {
+          resource = this.verify(ref.hash);
+        } catch (error) {
+          resource = error instanceof Error ? error : new Error(String(error));
+        }
+        checked.set(ref.hash, resource);
+      }
+      // A skill nobody required or picked never blocks a worker start; it is left out instead.
+      const loose = ref.kind === 'skill' && !ref.required && !ref.selectedByRole;
+      if (resource instanceof Error) {
+        if (loose) continue;
+        throw resource;
+      }
+      if (
+        loose &&
+        (!resource.trustedAt ||
+          !resource.skills.some(
+            (skill) => skill.entry === ref.entry && skill.name === ref.skillName,
+          ))
+      )
+        continue;
       if (!resource.trustedAt || !ref.entry)
         throw new Error('resource requires trust before execution');
       if (!bundled.has(ref.hash)) {
@@ -1056,7 +1079,7 @@ export class HarnessService {
       profile: role && !role.harness ? this.minimalProfile() : this.profile(binding),
     });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
-    return this.compose(layers, binding, projectId, role);
+    return this.compose(layers, binding, projectId, role, true);
   }
 
   private minimalProfile() {
@@ -1186,11 +1209,16 @@ export class HarnessService {
     return profile;
   }
 
+  /**
+   * `library` adds the other usable library skills (harness-contract, "그 밖에 쓸 수 있는 스킬"):
+   * every role or binding resolution does, profile and default validation and evaluation runs do not.
+   */
   private compose(
     layers: { scope: 'personal' | 'project' | 'role' | 'run'; profile: HarnessProfileRevision }[],
     binding?: HarnessBindingRef,
     projectId?: string,
     role?: HarnessPreviewRole,
+    library = false,
   ) {
     const last = layers.at(-1)?.profile;
     if (!last) throw new Error('harness profile is missing');
@@ -1304,19 +1332,20 @@ export class HarnessService {
         });
       }
     if (picks) {
-      for (const [key, resource] of selected) {
-        if (
-          resource.kind === 'skill'
-            ? !requiredResource(resource) && !picks.has(key)
-            : !role?.harness && !resource.required
-        )
-          selected.delete(key);
-      }
+      // A selection guarantees skills and removes none; a role without its own harness still
+      // receives no optional default extension.
+      if (!role?.harness)
+        for (const [key, resource] of selected)
+          if (resource.kind === 'extension' && !resource.required) selected.delete(key);
       for (const [key, ref] of picks) {
         if (!selected.has(key))
           selected.set(key, { ...ref, kind: 'skill', required: false, skillMode: 'auto' });
       }
     }
+    // Required entries claim their names first, then picked ones; any other skill yields.
+    const rank = (key: string, resource: HarnessProfile['resources'][number]) =>
+      requiredResource(resource) ? 0 : picks?.has(key) ? 1 : 2;
+    const ordered = [...selected].sort(([ka, a], [kb, b]) => rank(ka, a) - rank(kb, b));
     const resources: EffectiveHarnessSnapshot['resources'] = [];
     const sections: { source: 'skill'; name: string; text: string }[] = [];
     const names = new Map<string, string>();
@@ -1326,8 +1355,11 @@ export class HarnessService {
     if (disabledMcp) diagnostics.push('mcp_server_disabled');
     let needsExecutionPolicy = false;
     let mandatoryBytes = 0;
-    for (const [key, selectedResource] of selected) {
+    for (const [key, selectedResource] of ordered) {
       const picked = picks?.has(key);
+      // An optional skill nobody picked never blocks a start: when it cannot be used it is left out.
+      const loose =
+        !picked && selectedResource.kind === 'skill' && !requiredResource(selectedResource);
       if (picked && selectedResource.kind !== 'skill') {
         problems.set(key, 'missing');
         continue;
@@ -1348,6 +1380,7 @@ export class HarnessService {
         try {
           resource = this.verify(selectedResource.resourceHash);
         } catch (error) {
+          if (loose && error instanceof ResourceVerificationError) continue;
           if (!picked || !(error instanceof ResourceVerificationError)) throw error;
           problems.set(key, error.reason);
           continue;
@@ -1355,6 +1388,7 @@ export class HarnessService {
         verified.set(resource.hash, resource);
       }
       if (!resource.trustedAt) {
+        if (loose) continue;
         if (!picked) throw new Error('resource requires trust before binding');
         problems.set(key, 'untrusted');
         continue;
@@ -1370,11 +1404,13 @@ export class HarnessService {
       } else {
         const skill = resource.skills.find((skill) => skill.entry === selectedResource.entry);
         if (!skill) {
+          if (loose) continue;
           if (!picked) throw new Error('unknown or duplicate skill name');
           problems.set(key, 'missing');
           continue;
         }
         const priorKey = names.get(skill.name);
+        if (priorKey && loose) continue;
         if (priorKey) {
           const prior = selected.get(priorKey)!;
           const conflict = [priorKey, key].filter((candidate) => picks?.has(candidate));
@@ -1415,6 +1451,8 @@ export class HarnessService {
           : {}),
       });
     }
+    if (library && !problems.size && !needsExecutionPolicy)
+      resources.push(...this.librarySkills(names, selected, verified));
     if (role && picks && (problems.size || needsExecutionPolicy)) {
       const entries = [...picks].flatMap(([key, ref]) => {
         const reason = problems.get(key);
@@ -1465,6 +1503,69 @@ export class HarnessService {
       sections,
       dynamic,
     };
+  }
+
+  /**
+   * The usable library skills whose internal name no bound skill has: one per name, preferring
+   * an entry with no successor, then the most recently installed. Unusable entries are skipped.
+   */
+  private librarySkills(
+    names: ReadonlyMap<string, string>,
+    selected: ReadonlyMap<string, unknown>,
+    verified: Map<string, HarnessResourceView>,
+  ): EffectiveHarnessSnapshot['resources'] {
+    const candidates = new Map<
+      string,
+      { resource: HarnessResourceView; skill: HarnessResource['skills'][number]; next: boolean }[]
+    >();
+    for (const hash of this.store.installOrder()) {
+      if (this.store.packageManagement(hash).status !== 'enabled') continue;
+      const resource = this.store.getResource(hash);
+      if (!resource?.trustedAt) continue;
+      for (const skill of resource.skills) {
+        if (names.has(skill.name) || selected.has(resourceKey({ resourceHash: hash, ...skill })))
+          continue;
+        const state = this.store.entryManagement({
+          resourceHash: hash,
+          entry: skill.entry,
+          kind: 'skill',
+        });
+        if (state.archivedAt) continue;
+        const list = candidates.get(skill.name) ?? [];
+        list.push({ resource, skill, next: state.successor !== null });
+        candidates.set(skill.name, list);
+      }
+    }
+    const failed = new Set<string>();
+    const usable = (hash: string) => {
+      if (verified.has(hash)) return true;
+      if (failed.has(hash)) return false;
+      try {
+        verified.set(hash, this.verify(hash));
+        return true;
+      } catch {
+        failed.add(hash);
+        return false;
+      }
+    };
+    const chosen: EffectiveHarnessSnapshot['resources'] = [];
+    for (const name of [...candidates.keys()].sort()) {
+      // Install order is kept within each group by the stable sort.
+      const list = candidates.get(name)!.sort((a, b) => Number(a.next) - Number(b.next));
+      const pick = list.find(({ resource }) => usable(resource.hash));
+      if (!pick) continue;
+      chosen.push({
+        hash: pick.resource.hash,
+        name: pick.resource.name,
+        version: pick.resource.version,
+        kind: 'skill',
+        required: false,
+        entry: pick.skill.entry,
+        skillMode: pick.skill.disableModelInvocation ? 'explicit' : 'auto',
+        skillName: pick.skill.name,
+      });
+    }
+    return chosen;
   }
 
   private verify(resourceHash: string): HarnessResourceView {
