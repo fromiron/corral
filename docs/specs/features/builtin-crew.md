@@ -27,12 +27,13 @@ Corral은 바로 쓸 수 있는 스킬과 에이전트를 함께 싣는다. 템�
 | 반증 `adversary` | 변경을 깨뜨려 보고, 실행이나 추적으로 보인 것만 보고한다 | 읽기·실행 | notes | `break-it`, `change-impact` |
 | 검증 `verifier` | 실제 결과물을 실행해 기준을 채웠는지 판정한다 | 읽기·실행 | review | `prove-it`, `measure-first`, `corral-verification`, `corral-review` |
 | 심사 `judge` | 나란히 온 결과를 기준별로 견주어 고르고 합친다 | 읽기 | draft | `pick-and-graft`, `plain-prose` |
-| 설명 `explainer` | 코드가 어떻게 동작하고 왜 그렇게 됐는지 근거와 함께 밝힌다 | 읽기 | notes | `trace-the-code`, `ask-the-record` |
+| 설명 `explainer` | 코드가 어떻게 동작하고 왜 그렇게 됐는지 근거와 함께 밝힌다 | 읽기·실행 | notes | `trace-the-code`, `ask-the-record` |
 | 조사 `researcher` | 질문에 답할 사실과 출처를 모은다 | 읽기 | notes | `ask-the-record`, `corral-evidence` |
 | 작성 `writer` | 받은 자료로 읽는 사람에게 맞는 글을 쓴다 | 읽기 | draft | `plain-prose`, `doc-writing` |
 
 - **읽기**는 `write_artifact`·`list_files`·`read_file`·`preview_file`이다. **실행**은 여기에 `run_command`·`preview_app`·`preview_action`을 더한다. **변경**은 `write_file`·`delete_file`·`move_file`을 더한다. 모든 에이전트는 `read_artifact`·`submit_result`·`ask_user`를 가진다.
 - 검토·검증·심사는 둘째 모델 자리(`model-b`)를, 나머지는 첫째 자리(`model-a`)를 쓴다. 템플릿이 같은 에이전트를 두 갈래에 나란히 놓을 때는 둘째 갈래를 `model-b`로 둔다.
+- 설명이 실행을 갖는 것은 버전 기록을 읽고 추적한 경로를 실제로 돌려 보기 위해서다. 원인 조사·반증·검증·설명은 실행을 갖지만 작업 사본을 바꾸지 않는다고 기본 지시에 적는다.
 - 명령 실행은 세션의 실행 정책이 있을 때만 실제로 쓸 수 있다([LLM 런타임](../llm-runtime.md)). 실행 도구를 쓸 수 없는 자리에서 에이전트는 추적한 것과 실행한 것을 구분해 보고한다.
 
 ### 기본 제공 스킬
@@ -63,6 +64,7 @@ Corral은 바로 쓸 수 있는 스킬과 에이전트를 함께 싣는다. 템�
 - **에이전트**는 `agents/<name>.md`다. Agent Skills 명세는 에이전트 형식을 정하지 않으므로 여러 도구가 함께 읽는 Markdown 에이전트 형식을 쓴다.
   - frontmatter: `name`(파일 이름과 같다), `description`, `tools`, `skills`, `metadata`.
   - `tools`는 `Read`, `Glob`, `Grep`, `Bash`, `Edit`, `Write` 가운데 고른다. `Bash`가 있으면 실행, `Edit`과 `Write`가 있으면 변경이다.
+  - 이름은 가져오기와 같은 표로 Corral 도구가 된다: `Read` → `read_file`, `Glob` → `list_files`, `Bash` → `run_command`, `Edit`·`Write` → `write_file`. `Grep`은 옮길 도구가 없다. 기본 제공 프리셋은 여기에 함께 다니는 도구를 더한다: 모든 에이전트에 `write_artifact`·`preview_file`, `run_command`가 있으면 `preview_app`·`preview_action`, `write_file`이 있으면 `delete_file`·`move_file`. 같은 파일을 사람이 가져오면 표가 옮긴 도구만 제안된다.
   - `skills`는 기본 제공 스킬의 이름 목록이다.
   - `metadata`는 문자열 값만 갖는 한 단계 맵이다. Corral이 읽는 키는 `corral-output`(결과 형식)과 `corral-model-slot`(`a` 또는 `b`)이다.
   - 본문이 기본 지시다. 본문은 특정 도구의 기능 이름에 기대지 않는다. Corral은 본문 뒤에 공통 작업 규칙을 붙여 역할의 지시로 쓴다.
@@ -77,6 +79,7 @@ Corral은 바로 쓸 수 있는 스킬과 에이전트를 함께 싣는다. 템�
 - 일반 테스트는 다음도 확인한다.
   - 모든 기본 제공 스킬이 위 스킬 형식을 지킨다.
   - Corral이 쓰는 Pi 버전의 스킬 로더가 각 묶음을 진단 없이 읽는다.
+  - 스킬 이름은 기본 제공 묶음 전체에서 하나뿐이다. 설명은 Corral이 저장하는 길이(1,000자) 안이다.
   - 모든 에이전트 파일이 가져오기 파서를 오류 없이 지나고, `skills`의 이름이 모두 기본 제공 스킬이며, `tools`와 `metadata`가 위 값만 쓴다.
   - 에이전트 파일의 도구 이름을 Corral 도구로 옮기는 표는 가져오기가 쓰는 표와 한 곳에 있다.
 
