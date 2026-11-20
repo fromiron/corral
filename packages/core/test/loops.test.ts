@@ -1452,7 +1452,9 @@ describe('an Output inside a Loop', () => {
     expect(versionsOf(final, 'p')).toHaveLength(2);
     expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass']);
     expect(final.status).toBe('failed');
-    expect(final.statusReason).toContain('required_output_review');
+    expect(final.statusReason).toContain(
+      'required_output_review: no passing review for the submitted candidate version',
+    );
     expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
   });
 
@@ -1516,7 +1518,9 @@ describe('an Output inside a Loop', () => {
     const { final, events } = await approvedThenRound2(true);
     expect(Object.values(final.reviews).map((r) => r.verdict)).toEqual(['pass', 'revise']);
     expect(final.status).toBe('failed');
-    expect(final.statusReason).toContain('required_output_review');
+    expect(final.statusReason).toContain(
+      'required_output_review: no passing review for the submitted candidate version',
+    );
     expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
   });
 
