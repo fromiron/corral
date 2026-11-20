@@ -78,6 +78,21 @@ const edit: TeamAssistantRequest = {
     ],
   },
 };
+/** A team with one result: a gate on it needs no target question. */
+const singleTeam = {
+  roles: [{ nodeId: 'author', name: 'Author' }],
+  hasSharedOutrider: false,
+  brief: '',
+  outputs: [
+    { outputId: 'out', results: [{ index: target.index, name: 'Draft', producerName: 'Author' }] },
+  ],
+};
+const single = {
+  operationId: 'assistant',
+  mode: 'edit',
+  messages: [{ role: 'user', content: 'Require review.' }],
+  team: singleTeam,
+} satisfies TeamAssistantRequest;
 /** A composed plan: one writer, unless the changes say otherwise. */
 const plan = (changes: Partial<TeamComposition> = {}) => ({
   kind: 'plan',
@@ -581,16 +596,71 @@ describe('checked assistant proposals', () => {
     });
   });
 
-  it.each(['발행 전에 검토받게 해 줘.', 'Get a review before publishing.'])(
-    'asks about policy, not a review target, when the request is ambiguous: %s',
-    (content) => {
-      expect(read(edits(gate), { ...edit, messages: [{ role: 'user', content }] })).toEqual({
-        kind: 'question',
-        id: 'review_policy',
-        choices: ['opinion_only', 'required'],
-      });
-    },
-  );
+  it.each([
+    '검토 통과는 필요 없어.',
+    '검토 통과는 필요 없어. 작성자가 필요할 때만 조언받을 수 있게 해 줘.',
+    'No review gate, please. Just let the writer ask for advice when it is needed.',
+  ])('returns the model’s gate as it wrote it, whatever the words decline: %s', (content) => {
+    const messages = [{ role: 'user' as const, content }];
+    expect(read(edits(gate), { ...single, messages })).toEqual(edits(gate));
+    // Still under the target rules: with several results the person picks one.
+    expect(read(edits(gate), { ...edit, messages })).toEqual({
+      kind: 'question',
+      id: 'review_target',
+      choices: [other, target],
+    });
+  });
+
+  it.each([
+    '제출 전에 검토받게 해 줘.',
+    '발행 전에 검토받게 해 줘.',
+    'Get a review before publishing.',
+  ])('returns a gate on the only result as the model wrote it, not a question: %s', (content) => {
+    const messages = [{ role: 'user' as const, content }];
+    expect(read(edits(gate), { ...single, messages })).toEqual(edits(gate));
+    // The model's own question passes through, bounded as every question is.
+    const policy = {
+      kind: 'question',
+      id: 'review_policy',
+      choices: ['opinion_only', 'required'],
+    };
+    expect(read(policy, { ...single, messages })).toEqual(policy);
+    const answered = { role: 'user' as const, content: 'Not sure.' };
+    const asked = (questionId: 'material' | 'review_policy' | 'review_target') => ({
+      role: 'assistant' as const,
+      questionId,
+      content: 'Choose one.',
+    });
+    expect(
+      read(policy, { ...single, messages: [...messages, asked('review_policy'), answered] }),
+    ).toEqual({ kind: 'unsupported' });
+    expect(
+      read(policy, {
+        ...single,
+        messages: [...messages, asked('material'), asked('review_target'), answered],
+      }),
+    ).toBeNull();
+  });
+
+  it('drops a gate and adds advice under an opinion-only decision, whatever the words ask', () => {
+    const decisions = { reviewPolicy: 'opinion_only' } as const;
+    const messages = [
+      {
+        role: 'user' as const,
+        content: 'The notice may be submitted only after it passes a review.',
+      },
+    ];
+    expect(read(edits(gate), { ...single, messages, decisions })).toMatchObject({
+      kind: 'edits',
+      edits: [{ kind: 'add_shared_advice' }],
+    });
+    // A team that already has shared advice is left with nothing to change: it is described.
+    const advised = { ...singleTeam, hasSharedOutrider: true };
+    expect(read(edits(gate), { ...single, team: advised, messages, decisions })).toEqual({
+      kind: 'describe',
+      topic: 'review',
+    });
+  });
 
   it('lets a typed clarification resolve an ambiguous goal in either mode', () => {
     const messages: TeamAssistantRequest['messages'] = [

@@ -8,10 +8,8 @@ import {
   type TeamAssistantRequest,
   type TeamAssistantTarget,
   type TeamCatalog,
-  type TeamComposition,
 } from '@corral/contracts';
 import { compositionProblem, type TeamCompositionProblem } from './team-composition.ts';
-import { type AdviceIntent, adviceIntentFromGoal } from './team-draft.ts';
 
 type PlanReply = Extract<Reply, { kind: 'plan' }>;
 type EditsReply = Extract<Reply, { kind: 'edits' }>;
@@ -76,33 +74,16 @@ function boundedQuestion(
   return question;
 }
 
-const reviewPolicyQuestion = {
-  kind: 'question',
-  id: 'review_policy',
-  choices: ['opinion_only', 'required'],
-} satisfies Reply;
-
 // If structure changes, the model's old reason (e.g. "passing review is required") is
 // no longer an explanation of the checked proposal. Only describe the person's setting.
-function policyReason(
-  policy: TeamComposition['outrider'] | AdviceIntent['outrider'],
-  korean: boolean,
-): string {
-  switch (policy) {
-    case 'required_review':
-      return korean
-        ? '선택한 결과는 검토를 통과한 뒤에 제출합니다.'
-        : 'The selected result is submitted after it passes review.';
-    case 'artifact_review':
-    case 'consultation':
-      return korean
-        ? '작성자는 필요할 때만 의견을 구하고 직접 제출합니다.'
-        : 'The author can ask for advice when needed and submit the result directly.';
-    default:
-      return korean
-        ? '요청하지 않은 검토나 승인 없이 작성자가 직접 제출합니다.'
-        : 'The author submits the result without an unrequested review or approval.';
-  }
+function policyReason(policy: 'required_review' | 'artifact_review', korean: boolean): string {
+  return policy === 'required_review'
+    ? korean
+      ? '선택한 결과는 검토를 통과한 뒤에 제출합니다.'
+      : 'The selected result is submitted after it passes review.'
+    : korean
+      ? '작성자는 필요할 때만 의견을 구하고 직접 제출합니다.'
+      : 'The author can ask for advice when needed and submit the result directly.';
 }
 
 type Loose = Record<string, unknown>;
@@ -222,36 +203,24 @@ function reconcilePlan(
   };
 }
 
-function reconcileEdits(
-  reply: EditsReply,
-  request: EditRequest,
-  intent: AdviceIntent,
-  korean: boolean,
-): Reply | null {
+/**
+ * An edit to an existing team as the model wrote it, checked against the team's results and the
+ * person's structured choices only: the request's words are the model's to read.
+ */
+function reconcileEdits(reply: EditsReply, request: EditRequest, korean: boolean): Reply | null {
   const { team, decisions } = request;
   const gates = reply.edits.filter((edit) => edit.kind === 'require_review');
   // Validate *all* proposed targets before correcting any of them to a person's choice.
   if (gates.some((gate) => !hasAssistantTarget(team, gate))) return null;
   const policy = decisions?.reviewPolicy;
-  if (!policy && intent.outrider === 'clarify_review' && !alreadyAsked(request, 'review_policy'))
-    return boundedQuestion(request, reviewPolicyQuestion);
-  if (policy === 'opinion_only' || (!policy && intent.singleWithoutReview)) {
+  if (policy === 'opinion_only') {
     const needsAdvice =
-      Boolean(policy === 'opinion_only' || intent.outrider) &&
-      !team.hasSharedOutrider &&
-      !reply.edits.some((edit) => edit.kind === 'add_shared_advice');
+      !team.hasSharedOutrider && !reply.edits.some((edit) => edit.kind === 'add_shared_advice');
     if (!gates.length && !needsAdvice) return reply;
     const edits = reply.edits.filter((edit) => edit.kind !== 'require_review');
     if (needsAdvice) edits.push({ kind: 'add_shared_advice' });
     return edits.length
-      ? {
-          kind: 'edits',
-          edits,
-          reason: policyReason(
-            policy === 'opinion_only' ? 'artifact_review' : intent.outrider,
-            korean,
-          ),
-        }
+      ? { kind: 'edits', edits, reason: policyReason('artifact_review', korean) }
       : { kind: 'describe', topic: 'review' };
   }
   if (!gates.length && policy !== 'required') return reply;
@@ -292,7 +261,10 @@ function reconcileEdits(
   };
 }
 
-/** Check the reply in its proposal context. Structured decisions take priority over goal text. */
+/**
+ * Check the reply in its proposal context: the person's structured decisions and what the team or
+ * catalog really holds. The request's words are the model's to read.
+ */
 export function reconcileAssistantReply(reply: Reply, request: TeamAssistantRequest): Reply | null {
   const checked = checkAssistantReply(reply, request);
   return 'reply' in checked ? checked.reply : null;
@@ -330,9 +302,7 @@ function checkAssistantReply(reply: Reply, request: TeamAssistantRequest): TeamA
   if (reply.kind === 'plan')
     return request.mode === 'create' ? reconcilePlan(reply, request, korean) : { problem: 'kind' };
   if (request.mode !== 'edit') return { problem: 'kind' };
-  // Edits to an existing team still read its review and observation intent from the words.
-  const intent = adviceIntentFromGoal(users.map((message) => message.content).join('\n'));
-  return conflict(reconcileEdits(reply, request, intent, korean));
+  return conflict(reconcileEdits(reply, request, korean));
 }
 
 /** One complete JSON value of an answer, cut out of its envelope, or undefined. */

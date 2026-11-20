@@ -9,7 +9,7 @@ import { ROLE_RULES } from './role-prompt.ts';
 
 // The three base patterns as a Corral: auto mode's local choice among them and the definition a
 // plan of one of them becomes, whose tools, bindings, Loop ports and limits are fixed by the
-// pattern. Edit mode of the team assistant reads review and observation intent from the words.
+// pattern.
 
 /** The three patterns drafted here; auto mode uses their shapes. */
 export type BasePattern = 'single' | 'write_review' | 'research_write_review';
@@ -63,107 +63,6 @@ export function basePatternFromGoal(goal: string): BasePattern {
     : WRITING.test(brief)
       ? 'write_review'
       : 'single';
-}
-
-/** Read explicit advice/review intent before matching the work itself to a pattern. */
-function outriderFromGoal(goal: string): TeamPlan['outrider'] {
-  const review = /\b(review|feedback|critique|pass)\b|검토|리뷰|피드백|수정 의견|통과/i.test(goal);
-  const request =
-    /\b(on request|on demand|when needed|when asked|if needed|as needed|ask for|request a|request review|can ask)\b|필요할 때|요청할 수|요청할 때|원할 때|물어볼 수|물어보게|부탁할 수/i.test(
-      goal,
-    );
-  const mustPass =
-    /\b(must pass|must be approved by (?:a|the) review|only (?:after|if).{0,32}(?:review|pass)|require.{0,18}review.{0,18}pass)\b|반드시.{0,20}통과|통과해야.{0,15}제출|통과한 뒤에만/i.test(
-      goal,
-    );
-  if (review && mustPass) return 'required_review';
-  if (review && request) return 'artifact_review';
-  if (
-    /\b(review (?:it )?(?:before (?:every )?(?:submitting|submission|publishing|publication)|then submit)|submit after review)\b|(?:검토|리뷰)(?:한)? 후 제출|(?:발행|제출)\s*전에?\s*(?:검토|리뷰)/i.test(
-      goal,
-    )
-  )
-    return 'clarify_review';
-  if (
-    request &&
-    /\b(experts?|advice|advisors?|consult\w*|outrider)\b|전문가|자문|아웃라이더|Outrider|조언/i.test(
-      goal,
-    )
-  )
-    return 'consultation';
-  return undefined;
-}
-
-// Remove only the denied policy, not the entire sentence: the author may still want
-// manuscript feedback or separately ask to observe the work.
-const EN_POLICY =
-  '(?:passing (?:a )?review|(?:an? )?(?:review(?: pass| gate| step| rounds?)?|automatic observation(?: of (?:the )?(?:workers?|work in progress))?))';
-const EN_POLICIES = `${EN_POLICY}(?:\\s+(?:or|and|nor)\\s+${EN_POLICY})*`;
-const DENIED_EN_POLICY = new RegExp(
-  `\\b(?:(?:no(?: need for)?|without|do not need|don't need|skip)\\s+${EN_POLICIES}|${EN_POLICIES}\\s+(?:(?:is|are) not|isn't|aren't|not) (?:needed|required|necessary))\\b`,
-  'gi',
-);
-const KO_POLICY = '(?:(?:검토|리뷰)(?:\\s*(?:통과|단계))?|(?:진행\\s*중\\s*)?자동\\s*관찰)';
-const DENIED_KO_POLICY = new RegExp(
-  `${KO_POLICY}(?:\\s*(?:이나|나|또는|와|과|및)\\s*${KO_POLICY})*(?:이|가|은|는|을|를|도)?\\s*(?:필요\\s*없|필요하지\\s*않|불필요|없이|하지\\s*(?:않|말|마))`,
-  'g',
-);
-
-export interface AdviceIntent {
-  outrider: TeamPlan['outrider'];
-  observeWork: boolean;
-  singleWithoutReview: boolean;
-}
-
-/** The same review and observation intent governs local, model and conversational proposals. */
-export function adviceIntentFromGoal(goal: string): AdviceIntent {
-  let declinedReview = false;
-  const removeDenied = (policy: string) => {
-    if (/review|검토|리뷰/i.test(policy)) declinedReview = true;
-    return ' ';
-  };
-  const positive = goal
-    .replace(DENIED_EN_POLICY, removeDenied)
-    .replace(DENIED_KO_POLICY, removeDenied);
-  return {
-    outrider: outriderFromGoal(positive),
-    observeWork: matchesWorkObservation(positive),
-    singleWithoutReview: declinedReview && !hasExplicitTeamStructure(positive),
-  };
-}
-
-/** A request to watch the team's ongoing work, including explicit opt-outs in either locale. */
-function matchesWorkObservation(goal: string): boolean {
-  return goal.split(/[.!?;\n]/).some((clause) => {
-    const english =
-      /\b(?:(?:observe|watch|monitor) (?:the )?work in progress|(?:automatically|periodically) (?:observe|watch|monitor) (?:the |each |all )?(?:workers?|agents?)\b|automatic observation of (?:the )?(?:workers?|work in progress))\b/i;
-    const korean =
-      /(?:자동\s*관찰(?:을|를)?\s*(?:켜|활성화)|진행\s*중(?:인)?\s*(?:(?:작업|업무)(?:을|를)?\s*)?(?:자동(?:으로)?\s*)?관찰|(?:작업자|에이전트)(?:들의?|들|의)?\s*(?:작업|업무)?(?:을|를)?\s*(?:자동으로|주기적으로)\s*관찰)/;
-    const match = english.exec(clause) ?? korean.exec(clause);
-    if (!match) return false;
-    const before = clause.slice(0, match.index);
-    const after = clause.slice(match.index + match[0].length);
-    return (
-      !/\b(?:never|no|without|not|don't|disable)\s+(?:enable\s+|turn on\s+)?(?:(?:the |any )?(?:outrider|advisor) to )?$/i.test(
-        before,
-      ) && !/^(?:을|를|은|는)?\s*(?:(?:하)?지\s*(?:않|말|마)|없이|끄|꺼|비활성|금지)/.test(after)
-    );
-  });
-}
-
-/** Explicit task roles take priority over the inferred shape of an advice-only goal. */
-function hasExplicitTeamStructure(goal: string): boolean {
-  return (
-    /\b(?:two|three|four|[2-9])\s+(?:(?:different|distinct|separate)\s+)?(?:agents|roles|workers)\b|(?:두|세|네)\s*(?:명의?|개의?)?\s*(?:역할|작업자|에이전트)/i.test(
-      goal,
-    ) ||
-    /\bone (?:agent|role|worker)\b.*\b(?:another|the other)\b|(?:역할을|작업을)\s*(?:나누|분담)/i.test(
-      goal,
-    ) ||
-    /\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b.{0,30}\b(?:and|then)\b.{0,16}\b(?:planner|researcher|writer|editor|implementer|tester|reviewer)\b|(?:기획자|조사자|작성자|편집자|구현자|검토자).{0,18}(?:와|과|다음에|그 뒤).{0,12}(?:기획자|조사자|작성자|편집자|구현자|검토자)/i.test(
-      goal,
-    )
-  );
 }
 
 const CONTRACT: Record<BaseSlot, CorralDefinition['roles'][number]['outputContract']> = {
