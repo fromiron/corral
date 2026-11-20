@@ -230,3 +230,40 @@ it('links a same-named earlier bundled entry to its new version', async () => {
     successor: s.entry(v2, 'kept'),
   });
 });
+
+it('inspects each bundled version once per process, and never content that differs', async () => {
+  const s = setup();
+  const alpha = await s.pack('alpha', '1.0.0', { one: 'A' });
+  let calls = 0;
+  const counted = async (directory: string) => {
+    calls++;
+    return inspect(directory);
+  };
+  for (const _ of [1, 2]) {
+    const db = openDatabase(':memory:');
+    databases.push(db);
+    const service = new HarnessService({
+      root: mkdtempSync(join(s.root, 'fresh-')),
+      db,
+      clock: new FakeClock(),
+      inspect: counted,
+      builtin: { root: s.packs, manifest: s.manifest },
+    });
+    await service.installBuiltins();
+    expect(service.store.getResource(alpha)?.trustedAt).not.toBeNull();
+  }
+  expect(calls).toBe(1);
+  writeFileSync(join(s.packs, 'alpha', 'skills/one/SKILL.md'), 'changed');
+  const db = openDatabase(':memory:');
+  databases.push(db);
+  const changed = new HarnessService({
+    root: mkdtempSync(join(s.root, 'fresh-')),
+    db,
+    clock: new FakeClock(),
+    inspect: counted,
+    builtin: { root: s.packs, manifest: s.manifest },
+  });
+  await changed.installBuiltins();
+  expect(changed.store.getResource(alpha)).toBeNull();
+  expect(calls).toBe(2);
+});

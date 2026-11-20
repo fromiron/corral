@@ -168,6 +168,11 @@ const BUILTIN = {
   root: fileURLToPath(new URL('../../resources/builtin/', import.meta.url)),
   manifest: builtinManifest as BuiltinManifest,
 };
+/**
+ * Pi's reading of a bundled pack, per inspector and exact content hash. The same bytes read the
+ * same way, so each process inspects a bundled version once (every inspection spawns a worker).
+ */
+const builtinInspections = new WeakMap<object, Map<string, PackageInspection>>();
 /** Recorded only when the startup pass installs a bundled version; a person's import never is. */
 const builtinMark = (id: string, hash = '') => `builtin:${id}:${hash}`;
 const requiredResource = (ref: HarnessProfile['resources'][number]) =>
@@ -717,7 +722,14 @@ export class HarnessService {
     const source = join(this.builtin.root, id);
     if (relative(this.builtin.root, source).split(sep)[0] !== id)
       throw new Error('unknown built-in pack');
-    const review = await this.discoverLocal(source);
+    const inspections =
+      builtinInspections.get(this.inspect) ?? new Map<string, PackageInspection>();
+    builtinInspections.set(this.inspect, inspections);
+    const known = inspections.get(manifest.hash);
+    const review = await this.discoverLocal(
+      source,
+      known ? { hash: manifest.hash, inspection: known } : undefined,
+    );
     if (
       review.resource.hash !== manifest.hash ||
       review.resource.skills.length !== manifest.skills ||
@@ -726,17 +738,22 @@ export class HarnessService {
       this.cancelReview(review.reviewId);
       throw new Error('built-in pack integrity changed');
     }
+    if (!known) {
+      const { name, version, license, packagePath, extensions, skills } = review.resource;
+      inspections.set(manifest.hash, { name, version, license, packagePath, extensions, skills });
+    }
     review.resource.sourceLabel = manifest.source;
     return review;
   }
 
-  async discoverLocal(source: string) {
+  async discoverLocal(source: string, known?: { hash: string; inspection: PackageInspection }) {
     this.expireReviews();
     const original = this.sourceDirectory(source);
     const directory = mkdtempSync(join(this.root, 'reviews', 'copy-'));
     try {
       const files = scan(original, directory);
-      const inspection = await this.inspect(directory);
+      const inspection =
+        known && treeHash(files) === known.hash ? known.inspection : await this.inspect(directory);
       const resource = HarnessResource.parse({
         ...inspection,
         hash: treeHash(files),
