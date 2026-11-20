@@ -1,0 +1,66 @@
+{
+  "split": "heldout",
+  "note": "Held-out goals for the template patterns. Labels were written before any run. Not a tuning set: score it for a report and do not add rules from its misses. Two ideas behind its goals were told to the author of the local rules after the first score (a heavy resource is performance; a held behavior worded as a prohibition is a refactoring), so the local pick's score here is not blind for those two.",
+  "goals": [
+    {
+      "id": "held-01",
+      "goal": "대시보드 첫 로딩이 너무 느려. 어디서 시간이 걸리는지 재 보고 줄여 줘",
+      "accept": ["performance"]
+    },
+    {
+      "id": "held-02",
+      "goal": "Cut the memory use of the image importer; it climbs past 2 GB on large albums",
+      "accept": ["performance"]
+    },
+    {
+      "id": "held-03",
+      "goal": "세션 만료 처리가 코드에서 어떤 순서로 일어나는지 추적해서 문서로 남겨 줘",
+      "accept": ["code_investigation"]
+    },
+    {
+      "id": "held-04",
+      "goal": "Why does the scheduler skip jobs on the last day of the month? Trace the code and its history and write up what you find, without changing anything",
+      "accept": ["code_investigation"]
+    },
+    {
+      "id": "held-05",
+      "goal": "이 정규식이 무슨 뜻인지 알려 줘",
+      "accept": ["single"]
+    },
+    {
+      "id": "held-06",
+      "goal": "Try to break the new rate limiter and report only failures you can reproduce",
+      "accept": ["adversarial_review"]
+    },
+    {
+      "id": "held-07",
+      "goal": "이번 인증 변경에 구멍이 없는지 공격해 봐. 수정은 하지 말고 재현 방법만 적어 줘",
+      "accept": ["adversarial_review"]
+    },
+    {
+      "id": "held-08",
+      "goal": "Untangle the billing module's circular imports while keeping every test green",
+      "accept": ["refactor"]
+    },
+    {
+      "id": "held-09",
+      "goal": "중복된 폼 검증 코드를 정리해서 하나로 합쳐 줘. 동작은 바뀌면 안 돼",
+      "accept": ["refactor"]
+    },
+    {
+      "id": "held-10",
+      "goal": "Uploads over 10 MB fail with a 413 since yesterday; fix it",
+      "accept": ["bug_fix", "implement_review"]
+    },
+    {
+      "id": "held-11",
+      "goal": "팀 초대 기능을 설계부터 해서 구현해 줘. 권한 모델도 정해야 해",
+      "accept": ["feature"]
+    },
+    {
+      "id": "held-12",
+      "goal": "Draft a changelog entry for the 3.0 release from these notes",
+      "accept": ["write_review", "single"]
+    }
+  ]
+}
