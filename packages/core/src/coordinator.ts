@@ -1224,8 +1224,10 @@ export class Coordinator {
     if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
     try {
       // The checkpoint ran on its run's snapshot; only that snapshot's bound part must still hold.
-      const recorded = source.snapshot.harnesses?.[state.role.id];
-      if ((recorded?.snapshotHash ?? null) !== manifest.harnessHash)
+      // A checkpoint with no harness hash ran with no harness (an advisor's, say).
+      const recorded =
+        manifest.harnessHash === null ? undefined : source.snapshot.harnesses?.[state.role.id];
+      if (manifest.harnessHash !== null && recorded?.snapshotHash !== manifest.harnessHash)
         blockers.push('resources_changed');
       if (needsHarness(state.role)) {
         const resolved = this.harnesses?.resolve(
@@ -1562,11 +1564,12 @@ export class Coordinator {
     const modelHash =
       recovery?.manifest.modelHash ?? hashOf(source.snapshot.models[role.modelProfile]);
     const recorded = source.snapshot.harnesses?.[role.id];
-    // A checkpoint whose hash its run's snapshot does not carry is compared with that hash as is,
-    // as before: a resolution passes only when it is that exact snapshot.
+    // A checkpoint hash its run's snapshot does not carry is compared as is, as before: a
+    // resolution passes only when it is that exact snapshot.
+    const checkpointHash = recovery?.manifest.harnessHash ?? null;
     const harnessHash =
-      recovery && recovery.manifest.harnessHash !== (recorded?.snapshotHash ?? null)
-        ? recovery.manifest.harnessHash
+      checkpointHash !== null && checkpointHash !== recorded?.snapshotHash
+        ? checkpointHash
         : boundHarnessHash(recorded);
     const preview: MessageBranchPreview = {
       hash: hashOf({
@@ -2255,10 +2258,12 @@ export class Coordinator {
       // Like the model, a recovered run continues on the snapshot it started with when the
       // bound resources still hold; the library may have changed since.
       const roleId = recovery.state.role.id;
-      const recorded = recovery.source.snapshot.harnesses?.[roleId];
+      const checkpointHash = recovery.manifest.harnessHash;
+      const recorded =
+        checkpointHash === null ? undefined : recovery.source.snapshot.harnesses?.[roleId];
       if (
         hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
-        (recorded?.snapshotHash ?? null) !== recovery.manifest.harnessHash ||
+        (checkpointHash !== null && recorded?.snapshotHash !== checkpointHash) ||
         boundHarnessHash(harnesses[roleId]) !== boundHarnessHash(recorded)
       )
         return refuse({
