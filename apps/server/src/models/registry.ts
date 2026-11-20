@@ -728,23 +728,34 @@ export class ModelRegistry implements ModelResolver {
         message,
       }) as const;
     let text: string;
-    const operationId = operation?.id ?? randomUUID();
+    const operationId = operation.id;
+    const sized = resolution.snapshot.contextPolicy
+      ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
+      : model;
+    // The lowest level the model offers: off where it can be switched off; none if it has none.
+    const lowest = reasoningCapabilities(sized).levels[0];
+    const request = reasoningRequest(
+      sized,
+      {
+        maxTokens: limits.maxTokens,
+        cacheRetention: resolution.snapshot.cachePolicy?.retention,
+        signal: operation.signal
+          ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
+          : AbortSignal.timeout(limits.timeoutMs),
+      },
+      fixedReasoning(
+        lowest ? { mode: 'fixed', level: lowest } : { mode: 'provider_default' },
+        'team_assistant',
+      ),
+    );
     try {
       const answer = await this.managedStream(
-        resolution.snapshot.contextPolicy
-          ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
-          : model,
+        request.model,
         {
           systemPrompt,
           messages: [{ role: 'user', content: input, timestamp: this.now() }],
         },
-        {
-          maxTokens: limits.maxTokens,
-          cacheRetention: resolution.snapshot.cachePolicy?.retention,
-          signal: operation?.signal
-            ? AbortSignal.any([operation.signal, AbortSignal.timeout(limits.timeoutMs)])
-            : AbortSignal.timeout(limits.timeoutMs),
-        },
+        request.options,
         {
           requestId: operationId,
           owner: { kind: 'draft', id: operationId },
