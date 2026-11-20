@@ -677,8 +677,13 @@ export class HarnessService {
     const failed: string[] = [];
     await Promise.all(
       Object.entries(this.builtin.manifest).map(async ([id, manifest]) => {
-        if (this.store.getResource(manifest.hash)) return;
         try {
+          if (this.store.getResource(manifest.hash)) {
+            // Its state stays as it is; recording it lets a later bundled version supersede it.
+            const mark = builtinMark(id, manifest.hash);
+            this.store.receipt(mark, { id, hash: manifest.hash }, () => ({ id }));
+            return;
+          }
           const review = await this.discoverBuiltin(id);
           this.db.transaction(() => {
             const resource = this.install(review.reviewId);
@@ -1154,6 +1159,7 @@ export class HarnessService {
     projectId: string,
     runOverride?: HarnessBindingRef,
     role?: HarnessPreviewRole,
+    library = true,
   ) {
     const layers: {
       scope: 'personal' | 'project' | 'role' | 'run';
@@ -1168,7 +1174,7 @@ export class HarnessService {
       profile: role && !role.harness ? this.minimalProfile() : this.profile(binding),
     });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
-    return this.compose(layers, binding, projectId, role, true);
+    return this.compose(layers, binding, projectId, role, library);
   }
 
   private minimalProfile() {
@@ -1261,13 +1267,13 @@ export class HarnessService {
     const base = roleBinding(role, options?.runOverride);
     if (!base) return null;
     const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
-    if (
-      evaluation &&
-      binding &&
-      canonicalJson(evaluation) === canonicalJson(binding) &&
-      !options?.sessionId &&
-      !options?.runOverride
-    )
+    // An evaluation compares fixed groups: it never receives library skills, with or without a
+    // workspace session.
+    const sealed =
+      evaluation !== undefined &&
+      binding !== undefined &&
+      canonicalJson(evaluation) === canonicalJson(binding);
+    if (sealed && !options?.sessionId && !options?.runOverride)
       return this.compose(
         [{ scope: 'role', profile: this.profile(binding) }],
         binding,
@@ -1289,6 +1295,7 @@ export class HarnessService {
       session?.project_id ?? row?.project_id ?? 'default',
       options?.runOverride,
       role,
+      !sealed,
     ).snapshot;
   }
 
