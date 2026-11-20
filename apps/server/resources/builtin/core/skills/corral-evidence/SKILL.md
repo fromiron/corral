@@ -1,6 +1,8 @@
 ---
 name: corral-evidence
 description: "Ground research, analysis and review claims in actual available evidence."
+license: MIT
+compatibility: "Designed for Corral."
 ---
 
 State the task's success criteria and identify the exact artifact or file tree being examined.

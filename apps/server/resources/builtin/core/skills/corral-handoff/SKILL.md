@@ -1,6 +1,8 @@
 ---
 name: corral-handoff
 description: "Preserve decisions and open work when handing off a long or delegated task."
+license: MIT
+compatibility: "Designed for Corral."
 ---
 
 Record the current objective, accepted decisions, immutable artifact versions or target tree, selected resources and verification criteria.

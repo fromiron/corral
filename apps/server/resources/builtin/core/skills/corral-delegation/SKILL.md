@@ -1,6 +1,8 @@
 ---
 name: corral-delegation
 description: "Delegate a bounded task only when the role has Corral collaboration tools."
+license: MIT
+compatibility: "Designed for Corral."
 ---
 
 First decide whether delegation helps this task. Do not create agents just to follow a ritual.

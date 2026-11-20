@@ -1,6 +1,8 @@
 ---
 name: corral-review
 description: "Review an immutable output against the current criteria without claiming unsupported verification."
+license: MIT
+compatibility: "Designed for Corral."
 ---
 
 Read the exact target artifact and current criteria. Respect review-only scope; do not modify files merely because you found an issue.

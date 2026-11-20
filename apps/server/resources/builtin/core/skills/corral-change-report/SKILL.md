@@ -1,6 +1,8 @@
 ---
 name: corral-change-report
 description: "Report implemented file changes and their actual verification and application state."
+license: MIT
+compatibility: "Designed for Corral."
 ---
 
 Lead with what changed and why it matters to the user's task. Name the relevant files or immutable diff scope.
