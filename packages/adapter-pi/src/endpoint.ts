@@ -127,7 +127,12 @@ const ENDPOINT_EFFORT = {
     xhigh: null,
     max: null,
   },
-  compat: { thinkingFormat: 'openai' as const, supportsReasoningEffort: true },
+  // `developer` is OpenAI's own role; a server that knows only the usual ones drops the message.
+  compat: {
+    thinkingFormat: 'openai' as const,
+    supportsReasoningEffort: true,
+    supportsDeveloperRole: false,
+  },
 };
 
 /**
