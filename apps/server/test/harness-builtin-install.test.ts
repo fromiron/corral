@@ -286,3 +286,86 @@ it('a bundled version already in the store before the startup pass is still supe
     successor: s.entry(v2, 'kept'),
   });
 });
+
+it('a new bundled version installs in the state a person left the earlier one in', async () => {
+  const s = setup();
+  const alpha = await s.pack('alpha', '1.0.0', { one: 'old' });
+  const beta = await s.pack('beta', '1.0.0', { two: 'old' });
+  const gamma = await s.pack('gamma', '1.0.0', { three: 'old' });
+  const first = s.service();
+  await first.installBuiltins();
+  await first.managePackage(alpha, 0, 'disabled', 'disable-alpha');
+  await first.managePackage(beta, 0, 'removed', 'remove-beta');
+  first.trust(gamma, false);
+  const next = {
+    alpha: await s.pack('alpha', '2.0.0', { one: 'new' }),
+    beta: await s.pack('beta', '2.0.0', { two: 'new' }),
+    gamma: await s.pack('gamma', '2.0.0', { three: 'new' }),
+  };
+  const second = s.service();
+  await second.installBuiltins();
+  expect(second.store.packageManagement(next.alpha).status).toBe('disabled');
+  expect(second.store.getResource(next.alpha)?.trustedAt).not.toBeNull();
+  expect(second.store.packageManagement(next.beta).status).toBe('removed');
+  expect(second.entries().some((entry) => entry.resourceHash === next.beta)).toBe(false);
+  expect(second.store.packageManagement(next.gamma).status).toBe('enabled');
+  expect(second.store.getResource(next.gamma)?.trustedAt).toBeNull();
+  // None of them reaches a role, and the earlier versions are still superseded.
+  const library = second.preview({ id: 'writer', skills: [] }, 'default').snapshot!;
+  expect(library.resources.map((resource) => resource.skillName)).toEqual([]);
+  expect(second.store.entryManagement(s.entry(alpha, 'one')).successor).toEqual(
+    s.entry(next.alpha, 'one'),
+  );
+});
+
+it('a skill a person archived or replaced with their own copy stays so in the new version', async () => {
+  const s = setup();
+  const v1 = await s.pack('alpha', '1.0.0', { kept: 'old', hidden: 'old', plain: 'old' });
+  const first = s.service();
+  await first.installBuiltins();
+  first.archiveEntry(s.entry(v1, 'hidden'), 0, true, 'archive-hidden');
+  const copy = first.install(
+    (
+      await first.reviewDocument({
+        kind: 'skill',
+        name: 'My kept',
+        base: s.entry(v1, 'kept'),
+        content: '---\nname: kept\ndescription: Use kept.\n---\nmine',
+      })
+    ).reviewId,
+  );
+  const v2 = await s.pack('alpha', '2.0.0', { kept: 'new', hidden: 'new', plain: 'new' });
+  const second = s.service();
+  await second.installBuiltins();
+  const archived = (name: string) => second.store.entryManagement(s.entry(v2, name)).archivedAt;
+  expect(archived('kept')).toEqual(expect.any(String));
+  expect(archived('hidden')).toEqual(expect.any(String));
+  expect(archived('plain')).toBeNull();
+  // The person's edited copy is the one roles receive afterwards.
+  const library = second.preview({ id: 'writer', skills: [] }, 'default').snapshot!;
+  const from = (name: string) => library.resources.find((r) => r.skillName === name)?.hash;
+  expect(from('kept')).toBe(copy.hash);
+  expect(from('plain')).toBe(v2);
+  expect(library.resources.some((r) => r.hash === v2 && r.skillName === 'hidden')).toBe(false);
+});
+
+it('a new bundled version a person imported before the startup pass still supersedes the earlier one', async () => {
+  const s = setup();
+  const v1 = await s.pack('alpha', '1.0.0', { kept: 'old' });
+  await s.service().installBuiltins();
+  const v2 = await s.pack('alpha', '2.0.0', { kept: 'new' });
+  const second = s.service();
+  second.install((await second.discoverBuiltin('alpha')).reviewId);
+  second.trust(v2, false);
+  await second.installBuiltins();
+  expect(second.store.entryManagement(s.entry(v1, 'kept'))).toMatchObject({
+    archivedAt: expect.any(String),
+    successor: s.entry(v2, 'kept'),
+  });
+  // The stored version keeps its own state, and a later start supersedes nothing again.
+  expect(second.store.getResource(v2)?.trustedAt).toBeNull();
+  expect(second.store.entryManagement(s.entry(v2, 'kept')).managementRevision).toBe(0);
+  const revision = second.store.entryManagement(s.entry(v1, 'kept')).managementRevision;
+  await s.service().installBuiltins();
+  expect(second.store.entryManagement(s.entry(v1, 'kept')).managementRevision).toBe(revision);
+});

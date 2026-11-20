@@ -171,7 +171,7 @@ const BUILTIN = {
  * same way, so each process inspects a bundled version once (every inspection spawns a worker).
  */
 const builtinInspections = new WeakMap<object, Map<string, PackageInspection>>();
-/** Recorded only when the startup pass installs a bundled version; a person's import never is. */
+/** Recorded by the startup pass for a bundled version it installs or first sees; an import never is. */
 const builtinMark = (id: string, hash = '') => `builtin:${id}:${hash}`;
 const requiredResource = (ref: HarnessProfile['resources'][number]) =>
   ref.required || ref.skillMode === 'mandatory';
@@ -667,7 +667,8 @@ export class HarnessService {
   /**
    * Server start: install each bundled pack version the store does not have yet
    * (docs/specs/features/builtin-crew.md, "설치"). A stored hash is left alone whatever a person
-   * did with it. A pack that fails, or does not match the manifest, is skipped; the rest install.
+   * did with it; a new one takes over their choices on the earlier version and supersedes it. A
+   * pack that fails, or does not match the manifest, is skipped; the rest install.
    */
   async installBuiltins(): Promise<{ installed: string[]; failed: string[] }> {
     const installed: string[] = [];
@@ -675,22 +676,34 @@ export class HarnessService {
     await Promise.all(
       Object.entries(this.builtin.manifest).map(async ([id, manifest]) => {
         try {
-          if (this.store.getResource(manifest.hash)) {
-            // Its state stays as it is; recording it lets a later bundled version supersede it.
-            const mark = builtinMark(id, manifest.hash);
-            this.store.receipt(mark, { id, hash: manifest.hash }, () => ({ id }));
+          const mark = builtinMark(id, manifest.hash);
+          // Earlier bundled versions of this pack, oldest first.
+          const earlier = () =>
+            this.store
+              .receiptIds(builtinMark(id))
+              .filter((operationId) => operationId !== mark)
+              .map((operationId) => operationId.slice(builtinMark(id).length));
+          const stored = this.store.getResource(manifest.hash);
+          if (stored) {
+            // Its state stays as it is. The first start that sees it, after a person imported it,
+            // still supersedes the earlier versions; recording it lets a later version supersede it.
+            if (this.store.receiptOutcome(mark) !== undefined) return;
+            this.db.transaction(() => {
+              const previous = earlier();
+              this.store.receipt(mark, { id, hash: manifest.hash }, () => ({ id }));
+              for (const hash of previous) this.supersedeBuiltin(hash, stored);
+            })();
             return;
           }
           const review = await this.discoverBuiltin(id);
           this.db.transaction(() => {
+            const previous = earlier();
             const resource = this.install(review.reviewId);
-            const mark = builtinMark(id, resource.hash);
-            const earlier = this.store
-              .receiptIds(builtinMark(id))
-              .filter((operationId) => operationId !== mark)
-              .map((operationId) => operationId.slice(builtinMark(id).length));
+            // Read the person's choices on the latest earlier version before superseding it.
+            const last = previous.at(-1);
+            if (last) this.inheritBuiltin(last, resource);
             this.store.receipt(mark, { id, hash: resource.hash }, () => ({ id }));
-            for (const hash of earlier) this.supersedeBuiltin(hash, resource);
+            for (const hash of previous) this.supersedeBuiltin(hash, resource);
           })();
           installed.push(id);
         } catch {
@@ -699,6 +712,38 @@ export class HarnessService {
       }),
     );
     return { installed, failed };
+  }
+
+  /**
+   * A new bundled version takes over what a person did to the latest earlier one (builtin-crew.md,
+   * "설치"): a disabled or removed pack stays so, a revoked one installs untrusted, and a skill they
+   * archived or linked to their own copy installs archived. The startup pass alone archives or
+   * links an earlier version's entries, and only when it supersedes that version, so on the
+   * latest one these states are the person's.
+   */
+  private inheritBuiltin(hash: string, next: HarnessResourceView) {
+    const previous = this.store.getResource(hash);
+    if (!previous) return;
+    const status = this.store.packageManagement(hash).status;
+    if (status !== 'enabled')
+      this.store.managePackage(
+        next.hash,
+        this.store.packageManagement(next.hash).managementRevision,
+        status,
+      );
+    if (!previous.trustedAt) this.store.trustResource(next.hash, false);
+    for (const skill of next.skills) {
+      const before = previous.skills.find((candidate) => candidate.name === skill.name);
+      if (!before) continue;
+      const state = this.store.entryManagement({
+        resourceHash: hash,
+        entry: before.entry,
+        kind: 'skill',
+      });
+      if (state.archivedAt === null && state.successor === null) continue;
+      const key = { resourceHash: next.hash, entry: skill.entry, kind: 'skill' as const };
+      this.store.manageEntry(key, this.store.entryManagement(key).managementRevision, true);
+    }
   }
 
   /** Archive an earlier bundled version's entries, linking same-named ones to the new version. */
