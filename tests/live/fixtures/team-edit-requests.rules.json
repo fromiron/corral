@@ -8,7 +8,10 @@
         { "nodeId": "writer", "name": "Writer" }
       ],
       "outputs": [
-        { "outputId": "output", "results": [{ "index": 0, "name": "notice", "producerName": "Writer" }] }
+        {
+          "outputId": "output",
+          "results": [{ "index": 0, "name": "notice", "producerName": "Writer" }]
+        }
       ],
       "hasSharedOutrider": false,
       "brief": "Write a notice for the neighbourhood autumn bike picnic."
@@ -19,7 +22,10 @@
         { "nodeId": "writer", "name": "작성자" }
       ],
       "outputs": [
-        { "outputId": "output", "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }] }
+        {
+          "outputId": "output",
+          "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }]
+        }
       ],
       "hasSharedOutrider": false,
       "brief": "동네 가을 자전거 소풍 안내문을 작성한다."
@@ -48,7 +54,10 @@
         { "nodeId": "writer", "name": "작성자" }
       ],
       "outputs": [
-        { "outputId": "output", "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }] }
+        {
+          "outputId": "output",
+          "results": [{ "index": 0, "name": "안내문", "producerName": "작성자" }]
+        }
       ],
       "hasSharedOutrider": true,
       "brief": "동네 가을 자전거 소풍 안내문을 작성한다."
@@ -81,8 +90,14 @@
       "lang": "ko",
       "team": "one-ko",
       "repeat": true,
-      "messages": ["검토나 승인은 필요 없고, 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."],
-      "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review", "add_shared_advice"] },
+      "messages": [
+        "검토나 승인은 필요 없고, 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."
+      ],
+      "expect": {
+        "reply": ["edits"],
+        "has": ["set_brief"],
+        "hasNot": ["require_review", "add_shared_advice"]
+      },
       "rater": "Only the brief changes. The person asked for no review and no advice."
     },
     {
@@ -91,8 +106,14 @@
       "lang": "en",
       "team": "one",
       "repeat": true,
-      "messages": ["We don't need a review step. Just change the goal to: write a notice for the winter walking group."],
-      "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review", "add_shared_advice"] },
+      "messages": [
+        "We don't need a review step. Just change the goal to: write a notice for the winter walking group."
+      ],
+      "expect": {
+        "reply": ["edits"],
+        "has": ["set_brief"],
+        "hasNot": ["require_review", "add_shared_advice"]
+      },
       "rater": "Only the brief changes."
     },
     {
@@ -130,7 +151,11 @@
       "lang": "ko",
       "team": "one-ko",
       "messages": ["검토를 통과해야만 제출되게 해 줘."],
-      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "expect": {
+        "reply": ["edits"],
+        "has": ["require_review"],
+        "gate": { "outputId": "output", "index": 0 }
+      },
       "rater": "Passing is stated and the team has one result: the gate on it, with no question."
     },
     {
@@ -139,7 +164,11 @@
       "lang": "en",
       "team": "one",
       "messages": ["The notice may be submitted only after it passes a review."],
-      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "expect": {
+        "reply": ["edits"],
+        "has": ["require_review"],
+        "gate": { "outputId": "output", "index": 0 }
+      },
       "rater": "Passing is stated and the team has one result: the gate on it, with no question."
     },
     {
@@ -157,7 +186,11 @@
       "lang": "ko",
       "team": "one-ko",
       "messages": ["자동 관찰은 필요 없어. 대신 안내문은 검토를 통과해야 제출되게 해 줘."],
-      "expect": { "reply": ["edits"], "has": ["require_review"], "gate": { "outputId": "output", "index": 0 } },
+      "expect": {
+        "reply": ["edits"],
+        "has": ["require_review"],
+        "gate": { "outputId": "output", "index": 0 }
+      },
       "rater": "Only observation is declined. The gate is asked for and must be there."
     },
     {
@@ -174,7 +207,9 @@
       "kind": "negated_review_team_has_advice",
       "lang": "ko",
       "team": "advised-ko",
-      "messages": ["리뷰 단계는 넣지 마. 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."],
+      "messages": [
+        "리뷰 단계는 넣지 마. 요청만 '동네 겨울 걷기 모임 안내문을 작성한다'로 바꿔 줘."
+      ],
       "expect": { "reply": ["edits"], "has": ["set_brief"], "hasNot": ["require_review"] },
       "rater": "Only the brief changes. The team already has advice on request, so adding it again changes nothing and is not a miss."
     },
