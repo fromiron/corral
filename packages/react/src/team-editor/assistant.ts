@@ -534,7 +534,9 @@ export function createAssistantActions(
     // A message under a new team's proposal asks to change it: the request carries it.
     const shown = mode === 'create' && intent ? state.proposal : null;
     const refined = shown?.plan && shown.resolved ? shown : undefined;
-    const continuation = state.question || refined ? intent : null;
+    // A refinement that failed still refines the same proposal: the next message continues it.
+    const failedRefinement = mode === 'create' && Boolean(state.failure && intent?.proposal);
+    const continuation = state.question || refined || failedRefinement ? intent : null;
     setState({ input: '', turns: appendTurn(turnsWithProposal(state), 'user', text) });
     if (state.question?.source === 'choice' && state.intent?.kind === 'choice') {
       if (state.question.id === 'brief') {

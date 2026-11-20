@@ -531,6 +531,65 @@ describe('create proposals and human decisions', () => {
     },
   );
 
+  for (const [what, failure] of [
+    [
+      'is refused',
+      Object.assign(new Error('The model did not return a usable team proposal. (shape)'), {
+        code: 'MODEL_UNAVAILABLE',
+      }),
+    ],
+    [
+      'has an unknown outcome',
+      Object.assign(new Error('Unconfirmed'), { code: 'REQUEST_OUTCOME_UNKNOWN' }),
+    ],
+  ] as const) {
+    it(`still refines the shown proposal when a refinement ${what} and the person types again`, async () => {
+      const ask = model()
+        .mockResolvedValueOnce(proposed)
+        .mockRejectedValueOnce(failure)
+        .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now reviewed.' }));
+      const f = fixture(ask);
+      await f.send('Write a notice.');
+      f.actions.observe(true);
+      await f.send('Add a review too.');
+      expect(f.state().proposal).toBeNull();
+      expect(f.state().failure).toBeTruthy();
+      await f.send('A review before it goes out.');
+      expect(ask).toHaveBeenCalledTimes(3);
+      expect(ask.mock.calls[2]?.[0]).toMatchObject({
+        mode: 'create',
+        catalog: sent,
+        proposal: notice,
+        decisions: { observeWork: true },
+        messages: [
+          { role: 'user', content: 'Write a notice.' },
+          { role: 'user', content: 'Add a review too.' },
+          { role: 'user', content: 'A review before it goes out.' },
+        ],
+      });
+      expect(f.host.choices).toHaveBeenCalledTimes(1);
+      expect(f.state().proposal?.plan).toEqual(crew);
+    });
+  }
+
+  it('sends a new goal alone after a failed first request', async () => {
+    const ask = model()
+      .mockRejectedValueOnce(
+        Object.assign(new Error('The model did not return a usable team proposal.'), {
+          code: 'MODEL_UNAVAILABLE',
+        }),
+      )
+      .mockResolvedValueOnce(proposed);
+    const f = fixture(ask);
+    await f.send('Write a notice.');
+    expect(f.state().failure).toBeTruthy();
+    await f.send('Write an invitation.');
+    expect(ask.mock.calls[1]?.[0].messages).toEqual([
+      { role: 'user', content: 'Write an invitation.' },
+    ]);
+    expect(ask.mock.calls[1]?.[0]).not.toHaveProperty('proposal');
+  });
+
   it('refines the shown proposal by chat: the request carries it, the reply replaces it, the earlier one stays unapplicable', async () => {
     const ask = model()
       .mockResolvedValueOnce(proposed)
