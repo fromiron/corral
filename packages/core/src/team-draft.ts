@@ -151,12 +151,12 @@ const CHANGE_MADE =
   /\b((the|this|my|your|our|that|these|those|new|recent|latest|last)\s+([\w'’-]+\s+){0,3}(changes?|diffs?|patch(es)?|fix(es)?)|changes|diffs|patches|fixes)\b|변경(?!하)|패치|수정\s*사항/i;
 /** The behavior stays while the code's shape moves: a refactoring, not a change. */
 const BEHAVIOR_KEPT =
-  /\b(without chang\w* (its |the |any )?(behaviou?r|functionality|what it does|output)|(behaviou?r|functionality) (stays|unchanged|the same)|keep(ing)? (the |its )?(behaviou?r|functionality))\b|동작은?\s*(그대로|유지|바꾸지|같게)|동작을?\s*(바꾸지|유지)/i;
+  /\b(without chang\w* (its |the |any )?(behaviou?r|functionality|what it does|output)|(behaviou?r|functionality) (stays|unchanged|the same)|keep(ing)? (the |its )?(behaviou?r|functionality)|(must|should|may|can|will)(n['’]t| not|not) (change|alter|break|affect) (its |the |any )?(behaviou?r|functionality|output|results?|what it does)|(no|zero) (behaviou?r(al)?|functional) changes?|behaviou?r[- ]preserving|keep(ing)? (all |every |the )?(\w+ )?tests? (green|passing)|(all|every|the) tests? (must |should |have to |need to )?(still )?pass)\b|(동작|기능|결과|출력|행동)(은|는|이|가|을|를)?\s*(지금과\s*|기존과\s*|전과\s*)?(그대로|유지|바꾸지|같게|같아야|똑같|동일|(바뀌|달라지|변하)(면\s*안|지\s*않))|테스트(는|가|를)?\s*(전부|모두|다)?\s*(통과|깨지면\s*안|깨지지\s*않)/i;
 const REFACTOR = /\b(refactor\w*)\b|리팩터|리팩토링/i;
 const RESTRUCTURE =
   /\b(restructur\w*|untangl\w*|consolidat\w*|decoupl\w*|clean(ing)? up)\b|구조를?\s*(바꿔|바꾸|개선|정리)|구조\s*개선/i;
 const RESHAPE =
-  /\b(move|moving|merge|split|extract\w*|combin\w*|one place|single place)\b|모아|모으|합쳐|합치|나눠|나누|분리|옮겨|옮기|한\s*곳/i;
+  /\b(move|moving|merge|split|extract\w*|combin\w*|one place|single place|into (one|a single|a shared) [\w-]+|tidy\w*|de-?dup\w*|de-?duplicat\w*)\b|정리|모아|모으|합쳐|합치|나눠|나누|분리|옮겨|옮기|한\s*곳/i;
 /** What is slow: a measure of time or load, or the word for it. */
 const SLOW =
   /\b(performance|latency|throughput|p\d{2,3}|percentiles?|slow\w*|sluggish|lagg\w*|load(ing)? times?|response times?|memory usage|cpu usage|takes? (over |about |nearly |almost )?(\d[\d.,]*|a few|several|one|two|three|four|five|ten) ?(ms|milliseconds?|s|seconds?|minutes?)|(takes?|taking|took) (too |so |far too |way too )?(long|forever|ages)|from \d[\d.,]* ?(ms|milliseconds?|s|sec(ond)?s?|min(ute)?s?|hours?) to \d[\d.,]*)\b|성능|속도|지연|느려|느린|느리|버벅|로딩|응답\s*시간|메모리\s*사용|오래\s*걸|\d[\d.,]*\s*(초|분|밀리초|ms)(가|이|나|이나|씩|도)?\s*(넘게\s*|이상\s*)?걸/i;
@@ -166,9 +166,15 @@ const FASTER =
 /** Asking that a thing be made fast, which says by itself that it is slow. */
 const SPEED_WISH =
   /\b(speed (it|them|this|that|things|the [\w'’-]+(?: [\w'’-]+){0,3}) up|speed up (the|our|this|its) [\w'’-]+|fast again|make (it|them|this|that|things|the [\w'’-]+(?: [\w'’-]+){0,3}) (fast|faster|quick|quicker|snappy|responsive))\b|(빨라지게|빠르게)\s*(해|만들어)\s*(줘|주세요|줄래)/i;
-/** It got slower than it was: a growth in time, not just when it was seen. */
+/** What is heavy: a resource the software uses, by its size or its use. */
+const HEAVY =
+  /\b(memory|ram|heap|footprint|bundles?|binary size|(file|image|payload|build|docker image|app|package) sizes?|cpu (use|usage|load|time|spikes?)|cpu at \d+|disk (use|usage|space)|storage (use|usage)|(docker|container) images?|\d[\d.,]* ?(kb|mb|gb|tb|kib|mib|gib))\b|메모리|램|힙|용량|번들|디스크|저장\s*공간|CPU\s*사용/i;
+/** Wanting it lighter: smaller, or using less. */
+const LIGHTER =
+  /\b(shrink\w*|smaller|slim\w*|trim\w*|lighter|(use|uses|using) less|less (memory|cpu|disk|space|ram))\b|작게|가볍게|덜\s*(쓰|먹|차)|아껴/i;
+/** It got slower or heavier than it was: a growth, not just when it was seen. */
 const SLOWED =
-  /\b(doubled|tripled|(\d+(\.\d+)?x|\d+ times|twice as) (slower|longer)|regress\w*|(got|gotten|getting|became|become|grown|grew) (\w+ )?slower|slower (since|after|than (before|it was|it used to|last))|went (up )?from .{1,24} to)\b|두\s*배|세\s*배|늘었|늘어났|느려졌/i;
+  /\b(doubled|tripled|(keeps? |kept )?(grow|grows|growing|grew|climb|climbs|climbing|balloon\w*)|too (big|large|heavy)|(\d+(\.\d+)?x|\d+ times|twice as) (slower|longer)|regress\w*|(got|gotten|getting|became|become|grown|grew) (\w+ )?slower|slower (since|after|than (before|it was|it used to|last))|went (up )?from .{1,24} to)\b|두\s*배|세\s*배|늘었|늘어났|늘어나|느려졌|커졌|불어났/i;
 /** Asking only what caused something. */
 const CAUSE = /\b(why|cause[sd]?|reasons?)\b|왜(?!곡)|원인|이유/i;
 /** Asking how the code works or why it came to be that way. */
@@ -236,12 +242,15 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
     return explainsCode ? 'code_investigation' : null;
   // A document alone is not code, whatever is asked of it.
   const aboutCode = !document || code || software;
-  const slow = SLOW.test(brief) || ((code || software) && SPEED_WISH.test(brief));
+  // Slow, or heavy: "faster or lighter" are the same pattern.
+  const slow =
+    SLOW.test(brief) || HEAVY.test(brief) || ((code || software) && SPEED_WISH.test(brief));
   // A slowdown wants its speed back, however it is put: a wish for speed, a fix, or a regression
   // reported without asking only for its cause.
   const wantsSpeed =
     SPEED_WISH.test(brief) ||
     FASTER.test(brief) ||
+    LIGHTER.test(brief) ||
     FIX.test(brief) ||
     (SLOWED.test(brief) && !CAUSE.test(brief));
   // A regression in speed is a slowdown, not a failure.

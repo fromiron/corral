@@ -575,6 +575,42 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     expect(shape('이 브랜치 코드의 약점을 찾아 줘')).toBe('adversarial_review');
   });
 
+  it.each([
+    // Lighter is performance too: a resource that grew too large and should come down.
+    ["The dashboard's memory use climbs past 2 GB after an hour; bring it down", 'performance'],
+    ['Our JS bundle is 4 MB now. Make it smaller.', 'performance'],
+    ['The worker pegs the CPU at 100% while idle; make it use less', 'performance'],
+    ['앱 번들 크기가 너무 커졌어. 줄여 줘', 'performance'],
+    ['로그 때문에 서버 디스크 용량이 금방 차. 덜 쓰게 해 줘', 'performance'],
+    ['Our Docker image is 2 GB; make it smaller', 'performance'],
+    // Asking how much it uses, or only why, or writing about it, asks for nothing lighter.
+    ['How much memory does the indexer use?', 'single'],
+    ['메모리 사용량이 왜 이렇게 큰지 원인만 알려 줘', 'single'],
+    ['Write a report on how we halved our memory footprint', 'write_review'],
+    ['Reduce the number of steps in the signup form', 'single'],
+  ] as const)('a lighter goal: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
+  it.each([
+    // Merging or tidying duplicated code while the behavior is held, however that is worded.
+    ['중복된 날짜 변환 코드를 한 곳으로 합쳐 줘. 동작이 바뀌면 안 돼', 'refactor'],
+    ['주문 검증 로직이 세 군데에 복사돼 있어. 정리해 줘, 결과가 달라지면 안 됨', 'refactor'],
+    ['알림 모듈의 중복 함수들을 정리해 줘. 동작은 지금과 똑같아야 해', 'refactor'],
+    [
+      'Merge the three copies of the retry helper into one module; it must not change behavior',
+      'refactor',
+    ],
+    ['Deduplicate the validation code in the checkout flow, keeping every test green', 'refactor'],
+    ['Pull the duplicated price rounding into one helper; no behavior changes', 'refactor'],
+    // Writing about behavior, finding duplicates without changing them, or a feature with tests.
+    ['동작이 바뀌면 안 되는 이유를 문서로 정리해 줘', 'write_review'],
+    ["Find where the validation code is duplicated, but don't change anything", 'single'],
+    ['Add an export button to the reports page; every test must still pass', 'implement_review'],
+  ] as const)('a behavior-kept tidy-up: %s is %s', (goal, pattern) => {
+    expect(shape(goal)).toBe(pattern);
+  });
+
   it('one open question is not a choice between two options', () => {
     // A single "-ㄹ지" asks how or whether, and a noun ending in 지 is not an alternative.
     expect(shape('캐시를 어떻게 무효화할지 결정해 줘')).not.toBe('tech_decision');
