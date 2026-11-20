@@ -5,13 +5,22 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   ErrorCode,
   type ModelAttemptPage,
+  stepSeats,
   type TeamAssistantReply,
   type TeamAssistantRequest,
   TeamAssistantResponse,
   type TeamAssistantTeam,
   type TeamComposition,
+  unusableTeamProposalReason,
 } from '@corral/contracts';
-import { BUILTIN_SKILLS, ROLE_PRESET_IDS, roleFromPreset, teamCatalog } from '@corral/core';
+import {
+  BUILTIN_SKILLS,
+  builtinComposableAgents,
+  compileDefinition,
+  draftFromComposition,
+  planRun,
+  teamCatalog,
+} from '@corral/core';
 import { expect, it } from 'vitest';
 import {
   type LiveProfileServer,
@@ -23,19 +32,17 @@ import {
 //   CORRAL_TEAM_ASSISTANT_LIVE=1 [CORRAL_ASSISTANT_PROFILE=…] [CORRAL_ASSISTANT_SECOND=1] \
 //   [CORRAL_ASSISTANT_OUT=results.json] pnpm test:live tests/live/team-assistant.live.test.ts
 // With CORRAL_ASSISTANT_GOALS=<goals file> the run measures new team requests instead: each goal
-// of the file is sent once in create mode and one record per goal is written.
+// of the file (fixtures/team-compose-goals.dev.json) is sent once in create mode, one record per
+// goal is written, then a summary per model.
 const profiles = [process.env.CORRAL_ASSISTANT_PROFILE ?? 'deepseek-hive'];
 if (process.env.CORRAL_ASSISTANT_SECOND === '1') profiles.push('zai-org-glm-5.3-flash');
 const live = process.env.CORRAL_TEAM_ASSISTANT_LIVE === '1';
 const goalsPath = process.env.CORRAL_ASSISTANT_GOALS;
 
-// The catalog a new team request carries: the bundled agents and skills, as the editor's own
-// "add agent" and "add skill" offer them.
+// The catalog a new team request carries: the bundled agents (described, under a seat name) and
+// skills, as the editor's own "add agent" and "add skill" offer them.
 const crew = teamCatalog(
-  ROLE_PRESET_IDS.map((id) => {
-    const { id: _id, ...role } = roleFromPreset(id, id, id);
-    return { role, origin: { kind: 'preset' as const, presetId: id }, builtin: true };
-  }),
+  builtinComposableAgents((id) => `${id.charAt(0).toUpperCase()}${id.slice(1)}`),
   BUILTIN_SKILLS.map((skill) => ({
     ref: { resourceHash: skill.resourceHash, entry: skill.entry },
     name: skill.name,
@@ -255,40 +262,137 @@ it.skipIf(!live || !!goalsPath)(
   450_000 * profiles.length,
 );
 
-/** A goals file: `{ split?, goals: [{ id, goal, ... }] }`, as `fixtures/team-draft-goals.*.json`. */
-function goalsOf(value: unknown): { id: string; goal: string }[] {
+/** A goal of the goals file and the labels written for it before the measurement. */
+interface Goal {
+  id: string;
+  goal: string;
+  lang?: 'ko' | 'en';
+  /** `now`: a question is a miss; `either`: a question is acceptable. */
+  plan?: 'now' | 'either';
+  /** true: needs a seat that changes files; false: must have none; absent: either. */
+  changes?: boolean;
+  /** A small edit one seat should do alone. */
+  oneSeat?: true;
+}
+
+/** A goals file: `{ split?, goals: [{ id, goal, lang?, plan?, changes?, oneSeat? }] }`. */
+function goalsOf(value: unknown): Goal[] {
   const goals = (value as { goals?: unknown }).goals;
   if (!Array.isArray(goals) || goals.length === 0) throw new Error('The goals file has no goals.');
-  return goals.map((entry: { id?: unknown; goal?: unknown }, index) => {
+  return goals.map((entry: Record<string, unknown>, index) => {
     if (typeof entry.id !== 'string' || typeof entry.goal !== 'string')
       throw new Error(`Goal ${index} needs a string id and goal.`);
-    return { id: entry.id, goal: entry.goal };
+    return {
+      id: entry.id,
+      goal: entry.goal,
+      ...(entry.lang === 'ko' || entry.lang === 'en' ? { lang: entry.lang } : {}),
+      ...(entry.plan === 'now' || entry.plan === 'either' ? { plan: entry.plan } : {}),
+      ...(typeof entry.changes === 'boolean' ? { changes: entry.changes } : {}),
+      ...(entry.oneSeat === true ? { oneSeat: true as const } : {}),
+    };
   });
 }
 
-/** One new team request, as measured: whether the answer was usable and what it composed. */
+/** One new team request, as measured: what came back and what it composed. */
 interface GoalRecord {
   profileId: string;
   id: string;
-  usable: boolean;
   kind: TeamAssistantReply['kind'] | 'invalid' | 'error';
-  problem?: string;
-  seats: { agentName: string; changesFiles: boolean }[];
+  questionId?: string;
+  /** The refusal's reason code, `''` when it names none, or the error code of another failure. */
+  reason?: string;
+  seats: number;
   flow: string[];
+  /** The agents of the last step that produce the team's result. */
+  lastStep: { agentName: string; output: string; changesFiles: boolean }[];
+  loops: { rounds: number }[];
+  /** A group side by side with two or more agents that change files. */
+  parallelWriters: boolean;
   hasChangingSeat: boolean;
-  outrider: TeamComposition['outrider'] | null;
+  skillsAdded: number;
+  /** The composition assembles and compiles with no error and runs as a plan. */
+  compiles: boolean;
+  /** Korean goal: Hangul in the team name and every duty; English goal: none. */
+  languageMatches: boolean | null;
   ms: number;
   outputTokens?: number;
+  /** Physical model requests recorded for the operation. */
+  attempts: number;
+}
+
+const HANGUL = /[가-힣]/;
+const ASSEMBLY = { loop: 'Loop', decision: 'Decision', join: 'Join', output: 'Output' };
+
+function compiles(plan: TeamComposition): boolean {
+  try {
+    const definition = draftFromComposition(plan, 'measured', crew, ASSEMBLY);
+    const compiled = compileDefinition(definition, { knownModelProfiles: ['model-a', 'model-b'] });
+    return (
+      compiled.ok &&
+      compiled.diagnostics.every((d) => d.severity !== 'error') &&
+      planRun(definition).ok
+    );
+  } catch {
+    return false;
+  }
+}
+
+function languageMatches(goal: Goal, plan: TeamComposition): boolean | null {
+  if (!goal.lang) return null;
+  const texts = [plan.name, ...plan.seats.map((seat) => seat.duty)];
+  return goal.lang === 'ko'
+    ? texts.every((text) => HANGUL.test(text))
+    : texts.every((text) => !HANGUL.test(text));
+}
+
+/** The headline of one model's run; nothing asserts on it. */
+function summaryOf(profileId: string, goals: Goal[], records: GoalRecord[]) {
+  const label = new Map(goals.map((goal) => [goal.id, goal]));
+  const now = records.filter((r) => label.get(r.id)?.plan === 'now');
+  const either = records.filter((r) => label.get(r.id)?.plan === 'either');
+  const immediate = now.filter((r) => r.kind === 'plan');
+  const good = immediate.filter((r) => {
+    const goal = label.get(r.id);
+    return (
+      r.compiles &&
+      (goal?.changes === undefined || goal.changes === r.hasChangingSeat) &&
+      (!goal?.oneSeat || r.seats === 1) &&
+      r.languageMatches !== false
+    );
+  });
+  const refusals: Record<string, number> = {};
+  for (const r of records)
+    if (r.kind === 'invalid' || r.kind === 'error') {
+      const key = r.reason || r.kind;
+      refusals[key] = (refusals[key] ?? 0) + 1;
+    }
+  return {
+    profileId,
+    summary: true,
+    goals: {
+      planned: goals.length,
+      attempted: records.length,
+      skipped: goals.length - records.length,
+    },
+    nowGoals: goals.filter((goal) => goal.plan === 'now').length,
+    immediatePlans: immediate.length,
+    goodPlans: good.length,
+    goodPlanIds: good.map((r) => r.id),
+    questionsOnNow: now.filter((r) => r.kind === 'question').length,
+    questionsOnEither: either.filter((r) => r.kind === 'question').length,
+    refusals,
+  };
 }
 
 it.skipIf(!live || !goalsPath)(
-  'measures the usable answers to new team requests, one request per goal',
+  'measures new team requests against the goals’ labels, one request per goal',
   async () => {
     const goals = goalsOf(JSON.parse(readFileSync(resolve(goalsPath ?? ''), 'utf8')));
-    const records: GoalRecord[] = [];
+    const written: unknown[] = [];
     const agents = new Map(catalog.agents.map((agent) => [agent.id, agent]));
     try {
       for (const profileId of new Set(profiles)) {
+        const records: GoalRecord[] = [];
         await withLiveProfile(profileId, 100_000 * goals.length, async ({ api }) => {
           for (const entry of goals) {
             const operationId = `assistant_goal_${randomUUID()}`;
@@ -306,22 +410,46 @@ it.skipIf(!live || !goalsPath)(
             const parsed = TeamAssistantResponse.safeParse(body);
             const reply = response.ok && parsed.success ? parsed.data.reply : undefined;
             const plan = reply?.kind === 'plan' ? reply.plan : undefined;
-            const seats = (plan?.seats ?? []).map((seat) => ({
-              agentName: agents.get(seat.agent)?.name ?? seat.agent,
-              changesFiles: agents.get(seat.agent)?.changesFiles ?? false,
-            }));
+            const seats = new Map((plan?.seats ?? []).map((seat) => [seat.id, seat]));
+            const agentOf = (seatId: string) => agents.get(seats.get(seatId)?.agent ?? '');
+            const last = plan?.flow.at(-1);
+            const producers = !last
+              ? []
+              : 'loop' in last
+                ? last.loop.work.slice(-1)
+                : stepSeats(last);
+            const message = (body as { error?: { message?: unknown } } | null)?.error?.message;
+            const reason = typeof message === 'string' ? unusableTeamProposalReason(message) : null;
             const reported = history.filter((attempt) => attempt.usage.source === 'reported');
             const answered = history.some((attempt) => attempt.status === 'completed');
             const record: GoalRecord = {
               profileId,
               id: entry.id,
-              usable: !!reply,
               kind: reply?.kind ?? (answered ? 'invalid' : 'error'),
-              ...(reply ? {} : { problem: errorCode(body) ?? `HTTP_${response.status}` }),
-              seats,
+              ...(reply?.kind === 'question' ? { questionId: reply.id } : {}),
+              ...(reply ? {} : { reason: reason ?? errorCode(body) ?? `HTTP_${response.status}` }),
+              seats: plan?.seats.length ?? 0,
               flow: plan ? stepKinds(plan) : [],
-              hasChangingSeat: seats.some((seat) => seat.changesFiles),
-              outrider: plan?.outrider ?? null,
+              lastStep: producers.map((seatId) => ({
+                agentName: agentOf(seatId)?.name ?? '?',
+                output: agentOf(seatId)?.output ?? '?',
+                changesFiles: agentOf(seatId)?.changesFiles ?? false,
+              })),
+              loops: (plan?.flow ?? []).flatMap((step) =>
+                'loop' in step ? [{ rounds: step.loop.rounds ?? 2 }] : [],
+              ),
+              parallelWriters: (plan?.flow ?? []).some(
+                (step) =>
+                  'parallel' in step &&
+                  step.parallel.filter((seatId) => agentOf(seatId)?.changesFiles).length >= 2,
+              ),
+              hasChangingSeat: [...seats.keys()].some((seatId) => agentOf(seatId)?.changesFiles),
+              skillsAdded: (plan?.seats ?? []).reduce(
+                (sum, seat) => sum + (seat.skills?.length ?? 0),
+                0,
+              ),
+              compiles: plan ? compiles(plan) : false,
+              languageMatches: plan ? languageMatches(entry, plan) : null,
               ms,
               ...(reported.length
                 ? {
@@ -331,6 +459,7 @@ it.skipIf(!live || !goalsPath)(
                     ),
                   }
                 : {}),
+              attempts: history.length,
             };
             records.push(record);
             console.log(JSON.stringify(record));
@@ -339,12 +468,15 @@ it.skipIf(!live || !goalsPath)(
             if (record.kind === 'error') break;
           }
         });
+        const summary = summaryOf(profileId, goals, records);
+        console.log(JSON.stringify(summary));
+        written.push(...records, summary);
       }
     } finally {
-      writeLiveResults(process.env.CORRAL_ASSISTANT_OUT, records);
+      writeLiveResults(process.env.CORRAL_ASSISTANT_OUT, written);
     }
     // A measurement: no pattern or composition is asserted, only that a goal was sent.
-    expect(records.length).toBeGreaterThan(0);
+    expect(written.length).toBeGreaterThan(0);
   },
   110_000 * 200 * profiles.length,
 );
