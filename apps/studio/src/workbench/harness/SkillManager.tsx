@@ -1,5 +1,6 @@
 import type { HarnessApi } from '@corral/client';
 import type { HarnessEntryView, RoleSkillRef } from '@corral/contracts';
+import { BUILTIN_SKILLS } from '@corral/core';
 import {
   Button,
   EmptyState,
@@ -29,6 +30,9 @@ import { loadSkillCatalog, type SkillCatalog, skillState, versionsOf } from './s
 import { operationId } from './Target.tsx';
 
 type Editor = { importing?: boolean; entry?: HarnessEntryView };
+
+/** The bundled pack each bundled version is, by its hash (docs/specs/features/builtin-crew.md). */
+const BUNDLED_PACKS = new Map(BUILTIN_SKILLS.map((skill) => [skill.resourceHash, skill.pack]));
 
 type UsageData<T> = { state: 'loading' | 'failed' } | { state: 'ready'; value: T };
 
@@ -403,8 +407,10 @@ export function SkillManager({ api, toolbar }: { api: HarnessApi; toolbar?: HTML
             <TableBody>
               {filtered.map((entry, i) => {
                 const state = skillState(entry, catalog.disabled);
-                const source =
-                  entry.resource.sourceLabel === 'Created in Corral'
+                const pack = BUNDLED_PACKS.get(entry.resourceHash);
+                const source = pack
+                  ? t(`builtinPacks.${pack}`)
+                  : entry.resource.sourceLabel === 'Created in Corral'
                     ? t('savedCopy')
                     : entry.resource.sourceLabel === 'Edited copy'
                       ? t('editedCopy')
