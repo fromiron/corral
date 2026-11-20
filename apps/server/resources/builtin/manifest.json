@@ -1,15 +1,15 @@
 {
   "core": {
-    "hash": "825f6aff2d9b3e676bb29d0e3a5e7a5592305e47c6b3fb59fd589f721a430b33",
-    "files": 8,
-    "skills": 5,
-    "source": "Corral 1.0.0"
+    "hash": "dc5cf01aa0f95df472ea0a7820e79f45c888cf8b4070abdf87939db34159fa0a",
+    "files": 9,
+    "skills": 6,
+    "source": "Corral 1.1.0"
   },
   "coding": {
-    "hash": "a18292ceed4c9fa842777f0a77f0b0012a5e16f294cbaf1e654c9530447bf6e8",
-    "files": 6,
-    "skills": 3,
-    "source": "Corral 1.0.0"
+    "hash": "27beb7aeeecda5c7874fa2980518f5957bf9d893ca583817eb9427b26aefae65",
+    "files": 37,
+    "skills": 16,
+    "source": "Corral 2.0.0"
   },
   "design": {
     "hash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
@@ -18,9 +18,9 @@
     "source": "leeskills@1472032c0521c7f76f8811973b4cbe6b67804988"
   },
   "browser": {
-    "hash": "7a43b4ccfce8d313e6ddf6631cbc6dd00c65882d865c1af19478d8f2f87f8741",
+    "hash": "adef99fe07a16f685a0c072109e9df20d12fa2dca8a7a64a07737a07243cf18f",
     "files": 4,
     "skills": 1,
-    "source": "Corral browser verification 1.0.0"
+    "source": "Corral browser verification 1.0.1"
   }
 }

@@ -23,6 +23,8 @@
     "deps:check": "node tools/deps/check.ts",
     "contracts:generate": "node tools/contracts/generate.ts",
     "contracts:check": "node tools/contracts/generate.ts --check",
+    "builtin:generate": "node tools/builtin/generate.ts",
+    "builtin:check": "node tools/builtin/generate.ts --check",
     "test:live": "vitest run --config tests/live/vitest.config.ts",
     "test:performance": "pnpm --filter @corral/studio exec playwright test --config playwright.performance.config.ts",
     "release:inventory": "node tools/release/inventory.ts",

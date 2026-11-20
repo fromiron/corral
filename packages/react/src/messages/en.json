@@ -3624,8 +3624,8 @@
     "builtin": "Built-in skill pack",
     "builtinHint": "Installing a pack does not activate every skill.",
     "builtinPacks": {
-      "core": "Corral Core · 5 skills",
-      "coding": "Corral Coding · 3 skills",
+      "core": "Corral Core · 6 skills",
+      "coding": "Corral Coding · 16 skills",
       "design": "leeskills · 10 design skills (pinned 0.7.0)",
       "browser": "Local browser verification"
     },

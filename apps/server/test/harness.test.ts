@@ -740,9 +740,9 @@ it('bundled content is reviewed and pinned, only bound entries are exposed, and 
   const s = setup();
   const service = new HarnessService({ root: s.resourceRoot, db: s.db, clock: new FakeClock() });
   for (const [id, count] of [
-    ['core', 5],
+    ['core', 6],
     ['browser', 1],
-    ['coding', 3],
+    ['coding', 16],
     ['design', 10],
   ] as const) {
     const review = await service.discoverBuiltin(id);

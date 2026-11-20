@@ -3624,8 +3624,8 @@
     "builtin": "내장 스킬 팩",
     "builtinHint": "팩을 추가해도 모든 스킬이 활성화되지는 않습니다.",
     "builtinPacks": {
-      "core": "Corral 기본 · 스킬 5개",
-      "coding": "Corral 코딩 · 스킬 3개",
+      "core": "Corral 기본 · 스킬 6개",
+      "coding": "Corral 코딩 · 스킬 16개",
       "design": "디자인 검토 · 스킬 10개 (고정 버전 0.7.0)",
       "browser": "로컬 브라우저 검증"
     },

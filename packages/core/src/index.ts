@@ -14,6 +14,7 @@ export * from './advisor/index.ts';
 export * from './artifact-retention.ts';
 export * from './attachments.ts';
 export * from './auto-team.ts';
+export * from './builtin-crew.ts';
 export { canonicalJson } from './canonical-json.ts';
 export * from './compiler/index.ts';
 export { reviewedOutputBinding } from './compiler/required-output-review.ts';
@@ -55,7 +56,9 @@ export * from './limits.ts';
 export {
   type AgentImportDraft,
   type AgentImportProfile,
+  builtinAgentTools,
   importMarkdownAgent,
+  MARKDOWN_TOOL_ALIASES,
   MAX_AGENT_MARKDOWN_BYTES,
   type MarkdownAgent,
   parseMarkdownAgent,

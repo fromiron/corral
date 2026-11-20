@@ -27,7 +27,8 @@ function utf8Length(value: string): number {
 const excluded = new Set(['ask_user', 'update_plan']);
 // These are proposed translations, never silently enabled. Grep has no equivalent in the
 // file broker; internet search/read_file are deliberately not claimed to be content search.
-const aliases: Record<string, readonly string[]> = {
+// Built-in agent files go through the same table (builtinAgentTools below).
+export const MARKDOWN_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = {
   Read: ['read_file'],
   Glob: ['list_files'],
   Grep: [],
@@ -40,15 +41,43 @@ const aliases: Record<string, readonly string[]> = {
 export function toolTargets(source: string): string[] {
   const supported = [...WorkTool.options, ...CollaborationTool.options] as string[];
   if (excluded.has(source)) return [];
-  const candidates = Object.hasOwn(aliases, source) ? (aliases[source] ?? []) : [source];
+  const candidates = Object.hasOwn(MARKDOWN_TOOL_ALIASES, source)
+    ? (MARKDOWN_TOOL_ALIASES[source] ?? [])
+    : [source];
   return candidates.filter((target) => supported.includes(target));
 }
 function knownTool(tool: string): boolean {
   return (
-    Object.hasOwn(aliases, tool) ||
+    Object.hasOwn(MARKDOWN_TOOL_ALIASES, tool) ||
     WorkTool.safeParse(tool).success ||
     CollaborationTool.safeParse(tool).success
   );
+}
+
+/**
+ * A built-in agent file's tools as its preset gives them (builtin-crew.md, "파일 형식"): the
+ * import table above, then the tools that travel with them. An import still proposes only the
+ * table's translations.
+ */
+export function builtinAgentTools(tools: readonly string[]): {
+  workTools: WorkTool[];
+  collaborationTools: CollaborationTool[];
+} {
+  const granted = new Set<string>([
+    ...tools.flatMap(toolTargets),
+    'write_artifact',
+    'preview_file',
+    'read_artifact',
+    'submit_result',
+    'ask_user',
+  ]);
+  if (granted.has('run_command'))
+    for (const tool of ['preview_app', 'preview_action']) granted.add(tool);
+  if (granted.has('write_file')) for (const tool of ['delete_file', 'move_file']) granted.add(tool);
+  return {
+    workTools: WorkTool.options.filter((tool) => granted.has(tool)),
+    collaborationTools: CollaborationTool.options.filter((tool) => granted.has(tool)),
+  };
 }
 
 export interface MarkdownAgent {
