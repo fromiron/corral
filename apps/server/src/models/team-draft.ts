@@ -28,9 +28,9 @@ const PATTERN_USE: Record<TeamPattern, string> = {
   research_write_review:
     'a researcher gathers facts and sources first, then write and review in rounds. Writing that depends on outside facts, sources or a comparison, when no choice between options is asked for.',
   implement_review:
-    'an implementer changes the code, then a reviewer checks the change and sends it back until it passes. Adding or changing a feature in code when the change is clear.',
+    'an implementer changes the code, then a reviewer checks the change and sends it back until it passes. A code change whose shape the goal already gives: one behavior, check, field or endpoint added or changed.',
   feature:
-    'a designer reads the code and settles the shape of the change first, then an implementer builds it and a verifier runs it against the criteria and sends it back until it passes. Code changes that need a design first: a new feature, a migration, staged or multi-part work.',
+    'a designer reads the code and settles the shape of the change first, then an implementer builds it and a verifier runs it against the criteria and sends it back until it passes. Code changes whose shape has to be worked out before building: a feature that spans several parts, a migration, staged or multi-part work.',
   bug_fix:
     'an investigator reproduces the problem and finds its cause, a fixer fixes the cause, and a verifier runs the same reproduction and sends the fix back until the problem is gone. Code that fails, crashes or behaves wrongly and must be repaired.',
   refactor:
