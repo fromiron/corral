@@ -1,14 +1,17 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import {
   ErrorCode,
-  hasReviewLoop,
   type ModelAttemptPage,
   type TeamAssistantReply,
   type TeamAssistantRequest,
   TeamAssistantResponse,
   type TeamAssistantTeam,
+  type TeamComposition,
 } from '@corral/contracts';
+import { BUILTIN_SKILLS, ROLE_PRESET_IDS, roleFromPreset, teamCatalog } from '@corral/core';
 import { expect, it } from 'vitest';
 import {
   type LiveProfileServer,
@@ -17,8 +20,31 @@ import {
 } from './fixtures/profile-server.ts';
 
 // One free-text Studio request per case. No drafts are applied, saved as teams or executed.
+//   CORRAL_TEAM_ASSISTANT_LIVE=1 [CORRAL_ASSISTANT_PROFILE=…] [CORRAL_ASSISTANT_SECOND=1] \
+//   [CORRAL_ASSISTANT_OUT=results.json] pnpm test:live tests/live/team-assistant.live.test.ts
+// With CORRAL_ASSISTANT_GOALS=<goals file> the run measures new team requests instead: each goal
+// of the file is sent once in create mode and one record per goal is written.
 const profiles = [process.env.CORRAL_ASSISTANT_PROFILE ?? 'deepseek-hive'];
 if (process.env.CORRAL_ASSISTANT_SECOND === '1') profiles.push('zai-org-glm-5.3-flash');
+const live = process.env.CORRAL_TEAM_ASSISTANT_LIVE === '1';
+const goalsPath = process.env.CORRAL_ASSISTANT_GOALS;
+
+// The catalog a new team request carries: the bundled agents and skills, as the editor's own
+// "add agent" and "add skill" offer them.
+const crew = teamCatalog(
+  ROLE_PRESET_IDS.map((id) => {
+    const { id: _id, ...role } = roleFromPreset(id, id, id);
+    return { role, origin: { kind: 'preset' as const, presetId: id }, builtin: true };
+  }),
+  BUILTIN_SKILLS.map((skill) => ({
+    ref: { resourceHash: skill.resourceHash, entry: skill.entry },
+    name: skill.name,
+    description: skill.description,
+  })),
+);
+const { catalog } = crew;
+const stepKinds = (plan: TeamComposition) =>
+  plan.flow.map((step) => ('seat' in step ? 'seat' : 'parallel' in step ? 'parallel' : 'loop'));
 const target = { outputId: 'output', index: 1 };
 const team: TeamAssistantTeam = {
   roles: [
@@ -45,7 +71,8 @@ const cases: Case[] = [
     id: 'sufficient',
     mode: 'create',
     message: '작성자 한 명으로 동네 자전거 소풍 안내문을 써 줘',
-    accepts: (r) => r.kind === 'plan',
+    // One writer was named: one seat.
+    accepts: (r) => r.kind === 'plan' && r.plan.seats.length === 1,
   },
   {
     id: 'negated-review',
@@ -53,9 +80,8 @@ const cases: Case[] = [
     message: '작성자가 필요할 때만 전문가에게 자문한다. 검토 통과나 자동 관찰은 필요 없다',
     accepts: (r) =>
       r.kind === 'plan' &&
-      !hasReviewLoop(r.plan.pattern) &&
-      r.plan.outrider !== 'required_review' &&
-      !r.plan.observeWork,
+      !stepKinds(r.plan).includes('loop') &&
+      r.plan.outrider !== 'required_review',
   },
   {
     id: 'underspecified',
@@ -110,9 +136,9 @@ function facts(reply: TeamAssistantReply): Facts {
       return { questionId: reply.id, choices: reply.choices.length };
     case 'plan':
       return {
-        pattern: reply.plan.pattern,
+        seats: reply.plan.seats.length,
+        flow: stepKinds(reply.plan),
         outrider: reply.plan.outrider ?? null,
-        observeWork: !!reply.plan.observeWork,
       };
     case 'describe':
       return { topic: reply.topic };
@@ -149,7 +175,7 @@ async function attempts(api: LiveProfileServer['api'], operationId: string) {
   return page.items;
 }
 
-it.skipIf(process.env.CORRAL_TEAM_ASSISTANT_LIVE !== '1')(
+it.skipIf(!live || !!goalsPath)(
   'reconciles real create and edit replies and replays a stored operation without a provider request',
   async () => {
     const results: Result[] = [];
@@ -160,7 +186,7 @@ it.skipIf(process.env.CORRAL_TEAM_ASSISTANT_LIVE !== '1')(
           for (const test of cases) {
             const operationId = `assistant_${randomUUID()}`;
             const request: TeamAssistantRequest = {
-              ...(test.mode === 'edit' ? { mode: 'edit', team } : { mode: 'create' }),
+              ...(test.mode === 'edit' ? { mode: 'edit', team } : { mode: 'create', catalog }),
               operationId,
               messages: [{ role: 'user', content: test.message }],
               ...(test.decisions ? { decisions: test.decisions } : {}),
@@ -227,4 +253,98 @@ it.skipIf(process.env.CORRAL_TEAM_ASSISTANT_LIVE !== '1')(
     expect(results).toHaveLength(new Set(profiles).size * (cases.length + 1));
   },
   450_000 * profiles.length,
+);
+
+/** A goals file: `{ split?, goals: [{ id, goal, ... }] }`, as `fixtures/team-draft-goals.*.json`. */
+function goalsOf(value: unknown): { id: string; goal: string }[] {
+  const goals = (value as { goals?: unknown }).goals;
+  if (!Array.isArray(goals) || goals.length === 0) throw new Error('The goals file has no goals.');
+  return goals.map((entry: { id?: unknown; goal?: unknown }, index) => {
+    if (typeof entry.id !== 'string' || typeof entry.goal !== 'string')
+      throw new Error(`Goal ${index} needs a string id and goal.`);
+    return { id: entry.id, goal: entry.goal };
+  });
+}
+
+/** One new team request, as measured: whether the answer was usable and what it composed. */
+interface GoalRecord {
+  profileId: string;
+  id: string;
+  usable: boolean;
+  kind: TeamAssistantReply['kind'] | 'invalid' | 'error';
+  problem?: string;
+  seats: { agentName: string; changesFiles: boolean }[];
+  flow: string[];
+  hasChangingSeat: boolean;
+  outrider: TeamComposition['outrider'] | null;
+  ms: number;
+  outputTokens?: number;
+}
+
+it.skipIf(!live || !goalsPath)(
+  'measures the usable answers to new team requests, one request per goal',
+  async () => {
+    const goals = goalsOf(JSON.parse(readFileSync(resolve(goalsPath ?? ''), 'utf8')));
+    const records: GoalRecord[] = [];
+    const agents = new Map(catalog.agents.map((agent) => [agent.id, agent]));
+    try {
+      for (const profileId of new Set(profiles)) {
+        await withLiveProfile(profileId, 100_000 * goals.length, async ({ api }) => {
+          for (const entry of goals) {
+            const operationId = `assistant_goal_${randomUUID()}`;
+            const request: TeamAssistantRequest = {
+              mode: 'create',
+              operationId,
+              messages: [{ role: 'user', content: entry.goal }],
+              catalog,
+            };
+            const start = performance.now();
+            const response = await api('/team-assistant', request);
+            const body: unknown = await response.json();
+            const ms = Math.round(performance.now() - start);
+            const history = await attempts(api, operationId);
+            const parsed = TeamAssistantResponse.safeParse(body);
+            const reply = response.ok && parsed.success ? parsed.data.reply : undefined;
+            const plan = reply?.kind === 'plan' ? reply.plan : undefined;
+            const seats = (plan?.seats ?? []).map((seat) => ({
+              agentName: agents.get(seat.agent)?.name ?? seat.agent,
+              changesFiles: agents.get(seat.agent)?.changesFiles ?? false,
+            }));
+            const reported = history.filter((attempt) => attempt.usage.source === 'reported');
+            const answered = history.some((attempt) => attempt.status === 'completed');
+            const record: GoalRecord = {
+              profileId,
+              id: entry.id,
+              usable: !!reply,
+              kind: reply?.kind ?? (answered ? 'invalid' : 'error'),
+              ...(reply ? {} : { problem: errorCode(body) ?? `HTTP_${response.status}` }),
+              seats,
+              flow: plan ? stepKinds(plan) : [],
+              hasChangingSeat: seats.some((seat) => seat.changesFiles),
+              outrider: plan?.outrider ?? null,
+              ms,
+              ...(reported.length
+                ? {
+                    outputTokens: reported.reduce(
+                      (sum, attempt) => sum + (attempt.usage.outputTokens ?? 0),
+                      0,
+                    ),
+                  }
+                : {}),
+            };
+            records.push(record);
+            console.log(JSON.stringify(record));
+            // No answer at all (a timeout, a sign-in or a refused model): stop this model rather
+            // than spend the rest of the set on the same failure.
+            if (record.kind === 'error') break;
+          }
+        });
+      }
+    } finally {
+      writeLiveResults(process.env.CORRAL_ASSISTANT_OUT, records);
+    }
+    // A measurement: no pattern or composition is asserted, only that a goal was sent.
+    expect(records.length).toBeGreaterThan(0);
+  },
+  110_000 * 200 * profiles.length,
 );
