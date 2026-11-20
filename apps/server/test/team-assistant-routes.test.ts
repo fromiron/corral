@@ -1,9 +1,8 @@
-import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import { canonicalJson, type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
+import { type TeamAssistantRequest, unusableTeamProposal } from '@corral/contracts';
 import { ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { type CorralServer, startCorralServer } from '../src/index.ts';
@@ -13,7 +12,7 @@ import {
   TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
   TEAM_ASSISTANT_TIMEOUT_MS,
 } from '../src/models/team-assistant.ts';
-import { FAKE_PROFILES, fakeOpenAI } from '../src/testing.ts';
+import { FAKE_PROFILES, fakeOpenAI, fauxAssistantMessage } from '../src/testing.ts';
 
 const assistant = '/team-assistant';
 const token = 'assistant-test-bootstrap-0123456789';
@@ -187,8 +186,11 @@ it('refuses a composition that seats an agent outside the catalog or names tools
   const seat = plan.seats[0];
   const cases = [
     [{ ...proposal, plan: { ...plan, seats: [{ ...seat, agent: 'a9' }] } }, 'unknown_agent'],
-    [{ ...proposal, plan: { ...plan, seats: [{ ...seat, tools: ['write_file'] }] } }, 'shape'],
-    [{ ...proposal, plan: legacyPlan }, 'shape'],
+    [
+      { ...proposal, plan: { ...plan, seats: [{ ...seat, tools: ['write_file'] }] } },
+      'shape:plan.seats.0:extra_field',
+    ],
+    [{ ...proposal, plan: legacyPlan }, 'shape:plan.seats:missing'],
   ] as const;
   for (const [i, [reply, problem]] of cases.entries()) {
     fake.replyText(JSON.stringify(reply));
@@ -420,7 +422,11 @@ it('rejects whole invalid replies, unknown targets and mode mismatches without r
   const { fake, call } = await setup();
   const edits = [{ kind: 'add_shared_advice' }, { ...required, index: 0 }];
   const cases = [
-    [create('extra', 'Write it.'), { ...proposal, extra: 'private-raw-answer' }, 'shape'],
+    [
+      create('extra', 'Write it.'),
+      { ...proposal, extra: 'private-raw-answer' },
+      'shape:$:extra_field',
+    ],
     [edit('target'), { kind: 'edits', edits, reason: 'private-raw-answer' }, 'decision_conflict'],
     [edit('plan'), { ...proposal, reason: 'private-raw-answer' }, 'kind'],
     [create('describe', 'Who submits?'), { kind: 'describe', topic: 'submitter' }, 'kind'],
@@ -433,6 +439,29 @@ it('rejects whole invalid replies, unknown targets and mode mismatches without r
     expect(JSON.stringify(result.body)).not.toContain('private-raw-answer');
   }
   expect(fake.seen.hostRequests).toHaveLength(cases.length);
+});
+
+it('says an answer was empty, or cut off at the output limit, without retry', async () => {
+  const { fake, call } = await setup();
+  fake.replyText('');
+  expect(await call(assistant, create('empty', 'Write it.'))).toMatchObject(unusable('empty'));
+  fake.replyText('  \n');
+  expect(await call(assistant, create('blank', 'Write it.'))).toMatchObject(unusable('empty'));
+  // Stopped at the limit: cut off, whether the text so far is empty or half a reply.
+  const half = JSON.stringify(proposal).slice(0, 40);
+  for (const [i, text] of ['', half].entries()) {
+    fake.setResponses([fauxAssistantMessage(text, { stopReason: 'length' })]);
+    expect(await call(assistant, create(`cut-${i}`, 'Write it.'))).toMatchObject(
+      unusable('cut_off'),
+    );
+  }
+  // A reply that is whole is used even when the model reports the limit.
+  fake.setResponses([fauxAssistantMessage(JSON.stringify(proposal), { stopReason: 'length' })]);
+  expect(await call(assistant, create('whole', 'Write it.'))).toMatchObject({
+    status: 200,
+    body: { reply: proposal },
+  });
+  expect(fake.seen.hostRequests).toHaveLength(5);
 });
 
 it('respects the structured opinion-only decision even when the model requests a valid review gate', async () => {
