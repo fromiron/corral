@@ -260,8 +260,10 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'Each duty names what it reads from earlier seats.',
     'A small edit (a typo, a rename, a comment, a line or two) is one seat and nothing else.',
     'Examples:',
-    // The full example sits the first agent that returns a draft, with no optional field.
-    '{"kind":"plan","plan":{"name":"Notice","brief":"Write the notice.","criteria":["Cover the event details."],"seats":[{"id":"write","agent":"a3","name":"Writer","duty":"Write and submit the notice."}],"flow":[{"seat":"write"}]},"reason":"One writer is enough."}',
+    // The full example sits the first agent that returns a draft under that agent's own name,
+    // with no optional field.
+    '{"kind":"plan","plan":{"name":"Small task","brief":"Do the task.","criteria":["The result does what was asked."],"seats":[{"id":"work","agent":"a3","name":',
+    '"duty":"Do the task and submit the result."}],"flow":[{"seat":"work"}]},"reason":"One seat is enough."}',
     '[{"loop":{"work":["write"],"judge":"check"}}]',
     '[{"parallel":["cost","risk"]},{"seat":"synthesize"}]',
   ];

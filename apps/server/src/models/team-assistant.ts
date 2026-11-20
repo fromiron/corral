@@ -34,19 +34,25 @@ export function createPrompt(request: CreateRequest): string {
   const { agents } = request.catalog;
   const judges = agents.filter((agent) => agent.output === 'review').map((agent) => agent.id);
   const questions = createQuestionsLeft(request);
-  const example = (agents.find((agent) => agent.output === 'draft') ?? agents[0])?.id ?? '';
+  // The example seats a real agent under that agent's own name, so it teaches no pairing.
+  const sample = agents.find((agent) => agent.output === 'draft') ?? agents[0];
   const plan = {
     kind: 'plan',
     plan: {
-      name: 'Notice',
-      brief: 'Write the notice.',
-      criteria: ['Cover the event details.'],
+      name: 'Small task',
+      brief: 'Do the task.',
+      criteria: ['The result does what was asked.'],
       seats: [
-        { id: 'write', agent: example, name: 'Writer', duty: 'Write and submit the notice.' },
+        {
+          id: 'work',
+          agent: sample?.id ?? '',
+          name: sample?.name ?? 'Worker',
+          duty: 'Do the task and submit the result.',
+        },
       ],
-      flow: [{ seat: 'write' }],
+      flow: [{ seat: 'work' }],
     },
-    reason: 'One writer is enough.',
+    reason: 'One seat is enough.',
   };
   const asking = questions.length
     ? `Questions you may still ask: ${quoted(questions)}. A question is {"kind":"question","id":"<one of them>"}, one at a time.`
