@@ -1,4 +1,5 @@
 import type {
+  ModelAttempt,
   OutputContract,
   TeamAssistantReply,
   TeamAssistantRequest,
@@ -246,6 +247,42 @@ export function seatedAgents(plan: TeamComposition, catalog: TeamCatalog): strin
   return [...new Set(plan.seats.map((seat) => names.get(seat.agent) ?? seat.agent))].sort();
 }
 
+/** Where one attempt of an operation spent its time, from what the attempt history holds. */
+export interface AttemptTime {
+  status: ModelAttempt['status'];
+  /** Waiting for a request slot before the request went out. */
+  queueMs: number | null;
+  /** From the request going out to the provider's first event. */
+  firstEventMs: number | null;
+  /** From the first event to the end of the attempt. */
+  streamMs: number | null;
+  /** Between the previous attempt's end and this one's start: the wait before a retry. */
+  retryGapMs?: number;
+  /** A failed attempt's failure code. */
+  failure?: string;
+}
+
+/** Each attempt's times in the order the attempts started; a time the history lacks is null. */
+export function attemptTimes(history: readonly ModelAttempt[]): AttemptTime[] {
+  const at = (time: string | null) => (time === null ? null : Date.parse(time));
+  const ordered = [...history].sort((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt));
+  return ordered.map((attempt, index) => {
+    const started = Date.parse(attempt.startedAt);
+    const first = at(attempt.firstEventAt);
+    const ended = at(attempt.endedAt);
+    const queue = attempt.queueWaitMs ?? null;
+    const before = index > 0 ? at((ordered[index - 1] as ModelAttempt).endedAt) : null;
+    return {
+      status: attempt.status,
+      queueMs: queue,
+      firstEventMs: first === null ? null : first - started - (queue ?? 0),
+      streamMs: first === null || ended === null ? null : ended - first,
+      ...(before !== null ? { retryGapMs: started - before } : {}),
+      ...(attempt.failure ? { failure: attempt.failure.code } : {}),
+    };
+  });
+}
+
 /** One scheduled send of a check case, as the run writes it. */
 export interface CheckRecord {
   profileId: string;
@@ -263,6 +300,8 @@ export interface CheckRecord {
   code?: string;
   ms?: number;
   attempts?: number;
+  /** Where each attempt spent its time. */
+  timing?: AttemptTime[];
   outputTokens?: number;
   /** The plan with each seat's agent named. */
   composition?: TeamComposition;

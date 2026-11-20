@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import {
   ErrorCode,
+  type ModelAttempt,
   type ModelAttemptPage,
   stepSeats,
   type TeamAssistantReply,
@@ -29,7 +30,9 @@ import {
   writeLiveResults,
 } from './fixtures/profile-server.ts';
 import {
+  type AttemptTime,
   agentIdByName,
+  attemptTimes,
   type CheckRecord,
   caseCatalog,
   checkFileOf,
@@ -342,6 +345,8 @@ interface GoalRecord {
   outputTokens?: number;
   /** Physical model requests recorded for the operation. */
   attempts: number;
+  /** Where each attempt spent its time. */
+  timing: AttemptTime[];
   /** The composed team as the editor received it, with each seat's agent named, for reading. */
   composition?: TeamComposition;
   /** The plan's reason sentence, where a plan can promise what its team does not enforce. */
@@ -503,6 +508,7 @@ it.skipIf(!live || !goalFile || checkMode)(
                   }
                 : {}),
               attempts: history.length,
+              timing: attemptTimes(history),
             };
             records.push(record);
             console.log(JSON.stringify(record));
@@ -617,6 +623,7 @@ it.skipIf(!live || !checkMode)(
                   : {}),
                 ms,
                 attempts: history.length,
+                timing: attemptTimes(history),
                 ...(reported.length
                   ? {
                       outputTokens: reported.reduce(
@@ -836,6 +843,59 @@ describe('check cases, without a model', () => {
     expect(missed(question, { reply: 'plan_or_question', question: 'material' })).toEqual([]);
     expect(missed(question, { reply: 'plan_or_question', question: 'review_policy' })).toEqual([
       'question',
+    ]);
+  });
+
+  it('splits each attempt’s time into the queue, the wait for a first event and the stream', () => {
+    const attempt = (
+      startedAt: string,
+      firstEventAt: string | null,
+      endedAt: string | null,
+      more: Partial<ModelAttempt> = {},
+    ): ModelAttempt => ({
+      version: 2,
+      attemptId: startedAt,
+      intent: { requestId: 'r', owner: { kind: 'draft', id: 'r' }, purpose: 'draft', revision: 0 },
+      provider: 'p',
+      modelId: 'm',
+      status: 'completed',
+      startedAt,
+      endedAt,
+      payloadHash: null,
+      payloadBytes: null,
+      firstEventAt,
+      failure: null,
+      usage: {
+        version: 2,
+        inputTokens: null,
+        outputTokens: null,
+        reasoningTokens: null,
+        cacheReadTokens: null,
+        cacheWriteTokens: null,
+        source: 'unknown',
+        costStatus: 'unknown',
+        costUsd: null,
+      },
+      ...more,
+    });
+    const failed = attempt('2026-01-01T00:00:00.000Z', null, '2026-01-01T00:00:05.000Z', {
+      status: 'failed',
+      queueWaitMs: 300,
+      failure: { code: 'TRANSPORT', status: null, retryAfterMs: null, requestId: null },
+    });
+    const retried = attempt(
+      '2026-01-01T00:00:06.000Z',
+      '2026-01-01T00:00:09.500Z',
+      '2026-01-01T00:00:12.000Z',
+      { queueWaitMs: 500 },
+    );
+    // Listed out of order: the times follow the order the attempts started.
+    expect(attemptTimes([retried, failed])).toEqual([
+      { status: 'failed', queueMs: 300, firstEventMs: null, streamMs: null, failure: 'TRANSPORT' },
+      { status: 'completed', queueMs: 500, firstEventMs: 3000, streamMs: 2500, retryGapMs: 1000 },
+    ]);
+    expect(attemptTimes([attempt('2026-01-01T00:00:00.000Z', null, null)])).toEqual([
+      { status: 'completed', queueMs: null, firstEventMs: null, streamMs: null },
     ]);
   });
 
