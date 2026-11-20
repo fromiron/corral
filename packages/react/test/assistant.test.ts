@@ -556,6 +556,66 @@ describe('create proposals and human decisions', () => {
     expect(f.editor.getState().draft.definition.name).toBe(crew.name);
   });
 
+  it('refines against the catalog the shown proposal was composed from, not a new reading', async () => {
+    const ask = model()
+      .mockResolvedValueOnce(proposed)
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now with checks.' }));
+    const f = fixture(ask);
+    await f.send('Write a notice.');
+    // The library changes meanwhile: a fresh reading would list the agents in another order.
+    vi.mocked(f.host.choices).mockResolvedValue({
+      ...choices,
+      agents: [...choices.agents].reverse(),
+    });
+    await f.send('Add a check before it goes out.');
+    expect(f.host.choices).toHaveBeenCalledTimes(1);
+    expect(ask.mock.calls[1]?.[0]).toMatchObject({ catalog: sent, proposal: notice });
+    // The reply's ids resolve as they did when the proposal was composed.
+    const roles = f.state().proposal?.result.definition.roles ?? [];
+    expect(roles.find((role) => role.name === 'Final check')?.origin).toEqual({
+      kind: 'preset',
+      presetId: 'reviewer',
+    });
+  });
+
+  it('carries the shown proposal through a question asked in reply to a refinement', async () => {
+    const ask = model()
+      .mockResolvedValueOnce(proposed)
+      .mockResolvedValueOnce(
+        response({ kind: 'question', id: 'material', choices: ['person', 'team'] }),
+      )
+      .mockResolvedValueOnce(response({ kind: 'plan', plan: crew, reason: 'Now with research.' }));
+    const f = fixture(ask);
+    await f.send('Write a notice.');
+    const shown = f.state().proposal;
+    await f.send('Base it on real sources.');
+    expect(f.state().question?.id).toBe('material');
+    // While the question waits, the earlier proposal is in the conversation, not shown to apply.
+    expect(f.state().proposal).toBeNull();
+    expect(
+      f
+        .state()
+        .turns.filter((turn) => turn.proposal)
+        .map((turn) => turn.proposal),
+    ).toEqual([shown]);
+    await f.actions.answer('team', 'Have the team research it');
+    expect(ask.mock.calls[2]?.[0]).toMatchObject({
+      mode: 'create',
+      proposal: notice,
+      decisions: { material: 'team' },
+    });
+    expect(f.state().proposal?.plan).toEqual(crew);
+    expect(f.state().turns.filter((turn) => turn.proposal)).toHaveLength(1);
+  });
+
+  it('keeps the observation switch out of the conversation: toggling it adds no earlier proposal', async () => {
+    const f = fixture(model().mockResolvedValueOnce(proposed));
+    await f.send('Write a notice.');
+    f.actions.observe(true);
+    f.actions.observe(false);
+    expect(f.state().turns.some((turn) => turn.proposal)).toBe(false);
+  });
+
   it('keeps a confirmed result on a regenerated proposal, but never confirms a renamed producer by its position', async () => {
     const required: TeamComposition = { ...plan, outrider: 'required_review' };
     const ask = model()

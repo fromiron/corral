@@ -1,11 +1,10 @@
 import type { TeamComposition, TeamPlan } from '@corral/contracts';
 import {
-  BUILTIN_AGENTS,
   BUILTIN_SKILLS,
+  builtinComposableAgents,
   draftFromPlan,
   ROLE_PRESET_IDS,
   type RolePresetId,
-  roleFromPreset,
   type TeamWording,
 } from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
@@ -60,16 +59,7 @@ type Messages = (typeof catalogs)[Locale];
 /** What the editor could pick by hand: the built-in agents, then one skill. */
 function storyChoices(messages: Messages): Awaited<ReturnType<TeamAssistantHost['choices']>> {
   return {
-    agents: ROLE_PRESET_IDS.map((id) => {
-      const { id: _id, ...role } = roleFromPreset(id, id, messages.TeamTemplates.presets[id].name);
-      const description = BUILTIN_AGENTS.find((agent) => agent.id === id)?.description;
-      return {
-        role,
-        origin: { kind: 'preset', presetId: id },
-        builtin: true,
-        ...(description ? { description } : {}),
-      };
-    }),
+    agents: builtinComposableAgents((id) => messages.TeamTemplates.presets[id].name),
     skills: BUILTIN_SKILLS.filter((skill) => skill.name === 'doc-writing').map((skill) => ({
       ref: { resourceHash: skill.resourceHash, entry: skill.entry },
       name: skill.name,
@@ -117,7 +107,7 @@ function composedTeam(brief: string, locale: Locale): TeamComposition {
         duty: ko
           ? '소개와 안내를 한 호로 엮는다.'
           : 'Put the blurbs and directions into one issue.',
-        skills: ['s1'],
+        skills: ['doc-writing'],
       },
       {
         id: 'j',

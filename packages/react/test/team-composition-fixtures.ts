@@ -1,37 +1,32 @@
 import type { TeamComposition } from '@corral/contracts';
 import {
-  BUILTIN_AGENTS,
   BUILTIN_SKILLS,
+  builtinComposableAgents,
   type ComposableAgent,
   type ComposableSkill,
   ROLE_PRESET_IDS,
   type RolePresetId,
-  roleFromPreset,
 } from '@corral/core';
 import en from '../src/messages/en.json' with { type: 'json' };
 
 // What the editor can pick by hand, as a host hands it to the team assistant: the built-in agents
-// in their listed order, then one skill. A catalog built from it names agent `a<n>` for the n-th
-// built-in agent and `s1` for the skill.
+// in their listed order, then two skills. A catalog built from it names agent `a<n>` for the n-th
+// built-in agent and each skill by its name: the writer already has `doc-writing`, nobody has
+// `break-it` but the adversary.
 
 const presetText = en.TeamTemplates.presets;
 
 export const choices: { agents: ComposableAgent[]; skills: ComposableSkill[] } = {
-  agents: ROLE_PRESET_IDS.map((id) => {
-    const { id: _id, ...role } = roleFromPreset(id, id, presetText[id].name);
-    const description = BUILTIN_AGENTS.find((agent) => agent.id === id)?.description;
+  agents: builtinComposableAgents((id) => presetText[id].name),
+  skills: ['doc-writing', 'break-it'].map((name) => {
+    const skill = BUILTIN_SKILLS.find((candidate) => candidate.name === name);
+    if (!skill) throw new Error(`there is no built-in skill ${name}`);
     return {
-      role,
-      origin: { kind: 'preset', presetId: id },
-      builtin: true,
-      ...(description ? { description } : {}),
+      ref: { resourceHash: skill.resourceHash, entry: skill.entry },
+      name: skill.name,
+      description: skill.description,
     };
   }),
-  skills: BUILTIN_SKILLS.filter((skill) => skill.name === 'doc-writing').map((skill) => ({
-    ref: { resourceHash: skill.resourceHash, entry: skill.entry },
-    name: skill.name,
-    description: skill.description,
-  })),
 };
 
 /** The catalog id of a built-in agent. */
@@ -61,7 +56,7 @@ export const sequence: TeamComposition = {
       agent: agent('explainer'),
       name: 'Release note',
       duty: 'Explain the fix.',
-      skills: ['s1'],
+      skills: ['doc-writing'],
     },
   ],
   flow: [{ seat: 'i' }, { seat: 'b' }, { seat: 'e' }],

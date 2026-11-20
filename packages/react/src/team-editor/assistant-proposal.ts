@@ -9,6 +9,7 @@ import {
   TeamAssistantReply,
   type TeamAssistantTarget,
   type TeamAssistantTeam,
+  type TeamCatalog,
   type TeamComposition,
 } from '@corral/contracts';
 import {
@@ -33,6 +34,9 @@ type Edits = Extract<TeamAssistantReply, { kind: 'edits' }>['edits'];
 type Nodes = ReadonlyMap<string, CorralNode>;
 type Target = TeamAssistantTarget & { name: string; producerName: string };
 
+/** The catalog a create request carried, with what its ids stood for on the editor's side. */
+export type SentCatalog = ResolvedCatalog & { catalog: TeamCatalog };
+
 export interface Proposal {
   base: EditorDraft;
   result: EditorDraft;
@@ -40,7 +44,7 @@ export interface Proposal {
   reason: string;
   /** A new team: the model's composition and what its catalog ids stood for in that request. */
   plan?: TeamComposition;
-  resolved?: ResolvedCatalog;
+  resolved?: SentCatalog;
   canApply: boolean;
   targets: Target[];
   briefChange?: { before: string; after: string };
@@ -356,7 +360,7 @@ export function createProposal(
   options: ProposalOptions & {
     wording: TeamWording;
     initialName: string;
-    resolved: ResolvedCatalog;
+    resolved: SentCatalog;
     target?: TeamAssistantTarget | undefined;
     /** The person turned automatic observation on in the proposal. */
     observe?: boolean | undefined;
@@ -377,6 +381,8 @@ export function createProposal(
     definition = draftFromComposition(parsed.data.plan, base.definition.id, resolved, {
       ...options.wording.labels,
       join: t('TeamEditor.kinds.join'),
+      // A group side by side that starts the team sits in a Team, named as one made by hand.
+      group: t('TeamEditor.kinds.team'),
     });
   } catch (error) {
     if (error instanceof TeamCompositionError) throw new Error(t('logic.unusable'));

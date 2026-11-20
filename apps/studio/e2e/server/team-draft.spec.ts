@@ -1,4 +1,9 @@
-import type { TeamAssistantResponse, TeamPlan } from '@corral/contracts';
+import type {
+  TeamAssistantRequest,
+  TeamAssistantResponse,
+  TeamCatalog,
+  TeamComposition,
+} from '@corral/contracts';
 import { FAKE_REDIRECT_OK } from '@corral/server/testing';
 import type { Page } from '@playwright/test';
 import {
@@ -35,11 +40,24 @@ async function savedTeams(page: Page): Promise<unknown[]> {
   return page.evaluate(async () => (await fetch('/api/v1/corrals')).json());
 }
 
-/** Answers every assistant request with `plan`, and counts the requests. */
-async function answerWith(page: Page, plan: TeamPlan, reason: string) {
-  const requests: unknown[] = [];
+type CreateRequest = Extract<TeamAssistantRequest, { mode: 'create' }>;
+/** A composition written against the catalog the editor sent, as a model would. */
+type Compose = (agent: (name: string) => string, request: CreateRequest) => TeamComposition;
+
+/** The catalog id of the agent the editor lists under `name`. */
+function agentIn(catalog: TeamCatalog, name: string): string {
+  const found = catalog.agents.find((agent) => agent.name === name);
+  if (!found) throw new Error(`the catalog has no agent ${name}`);
+  return found.id;
+}
+
+/** Answers every assistant request with a composition, and keeps the requests. */
+async function answerWith(page: Page, compose: Compose, reason: string) {
+  const requests: CreateRequest[] = [];
   await page.route('**/api/v1/team-assistant', async (route) => {
-    requests.push(route.request().postDataJSON());
+    const request = route.request().postDataJSON() as CreateRequest;
+    requests.push(request);
+    const plan = compose((name) => agentIn(request.catalog, name), request);
     const body: TeamAssistantResponse = { reply: { kind: 'plan', plan, reason }, model: 'Test A' };
     await route.fulfill({ json: body });
   });
@@ -62,55 +80,183 @@ async function propose(page: Page, input: ReturnType<Page['getByRole']>, goal: s
   await expect(page.getByRole('region', { name: 'Proposal from Test A' })).toBeVisible();
 }
 
-const writer = { slot: 'worker' as const, name: 'Writer', duty: 'Write and submit the text.' };
+/** One writer, as the bundled Writing agent. */
+const alone =
+  (fields: Pick<TeamComposition, 'name' | 'brief' | 'criteria' | 'outrider'>): Compose =>
+  (agent) => ({
+    ...fields,
+    seats: [
+      { id: 'w', agent: agent('Writing'), name: 'Writer', duty: 'Write and submit the text.' },
+    ],
+    flow: [{ seat: 'w' }],
+  });
 
-test('a model proposal fills the unsaved draft, and only saving makes a team', async ({
+/** Three seats in order: a cause, a fix and a note. */
+const sequence: Compose = (agent) => ({
+  name: 'Security PR review',
+  brief: 'Review the pull request for security issues.',
+  criteria: ['Each finding names the file and line.'],
+  seats: [
+    {
+      id: 's',
+      agent: agent('Cause investigation'),
+      name: 'Security scope',
+      duty: 'List the changes worth checking.',
+    },
+    {
+      id: 'c',
+      agent: agent('Challenge'),
+      name: 'Injection check',
+      duty: 'Look for injection flaws.',
+    },
+    {
+      id: 'w',
+      agent: agent('Writing'),
+      name: 'Summary writer',
+      duty: 'Keep the confirmed findings.',
+    },
+  ],
+  flow: [{ seat: 's' }, { seat: 'c' }, { seat: 'w' }],
+});
+
+/** The same team refined: two checks in parallel, then a summary a final check passes. */
+const crew: Compose = (agent) => ({
+  name: 'Security PR review',
+  brief: 'Review the pull request for security issues.',
+  criteria: ['Each finding names the file and line.'],
+  seats: [
+    {
+      id: 's',
+      agent: agent('Cause investigation'),
+      name: 'Security scope',
+      duty: 'List the changes worth checking.',
+    },
+    {
+      id: 'c',
+      agent: agent('Challenge'),
+      name: 'Injection check',
+      duty: 'Look for injection flaws.',
+    },
+    { id: 'k', agent: agent('Challenge'), name: 'Secrets check', duty: 'Look for leaked secrets.' },
+    {
+      id: 'w',
+      agent: agent('Writing'),
+      name: 'Summary writer',
+      duty: 'Keep the confirmed findings.',
+    },
+    {
+      id: 'j',
+      agent: agent('Review'),
+      name: 'Final check',
+      duty: 'Check the summary against the findings.',
+    },
+  ],
+  flow: [{ seat: 's' }, { parallel: ['c', 'k'] }, { loop: { work: ['w'], judge: 'j', rounds: 2 } }],
+});
+
+test('a composed proposal is refined in the conversation, fills the unsaved draft, and only saving makes a team', async ({
   page,
   corral,
 }) => {
   await corral.open('/');
   const requests = await answerWith(
     page,
-    {
-      name: 'Security PR review',
-      pattern: 'adversarial_review',
-      brief: 'Review the pull request for security issues.',
-      criteria: ['Each finding names the file and line.'],
-      roles: [
-        { slot: 'scope', name: 'Security reviewer', duty: 'List the changes worth checking.' },
-        { slot: 'attack_a', name: 'Independent verifier', duty: 'Look for injection flaws.' },
-        { slot: 'attack_b', name: 'Second verifier', duty: 'Look for leaked secrets.' },
-        { slot: 'verdict', name: 'Summary writer', duty: 'Keep the confirmed findings.' },
-      ],
-      finalApproval: false,
-    },
-    'Two verifiers check the findings before the summary.',
+    (agent, request) => (request.proposal ? crew : sequence)(agent, request),
+    'Two checks in parallel find more, and a final check passes the summary.',
   );
   const input = await draftFromGoal(page);
   await page.getByRole('button', { name: 'Use one writer to write this guide.' }).click();
   await expect(input).toHaveValue('Use one writer to write this guide.');
   expect(requests).toHaveLength(0);
   await propose(page, input, 'Check the pull request for security issues.');
-  await expect(page.getByText('Security reviewer', { exact: true })).toBeVisible();
-  await expect(page.getByText('Independent verifier', { exact: true })).toBeVisible();
+  // The request carries what the editor can pick by hand, never a prompt or a tool.
+  const [first] = requests;
+  expect(first?.catalog.agents.map((agent) => agent.name)).toContain('Judging');
+  expect(JSON.stringify(first?.catalog)).not.toMatch(/prompt|allowedWorkTools|resourceHash/);
+  expect(first).not.toHaveProperty('proposal');
+  const shown = page.getByRole('region', { name: 'Proposal from Test A' });
+  await expect(shown.getByText('Injection check', { exact: true })).toBeVisible();
+  // Refining sends the shown composition back; the answer replaces it.
+  await input.fill('Also look for leaked secrets, and check the summary before it goes out.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect(shown.getByText('Secrets check', { exact: true })).toBeVisible();
+  expect(requests).toHaveLength(2);
+  expect(requests[1]?.proposal?.flow).toEqual([{ seat: 's' }, { seat: 'c' }, { seat: 'w' }]);
+  await expect(shown.getByRole('list', { name: 'In parallel', exact: true })).toBeVisible();
+  await expect(shown.getByRole('list', { name: 'Up to 2 rounds', exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Apply to draft', exact: true })).toHaveCount(1);
+  await expect(page.getByRole('button', { name: 'Earlier proposal', exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Security reviewer', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: 'Security scope', exact: true })).toBeFocused();
   await expect(
     page.getByRole('heading', { level: 1, name: 'Security PR review', exact: true }),
   ).toBeVisible();
+  for (const seat of ['Injection check', 'Secrets check', 'Summary writer', 'Final check'])
+    await expect(page.getByRole('button', { name: seat, exact: true })).toBeVisible();
   expect(await savedTeams(page)).toHaveLength(0);
   await saveNewTeam(page);
   expect(await savedTeams(page)).toHaveLength(1);
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
   await openFlowGraph(page);
   await expect(page.getByRole('application', { name: 'Corral graph' })).toContainText(
-    'Security reviewer',
+    'Secrets check',
   );
   await teamNode(page, 'output').press('Enter');
   await expect(
     editorSettings(page).getByRole('switch', { name: 'Ask for final approval' }),
   ).not.toBeChecked();
-  expect(requests).toHaveLength(1);
+  expect(requests).toHaveLength(2);
   expect(corral.fake?.seen.hostRequests).toHaveLength(0);
+});
+
+test('a team that starts with work in parallel is applied, saved without problems and drawn in both views', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await answerWith(
+    page,
+    (agent) => ({
+      name: 'Two checks',
+      brief: 'Check the pull request two ways, then summarize.',
+      criteria: ['Each finding names the file and line.'],
+      seats: [
+        {
+          id: 'c',
+          agent: agent('Challenge'),
+          name: 'Injection check',
+          duty: 'Look for injection flaws.',
+        },
+        {
+          id: 'k',
+          agent: agent('Challenge'),
+          name: 'Secrets check',
+          duty: 'Look for leaked secrets.',
+        },
+        {
+          id: 'w',
+          agent: agent('Writing'),
+          name: 'Summary writer',
+          duty: 'Keep the confirmed findings.',
+        },
+      ],
+      flow: [{ parallel: ['c', 'k'] }, { seat: 'w' }],
+    }),
+    'Both checks start from the brief, and one summary follows.',
+  );
+  const input = await draftFromGoal(page);
+  await propose(page, input, 'Check the pull request for injection and leaked secrets.');
+  const shown = page.getByRole('region', { name: 'Proposal from Test A' });
+  await expect(shown.getByRole('list', { name: 'In parallel', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  for (const seat of ['Injection check', 'Secrets check', 'Summary writer'])
+    await expect(page.getByRole('button', { name: seat, exact: true })).toBeVisible();
+  await saveNewTeam(page);
+  await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
+  await openFlowGraph(page);
+  const graph = page.getByRole('application', { name: 'Corral graph' });
+  for (const seat of ['Injection check', 'Secrets check', 'Summary writer'])
+    await expect(graph).toContainText(seat);
 });
 
 test('a proposal with opt-in artifact review saves it as a shared Outrider setting', async ({
@@ -120,15 +266,12 @@ test('a proposal with opt-in artifact review saves it as a shared Outrider setti
   await corral.open('/');
   await answerWith(
     page,
-    {
+    alone({
       name: 'Manuscript',
-      pattern: 'single',
       brief: 'Write the manuscript and revise it after review when needed.',
       criteria: ['Revise after each review.'],
-      roles: [writer],
-      finalApproval: false,
       outrider: 'artifact_review',
-    },
+    }),
     'The writer asks for review when needed.',
   );
   const input = await draftFromGoal(page);
@@ -153,15 +296,12 @@ test('a proposal requiring review confirms the producer before adding a gate to 
   await corral.open('/');
   await answerWith(
     page,
-    {
+    alone({
       name: 'Launch note',
-      pattern: 'single',
       brief: 'Write a launch note that passes review before it is submitted.',
       criteria: ['Name the release date.'],
-      roles: [writer],
-      finalApproval: false,
       outrider: 'required_review',
-    },
+    }),
     'The note must pass review before it is submitted.',
   );
   const input = await draftFromGoal(page);
@@ -226,14 +366,11 @@ test('observation stays off in a proposal until the person turns it on, and save
   await corral.open('/');
   const requests = await answerWith(
     page,
-    {
+    alone({
       name: 'Invitation',
-      pattern: 'single',
       brief: 'Write the invitation.',
       criteria: ['Name the date and place.'],
-      roles: [writer],
-      finalApproval: false,
-    },
+    }),
     'One writer can write the invitation.',
   );
   const input = await draftFromGoal(page);
@@ -241,7 +378,7 @@ test('observation stays off in a proposal until the person turns it on, and save
     (url) => url.pathname === '/corrals/new/edit' && url.searchParams.get('assistant') === '1',
   );
   await propose(page, input, 'One writer should write an invitation.');
-  await page.getByRole('button', { name: 'Alternatives and settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Criteria and settings', exact: true }).click();
   const observe = page.getByRole('switch', { name: 'Observe work in progress' });
   await expect(observe).not.toBeChecked();
   await observe.click();

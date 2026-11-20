@@ -5,12 +5,12 @@ import {
   TeamAssistantResponse,
   type TeamAssistantTarget,
   type TeamComposition,
+  unusableTeamProposalReason,
 } from '@corral/contracts';
 import {
   type CompileOptions,
   type ComposableAgent,
   type ComposableSkill,
-  type ResolvedCatalog,
   reconcileAssistantReply,
   type TeamWording,
   teamCatalog,
@@ -25,6 +25,7 @@ import {
   editProposal,
   modeOf,
   type Proposal,
+  type SentCatalog,
   summarize,
   targetLabel,
 } from './assistant-proposal.ts';
@@ -70,10 +71,12 @@ type MessageIntent = {
   messages: [UserMessage, ...Messages];
   /** The shown composition the person asks to change. */
   proposal?: TeamComposition;
+  /** The catalog that composition was made from: its ids mean something only there. */
+  catalog?: SentCatalog;
 };
 type ChoiceIntent = { kind: 'choice'; choice: Choice; brief?: string };
 type Intent = MessageIntent | ChoiceIntent;
-type Receipt = { base: EditorDraft; request: TeamAssistantRequest; resolved?: ResolvedCatalog };
+type Receipt = { base: EditorDraft; request: TeamAssistantRequest; resolved?: SentCatalog };
 type ConfirmedTarget = TeamAssistantTarget & { name: string; producerName: string };
 type Unanswered = Pick<Conversation, 'question' | 'proposal' | 'decisions' | 'intent' | 'turns'>;
 
@@ -170,7 +173,7 @@ function withoutTarget(decisions: Decisions): Decisions {
 
 /** The server's word for an answer it could not use; a reason code may follow it, never shown. */
 function isUnusableAnswer(message: string): boolean {
-  return message.startsWith('The model did not return a usable team proposal');
+  return unusableTeamProposalReason(message) !== null;
 }
 
 function appendTurn(turns: Turn[], role: Turn['role'], text: string): Turn[] {
@@ -238,7 +241,7 @@ export function createAssistantActions(
     plan: TeamComposition,
     options: {
       reason: string;
-      resolved: ResolvedCatalog;
+      resolved: SentCatalog;
       target?: TeamAssistantTarget | undefined;
     },
     decisions: Decisions = getState().decisions,
@@ -308,7 +311,7 @@ export function createAssistantActions(
     intent: MessageIntent,
     request: TeamAssistantRequest,
     raw: unknown,
-    resolved: ResolvedCatalog | undefined,
+    resolved: SentCatalog | undefined,
   ) {
     const parsed = TeamAssistantResponse.safeParse(raw);
     if (!parsed.success) return unusable();
@@ -375,10 +378,10 @@ export function createAssistantActions(
     });
     if (!request) {
       const team = mode === 'edit' ? summarize(base) : undefined;
-      let catalog: ReturnType<typeof teamCatalog> | undefined;
-      if (!team) {
+      let catalog: SentCatalog | undefined = intent.catalog;
+      if (!team && !catalog) {
         // A new team is composed from what the editor offers now. The reply is read against
-        // exactly the catalog this request carries.
+        // exactly the catalog this request carries; a refinement keeps its proposal's.
         try {
           const { agents, skills } = await host.choices();
           catalog = teamCatalog(agents, skills);
@@ -388,8 +391,8 @@ export function createAssistantActions(
           return;
         }
         if (!active()) return;
-        resolved = catalog;
       }
+      if (!team) resolved = catalog;
       let { decisions } = getState();
       // Create confirmations point into the preview, never into the wire summary.
       if (mode === 'create') decisions = withoutTarget(decisions);
@@ -528,7 +531,8 @@ export function createAssistantActions(
     const intent =
       state.intent?.kind === 'model' && state.intent.mode === mode ? state.intent : null;
     // A message under a new team's proposal asks to change it: the request carries it.
-    const refined = mode === 'create' && intent ? state.proposal?.plan : undefined;
+    const shown = mode === 'create' && intent ? state.proposal : null;
+    const refined = shown?.plan && shown.resolved ? shown : undefined;
     const continuation = state.question || refined ? intent : null;
     setState({ input: '', turns: appendTurn(turnsWithProposal(state), 'user', text) });
     if (state.question?.source === 'choice' && state.intent?.kind === 'choice') {
@@ -560,13 +564,15 @@ export function createAssistantActions(
     }
     if (!continuation) setState({ decisions: {}, confirmedTarget: null });
     const message: UserMessage = { role: 'user', content: text };
-    const proposal = refined ?? continuation?.proposal;
+    const proposal = refined?.plan ?? continuation?.proposal;
+    const catalog = refined?.resolved ?? continuation?.catalog;
     return run(
       {
         kind: 'model',
         mode,
         messages: continuation ? [...continuation.messages, message] : [message],
         ...(proposal && { proposal }),
+        ...(catalog && { catalog }),
       },
       null,
       continuation ? state : undefined,

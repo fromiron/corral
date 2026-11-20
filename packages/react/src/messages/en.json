@@ -1599,6 +1599,7 @@
     "cancel": "Cancel",
     "apply": "Apply to draft",
     "again": "Propose again",
+    "earlier": "Earlier proposal",
     "stale": "The draft changed",
     "resultBy": "{name} submitted by {producer}",
     "rounds": "Up to {count, plural, one {# round} other {# rounds}}",
