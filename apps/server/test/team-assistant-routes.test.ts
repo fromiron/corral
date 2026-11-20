@@ -275,12 +275,12 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     // The loop example is a whole reply: the work seat sits the same agent, the judge seat the
     // first agent that can judge, both declared.
     // It is about review and revision, not a condition of submission.
-    '- review and revise a draft: {"kind":"plan","reason":"The editor can send the draft back for one revision.","plan":{"name":"Draft and revision","brief":"Write the draft. Another seat reviews it, and the writer revises it once if changes are requested."',
+    '- review and revise a draft: {"kind":"plan","reason":"The reviewer can send the draft back for one revision.","plan":{"name":"Draft and revision","brief":"Write the draft. Another seat reviews it, and the writer revises it once if changes are requested."',
     '{"id":"write","agent":"a3",',
     '{"id":"check","agent":"a2",',
     '"flow":[{"loop":{"work":["write"],"judge":"check"}}]}}',
     // The gate: one seat and the required review.
-    '- a notice that requires approval: {"kind":"plan","reason":"The notice needs review approval before submission.","plan":{"name":"Service notice","brief":"Write a notice about the service interruption. Submit it only if it passes review.","criteria":["The notice explains the service interruption."],"seats":[{"id":"work","agent":"a3",',
+    '- a notice that must pass review before submission: {"kind":"plan","reason":"The team can submit the notice only after it passes review.","plan":{"name":"Service notice","brief":"Write a notice about the service interruption. Submit it only if it passes review.","criteria":["The notice explains the service interruption."],"seats":[{"id":"work","agent":"a3",',
     '"duty":"Write the notice."}],"flow":[{"seat":"work"}],"outrider":"required_review"}}',
     '[{"parallel":["cost","risk"]},{"seat":"synthesize"}]',
   ];
@@ -325,6 +325,9 @@ it('builds a new team’s prompt from the request: deliverable first, then field
     'another seat must check it before it is submitted',
     'asks for an independent check before submission',
     'Draft checked before submission',
+    'a notice that requires approval',
+    'The notice needs review approval before submission.',
+    'The editor can send the draft back',
     'EDIT MODE',
     'add_shared_advice',
     'require_review',
@@ -379,6 +382,33 @@ it('gives example replies the reader accepts: a loop only when an agent can judg
   expect(readAssistantAnswer(unlooped[0] as string, opinions)).toHaveProperty('reply');
   expect(createPrompt(opinions)).not.toContain('"loop":{"work":["write"]');
   expect(createPrompt(opinions)).not.toContain('"outrider":"required_review"}}');
+  // Under opinions only the catalog section names no judging agent: it says to use no loop.
+  expect(createPrompt(opinions)).toContain(
+    '- Use no loop for this request because reviewPolicy is "opinion_only".',
+  );
+  expect(createPrompt(opinions)).not.toContain('Agents that can judge a loop');
+  expect(createPrompt(request)).toContain('- Agents that can judge a loop: "a2", "a4".');
+  expect(createPrompt(noJudge)).toContain('- Agents that can judge a loop: none, so use no loop.');
+});
+
+it('cuts every example seat name to the seat name limit, so a long agent name stays readable', () => {
+  const long = (letter: string) => letter.repeat(41);
+  const request = createRequest({
+    catalog: {
+      agents: [agentOf('d1', 'draft', long('D')), agentOf('r1', 'review', long('R'))],
+      skills: [],
+    },
+  });
+  const prompt = createPrompt(request);
+  const examples = examplesOf(prompt);
+  expect(examples).toHaveLength(3);
+  for (const example of examples) {
+    expect(readAssistantAnswer(example, request)).toHaveProperty('reply');
+    for (const seat of JSON.parse(example).plan.seats as { agent: string; name: string }[]) {
+      expect(seat.name.length).toBeLessThanOrEqual(40);
+      expect(['d1', 'r1']).toContain(seat.agent);
+    }
+  }
 });
 
 it('tells the model to ask nothing once no question is left, and falls back to the first agent', () => {
