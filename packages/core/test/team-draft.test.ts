@@ -651,6 +651,12 @@ describe('planFromGoal reaches the new patterns from obvious words', () => {
     ['CPU usage spikes to 100% on every deploy; investigate and fix it', 'performance'],
     ['메모리 누수를 고쳐 줘', 'bug_fix'],
     ['앱 용량이 너무 커졌어. 줄여 줘', 'performance'],
+    // "Build" and 개발 name a thing here; nothing new is asked for.
+    ['Reduce the build size', 'performance'],
+    ['Speed up the build', 'performance'],
+    ['Reduce the memory footprint of the build pipeline', 'performance'],
+    ['개발 서버의 메모리 사용량을 줄여 줘', 'performance'],
+    ['빌드 시간을 줄여 줘', 'performance'],
   ] as const)('a speed or size said outright: %s is %s', (goal, pattern) => {
     expect(shape(goal)).toBe(pattern);
   });

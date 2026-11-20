@@ -173,8 +173,8 @@ const RESHAPE =
 const SLOW =
   /\b(slow\w*|sluggish|lagg\w*|(run|runs|running|ran) out of memory|out[- ]of[- ]memory|ooms?|takes? (over |about |nearly |almost )?(\d[\d.,]*|a few|several|one|two|three|four|five|ten) ?(ms|milliseconds?|s|seconds?|minutes?)|(takes?|taking|took) (too |so |far too |way too )?(long|forever|ages)|from \d[\d.,]* ?(ms|milliseconds?|s|sec(ond)?s?|min(ute)?s?|hours?) to \d[\d.,]*)\b|느려|느린|느리|버벅|오래\s*걸|\d[\d.,]*\s*(초|분|밀리초|ms)(가|이|나|이나|씩|도)?\s*(넘게\s*|이상\s*)?걸/i;
 /** Speed as a topic: the names of a measure of time. */
-const SPEED_EN = String.raw`performance|latency|throughput|p\d{2,3}|percentiles?|load(?:ing)? times?|response times?|startup times?|speed`;
-const SPEED_KO = String.raw`성능|속도|지연|로딩|응답\s*시간|처리\s*시간`;
+const SPEED_EN = String.raw`performance|latency|throughput|p\d{2,3}|percentiles?|load(?:ing)? times?|response times?|startup times?|build times?|speed`;
+const SPEED_KO = String.raw`성능|속도|지연|로딩|응답\s*시간|처리\s*시간|빌드\s*시간`;
 /**
  * A resource the software uses, by its size or its use; 램 not inside a longer word, and a size
  * that is a limit's value is no resource.
@@ -253,6 +253,10 @@ const DELIVERABLE =
  */
 const CHANGE_ASKED =
   /(?:^|[.;:!?,\n]\s*|\b(?:and|then|please|also|just|now|first|you|let['’]?s|go ahead and|(?:you|me|us) to|need to|want to)\s+)(?:add|implement|create|delete|remove|rename|rewrite|modify|change|update|edit|replace|fix|patch|write (?:(?:a|an|the|some|more|new|unit|integration|regression|e2e|end-to-end) )*(?:tests?|code|functions?|docstrings?|comments?|scripts?))\b|(?:추가|구현|삭제|제거|수정|변경)(?:해|하고|해서|하세요|하라|해라|하자)|(?:고쳐|바꿔|지워|없애|넣어|만들어)(?!졌|진|져)|달아(?!나)|(?:테스트|코드|함수|주석|스크립트)(?:를|을)?\s*(?:작성|써|짜)/gi;
+
+/** Something new asked for: the verb said as a request, not "the build" or 개발 서버. */
+const ADD_ASKED =
+  /(?:^|[.;:!?,\n]\s*|\b(?:and|then|please|also|just|now|first|you|let['’]?s|go ahead and|(?:you|me|us) to|need to|want to)\s+)(?:add|build|implement|create|develop|introduce|integrate)\b|(?:추가|구현|개발|도입|연동)(?:해|하고|해서|하세요|하라|해라|하자)|만들어(?!졌|진|져)/i;
 
 /** A change asked of the code; making or editing a document or another write-up is not one. */
 function asksForChange(brief: string): boolean {
@@ -352,7 +356,7 @@ function templatePatternFromGoal(brief: string): TemplatePattern | null {
   // A measure named without a complaint needs a wish for less of it: a fix or an edit is not one,
   // and inside a request to add or build something the wish says what the new thing is for.
   const wantsLess =
-    !IMPLEMENT.test(brief) &&
+    !ADD_ASKED.test(brief) &&
     (MEASURE_WISHED.test(brief) ||
       (measured && FASTER.test(brief)) ||
       (RESOURCE.test(brief) && LIGHTER.test(brief)));
