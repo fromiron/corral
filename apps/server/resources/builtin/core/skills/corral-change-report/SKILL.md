@@ -1,6 +1,6 @@
 ---
 name: corral-change-report
-description: "Report implemented file changes and their actual verification and application state."
+description: "Reports implemented file changes together with their actual verification and application state. Use when finishing an implementation, a fix or rework in Corral and handing back what changed, what was checked and what has not been applied to the original project."
 license: MIT
 compatibility: "Designed for Corral."
 ---

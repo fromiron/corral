@@ -1,6 +1,6 @@
 ---
 name: corral-review
-description: "Review an immutable output against the current criteria without claiming unsupported verification."
+description: "Reviews an immutable output against the current criteria and returns pass, revise or inconclusive without claiming verification that did not happen. Use when a Corral role is asked to review a change, a design or a document, or to submit a review result."
 license: MIT
 compatibility: "Designed for Corral."
 ---

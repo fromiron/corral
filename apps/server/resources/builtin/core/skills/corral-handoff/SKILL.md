@@ -1,6 +1,6 @@
 ---
 name: corral-handoff
-description: "Preserve decisions and open work when handing off a long or delegated task."
+description: "Preserves decisions, evidence and open work when a task changes hands. Use when handing off a long or delegated task in Corral, pausing work that will be resumed, or summarizing the state for the next agent."
 license: MIT
 compatibility: "Designed for Corral."
 ---

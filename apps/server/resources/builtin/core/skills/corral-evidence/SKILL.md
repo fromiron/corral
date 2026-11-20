@@ -1,6 +1,6 @@
 ---
 name: corral-evidence
-description: "Ground research, analysis and review claims in actual available evidence."
+description: "Grounds research, analysis and review claims in evidence that is actually available. Use when citing sources, artifacts, checks or measurements in a Corral report, or when separating what was observed from what was inferred."
 license: MIT
 compatibility: "Designed for Corral."
 ---

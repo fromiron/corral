@@ -1,6 +1,6 @@
 ---
 name: corral-delegation
-description: "Delegate a bounded task only when the role has Corral collaboration tools."
+description: "Delegates a bounded task to another Corral agent with a stated objective, scope, completion criteria and return format. Use when the role has Corral collaboration tools and part of the work can be done independently by someone else."
 license: MIT
 compatibility: "Designed for Corral."
 ---
