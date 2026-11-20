@@ -930,6 +930,54 @@ describe('edit choices are commands, never paid interpretations', () => {
     expect(ask).not.toHaveBeenCalled();
   });
 
+  it('brings back the chosen result when Propose again on a stale edit is cancelled, so a second press asks the same', async () => {
+    const waiting = () => new Promise<never>(() => {});
+    const ask = model()
+      .mockResolvedValueOnce(
+        response({
+          kind: 'question',
+          id: 'review_target',
+          choices: [target, { ...target, index: 1 }],
+        }),
+      )
+      .mockResolvedValue(
+        response({
+          kind: 'edits',
+          edits: [{ kind: 'require_review', ...target, index: 1 }],
+          reason: 'Review the notes.',
+        }),
+      );
+    const f = fixture(ask, twoResults());
+    await f.send('Review before publishing.');
+    await f.actions.answer({ ...target, index: 1 }, 'Planner: source notes');
+    await f.actions.answer('required', 'Pass before submitting');
+    const shown = f.state().proposal;
+    expect(shown?.origin).toBe('model');
+    const chosen = f.state().decisions.reviewTarget;
+    expect(chosen).toEqual({ ...target, index: 1 });
+    // The result at that index is now somebody else's.
+    f.editor.getState().updateNode('output', {
+      inputBindings: [
+        { kind: 'task_output', name: 'source notes', sourceNodeId: 'Planner' },
+        { kind: 'task_output', name: 'final', sourceNodeId: 'Writer' },
+      ],
+    });
+    const asked = ask.mock.calls.length;
+    ask.mockImplementation(waiting);
+    void f.actions.retry();
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(asked + 1));
+    f.actions.cancel();
+    expect(f.state().proposal).toBe(shown);
+    expect(f.state().decisions.reviewTarget).toEqual(chosen);
+    void f.actions.retry();
+    await vi.waitFor(() => expect(ask).toHaveBeenCalledTimes(asked + 2));
+    const [first, second] = [ask.mock.calls[asked]?.[0], ask.mock.calls[asked + 1]?.[0]];
+    expect(first?.messages).toEqual([{ role: 'user', content: 'Review before publishing.' }]);
+    expect(second?.messages).toEqual(first?.messages);
+    expect(second?.decisions).toEqual(first?.decisions);
+    expect(second?.decisions?.reviewTarget).toBeUndefined();
+  });
+
   it('does not transfer a human target selection to a different result at the same index', async () => {
     const f = fixture(null, twoResults());
     f.actions.chooseEdit('require_review');

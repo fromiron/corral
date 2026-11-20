@@ -601,7 +601,9 @@ export function createAssistantActions(
       await startInput();
     },
     async retry() {
-      const { pending, receipt, intent, proposal, failure, decisions } = getState();
+      // What a cancel brings back: the state before the press, before anything below changes it.
+      const shown = getState();
+      const { pending, receipt, intent, proposal, failure, decisions } = shown;
       if (pending || !intent || !(failure || proposal)) return;
       let next = intent;
       const current = editor.getState().draft;
@@ -621,7 +623,7 @@ export function createAssistantActions(
       }
       if (next.kind === 'choice') runChoice(next);
       // Asking again for a shown proposal keeps it to come back to if the request is cancelled.
-      else await run(next, receipt, proposal ? getState() : undefined);
+      else await run(next, receipt, proposal ? shown : undefined);
     },
     chooseEdit(choice: Choice) {
       const state = getState();
