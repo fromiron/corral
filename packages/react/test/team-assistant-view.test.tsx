@@ -11,6 +11,7 @@ import en from '../src/messages/en.json' with { type: 'json' };
 import { researchTeamDraft, sessionStore } from '../src/stories/fixtures.tsx';
 import { TeamAssistant, type TeamAssistantHost } from '../src/team-editor/TeamAssistant.tsx';
 import { TeamEditor } from '../src/team-editor/TeamEditor.tsx';
+import { agent, agentName, choices, crew, sequence } from './team-composition-fixtures.ts';
 
 function setup({
   ask = null,
@@ -41,6 +42,7 @@ function setup({
     modelLabel: 'Test model',
     newOperationId: () => `assistant-${++nextId}`,
     wording: en.TeamDraft.wording,
+    choices: async () => choices,
     ...(server && { onConnectModel }),
     ...(modelPending && { modelPending }),
   };
@@ -320,10 +322,11 @@ it('opens a named narrow sheet by keyboard, previews a model proposal and hands 
       plan: {
         name: 'Guide',
         brief: 'Write this guide.',
-        pattern: 'single',
         criteria: ['Explain each step.'],
-        roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the guide.' }],
-        finalApproval: false,
+        seats: [
+          { id: 'w', agent: agent('writer'), name: 'Guide writer', duty: 'Write the guide.' },
+        ],
+        flow: [{ seat: 'w' }],
       },
       reason: 'One writer is enough.',
     },
@@ -343,9 +346,8 @@ it('opens a named narrow sheet by keyboard, previews a model proposal and hands 
   Object.defineProperty(transcript, 'scrollHeight', { value: 600 });
   await user.keyboard('Use one writer to write this guide.{Enter}');
   const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
-  expect(
-    within(preview).getByText(/Flow: Writer · Final result: draft submitted by Writer/),
-  ).toBeVisible();
+  expect(within(preview).getByText('Guide writer')).toBeVisible();
+  expect(within(preview).getByText(/submitted by Guide writer/)).toBeVisible();
   const turn = within(transcript).getByText('Use one writer to write this guide.', {
     selector: 'p',
   });
@@ -405,4 +407,111 @@ it('turns the waiting input into a working one when the list brings a model', as
   expect(button('Send')).toBeEnabled();
   await user.click(button('Send'));
   expect(ask).toHaveBeenCalledTimes(1);
+});
+
+/** A seat row's name: its first strong text. */
+const seatName = (row: HTMLElement) => row.querySelector('[data-seat-name]')?.textContent;
+
+const planned = (plan: typeof crew, reason: string): TeamAssistantResponse => ({
+  model: 'Test model',
+  reply: { kind: 'plan', plan, reason },
+});
+
+it('shows a composed team as its seats in their flow, with the result, the reason and no ids', async () => {
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValue(
+      planned(crew, 'Two checks in parallel find more, and a final check passes the summary.'),
+    );
+  const { user, editor } = setup({ ask, open: true });
+  await user.type(field(), 'Review this pull request for security issues.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  expect(within(preview).getByRole('heading', { name: 'Security review' })).toBeVisible();
+  // Each seat once, with the agent it uses and its duty in one line.
+  const seat = (name: string) => within(preview).getByText(name).closest('li');
+  expect(seat('Scope')).toHaveTextContent(agentName('investigator'));
+  expect(seat('Scope')).toHaveTextContent('List what changed.');
+  expect(within(preview).getAllByText('Scope')).toHaveLength(1);
+  // Work side by side, and a loop with its rounds and its judge.
+  const together = within(preview).getByRole('list', { name: en.TeamEditor.composition.parallel });
+  expect(within(together).getAllByRole('listitem').map(seatName)).toEqual([
+    'Injection check',
+    'Secrets check',
+  ]);
+  const loop = within(preview).getByRole('list', { name: 'Up to 2 rounds' });
+  expect(within(loop).getAllByRole('listitem').map(seatName)).toEqual(['Summary', 'Final check']);
+  expect(seat('Final check')).toHaveTextContent('Judge');
+  expect(seat('Summary')).not.toHaveTextContent('Judge');
+  expect(within(preview).getByText(/submitted by Summary/)).toBeVisible();
+  expect(
+    within(preview).getByText(
+      'Two checks in parallel find more, and a final check passes the summary.',
+    ),
+  ).toBeVisible();
+  // A product screen: no catalog or node ids, no pattern to choose, nothing JSON-like.
+  expect(preview).not.toHaveTextContent(/\b[as]\d+\b|seat_|loop_|join_|[{}]/);
+  expect(within(preview).queryByRole('radiogroup')).toBeNull();
+  // Observation stays off until the person turns it on.
+  await user.click(within(preview).getByRole('button', { name: 'Criteria and settings' }));
+  await waitFor(() =>
+    expect(within(preview).getByText(/Each finding names the file and line\./)).toBeVisible(),
+  );
+  expect(
+    within(preview).getByRole('switch', { name: en.TeamEditor.sharedOutrider.observe }),
+  ).not.toBeChecked();
+  await user.click(button('Apply to draft'));
+  const { definition } = editor.getState().draft;
+  expect(definition.nodes.filter((n) => n.type === 'agent').map((n) => n.label)).toEqual([
+    'Scope',
+    'Injection check',
+    'Secrets check',
+    'Summary',
+    'Final check',
+  ]);
+  expect(definition.sharedOutrider).toBeUndefined();
+});
+
+it('refines a proposal in the conversation: the new one replaces it and the earlier one stays, unappliable', async () => {
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValueOnce(planned(sequence, 'A cause, a fix and a note.'))
+    .mockResolvedValueOnce(planned(crew, 'Security needs two checks.'));
+  const { user } = setup({ ask, open: true });
+  await user.type(field(), 'Fix the login bug.{Enter}');
+  const first = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  // An added skill is shown with its seat.
+  expect(within(first).getByText('Release note').closest('li')).toHaveTextContent('doc-writing');
+  await user.type(field(), 'Check it for security issues too.{Enter}');
+  await waitFor(() => expect(ask).toHaveBeenCalledTimes(2));
+  expect(ask.mock.calls[1]?.[0]).toMatchObject({ mode: 'create', proposal: sequence });
+  const shown = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  expect(within(shown).getByRole('heading', { name: 'Security review' })).toBeVisible();
+  // The earlier proposal stays in the conversation as it was, without a way to apply it.
+  const log = screen.getByRole('log');
+  const earlier = within(log).getByRole('button', { name: 'Fix the login bug' });
+  expect(shown).not.toContainElement(earlier);
+  await user.click(earlier);
+  await waitFor(() => expect(within(log).getByText('Cause finder')).toBeVisible());
+  expect(screen.getAllByRole('button', { name: 'Apply to draft' })).toEqual([
+    within(shown).getByRole('button', { name: 'Apply to draft' }),
+  ]);
+});
+
+it('shows each result of a team that ends in parallel work on its own line', async () => {
+  const ends: typeof crew = {
+    ...crew,
+    seats: crew.seats.slice(0, 3),
+    flow: [{ seat: 'scope' }, { parallel: ['x', 'y'] }],
+  };
+  const ask = vi
+    .fn<NonNullable<TeamAssistantHost['ask']>>()
+    .mockResolvedValue(planned(ends, 'Two checks, each reported.'));
+  const { user } = setup({ ask, open: true });
+  await user.type(field(), 'Check this pull request.{Enter}');
+  const preview = await screen.findByRole('region', { name: 'Proposal from Test model' });
+  const results = within(preview).getAllByText(/submitted by/);
+  expect(results.map((line) => line.textContent?.replace(/^.* submitted by /, ''))).toEqual([
+    'Injection check',
+    'Secrets check',
+  ]);
 });

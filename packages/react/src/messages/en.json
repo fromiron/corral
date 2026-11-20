@@ -965,7 +965,10 @@
   "Questions": {
     "reviewRequested": "Requested a review of {version}",
     "reviewUnavailable": "The reviewed version’s content is no longer available.",
-    "consultation": { "open": "Waiting for an answer", "answered": "Answer received" },
+    "consultation": {
+      "open": "Waiting for an answer",
+      "answered": "Answer received"
+    },
     "heading": "Questions",
     "about": "About",
     "evidence": "Evidence",
@@ -1597,19 +1600,13 @@
     "apply": "Apply to draft",
     "again": "Propose again",
     "stale": "The draft changed",
-    "flowResult": "Flow: {flow} · Final result: {results}",
     "resultBy": "{name} submitted by {producer}",
-    "options": "Alternatives and settings",
+    "rounds": "Up to {count, plural, one {# round} other {# rounds}}",
+    "judge": "Judge",
+    "options": "Criteria and settings",
     "criteria": "Completion criteria",
-    "loopFlow": "{steps} (up to {count, plural, one {# round} other {# rounds}})",
-    "parallelFlow": "In parallel: {steps}",
-    "approval": "The final result needs your approval.",
     "yourRequest": "Your request",
     "reply": "Team assistant",
-    "difference": {
-      "write_review": "A planner outlines the work before a writer and reviewer refine it.",
-      "research_write_review": "A researcher gathers sources before writing and review."
-    },
     "choice": {
       "describe": "Who submits the result?",
       "add_shared_advice": "Add advice on demand",
@@ -1640,20 +1637,8 @@
       "advice": "Workers can consult a shared Outrider without adding a step.",
       "unusable": "The model did not return a usable proposal.",
       "unknown": "The outcome of the earlier request could not be confirmed. It has not been resent.",
-      "failed": "The model request failed."
-    },
-    "rationale": {
-      "single": "One agent can complete and submit the work without a handoff.",
-      "write_review": "The writer can revise the draft against an independent review before submitting it.",
-      "research_write_review": "A researcher gathers the sources so the writer and reviewer can work from the same evidence.",
-      "implement_review": "A separate reviewer can check the implementation against the requested change.",
-      "feature": "Settling the shape first gives the implementer and verifier the same design to work from.",
-      "bug_fix": "Finding the cause first gives the fixer and verifier a specific fault to address.",
-      "refactor": "Pinning the current behavior first lets the verifier show the restructuring changed nothing.",
-      "performance": "Measuring a baseline first lets the verifier show the change made it faster.",
-      "adversarial_review": "Two different models trying to break the same change find problems one would miss.",
-      "tech_decision": "Two investigations provide evidence for comparing the options.",
-      "code_investigation": "Tracing the code and reading its record together explain both how it works and why."
+      "failed": "The model request failed.",
+      "catalog": "The agents and skills to compose from could not be read."
     },
     "facts": {
       "submitted": "{producer} submits “{name}” as the final result.",
@@ -1692,13 +1677,6 @@
     }
   },
   "TeamDraft": {
-    "reviewQuestion": "Should the team get feedback, or must the work pass review before submission?",
-    "reviewFeedback": "Get feedback only",
-    "reviewRequired": "Pass before submitting",
-    "readOnlyWork": "The roles cannot change workspace files or run commands.",
-    "changesWork": "This pattern includes roles that can change workspace files or run commands.",
-    "hasReviewRound": "The flow includes review rounds.",
-    "noReviewRound": "The flow has no sequential review round.",
     "observationSummary": "{model} reviews all workers every {interval, plural, one {# model request} other {# model requests}} and checks unread work when each worker finishes. Each review uses up to {cap, plural, one {# additional model request} other {# additional model requests}}.",
     "artifactAdvice": "Workers can ask the shared Outrider for feedback on an artifact. The worker still submits the result.",
     "sharedAdvice": "Any worker can ask the shared Outrider for advice when needed.",
@@ -1706,12 +1684,10 @@
     "asking": "Asking the model…",
     "askCost": "1 request",
     "retry": "Try again",
-    "patternLabel": "Corral shape",
     "patterns": {
       "write_review": "Write and review",
       "research_write_review": "Research, write and review"
     },
-    "rolesLabel": "Roles",
     "wording": {
       "roles": {
         "worker": {
