@@ -292,18 +292,24 @@ export async function walkPlan(
   const opened = new Map<string, object>();
 
   /**
-   * Whether a branch is still in every Loop round it holds: false once one has ended. A Loop
-   * that has opened another round since means a plan the compiler should have refused.
+   * Where a branch stands in the Loop rounds it holds: in all of them, one has ended, or a Loop
+   * has opened another round since (named), which only a plan the compiler refuses allows.
    */
-  const inRound = (token: Token): boolean => {
+  const roundState = (token: Token): { ended: boolean; replaced: string | null } => {
     let ended = false;
     for (const [loopId, mark] of Object.entries(token.marks)) {
       const current = opened.get(loopId);
       if (current === mark) continue;
-      if (current)
-        throw new Error(`Loop ${loopId} opened another round while a branch was in the one before`);
+      if (current) return { ended, replaced: loopId };
       ended = true;
     }
+    return { ended, replaced: null };
+  };
+  /** Whether a branch is still in every round it holds; throws when one was replaced. */
+  const inRound = (token: Token): boolean => {
+    const { ended, replaced } = roundState(token);
+    if (replaced)
+      throw new Error(`Loop ${replaced} opened another round while a branch was in the one before`);
     return !ended;
   };
 
@@ -339,6 +345,9 @@ export async function walkPlan(
       .then(() => walk(token))
       .catch((error: unknown) => {
         if (error instanceof BranchStopped || token.stopped || result || failure) return;
+        // A request of a branch whose round has ended may fail: the round's end stands.
+        const state = roundState(token);
+        if (state.ended && !state.replaced) return;
         failure = { error };
         settle();
       })

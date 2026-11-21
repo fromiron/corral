@@ -5172,23 +5172,23 @@ export class Coordinator {
       activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
       decide: async (nodeId, iteration) => {
         // Read before any wait: a Join that stops this branch meanwhile names this round.
-        const iterationId = this.openRoundOf(run, nodeId);
-        const stopped = () => run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`);
+        const request = this.requestOf(run, nodeId);
+        const iterationId = request.round;
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        // A branch stopped before it decided starts no chooser, check or policy.
-        if (stopped()) return null;
+        // A dropped request starts no chooser, check or policy.
+        if (request.dropped()) return null;
         if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
-        if (stopped()) return null;
+        if (request.dropped()) return null;
         const decisionRevision = run.projection.controlRevision;
         // A router asks its own chooser and a check runs its checks; an external policy decides
         // the other modes.
         const decision: WorkflowDecision | null =
           step.mode === 'router'
-            ? await this.route(run, nodeId, iterationId)
+            ? await this.route(run, nodeId, iterationId, request.dropped)
             : step.mode === 'check'
-              ? await this.check(run, nodeId, iterationId)
+              ? await this.check(run, nodeId, iterationId, request.dropped)
               : this.decisions
                 ? {
                     branch: await this.decisions.decide({
@@ -5202,14 +5202,15 @@ export class Coordinator {
                     evidenceRefs: [],
                     configRevision: decisionRevision,
                   }
-                : await this.decide(run, nodeId, step.mode);
+                : await this.decide(run, nodeId, step.mode, request.dropped);
         // The choice may have waited on a person or external policy. Never append a late
         // routing fact to a cancelled Run or a different iteration.
         await this.boundary(run);
-        // A branch stopped while it decided records no route.
-        if (decision === null || stopped()) return null;
-        if (iterationId !== this.openRoundOf(run, nodeId))
-          throw new Error('decision scope changed');
+        // A branch stopped, or whose round ended, while it decided records no route. Another
+        // round open in its place is a plan the compiler refuses.
+        if (decision === null || request.stopped()) return null;
+        if (request.replaced()) throw new Error('decision scope changed');
+        if (request.dropped()) return null;
         const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
@@ -5252,9 +5253,9 @@ export class Coordinator {
       loopEntered: async (loopId, no) => {
         // The Loop step is named by the round of the Loop around it, read before any wait: a
         // Join that stops this branch meanwhile writes that key, and the entry opens no round.
-        const key = `${loopId}@${this.openRoundOf(run, loopId) ?? '-'}`;
+        const request = this.requestOf(run, loopId);
         const stopped = () => {
-          if (run.stoppedSteps.has(key)) throw new Error('branch stopped');
+          if (request.dropped()) throw new Error('branch stopped');
         };
         await this.boundary(run);
         stopped();
@@ -5587,6 +5588,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision | null> {
     const { definition } = run.snapshot;
     const node = definition.nodes.find((n) => n.id === nodeId);
@@ -5632,8 +5634,8 @@ export class Coordinator {
     if (answer && node.routes.some((r) => r.id === answer))
       return choice(answer, 'model_route', evidence);
 
-    // A branch stopped while its chooser ran asks nothing.
-    if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+    // A request dropped while its chooser ran asks nothing.
+    if (dropped()) return null;
     const connected = node.routes.filter((r) => (step.branches[r.id] ?? []).length > 0);
     if (connected.length === 0) throw new Error(`${nodeId} has no connected route to pick`);
     const subjects = [
@@ -5667,6 +5669,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision | null> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     if (node?.type !== 'decision' || node.mode !== 'check')
@@ -5715,8 +5718,8 @@ export class Coordinator {
           ],
           configRevision: run.projection.controlRevision,
         };
-      // A branch stopped while its checks ran asks nothing.
-      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+      // A request dropped while its checks ran asks nothing.
+      if (dropped()) return null;
       const requested = this.requestApproval(
         run,
         'check',
@@ -5727,8 +5730,8 @@ export class Coordinator {
       );
       if ((await requested.decision) === 'reject') return null;
       await this.boundary(run);
-      // A branch stopped while the approved retry waited makes no next attempt.
-      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+      // A request dropped while the approved retry waited makes no next attempt.
+      if (dropped()) return null;
       previous = input;
     }
   }
@@ -5794,14 +5797,14 @@ export class Coordinator {
     nodeId: string,
     iterationId: string | null,
   ): Promise<StepOutcome> {
-    // A Join that stops this branch while the step waits writes this key: nothing starts.
-    const key = `${nodeId}@${iterationId ?? '-'}`;
+    // A request dropped while the step waits, by a Join or an ended round, starts nothing.
+    const request = this.requestOf(run, nodeId);
     const stopped: StepOutcome = { ok: false, reason: 'branch stopped' };
     await this.boundary(run);
-    if (run.stoppedSteps.has(key)) return stopped;
+    if (request.dropped()) return stopped;
     if (!(await this.passBreakpoint(run, nodeId, iterationId)))
       return { ok: false, reason: 'stopped at its breakpoint' };
-    if (run.stoppedSteps.has(key)) return stopped;
+    if (request.dropped()) return stopped;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const retries =
       node?.type === 'agent' && node.invocation !== 'observer' ? (node.retry?.maxAttempts ?? 0) : 0;
@@ -5823,7 +5826,7 @@ export class Coordinator {
       if (!WORKING.has(run.projection.status) && !this.pausedOrWaiting(run)) return outcome;
       await this.boundary(run);
       if (!WORKING.has(run.projection.status)) return outcome;
-      if (run.stoppedSteps.has(key)) return stopped;
+      if (request.dropped()) return stopped;
       prepared = this.prepareExecution(run, {
         nodeId,
         iterationId,
@@ -7017,6 +7020,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     mode: RunnableDecisionMode,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const round = this.openRoundOf(run, nodeId);
@@ -7132,8 +7136,8 @@ export class Coordinator {
         throw new Error('review recipe stopped');
       }
       const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
-      // A branch stopped while its evidence was checked: the result goes, and so does the step.
-      if (run.stoppedSteps.has(`${nodeId}@${round ?? '-'}`)) throw new Error('branch stopped');
+      // A request dropped while its evidence was checked: the result goes, and so does the step.
+      if (dropped()) throw new Error('branch stopped');
       if (problem) {
         this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');
@@ -8099,6 +8103,29 @@ export class Coordinator {
   private openRoundOf(run: LiveRun, nodeId: string): string | null {
     const loopId = this.loopOf(run, nodeId);
     return loopId ? (run.rounds.get(loopId)?.iterationId ?? null) : null;
+  }
+
+  /**
+   * A request for `nodeId`'s step, read before any wait: `dropped()` tells later whether it may
+   * still act. It is dropped once an any Join stopped its branch, or once the round it was made
+   * in is no longer open: a Loop around the node has no open round, or another one
+   * (docs/specs/features/team-graph.md, "병렬 실행"). `round` is the innermost Loop's round.
+   */
+  private requestOf(run: LiveRun, nodeId: string) {
+    const loops: string[] = [];
+    for (let loopId = this.loopOf(run, nodeId); loopId; loopId = this.loopOf(run, loopId))
+      loops.push(loopId);
+    const rounds = loops.map((loopId) => run.rounds.get(loopId)?.iterationId ?? null);
+    const round = rounds[0] ?? null;
+    const key = `${nodeId}@${round ?? '-'}`;
+    const current = (i: number) => run.rounds.get(loops[i] as string)?.iterationId ?? null;
+    return {
+      round,
+      stopped: () => run.stoppedSteps.has(key),
+      /** Another round of a Loop around the node is open: a plan the compiler refuses. */
+      replaced: () => loops.some((_, i) => current(i) !== null && current(i) !== rounds[i]),
+      dropped: () => run.stoppedSteps.has(key) || loops.some((_, i) => current(i) !== rounds[i]),
+    };
   }
 
   /** Ends a running (or waiting) run by the person's decision. */
