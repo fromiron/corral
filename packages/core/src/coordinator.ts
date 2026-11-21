@@ -5727,6 +5727,8 @@ export class Coordinator {
       );
       if ((await requested.decision) === 'reject') return null;
       await this.boundary(run);
+      // A branch stopped while the approved retry waited makes no next attempt.
+      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
       previous = input;
     }
   }
