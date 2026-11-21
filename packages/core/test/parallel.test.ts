@@ -2427,7 +2427,8 @@ describe('parallel structure', () => {
     });
   });
 
-  // "갈라진 분기 안에서 오는 연결과, 갈라지기 전이나 그 분기들이 Join으로 모인 뒤에서 오는 연결이…"
+  // "갈라진 분기 안에서 오는 연결과 그 분기 밖에서 오는 연결이 Join이 아닌 한 곳으로 들어올 수
+  // 있다. … 다만 다음 둘은 오류다."
   describe('a place reached from inside a fan-out and from outside it', () => {
     const rule = (id: string, source: string, parentId?: string): CorralNode =>
       ({
@@ -2527,6 +2528,113 @@ describe('parallel structure', () => {
         ['PARALLEL_MIXED_ENTRY', 'a'],
       ]);
     });
+
+    /**
+     * p → d0; d0.no → m → output; d0.yes → f → [a, b]; a.yes → x, a.no → k; b.yes → k;
+     * Join k → x; x → dz, whose exits are unconnected. No way on from x reaches a Join.
+     */
+    const deadEnd = (policy: 'all' | 'any') =>
+      team(
+        [
+          agent('p'),
+          rule('d0', 'p'),
+          agent('f', 'p'),
+          rule('a', 'p'),
+          rule('b', 'p'),
+          agent('x', 'p'),
+          rule('dz', 'x'),
+          { id: 'k', type: 'join', label: 'k', policy } as CorralNode,
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'd0'),
+          edge('d0', 'no', 'm'),
+          edge('m', 'out', 'output'),
+          edge('d0', 'yes', 'f'),
+          edge('f', 'out', 'a'),
+          edge('f', 'out', 'b'),
+          edge('a', 'yes', 'x'),
+          edge('a', 'no', 'k'),
+          edge('b', 'yes', 'k'),
+          edge('k', 'out', 'x'),
+          edge('x', 'out', 'dz'),
+        ],
+      );
+
+    it('refuses the way on from an any Join into a step of its branches, wherever that step leads', () => {
+      expect(errors(deadEnd('any')).map((d) => [d.code, d.nodeId])).toEqual([
+        ['PARALLEL_MIXED_ENTRY', 'x'],
+      ]);
+    });
+
+    it.each(['yes', 'no'] as const)(
+      'accepts the way on from an all Join into a step that reaches no Join: a takes %s',
+      async (first) => {
+        expect(errors(deadEnd('all'))).toEqual([]);
+        const transport = runtime(
+          {},
+          { decide: async ({ nodeId }) => (nodeId === 'a' ? first : 'yes') },
+        );
+        const { runId } = await run(transport, deadEnd('all'));
+        const final = await waitForProjection(transport, runId, finished);
+        expect([final.status, final.statusReason]).toEqual(['failed', 'needs_user: dz yes']);
+        expect(executions(final, 'x')).toHaveLength(1);
+      },
+    );
+
+    /** p → [a, b] → Join j → m → output; the errors of p and of a go to x, which ends the run. */
+    const sharedHandler = () =>
+      team(
+        [
+          agent('p'),
+          agent('a', 'p'),
+          agent('b', 'p'),
+          { id: 'j', type: 'join', label: 'j', policy: 'all' } as CorralNode,
+          rule('x', 'p'),
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'a'),
+          edge('p', 'out', 'b'),
+          edge('p', 'error', 'x'),
+          edge('a', 'error', 'x'),
+          edge('a', 'out', 'j'),
+          edge('b', 'out', 'j'),
+          edge('j', 'out', 'm'),
+          edge('m', 'out', 'output'),
+        ],
+      );
+
+    it.each([
+      [null, 'succeeded', 'output_finalized'],
+      ['a', 'failed', 'needs_user: x yes'],
+      ['p', 'failed', 'needs_user: x yes'],
+    ] as const)(
+      'accepts a step that ends the run, shared by a branch and the step before the fan-out: %s fails',
+      async (failing, status, reason) => {
+        expect(errors(sharedHandler())).toEqual([]);
+        const clock = new FakeClock();
+        const transport = new InProcessTransport(
+          new Coordinator({
+            clock,
+            ids: new SequentialIdFactory(),
+            timers: clock,
+            decisions: { decide: async () => 'yes' },
+            agents: new ScriptedAgentAdapter({
+              turns: 1,
+              appendNotes: false,
+              script: async (input) =>
+                input.nodeId === failing ? { outcome: 'failed', error: 'broke' } : null,
+            }),
+          }),
+        );
+        const { runId } = await run(transport, sharedHandler());
+        const final = await waitForProjection(transport, runId, finished);
+        expect([final.status, final.statusReason]).toEqual([status, reason]);
+      },
+    );
 
     it('does not start such a run', async () => {
       const { runId, receipt } = await runtime({}).startRun({

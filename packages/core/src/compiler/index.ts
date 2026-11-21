@@ -1092,21 +1092,8 @@ function checkParallel(
     const vertex = vertexOf(c.nodes, edge.target, edge.targetPort, 'target');
     into.set(vertex, [...(into.get(vertex) ?? []), edge]);
   }
-  // Every key of a carried set is a fan-out that has not been gathered yet.
-  const unjoinedPorts = (edge: ControlEdge) =>
-    [...(carried.get(edge.id) as Branches).keys()].sort().join('\u0001');
   for (const [vertex, edges] of into) {
     if (c.nodes.get(vertex)?.type === 'join') continue;
-    // The way on from here is one way: it cannot be still to gather for one connection and
-    // never forked, or gathered already, for another.
-    const [first, ...rest] = edges as [ControlEdge, ...ControlEdge[]];
-    const other = rest.find((edge) => unjoinedPorts(edge) !== unjoinedPorts(first));
-    if (other)
-      c.error(
-        'PARALLEL_MIXED_ENTRY',
-        'a connection from inside parallel branches and one from outside them meet here',
-        { nodeId: other.target, edgeId: other.id },
-      );
     edges.forEach((edge, i) => {
       const mine = carried.get(edge.id) as Branches;
       if (
@@ -1189,6 +1176,49 @@ function checkParallel(
       const branch = carried.get(edge.id)?.get(port)?.values().next().value;
       if (branch !== undefined) c.joinBranches.set(edge.id, { branch, width });
     }
+  }
+
+  // A place entered from inside a fan-out's branches and from outside them, before the fan-out
+  // or after the branches' Join. The connection from outside cannot pass a Join that gathers
+  // the fan-out, and one from after its any Join enters a step that Join may just have stopped.
+  const reached = new Map<string, Set<string>>();
+  const reach = (from: string) => {
+    let seen = reached.get(from);
+    if (seen) return seen;
+    seen = new Set<string>();
+    const stack = [from];
+    for (let v = stack.pop(); v !== undefined; v = stack.pop())
+      for (const { to } of adjacency.get(v) ?? [])
+        if (!seen.has(to)) {
+          seen.add(to);
+          stack.push(to);
+        }
+    reached.set(from, seen);
+    return seen;
+  };
+  for (const [vertex, edges] of into) {
+    if (c.nodes.get(vertex)?.type === 'join') continue;
+    // Every key of a carried set is a fan-out that has not been gathered yet.
+    const lacks = (edge: ControlEdge, port: string) => !carried.get(edge.id)?.has(port);
+    const outside = edges.find((edge) =>
+      [...c.gathers].some(([joinId, { port }]) => {
+        if (!lacks(edge, port) || edges.every((other) => lacks(other, port))) return false;
+        if (reach(vertex).has(joinId)) return true;
+        const join = c.nodes.get(joinId);
+        const source = vertexOf(c.nodes, edge.source, edge.sourcePort, 'source');
+        return (
+          join?.type === 'join' &&
+          join.policy === 'any' &&
+          (source === joinId || reach(joinId).has(source))
+        );
+      }),
+    );
+    if (outside)
+      c.error(
+        'PARALLEL_MIXED_ENTRY',
+        'a connection from inside parallel branches and one from outside them meet here',
+        { nodeId: outside.target, edgeId: outside.id },
+      );
   }
 
   // The branches of one port wait at one all Join. With two, branches that choose different
