@@ -2531,9 +2531,10 @@ describe('parallel structure', () => {
 
     /**
      * p → d0; d0.no → m → output; d0.yes → f → [a, b]; a.yes → x, a.no → k; b.yes → k;
-     * Join k → x; x → dz, whose exits are unconnected. No way on from x reaches a Join.
+     * Join k → x; x → dz, whose exits are unconnected. No way on from x reaches a Join. With
+     * `between`, Join k → y → x.
      */
-    const deadEnd = (policy: 'all' | 'any') =>
+    const deadEnd = (policy: 'all' | 'any', between = false) =>
       team(
         [
           agent('p'),
@@ -2544,6 +2545,7 @@ describe('parallel structure', () => {
           agent('x', 'p'),
           rule('dz', 'x'),
           { id: 'k', type: 'join', label: 'k', policy } as CorralNode,
+          ...(between ? [agent('y', 'p')] : []),
           agent('m', 'p'),
           output('m'),
         ],
@@ -2557,16 +2559,22 @@ describe('parallel structure', () => {
           edge('a', 'yes', 'x'),
           edge('a', 'no', 'k'),
           edge('b', 'yes', 'k'),
-          edge('k', 'out', 'x'),
+          ...(between ? [edge('k', 'out', 'y'), edge('y', 'out', 'x')] : [edge('k', 'out', 'x')]),
           edge('x', 'out', 'dz'),
         ],
       );
 
-    it('refuses the way on from an any Join into a step of its branches, wherever that step leads', () => {
-      expect(errors(deadEnd('any')).map((d) => [d.code, d.nodeId])).toEqual([
-        ['PARALLEL_MIXED_ENTRY', 'x'],
-      ]);
-    });
+    it.each([
+      ['straight from the Join', false],
+      ['a step after the Join', true],
+    ] as const)(
+      'refuses the way on from an any Join into a step of its branches, wherever that step leads: %s',
+      (_from, between) => {
+        expect(errors(deadEnd('any', between)).map((d) => [d.code, d.nodeId])).toEqual([
+          ['PARALLEL_MIXED_ENTRY', 'x'],
+        ]);
+      },
+    );
 
     it.each(['yes', 'no'] as const)(
       'accepts the way on from an all Join into a step that reaches no Join: a takes %s',
