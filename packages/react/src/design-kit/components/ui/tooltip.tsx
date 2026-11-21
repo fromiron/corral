@@ -163,6 +163,8 @@ function Tooltip({
   const tooltipId = useId();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = forceOpen !== undefined ? forceOpen : internalOpen;
+  // An open asked for while forced shut is dropped, not kept for when the force lifts.
+  if (forceOpen === false && internalOpen) setInternalOpen(false);
   const { actionsRef, rootOpen, onOpenChange } = usePopupExit(open, (v) => {
     setInternalOpen(v);
     onOpenChangeProp?.(v);

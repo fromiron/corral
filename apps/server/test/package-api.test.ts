@@ -74,7 +74,7 @@ it('reviews package declarations, registers MCP disabled and preserves provenanc
     const review = await call('/harness/packages/review', { kind: 'local', source });
     expect(review.manifest.requestedCapabilities).toEqual(['read_document']);
     const resource = await call('/harness/resources', { reviewId: review.reviewId });
-    expect(resource.trustedAt).toBeNull();
+    expect(resource.trustedAt).not.toBeNull();
     const registration = {
       contributionId: 'docs',
       projectId: 'default',
@@ -87,7 +87,6 @@ it('reviews package declarations, registers MCP disabled and preserves provenanc
     ]);
     expect(await call(`/harness/packages/${resource.hash}/mcp`, registration)).toEqual(config);
     const registered = config.mcpServers[0];
-    await call(`/harness/resources/${resource.hash}/trust`, { trusted: true }, 'PUT');
     const { id: _id, sourcePackageHash: _source, ...draft } = registered;
     const updated = await call('/harness/projects/default/mcp', {
       expectedRevision: config.revision,
@@ -123,7 +122,8 @@ it('reviews package declarations, registers MCP disabled and preserves provenanc
       'PUT',
     );
     expect((await preview()).snapshot.projectTools.mcpServerIds ?? []).toEqual([]);
-    expect((await call('/harness/packages'))[0]).toMatchObject({
+    const packages: { resource: { hash: string } }[] = await call('/harness/packages');
+    expect(packages.find((item) => item.resource.hash === resource.hash)).toMatchObject({
       status: 'removed',
       resource: { hash: resource.hash },
     });

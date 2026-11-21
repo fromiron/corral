@@ -1,24 +1,32 @@
-import type { AgentRole } from '@corral/contracts';
-import { compileDefinition } from '@corral/core';
+import { type AgentRole, CorralDefinition, type SharedOutrider } from '@corral/contracts';
+import { compileDefinition, planRun, sharedOutriderTargets } from '@corral/core';
 import { describe, expect, it } from 'vitest';
+import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   connectCapability,
+  draftFromDefinition,
   type EditorDraft,
   emptyDraft,
+  exportDefinition,
+  importDefinition,
   updateNode,
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import {
+  addAgent,
   applyPattern,
   connectPorts,
   type EditResult,
-  importableRoles,
-  importRole,
+  firstSentence,
+  importableAgents,
   patchNode,
   placeStep,
   removeItems,
+  replaceAgent,
+  replaceOutputSource,
   type StepKind,
   setParent,
+  setSharedOutrider,
   watchAgent,
   wrapIn,
 } from '../src/team-editor/commands.ts';
@@ -45,6 +53,244 @@ function chain(length = 3): EditorDraft {
     ({ draft, nodeId } = ok(placeStep(draft, 'agent', { kind: 'after', nodeId })));
   return draft;
 }
+
+describe('a list’s first sentence', () => {
+  it('skips blank lines before the instructions, then reads the first line to its first stop', () => {
+    expect(firstSentence('\n\n  Plan the chapters. Then outline.')).toBe('Plan the chapters.');
+    expect(firstSentence('\r\n\u2028Check the links\nThen report.')).toBe('Check the links');
+    expect(firstSentence('Write it. Then check.')).toBe('Write it.');
+    expect(firstSentence('   ')).toBe('');
+  });
+});
+
+describe('editing a selected connection', () => {
+  it('replaces only the selected edge, retains its ID and preserves the prior graph on Undo', () => {
+    const draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    const [edge] = draft.definition.controlEdges;
+    if (!edge) throw new Error('Missing original connection');
+    const { id, ...original } = edge;
+    const target = { ...original, target: 'agent_3' };
+    expect(ok(connectPorts(draft, original, id)).draft).toBe(draft);
+    expect(refused(connectPorts(draft, { ...target, target: edge.source }, id))).toBe(
+      'selfConnection',
+    );
+    const store = createEditorStore(draft);
+    const parallel = ok(connectPorts(draft, target)).draft;
+    expect(parallel.definition.controlEdges).toHaveLength(2);
+    expect(refused(connectPorts(parallel, target, id))).toBe('duplicate');
+    expect(parallel.definition.controlEdges[0]).toEqual(edge);
+    store.getState().applyDraft(ok(connectPorts(draft, target, id)).draft);
+    expect(store.getState().draft.definition.controlEdges).toEqual([{ id, ...target }]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(draft);
+  });
+});
+
+describe('team shared Outrider settings', () => {
+  const settings: SharedOutrider = {
+    principles: 'Give reasons for each recommendation.',
+    modelProfile: 'model-a',
+    targets: { kind: 'all' },
+  };
+
+  it('removes stale observation targets on deletion and treats reordered observer selections as the same edit', () => {
+    const draft = chain(3);
+    const observation = {
+      targets: { kind: 'selected' as const, nodeIds: ['agent_2', 'agent_3'] },
+      review: { interval: 1, maxRequestsPerReview: 4 },
+    };
+    const configured = ok(setSharedOutrider(draft, { ...settings, observation })).draft;
+    expect(
+      ok(
+        setSharedOutrider(configured, {
+          ...settings,
+          observation: {
+            ...observation,
+            targets: { kind: 'selected', nodeIds: ['agent_3', 'agent_2'] },
+          },
+        }),
+      ).draft,
+    ).toBe(configured);
+    const removed = removeItems(configured, ['agent_2']);
+    expect(removed.definition.sharedOutrider?.targets).toEqual({ kind: 'all' });
+    expect(removed.definition.sharedOutrider?.observation?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['agent_3'],
+    });
+  });
+
+  it('forgets deleted selected workers before the same ID can be reused on reopen', () => {
+    const a = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' }));
+    const out = ok(placeStep(a.draft, 'output', { kind: 'after', nodeId: a.nodeId }));
+    const worker = ok(placeStep(out.draft, 'agent', { kind: 'empty' }));
+    const configured = ok(
+      setSharedOutrider(worker.draft, {
+        ...settings,
+        targets: { kind: 'selected', nodeIds: [worker.nodeId] },
+      }),
+    ).draft;
+    const store = createEditorStore(configured);
+    const deleted = removeItems(configured, [worker.nodeId]);
+    store.getState().applyDraft(deleted);
+    const reopened = importDefinition(exportDefinition(deleted));
+    if (!reopened.ok) throw new Error(reopened.errors.join(', '));
+    const newlyAdded = ok(placeStep(reopened.draft, 'agent', { kind: 'after', nodeId: a.nodeId }));
+    expect(newlyAdded.nodeId).toBe(worker.nodeId);
+    const run = planRun(newlyAdded.draft.definition);
+    if (!run.ok) throw new Error('the edited team did not compile');
+    expect(run.plan.callables[newlyAdded.nodeId]?.question ?? []).toEqual([]);
+    expect(deleted.definition.sharedOutrider?.targets).toEqual({ kind: 'selected', nodeIds: [] });
+    store.getState().undo();
+    expect(store.getState().draft).toBe(configured);
+    const all = ok(setSharedOutrider(worker.draft, settings)).draft;
+    expect(removeItems(all, [worker.nodeId]).definition.sharedOutrider?.targets).toEqual({
+      kind: 'all',
+    });
+  });
+
+  it('forgets removed reference members while keeping unrelated selected workers with dotted IDs', () => {
+    const base = ok(placeStep(emptyDraft(), 'agent', { kind: 'empty' })).draft;
+    const worker = base.definition.nodes[0];
+    if (worker?.type !== 'agent') throw new Error('expected worker');
+    const ref = (id: string, corralId: string) => ({
+      id,
+      label: id,
+      type: 'team' as const,
+      source: { kind: 'reference' as const, corralId, definitionRevision: 1 },
+    });
+    const first = ref('scope', 'first');
+    const second = ref('scope.child', 'second');
+    const refDefinition = (ids: string[]) => {
+      const full = ok(placeStep(base, 'output', { kind: 'after', nodeId: worker.id })).draft
+        .definition;
+      return { ...full, nodes: [...full.nodes, ...ids.map((id) => ({ ...worker, id }))] };
+    };
+    const resolve = (id: string) =>
+      id === 'first' ? refDefinition(['child.gone']) : refDefinition(['keep']);
+    const host = draftFromDefinition({
+      ...base.definition,
+      nodes: [worker, { ...worker, id: 'scope.literal' }, first, second],
+    });
+    const ids = ['scope.child.gone', 'scope.literal', 'scope.child.keep'];
+    const configured = ok(
+      setSharedOutrider(host, { ...settings, targets: { kind: 'selected', nodeIds: ids } }),
+    ).draft;
+    const rows = sharedOutriderTargets(configured.definition, resolve);
+    const deleted = removeItems(configured, [first.id], rows);
+    expect(deleted.definition.sharedOutrider?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['scope.child.keep', 'scope.literal'],
+    });
+  });
+
+  it('applies and removes only the team setting, with one undo step each', () => {
+    // A team with its own callable nodes, manually granted question edges, and a review loop.
+    const initial = draftFromDefinition(CorralDefinition.parse(researchTeam));
+    const store = createEditorStore(initial);
+    const configured = ok(setSharedOutrider(initial, settings)).draft;
+    store.getState().applyDraft(configured);
+    expect(configured.definition).toEqual({ ...initial.definition, sharedOutrider: settings });
+    expect(store.getState().past).toEqual([initial]);
+    const removed = ok(setSharedOutrider(configured, null)).draft;
+    store.getState().applyDraft(removed);
+    expect(removed.definition).toEqual(initial.definition);
+    expect(store.getState().past).toEqual([initial, configured]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(configured);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(initial);
+    store.getState().redo();
+    expect(store.getState().draft).toBe(configured);
+  });
+
+  it('does not record duplicate clears, equivalent choices, or rejected settings', () => {
+    const initial = chain(2);
+    expect(ok(setSharedOutrider(initial, null)).draft).toBe(initial);
+    const selected: SharedOutrider = {
+      ...settings,
+      targets: { kind: 'selected', nodeIds: ['agent_1', 'agent_2'] },
+    };
+    const draft = ok(setSharedOutrider(initial, selected)).draft;
+    const store = createEditorStore(draft);
+    store.getState().applyDraft(
+      ok(
+        setSharedOutrider(draft, {
+          ...selected,
+          targets: { kind: 'selected', nodeIds: ['agent_2', 'agent_1'] },
+        }),
+      ).draft,
+    );
+    expect(store.getState().draft).toBe(draft);
+    expect(refused(setSharedOutrider(draft, { ...settings, principles: '' }))).toBe(
+      'invalidSharedOutrider',
+    );
+    expect(store.getState().canUndo).toBe(false);
+  });
+
+  it.each<SharedOutrider['targets']>([
+    { kind: 'all' },
+    { kind: 'selected', nodeIds: ['agent_1'] },
+    { kind: 'selected', nodeIds: [] },
+  ])('preserves the selection policy over JSON export and import', (targets) => {
+    const draft = ok(setSharedOutrider(chain(2), { ...settings, targets })).draft;
+    const loaded = importDefinition(exportDefinition(draft));
+    expect(loaded.ok).toBe(true);
+    if (!loaded.ok) throw new Error(loaded.errors.join(', '));
+    expect(loaded.draft.definition).toEqual(draft.definition);
+    expect(loaded.draft.definition.sharedOutrider?.targets).toEqual(targets);
+  });
+});
+
+describe('output result selection', () => {
+  it('replaces one named binding without changing its metadata, siblings or execution edges', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(3), 'output', { kind: 'after', nodeId: 'agent_3' }),
+    );
+    const bindings = [
+      { kind: 'task_output' as const, name: 'original', sourceNodeId: 'agent_1', optional: true },
+      { kind: 'task_output' as const, name: 'other', sourceNodeId: 'agent_3' },
+    ];
+    const original = patchNode(draft, nodeId, { inputBindings: bindings });
+    const store = createEditorStore(original);
+    const changed = ok(replaceOutputSource(original, nodeId, 0, 'agent_2')).draft;
+    store.getState().applyDraft(changed);
+    expect(node(changed, nodeId)).toMatchObject({
+      inputBindings: [{ ...bindings[0], sourceNodeId: 'agent_2' }, bindings[1]],
+    });
+    expect(changed.definition.controlEdges).toBe(original.definition.controlEdges);
+    store.getState().applyDraft(ok(replaceOutputSource(changed, nodeId, 0, 'agent_2')).draft);
+    expect(store.getState().past).toEqual([original]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(original);
+    store.getState().redo();
+    expect(store.getState().draft).toBe(changed);
+  });
+
+  it('only accepts preceding scheduled agents and reference teams supported by the compiler', () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const isolated = ok(placeStep(draft, 'agent', { kind: 'empty' }));
+    const observer = ok(
+      placeStep(isolated.draft, 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const nested = ok(
+      placeStep(
+        observer.draft,
+        'team',
+        { kind: 'after', nodeId: 'agent_1' },
+        {
+          reference: { corralId: 'saved-team', definitionRevision: 1, name: 'Saved team' },
+        },
+      ),
+    );
+    expect(replaceOutputSource(nested.draft, nodeId, 0, nested.nodeId).ok).toBe(true);
+    for (const invalid of [isolated.nodeId, observer.nodeId, nodeId, 'missing']) {
+      expect(replaceOutputSource(nested.draft, nodeId, 0, invalid).ok).toBe(false);
+    }
+    expect(replaceOutputSource(nested.draft, nodeId, 9, 'agent_1').ok).toBe(false);
+  });
+});
 
 describe('team editor commands: adding steps', () => {
   it('appends after a step and takes over what came after it', () => {
@@ -662,20 +908,20 @@ describe('team editor commands: advisors', () => {
   it('takes no role copied from a working agent', () => {
     const added = ok(placeStep(chain(1), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const role = roleFor(added.draft, 'agent_1') as AgentRole;
-    expect(refused(importRole(added.draft, role, [added.nodeId]) as EditResult)).toBe(
-      'roleNeedsAgent',
-    );
+    expect(refused(replaceAgent(added.draft, added.nodeId, { role }))).toBe('roleNeedsAgent');
   });
 
   // Review round 2 (canvas.md rules 6 and 11).
   it('copies no advisor role onto an agent, and lists none to copy', () => {
     const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const advisorRole = roleFor(added.draft, added.nodeId) as AgentRole;
-    expect(refused(importRole(added.draft, advisorRole, ['agent_2']) as EditResult)).toBe(
+    expect(refused(replaceAgent(added.draft, 'agent_2', { role: advisorRole }))).toBe(
       'advisorRole',
     );
-    expect(refused(importRole(added.draft, advisorRole, []) as EditResult)).toBe('advisorRole');
-    expect(importableRoles(added.draft.definition).map((r) => r.id)).toEqual([
+    expect(refused(addAgent(added.draft, { role: advisorRole }, { kind: 'empty' }))).toBe(
+      'advisorRole',
+    );
+    expect(importableAgents(added.draft.definition).map(({ role }) => role.id)).toEqual([
       'agent_1_role',
       'agent_2_role',
     ]);
@@ -687,7 +933,7 @@ describe('team editor commands: advisors', () => {
         r.id === advisorRole.id ? { ...r, allowedCollaborationTools: [] } : r,
       ),
     };
-    expect(importableRoles(bare).map((r) => r.id)).not.toContain(advisorRole.id);
+    expect(importableAgents(bare).map(({ role }) => role.id)).not.toContain(advisorRole.id);
   });
 
   it('gives a converted advisor the role shape of a new one, keeping prompt, model, reasoning and reads', () => {

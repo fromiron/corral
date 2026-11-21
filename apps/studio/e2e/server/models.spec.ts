@@ -5,9 +5,12 @@ import type { Locator, Page } from '@playwright/test';
 import {
   addAgentAndOutput,
   modelSettingsTab,
+  newTeam,
+  openFlowGraph,
   openLibrary,
   openLibraryTeams,
   openTestRun,
+  saveNewTeam,
   teamCanvas,
 } from '../workbench.ts';
 import { expect, test } from './harness.ts';
@@ -113,7 +116,7 @@ test.use({ live: true });
 
 async function agentToOutput(page: Page) {
   await openLibraryTeams(page);
-  await page.getByRole('button', { name: 'New Corral' }).click();
+  await newTeam(page);
   await addAgentAndOutput(page);
   await openTestRun(page);
 }
@@ -164,7 +167,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Settings → Models');
 
   // Sign in through the API the Settings page uses (as this tab), then run again.
@@ -192,7 +195,7 @@ test('a live run is refused until sign-in, then runs on the signed-in model', as
     )
     .toBe(true);
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Live answer from the model.');
   await expect(page.getByTestId('run-status')).toContainText('Completed');
   expect(corral.fake?.seen.tokens.every((token) => token === 'access-1-secret')).toBe(true);
@@ -226,7 +229,7 @@ test.describe('a borrowed Codex CLI login', () => {
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
     await openTestRun(page);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer through the Codex login.');
     expect(corral.fake?.seen.tokens.length).toBeGreaterThan(0);
     expect(corral.fake?.seen.tokens.every((token) => token === FAKE_CODEX_ACCESS)).toBe(true);
@@ -265,7 +268,7 @@ test('an API key typed under Models runs live, is never shown, and can be remove
   await page.getByRole('combobox', { name: 'Agents', exact: true }).click();
   await page.getByRole('option', { name: 'Live models (uses your sign-in)', exact: true }).click();
   await openTestRun(page);
-  await page.getByRole('button', { name: 'Run', exact: true }).click();
+  await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
   await expect(page.getByTestId('run-output')).toHaveText('Answer with an entered key.');
   expect(corral.fake?.seen.tokens.every((token) => token === 'sk-e2e-entered-secret')).toBe(true);
 
@@ -317,60 +320,61 @@ test.describe('a keyless OpenAI-compatible endpoint', () => {
       .getByRole('option', { name: 'Live models (uses your sign-in)', exact: true })
       .click();
     await openTestRun(page);
-    await page.getByRole('button', { name: 'Run', exact: true }).click();
+    await page.getByRole('button', { name: 'Run with real models', exact: true }).click();
     await expect(page.getByTestId('run-output')).toHaveText('Answer from the local model.');
     expect(corral.endpoint?.authorizations.every((a) => a === 'Bearer no-key')).toBe(true);
     expect(corral.errors).toEqual([]);
   });
 });
 
-test('asks the signed-in model for a team draft once and opens it after review', async ({
+test('asks the signed-in model for a team proposal once and opens it after review', async ({
   page,
   corral,
 }) => {
   corral.fake?.replyText(
     JSON.stringify({
-      name: 'Launch note',
-      pattern: 'write_review',
-      brief: 'Announce the new API.',
-      criteria: ['Mention the release date.'],
-      roles: [
-        { slot: 'planner', name: 'Outliner', duty: 'List the key points.' },
-        { slot: 'writer', name: 'Copywriter', duty: 'Write the announcement.' },
-        { slot: 'reviewer', name: 'Editor', duty: 'Check tone and facts.' },
-      ],
-      reviewRounds: 1,
-      finalApproval: false,
+      kind: 'plan',
+      // The catalog lists the built-in agents first: a1 architect, a4 reviewer, a10 writer.
+      plan: {
+        name: 'Launch note',
+        brief: 'Announce the new API.',
+        criteria: ['Mention the release date.'],
+        seats: [
+          { id: 'outline', agent: 'a1', name: 'Outliner', duty: 'List the key points.' },
+          { id: 'write', agent: 'a10', name: 'Copywriter', duty: 'Write the announcement.' },
+          { id: 'check', agent: 'a4', name: 'Editor', duty: 'Check tone and facts.' },
+        ],
+        flow: [{ seat: 'outline' }, { loop: { work: ['write'], judge: 'check', rounds: 1 } }],
+      },
+      reason: 'The writer can use the outline and revise the announcement after review.',
     }),
   );
   await corral.open('/');
-  await page.evaluate(async (redirect) => {
-    const { csrfToken } = await (await fetch('/api/v1/session')).json();
-    const headers = { 'x-corral-csrf': csrfToken };
-    await fetch('/api/v1/model-auth/openai/login', { method: 'POST', headers });
-    await fetch('/api/v1/model-auth/openai/login/callback', {
-      method: 'POST',
-      headers: { ...headers, 'content-type': 'application/json' },
-      body: JSON.stringify({ url: redirect }),
-    });
-  }, FAKE_REDIRECT_OK);
+  await signInOpenAI(page);
   await page.reload();
   await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Draft from a goal' }).click();
-  const dialog = page.getByRole('dialog', { name: 'Draft a Corral from a goal' });
-  await dialog.getByLabel('What should the team do?').fill('Announce the new API');
-  // The button itself says what asking costs.
-  await expect(dialog.getByRole('button', { name: 'Ask the model' })).toContainText('1 request');
+  await page.getByRole('link', { name: 'Draft from a goal' }).click();
+  await page
+    .getByRole('textbox', { name: 'Request to build the team', exact: true })
+    .fill('Announce the new API.');
+  await expect(page.getByText('Test A', { exact: true })).toBeVisible();
   const draftRequest = page.waitForRequest(
-    (request) => request.url().endsWith('/api/v1/team-drafts') && request.method() === 'POST',
+    (request) => request.url().endsWith('/api/v1/team-assistant') && request.method() === 'POST',
   );
-  await dialog.getByRole('button', { name: 'Ask the model' }).click();
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
   const draftBody = (await draftRequest).postDataJSON();
-  await expect(dialog.getByLabel('Corral name')).toHaveValue('Launch note');
-  await expect(dialog.getByLabel('Name of role 2')).toHaveValue('Copywriter');
-  await dialog.getByRole('button', { name: 'Open in editor' }).click();
-  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
-  await expect(teamCanvas(page).locator('[data-node]', { hasText: 'Copywriter' })).toHaveCount(1);
+  await expect(page.getByText('Copywriter', { exact: true })).toBeVisible();
+  await expect(page.getByText('Write the announcement.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Apply to draft', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/new\/edit(?:\?|$)/);
+  for (const name of ['Outliner', 'Copywriter', 'Editor']) {
+    await expect(page.getByRole('button', { name, exact: true })).toHaveCount(1);
+  }
+  await saveNewTeam(page);
+  await openFlowGraph(page);
+  // The composed team's nodes are named by the flow: the writer is the second seat.
+  await expect(teamCanvas(page).locator('[data-node="seat_2"]')).toHaveCount(1);
+  await expect(teamCanvas(page).locator('[data-node="seat_2"]')).toContainText('Copywriter');
   expect(corral.fake?.seen.hostRequests).toHaveLength(1);
   await openModels(page);
   // Selecting the tab reads the first page; there is no separate load button.
@@ -382,7 +386,7 @@ test('asks the signed-in model for a team draft once and opens it after review',
   const replay = await page.evaluate(async (body) => {
     const { csrfToken } = await (await fetch('/api/v1/session')).json();
     return (
-      await fetch('/api/v1/team-drafts', {
+      await fetch('/api/v1/team-assistant', {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-corral-csrf': csrfToken },
         body: JSON.stringify(body),
@@ -394,6 +398,55 @@ test('asks the signed-in model for a team draft once and opens it after review',
   await usage.getByRole('table').scrollIntoViewIfNeeded();
   await page.screenshot({ path: 'test-results/llm-model-history.png', fullPage: true });
   expect(corral.errors).toEqual([]);
+});
+
+test('one question choice sends one model request and preserves the unsent composer text', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  await signInOpenAI(page);
+  await page.reload();
+  await openLibrary(page, 'Templates');
+  await page.getByRole('link', { name: 'Draft from a goal' }).click();
+  const input = page.getByRole('textbox', { name: 'Request to build the team' });
+  corral.fake?.replyText(
+    JSON.stringify({ kind: 'question', id: 'material', choices: ['person', 'team'] }),
+  );
+  await input.fill('Make a newsletter.');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  const answer = page.getByRole('button', { name: 'I’ll provide the material' });
+  await expect(answer).toHaveAccessibleDescription('Test A · 1 request');
+  await input.fill('Keep the dates for later.');
+  corral.fake?.replyText(
+    JSON.stringify({
+      kind: 'plan',
+      plan: {
+        name: 'Newsletter',
+        brief: 'Write the newsletter using the material provided.',
+        criteria: ['Use the supplied dates.'],
+        seats: [{ id: 'write', agent: 'a10', name: 'Writer', duty: 'Write the newsletter.' }],
+        flow: [{ seat: 'write' }],
+      },
+      reason: 'One writer can use the supplied material.',
+    }),
+  );
+  const request = page.waitForRequest(
+    (r) => r.url().endsWith('/api/v1/team-assistant') && r.method() === 'POST',
+  );
+  await answer.click();
+  expect((await request).postDataJSON()).toMatchObject({
+    decisions: { material: 'person' },
+    messages: [
+      { role: 'user', content: 'Make a newsletter.' },
+      { role: 'assistant', questionId: 'material' },
+      { role: 'user', content: 'I’ll provide the material' },
+    ],
+  });
+  await expect(page.getByRole('button', { name: 'Apply to draft' })).toBeEnabled();
+  await expect(answer).toHaveCount(0);
+  await expect(input).toHaveValue('Keep the dates for later.');
+  expect(corral.fake?.seen.hostRequests).toHaveLength(2);
 });
 
 test.describe('editing models on the Models page', () => {

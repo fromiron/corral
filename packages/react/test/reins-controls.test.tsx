@@ -1,11 +1,12 @@
 import { emptyProjection } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { IntlProvider } from 'use-intl';
 import { describe, expect, it, vi } from 'vitest';
 import { RunActions } from '../src/components/RunActions.tsx';
 import { RunView } from '../src/components/RunView.tsx';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import ko from '../src/messages/ko.json' with { type: 'json' };
 import { createRunSession } from '../src/run/session.ts';
 
 function renderRun() {
@@ -24,6 +25,17 @@ function renderRun() {
   );
   return { session, sendCommand };
 }
+
+/**
+ * The stop control and the confirmation's own button carry the same name. The confirmation is
+ * the popover's dialog of that name, or the block holding the line saying nothing was sent yet.
+ */
+function confirmation() {
+  const popover = screen.queryByRole('dialog', { name: 'Stop the run' });
+  return popover ?? screen.queryByText(/The stop has not been sent/)?.parentElement ?? null;
+}
+const confirmButton = () =>
+  within(confirmation() as HTMLElement).getByRole('button', { name: 'Stop the run' });
 
 describe('run controls', () => {
   it('keeps an unconfirmed command visible and retries its exact ID', () => {
@@ -58,9 +70,9 @@ describe('run controls', () => {
   });
   it('requires an explicit whole-run cancellation confirmation', () => {
     const { sendCommand } = renderRun();
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the run' }));
     expect(sendCommand).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm whole run cancellation' }));
+    fireEvent.click(confirmButton());
     expect(sendCommand).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'cancel',
@@ -82,14 +94,14 @@ describe('run controls', () => {
         <RunActions session={session} />
       </IntlProvider>,
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the run' }));
     act(() =>
       session.setState({
         runId: 'run_next',
         projection: { ...emptyProjection('run_next'), status: 'running' },
       }),
     );
-    expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
+    expect(confirmation()).toBeNull();
     act(() =>
       session.setState({
         runId: 'run_controls',
@@ -97,7 +109,7 @@ describe('run controls', () => {
       }),
     );
     // Coming back does not revive the earlier confirmation either.
-    expect(screen.queryByRole('button', { name: 'Confirm whole run cancellation' })).toBeNull();
+    expect(confirmation()).toBeNull();
     expect(sendCommand).not.toHaveBeenCalled();
   });
 
@@ -113,16 +125,16 @@ describe('run controls', () => {
         <RunActions session={session} compact narrowIcons />
       </IntlProvider>,
     );
-    for (const name of ['Pause run', 'Cancel whole run']) {
+    for (const name of ['Pause run', 'Stop the run']) {
       const button = screen.getByRole('button', { name });
       // The icon shows and the words leave the layout, not the name.
       expect(button.querySelector('svg')).not.toBeNull();
       expect(button.querySelector('[data-run-action-label]')?.className).toContain('sr-only');
     }
     // Icon-only, Cancel still asks before anything is sent.
-    fireEvent.click(screen.getByRole('button', { name: 'Cancel whole run' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Stop the run' }));
     expect(session.getState().sendCommand).not.toHaveBeenCalled();
-    fireEvent.click(screen.getByRole('button', { name: 'Confirm whole run cancellation' }));
+    fireEvent.click(confirmButton());
     expect(session.getState().sendCommand).toHaveBeenCalledWith(
       expect.objectContaining({ type: 'cancel' }),
     );
@@ -139,10 +151,40 @@ describe('run controls', () => {
         <RunActions session={session} compact />
       </IntlProvider>,
     );
-    for (const name of ['Pause run', 'Cancel whole run']) {
+    for (const name of ['Pause run', 'Stop the run']) {
       const button = screen.getByRole('button', { name });
       expect(button.querySelector('svg')).toBeNull();
       expect(button.textContent).toBe(name);
     }
   });
+
+  // glossary.md: one name for ending the whole run, on its control and on the confirmation's
+  // button; Cancel stays the name for ending one execution.
+  it.each([
+    ['en', messages, 'Stop the run', 'Keep running'],
+    ['ko', ko, '실행 중지', '계속 실행'],
+  ] as const)(
+    'names the whole-run stop and its confirmation alike in %s',
+    (locale, catalogue, stop, keep) => {
+      const session = createRunSession({} as never);
+      session.setState({
+        runId: 'run_controls',
+        projection: { ...emptyProjection('run_controls'), status: 'running' },
+        sendCommand: vi.fn(async () => ({ status: 'queued' }) as never),
+      });
+      render(
+        <IntlProvider locale={locale} messages={catalogue}>
+          <RunActions session={session} />
+        </IntlProvider>,
+      );
+      fireEvent.click(screen.getByRole('button', { name: stop }));
+      const box = screen.getByRole('status').parentElement as HTMLElement;
+      expect(
+        within(box)
+          .getAllByRole('button')
+          .map((button) => button.textContent),
+      ).toEqual([keep, stop]);
+      expect(session.getState().sendCommand).not.toHaveBeenCalled();
+    },
+  );
 });

@@ -166,6 +166,8 @@ export interface IterationView {
 /** A question from one execution to a callable role, answered by a new responder task. */
 export interface QuestionView {
   delivery?: 'parent';
+  sharedOutrider?: true;
+  reviewArtifactVersionId?: string;
   targetExecutionId?: string;
   questionId: string;
   /** The responder's task. */
@@ -767,7 +769,11 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           severity,
         })),
       };
-      return { ...p, reviews: { ...p.reviews, [reviewVersionId]: review } };
+      // Recorded again, it is the latest: it moves to the end of the key order.
+      const reviews = { ...p.reviews };
+      delete reviews[reviewVersionId];
+      reviews[reviewVersionId] = review;
+      return { ...p, reviews };
     }
     case 'run.interrupted':
       return {

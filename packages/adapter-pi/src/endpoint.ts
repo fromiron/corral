@@ -30,34 +30,43 @@ export type EndpointSpec = z.infer<typeof EndpointSpec>;
 /** Defaults when the configuration leaves a model's limits out. */
 export const ENDPOINT_DEFAULTS = { contextWindow: 32_000, maxOutput: 4_096 } as const;
 
-function isHiveDeepSeek(baseUrl: string, modelId: string) {
-  return (
-    modelId === 'deepseek-ai/deepseek-v4.1-flash-1017' &&
-    ['https://api-cdn.thehive.ai/api/v3', 'https://api-va1.thehive.ai/api/v3'].includes(
-      baseUrl.replace(/\/+$/, ''),
-    )
-  );
+/** Hive's two official addresses; a model registered for Hive is registered on these only. */
+const HIVE_ADDRESSES = ['https://api-cdn.thehive.ai/api/v3', 'https://api-va1.thehive.ai/api/v3'];
+const onHive = (baseUrl: string) => HIVE_ADDRESSES.includes(baseUrl.replace(/\/+$/, ''));
+const isHiveDeepSeek = (baseUrl: string, modelId: string) =>
+  modelId === 'deepseek-ai/deepseek-v4.1-flash-1017' && onHive(baseUrl);
+const isHiveGlm = (baseUrl: string, modelId: string) =>
+  modelId === 'zai-org/glm-5.3-flash' && onHive(baseUrl);
+
+/** Values one source knows of an endpoint model; a value left out is another source's. */
+export interface KnownEndpointValues {
+  contextWindow?: number;
+  maxOutput?: number;
+  reasoning?: boolean;
+  imageInput?: boolean;
 }
 
 /**
  * Published values for a known endpoint address and model (guides/models.md). They come after
- * the configuration and before anything the endpoint or a catalog reports; null when unknown.
+ * the configuration and before anything the endpoint or a catalog reports; a value left out
+ * keeps that order. Null when unknown. GLM registers reasoning only: its limits stay with the
+ * configuration, `/models`, the catalog and the defaults.
  */
-export function knownEndpointModel(baseUrl: string, modelId: string) {
-  return isHiveDeepSeek(baseUrl, modelId)
-    ? { ...ENDPOINT_DEFAULTS, contextWindow: 1_000_000, reasoning: true, imageInput: true }
-    : null;
+export function knownEndpointModel(baseUrl: string, modelId: string): KnownEndpointValues | null {
+  if (isHiveDeepSeek(baseUrl, modelId))
+    return { ...ENDPOINT_DEFAULTS, contextWindow: 1_000_000, reasoning: true, imageInput: true };
+  if (isHiveGlm(baseUrl, modelId)) return { reasoning: true };
+  return null;
 }
 
 /** Published defaults for known endpoint/model pairs; explicit configuration takes priority. */
 export function endpointModelDefaults(baseUrl: string, modelId: string) {
-  return (
-    knownEndpointModel(baseUrl, modelId) ?? {
-      ...ENDPOINT_DEFAULTS,
-      reasoning: false,
-      imageInput: undefined,
-    }
-  );
+  return {
+    ...ENDPOINT_DEFAULTS,
+    reasoning: false,
+    imageInput: undefined as boolean | undefined,
+    ...knownEndpointModel(baseUrl, modelId),
+  };
 }
 
 /**
@@ -127,7 +136,45 @@ const ENDPOINT_EFFORT = {
     xhigh: null,
     max: null,
   },
-  compat: { thinkingFormat: 'openai' as const, supportsReasoningEffort: true },
+  // `developer` is OpenAI's own role; a server that knows only the usual ones drops the message.
+  compat: {
+    thinkingFormat: 'openai' as const,
+    supportsReasoningEffort: true,
+    supportsDeveloperRole: false,
+  },
+};
+
+/** How Hive's chat completions are called: SSE, `max_completion_tokens`, no developer role. */
+const HIVE_WIRE = {
+  headers: { Accept: 'text/event-stream' },
+  compat: {
+    thinkingFormat: 'openai' as const,
+    supportsReasoningEffort: true,
+    supportsDeveloperRole: false,
+    supportsStore: false,
+    supportsUsageInStreaming: false,
+    maxTokensField: 'max_completion_tokens' as const,
+  },
+};
+/** DeepSeek on Hive can switch reasoning off (`none`). */
+const HIVE_DEEPSEEK_LEVELS = {
+  off: 'none',
+  minimal: null,
+  low: 'low',
+  medium: null,
+  high: 'high',
+  xhigh: null,
+  max: 'max',
+};
+/** GLM on Hive cannot: low, high and max are documented, and its default (`max`) sends none. */
+const HIVE_GLM_LEVELS = {
+  off: null,
+  minimal: null,
+  low: 'low',
+  medium: null,
+  high: 'high',
+  xhigh: null,
+  max: 'max',
 };
 
 /**
@@ -165,33 +212,16 @@ export function endpointProvider(
     maxTokens: m.maxOutput,
     // Hive exposes OpenAI effort, not the native DeepSeek thinking/max_tokens protocol.
     ...(isHiveDeepSeek(spec.baseUrl, m.id)
-      ? {
-          headers: { Accept: 'text/event-stream' },
-          thinkingLevelMap: {
-            off: 'none',
-            minimal: null,
-            low: 'low',
-            medium: null,
-            high: 'high',
-            xhigh: null,
-            max: 'max',
-          },
-          compat: {
-            thinkingFormat: 'openai' as const,
-            supportsReasoningEffort: true,
-            supportsDeveloperRole: false,
-            supportsStore: false,
-            supportsUsageInStreaming: false,
-            maxTokensField: 'max_completion_tokens' as const,
-          },
-        }
-      : !m.reasoning
-        ? {}
-        : !piRecognizedHost(spec.baseUrl)
-          ? ENDPOINT_EFFORT
-          : PI_SENDS_NO_LEVEL.some((host) => spec.baseUrl.includes(host))
-            ? NO_LEVELS
-            : {}),
+      ? { ...HIVE_WIRE, thinkingLevelMap: HIVE_DEEPSEEK_LEVELS }
+      : isHiveGlm(spec.baseUrl, m.id)
+        ? { ...HIVE_WIRE, thinkingLevelMap: HIVE_GLM_LEVELS }
+        : !m.reasoning
+          ? {}
+          : !piRecognizedHost(spec.baseUrl)
+            ? ENDPOINT_EFFORT
+            : PI_SENDS_NO_LEVEL.some((host) => spec.baseUrl.includes(host))
+              ? NO_LEVELS
+              : {}),
   }));
   return createProvider({
     id: providerId,

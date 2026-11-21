@@ -10,7 +10,7 @@ export interface SettingsSearch {
 export function workHref(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048 || /[\\\r\n]/.test(value)) return;
   if (
-    !/^\/(?:projects(?:\/[^/?#]+)?|sessions\/[^/?#]+(?:\/review)?|corrals\/[^/?#]+\/edit|runs\/[^/?#]+|demo|compare|inbox|library(?:\/(?:teams|templates|resources))?|preview(?:\/[^/?#]+)?)(?:[?#]|$)/.test(
+    !/^\/(?:projects(?:\/[^/?#]+)?|sessions\/[^/?#]+(?:\/review)?|corrals\/[^/?#]+\/edit|runs\/[^/?#]+|demo|compare|inbox|library(?:\/(?:teams|agents|skills|templates|resources))?|preview(?:\/[^/?#]+)?)(?:[?#]|$)/.test(
       value,
     )
   )
@@ -44,9 +44,13 @@ export const SettingsNavigationContext = createContext<{
   search: SettingsSearch;
   overlay?: boolean;
   section?: string;
+  /** The resource Manage opened the dialog to choose, read from history state; never in the address. */
+  item?: string;
   link: (
     section: string,
     projectId?: string,
+    /** A resource for the section to choose once on opening (features/library.md). */
+    item?: string,
   ) => {
     to: string;
     search: Record<string, unknown>;
@@ -120,6 +124,51 @@ export function settingsOnlyTransition(
   const sorted = (search: object) =>
     JSON.stringify(Object.entries(withoutSettings(search)).sort(([a], [b]) => a.localeCompare(b)));
   return current.pathname === next.pathname && sorted(current.search) === sorted(next.search);
+}
+type HistoryState = import('@tanstack/react-router').ParsedLocation['state'];
+/** What the dialog keeps in history state; none of it is in the address. */
+type SettingsHistoryState = HistoryState & {
+  settingsOwner?: string;
+  settingsOrigin?: number;
+  settingsOneShot?: boolean;
+  /** The resource Manage opened the dialog to choose (features/library.md). */
+  settingsItem?: string;
+};
+/** History state for a link into the dialog. A section change inside it keeps who opened it
+ * and drops the chosen resource, which belongs to the section Manage opened. */
+export function settingsOpenState(
+  previous: HistoryState,
+  open: { overlay?: boolean; owner: string; oneShot: boolean; item?: string },
+): HistoryState {
+  const rest = withoutSettingsItem(previous);
+  const base: SettingsHistoryState = open.overlay
+    ? rest
+    : {
+        ...rest,
+        settingsOwner: open.owner,
+        settingsOrigin: previous.__TSR_index,
+        settingsOneShot: open.oneShot,
+      };
+  if (open.item) base.settingsItem = open.item;
+  return base;
+}
+export function withoutSettingsItem(previous: HistoryState): HistoryState {
+  const { settingsItem: _item, ...rest } = previous as SettingsHistoryState;
+  return rest;
+}
+export function settingsClosedState(previous: HistoryState): HistoryState {
+  const {
+    settingsOwner: _owner,
+    settingsOrigin: _origin,
+    settingsOneShot: _oneShot,
+    settingsItem: _item,
+    ...rest
+  } = previous as SettingsHistoryState;
+  return rest;
+}
+export function settingsItemOf(state: unknown): string | undefined {
+  const item = (state as { settingsItem?: unknown } | undefined)?.settingsItem;
+  return typeof item === 'string' && item.length > 0 && item.length <= 1024 ? item : undefined;
 }
 export function standaloneSettingsLink(section: string, search: SettingsSearch = {}) {
   const general = ['general', 'shortcuts', 'about', 'workspace', 'diagnostics'].includes(section);

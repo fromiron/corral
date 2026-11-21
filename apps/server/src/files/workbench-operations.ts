@@ -1,10 +1,4 @@
-import { realpathSync } from 'node:fs';
-import {
-  type Clock,
-  canonicalJson,
-  type WorkbenchOperation,
-  type WorkspaceTarget,
-} from '@corral/contracts';
+import type { Clock, WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
 
 export type { WorkbenchOperation, WorkspaceTarget } from '@corral/contracts';
 
@@ -29,35 +23,16 @@ interface OperationRow {
   updated_at: string;
 }
 
-const sharedKinds = new Set([
-  'document.save',
-  'document.batch',
-  'document.rename',
-  'document.delete',
-  'task',
-  'debug',
-  'git.stage',
-  'git.stage_hunks',
-  'git.unstage_hunks',
-  'git.unstage',
-  'git.commit',
-  'git.fetch',
-  'git.push',
-]);
-const pathKey = (path: string) => {
-  const real = realpathSync.native(path);
-  return process.platform === 'win32' ? real.toLowerCase() : real;
-};
-
 /** The caller resolves trust, target identity and path before admitting an effect. */
 export class WorkbenchOperations {
   private readonly access: WorkspaceAccessStore;
   private readonly db: Db;
   private readonly clock: Clock;
-  constructor(db: Db, clock: Clock) {
+  /** `shares`: this host shares the copy (workbench.md 공유 개발 모드). */
+  constructor(db: Db, clock: Clock, shares = false) {
     this.db = db;
     this.clock = clock;
-    this.access = new WorkspaceAccessStore(db);
+    this.access = new WorkspaceAccessStore(db, shares);
   }
 
   get(operationId: string): WorkbenchOperation | undefined {
@@ -76,49 +51,6 @@ export class WorkbenchOperations {
         updatedAt: row.updated_at,
       }
     );
-  }
-
-  development(path: string): WorkbenchOperation | undefined {
-    const writer = this.access.writerAt(pathKey(path));
-    const operation = writer?.owner_kind === 'user' ? this.get(writer.owner_id) : undefined;
-    return operation?.kind === 'development' ? operation : undefined;
-  }
-
-  canShare(target: WorkspaceTarget, path: string): boolean {
-    const owner = this.development(path);
-    return (
-      owner?.state === 'running' &&
-      canonicalJson(owner.target) === canonicalJson(target) &&
-      this.access.get({ kind: 'user', id: owner.operationId })?.state === 'active'
-    );
-  }
-
-  finishDevelopment(operationId: string, target: WorkspaceTarget, path: string) {
-    return this.db
-      .transaction(() => {
-        const receipt = this.get(operationId);
-        if (!receipt || receipt.kind !== 'development')
-          throw new ToolRefusal('TARGET_NOT_FOUND', 'the development owner is unavailable');
-        if (canonicalJson(receipt.target) !== canonicalJson(target))
-          throw new ToolRefusal('REVISION_CONFLICT', 'the development target changed');
-        if (receipt.state !== 'running' && receipt.state !== 'uncertain') return;
-        if (
-          this.access
-            .ownersAt(pathKey(path))
-            .some(
-              (owner) =>
-                owner.owner_kind === 'user' &&
-                owner.owner_id !== operationId &&
-                (owner.state === 'uncertain' || this.get(owner.owner_id)?.kind !== 'language'),
-            )
-        )
-          throw new ToolRefusal(
-            'RUN_ALREADY_ACTIVE',
-            'stop and reconcile the shared development tasks and pending effects first',
-          );
-        this.reconcile(operationId, ['development'], 'succeeded', null);
-      })
-      .immediate();
   }
 
   list(kind: string, sessionId?: string): WorkbenchOperation[] {
@@ -230,20 +162,12 @@ export class WorkbenchOperations {
             throw new ToolRefusal('REVISION_CONFLICT', 'operation request changed');
           return { admitted: false, receipt: prior };
         }
-        const shared = sharedKinds.has(request.kind) && this.canShare(request.target, path);
-        if (
-          shared &&
-          this.access.ownersAt(pathKey(path)).some((owner) => owner.state === 'uncertain')
-        )
-          throw new ToolRefusal(
-            'RESOURCE_CAPACITY',
-            'shared development has an unconfirmed effect',
-          );
+        // A language server only reads the copy; every other person effect may write it.
         this.access.acquire(
           { kind: 'user', id: request.operationId },
           request.target.sessionId,
           path,
-          !shared && request.kind !== 'language',
+          request.kind !== 'language',
           request.target.copyGeneration,
         );
         const now = this.clock.nowIso();

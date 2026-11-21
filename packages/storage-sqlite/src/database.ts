@@ -731,6 +731,40 @@ CREATE INDEX meeting_handoffs_target ON meeting_handoffs(target_session_id);
   CHECK (advisor_json IS NULL OR (json_valid(advisor_json) AND json_type(advisor_json) = 'object'))`);
     },
   },
+  {
+    // A local host shares the Paddock: several owners may hold a copy as writers at once. The
+    // single writer of a server without sharing is kept by admission, not by the index.
+    name: '0045_shared_copy_writers',
+    sql: `DROP INDEX IF EXISTS workspace_access_writer;
+CREATE INDEX workspace_access_writer ON workspace_access(worktree_key)
+  WHERE writer=1 AND state IN ('active','uncertain');`,
+  },
+  {
+    // The development mode is gone, and nothing settles its owners any more: they are deleted with
+    // the copy access they held.
+    name: '0046_development_mode_removed',
+    sql: `DELETE FROM workspace_access WHERE owner_kind='user'
+  AND owner_id IN (SELECT operation_id FROM workbench_operations WHERE kind='development');
+DELETE FROM workbench_operations WHERE kind='development';`,
+  },
+  {
+    name: '0047_agent_library',
+    sql: `
+CREATE TABLE IF NOT EXISTS library_agents (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL REFERENCES projects(id),
+  revision INTEGER NOT NULL CHECK (revision >= 1),
+  role_json TEXT NOT NULL CHECK (json_valid(role_json) AND json_type(role_json) = 'object'),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  archived_at TEXT,
+  operation_id TEXT NOT NULL,
+  creation_role_json TEXT NOT NULL CHECK (json_valid(creation_role_json) AND json_type(creation_role_json) = 'object'),
+  UNIQUE (project_id, operation_id)
+) STRICT;
+CREATE INDEX IF NOT EXISTS library_agents_by_project ON library_agents (project_id, created_at, id);
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

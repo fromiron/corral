@@ -4,6 +4,8 @@ export interface LinuxProcessIdentity {
   startTicks: string;
   group: number;
   session: number;
+  /** The foreground process group of the process's controlling terminal (`tpgid`), -1 if none. */
+  terminalGroup: number;
   state: string;
 }
 
@@ -23,6 +25,7 @@ export function linuxProcessIdentity(pid: number): LinuxProcessIdentity | null {
       startTicks,
       group: Number(fields[2]),
       session: Number(fields[3]),
+      terminalGroup: Number(fields[5]),
       state,
     };
   } catch (error) {

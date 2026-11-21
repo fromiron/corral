@@ -152,9 +152,8 @@ async function mount(
   initiallyActive: RunSummary | null,
   initialQueue: SessionEntry[] = [],
   runs: RunSummary[] = [],
-  selectedRunId: string | null = null,
   mode: 'server' | 'browser' = 'server',
-  runControlsOwnConfirmation = false,
+  conversationInoperable = false,
   {
     session: change,
     ...extra
@@ -304,13 +303,12 @@ async function mount(
       root.render(
         <IntlProvider locale="en" messages={messages} timeZone="UTC">
           <Composer
-            runControlsOwnConfirmation={runControlsOwnConfirmation}
+            conversationInoperable={conversationInoperable}
             session={session}
             team={team}
             corrals={[team]}
             runs={runs}
             active={running}
-            selectedRunId={selectedRunId}
             queued={queued}
             onChange={() => {}}
             reference={null}
@@ -347,7 +345,7 @@ async function mount(
 }
 
 it('exposes the demo model picker as simulation without pretending a model is connected', async () => {
-  const f = await mount('demo_picker', null, [], [], null, 'browser');
+  const f = await mount('demo_picker', null, [], [], 'browser');
   await f.click(messages.Sessions.autoModel);
   expect(document.body.textContent).toContain(messages.Composer.modelPicker.demoEmpty);
   expect(document.querySelector('[role="option"]')).toBeNull();
@@ -483,7 +481,7 @@ it('leaves whole-run stop to the activity bar while composing a queued next requ
     references: [],
   });
   const ownRun = { ...active, sessionId };
-  const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId);
+  const f = await mount(sessionId, ownRun, [], [ownRun]);
   expect(f.container.querySelectorAll('textarea')).toHaveLength(1);
   expect(f.container.querySelector<HTMLTextAreaElement>('textarea')?.value).toBe(
     'After this, summarize the result',
@@ -505,7 +503,7 @@ it('leaves a pending whole-run confirmation to the visible run controls without 
   const key = `corral:cancel-confirmation:${ownRun.runId}`;
   window.sessionStorage.setItem(key, 'pending');
   try {
-    const f = await mount(sessionId, ownRun, [], [ownRun], ownRun.runId, 'server', true);
+    const f = await mount(sessionId, ownRun, [], [ownRun], 'server', true);
     expect(document.querySelector('[role="dialog"]')).toBeNull();
     expect(window.sessionStorage.getItem(key)).toBe('pending');
     expect(f.transport.sendCommand).not.toHaveBeenCalled();
@@ -628,7 +626,7 @@ it('removes one legacy same-name result while preserving the other exact draft r
   ).not.toBeNull();
 });
 
-it('names the viewed and active runs and that the request waits, without changing the draft', async () => {
+it('tells nothing of another run in the composer while a newer run goes, and keeps the draft', async () => {
   const sessionId = 'view_old_run';
   const current = { ...active, runId: 'second', sessionId };
   const previous = { ...current, runId: 'first', status: 'cancelled' as const };
@@ -639,10 +637,12 @@ it('names the viewed and active runs and that the request waits, without changin
     targetLabel: null,
     references: [],
   });
-  const f = await mount(sessionId, current, [], [previous, current], 'first');
-  expect(f.container.querySelector('[data-testid="viewed-run-warning"]')?.textContent).toContain(
-    'Viewing Run #1 while Run #2 is active',
-  );
+  const f = await mount(sessionId, current, [], [previous, current]);
+  // The conversation always speaks of the active run; the run record alone tells of a newer
+  // one while it shows a past run (workbench.md, features/execution-monitor.md).
+  expect(f.container.querySelector('[data-testid="viewed-run-warning"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Run #1');
+  expect(f.container.textContent).not.toContain(messages.RunPage.viewActiveRun);
   // A next request is picked for one send only, so the stored draft is not fixed to it: the
   // send key joins the active run, never the one being viewed (composer-flow.md "합류 대상").
   expect(f.container.querySelector('[data-testid="composer-destination"]')?.textContent).toBe(
@@ -659,7 +659,6 @@ it('names the selected run and role for an instruction', async () => {
     current,
     [],
     [{ ...current, runId: 'first', status: 'cancelled' }, current],
-    'second',
   );
   // While a run goes, Send joins the execution writing the answer (composer-flow.md "전송"):
   // no send mode to choose first.
@@ -886,7 +885,7 @@ it.each(['retry', 'queue'] as const)(
     writeComposerDraft(sessionId, draft);
     const run: RunSummary = { ...active, sessionId, status: 'cancelled' };
     const queued = queuedEntry(captured);
-    const f = await mount(sessionId, null, path === 'retry' ? [] : [queued], [run], run.runId);
+    const f = await mount(sessionId, null, path === 'retry' ? [] : [queued], [run]);
     if (path === 'retry') {
       f.session.entries.push({
         ...queued,
@@ -1082,7 +1081,7 @@ it('browsing an older run does not change the active instruction destination', a
     targetLabel: 'Writer',
     references: [],
   });
-  const f = await mount(sessionId, current, [], [previous, current], 'first');
+  const f = await mount(sessionId, current, [], [previous, current]);
   // The targets are the going run's, read from its live projection.
   expect(f.runFor).toHaveBeenCalledWith('second');
   expect(f.runFor).not.toHaveBeenCalledWith('first');
@@ -1135,7 +1134,7 @@ it('an empty session suggests up to four saved teams, and a chip sets the team t
     corralId: `team_${index + 1}`,
     name: `Team ${index + 1}`,
   }));
-  const f = await mount('home_teams', null, [], [], null, 'server', false, {
+  const f = await mount('home_teams', null, [], [], 'server', false, {
     home: true,
     corrals,
   });
@@ -1158,14 +1157,14 @@ it('an empty session suggests up to four saved teams, and a chip sets the team t
 });
 
 it('shows no start suggestions without saved teams or outside the empty session', async () => {
-  const empty = await mount('home_none', null, [], [], null, 'server', false, {
+  const empty = await mount('home_none', null, [], [], 'server', false, {
     home: true,
     corrals: [],
   });
   expect(
     empty.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
   ).toBeNull();
-  const busy = await mount('home_later', null, [], [], null, 'server', false, { home: false });
+  const busy = await mount('home_later', null, [], [], 'server', false, { home: false });
   expect(
     busy.container.querySelector(`[aria-label="${messages.Sessions.startSuggestions}"]`),
   ).toBeNull();
@@ -1439,7 +1438,7 @@ it('says nothing of the simulation under the input, on a server or in the demo',
   expect(server.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
   const footer = server.container.querySelector('[data-testid="composer-footer"]');
   expect(footer?.textContent ?? '').not.toContain(messages.Sessions.modeMock);
-  const demo = await mount('environment_demo', null, [], [], null, 'browser');
+  const demo = await mount('environment_demo', null, [], [], 'browser');
   expect(demo.container.querySelector('[data-testid="composer-environment"]')).toBeNull();
   expect(demo.container.textContent).toContain(messages.Composer.modelPicker.demo);
 });
@@ -1467,10 +1466,10 @@ it.each(['next', 'queue'] as const)(
     });
     const f =
       intent === 'next'
-        ? await mount(sessionId, null, [], [], null, 'server', false, {
+        ? await mount(sessionId, null, [], [], 'server', false, {
             session: { criteria: [criterion] },
           })
-        : await mount(sessionId, active, [], [], null, 'server', false, {
+        : await mount(sessionId, active, [], [], 'server', false, {
             session: { criteria: [criterion] },
           });
     await f.click('Send');

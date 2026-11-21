@@ -79,6 +79,18 @@ export function SettingsLifecycle({ children }: { children: ReactNode }) {
         JSON.stringify(current.search) === JSON.stringify(next.search)
       )
         return false;
+      // The page under the dialog changing its own address (the session panel's frame) does not
+      // leave the dialog: the same screen with its settings parameters as they are.
+      const settingsOf = (search: unknown) => {
+        const { settings, settingsProject } = search as Record<string, unknown>;
+        return JSON.stringify([settings, settingsProject]);
+      };
+      if (
+        current.pathname === next.pathname &&
+        (current.search as Record<string, unknown>).settings !== undefined &&
+        settingsOf(current.search) === settingsOf(next.search)
+      )
+        return false;
       return !(await confirm());
     },
     enableBeforeUnload: () =>

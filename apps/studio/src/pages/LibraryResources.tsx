@@ -27,7 +27,7 @@ import { type SettingsSection, useSettingsNavigation } from '../workbench/naviga
 // installation and unsaved-change protection stay in the settings dialog, which "Manage" opens
 // over this page (docs/specs/features/library.md). Rows never show local paths, sources or tokens.
 
-export const RESOURCE_GROUPS = ['skills', 'hooks', 'extensions', 'packages', 'mcp'] as const;
+export const RESOURCE_GROUPS = ['hooks', 'extensions', 'packages', 'mcp'] as const;
 export type ResourceGroup = (typeof RESOURCE_GROUPS)[number];
 
 /** Why a resource does not work as installed: a refusal, a judgment or a harness report code. */
@@ -61,7 +61,6 @@ export interface ResourceRow {
 
 /** The settings section that manages each group. */
 const SECTION: Record<ResourceGroup, SettingsSection> = {
-  skills: 'skills',
   hooks: 'hooks',
   extensions: 'hooks',
   packages: 'hooks',
@@ -91,10 +90,8 @@ function rootSkill(resource: HarnessResource) {
 
 export function entryRows(entries: HarnessEntryView[], group: ResourceGroup): ResourceRow[] {
   return entries
-    .filter((entry) =>
-      group === 'skills'
-        ? entry.kind === 'skill'
-        : entry.kind === 'extension' && madeInCorral(entry.resource) === (group === 'hooks'),
+    .filter(
+      (entry) => entry.kind === 'extension' && madeInCorral(entry.resource) === (group === 'hooks'),
     )
     .map((entry) => ({
       key: `${entry.resourceHash}:${entry.entry}`,
@@ -159,7 +156,13 @@ function map<T, U>(loaded: Loaded<T>, rows: (value: T) => U): Loaded<U> {
   return loaded.state === 'ready' ? { state: 'ready', value: rows(loaded.value) } : loaded;
 }
 
-export function LibraryResources({ projectId }: { projectId: string }) {
+export function LibraryResources({
+  projectId,
+  returnTo,
+}: {
+  projectId: string;
+  returnTo?: string | undefined;
+}) {
   const t = useTranslations('Library.resources');
   const { harnesses } = useServices();
   const [entries, retryEntries] = useLoaded(harnesses ? () => harnesses.entries() : null, [
@@ -173,7 +176,6 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     projectId,
   ]);
   const groups: Record<ResourceGroup, { rows: Loaded<ResourceRow[]>; retry: () => void }> = {
-    skills: { rows: map(entries, (value) => entryRows(value, 'skills')), retry: retryEntries },
     hooks: { rows: map(entries, (value) => entryRows(value, 'hooks')), retry: retryEntries },
     extensions: {
       rows: map(entries, (value) => entryRows(value, 'extensions')),
@@ -182,8 +184,6 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     packages: { rows: map(packages, packageRows), retry: retryPackages },
     mcp: { rows: map(mcp, mcpRows), retry: retryMcp },
   };
-  // Without the local server every group is the same one state, said once.
-  if (!harnesses) return <EmptyState title={t('localOnly')} />;
   const rowsOf = (group: ResourceGroup) => groups[group].rows;
   // A group is listed when it has rows or failed to load; a failure is never "none".
   const listed = RESOURCE_GROUPS.filter((group) => {
@@ -195,6 +195,29 @@ export function LibraryResources({ projectId }: { projectId: string }) {
     return rows.state === 'ready' && rows.value.length === 0;
   });
   const loading = RESOURCE_GROUPS.some((group) => rowsOf(group).state === 'loading');
+  const skillsLink = (
+    <div className="flex items-center border-b border-border py-1">
+      <Button
+        variant="ghost"
+        render={
+          <Link
+            to="/library/skills"
+            search={{ project: projectId, ...(returnTo ? { returnTo } : {}) }}
+          />
+        }
+      >
+        {t('openSkills')}
+      </Button>
+    </div>
+  );
+  // Availability is one state; the Skills link is navigation, not another resource group.
+  if (!harnesses)
+    return (
+      <div className="grid gap-4">
+        {skillsLink}
+        <EmptyState title={t('localOnly')} />
+      </div>
+    );
   if (!loading && listed.length === 0)
     return (
       <div className="grid justify-items-center gap-4">
@@ -202,10 +225,12 @@ export function LibraryResources({ projectId }: { projectId: string }) {
           <EmptyState title={t('emptyTitle')} />
         </div>
         <AddResources groups={empty} projectId={projectId} />
+        {skillsLink}
       </div>
     );
   return (
     <div className="flex flex-col gap-8">
+      {skillsLink}
       {listed.map((group) => (
         <ResourceSection
           key={group}
@@ -349,7 +374,7 @@ export function ResourceTable({
                 variant="ghost"
                 size="compact"
                 aria-label={t('manageNamed', { name: row.name })}
-                render={<Link {...navigation.link(SECTION[group], projectId)} />}
+                render={<Link {...navigation.link(SECTION[group], projectId, row.key)} />}
               >
                 {t('manage')}
               </Button>

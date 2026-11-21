@@ -16,26 +16,27 @@ export interface AdviceArrivalValue {
 /** The arrival the conversation's rows hear; null when nobody came to read an advice. */
 export const AdviceArrival = createContext<AdviceArrivalValue | null>(null);
 
+/** One time an address asked to read a run's advice: `n` tells two asks for the same run apart. */
+export interface AdviceRequest {
+  runId: string;
+  n: number;
+}
+
 /**
- * The arrival an address's `advice` asks for. Each time the address asks, the conversation is
- * brought to the front (`open`) and the address lets the request go (`consume`), so Back, a
- * reload or a remembered view never arrives again. The arrival stays until its row takes it.
+ * The arrival an address's `advice` asks for. The session frame brings the conversation to the
+ * front and lets the request go from the address in the same write that says what the panel
+ * shows (features/session-panel.md 대화를 앞으로 가져오기), so Back, a reload or a remembered view
+ * never arrives again; the frame hands each request over as it consumes it, and this keeps the
+ * arrival until its row takes it.
  */
-export function useAdviceArrivalRequest(
-  advice: string | undefined,
-  handlers: { open: () => void; consume: () => void },
-): AdviceArrivalValue | null {
+export function useAdviceArrivalRequest(request: AdviceRequest | null): AdviceArrivalValue | null {
   const [arrival, setArrival] = useState<{ runId: string; key: number } | null>(null);
   const count = useRef(0);
-  const latest = useRef(handlers);
-  latest.current = handlers;
   useEffect(() => {
-    if (!advice) return;
+    if (!request) return;
     count.current += 1;
-    setArrival({ runId: advice, key: count.current });
-    latest.current.open();
-    latest.current.consume();
-  }, [advice]);
+    setArrival({ runId: request.runId, key: count.current });
+  }, [request]);
   return useMemo(
     () =>
       arrival

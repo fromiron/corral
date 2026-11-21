@@ -2,10 +2,13 @@
 import type { ProjectSummary, WorkSession } from '@corral/core';
 import { act, type ComponentProps } from 'react';
 import { createRoot } from 'react-dom/client';
-import { IntlProvider } from 'use-intl';
+import { createTranslator, IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { Palette } from './CommandPalette.tsx';
+import { setCommands } from './commandRegistry.ts';
+import { composerCommands } from './workbench/session/composer/commands.ts';
 
 const fixture = vi.hoisted(() => ({
   navigate: vi.fn(async (_to: unknown) => {}),
@@ -25,6 +28,7 @@ const services = vi.hoisted(() => {
       list: async () => [],
       listProjects: async () => [],
       listSessions: async () => [],
+      save: vi.fn(async () => ({ ok: false, message: 'Must not save on entry' })),
     },
     transport: { listRuns: async () => [], getRunDefinition: async () => null },
   });
@@ -68,6 +72,7 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   fixture.navigate.mockClear();
   fixture.mode = 'server';
+  services.server.repository.save.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
 });
 afterEach(async () => {
@@ -75,7 +80,13 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(props: Partial<ComponentProps<typeof Palette>> = {}) {
+async function mount(
+  props: Partial<ComponentProps<typeof Palette>> = {},
+  { locale, catalogue }: { locale: 'en' | 'ko'; catalogue: typeof messages } = {
+    locale: 'en',
+    catalogue: messages,
+  },
+) {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -85,7 +96,7 @@ async function mount(props: Partial<ComponentProps<typeof Palette>> = {}) {
   });
   await act(async () => {
     root.render(
-      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <IntlProvider locale={locale} messages={catalogue} timeZone="UTC">
         <Palette
           onClose={() => {}}
           onHelp={() => {}}
@@ -125,6 +136,19 @@ it('searches the current project first and finds another project’s session by 
   expect(found).toContain('Beta');
   // Session search lists sessions only, never the palette's other commands.
   expect(options(container).some((text) => text?.includes('Open all projects'))).toBe(false);
+});
+
+it('opens a conversation it finds with neither panel nor compose, so the conversation restores its panel', async () => {
+  const container = await mount({ mode: 'sessions', initialQuery: 'Release checklist' });
+  const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+  if (!input) throw new Error('Missing palette input');
+  await act(async () => {
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+  });
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/sessions/$sessionId',
+    params: { sessionId: 'here' },
+  });
 });
 
 it('starts on all projects outside a project', async () => {
@@ -193,3 +217,94 @@ it('goes to Needs you, Library, Automation and feature previews, and starts a me
     window.removeEventListener('corral:new-meeting', listen);
   }
 });
+
+it.each([
+  ['New empty Corral', {}],
+  ['New Corral from template: Bug fix', { template: 'bug-fix' }],
+  ['Draft a Corral from a goal', { assistant: 1 }],
+] as const)('opens the unsaved editor for “%s” without writing a team', async (label, search) => {
+  const container = await mount({ initialQuery: label });
+  const option = [...container.querySelectorAll<HTMLElement>('[role="option"]')].find(
+    (row) => row.textContent === label,
+  );
+  expect(option).toBeTruthy();
+  await act(async () => {
+    option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+  });
+  expect(services.server.repository.save).not.toHaveBeenCalled();
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/corrals/new/edit',
+    search: { project: 'alpha', ...search },
+  });
+});
+
+it('omits unsaved team actions for an archived project', async () => {
+  const container = await mount({
+    projects: [{ ...project('alpha', 'Alpha'), archivedAt: createdAt }],
+  });
+  const labels = options(container);
+  expect(labels).not.toContain(messages.CommandPalette.newBlank);
+  expect(labels).not.toContain(messages.CommandPalette.draftTeam);
+  expect(labels.some((label) => label?.startsWith('New Corral from template:'))).toBe(false);
+});
+
+// glossary.md: the whole-run stop is named Stop the run / 실행 중지; the word it had before still
+// finds it, in either language.
+it.each([
+  ['en', messages],
+  ['ko', ko],
+] as const)(
+  'finds the run’s stop by “stop”, “중지” and “취소” in %s',
+  async (locale, catalogue) => {
+    const say = (namespace: string) => {
+      const t = createTranslator({ locale, messages: catalogue, namespace: namespace as never });
+      return (key: string, values?: Record<string, string | number>) =>
+        (t as unknown as (key: string, values?: Record<string, string | number>) => string)(
+          key,
+          values,
+        );
+    };
+    // The commands the composer registers while a conversation is open.
+    setCommands(
+      'composer',
+      composerCommands({
+        t: say('Sessions'),
+        tc: say('Composer'),
+        tr: say('Reins'),
+        tStatus: say('RunStatus'),
+        available: { queue: true, join: false, interrupt: false },
+        ownActive: null,
+        corrals: [],
+        chooseIntent: () => {},
+        focus: () => {},
+        run: () => {},
+        compact: () => {},
+        requestStop: () => {},
+        openTeam: () => {},
+        openModels: () => {},
+      }),
+    );
+    try {
+      const stop = catalogue.Reins.cancelRun;
+      for (const query of ['stop', '중지', '취소']) {
+        const container = await mount({}, { locale, catalogue });
+        const input = container.querySelector<HTMLInputElement>('input[role="combobox"]');
+        if (!input) throw new Error('Missing palette input');
+        await act(async () => {
+          Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set?.call(
+            input,
+            query,
+          );
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        // Each row's title, without the hint or slash beside it.
+        const titles = [...container.querySelectorAll('[role="option"] span.block')].map((title) =>
+          title.textContent?.trim(),
+        );
+        expect(titles, query).toContain(stop);
+      }
+    } finally {
+      setCommands('composer', null);
+    }
+  },
+);

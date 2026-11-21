@@ -6,7 +6,7 @@ React Studio, 명령·이벤트 Coordinator, SQLite 기록, Pi worker와 Electro
 
 ## 실행
 
-Node 24.15.0 이상인 24.x와 pnpm 10.30.3이 필요하다. 검증·CI 기준은 `.node-version`의 24.19.0이다.
+Node 26.13.1 이상인 26.x와 pnpm 10.34.9이 필요하다. 검증·CI 기준은 [`.node-version`](.node-version)에 고정한다.
 
 ```sh
 pnpm install --frozen-lockfile

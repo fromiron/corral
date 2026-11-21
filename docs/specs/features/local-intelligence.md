@@ -145,7 +145,7 @@ Then 상태는 설치 안 됨이고 판정 모델은 그대로다
 - 분석은 로컬에서 처리한다. 헬퍼는 최소 환경 변수로 실행하고 네트워크를 열지 않는다. 모델과 라이브러리는 manifest에 고정한 해시로만 불러온다.
 - 성능 참고치: 회의 분석 모델 256토큰의 warm p95가 CPU 150 ms, GPU 20 ms다. CPU 종류와 자원 상태에 따라 크게 달라지는 참고치이며 합격 기준이 아니다.
 - 라이브러리 사실
-  - LiteRT-LM C API: `litert-lm-api` 0.19.0 휠의 `liblitert-lm`. 내보내는 함수는 `LITERT_LM_C_API_1.0` 버전 태그가 붙어 있고, 임베딩 함수는 `c/embedding_engine.h`에 있다.
+  - LiteRT-LM C API는 [번들 manifest](../../../packages/local-intelligence/src/bundle.json)가 고정한 휠의 `liblitert-lm`을 사용한다. 내보내는 함수는 `LITERT_LM_C_API_1.0` 버전 태그가 붙어 있고, 임베딩 함수는 `c/embedding_engine.h`에 있다.
   - 회의 분석 모델: `litert-community/embeddinggemma-2-text-270m-litert-lm` 리비전 `9be6e8b90982095dc05c2bd162e4b954ee4dbac7`, Apache-2.0.
   - 접두어: `google/embeddinggemma-2`의 `config_sentence_transformers.json`.
 - 설정 패널은 기존 디자인 키트를 쓰고, 설치 진행과 상태는 status 영역에서 읽을 수 있게 한다.

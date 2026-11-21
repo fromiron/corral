@@ -175,7 +175,7 @@ const sessionFiles = fixture.files;
 async function panel(
   onOpenDocument: () => boolean,
   check: (container: HTMLDivElement) => Promise<void>,
-  readOnly = false,
+  onOpenOriginal?: (path: string) => boolean,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
@@ -190,7 +190,7 @@ async function panel(
             sessionId="session"
             onReference={() => {}}
             onOpenDocument={onOpenDocument}
-            readOnly={readOnly}
+            {...(onOpenOriginal ? { onOpenOriginal } : {})}
           />
         </IntlProvider>,
       );
@@ -235,7 +235,7 @@ it('a session-copy file opens as a document tab whatever it holds, so Files keep
   });
 });
 
-it('an original-folder file previews read-only inside Files, one at a time (#87)', async () => {
+it('an original-folder file opens its read-only 문서 tab and Files keeps no preview of it', async () => {
   fixture.files = {
     ...sessionFiles,
     scope: { kind: 'project', id: 'project' },
@@ -244,62 +244,53 @@ it('an original-folder file previews read-only inside Files, one at a time (#87)
     copy: null,
   } as unknown as typeof sessionFiles;
   fixture.open.mockClear();
-  const onOpenDocument = vi.fn(() => true);
-  await panel(onOpenDocument, async (container) => {
-    await click(container, 'a.md');
-    expect(onOpenDocument).not.toHaveBeenCalled();
-    expect(fixture.open).not.toHaveBeenCalled();
-    expect(container.querySelector('[role="tablist"]')).toBeNull();
-    const preview = container.querySelector('[data-testid="file-preview-pane"]');
-    expect(preview?.textContent).toContain('a.md');
-    expect(preview?.textContent).toContain(messages.Files.readOnlyPreview);
-    expect(preview?.querySelector('[data-source]')?.textContent).toBe('body of a.md');
-    await act(async () => {
-      preview?.querySelector<HTMLButtonElement>('button[aria-label="Close a.md"]')?.click();
-    });
-    expect(container.querySelector('[data-testid="file-preview-pane"]')).toBeNull();
-  });
-  fixture.files = sessionFiles;
-});
-
-it('the read-only viewer stays on the original folder even when a session copy is available', async () => {
-  fixture.files = sessionFiles;
-  fixture.open.mockClear();
   readFile.mockClear();
-  fixture.state = {
-    documents: {
-      'canonical-key': {
-        target: fixture.target,
-        path: 'note.txt',
-        file: { content: { kind: 'text', text: 'working copy text' } },
-        dirty: true,
-        pendingSave: null,
-        recoveries: [],
-      },
-    },
-  };
   const onOpenDocument = vi.fn(() => true);
+  const onOpenOriginal = vi.fn(() => true);
   await panel(
     onOpenDocument,
     async (container) => {
-      await click(container, 'note.txt');
-      expect(readFile).toHaveBeenCalledWith({ kind: 'project', id: 'project' }, 'note.txt');
-      expect(container.querySelector('[data-source]')?.textContent).toBe('body of note.txt');
-      expect(container.textContent).toContain(messages.Desktop.sourceFolder);
-      expect(container.textContent).toContain(messages.Files.readOnlyPreview);
-      expect(container.querySelector('[data-inline-editor]')).toBeNull();
-      expect(
-        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`),
-      ).toBeNull();
-      expect(
-        container.querySelector(`select[aria-label="${messages.ContentSearch.mode}"]`),
-      ).toBeNull();
-      expect(container.querySelector('a[href="/sessions/session?panel=changes"]')).toBeNull();
+      await click(container, 'a.md');
+      expect(onOpenOriginal).toHaveBeenCalledExactlyOnceWith('a.md');
       expect(onOpenDocument).not.toHaveBeenCalled();
       expect(fixture.open).not.toHaveBeenCalled();
+      // The tab reads the file; Files shows nothing of it.
+      expect(readFile).not.toHaveBeenCalled();
+      expect(container.querySelector('[data-testid="file-preview-pane"]')).toBeNull();
+      expect(container.querySelector('[data-source]')).toBeNull();
     },
-    true,
+    onOpenOriginal,
   );
+  fixture.files = sessionFiles;
+});
+
+const withoutCopy = () =>
+  ({
+    ...sessionFiles,
+    scope: { kind: 'project', id: 'project' },
+    list: { files: [{ path: 'a.md' }], truncated: false },
+    hasCopy: false,
+    copy: null,
+  }) as unknown as typeof sessionFiles;
+const refreshButtons = (container: HTMLElement) =>
+  container.querySelectorAll(`button[aria-label="${messages.Desktop.refreshFiles}"]`);
+
+it('without a Paddock the Files tab says why it is read-only and links to set up file work', async () => {
+  fixture.files = withoutCopy();
+  fixture.state = { documents: {} };
+  await panel(
+    () => true,
+    async (container) => {
+      expect(container.textContent).toContain(messages.Files.noCopyReadOnly);
+      const setup = container.querySelector('a[href="/sessions/session?panel=changes"]');
+      expect(setup?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+      expect(
+        container.querySelector(`select[aria-label="${messages.Desktop.fileSource}"]`)?.textContent,
+      ).toContain(messages.Desktop.sourceFolder);
+      expect(refreshButtons(container)).toHaveLength(1);
+    },
+  );
+  fixture.files = sessionFiles;
 });
 
 it.each([false, true])(

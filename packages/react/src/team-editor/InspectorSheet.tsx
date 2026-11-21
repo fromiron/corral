@@ -1,14 +1,46 @@
-import { type ControlEdge, type CorralNode, isWorkAgent, type TargetPort } from '@corral/contracts';
-import { type Diagnostic, outputPortsOf } from '@corral/core';
-import { type ReactNode, useId } from 'react';
+import {
+  type AgentRole,
+  type ControlEdge,
+  type CorralNode,
+  isWorkAgent,
+  type LibraryAgent,
+  type TargetPort,
+} from '@corral/contracts';
+import {
+  type Diagnostic,
+  inputPortsOf,
+  outputPortsOf,
+  type SharedOutriderTarget,
+} from '@corral/core';
+import { type ReactNode, useId, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { Button, Checkbox, Input, Select, Textarea, useSize } from '../design-kit/index.ts';
+import {
+  Button,
+  Checkbox,
+  Input,
+  Menu,
+  MenuItem,
+  MenuPopup,
+  MenuTrigger,
+  Select,
+  Textarea,
+  useSize,
+} from '../design-kit/index.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { cn } from '../design-kit/lib/utils.ts';
 import type { EditorDraft } from '../editor/model.ts';
 import type { EditorStore } from '../editor/store.ts';
-import { CircleAlert, ExternalLink, Plus, Trash2, TriangleAlert, X } from '../ui/icons.ts';
+import {
+  CircleAlert,
+  Ellipsis,
+  ExternalLink,
+  Pencil,
+  Plus,
+  Trash2,
+  TriangleAlert,
+  X,
+} from '../ui/icons.ts';
 import {
   applyPattern,
   checkPorts,
@@ -17,45 +49,61 @@ import {
   type Pattern,
   patchNode,
   patchTeam,
-  primaryIn,
   removeItems,
   type TeamReference,
   wrapIn,
 } from './commands.ts';
-import { KIND_ICON, kindOf } from './kinds.ts';
+import { KIND_ICON, kindOf, portText, roleOf } from './kinds.ts';
 import {
   type ImageProfileChoice,
   type LoopSettings,
   NodeSettings,
   type ProfileOption,
+  type RoleCapabilitySlot,
   type RoleSettings,
 } from './NodeSettings.tsx';
+import { SharedOutriderSettings } from './SharedOutriderSettings.tsx';
 import type { TeamSelection } from './TeamGraphCanvas.tsx';
 
 // The floating settings sheet: what the selection is, its settings, where it leads and what is
 // wrong with it; or the team's own settings; or every problem in the team. Every field writes
 // through the editor store, so undo covers it.
 
-export type SheetView = 'selection' | 'team' | 'problems';
+export type SheetView = 'selection' | 'team' | 'problems' | 'sharedOutrider';
 
 export interface InspectorSheetProps {
   editor: EditorStore;
   diagnostics: readonly Diagnostic[];
+  validationStatus?: string | undefined;
   selection: TeamSelection;
   view: SheetView;
+  onAddFirstAgent?: () => void;
+  onFixFlow?: () => void;
   profiles: ProfileOption[] | null;
   imageProfiles: readonly ImageProfileChoice[] | null;
   roleSettings?: RoleSettings | undefined;
+  roleSkills?: RoleCapabilitySlot | undefined;
+  roleTools?: RoleCapabilitySlot | undefined;
   loopSettings?: LoopSettings | undefined;
   /** Other saved teams at their latest revision, for reference teams. */
   teams: readonly TeamReference[];
+  outriderTargets: readonly SharedOutriderTarget[];
   onOpenTeam?: ((corralId: string) => void) | undefined;
-  /** Opens the roles to copy onto the selected agent. */
-  onImportRole?: (() => void) | undefined;
-  /** What the last edit left out, shown under the heading until the next edit. */
-  notice?: string | null | undefined;
+  /** Return focus to the seat menu trigger after the picker closes; its menu item is gone. */
+  onReplaceAgent?: ((nodeId: string, opener: HTMLElement | null) => void) | undefined;
+  onSaveAgent?:
+    | ((role: AgentRole, stepInstruction: string | undefined, opener: HTMLElement | null) => void)
+    | undefined;
+  agents?: readonly LibraryAgent[] | undefined;
+  presets?: readonly AgentRole[];
+  onShowInGraph?: ((nodeId: string) => void) | undefined;
   onSelect: (selection: TeamSelection) => void;
+  onTeamSettings: () => void;
   onClose: () => void;
+  /** A row under the canvas in the stacked editor, at its own height, instead of a floating card. */
+  stacked?: boolean;
+  /** Beside the composition list, at the full height of the column. */
+  docked?: boolean;
 }
 
 export const PATTERNS: readonly Pattern[] = ['reviewLoop', 'checkLoop', 'parallel'];
@@ -128,24 +176,39 @@ function IssueRow({ diagnostic, text }: { diagnostic: Diagnostic; text: string }
 export function InspectorSheet({
   editor,
   diagnostics,
+  validationStatus,
   selection,
   view,
+  onAddFirstAgent,
+  onFixFlow,
   profiles,
   imageProfiles,
   roleSettings,
+  roleSkills,
+  roleTools,
   loopSettings,
   teams,
+  outriderTargets,
   onOpenTeam,
-  onImportRole,
-  notice,
+  onReplaceAgent,
+  onSaveAgent,
+  agents,
+  presets,
+  onShowInGraph,
   onSelect,
   onClose,
+  onTeamSettings,
+  stacked = false,
+  docked = false,
 }: InspectorSheetProps) {
   const t = useTranslations('TeamEditor');
+  const ti = useTranslations('Inspector');
   const f = useTranslations('TeamEditor.fields');
   const portName = useTranslations('Canvas.ports');
   const codeText = useTranslations('Validation.codes');
+  const schemaText = useTranslations('Validation.schema');
   const size = useSize();
+  const menuTrigger = useRef<HTMLButtonElement>(null);
   const draft = useStore(editor, (s) => s.draft);
   const { definition } = draft;
   const apply = editor.getState().applyDraft;
@@ -155,10 +218,16 @@ export function InspectorSheet({
   };
   const nodes = new Map(definition.nodes.map((n) => [n.id, n]));
   const name = (nodeId: string) => nodes.get(nodeId)?.label ?? nodeId;
-  const issueText = (d: Diagnostic) =>
-    codeText.has(d.code)
+  const issueText = (d: Diagnostic) => {
+    const path =
+      d.schemaPath
+        ?.replace(/^nodes\.\d+\.inputBindings$/, 'inputBindings')
+        .replace(/^input\.(?:brief|criteria)(?:\.\d+)?$/, 'runInput') ?? '';
+    if (path && schemaText.has(path)) return schemaText(path);
+    return codeText.has(d.code)
       ? codeText(d.code, { message: d.message, node: d.nodeId ? name(d.nodeId) : '' })
       : d.message;
+  };
   const fixText = useTranslations('Validation');
   // A reviewer without the criteria: give it the run input that carries them.
   const giveCriteria = (nodeId: string) => {
@@ -202,13 +271,41 @@ export function InspectorSheet({
       </section>
     );
   };
+  const joinProblems = diagnostics
+    .filter(
+      (d): d is Diagnostic & { nodeId: string } =>
+        Boolean(d.nodeId) &&
+        [
+          'PARALLEL_MERGE_NEEDS_JOIN',
+          'PARALLEL_MIXED_ENTRY',
+          'PARALLEL_UNJOINED',
+          'JOIN_PARTIAL',
+          'JOIN_SPLIT',
+        ].includes(d.code),
+    )
+    .map((d) => (
+      <Button
+        key={`${d.code}-${d.nodeId}-${d.edgeId ?? ''}`}
+        variant="ghost"
+        size="compact"
+        className="h-auto justify-start whitespace-normal text-left"
+        onClick={() => onSelect({ nodes: [d.nodeId], edge: null })}
+      >
+        <TriangleAlert /> {name(d.nodeId)} · {issueText(d)}
+      </Button>
+    ));
   /** Applies an edit and selects what it made. */
   const run = (result: EditResult) => {
     if (!result.ok) return;
     apply(result.draft);
     onSelect(result.nodeId ? { nodes: [result.nodeId], edge: null } : { nodes: [], edge: null });
   };
+  const removeSelection = (ids: string[]) => {
+    apply(removeItems(draft, ids, outriderTargets));
+    onSelect({ nodes: [], edge: null });
+  };
   const structureActions = (ids: string[]) => {
+    if (docked) return null;
     const boxes =
       ids.length === 1 && ['loop', 'team'].includes(nodes.get(ids[0] as string)?.type ?? '');
     const actions = boxes
@@ -222,7 +319,7 @@ export function InspectorSheet({
           ...PATTERNS.map((pattern) => ({
             key: pattern,
             label: t(`patterns.${pattern}`),
-            result: applyPattern(draft, pattern, ids),
+            result: applyPattern(draft, pattern, ids, undefined, t('kinds.review')),
           })),
         ];
     return (
@@ -239,21 +336,11 @@ export function InspectorSheet({
               {action.label}
             </Button>
           ))}
-        {onImportRole && ids.length === 1 && isWorkAgent(nodes.get(ids[0] as string)) ? (
-          <Button variant="secondary" size="compact" onClick={onImportRole}>
-            {t('importRole')}
+        {ids.length > 1 || (!isWorkAgent(nodes.get(ids[0] as string)) && !onShowInGraph) ? (
+          <Button variant="secondary" size="compact" onClick={() => removeSelection(ids)}>
+            <Trash2 /> {ids.length > 1 ? t('deleteCount', { count: ids.length }) : t('delete')}
           </Button>
         ) : null}
-        <Button
-          variant="secondary"
-          size="compact"
-          onClick={() => {
-            apply(removeItems(draft, ids));
-            onSelect({ nodes: [], edge: null });
-          }}
-        >
-          <Trash2 /> {ids.length > 1 ? t('deleteCount', { count: ids.length }) : t('delete')}
-        </Button>
       </div>
     );
   };
@@ -267,23 +354,34 @@ export function InspectorSheet({
 
   if (view === 'problems') {
     title = t('problemsList');
-    body = diagnostics.length ? (
+    body = validationStatus ? (
+      <p className={cn(size.type.body, 'text-muted-foreground')}>{validationStatus}</p>
+    ) : diagnostics.length ? (
       <ul className="grid gap-1">
         {diagnostics.map((d, i) => {
+          const graphPath =
+            d.schemaPath &&
+            ['nodes', 'roles', 'entryNodeId', 'controlEdges'].includes(d.schemaPath);
+          const globalFix =
+            graphPath || d.code === 'ENTRY_INVALID' || d.code === 'NO_OUTPUT'
+              ? definition.nodes.length
+                ? onFixFlow
+                : onAddFirstAgent
+              : undefined;
           const edge = d.edgeId ?? d.linkId;
           return (
             // biome-ignore lint/suspicious/noArrayIndexKey: diagnostics have no id of their own.
             <li key={i}>
               <button
                 type="button"
-                disabled={!d.nodeId && !edge}
                 className={cn(
                   size.type.caption,
                   'flex w-full gap-1.5 rounded-md px-1.5 py-1 text-left enabled:hover:bg-hover',
                 )}
                 onClick={() => {
-                  if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
-                  else if (edge) onSelect({ nodes: [], edge });
+                  if (edge) onSelect({ nodes: [], edge });
+                  else if (d.nodeId) onSelect({ nodes: [d.nodeId], edge: null });
+                  else (globalFix ?? onTeamSettings)();
                 }}
               >
                 <IssueRow diagnostic={d} text={issueText(d)} />
@@ -297,6 +395,30 @@ export function InspectorSheet({
       </ul>
     ) : (
       <p className={cn(size.type.body, 'text-muted-foreground')}>{t('noProblems')}</p>
+    );
+    if (!definition.nodes.length && onAddFirstAgent) {
+      body = (
+        <div className="grid gap-2">
+          <Button size="compact" onClick={onAddFirstAgent}>
+            {t('fixEmptyGraph')}
+          </Button>
+          <details>
+            <summary className="cursor-pointer">{t('problemDetails')}</summary>
+            {body}
+          </details>
+        </div>
+      );
+    }
+  } else if (view === 'sharedOutrider') {
+    title = t('sharedOutrider.title');
+    body = (
+      <SharedOutriderSettings
+        key={JSON.stringify(definition.sharedOutrider ?? null)}
+        editor={editor}
+        targets={outriderTargets}
+        profiles={profiles}
+        onClose={onClose}
+      />
     );
   } else if (view === 'team') {
     title = t('teamSettings');
@@ -326,6 +448,7 @@ export function InspectorSheet({
         </Field>
         <Field label={f('brief')}>
           <Textarea
+            data-team-brief
             value={definition.input.brief}
             onChange={(e) => apply(patchTeam(draft, { brief: e.target.value }))}
             {...batch}
@@ -360,7 +483,10 @@ export function InspectorSheet({
           <dd>
             {from ? name(from) : ''}
             {edge ? (
-              <span className="text-muted-foreground"> · {portName(edge.sourcePort)}</span>
+              <span className="text-muted-foreground">
+                {' '}
+                · {portText(nodes.get(edge.source), edge.sourcePort, portName)}
+              </span>
             ) : null}
           </dd>
           <dt className="text-muted-foreground">{t('to')}</dt>
@@ -370,7 +496,44 @@ export function InspectorSheet({
               <span className="text-muted-foreground"> · {portName(edge.targetPort)}</span>
             ) : null}
           </dd>
+          <dt className="text-muted-foreground">{t('relationship')}</dt>
+          <dd>{t(`relationships.${link?.kind ?? 'control'}`)}</dd>
         </dl>
+        {edge ? (
+          <div className="grid gap-2">
+            {(['replace', 'parallel'] as const).map((action) => {
+              const replaceId = action === 'replace' ? edge.id : undefined;
+              const label = t(action === 'replace' ? 'changeTarget' : 'addParallel');
+              const options = targetOptions(
+                draft,
+                edge.source,
+                edge.sourcePort,
+                portName,
+                replaceId,
+              );
+              return (
+                <Select
+                  key={action}
+                  label={label}
+                  placeholder={label}
+                  value={null}
+                  disabled={!options.length}
+                  options={options}
+                  onValueChange={(value: string) => {
+                    const [target, targetPort] = value.split('\u0000') as [string, TargetPort];
+                    const result = connectPorts(
+                      editor.getState().draft,
+                      { source: edge.source, sourcePort: edge.sourcePort, target, targetPort },
+                      replaceId,
+                    );
+                    if (result.ok) apply(result.draft);
+                  }}
+                />
+              );
+            })}
+          </div>
+        ) : null}
+        {edge ? joinProblems : null}
         {issues([selection.edge])}
         <Button
           variant="secondary"
@@ -381,7 +544,7 @@ export function InspectorSheet({
             onSelect({ nodes: [], edge: null });
           }}
         >
-          <Trash2 /> {t('delete')}
+          <Trash2 /> {t('disconnect')}
         </Button>
       </>
     );
@@ -399,25 +562,70 @@ export function InspectorSheet({
     );
   } else if (single) {
     title = t(`kinds.${kindOf(single)}`);
+    const askTarget = outriderTargets.find((target) => target.nodeId === single.id);
+    const scope = definition.sharedOutrider?.targets;
     body = (
       <>
+        {!docked ? <Connections editor={editor} node={single} onSelect={onSelect} /> : null}
+        {isWorkAgent(single) ? issues([single.id]) : null}
+        {!docked && definition.controlEdges.some((edge) => edge.source === single.id)
+          ? joinProblems
+          : null}
+        {scope && askTarget ? (
+          <p className={cn(size.type.caption, 'text-muted-foreground')}>
+            {scope.kind === 'selected' && !scope.nodeIds.includes(single.id)
+              ? t('sharedOutrider.excluded')
+              : askTarget.unavailable
+                ? t(`sharedOutrider.limits.${askTarget.unavailable}`)
+                : askTarget.permissionPending
+                  ? t('sharedOutrider.permissionUnconfirmed')
+                  : t('sharedOutrider.canAsk')}
+          </p>
+        ) : null}
         <NodeSettings
+          key={single.id}
           editor={editor}
           node={single}
           profiles={profiles}
           imageProfiles={imageProfiles}
-          roleSettings={roleSettings}
+          roleSettings={(role, nodeId) => {
+            const origin = role.origin;
+            const source =
+              origin?.kind === 'library'
+                ? agents?.find((a) => a.agentId === origin.agentId)?.role.name
+                : origin && presets?.find((p) => p.id === origin.presetId)?.name;
+            return (
+              <>
+                {source && origin && (
+                  <p className="text-caption text-muted-foreground">
+                    {origin.kind === 'library'
+                      ? t('agentPicker.libraryOrigin', { name: source, revision: origin.revision })
+                      : t('agentPicker.presetOrigin', { name: source })}
+                  </p>
+                )}
+                {roleSettings?.(role, nodeId)}
+              </>
+            );
+          }}
+          roleSkills={roleSkills}
+          roleTools={roleTools}
           loopSettings={loopSettings}
+          onShowInGraph={
+            onShowInGraph ?? (docked ? undefined : (id) => onSelect({ nodes: [id], edge: null }))
+          }
         />
-        <MoreFields
-          editor={editor}
-          node={single}
-          teams={teams}
-          onOpenTeam={onOpenTeam}
-          batch={batch}
-        />
-        {issues([single.id])}
-        <Connections editor={editor} node={single} onSelect={onSelect} />
+        {!isWorkAgent(single) ? (
+          <>
+            <MoreFields
+              editor={editor}
+              node={single}
+              teams={teams}
+              onOpenTeam={onOpenTeam}
+              batch={batch}
+            />
+            {issues([single.id])}
+          </>
+        ) : null}
         {structureActions([single.id])}
       </>
     );
@@ -427,32 +635,95 @@ export function InspectorSheet({
   return (
     <aside
       aria-label={t('inspector')}
-      className="pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg"
+      className={
+        docked
+          ? 'flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden'
+          : stacked
+            ? 'flex w-full flex-col border-t border-border'
+            : 'pointer-events-auto flex h-full w-[344px] flex-col overflow-hidden rounded-xl border border-border bg-card shadow-lg'
+      }
     >
-      <header className="flex items-center gap-2 border-b border-border py-2 pr-2 pl-4">
-        {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
-        <h2
-          className={cn(size.type.body, 'grow truncate text-foreground')}
-          style={{ fontVariationSettings: fontWeights.semibold }}
-        >
-          {title}
-        </h2>
-        <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
-          <X />
-        </Button>
-      </header>
-      {notice ? (
-        <p
+      <header
+        className={cn(
+          'flex items-center border-b border-border px-4',
+          // In the work area its head is the same bar as the flow graph's palette row.
+          docked && !stacked ? 'min-h-[41px] py-1' : 'py-2',
+        )}
+      >
+        {/* The title and its actions keep the fields' column, so on a wide editor they stay
+          with the form instead of at the two ends of the work area. */}
+        <div
           className={cn(
-            size.type.caption,
-            'flex gap-1.5 border-b border-border px-4 py-2 text-foreground',
+            'flex min-w-0 grow items-center gap-2',
+            docked && !stacked && 'mx-auto max-w-[40rem]',
           )}
         >
-          <TriangleAlert size={14} aria-hidden className="mt-0.5 shrink-0 text-warning" />
-          {notice}
-        </p>
-      ) : null}
-      <div className="grid content-start gap-4 overflow-y-auto p-4">{body}</div>
+          {Icon ? <Icon size={14} aria-hidden className="text-muted-foreground" /> : null}
+          <h2
+            tabIndex={-1}
+            className={cn(size.type.body, 'grow truncate text-foreground')}
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </h2>
+          <div className="-me-2 flex items-center gap-2 empty:hidden">
+            {single && (docked || isWorkAgent(single) || onShowInGraph) ? (
+              <Menu>
+                <MenuTrigger
+                  ref={menuTrigger}
+                  aria-label={ti('seatActions')}
+                  render={<Button variant="ghost" size="icon-compact" />}
+                >
+                  <Ellipsis />
+                </MenuTrigger>
+                <MenuPopup align="end" aria-label={ti('seatActions')}>
+                  {isWorkAgent(single) && onReplaceAgent ? (
+                    <MenuItem onClick={() => onReplaceAgent(single.id, menuTrigger.current)}>
+                      {ti('replaceAgent')}
+                    </MenuItem>
+                  ) : null}
+                  {isWorkAgent(single) && onSaveAgent && roleOf(definition, single) ? (
+                    <MenuItem
+                      onClick={() => {
+                        const role = roleOf(definition, single);
+                        if (role) onSaveAgent(role, single.stepInstruction, menuTrigger.current);
+                      }}
+                    >
+                      {t('agentPicker.saveTitle')}
+                    </MenuItem>
+                  ) : null}
+                  {onShowInGraph ? (
+                    <MenuItem onClick={() => onShowInGraph(single.id)}>
+                      {ti('showInGraph')}
+                    </MenuItem>
+                  ) : null}
+                  <MenuItem onClick={() => removeSelection([single.id])}>{t('delete')}</MenuItem>
+                </MenuPopup>
+              </Menu>
+            ) : null}
+            {!(
+              docked &&
+              (stacked || (view === 'team' && !selection.nodes.length && !selection.edge))
+            ) ? (
+              <Button variant="ghost" size="icon-compact" aria-label={t('close')} onClick={onClose}>
+                <X />
+              </Button>
+            ) : null}
+          </div>
+        </div>
+      </header>
+      {/* Stacked, the editor scrolls, and the fields keep the kit's narrow measure. In the work
+        area the fields keep a reading measure in its middle, so a wide editor leaves the same
+        room on both sides instead of a void on one. */}
+      <div
+        className={cn(
+          'grid content-start gap-4 p-4',
+          stacked && !docked ? 'w-full max-w-[720px]' : 'overflow-y-auto',
+          docked && !stacked && 'justify-items-center [&>*]:w-full [&>*]:max-w-[40rem]',
+        )}
+      >
+        {body}
+      </div>
     </aside>
   );
 }
@@ -489,25 +760,7 @@ function MoreFields({
   );
   switch (node.type) {
     case 'agent':
-      return (
-        <>
-          {node.invocation === 'scheduled' ? (
-            <Field label={f('retry')}>
-              <Input
-                type="number"
-                min={0}
-                value={String(node.retry?.maxAttempts ?? 0)}
-                onChange={(e) => {
-                  const value = number(e.target.value) ?? 0;
-                  patch({ retry: value > 0 ? { maxAttempts: value } : undefined });
-                }}
-                {...batch}
-              />
-            </Field>
-          ) : null}
-          {note}
-        </>
-      );
+      return note;
     case 'decision':
       return (
         <>
@@ -661,6 +914,27 @@ function MoreFields({
 }
 
 /** Where a step leads, with a keyboard way to connect each output and to remove a connection. */
+function targetOptions(
+  draft: EditorDraft,
+  source: string,
+  sourcePort: string,
+  portName: (port: string) => string,
+  replaceEdgeId?: string,
+) {
+  return draft.definition.nodes.flatMap((target) =>
+    inputPortsOf(target)
+      .filter(
+        (targetPort) =>
+          checkPorts(draft, { source, sourcePort, target: target.id, targetPort }, replaceEdgeId)
+            .ok,
+      )
+      .map((targetPort) => ({
+        value: `${target.id}\u0000${targetPort}`,
+        label: targetPort === 'in' ? target.label : `${target.label} · ${portName(targetPort)}`,
+      })),
+  );
+}
+
 function Connections({
   editor,
   node,
@@ -681,33 +955,7 @@ function Connections({
   const ports = outputPortsOf(node);
   if (!ports.length) return null;
   const outgoing = definition.controlEdges.filter((e) => e.source === node.id);
-  const portLabel = (port: string) =>
-    node.type === 'decision' && node.mode === 'router'
-      ? (node.routes.find((r) => r.id === port)?.label ?? port)
-      : portName(port);
-  const targetsFor = (current: EditorDraft, port: string) =>
-    current.definition.nodes.flatMap((target) => {
-      const candidates: TargetPort[] =
-        target.type === 'loop'
-          ? ['enter', 'exit', 'repeat']
-          : target.type === 'team'
-            ? ['enter', 'exit']
-            : [primaryIn(target)].filter((p): p is TargetPort => p !== null);
-      return candidates
-        .filter(
-          (targetPort) =>
-            checkPorts(current, {
-              source: node.id,
-              sourcePort: port,
-              target: target.id,
-              targetPort,
-            }).ok,
-        )
-        .map((targetPort) => ({
-          value: `${target.id}\u0000${targetPort}`,
-          label: targetPort === 'in' ? target.label : `${target.label} · ${portName(targetPort)}`,
-        }));
-    });
+  const portLabel = (port: string) => portText(node, port, portName);
   const remove = (edge: ControlEdge) => apply(removeItems(draft, [edge.id]));
   return (
     <section className="grid gap-2" aria-label={t('connections')}>
@@ -719,7 +967,7 @@ function Connections({
       </h3>
       {ports.map((port) => {
         const edges = outgoing.filter((e) => e.sourcePort === port);
-        const options = targetsFor(draft, port);
+        const options = targetOptions(draft, node.id, port, portName);
         return (
           <div key={port} className="grid gap-1">
             {edges.map((edge) => (
@@ -739,6 +987,17 @@ function Connections({
                   ) : null}
                 </button>
                 <span className="grow" />
+                <Button
+                  variant="ghost"
+                  size="icon-compact"
+                  aria-label={t('editConnection', {
+                    source: node.label,
+                    target: name(edge.target),
+                  })}
+                  onClick={() => onSelect({ nodes: [], edge: edge.id })}
+                >
+                  <Pencil />
+                </Button>
                 <Button
                   variant="ghost"
                   size="icon-compact"

@@ -1,5 +1,5 @@
 import { type AgentRole, CorralDefinition } from '@corral/contracts';
-import { definitionHash } from '@corral/core';
+import { definitionHash, roleFromPreset } from '@corral/core';
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
@@ -17,7 +17,9 @@ import messages from '../src/messages/en.json' with { type: 'json' };
 import koMessages from '../src/messages/ko.json' with { type: 'json' };
 import { sessionStore } from '../src/stories/fixtures.tsx';
 import {
+  addAgent,
   applyPattern,
+  connectPorts,
   type EditResult,
   patchNode,
   placeStep,
@@ -72,8 +74,586 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
   // The list renders a moment after the click under load.
   await user.click(await screen.findByRole('option', { name: option }));
 };
+const writing = {
+  role: roleFromPreset('writer', 'writer', messages.TeamTemplates.presets.writer.name),
+  stepInstruction: messages.TeamTemplates.presets.writer.duty,
+  origin: { kind: 'preset' as const, presetId: 'writer' },
+};
+async function chooseWriting() {
+  await userEvent.click(
+    await within(screen.getByRole('dialog')).findByRole('button', { name: 'Writing' }),
+  );
+}
+async function replacementAction(sheet: HTMLElement, catalog = messages) {
+  await userEvent.click(within(sheet).getByRole('button', { name: catalog.Inspector.seatActions }));
+  return screen.findByRole('menuitem', { name: catalog.Inspector.replaceAgent });
+}
 
 describe('team editor', () => {
+  it('shows the first task sentence, not the base instructions, on a graph card', () => {
+    const { draft, nodeId } = ok(
+      addAgent(
+        emptyDraft(),
+        { ...writing, stepInstruction: 'Edit the story. Keep it short.' },
+        { kind: 'empty' },
+      ),
+    );
+    renderEditor(draft);
+    expect(canvasNode(nodeId)).toHaveTextContent('Edit the story.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent('Keep it short.');
+    expect(canvasNode(nodeId)).not.toHaveTextContent(writing.role.prompt);
+  });
+
+  it('configures and removes a required review for the shown output and producer in one edit', async () => {
+    const definition = chain(1);
+    const output = ok(placeStep(definition, 'output', { kind: 'after', nodeId: 'agent_1' }));
+    output.draft.definition.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check the evidence.',
+      targets: { kind: 'all' },
+    };
+    const editor = renderEditor(output.draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(output.nodeId));
+    const toggle = screen.getByRole('switch', { name: /submit after review passes/i });
+    expect(toggle).toHaveAccessibleDescription(/Agent 1/);
+    toggle.focus();
+    await user.keyboard(' ');
+    expect(screen.getByRole('switch', { name: /submit after review passes/i })).toBeChecked();
+    expect(editor.getState().past).toEqual([output.draft]);
+    await user.keyboard(' ');
+    expect(editor.getState().draft.definition.nodes.map((n) => n.id)).toEqual(
+      output.draft.definition.nodes.map((n) => n.id),
+    );
+  });
+
+  it('keeps artifact review off until requested and saves, reopens and undoes the exact setting', async () => {
+    const editor = renderEditor(chain(2));
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    const toggle = screen.getByRole('switch', { name: 'Artifact review' });
+    expect(toggle).toHaveAttribute('aria-checked', 'false');
+    toggle.focus();
+    await user.keyboard(' ');
+    expect(screen.getByText('On request')).toBeVisible();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const enabled = editor.getState().draft;
+    expect(enabled.definition.sharedOutrider?.artifactReview).toBe(true);
+    await user.click(screen.getByRole('button', { name: 'Outrider · Entire team' }));
+    const persisted = screen.getByRole('switch', { name: 'Artifact review' });
+    expect(persisted).toHaveAttribute('aria-checked', 'true');
+    persisted.focus();
+    await user.keyboard(' ');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft.definition.sharedOutrider).toEqual({
+      modelProfile: enabled.definition.sharedOutrider?.modelProfile,
+      principles: enabled.definition.sharedOutrider?.principles,
+      targets: { kind: 'all' },
+    });
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(enabled);
+  });
+
+  it('only checks the selected duplicate result and distinguishes both switches to a keyboard user', async () => {
+    const after = ok(placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' }));
+    const binding = { kind: 'task_output', name: 'final', sourceNodeId: 'agent_1' };
+    const draft = patchNode(after.draft, after.nodeId, {
+      inputBindings: [{ ...binding }, { ...binding }],
+    });
+    draft.definition.sharedOutrider = {
+      modelProfile: 'critic',
+      principles: 'Check the evidence.',
+      targets: { kind: 'all' },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(after.nodeId));
+    const switches = () => screen.getAllByRole('switch', { name: /submit after review passes/i });
+    expect(switches()[0]).toHaveAccessibleDescription(/Output input 1/);
+    expect(switches()[1]).toHaveAccessibleDescription(/Output input 2/);
+    switches()[1]!.focus();
+    await user.keyboard(' ');
+    expect(switches()[0]).not.toBeChecked();
+    expect(switches()[1]).toBeChecked();
+    expect(editor.getState().past).toEqual([draft]);
+    await user.keyboard(' ');
+    expect(switches()[1]).not.toBeChecked();
+  });
+
+  it('previews placement on a fan-out, cancels without history, then applies those exact transition edges once', async () => {
+    const base = chain(3);
+    const branch = base.definition.controlEdges[1];
+    if (!branch) throw new Error('fixture needs two connections');
+    const draft = {
+      ...base,
+      definition: {
+        ...base.definition,
+        controlEdges: [
+          ...base.definition.controlEdges.slice(0, 1),
+          { ...branch, source: 'agent_1' },
+        ],
+      },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode('agent_1'));
+    const palette = screen.getByRole('toolbar', { name: 'Steps' });
+    expect(within(palette).getByText('Add after Agent 1')).toBeVisible();
+    const add = within(palette).getByRole('button', { name: 'Add Agent' });
+    await user.click(add);
+    await chooseWriting();
+    const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() => expect(within(dialog).getByText(/Writing.*Agent 3/)).toBeVisible());
+    await waitFor(() => expect(within(dialog).getByText(/Writing.*Agent 2/)).toBeVisible());
+    expect(editor.getState().draft).toBe(draft);
+    await user.keyboard('{Escape}');
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(add);
+    await chooseWriting();
+    await user.click(
+      within(screen.getByRole('dialog', { name: 'Preview connections' })).getByRole('button', {
+        name: 'Apply',
+      }),
+    );
+    expect(editor.getState().draft).toEqual(
+      ok(addAgent(draft, writing, { kind: 'after', nodeId: 'agent_1' })).draft,
+    );
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(draft);
+  });
+
+  it('selects the intended incoming connection or explicitly adds an unconnected step at an Output', async () => {
+    const connected = ok(placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' })).draft;
+    const draft = {
+      ...connected,
+      definition: {
+        ...connected.definition,
+        controlEdges: [
+          ...connected.definition.controlEdges,
+          {
+            id: 'extra',
+            source: 'agent_1',
+            sourcePort: 'error' as const,
+            target: 'output_1',
+            targetPort: 'in' as const,
+          },
+        ],
+      },
+    };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const add = within(screen.getByRole('toolbar', { name: 'Steps' })).getByRole('button', {
+      name: 'Add Agent',
+    });
+    await user.click(canvasNode('output_1'));
+    await user.click(add);
+    await chooseWriting();
+    let dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: /Agent 1.*[Ee]rror.*Output/ }));
+    expect(editor.getState().draft).toEqual(
+      ok(addAgent(draft, writing, { kind: 'edge', edgeId: 'extra' })).draft,
+    );
+    act(() => editor.getState().undo());
+    await user.click(canvasNode('output_1'));
+    await user.click(add);
+    await chooseWriting();
+    dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    await user.click(within(dialog).getByRole('button', { name: 'Add without connecting' }));
+    expect(editor.getState().draft).toEqual(ok(addAgent(draft, writing, { kind: 'empty' })).draft);
+  });
+
+  it('previews placement that would disconnect a successor and a Loop boundary move from the keyboard', async () => {
+    const draft = ok(placeStep(chain(2), 'loop', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const selected = draft.definition.controlEdges[0];
+    if (!selected) throw new Error('fixture needs a connection');
+    const edge = document.querySelector(`[data-edge="${selected.id}"] path`);
+    if (!edge) throw new Error('missing selectable edge');
+    await act(async () => fireEvent.click(edge));
+    const palette = screen.getByRole('toolbar', { name: 'Steps' });
+    expect(within(palette).getByText('Add between Agent 1 and Agent 2')).toBeVisible();
+    await user.click(within(palette).getByRole('button', { name: 'Add Output' }));
+    let dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() =>
+      expect(within(dialog).getByText('Agent 1 · out → Agent 2 · in')).toBeVisible(),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    await user.click(canvasNode('agent_2'));
+    await user.keyboard('{Control>}k{/Control}');
+    await user.click(screen.getByRole('option', { name: /Move into Loop/ }));
+    dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    await waitFor(() =>
+      expect(within(dialog).getByText('Agent 1 · out → Agent 2 · in')).toBeVisible(),
+    );
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Preview wrapping in a new Loop' }),
+    );
+    expect(editor.getState().canUndo).toBe(false);
+    await user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft).toEqual(ok(wrapIn(draft, ['agent_2'], 'loop')).draft);
+  });
+
+  it('offers only a separate step for an Output with no incoming connection', async () => {
+    const output = ok(placeStep(emptyDraft(), 'output', { kind: 'empty' }));
+    const editor = renderEditor(output.draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(output.nodeId));
+    await user.click(screen.getByRole('button', { name: 'Find a step' }));
+    await user.click(await screen.findByRole('option', { name: /Add Agent/ }));
+    await chooseWriting();
+    const dialog = screen.getByRole('dialog', { name: 'Choose where to add the step' });
+    expect(within(dialog).queryByText('Insert before Output')).toBeNull();
+    await waitFor(() =>
+      expect(within(dialog).getByText('This Output has no incoming connection.')).toBeVisible(),
+    );
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(output.draft);
+    expect(editor.getState().canUndo).toBe(false);
+  });
+
+  it('previews only the affected decision port and leaves the other branch intact', async () => {
+    const rule = ok(placeStep(chain(3), 'rule', { kind: 'empty' }));
+    const edges = [
+      {
+        id: 'first',
+        source: rule.nodeId,
+        sourcePort: 'yes',
+        target: 'agent_1',
+        targetPort: 'in' as const,
+      },
+      {
+        id: 'second',
+        source: rule.nodeId,
+        sourcePort: 'yes',
+        target: 'agent_2',
+        targetPort: 'in' as const,
+      },
+      {
+        id: 'kept',
+        source: rule.nodeId,
+        sourcePort: 'no',
+        target: 'agent_3',
+        targetPort: 'in' as const,
+      },
+    ];
+    const draft = { ...rule.draft, definition: { ...rule.draft.definition, controlEdges: edges } };
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(rule.nodeId));
+    await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    await chooseWriting();
+    const dialog = screen.getByRole('dialog', { name: 'Preview connections' });
+    expect(within(dialog).queryByText(/Agent 3/)).toBeNull();
+    expect(within(dialog).getAllByRole('listitem')).toHaveLength(5);
+    await user.click(within(dialog).getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft.definition.controlEdges).toContain(edges[2]);
+    expect(editor.getState().draft).toEqual(
+      ok(addAgent(draft, writing, { kind: 'after', nodeId: rule.nodeId })).draft,
+    );
+  });
+
+  it.each([
+    ['en', messages],
+    ['ko', koMessages],
+  ] as const)('names new decision cards for the chosen kind in %s', async (locale, catalog) => {
+    const draft = patchNode(chain(1), 'agent_1', { label: 'Existing custom name' });
+    const editor = createEditorStore(draft);
+    render(
+      <IntlProvider locale={locale} messages={catalog}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    for (const kind of ['approval', 'rule', 'review'] as const) {
+      const title = catalog.TeamEditor.kinds[kind];
+      await userEvent.click(
+        screen.getByRole('button', { name: catalog.TeamEditor.addKind.replace('{kind}', title) }),
+      );
+      expect(editor.getState().draft.definition.nodes.at(-1)?.label).toEqual(title);
+    }
+    expect(editor.getState().draft.definition.nodes[0]?.label).toBe('Existing custom name');
+  });
+
+  it('puts connections and the task before materials and advanced settings, and watches before advisor permissions', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    renderEditor(draft);
+    const user = userEvent.setup();
+    const precedes = (first: Element, second: Element) =>
+      Boolean(first.compareDocumentPosition(second) & Node.DOCUMENT_POSITION_FOLLOWING);
+    await user.click(canvasNode('agent_1'));
+    const sheet = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.inspector }),
+    );
+    const connections = sheet.getByRole('region', { name: messages.TeamEditor.connections });
+    const task = sheet.getByRole('textbox', { name: messages.Inspector.task });
+    const inputs = sheet.getByRole('group', { name: messages.Inspector.receives });
+    const advanced = sheet.getByRole('button', { name: messages.Inspector.advanced });
+    expect(precedes(connections, task)).toBe(true);
+    expect(precedes(task, inputs)).toBe(true);
+    expect(precedes(inputs, advanced)).toBe(true);
+    await user.click(advanced);
+    expect(precedes(advanced, sheet.getByRole('group', { name: messages.Inspector.calls }))).toBe(
+      true,
+    );
+    await user.click(canvasNode(nodeId));
+    const watches = sheet.getByRole('group', { name: messages.Inspector.watches });
+    expect(precedes(watches, sheet.getByText(messages.Inspector.readTools))).toBe(true);
+  });
+
+  it('connects by card or keyboard, explains rejected destinations and cancels without history', async () => {
+    const draft = ok(placeStep(chain(1), 'agent', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode('agent_1'));
+    const start = () => user.click(screen.getByRole('button', { name: 'Connect next step' }));
+    await start();
+    await user.click(canvasNode('agent_1'));
+    expect(screen.getByText(messages.TeamEditor.rejected.selfConnection)).toBeVisible();
+    await user.keyboard('{Escape}');
+    expect(editor.getState().canUndo).toBe(false);
+    expect(canvasNode('agent_1')).toHaveFocus();
+    await start();
+    const target = screen.getByRole('button', { name: /Connect to Agent 2/ });
+    target.focus();
+    await user.keyboard('{Enter}');
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([
+      { source: 'agent_1', target: 'agent_2' },
+    ]);
+    expect(screen.queryByRole('button', { name: /Connect to Agent 2/ })).toBeNull();
+    expect(editor.getState().past).toEqual([draft]);
+  });
+
+  it('reads an authored router route on its line and in the selected connection', async () => {
+    const router = ok(placeStep(emptyDraft(), 'router', { kind: 'empty' }));
+    const draft = ok(
+      placeStep(router.draft, 'agent', { kind: 'after', nodeId: router.nodeId }),
+    ).draft;
+    const edge = draft.definition.controlEdges.find((e) => e.source === router.nodeId);
+    if (!edge) throw new Error('Expected the router’s first route');
+    renderEditor(draft);
+    const line = document.querySelector(`[data-edge="${edge.id}"]`);
+    if (!line) throw new Error('Missing route on canvas');
+    expect(within(line as HTMLElement).getByText('A')).toBeInTheDocument();
+    await userEvent.click(canvasNode(router.nodeId));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit connection from Router to Agent 1' }),
+    );
+    expect(screen.getByText(/· A$/)).toBeInTheDocument();
+  });
+
+  it('shows where to fix a required Join after a legal fan-out', async () => {
+    const chainToOutput = ok(placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }));
+    const result = ok(
+      connectPorts(chainToOutput.draft, {
+        source: 'agent_1',
+        sourcePort: 'out',
+        target: chainToOutput.nodeId,
+        targetPort: 'in',
+      }),
+    );
+    renderEditor(result.draft);
+    await userEvent.click(canvasNode('agent_1'));
+    const settings = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.inspector }),
+    );
+    const fix = settings.getAllByRole('button', { name: /Output.*Join/i })[0];
+    if (!fix) throw new Error('Missing Join location');
+    await userEvent.click(fix);
+    expect(canvasNode(chainToOutput.nodeId)).toHaveAttribute('aria-pressed', 'true');
+  });
+
+  it('shows the relationship and distinct replace and parallel actions for a selected control line', async () => {
+    const draft = ok(placeStep(chain(2), 'agent', { kind: 'empty' })).draft;
+    const editor = renderEditor(draft);
+    const [edge] = draft.definition.controlEdges;
+    if (!edge) throw new Error('Missing original connection');
+    await userEvent.click(canvasNode('agent_1'));
+    await userEvent.click(
+      screen.getByRole('button', { name: 'Edit connection from Agent 1 to Agent 2' }),
+    );
+    await waitFor(() => expect(screen.getByText('Runs next')).toBeVisible());
+    await choose('Change target', /Agent 3/);
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([
+      { id: edge.id, target: 'agent_3' },
+    ]);
+    await choose('Add parallel step', /Agent 2/);
+    expect(editor.getState().draft.definition.controlEdges).toHaveLength(2);
+    await userEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+    expect(editor.getState().draft.definition.controlEdges).toMatchObject([{ target: 'agent_2' }]);
+  });
+
+  it('configures the shared Outrider for all workers once, and cancels draft settings without an undo entry', async () => {
+    const draft = chain(2);
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    const open = () => user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    await open();
+    await user.clear(screen.getByRole('textbox', { name: 'Review principles' }));
+    await user.type(screen.getByRole('textbox', { name: 'Review principles' }), 'Discard this');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(draft);
+    expect(editor.getState().canUndo).toBe(false);
+
+    await open();
+    const principles = screen.getByRole('textbox', { name: 'Review principles' });
+    expect(principles).not.toHaveValue('Discard this');
+    await user.clear(principles);
+    expect(screen.getByRole('button', { name: 'Apply' })).toBeDisabled();
+    await user.type(principles, 'Check the evidence');
+    expect(screen.getByRole('radio', { name: 'Entire team' })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const applied = editor.getState().draft;
+    expect(applied.definition.sharedOutrider).toEqual({
+      modelProfile: 'model-a',
+      principles: 'Check the evidence',
+      targets: { kind: 'all' },
+    });
+    expect(applied.definition.nodes).toEqual(draft.definition.nodes);
+    expect(editor.getState().past).toEqual([draft]);
+
+    await user.click(screen.getByRole('button', { name: 'Outrider · Entire team' }));
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(editor.getState().draft).toBe(applied);
+    expect(editor.getState().past).toEqual([draft]);
+    act(() =>
+      editor.getState().applyDraft(ok(placeStep(applied, 'agent', { kind: 'empty' })).draft),
+    );
+    const outline = within(
+      screen.getByRole('complementary', { name: messages.TeamEditor.outline }),
+    );
+    await user.click(outline.getByRole('button', { name: 'Agent 3' }));
+    await waitFor(() => expect(screen.getByText('Can ask the shared Outrider')).toBeVisible());
+  });
+
+  it('shows selected shared Outrider workers, excludes observers, and removes and restores the settings in one undo', async () => {
+    const workers = patchNode(patchNode(chain(2), 'agent_1', { label: 'Writer' }), 'agent_2', {
+      label: 'Writer',
+    });
+    const draft = ok(placeStep(workers, 'observer', { kind: 'after', nodeId: 'agent_1' })).draft;
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: 'Add shared Outrider' }));
+    await user.click(screen.getByRole('radio', { name: 'Select workers' }));
+    await user.click(screen.getByRole('checkbox', { name: 'Writer (agent_1)' }));
+    expect(screen.queryByRole('checkbox', { name: /Outrider/ })).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    const configured = editor.getState().draft;
+    expect(configured.definition.sharedOutrider?.targets).toEqual({
+      kind: 'selected',
+      nodeIds: ['agent_1'],
+    });
+    await user.click(canvasNode('agent_2'));
+    await waitFor(() =>
+      expect(screen.getByText('Outside the shared Outrider’s scope')).toBeVisible(),
+    );
+    await user.click(screen.getByRole('button', { name: 'Outrider · 1 worker' }));
+    await user.click(screen.getByRole('button', { name: 'Remove shared Outrider' }));
+    expect(editor.getState().draft.definition).toEqual(draft.definition);
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(configured);
+    expect(screen.getByRole('button', { name: 'Outrider · 1 worker' })).toBeVisible();
+  });
+
+  it('explains in Korean why a worker cannot ask the shared Outrider when the question limit is zero', async () => {
+    const draft = chain(1);
+    const editor = createEditorStore({
+      ...draft,
+      definition: { ...draft.definition, limits: { ...draft.definition.limits, maxQuestions: 0 } },
+    });
+    render(
+      <IntlProvider locale="ko" messages={koMessages}>
+        <StudioStoresProvider editor={editor} session={sessionStore()}>
+          <TeamEditor editor={editor} />
+        </StudioStoresProvider>
+      </IntlProvider>,
+    );
+    const user = userEvent.setup();
+    await user.click(screen.getByRole('button', { name: '공통 Outrider 추가' }));
+    expect(screen.getByRole('radio', { name: '팀 전체' })).toHaveAttribute('aria-checked', 'true');
+    await waitFor(() => expect(screen.getByText('팀의 질문 한도가 0입니다.')).toBeVisible());
+    await user.click(screen.getByRole('radio', { name: '직접 선택' }));
+    expect(screen.getByRole('checkbox', { name: 'Agent 1' })).toHaveAttribute(
+      'aria-disabled',
+      'true',
+    );
+    expect(editor.getState().canUndo).toBe(false);
+  });
+
+  it('shows the actual output source and offers a separate edit after insertion', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(1), 'output', { kind: 'after', nodeId: 'agent_1' }),
+    );
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    await user.click(canvasNode('agent_1'));
+    await user.click(screen.getByRole('button', { name: 'Add Agent' }));
+    await chooseWriting();
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Use Writing’s result' }));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Writing');
+    act(() => editor.getState().undo());
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Agent 1');
+    act(() => editor.getState().undo());
+    expect(editor.getState().draft).toBe(draft);
+  });
+
+  it('keeps a source change local until applied and tracks a renamed source', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const editor = renderEditor(draft);
+    const user = userEvent.setup();
+    await user.click(canvasNode(nodeId));
+    await user.click(screen.getByRole('button', { name: 'Change result source' }));
+    await choose('Result source for text', 'Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().draft).toBe(draft);
+    act(() => editor.getState().applyDraft(patchNode(draft, 'agent_2', { label: 'Editor' })));
+    expect(canvasNode(nodeId)).toHaveTextContent('Result to receive · Editor');
+  });
+
+  it('repairs an empty output and explicitly chooses which of two named inputs to change', async () => {
+    const { draft, nodeId } = ok(
+      placeStep(chain(2), 'output', { kind: 'after', nodeId: 'agent_2' }),
+    );
+    const editor = renderEditor(patchNode(draft, nodeId, { inputBindings: [] }));
+    const user = userEvent.setup();
+    const input = async (button: string, name: string, producer: string) => {
+      await user.click(screen.getByRole('button', { name: button }));
+      const result = screen.getByRole('group', { name: 'Results to receive' });
+      const label = within(result).getByRole('textbox', { name: 'Name' });
+      await user.clear(label);
+      await user.type(label, name);
+      await choose(`Result source for ${name}`, producer);
+      await user.click(within(result).getByRole('button', { name: 'Apply' }));
+    };
+    expect(canvasNode(nodeId)).toHaveTextContent('Choose result to receive');
+    await user.click(canvasNode(nodeId));
+    await input('Choose result to receive', 'draft', 'Agent 1');
+    await input('Add result', 'proof', 'Agent 2');
+    expect(canvasNode(nodeId)).toHaveTextContent('Results to receive · 2');
+    await user.click(screen.getByRole('button', { name: 'Change source for proof' }));
+    await choose('Result source for proof', 'Agent 1');
+    await user.click(screen.getByRole('button', { name: 'Apply' }));
+    expect(
+      editor.getState().draft.definition.nodes.find((node) => node.id === nodeId),
+    ).toMatchObject({
+      inputBindings: [
+        { name: 'draft', kind: 'task_output', sourceNodeId: 'agent_1' },
+        { name: 'proof', kind: 'task_output', sourceNodeId: 'agent_1' },
+      ],
+    });
+  });
+
   it('puts the add button on the team row of the outline, with no heading over the outline', () => {
     renderEditor(chain(1));
     const outline = screen.getByRole('complementary', { name: messages.TeamEditor.outline });
@@ -158,6 +738,7 @@ describe('team editor', () => {
     const draft = patchNode(chain(3), 'agent_2', { invocation: 'callable' });
     renderEditor(draft);
     await act(async () => fireEvent.click(canvasNode('agent_3')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'From' })));
     const sources = screen.getAllByRole('option').map((o) => o.textContent);
     expect(sources).toContain('Agent 1');
@@ -183,6 +764,7 @@ describe('team editor', () => {
     });
     const editor = renderEditor(draft);
     await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await act(async () => fireEvent.click(screen.getByRole('combobox', { name: 'From' })));
     expect(screen.getAllByRole('option').map((o) => o.textContent)).toContain('Saved team');
     await act(async () =>
@@ -200,6 +782,7 @@ describe('team editor', () => {
   it('adds a specific-version input only with the version it names', async () => {
     const editor = renderEditor(chain(1));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.otherMaterial }));
     await choose('Kind', 'Specific version');
     const add = screen.getByRole('button', { name: 'Add' });
     expect(add.hasAttribute('disabled') || add.getAttribute('aria-disabled') === 'true').toBe(true);
@@ -234,6 +817,7 @@ describe('team editor', () => {
       { profileId: 'keyed:gpt-image-1', label: 'keyed:gpt-image-1 · gpt-image-1' },
     ]);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
     await act(async () => fireEvent.click(screen.getByRole('switch', { name: 'Generate images' })));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
@@ -250,6 +834,7 @@ describe('team editor', () => {
       { profileId: 'illustration', label: 'illustration · gpt-image-1' },
     ]);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     expect(screen.queryByRole('textbox', { name: /Image profile/ })).toBeNull();
     expect(screen.getByRole('combobox', { name: 'Image profile' }).textContent).toContain(
       `legacy_hand (${messages.Inspector.imageProfileMissing})`,
@@ -496,7 +1081,7 @@ describe('team editor: advisors', () => {
     ).toEqual(['Agent 1', 'Agent 2', 'Helper'].sort());
   });
 
-  it('shows no work style settings and no role import on an advisor sheet', async () => {
+  it('shows work style settings and replacement only on a work seat', async () => {
     const added = ok(placeStep(chain(2), 'observer', { kind: 'after', nodeId: 'agent_1' }));
     const editor = createEditorStore(added.draft);
     render(
@@ -507,11 +1092,17 @@ describe('team editor: advisors', () => {
       </IntlProvider>,
     );
     await act(async () => fireEvent.click(canvasNode('agent_1')));
-    expect(screen.getByText('Work style here')).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
+    await waitFor(() => expect(screen.getByText('Work style here')).toBeVisible());
+    const sheet = screen.getByRole('complementary', { name: messages.TeamEditor.inspector });
+    const replace = await replacementAction(sheet);
+    await waitFor(() => expect(replace).toBeVisible());
+    await userEvent.keyboard('{Escape}');
     await act(async () => fireEvent.click(canvasNode(added.nodeId)));
     expect(screen.queryByText('Work style here')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Import role…' })).toBeNull();
+    const actions = within(sheet).queryByRole('button', { name: messages.Inspector.seatActions });
+    if (actions) await userEvent.click(actions);
+    expect(screen.queryByRole('menuitem', { name: messages.Inspector.replaceAgent })).toBeNull();
   });
 
   it('adds an advisor from ⌘K watching a selected callable agent, not in the flow’s place', async () => {
@@ -531,6 +1122,7 @@ describe('team editor: advisors', () => {
   it('turns an agent into an advisor from its sheet', async () => {
     const editor = renderEditor(chain(2));
     await act(async () => fireEvent.click(canvasNode('agent_2')));
+    await userEvent.click(screen.getByRole('button', { name: messages.Inspector.advanced }));
     await act(async () =>
       fireEvent.click(screen.getByRole('radio', { name: messages.Inspector.observer })),
     );
@@ -541,7 +1133,7 @@ describe('team editor: advisors', () => {
   });
 });
 
-describe('team editor: importing a role', () => {
+describe('team editor: choosing an agent', () => {
   const releaseCheck: AgentRole = {
     id: 'release',
     name: 'Release check',
@@ -553,15 +1145,17 @@ describe('team editor: importing a role', () => {
     harness: { profileId: 'careful', revision: 2 },
   };
   const otherTeams: TeamReference[] = [
-    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', roles: [releaseCheck] },
+    { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', agents: [{ role: releaseCheck }] },
   ];
   const presetNames = [
+    'Design',
     'Implementation',
-    'Plan',
-    'Review',
     'Cause investigation',
-    'Correctness review',
-    'Security review',
+    'Review',
+    'Challenge',
+    'Verification',
+    'Judging',
+    'Explanation',
     'Research',
     'Writing',
   ];
@@ -590,31 +1184,30 @@ describe('team editor: importing a role', () => {
     renderWith(chain(2));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    expect(within(sheet).getByRole('button', { name: 'Import role…' })).toBeTruthy();
+    const replace = await replacementAction(sheet);
+    await waitFor(() => expect(replace).toBeVisible());
+    await userEvent.keyboard('{Escape}');
     await act(async () => fireEvent.keyDown(canvasNode('agent_1'), { key: 'k', ctrlKey: true }));
-    expect(screen.getByRole('option', { name: /Import role…/ })).toBeTruthy();
+    expect(screen.getByRole('option', { name: /Add Agent/ })).toBeTruthy();
+    expect(screen.queryByRole('option', { name: /Import role/ })).toBeNull();
   });
 
   it('lists the presets first, then the roles of the other saved teams', async () => {
     renderWith(chain(1));
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    await userEvent.click(await replacementAction(sheet));
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByRole('tab', { name: 'Built-in' })).toHaveAttribute('aria-selected', 'true');
+    expect(
+      dialog
+        .getAllByRole('listitem')
+        .map((li) => within(li).getByRole('button').getAttribute('aria-label')),
+    ).toEqual(presetNames);
+    await userEvent.click(dialog.getByRole('tab', { name: 'Other teams' }));
+    expect(dialog.getByRole('button', { name: 'Release check' })).toHaveAccessibleDescription(
+      /Harbor.*Check the release notes/,
     );
-    const groups = screen.getAllByRole('group').map((group) => ({
-      heading: group.getAttribute('aria-labelledby')
-        ? document.getElementById(group.getAttribute('aria-labelledby') as string)?.textContent
-        : null,
-      options: within(group)
-        .getAllByRole('option')
-        .map((o) => o.textContent),
-    }));
-    expect(groups.map((g) => g.heading)).toEqual(['Role presets', 'Harbor']);
-    expect(groups[0]?.options.map((o) => presetNames.find((name) => o?.startsWith(name)))).toEqual(
-      presetNames,
-    );
-    expect(groups[1]?.options).toEqual(['Release check']);
   });
 
   it('copies the chosen role onto the selected agent from the sheet', async () => {
@@ -622,15 +1215,33 @@ describe('team editor: importing a role', () => {
     const { editor } = renderWith(draft);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
-    );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    const preview = within(screen.getByRole('dialog'));
+    expect(
+      preview.getByRole('heading', { name: 'Replace with the agent “Release check”' }),
+    ).toBeVisible();
+    expect(preview.getByRole('heading', { name: 'What changes' })).toBeVisible();
+    expect(preview.getByText('Base instructions')).toBeVisible();
+    expect(preview.getByText('Result format')).toBeVisible();
+    expect(preview.queryByText('Role and source')).toBeNull();
+    expect(preview.getByRole('heading', { name: 'What stays' })).toBeVisible();
+    expect(preview.getByText(/Seat name, task, received materials, connections/)).toBeVisible();
+    expect(editor.getState().draft).toBe(draft);
+    await userEvent.click(preview.getByRole('button', { name: 'Cancel' }));
+    expect(editor.getState().past).toHaveLength(0);
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    await userEvent.click(screen.getByRole('button', { name: 'Replace' }));
+    expect(editor.getState().past).toEqual([draft]);
     const next = editor.getState().draft;
     expect(roleOf(next, 'agent_1')).toMatchObject({
       prompt: releaseCheck.prompt,
       outputContract: 'review',
       modelProfile: 'model-b',
+      harness: releaseCheck.harness,
     });
     expect(next.definition.nodes.find((n) => n.id === 'agent_1')?.label).toBe('Agent 1');
     expect(roleOf(next, 'agent_2')).toEqual(roleOf(draft, 'agent_2'));
@@ -640,18 +1251,23 @@ describe('team editor: importing a role', () => {
   });
 
   it('works from the keyboard alone and gives focus back to the editor', async () => {
-    const { editor, view } = renderWith(chain(1));
+    const before = chain(1);
+    const { editor, view } = renderWith(before);
     const user = userEvent.setup();
     await act(async () => canvasNode('agent_1').focus());
     await user.keyboard('{Enter}');
     expect(canvasNode('agent_1').getAttribute('aria-pressed')).toBe('true');
     await user.keyboard('{Control>}k{/Control}');
-    await user.keyboard('import');
+    await user.keyboard('add agent{Enter}');
+    const search = screen.getByRole('textbox', { name: 'Find an agent' });
+    await waitFor(() => expect(search).toHaveFocus());
+    await user.keyboard('release{Tab}{ArrowRight}');
+    expect(screen.getByRole('tab', { name: 'Other teams' })).toHaveFocus();
+    await user.keyboard('{Tab}');
+    expect(screen.getByRole('button', { name: /^Release check/ })).toHaveFocus();
     await user.keyboard('{Enter}');
-    expect(screen.getByRole('option', { name: 'Release check' })).toBeTruthy();
-    await user.keyboard('rel');
-    await user.keyboard('{Enter}');
-    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
+    expect(roleOf(editor.getState().draft, 'agent_1')).toBe(roleOf(before, 'agent_1'));
+    expect(roleOf(editor.getState().draft, 'agent_2')?.prompt).toBe(releaseCheck.prompt);
     await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
     expect(view.container.contains(document.activeElement)).toBe(true);
   });
@@ -664,12 +1280,12 @@ describe('team editor: importing a role', () => {
         ctrlKey: true,
       }),
     );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Import role…/ })));
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Plan' })));
+    await act(async () => fireEvent.click(screen.getByRole('option', { name: /Add Agent/ })));
+    await userEvent.click(screen.getByRole('button', { name: 'Design' }));
     const added = editor
       .getState()
       .draft.definition.nodes.find((n) => n.type === 'agent' && n.id !== 'agent_1');
-    expect(added?.label).toBe('Plan');
+    expect(added?.label).toBe('Design');
     expect(canvasNode(added?.id as string).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -677,17 +1293,19 @@ describe('team editor: importing a role', () => {
     renderWith(chain(1), { locale: 'ko' });
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: '설정' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: '역할 가져오기…' })),
-    );
-    const options = screen.getAllByRole('option').map((o) => o.textContent);
+    await userEvent.click(await replacementAction(sheet, koMessages));
+    const options = screen
+      .getAllByRole('listitem')
+      .map((li) => within(li).getByRole('button').getAttribute('aria-label'));
     for (const name of [
+      '설계',
       '구현',
-      '계획',
-      '검토',
       '원인 조사',
-      '정확성 검토',
-      '보안 검토',
+      '검토',
+      '반증',
+      '검증',
+      '심사',
+      '설명',
       '조사',
       '작성',
     ])
@@ -695,41 +1313,35 @@ describe('team editor: importing a role', () => {
     expect(options).not.toContain('Implementation');
   });
 
-  it('says once that a work style it could not resolve was left out', async () => {
-    const { editor } = renderWith(chain(2));
+  it('explains a refused replacement and retains the plan owner and draft', async () => {
+    const before = updateNode(chain(2), 'agent_1', { teamPlanOwner: true });
+    const { editor } = renderWith(before);
     await act(async () => fireEvent.click(canvasNode('agent_1')));
     const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
+    await userEvent.click(await replacementAction(sheet));
+    await userEvent.click(screen.getByRole('tab', { name: 'Other teams' }));
+    await userEvent.click(screen.getByRole('button', { name: /^Release check/ }));
+    expect(within(screen.getByRole('dialog')).getByRole('alert')).toHaveTextContent(
+      messages.TeamEditor.rejected.movePlanOwner,
     );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: 'Release check' })));
-    expect(roleOf(editor.getState().draft, 'agent_1')).not.toHaveProperty('harness');
-    const notices = screen
-      .getAllByRole('status')
-      .filter((s) => s.textContent?.includes('without its Harness'));
-    expect(notices).toHaveLength(1);
-    // The agent's sheet shows it under its heading.
-    expect(
-      within(screen.getByRole('complementary', { name: 'Settings' })).getAllByText(
-        /without its Harness/,
-      ),
-    ).toHaveLength(1);
-    // The next edit takes the notice away; it does not come back with redo.
-    await act(async () => editor.getState().undo());
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
-    await act(async () => editor.getState().redo());
-    expect(roleOf(editor.getState().draft, 'agent_1')?.prompt).toBe(releaseCheck.prompt);
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
+    expect(editor.getState().draft).toBe(before);
+    expect(editor.getState().past).toHaveLength(0);
+    expect(screen.getByText(messages.TeamEditor.rejected.movePlanOwner)).toBeTruthy();
   });
+});
 
-  it('says nothing when the role had no work style', async () => {
-    renderWith(chain(1));
-    await act(async () => fireEvent.click(canvasNode('agent_1')));
-    const sheet = screen.getByRole('complementary', { name: 'Settings' });
-    await act(async () =>
-      fireEvent.click(within(sheet).getByRole('button', { name: 'Import role…' })),
-    );
-    await act(async () => fireEvent.click(screen.getByRole('option', { name: /^Plan/ })));
-    expect(screen.queryAllByText(/without its Harness/)).toEqual([]);
+it('adds the first agent and then submits its output in one edit per action', async () => {
+  const editor = renderEditor(emptyDraft());
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: 'Add the first agent' }));
+  const [agent] = editor.getState().draft.definition.nodes;
+  expect(agent?.type).toBe('agent');
+  await user.click(screen.getByRole('button', { name: 'Use this result as the final output' }));
+  const { nodes, controlEdges } = editor.getState().draft.definition;
+  expect(nodes[1]).toMatchObject({
+    type: 'output',
+    inputBindings: [{ kind: 'task_output', sourceNodeId: agent?.id }],
   });
+  expect(controlEdges).toMatchObject([{ source: agent?.id, target: nodes[1]?.id }]);
+  expect(editor.getState().past).toHaveLength(2);
 });

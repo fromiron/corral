@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
+import { BUILTIN_SKILLS, Coordinator, InProcessTransport, waitForProjection } from '@corral/core';
 import { bundledManifest, runtimeTarget } from '@corral/local-intelligence';
 import { startCorralServer } from '@corral/server';
 import { openReadOnlyDatabase, SqliteRunStore } from '@corral/storage-sqlite';
@@ -24,6 +24,12 @@ function workspace() {
   const path = mkdtempSync(join(tmpdir(), 'corral-cli-'));
   directories.push(path);
   return path;
+}
+function studioFixture(cwd: string) {
+  const directory = join(cwd, 'studio');
+  mkdirSync(directory);
+  writeFileSync(join(directory, 'index.html'), '<head></head>');
+  return directory;
 }
 afterEach(() => {
   for (const path of directories.splice(0)) rmSync(path, { recursive: true, force: true });
@@ -46,9 +52,7 @@ describe('CLI command/query parity', () => {
     if (outputNode?.type === 'output') outputNode.requireApproval = true;
     const path = join(cwd, 'workflow.json');
     writeFileSync(path, JSON.stringify(definition));
-    const staticDir = join(cwd, 'studio');
-    mkdirSync(staticDir);
-    writeFileSync(join(staticDir, 'index.html'), '<head></head>');
+    const staticDir = studioFixture(cwd);
     const owner = await startCorralServer({
       workspace: cwd,
       port: 0,
@@ -120,7 +124,9 @@ describe('CLI command/query parity', () => {
       signal: new AbortController().signal,
     };
     expect(await runCli(['validate', path], io)).toBe(0);
-    expect(await runCli(['run', path, '--demo', '--port', '0'], io)).toBe(0);
+    expect(
+      await runCli(['run', path, '--demo', '--port', '0', '--static', studioFixture(cwd)], io),
+    ).toBe(0);
     expect(output.some((line) => line.includes('succeeded'))).toBe(true);
     const db = openReadOnlyDatabase(join(cwd, '.corral', 'corral.db'));
     const run = new SqliteRunStore(db).listRuns()[0];
@@ -160,6 +166,8 @@ describe('CLI command/query parity', () => {
           '--watch',
           '--port',
           '0',
+          '--static',
+          studioFixture(cwd),
         ],
         { cwd, stdio: ['ignore', 'pipe', 'pipe'] },
       );
@@ -436,6 +444,46 @@ describe('headless exec and eval (roadmap Core-③)', () => {
     expect(lines.join('\n')).toMatch(/\| single \|/);
     expect(lines.join('\n')).toMatch(/\| team \|/);
   });
+
+  // harness-contract.md, "그 밖에 쓸 수 있는 스킬": a `corral eval` run uses only what its
+  // definition fixes, while an ordinary run of the same definition gets the bundled library.
+  it('eval variants keep exactly the skills they define while bundled packs are installed', async () => {
+    const cwd = workspace();
+    const [picked] = BUILTIN_SKILLS;
+    if (!picked) throw new Error('no bundled skill');
+    const variant = (skills: { resourceHash: string; entry: string }[]) => {
+      const definition = linearCorral(['writer']);
+      definition.roles[0]!.skills = skills;
+      return definition;
+    };
+    writeFileSync(join(cwd, 'none.corral.json'), JSON.stringify(variant([])));
+    writeFileSync(
+      join(cwd, 'one.corral.json'),
+      JSON.stringify(variant([{ resourceHash: picked.resourceHash, entry: picked.entry }])),
+    );
+    writeFileSync(
+      join(cwd, 'suite.json'),
+      JSON.stringify({
+        schemaVersion: '0.1',
+        briefs: [{ id: 'answer', brief: 'Answer briefly.' }],
+        variants: [
+          { id: 'none', corral: 'none.corral.json' },
+          { id: 'one', corral: 'one.corral.json' },
+        ],
+      }),
+    );
+    await runCli(['eval', 'suite.json', '--demo', '--out', 'report.json'], io(cwd, []));
+    const report = JSON.parse(readFileSync(join(cwd, 'report.json'), 'utf8'));
+    const bound = (id: string) =>
+      report.results.find((row: { variant: string }) => row.variant === id)?.skillEvidence.bound;
+    expect(bound('none')).toEqual([]);
+    expect(bound('one')).toEqual([picked.name]);
+    const output: string[] = [];
+    await runCli(['exec', join(cwd, 'none.corral.json'), '--demo', '--json'], io(cwd, output));
+    expect(JSON.parse(output.at(-1) ?? '{}').skillEvidence.bound).toEqual(
+      [...new Set(BUILTIN_SKILLS.map((skill) => skill.name))].sort(),
+    );
+  }, 60_000);
 
   it('an invalid suite is refused before any run starts', async () => {
     const cwd = workspace();

@@ -173,7 +173,7 @@ it('an index conflict requests explicit refresh without silently changing the ca
   expect(gitDiff).toHaveBeenCalledTimes(1);
 });
 
-it('a missing session copy can explicitly switch to an unborn project without creating a copy', async () => {
+it('without a copy the Git view starts on the original, and Paddock can still be chosen without creating a copy', async () => {
   const project: GitStatus = {
     ...status(),
     target: { kind: 'project', hostId: 'host', projectId: 'project', bindingId: 'binding' },
@@ -192,22 +192,29 @@ it('a missing session copy can explicitly switch to an unborn project without cr
     return project;
   });
   const createWorktree = vi.fn();
-  // Without a copy the session's Git state is not requested at all (no failed request).
   const worktree = vi.fn(async () => null);
   const f = await mount({ gitStatus, createWorktree, worktree });
-  expect(f.container.textContent).toContain('Git.noSessionCopy');
+  // The original's state first, not Paddock over an empty view (workbench.md).
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
+  expect(f.container.querySelector('[role=combobox]')?.textContent).toContain('Git.projectSource');
+  expect(f.container.textContent).toContain('Git.unborn');
+  expect(f.container.textContent).toContain('Git.noUpstream');
+  // Paddock is still there to choose: without a copy nothing of it is read, and the copy setup
+  // above the view says so; this view says nothing of its own.
   await act(async () => f.container.querySelector<HTMLButtonElement>('[role=combobox]')?.click());
   const option = [...document.querySelectorAll<HTMLElement>('[role=option]')].find(
-    (item) => item.textContent === 'Git.projectSource',
+    (item) => item.textContent === 'Git.sessionSource',
   );
   expect(option).toBeDefined();
   await act(async () => option?.focus());
   await act(async () =>
     option?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true })),
   );
-  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
-  expect(f.container.textContent).toContain('Git.unborn');
-  expect(f.container.textContent).toContain('Git.noUpstream');
+  expect(f.container.querySelector('[role=combobox]')?.textContent).toContain('Git.sessionSource');
+  expect(gitStatus).toHaveBeenCalledTimes(1);
+  expect(f.container.querySelector('[role="status"]')).toBeNull();
+  expect(f.container.querySelector('[role="alert"]')).toBeNull();
+  expect(f.container.textContent).not.toContain('Git.unborn');
   expect(createWorktree).not.toHaveBeenCalled();
 });
 
@@ -249,7 +256,7 @@ it('workspace changes refresh an existing copy and trust without losing the draf
   sessionStorage.clear();
   let hasCopy = false;
   let trusted = false;
-  const gitStatus = vi.fn(async () => status());
+  const gitStatus = vi.fn(async (_scope: unknown) => status());
   const binding = vi.fn(async () => ({ trusted }));
   const gitChange = vi.fn(async () => {
     throw new Error('response lost');
@@ -260,12 +267,12 @@ it('workspace changes refresh an existing copy and trust without losing the draf
     gitChange,
     worktree: vi.fn(async () => (hasCopy ? { missing: false } : null)),
   });
-  expect(f.container.textContent).toContain('Git.noSessionCopy');
-  expect(gitStatus).not.toHaveBeenCalled();
+  // No copy: the original's Git is read first; nothing of the session's is read or offered.
+  expect(gitStatus.mock.calls.map((call) => call[0])).toEqual([{ kind: 'project', id: 'project' }]);
+  expect(control(f.container, 'Git.stage')).toEqual([]);
   hasCopy = true;
   trusted = true;
   await act(async () => window.dispatchEvent(new Event(WORKSPACE_CHANGED)));
-  expect(f.container.textContent).not.toContain('Git.noSessionCopy');
   expect(gitStatus).toHaveBeenCalledWith({ kind: 'session', id: 'session' });
   expect(control(f.container, 'Git.stage').length).toBeGreaterThan(0);
   const message = f.container.querySelector<HTMLTextAreaElement>(
@@ -339,6 +346,48 @@ it('a trusted copy stages a row and commits the confirmed staged list with one r
     staged: [path],
     runHooks: true,
   });
+});
+
+const commitField = (container: HTMLElement) =>
+  container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Git.commitMessage"]');
+async function typeInto(field: HTMLTextAreaElement | HTMLInputElement | null, value: string) {
+  expect(field).not.toBeNull();
+  await act(async () => {
+    const proto = field instanceof HTMLInputElement ? HTMLInputElement : HTMLTextAreaElement;
+    Object.getOwnPropertyDescriptor(proto.prototype, 'value')?.set?.call(field, value);
+    field?.dispatchEvent(new Event('input', { bubbles: true }));
+  });
+}
+
+it('keeps an unsent commit message for its conversation after the screen goes, until a commit lets it go (features/session-panel.md)', async () => {
+  sessionStorage.clear();
+  const workspaces = {
+    gitStatus: vi.fn(async () => status()),
+    binding: vi.fn(async () => ({ trusted: true })),
+    gitChange: vi.fn(async (_session: string, command: { operationId: string; kind: string }) => ({
+      operationId: command.operationId,
+      target: { ...target, kind: undefined },
+      kind: `git.${command.kind}`,
+      state: 'succeeded',
+      result: { kind: 'applied' },
+    })),
+  };
+  const first = await mount(workspaces);
+  await typeInto(commitField(first.container), 'Explain the change');
+  await act(async () => first.root.unmount());
+
+  const again = await mount(workspaces);
+  expect(commitField(again.container)?.value).toBe('Explain the change');
+  // Another conversation and back: still there.
+  await act(async () => again.render('other_session'));
+  await act(async () => again.render('session'));
+  await act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+  expect(commitField(again.container)?.value).toBe('Explain the change');
+  // Committed: it goes.
+  await act(async () => control(again.container, 'Git.commit')[0]?.click());
+  await act(async () => again.root.unmount());
+  const after = await mount(workspaces);
+  expect(commitField(after.container)?.value).toBe('');
 });
 
 it('the linked original and an untrusted copy offer no Git writes', async () => {

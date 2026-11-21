@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
+import { lastRunSucceeded, maximizePanel, panelTabNamed, restorePanel } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('extension input during an SDK run', () => {
@@ -126,7 +127,9 @@ test.describe('extension input during an SDK run', () => {
         await page.goto(
           `${corral.server.url}/sessions/${started.sessionId}?panel=run&run=${started.runId}&view=run`,
         );
-        // The record reads the request; the conversation's needed-now tray answers it.
+        // Maximized, the record has the room to read the request; its Respond restores the panel
+        // and the conversation's needed-now tray answers it.
+        await maximizePanel(page);
         const detail = page.getByTestId('run-monitor');
         await expect(detail.getByText('Continue the test run?', { exact: true })).toBeVisible();
         await detail.getByTestId('respond-in-conversation').click();
@@ -134,12 +137,23 @@ test.describe('extension input during an SDK run', () => {
         await expect(needsYou).toBeFocused();
         await expect(needsYou.getByText('Continue the test run?', { exact: true })).toBeVisible();
         await needsYou.getByRole('button', { name: 'Confirm', exact: true }).click();
-        // Back in the run's record, the answer stands as received.
-        await page.getByRole('tab', { name: 'Runs', exact: true }).click();
+        // The extension's notice stands in the conversation, where the person answered; the run's
+        // record beside it does not say it again.
+        await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-selected', 'true');
+        await expect(needsYou.getByText('Input received.', { exact: false })).toBeVisible();
+        await expect(
+          detail.getByText('Input received.', { exact: false }).filter({ visible: true }),
+        ).toHaveCount(0);
+        await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute('aria-description', 'Working');
+        // Maximized over the conversation, the record's response area opens once with it.
+        await maximizePanel(page);
         await expect(detail.getByText('Input received.', { exact: false })).toBeVisible();
-        await expect(page.getByTestId('run-status').first()).toContainText('Working');
+        await restorePanel(page);
         release();
-        await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+        await expect(lastRunSucceeded(page)).toBeVisible();
+        await expect(
+          page.getByText('Input received.', { exact: false }).filter({ visible: true }),
+        ).toHaveCount(0);
         await expect(page.getByRole('button', { name: 'Confirm', exact: true })).toHaveCount(0);
       } finally {
         release();
@@ -151,7 +165,7 @@ test.describe('extension input during an SDK run', () => {
   });
 });
 
-test('install, trust, save and preview a mandatory skill through Settings', async ({
+test('install, save and preview a mandatory skill through Settings, with no approval step', async ({
   page,
   corral,
 }) => {
@@ -180,7 +194,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await expect(
       page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
     ).toHaveCount(0);
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
     await page.getByRole('option', { name: 'Import folder', exact: true }).click();
     await page.getByLabel('Resource folder', { exact: true }).fill(source);
@@ -189,7 +203,8 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
+    // Saving to the library trusts the skill: nothing waits for approval.
+    await expect(page.getByRole('button', { name: 'Trust for use', exact: true })).toHaveCount(0);
     const projectId = await page.evaluate(async () => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       const response = await fetch('/api/v1/projects', {
@@ -262,7 +277,7 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await expect(page.getByLabel('Use skill writing', { exact: true })).toBeChecked();
     await page.goto(`${corral.server.url}/settings/skills`);
     await page.getByRole('button', { name: /^writing/ }).click();
-    await page.getByRole('button', { name: 'Edit a copy', exact: true }).click();
+    await page.getByRole('button', { name: 'Edit', exact: true }).click();
     await page
       .getByRole('textbox', { name: 'Source', exact: true })
       .fill(
@@ -272,10 +287,17 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust this content', exact: true }).click();
-    await page.getByRole('link', { name: 'Connect in Harnesses', exact: true }).click();
+    // The edited copy is trusted as it is saved, and not yet used. Its predecessor links directly
+    // to the policy to update.
+    await expect(page.getByRole('button', { name: 'Trust for use', exact: true })).toHaveCount(0);
+    const policies = page.getByRole('region', { name: 'Execution policies', exact: true });
+    await expect(policies).toContainText('No execution policies use this version.');
+    await page.getByRole('button', { name: 'Previous version', exact: true }).click();
+    await policies.getByRole('link', { name: 'Evidence writer · r1', exact: true }).click();
     await expect(page).toHaveURL(/settings=harness/);
-    await page.getByRole('button', { name: 'Evidence writer · r1', exact: true }).click();
+    await expect(
+      page.getByRole('button', { name: 'Evidence writer · r1', exact: true }),
+    ).toHaveAttribute('aria-pressed', 'true');
     const replacement = page.getByRole('checkbox', {
       name: 'Use skill writing',
       exact: true,
@@ -318,24 +340,28 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     expect(effective.sections[0]?.text).toContain('Always cite the revised source.');
 
     await page.goto(`${corral.server.url}/settings/skills`);
-    await page
-      .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 Harnesses' })
-      .filter({ hasNotText: 'An edited copy is available.' })
-      .click();
-    await page.getByRole('button', { name: 'Remove from list', exact: true }).click();
+    const currentWriting = page
+      .getByRole('row')
+      .filter({ has: page.getByRole('button', { name: /^writing/ }) })
+      .filter({ hasNotText: 'New version available' });
+    await currentWriting.getByRole('button').click();
+    await expect(page.getByRole('link', { name: 'Evidence writer · r2' })).toBeVisible();
+    await page.getByRole('button', { name: 'Archive', exact: true }).click();
     await confirm.getByRole('button', { name: 'Confirm', exact: true }).click();
+    await page.getByRole('switch', { name: 'Show archived items' }).click();
+    await page
+      .getByRole('row')
+      .filter({ hasText: 'Archived' })
+      .getByRole('button', { name: /^writing/ })
+      .click();
     await expect(page.getByRole('button', { name: 'Restore', exact: true })).toBeVisible();
     await expect(
       page.getByRole('combobox', { name: 'Configure usage for', exact: true }),
     ).toHaveCount(0);
     await page.getByRole('button', { name: 'Restore', exact: true }).click();
     await page.reload();
-    await page
-      .getByRole('button', { name: /^writing/ })
-      .filter({ hasText: 'Referenced by 1 Harnesses' })
-      .filter({ hasNotText: 'An edited copy is available.' })
-      .click();
+    await currentWriting.getByRole('button').click();
+    await expect(page.getByRole('link', { name: 'Evidence writer · r2' })).toBeVisible();
     await expect(page.getByText('Always cite the revised source.', { exact: false })).toBeVisible();
 
     expect(corral.errors).toHaveLength(1);

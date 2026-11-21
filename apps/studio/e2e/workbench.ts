@@ -1,4 +1,4 @@
-import { expect, type Page } from '@playwright/test';
+import { expect, type Locator, type Page } from '@playwright/test';
 import en from '../../../packages/react/src/messages/en.json' with { type: 'json' };
 
 /** The labels the search helpers use, from a locale's message catalog (English by default). */
@@ -22,7 +22,10 @@ type SearchLabels = {
  * person moving around does (a browser demo's runs and its `?delay` last until a reload); a
  * window without the sidebar loads the view's address instead.
  */
-export async function openLibrary(page: Page, view: 'Teams' | 'Templates' | 'Resources') {
+export async function openLibrary(
+  page: Page,
+  view: 'Teams' | 'Agents' | 'Templates' | 'Resources',
+) {
   const link = page.getByTestId('app-sidebar').getByRole('link', { name: 'Library', exact: true });
   const opener = page.getByRole('button', { name: 'Show the sidebar', exact: true });
   await expect(link.or(opener).first()).toBeVisible({ timeout: 20_000 });
@@ -42,7 +45,7 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
   if (!projectName) return;
   // The project filter shows once the library knows there is more than one project.
   const filter = page.getByRole('combobox', { name: 'Project', exact: true });
-  const loaded = page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true });
+  const loaded = page.getByRole('main').getByRole('link', { name: 'New Corral', exact: true });
   await expect(filter.or(loaded).first()).toBeVisible();
   if (!(await filter.isVisible())) return;
   if ((await filter.innerText()).includes(projectName)) return;
@@ -51,10 +54,35 @@ export async function openLibraryTeams(page: Page, projectName?: string) {
   await expect(filter).toContainText(projectName);
 }
 
-/** In the library's Teams view: makes an empty team and opens it in the editor. */
+/** First Save replaces the unsaved address; the returned editor owns a real team. */
+export async function saveNewTeam(page: Page) {
+  await expect(page).toHaveURL(/\/corrals\/new\/edit\?/);
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
+  await expect(page).toHaveURL(/\/corrals\/(?!new\/)[^/?#]+\/edit$/);
+}
+
+/** Close the initially open assistant to edit the new team by hand, even in a narrow sheet. */
+export const collapseTeamAssistant = (page: Page) =>
+  page.getByRole('button', { name: en.TeamAssistant.collapse, exact: true }).click();
+
+/** In the Teams view: save a team with a request and criterion, but no graph nodes. */
 export async function newTeam(page: Page) {
-  await page.getByRole('main').getByRole('button', { name: 'New Corral', exact: true }).click();
-  await expect(page).toHaveURL(/\/corrals\/[^/]+\/edit$/);
+  await page.getByRole('main').getByRole('link', { name: 'New Corral', exact: true }).click();
+  await collapseTeamAssistant(page);
+  await page
+    .getByRole('list', { name: en.Editor.composition, exact: true })
+    .getByRole('button', { name: /^Request\b/ })
+    .click();
+  const settings = editorSettings(page);
+  await settings
+    .getByRole('textbox', { name: 'Brief', exact: true })
+    .fill('Compare two options using primary sources.');
+  await settings.getByRole('textbox', { name: /^Criteria/ }).fill('Say which inputs were used.');
+  await saveNewTeam(page);
+  await expect(page.getByRole('tab', { name: en.Editor.composition, exact: true })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
 }
 
 /** The library's saved teams of the chosen project: the table's rows, each with its team. */
@@ -75,6 +103,13 @@ export async function chooseTeam(page: Page, name: string) {
   return detail;
 }
 
+/** Save the named library template as a team and stay in its editor. */
+export async function saveTemplateCopy(page: Page, name = 'Single agent') {
+  await openLibrary(page, 'Templates');
+  await page.getByRole('link', { name: `Edit a copy of ${name}`, exact: true }).click();
+  await saveNewTeam(page);
+}
+
 /** From a project page: makes a Corral from a template and comes back to the project. */
 export async function teamFromTemplate(page: Page, name = 'Single agent') {
   // `/` redirects to the project in the app; the project page is where this comes back to.
@@ -82,10 +117,7 @@ export async function teamFromTemplate(page: Page, name = 'Single agent') {
     timeout: 20_000,
   });
   const home = page.url();
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: `Edit a copy of ${name}`, exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
+  await saveTemplateCopy(page, name);
   // Back through the library to the project, as a person would.
   for (let step = 0; step < 4 && page.url() !== home; step++) await page.goBack();
   await expect(page).toHaveURL(home);
@@ -118,7 +150,7 @@ export async function newConversationFromSidebar(page: Page) {
 export async function openProject(page: Page, name?: string) {
   const switcher = page
     .getByRole('navigation', { name: 'Current location', exact: true })
-    .getByRole('button', { name: 'Go to project', exact: true });
+    .getByRole('button', { name: /^Go to project: / });
   if (name && !(await switcher.isVisible()))
     await page.getByTestId('app-sidebar').getByRole('link', { name, exact: true }).first().click();
   else {
@@ -336,52 +368,204 @@ export async function slash(page: Page, command: string) {
   await box.press('Enter');
 }
 
-/** Opens an existing session view, or its contextual file pane through the command palette. */
-export async function panelTab(page: Page, name: string) {
-  // Git, Checkpoints and Checks are sub-views of Changes, which opens on Review.
-  if (['Review', 'Git', 'Checkpoints', 'Checks'].includes(name)) {
-    await panelTab(page, 'Changes');
-    const sub = page
-      .getByRole('tablist', { name: 'Changes views', exact: true })
-      .getByRole('tab', { name, exact: true });
-    await sub.click();
-    await expect(sub).toHaveAttribute('aria-selected', 'true');
-    return;
-  }
-  const views = page.getByRole('tablist', { name: 'Conversation views', exact: true });
-  // A top bar too narrow for the tabs folds them into one menu of the same name.
-  const folded = page.getByRole('combobox', { name: 'Conversation views', exact: true });
-  await expect(views.or(folded).first()).toBeVisible();
-  const primary = name === 'Run' ? 'Runs' : name;
-  if (['Conversation', 'Runs', 'Changes'].includes(primary)) {
-    // The chosen view changes what the bar holds (a run view has no run pill), so the tabs may
-    // fold or return once it opens: either way the bar names it as the current view.
-    const chosen = folded
-      .filter({ hasText: primary })
-      .or(views.getByRole('tab', { name: primary, exact: true, selected: true }))
-      .first();
-    if (await folded.isVisible()) {
-      await folded.click();
-      // The menu always offers Conversation; once it is open, the wanted view is there or not.
-      await expect(page.getByRole('option', { name: /^Conversation\b/ })).toBeVisible();
-      // The Changes option may carry its count of changed files.
-      const option = page.getByRole('option', { name: new RegExp(`^${primary}\\b`) });
-      if (await option.count()) {
-        await option.click();
-        await expect(chosen).toBeVisible();
-        return;
-      }
-      await page.keyboard.press('Escape');
-    } else {
-      const tab = views.getByRole('tab', { name: primary, exact: true });
-      if (primary !== 'Changes' || (await tab.count())) {
-        await tab.click();
-        await expect(chosen).toBeVisible();
-        return;
-      }
-    }
-  }
-  // File work may not have a primary tab until first opened. The palette is always reachable.
+// The session screen (features/session-panel.md): the conversation is always on screen, and the
+// panel beside it holds closable tabs (Files, Changes, Run #n, Results) with a "+" list. The
+// panel is closed, beside, maximized, a drawer (no room) or withdrawn.
+
+/** The panel beside the conversation: a region named Panel while it is on screen. */
+export const sessionPanel = (page: Page) =>
+  page.getByRole('region', { name: 'Panel', exact: true });
+
+/** The panel's strip of open tabs. */
+const panelStrip = (page: Page) =>
+  sessionPanel(page).getByRole('tablist', { name: 'Panel tabs', exact: true });
+
+/** One open tab of the panel by its name: Files, Changes, Results, Run #n (Run until known). */
+export const panelTabNamed = (page: Page, name: string | RegExp) =>
+  panelStrip(page).getByRole('tab', typeof name === 'string' ? { name, exact: true } : { name });
+
+/** What the selected tab shows: the panel's tabpanel named after that tab. */
+export const panelContent = (page: Page, name: string | RegExp) =>
+  sessionPanel(page).getByRole(
+    'tabpanel',
+    typeof name === 'string' ? { name, exact: true } : { name },
+  );
+
+/** The top bar's panel toggle: pressed while the panel is on screen (beside, maximized, drawer). */
+export const panelToggle = (page: Page) =>
+  page.getByRole('banner').getByRole('button', { name: 'Show or hide the panel', exact: true });
+
+const RUN_TAB = /^Run( #\d+)?$/;
+/** The tab each item of the "+" list opens. */
+const PLUS_TAB = { Files: 'Files', Changes: 'Changes', Runs: RUN_TAB, Results: 'Results' };
+
+/** Waits until the panel's selected tab is the one named. */
+async function tabSelected(page: Page, name: string | RegExp) {
+  await expect(panelStrip(page).getByRole('tab', { selected: true })).toHaveAccessibleName(name);
+}
+
+/** A row of the run history: `#n · request`, or `Run #n` without one, then the run's state. */
+const historyRow = (number: number) => new RegExp(`^(?:#${number} · |Run #${number}(?:, |$))`);
+
+/**
+ * Chooses from the "+" list's Runs (features/session-panel.md "+" 목록). With one run it opens
+ * that run's tab. With more it lists every run, newest first, each named by its number and
+ * request and its state, and the row chosen opens or selects that run's tab; without a number
+ * the newest is chosen, the first row, numbered by how many runs there are.
+ */
+async function chooseFromRuns(page: Page, entry: Locator, run?: number) {
+  await expect(entry).toBeVisible();
+  const listed = (await entry.getAttribute('aria-haspopup')) !== null;
+  await entry.click();
+  let number = 1;
+  if (listed) {
+    const history = page.getByRole('menu', { name: 'Runs', exact: true });
+    const rows = history.getByRole('menuitem');
+    await expect(rows.first()).toBeVisible();
+    const count = await rows.count();
+    expect(count, 'a run history lists more than one run').toBeGreaterThan(1);
+    await expect(rows.first()).toHaveAccessibleName(historyRow(count));
+    number = run ?? count;
+    await history.getByRole('menuitem', { name: historyRow(number) }).click();
+  } else if (run !== undefined && run !== 1)
+    throw new Error(`Run #${run} asked for, and the conversation has one run`);
+  await tabSelected(page, `Run #${number}`);
+}
+
+/**
+ * Opens a tab from the panel's "+" list: Files, Changes, Runs (one run's tab: `run` names it, the
+ * newest without) or Results. A tab open already is selected. A panel not on screen is opened by
+ * its toggle first; an open panel without tabs offers the same list in its body.
+ */
+export async function openPanelTab(
+  page: Page,
+  item: keyof typeof PLUS_TAB,
+  { run }: { run?: number } = {},
+) {
+  const toggle = panelToggle(page);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+  const panel = sessionPanel(page);
+  // The panel shows one of two things, never both: its open tabs, whose head holds the "+" after
+  // the last tab, or no tabs, and then its body leads with the same list under one line.
+  const head = panel
+    .locator('[data-slot="tabs-closable"]')
+    .filter({ has: page.getByRole('tablist', { name: 'Panel tabs', exact: true }) });
+  const empty = panel.getByText('Nothing is open beside the conversation', { exact: true });
+  await expect(head.or(empty)).toBeVisible();
+  let entry: Locator;
+  if (await head.isVisible()) {
+    await head
+      .locator('[data-slot="tabs-closable-trailing"]')
+      .getByRole('button', { name: 'Open', exact: true })
+      .click();
+    entry = page.getByRole('menuitem', { name: item, exact: true });
+  } else
+    entry = empty.locator('..').getByRole('list').getByRole('button', { name: item, exact: true });
+  if (item === 'Runs') return chooseFromRuns(page, entry, run);
+  await entry.click();
+  await tabSelected(page, PLUS_TAB[item]);
+}
+
+/**
+ * Shows the folder tree: the tree column beside the selected document on a wide panel, else the
+ * Files tab (features/session-panel.md 파일 탭과 트리 열).
+ */
+export async function showTree(page: Page) {
+  const column = sessionPanel(page).getByRole('region', { name: 'Files', exact: true });
+  if (await column.isVisible()) return;
+  await selectPanelTab(page, 'Files');
+}
+
+/** Selects an open tab in the panel's strip. */
+export async function selectPanelTab(page: Page, name: string | RegExp) {
+  const tab = panelTabNamed(page, name);
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
+}
+
+/**
+ * Maximizes the panel with its head's button: the panel takes the work area and the conversation
+ * is hidden behind it. A maximized panel is left as it is.
+ */
+export async function maximizePanel(page: Page) {
+  const restore = sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true });
+  if (!(await restore.isVisible()))
+    await sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }).click();
+  await expect(restore).toHaveAttribute('aria-pressed', 'true');
+}
+
+/** Restores a maximized panel beside the conversation with its head's button. */
+export async function restorePanel(page: Page) {
+  await sessionPanel(page).getByRole('button', { name: 'Restore panel', exact: true }).click();
+  await expect(
+    sessionPanel(page).getByRole('button', { name: 'Maximize panel', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'false');
+}
+
+/**
+ * Closes the panel by its toggle, so the conversation has the work area to itself; the tabs stay
+ * for the next open. A panel already off screen (closed, or withdrawn for want of room) is left.
+ */
+export async function closePanel(page: Page) {
+  const toggle = panelToggle(page);
+  await expect(toggle).toBeVisible();
+  if ((await toggle.getAttribute('aria-pressed')) === 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+  await expect(sessionPanel(page)).toBeHidden();
+}
+
+/** The bottom dock under the conversation and the panel (session-panel.md 하단 도크). */
+export const bottomDock = (page: Page) =>
+  page.getByRole('region', { name: 'Bottom dock', exact: true });
+/** The top bar's button that opens and closes the bottom dock. */
+export const dockToggle = (page: Page) =>
+  page.getByRole('button', { name: 'Bottom dock', exact: true });
+
+/** Opens the bottom dock with its button; an open dock is left as it is. */
+export async function openDock(page: Page) {
+  const toggle = dockToggle(page);
+  if ((await toggle.getAttribute('aria-pressed')) !== 'true') await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+}
+
+/**
+ * The terminal tab's screen on screen, in the panel or the bottom dock: one terminal, its ⋯ menu
+ * and what is happening to it now. Its tab says its state.
+ */
+export const terminalScreen = (page: Page) => page.locator('[data-terminal-tab-screen]:visible');
+
+/** Chooses one of the terminal screen's ⋯ actions (Refresh terminals, Release input, …). */
+export async function terminalAction(page: Page, name: string | RegExp) {
+  await terminalScreen(page).getByRole('button', { name: 'Terminal actions', exact: true }).click();
+  await page.getByRole('menuitem', { name }).click();
+}
+
+/** The tab that holds each pane the palette opens; a terminal and the debugger have their own. */
+const PANE_TAB: Record<string, string | RegExp> = {
+  Files: 'Files',
+  Terminal: /^Terminal \d+$/,
+  Tasks: 'Tasks',
+  Preview: 'Tasks',
+  Debug: 'Debug',
+  Changes: 'Changes',
+  Git: 'Changes',
+  Checks: 'Changes',
+  Problems: 'Changes',
+  Results: 'Results',
+  Run: RUN_TAB,
+};
+
+/**
+ * Opens a pane with the command palette's "Open …" (Files, Terminal, Tasks, Preview, Debug,
+ * Changes, Git, Checks, Problems, Results, Run): the tab that holds it opens, or is selected, with
+ * that pane in front. The palette is there whatever the panel's state, with or without a folder.
+ * A terminal opens where its tab is (the panel or the bottom dock, made in the dock when it has
+ * none); the debugger opens in the bottom dock. Preview is the Tasks tab with Preview in front.
+ * Files beside an open document on a wide panel is the tree column, not a tab of the strip.
+ */
+export async function openPane(page: Page, name: keyof typeof PANE_TAB) {
   await page.keyboard.press('Control+k');
   const palette = page.getByRole('dialog', { name: 'Command palette' });
   await palette.getByRole('combobox', { name: 'Search commands' }).fill(`Open ${name}`);
@@ -389,19 +573,83 @@ export async function panelTab(page: Page, name: string) {
     .getByRole('option')
     .filter({ has: page.getByText(`Open ${name}`, { exact: true }) })
     .click();
+  await expect(palette).toBeHidden();
+  const tab = PANE_TAB[name] as string | RegExp;
+  if (name === 'Terminal') {
+    await expect(terminalScreen(page)).toBeVisible();
+    return;
+  }
+  if (name === 'Debug') {
+    await expect(
+      bottomDock(page)
+        .getByRole('tablist', { name: 'Bottom dock tabs', exact: true })
+        .getByRole('tab', { name: 'Debug', exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+    return;
+  }
+  if (tab === 'Files') {
+    // The Files tab selected, or the tree as the column beside the document selected instead.
+    const column = sessionPanel(page).getByRole('region', { name: 'Files', exact: true });
+    const selected = panelStrip(page).getByRole('tab', {
+      name: 'Files',
+      exact: true,
+      selected: true,
+    });
+    await expect(selected.or(column)).toBeVisible();
+    return;
+  }
+  await tabSelected(page, tab);
+  if (tab === 'Tasks') {
+    // The Tasks tab's own tabs: Tasks, or Preview in front.
+    const inner = name === 'Preview' ? 'Preview' : 'Tasks';
+    await expect(
+      panelContent(page, 'Tasks')
+        .getByRole('tablist', { name: 'Tasks', exact: true })
+        .getByRole('tab', { name: inner, exact: true }),
+    ).toHaveAttribute('aria-selected', 'true');
+  } else if (tab === 'Changes') {
+    // The Changes tab: its views (Review, Git, Checkpoints, Checks), or Problems in their place.
+    // Changes alone names no view: one chosen there in the meantime stays.
+    const changes = panelContent(page, 'Changes');
+    const views = changes.getByRole('tablist', { name: 'Changes views', exact: true });
+    const problems = changes.getByRole('region', { name: 'Problems', exact: true });
+    if (name === 'Problems') {
+      await expect(problems).toBeVisible();
+      await expect(views).toBeHidden();
+    } else {
+      await expect(views).toBeVisible();
+      await expect(problems).toBeHidden();
+      if (name !== 'Changes')
+        await expect(views.getByRole('tab', { name, exact: true })).toHaveAttribute(
+          'aria-selected',
+          'true',
+        );
+    }
+  }
+}
+
+/** Opens the Changes tab from "+" and one of its views (Review, Git, Checkpoints, Checks). */
+export async function openChangesView(page: Page, view: string) {
+  await openPanelTab(page, 'Changes');
+  const tab = panelContent(page, 'Changes')
+    .getByRole('tablist', { name: 'Changes views', exact: true })
+    .getByRole('tab', { name: view, exact: true });
+  await tab.click();
+  await expect(tab).toHaveAttribute('aria-selected', 'true');
 }
 
 /**
- * Chooses a run of the open session from the run segment of the top bar's path (run history),
- * where each run is named `#N · request`.
+ * Unfolds the review's file list and returns it. Narrower than its three columns, as in the panel
+ * beside the conversation, the review opens on its first changed file with the list folded into
+ * its head ("2 files"), and folds it again once a file is chosen.
  */
-export async function chooseRun(page: Page, number: number) {
-  await page
-    .getByRole('banner')
-    .locator('button[aria-haspopup="menu"]')
-    .filter({ hasText: /#\d+/ })
-    .click();
-  await page.getByRole('menuitemradio', { name: new RegExp(`#${number}\\b`) }).click();
+export async function showReviewFiles(page: Page) {
+  const files = page.getByRole('navigation', { name: 'Review changes', exact: true });
+  const fold = files.getByRole('button', { name: /^\d+ files?$/ });
+  await expect(fold).toBeVisible();
+  if ((await fold.getAttribute('aria-expanded')) !== 'true') await fold.click();
+  await expect(fold).toHaveAttribute('aria-expanded', 'true');
+  return files;
 }
 
 /** Shows the run workspace's Results view: every version the run made. */
@@ -452,26 +700,46 @@ export async function openActivity(page: Page) {
   await expect(toggle).toHaveAttribute('aria-expanded', 'true');
 }
 
-/** The run controls in the open activity panel: the row named Reins. */
+/**
+ * The run controls of the open activity bar, named Reins: on the bar's line when it has nothing
+ * else to say, else the panel's last row.
+ */
 export const runControls = (page: Page) =>
   activityBar(page).getByRole('region', { name: 'Reins', exact: true });
 
+/** Stop in Send's place: there while the run goes and nothing is written. */
+export const sendPlaceStop = (page: Page) => page.getByTestId('composer-stop');
+
 /**
- * Stops the session's run from the activity panel. Stop asks first only while two or more
- * executions work (composer-flow.md "활동 바"); when it asks, this confirms.
+ * Stops the session's run. Stop stands in one place (composer-flow.md "활동 바"): Send's place
+ * while nothing is written, the open bar's Reins controls while something is. Stop asks first
+ * only while two or more executions work; when it asks, this confirms.
  */
 export async function stopRun(page: Page) {
-  await openActivity(page);
-  await runControls(page).getByRole('button', { name: 'Stop', exact: true }).click();
-  const dialog = page.getByRole('dialog', { name: 'Cancel whole run', exact: true });
-  const asked = await dialog
+  // Something written puts Stop among the open bar's controls. A box read just after a send may
+  // still hold the sent words for a moment, so the press goes to whichever place has Stop then.
+  if ((await requestBox(page).inputValue()).trim()) await openActivity(page);
+  await sendPlaceStop(page)
+    .or(runControls(page).getByRole('button', { name: 'Stop', exact: true }))
+    .first()
+    .click();
+  const asked = await stopConfirmation(page)
     .waitFor({ state: 'visible', timeout: 2_000 })
     .then(() => true)
     .catch(() => false);
-  if (asked)
-    await dialog
-      .getByRole('button', { name: 'Confirm whole run cancellation', exact: true })
-      .click();
+  if (asked) await confirmStop(page);
+}
+
+/**
+ * The whole-run stop's confirmation: the composer's dialog, or a run tab head's popover, both
+ * named Stop the run. Its own answer carries the stop's name too, so it is found inside it.
+ */
+export const stopConfirmation = (page: Page) =>
+  page.getByRole('dialog', { name: 'Stop the run', exact: true });
+
+/** Confirms the whole-run stop the screen is asking about. */
+export async function confirmStop(page: Page) {
+  await stopConfirmation(page).getByRole('button', { name: 'Stop the run', exact: true }).click();
 }
 
 /**
@@ -503,6 +771,12 @@ export function lastRunSucceeded(page: Page) {
   return page.locator('[data-testid="activity-bar"][data-run="succeeded"]:not([data-live])');
 }
 
+/** Canvas tasks choose the graph explicitly, independently of a team's remembered view. */
+export async function openFlowGraph(page: Page) {
+  const tab = page.getByRole('tab', { name: en.Editor.graph, exact: true });
+  if ((await tab.getAttribute('aria-selected')) !== 'true') await tab.click();
+}
+
 /** The team editor's canvas and one of its steps. */
 export const teamCanvas = (page: Page) => page.locator('[data-team-canvas]');
 export const teamNode = (page: Page, nodeId: string) =>
@@ -510,13 +784,37 @@ export const teamNode = (page: Page, nodeId: string) =>
 /** The editor's settings sheet for the selection or the team. */
 export const editorSettings = (page: Page) => page.getByRole('complementary', { name: 'Settings' });
 
-/**
- * In a new team: an agent and an output after it. With the agent selected, the output is placed
- * after it and connected.
- */
-export async function addAgentAndOutput(page: Page) {
+/** Reveals a selected agent's model, permissions, execution policy and call links. */
+export async function openSeatAdvanced(page: Page) {
+  const advanced = editorSettings(page).getByRole('button', {
+    name: en.Inspector.advanced,
+    exact: true,
+  });
+  if ((await advanced.getAttribute('aria-expanded')) !== 'true') await advanced.click();
+}
+
+/** Add an ordinary seat; when adding at an Output, specify the placement choice explicitly. */
+export async function addCustomAgent(page: Page, name = 'Agent 1', atOutput?: 'unconnected') {
   await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByRole('button', { name: 'Create your own' }).click();
+  await dialog.getByLabel('Name', { exact: true }).fill(name);
+  await dialog
+    .getByLabel('Task', { exact: true })
+    .fill('Review the request and submit the result.');
+  await dialog.getByRole('button', { name: 'Add agent', exact: true }).click();
+  if (atOutput === 'unconnected') {
+    await page
+      .getByRole('dialog', { name: en.TeamEditor.placement.chooseTitle })
+      .getByRole('button', { name: en.TeamEditor.placement.standalone, exact: true })
+      .click();
+  }
+}
+
+/** The first agent in an empty team brings its connected final result. */
+export async function addAgentAndOutput(page: Page) {
+  await openFlowGraph(page);
+  await addCustomAgent(page);
   await expect(teamCanvas(page).locator('[data-edge]')).toHaveCount(1);
   await expect(page.getByRole('button', { name: 'No problems', exact: true })).toBeVisible();
 }
@@ -524,8 +822,8 @@ export async function addAgentAndOutput(page: Page) {
 /** Renames the team in its settings sheet. */
 export async function renameTeam(page: Page, name: string) {
   const settings = editorSettings(page);
-  if (!(await settings.getByRole('heading', { name: 'Limits and criteria' }).isVisible()))
-    await page.getByRole('button', { name: 'Limits and criteria', exact: true }).click();
+  if (!(await settings.getByRole('heading', { name: 'Team settings' }).isVisible()))
+    await page.getByRole('button', { name: 'Team settings', exact: true }).click();
   await settings.getByRole('textbox', { name: 'Name', exact: true }).fill(name);
 }
 
@@ -541,22 +839,26 @@ export async function expectTeamSaved(page: Page, version?: number) {
     await expect(page.getByTestId('revisions')).toHaveText(`Version ${version}`);
 }
 
-/** Opens the editor's test-run panel, which may already be open, and returns it. */
+/** Opens the editor's preparation panel without starting or changing a run. */
 export async function openTestRun(page: Page) {
-  const open = page.getByRole('button', { name: 'Test run', exact: true });
-  const close = page.getByRole('button', { name: 'Close test run', exact: true });
-  // The first page of a cold dev server can take a while.
-  await expect(open.or(close)).toBeVisible({ timeout: 20_000 });
-  if (await open.isVisible()) await open.click();
+  const options = page.getByRole('button', { name: 'Run options', exact: true });
+  await expect(options).toBeVisible({ timeout: 20_000 });
   const panel = page.getByRole('complementary', { name: 'Test run' });
+  if (!(await panel.isVisible())) {
+    await options.click();
+    await page.getByRole('menuitem', { name: 'Prepare a run', exact: true }).click();
+  }
   await expect(panel).toBeVisible();
   return panel;
 }
 
-/** Starts a test run from the editor's run panel. */
+/** Starts a mock test with one press (saving the draft first in server mode). */
 export async function startTestRun(page: Page) {
-  const panel = await openTestRun(page);
-  await panel.getByRole('button', { name: 'Run', exact: true }).click();
+  const start = page.getByRole('button', { name: /^(Mock test|Save and mock test)$/ });
+  await expect(start).toBeVisible({ timeout: 20_000 });
+  await start.click();
+  const panel = page.getByRole('complementary', { name: 'Test run' });
+  await expect(panel).toBeVisible();
   return panel;
 }
 

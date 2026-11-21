@@ -10,8 +10,8 @@ import { projectionWith, researchTeamDraft, sessionStore } from '../src/stories/
 
 beforeAll(() => {
   // The virtual list measures its scroll box; give it a size in jsdom.
-  vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(600);
-  vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(800);
+  vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(600);
+  vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockReturnValue({
     x: 0,
     y: 0,

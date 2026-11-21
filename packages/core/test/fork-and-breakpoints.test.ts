@@ -98,6 +98,8 @@ function runtime(options: { held?: Record<string, Gate>; decisions?: DecisionPol
     started.filter((s) => s.runId === runId).map((s) => s.input.nodeId);
   const inputOf = (runId: string, nodeId: string) =>
     started.find((s) => s.runId === runId && s.input.nodeId === nodeId)?.input;
+  const inputsOf = (runId: string, nodeId: string) =>
+    started.filter((s) => s.runId === runId && s.input.nodeId === nodeId).map((s) => s.input);
   const events = (runId: string) => store.readEvents(runId, 0);
   const submit = (runId: string, command: Record<string, unknown>) =>
     coordinator.submit({
@@ -116,6 +118,7 @@ function runtime(options: { held?: Record<string, Gate>; decisions?: DecisionPol
     nodesStarted,
     reached,
     inputOf,
+    inputsOf,
     events,
     submit,
     wait: (runId: string, until: (p: RunProjection) => boolean) =>
@@ -226,6 +229,43 @@ describe('fork', () => {
     const fork = await r.run('looped', 1, { forkFrom: { runId: source, nodeId: 'loop' } });
     expect((await r.wait(fork, finished)).status).toBe('succeeded');
     expect(r.nodesStarted(fork)).toEqual(['w', 'rv']);
+  });
+
+  it('a fork at a top-level Loop gives every round the copied earlier result and round 2 its round-1 draft', async () => {
+    // Each run's first round revises and its second passes.
+    const decided = new Set<string>();
+    const r = runtime({
+      decisions: {
+        decide: async ({ runId }) => {
+          if (decided.has(runId)) return 'pass';
+          decided.add(runId);
+          return 'revise';
+        },
+      },
+    });
+    const definition = looped();
+    const w = definition.nodes.find((n) => n.id === 'w');
+    if (w?.type === 'agent' && w.invocation !== 'observer')
+      w.inputBindings.push({ kind: 'task_output', name: 'before', sourceNodeId: 'start' });
+    r.save('looped', 1, definition);
+    const source = await r.run('looped', 1);
+    expect((await r.wait(source, finished)).status).toBe('succeeded');
+    const fork = await r.run('looped', 1, { forkFrom: { runId: source, nodeId: 'loop' } });
+    const final = await r.wait(fork, finished);
+    expect(final.status).toBe('succeeded');
+    expect(final.nodeExecutions.start).toBeUndefined();
+    const [copy] = forkedFrom(r.events(fork))?.carried ?? [];
+    expect(copy?.nodeId).toBe('start');
+    const [w1, w2] = r.inputsOf(fork, 'w');
+    const versions = (input: AgentStartInput | undefined, name: string) =>
+      input?.inputs.flatMap((i) => (i.name === name ? [i.artifactVersionId] : [])) ?? [];
+    expect(versions(w1, 'before')).toEqual(copy?.artifactVersionIds);
+    expect(versions(w1, 'draft')).toEqual([]);
+    expect(versions(w2, 'before')).toEqual(copy?.artifactVersionIds);
+    const [firstWrite] = final.nodeExecutions.w ?? [];
+    expect(versions(w2, 'draft')).toEqual(
+      final.tasks[final.executions[firstWrite ?? '']?.taskId ?? '']?.submittedArtifactVersionIds,
+    );
   });
 
   it('refuses a step inside a parallel branch or a Loop, an Output, a callable Agent and an unknown step', async () => {

@@ -436,3 +436,29 @@ it('a request whose run is on its way to the run list keeps the run row’s plac
   });
   expect(steer.container.querySelector('[data-presence-label="run:run_new"]')).toBeNull();
 });
+
+it('a sent request shows its page notes as what they carried, apart from its other attachments', async () => {
+  const note = createTextAttachment(
+    'annotation.json',
+    'application/json',
+    JSON.stringify({
+      page: { kind: 'page', origin: 'https://shop.example', path: '/cart' },
+      element: { tag: 'button', label: 'button.pay 120×32', selector: 'body > button' },
+      styles: [],
+    }),
+    {
+      kind: 'page',
+      origin: 'https://shop.example',
+      path: '/cart',
+      pickedAt: '2026-11-18T12:00:00.000Z',
+      generation: 2,
+    },
+  );
+  const notes = createTextAttachment('notes.md', 'text/markdown', 'plain notes');
+  const { container } = await show(entry({ attachments: [note, notes] }));
+  const listed = [...container.querySelectorAll('[data-testid="text-attachments"] li')].map(
+    (item) => item.textContent,
+  );
+  expect(listed).toEqual(['notes.md']);
+  expect(container.textContent).toContain('button.pay 120×32');
+});

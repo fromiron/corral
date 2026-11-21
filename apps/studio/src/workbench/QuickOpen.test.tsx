@@ -1,13 +1,13 @@
 // @vitest-environment jsdom
 import type { WorkspaceTarget } from '@corral/contracts';
-import { act, createRef } from 'react';
+import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createStore } from 'zustand/vanilla';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { DockWorkbench, type DockWorkbenchHandle } from './docking/DockWorkbench.tsx';
 import { documentKey } from './documents/store.ts';
+import type { OpenDocumentRequest } from './FilePanel.tsx';
 import { openQuickOpen, QuickOpen, SEARCH_DELAY } from './QuickOpen.tsx';
 import { TopbarSlotContext } from './TopbarSlot.tsx';
 
@@ -110,7 +110,7 @@ afterEach(async () => {
   localStorage.clear();
 });
 
-async function mount({ withDock = false } = {}) {
+async function mount() {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -118,15 +118,12 @@ async function mount({ withDock = false } = {}) {
     await act(async () => root.unmount());
     container.remove();
   });
-  const dock = createRef<DockWorkbenchHandle>();
-  const openDocument = vi.fn((input: Parameters<DockWorkbenchHandle['openDocument']>[0]) =>
-    withDock ? (dock.current?.openDocument(input) ?? false) : true,
-  );
+  const openDocument = vi.fn((_input: OpenDocumentRequest) => true);
   const showInFiles = vi.fn();
   await act(async () => {
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: null, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: null, crumbs: null }}>
           <button type="button" data-testid="opener" onClick={() => openQuickOpen()}>
             open
           </button>
@@ -136,17 +133,6 @@ async function mount({ withDock = false } = {}) {
             openDocument={openDocument}
             showInFiles={showInFiles}
           />
-          {withDock ? (
-            <DockWorkbench
-              ref={dock}
-              hostId="host"
-              projectId="project"
-              sessionId="session"
-              documentOwner={fixture.owner as never}
-              renderContext={(view) => <span>{view}</span>}
-              renderDocument={(descriptor) => <span data-testid="document">{descriptor.path}</span>}
-            />
-          ) : null}
         </TopbarSlotContext.Provider>
       </IntlProvider>,
     );
@@ -209,10 +195,9 @@ it('opens with Ctrl+P, names its target and announces the result count', async (
   expect(status?.textContent).toBe('1 result');
 });
 
-it('opening an already-open file focuses its tab instead of opening another', async () => {
-  const { openDocument } = await mount({ withDock: true });
-  const active = () =>
-    document.querySelector('.dv-active-group [role="tab"][aria-selected="true"]')?.textContent;
+// Opening a file already open selects its tab: the panel's (panel/model.test.ts, idempotent).
+it('each file chosen is handed to its tab, an open one again', async () => {
+  const { openDocument } = await mount();
   for (const query of ['file', 'other', 'file']) {
     await show();
     await type(query);
@@ -220,11 +205,11 @@ it('opening an already-open file focuses its tab instead of opening another', as
     await exited();
     expect(dialog()).toBeNull();
   }
-  expect(openDocument).toHaveBeenCalledTimes(3);
-  expect(
-    [...document.querySelectorAll('[data-testid="document"]')].map((node) => node.textContent),
-  ).toEqual(['src/file.ts', 'src/other.ts']);
-  expect(active()).toContain('file.ts');
+  expect(openDocument.mock.calls.map(([input]) => input.path)).toEqual([
+    'src/file.ts',
+    'src/other.ts',
+    'src/file.ts',
+  ]);
 });
 
 it('drops a late answer to an earlier query', async () => {

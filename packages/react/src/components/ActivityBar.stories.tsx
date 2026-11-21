@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
 import { AgentSteeringPlan, Elevated, Meter } from '../design-kit/index.ts';
 import { ActivityBar, type ActivityBarProps, type ActivityBarRole } from './ActivityBar.tsx';
+import { chipClass } from './chip.ts';
 
 // The composer's activity bar in its five situations, inside the composer's one raised card as
 // the session screen shows it: nothing running, one role at work, three roles at work, a request
@@ -216,6 +217,153 @@ export const ThreeRoles: Story = {
     const toggle = canvas.getByRole('button', { name: 'Activity details' });
     await expect(toggle).toHaveFocus();
     await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+    await settled(canvasElement);
+  },
+};
+
+/** The Overview opener at the line's right end, a chip like the Reins controls. */
+const overviewEnd = (
+  <button type="button" className={chipClass}>
+    Overview
+  </button>
+);
+
+/**
+ * Open, the role rows saying everything: the line has nothing of its own, so the Reins controls
+ * stand on it, and the panel keeps no row for them. Nothing is written in the input, so Stop is
+ * Send's place, not here.
+ */
+export const ReinsOnTheLine: Story = {
+  args: {
+    line: { glyph: 'running', tone: 'active' },
+    end: overviewEnd,
+    roles: team.slice(0, 2),
+    controls: { paused: false, onPause: fn() },
+    defaultOpen: true,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
+    await waitFor(() => expect(panel).toBeVisible());
+    const reins = canvas.getByRole('region', { name: 'Reins' });
+    const toggle = canvas.getByRole('button', { name: 'Activity details' });
+    // On the line, beside the toggle, not in the panel; as tall as the line holds it.
+    await expect(panel.contains(reins)).toBe(false);
+    await expect(toggle.parentElement?.contains(reins)).toBe(true);
+    const line = toggle.parentElement as HTMLElement;
+    await expect(line.getBoundingClientRect().height).toBe(32);
+    const pause = within(reins).getByRole('button', { name: 'Pause' });
+    await expect(within(reins).queryByRole('button', { name: 'Stop' })).toBeNull();
+    // Plain chips: no border, no fill at rest.
+    await expect(getComputedStyle(pause).borderTopWidth).toBe('0px');
+    await expect(getComputedStyle(pause).backgroundColor).toBe('rgba(0, 0, 0, 0)');
+    await userEvent.click(pause);
+    await expect(args.controls?.onPause).toHaveBeenCalledOnce();
+    await settled(canvasElement);
+  },
+};
+
+/**
+ * Open while the line says something, with a message written in the input: the Reins controls
+ * are the panel's last row, Stop among them, as Send's place is Send.
+ */
+export const ReinsInThePanel: Story = {
+  args: {
+    line: {
+      glyph: 'running',
+      tone: 'active',
+      state: { text: 'Working', target: 'run:run_story' },
+      parts: <span className="tabular-nums">1/3 done</span>,
+    },
+    end: overviewEnd,
+    roles: team.slice(0, 2),
+    controls: { paused: false, onPause: fn(), onStop: fn() },
+    defaultOpen: true,
+  },
+  play: async ({ canvasElement, args }) => {
+    const canvas = within(canvasElement);
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
+    await waitFor(() => expect(panel).toBeVisible());
+    const reins = within(panel).getByRole('region', { name: 'Reins' });
+    await expect(panel.lastElementChild).toBe(reins);
+    const stop = within(reins).getByRole('button', { name: 'Stop' });
+    const pause = within(reins).getByRole('button', { name: 'Pause' });
+    await expect(getComputedStyle(stop).borderTopWidth).toBe('0px');
+    // Stop in the destructive tone, Pause in the muted one.
+    await expect(getComputedStyle(stop).color).not.toBe(getComputedStyle(pause).color);
+    await userEvent.click(stop);
+    await expect(args.controls?.onStop).toHaveBeenCalledOnce();
+    await settled(canvasElement);
+  },
+};
+
+/**
+ * Pausing makes the line speak: the controls go to the panel and the focus goes with them, to
+ * Resume in Pause's place; resuming quiets the line, and the focus comes back to Pause on it.
+ */
+function FocusFollows(props: ActivityBarProps) {
+  const [paused, setPaused] = useState(false);
+  return (
+    <Card
+      {...props}
+      line={
+        paused
+          ? {
+              glyph: 'queued',
+              tone: 'neutral',
+              state: { text: 'Paused', target: 'run:run_story' },
+            }
+          : { glyph: 'running', tone: 'active' }
+      }
+      controls={{ paused, onPause: () => setPaused(true), onResume: () => setPaused(false) }}
+    />
+  );
+}
+
+export const ReinsFocusFollows: Story = {
+  args: {
+    line: { glyph: 'running', tone: 'active' },
+    end: overviewEnd,
+    roles: team.slice(0, 1),
+    defaultOpen: true,
+  },
+  render: (args) => <FocusFollows {...args} />,
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const panel = canvas.getByRole('region', { name: 'Activity details' });
+    await waitFor(() => expect(panel).toBeVisible());
+    const pause = within(canvas.getByRole('region', { name: 'Reins' })).getByRole('button', {
+      name: 'Pause',
+    });
+    await expect(panel.contains(pause)).toBe(false);
+    pause.focus();
+    await userEvent.keyboard('{Enter}');
+    const resume = within(panel).getByRole('button', { name: 'Resume' });
+    await expect(resume).toHaveFocus();
+    await userEvent.keyboard('{Enter}');
+    const back = within(canvas.getByRole('region', { name: 'Reins' })).getByRole('button', {
+      name: 'Pause',
+    });
+    await expect(panel.contains(back)).toBe(false);
+    await expect(back).toHaveFocus();
+    await settled(canvasElement);
+  },
+};
+
+/** Paused, on the line: Resume in Pause's place. */
+export const ReinsPausedOnTheLine: Story = {
+  args: {
+    line: { glyph: 'queued', tone: 'neutral' },
+    end: overviewEnd,
+    roles: team.slice(0, 1),
+    controls: { paused: true, onPause: fn(), onResume: fn() },
+    defaultOpen: true,
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const reins = canvas.getByRole('region', { name: 'Reins' });
+    await expect(within(reins).getByRole('button', { name: 'Resume' })).toBeVisible();
+    await expect(within(reins).queryByRole('button', { name: 'Pause' })).toBeNull();
     await settled(canvasElement);
   },
 };

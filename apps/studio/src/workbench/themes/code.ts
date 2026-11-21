@@ -1,4 +1,3 @@
-import type { ThemeRegistration } from '@pierre/diffs';
 import type { ITheme } from '@xterm/xterm';
 import type { editor } from 'monaco-editor/editor';
 import type { Palette, SyntaxColor } from './palette.ts';
@@ -246,7 +245,7 @@ const DIFF_SCOPES: readonly (readonly [scopes: string[], color: string])[] = [
  * A highlighting theme whose colors are the root's syntax tokens, registered once per base.
  * Switching or previewing a named theme then changes the code's colors without a new highlight.
  */
-export function diffThemeRegistration(type: 'light' | 'dark'): ThemeRegistration {
+export function diffThemeRegistration(type: 'light' | 'dark') {
   return {
     name: NAMED_DIFF_THEMES[type],
     type,

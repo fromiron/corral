@@ -23,6 +23,12 @@ import type { RunProjection } from '../projection.ts';
 
 /** What a run was started with, fixed for its whole life. */
 export interface RunSnapshot {
+  /** Callable workers created from shared consultation policies in this run's expanded copy. */
+  sharedOutriderNodeIds?: string[];
+  /** Shared responders permitted to review an explicitly named version in this run. */
+  artifactReviewNodeIds?: string[];
+  /** Strict decision IDs and candidate sources, including those in expanded, pinned teams. */
+  requiredReviewSources?: Record<string, string[]>;
   imageProfiles?: Record<string, ImageGenerationProfile>;
   permissionMode?: PermissionMode;
   resumedFrom?: ResumedFrom;

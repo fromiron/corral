@@ -1,0 +1,29 @@
+{
+  "split": "outrider",
+  "goals": [
+    {
+      "id": "consultation-en",
+      "goal": "Give every agent access to the same expert. They can ask for advice when needed and are responsible for their own results.",
+      "accept": ["single"],
+      "expectedOutrider": "consultation"
+    },
+    {
+      "id": "consultation-ko",
+      "goal": "모두가 필요할 때 같은 전문가에게 자문을 구할 수 있게 해줘. 결과 제출은 각 작업자가 직접 해.",
+      "accept": ["single"],
+      "expectedOutrider": "consultation"
+    },
+    {
+      "id": "feedback-en",
+      "goal": "Let the writer ask for manuscript review when needed. The writer should use the feedback to revise and submit the manuscript themselves.",
+      "accept": ["single"],
+      "expectedOutrider": "artifact_review"
+    },
+    {
+      "id": "feedback-ko",
+      "goal": "작성자가 원고 리뷰를 요청할 수 있게 해줘. 작업자가 의견을 받아 직접 고쳐 제출하면 돼.",
+      "accept": ["single"],
+      "expectedOutrider": "artifact_review"
+    }
+  ]
+}

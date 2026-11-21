@@ -1,15 +1,12 @@
-import { type CorralDefinition, FILE_TOOLS, type TeamPattern } from '@corral/contracts';
+import { type CorralDefinition, FILE_TOOLS, isWorkAgent } from '@corral/contracts';
 import {
   type CorralRepository,
   type CorralSummary,
   compileDefinition,
   DEFAULT_PROJECT_ID,
-  isTemplatePattern,
-  PATTERN_TEMPLATES,
   type PlanStep,
   type RolePresetId,
   type RoleWording,
-  rolePrompt,
   TEAM_TEMPLATE_IDS,
   TEAM_TEMPLATE_ROLES,
   type TeamTemplateId,
@@ -30,10 +27,13 @@ export type WorkspaceTemplateId = DemoTemplateId | TeamTemplateId | 'blank';
 export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
   'starter',
   'implement-review',
-  'plan-implement-review',
+  'feature',
   'bug-fix',
-  'parallel-review',
+  'refactor',
+  'performance',
+  'adversarial-review',
   'tech-decision',
+  'code-investigation',
   'research-team',
   'blank',
 ];
@@ -121,47 +121,9 @@ export function useTemplateText(): TemplateText {
   return useMemo(() => templateText(messages), [messages]);
 }
 
-/**
- * The words a draft from a goal uses: the draft's own three patterns, and the five template
- * patterns worded as the library templates of the same name.
- */
-export function draftWording(messages: unknown): TeamWording {
-  const { TeamDraft, TeamTemplates } = messages as {
-    TeamDraft: { wording: TeamWording };
-    TeamTemplates: { labels: TeamTemplateLabels };
-  };
-  const text = templateText(messages);
-  const templates = Object.fromEntries(
-    Object.entries(PATTERN_TEMPLATES).map(([pattern, id]) => {
-      const { roles, criteria } = text.wording(id);
-      return [pattern, { roles, criteria }];
-    }),
-  ) as NonNullable<TeamWording['templates']>;
-  return {
-    ...TeamDraft.wording,
-    labels: { ...TeamDraft.wording.labels, join: TeamTemplates.labels.join },
-    templates,
-  };
-}
-
-/**
- * A pattern's name, the same as its template card's on the Library page: the single agent card
- * for single, the template's card for the five; the two without a card have the draft's names.
- */
-export function patternName(messages: unknown, pattern: TeamPattern): string {
-  const { TeamDraft, Workspace } = messages as {
-    TeamDraft: { patterns: Record<string, string> };
-    Workspace: { template: Record<string, { name: string } | undefined> };
-  };
-  const card =
-    pattern === 'single'
-      ? 'starter'
-      : isTemplatePattern(pattern)
-        ? PATTERN_TEMPLATES[pattern]
-        : null;
-  return card
-    ? (Workspace.template[card]?.name ?? pattern)
-    : (TeamDraft.patterns[pattern] ?? pattern);
+/** The words the team assistant's proposals use: the step labels a drafted plan names. */
+export function draftWording(messages: unknown): Pick<TeamWording, 'labels'> {
+  return (messages as { TeamDraft: { wording: Pick<TeamWording, 'labels'> } }).TeamDraft.wording;
 }
 
 /** The definition a template saves, under `corralId`. */
@@ -170,7 +132,11 @@ export function templateDefinition(
   corralId: string,
   text: TemplateText,
 ): CorralDefinition {
-  if (id === 'blank') return emptyDraft('untitled', text.blankName).definition;
+  if (id === 'blank')
+    return {
+      ...emptyDraft(corralId, text.blankName).definition,
+      input: { brief: '', criteria: [] },
+    };
   if (isTeamTemplate(id)) return teamTemplate(id, corralId, text.wording(id));
   return demoDefinition(id, corralId, text.demo(id));
 }
@@ -193,12 +159,15 @@ function demoDefinition(
       return {
         ...role,
         name: own.name,
-        prompt: id === 'starter' ? own.duty : rolePrompt(own.duty),
+        prompt: id === 'starter' ? own.duty : role.prompt,
       };
     }),
     nodes: definition.nodes.map((node) => ({
       ...node,
       label: wording.nodes[node.id] ?? node.label,
+      ...(isWorkAgent(node) && node.stepInstruction !== undefined
+        ? { stepInstruction: wording.roles[node.roleId]?.duty ?? node.stepInstruction }
+        : {}),
     })),
   };
 }
@@ -261,30 +230,21 @@ export function templateCopyName(
   return uniqueName;
 }
 
-/** Saves a new Corral from a template and returns its id, or an error message. */
+/** A conversation (or demo seed) materializes its chosen runnable template immediately. */
 export async function createFromTemplate(
   repository: CorralRepository,
-  id: WorkspaceTemplateId,
+  id: Exclude<WorkspaceTemplateId, 'blank'>,
   text: TemplateText,
   projectId?: string,
-  copyName?: string,
 ): Promise<{ ok: true; corralId: string } | { ok: false; message: string }> {
-  const suffix = globalThis.crypto.randomUUID().slice(0, 8);
-  const draft = {
-    definition: templateDefinition(id, `${id.replaceAll('-', '_')}_${suffix}`, text),
-  };
-  const name = copyName?.trim() || draft.definition.name;
+  const definition = templateDefinition(id, id.replaceAll('-', '_'), text);
   const uniqueName = templateCopyName(
-    name,
+    definition.name,
     projectId ?? DEFAULT_PROJECT_ID,
     await repository.list(),
   );
   const result = await repository.save({
-    ...draft,
-    definition: {
-      ...draft.definition,
-      name: uniqueName,
-    },
+    definition: { ...definition, name: uniqueName },
     expectedDefinitionRevision: null,
     ...(projectId ? { projectId } : {}),
   });
@@ -306,7 +266,7 @@ export async function createDemoExamples(
     templates: TemplateText;
   },
 ): Promise<string | null> {
-  const plan: { name: string; template: WorkspaceTemplateId; sessions: string[] }[] = [
+  const plan: { name: string; template: DemoTemplateId; sessions: string[] }[] = [
     { name: text.projects[0], template: 'research-team', sessions: text.sessions.slice(0, 3) },
     { name: text.projects[1], template: 'starter', sessions: text.sessions.slice(3, 6) },
   ];

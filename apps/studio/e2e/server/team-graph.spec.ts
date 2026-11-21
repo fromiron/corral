@@ -2,9 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import type { CorralDefinition } from '@corral/contracts';
+import type { CorralDefinition, TargetPort } from '@corral/contracts';
 import type { Coordinator } from '@corral/core';
+import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
+import { lastRunSucceeded, openTestRun, panelTabNamed } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 // The team graph's runtime paths a person meets on screen, on the local server with simulated
@@ -49,7 +51,12 @@ const agent = (id: string, label: string, from: string | null, parentId?: string
   outputName: 'text',
   ...(parentId ? { parentId } : {}),
 });
-const edge = (source: string, sourcePort: string, target: string, targetPort = 'in') => ({
+const edge = (
+  source: string,
+  sourcePort: string,
+  target: string,
+  targetPort: TargetPort = 'in',
+) => ({
   id: `${source}_${sourcePort}_${target}_${targetPort}`,
   source,
   sourcePort,
@@ -170,16 +177,21 @@ test('parallel branches meet at a Join, and a router that cannot choose asks the
   await page.goto(`${corral.server.url}/runs/${runId}`);
 
   // The simulated router's pick is not a route id, so the person chooses among the routes.
-  await expect(page.getByTestId('run-status').first()).toContainText('Waiting for you', {
-    timeout: 15_000,
-  });
+  // Beside the conversation the run's tab says its state, in its mark and its description.
+  await expect(panelTabNamed(page, 'Run #1')).toHaveAttribute(
+    'aria-description',
+    'Waiting for you',
+    {
+      timeout: 15_000,
+    },
+  );
   const card = (await needsYou(page))
     .locator('[data-testid^="approval-"]')
     .filter({ hasText: 'Choose a route' });
   await expect(card).toBeVisible();
   await expect(card.getByRole('button', { name: 'Fix first', exact: true })).toBeVisible();
   await card.getByRole('button', { name: 'Ship it', exact: true }).click();
-  await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+  await expect(lastRunSucceeded(page)).toBeVisible();
 
   const projection = corral.server.coordinator.getSnapshot(runId).projection;
   const ran = Object.values(projection.executions).map((execution) => execution.nodeId);
@@ -263,20 +275,23 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
 
     // A check command not run before needs the person's approval; the Loop then stops changing,
     // and with no exhausted path the run fails without asking.
-    const status = page.getByTestId('run-status').first();
+    // The run's state as its tab's description says it beside the conversation.
+    const status = panelTabNamed(page, 'Run #1');
     // Each launch is answered in the conversation's needed-now tray.
     const check = page
       .locator('[data-pending-tray]')
       .getByRole('button', { name: 'Run this check once', exact: true });
     for (let step = 0; step < 4; step++) {
-      await expect(status).toContainText(/Waiting for you|Failed/, { timeout: 15_000 });
+      await expect(status).toHaveAttribute('aria-description', /Waiting for you|Failed/, {
+        timeout: 15_000,
+      });
       // Answered once, the conversation stays in front with its tray: the next launch waits there.
-      if ((await status.textContent())?.includes('Failed')) break;
+      if ((await status.getAttribute('aria-description')) === 'Failed') break;
       await needsYou(page);
       await check.first().click();
-      await expect(status).not.toContainText('Waiting for you');
+      await expect(status).not.toHaveAttribute('aria-description', 'Waiting for you');
     }
-    await expect(status).toContainText('Failed');
+    await expect(status).toHaveAttribute('aria-description', 'Failed');
     await expect(page.getByTestId('run-end-reason')).toHaveText(
       'Rounds ran out of rounds: it kept producing the same result',
     );
@@ -295,4 +310,64 @@ test('a check Decision runs a registered check in the working copy, and a Loop t
   } finally {
     rmSync(source, { recursive: true, force: true });
   }
+});
+
+test('retrying the pinned reference enables an actual saved-revision test run', async ({
+  page,
+  corral,
+}) => {
+  await corral.open('/');
+  const inner = await call(page, '/corrals', {
+    definition: linearCorral(['helper'], 'helper-team'),
+  });
+  const outer = linearCorral(['planner', 'writer'], 'outer');
+  outer.nodes.push({
+    type: 'team',
+    id: 'ref',
+    label: 'Saved helper',
+    source: {
+      kind: 'reference',
+      corralId: inner.record.corralId,
+      definitionRevision: inner.record.definitionRevision,
+    },
+  });
+  outer.controlEdges = [
+    edge('planner', 'out', 'ref', 'enter'),
+    edge('ref', 'next', 'writer'),
+    edge('writer', 'out', 'output'),
+  ];
+  const saved = await call(page, '/corrals', { definition: outer });
+  await page.route(
+    `**/corrals/${inner.record.corralId}/revisions/1`,
+    (route) =>
+      route.fulfill({
+        status: 503,
+        contentType: 'application/json',
+        body: JSON.stringify({ message: 'temporary failure' }),
+      }),
+    { times: 1 },
+  );
+  await page.goto(`${corral.server.url}/corrals/${saved.record.corralId}/edit`);
+  const panel = await openTestRun(page);
+  const run = panel.getByRole('button', { name: 'Start mock test', exact: true });
+  await expect(run).toBeDisabled();
+  await page.getByRole('button', { name: 'Retry', exact: true }).click();
+  await expect(run).toBeEnabled();
+  const posted = page.waitForResponse(
+    (r) => r.url().endsWith('/api/v1/runs') && r.request().method() === 'POST',
+  );
+  await run.click();
+  const response = await posted;
+  expect(response.request().postDataJSON()).toMatchObject({
+    corralId: saved.record.corralId,
+    definitionRevision: saved.record.definitionRevision,
+  });
+  const { runId } = await response.json();
+  await expect
+    .poll(() => corral.server.coordinator.getSnapshot(runId).projection.status)
+    .toBe('succeeded');
+  const executed = Object.values(
+    corral.server.coordinator.getSnapshot(runId).projection.executions,
+  );
+  expect(executed.map((execution) => execution.nodeId)).toContain('ref.helper');
 });

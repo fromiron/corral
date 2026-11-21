@@ -1,3 +1,4 @@
+import { BROWSER_ID, relativePath } from '../panel/tabs.ts';
 import { type PanelDescriptor, SESSION_PANELS, type SessionPanel } from './registry.ts';
 
 export interface RunDetailSearch {
@@ -18,11 +19,15 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   /** A run whose row's unread advice the conversation opens (features/inbox.md `advice`). */
   advice?: string | undefined;
   compose?: true | undefined;
-  /** Old links only (`tab=run`); read into `panel`. */
-  tab?: 'work' | 'team' | 'run' | undefined;
   panel?: SessionPanel | undefined;
   run?: string | undefined;
   terminal?: string | undefined;
+  /** With `panel=document`: the file is in the project's source folder, not the Paddock. */
+  target?: 'original' | undefined;
+  /** With `panel=graph`: the team. */
+  corral?: string | undefined;
+  /** With `panel=browser`: the browser tab's ID, never the page's address. */
+  browser?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -53,8 +58,18 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
   if (atSeq !== undefined) out.atSeq = atSeq;
   if (SESSION_PANELS.includes(search.panel as SessionPanel))
     out.panel = search.panel as SessionPanel;
-  if (search.tab === 'run') out.panel = 'run';
   if (out.panel === 'terminal' && text(search.terminal)) out.terminal = text(search.terminal);
+  if (out.panel === 'document' && relativePath(search.file)) {
+    out.file = search.file;
+    if (search.target === 'original') out.target = 'original';
+  }
+  if (out.panel === 'graph' && text(search.corral)) out.corral = text(search.corral);
+  if (
+    out.panel === 'browser' &&
+    typeof search.browser === 'string' &&
+    BROWSER_ID.test(search.browser)
+  )
+    out.browser = search.browser;
   if (out.panel === 'run' && search.respond === true) out.respond = true;
   if (search.view === 'results' || search.view === 'run') out.view = search.view;
   for (const key of ['run', 'execution', 'artifact', 'result', 'message', 'advice'] as const) {
@@ -65,19 +80,8 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     out.review = true;
     Object.assign(out, validateReviewSearch(search));
   }
-  if (
-    search.compose === true &&
-    !(
-      out.panel ||
-      out.run ||
-      out.view ||
-      out.execution ||
-      out.artifact ||
-      out.result ||
-      out.atSeq !== undefined
-    )
-  )
-    out.compose = true;
+  // `panel` wins over `compose` (features/session-panel.md 주소와 기억).
+  if (search.compose === true && !out.panel) out.compose = true;
   return out;
 }
 
@@ -137,43 +141,6 @@ export function validateEditorSearch(search: Record<string, unknown>): EditorSea
   };
 }
 
-/** An explicit target cannot inherit another target's remembered selection. */
-export function resolveSessionSearch(url: SessionSearch, remembered: unknown): SessionSearch {
-  // TanStack merges validated fields with raw parent search; normalize that merged view.
-  const selection = validateSessionSearch({ ...url });
-  // A bare session link opens its conversation; tab links carry their explicit view.
-  if (Object.keys(selection).length === 0) return selection;
-  const explicitTarget = Boolean(
-    selection.atSeq !== undefined ||
-      selection.compose ||
-      selection.message ||
-      selection.review ||
-      selection.run ||
-      selection.terminal ||
-      selection.view ||
-      selection.artifact ||
-      selection.result ||
-      selection.execution,
-  );
-  const saved = validateSessionSearch(
-    remembered && typeof remembered === 'object' ? (remembered as Record<string, unknown>) : {},
-  );
-  delete saved.compose;
-  // A request to respond is answered once; a remembered one would answer a later visit.
-  delete saved.respond;
-  delete saved.advice;
-  return validateSessionSearch({
-    ...(!explicitTarget ? saved : {}),
-    ...selection,
-  });
-}
-
-/** The view a session comes back to: none of the one-time requests an address can carry. */
-export function rememberedSessionView(search: SessionSearch): SessionSearch {
-  const { compose: _compose, respond: _respond, advice: _advice, ...view } = search;
-  return view;
-}
-
 export function patchSessionSearch(
   current: SessionSearch,
   patch: Partial<SessionSearch>,
@@ -194,7 +161,7 @@ export function patchSessionSearch(
       : {}),
     ...patch,
     ...('panel' in patch && patch.panel !== 'run' ? { atSeq: undefined } : {}),
-    ...('panel' in patch || 'view' in patch ? { compose: undefined } : {}),
+    ...(patch.panel !== undefined ? { compose: undefined } : {}),
     ...(patch.view === 'results' ? { artifact: undefined } : {}),
   });
 }
@@ -208,6 +175,14 @@ export function sessionPanelDescriptor(
   if (!panel) return null;
   if (panel === 'run') return runId ? { kind: 'run', runId } : null;
   // Terminals and running commands are keyed by their own owners, not by the pane.
-  if (panel === 'terminal' || panel === 'tools') return null;
+  if (
+    panel === 'terminal' ||
+    panel === 'tools' ||
+    panel === 'preview' ||
+    panel === 'document' ||
+    panel === 'graph' ||
+    panel === 'browser'
+  )
+    return null;
   return { kind: panel, projectId, sessionId };
 }

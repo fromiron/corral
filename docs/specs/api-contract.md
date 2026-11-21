@@ -21,7 +21,7 @@
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
 | GET /corrals | cursor? | 정의 목록(각 `projectId` 포함); 본문은 필요 시 조회 |
-| POST /corrals | 정의, `projectId?` | 새 저장 정의(프로젝트 없으면 기본 프로젝트). 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`. clone 시 ID 재발급 |
+| POST /corrals | `{ definition, projectId?, createId? }` | 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND`, 프로젝트를 생략하면 기본 프로젝트다. `createId`가 없으면 새 id를 발급하고, 있으면 [팀 편집기의 첫 저장 규칙](features/canvas.md#계약)을 따른다. 형식이나 정의 id가 맞지 않으면 `SCHEMA_INVALID`, 기존 팀과 충돌하면 `REVISION_CONFLICT`다. |
 | GET /corrals/:id | — | 현재 definition/revision |
 | GET /corrals/:id/revisions/:revision | — | 그 revision의 저장된 definition. 없는 팀·revision은 `TARGET_NOT_FOUND` |
 | PUT /corrals/:id | If-Match definition revision,definition | conflict 검사 후 저장; 실행 중 Run 원본에는 영향 없음 |
@@ -49,12 +49,13 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 
 | Method/path | 요청 | 응답·효과 |
 |---|---|---|
-| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`), `pathEngine: {engine: 'fff'｜'builtIn', reason?: 'loadFailed'｜'noBinary'｜'indexCap'｜'callFailed'｜'timeBudget'}`([파일 경로 검색](features/file-search.md)). secret·경로 없음 |
+| GET /health | — | `ok`, schemaVersion, version, backendSessionId, agents(`mock`), `pathEngine: {engine: 'fff'｜'builtIn', reason?: 'loadFailed'｜'noBinary'｜'indexCap'｜'callFailed'｜'timeBudget'}`([파일 경로 검색](features/file-search.md)), `sharedDevelopment`(이 host가 Paddock을 공유하는가: 로컬 host는 true, [공유 개발 모드](workbench.md#공유-개발-모드)). 읽기만 하며 secret·경로 없음 |
 | POST /session | `{token}` | 서버 실행 중 유효한 bootstrap token을 교환해 HttpOnly·SameSite=Strict 세션 cookie. 잘못된 token은 401 |
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
 | GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록, provider별 연결 방법(`oauth`·`apiKey`). 엔드포인트의 모델은 `limits`(contextWindow·maxOutput·reasoning·imageInput 각각 `{value, source}`; source는 `config`·`known`·`response`·`catalog`·`default`)를 가진다. 자격 증명·상태 없음 |
 | GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
+| POST /team-assistant | `TeamAssistantRequest` | `{ reply, model }`. 한 번 보낼 때 모델에 팀 구성 질문이나 제안을 한 번 요청한다. 저장이나 실행은 하지 않는다. [허용된 응답과 멱등 규칙](features/team-assistant.md#계약)을 따른다. |
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
@@ -62,6 +63,10 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /corrals/:id/duplicate | `{name}` | 새 id의 사본(revision 1), 원본과 같은 프로젝트 |
 | PUT /corrals/:id/project | `{projectId}` | 팀을 다른 프로젝트로 이동(revision 그대로). 지난 Run은 원래 프로젝트에 남음. 없거나 보관한 프로젝트는 `TARGET_NOT_FOUND` |
 | GET /projects | — | 프로젝트 목록: 기본 프로젝트 먼저, 보관 포함(`archivedAt`) |
+| GET /projects/:projectId/agents | — | 프로젝트의 [에이전트 원본](features/agent-library.md#원본-레코드) 목록을 보관한 항목까지 반환한다. |
+| POST /projects/:projectId/agents | `{role, operationId}` | 원본을 만들고 201로 반환한다. 생성 재전송은 [원본 저장 규칙](features/agent-library.md#저장소와-http)을 따른다. |
+| GET /projects/:projectId/agents/:agentId | — | 프로젝트에 속한 원본 하나를 반환한다. 없거나 다른 프로젝트의 원본이면 `TARGET_NOT_FOUND`다. |
+| PATCH /projects/:projectId/agents/:agentId | `{role?, archived?, expectedRevision}` | 역할과 보관 여부 중 하나 이상을 받아 원본을 고치고 반환한다. |
 | POST /sessions/search | `SessionSearchRequest` | `SessionSearchResult`; 50개 접힌 결과 단위 페이지. 원문 `excerpt`, 원문 UTF-16 `excerptMatches`, 세션 기준 `runNumber`, 접힌 `sources`의 정확한 entry/run/artifact/sequence ID. 검색·동의·중복 기준은 [세션 목록과 검색](workbench.md#세션-목록과-검색)을 따른다. |
 | POST /sessions/search/rebuild | — | 파생 검색 캐시만 비움; 원문 기록 변경 없음 |
 | GET /sessions?projectId= | — | 프로젝트의 작업 세션(고정 먼저, 최근 활동 순), 각 `entries` 포함 |
@@ -69,8 +74,9 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET·PATCH /sessions/:id | `{title?, objective?, criteria?, corralId?, auto?, pinned?, archived?, autoStart?, advisor?, expectedRevision}` | 세션 읽기·수정(revision 검사). `autoStart`(기본 true)는 Run이 끝나면 서버가 맨 앞 대기 요청을 시작할지다([대화 입력 흐름](features/composer-flow.md#대기-요청과-넘겨받기)). `advisor`는 `{modelProfile}` 또는 null이며 다음 요청부터 대화에 [Outrider](features/advisor.md)를 붙인다. `criteria`는 0~20줄(줄마다 1~200자)의 [세션 완료 기준](workbench.md#세션-완료-기준)이다. 빈 목록은 기준 없음이고, 회의 세션에 비어 있지 않은 기준을 주면 400이다. `corralId:null`은 auto이며 명시 팀 조회 실패와 구별한다. `auto`는 모델 프로필·추론 설정 |
 | GET /sessions/:id/deletion | — | 이 세션을 지우면 잃는 것의 읽기 전용 요약. 세션이 없으면 `TARGET_NOT_FOUND`. `runs`는 실행 수, `messages`는 저장된 요청과 회의에서 사람이 쓴 메시지 수, `unfinishedRunIds`는 끝나지 않은 실행, `generatedMedia`는 생성된 이미지 수, `inputImages`는 입력 이미지 수, `schedules`는 이 세션을 대상으로 하고 아직 지워지지 않은 예약의 `id`·`title`, `handoffs`는 인계(`commandId`, `direction`이 `outgoing` 또는 `incoming`, `otherSessionId`, `otherTitle`, `otherDeleted`)다. `checkpoints`는 Paddock 쪽 준비된 파일 체크포인트 수, `sourceCheckpoints`는 원본 폴더의 준비된 체크포인트 수, `revertibleIntegrations`는 원본 폴더에 쓴 파일이 아직 남은(파일 결과가 applied·uncertain·revert_conflict) 반영 수, `reviewDecisions`는 검토 판단 수, `reviewComments`는 초안을 뺀 검토 의견 수(초안은 `workingCopy.draftComments`), `verifications`는 검사 결과 수다. 살아있는 Paddock이 있으면 `workingCopy`는 사본 삭제 요약과 같고, 없으면 null이다. 브라우저 초안은 넣지 않는다. 범위는 [세션 삭제](workbench.md#세션-삭제) |
 | DELETE /sessions/:id | `{expectedRevision, copyGeneration?}` | 요약을 읽은 revision으로 세션을 지운다. 성공은 204. 없으면 `TARGET_NOT_FOUND`. revision이 다르거나, 살아있는 사본인데 `copyGeneration`이 없거나 다르면 `REVISION_CONFLICT`이며 세션은 남는다. 끝나지 않은 실행이 있으면 `RUN_ALREADY_ACTIVE`이며 세션과 사본은 남는다. 사본이 있으면 기존 사본 삭제의 확인을 먼저 하고, 그 확인이 거절하거나 폴더가 남으면 세션은 지워지지 않는다. 확인한 삭제의 반복으로 온 `TARGET_NOT_FOUND`는 클라이언트가 끝난 것으로 본다 |
-| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?, start?, attachments?, images?, references?}` | 요청 기록 추가(본문은 이후 불변). 텍스트 첨부(`attachments`), 이미지(`images`), 참조(`references`)는 새 요청과 다음 요청 항목에만 실리며 그 밖의 항목에 실으면 거절한다(합류·끼어들기의 텍스트 첨부는 그 지시가 갖는다). 대기 요청의 시작 요청은 참조·텍스트 첨부·이미지 순서로 싣고, 서버가 시작하든 사람이 시작하든 같다. `start`는 그 요청을 시작할 때 쓸 고정된 시작 요청(모델·추론·팀·권한 선택)이고, 새 요청(`next`)과 다음 요청(`queue`) 항목에만 실리며 그 밖의 항목에 실으면 거절한다. 서버는 `start`가 있고 상태가 대기(`queued`)인 항목만 스스로 시작한다. `start`의 권한 방식은 항목의 권한 방식과 같아야 하고 다르면 거절한다. 대기 항목을 더할 때 그 세션에 끝나지 않은 Run이 없으면 서버는 Run이 끝났을 때와 같은 규칙으로 대기열을 바로 살핀다. 항목의 `carriedFrom`(넘겨받은 지시의 ID)은 서버만 적고 이 요청으로는 받지 않는다. `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존 |
+| POST /sessions/:id/entries | `{intent, text, state, runId?, executionId?, detail?, auto?, start?, attachments?, images?, references?}` | 요청 기록 추가(본문은 이후 불변). 텍스트 첨부(`attachments`), 이미지(`images`), 참조(`references`)는 새 요청과 다음 요청 항목에만 실리며 그 밖의 항목에 실으면 거절한다(합류·끼어들기의 텍스트 첨부는 그 지시가 갖는다). 대기 요청의 시작 요청은 참조·텍스트 첨부·이미지 순서로 싣고, 서버가 시작하든 사람이 시작하든 같다. `start`는 그 요청을 시작할 때 쓸 고정된 시작 요청(모델·추론·팀·권한 선택)이고, 새 요청(`next`)과 다음 요청(`queue`) 항목에만 실리며 그 밖의 항목에 실으면 거절한다. 서버는 `start`가 있고 상태가 대기(`queued`)인 항목만 스스로 시작한다. `start`의 권한 방식은 항목의 권한 방식과 같아야 하고 다르면 거절한다. 대기 항목을 더할 때 그 세션에 끝나지 않은 Run이 없으면 서버는 Run이 끝났을 때와 같은 규칙으로 대기열을 바로 살핀다. 항목의 `carriedFrom`(넘겨받은 지시의 ID)은 서버만 적고 이 요청으로는 받지 않는다. `auto`에는 실행별 템플릿·선택 사유·모델·추론·대체 정보를 보존. 텍스트 첨부의 provenance는 `packages/contracts`의 `TextAttachmentProvenance`이고 종류는 `preview`, `page`, `code`, `terminal`, `hunk`, `check`, `reply`다. `page`([브라우저 주석](features/browser-annotate.md#계약)의 일반 페이지 주석: `origin`, `path`, `pickedAt`, `generation`, 선택 `screenshotHash`)는 실행 시작 · 이 항목 · `steer`의 텍스트 첨부 어디에나 실리고, 쿼리나 조각(`#…`)이 든 `path`와 자격 증명이 든 `origin`은 거절한다 |
 | PATCH /sessions/:id/entries/:entryId | `{state, runId?, detail?, auto?}` | 기록 상태와 선택 결과 갱신(대기 → 시작 등) |
+| POST /sessions/:id/images | query `name`, PNG 본문(`content-type`은 정확히 `image/png`) | 그 세션에 입력 이미지를 저장하고 201과 `ImageAttachment`를 돌려준다. `name`은 `packages/contracts`의 `TextAttachment`와 같은 이름 규칙이고, 앞뒤 공백을 뺀 값으로 적는다. 이 route의 본문은 1 MiB까지다(초과 413). PNG는 서명, IHDR 하나, 청크 1,024개 이하, 길이 0인 IEND로 끝나고 뒤에 남는 바이트가 없는 구조와 CRC를 검사하며, 가로·세로 1~2,048px, 8비트, RGB나 RGBA, 인터레이스 없음만 받는다. 받은 PNG는 8비트 RGBA로 다시 인코딩해 메타데이터를 버리고, 다시 인코딩한 PNG도 1 MiB 이하여야 한다. `imageId`는 `image_` 뒤에 다시 인코딩한 바이트의 SHA-256이고, `bytes`·`sha256`·`width`·`height`도 그 바이트의 값이다. 보관한 세션에도 저장하고(보관한 세션에도 명시적으로 보낼 수 있다, [세션 목록과 검색](workbench.md#세션-목록과-검색)), 한 세션의 입력 이미지는 합쳐 64 MiB까지다. 같은 세션에 같은 `imageId`의 이미지가 이미 있으면 다시 저장하지 않고(64 MiB도 다시 세지 않는다) 그 `imageId`로 201을 돌려준다. `name`·`content-type`·PNG 검사·다시 인코딩한 크기의 거절은 400 `SCHEMA_INVALID`, 세션이 없으면 `TARGET_NOT_FOUND`, 세션의 64 MiB를 넘으면 `LIMIT_REACHED`, 저장소 오류는 `STORAGE_UNAVAILABLE`이다 |
 | GET /sessions/:id/meeting | — | `MeetingView`: 저장된 메시지·답·사용량·대기 메시지·회의록·결정. 내부 `rounds`는 기존 기록/실행 소유권을 위한 응답 묶음이며 UI의 진행 단계가 아니다. 새 레코드의 `order`로 메시지·발언 순서를 표현하며 `replyTo`는 에이전트 멘션의 실제 출처다. 조회·재열기는 모델을 호출하지 않는다 |
 | POST /sessions/:id/meeting/rounds | `MeetingRoundRequest` | 사람의 대화 메시지를 즉시 게시한다. 메시지 요청에 `recipients: 'none'`을 주면 게시만 하고 아무도 답하지 않는다(멘션·비서 지정과 함께 보내면 거절). 응답 묶음은 선택 기록(`selection`: 방법·점수·이유 코드)을 갖는다. 진행 중 답변은 전송을 막지 않고 다음 발언부터 최신 사용자 메시지를 반영한다. 선택한 `TextAttachments`만 고정해 전달한다. 동일 명령·본문·대상·모드는 기존 응답 묶음, 내용 변경은 conflict. legacy 반론 명령/기록은 호환성을 유지하되 새 UI는 사용하지 않으며 횟수 상한도 요구하지 않는다 |
 | POST /sessions/:id/meeting/continue | `{commandId}` | 멘션 연쇄가 8개 응답 묶음에서 멈춘 회의(`MeetingView.hold`)를 이어 간다. 멈춘 동안 따라가지 못한 멘션을 모두 이어 가고, 이어서 만든 첫 응답 묶음이 `continued` 표식과 이 명령의 ID를 가지며 연쇄 수는 그 묶음부터 다시 센다. 대기가 없으면 아무 일도 하지 않는다. 같은 명령의 재전송은 한 번만 이어 간다 |
@@ -90,9 +96,9 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /runs/auto/:commandId/cancel | `{sessionId,cancelCommandId}` | 시작 전 취소는 세션 범위의 영구 명령으로 저장하고 선택을 중단한다. 원래 시작 명령을 확인한다. 이미 시작됐으면 기존 Coordinator cancel 경로를 사용하며 `{start,cancellation}` receipt를 돌려줘 UI가 확정된 실행을 놓치지 않게 한다 |
 | GET·PUT·PATCH·DELETE /projects/:id/workspace | PUT `{path}`, PATCH `{trusted?, verifyCommands?}` | 작업 폴더 연결·신뢰·검증 명령. Corral 데이터 안 폴더는 `CAPABILITY_DENIED` |
 | GET·POST·DELETE /sessions/:id/worktree | — | Paddock(신뢰한 Git 저장소의 HEAD에서). 응답은 기존 필드에 `bindingId`·`copyGeneration`을 포함하며 같은 session 사본 재생성 시 generation 증가. active/uncertain reader·writer가 있는 사본 제거는 거절 |
-| GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외 |
-| GET /projects/:id/workspace/search · GET /sessions/:id/worktree/search | `q?`(≤200자), `limit?`(1–50, 기본 20) | `@` 참조용 이름 검색 `{items:[{path,kind:'file'\|'folder'}],truncated}`. fuzzy 순위(파일명 우선), Git ignore 적용, 후보 5만 개, 내용은 읽지 않음, symlink 제외 |
-| GET /projects/:id/workspace/file · GET /sessions/:id/worktree/file | `path` 상대 파일 | `{path,content}`. content는 text/binary/too_large. UTF-8·1 MiB 제한. 원본·복사본은 등록된 scope로만 선택하며 agent read ledger·권한을 바꾸지 않음 |
+| GET /projects/:id/workspace/files · GET /sessions/:id/worktree/files | `path?` 상대 폴더 | 읽기 전용 파일 목록 `{files:[{path,bytes}],truncated}`. Git ignore 적용, 최대 500개. `.git`·`.corral`·symlink 제외. `..`·`.git`·`.corral`을 지나는 `path`는 403 `CAPABILITY_DENIED` |
+| GET /projects/:id/workspace/search · GET /sessions/:id/worktree/search | `q?`(≤200자), `limit?`(1–50, 기본 20) | `@` 참조용 이름 검색 `{items:[{path,kind:'file'\|'folder'}],truncated}`. fuzzy 순위(파일명 우선), Git ignore 적용, 후보 5만 개, 내용은 읽지 않음, symlink 제외. 요청이 끊겨 취소된 검색은 409 `TARGET_TERMINAL` |
+| GET /projects/:id/workspace/file · GET /sessions/:id/worktree/file | `path` 상대 파일 | `{path,content}`. content는 text/binary/too_large. UTF-8·1 MiB 제한. 원본·복사본은 등록된 scope로만 선택하며 agent read ledger·권한을 바꾸지 않음. 그 폴더에 없는 파일은 404 `TARGET_NOT_FOUND`, 보통 파일이 아닌 경로(폴더, symlink)와 `..`·`.git`·`.corral`을 지나는 경로는 403 `CAPABILITY_DENIED` |
 | GET /projects/:id/workspace/git/status · GET /sessions/:id/worktree/git/status | — | `GitStatus`: 현재 `UserGitTarget`, `head`(oid/branch/upstream·ahead/behind/detached/unborn/shallow), 실제 사용자 index의 `indexHash`, staged/unstaged/untracked·rename/unmerged 목록, `truncated`, `filtersDisabled`, 읽기 전용 `branches`(local, 최대 200)·`remotes`. 최초 조회는 현재 대상을 발견하며 expected target을 받지 않음 |
 | GET /projects/:id/workspace/git/diff · GET /sessions/:id/worktree/git/diff | `target` JSON, `side` staged\|unstaged\|untracked, raw 상대 `path`, `head` OID(빈 문자열은 unborn null), `indexHash` | `GitDiffRequest`의 정확한 target·HEAD/index 및 읽기 전후 기준을 확인. `GitDiff`는 원래 기준과 `filtersDisabled`, 선택적 rename `originalPath`, `kind:diff`의 before/after(text/binary/too_large/absent) 또는 `kind:unsupported`의 reason(symlink/gitlink/unmerged). 변경된 대상·HEAD/index는 409 `REVISION_CONFLICT` |
 | POST /sessions/:id/worktree/git/operations | `GitWriteCommand` | Paddock 쓰기: `stage`/`unstage`(literal 상대 `paths`), `commit`(`message`, 확인한 `staged` 목록, `runHooks`, 선택 `author`). `branch{name}`, `switch{branch}`, `fetch{remote}`, `pull{remote,branch}`(fast-forward만), `push{remote,branch,runHooks}`(force 없음). 실패 `reason`에 `branch_in_use`·`dirty_tree`·`non_fast_forward`·`remote_unavailable` 추가. 공통 `operationId`, session `WorkspaceTarget`, `expect:{head,indexHash}`. 신뢰 프로젝트만 접수, 공통 writer 사용. 응답은 `GitOperation` receipt(`git.stage`\|`git.unstage`\|`git.commit`, state, result `applied{head,indexHash,commit?,signed?,hooksRan?}` 또는 `error{code,message,reason?}`). 기준 변경은 receipt의 `REVISION_CONFLICT`, 같은 ID·다른 내용은 409. 원본 폴더 경로는 없음 |
@@ -108,14 +114,14 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions/:id/worktree/tasks | — | `{candidates:TaskCandidates, tasks:UserTaskView[]}`. 후보는 사본 최상위 `package.json` scripts와 lockfile로 고른 `packageManager`(pnpm\|yarn\|npm\|null)이며 읽기만 한다. 사본이 없으면 빈 후보다. 열린 receipt의 process group이 사라졌으면 이때 정리한다 |
 | GET /sessions/:id/worktree/debug | — | `DebugState`: 현재 target, Linux·신뢰에 따른 availability, 등록 구성, debug session의 generation/revision/pauseId·상태·중단점·한정된 출력. 조회나 패널 열기로 실행하지 않음 |
 | POST /sessions/:id/worktree/debug/inspect | `DebugInspect` | target·configId와 선택한 소유 task/port 또는 preview lease를 검토해 `DebugInspection` 반환. 등록 adapter/config·configRevision·fingerprint·trust를 확인하며 실행은 하지 않음. 임의 PID·외부 주소는 받지 않음 |
-| POST /sessions/:id/worktree/debug/start | `DebugStart` | 검토한 target/configRevision/fingerprint, requestId/clientId와 명시 `trust`로 시작. 같은 requestId/본문은 기존 `DebugSession` 반환. 공통 debug owner·process 예약 사용; 공유 개발의 허용된 사람 효과. launch는 소유 Node/Chromium, attach는 확인한 같은 사본의 task |
+| POST /sessions/:id/worktree/debug/start | `DebugStart` | 검토한 target/configRevision/fingerprint, requestId/clientId와 명시 `trust`로 시작. 같은 requestId/본문은 기존 `DebugSession` 반환. 공통 debug owner·process 예약 사용. 공유를 허용하지 않는 host에서는 공통 writer도 잡고, 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 돈다. launch는 소유 Node/Chromium, attach는 확인한 같은 사본의 task |
 | POST /sessions/:id/worktree/debug/breakpoints | `DebugBreakpoints` | target/generation·commandId·상대 path·저장 파일 sha256·1-based lines. 파일과 세션을 재확인하고 설치 결과의 verified/line을 `DebugCommandResult`에 반환. 현재 실행 전에 모두 설치됐다고 보장하지 않음 |
 | POST /sessions/:id/worktree/debug/query | `DebugQuery` | 현재 target/generation/pauseId의 threads/stack/scopes/variables. 연결별 frame/variable 참조를 확인하고 `DebugQueryResult` 반환. source map·경로·저장 hash가 확인된 사본 파일만 탐색 가능 |
 | POST /sessions/:id/worktree/debug/commands | `DebugCommand` | commandId·target/generation·revision/pauseId를 고정한 pause/continue/next/stepIn/stepOut/evaluate/disconnect/stop. evaluate는 명시 표현식 실행 효과. launch는 stop, attach는 disconnect를 사용하며 후자는 원래 task를 종료하지 않음. 응답 유실은 같은 command receipt 조회 |
 | GET /sessions/:id/worktree/debug/commands/:generation/:commandId | — | 해당 debug generation의 `DebugCommandResult`. 재시작·늦은 응답·불확실 명령을 새 ID로 재실행하지 않음 |
 | GET /sessions/:id/worktree/deployments | — | `DeploymentList`: 현재 등록 profiles와 세션 deployment receipt. 등록 목록과 과거 결과를 읽기만 함 |
 | POST /sessions/:id/worktree/deployments/inspect | `DeploymentInspect` | target/profileId → `DeploymentPlan`: 환경·명령·credential 환경 변수 이름, configRevision, source commit/tree/dirty, fingerprint. 원래 source/명령/참조를 검토하며 외부 배포하지 않음 |
-| POST /sessions/:id/worktree/deployments | `DeploymentStart` | operationId·target/profileId·검토 fingerprint·allowDirty. source/실행 파일/명령/credential 값을 재검증한 strict writer와 소유 process로 실행. 공유 개발 중 거절. `DeploymentView`의 phase/exitCode/cleanupConfirmed와 외부 readback은 별개이며 exit 0도 결과 미확인이면 uncertain |
+| POST /sessions/:id/worktree/deployments | `DeploymentStart` | operationId·target/profileId·검토 fingerprint·allowDirty. source/실행 파일/명령/credential 값을 재검증하고, 공유를 허용하지 않는 host에서는 strict writer로, 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 소유 process를 실행. `DeploymentView`의 phase/exitCode/cleanupConfirmed와 외부 readback은 별개이며 exit 0도 결과 미확인이면 uncertain |
 | GET /sessions/:id/worktree/deployments/:operationId | — | 원래 target/plan의 `DeploymentView` 조회. 실행·결과 확인·재배포를 자동으로 하지 않음 |
 | POST /sessions/:id/worktree/deployments/:operationId/check | `DeploymentAction`: `{target}` | uncertain이고 소유 프로세스 정리가 확인된 operation에 한해 등록된 결과 확인 명령 실행. 원래 command/credential fingerprint와 응답의 operation/environment/source/deployment identity를 확인. 유효한 결과만 pending/succeeded/failed로 구분하며 미확인은 uncertain 유지 |
 | POST /sessions/:id/worktree/deployments/:operationId/stop | `DeploymentAction`: `{target}` | 소유 로컬 프로세스를 중지하고 정리 확인 뒤 예약 해제·terminal cancelled. 외부 배포는 취소하거나 rollback하지 않으며 외부 결과 미확인을 보존. 이후 이 operation의 앱 내 check는 실행하지 않고 대상 서비스에서 수동 확인 |
@@ -134,18 +140,15 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | POST /sessions/:id/worktree/language/document | `LanguageDocumentChange` | Full-text sync or close with target/generation/controller/path/version. 1 MiB/file, 64 documents/8 MiB total. No disk writes. Older/different-body versions rejected |
 | POST /sessions/:id/worktree/language/query | `LanguageQuery` | Completion/definition/references/pull diagnostics; UTF-16 and current generation/document versions. Bounded sanitized results; changed document set rejects late results; disconnected HTTP cancels the query |
 | POST /sessions/:id/worktree/language/stop | `LanguageScope` | Stops only the exact generation and confirms its owned process-session cleanup. Unknown cleanup keeps the reservation; old stop never ends a new session |
-| GET /sessions/:id/worktree/development | — | `DevelopmentState`: 현재 `WorkspaceTarget`, local opt-in·신뢰에 따른 `available`, running/uncertain development `operation` 또는 null |
-| POST /sessions/:id/worktree/development | `DevelopmentStart` | `{operationId,target}`. 신뢰한 로컬 Paddock의 development writer 접수. 기본 비활성 host는 `CAPABILITY_DENIED`, 잘못된 target/generation은 `REVISION_CONFLICT`. 동일 ID·본문은 재실행 없이 현재 `DevelopmentState` 반환. 종료된 ID로 다시 켜지 않음 |
-| POST /sessions/:id/worktree/development/:operationId/finish | `{target: WorkspaceTarget}` | 정확한 development owner 종료. 다른 사람 active/uncertain owner가 남으면 `RUN_ALREADY_ACTIVE`. 이미 끝난 ID는 이후 새 owner를 종료하지 않음. uncertain도 명시 종료·정리 확인 필요 |
-| POST /sessions/:id/worktree/tasks | `TaskStart` | `operationId`, session `WorkspaceTarget`, `script`. 인간 operation `task`로 접수해 기본 모드에서는 writer, 공유 모드에서는 하위 access를 수명 동안 보유하고 `<pm> run <script>`를 소유 process group으로 실행. 없는 script는 `TARGET_NOT_FOUND`, 활성 writer는 409 `RUN_ALREADY_ACTIVE`. 응답 `UserTaskView`(state, pid, exitCode, cleanupConfirmed) |
+| POST /sessions/:id/worktree/tasks | `TaskStart` | `operationId`, session `WorkspaceTarget`, `script`. 인간 operation `task`로 접수해 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 사본을 쓰고, 공유를 허용하지 않는 host에서는 writer를 수명 동안 보유하고 `<pm> run <script>`를 소유 process group으로 실행. 없는 script는 `TARGET_NOT_FOUND`, 활성 writer는 409 `RUN_ALREADY_ACTIVE`. 응답 `UserTaskView`(state, pid, exitCode, cleanupConfirmed) |
 | GET /sessions/:id/worktree/tasks/:operationId/output | `offset` | `{text,nextOffset,bytes,truncated}`. 이 host에서 실행한 task의 출력만 있으며 재시작 뒤에는 빈 출력 |
 | POST /sessions/:id/worktree/tasks/:operationId/stop | — | process group을 끝내고 정리를 확인한 receipt(`cancelled`, `cleanupConfirmed`). 확인하지 못하면 `uncertain`. preview(`POST /sessions/:id/previews`)의 `operationId`는 실행 중인 사용자 task도 받는다 |
 | GET /sessions/:id/worktree/document | `path` 상대 파일 | Paddock 문서 `{target,path,content,version,writable}`. target은 host의 workspace identity·project/binding/session/copyGeneration. UTF-8 ≤1MiB는 BOM 포함 text와 full SHA-256·bytes·BOM/EOL, binary/too_large는 version:null·writable:false. 새 파일 경로는 absent. 기존 원본 browse는 읽기 전용 유지 |
 | POST /sessions/:id/worktree/documents | `DocumentCommand` | save/create(`baseHash:null`), rename(빈 목적지만), delete(`confirmed:true`·원본 hash·복구 checkpoint). 공통 writer와 기존 lease 사용. 접수 후 `DocumentOperation` receipt, 접수 전 잘못된 target/권한/owner는 기존 오류 코드. JSON 표현은 route별 7MiB, 실제 파일은 UTF-8 1MiB 제한 |
 | GET /sessions/:id/worktree/document-operations/:operationId | — | 원래 대상과 operation ID의 receipt. pending·완료·실패 모두 상대 path/precondition/제출 hash의 intent를 보존하며 원문 text는 저장하지 않는다. 현재 사본 삭제/재생성 후에도 완료 receipt를 조회한다. 같은 ID/다른 내용은 conflict, uncertain을 자동 재실행하지 않는다 |
 | GET /sessions/:id/terminals | — | 현재 target·가용 shell·사용자 터미널 목록. Paddock이 없어도 과거 terminal 상태/중지 대상은 조회 가능 |
-| POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공통 writer와 host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
-| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller·선택적 stopped(중지 요청 여부). OS PID/identity·절대 경로는 공개하지 않음 |
+| POST /sessions/:id/terminals | `TerminalCreate` | target·operationId·shellId·초기 cols/rows. 공유를 허용하지 않는 host에서는 공통 writer를, 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 사본을 잡고, host process permit을 접수하고 starting receipt 반환. 같은 ID/같은 내용은 기존 결과, 다른 내용은 conflict |
+| GET /sessions/:id/terminals/:terminalId | — | `TerminalView`: generation·state·size·lastSequence·replayAvailable·controller·선택적 stopped(중지 요청 여부)·foreground. `foreground`는 읽는 때 PTY의 앞쪽 프로세스 그룹이 셸 자신인지다: `idle`은 셸, `busy`는 셸이 띄운 다른 프로세스 그룹, `unknown`은 서버가 알 수 없음. 뒤에서 도는 작업(`&`)은 앞쪽이 아니므로 세지 않는다. 시작 중인 터미널은 셸의 identity가 아직 서지 않아 늘 `unknown`이다. Studio는 실행 중인 터미널의 탭을 닫을 때 이 값으로 물을지 정한다([세션 패널](features/session-panel.md#터미널-탭)). 앞쪽 프로세스의 이름·명령·PID와 OS PID/identity·절대 경로는 공개하지 않음 |
 | POST /sessions/:id/terminals/:terminalId/control | `TerminalControllerChange` | target/generation·attachmentId·expectedGeneration·claim/release·명시 takeover. 한 controller만 입력하며 takeover는 같은 attachment에도 generation을 바꿈 |
 | POST /sessions/:id/terminals/:terminalId/input | `TerminalInput` | controllerGeneration·sequence·UTF-8 ≤16KiB data. input/resize 공통 순서, 같은 최신 순서/내용만 기존 ack. 자동 stdin 재시도 없음 |
 | POST /sessions/:id/terminals/:terminalId/resize | `TerminalResize` | controller의 공통 순서로 cols 2–500, rows 1–500. 성공한 resize도 output sequence에 포함 |
@@ -155,6 +158,14 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | DELETE /sessions/:id/worktree?generation= | — | 사본 삭제. generation이 지금 사본과 다르면 `REVISION_CONFLICT`. owner가 있거나 폴더가 남으면 거절하고 삭제로 기록하지 않음 |
 | GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처·이전/이후 blob). 출처는 `managed_agent`(Corral의 마지막 적용 쓰기 그대로)·`mixed`(Corral이 바꾼 뒤 다른 쓰기가 섞임)·`external_observed`(Corral이 바꾸지 않음) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
+| GET /sessions/:id/checkpoints | — | `{checkpoints, restores}`: 세션의 `FileCheckpoint`(kind·label·target·state incomplete/ready/expired·pinned·manifestHash)와 `CheckpointRestore` 기록 |
+| POST /sessions/:id/checkpoints | `CaptureCheckpoint`: checkpointId·label·target?(`working_copy`·`original`) | 고정된 수동 `FileCheckpoint`. [사본 관문](#3-오류)을 거친다 |
+| POST /sessions/:id/checkpoints/pin | `{checkpointId, pinned}` | ready 체크포인트의 고정을 바꾼다(204). 없으면 404 `TARGET_NOT_FOUND` |
+| POST /sessions/:id/checkpoints/prune | `{}` | ready 체크포인트 가운데 최근 50개 밖의 것을, 고정 · runtime · 복원 기록이 가리키는 것 · 30일 안의 것을 빼고 만료해 `{expired}`. [사본 관문](#3-오류)을 거친다 |
+| POST /sessions/:id/checkpoints/plan | `{checkpointId, manifestHash}` | `CheckpointRestorePlan`: target·지금 사본의 expectedTree·targetTree·바뀌는 파일. 체크포인트가 ready가 아니거나 바뀌었으면 409 `REVISION_CONFLICT`. 파일을 바꾸지 않는다 |
+| POST /sessions/:id/checkpoints/restore | `RestoreCheckpoint`: operationId·checkpointId·manifestHash·expectedTree | 복원 전 체크포인트를 남기고 되돌린 `CheckpointRestore` receipt(applying·applied·partial·uncertain·refused). 같은 operationId·본문은 기존 receipt, 다른 본문이나 지금 tree가 expectedTree와 다르면 409 `REVISION_CONFLICT`. [사본 관문](#3-오류)을 거친다 |
+| POST /sessions/:id/hunks/preview | `HunkRequest`: from·to tree·path | `HunkSet`: patchHash와 hunk의 id·patch. 파일을 바꾸지 않는다 |
+| POST /sessions/:id/hunks/plan | `HunkPlanRequest`: 미리보기의 것 + planId·patchHash·hunkIds(1–200)·action(`apply_original`·`revert_working_copy`) | 고른 hunk를 담은 체크포인트(kind `hunk_proposal`)를 만들고 `checkpoints/restore`로 적용할 `CheckpointRestorePlan`. 같은 planId에 다른 내용은 409 `REVISION_CONFLICT`. [사본 관문](#3-오류)을 거친다 |
 | POST /sessions/:id/reviewed | — | 지금 사본 전체를 읽음 기록으로 남김("읽음 기록 이후" 범위의 기준). 파일 검토·승인 아님 |
 | GET·POST /sessions/:id/verifications | POST `{commandId}` | 검증 명령 실행(202)과 결과 목록. `stale`은 실행 tree가 현재 사본과 다름, `configChanged`는 그 검사의 등록 명령 정의가 지금과 다르거나 삭제됨(다른 검사 변경은 제외) |
 | GET /sessions/:id/file-operations | — | broker가 한 파일 쓰기 기록(planned·applied·failed·uncertain) |
@@ -248,7 +259,7 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 
 ## 3. 오류
 
-터미널 writer 충돌은 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 구조화된 `owner {kind: "terminal", id, sessionId, state: "active" | "uncertain"}`를 반환한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
+사본을 잡은 것 때문에 거절한 접수는 기존 접수 코드(`RUN_ALREADY_ACTIVE`, 읽기 차단은 `RESOURCE_CAPACITY`)와 함께 그것을 구조화된 `owner {kind, id, sessionId, state: "active" | "uncertain", operationKind?}`로 반환한다. `kind`는 `run`(다른 실행), `task`, `terminal`, 그리고 그 밖의 사람 작업인 `operation`이다. `operation`은 문서 저장, 디버깅, Git 쓰기, 배포, 언어 서버 같은 것이고, `kind`가 `operation`일 때만 `operationKind`에 그 작업 receipt의 종류(`document.save`, `debug`, `git.commit`, `deployment`, `language` 같은 것)가 실린다. 공유를 허용하지 않는 host에서는 단독 writer를, 로컬 host에서는 두 번째로 쓰는 실행을 막는 쓰고 있는 실행과, 종료를 확인하지 못해 새 효과를 막는 owner를 댄다([공유 개발 모드](workbench.md#공유-개발-모드)). 체크포인트 복원 · 만들기 · 정리와 hunk 계획이 사본 관문(조건은 [Workbench](workbench.md#공유-개발-모드)의 체크포인트 복원 줄)에 막히면 `RUN_ALREADY_ACTIVE`와 함께 막은 것을 댄다: 쓰는 실행이나 끝나 가는(draining) 실행은 `run`, 종료를 확인하지 못한 owner는 그 owner, 공유를 허용하지 않는 host에서는 사본을 잡은 task · 터미널 · 사람 작업이다. 그 범위에서 복원이 이미 진행 중이면 같은 코드로 거절하고 `owner`는 없다. 화면이 owner를 어떻게 대는지는 [Workbench](workbench.md#공유-개발-모드)가 정한다. `uncertain`은 종료 증명이 없는 보호 상태이며 일반 점유와 다른 안내를 제공한다. 소유권 정보는 시작 receipt·HTTP 오류·세션의 선택적 `refusal` 기록에 보존한다. 세션에 저장하는 오류 문구는 기존 detail과 같은 2,000자 한도를 따른다. 새 오류의 분류·복구 링크는 코드와 owner를 사용하고, 구조화 필드가 없는 과거 기록만 기존 메시지로 호환한다. owner는 진단/탐색 정보일 뿐 종료·쓰기 권한을 부여하지 않는다.
 
 | 코드 | HTTP | 의미 |
 |---|---|---|
@@ -256,11 +267,11 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | GRAPH_INVALID | 422 | 포트·Loop·role·binding 등 의미 불일치 |
 | CAPABILITY_DENIED | 403 | 도구/질문/위임 관계가 허용되지 않음 |
 | STALE_CONTROL_REVISION | 409 | 준비 중 다른 제어 변경이 발생 |
-| IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 payload |
+| IDEMPOTENCY_CONFLICT | 409 | 같은 commandId에 다른 본문을 보냈거나, 한 프로젝트에서 에이전트 원본 생성의 같은 operationId에 다른 역할을 보냈다. |
 | TARGET_NOT_FOUND | 404 | 대상 Run·실행·작업이 없음 (구현 중 추가) |
 | COMMAND_NOT_SUPPORTED | 501 | 형식은 올바르지만 현재 runtime 단계에서 아직 처리하지 않는 명령. 효과 없음 (구현 중 추가) |
 | TARGET_TERMINAL | 409 | 종료된 실행에 지시 등 적용 불가 |
-| REVISION_CONFLICT | 409 | Corral 저장의 기준 definition revision이 현재와 다름(다른 탭에서 저장). 저장하지 않음 (구현 중 추가) |
+| REVISION_CONFLICT | 409 | Corral 정의나 에이전트 원본 등 저장 대상의 기준 revision이 현재와 다르다. 변경을 적용하지 않는다. |
 | RUN_ALREADY_ACTIVE | 409 | workspace에 이미 활성 Run이 있음. 새 Run과 effect 없음 (구현 중 추가) |
 | RESOURCE_CAPACITY | 409 | 동적 자식/응답 worker 용량 예약 실패. 부모를 무기한 대기에 넣지 않음. 로컬 번들을 설치 중·판정 중·계산 중에 제거하려 할 때와 계산 중에 회의 분석 장치를 바꾸려 할 때도 이 코드다([추론 판정](features/effort-routing.md), [로컬 AI](features/local-intelligence.md)). 파일과 프로세스는 그대로다 |
 | CRITERIA_CHANGE_REQUIRES_NEW_RUN | 409 | Loop가 이미 종료되어 완료 기준 변경은 새 Run 필요 |
@@ -273,6 +284,17 @@ steer receipt의 applied는 입력 dispatch 확인을 의미한다. 품질 준�
 | POLICY_ERROR | 500 | admission gate가 예외로 실패해 요청·도구 호출을 거절함(fail closed). 통과로 처리하지 않음 |
 | MODEL_UNAVAILABLE | 502 | Run 밖의 모델 요청(팀 초안)이 실패했거나 응답이 계약에 맞지 않음. 응답 원문은 보내지 않음 |
 | REQUEST_OUTCOME_UNKNOWN | 409 | 전송 결과가 확인되지 않은 관리형 요청. 같은 operation ID는 저장된 결과만 조회하며 새 유료 호출을 만들지 않음 |
+
+`POST /team-assistant`의 오류는 대화 본문이나 모델 원문을 포함하지 않는다.
+
+| 코드 | HTTP | 조건 |
+|---|---|---|
+| SCHEMA_INVALID | 400 | 요청 형식 또는 요청에 지정한 검토 대상이 올바르지 않다. |
+| COMMAND_NOT_SUPPORTED | 501 | 서버에 실제 모델 연결 기능이 없다. |
+| CAPABILITY_DENIED | 403 | 사용할 모델 프로필이 없거나 연결되지 않았다. |
+| REVISION_CONFLICT | 409 | 같은 `operationId`에 다른 요청을 보냈다. |
+| REQUEST_OUTCOME_UNKNOWN | 409 | 앞서 보낸 요청의 결과가 확인되지 않았다. 자동으로 다시 보내지 않는다. |
+| MODEL_UNAVAILABLE | 502 | 요청이 실패했거나 응답의 형식·대상·질문 횟수·선택이 허용 범위를 벗어나 제안을 만들 수 없다. |
 
 provider/network error는 사용자 키 원문·응답 헤더를 포함하지 않는다. trace용 errorId와 마스킹된 이유를 제공한다. 도구 실행 중 실패는 HTTP success/error와 별개로 ToolOutcome에 structured error를 넣는다.
 
@@ -298,7 +320,7 @@ payload별 검증은 `packages/contracts`의 Zod discriminated union이 맡는�
 | `task.submitted` | artifactVersionIds |
 | `task.completed` | completionEvidence |
 | `task.blocked` | cause,requiredUserAction |
-| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline. 구현: taskId는 이 질문에 답하려고 만든 응답 Task이며, 응답 실행은 질문자의 자식이다 |
+| `message.question_created` | questionId,taskId,sender,targetRole,body,refs,deadline. 구현: taskId는 이 질문에 답하려고 만든 응답 Task이며, 응답 실행은 질문자의 자식이다. 팀 공통 자문과 정식 리뷰 대상 버전의 선택 표시는 [공통 Outrider](features/shared-outrider.md)를 따른다 |
 | `message.answer_committed` | questionId,responseTaskId,body,refs |
 | `message.closed` | questionId,answer|cancel|timeout. 닫힌 뒤의 reply는 `observation.late`(originalEventType `reply`)로만 남는다 |
 | `artifact.version_created` | artifactId,version,bodyRef,hash,parentVersion,authorExecutionId,modelCallId,contextSnapshotId |
@@ -385,7 +407,7 @@ Bell의 2026-10-25 결정에 따라 이전 Ultra 기록은 읽지 않는다. `ca
 
 출력은 최초 크기와 처음부터의 ANSI/resize 순서를 4MiB까지 보관한다. 초과하면 prefix를 폐기하고 replayAvailable=false로 표시한다. 이미 연결된 화면은 이어 읽지만 새 화면이나 cursor gap에 임의 ANSI tail을 주어 복구 성공으로 표시하지 않는다. 종료 후 보관은 5분이며 그 뒤 재생 불가를 명시한다. status metadata는 출력 cursor를 전진시키지 않는다. client는 xterm write callback 완료 후 cursor를 갱신한다. 느린 viewer는 기존 bounded SSE writer로 분리하고 셸은 유지한다.
 
-터미널은 Run과 다른 사용자 owner이고 Paddock의 writer 및 host 공통 12 process permits를 사용한다. 터미널을 실행 중인 사본은 파일 저장/새 writer Run을 거절한다. 다른 사본의 Run 취소는 이 PTY의 종료 요청이 아니다. Linux는 boot ID/PID/startTicks/SID를 확인하고 동일 session의 실행 중 descendant가 사라진 뒤 예약을 해제한다. host 재시작은 명령을 재실행하지 않으며 uncertain owner를 용량에 복원한다. 저장된 identity를 증명할 수 없는 중단 구간이나 setsid/daemon 이탈은 완전한 OS 격리/자동 회수로 주장하지 않는다.
+터미널은 Run과 다른 사용자 owner이고 host 공통 12 process permits를 사용한다. 공유를 허용하지 않는 host에서는 터미널이 Paddock의 writer를 잡아, 터미널을 실행 중인 사본은 파일 저장/새 writer Run을 거절한다. 로컬 host에서는 [공유 개발 모드](workbench.md#공유-개발-모드)대로 다른 작업과 나란히 돈다. 다른 사본의 Run 취소는 이 PTY의 종료 요청이 아니다. Linux는 boot ID/PID/startTicks/SID를 확인하고 동일 session의 실행 중 descendant가 사라진 뒤 예약을 해제한다. host 재시작은 명령을 재실행하지 않으며 uncertain owner를 용량에 복원한다. 저장된 identity를 증명할 수 없는 중단 구간이나 setsid/daemon 이탈은 완전한 OS 격리/자동 회수로 주장하지 않는다.
 
 ## 부분 모델 출력 읽기
 

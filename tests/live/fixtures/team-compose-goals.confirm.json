@@ -1,0 +1,229 @@
+{
+  "split": "confirm",
+  "note": "Twelve requests written with their expectations before the run that first uses them, to confirm what the check set showed: four make passing a review the condition of submission, four bound a revision by a count, four are controls. The file reads like team-compose-goals.check.json, whose note defines every field and expectation. The families alternate in file order so that one timeout cannot remove a family, and two cases of each family are sent twice. The same file is sent before and after a change, so the first run is the number the second is compared with.",
+  "agents": {},
+  "cases": [
+    {
+      "id": "confirm-01",
+      "kind": "must_pass",
+      "lang": "en",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "Migrate the sessions table to the new schema. Hold the change until a reviewer has approved it: nothing is submitted without that approval."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "allowed",
+        "maxSeats": 3,
+        "outrider": ["required_review"]
+      },
+      "rater": "Approval is the condition of submission, so the plan carries the required review gate. A judged loop alone forwards its last candidate at the cap and does not meet the request; a loop beside the gate is not a miss."
+    },
+    {
+      "id": "confirm-02",
+      "kind": "revision",
+      "lang": "en",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "Write the release notes for version 4.2 from the changelog I'll paste. An editor checks them and may send them back at most twice."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "warranted",
+        "rounds": 3,
+        "maxSeats": 2,
+        "outrider": ["none"]
+      },
+      "rater": "A Writer judged by a reviewing agent. Sent back at most twice is three runs of the writing, so the cap is 3. Passing is not made a condition, so no gate."
+    },
+    {
+      "id": "confirm-03",
+      "kind": "control_small_edit",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": ["Rename the --verbose flag to --debug in the CLI and update its help text."],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "none",
+        "maxSeats": 1,
+        "outrider": ["none"]
+      },
+      "rater": "A small edit: one Builder that checks its own change, and nothing else."
+    },
+    {
+      "id": "confirm-04",
+      "kind": "must_pass",
+      "lang": "ko",
+      "catalog": "bundled",
+      "messages": [
+        "다음 주 서버 점검을 알리는 고객 공지문을 써 줘. 점검 시간은 내가 알려 줄게. 법무 검토를 통과하기 전에는 제출되면 안 돼."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "allowed",
+        "maxSeats": 2,
+        "outrider": ["required_review"]
+      },
+      "rater": "The pass condition is stated, so a plan with the required review gate and no question. The maintenance time is supplied when the team runs."
+    },
+    {
+      "id": "confirm-05",
+      "kind": "revision",
+      "lang": "ko",
+      "catalog": "bundled",
+      "messages": [
+        "신규 입사자용 안내 문서를 써 줘. 다른 사람이 초안을 검토하고, 고칠 점이 나오면 한 번만 고쳐 쓰면 돼."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "warranted",
+        "rounds": 2,
+        "maxSeats": 2,
+        "outrider": ["none"]
+      },
+      "rater": "A Writer judged by a reviewing agent. One rewrite is two runs of the writing, so the cap is 2 (an absent cap counts as 2). A cap of 1 leaves no rewrite and is a miss."
+    },
+    {
+      "id": "confirm-06",
+      "kind": "control_advice",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": ["API 응답 캐싱을 구현해 줘. 작업하다 막히면 전문가에게 물어볼 수 있게 해 줘."],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "allowed",
+        "maxSeats": 2,
+        "outrider": ["consultation"]
+      },
+      "rater": "Advice on request is the shared adviser: consultation. No reviewer seat and no loop is added for the advice alone, and nothing is made to pass."
+    },
+    {
+      "id": "confirm-07",
+      "kind": "must_pass",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": [
+        "Draft the announcement of our new pricing from the pricing sheet I'll attach. It may only be submitted after a compliance review has passed it; a failed review means no submission."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "allowed",
+        "maxSeats": 2,
+        "outrider": ["required_review"]
+      },
+      "rater": "A failed review means no submission, so the plan carries the required review gate. A judged loop alone does not meet the request."
+    },
+    {
+      "id": "confirm-08",
+      "kind": "revision",
+      "lang": "en",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "Fix the flaky date parser test. Someone else verifies the fix by running it, and the fixer gets up to two more attempts if the verification fails."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "warranted",
+        "rounds": 3,
+        "maxSeats": 3,
+        "outrider": ["none"]
+      },
+      "rater": "A Builder judged by an agent that runs the fix. The first attempt and two more are three runs, so the cap is 3. A seat that finds the cause first is allowed. No gate: the verification bounds the attempts, it is not a condition of submission."
+    },
+    {
+      "id": "confirm-09",
+      "kind": "control_review_only",
+      "lang": "en",
+      "catalog": "bundled",
+      "messages": [
+        "Review the open pull request for the billing export and tell me what has to change before it can merge. Don't fix anything yourself."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "loop": "none",
+        "oneResult": true,
+        "maxSeats": 2,
+        "outrider": ["none"]
+      },
+      "rater": "The review is the deliverable: a reviewing seat reads the change itself and reports what must change. No builder, no loop, no gate."
+    },
+    {
+      "id": "confirm-10",
+      "kind": "must_pass",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "결제 웹훅의 재시도 로직을 고쳐 줘. 리뷰에서 통과 판정을 받아야만 제출되게 해 줘."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "allowed",
+        "maxSeats": 3,
+        "outrider": ["required_review"]
+      },
+      "rater": "A pass verdict is the condition of submission, so the plan carries the required review gate. A judged loop alone does not meet the request; a loop beside the gate is not a miss."
+    },
+    {
+      "id": "confirm-11",
+      "kind": "revision",
+      "lang": "ko",
+      "catalog": "bundled",
+      "messages": [
+        "로그인 폼의 접근성 문제를 고쳐 줘. 검증 담당이 확인해서 문제가 남아 있으면 한 번 더 고칠 수 있게 해 줘."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": true,
+        "submitters": ["Builder"],
+        "loop": "warranted",
+        "rounds": 2,
+        "maxSeats": 3,
+        "outrider": ["none"]
+      },
+      "rater": "A Builder judged by an agent that checks the form. One more fix is two runs, so the cap is 2 (an absent cap counts as 2). A cap of 1 leaves no second fix and is a miss. No gate."
+    },
+    {
+      "id": "confirm-12",
+      "kind": "control_no_review",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "제품 블로그에 올릴 새 기능 소개 글 초안을 써 줘. 검토 단계는 필요 없어, 내가 직접 읽어 볼게."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "none",
+        "maxSeats": 1,
+        "outrider": ["none"]
+      },
+      "rater": "One Writer. The declined review adds no judge, no loop and no gate."
+    }
+  ]
+}

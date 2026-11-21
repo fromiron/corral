@@ -68,9 +68,12 @@ export function ImageAttachmentPicker({
   onBusyChange,
   inputRef,
   enabled = true,
+  held = 0,
 }: {
   sessionId: string;
   value: ImageAttachment[];
+  /** Draft images shown elsewhere (a page note's screenshot): they count against the limit. */
+  held?: number;
   disabled: boolean;
   onChange(value: ImageAttachment[]): void;
   onBusyChange(busy: boolean): void;
@@ -89,7 +92,7 @@ export function ImageAttachmentPicker({
   const pick = async (files: File[]) => {
     if (!workspaces || !files.length || busy) return;
     setError(null);
-    if (files.length + value.length > IMAGE_MAX_COUNT) {
+    if (files.length + value.length + held > IMAGE_MAX_COUNT) {
       setError(t('imageLimit'));
       return;
     }
@@ -137,7 +140,7 @@ export function ImageAttachmentPicker({
       {!inputRef ? (
         <Button
           variant="ghost"
-          disabled={disabled || busy || value.length >= IMAGE_MAX_COUNT}
+          disabled={disabled || busy || value.length + held >= IMAGE_MAX_COUNT}
           onClick={() => input.current?.click()}
         >
           {t(busy ? 'imageUploading' : 'attachImages')}

@@ -505,6 +505,33 @@ it('a save refused because a task or terminal holds the copy keeps the draft and
   s.store.dispose();
 });
 
+it("a save refused over a holder keeps the refusal's owner, until the next save starts", async () => {
+  const s = setup();
+  const owner = {
+    kind: 'task' as const,
+    id: 'task_1',
+    sessionId: 'session',
+    state: 'active' as const,
+  };
+  s.changeDocument.mockRejectedValueOnce(
+    new ApiError(
+      409,
+      'RUN_ALREADY_ACTIVE',
+      'working copy writer task_1 has not released ownership',
+      {
+        owner,
+      },
+    ),
+  );
+  const key = await s.store.open('session', 'example.txt');
+  modelOf(s.store, key).setValue('draft');
+  expect(await s.store.save(key)).toBe(false);
+  expect(s.store.getState().documents[key]).toMatchObject({ writerBusy: true, writerOwner: owner });
+  expect(await s.store.save(key)).toBe(true);
+  expect(s.store.getState().documents[key]?.writerOwner).toBeUndefined();
+  s.store.dispose();
+});
+
 it('refreshing after shared mode starts clears writer refusal without changing the draft', async () => {
   const s = setup();
   const key = await s.store.open('session', 'example.txt');

@@ -16,7 +16,6 @@ import {
   CorralDefinitionDraft,
   CreateRunRequest,
   canonicalJson,
-  DevelopmentStart,
   DocumentCommand,
   EffortRoutingSettings,
   type ErrorCode,
@@ -62,12 +61,14 @@ import {
   StartFrom,
   TaskStart,
   TERMINAL_RUN_STATUSES,
+  TeamAssistantRequest,
   TextAttachments,
   WorkspaceTarget,
 } from '@corral/contracts';
 import {
   autoDefinition,
   Coordinator,
+  CorralCreateId,
   canReadArtifactBody,
   compileDefinition,
   createAutoStarter,
@@ -104,6 +105,7 @@ import {
   deleteSessionRecords,
   openDatabase,
   previewSessionDeletion,
+  SqliteAgentLibrary,
   SqliteCorralRepository,
   SqliteHarnessStore,
   SqliteModelAttemptStore,
@@ -134,7 +136,7 @@ import { HarnessService } from './harness/service.ts';
 import { SkillQualityService } from './harness/skill-quality.ts';
 import { registerSkillQualityRoutes } from './harness/skill-quality-routes.ts';
 import { createHarnessVaultAdapters } from './harness/vault.ts';
-import { ImageStore } from './images.ts';
+import { ImageRefusal, ImageStore } from './images.ts';
 import { ImageProfileStore } from './images-generation/profiles.ts';
 import { ImageGenerationService } from './images-generation/service.ts';
 import { ImportInput, type InputOptions, InputRegistry } from './inputs.ts';
@@ -154,11 +156,13 @@ import {
   registerEndpoints,
   userConfigDir,
 } from './models/index.ts';
+import type { TeamOperationResult } from './models/registry.ts';
 import { prepareDebugBrowser } from './preview/debug-browser.ts';
 import { registerPreviewRoutes } from './preview/routes.ts';
 import { PreviewService } from './preview/service.ts';
 import { PreviewToolsBroker } from './preview/tools.ts';
 import { PTY_INTERACTIVE_ROUTES, registerTerminalRoutes } from './processes/pty-routes.ts';
+import { registerAgentLibraryRoutes } from './projects/agent-library-routes.ts';
 import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
 import { drainRejectedBody } from './rejected-body.ts';
@@ -335,6 +339,7 @@ const HEARTBEAT_MS = 15_000;
 const CreateCorral = z.strictObject({
   definition: CorralDefinitionDraft,
   projectId: Identifier.optional(),
+  createId: CorralCreateId.optional(),
 });
 const EntryState = z.enum(['started', 'queued', 'sent', 'refused', 'undelivered', 'dismissed']);
 // Bounded here; the session rules (20 lines of 1 to 200 characters) answer with their reason.
@@ -485,6 +490,10 @@ async function createCorralServer(
     clock,
     newCorralId: () => ids.next('artifact').replace(/^art_/, 'corral_'),
   });
+  const agentLibrary = new SqliteAgentLibrary(db, {
+    clock,
+    newAgentId: () => ids.next('artifact').replace(/^art_/, 'agent_'),
+  });
   const backendSessionId = ids.next('run').replace(/^run_/, 'backend_');
   let registry: ModelRegistry | null = null;
   // models.dev metadata and fetched endpoint lists, both in the user's config directory.
@@ -550,7 +559,7 @@ async function createCorralServer(
       : {}),
     debugPreview: async (sessionId, leaseId, target, open) => {
       const current = () =>
-        canonicalJson(files.developmentState(sessionId).target) === canonicalJson(target);
+        canonicalJson(files.workspaceTarget(sessionId)) === canonicalJson(target);
       const lease = previews.list(sessionId).find((item) => item.leaseId === leaseId);
       if (!current() || !lease || lease.runId || lease.state !== 'ready')
         throw new WorkspaceError('REVISION_CONFLICT', 'the managed preview target changed');
@@ -630,8 +639,11 @@ async function createCorralServer(
     db,
     clock,
     root: join(workspace.root, '.corral', 'harness'),
+    warn: (message) => console.warn(message),
   });
   resources.defer(() => harnesses.dispose());
+  // Bundled packs are installed before the first request; a pack that fails does not stop start.
+  await harnesses.installBuiltins();
 
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
@@ -905,6 +917,8 @@ async function createCorralServer(
     backendSessionId,
     live: registry !== null,
     pathEngine: await files.pathEngineStatus(),
+    // Whether this host shares the Paddock (workbench.md 공유 개발 모드).
+    sharedDevelopment: files.sharedDevelopment,
   }));
   // Stored with the workspace so a new loopback port does not reset an explicit choice.
   const modeChoices = z.record(z.string().min(1).max(512), z.enum(['mock', 'live']));
@@ -947,15 +961,15 @@ async function createCorralServer(
   }));
 
   // ── Corrals ────────────────────────────────────────────────────────────────
+  const saveErrors = {
+    not_found: 'TARGET_NOT_FOUND',
+    revision_conflict: 'REVISION_CONFLICT',
+    validation_error: 'SCHEMA_INVALID',
+    storage_unavailable: 'STORAGE_UNAVAILABLE',
+  } as const;
   const saveReply = (reply: FastifyReply, result: SaveResult, created: boolean) => {
-    if (result.ok) return reply.code(created ? 201 : 200).send(result);
-    const code: ErrorCode =
-      result.error === 'not_found'
-        ? 'TARGET_NOT_FOUND'
-        : result.error === 'revision_conflict'
-          ? 'REVISION_CONFLICT'
-          : 'STORAGE_UNAVAILABLE';
-    return fail(reply, code, result.message);
+    if (result.ok) return reply.code(created && result.changed.definition ? 201 : 200).send(result);
+    return fail(reply, saveErrors[result.error], result.message);
   };
   const parse = <T>(schema: z.ZodType<T>, request: FastifyRequest, reply: FastifyReply) => {
     const parsed = schema.safeParse(request.body);
@@ -968,7 +982,10 @@ async function createCorralServer(
   app.post('/api/v1/corrals', async (request, reply) => {
     const body = parse(CreateCorral, request, reply);
     if (!body) return reply;
-    const result = await corrals.save({ ...body, expectedDefinitionRevision: null } as never);
+    if (body.createId !== undefined && body.createId !== body.definition.id) {
+      return fail(reply, 'SCHEMA_INVALID', 'createId does not match definition.id');
+    }
+    const result = await corrals.save({ ...body, expectedDefinitionRevision: null });
     return saveReply(reply, result, true);
   });
   app.get<{ Params: { corralId: string } }>('/api/v1/corrals/:corralId', async (request, reply) => {
@@ -1025,6 +1042,7 @@ async function createCorralServer(
     },
   );
   // ── Projects ───────────────────────────────────────────────────────
+  registerAgentLibraryRoutes(app, agentLibrary, parse, fail);
   const projectReply = (reply: FastifyReply, result: ProjectResult, created: boolean) => {
     if (result.ok) return reply.code(created ? 201 : 200).send(result);
     const code: ErrorCode =
@@ -1566,72 +1584,71 @@ async function createCorralServer(
     },
   );
 
-  // ── team drafts ───────────────────────────────────────────────────
-  // One model request for a goal; only a plan that passes the contract comes back.
-  const draftOperations = new Map<
-    string,
-    Promise<Awaited<ReturnType<ModelRegistry['draftTeam']>>>
-  >();
-  app.post('/api/v1/team-drafts', async (request, reply) => {
-    if (!registry) return noLive(reply);
-    const body = parse(
-      z.strictObject({
-        goal: z.string().trim().min(1).max(2000),
-        operationId: z.string().min(1).max(200).optional(),
-      }),
-      request,
-      reply,
-    );
-    if (!body) return reply;
-    const id = body.operationId ?? randomUUID();
-    const fingerprint = createHash('sha256').update(body.goal).digest('hex');
-    const previous = db
-      .prepare('SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?')
-      .get(id) as { fingerprint: string; result_json: string | null } | undefined;
+  // A team proposal's admission record and its single in-flight request, by operation id.
+  const teamOperations = new Map<string, Promise<TeamOperationResult>>();
+  const findOperation = db.prepare<[string], { fingerprint: string; result_json: string | null }>(
+    'SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?',
+  );
+  const startOperation = db.prepare(
+    'INSERT INTO model_operations(operation_id, fingerprint) VALUES (?, ?)',
+  );
+  const finishOperation = db.prepare(
+    'UPDATE model_operations SET result_json=? WHERE operation_id=?',
+  );
+  const teamOperation = async (
+    reply: FastifyReply,
+    id: string,
+    fingerprint: string,
+    send: (signal: AbortSignal) => Promise<TeamOperationResult>,
+  ) => {
+    const previous = findOperation.get(id);
     if (previous && previous.fingerprint !== fingerprint)
-      return fail(reply, 'REVISION_CONFLICT', 'This draft operation belongs to another request.');
-    if (previous && !previous.result_json && !draftOperations.has(id))
+      return fail(reply, 'REVISION_CONFLICT', 'This operation belongs to another request.');
+    let work = teamOperations.get(id);
+    if (previous && !previous.result_json && !work)
       return fail(
         reply,
         'REQUEST_OUTCOME_UNKNOWN',
-        'The earlier draft outcome is unconfirmed. It has not been resent.',
+        'The earlier outcome is unconfirmed. It has not been resent.',
       );
-    const controller = new AbortController();
-    const closed = () => {
-      if (!reply.raw.writableFinished) controller.abort();
-    };
-    reply.raw.once('close', closed);
-    let result: Awaited<ReturnType<ModelRegistry['draftTeam']>>;
-    try {
-      if (previous?.result_json) result = JSON.parse(previous.result_json);
-      else {
-        let work = draftOperations.get(id);
-        if (!work) {
-          db.prepare('INSERT INTO model_operations(operation_id, fingerprint) VALUES (?, ?)').run(
-            id,
-            fingerprint,
-          );
-          work = registry
-            .draftTeam(body.goal, { id, signal: controller.signal })
-            .then((value) => {
-              db.prepare('UPDATE model_operations SET result_json=? WHERE operation_id=?').run(
-                JSON.stringify(value),
-                id,
-              );
-              return value;
-            })
-            .finally(() => draftOperations.delete(id));
-          draftOperations.set(id, work);
-        }
-        result = await work;
+    let result: TeamOperationResult;
+    if (previous?.result_json) {
+      result = JSON.parse(previous.result_json);
+    } else {
+      if (!work) {
+        startOperation.run(id, fingerprint);
+        const controller = new AbortController();
+        const closed = () => {
+          if (!reply.raw.writableFinished) controller.abort();
+        };
+        reply.raw.once('close', closed);
+        if (reply.raw.destroyed) closed();
+        work = send(controller.signal)
+          .then((value) => {
+            finishOperation.run(JSON.stringify(value), id);
+            return value;
+          })
+          .finally(() => {
+            reply.raw.off('close', closed);
+            teamOperations.delete(id);
+          });
+        teamOperations.set(id, work);
       }
-    } finally {
-      reply.raw.off('close', closed);
+      result = await work;
     }
+    if (!result.ok) return fail(reply, result.code, result.message);
+    return { reply: result.reply, model: result.model };
+  };
 
-    return result.ok
-      ? { plan: result.plan, model: result.model }
-      : fail(reply, result.code, result.message);
+  app.post('/api/v1/team-assistant', async (request, reply) => {
+    const current = registry;
+    if (!current) return noLive(reply);
+    const body = parse(TeamAssistantRequest, request, reply);
+    if (!body) return reply;
+    const fingerprint = createHash('sha256').update(canonicalJson(body)).digest('hex');
+    return teamOperation(reply, body.operationId, fingerprint, (signal) =>
+      current.assistTeam(body, signal),
+    );
   });
 
   // ── runs ───────────────────────────────────────────────────────────────────
@@ -2232,8 +2249,7 @@ async function createCorralServer(
   }
   const workspaceFail = (reply: FastifyReply, error: unknown) => {
     if (error instanceof WorkspaceError) return fail(reply, error.code, error.message);
-    if (error instanceof ToolRefusal)
-      return fail(reply, error.owner ? error.code : 'SCHEMA_INVALID', error.message, error.owner);
+    if (error instanceof ToolRefusal) return fail(reply, error.code, error.message, error.owner);
     // Git's message can name local paths; only the step is reported.
     return fail(reply, 'STORAGE_UNAVAILABLE', 'the folder operation failed');
   };
@@ -2266,16 +2282,15 @@ async function createCorralServer(
     { bodyLimit: IMAGE_MAX_BYTES },
     async (request, reply) => {
       try {
-        const name = ImageAttachment.shape.name.parse(request.query.name);
+        const named = ImageAttachment.shape.name.safeParse(request.query.name);
+        if (!named.success) return fail(reply, 'SCHEMA_INVALID', 'image name is invalid');
+        const name = named.data;
         if (request.headers['content-type'] !== 'image/png' || !Buffer.isBuffer(request.body))
           return fail(reply, 'SCHEMA_INVALID', 'normalized PNG input required');
         return reply.code(201).send(images.put(request.params.sessionId, name, request.body));
-      } catch {
-        return fail(
-          reply,
-          'SCHEMA_INVALID',
-          'image unavailable, invalid, or over its size/dimension/storage limit',
-        );
+      } catch (error) {
+        if (error instanceof ImageRefusal) return fail(reply, error.code, error.message);
+        return fail(reply, 'STORAGE_UNAVAILABLE', 'image could not be stored');
       }
     },
   );
@@ -2731,44 +2746,6 @@ async function createCorralServer(
       if (!input) return reply;
       try {
         return await files.stopLanguage(request.params.sessionId, input);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.get<SessionParams>(
-    '/api/v1/sessions/:sessionId/worktree/development',
-    async (request, reply) => {
-      try {
-        return files.developmentState(request.params.sessionId);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.post<SessionParams>(
-    '/api/v1/sessions/:sessionId/worktree/development',
-    async (request, reply) => {
-      const input = DevelopmentStart.safeParse(request.body);
-      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development request');
-      try {
-        return await files.startDevelopment(request.params.sessionId, input.data);
-      } catch (error) {
-        return documentFail(reply, error);
-      }
-    },
-  );
-  app.post<{ Params: { sessionId: string; operationId: string } }>(
-    '/api/v1/sessions/:sessionId/worktree/development/:operationId/finish',
-    async (request, reply) => {
-      const input = z.strictObject({ target: WorkspaceTarget }).safeParse(request.body);
-      if (!input.success) return fail(reply, 'SCHEMA_INVALID', 'invalid development target');
-      try {
-        return await files.finishDevelopment(
-          request.params.sessionId,
-          request.params.operationId,
-          input.data.target,
-        );
       } catch (error) {
         return documentFail(reply, error);
       }

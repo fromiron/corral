@@ -1,5 +1,7 @@
 # 기능 명세: 팀 그래프 모델
 
+[팀 공통 Outrider](shared-outrider.md)의 질문 허용 관계는 고정 revision 참조를 펼친 실행 사본에 적용한다.
+
 - 상태: implemented
 - 기준: [제품 계약](../product-contract.md) §2.1, §3, [기술 설계](../technical-design.md) §4. 노드·포트·상자·병렬·컴파일 규칙의 정본은 이 문서다.
 - 비목표: 실행 중 구조 변경, 사용자 코드·수식 평가, 범용 데이터 타입 설계기. 단계별 hook(도구 사용 전 동작, 에이전트에게 추가 메시지 보내기를 GUI로 붙이는 것)은 없다. 편집 화면의 조작은 [팀 편집기](canvas.md)가 정한다.
@@ -24,13 +26,14 @@
 | 노드 | 필드 |
 |---|---|
 | 공통 | `id`, `type`, `label`, `parentId?`(담고 있는 Loop 또는 Team), `note?`(실행에 쓰지 않음, 정의 revision에는 포함) |
-| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`를 쓰지 않는다 |
+| Agent | `roleId`, `invocation`, `inputBindings`, `outputName`, `retry?: { maxAttempts }`(0 이상, 없으면 0), `stepInstruction?`(이 자리의 단계 지시, [에이전트 라이브러리](agent-library.md#단계-지시의-전달)). `observer`는 `review?: { interval, maxRequestsPerReview }`(1 이상, 기본 3과 8)를 갖고 `inputBindings`·`retry`·`stepInstruction`을 쓰지 않는다 |
 | Decision | `mode`, `inputBindings`(1개 이상). `review`·`approval`·`rule`은 모드별 `rule` 하나. `check`는 `checkIds`(등록 검사 1개 이상). `router`는 `routes: { id, label, description? }[]`(2개 이상, id 고유)와 선택적 `modelProfile` |
 | Loop | `maxIterations?`(1 이상), `limitPolicy?`(없으면 `exhaust`), `stallDetection?`(없으면 끔), `reviewRecipe?`([하네스 계약](../harness-contract.md) H6) |
 | Team | `source: { kind: 'inline' } \| { kind: 'reference', corralId, definitionRevision }`, `inputBindings?`(reference Team만) |
 | Join | `policy: 'all' \| 'any'` |
 | Output | `inputBindings`(1개 이상), `requireApproval` |
 
+- 역할(`roles[]`)의 선택 필드 `origin`(사본의 출처)과 `skills`(고른 스킬)는 [에이전트 라이브러리](agent-library.md#정의의-선택-필드)와 [스킬 라이브러리](skill-library.md)가 정한다. 둘 다 없으면 이전과 같이 읽고 실행한다.
 - `controlEdges`는 `{ id, source, sourcePort, target, targetPort }`다. `sourcePort`는 아래 포트 표의 이름이거나 router의 route id다.
 - `capabilityLinks`(`delegate`, `question`, `advise`)는 허용 관계이며 순서가 아니다. `delegate`와 `question`의 의미는 [제품 계약](../product-contract.md) §7을, `advise`의 의미는 [Outrider](advisor.md)를 따른다.
 - `limitPolicy`는 `{ kind: 'exhaust' }`, `{ kind: 'raise_reasoning', level }`, `{ kind: 'upper_model', modelProfile }`, `{ kind: 'unlimited' }` 중 하나다. `level`은 추론 수준, `modelProfile`은 모델 profile id다. 의미는 [루프 실행](#루프-실행)을 따른다.
@@ -90,9 +93,13 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 7. **병렬과 합류.**
    - 한 포트의 연결이 둘 이상이면 동시에 실행되는 분기다.
    - Join이 아닌 노드나 상자 포트로 들어오는 연결 가운데, 동시에 살아 있을 수 있는 분기에서 온 것이 둘 이상이면 오류다.
+   - 갈라진 분기 안에서 오는 연결과 그 분기 밖에서 오는 연결이 Join이 아닌 한 곳으로 들어올 수 있다. 분기 밖은 갈라지기 전이거나 그 분기들이 Join으로 모인 뒤다. 다만 다음 둘은 오류다.
+     - 그곳에서 이어지는 길이 그 분기들을 모으는 Join에 닿는다. 분기 밖에서 온 쪽은 그 Join을 지날 수 없다.
+     - 분기 밖에서 오는 연결이 그 분기들을 모은 `any` Join의 뒤에서 온다. Join이 멈춘 분기가 있던 단계로 다시 들어가게 된다.
    - Join으로 들어오는 연결이 하나뿐이면 경고다.
-   - 분기는 다시 모인 뒤에만 끝날 수 있다. 아직 Join으로 모이지 않은 분기에서 Output으로 가거나, 그 분기를 낳은 출력 포트가 든 상자의 `exit`·`repeat`로 가는 연결은 오류다.
+   - 분기는 다시 모인 뒤에만 끝날 수 있다. 아직 Join으로 모이지 않은 분기에서 Output으로 가거나, 그 분기를 낳은 출력 포트가 든 상자의 `exit`·`repeat`로 가는 연결은 오류다. 갈라지는 포트에서 바로 가는 연결도 같다. 그래서 연결이 둘 이상인 포트는 `repeat`로 이어질 수 없다.
    - Join 하나는 출력 포트 하나의 분기를 모은다. 들어오는 연결은 그 포트의 서로 다른 분기에서 오고 모든 분기가 들어와야 하며, 그 밖의 바깥 분기 처지는 서로 같아야 한다. 어기면 오류다. 들어오는 연결이 모두 같은 분기에서 오면 Join은 들어온 길을 그대로 잇는다. 모든 분기가 Join으로 모인 포트는 닫혀서, 그 뒤의 바깥 Join에서는 분기로 세지 않는다.
+   - 출력 포트 하나의 분기를 모으는 `all` Join은 하나다. 둘 이상이면 오류다. 분기마다 다른 Join으로 가면 어느 Join도 모든 분기를 받지 못해 Run이 더 가지 못한다. `any` Join은 같은 포트에 `all` Join이나 다른 `any` Join과 함께 둘 수 있다.
 8. **같은 Paddock에 쓰는 병렬 분기.** 파일을 쓰는 도구를 가진 Agent가 동시에 살아 있을 수 있는 분기에 둘 이상 있으면 경고한다. 분기들은 같은 Paddock을 쓰며 파일 효과는 분기마다 격리되지 않는다.
 9. **연결되지 않은 출구.**
    - Decision과 router의 출구, Loop의 `exhausted`, Agent의 `error`가 연결되지 않아도 정의는 유효하다.
@@ -115,7 +122,7 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 ### 루프 실행
 
 - **진입.** Loop의 `enter`로 들어오거나 Loop가 시작 노드이면 1회차를 연다. 들어올 때마다 회차 번호와 정체 비교를 새로 시작한다.
-- **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 같은 진입의 바로 앞 회차에서만 오며, 1회차에는 없다.
+- **회차 기록.** 회차는 그때 열려 있는 바깥 Loop의 회차를 부모로 기록한다(`loop.iteration_started.parentIterationId`). 이전 회차 출력(`previous_iteration_output`)은 읽는 쪽과 내는 쪽이 함께 든 가장 안쪽 Loop의, 같은 진입의 바로 앞 회차에서만 오며 그 Loop의 1회차에는 없다([기술 설계](../technical-design.md) §9.2).
 - **다시 돌기.** Decision이 `repeat`로 보내면 차례로 확인한다.
   1. 이번 진입에서 끝난 회차 수가 회차 상한에 닿았다: `cap_reached`. 한도 정책을 적용한 뒤에는 그 뒤에 끝난 회차만 센다. 상한은 `maxIterations`이고, `loop_limit` 패치가 있으면 그 값이다. `unlimited`인 Loop는 패치가 없으면 상한이 없다. 리뷰 레시피가 있으면 레시피의 시도 수를 넘지 않는다. 설치 상한은 없다.
   2. 정체했다: `stalled`.
@@ -163,16 +170,18 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
 
 ### 병렬 실행
 
-- **갈라지기.** 한 출력 포트에 연결이 둘 이상이면 그 대상들을 동시에 시작한다. 분기마다 따로 진행하며, Join 말고는 서로를 기다리지 않는다. Loop 안에서 갈라지면 같은 회차에 속하고, 회차마다 새로 갈라진다.
-- **`all` Join.** 그 포트의 모든 분기가 도착하면 `out`으로 한 길이 이어진다.
+- **갈라지기.** 한 출력 포트에 연결이 둘 이상이면 그 대상들을 동시에 시작한다. 분기마다 따로 진행하며, Join 말고는 서로를 기다리지 않는다. Loop 안에서 갈라지면 같은 회차에 속하고, 회차마다 새로 갈라진다. 갈라지는 대상에 Loop의 `repeat`가 있는 계획은 컴파일러가 막는다(구조 규칙 7). 그런 계획을 받은 러너는 어느 분기도 시작하지 않고 Run을 실패로 끝낸다.
+- **`all` Join.** 그 포트의 모든 분기가 도착하면 `out`으로 한 길이 이어진다. 같은 포트의 분기를 모으는 `any` Join이 먼저 이어지면 이 Join은 이어지지 않고, 여기서 기다리던 분기는 쓰이지 않는다.
 - **`any` Join.** 첫 분기가 도착하면 `out`으로 이어지고, 같은 포트의 나머지 분기를 멈춘다. 실행의 성공은 멈춘 분기가 실제로 끝난 뒤에 확정하므로 Paddock은 종료 확인과 함께 돌려준다. 멈춘 분기의 종료를 확인하지 못하면 실행은 성공이 아니라 실패다.
   - 실행 중인 실행(execution)은 취소된다. 사람에게 다시 시작을 묻지 않는다.
   - 그 분기의 단계가 기다리던 승인은 거둬진다(`approval.resolved`, `reason: cancelled`).
   - 그 분기 안에서 열린 Loop 회차는 `cancelled`로 끝난다.
+  - 그 분기가 시작하려던 단계는 시작하지 않는다. 일시정지나 중단점을 기다리던 중이었어도 같다. Agent의 실행(execution)을 만들지 않고, Decision은 경로를 기록하지 않으며, 들어가려던 Loop는 회차를 열지 않는다. 그 Loop의 리뷰 레시피가 기준 파일을 고정하지 못해도 Run에는 영향이 없다. check Decision은 승인받은 다음 시도를 만들지 않는다. review Decision이 리뷰 레시피의 근거를 확인하던 중이었다면 그 결과는 버린다. 레시피를 멈추지 않고 평가도 기록하지 않는다. 다시 돌려던 Loop에는 한도 정책을 적용하지 않고 그 리뷰 레시피도 멈추지 않는다. 다른 Join을 지나던 중이었다면 그 Join 뒤로 갈라지지 않는다.
   - 멈춘 분기의 기록과 산출물은 남는다. 늦게 도착한 분기는 무시한다.
-- **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다.
+- **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다. 다른 Join이 이미 멈춘 분기는 다시 멈추지 않고 그 단계도 다시 적지 않는다.
 - **사람을 기다리기.** 한 단계가 승인·선택·다시 확인을 기다리면 그 단계만 멈춘다. 다른 분기와 실행은 계속 진행한다. Run 전체에 걸린 한도(무진전)는 Run 단위 개입이므로 하나만 열리고, 거기 닿은 실행은 모두 그 하나를 기다린다.
 - **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
+- **끝난 회차의 분기.** Loop 회차가 끝나면 그 회차에 남아 있던 분기는 더 진행하지 않는다. Join에 닿아도 Join을 잇지 않고 다른 분기를 멈추지도 않는다. 그 회차에서 시작하려던 단계는 `any` Join이 멈춘 분기의 단계처럼 시작하지 않는다. 그 회차에서 돌던 실행이 결과를 제출하다가 리뷰 레시피의 기준이나 검사가 어긋난 것을 알아도 레시피를 멈추지 않는다. 그 분기의 단계가 그 뒤에 거절이나 실패로 끝나도 Run의 끝을 바꾸지 않는다. 모이지 않은 분기의 Decision이 연결 없는 `inconclusive`로 회차를 끝낸 경우가 그렇고, 그때 Run은 그 Decision의 `needs_user`로 끝난다. 다만 Loop 밖의 분기가, 회차를 끝낸 분기가 Run을 끝내기 전에 두 분기를 모으는 `any` Join에 먼저 닿으면 그 Join이 회차를 끝낸 분기를 멈추고 Run은 이어진다. 분기가 든 회차의 Loop가 그 사이 다른 회차를 열었다면 컴파일러가 막았어야 할 계획이므로 Run은 실패로 끝난다.
 - **Paddock.** 분기들은 같은 Paddock을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
 
 ### 팀 실행
@@ -231,6 +240,16 @@ Scenario: 안쪽 루프는 바깥 회차마다 1회차부터 다시 돈다
   Then B의 회차는 A의 회차마다 1부터 시작하고 부모 회차로 그 A 회차를 기록한다
   And 같은 단계가 A의 서로 다른 회차에서 각각 새 Task로 실행된다
   And B의 1회차는 앞 진입의 산출물을 이전 회차 출력으로 받지 않는다
+
+Scenario: 바깥 루프의 수정 의견은 안쪽 루프의 작업에 닿는다
+  Given Loop A 안에 Loop B가 있고 B 안의 작성자가 A의 검토 결과를 이전 회차 출력으로 읽으며 A의 검토가 첫 회차에 revise를 고른다
+  When 실행한다
+  Then A의 2회차에서 B의 1회차로 도는 작성자는 A의 1회차 검토 결과를 받는다
+
+Scenario: 바깥 루프의 작업은 안쪽 루프가 앞 회차에 마지막으로 낸 것을 읽는다
+  Given Loop A 안에 Loop B가 있고 A의 작업이 B 안의 작성자를 이전 회차 출력으로 읽으며 B가 A의 1회차에서 두 번 돈다
+  When A가 2회차를 시작한다
+  Then A의 그 작업은 B의 작성자가 A의 1회차에서 마지막으로 낸 것을 받는다
 
 Scenario: 바깥 루프의 출구로 바로 나가면 안쪽 회차도 끝난다
   Given Loop B 안의 검토가 pass를 바깥 Loop A의 exit에 잇는다
@@ -473,11 +492,92 @@ Scenario: 모이기 전에 끝나는 분기는 오류다
   Then A의 연결에 오류가 있다
   Given Loop 안에서 갈라진 분기 A가 그 Loop의 exit로 간다
   Then 그 연결에 오류가 있다
+  Given Loop 안 Decision의 한 포트가 그 Loop의 repeat와 다른 단계로 함께 이어진다
+  Then repeat로 가는 연결에 오류가 있다
+  Given 한 포트가 바깥 Loop의 repeat와 안쪽 Loop의 repeat로 함께 이어진다
+  Then 두 연결에 오류가 있다
+  Given 서로 다른 두 포트가 각각 바깥 Loop의 repeat와 안쪽 Loop의 repeat로 이어진다
+  Then 오류가 없다
+
+Scenario: any Join이 멈춘 분기는 그 뒤에 아무것도 시작하지 않는다
+  Given 분기 A는 곧바로 any Join J로 가고 분기 B는 단계 X를 시작하려던 참이다
+  When 실행한다
+  Then X의 실행은 만들어지지 않고 Run은 살아 있는 실행 없이 성공한다
+  Given B가 Loop L에 들어가려던 참이다
+  Then L의 회차는 열리지 않는다
+  Given B의 Decision이 판정을 시작하려던 참이다
+  Then 그 Decision의 경로 선택은 기록되지 않는다
+  Given B의 check Decision이 다음 시도를 승인받고 일시정지가 풀리기를 기다리던 참이다
+  Then 다음 시도는 만들어지지 않는다
+  Given B의 review Decision이 리뷰 레시피의 근거를 확인하던 참이다
+  Then 레시피는 멈추지 않고 평가도 기록되지 않는다
+  Given B가 all Join K를 지나던 참이고 K 뒤에서 둘로 갈라진다
+  Then K 뒤의 단계는 하나도 시작하지 않는다
+
+Scenario: 회차가 끝난 뒤에 Join에 닿은 분기는 이어지지 않는다
+  Given Loop L 안에서 갈라진 분기 A와 B가 any Join J로 모이고 J 뒤에 L 안의 Output이 있다
+  And A의 Decision이 연결 없는 inconclusive로 끝나 L의 회차가 끝났다
+  When 바로 뒤에 B가 J에 닿는다
+  Then J는 이어지지 않고 Output은 확정되지 않으며 Run은 A의 Decision의 needs_user로 끝난다
+
+Scenario: 끝난 회차에서 시작하려던 단계는 시작하지 않는다
+  Given Loop L의 회차가 연결 없는 inconclusive로 끝났고 같은 회차의 분기 B가 단계 X를 시작하려던 참이다
+  Then X의 실행은 만들어지지 않는다
+  Given B가 L 안의 Loop C에 들어가려던 참이다
+  Then C의 회차는 열리지 않고 C의 리뷰 레시피가 기준 파일을 고정하지 못해도 Run의 끝은 바뀌지 않는다
+  Given L 안의 리뷰 레시피 Loop C가 시도 수의 끝에서 다시 돌려던 참이다
+  Then C의 레시피는 멈추지 않고 Run의 끝은 바뀌지 않는다
+  Given 끝난 회차에서 돌던 C의 후보 실행이 결과를 제출하다가 기준 파일이 바뀐 것을 안다
+  Then C의 레시피는 멈추지 않고 Run의 끝은 바뀌지 않는다
+
+Scenario: Loop 밖의 분기가 먼저 any Join에 닿으면 Run은 이어진다
+  Given 분기 A는 Loop L을 돌고 분기 B는 L 밖에 있으며 둘은 any Join J로 모인다
+  And A의 Decision이 연결 없는 inconclusive로 L의 회차를 끝냈다
+  When A가 Run을 끝내기 전에 B가 J에 닿는다
+  Then J가 A를 멈추고 Run은 이어진다
+
+Scenario: 이미 멈춘 분기는 바깥 Join이 다시 멈추지 않는다
+  Given any Join J1이 분기 Z를 멈췄고 Z의 단계가 아직 끝나는 중이다
+  When J1 바깥의 any Join J2가 이어진다
+  Then J2의 기록에 Z의 단계는 없다
+
+Scenario: 회차가 끝난 뒤에 끝난 분기는 Run의 끝을 바꾸지 않는다
+  Given Loop L 안에서 갈라진 분기 A와 B가 있다
+  And A의 Decision이 연결 없는 inconclusive로 끝나 L의 회차가 끝났다
+  When 바로 뒤에 B의 approval Decision이 연결 없는 거절로 끝난다
+  Then Run은 A의 Decision의 needs_user로 끝난다
 
 Scenario: Join은 한 포트의 모든 분기를 모은다
   Given 세 갈래로 갈라진 분기 중 둘만 Join J로 들어간다
   When 정의를 컴파일한다
   Then J에 오류가 있다
+
+Scenario: any Join의 뒤는 그 Join이 모은 분기 안으로 들어올 수 없다
+  Given 분기 A가 단계 X로 가고, A와 B를 모으는 any Join K의 out도 X로 간다
+  When 정의를 컴파일한다
+  Then X에 오류가 있다
+
+Scenario: 갈라지기 전의 길은 Join으로 이어지는 분기 안으로 들어올 수 없다
+  Given Decision D의 yes는 A와 B로 갈라지는 단계 F로 가고 no는 A로 간다
+  And A와 B는 Join J로 모인다
+  When 정의를 컴파일한다
+  Then A에 오류가 있다
+
+Scenario: 분기 안팎의 길이 Join에 닿지 않는 곳에서 만날 수 있다
+  Given 갈라지는 단계 P의 error와 분기 A의 error가 출구가 연결되지 않은 Decision X로 간다
+  When 정의를 컴파일한다
+  Then 오류가 없다
+  And A가 실패하면 Run은 X에서 needs_user로 끝난다
+
+Scenario: 한 포트의 분기를 all Join 둘이 모을 수 없다
+  Given 한 포트에서 갈라진 두 분기가 각각 all Join J1이나 all Join J2로 갈 수 있다
+  When 정의를 컴파일한다
+  Then J1과 J2에 오류가 있다
+  Given J2가 any Join이다
+  When 정의를 컴파일한다
+  Then 오류가 없다
+  When 한 분기는 J1로, 다른 분기는 J2로 간다
+  Then J2가 이어지고 J1은 이어지지 않는다
 
 Scenario: 분기 안의 루프
   Given 분기 A 안에 Loop L이 있고 L의 next가 Join으로 간다
@@ -524,3 +624,5 @@ Scenario: 이해하지 못하는 필드
 - 참조 팀은 같은 사용자가 읽을 수 있는 정의만 가져온다. Run 시작 시 펼친 정의를 스냅샷으로 고정하고, 원본이 바뀌어도 그 Run은 바뀌지 않는다.
 - 가져오기 크기 제한(1 MiB)과 strict schema는 그대로다. 참조 순환을 금지하므로 펼친 결과는 유한하다.
 - 편집 화면의 접근성과 성능은 [팀 편집기](canvas.md)가 정한다.
+
+출력의 선택 필드 `requiredReviews`는 입력 이름·생산자 노드와 검토 Loop·검토자·판정 노드를 연결한다. 실제 제출에 필요한 버전 증거와 편집·우회 정책은 [팀 공통 Outrider](shared-outrider.md#제출-전-필수-검토)를 따른다.

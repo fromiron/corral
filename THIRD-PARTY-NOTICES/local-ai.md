@@ -5,8 +5,8 @@
 | Item | Pinned version | License | Source |
 |---|---|---|---|
 | EmbeddingGemma 2 Text 270M for LiteRT-LM | revision `9be6e8b90982095dc05c2bd162e4b954ee4dbac7` | Apache-2.0 (model card), Google | https://huggingface.co/litert-community/embeddinggemma-2-text-270m-litert-lm |
-| LiteRT-LM C library from the `litert-lm-api` wheel | 0.19.0 | Apache-2.0 (wheel metadata), Google | https://github.com/google-ai-edge/LiteRT-LM |
-| `dxcompiler.dll`, `dxil.dll` (Windows only, same wheel) | as shipped in the 0.19.0 wheel | Microsoft DirectX Shader Compiler; the wheel carries no separate license file for them and their terms were not reviewed separately | https://github.com/microsoft/DirectXShaderCompiler |
+| LiteRT-LM C library from the `litert-lm-api` wheel | 0.19.2 | Apache-2.0 (wheel metadata), Google | https://github.com/google-ai-edge/LiteRT-LM |
+| `dxcompiler.dll`, `dxil.dll` (Windows only, same wheel) | as shipped in the 0.19.2 wheel | Microsoft DirectX Shader Compiler; the wheel carries no separate license file for them and their terms were not reviewed separately | https://github.com/microsoft/DirectXShaderCompiler |
 
 The Local effort routing engine is installed the same way, only from the settings panel, into its own folder, from the values pinned in `packages/local-intelligence/src/d1/manifest.ts`. Corral starts the downloaded server itself and does not modify either artifact.
 

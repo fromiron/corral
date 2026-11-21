@@ -21,4 +21,11 @@ export default defineConfig({
   },
   // Opening the lazy file viewer must not restart the in-memory demo runtime.
   optimizeDeps: { include: ['@pierre/diffs/react'] },
+  build: {
+    rolldownOptions: {
+      // The desktop's annotation overlay is its own page: annotate.html at the build's root,
+      // served by the desktop alone (features/browser-annotate.md 계약, decision 44).
+      input: { main: 'index.html', annotate: 'annotate.html' },
+    },
+  },
 });

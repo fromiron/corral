@@ -5,9 +5,8 @@ import { ReasoningPolicy } from './reasoning.ts';
 import type { TeamPattern } from './team-plan.ts';
 
 // a session without a chosen team runs in auto mode. A start model picks one of the
-// built-in templates, which have the first three team patterns' shapes; tools and limits come
-// from the template, never from the model's answer. Drafting a team from a goal offers more
-// patterns; auto mode keeps these three.
+// built-in templates, which have the three team patterns' shapes; tools and limits come
+// from the template, never from the model's answer.
 
 export const AUTO_TEMPLATES = [
   'single',

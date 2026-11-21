@@ -18,8 +18,10 @@
 | 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
-| 편집기로 연 파일 | 문서 탭 | 도킹 `document` | 파일 탭 |
-| 도킹 영역의 한 칸 | Pane / 창 | `DockView`, `SessionPanel` | — |
+| 파일 하나를 연 패널의 탭 | 문서 탭 | 패널 `document` | 파일 탭(이 뜻으로), 창 |
+| 저장 팀의 그래프를 고치는 패널의 탭 | 팀 그래프 탭(탭 이름은 팀 이름) | 패널 `graph` | 도킹 탭, 설계 창 |
+| 대화 옆에서 탭을 하나씩 열고 닫는 자리 | Panel / 패널 | 주소 `panel`, [세션 패널](features/session-panel.md) | 창, 도구 패널 |
+| 대화와 패널 아래에서 터미널 탭과 디버그 탭을 여는 자리 | Bottom dock / 하단 도크(자리와 상단 줄의 버튼), Toggle bottom dock / 하단 도크 여닫기(명령 팔레트), Move to bottom dock / 하단 도크로 옮기기 · Move to panel / 패널로 옮기기(터미널의 ⋯ 메뉴) | 주소 없음, 단축키 `view.dock`, [세션 패널](features/session-panel.md#하단-도크) | 패널, 창, 터미널 창, 터미널 버튼 |
 | 응답이 필요한 항목 모음 | Needs you / 확인 필요 | `inbox` | 알림 |
 | 실행이 사람의 답을 기다리는 상태 | Waiting for you / 응답 대기 | run status `awaiting_user` | 결정 대기, Response needed / 응답 필요, Waiting for your answer / 답변을 기다리고 있습니다, 내 답변 대기, 답을 기다리는 중, 사용자를 기다리는 중 |
 | 그 상태에 답하러 가는 동작 | Respond / 응답하기 | 대화 안내, 실행 기록 머리, 확인 필요 | Check now / 확인하기, Go to the request / 요청으로 이동 |
@@ -33,6 +35,7 @@
 | 대화의 검사 명령 기록 | Checks / 검사 | `verifications` | 검증됨(통과 보장처럼 읽힘) |
 | 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
 | 달리는 실행을 다루는 자리(지시, 일시정지·재개·중지, 실행 단위의 취소·다시 시작) | Reins / Reins | `reins`, 메시지 `Reins`, [Reins 상태 계약](features/reins.md) | Run controls / 실행 조작(이름표로), Give instruction / 지시하기(영역의 제목으로. 그 영역을 여는 동작의 이름으로는 쓴다), Steer |
+| Run 전체를 끝내는 조작 | Stop the run / 실행 중지(버튼 자리가 좁으면 Stop / 중지) | 명령 `cancel`(Run 범위) | 이 뜻으로: 실행 전체 취소, 실행 중단, Cancel whole run. 취소 · Cancel은 실행 단위 하나를 끝내는 조작의 이름이다 |
 | 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
 | Corral이 함께 싣는 색 구성 | Built-in theme / 내장 테마 | `builtin:<id>` | 프리셋, 기본 테마(시스템·라이트·다크와 구분) |
 | 이 기기에서 만든 색 구성 | Personal theme / 개인 테마 | `custom:<id>` | 커스텀 테마, 사용자 정의 테마, 내 테마 |
@@ -42,7 +45,11 @@
 | Git 기록 만들기 | Commit / 커밋 | `git.commit` | 저장(문서 저장과 구분) |
 | 원격에서 받기 / 반영 / 보내기 | Fetch / 가져오기, Pull / 당겨오기, Push / 올리기 | `git.fetch`, `git.pull`, `git.push` | 동기화(범위가 다름) |
 | 사람이 시작한 package script 실행 | Task / 작업 | 메시지 `DevTasks`, operation `task` | 명령(Run이 실행한 명령과 구분) |
-| task·미리보기를 다루는 창 | Tasks & preview / 작업·미리보기 | 패널 `tools`, 슬래시 `/preview` | Running commands & preview, 도구 |
+| task·배포 작업·사본 명령을 다루는 패널의 탭 | Tasks / 작업 | 패널 `tools` | Running commands, 도구, 작업·미리보기 |
+| 웹 페이지 하나를 여는 패널의 탭 | Browser / 브라우저 | 패널 `browser`, 슬래시 `/browser`, [브라우저 탭](features/browser-tab.md) | 웹뷰, 브라우저 창 |
+| preview lease로 연 브라우저 탭의 페이지 | Preview / 미리보기 | 미리보기 페이지, preview lease | 관리형 미리보기 |
+| 브라우저 탭의 페이지에서 요소를 짚어 단 글과 바꿔 본 스타일 | Annotate / 주석(켜는 버튼), Note / 주석(칸과 칩) | 단축키 `browser.annotate`, 첨부 `annotation.json`, [브라우저 주석](features/browser-annotate.md) | 코멘트, 피드백, 요소 캡처. 코드의 주석(comment)과는 다른 것이다 |
+| 주석을 보내지 않고 번호를 붙여 입력창에 모으는 스위치 | Collect / 모아 두기 | — | 큐, 쌓기 |
 | 검사·task 출력의 위치 목록 | Problems / 문제 | 패널 `problems`, 슬래시 `/problems` | Diagnostics, 진단 |
 | 현재 의도가 싣지 않는 항목 | Applies to a new request only / 새 요청에만 적용 | `heldForNew` | 항목별 개별 안내 |
 | 진행 중인 실행 단위의 다음 모델 요청에 실리는 전송 | Join / 합류 | 지시 `delivery: next_request`, intent `steer` | 대화 화면의 지시·Instruction(실행 기록의 Reins 영역은 Instruction / 지시를 쓴다), Steer |
@@ -108,6 +115,5 @@ Loop와 편집기의 다른 단계 종류는 팔레트가 이름 옆에 뜻을 �
   - Output / 출력: 출력 노드, 실행의 Output 탭, 출력 계약, 검사·프로세스·터미널의 출력.
   - Instructions: 역할의 프롬프트, 실행 단위에 보내는 지시, 프로젝트 지침.
   - `Docking.conversation`과 `Docking.chat`은 같은 값을 가진 두 키다.
-  - Pane: 국문이 "창"과 "패널"로 갈린다. "창"은 운영체제 창의 이름이기도 하다("창 최대화").
   - 저장하지 않고 쓰는 자동 구성: 컴포저는 "Auto / 자동", 새 대화 만들기와 대화 메뉴는 "Default chat / 기본 대화"라고 부른다.
 - 실행 상태의 낱말은 [표시 상태](features/presence.md)의 것 하나로 쓰지만, 문구 키는 `Presence`·`RunStatus`·`Status`·`RunPage`·`RunReasons`·`Events` 네임스페이스에 나뉘어 있다. 낱말을 바꿀 때는 이 여러 곳을 함께 고친다.

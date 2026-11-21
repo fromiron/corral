@@ -2,9 +2,9 @@
   "name": "corral",
   "private": true,
   "type": "module",
-  "packageManager": "pnpm@10.30.3",
+  "packageManager": "pnpm@10.34.9",
   "engines": {
-    "node": "^24.15.0"
+    "node": "^26.13.1"
   },
   "scripts": {
     "lint": "biome check .",
@@ -23,6 +23,8 @@
     "deps:check": "node tools/deps/check.ts",
     "contracts:generate": "node tools/contracts/generate.ts",
     "contracts:check": "node tools/contracts/generate.ts --check",
+    "builtin:generate": "node tools/builtin/generate.ts",
+    "builtin:check": "node tools/builtin/generate.ts --check",
     "test:live": "vitest run --config tests/live/vitest.config.ts",
     "test:performance": "pnpm --filter @corral/studio exec playwright test --config playwright.performance.config.ts",
     "release:inventory": "node tools/release/inventory.ts",
@@ -32,10 +34,10 @@
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.15",
-    "@types/node": "24.19.2",
+    "@types/node": "26.6.6",
     "@types/semver": "7.8.0",
-    "semver": "7.8.5",
+    "semver": "7.8.6",
     "typescript": "6.0.3",
-    "vitest": "5.0.4"
+    "vitest": "5.1.1"
   }
 }

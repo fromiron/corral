@@ -1,6 +1,7 @@
 ---
 name: corral-browser-verification
-description: Verify a concrete change in a registered, trusted anonymous local browser fixture using owned Playwright MCP observations and assertions.
+description: Verify a concrete change in a registered, trusted anonymous local browser fixture using owned Playwright MCP observations and assertions. Use when a Corral execution provides the owned local browser tools and a change must be shown working in the browser.
+compatibility: Designed for Corral.
 ---
 
 Use only the browser tools explicitly provided for this execution. If the recipe or browser is unavailable, report that limit; do not install packages, connect a personal profile, enable native permissions, or use shell/evaluate/run-code as a substitute.

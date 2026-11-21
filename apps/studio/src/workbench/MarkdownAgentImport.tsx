@@ -9,11 +9,13 @@ import {
   Select,
   Textarea,
 } from '@corral/react/design-kit';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { type RefObject, useEffect, useMemo, useState } from 'react';
 import { useLocale, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { useServices } from '../services.tsx';
+import { loadSkillCatalog, type SkillCatalog, skillState } from './harness/skillCatalog.ts';
 import {
+  attachSkillsByName,
   importMarkdownAgent,
   MAX_AGENT_MARKDOWN_BYTES,
   parseMarkdownAgent,
@@ -25,18 +27,24 @@ export function MarkdownAgentImport({
   editor,
   profiles,
   projectId,
+  open,
+  onClose,
+  finalFocus,
 }: {
   editor: EditorStore;
   profiles: ProfileInfo[] | null;
   projectId: string;
+  open: boolean;
+  onClose(): void;
+  finalFocus: RefObject<HTMLButtonElement | null>;
 }) {
   const ko = useLocale().startsWith('ko');
+  const t = useTranslations('Editor');
   const tc = useTranslations('Composer');
   const { harnesses } = useServices();
   const text = (english: string, korean: string) => (ko ? korean : english);
   const draft = useStore(editor, (state) => state.draft);
   const parents = draft.definition.nodes.filter((node) => node.type === 'agent');
-  const [open, setOpen] = useState(false);
   const [source, setSource] = useState('');
   const [parentNodeId, setParent] = useState('');
   const [modelProfile, setModel] = useState('');
@@ -44,9 +52,49 @@ export function MarkdownAgentImport({
   const [fileError, setFileError] = useState('');
   const [confirmed, setConfirmed] = useState(false);
   const [status, setStatus] = useState('');
-  const trigger = useRef<HTMLButtonElement>(null);
   const candidate = useMemo(() => parseMarkdownAgent(source), [source]);
-  const suffix = useRef(crypto.randomUUID());
+  const [catalog, setCatalog] = useState<SkillCatalog | 'failed' | null>(null);
+  const wantsSkills = candidate.skills.length > 0;
+  useEffect(() => {
+    setCatalog(null);
+    if (!open || !harnesses || !wantsSkills) return;
+    let active = true;
+    void loadSkillCatalog(harnesses).then(
+      (next) => active && setCatalog(next),
+      () => active && setCatalog('failed'),
+    );
+    return () => {
+      active = false;
+    };
+  }, [open, harnesses, wantsSkills]);
+  // Usable: installed, package on, trusted and not archived. Names are the skills' own names.
+  const usableSkills = useMemo(
+    () =>
+      catalog && catalog !== 'failed'
+        ? catalog.entries.flatMap((entry) => {
+            const state = skillState(entry, catalog.disabled);
+            if (state !== null && state !== 'newVersion') return [];
+            const own = entry.resource.skills.find((skill) => skill.entry === entry.entry);
+            return [
+              {
+                name: own?.name ?? entry.name,
+                resourceHash: entry.resourceHash,
+                entry: entry.entry,
+                superseded: entry.successor !== null,
+                installedAt: entry.resource.createdAt,
+              },
+            ];
+          })
+        : [],
+    [catalog],
+  );
+  const skillMatch = useMemo(
+    () => attachSkillsByName(candidate.skills, usableSkills),
+    [candidate.skills, usableSkills],
+  );
+  const checkingSkills = Boolean(harnesses) && wantsSkills && catalog === null;
+  const attachedSkills = candidate.skills.filter((name) => !skillMatch.unresolved.includes(name));
+  const [suffix, setSuffix] = useState(() => crypto.randomUUID());
   const parent = parents.find((node) => node.id === parentNodeId);
   const role = draft.definition.roles.find((role) => role.id === parent?.roleId);
   const harnessKey = `${projectId}:${parentNodeId}:${role?.harness?.profileId ?? ''}:${role?.harness?.revision ?? ''}`;
@@ -73,7 +121,7 @@ export function MarkdownAgentImport({
   const available = profiles?.filter((profile) => profile.available) ?? [];
   let preview: EditorDraft | null = null;
   let error = '';
-  if (source.trim()) {
+  if (source.trim() && !checkingSkills) {
     try {
       preview = importMarkdownAgent({
         draft,
@@ -82,8 +130,9 @@ export function MarkdownAgentImport({
         modelProfile,
         profiles: profiles ?? [],
         mappings,
-        suffix: suffix.current,
+        suffix,
         parentHarness: currentHarness?.snapshot,
+        skills: skillMatch.skills,
       });
     } catch (failure) {
       error = failure instanceof Error ? failure.message : String(failure);
@@ -91,7 +140,9 @@ export function MarkdownAgentImport({
   }
   const importedRole = preview?.definition.roles.at(-1);
   const close = () => {
-    setOpen(false);
+    setConfirmed(false);
+    setStatus('');
+    onClose();
   };
   const updateSource = (value: string) => {
     setSource(value);
@@ -101,30 +152,16 @@ export function MarkdownAgentImport({
   };
   return (
     <>
-      {/* A compact control like the rest of the team editor's head. */}
-      <Button
-        ref={trigger}
-        variant="tertiary"
-        size="compact"
-        onClick={() => {
-          suffix.current = crypto.randomUUID();
-          setConfirmed(false);
-          setStatus('');
-          setOpen(true);
-        }}
-      >
-        {text('Import Markdown agent', 'Markdown 에이전트 가져오기')}
-      </Button>
-      {status ? (
-        <span role="status" className="text-caption text-muted-foreground">
+      {status && !open ? (
+        <span role="status" className="sr-only">
           {status}
         </span>
       ) : null}
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => !next && close()}>
         <DialogPopup
           aria-label={text('Import a callable agent', '위임할 에이전트 가져오기')}
           showCloseButton={false}
-          finalFocus={trigger}
+          finalFocus={finalFocus}
           className="max-h-[85dvh] w-[min(42rem,calc(100vw-2rem))] max-w-none overflow-y-auto p-4"
         >
           <div className="flex flex-col gap-3">
@@ -190,6 +227,20 @@ export function MarkdownAgentImport({
                   {text('Requested model', '문서에 지정된 모델')}:{' '}
                   {candidate.model || text('Not specified', '없음')}
                 </p>
+                {checkingSkills || attachedSkills.length ? (
+                  <p className="text-caption text-muted-foreground">
+                    {text('Skills', '스킬')}:{' '}
+                    {checkingSkills ? text('Checking…', '확인 중…') : attachedSkills.join(', ')}
+                  </p>
+                ) : null}
+                {!checkingSkills && skillMatch.unresolved.length ? (
+                  <p className="text-caption text-muted-foreground">
+                    {catalog === 'failed'
+                      ? text('Skills not checked, not attached', '확인하지 못해 붙이지 않은 스킬')
+                      : text('Skills not found, not attached', '찾지 못해 붙이지 않은 스킬')}
+                    : {skillMatch.unresolved.join(', ')}
+                  </p>
+                ) : null}
               </section>
             ) : null}
             <div className="flex flex-col gap-1 text-body">
@@ -382,14 +433,10 @@ export function MarkdownAgentImport({
               onClick={() => {
                 if (!preview || !confirmed) return;
                 editor.getState().applyDraft(preview);
-                editor.getState().select(`import_${suffix.current}`);
-                setStatus(
-                  text(
-                    'Agent added. Save the Corral to keep this change.',
-                    '에이전트를 추가했습니다. Corral을 저장해 변경을 보관하세요.',
-                  ),
-                );
+                editor.getState().select(`import_${suffix}`);
+                setSuffix(crypto.randomUUID());
                 close();
+                setStatus(t('agentImported'));
                 updateSource('');
               }}
             >

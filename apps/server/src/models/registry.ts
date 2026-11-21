@@ -18,9 +18,10 @@ import type {
   ProfileContextOverrides,
   ProfileContextPolicy,
   ReasoningCapabilities,
-  TeamPlan,
+  TeamAssistantRequest,
+  TeamAssistantResponse,
 } from '@corral/contracts';
-import { canonicalJson } from '@corral/contracts';
+import { canonicalJson, unusableTeamProposal } from '@corral/contracts';
 import {
   AUTO_ROUTE_MAX_RESPONSE_BYTES,
   AUTO_ROUTE_TIMEOUT_MS,
@@ -30,6 +31,7 @@ import {
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
+  readAssistantAnswer,
   resolveProfileContext,
 } from '@corral/core';
 import { accountModelStream, withSessionAffinityOptions } from '@corral/pi-runtime-port';
@@ -64,15 +66,25 @@ import {
 } from './endpoints.ts';
 import { ModelRequestRuntime, type RequestRuntimeOptions } from './request-runtime.ts';
 import {
-  DRAFT_MAX_OUTPUT_TOKENS,
-  DRAFT_SYSTEM_PROMPT,
-  DRAFT_TIMEOUT_MS,
-  planFromAnswer,
-} from './team-draft.ts';
+  createPrompt,
+  TEAM_ASSISTANT_EDIT_PROMPT,
+  TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
+  TEAM_ASSISTANT_TIMEOUT_MS,
+} from './team-assistant.ts';
 
 // Model profiles and sign-in for the local server. Profiles name a provider
 // and model; credentials stay in pi-ai's credential store on this computer. Views and errors
 // carry status and expiry only: no token, key or callback URL ever leaves through them.
+
+type TeamModelResult<T> =
+  | ({ ok: true } & T)
+  | {
+      ok: false;
+      code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE' | 'REQUEST_OUTCOME_UNKNOWN';
+      message: string;
+    };
+
+export type TeamOperationResult = TeamModelResult<TeamAssistantResponse>;
 
 export interface ProfileConfig extends ProfileContextOverrides {
   id: string;
@@ -659,23 +671,48 @@ export class ModelRegistry implements ModelResolver {
     return auth?.auth.apiKey ?? null;
   }
 
-  /**
-   * A team plan for a goal from one request to the first profile's model. Outside any
-   * Run: the person asked for it, and it is capped in output tokens and time.
-   */
-  async draftTeam(
-    goal: string,
-    operation?: { id: string; signal?: AbortSignal },
+  async assistTeam(
+    request: TeamAssistantRequest,
+    signal?: AbortSignal,
+  ): Promise<TeamModelResult<TeamAssistantResponse>> {
+    const answer = await this.requestTeamText(request, signal);
+    if (!answer.ok) return answer;
+    // The reason names only a code and a place: none of the answer's or the conversation's text.
+    // A whole reply is used however the answer stopped; otherwise an answer stopped at the
+    // output limit is cut off, and one with no text is empty.
+    const read = readAssistantAnswer(answer.text, request, {
+      endedNormally: answer.stopReason === 'stop',
+    });
+    if ('reply' in read) return { ok: true, reply: read.reply, model: answer.modelName };
+    const reason =
+      answer.stopReason === 'length' ? 'cut_off' : answer.text.trim() ? read.problem : 'empty';
+    return { ok: false, code: 'MODEL_UNAVAILABLE', message: unusableTeamProposal(reason) };
+  }
+
+  /** The model's text for one assistant request, with how it stopped and the model's name. */
+  private async requestTeamText(
+    request: TeamAssistantRequest,
+    signal?: AbortSignal,
   ): Promise<
-    | { ok: true; plan: TeamPlan; model: { provider: string; modelId: string } }
-    | {
-        ok: false;
-        code: 'CAPABILITY_DENIED' | 'MODEL_UNAVAILABLE' | 'REQUEST_OUTCOME_UNKNOWN';
-        message: string;
-      }
+    TeamModelResult<{
+      text: string;
+      /** How the completed answer stopped: `length` when it reached the output limit. */
+      stopReason: AssistantMessage['stopReason'];
+      modelName: string;
+    }>
   > {
-    const profile = this.profiles[0];
-    const resolution = profile ? this.resolve(profile.id, 'live') : null;
+    const { operationId, ...input } = request;
+    const systemPrompt =
+      request.mode === 'create' ? createPrompt(request) : TEAM_ASSISTANT_EDIT_PROMPT;
+    // The first model of the list that can run, named profiles first: the one the team editor
+    // names beside its input (apps/studio/src/workbench/modelReadiness.ts reads the same rule).
+    const profile = this.profilesView().find(
+      (view) =>
+        view.available &&
+        view.method !== null &&
+        !(view.method === 'oauth' && view.subscriptionSupported === false),
+    );
+    const resolution = profile ? this.resolve(profile.profileId, 'live') : null;
     if (!resolution?.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId) {
       return {
         ok: false,
@@ -693,23 +730,34 @@ export class ModelRegistry implements ModelResolver {
         message,
       }) as const;
     let text: string;
-    const operationId = operation?.id ?? randomUUID();
+    let stopReason: AssistantMessage['stopReason'];
+    const sized = resolution.snapshot.contextPolicy
+      ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
+      : model;
+    // The lowest level the model offers: off where it can be switched off; none if it has none.
+    const lowest = reasoningCapabilities(sized).levels[0];
+    const sent = reasoningRequest(
+      sized,
+      {
+        maxTokens: TEAM_ASSISTANT_MAX_OUTPUT_TOKENS,
+        cacheRetention: resolution.snapshot.cachePolicy?.retention,
+        signal: signal
+          ? AbortSignal.any([signal, AbortSignal.timeout(TEAM_ASSISTANT_TIMEOUT_MS)])
+          : AbortSignal.timeout(TEAM_ASSISTANT_TIMEOUT_MS),
+      },
+      fixedReasoning(
+        lowest ? { mode: 'fixed', level: lowest } : { mode: 'provider_default' },
+        'team_assistant',
+      ),
+    );
     try {
       const answer = await this.managedStream(
-        resolution.snapshot.contextPolicy
-          ? { ...model, contextWindow: resolution.snapshot.contextPolicy.contextWindow }
-          : model,
+        sent.model,
         {
-          systemPrompt: DRAFT_SYSTEM_PROMPT,
-          messages: [{ role: 'user', content: goal, timestamp: Date.now() }],
+          systemPrompt,
+          messages: [{ role: 'user', content: JSON.stringify(input), timestamp: this.now() }],
         },
-        {
-          maxTokens: DRAFT_MAX_OUTPUT_TOKENS,
-          cacheRetention: resolution.snapshot.cachePolicy?.retention,
-          signal: operation?.signal
-            ? AbortSignal.any([operation.signal, AbortSignal.timeout(DRAFT_TIMEOUT_MS)])
-            : AbortSignal.timeout(DRAFT_TIMEOUT_MS),
-        },
+        sent.options,
         {
           requestId: operationId,
           owner: { kind: 'draft', id: operationId },
@@ -726,11 +774,12 @@ export class ModelRegistry implements ModelResolver {
         return unavailable(
           uncertain
             ? 'The model request outcome is unconfirmed. This operation will not be sent again.'
-            : 'The model request failed; generate a new draft or use the local suggestion.',
+            : 'The model request failed.',
           uncertain,
         );
       }
       text = answer.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
+      stopReason = answer.stopReason;
     } catch {
       return unavailable(
         'The model request outcome is unconfirmed. This operation will not be sent again.',
@@ -739,10 +788,7 @@ export class ModelRegistry implements ModelResolver {
     } finally {
       void this.refreshStatus(provider);
     }
-    const plan = planFromAnswer(text);
-    return plan
-      ? { ok: true, plan, model: { provider, modelId } }
-      : unavailable("the model's answer was not a usable team plan; use the local suggestion");
+    return { ok: true, text, stopReason, modelName: model.name };
   }
 
   /**

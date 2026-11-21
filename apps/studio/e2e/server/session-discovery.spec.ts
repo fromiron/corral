@@ -16,7 +16,7 @@ test('archived sessions run only after explicit sending and stay archived', asyn
   const sessionId = new URL(page.url()).pathname.split('/').at(-1) as string;
   const sidebarSession = page
     .getByTestId('app-sidebar')
-    .locator(`a[href="/sessions/${sessionId}?compose=true"]`);
+    .locator(`a[href="/sessions/${sessionId}"]`);
   await expect(sidebarSession).toBeVisible();
   await page
     .getByRole('banner')
@@ -114,7 +114,6 @@ test('primary icon controls expose tooltips on hover and keyboard focus', async 
       page.getByRole('banner').getByRole('button', { name: /Actions for/ }),
       /Actions for New conversation/,
     ],
-    [page.getByRole('button', { name: 'Open file viewer', exact: true }), /Open file viewer/],
     [page.getByRole('banner').getByRole('button', { name: 'Search', exact: true }), /Search/],
     [page.getByRole('button', { name: 'Attachments', exact: true }), /Attachments/],
   ] as const;

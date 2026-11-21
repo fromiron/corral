@@ -12,6 +12,11 @@ export const HarnessBindingRef = z.strictObject({
   revision: z.int().min(1),
 });
 export type HarnessBindingRef = z.infer<typeof HarnessBindingRef>;
+/** The immutable strict role layer for roles with a skill selection and no bound profile. */
+export const ROLE_SKILLS_MINIMAL_BINDING = Object.freeze({
+  profileId: 'role-skills-minimal',
+  revision: 1,
+});
 export const HarnessOverrides = z.record(Identifier, HarnessBindingRef);
 export type HarnessOverrides = z.infer<typeof HarnessOverrides>;
 
@@ -105,17 +110,28 @@ export const HarnessResourceRef = z.strictObject({
   version: z.string().min(1).max(100),
   kind: z.enum(['skill', 'extension']),
   required: z.boolean(),
+  /** Present only when this exact entry is in the role's own skill selection. */
+  selectedByRole: z.literal(true).optional(),
+  /**
+   * Present only on an other usable library skill, which no layer and no selection bound
+   * (harness-contract.md, "그 밖에 쓸 수 있는 스킬"). An entry without it is bound.
+   */
+  library: z.literal(true).optional(),
   skillMode: z.enum(['auto', 'explicit', 'mandatory']).optional(),
   entry: ResourcePath.optional(),
   skillName: Identifier.optional(),
 });
+/** Bound skills and extensions one snapshot (and one task brief) can carry. */
+export const MAX_SNAPSHOT_RESOURCES = 256;
 export const EffectiveHarnessSnapshot = z.strictObject({
   binding: HarnessBindingRef,
   snapshotHash: ContentHash,
   piVersion: z.literal('1.3.0'),
   policyRevision: z.int().min(1),
   policy: z.enum(['strict', 'trusted-native']),
-  resources: z.array(HarnessResourceRef).max(64),
+  /** With an implicit minimal role layer, no startup commands are inherited or executed. */
+  startupCommandPolicy: z.literal('none').optional(),
+  resources: z.array(HarnessResourceRef).max(MAX_SNAPSHOT_RESOURCES),
   allowedTools: z.array(ToolDescriptor.shape.name).max(128),
   tools: z.array(ToolDescriptor).max(128),
   permissionPolicies: z.array(ToolPermissionPolicy).max(4).optional(),
@@ -304,7 +320,7 @@ export const ProviderPayloadRecord = z.strictObject({
         bytes: z.int().min(1),
       }),
     )
-    .max(64)
+    .max(MAX_SNAPSHOT_RESOURCES)
     .optional(),
   reasoning: ReasoningWire.optional(),
   modelCallId: Identifier,
@@ -359,7 +375,13 @@ export const HarnessResource = z.strictObject({
   extensions: z.array(ResourcePath).max(64),
   skills: z
     .array(
-      z.strictObject({ name: Identifier, description: z.string().max(1000), entry: ResourcePath }),
+      z.strictObject({
+        name: Identifier,
+        description: z.string().max(1000),
+        entry: ResourcePath,
+        /** `disable-model-invocation: true` in SKILL.md: only an explicit command uses it. */
+        disableModelInvocation: z.boolean().optional(),
+      }),
     )
     .max(64),
   files: z

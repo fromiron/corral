@@ -48,7 +48,7 @@ test('#75 the archived resources filter is named by its visible text', async ({ 
       '---\nname: writing\ndescription: Write with sources.\n---\nAlways cite the source.',
     );
     await corral.open('/settings/skills');
-    await page.getByRole('button', { name: 'Add', exact: true }).click();
+    await page.getByRole('button', { name: 'Import', exact: true }).click();
     await page.getByRole('combobox', { name: 'Add method', exact: true }).click();
     await page.getByRole('option', { name: 'Import folder', exact: true }).click();
     await page.getByLabel('Resource folder', { exact: true }).fill(source);
@@ -89,11 +89,19 @@ test('#79 without a default, adoption points to the chosen scope defaults screen
     await call(`/resources/${saved.hash}/trust`, { trusted: true }, 'PUT');
   });
   await page.reload();
-  await page.getByRole('button', { name: /Layout fixture writer/ }).click();
-  // One way to Work styles, named for what happens there.
-  await expect(page.getByRole('link', { name: 'Connect in Harnesses', exact: true })).toHaveCount(
-    1,
-  );
+  await page
+    .getByRole('row')
+    .filter({ has: page.getByRole('cell', { name: 'Layout fixture writer', exact: true }) })
+    .getByRole('button', { name: 'Writing', exact: true })
+    .click();
+  // No profile uses this version. The settings navigation still leads to the policy editor once;
+  // adoption guidance below links to the chosen scope's defaults rather than to that editor.
+  const policies = page.getByRole('region', { name: 'Execution policies', exact: true });
+  await expect(policies).toContainText('No execution policies use this version.');
+  await expect(policies.getByRole('link')).toHaveCount(0);
+  const harnesses = page.getByRole('link', { name: 'Harnesses', exact: true });
+  await expect(harnesses).toHaveCount(1);
+  await expect(harnesses).toHaveAttribute('href', /settings=harness/);
   await expect(page.getByRole('link', { name: 'Manage Harnesses', exact: true })).toHaveCount(0);
   const panel = page.getByTestId('skill-quality');
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
@@ -166,18 +174,24 @@ test('#81 typed evaluation requests survive switching Skills and leaving asks fi
     }
   });
   await page.reload();
-  await page.getByRole('button', { name: /First draft writer/ }).click();
+  const table = page.getByRole('table', { name: 'Skills', exact: true });
+  const first = table.getByRole('button', { name: 'first', exact: true });
+  await first.click();
   const panel = page.getByTestId('skill-quality');
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
   const request = panel.getByRole('textbox', { name: 'Test request', exact: true }).first();
   await request.fill('Keep this unsent request');
-  await page.getByRole('button', { name: /Second draft writer/ }).click();
-  await page.getByRole('button', { name: /First draft writer/ }).click();
+  await table.getByRole('button', { name: 'second', exact: true }).click();
+  await first.click();
   await panel.getByText('Evaluate, adopt and roll back', { exact: true }).click();
   await expect(request).toHaveValue('Keep this unsent request');
   await expect(panel.getByText('Your unsent test requests were kept from before.')).toBeVisible();
   await page.getByRole('link', { name: 'Models', exact: true }).click();
-  await expect(page.getByRole('alertdialog').or(page.getByRole('dialog'))).toBeVisible();
+  const guard = page.getByRole('dialog', { name: 'Unsaved settings', exact: true });
+  await expect(guard).toBeVisible();
+  await guard.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(page).toHaveURL(/settings=skills/);
+  await expect(request).toHaveValue('Keep this unsent request');
   expect(corral.errors).toEqual([]);
 });
 
@@ -278,7 +292,7 @@ test('#88 a settings address opens the same settings dialog over work, and closi
   // Entering by address shows the dialog form, not a separate page with its own back rules.
   await expect(page).toHaveURL(/\/projects\?(?:.*&)?settings=skills/);
   const dialog = page.getByRole('dialog', { name: 'Settings', exact: true });
-  await expect(dialog.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: 'Create skill', exact: true })).toBeVisible();
   await dialog.getByRole('button', { name: 'Close settings', exact: true }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page).not.toHaveURL(/settings/);

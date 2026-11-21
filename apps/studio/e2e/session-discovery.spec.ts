@@ -122,7 +122,4 @@ test('sidebar session links remain keyboard reachable and row menu returns focus
   const actions = page.getByRole('banner').getByRole('button', { name: /Actions for/ });
   await actions.focus();
   await expect(page.getByRole('tooltip', { name: /Actions for/ })).toBeVisible();
-  const files = page.getByRole('button', { name: 'Open file viewer', exact: true });
-  await files.focus();
-  await expect(page.getByRole('tooltip', { name: /Open file viewer/ })).toBeVisible();
 });

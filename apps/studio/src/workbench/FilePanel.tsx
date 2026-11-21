@@ -1,4 +1,4 @@
-import type { FileListView, FileSideView } from '@corral/client';
+import type { FileListView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import {
@@ -8,20 +8,15 @@ import {
   Button,
   fontWeights,
   Input,
-  Menu,
-  MenuItem,
-  MenuPopup,
-  MenuTrigger,
   Select,
   Textarea,
   Tooltip,
   useSize,
 } from '@corral/react/design-kit';
-import { Ellipsis, RefreshCw, Search, X } from '@corral/react/icons';
+import { RefreshCw, Search, X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import {
-  lazy,
-  Suspense,
+  type ReactNode,
   useCallback,
   useEffect,
   useMemo,
@@ -35,23 +30,20 @@ import { useServices } from '../services.tsx';
 import { formatChord } from '../shortcuts.ts';
 import { ContentSearch } from './ContentSearch.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
-import { DocumentHeader, publishTreeSource } from './DocumentHeader.tsx';
+import { publishTreeSource } from './DocumentHeader.tsx';
 import { DocumentPanel } from './DocumentPanel.tsx';
 import { DocumentCloseDialog } from './documents/DocumentCloseDialog.tsx';
 import type { RecoveryDraft } from './documents/recovery.ts';
 import { type CloseChoice, type DocumentBuffer, documentStore } from './documents/store.ts';
 import { FileTree } from './FileTree.tsx';
 import { type FolderListing, needsListing, visibleRows } from './fileTree.ts';
-import { LineRangePopover } from './LineRangePopover.tsx';
-import { languageStore } from './language/store.ts';
+import { fileSourceKey, type TreeState, useTreeState } from './fileTreeState.ts';
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
 import { runResultFiles } from './runResults.ts';
+import { readSourceFilesAgain } from './session/sourceReread.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
-const SourceCode = lazy(() =>
-  import('./PierreCode.tsx').then((module) => ({ default: module.SourceCode })),
-);
 const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
 const noSubscription = () => () => {};
 const emptyDocuments = () => noDocuments;
@@ -100,8 +92,8 @@ export const referenceText = ({ path, start, end }: FileReference) =>
   `@${path.includes(' ') ? JSON.stringify(path) : path}:L${start}${end === start ? '' : `-L${end}`}`;
 
 /**
- * The file browser. Session-copy files open in the dock's document tabs, the one tab
- * strip; an original-folder file shows a single read-only preview here (#87).
+ * The 파일 tab: the folder tree, its head and the recovery cards. A file of the copy opens its
+ * 문서 tab; a file of the source folder opens its read-only 문서 tab.
  */
 export function FilePanel({
   projectId,
@@ -109,7 +101,8 @@ export function FilePanel({
   onReference,
   onAttach,
   onOpenDocument,
-  readOnly = false,
+  onOpenOriginal,
+  headEnd,
   runs = noRuns,
 }: {
   projectId: string;
@@ -119,8 +112,10 @@ export function FilePanel({
   onReference: (reference: FileReference) => void;
   onAttach?: (attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>;
   onOpenDocument?: (document: OpenDocumentRequest, range?: TextRange) => boolean;
-  /** Browse only the original folder, with inline previews and no document actions. */
-  readOnly?: boolean;
+  /** A file of the project's source folder opens its read-only 문서 tab. */
+  onOpenOriginal?: (path: string) => boolean;
+  /** At the head's end: the tree column's close. */
+  headEnd?: ReactNode;
 }) {
   const t = useTranslations('Desktop');
   const tf = useTranslations('Files');
@@ -128,47 +123,43 @@ export function FilePanel({
   const te = useTranslations('Documents');
   // A kept file's row grows with its path: the control height of the interface density is its least.
   const pathRow = useSize().variant === 'compact' ? 'min-h-7' : 'min-h-9';
-  const td = useTranslations('Docking');
   const ts = useTranslations('ContentSearch');
   const tw = useTranslations('Workbench');
   const sessionText = useTranslations('Sessions');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
-  const owner = !readOnly && workspaces && mode === 'server' ? documentStore(workspaces) : null;
+  const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
   const { documents } = useSyncExternalStore(
     owner?.subscribe ?? noSubscription,
     owner?.getState ?? emptyDocuments,
     emptyDocuments,
   );
   const [savedSource, setSource] = useRemembered<'project' | 'session' | null>(
-    `corral:file-source:v1:${sessionId}`,
+    fileSourceKey(sessionId),
     null,
   );
-  const source = readOnly
-    ? 'project'
-    : savedSource === 'project' || savedSource === 'session'
-      ? savedSource
-      : undefined;
+  const source = savedSource === 'project' || savedSource === 'session' ? savedSource : undefined;
   const { scope, list, hasCopy, copy, loading, error, refresh } = useWorkspaceFiles(
     projectId,
     sessionId,
     source,
   );
-  const [saved, setPreview] = useRemembered<string | null>(
-    `corral:file-preview:v1:${sessionId}:${readOnly ? 'project-viewer' : (scope?.kind ?? 'project')}`,
-    null,
-  );
-  const active = typeof saved === 'string' ? saved : null;
-  const [query, setQuery] = useState('');
-  const [searchMode, setSearchMode] = useState<'names' | 'contents'>('names');
-  const [content, setContent] = useState<FileSideView | null>(null);
+  // Opened folders, the filter and the results filter outlast this screen (fileTreeState.ts).
+  const [tree, updateTree] = useTreeState(sessionId);
+  const { query, searchMode, resultsOn, filterClosed } = tree;
+  const setQuery = (next: string) => updateTree({ query: next });
+  const setSearchMode = (next: TreeState['searchMode']) => updateTree({ searchMode: next });
+  const setResultsOn = (next: boolean) => updateTree({ resultsOn: next });
+  const setOpened = (next: (opened: TreeState['opened']) => TreeState['opened']) =>
+    updateTree((state) => ({ opened: next(state.opened) }));
+  const setFilterClosed = (
+    next: (closed: TreeState['filterClosed']) => TreeState['filterClosed'],
+  ) => updateTree((state) => ({ filterClosed: next(state.filterClosed) }));
   const [readError, setReadError] = useState<string | null>(null);
-  const [documentKey, setDocumentKey] = useState<string | null>(null);
   const [retainedKey, setRetainedKey] = useState<string | null>(null);
   const [sessionRecoveries, setSessionRecoveries] = useState<RecoveryDraft[]>([]);
   const [recoveryReadError, setRecoveryReadError] = useState(false);
-  const documentKeys = useRef(new Map<string, string>());
   const openEpoch = useRef(0);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Completed reads must not open a dock in another host or session.
   useEffect(
@@ -177,13 +168,9 @@ export function FilePanel({
     },
     [owner, projectId, sessionId],
   );
-  const [tabMessage, setTabMessage] = useState<string | null>(null);
   const [closing, setClosing] = useState<{ key: string; path: string } | null>(null);
   const [closeBusy, setCloseBusy] = useState(false);
   const [closeError, setCloseError] = useState(false);
-  const [range, setRange] = useState({ start: 1, end: 1 });
-  const [referenceOpen, setReferenceOpen] = useState(false);
-  const previewMore = useRef<HTMLButtonElement>(null);
   const refreshRecoveries = useCallback(async () => {
     if (!owner || !workspaceId) return;
     const candidates = await owner.sessionRecoveries({ hostId: workspaceId, projectId, sessionId });
@@ -200,11 +187,10 @@ export function FilePanel({
   const [reads, setReads] = useState<FolderReads>(() => freshReads(list, scopeKey));
   const folders =
     reads.base === list && reads.scopeKey === scopeKey ? reads : freshReads(list, scopeKey);
-  const [opened, setOpened] = useState({ scopeKey, paths: noPaths });
+  const opened = tree.opened;
   const expanded = opened.scopeKey === scopeKey ? opened.paths : noPaths;
   // The Results filter: only the session copy has run writes to attribute.
-  const [resultsOn, setResultsOn] = useState(false);
-  const resultsAvailable = !readOnly && scope?.kind === 'session';
+  const resultsAvailable = scope?.kind === 'session';
   const results = resultsOn && resultsAvailable;
   const runKey = runs.map((run) => `${run.runId}:${run.status}`).join(',');
   const madeKey = `${scopeKey}:${runKey}`;
@@ -247,7 +233,6 @@ export function FilePanel({
     return notes;
   }, [results, madeFiles, runs, tw]);
   const filterKey = `${results ? 'results' : ''}:${query}`;
-  const [filterClosed, setFilterClosed] = useState({ key: ':', paths: noPaths });
   const collapsed = filterClosed.key === filterKey ? filterClosed.paths : noPaths;
   const filtering = Boolean(query.trim()) || results;
   const listings = useMemo(
@@ -329,12 +314,7 @@ export function FilePanel({
     if (open && folders.failed.has(path))
       setReads((state) => ({ ...state, failed: toggled(state.failed, path, false) }));
   };
-  const removeTab = (path: string) => {
-    if (active === path) setPreview(null);
-    setTabMessage(null);
-  };
   const scopeKind = scope?.kind;
-  const scopeId = scope?.id;
   // The tree's select names its source; a document head beside it then names only another one.
   useEffect(
     () =>
@@ -362,9 +342,8 @@ export function FilePanel({
         const entry = owner.getState().documents[key];
         // Whatever the file holds, a session-copy file has one home: its document tab.
         if (entry) {
-          if (onOpenDocument({ documentKey: key, target: entry.target, path: entry.path }))
-            removeTab(path);
-          else setTabMessage(td('tabLimit'));
+          // The panel says why when no tab opens (its 20 문서 tabs).
+          onOpenDocument({ documentKey: key, target: entry.target, path: entry.path });
           return;
         }
       } catch (failure) {
@@ -373,11 +352,10 @@ export function FilePanel({
         return;
       }
     }
-    setTabMessage(null);
-    setPreview(path);
+    if (onOpenOriginal && scopeKind === 'project') onOpenOriginal(path);
   };
   // Quick open shows a folder, or a source-folder file, here: in its tree, under its source.
-  const reveal = useFileReveal(sessionId, !readOnly);
+  const reveal = useFileReveal(sessionId);
   const [revealed, setRevealed] = useState<{ path: string; seq: number } | null>(null);
   const switching = useRef<{ seq: number; scope: typeof scope } | null>(null);
   // biome-ignore lint/correctness/useExhaustiveDependencies: Runs once per request, when its source is the one listed.
@@ -415,32 +393,16 @@ export function FilePanel({
       (entry.dirty || entry.pendingSave) &&
       (!scope || !currentCopy(entry)),
   );
-  const buffered = (path: string) => {
-    const key = documentKeys.current.get(path);
-    return (
-      (key && currentCopy(documents[key]) ? documents[key] : undefined) ??
-      Object.values(documents)
-        .filter(
-          (entry) =>
-            entry.target.sessionId === sessionId && entry.path === path && currentCopy(entry),
-        )
-        .at(-1)
-    );
-  };
-  const close = async (path: string, choice?: CloseChoice, requestedKey?: string) => {
-    const entry = requestedKey
-      ? documents[requestedKey]
-      : scopeKind === 'session'
-        ? buffered(path)
-        : undefined;
-    if (!entry || !owner) return removeTab(path);
+  /** Closes a kept draft's view (the drafts list, its close dialog). */
+  const close = async (path: string, choice: CloseChoice | undefined, key: string) => {
+    const entry = documents[key];
+    if (!entry || !owner) return;
     setCloseBusy(true);
     setCloseError(false);
     try {
       const result = await owner.closeView(entry.key, fileViewId(sessionId, path), choice);
       if (result === 'closed') {
-        if (currentCopy(entry)) removeTab(path);
-        else setRetainedKey(null);
+        setRetainedKey(null);
         setClosing(null);
         void refreshRecoveries().catch(() => setRecoveryReadError(true));
       } else if (result === 'cancelled') setClosing(null);
@@ -455,60 +417,6 @@ export function FilePanel({
       setCloseBusy(false);
     }
   };
-  useEffect(() => {
-    // A refreshed listing also invalidates the open file's content.
-    void list;
-    const previous =
-      active && scopeKind === 'session' && owner
-        ? Object.values(owner.getState().documents).find(
-            (entry) =>
-              entry.target.sessionId === sessionId &&
-              entry.path === active &&
-              entry.target.bindingId === copy?.bindingId &&
-              entry.target.copyGeneration === copy?.copyGeneration,
-          )
-        : undefined;
-    setContent(previous?.file.content ?? null);
-    setDocumentKey(previous?.key ?? null);
-    setReadError(null);
-    setRange({ start: 1, end: 1 });
-    if (!active || !scopeKind || !scopeId || !workspaces) return;
-    let live = true;
-    if (scopeKind === 'session' && owner) {
-      void owner.open(sessionId, active).then(
-        (key) => {
-          if (!live) return;
-          documentKeys.current.set(active, key);
-          setDocumentKey(key);
-          setContent(owner.getState().documents[key]?.file.content ?? null);
-        },
-        (failure: unknown) => {
-          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
-        },
-      );
-    } else
-      void workspaces.readFile({ kind: scopeKind, id: scopeId }, active).then(
-        (file) => {
-          if (live) setContent(file.content);
-        },
-        (failure: unknown) => {
-          if (live) setReadError(failure instanceof Error ? failure.message : String(failure));
-        },
-      );
-    return () => {
-      live = false;
-    };
-  }, [
-    workspaces,
-    owner,
-    sessionId,
-    active,
-    scopeKind,
-    scopeId,
-    list,
-    copy?.bindingId,
-    copy?.copyGeneration,
-  ]);
   const closingEntry = closing ? documents[closing.key] : undefined;
   const closeDialog = (
     <DocumentCloseDialog
@@ -520,11 +428,7 @@ export function FilePanel({
         Boolean(closingEntry?.pendingSave && !closingEntry?.canRetrySave)
       }
       discardDisabled={Boolean(closingEntry?.pendingSave)}
-      finalFocus={() =>
-        panel.current?.querySelector<HTMLElement>('[data-testid="file-preview-pane"] button') ??
-        panel.current?.querySelector<HTMLElement>('button') ??
-        false
-      }
+      finalFocus={() => panel.current?.querySelector<HTMLElement>('button') ?? false}
       onChoose={(choice) => closing && void close(closing.path, choice, closing.key)}
       onDismiss={() => setClosing(null)}
     />
@@ -665,6 +569,7 @@ export function FilePanel({
   if (!scope && !loading)
     return (
       <div ref={panel} className="space-y-2 p-3 text-caption text-muted-foreground">
+        {headEnd ? <div className="flex justify-end">{headEnd}</div> : null}
         {retainedDrafts}
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
@@ -675,33 +580,6 @@ export function FilePanel({
         </Link>
       </div>
     );
-  const currentDocument = documentKey ? documents[documentKey] : undefined;
-  const displayContent =
-    scopeKind === 'session' && owner ? (currentDocument?.file.content ?? content) : content;
-  const lineCount = displayContent?.kind === 'text' ? displayContent.text.split('\n').length : 1;
-  // Only a session copy without the dock edits in place; the dock owns those documents.
-  const inlineEditor = Boolean(
-    scopeKind === 'session' &&
-      owner &&
-      documentKey &&
-      documents[documentKey] &&
-      (documents[documentKey].file.content.kind === 'text' ||
-        documents[documentKey].dirty ||
-        documents[documentKey].pendingSave ||
-        documents[documentKey].recoveries.length),
-  );
-  const closeButton = (path: string) => (
-    <Tooltip content={t('closeFile', { path })}>
-      <Button
-        size="icon"
-        variant="ghost"
-        aria-label={t('closeFile', { path })}
-        onClick={() => void close(path)}
-      >
-        <X />
-      </Button>
-    </Tooltip>
-  );
   const searchModeControl = (
     <Select
       label={ts('mode')}
@@ -743,53 +621,55 @@ export function FilePanel({
           narrows the tree: the filter, how it matches and the Results filter (in contents
           mode, which replaces the tree, the content search takes the second row). */}
       <div className="flex min-w-0 items-center gap-2">
-        {readOnly ? (
-          <span className="min-w-0 truncate text-caption text-muted-foreground">
-            {t('sourceFolder')}
-          </span>
-        ) : (
-          // The picker gives up its width (its value truncates) so the tools keep their place.
-          <div className="min-w-0">
-            <Select
-              label={t('fileSource')}
-              variant="ghost"
-              className="min-w-0 justify-start"
-              value={scopeKind ?? 'project'}
-              onValueChange={setSource}
-              options={[
-                { value: 'project' as const, label: t('sourceFolder') },
-                ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
-              ]}
-            />
-          </div>
-        )}
+        {/* The picker gives up its width (its value truncates) so the tools keep their place. */}
+        <div className="min-w-0">
+          <Select
+            label={t('fileSource')}
+            variant="ghost"
+            className="min-w-0 justify-start"
+            value={scopeKind ?? 'project'}
+            onValueChange={setSource}
+            options={[
+              { value: 'project' as const, label: t('sourceFolder') },
+              ...(hasCopy ? [{ value: 'session' as const, label: t('sessionCopy') }] : []),
+            ]}
+          />
+        </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          {readOnly ? null : (
-            <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
-              <Button
-                size="icon"
-                variant="ghost"
-                aria-label={tq('title')}
-                aria-keyshortcuts={
-                  /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
-                }
-                onClick={openQuickOpen}
-              >
-                <Search />
-              </Button>
-            </Tooltip>
-          )}
+          <Tooltip content={tq('title')} shortcut={formatChord({ mod: true, key: 'p' })}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={tq('title')}
+              aria-keyshortcuts={
+                /Mac|iPhone|iPad/.test(navigator.platform) ? 'Meta+P' : 'Control+P'
+              }
+              onClick={openQuickOpen}
+            >
+              <Search />
+            </Button>
+          </Tooltip>
           <Tooltip content={t('refreshFiles')}>
-            <Button size="icon" variant="ghost" aria-label={t('refreshFiles')} onClick={refresh}>
+            <Button
+              size="icon"
+              variant="ghost"
+              aria-label={t('refreshFiles')}
+              onClick={() => {
+                refresh();
+                // The conversation's open source-folder 문서 tabs read their files again too.
+                readSourceFilesAgain(sessionId);
+              }}
+            >
               <RefreshCw />
             </Button>
           </Tooltip>
+          {headEnd}
         </div>
       </div>
-      {readOnly || searchMode === 'names' ? (
+      {searchMode === 'names' ? (
         // One row in any width the panel takes: the field gives up its width, never its row.
         <div className="flex min-w-0 items-center gap-2">
-          {readOnly ? null : searchModeControl}
+          {searchModeControl}
           <Input
             aria-label={t('filterFiles')}
             placeholder={t('filterFiles')}
@@ -809,7 +689,7 @@ export function FilePanel({
           ) : null}
         </div>
       ) : null}
-      {!readOnly && searchMode === 'contents' ? (
+      {searchMode === 'contents' ? (
         searchTarget && workspaces && owner && onOpenDocument ? (
           <ContentSearch
             key={JSON.stringify(searchTarget)}
@@ -860,7 +740,7 @@ export function FilePanel({
           </div>
         )
       ) : null}
-      {readOnly || searchMode === 'names' ? (
+      {searchMode === 'names' ? (
         <>
           {results && madeFiles === null ? (
             <p role="alert" className="p-2 text-caption text-danger">
@@ -870,7 +750,7 @@ export function FilePanel({
             <FileTree
               label={tf('tree')}
               rows={treeRows}
-              active={active}
+              active={null}
               onOpen={(path) => void open(path)}
               onToggle={toggleFolder}
               reveal={revealed}
@@ -890,127 +770,10 @@ export function FilePanel({
           ) : null}
         </>
       ) : null}
-      {tabMessage ? (
-        <p role="status" className="text-caption text-muted-foreground">
-          {tabMessage}
+      {readError ? (
+        <p role="alert" className="text-caption text-danger">
+          {readError}
         </p>
-      ) : null}
-      {active ? (
-        <section
-          data-testid="file-preview-pane"
-          aria-label={active}
-          className="flex min-w-0 flex-col overflow-hidden rounded-[var(--panel-radius)] border border-border"
-        >
-          {inlineEditor && owner && documentKey && documents[documentKey] ? (
-            <DocumentPanel
-              key={documentKey}
-              owner={owner}
-              documentKey={documentKey}
-              language={
-                services.mode === 'server' && services.workspaces?.languageState
-                  ? languageStore(services.workspaces, owner)
-                  : undefined
-              }
-              edits={
-                services.mode === 'server' && services.workspaces?.fileEditProposals
-                  ? services.workspaces
-                  : undefined
-              }
-              viewId={fileViewId(sessionId, documents[documentKey].path)}
-              onReference={onReference}
-              onAttach={onAttach}
-              readOnlyTarget={!currentCopy(documents[documentKey])}
-              headExtra={closeButton(active)}
-            />
-          ) : (
-            <>
-              <DocumentHeader
-                path={active}
-                treeSource={scopeKind === 'session' ? 'copy' : 'source'}
-                target={
-                  scopeKind === 'session' && searchTarget
-                    ? { kind: 'copy', target: searchTarget }
-                    : { kind: 'source' }
-                }
-                status={
-                  <span className="truncate @max-xl/head:sr-only">{tf('readOnlyPreview')}</span>
-                }
-                actions={
-                  displayContent?.kind === 'text' ? (
-                    <Menu>
-                      <Tooltip content={te('moreActions', { path: active })}>
-                        <MenuTrigger
-                          ref={previewMore}
-                          render={
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              aria-label={te('moreActions', { path: active })}
-                            />
-                          }
-                        >
-                          <Ellipsis />
-                        </MenuTrigger>
-                      </Tooltip>
-                      <MenuPopup align="end" className="min-w-48">
-                        <MenuItem
-                          onClick={() => requestAnimationFrame(() => setReferenceOpen(true))}
-                        >
-                          {te('referenceLinesMenu')}
-                        </MenuItem>
-                      </MenuPopup>
-                    </Menu>
-                  ) : null
-                }
-              >
-                {closeButton(active)}
-              </DocumentHeader>
-              {readError ? (
-                <p role="alert" className="px-3 py-2 text-caption text-danger">
-                  {readError}
-                </p>
-              ) : null}
-              {!displayContent && !readError ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">{t('loadingFile')}</p>
-              ) : null}
-              {displayContent?.kind === 'text' ? (
-                <>
-                  <section aria-label={t('fileContent')} className="max-h-[45vh] overflow-auto">
-                    <Suspense
-                      fallback={
-                        <p className="p-3 text-caption text-muted-foreground">{t('loadingFile')}</p>
-                      }
-                    >
-                      <SourceCode path={active} text={displayContent.text} onSelect={setRange} />
-                    </Suspense>
-                  </section>
-                  <LineRangePopover
-                    open={referenceOpen}
-                    onOpenChange={setReferenceOpen}
-                    anchor={previewMore}
-                    action={t('referenceLines')}
-                    range={range}
-                    lineCount={lineCount}
-                    onRange={setRange}
-                    note={t('referencePermission')}
-                    onSubmit={(value) => {
-                      onReference({ path: active, ...value });
-                      setReferenceOpen(false);
-                    }}
-                  />
-                </>
-              ) : displayContent ? (
-                <p className="px-3 py-2 text-caption text-muted-foreground">
-                  {displayContent.kind === 'too_large'
-                    ? tf('tooLarge')
-                    : displayContent.kind === 'binary'
-                      ? tf('binary')
-                      : t('fileUnavailable')}
-                </p>
-              ) : null}
-            </>
-          )}
-        </section>
       ) : null}
       {closeDialog}
     </div>

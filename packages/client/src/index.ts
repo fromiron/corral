@@ -19,8 +19,6 @@ import type {
   DeploymentPlan,
   DeploymentStart,
   DeploymentView,
-  DevelopmentStart,
-  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   EffortRoutingSettings,
@@ -92,7 +90,6 @@ import type {
   TerminalResize,
   TerminalView,
   UserTaskView,
-  WorkspaceTarget,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -121,8 +118,6 @@ export type {
   DeploymentPlan,
   DeploymentStart,
   DeploymentView,
-  DevelopmentStart,
-  DevelopmentState,
   DocumentCommand,
   DocumentOperation,
   DocumentVersion,
@@ -214,8 +209,8 @@ import {
   CommandError,
   type ConversationSource,
   type CorralDefinition,
+  type CreateLibraryAgent,
   type CreateRunRequest,
-  type EffectiveHarnessSnapshot,
   type ErrorCode,
   type HarnessBindingRef,
   type HarnessDefault,
@@ -223,12 +218,15 @@ import {
   type HarnessEntryKey,
   type HarnessEntryView,
   type HarnessManagementState,
+  type HarnessPreview,
+  type HarnessPreviewRole,
   type HarnessProfile,
   type HarnessProfileRevision,
   type HarnessProfileView,
   type HarnessPublish,
   type HarnessResource,
   type HarnessResourceView,
+  LibraryAgent,
   type LspProposal,
   type LspProposalSummary,
   type ManagedHook,
@@ -239,17 +237,22 @@ import {
   type RegisteredCheck,
   type RegisteredMcpServer,
   type ReviewRecipeRevision,
+  type RoleHarnessPreview,
   type RunCommand,
   RunEvent,
   type RunReference,
   type StartFrom,
   type StartRunRequest,
   type StreamFrame,
-  type TeamPlan,
+  type TeamAssistantRequest,
+  type TeamAssistantResponse,
   TerminalStreamMessage,
+  type UpdateLibraryAgent,
   type VerificationReport,
 } from '@corral/contracts';
 import type {
+  AgentLibrary,
+  AgentLibraryResult,
   AutoStartResult,
   CorralRecord,
   CorralRepository,
@@ -261,6 +264,7 @@ import type {
   ProjectResult,
   ProjectSummary,
   RunArchive,
+  RunSnapshot,
   RunStats,
   RunSummary,
   RuntimeSnapshot,
@@ -620,6 +624,8 @@ export interface ServerHealth {
   /** Whether this server can run real models (signed in or not). */
   live: boolean;
   pathEngine: PathEngineStatus;
+  /** Whether this host shares the Paddock (workbench.md 공유 개발 모드): a local host does. */
+  sharedDevelopment: boolean;
 }
 
 /** The local server, if this page was served by one; null for the in-browser runtime. */
@@ -654,11 +660,14 @@ export async function hasSession(options: HttpOptions): Promise<boolean> {
 // ── runtime transport ────────────────────────────────────────────────────────
 
 const RECONNECT_DELAYS_MS = [250, 500, 1000, 2000, 4000];
+const MAX_RECENT_RUN_DEFINITIONS = 16;
+type RunDefinitionRecord = Pick<RunSnapshot, 'definition' | 'source'>;
 
 export class HttpSseTransport implements RuntimeTransport {
   private readonly http: Http;
   private readonly recovery?: { commands: CommandRecovery; starts: StartRecovery };
   private readonly pendingAutoIds = new Map<string, string>();
+  private readonly runDefinitions = new Map<string, Promise<RunDefinitionRecord | null>>();
 
   constructor(
     options: HttpOptions,
@@ -844,10 +853,36 @@ export class HttpSseTransport implements RuntimeTransport {
   }
 
   async getRunDefinition(runId: string): Promise<CorralDefinition | null> {
-    const response = await this.http.request(`/runs/${encodeURIComponent(runId)}`);
-    if (response.status === 404) return null;
-    if (!response.ok) throw await apiError(response);
-    return ((await response.json()) as { definition: CorralDefinition }).definition;
+    return (await this.runDefinitionRecord(runId))?.definition ?? null;
+  }
+
+  async getRunSource(runId: string): Promise<RunSnapshot['source']> {
+    return (await this.runDefinitionRecord(runId))?.source ?? null;
+  }
+
+  private async runDefinitionRecord(runId: string): Promise<RunDefinitionRecord | null> {
+    const cached = this.runDefinitions.get(runId);
+    if (cached) return cached;
+    const path = `/runs/${encodeURIComponent(runId)}`;
+    const request = this.http.request(path).then(async (response) => {
+      if (response.status === 404) return null;
+      if (!response.ok) throw await apiError(response);
+      const { definition, source } = (await response.json()) as RunDefinitionRecord;
+      return { definition, source };
+    });
+    // Both readers share the immutable response, including while its request is in flight.
+    if (this.runDefinitions.size >= MAX_RECENT_RUN_DEFINITIONS) {
+      const oldest = this.runDefinitions.keys().next();
+      if (!oldest.done) this.runDefinitions.delete(oldest.value);
+    }
+    this.runDefinitions.set(runId, request);
+    let record: RunDefinitionRecord | null = null;
+    try {
+      record = await request;
+      return record;
+    } finally {
+      if (!record && this.runDefinitions.get(runId) === request) this.runDefinitions.delete(runId);
+    }
   }
 
   getRunStats(corralId: string, definitionRevision: number): Promise<RunStats> {
@@ -1197,6 +1232,79 @@ export class TerminalsApi {
   }
 }
 
+const libraryAgentList = LibraryAgent.array();
+
+function libraryAgentPath(projectId: string, agentId?: string): string {
+  const collection = `/projects/${encodeURIComponent(projectId)}/agents`;
+  return agentId === undefined ? collection : `${collection}/${encodeURIComponent(agentId)}`;
+}
+
+export class RestAgentLibrary implements AgentLibrary {
+  private readonly http: Http;
+
+  constructor(options: HttpOptions) {
+    this.http = new Http(options);
+  }
+
+  async list(projectId: string): Promise<LibraryAgent[]> {
+    try {
+      return libraryAgentList.parse(await this.http.json(libraryAgentPath(projectId)));
+    } catch {
+      throw new Error('Could not read the agent library.');
+    }
+  }
+
+  async get(projectId: string, agentId: string): Promise<LibraryAgent | null> {
+    try {
+      return LibraryAgent.parse(await this.http.json(libraryAgentPath(projectId, agentId)));
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) return null;
+      throw new Error('Could not read the library agent.');
+    }
+  }
+
+  create(projectId: string, input: CreateLibraryAgent): Promise<AgentLibraryResult> {
+    return this.write(libraryAgentPath(projectId), 'POST', input);
+  }
+
+  update(
+    projectId: string,
+    agentId: string,
+    change: UpdateLibraryAgent,
+  ): Promise<AgentLibraryResult> {
+    return this.write(libraryAgentPath(projectId, agentId), 'PATCH', change);
+  }
+
+  private async write(
+    path: string,
+    method: 'POST' | 'PATCH',
+    input: CreateLibraryAgent | UpdateLibraryAgent,
+  ): Promise<AgentLibraryResult> {
+    try {
+      const response = await this.http.request(path, { method, body: JSON.stringify(input) });
+      if (response.ok) return { ok: true, agent: LibraryAgent.parse(await response.json()) };
+      if (response.status === 400)
+        return { ok: false, error: 'invalid', message: 'Invalid agent library request.' };
+      if (response.status === 404)
+        return { ok: false, error: 'not_found', message: 'Project or agent not found.' };
+      if (response.status === 409) {
+        const { code } = await apiError(response);
+        if (code === 'REVISION_CONFLICT')
+          return { ok: false, error: 'revision_conflict', message: 'The agent revision changed.' };
+        if (code === 'IDEMPOTENCY_CONFLICT')
+          return {
+            ok: false,
+            error: 'operation_conflict',
+            message: 'The operation ID was already used for a different request.',
+          };
+      }
+    } catch {
+      // Transport and decode failures can contain private request or response data.
+    }
+    return { ok: false, error: 'storage_unavailable', message: 'Agent library unavailable.' };
+  }
+}
+
 // ── Corral repository ────────────────────────────────────────────────────────
 
 export class RestCorralRepository implements CorralRepository {
@@ -1232,6 +1340,13 @@ export class RestCorralRepository implements CorralRepository {
       return this.write('/corrals', 'POST', {
         ...body,
         ...(request.projectId ? { projectId: request.projectId } : {}),
+        createId: request.createId,
+      });
+    if (request.createId !== undefined)
+      return Promise.resolve({
+        ok: false,
+        error: 'validation_error',
+        message: 'createId is only valid on the first save.',
       });
     return this.write(`/corrals/${encodeURIComponent(request.definition.id)}`, 'PUT', body, {
       'if-match': `"${request.expectedDefinitionRevision}"`,
@@ -1373,6 +1488,8 @@ export class RestCorralRepository implements CorralRepository {
     }
     if (response.ok) return (await response.json()) as SaveResult;
     const error = await apiError(response);
+    if (response.status === 400 && error.code === 'SCHEMA_INVALID')
+      return { ok: false, error: 'validation_error', message: error.message };
     if (response.status === 404) return { ok: false, error: 'not_found', message: error.message };
     if (response.status === 409) {
       return { ok: false, error: 'revision_conflict', message: error.message };
@@ -1755,18 +1872,11 @@ export class ModelsApi {
     return this.http.json('/model-config', { method: 'PUT', body: JSON.stringify(change) });
   }
 
-  /** A team plan for a goal from one model request; only a checked plan comes back. */
-  draftTeam(
-    goal: string,
-    options: { operationId?: string; signal?: AbortSignal } = {},
-  ): Promise<{ plan: TeamPlan; model: { provider: string; modelId: string } }> {
-    return this.http.json('/team-drafts', {
+  assistTeam(request: TeamAssistantRequest, signal?: AbortSignal): Promise<TeamAssistantResponse> {
+    return this.http.json('/team-assistant', {
       method: 'POST',
-      signal: options.signal,
-      body: JSON.stringify({
-        goal,
-        operationId: options.operationId ?? globalThis.crypto.randomUUID(),
-      }),
+      signal,
+      body: JSON.stringify(request),
     });
   }
 
@@ -1796,11 +1906,7 @@ export class ModelsApi {
 
 // ── work folders and file changes ──────────────────────────────────
 
-export interface HarnessPreview {
-  snapshot: EffectiveHarnessSnapshot;
-  sections: { source: 'skill'; name: string; text: string }[];
-  dynamic: boolean;
-}
+export type { HarnessPreview, RoleHarnessPreview } from '@corral/contracts';
 
 export interface McpProbeResult {
   operationId: string;
@@ -2195,10 +2301,29 @@ export class HarnessApi {
     binding: HarnessBindingRef,
     projectId: string,
     runOverride?: HarnessBindingRef,
-  ): Promise<HarnessPreview> {
+  ): Promise<HarnessPreview>;
+  preview(
+    role: HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<RoleHarnessPreview>;
+  preview(
+    input: HarnessBindingRef | HarnessPreviewRole,
+    projectId: string,
+    runOverride?: HarnessBindingRef,
+  ): Promise<RoleHarnessPreview> {
+    const selection =
+      'profileId' in input
+        ? { binding: input }
+        : {
+            roleId: input.id,
+            binding: input.harness,
+            skills: input.skills,
+            mcpTools: input.mcpTools,
+          };
     return this.http.json('/harness/preview', {
       method: 'POST',
-      body: JSON.stringify({ binding, projectId, ...(runOverride ? { runOverride } : {}) }),
+      body: JSON.stringify({ ...selection, projectId, runOverride }),
     });
   }
   default(scope: HarnessDefault['scope'], scopeId: string): Promise<HarnessDefault> {
@@ -2614,27 +2739,6 @@ export class WorkspacesApi {
       `/sessions/${encodeURIComponent(sessionId)}/worktree/language/stop`,
       'POST',
       input,
-    );
-  }
-  developmentState(sessionId: string): Promise<DevelopmentState> {
-    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/development`);
-  }
-  startDevelopment(sessionId: string, input: DevelopmentStart): Promise<DevelopmentState> {
-    return this.send(
-      `/sessions/${encodeURIComponent(sessionId)}/worktree/development`,
-      'POST',
-      input,
-    );
-  }
-  finishDevelopment(
-    sessionId: string,
-    operationId: string,
-    target: WorkspaceTarget,
-  ): Promise<DevelopmentState> {
-    return this.send(
-      `/sessions/${encodeURIComponent(sessionId)}/worktree/development/${encodeURIComponent(operationId)}/finish`,
-      'POST',
-      { target },
     );
   }
   deployments(sessionId: string): Promise<DeploymentList> {

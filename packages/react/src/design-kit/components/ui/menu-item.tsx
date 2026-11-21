@@ -9,6 +9,7 @@ import {
   type ReactNode,
   useCallback,
   useContext,
+  useId,
   useRef,
   useState,
 } from 'react';
@@ -107,7 +108,11 @@ export interface MenuItemProps extends HTMLAttributes<HTMLDivElement> {
   /** A boolean makes a radio-style option; undefined is a plain action item. */
   checked?: boolean;
   onSelect?: () => void;
+  /** Not chosen by a press, Enter or Space; in a popup the arrows still reach it. */
   disabled?: boolean;
+  /** A smaller second line under the label (why the row is unavailable); the row is described by
+   *  it. A disabled row with one dims its icon and label only, so the line stays readable. */
+  description?: ReactNode;
   /** Popup-only: whether activating closes the menu. @default true */
   closeOnClick?: boolean;
 }
@@ -122,6 +127,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
       checked,
       onSelect,
       disabled,
+      description,
       closeOnClick,
       className,
       onClick,
@@ -130,6 +136,8 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     ref,
   ) => {
     const internalRef = useRef<HTMLDivElement>(null);
+    const descriptionId = useId();
+    const described = description !== undefined && description !== null && description !== false;
     const { registerItem, activeIndex, checkedIndex, multiple, checkedIndices, renderMenuItem } =
       useDropdown();
     const isCheckbox = !!multiple && typeof checked === 'boolean';
@@ -155,15 +163,41 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
     const itemClassName = cn(
       // Fixed height so text-box trim can't shrink the row; shrink-0 so a
       // long list scrolls instead of compressing rows.
-      `relative z-10 flex ${sizeClasses.control} shrink-0 items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.itemPx} cursor-pointer outline-none`,
-      disabled && 'opacity-50 pointer-events-none',
+      `relative z-10 flex ${described ? 'h-auto py-1.5' : sizeClasses.control} shrink-0 items-center ${sizeClasses.gap} ${shape.item} ${sizeClasses.itemPx} cursor-pointer outline-none`,
+      disabled && (described ? 'pointer-events-none' : 'opacity-50 pointer-events-none'),
       className,
+    );
+    // With a second line, only the icon and the label are dimmed.
+    const dimmed = disabled && described && 'opacity-50';
+
+    // Invisible semibold sizer; both spans share the text-box trim.
+    const labelBlock = (
+      <span className={cn('inline-grid', !described && 'flex-1', dimmed, sizeClasses.text)}>
+        <span
+          className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
+          style={{ fontVariationSettings: fontWeights.semibold }}
+          aria-hidden="true"
+        >
+          {labelContent ?? label}
+        </span>
+        <span
+          className={cn(
+            'col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]',
+            isActive || checked ? 'text-foreground' : 'text-muted-foreground',
+          )}
+          style={{
+            fontVariationSettings: checked ? fontWeights.semibold : fontWeights.normal,
+          }}
+        >
+          {labelContent ?? label}
+        </span>
+      </span>
     );
 
     const content = (
       <>
         {Icon && (
-          <span className="inline-grid">
+          <span className={cn('inline-grid', dimmed)}>
             <span className="col-start-1 row-start-1 invisible">
               <Icon size={sizeClasses.icon} strokeWidth={2} />
             </span>
@@ -177,27 +211,20 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             />
           </span>
         )}
-        {/* Invisible semibold sizer; both spans share the text-box trim. */}
-        <span className={cn('inline-grid flex-1', sizeClasses.text)}>
-          <span
-            className="col-start-1 row-start-1 invisible [text-box:trim-both_cap_alphabetic]"
-            style={{ fontVariationSettings: fontWeights.semibold }}
-            aria-hidden="true"
-          >
-            {labelContent ?? label}
+        {described ? (
+          <span className="flex min-w-0 flex-1 flex-col gap-1">
+            {labelBlock}
+            <span
+              id={descriptionId}
+              data-slot="menu-item-description"
+              className={cn(sizeClasses.type.caption, 'text-muted-foreground')}
+            >
+              {description}
+            </span>
           </span>
-          <span
-            className={cn(
-              'col-start-1 row-start-1 transition-[color,font-variation-settings] duration-80 [text-box:trim-both_cap_alphabetic]',
-              isActive || checked ? 'text-foreground' : 'text-muted-foreground',
-            )}
-            style={{
-              fontVariationSettings: checked ? fontWeights.semibold : fontWeights.normal,
-            }}
-          >
-            {labelContent ?? label}
-          </span>
-        </span>
+        ) : (
+          labelBlock
+        )}
         {/* initial={false}: default selections don't animate on mount. */}
         <AnimatePresence initial={false}>
           {checked && (
@@ -253,6 +280,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
             ref={mergeRef}
             data-fluid-hover-index={index}
             aria-label={label}
+            aria-describedby={described ? descriptionId : undefined}
             className={itemClassName}
             {...props}
           />
@@ -279,6 +307,7 @@ const MenuItem = forwardRef<HTMLDivElement, MenuItemProps>(
         aria-checked={typeof checked === 'boolean' ? checked : undefined}
         aria-disabled={disabled || undefined}
         aria-label={label}
+        aria-describedby={described ? descriptionId : undefined}
         onClick={handleActivate}
         onKeyDown={(e) => {
           if (disabled) return;

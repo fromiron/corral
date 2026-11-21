@@ -1,5 +1,5 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
-import type { ReactNode } from 'react';
+import { type ReactNode, useEffect, useRef } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
 import { Pause, Play, Square } from '../design-kit/icons.ts';
@@ -14,6 +14,8 @@ export function RunActions({
   compact = false,
   showCancel = true,
   narrowIcons = false,
+  receiptsOnly = false,
+  receiptLines = false,
 }: {
   session: RunSessionStore;
   compact?: boolean;
@@ -24,6 +26,16 @@ export function RunActions({
    * Their words stay their accessible names and become their tooltips.
    */
   narrowIcons?: boolean;
+  /**
+   * The controls stand in another place: only the run's receipts that still need confirming
+   * (waiting, failed, or with a lost answer and its retry). A finished run in a bar is always so.
+   */
+  receiptsOnly?: boolean;
+  /**
+   * With `receiptsOnly`, in a head that carries nothing else: each receipt on one line, its
+   * group named but not titled, its retry an icon under `narrowIcons`.
+   */
+  receiptLines?: boolean;
 }) {
   const t = useTranslations('Reins');
   /** A control's words; in a narrow bar its icon stands in and the words stay its name. */
@@ -45,14 +57,36 @@ export function RunActions({
   const pending = useStore(session, (s) => s.pendingCommandIds.length > 0);
   const shownRun = projection?.runId ?? null;
   const terminal = Boolean(projection && TERMINAL_RUN_STATUSES.has(projection.status));
+  // Only a place that carries the controls holds the run's pending confirmation: one showing
+  // receipts only neither asks nor lets another place's confirmation go when it leaves.
   const [confirmCancel, setConfirmCancel] = useCancelConfirmation(
-    shownRun,
+    receiptsOnly ? null : shownRun,
     terminal || projection?.status === 'cancelling',
   );
+  const confirming = showCancel && confirmCancel && !terminal;
+  // Wherever it asks, the first focus is on Keep running. The popover puts it there as it opens;
+  // the block takes it once drawn after its own stop is pressed, so one that comes back with the
+  // page leaves the focus where it is (and so does one a stop command asks for here).
+  const keepRunning = useRef<HTMLButtonElement>(null);
+  const focusKeepRunning = useRef(false);
+  useEffect(() => {
+    if (!confirming || !focusKeepRunning.current) return;
+    focusKeepRunning.current = false;
+    keepRunning.current?.focus();
+  }, [confirming]);
   if (!projection) return null;
   // A finished run in the page header has no controls: only its receipts, if any.
-  if (compact && terminal) {
-    return <CommandReceipts session={session} target={`run:${projection.runId}`} openOnly />;
+  if (receiptsOnly || (compact && terminal)) {
+    return (
+      <CommandReceipts
+        session={session}
+        target={`run:${projection.runId}`}
+        openOnly
+        lines={receiptsOnly && receiptLines}
+        iconActions={narrowIcons}
+        actionSize={size}
+      />
+    );
   }
   const send = (command: SessionCommand) => {
     void session
@@ -60,7 +94,6 @@ export function RunActions({
       .sendCommand(command)
       .catch(() => undefined);
   };
-  const confirming = showCancel && confirmCancel && !terminal;
   const confirmation = (
     <div
       className={
@@ -72,6 +105,9 @@ export function RunActions({
       <p>{t('cancelRunExplain')}</p>
       <p role="status">{t('cancelNotSent')}</p>
       <div className="flex flex-wrap gap-1">
+        <Button ref={keepRunning} variant="tertiary" onClick={() => setConfirmCancel(false)}>
+          {t('keepRunning')}
+        </Button>
         <Button
           variant="destructive"
           disabled={pending}
@@ -87,9 +123,6 @@ export function RunActions({
         >
           {t('confirmCancelRun')}
         </Button>
-        <Button variant="tertiary" onClick={() => setConfirmCancel(false)}>
-          {t('keepRunning')}
-        </Button>
       </div>
     </div>
   );
@@ -98,7 +131,13 @@ export function RunActions({
       variant="ghost-destructive"
       size={size}
       disabled={pending || projection.status === 'cancelling'}
-      onClick={() => setConfirmCancel(true)}
+      onClick={() => {
+        if (!compact) {
+          if (confirming) keepRunning.current?.focus();
+          else focusKeepRunning.current = true;
+        }
+        setConfirmCancel(true);
+      }}
     >
       {label(<Square aria-hidden="true" />, t('cancelRun'))}
     </Button>
@@ -151,7 +190,13 @@ export function RunActions({
               >
                 <PopoverTrigger render={cancelButton} />
               </Tooltip>
-              <PopoverPopup align="end" side="bottom" width="sm" aria-label={t('cancelRun')}>
+              <PopoverPopup
+                align="end"
+                side="bottom"
+                width="sm"
+                aria-label={t('cancelRun')}
+                initialFocus={keepRunning}
+              >
                 {confirmation}
               </PopoverPopup>
             </Popover>

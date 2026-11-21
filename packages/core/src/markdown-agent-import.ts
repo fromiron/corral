@@ -3,6 +3,7 @@ import {
   type CorralDefinition,
   CorralDefinitionDraft,
   type EffectiveHarnessSnapshot,
+  type RoleSkillRef,
   WorkTool,
 } from '@corral/contracts';
 
@@ -27,7 +28,8 @@ function utf8Length(value: string): number {
 const excluded = new Set(['ask_user', 'update_plan']);
 // These are proposed translations, never silently enabled. Grep has no equivalent in the
 // file broker; internet search/read_file are deliberately not claimed to be content search.
-const aliases: Record<string, readonly string[]> = {
+// Built-in agent files go through the same table (builtinAgentTools below).
+export const MARKDOWN_TOOL_ALIASES: Readonly<Record<string, readonly string[]>> = {
   Read: ['read_file'],
   Glob: ['list_files'],
   Grep: [],
@@ -40,28 +42,67 @@ const aliases: Record<string, readonly string[]> = {
 export function toolTargets(source: string): string[] {
   const supported = [...WorkTool.options, ...CollaborationTool.options] as string[];
   if (excluded.has(source)) return [];
-  const candidates = Object.hasOwn(aliases, source) ? (aliases[source] ?? []) : [source];
+  const candidates = Object.hasOwn(MARKDOWN_TOOL_ALIASES, source)
+    ? (MARKDOWN_TOOL_ALIASES[source] ?? [])
+    : [source];
   return candidates.filter((target) => supported.includes(target));
 }
 function knownTool(tool: string): boolean {
   return (
-    Object.hasOwn(aliases, tool) ||
+    Object.hasOwn(MARKDOWN_TOOL_ALIASES, tool) ||
     WorkTool.safeParse(tool).success ||
     CollaborationTool.safeParse(tool).success
   );
 }
 
+/**
+ * A built-in agent file's tools as its preset gives them (builtin-crew.md, "파일 형식"): the
+ * import table above, then the tools that travel with them. An import still proposes only the
+ * table's translations.
+ */
+export function builtinAgentTools(tools: readonly string[]): {
+  workTools: WorkTool[];
+  collaborationTools: CollaborationTool[];
+} {
+  const granted = new Set<string>([
+    ...tools.flatMap(toolTargets),
+    'write_artifact',
+    'preview_file',
+    'read_artifact',
+    'submit_result',
+    'ask_user',
+  ]);
+  if (granted.has('run_command'))
+    for (const tool of ['preview_app', 'preview_action']) granted.add(tool);
+  if (granted.has('write_file')) for (const tool of ['delete_file', 'move_file']) granted.add(tool);
+  return {
+    workTools: WorkTool.options.filter((tool) => granted.has(tool)),
+    collaborationTools: CollaborationTool.options.filter((tool) => granted.has(tool)),
+  };
+}
+
 export interface MarkdownAgent {
   name: string;
+  /** The imported role's description; an empty one gives it none. */
   description: string;
   prompt: string;
   model: string;
   tools: string[];
+  /** Skill names; an import attaches the same-named usable skills (agent-library.md). */
+  skills: string[];
+  /** Read and kept, never used by an import. */
+  metadata: Record<string, string>;
   errors: string[];
 }
 
-/** Deliberately bounded frontmatter: flat strings, literal/folded blocks and string lists.
- * Unsupported YAML constructs/fields fail visibly rather than being interpreted differently.
+const FIELDS = ['name', 'description', 'prompt', 'model', 'tools', 'skills', 'metadata'];
+// What YAML 1.2 reads as a null, boolean or number, plus flow and block collections.
+const NON_STRING =
+  /^(?:~|null|Null|NULL|true|True|TRUE|false|False|FALSE|[-+]?(?:\.[0-9]+|[0-9]+(?:\.[0-9]*)?)(?:[eE][-+]?[0-9]+)?|0o[0-7]+|0x[0-9a-fA-F]+|[-+]?\.(?:inf|Inf|INF)|\.(?:nan|NaN|NAN))$|^[[|>]/;
+
+/** Deliberately bounded frontmatter: flat strings, literal/folded blocks, string lists and one
+ * indented map of strings. Unsupported YAML constructs/fields fail visibly rather than being
+ * interpreted differently.
  */
 export function parseMarkdownAgent(source: string): MarkdownAgent {
   const result: MarkdownAgent = {
@@ -70,6 +111,8 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     prompt: '',
     model: '',
     tools: [],
+    skills: [],
+    metadata: {},
     errors: [],
   };
   if (utf8Length(source) > MAX_AGENT_MARKDOWN_BYTES) {
@@ -85,7 +128,7 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     result.errors.push('Expected a closed --- frontmatter block.');
     return result;
   }
-  const fields = new Map<string, string | string[]>();
+  const fields = new Map<string, string | string[] | Record<string, string>>();
   const scalar = (value: string): string => {
     const text = value.trim();
     if (text.startsWith('"')) {
@@ -115,16 +158,44 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
     }
     const key = match[1] ?? '';
     const value = match[2] ?? '';
-    if (!['name', 'description', 'prompt', 'model', 'tools'].includes(key))
-      result.errors.push(`Unsupported field: ${key}`);
+    if (!FIELDS.includes(key)) result.errors.push(`Unsupported field: ${key}`);
     if (fields.has(key)) result.errors.push(`Duplicate field: ${key}`);
-    if (/^[|>][-+]?$/.test(value)) {
+    if (key === 'metadata') {
+      const map: Record<string, string> = {};
+      const invalid = (line: number) =>
+        result.errors.push(`metadata must be an indented map of string values (line ${line}).`);
+      if (value.trim()) invalid(i + 1);
+      let indent: number | undefined;
+      while (i + 1 < end && (/^\s/.test(lines[i + 1] ?? '') || !lines[i + 1]?.trim())) {
+        const row = lines[++i] ?? '';
+        if (!row.trim() || row.trimStart().startsWith('#')) continue;
+        const depth = row.length - row.trimStart().length;
+        indent ??= depth;
+        const entry = /^([A-Za-z0-9][A-Za-z0-9_.-]*):\s*(.*)$/.exec(row.trimStart());
+        const raw = entry?.[2]?.trim() ?? '';
+        if (depth !== indent || !entry || !raw || NON_STRING.test(raw)) {
+          invalid(i + 1);
+          continue;
+        }
+        const name = entry[1] ?? '';
+        if (Object.hasOwn(map, name)) result.errors.push(`Duplicate metadata key: ${name}`);
+        map[name] = scalar(raw);
+      }
+      if (indent === undefined && !value.trim()) invalid(i + 1);
+      fields.set(key, map);
+    } else if (/^[|>][-+]?$/.test(value)) {
       const block: string[] = [];
       while (i + 1 < end && (/^\s/.test(lines[i + 1] ?? '') || !lines[i + 1]?.trim()))
         block.push(lines[++i] ?? '');
       const indent = Math.min(
         ...block.filter((row) => row.trim()).map((row) => row.length - row.trimStart().length),
       );
+      // A list field read as text would silently become an empty list.
+      if (key === 'tools' || key === 'skills') {
+        result.errors.push(`${key} must be a list, not a block of text.`);
+        fields.set(key, []);
+        continue;
+      }
       fields.set(
         key,
         block
@@ -132,7 +203,7 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
           .join(value.startsWith('>') ? ' ' : '\n')
           .trim(),
       );
-    } else if (key === 'tools') {
+    } else if (key === 'tools' || key === 'skills') {
       let values: string[];
       if (!value) {
         values = [];
@@ -158,6 +229,11 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
   else result.prompt ||= body;
   const tools = fields.get('tools');
   if (Array.isArray(tools)) result.tools = [...new Set(tools)];
+  const skills = fields.get('skills');
+  if (Array.isArray(skills)) result.skills = [...new Set(skills)];
+  const metadata = fields.get('metadata');
+  if (metadata && typeof metadata === 'object' && !Array.isArray(metadata))
+    result.metadata = metadata;
   if (!fields.has('tools')) result.errors.push('Declare tools explicitly (tools: [] for none).');
   for (const tool of result.tools) {
     if (!knownTool(tool)) result.errors.push(`Unknown tool: ${tool}`);
@@ -171,6 +247,41 @@ export function parseMarkdownAgent(source: string): MarkdownAgent {
   return result;
 }
 
+/** A usable skill entry (installed, its package on, trusted, not archived) an import can attach. */
+export interface ImportableSkill extends RoleSkillRef {
+  /** The skill's own name from its SKILL.md, not a display name. */
+  name: string;
+  /** A later version is linked to this entry. */
+  superseded: boolean;
+  /** When its package was installed. */
+  installedAt: string;
+}
+
+/**
+ * A Markdown agent's `skills` as the imported role's skill choice (agent-library.md, "정의의 선택
+ * 필드"). Each name takes one same-named usable skill, chosen as harness-contract.md chooses the
+ * other usable skills: an entry no later version follows, then the latest installed. A name
+ * nothing answers comes back in `unresolved` for the review to show; it is never dropped silently.
+ */
+export function attachSkillsByName(
+  names: readonly string[],
+  usable: readonly ImportableSkill[],
+): { skills: RoleSkillRef[]; unresolved: string[] } {
+  const skills: RoleSkillRef[] = [];
+  const unresolved: string[] = [];
+  for (const name of names) {
+    const pick = usable
+      .filter((skill) => skill.name === name)
+      .sort(
+        (a, b) =>
+          Number(a.superseded) - Number(b.superseded) || b.installedAt.localeCompare(a.installedAt),
+      )[0];
+    if (pick) skills.push({ resourceHash: pick.resourceHash, entry: pick.entry });
+    else unresolved.push(name);
+  }
+  return { skills, unresolved };
+}
+
 export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   draft: T;
   candidate: MarkdownAgent;
@@ -182,6 +293,8 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   /** Preserves an explicit Corral role setting when importing a settings snapshot. */
   editingMode?: 'pi' | 'hashline' | undefined;
   parentHarness?: Pick<EffectiveHarnessSnapshot, 'binding' | 'policy' | 'allowedTools'> | undefined;
+  /** The skills `attachSkillsByName` found; none leaves the role without a skill choice. */
+  skills?: readonly RoleSkillRef[] | undefined;
 }): T {
   const { draft, candidate, parentNodeId, modelProfile, profiles, mappings, suffix } = input;
   if (candidate.errors.length) throw new Error(candidate.errors.join('\n'));
@@ -310,13 +423,17 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
       {
         id: roleId,
         name: candidate.name,
-        prompt: `${candidate.description}\n\n${candidate.prompt}\n\nCorral import tool mapping:\n${candidate.tools.map((source) => `${source}: ${excluded.has(source) ? 'excluded; the parent handles user input and run control' : mappings[source] === 'omit' ? 'excluded; do not attempt this tool' : source === 'Edit' && editingMode === 'hashline' ? 'read_hashline, then edit_hashline using the returned file tag' : mappings[source]}`).join('\n')}\nUse only the effective Corral tool names. Return results through write_artifact and submit_result. If clarification or user input is needed, call ask with targetNodeId "${parentNodeId}" to the parent who delegated this task. Wait for the reply and continue this same task before submitting the result. The parent handles user input and run control. Agent questions and replies do not grant human approval or additional permissions.`,
+        // The frontmatter description is the role's own; the body alone is its instructions.
+        ...(candidate.description ? { description: candidate.description } : {}),
+        prompt: `${candidate.prompt}\n\nCorral import tool mapping:\n${candidate.tools.map((source) => `${source}: ${excluded.has(source) ? 'excluded; the parent handles user input and run control' : mappings[source] === 'omit' ? 'excluded; do not attempt this tool' : source === 'Edit' && editingMode === 'hashline' ? 'read_hashline, then edit_hashline using the returned file tag' : mappings[source]}`).join('\n')}\nUse only the effective Corral tool names. Return results through write_artifact and submit_result. If clarification or user input is needed, call ask with targetNodeId "${parentNodeId}" to the parent who delegated this task. Wait for the reply and continue this same task before submitting the result. The parent handles user input and run control. Agent questions and replies do not grant human approval or additional permissions.`,
         modelProfile,
         ...(work.includes('generate_image') && parentRole.imageProfile
           ? { imageProfile: parentRole.imageProfile }
           : {}),
         ...(parentRole.harness ? { harness: { ...parentRole.harness } } : {}),
         ...(editingMode ? { editingMode } : {}),
+        // An empty choice would still switch the role to harness resolution.
+        ...(input.skills?.length ? { skills: input.skills.map((ref) => ({ ...ref })) } : {}),
         allowedWorkTools: work,
         allowedCollaborationTools: collaboration,
         outputContract: 'text',

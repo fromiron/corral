@@ -7,7 +7,12 @@ import { compileDefinition } from '@corral/core';
 import { createEditorStore, draftFromDefinition } from '@corral/react';
 import { describe, expect, it } from 'vitest';
 import { manyNodeDefinition } from '../../../../packages/contracts/test/fixtures/many-nodes.ts';
-import { importMarkdownAgent, parseMarkdownAgent, toolTargets } from './markdownAgentImport.ts';
+import {
+  attachSkillsByName,
+  importMarkdownAgent,
+  parseMarkdownAgent,
+  toolTargets,
+} from './markdownAgentImport.ts';
 
 const definition: CorralDefinition = {
   schemaVersion: '0.1',
@@ -210,6 +215,58 @@ describe('Markdown agent import', () => {
     ).toBeGreaterThan(0);
     expect(toolTargets('constructor')).toEqual([]);
   });
+  it('reads skills in the same list syntaxes as tools', () => {
+    for (const list of [
+      'skills: break-it, change-impact',
+      'skills: [break-it, "change-impact"]',
+      'skills:\n  - break-it\n  - change-impact\n  - break-it',
+    ]) {
+      const parsed = parseMarkdownAgent(source.replace('model:', `${list}\nmodel:`));
+      expect(parsed.errors).toEqual([]);
+      expect(parsed.skills).toEqual(['break-it', 'change-impact']);
+    }
+    expect(parseMarkdownAgent(source).skills).toEqual([]);
+  });
+  it('refuses a block scalar for tools or skills instead of reading an empty list', () => {
+    for (const block of ['|', '>', '|-', '>+']) {
+      const skills = parseMarkdownAgent(
+        source.replace('model:', `skills: ${block}\n  break-it\n  change-impact\nmodel:`),
+      );
+      expect(skills.errors).toContain('skills must be a list, not a block of text.');
+      const tools = parseMarkdownAgent(
+        source.replace('tools: [Read, Glob]', `tools: ${block}\n  Read\n  Glob`),
+      );
+      expect(tools.errors).toContain('tools must be a list, not a block of text.');
+    }
+  });
+  it('reads metadata as a one-level map of strings and refuses anything else', () => {
+    const withMetadata = (block: string) =>
+      parseMarkdownAgent(source.replace('model:', `metadata:${block}\nmodel:`));
+    const parsed = withMetadata(
+      '\n  corral-output: "notes"\n  corral-model-slot: a\n  note: \'x\'',
+    );
+    expect(parsed.errors).toEqual([]);
+    expect(parsed.metadata).toEqual({
+      'corral-output': 'notes',
+      'corral-model-slot': 'a',
+      note: 'x',
+    });
+    expect(parseMarkdownAgent(source).metadata).toEqual({});
+    for (const block of [
+      '\n  nested:\n    key: value',
+      '\n  slot: 1',
+      '\n  flag: true',
+      '\n  empty:',
+      '\n  - listed',
+      '\n  a: b\n  a: c',
+      ' inline',
+      '',
+    ])
+      expect(withMetadata(block).errors, JSON.stringify(block)).not.toEqual([]);
+    expect(parseMarkdownAgent(source.replace('model:', 'temperature: 1\nmodel:')).errors).toContain(
+      'Unsupported field: temperature',
+    );
+  });
   it('creates a callable node and explicit parent delegate link without altering limits or control flow', () => {
     const imported = importAgent();
     const child = imported.definition.nodes.at(-1);
@@ -231,7 +288,13 @@ describe('Markdown agent import', () => {
     expect(imported.definition.roles[0]?.allowedCollaborationTools).toContain('spawn_subagents');
     expect(imported.definition.limits).toEqual(DEFAULT_LIMITS);
     expect(imported.definition.controlEdges).toEqual(definition.controlEdges);
-    expect(imported.definition.roles.at(-1)?.prompt).toContain('Inspect source');
+    // The frontmatter description is the role's description; the body alone is its instructions.
+    const role = imported.definition.roles.at(-1);
+    expect(role?.description).toBe('Inspect source');
+    expect(
+      role?.prompt.startsWith('Report paths and evidence.\n\nCorral import tool mapping:'),
+    ).toBe(true);
+    expect(role?.prompt).not.toContain('Inspect source');
     const compiled = compileDefinition(imported.definition, { knownModelProfiles: ['connected'] });
     expect(compiled.ok).toBe(true);
     if (compiled.ok) expect(compiled.plan.callables.parent?.delegate).toEqual(['import_a1']);
@@ -313,5 +376,75 @@ describe('Markdown agent import', () => {
     expect(expanded.definition.limits).toEqual(largeDefinition.limits);
     expect(expanded.definition.controlEdges).toEqual(largeDefinition.controlEdges);
     expect(compileDefinition(expanded.definition).ok).toBe(true);
+  });
+});
+
+describe('Markdown agent skills on import', () => {
+  const hash = (letter: string) => letter.repeat(64);
+  const skill = (
+    name: string,
+    letter: string,
+    installedAt: string,
+    superseded = false,
+  ): Parameters<typeof attachSkillsByName>[1][number] => ({
+    name,
+    resourceHash: hash(letter),
+    entry: `skills/${name}/SKILL.md`,
+    superseded,
+    installedAt,
+  });
+  const ref = (name: string, letter: string) => ({
+    resourceHash: hash(letter),
+    entry: `skills/${name}/SKILL.md`,
+  });
+
+  it('attaches each named usable skill and returns, by name, the ones nothing answers', () => {
+    expect(
+      attachSkillsByName(
+        ['break-it', 'ghost', 'change-impact'],
+        [
+          skill('change-impact', 'a', '2026-11-01T00:00:00.000Z'),
+          skill('break-it', 'b', '2026-11-01T00:00:00.000Z'),
+        ],
+      ),
+    ).toEqual({
+      skills: [ref('break-it', 'b'), ref('change-impact', 'a')],
+      unresolved: ['ghost'],
+    });
+    expect(attachSkillsByName([], [skill('break-it', 'b', '2026-11-01T00:00:00.000Z')])).toEqual({
+      skills: [],
+      unresolved: [],
+    });
+  });
+
+  it('chooses among same-named skills like the library skills a role receives', () => {
+    const older = skill('break-it', 'a', '2026-11-01T00:00:00.000Z');
+    const newer = skill('break-it', 'b', '2026-11-05T00:00:00.000Z');
+    const linked = skill('break-it', 'c', '2026-11-09T00:00:00.000Z', true);
+    // An entry no later version follows wins, then the latest installed.
+    expect(attachSkillsByName(['break-it'], [linked, older, newer]).skills).toEqual([
+      ref('break-it', 'b'),
+    ]);
+    expect(attachSkillsByName(['break-it'], [newer, older]).skills).toEqual([ref('break-it', 'b')]);
+    expect(attachSkillsByName(['break-it'], [linked]).skills).toEqual([ref('break-it', 'c')]);
+  });
+
+  it('puts the attached skills on the imported role and leaves the field out when none attach', () => {
+    const text = source.replace('model:', 'skills: [break-it, ghost]\nmodel:');
+    const build = (skills?: { resourceHash: string; entry: string }[]) =>
+      importMarkdownAgent({
+        draft: draftFromDefinition(definition),
+        candidate: parseMarkdownAgent(text),
+        parentNodeId: 'parent',
+        modelProfile: 'connected',
+        profiles: profile,
+        mappings: { Read: 'read_file', Glob: 'list_files' },
+        suffix: 'skills',
+        skills,
+      }).definition.roles.at(-1);
+    expect(build([ref('break-it', 'b')])?.skills).toEqual([ref('break-it', 'b')]);
+    expect(build([])).not.toHaveProperty('skills');
+    expect(build()).not.toHaveProperty('skills');
+    expect(build([ref('break-it', 'b')])?.allowedWorkTools).toEqual(build()?.allowedWorkTools);
   });
 });

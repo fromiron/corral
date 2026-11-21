@@ -4,10 +4,11 @@ import { X } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import type { RefObject } from 'react';
 import { useTranslations } from 'use-intl';
+import { NoteChips } from '../../browser/NoteChips.tsx';
+import { isNote, noteImages } from '../../browser/noteChips.ts';
 import type { Blocked, SendChoice } from '../../composerIntent.ts';
 import { type MentionItem, mentionLabel } from '../../composerMenu.ts';
 import { SourceAttachments } from '../../context/SourceAttachments.tsx';
-import { DevelopmentMode } from '../../DevelopmentMode.tsx';
 import { ImageAttachmentPicker } from '../../ImageAttachments.tsx';
 import { useSettingsNavigation } from '../../navigation.ts';
 import { RefusalHelp } from '../../RefusalHelp.tsx';
@@ -43,8 +44,6 @@ function ConnectModels({ testId, title }: { testId: string; title: string }) {
 export function ComposerNotices({
   sessionId,
   intent,
-  viewingOtherRun,
-  onViewRun,
   blocked,
   onChooseIntent,
   notReady,
@@ -66,9 +65,6 @@ export function ComposerNotices({
 }: {
   sessionId: string;
   intent: SessionIntent;
-  /** The run numbers, while the page shows a run other than the one going. */
-  viewingOtherRun: { viewed: number; active: number; activeRunId: string } | null;
-  onViewRun: ((runId: string) => void) | undefined;
   blocked: Blocked;
   onChooseIntent: (value: SendChoice) => void;
   notReady: RoleModel[];
@@ -95,6 +91,7 @@ export function ComposerNotices({
     | 'setAttachments'
     | 'setAttachmentsBusy'
     | 'attachmentsBusy'
+    | 'imagesBusy'
     | 'references'
   >;
   imageFiles: RefObject<HTMLInputElement | null>;
@@ -107,27 +104,16 @@ export function ComposerNotices({
   const tc = useTranslations('Composer');
   const tr = useTranslations('Refusal');
   const { attachmentEpoch, images, attachments, attachmentsBusy } = draft;
+  // Collected page notes are chips of their own, each holding its screenshot: the plain rows
+  // show the rest, and a change there keeps them.
+  const notes = attachments.filter(isNote);
+  const shots = noteImages(attachments, images);
+  const plainImages = images.filter((image) => !shots.includes(image));
+  const plainAttachments = attachments.filter((item) => !isNote(item));
   const overLimit = startItemsOver(intent, draft);
   return (
     <>
       {intent !== 'steer' ? <TerminalWriterNotice sessionId={sessionId} /> : null}
-      {viewingOtherRun ? (
-        <Banner data-testid="viewed-run-warning" status="warning">
-          <BannerTitle>
-            {tc('viewingOtherRun', {
-              viewed: viewingOtherRun.viewed,
-              active: viewingOtherRun.active,
-            })}
-          </BannerTitle>
-          {onViewRun ? (
-            <BannerActions>
-              <Button variant="secondary" onClick={() => onViewRun(viewingOtherRun.activeRunId)}>
-                {tc('viewActiveRun')}
-              </Button>
-            </BannerActions>
-          ) : null}
-        </Banner>
-      ) : null}
       {blocked ? (
         // A fixed target that cannot take its instruction: the person picks another target in
         // the tool line, or sends this as a next request; it never goes elsewhere by itself.
@@ -185,9 +171,6 @@ export function ComposerNotices({
           {tc('missingReferences', { count: missingChipCount })}
         </p>
       ) : null}
-      {refusal?.code === 'RUN_ALREADY_ACTIVE' ? (
-        <DevelopmentMode sessionId={sessionId} onlyActive />
-      ) : null}
       {chips.length ? (
         <ul aria-label={tc('references')} className="flex flex-wrap gap-1">
           {chips.map((item) => (
@@ -212,14 +195,26 @@ export function ComposerNotices({
           ))}
         </ul>
       ) : null}
+      <NoteChips
+        sessionId={sessionId}
+        attachments={attachments}
+        images={images}
+        // While an image uploads its row holds the draft's images: a removal waits for it.
+        disabled={busy || attachmentsBusy || draft.imagesBusy}
+        onChange={(next) => {
+          draft.setAttachments(next.attachments);
+          draft.setImages(next.images);
+        }}
+      />
       <ImageAttachmentPicker
         key={`images:${attachmentEpoch}`}
         inputRef={imageFiles}
         // Images can be added while a run goes: a next request takes them, a join leaves them
         // in the box (features/composer-flow.md "합류 대상").
         sessionId={sessionId}
-        value={images}
-        onChange={draft.setImages}
+        value={plainImages}
+        held={shots.length}
+        onChange={(next) => draft.setImages([...next, ...shots])}
         onBusyChange={draft.setImagesBusy}
         disabled={busy}
       />
@@ -235,8 +230,8 @@ export function ComposerNotices({
         hideList
       />
       <SourceAttachments
-        value={attachments}
-        onChange={draft.setAttachments}
+        value={plainAttachments}
+        onChange={(next) => draft.setAttachments([...next, ...notes])}
         disabled={busy || attachmentsBusy}
       />
       {/* Where Send goes, for assistive tech: the tool line's target and keys show it. */}

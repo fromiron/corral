@@ -6,9 +6,9 @@ import { TopbarBar, TopbarFit, useTopbarLayout } from './TopbarSlot.tsx';
 import { TOPBAR_TIERS, type TopbarLayout } from './topbarTier.ts';
 
 // jsdom lays nothing out: the bar's width and what each tier asks for are given here, as the
-// browser would measure them for a session with four view tabs and a running run.
+// browser measured them for a session.
 const fixture = vi.hoisted(() => ({
-  needs: [1322, 1188, 1146, 1063, 838, 763, 517, 366],
+  needs: [1322, 1063, 763, 517],
   measured: [] as string[],
 }));
 vi.mock('./topbarTier.ts', async (original) => {
@@ -27,7 +27,7 @@ const disposals: (() => Promise<void>)[] = [];
 beforeEach(() => {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.measured = [];
-  fixture.needs = [1322, 1188, 1146, 1063, 838, 763, 517, 366];
+  fixture.needs = [1322, 1063, 763, 517];
   vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockImplementation(() => width);
 });
 afterEach(async () => {
@@ -38,7 +38,7 @@ afterEach(async () => {
 
 function Reader() {
   const layout = useTopbarLayout();
-  return <output>{`${layout.actions} ${layout.pill} ${layout.views} ${layout.project}`}</output>;
+  return <output>{`${layout.project} ${layout.rows}`}</output>;
 }
 
 async function mount(barWidth: number) {
@@ -78,12 +78,12 @@ async function mount(barWidth: number) {
 }
 
 it.each([
-  [1440, 'full', '1', 'words full tabs name'],
-  [1184, 'no-clock', '1', 'icons no-clock tabs name'],
-  [1024, 'view-menu', '1', 'icons short menu name'],
-  [768, 'project-icon', '1', 'icons short menu icon'],
-  [600, 'two-rows', '2', 'icons short tabs icon'],
-  [390, 'two-rows-menu', '2', 'icons number menu icon'],
+  [1440, 'full', '1', 'name 1'],
+  [1184, 'short-path', '1', 'name 1'],
+  [1024, 'project-icon', '1', 'icon 1'],
+  [768, 'project-icon', '1', 'icon 1'],
+  [600, 'two-rows', '2', 'icon 2'],
+  [390, 'two-rows', '2', 'icon 2'],
 ] as const)(
   'a %ipx bar settles at the %s tier before it is painted',
   async (barWidth, tier, rows, reads) => {
@@ -101,10 +101,10 @@ it.each([
   },
 );
 
-it('gives the room back when the content shrinks, such as a run ending', async () => {
+it('gives the room back when the content shrinks', async () => {
   const view = await mount(1024);
-  expect(view.tier()).toBe('view-menu');
-  // Without the run pill and its buttons, every tier asks for less.
+  expect(view.tier()).toBe('project-icon');
+  // With less in the bar, every tier asks for less.
   fixture.needs = fixture.needs.map((need) => need - 330);
   await view.change();
   expect(view.tier()).toBe('full');
@@ -112,10 +112,10 @@ it('gives the room back when the content shrinks, such as a run ending', async (
 
 it('folds further when the content grows at the same width', async () => {
   const view = await mount(1200);
-  expect(view.tier()).toBe('icons');
+  expect(view.tier()).toBe('short-path');
   fixture.needs = fixture.needs.map((need) => need + 200);
   await view.change();
-  expect(view.tier()).toBe('view-menu');
+  expect(view.tier()).toBe('project-icon');
 });
 
 it('keeps everything where nothing is laid out', async () => {
@@ -133,5 +133,5 @@ it('shows everything outside a fitted bar', async () => {
     container.remove();
   });
   await act(async () => root.render(<Reader />));
-  expect(container.textContent).toBe('words full tabs name');
+  expect(container.textContent).toBe('name 1');
 });

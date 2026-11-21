@@ -84,7 +84,7 @@ export function lockResources(
       throw new Error('extension is not bound');
     return { ...extension, path: join(bundle.destination, entry) };
   });
-  for (const skill of resources.skills) {
+  const skills = resources.skills.filter((skill) => {
     const bundle = copied.get(skill.hash);
     const ref = snapshot.resources.find(
       (resource) =>
@@ -95,12 +95,19 @@ export function lockResources(
     );
     if (!bundle || !ref || !bundle.files.has(skill.entry)) throw new Error('skill is not bound');
     if (skill.mode !== ref.skillMode) throw new Error('skill mode changed');
-    const content = new TextDecoder('utf-8', { fatal: true }).decode(
-      readFileSync(join(bundle.destination, skill.entry)),
-    );
+    const bytes = readFileSync(join(bundle.destination, skill.entry));
+    let content: string;
+    try {
+      content = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    } catch {
+      // A skill nobody required or picked never blocks a start: one that is not text is left out.
+      if (!ref.required && !ref.selectedByRole) return false;
+      throw new Error(`skill ${skill.name} is not UTF-8 text`);
+    }
     if ((skill.content || skill.mode === 'mandatory') && content !== skill.content)
       throw new Error('skill content changed');
-  }
+    return true;
+  });
   for (const ref of snapshot.resources.filter((resource) => resource.required)) {
     if (
       ref.kind === 'extension' &&
@@ -115,7 +122,7 @@ export function lockResources(
       throw new Error('required extension missing');
     if (
       ref.kind === 'skill' &&
-      !resources.skills.some(
+      !skills.some(
         (skill) =>
           skill.hash === ref.hash &&
           skill.entry === ref.entry &&
@@ -124,5 +131,5 @@ export function lockResources(
     )
       throw new Error('required skill missing');
   }
-  return { ...resources, extensions };
+  return { ...resources, extensions, skills };
 }

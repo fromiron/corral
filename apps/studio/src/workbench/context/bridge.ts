@@ -33,6 +33,8 @@ export interface AttachmentRequest {
   attachment: TextAttachment;
   image?: ImageAttachment;
   replaceKey?: string;
+  /** Leaves focus where it is: a note collected from a page keeps the person on the page. */
+  quiet?: boolean;
   result?: AttachmentResult;
 }
 export function beginAttachmentCapture(target: ComposerTarget): AttachmentCapture {
@@ -99,7 +101,7 @@ export function mergeComposerCapture(
 export function appendComposerAttachment(
   capture: AttachmentCapture,
   attachment: TextAttachment,
-  options?: { replaceKey?: string; image?: ImageAttachment },
+  options?: { replaceKey?: string; image?: ImageAttachment; quiet?: boolean },
 ): AttachmentResult {
   const request: AttachmentRequest = { capture, attachment, ...options };
   window.dispatchEvent(new CustomEvent(COMPOSER_ATTACH, { detail: request }));

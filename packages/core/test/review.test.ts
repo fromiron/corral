@@ -212,6 +212,138 @@ describe('review loop and approvals', () => {
     expect(final.output?.artifactVersionIds).toEqual([draft2]);
   });
 
+  // docs/specs/technical-design.md §9.3: the review bound with the final approval is the latest
+  // valid one of a version being finalised under the current criteria; none when there is none.
+  it('the final approval of a later step’s version carries no review of the loop’s draft', async () => {
+    const definition = Definition.parse(researchTeam);
+    definition.nodes.push({
+      id: 'edit',
+      type: 'agent',
+      label: 'edit',
+      roleId: 'writer',
+      invocation: 'scheduled',
+      inputBindings: [
+        { kind: 'run_input', name: 'brief' },
+        { kind: 'task_output', name: 'draft', sourceNodeId: 'write' },
+      ],
+      outputName: 'draft',
+    });
+    for (const node of definition.nodes)
+      if (node.type === 'output')
+        node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'edit' }];
+    definition.controlEdges = definition.controlEdges.flatMap((e) =>
+      e.source === 'approval' && e.target === 'output'
+        ? [
+            { ...e, target: 'edit' },
+            { id: 'e_edit', source: 'edit', sourcePort: 'out', target: 'output', targetPort: 'in' },
+          ]
+        : [e],
+    );
+    const transport = runtime();
+    const { runId } = await start(transport, definition);
+    expect((await resolve(transport, runId, 'approve')).status).toBe('applied');
+    const atFinal = await waitForProjection(
+      transport,
+      runId,
+      (p) => pending(p)?.kind === 'final_output',
+    );
+    const [edited] = executionsOf(atFinal, 'edit');
+    const version = submittedBy(atFinal, edited?.executionId);
+    // The loop's reviews are of the draft, never of the edited version.
+    expect(Object.values(atFinal.reviews).map((r) => r.targetVersionId)).not.toContain(version);
+    expect(pending(atFinal)?.subjectVersionIds).toEqual([version]);
+    await resolve(transport, runId, 'approve');
+    const final = await waitForProjection(transport, runId, done);
+    expect(final.status).toBe('succeeded');
+    expect(final.output?.artifactVersionIds).toEqual([version]);
+  });
+
+  // §9.3: a review recorded again is the latest one.
+  it('the final approval binds a review recorded again after a later one', async () => {
+    // w → r1 → d1 → r2 → d2 → d3 → output: d1 and d3 both read r1's review, d2 reads r2's.
+    const base = Definition.parse(researchTeam);
+    const reviewer = (id: string) => ({
+      id,
+      type: 'agent' as const,
+      label: id,
+      roleId: 'reviewer',
+      invocation: 'scheduled' as const,
+      inputBindings: [
+        { kind: 'task_output' as const, name: 'draft', sourceNodeId: 'w' },
+        { kind: 'run_input' as const, name: 'criteria' },
+      ],
+      outputName: 'review',
+    });
+    const decision = (id: string, source: string) => ({
+      id,
+      type: 'decision' as const,
+      label: id,
+      mode: 'review' as const,
+      rule: 'review_verdict' as const,
+      inputBindings: [{ kind: 'task_output' as const, name: 'review', sourceNodeId: source }],
+    });
+    const link = (id: string, source: string, sourcePort: string, target: string) => ({
+      id,
+      source,
+      sourcePort,
+      target,
+      targetPort: 'in' as const,
+    });
+    const definition = Definition.parse({
+      ...base,
+      entryNodeId: 'w',
+      nodes: [
+        {
+          id: 'w',
+          type: 'agent',
+          label: 'w',
+          roleId: 'writer',
+          invocation: 'scheduled',
+          inputBindings: [{ kind: 'run_input', name: 'brief' }],
+          outputName: 'draft',
+        },
+        reviewer('r1'),
+        decision('d1', 'r1'),
+        reviewer('r2'),
+        decision('d2', 'r2'),
+        decision('d3', 'r1'),
+        {
+          id: 'output',
+          type: 'output',
+          label: 'output',
+          inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'w' }],
+          requireApproval: true,
+        },
+      ],
+      controlEdges: [
+        link('e1', 'w', 'out', 'r1'),
+        link('e2', 'r1', 'out', 'd1'),
+        link('e3', 'd1', 'pass', 'r2'),
+        link('e4', 'r2', 'out', 'd2'),
+        link('e5', 'd2', 'pass', 'd3'),
+        link('e6', 'd3', 'pass', 'output'),
+      ],
+      capabilityLinks: [],
+    });
+    const transport = runtime();
+    const { runId, events } = await start(transport, definition);
+    const atFinal = await waitForProjection(
+      transport,
+      runId,
+      (p) => pending(p)?.kind === 'final_output' || done(p),
+    );
+    const draft = submittedBy(atFinal, executionsOf(atFinal, 'w')[0]?.executionId);
+    const r1 = submittedBy(atFinal, executionsOf(atFinal, 'r1')[0]?.executionId);
+    const r2 = submittedBy(atFinal, executionsOf(atFinal, 'r2')[0]?.executionId);
+    expect(
+      events.flatMap((e) => (e.type === 'review.recorded' ? [e.payload.reviewVersionId] : [])),
+    ).toEqual([r1, r2, r1]);
+    expect(pending(atFinal)?.subjectVersionIds).toEqual([draft, r1]);
+    expect(Object.keys(atFinal.reviews)).toEqual([r2, r1]);
+    await resolve(transport, runId, 'approve');
+    expect((await waitForProjection(transport, runId, done)).status).toBe('succeeded');
+  });
+
   it('completion, a passing review and the final approval are separate facts', async () => {
     const transport = runtime();
     const { runId } = await start(transport);

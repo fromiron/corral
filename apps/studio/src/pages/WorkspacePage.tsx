@@ -68,6 +68,7 @@ import { workspaceRoute } from '../router.tsx';
 import { useServices } from '../services.tsx';
 import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from '../templates.ts';
 import { CriteriaField } from '../workbench/CriteriaField.tsx';
+import { rememberEditorView } from '../workbench/editorView.ts';
 import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
 import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
 import {
@@ -639,6 +640,7 @@ function NewConversation({
         const made = await createFromTemplate(repository, id, templateText, projectId);
         if (!made.ok) return setError(made.message);
         teamId = made.corralId;
+        rememberEditorView(teamId, 'composition');
       }
       const result = await repository.createSession({
         projectId,
@@ -1329,7 +1331,7 @@ function SessionRow({
       <Link
         to="/sessions/$sessionId"
         params={{ sessionId: x.sessionId }}
-        search={terminal ? { panel: 'terminal', terminal } : { compose: true }}
+        {...(terminal ? { search: { panel: 'terminal' as const, terminal } } : {})}
         data-session-kind={x.meeting ? 'meeting' : 'session'}
         className={cn(
           'flex min-w-0 flex-1 items-center rounded-md transition-colors hover:bg-hover',

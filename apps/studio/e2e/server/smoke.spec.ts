@@ -1,4 +1,11 @@
-import { newTeam, openLibraryTeams, requestBox } from '../workbench.ts';
+import {
+  addCustomAgent,
+  editorSettings,
+  newTeam,
+  openFlowGraph,
+  openLibraryTeams,
+  requestBox,
+} from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.describe('conversation smoke', () => {
@@ -21,11 +28,12 @@ test('canvas handles receive a pointer connection', async ({ page, corral }) => 
   await corral.open('/');
   await openLibraryTeams(page);
   await newTeam(page);
+  await openFlowGraph(page);
   const canvas = page.locator('[data-team-canvas]');
-  await page.getByRole('button', { name: 'Add Agent', exact: true }).click();
-  // With nothing selected the output lands on its own, unconnected.
-  await canvas.press('Escape');
-  await page.getByRole('button', { name: 'Add Output', exact: true }).click();
+  await addCustomAgent(page);
+  await editorSettings(page)
+    .getByRole('button', { name: 'Remove the connection from Agent 1 to Output' })
+    .click();
   await expect(canvas.locator('[data-edge]')).toHaveCount(0);
   await canvas
     .locator('[data-port="agent_1:out"]')

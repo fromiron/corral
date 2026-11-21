@@ -3,32 +3,23 @@ import {
   AUTO_TEMPLATE_VERSION,
   AUTO_TEMPLATES,
   AutoTemplate,
+  REVIEW_LOOP_PATTERNS,
   TEAM_PATTERNS,
   TEAM_SLOTS,
   type TeamPattern,
   TeamPlan,
 } from '../src/index.ts';
 
-// A drafted team's plan (docs/specs/features/library.md): eight patterns, each with exactly its
-// role slots. Anything else in a model's answer makes the whole plan unusable.
+// A plan of one of the three patterns auto mode builds, each with exactly its role slots.
+// Anything else makes the whole plan unusable.
 
 const EXPECTED_SLOTS: Record<TeamPattern, string[]> = {
   single: ['worker'],
   write_review: ['planner', 'writer', 'reviewer'],
   research_write_review: ['researcher', 'writer', 'reviewer'],
-  implement_review: ['implement', 'review'],
-  plan_implement_review: ['plan', 'implement', 'review'],
-  bug_fix: ['investigate', 'fix', 'review'],
-  parallel_review: ['scope', 'correctness', 'security', 'synthesis'],
-  tech_decision: ['frame', 'research_a', 'research_b', 'compare'],
 };
-const LOOPS = new Set<TeamPattern>([
-  'write_review',
-  'research_write_review',
-  'implement_review',
-  'plan_implement_review',
-  'bug_fix',
-]);
+// A review judges the work in a Loop.
+const LOOPS = new Set<TeamPattern>(['write_review', 'research_write_review']);
 
 const planFor = (pattern: TeamPattern, slots: readonly string[] = TEAM_SLOTS[pattern]) => ({
   name: `A ${pattern} team`,
@@ -41,10 +32,12 @@ const planFor = (pattern: TeamPattern, slots: readonly string[] = TEAM_SLOTS[pat
 });
 
 describe('TeamPlan patterns', () => {
-  it('are the eight, with their slots in execution order', () => {
+  it('are the three auto mode builds, with their slots in execution order', () => {
     expect([...TEAM_PATTERNS]).toEqual(Object.keys(EXPECTED_SLOTS));
+    expect(Object.keys(TEAM_SLOTS)).toEqual(Object.keys(EXPECTED_SLOTS));
     for (const pattern of TEAM_PATTERNS)
       expect([...TEAM_SLOTS[pattern]]).toEqual(EXPECTED_SLOTS[pattern]);
+    expect([...REVIEW_LOOP_PATTERNS]).toEqual([...LOOPS]);
   });
 
   it.each(TEAM_PATTERNS)('%s accepts exactly its slots, in any order', (pattern) => {
@@ -73,33 +66,44 @@ describe('TeamPlan patterns', () => {
     for (const value of bad) expect(TeamPlan.safeParse(value).success).toBe(false);
   });
 
-  it('refuses an unknown pattern, more than four roles, and review rounds without a review loop', () => {
-    expect(TeamPlan.safeParse({ ...planFor('bug_fix'), pattern: 'bug_hunt' }).success).toBe(false);
+  it('refuses an unknown pattern, more than three roles, and review rounds without a review loop', () => {
     expect(TeamPlan.safeParse({ ...planFor('single'), pattern: 'Single' }).success).toBe(false);
-    const five = planFor('parallel_review', [...TEAM_SLOTS.parallel_review, 'review']);
-    expect(TeamPlan.safeParse(five).success).toBe(false);
+    for (const removed of ['bug_fix', 'feature', 'implement_review', 'tech_decision'])
+      expect(TeamPlan.safeParse({ ...planFor('write_review'), pattern: removed }).success).toBe(
+        false,
+      );
+    const four = planFor('write_review', [...TEAM_SLOTS.write_review, 'researcher']);
+    expect(TeamPlan.safeParse(four).success).toBe(false);
     for (const pattern of TEAM_PATTERNS) {
       const rounds = { ...planFor(pattern), reviewRounds: 2 };
       expect(TeamPlan.safeParse(rounds).success, pattern).toBe(LOOPS.has(pattern));
     }
   });
 
+  it('takes only the three Outrider requests and refuses the removed clarify_review', () => {
+    for (const outrider of ['consultation', 'artifact_review', 'required_review'])
+      expect(TeamPlan.safeParse({ ...planFor('single'), outrider }).success, outrider).toBe(true);
+    expect(TeamPlan.safeParse({ ...planFor('single'), outrider: 'clarify_review' }).success).toBe(
+      false,
+    );
+  });
+
   it('refuses any field the plan does not have: tools, edges, limits, role tools', () => {
     const bad = [
-      { ...planFor('implement_review'), tools: ['run_command'] },
-      { ...planFor('parallel_review'), edges: [{ source: 'scope', target: 'synthesis' }] },
-      { ...planFor('tech_decision'), controlEdges: [] },
-      { ...planFor('bug_fix'), limits: { maxTurns: 500 } },
+      { ...planFor('single'), tools: ['run_command'] },
+      { ...planFor('write_review'), edges: [{ source: 'planner', target: 'reviewer' }] },
+      { ...planFor('research_write_review'), controlEdges: [] },
+      { ...planFor('single'), limits: { maxTurns: 500 } },
       {
-        ...planFor('bug_fix'),
-        roles: planFor('bug_fix').roles.map((role) => ({
+        ...planFor('write_review'),
+        roles: planFor('write_review').roles.map((role) => ({
           ...role,
           allowedWorkTools: ['write_file'],
         })),
       },
       {
-        ...planFor('plan_implement_review'),
-        roles: planFor('plan_implement_review').roles.map((role) => ({
+        ...planFor('research_write_review'),
+        roles: planFor('research_write_review').roles.map((role) => ({
           ...role,
           modelProfile: 'model-b',
         })),
@@ -110,12 +114,10 @@ describe('TeamPlan patterns', () => {
 });
 
 describe('auto mode keeps its three templates', () => {
-  it('is its own list, not the draft patterns, and its version is unchanged', () => {
+  it('are the plan patterns, and its version is unchanged', () => {
     expect([...AUTO_TEMPLATES]).toEqual(['single', 'write_review', 'research_write_review']);
+    expect([...AUTO_TEMPLATES]).toEqual([...TEAM_PATTERNS]);
     expect(AUTO_TEMPLATE_VERSION).toBe(3);
-    for (const pattern of TEAM_PATTERNS)
-      expect(AutoTemplate.safeParse(pattern).success, pattern).toBe(
-        (AUTO_TEMPLATES as readonly string[]).includes(pattern),
-      );
+    for (const pattern of TEAM_PATTERNS) expect(AutoTemplate.safeParse(pattern).success).toBe(true);
   });
 });

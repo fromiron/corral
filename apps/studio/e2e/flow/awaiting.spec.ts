@@ -9,11 +9,12 @@ import { expect, type Harness, test } from '../server/harness.ts';
 import {
   activityBar,
   activityLine,
+  closePanel,
   closeSettings,
   earlierRequests,
   newConversation,
   openFolderSettings,
-  panelTab,
+  openPanelTab,
   requestBox,
 } from '../workbench.ts';
 import { waitForStill } from './probe.ts';
@@ -60,14 +61,14 @@ async function commandSession(page: Page, corral: Harness) {
   await closeSettings(page);
   await newConversation(page);
   const sessionId = new URL(page.url()).pathname.split('/')[2] as string;
-  await panelTab(page, 'Files');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   await page
     .getByRole('region', { name: 'Paddock' })
     .getByRole('button', { name: /Make a Paddock from/ })
     .click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
-  await panelTab(page, 'Conversation');
+  // The conversation alone again, so the scene measures it at its own width.
+  await closePanel(page);
   // Requests that never ran, so the conversation is taller than its view.
   await earlierRequests(page, sessionId, 20);
   await page.reload();

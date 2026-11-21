@@ -27,7 +27,14 @@ export const CommandPlan = z.strictObject({
   workspaceBindingId: Identifier,
   worktreeId: Identifier,
   rootIdentity: ContentHash,
-  tree: z.string().regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/),
+  /**
+   * The working tree the call was planned against, compared again at launch. A Paddock a local
+   * host shares has none: a person's save between plan and launch does not fail the command.
+   */
+  tree: z
+    .string()
+    .regex(/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/)
+    .optional(),
   shellId: ShellId,
   /** Reviewable source command; argv may use encoded shell transport. */
   command: z.string().min(1).max(32000).optional(),
@@ -43,7 +50,7 @@ export const CommandPlan = z.strictObject({
    * source command and the call's final arguments. "Allow for this run" matches commands by it.
    */
   launchFingerprint: ContentHash,
-  /** This call exactly, operation and tree included: what an approval names and the broker checks. */
+  /** This call exactly, operation and any tree included: what an approval names and the broker checks. */
   fingerprint: ContentHash,
 });
 export type CommandPlan = z.infer<typeof CommandPlan>;

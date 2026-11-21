@@ -10,9 +10,9 @@ import {
   fileChangeSignals,
   planBodyStatus,
   presentContext,
+  presentsLastRun,
   selectPresentedPlan,
   toolRows,
-  viewedRun,
   visibleWidgets,
   widgetReadState,
   workPlanOpen,
@@ -702,28 +702,20 @@ describe('chat widget selectors', () => {
   });
 });
 
-describe('viewed run label (#72)', () => {
+describe('the last run label (chat-widgets-contract.md 3.1)', () => {
   const runIds = ['run_1', 'run_2', 'run_3'];
-  it('calls only the newest finished run the last run', () => {
-    expect(viewedRun({ runIds, presentationRunId: 'run_3', live: false })).toEqual({
-      latest: true,
-      number: 3,
-      total: 3,
-    });
+  it('calls the newest ended run the last run', () => {
+    expect(presentsLastRun({ runIds, presentationRunId: 'run_3', live: false })).toBe(true);
   });
-  it('keeps an older selection a selected run with its position', () => {
-    expect(viewedRun({ runIds, presentationRunId: 'run_1', live: false })).toEqual({
-      latest: false,
-      number: 1,
-      total: 3,
-    });
+  it('never labels an older run: the conversation presents no run but the active or the last', () => {
+    expect(presentsLastRun({ runIds, presentationRunId: 'run_1', live: false })).toBe(false);
   });
-  it('has nothing to label while the run is live or none is chosen', () => {
-    expect(viewedRun({ runIds, presentationRunId: 'run_2', live: true })).toBeNull();
-    expect(viewedRun({ runIds, presentationRunId: null, live: false })).toBeNull();
+  it('has nothing to label while the run goes or none is presented', () => {
+    expect(presentsLastRun({ runIds, presentationRunId: 'run_3', live: true })).toBe(false);
+    expect(presentsLastRun({ runIds, presentationRunId: null, live: false })).toBe(false);
   });
-  it('does not claim an order for a run the session does not list', () => {
-    expect(viewedRun({ runIds, presentationRunId: 'run_x', live: false })?.latest).toBe(false);
+  it('does not call a run the session does not list yet the last run', () => {
+    expect(presentsLastRun({ runIds, presentationRunId: 'run_x', live: false })).toBe(false);
   });
 });
 

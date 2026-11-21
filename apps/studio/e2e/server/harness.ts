@@ -81,6 +81,7 @@ type AgentReply =
   | {
       reply: NonNullable<ScriptedAgentOptions['reply']>;
       beforeReply?: ScriptedAgentOptions['beforeReply'];
+      script?: ScriptedAgentOptions['script'];
     }
   | null;
 
@@ -137,6 +138,9 @@ async function serve(
         ? {}
         : {
             reply: typeof agentReply === 'string' ? () => agentReply : agentReply.reply,
+            ...(typeof agentReply === 'object' && agentReply.script
+              ? { script: agentReply.script }
+              : {}),
             appendNotes: false,
           }),
     }),

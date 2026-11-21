@@ -123,7 +123,7 @@ test('500 conversations retain source project hierarchy and offscreen keyboard n
   ).toBe(true);
 
   await page.screenshot({ path: test.info().outputPath('sidebar-kit-overview.png') });
-  // A session link carries its opening search (`?compose=true`).
+  // A session link carries no search: the conversation opens as it remembered itself.
   const last = sidebar.locator('a[href^="/sessions/session_sidebar_499"]');
   await expect(last).toHaveCount(0);
   const actions = sidebar.getByRole('button', {

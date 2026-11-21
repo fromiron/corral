@@ -21,6 +21,7 @@ import {
 } from '@corral/contracts';
 import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { ADVISOR_COLLABORATION_TOOLS, advisorMayUse } from '../advisor/tools.ts';
+import { canReadArtifactBody } from '../artifact-retention.ts';
 import type { InstallationPolicy } from '../config.ts';
 import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
@@ -655,6 +656,22 @@ const roleAllowlist: Gate<ToolGateView> = {
           return denied(
             `${input.nodeId} may not ask ${String(args.targetNodeId)}: no capability link`,
           );
+        }
+        if (args.reviewArtifactVersionId !== undefined) {
+          const versionId = args.reviewArtifactVersionId;
+          if (
+            !input.capabilities.askTo.some(
+              (t) => t.nodeId === args.targetNodeId && t.artifactReview,
+            )
+          )
+            return denied('this question target does not accept artifact reviews');
+          if (
+            typeof versionId !== 'string' ||
+            !p.artifacts[versionId] ||
+            !view.readable().has(versionId) ||
+            !canReadArtifactBody(p, versionId)
+          )
+            return denied('the reviewed artifact version must be readable by the asker');
         }
         if (
           Array.isArray(args.artifactRefs) &&

@@ -17,7 +17,6 @@ vi.mock('../services.tsx', () => {
 vi.mock('../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
-vi.mock('../workbench/DevelopmentMode.tsx', () => ({ DevelopmentMode: () => null }));
 vi.mock('../workbench/CheckpointPanel.tsx', () => ({ CheckpointPanel: () => null }));
 vi.mock('../workbench/CopyRemovalDialog.tsx', () => ({ CopyRemovalDialog: () => null }));
 vi.mock('@tanstack/react-router', () => ({

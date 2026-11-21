@@ -26,14 +26,18 @@ import {
 } from '../../../../packages/adapter-pi/src/index.ts';
 import {
   activityBar,
+  closePanel,
   closeSettings,
   openConversationDetails,
   openFolderSettings,
   openLibraryTeams,
+  openPane,
+  openPanelTab,
   openProject,
-  panelTab,
+  panelToggle,
   requestBox,
   selectSessionTeam,
+  showReviewFiles,
   stopRun,
 } from '../workbench.ts';
 import { watchErrors } from './harness.ts';
@@ -233,11 +237,11 @@ async function prepareSession(page: Page, capability: CapabilityFixture) {
   await expect(page).toHaveURL(/\/sessions\/session_/);
   const sessionId = new URL(page.url()).pathname.split('/').at(-1);
   if (!sessionId) throw new Error('The UI did not create a session');
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   // The working copy offer sits beside the panel's empty state.
   await page.getByRole('button', { name: /Make a Paddock from/ }).click();
   await expect(page.getByRole('link', { name: 'Review changes', exact: true })).toBeVisible();
-  await page.getByRole('tab', { name: 'Conversation', exact: true }).click();
+  await closePanel(page);
   await page.getByRole('combobox', { name: 'Permissions for next request', exact: true }).click();
   await page
     .getByRole('option')
@@ -391,22 +395,22 @@ test('Ask approves a real command and a read-bound Hashline edit in the managed 
     cleanupConfirmed: true,
   });
   // The Changes view opens on its review (workbench.md: "변경 화면은 검토 보기로 열린다").
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   await expect(
     page
       .getByRole('tablist', { name: 'Changes views', exact: true })
       .getByRole('tab', { name: 'Review', exact: true }),
   ).toHaveAttribute('aria-selected', 'true');
   await expect.poll(() => new URL(page.url()).searchParams.get('panel')).toBe('changes');
-  await page.getByRole('button', { name: /command\.txt/ }).click();
+  await (await showReviewFiles(page)).getByRole('button', { name: /command\.txt/ }).click();
   await expect(page.getByTestId('file-diff')).toContainText('created by run_command');
-  await page.getByRole('button', { name: /README\.md/ }).click();
+  await (await showReviewFiles(page)).getByRole('button', { name: /README\.md/ }).click();
   await expect(page.getByTestId('file-diff')).toContainText('updated by Hashline');
   expect(capability.errors).toEqual([]);
 });
 
 for (const cancelScope of ['run', 'command'] as const) {
-  test(`${cancelScope === 'run' ? 'Cancel whole run' : 'Stop command'} kills the owned child and grandchild before confirming cleanup`, async ({
+  test(`${cancelScope === 'run' ? 'Stop the run' : 'Stop command'} kills the owned child and grandchild before confirming cleanup`, async ({
     page,
     capability,
   }) => {
@@ -455,7 +459,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     if (cancelScope === 'run') {
       await stopRun(page);
     } else {
-      await panelTab(page, 'Tasks & preview');
+      await openPane(page, 'Tasks');
       const commands = page.getByTestId('worktree-command-panel');
       await expect(commands).toContainText('node long-job.mjs');
       await commands.getByRole('button', { name: 'Stop command', exact: true }).click();
@@ -466,7 +470,7 @@ for (const cancelScope of ['run', 'command'] as const) {
     await expect
       .poll(() => readCommandReport(page, capability, sessionId), { timeout: 30000 })
       .toMatchObject({ state: 'cancelled', cleanupConfirmed: true });
-    await panelTab(page, 'Tasks & preview');
+    await openPane(page, 'Tasks');
     const commands = page.getByTestId('worktree-command-panel');
     await expect(commands).toContainText('Stopped');
     await expect(commands).toContainText('Process cleanup confirmed');
@@ -484,34 +488,35 @@ for (const cancelScope of ['run', 'command'] as const) {
       activityBar(page).getByRole('link', { name: /Review failed steps|Open the run/ }),
     ).toHaveCount(0);
     await page.setViewportSize({ width: 390, height: 844 });
-    await expect(commands).toBeVisible();
+    // No room beside the conversation at this width: the panel withdraws and keeps its tab
+    // (features/session-panel.md 자리와 패널의 상태).
+    await expect(commands).not.toBeVisible();
     await expect
       .poll(() => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth))
       .toBe(true);
-    // At this width the view tabs fold into one menu of the same name (workbench.md 전역 셸과
-    // 화면 틀); the keyboard moves through it from Files to Conversation and back.
-    const views = page.getByRole('combobox', { name: 'Conversation views', exact: true });
-    await views.focus();
-    await views.press('Enter');
-    await expect(page.getByRole('option', { name: /^Files\b/ })).toBeVisible();
-    await page.keyboard.press('ArrowUp');
-    await page.keyboard.press('Enter');
+    // From the keyboard the panel's toggle brings the Tasks tab back as a drawer, Escape closes
+    // the drawer and gives the focus back to the toggle, and the toggle brings it back again.
+    const toggle = panelToggle(page);
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await toggle.focus();
+    await toggle.press('Enter');
+    await expect(commands).toBeVisible();
+    await page.keyboard.press('Escape');
     await expect(commands).not.toBeVisible();
-    await expect(views).toBeFocused();
-    await expect(views).toContainText('Conversation');
-    await views.press('Enter');
-    await expect(page.getByRole('option', { name: /^Conversation\b/ })).toBeVisible();
-    await page.keyboard.press('ArrowDown');
-    await page.keyboard.press('Enter');
-    await expect(views).toContainText('Files');
+    await expect(toggle).toBeFocused();
+    await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    await toggle.press('Enter');
     await expect(commands).toBeVisible();
     await commands.getByText('Output', { exact: true }).focus();
     await page.keyboard.press('Enter');
     await expect(commands).toContainText('owned child');
-    const bounds = await commands.boundingBox();
-    expect(bounds).not.toBeNull();
-    expect(bounds?.x).toBeGreaterThanOrEqual(0);
-    expect((bounds?.x ?? 0) + (bounds?.width ?? 0)).toBeLessThanOrEqual(390);
+    // The drawer slides in from the right edge, so its content is measured once it has settled.
+    await expect
+      .poll(async () => {
+        const bounds = await commands.boundingBox();
+        return bounds ? [bounds.x >= 0, bounds.x + bounds.width <= 390] : null;
+      })
+      .toEqual([true, true]);
     expect(existsSync(join(capability.source, 'children.jsonl'))).toBe(false);
     expect(capability.errors).toEqual([]);
   });
@@ -613,9 +618,9 @@ test('a session writer and another session’s writer keep separate controls', a
   await details.getByRole('textbox', { name: 'Purpose', exact: true }).fill('Independent writer C');
   await details.getByRole('button', { name: 'Start chat', exact: true }).click();
   await expect(page).toHaveURL(/\/sessions\/session_/);
-  await page.getByRole('tab', { name: 'Changes', exact: true }).click();
+  await openPanelTab(page, 'Changes');
   await page.getByRole('button', { name: /Make a Paddock from/ }).click();
-  await panelTab(page, 'Conversation');
+  await closePanel(page);
   await requestBox(page).fill('Hold C in this separate working copy.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
   await expect.poll(() => status('C'), { timeout: 30000 }).toBe('awaiting_user');

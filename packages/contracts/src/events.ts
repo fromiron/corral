@@ -216,6 +216,8 @@ export const QuestionCreated = event(
     targetNodeId: Identifier,
     /** Present only for the explicitly permitted existing-parent delivery route. */
     delivery: z.literal('parent').optional(),
+    sharedOutrider: z.literal(true).optional(),
+    reviewArtifactVersionId: Identifier.optional(),
     targetExecutionId: Identifier.optional(),
     body: z.string().min(1).max(12000),
     artifactRefs: Ids,

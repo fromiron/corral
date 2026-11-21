@@ -4,16 +4,18 @@ import { type DemoTemplate, templateForWorkspace } from '../../src/demo/template
 import { approvalResearchTeam } from '../../src/demo/testing/approval-team.ts';
 import {
   activityBar,
+  closePanel,
   newConversationFromSidebar,
   openActivity,
   openConversationDetails,
-  openLibrary,
   openLibraryTeams,
-  panelTab,
+  openPanelTab,
+  panelContent,
   requestBox,
   runControls,
   selectSessionTeam,
   showResults,
+  teamFromTemplate,
 } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
@@ -21,8 +23,8 @@ const request = requestBox;
 const timeline = (page: Page) => page.getByTestId('chat-timeline');
 
 async function openResultsList(page: Page) {
-  await panelTab(page, 'Results');
-  return page.getByRole('tabpanel', { name: 'Runs', exact: true });
+  await openPanelTab(page, 'Results');
+  return panelContent(page, 'Results');
 }
 
 async function session(page: Page, corral: Harness, definition = linearCorral(['writer'])) {
@@ -87,12 +89,7 @@ test('UX-015-01 new-session drafts survive team setup and become an editable fir
     .fill('Keep this purpose through team setup');
   await page.keyboard.press('Escape');
   await expect(details).toBeHidden();
-  await openLibrary(page, 'Templates');
-  await page.getByRole('button', { name: 'Edit a copy of Single agent', exact: true }).click();
-  await page.getByRole('button', { name: 'Save copy and edit' }).click();
-  await expect(page).toHaveURL(/\/edit$/);
-  // Back through the library to the project.
-  for (let step = 0; step < 4 && page.url() !== project; step++) await page.goBack();
+  await teamFromTemplate(page);
   await expect(page).toHaveURL(project);
   await openConversationDetails(page);
   await expect(details.getByRole('textbox', { name: 'Purpose', exact: true })).toHaveValue(
@@ -287,9 +284,10 @@ test.describe('long multi-agent output', () => {
     // cannot be loaded (partial results open as the artifact they are). Soft, so the run's own
     // list of every version below is still checked.
     await expect.soft(monitor.getByText('This result could not be loaded.')).toHaveCount(0);
-    await monitor.getByRole('button', { name: 'Back to work', exact: true }).click();
-    // The run's Results view lists every version with the execution that made it.
+    // The run's Results view lists every version with the execution that made it. Chosen in
+    // the view row while the result is read, it leaves the reading for the list.
     const versions = await showResults(page);
+    await expect(monitor.getByTestId('run-document')).toBeHidden();
     const definition = corral.server.coordinator.getRunSnapshot(runId)?.definition;
     for (const artifact of Object.values(projection.artifacts)) {
       const execution = projection.executions[artifact.authorExecutionId];
@@ -320,11 +318,11 @@ test.describe('long multi-agent output', () => {
           exact: true,
         }),
       ).toBeVisible();
-      await monitor.getByRole('button', { name: 'Back to work', exact: true }).click();
+      await showResults(page);
     }
 
     // A failed reload must not claim that completed work has no artifacts.
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     await page.route('**/api/v1/runs/*/snapshot', (route) => route.abort());
     await openResultsList(page);
     await page.reload();
@@ -403,7 +401,10 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
     observer.getByRole('region', { name: 'draft · Version 2', exact: true }),
   ).toBeVisible();
   // Versions other than final results are listed in the run's Results view behind it.
-  await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
+  await observer
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   // The record reads what waits; it has no second way to decide.
   await expect(
     observer.getByRole('button', { name: 'Continue with this version', includeHidden: true }),
@@ -412,8 +413,11 @@ test('UX-015-07 approvals name exact versions and keep review inside the session
   await expect(
     observer.getByRole('region', { name: 'review · Version 2', exact: true }),
   ).toBeVisible();
-  await observer.getByRole('button', { name: 'Back to work', exact: true }).click();
-  await panelTab(page, 'Conversation');
+  await observer
+    .getByTestId('artifact-viewer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
+  await closePanel(page);
   await decision.getByRole('button', { name: 'Continue with this version' }).click();
   const final = tray.locator('[data-testid^="approval-"]').filter({ hasText: 'Final output' });
   await expect(final).toBeVisible();

@@ -1,23 +1,30 @@
 // @vitest-environment jsdom
 import type { ReviewCommentView } from '@corral/client';
+import type { TextAttachment } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
+import { forgetKeptInputs } from '@corral/react';
 import { Button } from '@corral/react/design-kit';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it, vi } from 'vitest';
+import type { AttachmentCapture } from '../workbench/context/bridge.ts';
 import type { ReviewSearch } from '../workbench/panels/routes.ts';
 import { parseCommentBody } from '../workbench/reviewComments.ts';
 import { CommentsPanel, ReviewContent } from './ReviewPage.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
+const fixture = vi.hoisted(() => ({
+  services: {} as Record<string, unknown>,
+  navigations: [] as unknown[],
+}));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ reviewRoute: {} }));
 vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
-  useNavigate: () => () => {},
+  useNavigate: () => async (options: unknown) => {
+    fixture.navigations.push(options);
+  },
 }));
 vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
 // The diff renderer needs real workers. This one reports line picks the way the renderer does
@@ -88,6 +95,7 @@ vi.mock('use-intl', async (original) => {
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
+  forgetKeptInputs();
   window.localStorage.clear();
   vi.unstubAllGlobals();
 });
@@ -172,7 +180,12 @@ async function mount({
   provenance = {} as Record<string, string>,
   reviewed = false,
   runs = [] as RunSummary[],
+  head = to,
+  attach = undefined as
+    | ((attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>)
+    | undefined,
 } = {}) {
+  fixture.navigations = [];
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('Worker', ImmediateWorker);
   const writes = {
@@ -200,7 +213,7 @@ async function mount({
   });
   const startAuto = vi.fn();
   // What the copy holds now; a test changes it as a run would.
-  const copy = { files, to };
+  const copy = { files, to: head };
   fixture.services = {
     mode: 'server',
     live: false,
@@ -224,6 +237,13 @@ async function mount({
         before: { kind: 'text', text: 'old line\n' },
         after: { kind: 'text', text: 'new line\nsecond line\nthird line\n' },
       })),
+      hunks: async () => ({
+        from,
+        to: copy.to,
+        path: copy.files[0],
+        patchHash: 'c'.repeat(64),
+        hunks: [{ id: 'd'.repeat(64), patch: '@@ -1 +1,3 @@\n-old line\n+new line' }],
+      }),
       verifications: async () => [],
       fileOperations: async () => [],
       decisions: async () => [],
@@ -245,9 +265,9 @@ async function mount({
           searches.push(patch);
           setSearch((previous) => ({ ...previous, ...patch }));
         }}
-        embedded
         shown={host.shown}
         copyChanged={host.copyChanged}
+        {...(attach ? { onAttach: attach } : {})}
       />
     );
   }
@@ -294,6 +314,23 @@ async function mount({
     changes: fixture.services.workspaces as { changes: ReturnType<typeof vi.fn> },
   };
 }
+
+it('attaching parts of the change from the embedded review hands them to the host and goes nowhere (features/session-panel.md)', async () => {
+  // Selection attach ends in the conversation, and a panel beside it stays as it is: the
+  // session screen that hosts the review brings the conversation forward, not the review.
+  const attach = vi.fn();
+  const view = await mount({ search: { scope: 'session', file: 'README.md' }, attach });
+  await view.click('Hunks.heading');
+  const part = view.container.querySelector<HTMLElement>('[role=checkbox]');
+  if (!part) throw new Error('Missing the part to pick');
+  await act(async () => part.click());
+  await view.click('Hunks.attachSelected');
+  expect(attach).toHaveBeenCalledTimes(1);
+  expect(attach.mock.calls[0]?.[0]).toMatchObject({
+    provenance: { kind: 'hunk', path: 'README.md' },
+  });
+  expect(fixture.navigations).toEqual([]);
+});
 
 it('picking lines in the changes opens the comment form on that range and saves a draft for it', async () => {
   const view = await mount({ search: { scope: 'session', file: 'README.md' } });
@@ -357,6 +394,145 @@ it('picking lines in the changes opens the comment form on that range and saves 
     body: 'Start with a title.',
   });
   for (const write of Object.values(view.writes)) expect(write).not.toHaveBeenCalled();
+});
+
+it('a form opened at another range and moved onto lines with a kept comment shows that comment, and it stays kept (features/session-panel.md)', async () => {
+  const first = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const areaOf = (view: typeof first) => {
+    const area = view.container.querySelector('aside');
+    if (!area) throw new Error('Missing the decision area');
+    return area;
+  };
+  const noteOf = (view: typeof first) =>
+    areaOf(view).querySelector<HTMLTextAreaElement>('form textarea');
+  await first.click('pick lines 2-3');
+  const note = noteOf(first);
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  // The form opens at its own range (line 1), then the person selects lines 2-3.
+  const again = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await again.click('Review.addComment', areaOf(again));
+  expect(noteOf(again)?.value).toBe('');
+  await again.click('pick lines 2-3');
+  expect(noteOf(again)?.value).toBe('Join these two lines.');
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const later = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await later.click('pick lines 2-3');
+  expect(noteOf(later)?.value).toBe('Join these two lines.');
+});
+
+it('a form holding text moved onto lines with a kept comment keeps its own text, and that is what is kept there (features/session-panel.md)', async () => {
+  const first = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const noteOf = (view: typeof first) =>
+    view.container.querySelector<HTMLTextAreaElement>('aside form textarea');
+  await first.click('pick lines 2-3');
+  const kept = noteOf(first);
+  if (!kept) throw new Error('Missing the comment field');
+  await act(async () => setValue(kept, 'Join these two lines.'));
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const again = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await again.click('pick line 1');
+  const writing = noteOf(again);
+  if (!writing) throw new Error('Missing the comment field');
+  await act(async () => setValue(writing, 'Start with a title.'));
+  await again.click('pick lines 2-3');
+  expect(noteOf(again)?.value).toBe('Start with a title.');
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const later = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await later.click('pick lines 2-3');
+  expect(noteOf(later)?.value).toBe('Start with a title.');
+});
+
+it('keeps a comment not added yet after the review goes, for the same file and lines, until it is added (features/session-panel.md)', async () => {
+  const first = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const areaOf = (view: typeof first) => {
+    const area = view.container.querySelector('aside');
+    if (!area) throw new Error('Missing the decision area');
+    return area;
+  };
+  const noteOf = (view: typeof first) =>
+    areaOf(view).querySelector<HTMLTextAreaElement>('form textarea');
+  await first.click('pick lines 2-3');
+  const note = noteOf(first);
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  // The 변경 tab closes: the review goes.
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const again = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await again.click('pick lines 2-3');
+  expect(noteOf(again)?.value).toBe('Join these two lines.');
+  await again.click('Review.addComment', areaOf(again));
+  expect(again.addComment).toHaveBeenCalledTimes(1);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  // Added: it goes.
+  const after = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await after.click('pick lines 2-3');
+  expect(noteOf(after)?.value).toBe('');
+});
+
+it('a comment added while its lines are changed is kept neither for the lines it was added on nor for the new ones (features/session-panel.md)', async () => {
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const noteOf = (shown: typeof view) =>
+    shown.container.querySelector<HTMLTextAreaElement>('aside form textarea');
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  await view.click('pick lines 2-3');
+  const note = noteOf(view);
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  // The add waits for its answer; meanwhile the person picks other lines.
+  const real = view.addComment.getMockImplementation();
+  let answer = () => {};
+  const answered = new Promise<void>((resolve) => {
+    answer = resolve;
+  });
+  view.addComment.mockImplementationOnce(async (...args) => {
+    await answered;
+    return (real as NonNullable<typeof real>)(...args);
+  });
+  await view.click('Review.addComment', area);
+  await view.click('pick line 1');
+  await act(async () => answer());
+  expect(view.addComment).toHaveBeenCalledTimes(1);
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  const later = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await later.click('pick line 1');
+  expect(noteOf(later)?.value).toBe('');
+  await later.click('pick lines 2-3');
+  expect(noteOf(later)?.value).toBe('');
+});
+
+it('a comment not added yet is kept for the comparison it was written against, not for the same lines of another (features/session-panel.md)', async () => {
+  const first = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const noteOf = (view: typeof first) =>
+    view.container.querySelector<HTMLTextAreaElement>('aside form textarea');
+  await first.click('pick lines 2-3');
+  const note = noteOf(first);
+  if (!note) throw new Error('Missing the comment field');
+  await act(async () => setValue(note, 'Join these two lines.'));
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  // A run moved the copy: the same file and lines, in another comparison.
+  const moved = await mount({
+    search: { scope: 'session', file: 'README.md' },
+    head: 'd'.repeat(40),
+  });
+  await moved.click('pick lines 2-3');
+  expect(noteOf(moved)?.value).toBe('');
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+
+  // Back on the comparison it was written against, it is there.
+  const back = await mount({ search: { scope: 'session', file: 'README.md' } });
+  await back.click('pick lines 2-3');
+  expect(noteOf(back)?.value).toBe('Join these two lines.');
 });
 
 it('keeps the decision in the decision area, recorded on the exact comparison', async () => {

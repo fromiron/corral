@@ -81,6 +81,12 @@ export interface GraphViewportOptions {
    * the content's width alone (what a narrow pane allows); a requested fit is not reported.
    */
   onAutoFit?: (viewport: Viewport, acrossZoom: number) => void;
+  /**
+   * What a wheel over the stage does. `always` (the default) zooms. `withModifier` zooms only with
+   * Ctrl or ⌘, as a trackpad pinch also arrives, and leaves a plain wheel to scroll whatever the
+   * stage sits in.
+   */
+  wheelZoom?: 'always' | 'withModifier';
 }
 
 export function useGraphViewport({
@@ -92,11 +98,12 @@ export function useGraphViewport({
   fitRule = DEFAULT_FIT,
   fitOnce = false,
   onAutoFit,
+  wheelZoom = 'always',
 }: GraphViewportOptions) {
   const pane = useRef<HTMLDivElement>(null);
   const [viewport, setViewport] = useState<Viewport | null>(null);
-  const read = useRef({ bounds, onMove, onTap, canPan, fitRule, onAutoFit });
-  read.current = { bounds, onMove, onTap, canPan, fitRule, onAutoFit };
+  const read = useRef({ bounds, onMove, onTap, canPan, fitRule, onAutoFit, wheelZoom });
+  read.current = { bounds, onMove, onTap, canPan, fitRule, onAutoFit, wheelZoom };
 
   // Until the person moves the view, it follows the pane: a panel opening beside it refits.
   const moved = useRef(false);
@@ -166,6 +173,7 @@ export function useGraphViewport({
     const element = pane.current;
     if (!element) return;
     const wheel = (event: WheelEvent) => {
+      if (read.current.wheelZoom === 'withModifier' && !event.ctrlKey && !event.metaKey) return;
       event.preventDefault();
       const rect = element.getBoundingClientRect();
       zoomAt(Math.exp(-event.deltaY * 0.002), {

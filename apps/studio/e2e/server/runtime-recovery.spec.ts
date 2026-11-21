@@ -1,7 +1,7 @@
 import { fauxAssistantMessage, fauxToolCall } from '@corral/server/testing';
 import { linearCorral } from '@corral/testkit';
 import type { Page } from '@playwright/test';
-import { panelTab } from '../workbench.ts';
+import { closePanel } from '../workbench.ts';
 import { expect, type Harness, test } from './harness.ts';
 
 /** A live single-agent Run that failed before its output, shown in its run info's recovery. */
@@ -117,7 +117,7 @@ test.describe('runtime continuation', () => {
       started.runId,
     );
     expect(source[0].blockers).toContain('already_resumed');
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     await page
       .getByTestId('chat-timeline')
       .getByRole('button', { name: 'Branch from this message' })
@@ -144,7 +144,7 @@ test.describe('runtime continuation', () => {
     await expect(
       page.getByTestId('run-monitor').getByRole('link', { name: 'Open the source Run' }),
     ).toBeVisible();
-    await panelTab(page, 'Conversation');
+    await closePanel(page);
     // The request's icon row shows on hover or focus.
     const branchBefore = page
       .getByTestId('chat-timeline')

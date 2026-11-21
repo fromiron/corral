@@ -13,11 +13,21 @@ import {
 } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
-import { _electron, expect } from '@playwright/test';
-import { selectSessionTeam, startSession, teamFromTemplate } from '../../studio/e2e/workbench.ts';
+import { _electron, expect, type Page } from '@playwright/test';
+import {
+  lastRunSucceeded,
+  openActivity,
+  runControls,
+  selectSessionTeam,
+  startSession,
+  teamFromTemplate,
+} from '../../studio/e2e/workbench.ts';
 
 // An isolated app-data directory: this test never opens a person's Corral workspace.
 const desktop = resolve(import.meta.dirname, '..');
+const expectedNode = readFileSync(resolve(desktop, '../../.node-version'), 'utf8').trim();
+const stoppedRunSelector =
+  '[data-testid="chat-timeline"] [data-presence-label^="run:"]:is([data-presence="interrupted"], [data-presence="cancelled"])';
 const data = mkdtempSync(join(tmpdir(), 'corral-desktop-smoke-'));
 const binary = process.argv[2];
 const env: Record<string, string> = Object.fromEntries(
@@ -49,6 +59,14 @@ const launch = async () => {
   });
   return instance;
 };
+const pauseActiveRun = async (page: Page) => {
+  await openActivity(page);
+  const controls = runControls(page);
+  await controls.getByRole('button', { name: 'Pause', exact: true }).click();
+  const resume = controls.getByRole('button', { name: 'Resume', exact: true });
+  await expect(resume).toBeVisible();
+  return resume;
+};
 let application: Awaited<ReturnType<typeof launch>> | null = null;
 try {
   console.log('Launching isolated app');
@@ -57,7 +75,7 @@ try {
   const errors: string[] = [];
   page.on('pageerror', (error) => errors.push(error.message));
   console.log('Window attached');
-  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\//, { timeout: 30000 });
+  await page.waitForURL(/^http:\/\/127\.0\.0\.1:\d+\/projects\/default$/, { timeout: 30000 });
   // the system draws the window buttons over the top bar; Studio draws none of its own.
   await expect(page.getByRole('button', { name: 'Close window' })).toHaveCount(0);
   console.log(
@@ -69,14 +87,15 @@ try {
     ),
   );
   // switching an idle workspace still asks; cancelling preserves the running server.
-  const initialWorkspace = await page.evaluate(
-    async () =>
-      (
-        await (
-          window as unknown as { corralDesktop: { info(): Promise<{ workspace: string }> } }
-        ).corralDesktop.info()
-      ).workspace,
+  const initialInfo = await page.evaluate(() =>
+    (
+      window as unknown as {
+        corralDesktop: { info(): Promise<{ workspace: string; node: string }> };
+      }
+    ).corralDesktop.info(),
   );
+  const initialWorkspace = initialInfo.workspace;
+  assert.equal(initialInfo.node, expectedNode);
   const switchTarget = join(data, 'switch-target');
   mkdirSync(switchTarget);
   await application.evaluate(({ dialog }, workspace) => {
@@ -199,8 +218,7 @@ try {
     .getByRole('combobox', { name: 'Request', exact: true })
     .fill('Write a short desktop smoke note.');
   await page.getByRole('button', { name: 'Send', exact: true }).click();
-  await page.getByRole('button', { name: 'Pause run', exact: true }).click();
-  await expect(page.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
+  const resume = await pauseActiveRun(page);
   await application.evaluate(({ dialog }) => {
     const state = globalThis as unknown as { confirmationCount: number };
     state.confirmationCount = 0;
@@ -220,11 +238,8 @@ try {
     )
     .toBe(1);
   assert.equal(application.process().exitCode, null, 'Keep running does not close the app');
-  await page.getByRole('button', { name: 'Resume run', exact: true }).click();
-  await expect(
-    // The turn's line and its work summary can both say it for a moment as the run ends.
-    page.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
-  ).toBeVisible({ timeout: 30000 });
+  await resume.click();
+  await expect(lastRunSucceeded(page)).toBeVisible({ timeout: 30000 });
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page
     .getByRole('radiogroup', { name: 'Appearance', exact: true })
@@ -295,9 +310,7 @@ try {
   application = await launch();
   const restored = await application.firstWindow();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
-  await expect(
-    restored.getByTestId('chat-timeline').getByText('Succeeded', { exact: false }).first(),
-  ).toBeVisible();
+  await expect(lastRunSucceeded(restored)).toBeVisible();
   await expect(restored.getByRole('combobox', { name: 'Request', exact: true })).toHaveValue(
     'A draft preserved across restart',
   );
@@ -308,8 +321,7 @@ try {
   }));
   assert.deepEqual(frame, { node: 'undefined', bridge: 'object' });
   await restored.getByRole('button', { name: 'Send', exact: true }).click();
-  await restored.getByRole('button', { name: 'Pause run', exact: true }).click();
-  await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
+  await pauseActiveRun(restored);
   const pid = await application.evaluate(() => process.pid);
   assert(pid);
   const children = readFileSync(`/proc/${pid}/task/${pid}/children`, 'utf8')
@@ -334,16 +346,18 @@ try {
   await restored.waitForURL('corral://startup/');
   await restored.getByRole('button', { name: 'Try again', exact: true }).click();
   await restored.waitForURL(/\/sessions\/session_/, { timeout: 30000 });
-  // The turn the restart cut off says so once, in its own ending notice.
-  const ended = restored.getByTestId('chat-timeline').getByTestId('run-ended');
-  await expect(ended).toHaveAttribute('role', 'note');
-  await expect(ended).toContainText('The local server restarted');
-  console.log('Interrupted turn notice:', (await ended.innerText()).replace(/\s+/g, ' '));
-  await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toHaveCount(0);
+  const ended = restored
+    .getByTestId('chat-timeline')
+    .getByText('The local server restarted; nothing was resumed automatically', { exact: true });
+  await expect(ended).toHaveCount(1);
+  await expect(ended).toBeVisible();
+  console.log('Interrupted turn notice passed');
+  await expect(
+    runControls(restored).getByRole('button', { name: 'Resume', exact: true }),
+  ).toHaveCount(0);
   await restored.getByRole('combobox', { name: 'Request', exact: true }).fill('Quit while paused');
   await restored.getByRole('button', { name: 'Send', exact: true }).click();
-  await restored.getByRole('button', { name: 'Pause run', exact: true }).click();
-  await expect(restored.getByRole('button', { name: 'Resume run', exact: true })).toBeVisible();
+  await pauseActiveRun(restored);
   await application.evaluate(({ dialog }) => {
     dialog.showMessageBox = async () => ({ response: 1, checkboxChecked: false });
   });
@@ -392,13 +406,8 @@ try {
     .getByTestId('app-sidebar')
     .getByRole('link', { name: /^Desktop packaged smoke/ })
     .click();
-  // Both turns the restarts cut off keep their own ending notice.
-  const cutOff = recovery.getByTestId('chat-timeline').getByTestId('run-ended');
-  await expect(cutOff).toHaveCount(2);
-  console.log(
-    'Interrupted turn notices:',
-    (await cutOff.allInnerTexts()).map((text) => text.replace(/\s+/g, ' ')),
-  );
+  // Both unfinished turns have a terminal status in their own conversation rows.
+  await expect(recovery.locator(stoppedRunSelector)).toHaveCount(2);
   console.log('Checking renderer recovery');
   const rendererPid = await application.evaluate(({ BrowserWindow }) =>
     BrowserWindow.getAllWindows()[0]?.webContents.getOSProcessId(),
@@ -428,7 +437,7 @@ try {
   await expect
     .poll(
       () =>
-        application?.evaluate(async ({ BrowserWindow }) => {
+        application?.evaluate(async ({ BrowserWindow }, selector) => {
           const contents = BrowserWindow.getAllWindows()[0]?.webContents;
           if (
             !contents ||
@@ -437,9 +446,9 @@ try {
           )
             return false;
           return contents.executeJavaScript(
-            'document.querySelectorAll("[data-testid=chat-timeline] [data-testid=run-ended]").length === 2',
+            `document.querySelectorAll(${JSON.stringify(selector)}).length === 2`,
           );
-        }),
+        }, stoppedRunSelector),
       { timeout: 30000 },
     )
     .toBe(true);

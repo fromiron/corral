@@ -1,0 +1,114 @@
+@import "tailwindcss";
+@import "@corral/react/theme.css";
+@source "../../../../packages/react/src";
+
+/* The overlay lies over the page area: only what it draws covers the page. */
+@layer base {
+  html,
+  body,
+  #root {
+    background: transparent;
+    overflow: hidden;
+  }
+}
+
+/* The overlay's motion on the kit's tiers (DESIGN.md Motion): the frame draws itself around the
+   page area (a path draw, so a tween) and fades out on the slow tier's exit; a marker pops in on
+   the fast tier. Reduced motion shows the same states at once. */
+@layer components {
+  .annotate-draw {
+    stroke-dasharray: 1;
+    animation: annotate-draw var(--duration-slow) var(--ease-out-soft) both;
+  }
+  .annotate-leave {
+    animation: annotate-fade var(--duration-moderate) var(--ease-out-soft) both;
+  }
+  .annotate-pop {
+    animation: annotate-pop var(--duration-fast) var(--ease-out-soft) both;
+  }
+  /* The note grows from where it was picked (moderate) and goes back the quicker way. */
+  .annotate-grow {
+    animation: annotate-grow var(--duration-moderate) var(--ease-out-soft) both;
+  }
+  .annotate-shrink {
+    animation: annotate-shrink var(--duration-fast) var(--ease-out-soft) both;
+  }
+  /* The narrow style view rises from the bottom edge as a sheet (slow). */
+  .annotate-sheet {
+    animation: annotate-rise var(--duration-slow) var(--ease-out-soft) both;
+  }
+  /* A press the busy page can't answer draws the eye to the busy line. */
+  .annotate-nudge {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
+    animation: annotate-nudge var(--duration-slow) var(--ease-out-soft) 2;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .annotate-draw,
+    .annotate-leave,
+    .annotate-pop,
+    .annotate-grow,
+    .annotate-shrink,
+    .annotate-sheet {
+      animation: none;
+    }
+    .annotate-nudge {
+      animation-name: annotate-flag;
+    }
+  }
+}
+
+@keyframes annotate-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes annotate-fade {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes annotate-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+}
+
+@keyframes annotate-grow {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes annotate-rise {
+  from {
+    transform: translateY(100%);
+  }
+}
+
+@keyframes annotate-shrink {
+  to {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+}
+
+@keyframes annotate-nudge {
+  50% {
+    outline-color: var(--warning);
+    transform: scale(1.04);
+  }
+}
+
+@keyframes annotate-flag {
+  50% {
+    outline-color: var(--warning);
+  }
+}

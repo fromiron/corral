@@ -102,18 +102,24 @@ it('admission and completion failures leave reservation and receipt atomic', () 
   expect(s.operations.hasPending()).toBe(true);
 });
 
-it('passive language ownership preserves saves and shared-mode exit but retains uncertain cleanup', () => {
+it('passive language ownership preserves saves, and its unconfirmed end holds a shared copy', () => {
   const s = setup();
-  s.operations.admit({ ...s.request, operationId: 'language-1', kind: 'language' }, s.path);
+  const shared = new WorkbenchOperations(s.db, new FakeClock(), true);
+  shared.admit({ ...s.request, operationId: 'language-1', kind: 'language' }, s.path);
   expect(s.access.get({ kind: 'user', id: 'language-1' })?.writer).toBe(0);
-  s.operations.admit(s.request, s.path);
-  s.operations.finish(s.request.operationId, 'succeeded', null);
-  s.operations.admit({ ...s.request, operationId: 'development-1', kind: 'development' }, s.path);
-  s.operations.finishDevelopment('development-1', s.request.target, s.path);
-  expect(s.operations.get('development-1')?.state).toBe('succeeded');
-  s.operations.admit({ ...s.request, operationId: 'development-2', kind: 'development' }, s.path);
+  shared.admit(s.request, s.path);
+  shared.finish(s.request.operationId, 'succeeded', null);
   s.access.release({ kind: 'user', id: 'language-1' }, false);
-  expect(() => s.operations.finishDevelopment('development-2', s.request.target, s.path)).toThrow(
-    /pending effects/,
+  expect(() => shared.admit({ ...s.request, operationId: 'save-2' }, s.path)).toThrow(
+    expect.objectContaining({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: {
+        kind: 'operation',
+        operationKind: 'language',
+        id: 'language-1',
+        sessionId: 'session-1',
+        state: 'uncertain',
+      },
+    }),
   );
 });

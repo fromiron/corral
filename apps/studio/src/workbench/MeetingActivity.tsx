@@ -26,7 +26,8 @@ function goTo(row: Element | null | undefined) {
  * A meeting's activity bar (workbench.md, the meeting's composer): the conversation's bar, told
  * what the meeting does. Closed, the first of a continue card out of view, an answer running out
  * of view, or the last replies at rest, with how many wait their turn; open, a row for each
- * participant answering or waiting, and Stop. A meeting has no join target and no pause.
+ * participant answering or waiting, and Stop while something is written. A meeting has no join
+ * target and no pause.
  */
 export function MeetingActivity({
   view,
@@ -37,7 +38,10 @@ export function MeetingActivity({
   view: MeetingView;
   /** A participant's, or the secretary's, name. */
   name: (participantId: string) => string;
-  /** Stops the replies running and waiting; absent while nothing runs. */
+  /**
+   * Stops the replies running and waiting; absent while nothing runs, and while Send's place is
+   * Stop, so Stop stands in one place (features/composer-flow.md "활동 바").
+   */
   onStop?: (() => void) | undefined;
   /** A stop is on its way: not pressed again. */
   stopping: boolean;

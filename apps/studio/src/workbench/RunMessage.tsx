@@ -43,7 +43,7 @@ import {
   Tooltip,
   useSize,
 } from '@corral/react/design-kit';
-import { ChevronRight, FileText, LoaderCircle, PanelRight, Pause } from '@corral/react/icons';
+import { ChevronRight, FileText, LoaderCircle, Pause } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import {
   type ReactNode,
@@ -1160,7 +1160,9 @@ function ResultActions({
             aria-label={tr('openResults')}
             render={<Link {...location} search={search(result.artifactVersionId)} />}
           >
-            <PanelRight />
+            {/* A document: the run record's link keeps the mark that opens beside the
+                conversation, so the two destinations look apart. */}
+            <FileText />
           </Button>
         </Tooltip>
       ) : null}

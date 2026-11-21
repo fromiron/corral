@@ -101,7 +101,6 @@ it('previews immutable bytes, applies a shared batch once and explicitly preview
   expect(proposal.files).toHaveLength(2);
   expect(proposal.files[0]?.after).toContain('$&New');
   expect((await s.service.previewFileEdits('s1', s.preview)).proposals[0]).toEqual(proposal);
-  await s.service.startDevelopment('s1', { target: s.target, operationId: 'development' });
   const input = { target: s.target, operationId: 'apply_1', proposalHash: proposal.hash };
   const applied = await s.service.applyFileEdits('s1', proposal.proposalId, input);
   expect(applied.state).toBe('succeeded');
@@ -121,9 +120,6 @@ it('previews immutable bytes, applies a shared batch once and explicitly preview
   ).toMatchObject({ state: 'succeeded' });
   expect(readFileSync(join(s.path, 'a.ts'), 'utf8')).toBe(before);
   expect(readFileSync(join(s.original, 'a.ts'), 'utf8')).toBe(before);
-  expect(await s.service.finishDevelopment('s1', 'development', s.target)).toMatchObject({
-    operation: null,
-  });
 });
 
 it('preflights every file and rejects stale targets or incomplete replacement searches without touching other files', async () => {

@@ -2,10 +2,12 @@
 
 The desktop host serves Studio from its bundled loopback server. Renderer Node integration is
 disabled; the isolated preload exposes only the named window, folder, workspace and HTTP(S)
-link operations. The server, SQLite module and Pi child processes all use the bundled Node
-24.19.0 runtime rather than Electron's Node ABI.
+link operations, and the browser tab's named calls (`window.corralDesktop.browser`, typed in
+`src/browser-bridge.ts`). The server, SQLite module and Pi child processes run on the bundled Node
+runtime independently of Electron's Node ABI.
 
-Build with Node **24.19.0**, pnpm **10.30.3** and a Rust toolchain (`cargo`) for the local AI helper:
+Build with the Node version in [`.node-version`](../../.node-version), pnpm **10.34.9** and a Rust
+toolchain (`cargo`) for the local AI helper:
 
 ```sh
 pnpm install
@@ -76,9 +78,9 @@ Shutdown asks the bundled server to finish its cleanup. If cleanup does not comp
 15 seconds, the desktop stays open and reports that fact; it does not kill only a Windows
 parent and claim its descendants have stopped.
 
-Updates use pinned `electron-updater` 6.8.9 (MIT), compatible with the existing builder 26
+Updates use pinned `electron-updater` 6.8.11 (MIT), compatible with builder 26
 NSIS/AppImage/macOS targets and isolated from the server's Node ABI. It declares no Node or
-Electron peer version constraint; desktop checks exercise Electron 44.4.5 and TypeScript.
+Electron peer version constraint. Desktop checks use the versions pinned in [`package.json`](package.json).
 [Official v26 updater documentation](https://www.electron.build/v26/docs/features/auto-update/)
 describes the platform targets, generated metadata and explicit download/install APIs.
 
@@ -129,6 +131,13 @@ its private sidecar IPC before opening it; credentials for the preview proxy nev
 renderer bridge. HTTP and WebSocket requests are restricted to that lease's origin, popups and
 device permissions are denied, and revocation or local-server shutdown closes the surface.
 This browser boundary is not an OS sandbox for the developer's server process.
+
+Browser tabs (`docs/specs/features/browser-tab.md`) are `WebContentsView`s in the app window,
+one per tab, with no preload and no Corral IPC. An ordinary page uses its project's persistent
+partition (`persist:corral-browser-…`, never the app's or another project's); a preview tab gets
+a fresh in-memory partition under the same lease rules as the preview above. Permission answers
+are Corral's own per-project file in `userData/browser`; a removed project's partition folder is
+deleted at the next start.
 
 **File → Remote hosts…** registers an existing OpenSSH config alias and remote Corral port.
 The same port must be free locally to preserve the server's Host/Origin checks. Supply the

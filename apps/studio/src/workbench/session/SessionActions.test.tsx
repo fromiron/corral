@@ -22,13 +22,7 @@ vi.mock('@tanstack/react-router', () => ({
   useNavigate: () => vi.fn(),
   useRouter: () => ({ invalidate: vi.fn(async () => {}) }),
 }));
-vi.mock('../ChatView.tsx', () => ({ ChatDensityMenu: () => null }));
-const fit = vi.hoisted(() => ({ tier: 0 }));
-vi.mock('../TopbarSlot.tsx', async (original) => {
-  const actual = await original<typeof import('../TopbarSlot.tsx')>();
-  const { topbarLayout } = await import('../topbarTier.ts');
-  return { ...actual, useTopbarLayout: () => topbarLayout(fit.tier) };
-});
+vi.mock('../ChatView.tsx', () => ({ useChatDensityRow: () => () => null }));
 
 Element.prototype.getAnimations ??= () => [];
 const cleanup: (() => Promise<void>)[] = [];
@@ -80,7 +74,7 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
           <SessionActions
             session={session}
             corrals={[team]}
@@ -88,8 +82,7 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
             changes={null}
             panel={undefined}
             onPanel={vi.fn()}
-            fileViewerOpen={false}
-            onToggleFileViewer={vi.fn()}
+            panelToggle={{ pressed: false, onToggle: vi.fn() }}
             onEditTeam={() => true}
           />
         </TopbarSlotContext.Provider>
@@ -109,87 +102,80 @@ it("leaves the team's name and revision to the session menu, not the top bar", a
   expect(line?.textContent).toContain('Research brief · r3');
 });
 
-it.each([
-  [6, 'bar'],
-  [7, 'menu'],
-] as const)(
-  'at tier %i the changes, terminal and file viewer sit in the %s',
-  async (tier, place) => {
-    fit.tier = tier;
-    cleanup.push(async () => {
-      fit.tier = 0;
-    });
-    vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
-    vi.stubGlobal('matchMedia', () => ({
-      matches: false,
-      addEventListener() {},
-      removeEventListener() {},
-    }));
-    const bar = document.createElement('div');
-    const container = document.createElement('div');
-    document.body.append(bar, container);
-    const root = createRoot(container);
-    cleanup.push(async () => {
-      await act(async () => root.unmount());
-      bar.remove();
-      container.remove();
-    });
-    const onPanel = vi.fn();
-    const onToggleFileViewer = vi.fn();
-    await act(async () =>
-      root.render(
-        <IntlProvider locale="en" messages={messages} timeZone="UTC">
-          <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
-            <SessionActions
-              session={session}
-              corrals={[team]}
-              team={team}
-              changes={[{ path: 'README.md' } as never]}
-              panel={undefined}
-              onPanel={onPanel}
-              fileViewerOpen={false}
-              onToggleFileViewer={onToggleFileViewer}
-              onEditTeam={() => true}
-            />
-          </TopbarSlotContext.Provider>
-        </IntlProvider>,
-      ),
+// The narrowest tier folds nothing (workbench.md 화면 틀, decision 24): the session's tools stay
+// in the bar at every width.
+it('the changes, the panel and the dock toggles sit in the bar, never in the session menu', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const bar = document.createElement('div');
+  const container = document.createElement('div');
+  document.body.append(bar, container);
+  const root = createRoot(container);
+  cleanup.push(async () => {
+    await act(async () => root.unmount());
+    bar.remove();
+    container.remove();
+  });
+  const onPanel = vi.fn();
+  const onToggle = vi.fn();
+  const onDock = vi.fn();
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
+          <SessionActions
+            session={session}
+            corrals={[team]}
+            team={team}
+            changes={[{ path: 'README.md' } as never]}
+            panel={undefined}
+            onPanel={onPanel}
+            panelToggle={{ pressed: false, onToggle }}
+            dockToggle={{ pressed: false, dot: null, onToggle: onDock }}
+            onEditTeam={() => true}
+          />
+        </TopbarSlotContext.Provider>
+      </IntlProvider>,
+    ),
+  );
+  const changes = 'Conversation changes · 1 file';
+  const inBar = (name: string) =>
+    [...bar.querySelectorAll('button')].some(
+      (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,
     );
-    const changes = 'Conversation changes · 1 file';
-    const inBar = (name: string) =>
-      [...bar.querySelectorAll('button')].some(
-        (button) => (button.getAttribute('aria-label') ?? button.textContent) === name,
-      );
-    expect(inBar(messages.Docking.terminal)).toBe(place === 'bar');
-    expect(inBar(messages.Docking.openFileViewer)).toBe(place === 'bar');
-    expect(inBar(changes)).toBe(place === 'bar');
-    const menu = bar.querySelector<HTMLElement>(
-      `[aria-label="${messages.Desktop.sessionActions.replace('{title}', 'Brief')}"]`,
+  // The panel's and the dock's toggles never fold (features/session-panel.md 화면 틀); the
+  // terminal opens from the dock or "+", not from a top-bar button of its own.
+  expect(inBar(messages.SessionPanel.toggle)).toBe(true);
+  expect(inBar(messages.SessionPanel.dock)).toBe(true);
+  expect(inBar(messages.Docking.terminal)).toBe(false);
+  expect(inBar(changes)).toBe(true);
+  const menu = bar.querySelector<HTMLElement>(
+    `[aria-label="${messages.Desktop.sessionActions.replace('{title}', 'Brief')}"]`,
+  );
+  await act(async () => menu?.click());
+  const item = (name: string) =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
+      row.textContent?.startsWith(name),
     );
-    await act(async () => menu?.click());
-    const item = (name: string) =>
-      [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
-        row.textContent?.startsWith(name),
-      );
-    // The menu's rows exist either way: the folded tools are what differs.
-    expect(item(messages.Desktop.rename)).toBeDefined();
-    if (place === 'bar') {
-      expect(item(messages.Docking.terminal)).toBeUndefined();
-      expect(item(messages.Docking.openFileViewer)).toBeUndefined();
-      expect(item(changes)).toBeUndefined();
-      return;
-    }
-    // Folded, each one still does what its button did.
-    await act(async () => item(changes)?.click());
-    expect(onPanel).toHaveBeenLastCalledWith('changes');
-    await act(async () => menu?.click());
-    await act(async () => item(messages.Docking.terminal)?.click());
-    expect(onPanel).toHaveBeenLastCalledWith('terminal');
-    await act(async () => menu?.click());
-    await act(async () => item(messages.Docking.openFileViewer)?.click());
-    expect(onToggleFileViewer).toHaveBeenLastCalledWith(true);
-  },
-);
+  expect(item(messages.Desktop.rename)).toBeDefined();
+  expect(item(messages.SessionPanel.toggle)).toBeUndefined();
+  expect(item(messages.SessionPanel.dock)).toBeUndefined();
+  expect(item(messages.Docking.terminal)).toBeUndefined();
+  expect(item(changes)).toBeUndefined();
+  // Each one does its work from the bar.
+  const button = (name: string) =>
+    [...bar.querySelectorAll<HTMLElement>('button')].find(
+      (candidate) => candidate.getAttribute('aria-label') === name,
+    );
+  await act(async () => button(messages.SessionPanel.toggle)?.click());
+  expect(onToggle).toHaveBeenCalledTimes(1);
+  await act(async () => button(messages.SessionPanel.dock)?.click());
+  expect(onDock).toHaveBeenCalledTimes(1);
+});
 
 // A work session's completion criteria, read and edited from its menus
 // (docs/specs/workbench.md#세션-완료-기준).
@@ -213,7 +199,7 @@ async function mountCriteria(change: Partial<WorkSession> = {}) {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <TopbarSlotContext.Provider value={{ actions: bar, views: null, crumbs: null }}>
+        <TopbarSlotContext.Provider value={{ actions: bar, crumbs: null }}>
           <SessionMenu
             sessions={[current]}
             runs={[]}
@@ -229,8 +215,7 @@ async function mountCriteria(change: Partial<WorkSession> = {}) {
             changes={null}
             panel={undefined}
             onPanel={vi.fn()}
-            fileViewerOpen={false}
-            onToggleFileViewer={vi.fn()}
+            panelToggle={{ pressed: false, onToggle: vi.fn() }}
             onEditTeam={() => true}
           />
         </TopbarSlotContext.Provider>
@@ -284,20 +269,25 @@ const describedError = (field: HTMLElement | null) => {
   return id ? document.getElementById(id)?.textContent : undefined;
 };
 
-it('puts Completion criteria after Rename in the session menu and the path’s session menu', async () => {
+it('puts Completion criteria after Rename in the session menu, and none of the actions in the path’s session menu', async () => {
   const f = await mountCriteria();
   await act(async () => f.actionsMenu?.click());
   const names = menuItems().map(visibleText);
   expect(names.indexOf(criteria.label)).toBe(names.indexOf(messages.Desktop.rename) + 1);
+  // The more menu keeps its actions in this order.
+  const actions = [
+    messages.Desktop.rename,
+    criteria.label,
+    messages.Sessions.pin,
+    messages.Sessions.archive,
+  ];
+  expect(names.filter((name) => actions.includes(name ?? ''))).toEqual(actions);
   await act(async () => f.actionsMenu?.click());
   await settle(10);
   await act(async () => f.pathMenu?.click());
-  expect(menuItems().map(visibleText)).toEqual([
-    messages.Commands.rename,
-    criteria.label,
-    messages.Commands.pin,
-    messages.Commands.archive,
-  ]);
+  // The path's menu only chooses a conversation.
+  expect(menuItems().map(visibleText)).toEqual([]);
+  expect(document.querySelectorAll('[role="menuitemradio"]')).toHaveLength(1);
 });
 
 it('reads the saved criteria and saves the edited lines, trimmed and without blank lines', async () => {
@@ -326,7 +316,7 @@ it('reads the saved criteria and saves the edited lines, trimmed and without bla
 it('clears the criteria by saving an empty list', async () => {
   const f = await mountCriteria();
   f.update.mockResolvedValue({ ok: true, session });
-  await openCriteria(f.pathMenu);
+  await openCriteria(f.actionsMenu);
   await type(criteriaBox(), '\n  \n');
   await act(async () => button(messages.Sessions.save)?.click());
   await settle();
@@ -387,18 +377,14 @@ it('adds a line on Enter, also while composing, and does not save', async () => 
   expect(criteriaBox()).toBeTruthy();
 });
 
-it.each(['actionsMenu', 'pathMenu'] as const)(
-  'returns focus to the menu it was opened from (%s) when it closes',
-  async (opener) => {
-    const f = await mountCriteria();
-    const trigger = f[opener];
-    await openCriteria(trigger);
-    await act(async () => button(messages.Sessions.cancel)?.click());
-    await settle(600);
-    expect(criteriaBox()).toBeNull();
-    expect(document.activeElement).toBe(trigger);
-  },
-);
+it('returns focus to the menu it was opened from when it closes', async () => {
+  const f = await mountCriteria();
+  await openCriteria(f.actionsMenu);
+  await act(async () => button(messages.Sessions.cancel)?.click());
+  await settle(600);
+  expect(criteriaBox()).toBeNull();
+  expect(document.activeElement).toBe(f.actionsMenu);
+});
 
 // A save refused for its revision reads the session again (docs/specs/workbench.md#세션-완료-기준).
 const stale = {

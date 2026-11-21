@@ -2,6 +2,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { RoutingBackend, RoutingLease } from '@corral/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
+import { bundledManifest } from '../src/bundle.ts';
 import { D1Engine, type D1EngineOptions } from '../src/d1/engine.ts';
 import { d1Installed } from '../src/d1/install.ts';
 import { type D1Manifest, LINUX_X64_CPU } from '../src/d1/manifest.ts';
@@ -65,7 +66,7 @@ function admitted(backend: RoutingBackend): RoutingLease {
 }
 
 function keepMeeting(root: string) {
-  const meeting = join(root, '..', 'corral-local-ai-2');
+  const meeting = join(root, '..', bundledManifest().release);
   const older = join(root, 'older-d1');
   mkdirSync(meeting, { recursive: true });
   mkdirSync(older, { recursive: true });

@@ -170,6 +170,8 @@ interface DialogContentProps extends HTMLAttributes<HTMLDivElement> {
    *  way out, e.g. a command menu that closes on Escape and on a pick.
    *  @default true */
   showCloseButton?: boolean;
+  /** The ✕'s accessible name, in the app's language. @default "Close" */
+  closeLabel?: string;
   /** Where the panel sits: centered, or anchored 12dvh from the top so a
    *  panel whose height follows its content (a command menu) keeps its top
    *  edge still, or at the left edge for a navigation drawer. @default "center" */
@@ -184,6 +186,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
       size = 'sm',
       container,
       showCloseButton = true,
+      closeLabel = 'Close',
       position = 'center',
       initialFocus,
       finalFocus,
@@ -309,7 +312,7 @@ const DialogContent = forwardRef<HTMLDivElement, DialogContentProps>(
                       render={
                         <Button variant="ghost" size="icon-sm" className="absolute right-3 top-3">
                           <XIcon />
-                          <span className="sr-only">Close</span>
+                          <span className="sr-only">{closeLabel}</span>
                         </Button>
                       }
                     />

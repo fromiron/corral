@@ -122,11 +122,10 @@ async function setup() {
   return { service, db, copy, original, target, git, status, selection };
 }
 
-it('admits selected hunks under shared development, deduplicates them and refuses exclusive or foreign writers', async () => {
+it('admits selected hunks on a shared copy, deduplicates them and refuses a foreign target', async () => {
   const s = await setup();
   writeFileSync(join(s.copy, 'hunks.txt'), both);
   const command = await s.selection('stage_selected');
-  await s.service.startDevelopment('s1', { operationId: 'development', target: s.target });
   const staged = await s.service.changeGitHunks('s1', command);
   expect(staged).toMatchObject({
     kind: 'git.stage_hunks',
@@ -143,22 +142,7 @@ it('admits selected hunks under shared development, deduplicates them and refuse
       target: { ...s.target, hostId: 'foreign' },
     }),
   ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
-  const sequence = await s.service.gitSequence('s1');
-  const topic = sequence.localBranches.find((branch) => branch.name === 'topic');
-  if (!topic) throw new Error('fixture topic missing');
-  for (const kind of ['merge', 'rebase'] as const) {
-    await expect(
-      s.service.changeGitSequence('s1', {
-        kind,
-        ...basis(sequence, kind),
-        branch: topic.name,
-        branchCommit: topic.oid,
-        runHooks: false,
-      }),
-    ).rejects.toMatchObject({ code: 'RUN_ALREADY_ACTIVE' });
-  }
   expect((await s.service.gitSequence('s1')).sequence).toBeNull();
-  await s.service.finishDevelopment('s1', 'development', s.target);
   expect(s.git(s.original, 'status', '--porcelain')).toBe('');
 });
 

@@ -19,6 +19,7 @@ import {
 import { ADVISOR_COLLABORATION_TOOLS, ADVISOR_WORK_TOOLS } from '../advisor/tools.ts';
 import { SPEC_HARD_CAPS } from '../config.ts';
 import { recipeAttempts, reviewCriteriaHash } from '../review-recipe.ts';
+import { workerDepths } from './call-depth.ts';
 import { vertexOf } from './cycles.ts';
 import {
   boxBoundaryViolation,
@@ -30,6 +31,7 @@ import {
   outputPortsOf,
   requiredBranchesOf,
 } from './ports.ts';
+import { requiredOutputReviewDiagnostics } from './required-output-review.ts';
 
 export { vertexOf, wouldCreateCycle } from './cycles.ts';
 export * from './ports.ts';
@@ -70,8 +72,10 @@ export type DiagnosticCode =
   | 'TEAM_REF_INVALID'
   | 'CYCLE_OUTSIDE_LOOP'
   | 'PARALLEL_MERGE_NEEDS_JOIN'
+  | 'PARALLEL_MIXED_ENTRY'
   | 'PARALLEL_UNJOINED'
   | 'JOIN_PARTIAL'
+  | 'JOIN_SPLIT'
   | 'JOIN_SINGLE_INPUT'
   | 'PARALLEL_WRITERS'
   | 'UNREACHABLE'
@@ -80,6 +84,7 @@ export type DiagnosticCode =
   | 'CAPABILITY_NOT_ALLOWED'
   | 'DEPTH_EXCEEDED'
   | 'BINDING_SOURCE'
+  | 'REQUIRED_OUTPUT_REVIEW'
   | 'REVIEW_CONTRACT'
   | 'REVIEW_WITHOUT_CRITERIA'
   | 'UNKNOWN_MODEL_PROFILE'
@@ -98,6 +103,7 @@ export interface Diagnostic {
   severity: 'error' | 'warning';
   /** English fallback; the UI looks up `code` in its message catalog. */
   message: string;
+  schemaPath?: string;
   nodeId?: string;
   edgeId?: string;
   linkId?: string;
@@ -263,10 +269,12 @@ function compile(input: unknown, options: CompileOptions, teams: readonly string
   checkAdvisors(context);
   checkReferences(context, options, [...teams, definition.sourceTeam?.corralId ?? definition.id]);
   checkStructure(context);
+
   // Problems that make graph analysis meaningless stop here; the rest are reported together.
   if (context.diagnostics.some((d) => BLOCKING.has(d.code))) return fail(context.diagnostics);
   const graph = analyzeGraph(context);
   if (!graph) return fail(context.diagnostics);
+  context.diagnostics.push(...requiredOutputReviewDiagnostics(context));
   checkCapabilities(context, graph);
   checkBindings(context, graph);
   checkReviewerCriteria(context);
@@ -477,6 +485,8 @@ class Context {
   readonly outgoing = new Map<string, ControlEdge[]>();
   readonly incoming = new Map<string, ControlEdge[]>();
   /** What each Join gathers, found by the parallel check. */
+  /** Which parallel arm arrives on an edge to a gathering Join; alternate routes may share an arm. */
+  readonly joinBranches = new Map<string, { branch: number; width: number }>();
   readonly gathers = new Map<string, { port: string; width: number }>();
 
   constructor(definition: CorralDefinition) {
@@ -590,6 +600,7 @@ function schemaDiagnostics(
       code: 'SCHEMA_INVALID',
       severity: 'error',
       message: plainMessage(issue) ?? `${path}: ${issue.message}`,
+      schemaPath: path,
       ...at,
     };
   });
@@ -902,7 +913,7 @@ const WRITE_TOOLS = new Set<WorkTool>(['write_file', 'delete_file', 'move_file']
 
 // A box is split in two virtual vertices: B#in (enter → body) and B#out (exit → next, exhausted)
 // joined by B#in → B#out. Edges into "repeat" are the only back edges a Corral may have.
-function analyzeGraph(c: Context): Graph | null {
+function executionOrder(c: Context) {
   const { definition } = c;
   const adjacency = new Map<string, { to: string; edge: ControlEdge | null }[]>();
   const link = (from: string, to: string, edge: ControlEdge | null) =>
@@ -982,26 +993,36 @@ function analyzeGraph(c: Context): Graph | null {
     if (!v.endsWith('#out')) nodeAncestors.set(nodeOfVertex(v), set);
   }
 
+  return { order, ancestors: nodeAncestors, ordered, adjacency, reached };
+}
+
+function isTaskOutputSource(node: CorralNode | undefined): boolean {
+  return (
+    (node?.type === 'agent' && node.invocation === 'scheduled') ||
+    (node?.type === 'team' && node.source.kind === 'reference')
+  );
+}
+
+/** Producers that run before this consumer, even on drafts with missing bindings. */
+export function outputSources(definition: CorralDefinition, consumerId: string): CorralNode[] {
+  const context = new Context(definition);
+  const consumer = context.nodes.get(consumerId);
+  if (!isWorkAgent(consumer) && consumer?.type !== 'output') return [];
+  const before = executionOrder(context)?.ancestors.get(consumerId);
+  return definition.nodes.filter((node) => before?.has(node.id) && isTaskOutputSource(node));
+}
+
+function analyzeGraph(c: Context): Graph | null {
+  const flow = executionOrder(c);
+  if (!flow) return null;
+  const { definition } = c;
+  const { order, ancestors, ordered, adjacency, reached } = flow;
   checkParallel(c, ordered, adjacency);
 
   // Capability reachability: minimum delegation depth and the longest static chain. Advice is
   // not a call.
   const links = definition.capabilityLinks.filter((link) => link.kind !== 'advise');
-  const callableDepth = new Map<string, number>();
-  const queue: (readonly [string, number])[] = definition.nodes
-    .filter((n) => n.type === 'agent' && n.invocation === 'scheduled' && reached.has(n.id))
-    .map((n) => [n.id, 0] as const);
-  const best = new Map<string, number>(queue);
-  for (let i = 0; i < queue.length; i++) {
-    const [id, depth] = queue[i] as readonly [string, number];
-    for (const link of links) {
-      if (link.sourceNodeId !== id || !c.isCallable(link.targetNodeId)) continue;
-      if ((best.get(link.targetNodeId) ?? Number.POSITIVE_INFINITY) <= depth + 1) continue;
-      best.set(link.targetNodeId, depth + 1);
-      callableDepth.set(link.targetNodeId, depth + 1);
-      queue.push([link.targetNodeId, depth + 1]);
-    }
-  }
+  const callableDepth = workerDepths(definition.nodes, links, reached);
   const longest = (id: string, seen: Set<string>): number => {
     let deepest = 0;
     for (const link of links) {
@@ -1020,10 +1041,12 @@ function analyzeGraph(c: Context): Graph | null {
   };
   const maxStaticDepth = Math.max(
     0,
-    ...queue.filter(([, depth]) => depth === 0).map(([id]) => longest(id, new Set([id]))),
+    ...[...callableDepth]
+      .filter(([, depth]) => depth === 0)
+      .map(([id]) => longest(id, new Set([id]))),
   );
 
-  return { order, ancestors: nodeAncestors, reached, callableDepth, maxStaticDepth };
+  return { order, ancestors, reached, callableDepth, maxStaticDepth };
 }
 
 /**
@@ -1096,9 +1119,19 @@ function checkParallel(
     return false;
   };
   for (const edge of c.definition.controlEdges) {
-    const branches =
+    let branches =
       carried.get(edge.id) ??
       context.get(vertexOf(c.nodes, edge.source, edge.sourcePort, 'source'));
+    // A repeat edge is left out of the traversal, so its source's context lacks the fan-out of
+    // the edge's own port: add it, so a fan-out port cannot lead straight into a repeat.
+    const port = `${edge.source}\u0000${edge.sourcePort}`;
+    if (edge.targetPort === 'repeat' && (fanOut.get(port) ?? 0) > 1) {
+      const index = c.definition.controlEdges
+        .filter((e) => e.source === edge.source && e.sourcePort === edge.sourcePort)
+        .indexOf(edge);
+      branches = new Map([...(branches ?? [])].map(([k, set]) => [k, new Set(set)]));
+      branches.set(port, new Set([index]));
+    }
     if (!branches) continue;
     const unjoined = open(branches);
     const leaves =
@@ -1139,6 +1172,67 @@ function checkParallel(
       continue;
     }
     c.gathers.set(node.id, { port, width });
+    for (const edge of into.get(node.id) ?? []) {
+      const branch = carried.get(edge.id)?.get(port)?.values().next().value;
+      if (branch !== undefined) c.joinBranches.set(edge.id, { branch, width });
+    }
+  }
+
+  // A place entered from inside a fan-out's branches and from outside them, before the fan-out
+  // or after the branches' Join. The connection from outside cannot pass a Join that gathers
+  // the fan-out, and one from after its any Join enters a step that Join may just have stopped.
+  const reached = new Map<string, Set<string>>();
+  const reach = (from: string) => {
+    let seen = reached.get(from);
+    if (seen) return seen;
+    seen = new Set<string>();
+    const stack = [from];
+    for (let v = stack.pop(); v !== undefined; v = stack.pop())
+      for (const { to } of adjacency.get(v) ?? [])
+        if (!seen.has(to)) {
+          seen.add(to);
+          stack.push(to);
+        }
+    reached.set(from, seen);
+    return seen;
+  };
+  for (const [vertex, edges] of into) {
+    if (c.nodes.get(vertex)?.type === 'join') continue;
+    // Every key of a carried set is a fan-out that has not been gathered yet.
+    const lacks = (edge: ControlEdge, port: string) => !carried.get(edge.id)?.has(port);
+    const outside = edges.find((edge) =>
+      [...c.gathers].some(([joinId, { port }]) => {
+        if (!lacks(edge, port) || edges.every((other) => lacks(other, port))) return false;
+        if (reach(vertex).has(joinId)) return true;
+        const join = c.nodes.get(joinId);
+        const source = vertexOf(c.nodes, edge.source, edge.sourcePort, 'source');
+        return (
+          join?.type === 'join' &&
+          join.policy === 'any' &&
+          (source === joinId || reach(joinId).has(source))
+        );
+      }),
+    );
+    if (outside)
+      c.error(
+        'PARALLEL_MIXED_ENTRY',
+        'a connection from inside parallel branches and one from outside them meet here',
+        { nodeId: outside.target, edgeId: outside.id },
+      );
+  }
+
+  // The branches of one port wait at one all Join. With two, branches that choose different
+  // Joins fill neither, and nothing is left to go on.
+  const waiting = new Map<string, string[]>();
+  for (const [joinId, { port }] of c.gathers) {
+    const join = c.nodes.get(joinId);
+    if (join?.type === 'join' && join.policy === 'all')
+      waiting.set(port, [...(waiting.get(port) ?? []), joinId]);
+  }
+  for (const joins of waiting.values()) {
+    if (joins.length < 2) continue;
+    for (const nodeId of joins)
+      c.error('JOIN_SPLIT', 'one all Join gathers the branches of a fan-out', { nodeId });
   }
 
   const writers = c.definition.nodes.filter(
@@ -1254,10 +1348,7 @@ function checkBindings(c: Context, graph: Graph) {
             bad(`${label}: run inputs are "brief" and "criteria"`);
           break;
         case 'task_output':
-          if (
-            !(source?.type === 'agent' && source.invocation === 'scheduled') &&
-            !(source?.type === 'team' && source.source.kind === 'reference')
-          ) {
+          if (!source || !isTaskOutputSource(source)) {
             bad(`${label} must read a scheduled agent or a referenced Team`);
           } else if (!callable && !before.has(source.id)) {
             bad(`${label} reads ${source.id}, which does not run before this node`);
@@ -1308,6 +1399,12 @@ function checkBindings(c: Context, graph: Graph) {
 function checkModelProfiles(c: Context, options: CompileOptions) {
   if (!options.knownModelProfiles) return;
   const known = new Set(options.knownModelProfiles);
+  const shared = c.definition.sharedOutrider;
+  if (shared && !known.has(shared.modelProfile))
+    c.error(
+      'UNKNOWN_MODEL_PROFILE',
+      `model profile ${shared.modelProfile} (shared Outrider) is not configured`,
+    );
   for (const node of c.definition.nodes)
     if (node.type === 'decision' && node.mode === 'router' && node.modelProfile)
       if (!known.has(node.modelProfile))

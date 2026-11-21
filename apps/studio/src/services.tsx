@@ -13,6 +13,7 @@ import {
   openSession,
   type PathEngineStatus,
   probeServer,
+  RestAgentLibrary,
   RestCorralRepository,
   RunModesApi,
   type SessionDeletionRequest,
@@ -24,9 +25,11 @@ import {
 } from '@corral/client';
 import type { Clock } from '@corral/contracts';
 import {
+  type AgentLibrary,
   type AutoStartResult,
   type CorralRepository,
   createAutoStarter,
+  createKeyValueAgentLibrary,
   createKeyValueCorralRepository,
   type KeyValueStore,
   MeetingDecisionsService,
@@ -48,18 +51,31 @@ import { sessionFetch } from './sessionConnection.ts';
 // runs); opened any other way it runs the in-browser runtime with simulated agents.
 // Run pages and team editors keep separate views; the Coordinator owns active runs.
 
+const newCorralId = () => `corral_${crypto.randomUUID().slice(0, 8)}`;
+
 export interface StudioServices {
   mode: 'server' | 'browser';
   serverVersion?: string;
+  /**
+   * The host shares the Paddock (workbench.md 공유 개발 모드), as `/health` says; a warning that a
+   * request would be refused while something else works in the copy is wrong there.
+   */
+  sharedDevelopment?: boolean;
   /** The server's path search engine now; the browser demo has only the built-in one. */
   pathEngine?: () => Promise<PathEngineStatus>;
   workspaceId?: string;
   repository: CorralRepository;
+  newCorralId(): string;
+  agents: AgentLibrary;
   transport: RuntimeTransport;
   readHistory: (runId: string) => Promise<RunArchive>;
   runFor: (runId: string) => RunSessionStore;
   sessionFor: (sessionId: string) => RunSessionStore;
   retainRun: (runId: string) => () => void;
+  /** The run's store while a view follows it, else null (runSessions.ts). */
+  liveRun?: (runId: string) => RunSessionStore | null;
+  /** Calls the listener after a run starts or stops being followed. */
+  watchRuns?: (listener: () => void) => () => void;
   disposeRuns: () => void;
   editorSessions: Map<string, RunSessionStore>;
   runModes: Record<string, 'mock' | 'live'>;
@@ -91,6 +107,11 @@ export interface StudioServices {
   /** User PTYs exist only on the authenticated host, never in the browser demo. */
   terminals?: TerminalsApi | null;
   voice?: import('@corral/client').VoiceClient | null;
+  /**
+   * The desktop app's browser tab (features/browser-tab.md); null in web mode, in a remote host's
+   * window and in a shell without it.
+   */
+  browser?: import('../../desktop/src/browser-bridge.ts').BrowserBridge | null;
   vault?: import('@corral/client').VaultClient | null;
 }
 
@@ -167,6 +188,7 @@ export async function createStudioServices(): Promise<StudioServices> {
     return {
       mode: 'server',
       serverVersion: health.version,
+      sharedDevelopment: health.sharedDevelopment,
       pathEngine: async () => {
         const current = await probeServer(http);
         if (!current) throw new Error('SERVER_UNAVAILABLE');
@@ -174,6 +196,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       },
       workspaceId: 'workspaceId' in choices ? choices.workspaceId : undefined,
       repository,
+      newCorralId,
+      agents: new RestAgentLibrary(http),
       sessionDeletion: {
         preview: (sessionId) => repository.deletionPreview(sessionId),
         delete: (sessionId, body) => repository.deleteSession(sessionId, body),
@@ -183,6 +207,8 @@ export async function createStudioServices(): Promise<StudioServices> {
       runFor: runs.runFor,
       sessionFor: runs.sessionFor,
       retainRun: runs.retainRun,
+      liveRun: runs.liveRun,
+      watchRuns: runs.watchRuns,
       disposeRuns: runs.dispose,
       editorSessions: new Map(),
       runModes: choices.modes,
@@ -204,20 +230,22 @@ export async function createStudioServices(): Promise<StudioServices> {
       terminals: new TerminalsApi(http),
       voice: new VoiceApi(http),
       vault: new VaultApi(http),
+      // A remote host's window keeps its separate preview window and has no browser tab.
+      browser: window.corralRemote ? null : (window.corralDesktop?.browser ?? null),
     };
   }
   const { store, persistent } = browserStore(window.location.pathname === '/demo');
-  const { transport, workspace, readHistory } = createDemoRuntime();
+  const repository = createKeyValueCorralRepository(store, {
+    clock: systemClock,
+    newCorralId,
+  });
+  const { transport, workspace, readHistory } = createDemoRuntime(repository);
   const runs = createRunSessions(transport);
   // The demo's agents are simulated, so the local rule chooses and no model is called.
   const autoStarter = createAutoStarter({
     startRun: (request) => transport.startRun(request),
     // a saved Corral lends its roles to the conversation lead.
     corral: (corralId) => repository.get(corralId),
-  });
-  const repository = createKeyValueCorralRepository(store, {
-    clock: systemClock,
-    newCorralId: () => `corral_${crypto.randomUUID().slice(0, 8)}`,
   });
   const workspaces = createDemoWorkspaces(workspace, repository, transport);
   const meetings = new MeetingService({
@@ -242,11 +270,20 @@ export async function createStudioServices(): Promise<StudioServices> {
     harnesses: null,
     live: false,
     repository,
+    newCorralId,
+    agents: createKeyValueAgentLibrary(store, {
+      projects: repository,
+      clock: systemClock,
+      newAgentId: () => `agent_${crypto.randomUUID()}`,
+      locks: persistent ? navigator.locks : undefined,
+    }),
     transport,
     readHistory,
     runFor: runs.runFor,
     sessionFor: runs.sessionFor,
     retainRun: runs.retainRun,
+    liveRun: runs.liveRun,
+    watchRuns: runs.watchRuns,
     disposeRuns: runs.dispose,
     editorSessions: new Map(),
     runModes: {},

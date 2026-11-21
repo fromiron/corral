@@ -7,7 +7,7 @@ import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import type { ProfileInfo } from '../workbench/useModels.ts';
-import { CommentsPanel, ReviewContent, ReviewPage } from './ReviewPage.tsx';
+import { CommentsPanel, ReviewContent } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
   services: {},
@@ -16,9 +16,6 @@ const fixture = vi.hoisted(() => ({
   session: null as WorkSession | null,
 }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({
-  reviewRoute: { useLoaderData: () => ({ session: fixture.session }), useSearch: () => ({}) },
-}));
 vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null, useNavigate: () => () => {} }));
@@ -232,11 +229,10 @@ async function mount(
               session={session}
               search={{}}
               onSearch={() => {}}
-              embedded
               onSessionChange={options.onSessionChange}
             />
           ) : (
-            <ReviewPage />
+            <ReviewContent session={session} search={{}} onSearch={() => {}} />
           )
         ) : (
           <CommentsPanel

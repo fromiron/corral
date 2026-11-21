@@ -59,6 +59,88 @@ const brief = (s: ReturnType<typeof setup>, index: number) =>
   s.starts[index]?.inputs.find((i) => i.name === 'brief')?.text ?? '';
 
 describe('references in a start request', () => {
+  it('keeps unreferenced run images out of a shared Outrider consultation', async () => {
+    const starts: AgentStartInput[] = [];
+    const image = {
+      kind: 'image_attachment' as const,
+      imageId: 'chart',
+      name: 'chart.png',
+      mime: 'image/png' as const,
+      bytes: 3,
+      sha256: 'a'.repeat(64),
+      width: 1,
+      height: 1,
+    };
+    const definition = linearCorral(['planner']);
+    definition.sharedOutrider = {
+      modelProfile: 'text-only',
+      principles: 'Answer the question.',
+      targets: { kind: 'all' },
+    };
+    const coordinator = new Coordinator({
+      clock: new FakeClock(),
+      ids: new SequentialIdFactory(),
+      images: { read: () => ({ ...image, data: 'AQID' }) },
+      models: {
+        resolve: (profile) => ({
+          ok: true,
+          snapshot: {
+            profile,
+            provider: null,
+            modelId: null,
+            auth: 'mock',
+            imageInput: profile !== 'text-only',
+          },
+        }),
+      },
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        script: async (input, host) => {
+          starts.push(input);
+          if (input.assignment.kind === 'question') {
+            const reply = await host.invokeTool({
+              name: 'reply',
+              args: { questionId: input.assignment.questionId, body: 'Review the assumptions.' },
+            });
+            return reply.ok
+              ? { outcome: 'succeeded' }
+              : { outcome: 'failed', error: reply.error.message };
+          }
+          const target = input.capabilities.askTo[0];
+          if (!target) return { outcome: 'failed', error: 'No consultation target' };
+          const asked = await host.invokeTool({
+            name: 'ask',
+            args: { targetNodeId: target.nodeId, body: 'What should I check?', artifactRefs: [] },
+          });
+          return asked.ok ? null : { outcome: 'failed', error: asked.error.message };
+        },
+      }),
+    });
+    const started = coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId: 'consult_from_image_run',
+      sessionId: 'session_1',
+      definition,
+      mode: 'mock',
+      references: [image],
+    });
+    if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+    const final = await waitForProjection(new InProcessTransport(coordinator), started.runId, (p) =>
+      ['succeeded', 'failed', 'cancelled'].includes(p.status),
+    );
+    expect(final.status).toBe('succeeded');
+    expect(starts.find((s) => s.nodeId === 'planner')?.images).toEqual([
+      { ...image, data: 'AQID' },
+    ]);
+    const responder = starts.find((s) => s.assignment.kind === 'question');
+    expect(responder?.inputs.map((i) => i.name)).toEqual(['question']);
+    expect(responder?.images ?? []).toHaveLength(0);
+    expect(responder?.conversation).toBeUndefined();
+    expect(responder?.harness).toBeUndefined();
+    expect(responder?.taskBrief?.resources).toEqual([]);
+  });
+
   it('image references require ownership and model support, and only private history contains their body', async () => {
     const image = {
       kind: 'image_attachment' as const,

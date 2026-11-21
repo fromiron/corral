@@ -31,8 +31,8 @@ export function useRemembered<T>(key: string, fallback: T): [T, (value: T) => vo
 }
 
 /**
- * The page frame of the project and review pages. Session panes live in the dock
- * (DockWorkbench); this frame no longer has a side panel of its own (#90).
+ * The page frame of the project and review pages. Session panes live in the session's panel;
+ * this frame no longer has a side panel of its own (#90).
  */
 export function WorkbenchLayout({ main }: { main: ReactNode }) {
   return (

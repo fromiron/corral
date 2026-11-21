@@ -13,7 +13,7 @@ import {
   Select,
   Textarea,
 } from '@corral/react/design-kit';
-import { useEffect, useRef, useState } from 'react';
+import { type Ref, useEffect, useId, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { desktop } from '../../desktop.tsx';
 import { useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
@@ -29,18 +29,33 @@ export function ResourceEditor({
   api,
   kind,
   entry,
+  importing = false,
+  embedded = false,
+  backRef,
   onClose,
   onSaved,
 }: {
   api: HarnessApi;
   kind: 'skill' | 'extension';
   entry?: HarnessEntryView;
+  importing?: boolean;
+  embedded?: boolean;
+  /** While embedded, cancel the host dialog's dismissal and forward its event here. */
+  backRef?: Ref<(event?: Event) => void>;
   onClose(): void;
   onSaved(hash: string, entry?: string): void;
 }) {
   const t = useTranslations('Resources'),
-    h = useTranslations('Harness');
-  const [mode, setMode] = useState(entry ? 'edit' : 'new');
+    h = useTranslations('Harness'),
+    library = useTranslations('Library');
+  const creatingSkill = kind === 'skill' && !entry && !importing;
+  const inline = embedded && creatingSkill;
+  const titleId = useId();
+  const nameInput = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (inline) nameInput.current?.focus();
+  }, [inline]);
+  const [mode, setMode] = useState(entry ? 'edit' : importing ? 'builtin' : 'new');
   const [builtin, setBuiltin] = useState('core');
   const [name, setName] = useState(entry?.name ?? '');
   const [description, setDescription] = useState(''),
@@ -55,12 +70,11 @@ export function ResourceEditor({
   const [busy, setBusy] = useState(Boolean(entry)),
     [error, setError] = useState(''),
     [dirty, setDirty] = useState(false);
-  const skillId = useRef(`skill-${crypto.randomUUID().slice(0, 12)}`);
+  const [skillId] = useState(() => `skill-${crypto.randomUUID().slice(0, 12)}`);
+  const [installed, setInstalled] = useState<{ hash: string; path?: string } | null>(null);
   const alive = useRef(true),
     reviewRef = useRef(review);
   reviewRef.current = review;
-  const dirtyRef = useRef(dirty);
-  dirtyRef.current = dirty;
   const runSettingsTask = useSettingsTask(
     `resource-editor:${kind}:${entry?.resourceHash ?? 'new'}`,
   );
@@ -106,39 +120,44 @@ export function ResourceEditor({
     setDirty(true);
     action();
   }
-  async function close() {
-    if (await confirmLeave()) onClose();
+  useImperativeHandle(backRef, () => close);
+  async function close(event?: Event) {
+    if (event instanceof KeyboardEvent && (event.isComposing || event.keyCode === 229)) return;
+    if (!busy && (await confirmLeave())) {
+      if (installed) onSaved(installed.hash, installed.path);
+      else onClose();
+    }
   }
+  async function reviewSource() {
+    if (['local', 'pi-home', 'package', 'builtin'].includes(mode))
+      return api.review(
+        mode as 'local' | 'pi-home' | 'package' | 'builtin',
+        mode === 'builtin'
+          ? builtin
+          : mode === 'package'
+            ? `${packageKind}:${source.trim()}@${pin.trim()}`
+            : source.trim(),
+      );
+    const text = creatingSkill
+      ? `---\nname: ${skillId}\ndescription: ${JSON.stringify(description.trim())}\n---\n${content}`
+      : content;
+    const draft: HarnessDocumentDraft = {
+      kind,
+      name,
+      content: hook ? 'generated' : text,
+      ...(hook ? { hook } : {}),
+      ...(entry
+        ? { base: { resourceHash: entry.resourceHash, entry: entry.entry, kind: entry.kind } }
+        : {}),
+    };
+    return api.reviewDocument(draft);
+  }
+
   async function inspect() {
     setBusy(true);
     setError('');
     try {
-      let result: Awaited<ReturnType<HarnessApi['review']>>;
-      if (['local', 'pi-home', 'package', 'builtin'].includes(mode))
-        result = await api.review(
-          mode as 'local' | 'pi-home' | 'package' | 'builtin',
-          mode === 'builtin'
-            ? builtin
-            : mode === 'package'
-              ? `${packageKind}:${source.trim()}@${pin.trim()}`
-              : source.trim(),
-        );
-      else {
-        const text =
-          mode === 'new' && kind === 'skill'
-            ? `---\nname: ${skillId.current}\ndescription: ${JSON.stringify(description.trim())}\n---\n${content}`
-            : content;
-        const draft: HarnessDocumentDraft = {
-          kind,
-          name,
-          content: hook ? 'generated' : text,
-          ...(hook ? { hook } : {}),
-          ...(entry
-            ? { base: { resourceHash: entry.resourceHash, entry: entry.entry, kind: entry.kind } }
-            : {}),
-        };
-        result = await api.reviewDocument(draft);
-      }
+      const result = await reviewSource();
       if (alive.current) setReview(result);
       else await api.cancelReview(result.reviewId);
     } catch (e) {
@@ -147,30 +166,87 @@ export function ResourceEditor({
       if (alive.current) setBusy(false);
     }
   }
-  return (
-    <Dialog
-      open
-      onOpenChange={(open) => {
-        if (!open) close();
-      }}
-    >
-      <DialogPopup className="max-w-3xl p-6" showCloseButton={false}>
-        <DialogTitle>
-          {entry ? t('editCopy') : t(kind === 'skill' ? 'addSkill' : 'addHook')}
-        </DialogTitle>
-        <DialogDescription>{t('copyHint')}</DialogDescription>
+  async function save() {
+    if (installing.current) return;
+    installing.current = true;
+    setBusy(true);
+    setError('');
+    let result = installed;
+    try {
+      const saved = await runSettingsTask(async () => {
+        if (!result) {
+          const inspected = review ?? (await reviewSource());
+          try {
+            const resource = await api.install(inspected.reviewId);
+            result = {
+              hash: resource.hash,
+              path:
+                entry?.entry ??
+                (kind === 'skill' ? resource.skills?.[0]?.entry : resource.extensions?.[0]) ??
+                reviewedEntry ??
+                undefined,
+            };
+          } catch (error) {
+            if (!review) await api.cancelReview(inspected.reviewId).catch(() => {});
+            throw error;
+          }
+        }
+        return result;
+      });
+      if (alive.current) {
+        setDirty(false);
+        onSaved(saved.hash, saved.path);
+      }
+    } catch (failure) {
+      if (alive.current) {
+        setInstalled(result);
+        setError(
+          creatingSkill
+            ? t('skillSaveFailed')
+            : failure instanceof Error
+              ? failure.message
+              : h('error'),
+        );
+      }
+    } finally {
+      installing.current = false;
+      if (alive.current) setBusy(false);
+    }
+  }
+  const title = entry
+    ? t('editCopy')
+    : t(creatingSkill ? 'createSkill' : importing ? 'importSkills' : 'addHook');
+
+  function editorContent() {
+    return (
+      <>
+        {inline ? (
+          <h2
+            id={titleId}
+            className="text-title"
+            style={{ fontVariationSettings: fontWeights.semibold }}
+          >
+            {title}
+          </h2>
+        ) : (
+          <DialogTitle>{title}</DialogTitle>
+        )}
+        {creatingSkill ? null : <DialogDescription>{t('copyHint')}</DialogDescription>}
         <form
           onKeyDown={(event) => {
-            if (event.key === 'Enter' && event.nativeEvent.isComposing) event.preventDefault();
+            if (event.key === 'Enter' && (event.nativeEvent.isComposing || event.keyCode === 229))
+              event.preventDefault();
           }}
           className="mt-4 flex max-h-[70vh] flex-col gap-4 overflow-y-auto pr-1"
           onSubmit={(e) => {
             e.preventDefault();
-            if (!busy && !review) void inspect();
+            if (busy) return;
+            if (creatingSkill) void save();
+            else if (!review) void inspect();
           }}
         >
           <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
-            {!entry ? (
+            {!entry && !creatingSkill ? (
               <div className="flex flex-col gap-1 text-body">
                 {t('addMethod')}
                 <Select
@@ -189,7 +265,7 @@ export function ResourceEditor({
                   }
                   options={[
                     ...(kind === 'skill' ? [{ value: 'builtin', label: t('builtin') }] : []),
-                    { value: 'new', label: t('create') },
+                    ...(kind === 'extension' ? [{ value: 'new', label: t('create') }] : []),
                     { value: 'file', label: t('importFile') },
                     { value: 'local', label: t('importFolder') },
                     { value: 'pi-home', label: h('piHome') },
@@ -304,7 +380,9 @@ export function ResourceEditor({
                 <label className="flex flex-col gap-1 text-body">
                   {t('displayName')}
                   <Input
+                    ref={nameInput}
                     required
+                    readOnly={Boolean(installed)}
                     maxLength={100}
                     value={name}
                     onChange={(e) => change(() => setName(e.target.value))}
@@ -369,6 +447,7 @@ export function ResourceEditor({
                         {t('description')}
                         <Input
                           required
+                          readOnly={Boolean(installed)}
                           value={description}
                           onChange={(e) => change(() => setDescription(e.target.value))}
                         />
@@ -380,12 +459,15 @@ export function ResourceEditor({
                         className="min-h-48 font-mono"
                         rows={10}
                         required
+                        readOnly={Boolean(installed)}
                         value={content}
                         placeholder={kind === 'skill' ? t('skillTemplate') : t('extensionTemplate')}
                         onChange={(e) => change(() => setContent(e.target.value))}
                       />
                     </label>
-                    <p className="text-caption text-muted-foreground">{t('rawHint')}</p>
+                    {creatingSkill ? null : (
+                      <p className="text-caption text-muted-foreground">{t('rawHint')}</p>
+                    )}
                   </>
                 )}
               </>
@@ -432,34 +514,14 @@ export function ResourceEditor({
                 </details>
               </section>
             ) : null}
-            <div className="flex justify-end gap-2 pt-2">
-              <Button type="button" variant="ghost" onClick={close}>
-                {t('cancel')}
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <Button type="button" variant="ghost" onClick={() => void close()}>
+                {inline ? library('back') : t('cancel')}
               </Button>
-              {review ? (
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setBusy(true);
-                    setError('');
-                    installing.current = true;
-                    void runSettingsTask(() => api.install(review.reviewId))
-                      .then(
-                        (resource) => {
-                          if (alive.current) {
-                            setDirty(false);
-                            dirtyRef.current = false;
-                            onSaved(resource.hash, entry?.entry);
-                          }
-                        },
-                        (e) => alive.current && setError(e.message),
-                      )
-                      .finally(() => {
-                        installing.current = false;
-                        if (alive.current) setBusy(false);
-                      });
-                  }}
-                >
+              {creatingSkill ? (
+                <Button type="submit">{t('save')}</Button>
+              ) : review ? (
+                <Button type="button" onClick={() => void save()}>
                   {t('saveLibrary')}
                 </Button>
               ) : (
@@ -468,6 +530,23 @@ export function ResourceEditor({
             </div>
           </fieldset>
         </form>
+      </>
+    );
+  }
+
+  if (inline) return <section aria-labelledby={titleId}>{editorContent()}</section>;
+  return (
+    <Dialog
+      open
+      onOpenChange={(open, details) => {
+        if (!open) {
+          details.cancel();
+          void close(details.event);
+        }
+      }}
+    >
+      <DialogPopup className="max-w-3xl p-6" showCloseButton={false}>
+        {editorContent()}
       </DialogPopup>
     </Dialog>
   );

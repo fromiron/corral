@@ -789,6 +789,7 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
         <div
           ref={ref}
           className={cn(field ? 'relative flex w-full min-w-0' : 'relative inline-flex', className)}
+          data-slot="model-picker"
           data-open={open || undefined}
           data-side={side}
           data-align={align}
@@ -828,6 +829,10 @@ const ModelPickerBody = forwardRef<HTMLDivElement, Omit<ModelPickerProps, 'size'
               <AnimatePresence initial={false} mode="popLayout">
                 <motion.span
                   key={current?.id}
+                  data-slot="model-picker-name"
+                  // A host that holds the chip to one line cuts the name; the whole name stays
+                  // readable here, and the trigger's accessible name keeps it in full.
+                  title={triggerName}
                   className={field ? 'truncate' : '[overflow-wrap:anywhere]'}
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}

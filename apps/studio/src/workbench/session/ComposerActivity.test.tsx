@@ -10,7 +10,7 @@ import messages from '../../../../../packages/react/src/messages/en.json' with {
 import { sessionStore } from '../../../../../packages/react/src/stories/fixtures.tsx';
 import { type ContextCall, presentContext } from '../widgets/selectors.ts';
 import type { ChatWidgetModel } from '../widgets/useChatWidgets.tsx';
-import { ComposerActivity } from './ComposerActivity.tsx';
+import { ChangesTabShownContext, ComposerActivity } from './ComposerActivity.tsx';
 import { createPendingTrayStore, PendingTrayContext } from './pendingTrayState.ts';
 import { SessionConnectionContext } from './SessionConnection.tsx';
 import { useActiveExecutionCount } from './useActivity.ts';
@@ -128,9 +128,8 @@ function model(change: Partial<ChatWidgetModel> = {}, plan: Partial<ChatWidgetMo
   return {
     sessionId: 'session_plan',
     runId: 'run_plan',
-    runNumber: 1,
     live: false,
-    viewed: null,
+    lastRun: false,
     readState: 'ready',
     chips: [],
     tools: [],
@@ -202,9 +201,12 @@ async function mount(
     target = null,
     targets = [],
     floating = false,
+    changesShown = false,
   }: {
     /** The composer floats over the timeline's bottom edge. */
     floating?: boolean;
+    /** The session panel shows its changes tab (features/composer-flow.md 활동 바, rule 4). */
+    changesShown?: boolean;
     ownActive?: RunSummary | null;
     /** The join target, and the executions that take an instruction now. */
     target?: string | null;
@@ -256,19 +258,20 @@ async function mount(
                   data-testid="chat-composer"
                   {...(floating ? { 'data-composer-surface': 'floating' } : {})}
                 >
-                  <ComposerActivity
-                    sessionId="session_plan"
-                    ownActive={active}
-                    target={target}
-                    targets={targets as never}
-                    onJoin={onJoin}
-                    onStop={onStop}
-                    onPause={onPause}
-                    onResume={onResume}
-                    viewingOther={false}
-                    {...(onViewRun ? { onViewRun } : {})}
-                    {...(revealRun ? { revealRun } : {})}
-                  />
+                  <ChangesTabShownContext.Provider value={changesShown}>
+                    <ComposerActivity
+                      sessionId="session_plan"
+                      ownActive={active}
+                      target={target}
+                      targets={targets as never}
+                      onJoin={onJoin}
+                      onStop={onStop}
+                      onPause={onPause}
+                      onResume={onResume}
+                      {...(onViewRun ? { onViewRun } : {})}
+                      {...(revealRun ? { revealRun } : {})}
+                    />
+                  </ChangesTabShownContext.Provider>
                   <div data-testid="input-surface">
                     <textarea aria-label="Request" />
                   </div>
@@ -342,7 +345,7 @@ it("says an ended run's state, place, plan count, step and changes on one line, 
         changeFiles: 2,
         changeLines: 6,
         changesLabel: 'fixed',
-        viewed: { latest: true, number: 1, total: 1 },
+        lastRun: true,
       },
       { selectedChoice: { key: 'exec_plan', label: 'Assistant', live: true } as never },
     ),
@@ -368,9 +371,15 @@ it("says an ended run's state, place, plan count, step and changes on one line, 
   expect(line?.classList.contains('h-8')).toBe(true);
 });
 
-it('names an older run by its place among the session runs', async () => {
-  const view = await mount(model({ viewed: { latest: false, number: 1, total: 2 } }));
-  expect(visibleText(view.line())).toContain('Run #1 of 2');
+it('never names a selected run or its place: an ended run it presents is the last run', async () => {
+  // The conversation presents the active run, or the last one, whatever the address selects.
+  const view = await mount(model({ lastRun: true }));
+  const text = visibleText(view.line());
+  expect(text).toContain(messages.Widgets.lastRun);
+  expect(text).not.toContain('Selected run');
+  expect(text).not.toMatch(/Run #\d+ of \d+/);
+  // Nor does it tell a screen reader that the run controls act on another run than the shown one.
+  expect(view.container.textContent).not.toContain('not the one you are viewing');
 });
 
 it('counts one change and one line in the singular', async () => {
@@ -382,6 +391,29 @@ it('counts one change and one line in the singular', async () => {
   expect(chip?.textContent).toContain('1 line');
   expect(chip?.textContent).not.toMatch(/1 changes|1 lines/);
 });
+
+// composer-flow.md 활동 바, rule 4: while the changes tab is on screen the change count is on no
+// line; the line reads as it does for a run without changes, with no dot left before or after.
+it.each([
+  ['the last run and the plan', { lastRun: true }, {}],
+  ['the last run alone', { lastRun: true }, { status: { state: 'hidden' } }],
+  ['the plan alone', {}, {}],
+] as const)(
+  'says no change count while the changes tab shows, and leaves no dot behind with %s',
+  async (_name, change, plan) => {
+    const changed = { chips: ['changes'], changeFiles: 2, changeLines: 6, changesLabel: 'fixed' };
+    const shown = await mount(model({ ...changed, ...change } as never, plan as never), {
+      changesShown: true,
+    });
+    expect(shown.line()?.querySelector('[data-testid="run-changes-chip"]')).toBeNull();
+    const said = visibleText(shown.line());
+    const without = await mount(model({ ...change } as never, plan as never));
+    expect(said).toBe(visibleText(without.line()));
+    // Without the tab on screen the chip is there.
+    const hidden = await mount(model({ ...changed, ...change } as never, plan as never));
+    expect(hidden.line()?.querySelector('[data-testid="run-changes-chip"]')).not.toBeNull();
+  },
+);
 
 // chat-widgets-contract: the plan count and the change summary are not cut at wide widths; when
 // the line is short the current step's words go first, then the change summary's line count.
@@ -452,9 +484,7 @@ it('says the plan on the closed line as Plan done/total, resting, live with a st
   };
 
   // Resting: the ended run's place, then the plan by its name.
-  const resting = await mount(
-    model({ viewed: { latest: true, number: 1, total: 1 } }, { status: status(1, false, true) }),
-  );
+  const resting = await mount(model({ lastRun: true }, { status: status(1, false, true) }));
   const restingCount = resting.line()?.querySelector('[data-testid="activity-plan"]');
   expect(restingCount?.textContent).toBe('Plan 1/1');
   expect(visibleText(resting.line())).toContain(`${messages.Widgets.lastRun}·Plan 1/1`);
@@ -723,7 +753,7 @@ it('opens the failed steps of the exact run for a failure no card answers', asyn
       {
         action: failure as ChatWidgetModel['action'],
         failedExecutionId: 'exec_failed',
-        viewed: { latest: false, number: 1, total: 2 },
+        lastRun: false,
       },
       { runStatus: 'failed' },
     ),
@@ -764,7 +794,7 @@ it("leaves a failure to its turn's card while that card is the latest turn", asy
     model(
       {
         action: failure as ChatWidgetModel['action'],
-        viewed: { latest: true, number: 2, total: 2 },
+        lastRun: true,
       },
       { runStatus: 'failed' },
     ),
@@ -784,7 +814,7 @@ it.each([true, false])(
       model({
         action: { ...failure, completedWithFailures: true } as ChatWidgetModel['action'],
         failedExecutionId: 'exec_failed',
-        viewed: { latest, number: 1, total: latest ? 1 : 2 },
+        lastRun: latest,
       }),
     );
     // Only the polite announcement still says it; nothing on screen repeats the turn's line.
@@ -1142,9 +1172,12 @@ function reinsRow(panel: HTMLElement | null | undefined) {
   );
 }
 
-/** The panel's run controls, by their words. */
-const control = (view: { panel: () => HTMLElement | null | undefined }, words: string) =>
-  [...(reinsRow(view.panel())?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
+/**
+ * The open bar's run controls, by their words: on the line when it says nothing, else the
+ * panel's last row (composer-flow.md "활동 바").
+ */
+const control = (view: { bar: () => HTMLElement | null | undefined }, words: string) =>
+  [...(reinsRow(view.bar())?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
     (button) => button.textContent === words,
   );
 
@@ -1259,10 +1292,9 @@ it("does not repeat a role's state in its panel row while the role's own row say
 
 it('says which ended run it is only of an ended run', async () => {
   fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
-  const view = await mount(
-    model({ live: true, viewed: { latest: true, number: 1, total: 1 } }, { runStatus: 'running' }),
-    { ownActive: ownRun },
-  );
+  const view = await mount(model({ live: true, lastRun: true }, { runStatus: 'running' }), {
+    ownActive: ownRun,
+  });
   expect(visibleText(view.line())).not.toContain(messages.Widgets.lastRun);
 });
 
@@ -1630,7 +1662,7 @@ it('keeps the warning for a role’s own failure beside an advisor', async () =>
         live: true,
         action: failure as ChatWidgetModel['action'],
         failedExecutionId: 'exec_writer',
-        viewed: { latest: false, number: 1, total: 2 },
+        lastRun: false,
       },
       { runStatus: 'running' },
     ),
@@ -1767,6 +1799,37 @@ it('says no last review while the flow waits for its next step, a person or a ro
     timeline: <span data-presence-label="execution:exec_editor">editor row</span>,
   });
   expect(role.bar()?.dataset.line).not.toBe('advisor');
+});
+
+// composer-flow.md "활동 바": open, with the role rows saying everything and the run row on screen,
+// the line has nothing of its own to say: the Reins controls stand on it, and the panel keeps no
+// row for them.
+it('puts the run controls on the open line when the rows say everything', async () => {
+  fixture.store = sessionStore({ runId: 'run_plan', projection: runningProjection() });
+  const view = await mount(
+    model(
+      { live: true },
+      {
+        runStatus: 'running',
+        status: { state: 'hidden' } as ChatWidgetModel['plan']['status'],
+        choices: [],
+      },
+    ),
+    { ownActive: ownRun, rowShown: true },
+  );
+  await act(async () => view.toggle()?.click());
+  const reins = reinsRow(view.bar());
+  expect(view.line()?.contains(reins ?? null)).toBe(true);
+  expect(reinsRow(view.panel())).toBeUndefined();
+  // The rows are still in the panel; the line holds the name, Pause, Stop, then the toggle.
+  expect(view.panel()?.querySelector('[data-activity-role="exec_plan"]')).not.toBeNull();
+  expect(control(view, messages.Activity.pause)).toBeDefined();
+  expect(control(view, messages.Activity.stop)).toBeDefined();
+  expect(view.line()?.contains(view.toggle() ?? null)).toBe(true);
+  // Closed, the line has none; they fold away with the panel, out of reach.
+  await act(async () => view.toggle()?.click());
+  expect(reinsRow(view.line())).toBeUndefined();
+  expect(reinsRow(view.bar())?.closest('[inert]')).not.toBeNull();
 });
 
 it('offers no panel for an ended run with nothing to show in it, so no empty band is left', async () => {

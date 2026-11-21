@@ -6,7 +6,7 @@ import { cn } from './utils.ts';
 /**
  * One kit CheckboxItem in its own CheckboxGroup, for a single confirmation or an item that sits
  * beside other content (a diff, a table row). A flat list of choices composes CheckboxGroup
- * directly. The kit row has no disabled state, so the row is inert and dimmed instead.
+ * directly, sharing the same disabled state and keyboard behavior.
  */
 export function Checkbox({
   label,
@@ -30,12 +30,8 @@ export function Checkbox({
         index={0}
         label={label}
         checked={checked}
-        onToggle={() => {
-          if (!disabled) onToggle();
-        }}
-        aria-disabled={disabled || undefined}
-        tabIndex={disabled ? -1 : 0}
-        className={cn(disabled && 'pointer-events-none opacity-50')}
+        onToggle={onToggle}
+        disabled={disabled}
       />
     </CheckboxGroup>
   );

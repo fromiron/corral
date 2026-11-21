@@ -110,6 +110,14 @@ Models → 모델 편집에서 엔드포인트와 프로필을 추가한다. 이
 
 근거: [Hive 모델 API](https://docs.thehive.ai/docs/deepseek-v41-flash), [연결·인증·도구 호출 문서](https://docs.thehive.ai/docs/chat-completions-openai-compatible-llms). Hive 요청은 `max_completion_tokens`와 SSE를 사용한다. 2026-10-19 별도 opt-in 시험에서 실제 Hive 모델의 `high` 요청 2회와 산출물 작성·제출, usage 응답을 확인했다. 모델 품질 개선·최대 추론의 실제 청구량과는 구분한다. 비용 정보가 없는 사용자 정의 엔드포인트를 무료라고 해석하지 않는다.
 
+## Hive의 GLM 5.3 Flash
+
+같은 Hive 엔드포인트에 모델 ID `zai-org/glm-5.3-flash`로 프로필을 더한다. 키와 주소는 위의 Hive 연결을 그대로 쓴다.
+
+공식 두 주소와 정확한 모델 ID에는 `low/high/max` 추론을 등록한다. 이 모델은 추론을 끌 수 없어 `off`가 없고, 공급자 기본값은 effort를 생략한다(Hive의 기본값은 `max`다). 요청은 DeepSeek과 같이 `max_completion_tokens`와 SSE를 쓰고 `developer` 역할을 보내지 않는다. context와 출력 한도는 등록하지 않으며 설정, `/models` 응답, 기본값의 순서를 그대로 따른다. 모델 ID가 같더라도 다른 gateway에 이 설정을 적용하지 않는다.
+
+근거: [Hive 모델 API](https://docs.thehive.ai/docs/glm-53-flash). 문서의 `reasoning_effort`는 `low`, `high`, `max`이고 기본값이 `max`다. `none`과 `medium`은 문서에 없어 등록하지 않는다.
+
 ## 추론 판정: 설치와 되돌리기
 
 추론 선택이 **자동**인 요청의 수준을 요청마다 판정 엔진 하나가 고르게 하는 설정이다. 동작 계약과 지원 환경은 [추론 판정 명세](../specs/features/effort-routing.md)가 정한다. 기본은 Off이며 Off에서는 판정·다운로드·외부 전송이 없다.

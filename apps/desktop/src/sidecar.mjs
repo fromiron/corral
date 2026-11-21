@@ -30,7 +30,8 @@ const options = {
   port: Number(port),
   agents: new ScriptedAgentAdapter({
     turns: 2,
-    beforeReply: () => new Promise((done) => setTimeout(done, 300)),
+    // Desktop smoke runs need a live request while they open the run controls.
+    beforeReply: () => new Promise((done) => setTimeout(done, mockOnly === 'true' ? 1500 : 300)),
   }),
   localIntelligence: defaultLocalIntelligence(),
   fff: loadFff,

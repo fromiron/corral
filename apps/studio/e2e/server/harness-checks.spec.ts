@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { linearCorral } from '@corral/testkit';
+import { lastRunSucceeded, maximizePanel } from '../workbench.ts';
 import { expect, test } from './harness.ts';
 
 test.use({ live: true, codexLogin: true });
@@ -93,8 +94,10 @@ test('selects a registered check, approves its SDK call and reads the owned veri
       return { sessionId, runId: started.runId };
     }, definition);
     await page.goto(`${corral.server.url}/runs/${ids.runId}?view=run`);
-    // A session's run opens in its run history, beside the conversation that also shows the request.
-    // The record beside it reads the request; the conversation's needed-now tray answers it.
+    // A session's run opens in its tab beside the conversation, which also shows the request.
+    // Maximized, the record has the room to read the request; its Respond restores the panel and
+    // the conversation's needed-now tray answers it.
+    await maximizePanel(page);
     await expect(
       page.getByTestId('run-side').getByText('node check.mjs', { exact: true }),
     ).toBeVisible();
@@ -103,7 +106,8 @@ test('selects a registered check, approves its SDK call and reads the owned veri
     await expect(needsYou).toBeFocused();
     await expect(needsYou.getByText('node check.mjs', { exact: true })).toBeVisible();
     await needsYou.getByRole('button', { name: 'Run this check once', exact: true }).click();
-    await expect(page.getByTestId('run-status').first()).toContainText('Completed');
+    // Beside the conversation the record does not say the run's state; the conversation does.
+    await expect(lastRunSucceeded(page)).toBeVisible();
     const reports = await page.evaluate(
       async (sessionId) => (await fetch(`/api/v1/sessions/${sessionId}/verifications`)).json(),
       ids.sessionId,

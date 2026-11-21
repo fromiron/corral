@@ -30,7 +30,7 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
   ),
 }));
 vi.mock('../workbench/ChatView.tsx', () => ({
-  ChatDensityMenu: () => null,
+  useChatDensityRow: () => () => null,
   // The real view hides its timeline while a long header (the widened records) is read.
   ChatView: ({ items, composer, header, children, expandedHeader, sent }: any) => (
     <div data-sent={sent}>
@@ -251,7 +251,7 @@ async function mount(
   } as WorkSession;
   const render = () =>
     root.render(
-      <TopbarSlotContext.Provider value={{ actions: toolbar, views: null, crumbs: null }}>
+      <TopbarSlotContext.Provider value={{ actions: toolbar, crumbs: null }}>
         <MeetingPage session={session} />
       </TopbarSlotContext.Provider>,
     );
@@ -1495,8 +1495,11 @@ describe('Stop that just took Send’s place', () => {
     await act(async () => place.click());
     await act(async () => {});
     expect(document.activeElement).toBe(f.box);
-    // The bar's Stop.
+    // The bar's Stop: there while something is written, as Send's place is then Send
+    // (features/composer-flow.md "활동 바").
+    await f.type('One more thing');
     await act(async () => f.button('details')?.click());
+    expect(stopPlace(f)).toBeNull();
     const bar = must(f.button('stop'), 'the bar’s Stop');
     bar.focus();
     await act(async () => bar.click());

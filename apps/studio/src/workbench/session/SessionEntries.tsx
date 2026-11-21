@@ -14,6 +14,8 @@ import { PanelRight, Pencil, Settings } from '@corral/react/icons';
 import { createContext, type ReactNode, useContext, useEffect, useState } from 'react';
 import { useFormatter, useNow, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { isPageNote, noteScreenshotHash } from '../browser/noteChips.ts';
+import { SentNotes } from '../browser/SentNotes.tsx';
 import { ImageAttachmentList } from '../ImageAttachments.tsx';
 import { MessageBranch } from '../MessageBranch.tsx';
 import type { SessionPanel } from '../panels/registry.ts';
@@ -68,6 +70,7 @@ export function EntryCard({
   arriving?: boolean;
 }) {
   const t = useTranslations('Sessions');
+  const { workspaces } = useServices();
   const tm = useTranslations('MessageBody');
   const tq = useTranslations('Reasoning');
   const format = useFormatter();
@@ -123,6 +126,14 @@ export function EntryCard({
     run && ['cancelled', 'interrupted', 'failed'].includes(run.status) && entry.intent !== 'steer';
   // An instruction's attachments live in its directive; a request keeps its own.
   const attachments = entry.intent === 'steer' ? record?.directive.attachments : entry.attachments;
+  // A page note shows what it carried, with its screenshot; the rest are listed as before.
+  const otherAttachments = (attachments ?? []).filter(
+    (item) => item.provenance?.kind !== 'reply' && !isPageNote(item),
+  );
+  const noteShots = new Set(
+    (attachments ?? []).filter(isPageNote).flatMap((item) => noteScreenshotHash(item) ?? []),
+  );
+  const otherImages = (entry.images ?? []).filter((image) => !noteShots.has(image.sha256));
   const runRow =
     run && entry.intent !== 'steer' ? (
       <RunCard
@@ -230,13 +241,16 @@ export function EntryCard({
           {attachments?.length ? (
             <SentQuotes attachments={attachments} owner={entry.entryId} />
           ) : null}
-          {attachments?.some((item) => item.provenance?.kind !== 'reply') ? (
-            <TextAttachmentList
-              attachments={attachments.filter((item) => item.provenance?.kind !== 'reply')}
+          {attachments?.length ? (
+            <SentNotes
+              attachments={attachments}
+              images={entry.images ?? []}
+              imageUrl={(imageId) => workspaces?.imageUrl(sessionId, imageId) ?? null}
             />
           ) : null}
-          {entry.images?.length ? (
-            <ImageAttachmentList sessionId={sessionId} images={entry.images} />
+          {otherAttachments.length ? <TextAttachmentList attachments={otherAttachments} /> : null}
+          {otherImages.length ? (
+            <ImageAttachmentList sessionId={sessionId} images={otherImages} />
           ) : null}
           <span className="sr-only">
             {t('youAsked', { intent: t(`intent.${entry.intent}`) })} · {t(`state.${entry.state}`)}
