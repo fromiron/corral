@@ -702,6 +702,200 @@ describe('a branch an any Join stopped', () => {
     expect(selected(afterJoin(events), 'd')).toEqual([]);
   });
 
+  // A scripted runner starts p and then `step`; while the step waits at a boundary under a pause,
+  // the Join that stops it is reported, and the run resumes. Through the walker the other branch
+  // cannot reach the Join while the run is paused.
+  describe('a step waiting at a boundary while the run is paused', () => {
+    function paused(options: {
+      step: (callbacks: RunnerCallbacks) => Promise<unknown>;
+      breakpoints?: string[];
+      failing?: Gate;
+      definition: CorralDefinition;
+    }) {
+      const consulted: string[] = [];
+      const outcome: { value?: unknown } = {};
+      let joinNow: () => Promise<void> = async () => {};
+      const clock = new FakeClock();
+      const coordinator = new Coordinator({
+        clock,
+        timers: clock,
+        ids: new SequentialIdFactory(),
+        decisions: {
+          decide: async ({ nodeId }) => {
+            consulted.push(nodeId);
+            return 'go';
+          },
+        },
+        agents: new ScriptedAgentAdapter({
+          turns: 1,
+          appendNotes: false,
+          script: async (input) => {
+            if (input.nodeId !== 'x' || !options.failing) return null;
+            await options.failing.wait();
+            return { outcome: 'failed', error: 'x broke' };
+          },
+        }),
+        runner: {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('p', null);
+            joinNow = () => callbacks.joined('j', null, [{ nodeId: 'x', iteration: null }], []);
+            outcome.value = await options.step(callbacks);
+            await callbacks.activate('m', null);
+            await callbacks.finalize('output');
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        },
+      });
+      const transport = new InProcessTransport(coordinator);
+      const start = async () => {
+        const { runId, receipt } = await transport.startRun({
+          schemaVersion: '0.1',
+          commandId: `cmd_${++n}`,
+          definition: options.definition,
+          mode: 'mock',
+          ...(options.breakpoints ? { breakpoints: options.breakpoints } : {}),
+        });
+        if (!runId) throw new Error(JSON.stringify(receipt.error));
+        const events: RunEvent[] = [];
+        transport.subscribe(runId, 0, { onEvent: (event) => events.push(event) });
+        return { runId, events };
+      };
+      const submit = (runId: string, type: 'pause' | 'resume') =>
+        coordinator.submit({
+          schemaVersion: '0.1',
+          commandId: `${type}_${++n}`,
+          runId,
+          type,
+          payload: { scope: 'run' },
+        });
+      /** Approves the open breakpoint and pauses the run in the same tick. */
+      const approveAndPause = async (runId: string) => {
+        const waiting = await waitForProjection(transport, runId, (p) =>
+          Object.values(p.approvals).some((a) => a.status === 'pending' && a.kind === 'breakpoint'),
+        );
+        const approval = Object.values(waiting.approvals).find((a) => a.status === 'pending');
+        coordinator.submit({
+          schemaVersion: '0.1',
+          commandId: `approve_${++n}`,
+          runId,
+          type: 'resolve_approval',
+          expectedControlRevision: waiting.controlRevision,
+          payload: {
+            approvalId: approval?.approvalId ?? '',
+            decision: 'approve',
+            subjectVersionId: approval?.subjectVersionIds[0] ?? '',
+          },
+        });
+        submit(runId, 'pause');
+      };
+      /** Waits for the pause, reports the Join, resumes, and returns the ended run. */
+      const joinWhilePaused = async (runId: string) => {
+        await waitForProjection(transport, runId, (p) => p.status === 'paused');
+        await joinNow();
+        submit(runId, 'resume');
+        return waitForProjection(transport, runId, finished);
+      };
+      return { transport, consulted, outcome, start, submit, approveAndPause, joinWhilePaused };
+    }
+
+    /** p → [x, j]; x → j (any) → m → output. */
+    const withAgent = (retry = false) =>
+      team(
+        [
+          agent('p'),
+          { ...agent('x', 'p'), ...(retry ? { retry: { maxAttempts: 1 } } : {}) } as CorralNode,
+          join('any'),
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'x'),
+          edge('p', 'out', 'j'),
+          edge('x', 'out', 'j'),
+          edge('j', 'out', 'm'),
+          edge('m', 'out', 'output'),
+        ],
+      );
+
+    it('makes no next attempt of an Agent that waited at its retry', async () => {
+      const gate = new Gate();
+      const r = paused({
+        definition: withAgent(true),
+        failing: gate,
+        step: (callbacks) => callbacks.activate('x', null),
+      });
+      const { runId } = await r.start();
+      await waitForProjection(r.transport, runId, (p) => live(p, 'x'));
+      // x's first attempt fails as the run pauses: the retry waits at the pause.
+      gate.open();
+      r.submit(runId, 'pause');
+      await waitForProjection(r.transport, runId, (p) =>
+        executions(p, 'x').some((e) => e.status === 'failed'),
+      );
+      const final = await r.joinWhilePaused(runId);
+      expect(final.status).toBe('succeeded');
+      expect(executions(final, 'x').map((e) => e.status)).toEqual(['failed']);
+      expect(r.outcome.value).toEqual({ ok: false, reason: 'branch stopped' });
+    });
+
+    it('starts no Agent whose breakpoint was approved', async () => {
+      const r = paused({
+        definition: withAgent(),
+        breakpoints: ['x'],
+        step: (callbacks) => callbacks.activate('x', null),
+      });
+      const { runId } = await r.start();
+      await r.approveAndPause(runId);
+      const final = await r.joinWhilePaused(runId);
+      expect(final.status).toBe('succeeded');
+      expect(executions(final, 'x')).toEqual([]);
+      expect(r.outcome.value).toEqual({ ok: false, reason: 'branch stopped' });
+    });
+
+    it('records no route of a Decision whose breakpoint was approved', async () => {
+      // p → [router x, j]; x.go → j (any) → m → output.
+      const definition = team(
+        [
+          agent('p'),
+          {
+            id: 'x',
+            type: 'decision',
+            label: 'x',
+            mode: 'router',
+            routes: [
+              { id: 'go', label: 'go' },
+              { id: 'stay', label: 'stay' },
+            ],
+            inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+          },
+          join('any'),
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'x'),
+          edge('p', 'out', 'j'),
+          edge('x', 'go', 'j'),
+          edge('j', 'out', 'm'),
+          edge('m', 'out', 'output'),
+        ],
+      );
+      const r = paused({
+        definition,
+        breakpoints: ['x'],
+        step: (callbacks) => callbacks.decide('x', null),
+      });
+      const { runId, events } = await r.start();
+      await r.approveAndPause(runId);
+      const final = await r.joinWhilePaused(runId);
+      expect(final.status).toBe('succeeded');
+      expect(r.outcome.value).toBeNull();
+      expect(r.consulted).toEqual([]);
+      expect(executions(final, 'x')).toEqual([]);
+      expect(selected(events, 'x')).toEqual([]);
+    });
+  });
+
   it.each(['ended', 'replaced'] as const)(
     'a Decision whose round was %s while it decided records no route',
     async (what) => {
@@ -1776,6 +1970,50 @@ describe('parallel structure', () => {
         nested([edge('d', 'pass', 'l', 'exit'), edge('d', 'revise', 'l', 'repeat')], false),
       );
       expect(errors(definition)).toEqual([]);
+    });
+
+    it('accepts two ports of one Decision into two Loops’ repeat', () => {
+      // s → Loop o [ Loop l [ w → router d (done: l.exit, inner: l.repeat, outer: o.repeat) ]
+      // → r2 → od ] → output.
+      const d: CorralNode = {
+        id: 'd',
+        type: 'decision',
+        label: 'd',
+        mode: 'router',
+        routes: ['done', 'inner', 'outer'].map((id) => ({ id, label: id })),
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'w' }],
+        parentId: 'l',
+      };
+      const definition = withEntry(
+        team(
+          [
+            agent('s'),
+            { id: 'o', type: 'loop', label: 'o', maxIterations: 3 } as CorralNode,
+            { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 } as CorralNode,
+            agent('w', 's', 'l'),
+            d,
+            reviewer('r2', 'w', 'o'),
+            review('od', 'r2', 'o'),
+            output('w'),
+          ],
+          [
+            edge('s', 'out', 'o', 'enter'),
+            edge('o', 'body', 'l', 'enter'),
+            edge('l', 'body', 'w'),
+            edge('w', 'out', 'd'),
+            edge('d', 'done', 'l', 'exit'),
+            edge('d', 'inner', 'l', 'repeat'),
+            edge('d', 'outer', 'o', 'repeat'),
+            edge('l', 'next', 'r2'),
+            edge('r2', 'out', 'od'),
+            edge('od', 'pass', 'o', 'exit'),
+            edge('od', 'revise', 'o', 'repeat'),
+            edge('o', 'next', 'output'),
+          ],
+        ),
+      );
+      expect(errors(definition)).toEqual([]);
+      expect(planRun(definition).ok).toBe(true);
     });
 
     it('already refuses a port into its Loop’s exit and a step, and into an Output and a step', () => {
