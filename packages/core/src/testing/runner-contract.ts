@@ -666,7 +666,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       // round while k is recorded; q's branch then comes to j, where it must not stop d's.
       const definition = linearCorral(['s', 'p', 'q', 'a', 'b']);
       for (const node of definition.nodes) {
-        if (node.type !== 'agent' || node.id === 's') continue;
+        if (node.type !== 'agent' || node.invocation === 'observer' || node.id === 's') continue;
         node.parentId = 'l';
         const source = node.id === 'p' ? 's' : 'p';
         node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: source }];
