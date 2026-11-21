@@ -7665,14 +7665,17 @@ export class Coordinator {
    */
   private async loopCheck(run: LiveRun, loopId: string, no: number): Promise<LoopStop | null> {
     const asked = run.rounds.get(loopId);
+    const request = this.requestOf(run, loopId);
     // Between rounds a cancel or pause must get in, even when a round waits on nothing: let the
     // host run its queued work once (a macrotask, no real waiting), then check the boundary.
     await (this.timers.turn ? this.timers.turn() : hostTurn());
     await this.boundary(run);
-    // Meanwhile an `any` Join may have stopped this branch and closed its round: it leaves
-    // nothing more, by recipe, limit policy or exhaustion, and the runner drops the answer.
+    // Meanwhile an `any` Join may have stopped this branch and closed its round, or a round
+    // around the Loop may have ended: it leaves nothing more, by recipe, limit policy or
+    // exhaustion, and the runner drops the answer.
     const round = run.rounds.get(loopId);
     if (!asked || round?.no !== no || round.iterationId !== asked.iterationId) return null;
+    if (request.dropped()) return null;
     const loop = run.plan.loops[loopId];
     if (!loop) throw new Error(`plan has no Loop ${loopId}`);
     // Stall detection compares every round with the one before, the cap round included.

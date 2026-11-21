@@ -1738,6 +1738,82 @@ describe('a recipe Loop entry an any Join stopped', () => {
       expect(executions(final, 'x')).toEqual([]);
       expect(outcomes.x).toEqual({ ok: false, reason: 'stopped at its breakpoint' });
     });
+
+    it.each([false, true])(
+      'stops no recipe when c asks to repeat at its limit as l’s round ends (an outside branch wins after: %s)',
+      async (outside) => {
+        const outcomes: Record<string, unknown> = {};
+        const l1 = { loopId: 'l', no: 1 };
+        const runner: GraphRunner = {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('s', null);
+            if (outside) await callbacks.activate('b', null);
+            await callbacks.loopEntered('l', 1);
+            await callbacks.activate('p', l1);
+            // c reaches its third round, the recipe's last attempt.
+            await callbacks.loopEntered('c', 1);
+            await callbacks.loopLeft('c', 1, 'revise');
+            await callbacks.loopEntered('c', 2);
+            await callbacks.loopLeft('c', 2, 'revise');
+            await callbacks.loopEntered('c', 3);
+            // c asks to repeat and waits for the host's turn while d closes l's round.
+            const check = callbacks.loopCheck('c', 3);
+            await callbacks.loopLeft('l', 1, 'inconclusive');
+            outcomes.check = await check.then(
+              (stop) => stop,
+              (error: unknown) => String(error),
+            );
+            if (!outside) return { kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' };
+            await callbacks.joined(
+              'k',
+              null,
+              [
+                { nodeId: 'd', iteration: l1 },
+                { nodeId: 'c', iteration: l1 },
+              ],
+              [
+                { loopId: 'c', no: 3 },
+                { loopId: 'l', no: 1 },
+              ],
+            );
+            await callbacks.activate('m', null);
+            await callbacks.finalize('output');
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        };
+        const clock = new FakeClock();
+        const transport = new InProcessTransport(
+          new Coordinator({
+            clock,
+            timers: clock,
+            ids: new SequentialIdFactory(),
+            runner,
+            files: {
+              available: () => false,
+              execute: async () => {
+                throw new Error('no file tools in this test');
+              },
+              pinCriteria: async () => {},
+              validateCriteria: async () => true,
+            },
+            agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+          }),
+        );
+        const { runId, events } = await run(transport, ended());
+        const final = await waitForProjection(transport, runId, finished);
+        expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
+        expect(outcomes.check).toBeNull();
+        if (outside) {
+          expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+          expect(Object.values(final.iterations).filter((i) => !i.outcome)).toEqual([]);
+        } else {
+          expect([final.status, final.statusReason]).toEqual([
+            'failed',
+            'needs_user: d inconclusive',
+          ]);
+        }
+      },
+    );
   });
 });
 
