@@ -172,12 +172,12 @@ compiler는 아래 규칙을 순서와 무관하게 모두 검사하고, 어긴 
   - 실행 중인 실행(execution)은 취소된다. 사람에게 다시 시작을 묻지 않는다.
   - 그 분기의 단계가 기다리던 승인은 거둬진다(`approval.resolved`, `reason: cancelled`).
   - 그 분기 안에서 열린 Loop 회차는 `cancelled`로 끝난다.
-  - 그 분기가 시작하려던 단계는 시작하지 않는다. 일시정지나 중단점을 기다리던 중이었어도 같다. Agent의 실행(execution)을 만들지 않고, Decision은 경로를 기록하지 않으며, 들어가려던 Loop는 회차를 열지 않는다. 그 Loop의 리뷰 레시피가 기준 파일을 고정하지 못해도 Run에는 영향이 없다.
+  - 그 분기가 시작하려던 단계는 시작하지 않는다. 일시정지나 중단점을 기다리던 중이었어도 같다. Agent의 실행(execution)을 만들지 않고, Decision은 경로를 기록하지 않으며, 들어가려던 Loop는 회차를 열지 않는다. 그 Loop의 리뷰 레시피가 기준 파일을 고정하지 못해도 Run에는 영향이 없다. check Decision은 승인받은 다음 시도를 만들지 않는다. review Decision이 리뷰 레시피의 근거를 확인하던 중이었다면 그 결과는 버린다. 레시피를 멈추지 않고 평가도 기록하지 않는다. 다른 Join을 지나던 중이었다면 그 Join 뒤로 갈라지지 않는다.
   - 멈춘 분기의 기록과 산출물은 남는다. 늦게 도착한 분기는 무시한다.
 - **기록.** Join이 이어질 때 `workflow.joined`(Join, 회차, 정책, 멈춘 분기의 단계)를 남긴다.
 - **사람을 기다리기.** 한 단계가 승인·선택·다시 확인을 기다리면 그 단계만 멈춘다. 다른 분기와 실행은 계속 진행한다. Run 전체에 걸린 한도(무진전)는 Run 단위 개입이므로 하나만 열리고, 거기 닿은 실행은 모두 그 하나를 기다린다.
 - **끝나기.** 한 분기가 Run을 끝내면(실패 경로 없는 실패, `needs_user`, 거절, 회차 상한에서 멈춤) 다른 분기도 함께 멈춘다.
-- **끝난 회차의 분기.** Loop 회차가 끝나면 그 회차에 남아 있던 분기는 더 진행하지 않는다. Join에 닿아도 Join을 잇지 않고 다른 분기를 멈추지도 않는다. 모이지 않은 분기의 Decision이 연결 없는 `inconclusive`로 회차를 끝낸 경우가 그렇고, 그때 Run은 그 Decision의 `needs_user`로 끝난다. 분기가 든 회차의 Loop가 그 사이 다른 회차를 열었다면 컴파일러가 막았어야 할 계획이므로 Run은 실패로 끝난다.
+- **끝난 회차의 분기.** Loop 회차가 끝나면 그 회차에 남아 있던 분기는 더 진행하지 않는다. Join에 닿아도 Join을 잇지 않고 다른 분기를 멈추지도 않는다. 그 분기의 단계가 그 뒤에 거절이나 실패로 끝나도 Run의 끝을 바꾸지 않는다. 모이지 않은 분기의 Decision이 연결 없는 `inconclusive`로 회차를 끝낸 경우가 그렇고, 그때 Run은 그 Decision의 `needs_user`로 끝난다. 분기가 든 회차의 Loop가 그 사이 다른 회차를 열었다면 컴파일러가 막았어야 할 계획이므로 Run은 실패로 끝난다.
 - **Paddock.** 분기들은 같은 Paddock을 쓰며 파일 작업은 하나씩 차례로 적용된다. 분기마다 사본을 나누지 않는다.
 
 ### 팀 실행
@@ -503,12 +503,24 @@ Scenario: any Join이 멈춘 분기는 그 뒤에 아무것도 시작하지 않�
   Then L의 회차는 열리지 않는다
   Given B의 Decision이 판정을 시작하려던 참이다
   Then 그 Decision의 경로 선택은 기록되지 않는다
+  Given B의 check Decision이 다음 시도를 승인받고 일시정지가 풀리기를 기다리던 참이다
+  Then 다음 시도는 만들어지지 않는다
+  Given B의 review Decision이 리뷰 레시피의 근거를 확인하던 참이다
+  Then 레시피는 멈추지 않고 평가도 기록되지 않는다
+  Given B가 all Join K를 지나던 참이고 K 뒤에서 둘로 갈라진다
+  Then K 뒤의 단계는 하나도 시작하지 않는다
 
 Scenario: 회차가 끝난 뒤에 Join에 닿은 분기는 이어지지 않는다
   Given Loop L 안에서 갈라진 분기 A와 B가 any Join J로 모이고 J 뒤에 L 안의 Output이 있다
   And A의 Decision이 연결 없는 inconclusive로 끝나 L의 회차가 끝났다
   When 바로 뒤에 B가 J에 닿는다
   Then J는 이어지지 않고 Output은 확정되지 않으며 Run은 A의 Decision의 needs_user로 끝난다
+
+Scenario: 회차가 끝난 뒤에 끝난 분기는 Run의 끝을 바꾸지 않는다
+  Given Loop L 안에서 갈라진 분기 A와 B가 있다
+  And A의 Decision이 연결 없는 inconclusive로 끝나 L의 회차가 끝났다
+  When 바로 뒤에 B의 approval Decision이 연결 없는 거절로 끝난다
+  Then Run은 A의 Decision의 needs_user로 끝난다
 
 Scenario: Join은 한 포트의 모든 분기를 모은다
   Given 세 갈래로 갈라진 분기 중 둘만 Join J로 들어간다
