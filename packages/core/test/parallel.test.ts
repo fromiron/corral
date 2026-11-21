@@ -1012,6 +1012,91 @@ describe('a branch an any Join stopped', () => {
     );
   }
 
+  it('a Decision a Join stopped records no route, and no error, once its Loop went round again', async () => {
+    // p → Loop l [ q → [rule d, a] → any Join j → rule e (yes: exit, no: repeat) ] → output. A
+    // scripted runner asks d to decide; while the policy answers, a reaches j, stops d, and e
+    // opens l's next round: the order the walker produces with a slow policy.
+    let answer: (branch: string) => void = () => {};
+    let asked = false;
+    const outcome: { branch?: string | null; error?: string } = {};
+    const runner: GraphRunner = {
+      run: async (_plan, callbacks) => {
+        const first = { loopId: 'l', no: 1 };
+        await callbacks.activate('p', null);
+        await callbacks.loopEntered('l', 1);
+        await callbacks.activate('q', first);
+        const deciding = callbacks.decide('d', first);
+        for (let i = 0; i < 1000 && !asked; i++) await Promise.resolve();
+        await callbacks.activate('a', first);
+        await callbacks.joined('j', first, [{ nodeId: 'd', iteration: first }], []);
+        await callbacks.loopLeft('l', 1, 'revise');
+        await callbacks.loopEntered('l', 2);
+        answer('yes');
+        await deciding.then(
+          (branch) => {
+            outcome.branch = branch;
+          },
+          (error: unknown) => {
+            outcome.error = String(error);
+          },
+        );
+        return { kind: 'needs_user', nodeId: 'e', branch: 'inconclusive' };
+      },
+    };
+    const transport = runtime(
+      {},
+      {
+        decide: () => {
+          asked = true;
+          return new Promise<string>((resolve) => {
+            answer = resolve;
+          });
+        },
+      },
+      undefined,
+      { runner },
+    );
+    const rule = (id: string, source: string): CorralNode => ({
+      id,
+      type: 'decision',
+      label: id,
+      mode: 'rule',
+      rule: 'required_tasks_submitted',
+      parentId: 'l',
+      inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: source }],
+    });
+    const definition = team(
+      [
+        agent('p'),
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 } as CorralNode,
+        agent('q', 'p', 'l'),
+        rule('d', 'q'),
+        agent('a', 'q', 'l'),
+        { ...join('any'), parentId: 'l' } as CorralNode,
+        rule('e', 'q'),
+        output('p'),
+      ],
+      [
+        edge('p', 'out', 'l', 'enter'),
+        edge('l', 'body', 'q'),
+        edge('q', 'out', 'd'),
+        edge('q', 'out', 'a'),
+        edge('d', 'yes', 'j'),
+        edge('d', 'no', 'j'),
+        edge('a', 'out', 'j'),
+        edge('j', 'out', 'e'),
+        edge('e', 'yes', 'l', 'exit'),
+        edge('e', 'no', 'l', 'repeat'),
+        edge('l', 'next', 'output'),
+      ],
+    );
+    expect(planRun(definition).ok).toBe(true);
+    const { runId, events } = await run(transport, definition);
+    await waitForProjection(transport, runId, finished);
+    expect(selected(events, 'd')).toEqual([]);
+    expect(outcome).toEqual({ branch: null });
+  });
+
   it.each(['ended', 'replaced'] as const)(
     'a Decision whose round was %s while it decided records no route',
     async (what) => {
