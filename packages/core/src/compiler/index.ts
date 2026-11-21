@@ -72,8 +72,10 @@ export type DiagnosticCode =
   | 'TEAM_REF_INVALID'
   | 'CYCLE_OUTSIDE_LOOP'
   | 'PARALLEL_MERGE_NEEDS_JOIN'
+  | 'PARALLEL_MIXED_ENTRY'
   | 'PARALLEL_UNJOINED'
   | 'JOIN_PARTIAL'
+  | 'JOIN_SPLIT'
   | 'JOIN_SINGLE_INPUT'
   | 'PARALLEL_WRITERS'
   | 'UNREACHABLE'
@@ -1090,8 +1092,21 @@ function checkParallel(
     const vertex = vertexOf(c.nodes, edge.target, edge.targetPort, 'target');
     into.set(vertex, [...(into.get(vertex) ?? []), edge]);
   }
+  // Every key of a carried set is a fan-out that has not been gathered yet.
+  const unjoinedPorts = (edge: ControlEdge) =>
+    [...(carried.get(edge.id) as Branches).keys()].sort().join('\u0001');
   for (const [vertex, edges] of into) {
     if (c.nodes.get(vertex)?.type === 'join') continue;
+    // The way on from here is one way: it cannot be still to gather for one connection and
+    // never forked, or gathered already, for another.
+    const [first, ...rest] = edges as [ControlEdge, ...ControlEdge[]];
+    const other = rest.find((edge) => unjoinedPorts(edge) !== unjoinedPorts(first));
+    if (other)
+      c.error(
+        'PARALLEL_MIXED_ENTRY',
+        'a connection from inside parallel branches and one from outside them meet here',
+        { nodeId: other.target, edgeId: other.id },
+      );
     edges.forEach((edge, i) => {
       const mine = carried.get(edge.id) as Branches;
       if (
@@ -1174,6 +1189,20 @@ function checkParallel(
       const branch = carried.get(edge.id)?.get(port)?.values().next().value;
       if (branch !== undefined) c.joinBranches.set(edge.id, { branch, width });
     }
+  }
+
+  // The branches of one port wait at one all Join. With two, branches that choose different
+  // Joins fill neither, and nothing is left to go on.
+  const waiting = new Map<string, string[]>();
+  for (const [joinId, { port }] of c.gathers) {
+    const join = c.nodes.get(joinId);
+    if (join?.type === 'join' && join.policy === 'all')
+      waiting.set(port, [...(waiting.get(port) ?? []), joinId]);
+  }
+  for (const joins of waiting.values()) {
+    if (joins.length < 2) continue;
+    for (const nodeId of joins)
+      c.error('JOIN_SPLIT', 'one all Join gathers the branches of a fan-out', { nodeId });
   }
 
   const writers = c.definition.nodes.filter(

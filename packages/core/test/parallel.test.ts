@@ -2288,6 +2288,286 @@ describe('parallel structure', () => {
     );
   });
 
+  // "출력 포트 하나의 분기를 모으는 all Join은 하나다."
+  describe('two Joins that gather one port', () => {
+    type Policy = 'all' | 'any';
+    const rule = (id: string, source: string, parentId?: string): CorralNode =>
+      ({
+        id,
+        type: 'decision',
+        label: id,
+        mode: 'rule',
+        rule: 'required_tasks_submitted',
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: source }],
+        ...(parentId ? { parentId } : {}),
+      }) as CorralNode;
+    /** Join j1 → m → output, Join j2 → n → fixed. */
+    const ends = (first: Policy, second: Policy) => ({
+      nodes: [
+        { id: 'j1', type: 'join', label: 'j1', policy: first } as CorralNode,
+        { id: 'j2', type: 'join', label: 'j2', policy: second } as CorralNode,
+        agent('m', 'p'),
+        agent('n', 'p'),
+        output('m'),
+        { ...output('n'), id: 'fixed' },
+      ],
+      edges: [
+        edge('j1', 'out', 'm'),
+        edge('m', 'out', 'output'),
+        edge('j2', 'out', 'n'),
+        edge('n', 'out', 'fixed'),
+      ],
+    });
+    /** p → [da, db]; each Decision sends yes to j1 and no to j2. */
+    const byDecisions = (first: Policy, second: Policy) => {
+      const end = ends(first, second);
+      return team(
+        [agent('p'), rule('da', 'p'), rule('db', 'p'), ...end.nodes],
+        [
+          edge('p', 'out', 'da'),
+          edge('p', 'out', 'db'),
+          edge('da', 'yes', 'j1'),
+          edge('da', 'no', 'j2'),
+          edge('db', 'yes', 'j1'),
+          edge('db', 'no', 'j2'),
+          ...end.edges,
+        ],
+      );
+    };
+    /** p → [a, b]; each Agent's out goes to j1 and its error to j2. */
+    const byErrorPorts = () => {
+      const end = ends('all', 'all');
+      return team(
+        [agent('p'), agent('a', 'p'), agent('b', 'p'), ...end.nodes],
+        [
+          edge('p', 'out', 'a'),
+          edge('p', 'out', 'b'),
+          edge('a', 'out', 'j1'),
+          edge('a', 'error', 'j2'),
+          edge('b', 'out', 'j1'),
+          edge('b', 'error', 'j2'),
+          ...end.edges,
+        ],
+      );
+    };
+    /** p → [Loop la, Loop lb]; each Loop's next goes to j1 and its exhausted to j2. */
+    const byLoopExits = () => {
+      const end = ends('all', 'all');
+      const loop = (id: string) => ({
+        nodes: [
+          { id, type: 'loop', label: id, maxIterations: 2 } as CorralNode,
+          agent(`w${id}`, 'p', id),
+          rule(`d${id}`, `w${id}`, id),
+        ],
+        edges: [
+          edge('p', 'out', id, 'enter'),
+          edge(id, 'body', `w${id}`),
+          edge(`w${id}`, 'out', `d${id}`),
+          edge(`d${id}`, 'yes', id, 'exit'),
+          edge(`d${id}`, 'no', id, 'repeat'),
+          edge(id, 'next', 'j1'),
+          edge(id, 'exhausted', 'j2'),
+        ],
+      });
+      const [la, lb] = [loop('la'), loop('lb')];
+      return team(
+        [agent('p'), ...la.nodes, ...lb.nodes, ...end.nodes],
+        [...la.edges, ...lb.edges, ...end.edges],
+      );
+    };
+
+    it.each([
+      ['two Decisions', () => byDecisions('all', 'all')],
+      ['two Agents’ error ports', byErrorPorts],
+      ['two Loops’ exhausted ports', byLoopExits],
+    ])('refuses two all Joins that %s choose between, on both Joins', (_by, definition) => {
+      expect(
+        errors(definition())
+          .map((d) => [d.code, d.nodeId])
+          .sort(),
+      ).toEqual([
+        ['JOIN_SPLIT', 'j1'],
+        ['JOIN_SPLIT', 'j2'],
+      ]);
+    });
+
+    it.each([
+      ['all', 'any'],
+      ['any', 'all'],
+      ['any', 'any'],
+    ] as const)('accepts an %s and an %s Join on one port', (first, second) => {
+      expect(errors(byDecisions(first, second))).toEqual([]);
+    });
+
+    it('does not start a run with two all Joins on one port', async () => {
+      const { runId, receipt } = await runtime({}).startRun({
+        schemaVersion: '0.1',
+        commandId: `cmd_${++n}`,
+        definition: byDecisions('all', 'all'),
+        mode: 'mock',
+      });
+      expect(runId).toBeNull();
+      expect(receipt.error?.code).toBe('GRAPH_INVALID');
+    });
+
+    it('goes on through the any Join when the other branch waits at the all Join', async () => {
+      // da takes yes to the all Join j1, db takes no to the any Join j2.
+      const transport = runtime(
+        {},
+        { decide: async ({ nodeId }) => (nodeId === 'da' ? 'yes' : 'no') },
+      );
+      const { runId, events } = await run(transport, byDecisions('all', 'any'));
+      const final = await waitForProjection(transport, runId, finished);
+      expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+      expect(joins(events).map((j) => [j.nodeId, j.cancelledNodeIds])).toEqual([['j2', []]]);
+      expect(executions(final, 'n')).toHaveLength(1);
+      expect(executions(final, 'm')).toEqual([]);
+      expect(settled(final)).toEqual([]);
+      expect(Object.values(final.approvals).filter((a) => a.status === 'pending')).toEqual([]);
+    });
+  });
+
+  // "갈라진 분기 안에서 오는 연결과, 갈라지기 전이나 그 분기들이 Join으로 모인 뒤에서 오는 연결이…"
+  describe('a place reached from inside a fan-out and from outside it', () => {
+    const rule = (id: string, source: string, parentId?: string): CorralNode =>
+      ({
+        id,
+        type: 'decision',
+        label: id,
+        mode: 'rule',
+        rule: 'required_tasks_submitted',
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: source }],
+        ...(parentId ? { parentId } : {}),
+      }) as CorralNode;
+    /**
+     * p → [a, b]; a.yes → x, a.no → k; b.yes → k, b.no → j; Join k (any) → x; x → Join j (all)
+     * → m → output. x is an Agent, a Decision or a Loop.
+     */
+    const reentered = (kind: 'agent' | 'decision' | 'loop') => {
+      const x =
+        kind === 'agent'
+          ? { nodes: [agent('x', 'p')], into: 'in', out: 'out' }
+          : kind === 'decision'
+            ? { nodes: [rule('x', 'p')], into: 'in', out: 'yes' }
+            : {
+                nodes: [
+                  { id: 'x', type: 'loop', label: 'x', maxIterations: 2 } as CorralNode,
+                  agent('w', 'p', 'x'),
+                  rule('d', 'w', 'x'),
+                ],
+                into: 'enter',
+                out: 'next',
+              };
+      return team(
+        [
+          agent('p'),
+          rule('a', 'p'),
+          rule('b', 'p'),
+          ...x.nodes,
+          { id: 'k', type: 'join', label: 'k', policy: 'any' } as CorralNode,
+          { id: 'j', type: 'join', label: 'j', policy: 'all' } as CorralNode,
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'a'),
+          edge('p', 'out', 'b'),
+          edge('a', 'yes', 'x', x.into),
+          edge('a', 'no', 'k'),
+          edge('b', 'yes', 'k'),
+          edge('b', 'no', 'j'),
+          edge('k', 'out', 'x', x.into),
+          ...(kind === 'loop'
+            ? [
+                edge('x', 'body', 'w'),
+                edge('w', 'out', 'd'),
+                edge('d', 'yes', 'x', 'exit'),
+                edge('d', 'no', 'x', 'repeat'),
+              ]
+            : []),
+          edge('x', x.out, 'j'),
+          edge('j', 'out', 'm'),
+          edge('m', 'out', 'output'),
+        ],
+      );
+    };
+
+    it.each(['agent', 'decision', 'loop'] as const)('refuses it at the %s', (kind) => {
+      expect(errors(reentered(kind)).map((d) => [d.code, d.nodeId])).toEqual([
+        ['PARALLEL_MIXED_ENTRY', 'x'],
+      ]);
+    });
+
+    it('refuses a step of a branch that is also reached from before the fan-out', () => {
+      // p → d; d.yes → f → [a, b] → Join j → m → output; d.no → a, past the fan-out.
+      const definition = team(
+        [
+          agent('p'),
+          rule('d', 'p'),
+          agent('f', 'p'),
+          agent('a', 'p'),
+          agent('b', 'p'),
+          { id: 'j', type: 'join', label: 'j', policy: 'all' } as CorralNode,
+          agent('m', 'p'),
+          output('m'),
+        ],
+        [
+          edge('p', 'out', 'd'),
+          edge('d', 'yes', 'f'),
+          edge('d', 'no', 'a'),
+          edge('f', 'out', 'a'),
+          edge('f', 'out', 'b'),
+          edge('a', 'out', 'j'),
+          edge('b', 'out', 'j'),
+          edge('j', 'out', 'm'),
+          edge('m', 'out', 'output'),
+        ],
+      );
+      expect(errors(definition).map((d) => [d.code, d.nodeId])).toEqual([
+        ['PARALLEL_MIXED_ENTRY', 'a'],
+      ]);
+    });
+
+    it('does not start such a run', async () => {
+      const { runId, receipt } = await runtime({}).startRun({
+        schemaVersion: '0.1',
+        commandId: `cmd_${++n}`,
+        definition: reentered('loop'),
+        mode: 'mock',
+      });
+      expect(runId).toBeNull();
+      expect(receipt.error?.code).toBe('GRAPH_INVALID');
+    });
+
+    it('accepts two routes of one branch into one place, and the way on from a Join', () => {
+      // a.yes → x and a.no → y → x are one branch; k's way on to n is after the Join only.
+      const definition = team(
+        [
+          agent('p'),
+          rule('a', 'p'),
+          agent('b', 'p'),
+          agent('x', 'p'),
+          agent('y', 'p'),
+          { id: 'k', type: 'join', label: 'k', policy: 'all' } as CorralNode,
+          agent('n', 'p'),
+          output('n'),
+        ],
+        [
+          edge('p', 'out', 'a'),
+          edge('p', 'out', 'b'),
+          edge('a', 'yes', 'x'),
+          edge('a', 'no', 'y'),
+          edge('y', 'out', 'x'),
+          edge('x', 'out', 'k'),
+          edge('b', 'out', 'k'),
+          edge('k', 'out', 'n'),
+          edge('n', 'out', 'output'),
+        ],
+      );
+      expect(errors(definition)).toEqual([]);
+    });
+  });
+
   it('#190: accepts a Join of branches one of which already joined its own fan-out', () => {
     const inner: CorralNode = { id: 'k', type: 'join', label: 'k', policy: 'all' };
     const definition = forked('all', {

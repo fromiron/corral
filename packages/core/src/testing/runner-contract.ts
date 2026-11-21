@@ -182,6 +182,55 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
   });
 
   /**
+   * s → p → [ router d0 … ], each sending route a to Join j1 and route b to Join j2;
+   * j1 → q → output, j2 → r → final.
+   */
+  function twoJoins(width: number, first: 'all' | 'any', second: 'all' | 'any') {
+    const definition = linearCorral(['s', 'p', 'q', 'r']);
+    const ids = Array.from({ length: width }, (_, i) => `d${i}`);
+    for (const node of definition.nodes)
+      if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 's')
+        node.inputBindings = [
+          { kind: 'task_output', name: 'input', sourceNodeId: node.id === 'p' ? 's' : 'p' },
+        ];
+    for (const node of definition.nodes)
+      if (node.type === 'output')
+        node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'q' }];
+    definition.nodes.push(
+      ...ids.map((id) => ({
+        id,
+        type: 'decision' as const,
+        label: id,
+        mode: 'router' as const,
+        routes: ['a', 'b'].map((route) => ({ id: route, label: route })),
+        inputBindings: [{ kind: 'task_output' as const, name: 'input', sourceNodeId: 'p' }],
+      })),
+      { id: 'j1', type: 'join', label: 'j1', policy: first },
+      { id: 'j2', type: 'join', label: 'j2', policy: second },
+      {
+        id: 'final',
+        type: 'output',
+        label: 'final',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'r' }],
+        requireApproval: false,
+      },
+    );
+    definition.controlEdges = [
+      link('sp', 's', 'out', 'p', 'in'),
+      ...ids.flatMap((id) => [
+        link(`p${id}`, 'p', 'out', id, 'in'),
+        link(`${id}a`, id, 'a', 'j1', 'in'),
+        link(`${id}b`, id, 'b', 'j2', 'in'),
+      ]),
+      link('j1q', 'j1', 'out', 'q', 'in'),
+      link('qo', 'q', 'out', 'output', 'in'),
+      link('j2r', 'j2', 'out', 'r', 'in'),
+      link('rf', 'r', 'out', 'final', 'in'),
+    ];
+    return planOf(definition);
+  }
+
+  /**
    * s → Loop l [ p → [ router d, router e ] → Join j (any) → router f → output ], with f's
    * again: l.repeat, leave: l.exit; l.next → q → final. d's `inconclusive` route has no edge.
    */
@@ -773,6 +822,32 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       };
       await expect(makeRunner().run(roundInBranches(), callbacks)).rejects.toThrow('policy failed');
       expect(log).toContain('leave l#1 inconclusive');
+    });
+
+    // "출력 포트 하나의 분기를 모으는 all Join은 하나다": with at most one all Join on a port,
+    // every way the branches can choose between the two Joins ends the run.
+    describe.each([2, 3])('two Joins that gather a fan-out of %i', (width) => {
+      const choices = Array.from({ length: 2 ** width }, (_, n) =>
+        Array.from({ length: width }, (_, i) => ((n >> i) & 1 ? 'b' : 'a')),
+      );
+
+      it.each([
+        ['all', 'any'],
+        ['any', 'all'],
+        ['any', 'any'],
+      ] as const)('end the run whatever the branches choose: %s and %s', async (first, second) => {
+        for (const choice of choices) {
+          const { callbacks } = recorder(
+            Object.fromEntries(choice.map((route, i) => [`d${i}`, [route]])),
+          );
+          const result = await makeRunner().run(twoJoins(width, first, second), callbacks);
+          expect([choice.join(''), result.kind]).toEqual([choice.join(''), 'finished']);
+        }
+      });
+
+      it('are refused when both are all Joins', () => {
+        expect(() => twoJoins(width, 'all', 'all')).toThrow(/JOIN_SPLIT/);
+      });
     });
 
     it('drops a stopped branch whose Decision comes back inconclusive after the Join', async () => {
