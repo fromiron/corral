@@ -292,8 +292,9 @@ test('a reviewer without the criteria is flagged, and one click gives it them (#
   ).toHaveValue('검토');
   await settings(page).getByRole('button', { name: 'Add a criteria input', exact: true }).click();
   await expect(noProblems(page)).toBeVisible();
+  // The criteria are their own material, apart from the team request.
   await expect(settings(page).getByRole('group', { name: 'Receives', exact: true })).toContainText(
-    'Team request',
+    'Completion criteria',
   );
   await settings(page)
     .getByRole('button', { name: 'Other kinds of material', exact: true })

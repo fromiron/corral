@@ -22,7 +22,14 @@ function template(id: TeamTemplateId, duty?: string) {
         { name: key, duty: duty ?? `Work on ${key}.\nPrivate details.` },
       ]),
     ),
-    labels: { loop: 'Review loop', decision: 'Verdict', join: 'Gather', output: 'Report' },
+    labels: {
+      loop: 'Review loop',
+      decision: 'Verdict',
+      verifyLoop: 'Verification loop',
+      verifyDecision: 'Check',
+      join: 'Gather',
+      output: 'Report',
+    },
   });
 }
 
@@ -76,7 +83,7 @@ const button = (name: string | RegExp) => screen.getByRole('button', { name });
 
 describe('Team composition rows', () => {
   it('reads the request, rounds, seat duty, decisions and bound submitter without numbering steps', async () => {
-    const d = template('plan-implement-review');
+    const d = template('feature');
     const worker = d.nodes.find((n) => n.id === 'implement');
     if (!worker || !isWorkAgent(worker)) throw new Error('Expected implementer');
     worker.stepInstruction = 'Write the report.\nKeep these details in settings.';
@@ -86,14 +93,14 @@ describe('Team composition rows', () => {
     expect(row(button(/^Request\b/)).getByText('Prepare a report.')).toBeVisible();
     expect(row(button(/^Request\b/)).getByText('2 completion criteria')).toBeVisible();
     expect(ids()).toEqual([
-      'plan',
+      'design',
       'review_loop',
       'implement',
-      'review',
+      'verify',
       'review_decision',
       'output',
     ]);
-    expect(node('plan')).toHaveTextContent('Work on plan.');
+    expect(node('design')).toHaveTextContent('Work on design.');
     expect(node('implement')).toHaveTextContent('Write the report.');
     expect(node('implement')).toHaveTextContent(/draft$/);
     expect(node('implement')).not.toHaveTextContent('Work on implement');
@@ -116,19 +123,19 @@ describe('Team composition rows', () => {
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
     expect(screen.queryByText(/^\d+[.)]?$/)).not.toBeInTheDocument();
-    await userEvent.click(button('Collapse Review loop'));
+    await userEvent.click(button('Collapse Verification loop'));
     expect(props.onToggle).toHaveBeenCalledWith('review_loop');
     update({ collapsed: new Set(['review_loop']) });
-    expect(ids()).toEqual(['plan', 'review_loop', 'output']);
-    expect(button('Expand Review loop')).toHaveAttribute('aria-expanded', 'false');
+    expect(ids()).toEqual(['design', 'review_loop', 'output']);
+    expect(button('Expand Verification loop')).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('summarizes a drafted role by its duty sentence but keeps the whole request line', () => {
     const duty = '브리프에 필요한 사실과 출처를 모아 노트로 정리한다.';
-    const d = template('plan-implement-review', duty);
+    const d = template('feature', duty);
     d.input.brief = 'Prepare a report. Include sources.\nInternal details.';
     setup(d);
-    expect(within(node('plan')).getByText(duty)).toBeVisible();
+    expect(within(node('design')).getByText(duty)).toBeVisible();
     expect(row(button(/^Request\b/)).getByText('Prepare a report. Include sources.')).toBeVisible();
   });
 
@@ -150,7 +157,7 @@ describe('Team composition rows', () => {
   });
 
   it('summarizes a step instruction instead of its base prompt', () => {
-    const d = template('plan-implement-review');
+    const d = template('feature');
     const worker = d.nodes.find((n) => n.id === 'implement');
     assert(worker && isWorkAgent(worker));
     worker.stepInstruction = 'Revise v1.2. Keep exact sources.';
@@ -158,9 +165,9 @@ describe('Team composition rows', () => {
     expect(within(node('implement')).getByText('Revise v1.2.')).toBeVisible();
   });
 
-  it('groups the parallel reviews but not the join; offers the new producer without relabelling the output', async () => {
-    const d = template('parallel-review');
-    const source = d.nodes.find((n) => n.id === 'security');
+  it('groups the parallel challenges but not the join; offers the new producer without relabelling the output', async () => {
+    const d = template('adversarial-review');
+    const source = d.nodes.find((n) => n.id === 'attack_b');
     assert(source);
     const offer = {
       source,
@@ -169,12 +176,12 @@ describe('Team composition rows', () => {
     };
     setup(d, { resultOffer: offer });
     const group = screen.getByRole('list', { name: 'In parallel' });
-    expect(ids(group)).toEqual(['correctness', 'security']);
-    expect(ids()).toEqual(['scope', 'correctness', 'security', 'gather', 'synthesis', 'output']);
-    expect(node('output')).toHaveTextContent('draft · synthesis');
-    expect(row(node('security')).getAllByRole('button')).toHaveLength(2);
+    expect(ids(group)).toEqual(['attack_a', 'attack_b']);
+    expect(ids()).toEqual(['scope', 'attack_a', 'attack_b', 'gather', 'verdict', 'output']);
+    expect(node('output')).toHaveTextContent('draft · verdict');
+    expect(row(node('attack_b')).getAllByRole('button')).toHaveLength(2);
     await userEvent.click(
-      row(node('security')).getByRole('button', { name: 'Use this step’s result' }),
+      row(node('attack_b')).getByRole('button', { name: 'Use this step’s result' }),
     );
     expect(offer.apply).toHaveBeenCalledOnce();
     expect(offer.dismiss).toHaveBeenCalledOnce();
@@ -216,16 +223,16 @@ describe('Team composition rows', () => {
   });
 
   it('reads the review beside only its result, the loop ending and the shared advice modes', () => {
-    const d = template('plan-implement-review');
+    const d = template('feature');
     const out = d.nodes.find((n) => n.type === 'output');
     assert(out);
-    out.inputBindings.push({ kind: 'task_output', name: 'notes', sourceNodeId: 'plan' });
+    out.inputBindings.push({ kind: 'task_output', name: 'notes', sourceNodeId: 'design' });
     out.requiredReviews = [
       {
         bindingName: 'draft',
         sourceNodeId: 'implement',
         loopNodeId: 'review_loop',
-        reviewerNodeId: 'review',
+        reviewerNodeId: 'verify',
         decisionNodeId: 'review_decision',
       },
     ];
@@ -238,7 +245,7 @@ describe('Team composition rows', () => {
     };
     setup(d);
     expect(node('output')).toHaveAccessibleDescription(
-      'draft · implement · Submit after review passes · notes · plan',
+      'draft · implement · Submit after review passes · notes · design',
     );
     expect(node('review_loop')).toHaveAccessibleDescription(
       'up to 2 rounds · No final submission if it does not pass',
@@ -249,14 +256,14 @@ describe('Team composition rows', () => {
   });
 
   it('shows named outputs individually, including unconnected outputs, and links a disconnected seat to the graph', async () => {
-    const d = template('parallel-review');
+    const d = template('adversarial-review');
     const output = d.nodes.find((n) => n.type === 'output');
     assert(output);
     output.label = 'Output';
     output.inputBindings.push({
       kind: 'task_output',
       name: 'findings',
-      sourceNodeId: 'correctness',
+      sourceNodeId: 'attack_a',
     });
     // Disconnected output with *stored* bindings: it cannot receive those results.
     d.nodes.push({ ...output, id: 'unused', label: 'Appendix' });
@@ -278,14 +285,14 @@ describe('Team composition rows', () => {
     expect(props.onShowInGraph).toHaveBeenCalledWith('library');
     expect(node('output')).toHaveAccessibleName('Final result · Output');
     expect(node('unused')).toHaveAccessibleName('Final result · Appendix');
-    expect(node('output')).toHaveTextContent('draft · synthesis');
-    expect(node('output')).toHaveTextContent('findings · correctness');
+    expect(node('output')).toHaveTextContent('draft · verdict');
+    expect(node('output')).toHaveTextContent('findings · attack_a');
     expect(node('unused')).toHaveTextContent('Choose a result');
-    expect(node('unused')).not.toHaveTextContent('synthesis');
+    expect(node('unused')).not.toHaveTextContent('verdict');
   });
 
   it('shows one localized issue per seat, errors before warnings, and opens the correction and problem list', async () => {
-    const { props } = setup(template('parallel-review'), {
+    const { props } = setup(template('adversarial-review'), {
       diagnostics: [
         {
           code: 'REVIEW_WITHOUT_CRITERIA',
@@ -312,24 +319,24 @@ describe('Team composition rows', () => {
 
   it('moves one tabstop without selecting, reaches row actions, and ignores IME Enter and Delete', async () => {
     const user = userEvent.setup();
-    const { props, update } = setup(template('plan-implement-review'));
+    const { props, update } = setup(template('feature'));
     await user.tab();
     expect(button(/^Request\b/)).toHaveFocus();
     await user.keyboard('{ArrowDown}');
-    expect(node('plan')).toHaveFocus();
+    expect(node('design')).toHaveFocus();
     expect(props.onNode).not.toHaveBeenCalled();
-    expect(fireEvent.keyDown(node('plan'), { key: 'Enter', isComposing: true })).toBe(false);
+    expect(fireEvent.keyDown(node('design'), { key: 'Enter', isComposing: true })).toBe(false);
     expect(props.onNode).not.toHaveBeenCalled();
     await user.keyboard('{Enter}');
-    expect(props.onNode).toHaveBeenCalledWith('plan');
-    update({ selection: { nodes: ['plan'], edge: null } });
-    fireEvent.keyDown(node('plan'), { key: 'Delete', keyCode: 229 });
+    expect(props.onNode).toHaveBeenCalledWith('design');
+    update({ selection: { nodes: ['design'], edge: null } });
+    fireEvent.keyDown(node('design'), { key: 'Delete', keyCode: 229 });
     expect(props.onDelete).not.toHaveBeenCalled();
     await user.keyboard('{Delete}');
-    expect(props.onDelete).toHaveBeenCalledWith(['plan']);
+    expect(props.onDelete).toHaveBeenCalledWith(['design']);
     // The fold control leads its row, as in the flow graph's outline.
     await user.keyboard('{ArrowDown}{ArrowLeft}');
-    expect(button('Collapse Review loop')).toHaveFocus();
+    expect(button('Collapse Verification loop')).toHaveFocus();
     await user.keyboard('{Enter}');
     expect(props.onToggle).toHaveBeenCalledWith('review_loop');
     expect(
@@ -344,7 +351,7 @@ describe('Team composition rows', () => {
   it.each([false, true])(
     'makes adding the first agent the empty state action, including an output-only draft (%s)',
     async (keepOutput) => {
-      const base = template('parallel-review');
+      const base = template('adversarial-review');
       const d = {
         ...base,
         nodes: keepOutput ? base.nodes.filter((n) => n.type === 'output') : [],

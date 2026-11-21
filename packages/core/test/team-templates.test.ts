@@ -1,13 +1,18 @@
 import {
+  AgentRole,
   type CorralDefinition,
   CorralDefinition as Definition,
   isWorkAgent,
   type RunEvent,
+  type WorkTool,
 } from '@corral/contracts';
 import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
   autoDefinition,
+  BUILTIN_AGENTS,
+  BUILTIN_SKILLS,
+  builtinSkillName,
   CHANGE_TOOLS,
   Coordinator,
   compileDefinition,
@@ -28,11 +33,14 @@ import {
   waitForProjection,
 } from '../src/index.ts';
 
-// The library's templates built from role presets (docs/specs/features/library.md).
+// The library's templates built from the built-in agents (docs/specs/features/library.md,
+// docs/specs/features/builtin-crew.md).
 
 const labels = {
   loop: 'Review loop',
   decision: 'Review decision',
+  verifyLoop: 'Verification loop',
+  verifyDecision: 'Verification decision',
   join: 'Gather',
   output: 'Output',
 };
@@ -57,86 +65,167 @@ function wording<T extends TeamTemplateId>(id: T): TeamTemplateWording<T> {
 const build = (id: TeamTemplateId, corralId = `${id.replaceAll('-', '_')}_1`) =>
   teamTemplate(id, corralId, wording(id));
 
-const changing = (definition: CorralDefinition) =>
+const FILE_CHANGES = ['write_file', 'delete_file', 'move_file'] as const;
+const COMMANDS = ['run_command', 'preview_action'] as const;
+const holding = (definition: CorralDefinition, tools: readonly WorkTool[]) =>
   definition.roles
-    .filter((role) => role.allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never)))
-    .map((role) => role.id)
-    .sort();
+    .filter((role) => role.allowedWorkTools.some((tool) => tools.includes(tool)))
+    .map((role) => role.id);
+const agentOf = (id: string) => {
+  const agent = BUILTIN_AGENTS.find((candidate) => candidate.id === id);
+  if (!agent) throw new Error(`no agent ${id}`);
+  return agent;
+};
+const skillNames = (role: AgentRole) => (role.skills ?? []).map((ref) => builtinSkillName(ref));
+const READ_NOTE =
+  ' When the session has a working copy, read the files with the file tools before relying on them.';
+const CHANGE_NOTE =
+  ' Make the changes with the file tools, and say what you changed and how you checked it.';
 
 describe('role presets', () => {
-  it('are the eight the library names', () => {
+  it('are the ten built-in agents, in the order the spec lists them', () => {
     expect([...ROLE_PRESET_IDS]).toEqual([
-      'implement',
-      'plan',
-      'review',
-      'investigate',
-      'correctness_review',
-      'security_review',
-      'research',
-      'write',
+      'architect',
+      'builder',
+      'investigator',
+      'reviewer',
+      'adversary',
+      'verifier',
+      'judge',
+      'explainer',
+      'researcher',
+      'writer',
     ]);
-    expect(Object.keys(ROLE_PRESETS).sort()).toEqual([...ROLE_PRESET_IDS].sort());
+    expect([...ROLE_PRESET_IDS].sort()).toEqual(BUILTIN_AGENTS.map((agent) => agent.id).sort());
+    expect(Object.keys(ROLE_PRESETS)).toEqual([...ROLE_PRESET_IDS]);
   });
 
-  it('give file and command tools to the implement preset alone', () => {
-    const writers = ROLE_PRESET_IDS.filter((id) =>
-      ROLE_PRESETS[id].allowedWorkTools.some((tool) => CHANGE_TOOLS.includes(tool as never)),
-    );
-    expect(writers).toEqual(['implement']);
-    for (const tool of CHANGE_TOOLS)
-      expect(ROLE_PRESETS.implement.allowedWorkTools).toContain(tool);
-    // Every preset reads the working copy and writes its result as an artifact.
-    for (const id of ROLE_PRESET_IDS) {
-      expect(ROLE_PRESETS[id].allowedWorkTools).toEqual(
-        expect.arrayContaining(['write_artifact', 'list_files', 'read_file']),
+  it.each(ROLE_PRESET_IDS)(
+    '%s takes its tools, output, model slot and skills from the agent',
+    (id) => {
+      const agent = agentOf(id);
+      const role = roleFromPreset(id, `${id}_seat`, `${id} name`);
+      expect(AgentRole.parse(role)).toEqual(role);
+      expect(role).toMatchObject({
+        id: `${id}_seat`,
+        name: `${id} name`,
+        allowedWorkTools: [...agent.workTools],
+        allowedCollaborationTools: [...agent.collaborationTools],
+        outputContract: agent.outputContract,
+        modelProfile: agent.modelSlot === 'b' ? 'model-b' : 'model-a',
+      });
+      // The generated refs without their names: a role's skill is a hash and an entry.
+      expect(role.skills).toEqual(
+        agent.skills.map(({ resourceHash, entry }) => ({ resourceHash, entry })),
       );
-      expect(ROLE_PRESETS[id].allowedCollaborationTools).toContain('submit_result');
-    }
-  });
+      expect(role).not.toHaveProperty('origin');
+      expect(role).not.toHaveProperty('harness');
+    },
+  );
 
-  it('fix the output contract and model slot; reviews judge on the second model', () => {
-    const contracts = Object.fromEntries(
-      ROLE_PRESET_IDS.map((id) => [
-        id,
-        [ROLE_PRESETS[id].outputContract, ROLE_PRESETS[id].modelProfile],
-      ]),
+  it.each(ROLE_PRESET_IDS)(
+    '%s: the base instruction is the agent body, then the common rules',
+    (id) => {
+      const role = roleFromPreset(id, id, id);
+      const writes = agentOf(id).workTools.includes('write_file');
+      expect(role.prompt).toBe(
+        `${agentOf(id).prompt}\n\n${ROLE_RULES}${READ_NOTE}${writes ? CHANGE_NOTE : ''}`,
+      );
+    },
+  );
+
+  it('tells only an agent that changes files to make its changes with the file tools', () => {
+    // Running commands is not changing files: the investigator, adversary, verifier and
+    // explainer run commands and leave the working copy alone.
+    const told = ROLE_PRESET_IDS.filter((id) =>
+      roleFromPreset(id, id, id).prompt.includes(CHANGE_NOTE),
     );
-    expect(contracts).toEqual({
-      implement: ['draft', 'model-a'],
-      plan: ['notes', 'model-a'],
-      review: ['review', 'model-b'],
-      investigate: ['notes', 'model-a'],
-      correctness_review: ['review', 'model-b'],
-      security_review: ['review', 'model-b'],
-      research: ['notes', 'model-a'],
-      write: ['draft', 'model-a'],
-    });
+    expect(told).toEqual(['builder']);
+    for (const id of ['investigator', 'adversary', 'verifier', 'explainer'] as const)
+      expect(roleFromPreset(id, id, id).allowedWorkTools).toContain('run_command');
   });
 
-  it('takes the screen-language name without needing a duty', () => {
-    const role = roleFromPreset('security_review', 'security', '보안 검토');
-    expect(role).toMatchObject({
-      id: 'security',
-      name: '보안 검토',
-      modelProfile: 'model-b',
-      outputContract: 'review',
+  it('a seat adds a built-in skill by name and another model slot, and nothing else', () => {
+    const plain = roleFromPreset('builder', 'pin', 'Pin');
+    const pinned = roleFromPreset('builder', 'pin', 'Pin', { skills: ['behavior-pin'] });
+    expect(skillNames(pinned)).toEqual([...skillNames(plain), 'behavior-pin']);
+    // A skill the agent already names is not listed twice.
+    expect(roleFromPreset('verifier', 'v', 'V', { skills: ['measure-first'] }).skills).toEqual(
+      roleFromPreset('verifier', 'v', 'V').skills,
+    );
+    const second = roleFromPreset('adversary', 'attack_b', 'B', { modelProfile: 'model-b' });
+    expect(second.modelProfile).toBe('model-b');
+    expect({ ...second, modelProfile: 'model-a', id: 'x' }).toEqual({
+      ...roleFromPreset('adversary', 'attack_b', 'B'),
+      id: 'x',
     });
-    expect(role.prompt).toContain(ROLE_RULES);
-    // The table is data: a role made from it never shares its tool lists.
+    expect(() => roleFromPreset('builder', 'x', 'X', { skills: ['no-such-skill'] })).toThrow(
+      /no-such-skill/,
+    );
+  });
+
+  it('a role made from a preset never shares its lists', () => {
+    const role = roleFromPreset('reviewer', 'review', '검토');
     role.allowedWorkTools.push('write_file');
-    expect(ROLE_PRESETS.security_review.allowedWorkTools).not.toContain('write_file');
+    role.skills?.pop();
+    expect(ROLE_PRESETS.reviewer.allowedWorkTools).not.toContain('write_file');
+    expect(roleFromPreset('reviewer', 'review', '검토').skills).toHaveLength(
+      agentOf('reviewer').skills.length,
+    );
+  });
+
+  it('names a built-in skill from its ref, and nothing else', () => {
+    for (const skill of BUILTIN_SKILLS)
+      expect(builtinSkillName({ resourceHash: skill.resourceHash, entry: skill.entry })).toBe(
+        skill.name,
+      );
+    const [first] = BUILTIN_SKILLS;
+    expect(builtinSkillName({ resourceHash: 'f'.repeat(64), entry: first?.entry ?? '' })).toBe(
+      null,
+    );
   });
 });
 
 describe('team templates', () => {
-  it('are the five the library adds, in its order', () => {
+  it('are the eight built from the agents, in the library’s order', () => {
     expect([...TEAM_TEMPLATE_IDS]).toEqual([
       'implement-review',
-      'plan-implement-review',
+      'feature',
       'bug-fix',
-      'parallel-review',
+      'refactor',
+      'performance',
+      'adversarial-review',
       'tech-decision',
+      'code-investigation',
     ]);
+  });
+
+  it('seat each role id with the agent library.md names', () => {
+    expect(TEAM_TEMPLATE_ROLES).toEqual({
+      'implement-review': { implement: 'builder', review: 'reviewer' },
+      feature: { design: 'architect', implement: 'builder', verify: 'verifier' },
+      'bug-fix': { investigate: 'investigator', fix: 'builder', verify: 'verifier' },
+      refactor: { pin: 'builder', reshape: 'builder', verify: 'verifier' },
+      performance: { baseline: 'investigator', improve: 'builder', measure: 'verifier' },
+      'adversarial-review': {
+        scope: 'explainer',
+        attack_a: 'adversary',
+        attack_b: 'adversary',
+        verdict: 'judge',
+      },
+      'tech-decision': {
+        frame: 'architect',
+        option_a: 'researcher',
+        option_b: 'researcher',
+        decide: 'judge',
+      },
+      'code-investigation': {
+        scope: 'explainer',
+        trace: 'explainer',
+        history: 'explainer',
+        write: 'writer',
+      },
+    });
   });
 
   it.each(TEAM_TEMPLATE_IDS)('%s passes strict compile without a diagnostic', (id) => {
@@ -148,51 +237,150 @@ describe('team templates', () => {
     expect(planRun(definition).ok).toBe(true);
   });
 
+  // library.md: the seats that change files and the seats that run commands, per template.
   it.each([
-    ['implement-review', ['implement']],
-    ['plan-implement-review', ['implement']],
-    ['bug-fix', ['fix']],
-    ['parallel-review', []],
-    ['tech-decision', []],
-  ] as const)('%s gives the change tools only to %j', (id, roles) => {
+    ['implement-review', ['implement'], ['implement']],
+    ['feature', ['implement'], ['implement', 'verify']],
+    ['bug-fix', ['fix'], ['investigate', 'fix', 'verify']],
+    ['refactor', ['pin', 'reshape'], ['pin', 'reshape', 'verify']],
+    ['performance', ['improve'], ['baseline', 'improve', 'measure']],
+    ['adversarial-review', [], ['scope', 'attack_a', 'attack_b']],
+    ['tech-decision', [], []],
+    ['code-investigation', [], ['scope', 'trace', 'history']],
+  ] as const)('%s: only %j change files and only %j run commands', (id, files, commands) => {
     const definition = build(id);
-    expect(changing(definition)).toEqual([...roles]);
+    expect(holding(definition, FILE_CHANGES)).toEqual([...files]);
+    expect(holding(definition, COMMANDS)).toEqual([...commands]);
     for (const role of definition.roles) {
-      const changes = (roles as readonly string[]).includes(role.id);
-      for (const tool of CHANGE_TOOLS) expect(role.allowedWorkTools.includes(tool)).toBe(changes);
+      for (const tool of FILE_CHANGES)
+        expect([role.id, tool, role.allowedWorkTools.includes(tool)]).toEqual([
+          role.id,
+          tool,
+          (files as readonly string[]).includes(role.id),
+        ]);
+      for (const tool of COMMANDS)
+        expect([role.id, tool, role.allowedWorkTools.includes(tool)]).toEqual([
+          role.id,
+          tool,
+          (commands as readonly string[]).includes(role.id),
+        ]);
     }
-    expect(isReadOnlyTeam(definition)).toBe(roles.length === 0);
+    expect(isReadOnlyTeam(definition)).toBe(files.length + commands.length === 0);
+  });
+
+  it.each(TEAM_TEMPLATE_IDS)('%s takes each role from its agent', (id) => {
+    const definition = build(id);
+    const seats = TEAM_TEMPLATE_ROLES[id] as Record<string, RolePresetId>;
+    expect(definition.roles.map((role) => role.id)).toEqual(Object.keys(seats));
+    for (const role of definition.roles) {
+      const agent = agentOf(seats[role.id] as string);
+      expect(role.allowedWorkTools).toEqual([...agent.workTools]);
+      expect(role.allowedCollaborationTools).toEqual([...agent.collaborationTools]);
+      expect(role.outputContract).toBe(agent.outputContract);
+      expect(role.prompt.startsWith(`${agent.prompt}\n\n${ROLE_RULES}`)).toBe(true);
+      expect(role).not.toHaveProperty('origin');
+      expect(role).not.toHaveProperty('harness');
+    }
   });
 
   it.each(TEAM_TEMPLATE_IDS)('%s keeps each template duty on its seat', (id) => {
     const definition = build(id);
-    const presets: Record<string, RolePresetId> = TEAM_TEMPLATE_ROLES[id];
     const seats = definition.nodes.filter(isWorkAgent);
     expect(seats.map((node) => [node.roleId, node.stepInstruction])).toEqual(
-      Object.keys(presets).map((slot) => [slot, `Do the ${slot} part.`]),
+      Object.keys(TEAM_TEMPLATE_ROLES[id]).map((slot) => [slot, `Do the ${slot} part.`]),
     );
-    const readNote =
-      ' When the session has a working copy, read the files with the file tools before relying on them.';
-    const changeNote =
-      ' Make the changes with the file tools, and say what you changed and how you checked it.';
-    for (const role of definition.roles) {
-      const notes = readNote + (presets[role.id] === 'implement' ? changeNote : '');
-      expect(role.prompt).toBe(ROLE_RULES + notes);
+    for (const role of definition.roles) expect(role.prompt).not.toContain(`${role.id} part`);
+  });
+
+  it('selects each agent’s skills, plus behavior-pin and measure-first where the seat needs them', () => {
+    const extra: Record<string, string[]> = {
+      'refactor/pin': ['behavior-pin'],
+      'refactor/reshape': ['behavior-pin'],
+      'performance/improve': ['measure-first'],
+    };
+    for (const id of TEAM_TEMPLATE_IDS) {
+      const seats = TEAM_TEMPLATE_ROLES[id] as Record<string, RolePresetId>;
+      for (const role of build(id).roles) {
+        const agent = agentOf(seats[role.id] as string);
+        expect([`${id}/${role.id}`, skillNames(role)]).toEqual([
+          `${id}/${role.id}`,
+          [...agent.skills.map((skill) => skill.name), ...(extra[`${id}/${role.id}`] ?? [])],
+        ]);
+      }
     }
   });
 
-  it.each(TEAM_TEMPLATE_IDS)('%s takes each role from its preset', (id) => {
-    const definition = build(id);
-    const presets = TEAM_TEMPLATE_ROLES[id] as Record<string, RolePresetId>;
-    expect(definition.roles.map((role) => role.id)).toEqual(Object.keys(presets));
-    for (const role of definition.roles) {
-      const preset = ROLE_PRESETS[presets[role.id] as RolePresetId];
-      expect(role.allowedWorkTools).toEqual([...preset.allowedWorkTools]);
-      expect(role.allowedCollaborationTools).toEqual([...preset.allowedCollaborationTools]);
-      expect(role.outputContract).toBe(preset.outputContract);
-      expect(role.modelProfile).toBe(preset.modelProfile);
-    }
+  it('puts the second of two side-by-side seats on the second model', () => {
+    const models = (id: TeamTemplateId) =>
+      Object.fromEntries(build(id).roles.map((role) => [role.id, role.modelProfile]));
+    expect(models('adversarial-review')).toEqual({
+      scope: 'model-a',
+      attack_a: 'model-a',
+      attack_b: 'model-b',
+      verdict: 'model-b',
+    });
+    expect(models('tech-decision')).toEqual({
+      frame: 'model-a',
+      option_a: 'model-a',
+      option_b: 'model-b',
+      decide: 'model-b',
+    });
+    expect(models('code-investigation')).toEqual({
+      scope: 'model-a',
+      trace: 'model-a',
+      history: 'model-b',
+      write: 'model-a',
+    });
   });
+
+  it.each([
+    ['implement-review', 'implement', 'review', 'Review loop', 'Review decision'],
+    ['feature', 'implement', 'verify', 'Verification loop', 'Verification decision'],
+    ['bug-fix', 'fix', 'verify', 'Verification loop', 'Verification decision'],
+    ['refactor', 'reshape', 'verify', 'Verification loop', 'Verification decision'],
+    ['performance', 'improve', 'measure', 'Verification loop', 'Verification decision'],
+  ] as const)(
+    '%s: the Loop around %s is judged by %s, at most two rounds',
+    (id, worker, judge, loop, decision) => {
+      const definition = build(id);
+      const loops = definition.nodes.filter((node) => node.type === 'loop');
+      expect(loops).toEqual([expect.objectContaining({ label: loop, maxIterations: 2 })]);
+      const box = loops[0]?.id;
+      const inside = definition.nodes
+        .filter((node) => node.parentId === box)
+        .map((node) => node.id);
+      const decisionNode = definition.nodes.find((node) => node.type === 'decision');
+      expect(inside).toEqual([worker, judge, decisionNode?.id]);
+      expect(decisionNode).toMatchObject({
+        label: decision,
+        mode: 'review',
+        rule: 'review_verdict',
+        inputBindings: [{ kind: 'task_output', sourceNodeId: judge }],
+      });
+      // The worker revises from its own last round and the judge's last word.
+      const workerNode = definition.nodes.find((node) => node.id === worker);
+      expect(isWorkAgent(workerNode) && workerNode.inputBindings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ kind: 'previous_iteration_output', sourceNodeId: worker }),
+          expect.objectContaining({ kind: 'previous_iteration_output', sourceNodeId: judge }),
+        ]),
+      );
+      const judgeNode = definition.nodes.find((node) => node.id === judge);
+      expect(isWorkAgent(judgeNode) && judgeNode.inputBindings).toEqual(
+        expect.arrayContaining([
+          { kind: 'task_output', name: 'draft', sourceNodeId: worker },
+          { kind: 'run_input', name: 'criteria' },
+        ]),
+      );
+      // At the cap nobody is asked: `exhausted` goes where `next` goes.
+      const from = (port: string) =>
+        definition.controlEdges
+          .filter((edge) => edge.source === box && edge.sourcePort === port)
+          .map((edge) => edge.target);
+      expect(from('exhausted')).toEqual(from('next'));
+      expect(from('next')).toEqual(['output']);
+    },
+  );
 
   it('names the team, its roles, steps and inputs from the wording', () => {
     const definition = teamTemplate('bug-fix', 'bug_fix_1', {
@@ -203,9 +391,16 @@ describe('team templates', () => {
       roles: {
         investigate: { name: '원인 조사', duty: '원인을 찾습니다.' },
         fix: { name: '수정', duty: '원인을 고칩니다.' },
-        review: { name: '검토', duty: '수정을 검토합니다.' },
+        verify: { name: '검증', duty: '수정을 확인합니다.' },
       },
-      labels: { loop: '검토 루프', decision: '검토 판정', join: '모으기', output: '결과' },
+      labels: {
+        loop: '검토 루프',
+        decision: '검토 판정',
+        verifyLoop: '검증 루프',
+        verifyDecision: '검증 판정',
+        join: '모으기',
+        output: '결과',
+      },
     });
     expect(definition).toMatchObject({
       id: 'bug_fix_1',
@@ -215,31 +410,33 @@ describe('team templates', () => {
         criteria: ['원인을 근거와 함께 밝힙니다.'],
       },
     });
-    expect(definition.roles.map((role) => role.name)).toEqual(['원인 조사', '수정', '검토']);
+    expect(definition.roles.map((role) => role.name)).toEqual(['원인 조사', '수정', '검증']);
     expect(definition.nodes.find((node) => node.id === 'fix')).toMatchObject({
       stepInstruction: '원인을 고칩니다.',
     });
     const labelsOf = Object.fromEntries(definition.nodes.map((node) => [node.type, node.label]));
-    expect(labelsOf).toMatchObject({ loop: '검토 루프', decision: '검토 판정', output: '결과' });
+    expect(labelsOf).toMatchObject({ loop: '검증 루프', decision: '검증 판정', output: '결과' });
     expect(
       definition.nodes.filter((node) => node.type === 'agent').map((node) => node.label),
-    ).toEqual(['원인 조사', '수정', '검토']);
+    ).toEqual(['원인 조사', '수정', '검증']);
   });
 
   it('refuses wording that leaves a role unnamed', () => {
-    const { roles, ...rest } = wording('parallel-review');
-    const { synthesis: _, ...partial } = roles;
+    const { roles, ...rest } = wording('adversarial-review');
+    const { verdict: _, ...partial } = roles;
     expect(() =>
-      teamTemplate('parallel-review', 'p', { ...rest, roles: partial as typeof roles }),
-    ).toThrow(/synthesis/);
+      teamTemplate('adversarial-review', 'p', { ...rest, roles: partial as typeof roles }),
+    ).toThrow(/verdict/);
   });
 
   it('builds a new definition every time, so two copies share nothing', () => {
-    const one = build('parallel-review', 'one');
-    const two = build('parallel-review', 'two');
+    const one = build('adversarial-review', 'one');
+    const two = build('adversarial-review', 'two');
     expect(one.id).not.toBe(two.id);
     one.roles[0]?.allowedWorkTools.push('write_file');
+    one.roles[0]?.skills?.pop();
     expect(two.roles[0]?.allowedWorkTools).not.toContain('write_file');
+    expect(two.roles[0]?.skills).toHaveLength(agentOf('explainer').skills.length);
   });
 
   it('reads as read-only only when no role can change files or run commands', () => {
@@ -258,8 +455,8 @@ describe('team templates', () => {
   });
 });
 
-// Mock runs: the scripted adapter answers every step; a reviewer in a Loop sends the work back
-// in round 1 and passes after, unless the test scripts it otherwise.
+// Mock runs: the scripted adapter answers every step; a review-contract seat in a Loop sends the
+// work back in round 1 and passes after, unless the test scripts it otherwise.
 
 function runtime(held: Record<string, Gate> = {}, review?: () => string) {
   const clock = new FakeClock();
@@ -300,22 +497,57 @@ const live = (p: RunProjection, nodeId: string) =>
 const rounds = (p: RunProjection, loopId: string) =>
   (p.loopIterations[loopId] ?? []).map((id) => p.iterations[id]?.outcome);
 const finalized = (events: RunEvent[]) => events.filter((e) => e.type === 'output.finalized');
+const loopOf = (definition: CorralDefinition) =>
+  definition.nodes.find((node) => node.type === 'loop')?.id ?? '';
 
 describe('mock runs of the templates', () => {
+  // The browser demo has no harness resolver: roles that only select skills run without them.
+  it('starts a template whose roles select skills, with no resolver and no pinned harness', async () => {
+    const definition = build('feature');
+    for (const role of definition.roles) {
+      expect(role.skills?.length).toBeGreaterThan(0);
+      expect(role).not.toHaveProperty('harness');
+    }
+    const transport = runtime();
+    const { runId } = await start(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(ran(final, 'design')).toEqual(['succeeded']);
+  });
+
+  it('a saved team whose preset is no longer known still opens and runs', async () => {
+    const definition = build('implement-review');
+    const saved: CorralDefinition = {
+      ...definition,
+      roles: definition.roles.map((role) => ({
+        ...role,
+        origin: { kind: 'preset', presetId: role.id === 'review' ? 'review' : 'implement' },
+      })),
+    };
+    expect(Definition.parse(saved)).toEqual(saved);
+    expect(compileDefinition(saved).diagnostics).toEqual([]);
+    const transport = runtime();
+    const { runId } = await start(transport, saved);
+    expect((await waitForProjection(transport, runId, finished)).status).toBe('succeeded');
+  });
+
   it.each([
-    ['implement-review', 'implement'],
-    ['plan-implement-review', 'implement'],
-    ['bug-fix', 'fix'],
+    ['implement-review', 'implement', 'review'],
+    ['feature', 'implement', 'verify'],
+    ['bug-fix', 'fix', 'verify'],
+    ['refactor', 'reshape', 'verify'],
+    ['performance', 'improve', 'measure'],
   ] as const)(
-    '%s: the review sends %s back once, then passes, and the run reaches Output',
-    async (id, worker) => {
+    '%s: %s is sent back once by %s, then passes, and the run reaches Output',
+    async (id, worker, judge) => {
+      const definition = build(id);
       const transport = runtime();
-      const { runId, events } = await start(transport, build(id));
+      const { runId, events } = await start(transport, definition);
       const final = await waitForProjection(transport, runId, finished);
       expect(final.status).toBe('succeeded');
-      expect(rounds(final, 'review_loop')).toEqual(['revise', 'pass']);
+      expect(rounds(final, loopOf(definition))).toEqual(['revise', 'pass']);
       expect(ran(final, worker)).toEqual(['succeeded', 'succeeded']);
-      expect(ran(final, 'review')).toEqual(['succeeded', 'succeeded']);
+      expect(ran(final, judge)).toEqual(['succeeded', 'succeeded']);
       expect(finalized(events)).toHaveLength(1);
     },
   );
@@ -331,23 +563,26 @@ describe('mock runs of the templates', () => {
       fileTools: false,
     });
   it.each([
-    ['implement-review', () => build('implement-review'), 'implement'],
-    ['plan-implement-review', () => build('plan-implement-review'), 'implement'],
-    ['bug-fix', () => build('bug-fix'), 'fix'],
-    ['auto write_review', () => auto('write_review'), 'write'],
-    ['auto research_write_review', () => auto('research_write_review'), 'write'],
+    ['implement-review', () => build('implement-review'), 'implement', 'review'],
+    ['feature', () => build('feature'), 'implement', 'verify'],
+    ['bug-fix', () => build('bug-fix'), 'fix', 'verify'],
+    ['refactor', () => build('refactor'), 'reshape', 'verify'],
+    ['performance', () => build('performance'), 'improve', 'measure'],
+    ['auto write_review', () => auto('write_review'), 'write', 'review'],
+    ['auto research_write_review', () => auto('research_write_review'), 'write', 'review'],
   ] as const)(
-    '%s: a review that never passes ends with the last candidate, asking nobody',
-    async (_name, definition, worker) => {
+    '%s: a judge that never passes ends with the last candidate, asking nobody',
+    async (_name, definition, worker, judge) => {
+      const team = definition();
       const transport = runtime({}, () => 'revise');
-      const { runId, events } = await start(transport, definition());
+      const { runId, events } = await start(transport, team);
       const final = await waitForProjection(transport, runId, finished);
       expect(final.status).toBe('succeeded');
-      expect(rounds(final, 'review_loop')).toEqual(['revise', 'cap_reached']);
+      expect(rounds(final, loopOf(team))).toEqual(['revise', 'cap_reached']);
       expect(Object.keys(final.approvals)).toEqual([]);
       expect(events.some((e) => e.type === 'approval.requested')).toBe(false);
-      // The last review stays with the result.
-      expect(ran(final, 'review')).toEqual(['succeeded', 'succeeded']);
+      // The last judgement stays with the result.
+      expect(ran(final, judge)).toEqual(['succeeded', 'succeeded']);
       const last = final.nodeExecutions[worker]?.at(-1) ?? '';
       const candidate =
         final.tasks[final.executions[last]?.taskId ?? '']?.submittedArtifactVersionIds ?? [];
@@ -358,46 +593,37 @@ describe('mock runs of the templates', () => {
     },
   );
 
-  it('parallel-review: both reviews run at once and meet at the Join before the synthesis', async () => {
-    const correctness = new Gate();
-    const security = new Gate();
-    const transport = runtime({ correctness, security });
-    const { runId, events } = await start(transport, build('parallel-review'));
-    const both = await waitForProjection(
-      transport,
-      runId,
-      (p) => live(p, 'correctness') && live(p, 'security'),
-    );
-    expect(ran(both, 'synthesis')).toEqual([]);
-    security.open();
-    const half = await waitForProjection(transport, runId, (p) =>
-      ran(p, 'security').every((status) => status === 'succeeded'),
-    );
-    expect(ran(half, 'synthesis')).toEqual([]);
-    correctness.open();
-    const final = await waitForProjection(transport, runId, finished);
-    expect(final.status).toBe('succeeded');
-    expect(ran(final, 'synthesis')).toEqual(['succeeded']);
-    expect(events.flatMap((e) => (e.type === 'workflow.joined' ? [e.payload] : []))).toEqual([
-      { nodeId: 'gather', policy: 'all', iterationId: null, cancelledNodeIds: [] },
-    ]);
-    expect(finalized(events)).toHaveLength(1);
-  });
-
-  it('tech-decision: both research branches meet, and the comparison is the result without an approval', async () => {
-    const transport = runtime();
-    const { runId, events } = await start(transport, build('tech-decision'));
-    const final = await waitForProjection(
-      transport,
-      runId,
-      (p) => p.status === 'awaiting_user' || finished(p),
-    );
-    expect(final.status).toBe('succeeded');
-    expect(ran(final, 'research_a')).toEqual(['succeeded']);
-    expect(ran(final, 'research_b')).toEqual(['succeeded']);
-    expect(ran(final, 'compare')).toEqual(['succeeded']);
-    expect(events.filter((e) => e.type === 'workflow.joined')).toHaveLength(1);
-    expect(Object.values(final.approvals)).toEqual([]);
-    expect(finalized(events)).toHaveLength(1);
-  });
+  it.each([
+    ['adversarial-review', 'attack_a', 'attack_b', 'verdict'],
+    ['tech-decision', 'option_a', 'option_b', 'decide'],
+    ['code-investigation', 'trace', 'history', 'write'],
+  ] as const)(
+    '%s: %s and %s run at once and meet at the Join before %s',
+    async (id, first, second, after) => {
+      const one = new Gate();
+      const two = new Gate();
+      const transport = runtime({ [first]: one, [second]: two });
+      const { runId, events } = await start(transport, build(id));
+      const both = await waitForProjection(
+        transport,
+        runId,
+        (p) => live(p, first) && live(p, second),
+      );
+      expect(ran(both, after)).toEqual([]);
+      two.open();
+      const half = await waitForProjection(transport, runId, (p) =>
+        ran(p, second).every((status) => status === 'succeeded'),
+      );
+      expect(ran(half, after)).toEqual([]);
+      one.open();
+      const final = await waitForProjection(transport, runId, finished);
+      expect(final.status).toBe('succeeded');
+      expect(ran(final, after)).toEqual(['succeeded']);
+      expect(events.flatMap((e) => (e.type === 'workflow.joined' ? [e.payload] : []))).toEqual([
+        { nodeId: 'gather', policy: 'all', iterationId: null, cancelledNodeIds: [] },
+      ]);
+      expect(Object.values(final.approvals)).toEqual([]);
+      expect(finalized(events)).toHaveLength(1);
+    },
+  );
 });

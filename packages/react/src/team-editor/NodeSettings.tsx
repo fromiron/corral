@@ -300,6 +300,39 @@ function PromptField({
   );
 }
 
+// One or two sentences: two lines to start, four at most before it scrolls.
+const descriptionSize = '[&>textarea]:min-h-[calc(2lh+1rem)] [&>textarea]:max-h-[calc(4lh+1rem)]';
+
+/** What a saved agent does and when to use it: one or two sentences, optional. */
+function DescriptionField({
+  editor,
+  nodeId,
+  role,
+}: {
+  editor: EditorStore;
+  nodeId: string;
+  role: AgentRole;
+}) {
+  const t = useTranslations('Inspector');
+  const session = useEditSession(editor);
+  const id = useId();
+  return (
+    <div className="grid gap-1">
+      <label className="text-caption" htmlFor={id}>
+        {t('description')}
+      </label>
+      <Textarea
+        id={id}
+        value={role.description ?? ''}
+        maxLength={2000}
+        className={descriptionSize}
+        onChange={(e) => editor.getState().updateNode(nodeId, { description: e.target.value })}
+        {...session}
+      />
+    </div>
+  );
+}
+
 function RoleModel({
   editor,
   nodeId,
@@ -503,7 +536,10 @@ export function RoleForm({
         variant === 'seat' ? (
           <SeatInstructions editor={editor} draft={draft} nodeId={nodeId} role={role} />
         ) : (
-          <PromptField editor={editor} role={role} nodeId={nodeId} label={t('base')} />
+          <>
+            <DescriptionField editor={editor} role={role} nodeId={nodeId} />
+            <PromptField editor={editor} role={role} nodeId={nodeId} label={t('base')} />
+          </>
         )
       ) : null}
       {variant === 'seat' ? <Materials editor={editor} node={node} draft={draft} /> : null}
@@ -1256,8 +1292,14 @@ function Materials({
                 .map((n) => ({ value: n.id, label: t('previousMaterial', { producer: n.label }) }));
               break;
             case 'run_input':
-              label = request.label;
-              current = request.value;
+              // The team's criteria are their own material, not a second copy of the request.
+              if (binding.name === 'criteria') {
+                label = t('teamCriteria');
+                current = '@criteria';
+              } else {
+                label = request.label;
+                current = request.value;
+              }
               options = choices;
               break;
             case 'explicit_version':

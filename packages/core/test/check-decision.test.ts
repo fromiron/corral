@@ -92,6 +92,7 @@ function runtime(
     failing?: { nodeId: string; gate: Gate };
     /** An agent that waits at its gate before it goes on. */
     held?: { nodeId: string; gate: Gate };
+    runner?: CoordinatorDeps['runner'];
   } = {},
 ) {
   const clock = new FakeClock();
@@ -150,6 +151,7 @@ function runtime(
     timers: clock,
     store,
     ids: new SequentialIdFactory(),
+    ...(options.runner ? { runner: options.runner } : {}),
     agents: new ScriptedAgentAdapter({
       turns: 1,
       collaborate: false,
@@ -408,6 +410,107 @@ describe('check decision', () => {
       (e) => e.type === 'run.state_changed' && e.payload.to === 'cancelled',
     );
     expect(events.slice(end + 1).filter((e) => e.type.startsWith('execution.'))).toEqual([]);
+  });
+
+  // "병렬 실행": a check Decision stopped while its checks ran asks the person nothing.
+  it('asks nothing once a Join stopped the check while its checks ran', async () => {
+    const gate = new Gate();
+    let joinNow: () => Promise<void> = async () => {};
+    let branch: string | null | undefined;
+    const s = runtime(
+      {},
+      {
+        definition: parallel(),
+        held: { nodeId: 'check', gate },
+        runner: {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('p', null);
+            await callbacks.activate('w', null);
+            joinNow = () => callbacks.joined('j', null, [{ nodeId: 'check', iteration: null }], []);
+            branch = await callbacks.decide('check', null);
+            await callbacks.activate('m', null);
+            await callbacks.finalize('output');
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        },
+      },
+    );
+    const runId = await started(s);
+    await waitForProjection(s.transport, runId, (p) =>
+      attempts(p, 'check').some((e) => e.status === 'active'),
+    );
+    await joinNow();
+    gate.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+    expect(branch).toBeNull();
+    expect(attempts(final, 'check').map((e) => e.status)).toEqual(['cancelled']);
+    expect(Object.values(final.approvals).filter((a) => a.kind === 'check')).toEqual([]);
+  });
+
+  // "병렬 실행": a stopped check Decision makes no approved next attempt.
+  it('makes no approved next attempt once a Join stopped the check during its wait', async () => {
+    // A scripted runner: the check asks to run again; the person approves and the run pauses at
+    // once, so the check waits at its boundary; the Join that stops it is reported then, and the
+    // run resumes. Through the walker the other branch cannot reach the Join while paused.
+    let deciding: Promise<string | null> | null = null;
+    let joinNow: () => Promise<void> = async () => {};
+    const s = runtime(
+      { types: ['stale', 'pass'] },
+      {
+        definition: parallel(),
+        runner: {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('p', null);
+            await callbacks.activate('w', null);
+            deciding = callbacks.decide('check', null);
+            joinNow = () => callbacks.joined('j', null, [{ nodeId: 'check', iteration: null }], []);
+            const branch = await deciding;
+            if (branch !== null)
+              return { kind: 'failed', nodeId: 'check', reason: `took ${branch}` };
+            await callbacks.activate('m', null);
+            await callbacks.finalize('output');
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        },
+      },
+    );
+    const runId = await started(s);
+    const waiting = await waitForProjection(
+      s.transport,
+      runId,
+      (p) => pending(p)?.kind === 'check',
+    );
+    const approval = pending(waiting);
+    const submit = (type: 'pause' | 'resume') =>
+      s.coordinator.submit({
+        schemaVersion: '0.1',
+        commandId: `${type}_${Math.random()}`,
+        runId,
+        type,
+        payload: { scope: 'run' },
+      });
+    s.coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'approve_retry',
+      runId,
+      type: 'resolve_approval',
+      expectedControlRevision: waiting.controlRevision,
+      payload: {
+        approvalId: approval?.approvalId ?? '',
+        decision: 'approve',
+        subjectVersionId: approval?.subjectVersionIds[0] ?? '',
+      },
+    });
+    submit('pause');
+    await waitForProjection(s.transport, runId, (p) => p.status === 'paused');
+    await joinNow();
+    submit('resume');
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+    expect(attempts(final, 'check')).toHaveLength(1);
+    expect(s.runCheck).toHaveBeenCalledTimes(1);
+    expect(branches(s.store.readEvents(runId, 0))).toEqual([]);
   });
 });
 

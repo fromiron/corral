@@ -11,7 +11,7 @@ test.afterEach(() => {
     rmSync(repository, { recursive: true, force: true });
 });
 
-test('reviewed packages install untrusted, preserve plain text metadata, and keep disabled state', async ({
+test('reviewed packages install trusted, preserve plain text metadata, and keep disabled state', async ({
   page,
   corral,
 }) => {
@@ -90,7 +90,9 @@ test('reviewed packages install untrusted, preserve plain text metadata, and kee
   await review.getByRole('button', { name: 'Install reviewed copy', exact: true }).click();
   const installed = packages.getByRole('region', { name: 'Installed packages', exact: true });
   const item = installed.getByRole('listitem').filter({ hasText: 'reviewed-ui-fixture · 1.0.0' });
-  await expect(item).toContainText('Not trusted');
+  // Installing the reviewed copy trusts it; there is no separate approval step.
+  await expect(item).not.toContainText('Not trusted');
+  await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
   await item.getByText('Package details', { exact: true }).click();
   // Lose only the reply after the production endpoint commits registration.
   await page.route(
@@ -112,6 +114,9 @@ test('reviewed packages install untrusted, preserve plain text metadata, and kee
   const config = await tools.json();
   expect(config.mcpServers).toHaveLength(1);
   expect(config.mcpServers[0]).toMatchObject({ enabled: false });
+  // Trust stays a fact of its own: a person can take it back and give it again.
+  await item.getByRole('button', { name: 'Revoke trust', exact: true }).click();
+  await expect(item).toContainText('Not trusted');
   await item.getByRole('button', { name: 'Trust this content', exact: true }).click();
   await expect(item.getByRole('button', { name: 'Revoke trust', exact: true })).toBeVisible();
   await item.getByRole('button', { name: 'Disable', exact: true }).click();
@@ -134,7 +139,7 @@ test('reviewed packages install untrusted, preserve plain text metadata, and kee
     installed
       .getByRole('listitem')
       .filter({ hasText: 'reviewed-ui-fixture · 1.1.0' })
-      .getByRole('button', { name: 'Trust this content', exact: true }),
+      .getByRole('button', { name: 'Revoke trust', exact: true }),
   ).toBeVisible();
   await page.reload();
   await expect(installed).toContainText('reviewed-ui-fixture · 1.1.0');

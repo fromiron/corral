@@ -1,4 +1,5 @@
 import type { AgentRole, LibraryAgentRole } from '@corral/contracts';
+import { agentDescription, builtinSkillName } from '@corral/core';
 import {
   type ReactNode,
   type RefObject,
@@ -188,6 +189,7 @@ export function AgentPicker({
     ({ source }) =>
       !text ||
       source.role.name.toLocaleLowerCase().includes(text) ||
+      !!agentDescription(source.role)?.toLocaleLowerCase().includes(text) ||
       (source.stepInstruction ?? source.role.prompt).toLocaleLowerCase().includes(text),
   );
   const result = typeof face === 'object' ? preview?.(face) : undefined;
@@ -252,7 +254,12 @@ export function AgentPicker({
                 <ul className="divide-y divide-border">
                   {rows.map(({ key, source, team }) => {
                     const skills = source.role.skills ?? [];
-                    const labels = skills.map((skill) => skillLabel?.(skill));
+                    // A built-in agent's skills are known by name even before the library loads.
+                    const labels = skills.map(
+                      (skill) =>
+                        skillLabel?.(skill) ??
+                        (source.origin?.kind === 'preset' ? builtinSkillName(skill) : null),
+                    );
                     const id = `${rowPrefix}-${key}`;
                     return (
                       <li key={key}>
@@ -273,7 +280,9 @@ export function AgentPicker({
                             <span id={`${id}-detail`} className="grid gap-1 text-muted-foreground">
                               {team && <span className="text-caption">{team}</span>}
                               <span className="line-clamp-2 whitespace-pre-line break-words text-body">
-                                {source.stepInstruction ?? source.role.prompt}
+                                {source.stepInstruction ??
+                                  agentDescription(source.role) ??
+                                  source.role.prompt}
                               </span>
                               {skills.length > 0 && (
                                 <span className="break-words text-caption">

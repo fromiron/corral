@@ -58,9 +58,11 @@ describe('the hints of the coined names', () => {
  * "작업 사본" stays.
  */
 const MODEL_FACING = new Set([
-  // The duty of the Implement preset's role, sent to the model as its instructions.
-  'TeamTemplates.presets.implement.duty',
-  // The duty of the bug-fix template's Fix role, sent to the model as its instructions.
+  // The duty of the builder preset's role, sent to the model as its instructions.
+  'TeamTemplates.presets.builder.duty',
+  // The duties of the feature template's Implementation and the bug-fix template's Fix roles,
+  // sent to the model as their instructions.
+  'TeamTemplates.templates.feature.roles.implement.duty',
   'TeamTemplates.templates.bug-fix.roles.fix.duty',
 ]);
 

@@ -166,7 +166,7 @@ export function ResourceEditor({
       if (alive.current) setBusy(false);
     }
   }
-  async function save(trusted: boolean) {
+  async function save() {
     if (installing.current) return;
     installing.current = true;
     setBusy(true);
@@ -191,7 +191,6 @@ export function ResourceEditor({
             throw error;
           }
         }
-        if (trusted) await api.trust(result.hash, true);
         return result;
       });
       if (alive.current) {
@@ -202,13 +201,11 @@ export function ResourceEditor({
       if (alive.current) {
         setInstalled(result);
         setError(
-          result
-            ? t('trustSaveFailed')
-            : creatingSkill
-              ? t('skillSaveFailed')
-              : failure instanceof Error
-                ? failure.message
-                : h('error'),
+          creatingSkill
+            ? t('skillSaveFailed')
+            : failure instanceof Error
+              ? failure.message
+              : h('error'),
         );
       }
     } finally {
@@ -244,10 +241,8 @@ export function ResourceEditor({
           onSubmit={(e) => {
             e.preventDefault();
             if (busy) return;
-            if (creatingSkill) {
-              const submitter = (e.nativeEvent as SubmitEvent).submitter;
-              void save(submitter?.getAttribute('value') === 'trust');
-            } else if (!review) void inspect();
+            if (creatingSkill) void save();
+            else if (!review) void inspect();
           }}
         >
           <fieldset disabled={busy} className="flex min-w-0 flex-col gap-4">
@@ -524,16 +519,9 @@ export function ResourceEditor({
                 {inline ? library('back') : t('cancel')}
               </Button>
               {creatingSkill ? (
-                <>
-                  <Button type="submit" variant="tertiary" value="untrusted">
-                    {t('saveUntrusted')}
-                  </Button>
-                  <Button type="submit" value="trust">
-                    {t('saveTrusted')}
-                  </Button>
-                </>
+                <Button type="submit">{t('save')}</Button>
               ) : review ? (
-                <Button type="button" onClick={() => void save(false)}>
+                <Button type="button" onClick={() => void save()}>
                   {t('saveLibrary')}
                 </Button>
               ) : (

@@ -1,4 +1,12 @@
-import { draftFromPlan, planFromGoal, type TeamWording } from '@corral/core';
+import type { TeamComposition } from '@corral/contracts';
+import {
+  BUILTIN_SKILLS,
+  builtinComposableAgents,
+  draftFromComposition,
+  ROLE_PRESET_IDS,
+  type RolePresetId,
+  teamCatalog,
+} from '@corral/core';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { useMemo } from 'react';
 import { expect, waitFor, within } from 'storybook/test';
@@ -21,16 +29,81 @@ type Scene =
   | 'stale'
   | 'failure'
   | 'offline'
+  | 'demo'
   | 'edit'
   | 'goal';
 type Locale = keyof typeof catalogs;
 
 const editing = (scene: Scene) => scene === 'edit' || scene === 'goal';
 
-function samplePlan(brief: string, wording: TeamWording) {
-  const plan = planFromGoal(brief, wording);
-  if (!plan) throw new Error('A story needs a goal');
-  return plan;
+type Messages = (typeof catalogs)[Locale];
+
+/** What the editor could pick by hand: the built-in agents, then one skill. */
+function storyChoices(messages: Messages): Awaited<ReturnType<TeamAssistantHost['choices']>> {
+  return {
+    agents: builtinComposableAgents((id) => messages.TeamTemplates.presets[id].name),
+    skills: BUILTIN_SKILLS.filter((skill) => skill.name === 'doc-writing').map((skill) => ({
+      ref: { resourceHash: skill.resourceHash, entry: skill.entry },
+      name: skill.name,
+      description: skill.description,
+    })),
+  };
+}
+
+/** The catalog id the editor gives a built-in agent in the request. */
+const agent = (id: RolePresetId) => `a${ROLE_PRESET_IDS.indexOf(id) + 1}`;
+
+/**
+ * A team a model might compose for a newsletter: a researcher, two writers side by side, then an
+ * editor whose issue a reviewer passes or sends back.
+ */
+function composedTeam(brief: string, locale: Locale): TeamComposition {
+  const ko = locale === 'ko';
+  return {
+    name: brief.slice(0, 40),
+    brief,
+    criteria: [ko ? '모든 행사에 날짜와 장소를 적는다.' : 'Every event has a date and a place.'],
+    seats: [
+      {
+        id: 'r',
+        agent: agent('researcher'),
+        name: ko ? '행사 조사' : 'Event research',
+        duty: ko ? '이번 주 동네 행사를 모은다.' : 'Collect this week’s neighborhood events.',
+      },
+      {
+        id: 'x',
+        agent: agent('writer'),
+        name: ko ? '행사 소개' : 'Event blurbs',
+        duty: ko ? '행사마다 두 문장으로 소개한다.' : 'Describe each event in two sentences.',
+      },
+      {
+        id: 'y',
+        agent: agent('writer'),
+        name: ko ? '교통 안내' : 'Getting there',
+        duty: ko ? '행사장까지 가는 길을 적는다.' : 'Write how to reach each venue.',
+      },
+      {
+        id: 'e',
+        agent: agent('writer'),
+        name: ko ? '소식지 편집' : 'Issue editor',
+        duty: ko
+          ? '소개와 안내를 한 호로 엮는다.'
+          : 'Put the blurbs and directions into one issue.',
+        skills: ['doc-writing'],
+      },
+      {
+        id: 'j',
+        agent: agent('reviewer'),
+        name: ko ? '발행 전 확인' : 'Final read',
+        duty: ko ? '날짜와 장소가 맞는지 확인한다.' : 'Check every date and place.',
+      },
+    ],
+    flow: [
+      { seat: 'r' },
+      { parallel: ['x', 'y'] },
+      { loop: { work: ['e'], judge: 'j', rounds: 2 } },
+    ],
+  };
 }
 
 /** Only the request boundary is simulated. Play functions operate the mounted editor, including its undoable working copy. */
@@ -53,24 +126,29 @@ function AssistantStory({
   const wording = messages.TeamDraft.wording;
   const editor = useMemo(() => {
     const draft = editing(scene)
-      ? draftFromDefinition(
-          draftFromPlan(
-            samplePlan(messages.TeamAssistant.examples.compare, wording),
+      ? // The team the model composed for this goal, already applied.
+        draftFromDefinition(
+          draftFromComposition(
+            composedTeam(messages.TeamAssistant.examples.compare, locale),
             'story',
-            wording.labels,
-          ).definition,
+            teamCatalog(storyChoices(messages).agents, storyChoices(messages).skills),
+            { ...wording.labels, join: messages.TeamEditor.kinds.join },
+          ),
         )
       : emptyDraft('story', messages.Workspace.newName);
     return createEditorStore(draft);
-  }, [scene, messages, wording]);
+  }, [scene, messages, wording, locale]);
   const session = useMemo(() => sessionStore(), []);
   const host = useMemo<TeamAssistantHost>(
     () => ({
       wording,
+      choices: async () => storyChoices(messages),
       modelLabel: 'Storybook',
       newOperationId: () => crypto.randomUUID(),
+      // The browser demo has no model settings to open.
+      ...(scene !== 'demo' && { onConnectModel: () => {} }),
       ask:
-        scene === 'offline'
+        scene === 'offline' || scene === 'demo'
           ? null
           : async (request) => {
               if (scene === 'failure') throw new TypeError('Connection closed');
@@ -87,11 +165,11 @@ function AssistantStory({
                 model: 'Storybook',
                 reply: {
                   kind: 'plan',
-                  plan: samplePlan(goal, wording),
+                  plan: composedTeam(goal, locale),
                   reason:
                     locale === 'ko'
-                      ? '제공한 자료를 바탕으로 팀이 소식지를 작성합니다.'
-                      : 'The team can write the newsletter from your event notes.',
+                      ? '두 작성자가 소개와 교통 안내를 나눠 쓰고, 발행 전에 날짜와 장소를 확인합니다.'
+                      : 'Two writers split the blurbs and directions, and every date is checked before the issue goes out.',
                 },
               };
             },
@@ -147,6 +225,18 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         await expect(bounds.left + bounds.width / 2).toBeCloseTo(viewport.clientWidth / 2, 0);
       }
       const region = within(element);
+      if (scene === 'offline' || scene === 'demo') {
+        // No model: the request is switched off. On a server its place opens the model settings.
+        await expect(region.getByText(t.createPrompt)).toBeVisible();
+        await expect(region.queryByRole('textbox')).toBeNull();
+        await expect(region.queryByRole('button', { name: t.examples.newsletter })).toBeNull();
+        const place = region.getByRole('button', {
+          name: scene === 'demo' ? t.localServer : t.connect,
+        });
+        if (scene === 'demo') await expect(place).toHaveAttribute('aria-disabled', 'true');
+        else await expect(place).not.toHaveAttribute('aria-disabled');
+        return;
+      }
       const input = region.getByRole('textbox', {
         name: editing(scene) ? t.editRequest : t.createRequest,
       });
@@ -169,9 +259,8 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         await expect(region.getByRole('button', { name: t.choice.describe })).toBeVisible();
         return;
       }
-      if (scene === 'opening' || scene === 'offline') {
+      if (scene === 'opening') {
         await expect(region.getByText(t.createPrompt)).toBeVisible();
-        if (scene === 'offline') await expect(region.getByText(t.noModel)).toBeVisible();
         return;
       }
       await userEvent.click(region.getByRole('button', { name: t.examples.newsletter }));
@@ -192,12 +281,22 @@ function example(scene: Scene, locale: Locale, narrow = false, wide = false): St
         await expect(await region.findByRole('alert')).toHaveTextContent(t.logic.unknown);
       } else {
         const apply = await region.findByRole('button', { name: t.apply });
+        // The seats in their flow: work in parallel, and a loop with its rounds.
+        await expect(
+          region.getByRole('list', { name: m.TeamEditor.composition.parallel }),
+        ).toBeVisible();
+        await expect(
+          region.getByRole('list', {
+            name: locale === 'ko' ? '최대 2회' : 'Up to 2 rounds',
+          }),
+        ).toBeVisible();
         await userEvent.click(region.getByRole('button', { name: t.options }));
-        const alternatives = region.getByRole('radiogroup', { name: m.TeamDraft.patternLabel });
+        const observe = region.getByRole('switch', { name: m.TeamEditor.sharedOutrider.observe });
         // The accordion fades its body in while it expands: it is not visible on its first
         // frame, and Axe compares its settled colours.
-        await waitFor(() => expect(alternatives).toBeVisible());
-        const panel = alternatives.closest('[role="region"]')?.firstElementChild;
+        await waitFor(() => expect(observe).toBeVisible());
+        await expect(observe).not.toBeChecked();
+        const panel = observe.closest('[role="region"]')?.firstElementChild;
         await waitFor(() => expect(panel && getComputedStyle(panel).opacity).toBe('1'));
         if (scene === 'stale') {
           await userEvent.type(
@@ -218,14 +317,16 @@ export const MaterialQuestion = example('question', 'en');
 export const MaterialQuestionKorean = example('question', 'ko');
 export const AnsweredQuestion = example('answered', 'en');
 export const AnsweredQuestionKorean = example('answered', 'ko');
-export const ProposalWithAlternatives = example('proposal', 'en');
-export const ProposalWithAlternativesKorean = example('proposal', 'ko');
+export const ComposedProposal = example('proposal', 'en');
+export const ComposedProposalKorean = example('proposal', 'ko');
 export const ChangedWorkingCopy = example('stale', 'en');
 export const ChangedWorkingCopyKorean = example('stale', 'ko');
 export const UnconfirmedRequest = example('failure', 'en');
 export const UnconfirmedRequestKorean = example('failure', 'ko');
 export const NoModel = example('offline', 'en');
 export const NoModelKorean = example('offline', 'ko');
+export const BrowserDemo = example('demo', 'en');
+export const BrowserDemoKorean = example('demo', 'ko');
 export const EditChoices = example('edit', 'en');
 export const EditChoicesKorean = example('edit', 'ko');
 export const GoalChange = example('goal', 'en');

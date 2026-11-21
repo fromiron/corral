@@ -284,6 +284,11 @@
             "type": "string",
             "minLength": 1
           },
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
           "prompt": {
             "type": "string",
             "minLength": 1,

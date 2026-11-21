@@ -769,7 +769,11 @@ function reduce(p: RunProjection, event: RunEvent): RunProjection {
           severity,
         })),
       };
-      return { ...p, reviews: { ...p.reviews, [reviewVersionId]: review } };
+      // Recorded again, it is the latest: it moves to the end of the key order.
+      const reviews = { ...p.reviews };
+      delete reviews[reviewVersionId];
+      reviews[reviewVersionId] = review;
+      return { ...p, reviews };
     }
     case 'run.interrupted':
       return {

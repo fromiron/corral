@@ -165,7 +165,7 @@ test.describe('extension input during an SDK run', () => {
   });
 });
 
-test('install, trust, save and preview a mandatory skill through Settings', async ({
+test('install, save and preview a mandatory skill through Settings, with no approval step', async ({
   page,
   corral,
 }) => {
@@ -203,7 +203,8 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust for use', exact: true }).click();
+    // Saving to the library trusts the skill: nothing waits for approval.
+    await expect(page.getByRole('button', { name: 'Trust for use', exact: true })).toHaveCount(0);
     const projectId = await page.evaluate(async () => {
       const { csrfToken } = await (await fetch('/api/v1/session')).json();
       const response = await fetch('/api/v1/projects', {
@@ -286,8 +287,9 @@ test('install, trust, save and preview a mandatory skill through Settings', asyn
     await page.getByRole('button', { name: 'Save to library', exact: true }).click();
     // The settings dialog itself stays open (#88); the add dialog closes.
     await expect(page.locator('[role="dialog"]:not([data-settings-dialog])')).toHaveCount(0);
-    await page.getByRole('button', { name: 'Trust for use', exact: true }).click();
-    // The edited copy is not yet used. Its predecessor links directly to the policy to update.
+    // The edited copy is trusted as it is saved, and not yet used. Its predecessor links directly
+    // to the policy to update.
+    await expect(page.getByRole('button', { name: 'Trust for use', exact: true })).toHaveCount(0);
     const policies = page.getByRole('region', { name: 'Execution policies', exact: true });
     await expect(policies).toContainText('No execution policies use this version.');
     await page.getByRole('button', { name: 'Previous version', exact: true }).click();

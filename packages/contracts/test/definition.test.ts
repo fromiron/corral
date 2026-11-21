@@ -92,6 +92,23 @@ describe('CorralDefinition', () => {
     expect(RoleRunOverrides.safeParse({ ...models, role_0: {} }).success).toBe(false);
   });
 
+  it('keeps a role description of 1–2,000 characters and reads a role without one as before', () => {
+    const described = (description: string) =>
+      mutate(minimal, (d) => (d.roles[0].description = description));
+    const text = 'Writes a short answer. Use it when the brief needs one paragraph.';
+    expect(CorralDefinition.parse(described(text)).roles[0]?.description).toBe(text);
+    expect(CorralDefinitionDraft.parse(described(text)).roles[0]?.description).toBe(text);
+    expect(CorralDefinition.parse(minimal).roles[0]).not.toHaveProperty('description');
+    expect(CorralDefinition.safeParse(described('x'.repeat(2000))).success).toBe(true);
+    for (const wrong of ['', 'x'.repeat(2001)])
+      expect(CorralDefinition.safeParse(described(wrong)).success).toBe(false);
+    const current = new Ajv2020({ allErrors: true, strict: false }).compile(
+      generateJsonSchemas()['corral-definition.schema.json'],
+    );
+    expect(current(described(text))).toBe(true);
+    expect(current(described(''))).toBe(false);
+  });
+
   it('rejects canvas coordinates mixed into the execution definition', () => {
     const result = CorralDefinition.safeParse(invalid[1]?.[1]);
     expect(result.success).toBe(false);

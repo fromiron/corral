@@ -199,6 +199,7 @@ import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
 import {
+  BranchStopped,
   type GraphRunner,
   type IterationRef,
   type LoopStop,
@@ -241,6 +242,21 @@ const TOOL_POLICY_VERSION = 'role-allowlist@1';
 
 function needsHarness(role: AgentRole): boolean {
   return role.harness !== undefined || role.skills !== undefined || Boolean(role.mcpTools?.length);
+}
+
+/**
+ * What continuing an earlier run compares (harness-contract.md, "이전 실행에서 이어 갈 때"): the
+ * snapshot without the other usable library skills and the diagnostic their cut leaves. An entry
+ * a snapshot did not mark as a library skill is bound. Absent stays null.
+ */
+function boundHarnessHash(snapshot: EffectiveHarnessSnapshot | null | undefined): string | null {
+  if (!snapshot) return null;
+  const { snapshotHash: _snapshotHash, ...body } = snapshot;
+  return hashOf({
+    ...body,
+    resources: body.resources.filter((resource) => !resource.library),
+    diagnostics: body.diagnostics.filter((code) => code !== 'library_skills_truncated'),
+  });
 }
 
 type Actor = { kind: 'user' | 'runtime' | 'agent'; id: string };
@@ -461,7 +477,8 @@ export interface HarnessResolver {
     binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
-    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+    /** `library: false` leaves out the other usable library skills (an evaluation run). */
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string; library?: false },
   ): EffectiveHarnessSnapshot | null;
   readSkill?(snapshot: EffectiveHarnessSnapshot, path: string): Record<string, unknown>;
   /**
@@ -1207,6 +1224,12 @@ export class Coordinator {
     );
     if (!model.ok || hashOf(model.snapshot) !== manifest.modelHash) blockers.push('model_changed');
     try {
+      // The checkpoint ran on its run's snapshot; only that snapshot's bound part must still hold.
+      // A checkpoint with no harness hash ran with no harness (an advisor's, say).
+      const recorded =
+        manifest.harnessHash === null ? undefined : source.snapshot.harnesses?.[state.role.id];
+      if (manifest.harnessHash !== null && recorded?.snapshotHash !== manifest.harnessHash)
+        blockers.push('resources_changed');
       if (needsHarness(state.role)) {
         const resolved = this.harnesses?.resolve(
           state.role.harness,
@@ -1216,7 +1239,7 @@ export class Coordinator {
         );
         if (
           !resolved ||
-          resolved.snapshotHash !== manifest.harnessHash ||
+          boundHarnessHash(resolved) !== boundHarnessHash(recorded) ||
           !matchesRoleMcpSelection(state.role, resolved)
         )
           blockers.push('resources_changed');
@@ -1353,10 +1376,11 @@ export class Coordinator {
       const modelHashes = Object.fromEntries(
         Object.entries(source.snapshot.models).map(([id, model]) => [id, hashOf(model)]),
       );
+      // A branch compares only bound resources; it takes the library as it is then.
       const harnessHashes = Object.fromEntries(
         definition.roles.map((role) => [
           role.id,
-          source.snapshot.harnesses?.[role.id]?.snapshotHash ?? null,
+          boundHarnessHash(source.snapshot.harnesses?.[role.id]),
         ]),
       );
       const preview: MessageBranchPreview = {
@@ -1540,8 +1564,14 @@ export class Coordinator {
     const files = recovery?.manifest.files ?? null;
     const modelHash =
       recovery?.manifest.modelHash ?? hashOf(source.snapshot.models[role.modelProfile]);
+    const recorded = source.snapshot.harnesses?.[role.id];
+    // A checkpoint hash its run's snapshot does not carry is compared as is, as before: a
+    // resolution passes only when it is that exact snapshot.
+    const checkpointHash = recovery?.manifest.harnessHash ?? null;
     const harnessHash =
-      recovery?.manifest.harnessHash ?? source.snapshot.harnesses?.[role.id]?.snapshotHash ?? null;
+      checkpointHash !== null && checkpointHash !== recorded?.snapshotHash
+        ? checkpointHash
+        : boundHarnessHash(recorded);
     const preview: MessageBranchPreview = {
       hash: hashOf({
         point,
@@ -2094,6 +2124,14 @@ export class Coordinator {
     }
     for (const role of planned.definition.roles) {
       if (!needsHarness(role)) continue;
+      // With no resolver (the browser demo), a mock run treats a skills-only role as having none.
+      if (
+        !this.harnesses &&
+        request.mode === 'mock' &&
+        role.harness === undefined &&
+        !role.mcpTools?.length
+      )
+        continue;
       const binding = role.harness ?? ROLE_SKILLS_MINIMAL_BINDING;
       try {
         const snapshot = EffectiveHarnessSnapshot.parse(
@@ -2102,6 +2140,7 @@ export class Coordinator {
               ? { runOverride: request.harnessOverrides[role.id] }
               : {}),
             ...(request.sessionId ? { sessionId: request.sessionId } : {}),
+            ...('evaluation' in request && request.evaluation ? { library: false as const } : {}),
           }),
         );
         if (
@@ -2216,20 +2255,30 @@ export class Coordinator {
           message: "check decisions need the session's working copy",
         });
     }
-    if (
-      recovery &&
-      (hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
-        (harnesses[recovery.state.role.id]?.snapshotHash ?? null) !== recovery.manifest.harnessHash)
-    )
-      return refuse({
-        code: 'CAPABILITY_DENIED',
-        message: 'model or resources changed after recovery preview',
-      });
+    if (recovery) {
+      // Like the model, a recovered run continues on the snapshot it started with when the
+      // bound resources still hold; the library may have changed since.
+      const roleId = recovery.state.role.id;
+      const checkpointHash = recovery.manifest.harnessHash;
+      const recorded =
+        checkpointHash === null ? undefined : recovery.source.snapshot.harnesses?.[roleId];
+      if (
+        hashOf(models[recovery.state.role.modelProfile]) !== recovery.manifest.modelHash ||
+        (checkpointHash !== null && recorded?.snapshotHash !== checkpointHash) ||
+        boundHarnessHash(harnesses[roleId]) !== boundHarnessHash(recorded)
+      )
+        return refuse({
+          code: 'CAPABILITY_DENIED',
+          message: 'model or resources changed after recovery preview',
+        });
+      if (recorded)
+        harnesses[roleId] = JSON.parse(canonicalJson(recorded)) as EffectiveHarnessSnapshot;
+    }
     if (
       branch &&
       (Object.entries(branch.modelHashes).some(([id, hash]) => hashOf(models[id]) !== hash) ||
         Object.entries(branch.harnessHashes).some(
-          ([id, hash]) => (harnesses[id]?.snapshotHash ?? null) !== hash,
+          ([id, hash]) => boundHarnessHash(harnesses[id]) !== hash,
         ))
     )
       return refuse({ code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' });
@@ -5123,19 +5172,24 @@ export class Coordinator {
     return {
       activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
       decide: async (nodeId, iteration) => {
+        // Read before any wait: a Join that stops this branch meanwhile names this round.
+        const request = this.requestOf(run, nodeId);
+        const iterationId = request.round;
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        const iterationId = this.openRoundOf(run, nodeId);
-        if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
+        // A dropped request starts no chooser, check or policy.
+        if (request.dropped()) return null;
+        if (!(await this.passBreakpoint(run, nodeId, iterationId, request.dropped))) return null;
+        if (request.dropped()) return null;
         const decisionRevision = run.projection.controlRevision;
         // A router asks its own chooser and a check runs its checks; an external policy decides
         // the other modes.
         const decision: WorkflowDecision | null =
           step.mode === 'router'
-            ? await this.route(run, nodeId, iterationId)
+            ? await this.route(run, nodeId, iterationId, request.dropped)
             : step.mode === 'check'
-              ? await this.check(run, nodeId, iterationId)
+              ? await this.check(run, nodeId, iterationId, request.dropped)
               : this.decisions
                 ? {
                     branch: await this.decisions.decide({
@@ -5149,15 +5203,15 @@ export class Coordinator {
                     evidenceRefs: [],
                     configRevision: decisionRevision,
                   }
-                : await this.decide(run, nodeId, step.mode);
+                : await this.decide(run, nodeId, step.mode, request.dropped);
         // The choice may have waited on a person or external policy. Never append a late
         // routing fact to a cancelled Run or a different iteration.
         await this.boundary(run);
-        if (iterationId !== this.openRoundOf(run, nodeId))
-          throw new Error('decision scope changed');
-        // A branch stopped while it decided records no route.
-        if (decision === null || run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`))
-          return null;
+        // A branch stopped, or whose round ended, while it decided records no route. Another
+        // round open in its place is a plan the compiler refuses.
+        if (decision === null || request.stopped()) return null;
+        if (request.replaced()) throw new Error('decision scope changed');
+        if (request.dropped()) return null;
         const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
@@ -5198,25 +5252,34 @@ export class Coordinator {
       loopCheck: (loopId, no) => this.loopCheck(run, loopId, no),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
+        // The Loop step is named by the round of the Loop around it, read before any wait: a
+        // Join that stops this branch meanwhile writes that key, and the entry opens no round.
+        const request = this.requestOf(run, loopId);
+        const stopped = () => {
+          if (request.dropped()) throw new BranchStopped();
+        };
         await this.boundary(run);
+        stopped();
         const loop = run.plan.loops[loopId];
         if (!loop) throw new Error(`plan has no Loop ${loopId}`);
         const node = run.snapshot.definition.nodes.find((node) => node.id === loopId);
         if (node?.type === 'loop' && node.reviewRecipe && !run.recipes.has(loopId)) {
           const recipe = node.reviewRecipe;
-          run.recipes.set(loopId, {
-            recipe,
-            candidates: new Map(),
-          });
+          // Registered only once this entry goes on, so a stopped entry leaves the next to pin.
+          const register = () => run.recipes.set(loopId, { recipe, candidates: new Map() });
           if (recipe.criteriaFiles.length) {
             try {
               await this.files?.pinCriteria?.(run.runId, recipe.criteriaFiles);
             } catch {
+              stopped();
+              register();
               this.stopRecipe(run, loopId, 'criteria_changed');
               throw new Error('recipe criteria changed');
             }
           }
           await this.boundary(run);
+          stopped();
+          register();
         }
         if (run.pendingCriteriaVersionId) {
           run.criteriaVersionId = run.pendingCriteriaVersionId;
@@ -5233,7 +5296,7 @@ export class Coordinator {
               parentIterationId: this.openRoundOf(run, loopId),
               no,
               // What the previous round of this entry hands to this one, fixed now.
-              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loop.members, loopId),
+              pinnedCarryInputs: no === 1 ? [] : this.carriedInto(run, loopId),
               criteriaVersionId: run.criteriaVersionId,
             },
           },
@@ -5526,6 +5589,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision | null> {
     const { definition } = run.snapshot;
     const node = definition.nodes.find((n) => n.id === nodeId);
@@ -5571,8 +5635,8 @@ export class Coordinator {
     if (answer && node.routes.some((r) => r.id === answer))
       return choice(answer, 'model_route', evidence);
 
-    // A branch stopped while its chooser ran asks nothing.
-    if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+    // A request dropped while its chooser ran asks nothing.
+    if (dropped()) return null;
     const connected = node.routes.filter((r) => (step.branches[r.id] ?? []).length > 0);
     if (connected.length === 0) throw new Error(`${nodeId} has no connected route to pick`);
     const subjects = [
@@ -5606,6 +5670,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision | null> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     if (node?.type !== 'decision' || node.mode !== 'check')
@@ -5654,8 +5719,8 @@ export class Coordinator {
           ],
           configRevision: run.projection.controlRevision,
         };
-      // A branch stopped while its checks ran asks nothing.
-      if (run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)) return null;
+      // A request dropped while its checks ran asks nothing.
+      if (dropped()) return null;
       const requested = this.requestApproval(
         run,
         'check',
@@ -5666,6 +5731,8 @@ export class Coordinator {
       );
       if ((await requested.decision) === 'reject') return null;
       await this.boundary(run);
+      // A request dropped while the approved retry waited makes no next attempt.
+      if (dropped()) return null;
       previous = input;
     }
   }
@@ -5731,9 +5798,14 @@ export class Coordinator {
     nodeId: string,
     iterationId: string | null,
   ): Promise<StepOutcome> {
+    // A request dropped while the step waits, by a Join or an ended round, starts nothing.
+    const request = this.requestOf(run, nodeId);
+    const stopped: StepOutcome = { ok: false, reason: 'branch stopped' };
     await this.boundary(run);
-    if (!(await this.passBreakpoint(run, nodeId, iterationId)))
+    if (request.dropped()) return stopped;
+    if (!(await this.passBreakpoint(run, nodeId, iterationId, request.dropped)))
       return { ok: false, reason: 'stopped at its breakpoint' };
+    if (request.dropped()) return stopped;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const retries =
       node?.type === 'agent' && node.invocation !== 'observer' ? (node.retry?.maxAttempts ?? 0) : 0;
@@ -5755,6 +5827,7 @@ export class Coordinator {
       if (!WORKING.has(run.projection.status) && !this.pausedOrWaiting(run)) return outcome;
       await this.boundary(run);
       if (!WORKING.has(run.projection.status)) return outcome;
+      if (request.dropped()) return stopped;
       prepared = this.prepareExecution(run, {
         nodeId,
         iterationId,
@@ -5959,6 +6032,7 @@ export class Coordinator {
         ...spec.given,
         ...this.resolveInputs(
           run,
+          spec.nodeId,
           item ? [{ kind: 'run_input', name: 'criteria' }] : bindings,
           spec.iterationId,
           requiredSources,
@@ -6220,12 +6294,12 @@ export class Coordinator {
 
   private resolveInputs(
     run: LiveRun,
+    readerNodeId: string,
     bindings: InputBinding[],
     iterationId: string | null,
     requiredSources?: ReadonlySet<string>,
   ): ResolvedInput[] {
     const { brief, criteria } = run.snapshot.definition.input;
-    const previousRound = iterationId ? this.previousRound(run, iterationId) : null;
     return bindings.flatMap((binding): ResolvedInput[] => {
       if (binding.kind === 'run_input') {
         const text =
@@ -6246,8 +6320,12 @@ export class Coordinator {
           scoped ? (round) => this.sameRound(run, round, iterationId) : undefined,
         );
         versions = requiredSources?.has(source) ? submitted : submitted.slice(0, 1);
-      } else if (binding.kind === 'previous_iteration_output' && previousRound) {
-        versions = this.submittedOutputOf(run, source, previousRound).slice(0, 1);
+      } else if (binding.kind === 'previous_iteration_output') {
+        const previous = this.carriedFrom(run, readerNodeId, source, iterationId);
+        if (previous)
+          versions = this.submittedOutputOf(run, source, (round) =>
+            this.inRound(run, round, previous),
+          ).slice(0, 1);
       } else if (binding.kind === 'explicit_version') versions = [binding.artifactVersionId];
       const resolved = versions.flatMap((versionId) => {
         const text = versionId ? this.store.getArtifactText(run.runId, versionId) : null;
@@ -6269,38 +6347,121 @@ export class Coordinator {
     return rounds[rounds.indexOf(iterationId) - 1] ?? null;
   }
 
-  /** Whether `round` is `reader`, a Loop round around it, or a round nested inside it. */
+  /**
+   * The round a reader in round `iterationId` reads `source`'s previous_iteration_output from
+   * (technical-design §9.2): the round before, in the same entry, of the innermost Loop the two
+   * share. The one exception: on a required review gate's first round, the producer the gate
+   * wraps reads its own result from the round before of the Loop around the gate. Null on that
+   * Loop's first round, and when the two share no Loop.
+   */
+  private carriedFrom(
+    run: LiveRun,
+    readerNodeId: string,
+    source: string,
+    iterationId: string | null,
+  ): string | null {
+    const { iterations } = run.projection;
+    let round = iterationId;
+    // The reader's own round holds its own steps; for another source, the first of the reader's
+    // rounds (its own, then those around it) whose Loop also holds the source.
+    if (source !== readerNodeId) {
+      const shared = new Set(this.loopsAround(run, source));
+      while (round && !shared.has(iterations[round]?.loopNodeId ?? ''))
+        round = iterations[round]?.parentIterationId ?? null;
+    } else if (
+      round &&
+      iterations[round]?.no === 1 &&
+      this.gateAround(run, iterations[round]?.loopNodeId ?? '', readerNodeId)
+    ) {
+      round = iterations[round]?.parentIterationId ?? null;
+    }
+    return round ? this.previousRound(run, round) : null;
+  }
+
+  /**
+   * The Loops whose round start pins the reader's previous_iteration_output of `source`: the
+   * innermost Loop the two share and, for a gate's producer reading itself, the Loop around the
+   * gate as well (its first round reads from there).
+   */
+  private carriedBy(run: LiveRun, readerNodeId: string, source: string): string[] {
+    const theirs = new Set(this.loopsAround(run, source));
+    const ours = this.loopsAround(run, readerNodeId);
+    const shared = ours.find((loopId) => theirs.has(loopId));
+    if (!shared) return [];
+    const around = ours[1];
+    return source === readerNodeId && around && this.gateAround(run, shared, readerNodeId)
+      ? [shared, around]
+      : [shared];
+  }
+
+  /** Whether an execution in `round` ran in round `within` or in a Loop round nested in it. */
+  private inRound(run: LiveRun, round: string | null, within: string): boolean {
+    for (let id = round; id; id = run.projection.iterations[id]?.parentIterationId ?? null)
+      if (id === within) return true;
+    return false;
+  }
+
+  /** The Loops around a node in the definition, innermost first. */
+  private loopsAround(run: LiveRun, nodeId: string): string[] {
+    const { nodes } = run.snapshot.definition;
+    const loops: string[] = [];
+    const seen = new Set<string>();
+    for (let at = nodes.find((n) => n.id === nodeId)?.parentId; at && !seen.has(at); ) {
+      seen.add(at);
+      const box = nodes.find((n) => n.id === at);
+      if (box?.type === 'loop') loops.push(at);
+      at = box?.parentId;
+    }
+    return loops;
+  }
+
+  /**
+   * Whether `loopId` is a required review's Loop around the producer `nodeId`: the Loop that holds
+   * a gate Decision the run snapshot maps to that producer (features/shared-outrider.md,
+   * "제출 전 필수 검토"). Gates of expanded reference Teams are on the snapshot as well.
+   */
+  private gateAround(run: LiveRun, loopId: string, nodeId: string): boolean {
+    const { nodes } = run.snapshot.definition;
+    return Object.entries(run.snapshot.requiredReviewSources ?? {}).some(
+      ([decisionId, sources]) =>
+        sources.includes(nodeId) && nodes.find((n) => n.id === decisionId)?.parentId === loopId,
+    );
+  }
+
+  /**
+   * Whether a step's execution in `round` is visible to a reader in round `reader`: the two are
+   * in the same pass through every Loop they share. Each of the reader's rounds (its own and the
+   * rounds around it) whose Loop also holds `round` must be one of `round`'s own rounds. So the
+   * same round, a round around the reader, the rounds nested in the reader's round, and any
+   * round of a Loop the reader does not share. An execution outside every Loop has no round.
+   */
   private sameRound(run: LiveRun, round: string | null, reader: string): boolean {
+    if (round === null) return false;
     const { iterations } = run.projection;
     const chain = (from: string | null) => {
       const ids: string[] = [];
       for (let id = from; id; id = iterations[id]?.parentIterationId ?? null) ids.push(id);
       return ids;
     };
-    return chain(reader).includes(round ?? '') || chain(round).includes(reader);
+    const theirs = chain(round);
+    const loops = new Set(theirs.map((id) => iterations[id]?.loopNodeId));
+    return chain(reader).every(
+      (id) => !loops.has(iterations[id]?.loopNodeId) || theirs.includes(id),
+    );
   }
 
-  /**
-   * The latest completed submission of a node, optionally within one Loop round (an id) or
-   * within the rounds a predicate accepts.
-   */
+  /** The latest completed submission of a node, optionally within the rounds a predicate accepts. */
   private submittedOutputOf(
     run: LiveRun,
     nodeId: string,
-    within?: string | ((round: string | null) => boolean),
+    within?: (round: string | null) => boolean,
   ): string[] {
     const executions = run.projection.nodeExecutions[nodeId] ?? [];
     // A node a fork did not run again reads as the result the fork copied for it.
     if (!executions.length) return stepResult(run.projection, nodeId);
     for (const executionId of [...executions].reverse()) {
       const execution = run.projection.executions[executionId];
-      if (
-        within !== undefined &&
-        (typeof within === 'string'
-          ? execution?.iterationId !== within
-          : !within(execution?.iterationId ?? null))
-      )
-        continue;
+      if (within && !within(execution?.iterationId ?? null)) continue;
       const task = run.projection.tasks[execution?.taskId ?? ''];
       if (task?.status === 'completed') return task.submittedArtifactVersionIds;
     }
@@ -6701,15 +6862,23 @@ export class Coordinator {
     }
   }
 
-  /** Bind a final version to the strict decision that passed that exact reviewed artifact. */
+  /**
+   * Bind a final version to the strict decision that passed that exact reviewed artifact. The
+   * candidates are read in the rounds `visible` accepts for each source (the Output's round).
+   */
   private checkRequiredOutputReviews(
     run: LiveRun,
     gates: OutputNode['requiredReviews'],
+    visible: (source: string) => ((round: string | null) => boolean) | undefined,
     awaitingSubmission?: ReadonlyMap<string, string[]>,
   ) {
     const candidates = new Map<string, string[]>();
     for (const gate of gates ?? []) {
-      const candidateIds = this.submittedOutputOf(run, gate.sourceNodeId);
+      const candidateIds = this.submittedOutputOf(
+        run,
+        gate.sourceNodeId,
+        visible(gate.sourceNodeId),
+      );
       const expected = awaitingSubmission?.get(gate.sourceNodeId);
       if (
         expected &&
@@ -6751,6 +6920,14 @@ export class Coordinator {
   }
 
   private async finalizeOutput(run: LiveRun, outputNodeId: string) {
+    // An Output inside a Loop reads the round that reached it, as a task_output there would,
+    // also when it checks again after a person's approval; a top-level one reads every round
+    // (technical-design §9.2).
+    const round = this.openRoundOf(run, outputNodeId);
+    const visible = (source: string) =>
+      round && this.loopOf(run, source)
+        ? (at: string | null) => this.sameRound(run, at, round)
+        : undefined;
     await this.boundary(run);
     // The run does not end while a review is queued or running: advisors finish first.
     if (!(await this.advisorsFinished(run))) return;
@@ -6758,14 +6935,27 @@ export class Coordinator {
     const output = run.snapshot.definition.nodes.find((n) => n.id === outputNodeId);
     if (output?.type !== 'output') throw new Error('plan references a missing output node');
     const versions = output.inputBindings.flatMap((b) =>
-      b.kind === 'task_output' ? this.submittedOutputOf(run, b.sourceNodeId ?? '') : [],
+      b.kind === 'task_output'
+        ? this.submittedOutputOf(run, b.sourceNodeId ?? '', visible(b.sourceNodeId ?? ''))
+        : [],
     );
     if (versions.length === 0) throw new Error('output has no submitted version');
-    const requiredCandidates = this.checkRequiredOutputReviews(run, output.requiredReviews);
+    const requiredCandidates = this.checkRequiredOutputReviews(
+      run,
+      output.requiredReviews,
+      visible,
+    );
     let approvalId: string | null = null;
     if (output.requireApproval) {
-      // Final approval binds the exact draft, its latest review and the criteria.
-      const review = this.latestReview(run);
+      // Final approval binds the exact draft, its latest review and the criteria: the latest
+      // valid review of a version being finalised, or none (technical-design §9.3).
+      const review =
+        Object.values(run.projection.reviews).findLast(
+          (r) =>
+            !r.stale &&
+            r.criteriaVersionId === run.criteriaVersionId &&
+            versions.includes(r.targetVersionId),
+        )?.reviewVersionId ?? null;
       const requested = this.requestApproval(run, 'final_output', [
         ...versions,
         ...(review ? [review] : []),
@@ -6810,7 +7000,7 @@ export class Coordinator {
       this.failRun(run, `termination_unconfirmed: ${nodeId}`);
       return;
     }
-    this.checkRequiredOutputReviews(run, output.requiredReviews, requiredCandidates);
+    this.checkRequiredOutputReviews(run, output.requiredReviews, visible, requiredCandidates);
     // The output and the run's success are one fact: readers never see one without the other.
     // An approval still waiting (a stopped child's, say) closes in the same commit.
     this.commit(run, [
@@ -6831,6 +7021,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     mode: RunnableDecisionMode,
+    dropped: () => boolean,
   ): Promise<WorkflowDecision> {
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const round = this.openRoundOf(run, nodeId);
@@ -6857,23 +7048,35 @@ export class Coordinator {
         required.map((t) => ({ kind: 'task', id: t.taskId })),
       );
     }
-    const bound = (node?.type === 'decision' ? node.inputBindings : []).flatMap((b) =>
-      b.kind === 'task_output' && b.sourceNodeId
-        ? this.submittedOutputOf(
-            run,
-            b.sourceNodeId,
-            round && this.loopOf(run, b.sourceNodeId)
-              ? (at) => this.sameRound(run, at, round)
-              : undefined,
-          )
-        : [],
-    );
+    const { definition } = run.snapshot;
+    const bindings = node?.type === 'decision' ? node.inputBindings : [];
+    // The compiler's criterion for what a review Decision reads: an agent with the review
+    // contract. Any other output it is bound to is context, never the verdict.
+    const reviews = (sourceNodeId: string | undefined) => {
+      const source = definition.nodes.find((n) => n.id === sourceNodeId);
+      return (
+        source?.type === 'agent' &&
+        definition.roles.find((r) => r.id === source.roleId)?.outputContract === 'review'
+      );
+    };
+    const submittedTo = (from: typeof bindings) =>
+      from.flatMap((b) =>
+        b.kind === 'task_output' && b.sourceNodeId
+          ? this.submittedOutputOf(
+              run,
+              b.sourceNodeId,
+              round && this.loopOf(run, b.sourceNodeId)
+                ? (at) => this.sameRound(run, at, round)
+                : undefined,
+            )
+          : [],
+      );
     if (mode === 'approval') {
       const review = this.latestReview(run);
       const requested = this.requestApproval(
         run,
         'user_action',
-        [...bound, ...(review ? [review] : [])],
+        [...submittedTo(bindings), ...(review ? [review] : [])],
         undefined,
         undefined,
         nodeId,
@@ -6884,6 +7087,7 @@ export class Coordinator {
     }
 
     // Review: the verdict counts only for the draft and criteria actually reviewed.
+    const bound = submittedTo(bindings.filter((b) => reviews(b.sourceNodeId)));
     const reviewVersionId = bound[0];
     if (!reviewVersionId) throw new Error(`${nodeId} has no review to read`);
     const recorded = this.recordReview(run, reviewVersionId);
@@ -6933,6 +7137,8 @@ export class Coordinator {
         throw new Error('review recipe stopped');
       }
       const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
+      // A request dropped while its evidence was checked: the result goes, and so does the step.
+      if (dropped()) throw new BranchStopped();
       if (problem) {
         this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');
@@ -7167,6 +7373,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<boolean> {
     if (!run.projection.breakpoints.includes(nodeId)) return true;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
@@ -7174,6 +7381,7 @@ export class Coordinator {
     try {
       inputs = this.resolveInputs(
         run,
+        nodeId,
         (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [],
         iterationId,
       ).flatMap((input) => (input.artifactVersionId ? [input.artifactVersionId] : []));
@@ -7209,11 +7417,8 @@ export class Coordinator {
           },
         },
       ]);
-    else if (
-      approval?.status === 'rejected' &&
-      WORKING.has(run.projection.status) &&
-      !run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)
-    )
+    // A Join that withdrew the breakpoint of a dropped request is not a person stopping here.
+    else if (approval?.status === 'rejected' && WORKING.has(run.projection.status) && !dropped())
       this.submit({
         schemaVersion: '0.1',
         runId: run.runId,
@@ -7460,14 +7665,17 @@ export class Coordinator {
    */
   private async loopCheck(run: LiveRun, loopId: string, no: number): Promise<LoopStop | null> {
     const asked = run.rounds.get(loopId);
+    const request = this.requestOf(run, loopId);
     // Between rounds a cancel or pause must get in, even when a round waits on nothing: let the
     // host run its queued work once (a macrotask, no real waiting), then check the boundary.
     await (this.timers.turn ? this.timers.turn() : hostTurn());
     await this.boundary(run);
-    // Meanwhile an `any` Join may have stopped this branch and closed its round: it leaves
-    // nothing more, by recipe, limit policy or exhaustion, and the runner drops the answer.
+    // Meanwhile an `any` Join may have stopped this branch and closed its round, or a round
+    // around the Loop may have ended: it leaves nothing more, by recipe, limit policy or
+    // exhaustion, and the runner drops the answer.
     const round = run.rounds.get(loopId);
     if (!asked || round?.no !== no || round.iterationId !== asked.iterationId) return null;
+    if (request.dropped()) return null;
     const loop = run.plan.loops[loopId];
     if (!loop) throw new Error(`plan has no Loop ${loopId}`);
     // Stall detection compares every round with the one before, the cap round included.
@@ -7862,18 +8070,29 @@ export class Coordinator {
     );
   }
 
-  /** Versions the previous round hands to the next through previous_iteration_output. */
-  private carriedInto(run: LiveRun, members: string[], loopId: string): string[] {
+  /**
+   * Versions the previous round hands to the next through previous_iteration_output: for every
+   * binding whose value this Loop's round before carries, on its members and on the steps of the
+   * boxes inside it, the version it delivers, in plan order.
+   */
+  private carriedInto(run: LiveRun, loopId: string): string[] {
     const previous =
       run.rounds.get(loopId)?.iterationId ?? run.projection.loopIterations[loopId]?.at(-1);
     if (!previous) return [];
     const definition = run.snapshot.definition;
-    return members.flatMap((memberId) => {
-      const node = definition.nodes.find((n) => n.id === memberId);
+    const within = (members: string[]): string[] =>
+      members.flatMap((id) => [id, ...within(run.plan.boxes[id]?.members ?? [])]);
+    return within(run.plan.loops[loopId]?.members ?? []).flatMap((readerId) => {
+      const node = definition.nodes.find((n) => n.id === readerId);
       const bindings = (node && 'inputBindings' in node ? node.inputBindings : undefined) ?? [];
       return bindings.flatMap((b) =>
-        b.kind === 'previous_iteration_output' && b.sourceNodeId
-          ? this.submittedOutputOf(run, b.sourceNodeId, previous)
+        b.kind === 'previous_iteration_output' &&
+        b.sourceNodeId &&
+        this.carriedBy(run, readerId, b.sourceNodeId).includes(loopId)
+          ? // The binding delivers the first submitted version (resolveInputs).
+            this.submittedOutputOf(run, b.sourceNodeId, (round) =>
+              this.inRound(run, round, previous),
+            ).slice(0, 1)
           : [],
       );
     });
@@ -7886,6 +8105,40 @@ export class Coordinator {
   private openRoundOf(run: LiveRun, nodeId: string): string | null {
     const loopId = this.loopOf(run, nodeId);
     return loopId ? (run.rounds.get(loopId)?.iterationId ?? null) : null;
+  }
+
+  /** Whether the Loop round an execution runs in is still open, with every round around it. */
+  private inOpenRound(run: LiveRun, executionId: string): boolean {
+    const iterationId = run.projection.executions[executionId]?.iterationId ?? null;
+    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
+    if (!loopId) return true;
+    if (run.rounds.get(loopId)?.iterationId !== iterationId) return false;
+    for (let around = this.loopOf(run, loopId); around; around = this.loopOf(run, around))
+      if (!run.rounds.has(around)) return false;
+    return true;
+  }
+
+  /**
+   * A request for `nodeId`'s step, read before any wait: `dropped()` tells later whether it may
+   * still act. It is dropped once an any Join stopped its branch, or once the round it was made
+   * in is no longer open: a Loop around the node has no open round, or another one
+   * (docs/specs/features/team-graph.md, "병렬 실행"). `round` is the innermost Loop's round.
+   */
+  private requestOf(run: LiveRun, nodeId: string) {
+    const loops: string[] = [];
+    for (let loopId = this.loopOf(run, nodeId); loopId; loopId = this.loopOf(run, loopId))
+      loops.push(loopId);
+    const rounds = loops.map((loopId) => run.rounds.get(loopId)?.iterationId ?? null);
+    const round = rounds[0] ?? null;
+    const key = `${nodeId}@${round ?? '-'}`;
+    const current = (i: number) => run.rounds.get(loops[i] as string)?.iterationId ?? null;
+    return {
+      round,
+      stopped: () => run.stoppedSteps.has(key),
+      /** Another round of a Loop around the node is open: a plan the compiler refuses. */
+      replaced: () => loops.some((_, i) => current(i) !== null && current(i) !== rounds[i]),
+      dropped: () => run.stoppedSteps.has(key) || loops.some((_, i) => current(i) !== rounds[i]),
+    };
   }
 
   /** Ends a running (or waiting) run by the person's decision. */
@@ -9122,7 +9375,8 @@ export class Coordinator {
         if (reason) {
           this.commit(run, [...tool.opening, ...tool.closing(null, reason)]);
           const context = this.recipeForExecution(run, executionId);
-          if (context)
+          // A candidate whose round has ended stops no recipe: the round's end stands.
+          if (context && this.inOpenRound(run, executionId))
             this.stopRecipe(
               run,
               context.loopId,
@@ -10493,15 +10747,18 @@ export class Coordinator {
     };
   }
 
-  /** The latest version the same node wrote in the previous round of its Loop. */
+  /**
+   * The latest version the same node wrote in the round its own previous_iteration_output reads
+   * (technical-design §9.2): the previous round of its Loop, rounds nested in it included.
+   */
   private previousRoundOutput(run: LiveRun, input: AgentStartInput) {
     if (input.item) return null;
-    const iterationId = run.projection.executions[input.executionId]?.iterationId;
-    const previous = iterationId ? this.previousRound(run, iterationId) : null;
+    const iterationId = run.projection.executions[input.executionId]?.iterationId ?? null;
+    const previous = this.carriedFrom(run, input.nodeId, input.nodeId, iterationId);
     if (!previous) return null;
     const authors = new Set(
       Object.values(run.projection.executions)
-        .filter((e) => e.nodeId === input.nodeId && e.iterationId === previous)
+        .filter((e) => e.nodeId === input.nodeId && this.inRound(run, e.iterationId, previous))
         .map((e) => e.executionId),
     );
     return (

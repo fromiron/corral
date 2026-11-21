@@ -75,9 +75,9 @@ const choose = async (combobox: string | RegExp, option: string | RegExp) => {
   await user.click(await screen.findByRole('option', { name: option }));
 };
 const writing = {
-  role: roleFromPreset('write', 'write', messages.TeamTemplates.presets.write.name),
-  stepInstruction: messages.TeamTemplates.presets.write.duty,
-  origin: { kind: 'preset' as const, presetId: 'write' },
+  role: roleFromPreset('writer', 'writer', messages.TeamTemplates.presets.writer.name),
+  stepInstruction: messages.TeamTemplates.presets.writer.duty,
+  origin: { kind: 'preset' as const, presetId: 'writer' },
 };
 async function chooseWriting() {
   await userEvent.click(
@@ -1148,12 +1148,14 @@ describe('team editor: choosing an agent', () => {
     { corralId: 'harbor', definitionRevision: 3, name: 'Harbor', agents: [{ role: releaseCheck }] },
   ];
   const presetNames = [
+    'Design',
     'Implementation',
-    'Plan',
-    'Review',
     'Cause investigation',
-    'Correctness review',
-    'Security review',
+    'Review',
+    'Challenge',
+    'Verification',
+    'Judging',
+    'Explanation',
     'Research',
     'Writing',
   ];
@@ -1279,11 +1281,11 @@ describe('team editor: choosing an agent', () => {
       }),
     );
     await act(async () => fireEvent.click(screen.getByRole('option', { name: /Add Agent/ })));
-    await userEvent.click(screen.getByRole('button', { name: 'Plan' }));
+    await userEvent.click(screen.getByRole('button', { name: 'Design' }));
     const added = editor
       .getState()
       .draft.definition.nodes.find((n) => n.type === 'agent' && n.id !== 'agent_1');
-    expect(added?.label).toBe('Plan');
+    expect(added?.label).toBe('Design');
     expect(canvasNode(added?.id as string).getAttribute('aria-pressed')).toBe('true');
   });
 
@@ -1296,12 +1298,14 @@ describe('team editor: choosing an agent', () => {
       .getAllByRole('listitem')
       .map((li) => within(li).getByRole('button').getAttribute('aria-label'));
     for (const name of [
+      '설계',
       '구현',
-      '계획',
-      '검토',
       '원인 조사',
-      '정확성 검토',
-      '보안 검토',
+      '검토',
+      '반증',
+      '검증',
+      '심사',
+      '설명',
       '조사',
       '작성',
     ])

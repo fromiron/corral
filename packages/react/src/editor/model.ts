@@ -103,6 +103,8 @@ const isAdvisor = (node: CorralNode | undefined): node is ObserverAgentNode =>
 
 export interface NodeChange {
   label?: string;
+  /** The role's description; a blank text removes it. */
+  description?: string;
   prompt?: string;
   /** To or from an advisor too (features/canvas.md rule 11). */
   invocation?: AgentNode['invocation'];
@@ -519,6 +521,8 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (change.teamPlanOwner && !role.allowedCollaborationTools.includes('update_plan'))
       roleChange.allowedCollaborationTools = [...role.allowedCollaborationTools, 'update_plan'];
     if (change.prompt !== undefined) roleChange.prompt = change.prompt;
+    if (change.description !== undefined)
+      roleChange.description = change.description.trim() ? change.description : undefined;
     if (change.outputContract) roleChange.outputContract = change.outputContract;
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
     if (change.harness !== undefined) roleChange.harness = change.harness ?? undefined;

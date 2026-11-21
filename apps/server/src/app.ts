@@ -639,8 +639,11 @@ async function createCorralServer(
     db,
     clock,
     root: join(workspace.root, '.corral', 'harness'),
+    warn: (message) => console.warn(message),
   });
   resources.defer(() => harnesses.dispose());
+  // Bundled packs are installed before the first request; a pack that fails does not stop start.
+  await harnesses.installBuiltins();
 
   const modelAttempts = new SqliteModelAttemptStore(db);
   modelAttempts.recoverInterrupted(clock.nowIso());
@@ -1581,7 +1584,7 @@ async function createCorralServer(
     },
   );
 
-  // Both team proposal routes share the admission record and its single in-flight request.
+  // A team proposal's admission record and its single in-flight request, by operation id.
   const teamOperations = new Map<string, Promise<TeamOperationResult>>();
   const findOperation = db.prepare<[string], { fingerprint: string; result_json: string | null }>(
     'SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?',
@@ -1600,13 +1603,13 @@ async function createCorralServer(
   ) => {
     const previous = findOperation.get(id);
     if (previous && previous.fingerprint !== fingerprint)
-      return fail(reply, 'REVISION_CONFLICT', 'This draft operation belongs to another request.');
+      return fail(reply, 'REVISION_CONFLICT', 'This operation belongs to another request.');
     let work = teamOperations.get(id);
     if (previous && !previous.result_json && !work)
       return fail(
         reply,
         'REQUEST_OUTCOME_UNKNOWN',
-        'The earlier draft outcome is unconfirmed. It has not been resent.',
+        'The earlier outcome is unconfirmed. It has not been resent.',
       );
     let result: TeamOperationResult;
     if (previous?.result_json) {
@@ -1634,37 +1637,15 @@ async function createCorralServer(
       result = await work;
     }
     if (!result.ok) return fail(reply, result.code, result.message);
-    return 'plan' in result
-      ? { plan: result.plan, model: result.model }
-      : { reply: result.reply, model: result.model };
+    return { reply: result.reply, model: result.model };
   };
-
-  app.post('/api/v1/team-drafts', async (request, reply) => {
-    const current = registry;
-    if (!current) return noLive(reply);
-    const body = parse(
-      z.strictObject({
-        goal: z.string().trim().min(1).max(2000),
-        operationId: z.string().min(1).max(200).optional(),
-      }),
-      request,
-      reply,
-    );
-    if (!body) return reply;
-    const id = body.operationId ?? randomUUID();
-    const fingerprint = createHash('sha256').update(body.goal).digest('hex');
-    return teamOperation(reply, id, fingerprint, (signal) =>
-      current.draftTeam(body.goal, { id, signal }),
-    );
-  });
 
   app.post('/api/v1/team-assistant', async (request, reply) => {
     const current = registry;
     if (!current) return noLive(reply);
     const body = parse(TeamAssistantRequest, request, reply);
     if (!body) return reply;
-    // Legacy draft fingerprints are bare digests of arbitrary text. Tag the digest, not its input.
-    const fingerprint = `assistant:${createHash('sha256').update(canonicalJson(body)).digest('hex')}`;
+    const fingerprint = createHash('sha256').update(canonicalJson(body)).digest('hex');
     return teamOperation(reply, body.operationId, fingerprint, (signal) =>
       current.assistTeam(body, signal),
     );

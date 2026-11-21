@@ -1,0 +1,45 @@
+{
+  "split": "approval",
+  "note": "Two requests in which the person will approve the result themself, written with their expectations before their first run. They read like team-compose-goals.check.json, whose note defines every field and expectation. They are scored apart from the confirming requests: they ask whether the person's own approval is mistaken for the required review gate. Each is sent twice.",
+  "agents": {},
+  "cases": [
+    {
+      "id": "approval-01",
+      "kind": "own_approval",
+      "lang": "en",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "Draft a customer notice saying the service will be offline from 2 to 3 p.m. on Friday. I'll approve it myself before it goes out."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "none",
+        "maxSeats": 1,
+        "outrider": ["none"]
+      },
+      "rater": "One Writer. The person's own approval is not a review by the team: no gate, no judge, no loop and no question."
+    },
+    {
+      "id": "approval-02",
+      "kind": "own_approval",
+      "lang": "ko",
+      "catalog": "bundled",
+      "repeat": true,
+      "messages": [
+        "금요일 오후 2시부터 3시까지 서비스를 이용할 수 없다는 고객 공지 초안을 써 주세요. 게시하기 전에 제가 직접 승인할게요."
+      ],
+      "expect": {
+        "reply": "plan",
+        "changes": false,
+        "submitters": ["Writer"],
+        "loop": "none",
+        "maxSeats": 1,
+        "outrider": ["none"]
+      },
+      "rater": "One Writer. The person's own approval is not a review by the team: no gate, no judge, no loop and no question."
+    }
+  ]
+}

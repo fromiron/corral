@@ -3,9 +3,9 @@ import {
   type OutputNode,
   type TeamAssistantReply,
   TeamAssistantTeam,
-  type TeamPlan,
+  type TeamComposition,
 } from '@corral/contracts';
-import { compileDefinition, draftFromPlan } from '@corral/core';
+import { compileDefinition, draftFromComposition, teamCatalog } from '@corral/core';
 import { linearCorral } from '@corral/testkit';
 import { createTranslator } from 'use-intl';
 import { expect, it } from 'vitest';
@@ -23,6 +23,7 @@ import {
   targetLabel,
 } from '../src/team-editor/assistant-proposal.ts';
 import { patchNode, patchTeam, setRequiredOutputReview } from '../src/team-editor/commands.ts';
+import { agent, choices, crew } from './team-composition-fixtures.ts';
 
 function localizedText(locale: string, catalog: typeof ko): AssistantText {
   const { TeamAssistant, TeamEditor, Inspector, Validation } = catalog;
@@ -34,20 +35,22 @@ function localizedText(locale: string, catalog: typeof ko): AssistantText {
 
 const t: AssistantText = (key, values) => (values ? `${key} ${canonicalJson(values)}` : key);
 const edit = { reason: 'Review the selected result.', origin: 'choice' as const, t };
+const resolved = teamCatalog(choices.agents, choices.skills);
 const create = {
-  ...edit,
-  origin: 'local' as const,
+  reason: edit.reason,
+  t,
   wording: en.TeamDraft.wording,
   initialName: 'Untitled',
+  resolved,
 };
+const labels = { ...en.TeamDraft.wording.labels, join: t('TeamEditor.kinds.join') };
 const fresh = () => emptyDraft('transient_team', create.initialName);
-const plan: TeamPlan = {
-  pattern: 'single',
+const plan: TeamComposition = {
   name: 'Newsletter',
   brief: 'Write a newsletter.',
   criteria: ['Use our notes.'],
-  roles: [{ slot: 'worker', name: 'Copywriter', duty: 'Write the newsletter.' }],
-  finalApproval: false,
+  seats: [{ id: 'w', agent: agent('writer'), name: 'Copywriter', duty: 'Write the newsletter.' }],
+  flow: [{ seat: 'w' }],
 };
 const gate = { kind: 'require_review' as const, outputId: 'output', index: 2 };
 type Edits = Extract<TeamAssistantReply, { kind: 'edits' }>['edits'];
@@ -167,7 +170,7 @@ it('builds a create preview with the real draft compiler, retaining the editor i
   expect(modeOf(base)).toBe('create');
   expect(modeOf(automatic.result)).toBe('edit');
   expect(automatic.result.definition).toEqual(
-    draftFromPlan(plan, base.definition.id, create.wording.labels).definition,
+    draftFromComposition(plan, base.definition.id, resolved, labels),
   );
   const custom = createProposal(renamed, plan, create);
   expect(custom.base).toBe(renamed);
@@ -175,36 +178,76 @@ it('builds a create preview with the real draft compiler, retaining the editor i
     ...automatic.result.definition,
     name: 'Our office bulletin',
   });
-  expect(custom.focus).toBe('work');
+  expect(custom.focus).toBe('seat_1');
   expect(custom.canApply).toBe(true);
+  expect(custom.origin).toBe('model');
+  expect(custom.plan).toBe(plan);
   expect(() => createProposal(handEdited(), plan, create)).toThrow();
 });
 
-it('requires a policy decision and then an exact confirmation before creating a mandatory gate', () => {
-  const base = fresh();
-  expect(createProposal(base, { ...plan, outrider: 'clarify_review' }, create).canApply).toBe(
-    false,
+it('assembles side-by-side seats and a judged loop that compile, each seat with its agent’s tools', () => {
+  const preview = createProposal(fresh(), crew, create);
+  const { definition } = preview.result;
+  expect(compileDefinition(definition).diagnostics).toEqual([]);
+  expect(definition.nodes.map((node) => node.type)).toEqual(
+    expect.arrayContaining(['join', 'loop', 'decision', 'output']),
   );
-  const required: TeamPlan = { ...plan, outrider: 'required_review', observeWork: true };
+  for (const seat of crew.seats) {
+    const role = definition.roles.find((r) => r.name === seat.name);
+    const source = resolved.agentById.get(seat.agent);
+    expect(role?.allowedWorkTools).toEqual(source?.role.allowedWorkTools);
+  }
+  expect(summarize(preview.result).outputs[0]?.results).toEqual([
+    { index: 0, name: 'draft', producerName: 'Summary' },
+  ]);
+});
+
+it('makes no proposal from a composition the sent catalog cannot resolve', () => {
+  const stranger = { ...plan, seats: [{ ...plan.seats[0]!, agent: 'a99' }] };
+  expect(() => createProposal(fresh(), stranger, create)).toThrow(t('logic.unusable'));
+  const unknownSkill = { ...plan, seats: [{ ...plan.seats[0]!, skills: ['no-such-skill'] }] };
+  expect(() => createProposal(fresh(), unknownSkill, create)).toThrow(t('logic.unusable'));
+});
+
+it('requires an exact confirmation before creating a mandatory gate, and observes only when asked', () => {
+  const base = fresh();
+  const required: TeamComposition = { ...plan, outrider: 'required_review' };
   const preview = createProposal(base, required, create);
   expect(preview.canApply).toBe(false);
   expect(output(preview.result).requiredReviews).toBeUndefined();
+  expect(preview.result.definition.sharedOutrider?.observation).toBeUndefined();
   expect(preview.targets).toEqual([
     { outputId: 'output', index: 0, name: 'draft', producerName: 'Copywriter' },
   ]);
   const target = { outputId: 'output', index: 0 };
   const text = localizedText('ko', ko);
-  const confirmed = createProposal(base, required, { ...create, target, t: text });
-  const labels = { loop: '제출 전 검토', reviewer: '제출 전 검토자', decision: '제출 전 판정' };
-  const command = setRequiredOutputReview(preview.result, 'output', 'draft', 'work', labels, 0);
+  const confirmed = createProposal(base, required, {
+    ...create,
+    target,
+    observe: true,
+    t: text,
+  });
+  const gateLabels = { loop: '제출 전 검토', reviewer: '제출 전 검토자', decision: '제출 전 판정' };
   expect(confirmed.result.definition.nodes.map((node) => node.label)).toEqual(
-    expect.arrayContaining(Object.values(labels)),
+    expect.arrayContaining(Object.values(gateLabels)),
   );
-  expect(confirmed.result.definition.roles.at(-1)?.name).toBe(labels.reviewer);
-  if (!command.ok) throw new Error(command.reason);
+  expect(confirmed.result.definition.roles.at(-1)?.name).toBe(gateLabels.reviewer);
   expect(confirmed.canApply).toBe(true);
+  expect(confirmed.result.definition.sharedOutrider?.observation).toEqual({
+    targets: { kind: 'all' },
+    review: { interval: 3, maxRequestsPerReview: 8 },
+  });
+  const observed = createProposal(base, required, { ...create, observe: true });
+  const command = setRequiredOutputReview(
+    observed.result,
+    'output',
+    'draft',
+    'seat_1',
+    gateLabels,
+    0,
+  );
+  if (!command.ok) throw new Error(command.reason);
   expect(confirmed.result).toEqual(command.draft);
-  expect(confirmed.result.definition.sharedOutrider?.observation).toBeDefined();
   expect(output(confirmed.result).requireApproval).toBe(false);
   expect(() =>
     createProposal(base, required, { ...create, target: { ...target, index: 1 } }),
@@ -342,7 +385,7 @@ it('rejects the whole batch for a missing target, illegal field, wrong binding k
     ),
   ).toThrow(/Validation\.codes/);
   expect(() =>
-    createProposal(fresh(), { ...plan, tools: ['run_command'] } as TeamPlan, create),
+    createProposal(fresh(), { ...plan, tools: ['run_command'] } as TeamComposition, create),
   ).toThrow(t('invalid.proposal'));
 });
 
@@ -434,9 +477,10 @@ it('distinguishes a review role and human approval from an output that requires 
 
 it('binds generated seats and the mandatory Outrider reviewer to installed profiles', () => {
   const profiles = ['deepseek-hive', 'local-review'];
-  const required: TeamPlan = { ...plan, outrider: 'required_review', observeWork: true };
+  const required: TeamComposition = { ...plan, outrider: 'required_review' };
   const confirmed = createProposal(fresh(), required, {
     ...create,
+    observe: true,
     target: { outputId: 'output', index: 0 },
     compileOptions: { knownModelProfiles: profiles },
   });
@@ -448,26 +492,14 @@ it('binds generated seats and the mandatory Outrider reviewer to installed profi
   expect(confirmed.result.definition.sharedOutrider?.modelProfile).toBe('deepseek-hive');
 });
 
-it('keeps an installed template slot and never remaps profiles from a hand-edited team', () => {
+it('keeps an installed model slot of a composed seat and never remaps profiles from a hand-edited team', () => {
   const options = { knownModelProfiles: ['deepseek-hive', 'model-b'] };
-  const compiled = createProposal(
-    fresh(),
-    {
-      ...plan,
-      pattern: 'write_review',
-      roles: [
-        { slot: 'planner', name: 'Planner', duty: 'Plan the edition.' },
-        { slot: 'writer', name: 'Writer', duty: 'Write the edition.' },
-        { slot: 'reviewer', name: 'Reviewer', duty: 'Check the edition.' },
-      ],
-    },
-    { ...create, compileOptions: options },
+  const compiled = createProposal(fresh(), crew, { ...create, compileOptions: options });
+  const assembled = draftFromComposition(crew, 'x', resolved, labels).roles;
+  expect(assembled.map((r) => r.modelProfile)).toContain('model-b');
+  expect(compiled.result.definition.roles.map((r) => r.modelProfile)).toEqual(
+    assembled.map((r) => (r.modelProfile === 'model-b' ? 'model-b' : 'deepseek-hive')),
   );
-  expect(compiled.result.definition.roles.map((r) => r.modelProfile)).toEqual([
-    'deepseek-hive',
-    'deepseek-hive',
-    'model-b',
-  ]);
   const existing = handEdited();
   expect(() =>
     editProposal(existing, [{ kind: 'set_brief', brief: 'Publish next week.' }], {

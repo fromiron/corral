@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { type CompiledPlan, compileDefinition } from '../compiler/index.ts';
 import { forkPlan, reachableFrom } from '../fork.ts';
-import type { GraphRunner, IterationRef, LoopStop, RunnerCallbacks } from '../runner.ts';
+import {
+  BranchStopped,
+  type GraphRunner,
+  type IterationRef,
+  type LoopStop,
+  type RunnerCallbacks,
+} from '../runner.ts';
 
 /**
  * Behaviour every GraphRunner must share (runner parity, v0.2 supplement §5). The reference
@@ -164,6 +170,154 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
     ];
     return planOf(definition);
   }
+
+  const router = (id: string, parentId: string, source: string, routes: string[]) => ({
+    id,
+    type: 'decision' as const,
+    label: id,
+    parentId,
+    mode: 'router' as const,
+    routes: routes.map((route) => ({ id: route, label: route })),
+    inputBindings: [{ kind: 'task_output' as const, name: 'input', sourceNodeId: source }],
+  });
+
+  /**
+   * s → p → [ router d0 … ], each sending route a to Join j1 and route b to Join j2;
+   * j1 → q → output, j2 → r → final.
+   */
+  function twoJoins(width: number, first: 'all' | 'any', second: 'all' | 'any') {
+    const definition = linearCorral(['s', 'p', 'q', 'r']);
+    const ids = Array.from({ length: width }, (_, i) => `d${i}`);
+    for (const node of definition.nodes)
+      if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 's')
+        node.inputBindings = [
+          { kind: 'task_output', name: 'input', sourceNodeId: node.id === 'p' ? 's' : 'p' },
+        ];
+    for (const node of definition.nodes)
+      if (node.type === 'output')
+        node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'q' }];
+    definition.nodes.push(
+      ...ids.map((id) => ({
+        id,
+        type: 'decision' as const,
+        label: id,
+        mode: 'router' as const,
+        routes: ['a', 'b'].map((route) => ({ id: route, label: route })),
+        inputBindings: [{ kind: 'task_output' as const, name: 'input', sourceNodeId: 'p' }],
+      })),
+      { id: 'j1', type: 'join', label: 'j1', policy: first },
+      { id: 'j2', type: 'join', label: 'j2', policy: second },
+      {
+        id: 'final',
+        type: 'output',
+        label: 'final',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'r' }],
+        requireApproval: false,
+      },
+    );
+    definition.controlEdges = [
+      link('sp', 's', 'out', 'p', 'in'),
+      ...ids.flatMap((id) => [
+        link(`p${id}`, 'p', 'out', id, 'in'),
+        link(`${id}a`, id, 'a', 'j1', 'in'),
+        link(`${id}b`, id, 'b', 'j2', 'in'),
+      ]),
+      link('j1q', 'j1', 'out', 'q', 'in'),
+      link('qo', 'q', 'out', 'output', 'in'),
+      link('j2r', 'j2', 'out', 'r', 'in'),
+      link('rf', 'r', 'out', 'final', 'in'),
+    ];
+    return planOf(definition);
+  }
+
+  /**
+   * s → Loop l [ p → [ router d, router e ] → Join j (any) → router f → output ], with f's
+   * again: l.repeat, leave: l.exit; l.next → q → final. d's `inconclusive` route has no edge.
+   */
+  function roundInBranches() {
+    const definition = linearCorral(['s', 'p', 'q']);
+    for (const node of definition.nodes) {
+      if (node.id === 'p') node.parentId = 'l';
+      if (node.type === 'output') {
+        node.parentId = 'l';
+        node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+      }
+    }
+    definition.nodes.push(
+      { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+      router('d', 'l', 'p', ['go', 'inconclusive']),
+      router('e', 'l', 'p', ['go', 'other']),
+      { id: 'j', type: 'join', label: 'j', parentId: 'l', policy: 'any' },
+      router('f', 'l', 'p', ['done', 'again', 'leave']),
+      {
+        id: 'final',
+        type: 'output',
+        label: 'final',
+        inputBindings: [{ kind: 'task_output', name: 'final', sourceNodeId: 'q' }],
+        requireApproval: false,
+      },
+    );
+    definition.controlEdges = [
+      link('sl', 's', 'out', 'l', 'enter'),
+      link('lp', 'l', 'body', 'p', 'in'),
+      link('pd', 'p', 'out', 'd', 'in'),
+      link('pe', 'p', 'out', 'e', 'in'),
+      link('dj', 'd', 'go', 'j', 'in'),
+      link('ej', 'e', 'go', 'j', 'in'),
+      link('jf', 'j', 'out', 'f', 'in'),
+      link('fo', 'f', 'done', 'output', 'in'),
+      link('fr', 'f', 'again', 'l', 'repeat'),
+      link('fx', 'f', 'leave', 'l', 'exit'),
+      link('lq', 'l', 'next', 'q', 'in'),
+      link('qf', 'q', 'out', 'final', 'in'),
+    ];
+    return planOf(definition);
+  }
+
+  /**
+   * Loop o [ p → [ Loop l [ w → router dl ], x ] → Join j (any) → router od ] → output, with
+   * dl's pass: l.exit, again: l.repeat; od's again: o.repeat, done: o.exit.
+   */
+  function loopInLosingBranch() {
+    const definition = linearCorral(['p', 'w', 'x']);
+    for (const node of definition.nodes) {
+      if (node.id === 'p' || node.id === 'x') node.parentId = 'o';
+      if (node.id === 'w') node.parentId = 'l';
+      if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+        node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+      if (node.type === 'output')
+        node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+    }
+    definition.entryNodeId = 'o';
+    definition.nodes.push(
+      { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+      { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 },
+      router('dl', 'l', 'w', ['pass', 'again']),
+      { id: 'j', type: 'join', label: 'j', parentId: 'o', policy: 'any' },
+      router('od', 'o', 'p', ['again', 'done']),
+    );
+    definition.controlEdges = [
+      link('op', 'o', 'body', 'p', 'in'),
+      link('pl', 'p', 'out', 'l', 'enter'),
+      link('px', 'p', 'out', 'x', 'in'),
+      link('lw', 'l', 'body', 'w', 'in'),
+      link('wd', 'w', 'out', 'dl', 'in'),
+      link('dx', 'dl', 'pass', 'l', 'exit'),
+      link('dr', 'dl', 'again', 'l', 'repeat'),
+      link('lj', 'l', 'next', 'j', 'in'),
+      link('xj', 'x', 'out', 'j', 'in'),
+      link('jd', 'j', 'out', 'od', 'in'),
+      link('or', 'od', 'again', 'o', 'repeat'),
+      link('ox', 'od', 'done', 'o', 'exit'),
+      link('oo', 'o', 'next', 'output', 'in'),
+    ];
+    return planOf(definition);
+  }
+
+  /** Resolves once `check` holds, or after a bounded number of turns. */
+  const until = async (check: () => boolean) => {
+    for (let i = 0; i < 1000 && !check(); i++) await Promise.resolve();
+  };
 
   /** Holds each named step until released; the recorder answers once it is. */
   function held(callbacks: RunnerCallbacks, log: string[], names: string[]) {
@@ -477,6 +631,623 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       const result = await makeRunner().run(plan, callbacks, signal);
       expect(log).toEqual(['activate research']);
       expect(result).toEqual({ kind: 'stopped' });
+    });
+
+    // docs/specs/features/team-graph.md, "병렬 실행", 끝난 회차의 분기.
+    it('lets a branch go no further once a sibling Decision ended its round inconclusive', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'], f: ['done'] });
+      const { decide, loopLeft, joined } = callbacks;
+      let closed = false;
+      let joinedOnce = false;
+      // e decides once d has closed the round; the close is answered only after e has had
+      // its chance to reach the Join, so d's branch has not yet ended the run when it does.
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'e') await until(() => closed);
+        return decide(nodeId, iteration);
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => joinedOnce);
+      };
+      callbacks.joined = async (...args) => {
+        joinedOnce = true;
+        return joined(...args);
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('decide e#1 → go');
+      expect(log).toContain('leave l#1 inconclusive');
+      expect(log.some((line) => line.startsWith('join'))).toBe(false);
+      expect(log).not.toContain('finalize output');
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('keeps the needs_user of the round’s close when a sibling then ends as rejected', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['<stop>'] });
+      const { decide, loopLeft } = callbacks;
+      let closed = false;
+      let rejected = false;
+      // e is stopped by the person once d has closed the round; the close is answered only
+      // after e's branch has had every chance to end the run.
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'e') await until(() => closed);
+        const branch = await decide(nodeId, iteration);
+        if (nodeId === 'e') rejected = true;
+        return branch;
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => rejected);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('decide e#1 → <stop>');
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('closes the round once when a sibling then also comes back inconclusive', async () => {
+      // e's answer, asked in the round d then closes, would close the same round again.
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['inconclusive'] });
+      const { decide, loopLeft } = callbacks;
+      let closed = false;
+      let answered = false;
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'e') await until(() => closed);
+        const branch = await decide(nodeId, iteration);
+        if (nodeId === 'e') answered = true;
+        return branch;
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive' || answered) return;
+        closed = true;
+        await until(() => answered);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('decide e#1 → inconclusive');
+      expect(log.filter((line) => line.startsWith('leave l#1'))).toEqual([
+        'leave l#1 inconclusive',
+      ]);
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('stops no sibling at a Join a branch reaches after its round ended', async () => {
+      // s → Loop l [ p → [ q → [a, b] → all Join k, router d (go) ] → any Join j → router r
+      // (done: l.exit, again: l.repeat) ] → output; d's inconclusive has no edge. d closes the
+      // round while k is recorded; q's branch then comes to j, where it must not stop d's.
+      const definition = linearCorral(['s', 'p', 'q', 'a', 'b']);
+      for (const node of definition.nodes) {
+        if (node.type !== 'agent' || node.invocation === 'observer' || node.id === 's') continue;
+        node.parentId = 'l';
+        const source = node.id === 'p' ? 's' : 'p';
+        node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: source }];
+      }
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        router('d', 'l', 'p', ['go', 'inconclusive']),
+        router('r', 'l', 'p', ['done', 'again']),
+        { id: 'k', type: 'join', label: 'k', parentId: 'l', policy: 'all' },
+        { id: 'j', type: 'join', label: 'j', parentId: 'l', policy: 'any' },
+      );
+      definition.controlEdges = [
+        link('sl', 's', 'out', 'l', 'enter'),
+        link('lp', 'l', 'body', 'p', 'in'),
+        link('pq', 'p', 'out', 'q', 'in'),
+        link('pd', 'p', 'out', 'd', 'in'),
+        link('qa', 'q', 'out', 'a', 'in'),
+        link('qb', 'q', 'out', 'b', 'in'),
+        link('ak', 'a', 'out', 'k', 'in'),
+        link('bk', 'b', 'out', 'k', 'in'),
+        link('kj', 'k', 'out', 'j', 'in'),
+        link('dj', 'd', 'go', 'j', 'in'),
+        link('jr', 'j', 'out', 'r', 'in'),
+        link('rx', 'r', 'done', 'l', 'exit'),
+        link('rr', 'r', 'again', 'l', 'repeat'),
+        link('lo', 'l', 'next', 'output', 'in'),
+      ];
+      const { log, callbacks } = recorder({ d: ['inconclusive'] });
+      const { decide, joined, loopLeft } = callbacks;
+      let joining = false;
+      let closed = false;
+      let passed = false;
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'd') await until(() => joining);
+        return decide(nodeId, iteration);
+      };
+      callbacks.joined = async (joinId, ...rest) => {
+        if (joinId !== 'k') return joined(joinId, ...rest);
+        joining = true;
+        await until(() => closed);
+        await joined(joinId, ...rest);
+        passed = true;
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => passed);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      const result = await makeRunner().run(planOf(definition), callbacks);
+      expect(log).toContain('leave l#1 inconclusive');
+      expect(log.some((line) => line.startsWith('join j'))).toBe(false);
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('keeps the needs_user of the round’s close when a sibling’s request then fails', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'] });
+      const { decide, loopLeft } = callbacks;
+      let closed = false;
+      let failed = false;
+      // e's request, made in the round d then closes, fails as a dropped request does.
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId !== 'e') return decide(nodeId, iteration);
+        await until(() => closed);
+        failed = true;
+        throw new BranchStopped();
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => failed);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('leave l#1 inconclusive');
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('fails the run with a sibling’s own failure, though the round closes right behind it', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'] });
+      const { loopLeft } = callbacks;
+      let failed = false;
+      // e fails while its round is open. d closes the round before that failure has surfaced,
+      // and holds there: the failure is e's own, not a dropped request, and ends the run.
+      callbacks.decide = async (nodeId) => {
+        if (nodeId === 'e') {
+          failed = true;
+          throw new Error('policy failed');
+        }
+        await until(() => failed);
+        return 'inconclusive';
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      await expect(makeRunner().run(roundInBranches(), callbacks)).rejects.toThrow('policy failed');
+      expect(log).toContain('leave l#1 inconclusive');
+    });
+
+    // "출력 포트 하나의 분기를 모으는 all Join은 하나다": with at most one all Join on a port,
+    // every way the branches can choose between the two Joins ends the run.
+    describe.each([2, 3])('two Joins that gather a fan-out of %i', (width) => {
+      const choices = Array.from({ length: 2 ** width }, (_, n) =>
+        Array.from({ length: width }, (_, i) => ((n >> i) & 1 ? 'b' : 'a')),
+      );
+
+      it.each([
+        ['all', 'any'],
+        ['any', 'all'],
+        ['any', 'any'],
+      ] as const)('end the run whatever the branches choose: %s and %s', async (first, second) => {
+        for (const choice of choices) {
+          const { callbacks } = recorder(
+            Object.fromEntries(choice.map((route, i) => [`d${i}`, [route]])),
+          );
+          const result = await makeRunner().run(twoJoins(width, first, second), callbacks);
+          expect([choice.join(''), result.kind]).toEqual([choice.join(''), 'finished']);
+        }
+      });
+
+      it('are refused when both are all Joins', () => {
+        expect(() => twoJoins(width, 'all', 'all')).toThrow(/JOIN_SPLIT/);
+      });
+    });
+
+    it('drops a stopped branch whose Decision comes back inconclusive after the Join', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'], f: ['done'] });
+      const { decide, joined } = callbacks;
+      let joinedOnce = false;
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'd') await until(() => joinedOnce);
+        return decide(nodeId, iteration);
+      };
+      callbacks.joined = async (...args) => {
+        await joined(...args);
+        joinedOnce = true;
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('join j#1 stops d#1');
+      expect(log).not.toContain('leave l#1 inconclusive');
+      expect(log).toContain('decide f#1 → done');
+      expect(log.at(-1)).toBe('finalize output');
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    it.each(['a stopped step', 'a stopped Loop entry'])(
+      'enters a Loop afresh after an any Join stopped %s in it and the Loop around repeated',
+      async (stoppedAt) => {
+        const { log, callbacks } = recorder({ od: ['again', 'done'], dl: ['pass'] });
+        const { activate, loopEntered, joined } = callbacks;
+        let joins = 0;
+        let xRuns = 0;
+        // o's first round: x wins the Join over l's branch, stopped at w or while entering l.
+        // o's second round: l's fresh entry wins over x.
+        callbacks.activate = async (nodeId, iteration) => {
+          if (nodeId === 'w' && joins === 0) {
+            await until(() => joins === 1);
+            return { ok: false, reason: 'stopped' };
+          }
+          if (nodeId === 'x' && ++xRuns === 2) {
+            await until(() => joins === 2);
+            return { ok: false, reason: 'stopped' };
+          }
+          return activate(nodeId, iteration);
+        };
+        callbacks.loopEntered = async (loopId, no) => {
+          await loopEntered(loopId, no);
+          if (loopId === 'l' && joins === 0 && stoppedAt === 'a stopped Loop entry') {
+            await until(() => joins === 1);
+            throw new Error('branch stopped');
+          }
+        };
+        callbacks.joined = async (...args) => {
+          await joined(...args);
+          joins += 1;
+        };
+        const result = await makeRunner().run(loopInLosingBranch(), callbacks);
+        expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+        expect(log.filter((line) => line.startsWith('enter l'))).toEqual([
+          'enter l#1',
+          'enter l#1',
+        ]);
+        expect(log.filter((line) => line.startsWith('join'))).toEqual([
+          stoppedAt === 'a stopped step' ? 'join j#1 stops w#1' : 'join j#1 stops l#1',
+          'join j#2 stops x#2',
+        ]);
+        expect(log).toContain('leave l#1 pass');
+      },
+    );
+
+    // docs/specs/features/team-graph.md, "병렬 실행", 갈라지기.
+    it.each(['first', 'last'])(
+      'starts no branch of a fan-out with a repeat target %s, and fails',
+      async (where) => {
+        // Loop o [ Loop l [ a → router d (again: l.repeat, done: l.exit) ] → router od
+        // (again: o.repeat, done: o.exit) ] → output; d's again also gets o's repeat by hand.
+        const definition = linearCorral(['a']);
+        for (const node of definition.nodes) if (node.id === 'a') node.parentId = 'l';
+        definition.entryNodeId = 'o';
+        definition.nodes.push(
+          { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+          { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 },
+          router('d', 'l', 'a', ['again', 'done']),
+          router('od', 'o', 'a', ['again', 'done']),
+        );
+        definition.controlEdges = [
+          link('ol', 'o', 'body', 'l', 'enter'),
+          link('la', 'l', 'body', 'a', 'in'),
+          link('ad', 'a', 'out', 'd', 'in'),
+          link('dr', 'd', 'again', 'l', 'repeat'),
+          link('dx', 'd', 'done', 'l', 'exit'),
+          link('ld', 'l', 'next', 'od', 'in'),
+          link('or', 'od', 'again', 'o', 'repeat'),
+          link('ox', 'od', 'done', 'o', 'exit'),
+          link('oo', 'o', 'next', 'output', 'in'),
+        ];
+        const plan = planOf(definition);
+        const d = plan.steps.d;
+        if (d?.kind !== 'decision') throw new Error('d is not a decision');
+        const outer = { nodeId: 'o', port: 'repeat' as const };
+        const inner = d.branches.again ?? [];
+        d.branches.again = where === 'first' ? [outer, ...inner] : [...inner, outer];
+        const { log, callbacks } = recorder({ d: ['again'] });
+        await expect(makeRunner().run(plan, callbacks)).rejects.toThrow('repeat of Loop');
+        expect(log.at(-1)).toBe('decide d#1 → again');
+      },
+    );
+
+    /**
+     * Loop l [ p → [ q → [a, b] → Join k (policy given) → [u, v] → all Join k2, x ] → any Join j
+     * → router d ], d's pass: l.exit, again: l.repeat; l.next → output.
+     */
+    function joinInsideBranch(policy: 'all' | 'any') {
+      const definition = linearCorral(['p', 'q', 'a', 'b', 'u', 'v', 'x']);
+      for (const node of definition.nodes) {
+        if (node.type !== 'output') node.parentId = 'l';
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+      }
+      definition.entryNodeId = 'l';
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        { id: 'k', type: 'join', label: 'k', parentId: 'l', policy },
+        { id: 'k2', type: 'join', label: 'k2', parentId: 'l', policy: 'all' },
+        { id: 'j', type: 'join', label: 'j', parentId: 'l', policy: 'any' },
+        router('d', 'l', 'p', ['pass', 'again']),
+      );
+      definition.controlEdges = [
+        link('lp', 'l', 'body', 'p', 'in'),
+        link('pq', 'p', 'out', 'q', 'in'),
+        link('px', 'p', 'out', 'x', 'in'),
+        link('qa', 'q', 'out', 'a', 'in'),
+        link('qb', 'q', 'out', 'b', 'in'),
+        link('ak', 'a', 'out', 'k', 'in'),
+        link('bk', 'b', 'out', 'k', 'in'),
+        link('ku', 'k', 'out', 'u', 'in'),
+        link('kv', 'k', 'out', 'v', 'in'),
+        link('uk', 'u', 'out', 'k2', 'in'),
+        link('vk', 'v', 'out', 'k2', 'in'),
+        link('kj', 'k2', 'out', 'j', 'in'),
+        link('xj', 'x', 'out', 'j', 'in'),
+        link('jd', 'j', 'out', 'd', 'in'),
+        link('dx', 'd', 'pass', 'l', 'exit'),
+        link('dr', 'd', 'again', 'l', 'repeat'),
+        link('lo', 'l', 'next', 'output', 'in'),
+      ];
+      return planOf(definition);
+    }
+
+    // docs/specs/features/team-graph.md, "병렬 실행": a stopped branch fans out past no Join.
+    it.each(['all', 'any'] as const)(
+      'fans out past no %s Join a branch that an outer any Join stopped while it joined',
+      async (policy) => {
+        const { log, callbacks } = recorder({ d: ['again', 'pass'] });
+        const { activate, joined } = callbacks;
+        let atK = false;
+        // Round 1: x waits until k's join is under way, and k's join answers only after x has
+        // won j. Round 2: x waits until the other branch has won j.
+        callbacks.activate = async (nodeId, iteration) => {
+          if (nodeId === 'x' && iteration?.no === 1) await until(() => atK);
+          if (nodeId === 'x' && iteration?.no === 2)
+            await until(() => log.some((line) => line.startsWith('join j#2')));
+          return activate(nodeId, iteration);
+        };
+        callbacks.joined = async (joinId, iteration, stopped, loops) => {
+          if (joinId === 'k' && iteration?.no === 1) {
+            atK = true;
+            await until(() => log.some((line) => line.startsWith('join j#1')));
+          }
+          return joined(joinId, iteration, stopped, loops);
+        };
+        const result = await makeRunner().run(joinInsideBranch(policy), callbacks);
+        expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+        const j1 = log.findIndex((line) => line.startsWith('join j#1'));
+        expect(log.findIndex((line) => line.startsWith('join k#1'))).toBeGreaterThan(j1);
+        expect(log).not.toContain('activate u#1');
+        expect(log).not.toContain('activate v#1');
+        expect(log).toContain('activate u#2');
+        expect(log.slice(-2)).toEqual(['leave l#2 pass', 'finalize output']);
+      },
+    );
+
+    /**
+     * p → [ q → [y, z] → Join k (any) → w, x ] → Join j (any) → output. With `looped`, q's part
+     * is Loop l [ a → [y, z] → k → router dl (again: l.repeat, pass: l.exit) ], l.next → j.
+     */
+    function nestedAnyJoins(looped: boolean) {
+      const definition = linearCorral(['p', 'q', 'a', 'y', 'z', 'w', 'x']);
+      const inLoop = ['a', 'y', 'z'];
+      const used = looped ? ['p', 'a', 'y', 'z', 'x'] : ['p', 'q', 'y', 'z', 'w', 'x'];
+      definition.nodes = definition.nodes.filter((n) => n.type === 'output' || used.includes(n.id));
+      for (const node of definition.nodes) {
+        if (looped && inLoop.includes(node.id)) node.parentId = 'l';
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+      }
+      definition.nodes.push(
+        { id: 'k', type: 'join', label: 'k', policy: 'any', ...(looped ? { parentId: 'l' } : {}) },
+        { id: 'j', type: 'join', label: 'j', policy: 'any' },
+      );
+      if (looped)
+        definition.nodes.push(
+          { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+          router('dl', 'l', 'p', ['pass', 'again']),
+        );
+      const head = looped ? 'a' : 'q';
+      definition.controlEdges = [
+        looped ? link('pl', 'p', 'out', 'l', 'enter') : link('pq', 'p', 'out', 'q', 'in'),
+        link('px', 'p', 'out', 'x', 'in'),
+        ...(looped ? [link('la', 'l', 'body', 'a', 'in')] : []),
+        link('hy', head, 'out', 'y', 'in'),
+        link('hz', head, 'out', 'z', 'in'),
+        link('yk', 'y', 'out', 'k', 'in'),
+        link('zk', 'z', 'out', 'k', 'in'),
+        ...(looped
+          ? [
+              link('kd', 'k', 'out', 'dl', 'in'),
+              link('dx', 'dl', 'pass', 'l', 'exit'),
+              link('dr', 'dl', 'again', 'l', 'repeat'),
+              link('lj', 'l', 'next', 'j', 'in'),
+            ]
+          : [link('kw', 'k', 'out', 'w', 'in'), link('wj', 'w', 'out', 'j', 'in')]),
+        link('xj', 'x', 'out', 'j', 'in'),
+        link('jo', 'j', 'out', 'output', 'in'),
+      ];
+      return planOf(definition);
+    }
+
+    // "기록": a Join does not stop again a branch another Join already stopped.
+    it.each([false, true])(
+      'an outer any Join reports no branch an inner one already stopped (in a Loop: %s)',
+      async (looped) => {
+        const { log, callbacks } = recorder({ dl: ['again'] });
+        const { activate, joined } = callbacks;
+        const reported: { loopId: string; no: number }[][] = [];
+        const joinedJ = () => log.some((line) => line.startsWith('join j'));
+        // z, stopped by k, is still ending; the inner winner's next step (w, or a in l's second
+        // round) runs on; x reaches j once that step has started.
+        const last = looped ? 'a' : 'w';
+        callbacks.activate = async (nodeId, iteration) => {
+          if (nodeId === 'z' || (nodeId === last && (!looped || iteration?.no === 2))) {
+            const outcome = activate(nodeId, iteration);
+            await until(joinedJ);
+            await outcome;
+            return { ok: false, reason: 'stopped' };
+          }
+          if (nodeId === 'x')
+            await until(() => log.includes(looped ? 'activate a#2' : 'activate w'));
+          return activate(nodeId, iteration);
+        };
+        callbacks.joined = async (joinId, iteration, stopped, loops) => {
+          if (joinId === 'j') reported.push(loops);
+          return joined(joinId, iteration, stopped, loops);
+        };
+        const result = await makeRunner().run(nestedAnyJoins(looped), callbacks);
+        expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+        const joins = log.filter((line) => line.startsWith('join'));
+        if (looped) {
+          expect(reported).toEqual([[{ loopId: 'l', no: 2 }]]);
+          expect(joins).toEqual(['join k#1 stops z#1', 'join j stops a#2']);
+        } else {
+          expect(joins).toEqual(['join k stops z', 'join j stops w']);
+        }
+      },
+    );
+
+    // "끝난 회차의 분기", 다만: a branch outside the Loop that reaches the any Join first.
+    it('goes on through the any Join an outside branch reaches before the round’s close ends the run', async () => {
+      // s → [ Loop l [ router d (go: l.exit, again: l.repeat) ], b ] → Join k (any) → m → output;
+      // d's inconclusive has no edge.
+      const definition = linearCorral(['s', 'b', 'm']);
+      for (const node of definition.nodes) {
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 's')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 's' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'm' }];
+      }
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        router('d', 'l', 's', ['go', 'again', 'inconclusive']),
+        { id: 'k', type: 'join', label: 'k', policy: 'any' },
+      );
+      definition.controlEdges = [
+        link('sl', 's', 'out', 'l', 'enter'),
+        link('sb', 's', 'out', 'b', 'in'),
+        link('ld', 'l', 'body', 'd', 'in'),
+        link('dx', 'd', 'go', 'l', 'exit'),
+        link('dr', 'd', 'again', 'l', 'repeat'),
+        link('lk', 'l', 'next', 'k', 'in'),
+        link('bk', 'b', 'out', 'k', 'in'),
+        link('km', 'k', 'out', 'm', 'in'),
+        link('mo', 'm', 'out', 'output', 'in'),
+      ];
+      const { log, callbacks } = recorder({ d: ['inconclusive'] });
+      const { activate, loopLeft, joined } = callbacks;
+      let closed = false;
+      let joinedK = false;
+      callbacks.activate = async (nodeId, iteration) => {
+        if (nodeId === 'b') await until(() => closed);
+        return activate(nodeId, iteration);
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => joinedK);
+      };
+      callbacks.joined = async (...args) => {
+        await joined(...args);
+        joinedK = true;
+      };
+      const result = await makeRunner().run(planOf(definition), callbacks);
+      expect(log).toContain('leave l#1 inconclusive');
+      expect(log).toContain('join k stops d#1');
+      expect(log.slice(-2)).toEqual(['activate m', 'finalize output']);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    it.each(['first', 'last'])(
+      'starts no branch of a fan-out into a step and a repeat, the repeat %s',
+      async (where) => {
+        // Loop l [ a → router d (again: l.repeat, done: l.exit) ] → output; d's again also gets
+        // the step a by hand.
+        const definition = linearCorral(['a']);
+        for (const node of definition.nodes) if (node.id === 'a') node.parentId = 'l';
+        definition.entryNodeId = 'l';
+        definition.nodes.push(
+          { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+          router('d', 'l', 'a', ['again', 'done']),
+        );
+        definition.controlEdges = [
+          link('la', 'l', 'body', 'a', 'in'),
+          link('ad', 'a', 'out', 'd', 'in'),
+          link('dr', 'd', 'again', 'l', 'repeat'),
+          link('dx', 'd', 'done', 'l', 'exit'),
+          link('lo', 'l', 'next', 'output', 'in'),
+        ];
+        const plan = planOf(definition);
+        const d = plan.steps.d;
+        if (d?.kind !== 'decision') throw new Error('d is not a decision');
+        const step = { nodeId: 'a', port: 'in' as const };
+        const repeat = d.branches.again ?? [];
+        d.branches.again = where === 'first' ? [...repeat, step] : [step, ...repeat];
+        const { log, callbacks } = recorder({ d: ['again'] });
+        await expect(makeRunner().run(plan, callbacks)).rejects.toThrow('repeat of Loop l');
+        expect(log.at(-1)).toBe('decide d#1 → again');
+      },
+    );
+
+    it('fails the run when a branch is still in a round its Loop has replaced', async () => {
+      // A plan the compiler refuses, built by hand: in Loop l, p fans out to a and b; a goes on
+      // to the Decision whose revise repeats l while b has not joined.
+      const definition = linearCorral(['p', 'a', 'b']);
+      for (const node of definition.nodes) {
+        if (node.type !== 'output') node.parentId = 'l';
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+      }
+      definition.entryNodeId = 'l';
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        { id: 'j', type: 'join', label: 'j', parentId: 'l', policy: 'any' },
+        router('d', 'l', 'p', ['done', 'again']),
+      );
+      definition.controlEdges = [
+        link('lp', 'l', 'body', 'p', 'in'),
+        link('pa', 'p', 'out', 'a', 'in'),
+        link('pb', 'p', 'out', 'b', 'in'),
+        link('aj', 'a', 'out', 'j', 'in'),
+        link('bj', 'b', 'out', 'j', 'in'),
+        link('jd', 'j', 'out', 'd', 'in'),
+        link('dx', 'd', 'done', 'l', 'exit'),
+        link('dr', 'd', 'again', 'l', 'repeat'),
+        link('lo', 'l', 'next', 'output', 'in'),
+      ];
+      const plan = planOf(definition);
+      const a = plan.steps.a;
+      if (a?.kind !== 'agent') throw new Error('a is not an agent');
+      a.next = [{ nodeId: 'd', port: 'in' }];
+      const { log, callbacks } = recorder({ d: ['again'] });
+      const { activate } = callbacks;
+      callbacks.activate = async (nodeId, iteration) => {
+        // b's first run settles once l has opened its second round; the second round's
+        // branches never settle, so only the stale b can move.
+        if (nodeId === 'b' && log.includes('enter l#2') === false) {
+          const outcome = await activate(nodeId, iteration);
+          await until(() => log.includes('enter l#2'));
+          return outcome;
+        }
+        if (log.includes('enter l#2') && nodeId !== 'p') return new Promise(() => {});
+        return activate(nodeId, iteration);
+      };
+      await expect(makeRunner().run(plan, callbacks)).rejects.toThrow(
+        'Loop l opened another round',
+      );
+      expect(log).toContain('enter l#2');
+      // Nothing of the stale branch reached the recorder after b: no Join, no Decision.
+      expect(log.filter((line) => line.startsWith('join'))).toEqual([]);
+      expect(log.filter((line) => line.startsWith('decide'))).toEqual(['decide d#1 → again']);
     });
   });
 }

@@ -120,12 +120,23 @@ it('adds the first agent and its bound result together; inserting another offers
 
 function reviewDraft() {
   return draftFromDefinition(
-    teamTemplate('plan-implement-review', 'review-team', {
+    teamTemplate('feature', 'review-team', {
       name: 'Review team',
       brief: 'Prepare a report.',
       criteria: ['Reviewed'],
-      roles: messages.TeamTemplates.presets,
-      labels: { loop: 'Review loop', decision: 'Verdict', join: 'Gather', output: 'Report' },
+      roles: {
+        design: messages.TeamTemplates.presets.architect,
+        implement: messages.TeamTemplates.presets.builder,
+        verify: messages.TeamTemplates.presets.verifier,
+      },
+      labels: {
+        loop: 'Review loop',
+        decision: 'Verdict',
+        verifyLoop: 'Verification loop',
+        verifyDecision: 'Check',
+        join: 'Gather',
+        output: 'Report',
+      },
     }),
   );
 }
@@ -172,7 +183,7 @@ it('adds to Not connected when outputs compete and clears the polite guidance on
     expect(editor.getState().draft.definition.controlEdges).toEqual(draft.definition.controlEdges);
     expect(screen.getByText(notice)).toHaveAttribute('role', 'status');
     expect(screen.getByText(notice)).not.toHaveClass('text-destructive');
-    if (name === 'Writing') await user.click(row('plan'));
+    if (name === 'Writing') await user.click(row('design'));
     else {
       act(() => {
         const state = editor.getState();
@@ -293,17 +304,24 @@ it('keeps a manually panned graph after a hidden edit that does not move any ste
 });
 
 it('opens the graph at the fan-out node, not the first parallel branch', async () => {
-  const d = teamTemplate('parallel-review', 'audit', {
+  const d = teamTemplate('adversarial-review', 'audit', {
     name: 'Audit',
     brief: 'Review the change',
     criteria: [],
     roles: {
       scope: { name: 'Scope', duty: 'Scope the change' },
-      correctness: { name: 'Correctness', duty: 'Check correctness' },
-      security: { name: 'Security', duty: 'Check security' },
-      synthesis: { name: 'Synthesis', duty: 'Synthesize the reviews' },
+      attack_a: { name: 'Challenge A', duty: 'Break its logic' },
+      attack_b: { name: 'Challenge B', duty: 'Break its boundaries' },
+      verdict: { name: 'Verdict', duty: 'Keep what was shown' },
     },
-    labels: { loop: 'Loop', decision: 'Decision', join: 'Gather', output: 'Output' },
+    labels: {
+      loop: 'Loop',
+      decision: 'Decision',
+      verifyLoop: 'Verification loop',
+      verifyDecision: 'Verification decision',
+      join: 'Gather',
+      output: 'Output',
+    },
   });
   const { user, editor } = mount(draftFromDefinition(d));
   const group = screen.getByRole('list', { name: 'In parallel' });
@@ -312,6 +330,6 @@ it('opens the graph at the fan-out node, not the first parallel branch', async (
   );
   expect(screen.getByRole('application', { name: messages.TeamEditor.canvas })).toBeVisible();
   expect(card('scope')).toHaveAttribute('aria-pressed', 'true');
-  expect(card('correctness')).toHaveAttribute('aria-pressed', 'false');
+  expect(card('attack_a')).toHaveAttribute('aria-pressed', 'false');
   expect(editor.getState().past).toHaveLength(0);
 });

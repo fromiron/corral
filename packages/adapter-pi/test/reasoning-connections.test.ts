@@ -149,6 +149,38 @@ describe('reasoning for added OpenAI-compatible endpoints', () => {
       }
     });
 
+  // A server that knows only the usual roles drops a `developer` message: the model then answers
+  // with no instruction at all (seen with a reasoning model behind an aggregator).
+  it.each([true, false])(
+    'sends the instruction as a system message to a host Pi does not recognize (reasoning %s)',
+    async (reasoning) => {
+      const model = endpointProvider(
+        'router',
+        spec('https://router.example.test/v1', reasoning),
+      ).getModels()[0]!;
+      let roles: unknown[] = [];
+      const result = await completions(
+        model as Model<'openai-completions'>,
+        normalizeContext({
+          systemPrompt: 'Answer with one JSON object.',
+          messages: [{ role: 'user', content: 'Fixture', timestamp: 0 }],
+        }),
+        {
+          apiKey: 'fixture-key',
+          fetch: async () => {
+            throw new Error('network forbidden');
+          },
+          onPayload: (payload) => {
+            roles = (payload as { messages: { role: string }[] }).messages.map((m) => m.role);
+            throw new Error('captured before send');
+          },
+        },
+      ).result();
+      expect(result.errorMessage).toContain('captured before send');
+      expect(roles).toEqual(['system', 'user']);
+    },
+  );
+
   it('a host Pi recognizes by address keeps Pi’s own format and levels, and each offered level is sent (OpenRouter)', async () => {
     const model = endpointProvider(
       'router',

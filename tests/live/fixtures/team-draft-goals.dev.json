@@ -35,7 +35,7 @@
     {
       "id": "dev-07",
       "goal": "설정 화면에 다크 모드 토글을 추가해 줘",
-      "accept": ["implement_review", "plan_implement_review"]
+      "accept": ["implement_review", "feature"]
     },
     {
       "id": "dev-08",
@@ -45,12 +45,12 @@
     {
       "id": "dev-09",
       "goal": "결제 모듈을 새 PG사 API로 옮겨야 해. 영향 범위를 먼저 정리하고 단계별로 구현해 줘",
-      "accept": ["plan_implement_review"]
+      "accept": ["feature"]
     },
     {
       "id": "dev-10",
       "goal": "Design and build an offline mode for the notes app: local cache, sync queue, conflict handling",
-      "accept": ["plan_implement_review"]
+      "accept": ["feature"]
     },
     {
       "id": "dev-11",
@@ -65,12 +65,12 @@
     {
       "id": "dev-13",
       "goal": "이 PR을 정확성과 보안 관점에서 검토해 줘. 코드는 고치지 말고",
-      "accept": ["parallel_review"]
+      "accept": ["adversarial_review"]
     },
     {
       "id": "dev-14",
       "goal": "Review the auth middleware for correctness and security issues; report findings only",
-      "accept": ["parallel_review"]
+      "accept": ["adversarial_review"]
     },
     {
       "id": "dev-15",
@@ -100,7 +100,7 @@
     {
       "id": "dev-20",
       "goal": "API 응답 캐시를 추가하고 리뷰까지 받아 줘",
-      "accept": ["implement_review", "plan_implement_review"]
+      "accept": ["implement_review", "feature"]
     }
   ]
 }

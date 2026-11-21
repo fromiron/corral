@@ -5,7 +5,11 @@ import type {
   PackageView,
   RoleSkillRef,
 } from '@corral/contracts';
-import { createKeyValueAgentLibrary, createKeyValueCorralRepository } from '@corral/core';
+import {
+  BUILTIN_SKILLS,
+  createKeyValueAgentLibrary,
+  createKeyValueCorralRepository,
+} from '@corral/core';
 import { emptyDraft } from '@corral/react';
 import {
   createMemoryHistory,
@@ -224,6 +228,25 @@ it('retries a failed package lookup rather than showing an empty or usable list'
 it('shows only local-server availability without a harness service', async () => {
   services.harnesses = null;
   expect((await show()).textContent).toBe(messages.Library.resources.localOnly);
+});
+
+// builtin-crew.md, 1: a bundled skill's source is its pack, not an imported copy.
+it('names the bundled pack as the source of a bundled skill', async () => {
+  const bundled = BUILTIN_SKILLS.find((skill) => skill.pack === 'core');
+  if (!bundled) throw new Error('missing the core pack');
+  const builtin = fixture(bundled.name, bundled.resourceHash, { entry: bundled.entry });
+  builtin.resource.name = '@corral/builtin-core';
+  builtin.resource.sourceLabel = 'Corral 1.1.0';
+  const copy = fixture(bundled.name, 'c'.repeat(64));
+  api.entries.mockResolvedValue([builtin, copy]);
+  const host = await show('library');
+  const sources = Array.from(host.querySelectorAll('tbody tr td:first-child small'), (small) =>
+    small.textContent?.trim(),
+  );
+  expect(sources).toEqual([
+    `@corral/builtin-core · ${messages.Resources.builtinPacks.core}`,
+    `language-pack · ${messages.Resources.importedCopy}`,
+  ]);
 });
 
 it('searches names, descriptions and package names, with a distinct no-matches result', async () => {

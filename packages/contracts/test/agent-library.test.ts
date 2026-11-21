@@ -17,7 +17,7 @@ describe('agent library contracts', () => {
     expect(CreateLibraryAgent.parse(body)).toEqual(body);
     for (const extra of [
       { id: 'writer' },
-      { origin: { kind: 'preset', presetId: 'write' } },
+      { origin: { kind: 'preset', presetId: 'writer' } },
       { stepInstruction: 'Team only' },
     ]) {
       expect(CreateLibraryAgent.safeParse({ ...body, role: { ...role, ...extra } }).success).toBe(
@@ -38,6 +38,18 @@ describe('agent library contracts', () => {
     expect(LibraryAgent.parse(record)).toEqual(record);
     expect(LibraryAgent.safeParse({ ...record, revision: 0 }).success).toBe(false);
     expect(LibraryAgent.safeParse({ ...record, operationId: 'internal' }).success).toBe(false);
+  });
+
+  it('keeps the description of a saved agent', () => {
+    const described = { ...role, description: 'Writes the summary. Use it after research.' };
+    const body = { role: described, operationId: 'create_writer' };
+    expect(CreateLibraryAgent.parse(body)).toEqual(body);
+    expect(UpdateLibraryAgent.parse({ role: described, expectedRevision: 1 }).role).toEqual(
+      described,
+    );
+    expect(
+      CreateLibraryAgent.safeParse({ ...body, role: { ...role, description: '' } }).success,
+    ).toBe(false);
   });
 
   it('requires a revision and at least one mutation, including restore', () => {

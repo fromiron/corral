@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { Identifier } from './ids.ts';
-import { TeamPlan } from './team-plan.ts';
+import { TeamCatalog, TeamComposition } from './team-composition.ts';
 
 const InputIndex = z.int().nonnegative();
 export const TeamAssistantTarget = z.strictObject({ outputId: Identifier, index: InputIndex });
@@ -43,6 +43,7 @@ const QuestionId = z.enum(['material', 'review_policy', 'review_target']);
 const MessageContent = z.string().min(1).max(2000);
 const requestFields = {
   operationId: z.string().min(1).max(200),
+  // The whole conversation, however long refinement makes it: no count limit.
   messages: z
     .array(
       z.discriminatedUnion('role', [
@@ -54,8 +55,7 @@ const requestFields = {
         }),
       ]),
     )
-    .min(1)
-    .max(12),
+    .min(1),
   decisions: z
     .strictObject({
       material: Material.optional(),
@@ -67,7 +67,15 @@ const requestFields = {
 };
 export const TeamAssistantRequest = z
   .discriminatedUnion('mode', [
-    z.strictObject({ ...requestFields, mode: z.literal('create'), team: z.never().optional() }),
+    // A new team is composed from what the editor can pick by hand; `proposal` is the shown
+    // composition the person asks to change.
+    z.strictObject({
+      ...requestFields,
+      mode: z.literal('create'),
+      team: z.never().optional(),
+      catalog: TeamCatalog,
+      proposal: TeamComposition.optional(),
+    }),
     z.strictObject({ ...requestFields, mode: z.literal('edit'), team: TeamAssistantTeam }),
   ])
   .refine(
@@ -129,7 +137,7 @@ const Reason = z
 
 export const TeamAssistantReply = z.discriminatedUnion('kind', [
   Question,
-  z.strictObject({ kind: z.literal('plan'), plan: TeamPlan, reason: Reason }),
+  z.strictObject({ kind: z.literal('plan'), plan: TeamComposition, reason: Reason }),
   z.strictObject({ kind: z.literal('edits'), edits: z.array(Edit).min(1), reason: Reason }),
   z.strictObject({
     kind: z.literal('describe'),
@@ -152,3 +160,48 @@ export const TeamAssistantResponse = z.strictObject({
   model: z.string().min(1),
 });
 export type TeamAssistantResponse = z.infer<typeof TeamAssistantResponse>;
+
+/** The failure of a model answer that cannot be used as a team proposal. */
+export const UNUSABLE_TEAM_PROPOSAL_MESSAGE = 'The model did not return a usable team proposal.';
+
+/** The failure message, with the reason code after it in parentheses; never the answer's text. */
+export function unusableTeamProposal(reason?: string): string {
+  return reason ? `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (${reason})` : UNUSABLE_TEAM_PROPOSAL_MESSAGE;
+}
+
+/**
+ * What a `shape` reason says was wrong at its place: a fixed code for the schema's own check,
+ * never its message or the value it received.
+ */
+export const SHAPE_ISSUES = [
+  'missing',
+  'type',
+  'value',
+  'too_long',
+  'too_short',
+  'too_many',
+  'too_few',
+  'too_big',
+  'too_small',
+  'extra_field',
+  'no_variant',
+  'duplicate_seat',
+  'unknown_seat',
+  'seat_not_once',
+  'invalid',
+] as const;
+export type ShapeIssue = (typeof SHAPE_ISSUES)[number];
+
+// A reason is a code, or `shape:<place>:<issue>`: the place is `$` for the whole answer, or
+// contract field names, indexes and `*` for any other path element, joined by dots.
+const PLACE = String.raw`(?:\$|(?:[A-Za-z]+|\d+|\*)(?:\.(?:[A-Za-z]+|\d+|\*))*)`;
+const REASON = new RegExp(`^(?:[a-z_]+|shape:${PLACE}:(?:${SHAPE_ISSUES.join('|')}))$`);
+
+/** The reason code of that failure, `''` when it names none, or null for any other message. */
+export function unusableTeamProposalReason(message: string): string | null {
+  if (message === UNUSABLE_TEAM_PROPOSAL_MESSAGE) return '';
+  const prefix = `${UNUSABLE_TEAM_PROPOSAL_MESSAGE} (`;
+  if (!message.startsWith(prefix) || !message.endsWith(')')) return null;
+  const reason = message.slice(prefix.length, -1);
+  return REASON.test(reason) ? reason : null;
+}

@@ -1,4 +1,5 @@
 export {
+  attachSkillsByName,
   importMarkdownAgent,
   MAX_AGENT_MARKDOWN_BYTES,
   parseMarkdownAgent,

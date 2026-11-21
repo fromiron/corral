@@ -85,9 +85,10 @@ import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
 import { RunSetupSummary } from '../workbench/RunSetupSummary.tsx';
+import { teamChoices } from '../workbench/teamChoices.ts';
 import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
 import { useImageProfiles } from '../workbench/useImageProfiles.ts';
-import { useModelProfiles } from '../workbench/useModels.ts';
+import { useModelProfileRead, useModelProfiles } from '../workbench/useModels.ts';
 import { useRunMode } from '../workbench/useRunMode.ts';
 import { useRunStats } from '../workbench/useRunStats.ts';
 import { useSavedTeams } from '../workbench/useSavedTeams.ts';
@@ -296,23 +297,33 @@ function Editor({
     }
     return view;
   }, [services, projectId, corralId]);
-  const profiles = useModelProfiles();
-  // The endpoint uses the first named profile, not the first available provider model.
-  const firstProfile = profiles?.[0];
-  const assistantModel =
-    !localAssistant && live && firstProfile?.source === 'profile' && firstProfile.available
-      ? firstProfile
-      : null;
+  const profileRead = useModelProfileRead();
+  const profiles = profileRead === 'failed' ? null : profileRead;
+  // The endpoint asks the first model of the list that can run: named profiles, then connections.
+  const assistantModel = (!localAssistant && live && profiles?.find((p) => p.available)) || null;
   const messages = useMessages();
   const wording = useMemo(() => draftWording(messages), [messages]);
   const settings = useSettingsNavigation();
+  const presetText = useTranslations('TeamTemplates.presets');
   const assistant = useMemo<TeamAssistantHost>(() => {
     const models = services.models;
+    const { agents, harnesses } = services;
     return {
       ask:
         models && assistantModel ? (request, signal) => models.assistTeam(request, signal) : null,
       ...(assistantModel ? { modelLabel: assistantModel.modelName ?? assistantModel.label } : {}),
+      // Until the list arrives the editor does not know whether a model can run; a list that
+      // cannot be read leaves none.
+      ...(live && !localAssistant && profileRead === null && { modelPending: true }),
       wording,
+      // Read when a new team is asked for, so the catalog is what "add agent" offers then.
+      choices: () =>
+        teamChoices({
+          projectId,
+          agents,
+          harnesses,
+          presetName: (id) => presetText(`${id}.name`),
+        }),
       newOperationId: () => crypto.randomUUID(),
       ...(live &&
         !localAssistant && { onConnectModel: () => void navigate(settings.link('models')) }),
@@ -321,7 +332,9 @@ function Editor({
     };
   }, [
     assistantModel,
-    services.models,
+    profileRead,
+    services,
+    presetText,
     wording,
     navigate,
     settings,

@@ -4,7 +4,6 @@ import {
   type CorralSummary,
   compileDefinition,
   DEFAULT_PROJECT_ID,
-  PATTERN_TEMPLATES,
   type PlanStep,
   type RolePresetId,
   type RoleWording,
@@ -28,10 +27,13 @@ export type WorkspaceTemplateId = DemoTemplateId | TeamTemplateId | 'blank';
 export const WORKSPACE_TEMPLATES: readonly WorkspaceTemplateId[] = [
   'starter',
   'implement-review',
-  'plan-implement-review',
+  'feature',
   'bug-fix',
-  'parallel-review',
+  'refactor',
+  'performance',
+  'adversarial-review',
   'tech-decision',
+  'code-investigation',
   'research-team',
   'blank',
 ];
@@ -119,27 +121,9 @@ export function useTemplateText(): TemplateText {
   return useMemo(() => templateText(messages), [messages]);
 }
 
-/**
- * The words a draft from a goal uses: the draft's own three patterns, and the five template
- * patterns worded as the library templates of the same name.
- */
-export function draftWording(messages: unknown): TeamWording {
-  const { TeamDraft, TeamTemplates } = messages as {
-    TeamDraft: { wording: TeamWording };
-    TeamTemplates: { labels: TeamTemplateLabels };
-  };
-  const text = templateText(messages);
-  const templates = Object.fromEntries(
-    Object.entries(PATTERN_TEMPLATES).map(([pattern, id]) => {
-      const { roles, criteria } = text.wording(id);
-      return [pattern, { roles, criteria }];
-    }),
-  ) as NonNullable<TeamWording['templates']>;
-  return {
-    ...TeamDraft.wording,
-    labels: { ...TeamDraft.wording.labels, join: TeamTemplates.labels.join },
-    templates,
-  };
+/** The words the team assistant's proposals use: the step labels a drafted plan names. */
+export function draftWording(messages: unknown): Pick<TeamWording, 'labels'> {
+  return (messages as { TeamDraft: { wording: Pick<TeamWording, 'labels'> } }).TeamDraft.wording;
 }
 
 /** The definition a template saves, under `corralId`. */

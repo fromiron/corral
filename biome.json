@@ -18,6 +18,7 @@
       "package.json",
       "tsconfig.base.json",
       "!packages/contracts/generated",
+      "!packages/core/src/generated",
       "!apps/server/resources/builtin/design"
     ]
   },

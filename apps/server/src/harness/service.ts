@@ -1,9 +1,8 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   realpathSync,
   renameSync,
@@ -11,7 +10,7 @@ import {
   statSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   downloadPiPackage,
@@ -39,6 +38,7 @@ import {
   HarnessResource,
   type HarnessResourceView,
   isHarnessMcpTool,
+  MAX_SNAPSHOT_RESOURCES,
   ManagedHook,
   McpServerDraft,
   type PackageInspection,
@@ -59,6 +59,7 @@ import builtinManifest from '../../resources/builtin/manifest.json' with { type:
 import { managedHookSource } from './managed-hook.ts';
 import type { McpService } from './mcp-service.ts';
 import { inspectPackageManifest } from './package-manifest.ts';
+import { hash, inside, scan, treeHash } from './resource-tree.ts';
 
 interface ResourceReview {
   reviewId: string;
@@ -69,10 +70,7 @@ interface ResourceReview {
   previousPackageHash?: string;
   display?: { entry: string; kind: HarnessEntryKey['kind']; name: string };
 }
-const MAX_RESOURCE_BYTES = 128 * 1024 * 1024;
 const MAX_SKILL_BYTES = 64 * 1024;
-const hash = (value: string | Uint8Array) => createHash('sha256').update(value).digest('hex');
-const treeHash = (files: HarnessResource['files']) => hash(canonicalJson(files));
 
 /** Resource discovery and preview read bytes only. Execution imports happen in the Pi worker. */
 const SESSION_DEFAULT_PROFILE = 'session-default';
@@ -159,6 +157,22 @@ class ResourceVerificationError extends Error {
 }
 
 const resourceKey = (ref: RoleSkillRef) => `${ref.resourceHash}:${ref.entry}`;
+
+type BuiltinManifest = Record<
+  string,
+  { hash: string; files: number; skills: number; source: string }
+>;
+const BUILTIN = {
+  root: fileURLToPath(new URL('../../resources/builtin/', import.meta.url)),
+  manifest: builtinManifest as BuiltinManifest,
+};
+/**
+ * Pi's reading of a bundled pack, per inspector and exact content hash. The same bytes read the
+ * same way, so each process inspects a bundled version once (every inspection spawns a worker).
+ */
+const builtinInspections = new WeakMap<object, Map<string, PackageInspection>>();
+/** Recorded by the startup pass for a bundled version it installs or first sees; an import never is. */
+const builtinMark = (id: string, hash = '') => `builtin:${id}:${hash}`;
 const requiredResource = (ref: HarnessProfile['resources'][number]) =>
   ref.required || ref.skillMode === 'mandatory';
 
@@ -174,6 +188,8 @@ export class HarnessService {
   private readonly inspect: (directory: string) => Promise<PackageInspection>;
   private readonly download: (source: string, directory: string) => Promise<PackageInspection>;
   private readonly reviews = new Map<string, ResourceReview>();
+  private readonly builtin: { root: string; manifest: BuiltinManifest };
+  private readonly warn: (message: string) => void;
 
   constructor(options: {
     root: string;
@@ -183,8 +199,14 @@ export class HarnessService {
     clock: Clock;
     inspect?: (directory: string) => Promise<PackageInspection>;
     download?: (source: string, directory: string) => Promise<PackageInspection>;
+    /** The bundled packs and their manifest; tests pass fixture packs. */
+    builtin?: { root: string; manifest: BuiltinManifest };
+    /** The server log, for bundled packs that did not install. */
+    warn?: (message: string) => void;
   }) {
     this.root = resolve(options.root);
+    this.builtin = options.builtin ?? BUILTIN;
+    this.warn = options.warn ?? (() => {});
     this.newId = options.newId ?? randomUUID;
     this.mcp = options.mcp;
     this.mcp?.setPackageVerifier((hash) => {
@@ -646,11 +668,122 @@ export class HarnessService {
     );
   }
 
+  /**
+   * Server start: install each bundled pack version the store does not have yet
+   * (docs/specs/features/builtin-crew.md, "설치"). A stored hash is left alone whatever a person
+   * did with it; a new one takes over their choices on the earlier version and supersedes it. A
+   * pack that fails, or does not match the manifest, is skipped; the rest install.
+   */
+  async installBuiltins(): Promise<{ installed: string[]; failed: string[] }> {
+    const installed: string[] = [];
+    const failed: string[] = [];
+    await Promise.all(
+      Object.entries(this.builtin.manifest).map(async ([id, manifest]) => {
+        try {
+          const mark = builtinMark(id, manifest.hash);
+          // Earlier bundled versions of this pack, oldest first.
+          const earlier = () =>
+            this.store
+              .receiptIds(builtinMark(id))
+              .filter((operationId) => operationId !== mark)
+              .map((operationId) => operationId.slice(builtinMark(id).length));
+          const stored = this.store.getResource(manifest.hash);
+          if (stored) {
+            // Its state stays as it is. The first start that sees it, after a person imported it,
+            // still supersedes the earlier versions; recording it lets a later version supersede it.
+            if (this.store.receiptOutcome(mark) !== undefined) return;
+            this.db.transaction(() => {
+              const previous = earlier();
+              this.store.receipt(mark, { id, hash: manifest.hash }, () => ({ id }));
+              for (const hash of previous) this.supersedeBuiltin(hash, stored);
+            })();
+            return;
+          }
+          const review = await this.discoverBuiltin(id);
+          this.db.transaction(() => {
+            const previous = earlier();
+            const resource = this.install(review.reviewId);
+            // Read the person's choices on the latest earlier version before superseding it.
+            const last = previous.at(-1);
+            if (last) this.inheritBuiltin(last, resource);
+            this.store.receipt(mark, { id, hash: resource.hash }, () => ({ id }));
+            for (const hash of previous) this.supersedeBuiltin(hash, resource);
+          })();
+          installed.push(id);
+        } catch {
+          failed.push(id);
+        }
+      }),
+    );
+    // Pack ids only: an error's message can name local paths.
+    if (failed.length) this.warn(`bundled skill packs not installed: ${failed.sort().join(', ')}`);
+    return { installed, failed };
+  }
+
+  /**
+   * A new bundled version takes over what a person did to the latest earlier one (builtin-crew.md,
+   * "설치"): a disabled or removed pack stays so, a revoked one installs untrusted, and a skill they
+   * archived or linked to their own copy installs archived. The startup pass alone archives or
+   * links an earlier version's entries, and only when it supersedes that version, so on the
+   * latest one these states are the person's.
+   */
+  private inheritBuiltin(hash: string, next: HarnessResourceView) {
+    const previous = this.store.getResource(hash);
+    if (!previous) return;
+    const status = this.store.packageManagement(hash).status;
+    if (status !== 'enabled')
+      this.store.managePackage(
+        next.hash,
+        this.store.packageManagement(next.hash).managementRevision,
+        status,
+      );
+    if (!previous.trustedAt) this.store.trustResource(next.hash, false);
+    for (const skill of next.skills) {
+      const before = previous.skills.find((candidate) => candidate.name === skill.name);
+      if (!before) continue;
+      const state = this.store.entryManagement({
+        resourceHash: hash,
+        entry: before.entry,
+        kind: 'skill',
+      });
+      if (state.archivedAt === null && state.successor === null) continue;
+      const key = { resourceHash: next.hash, entry: skill.entry, kind: 'skill' as const };
+      this.store.manageEntry(key, this.store.entryManagement(key).managementRevision, true);
+    }
+  }
+
+  /** Archive an earlier bundled version's entries, linking same-named ones to the new version. */
+  private supersedeBuiltin(hash: string, next: HarnessResourceView) {
+    const previous = this.store.getResource(hash);
+    for (const skill of previous?.skills ?? []) {
+      const key = { resourceHash: hash, entry: skill.entry, kind: 'skill' as const };
+      const state = this.store.entryManagement(key);
+      // An entry a person archived or linked keeps their choice.
+      if (state.archivedAt !== null || state.successor !== null) continue;
+      const successor = next.skills.find((candidate) => candidate.name === skill.name);
+      this.store.manageEntry(
+        key,
+        state.managementRevision,
+        true,
+        successor ? { resourceHash: next.hash, entry: successor.entry, kind: 'skill' } : undefined,
+      );
+    }
+  }
+
   async discoverBuiltin(id: string) {
-    if (!Object.hasOwn(builtinManifest, id)) throw new Error('unknown built-in pack');
-    const manifest = builtinManifest[id as keyof typeof builtinManifest];
-    const source = fileURLToPath(new URL(`../../resources/builtin/${id}/`, import.meta.url));
-    const review = await this.discoverLocal(source);
+    if (!Object.hasOwn(this.builtin.manifest, id)) throw new Error('unknown built-in pack');
+    const manifest = this.builtin.manifest[id]!;
+    const source = join(this.builtin.root, id);
+    if (relative(this.builtin.root, source).split(sep)[0] !== id)
+      throw new Error('unknown built-in pack');
+    const inspections =
+      builtinInspections.get(this.inspect) ?? new Map<string, PackageInspection>();
+    builtinInspections.set(this.inspect, inspections);
+    const known = inspections.get(manifest.hash);
+    const review = await this.discoverLocal(
+      source,
+      known ? { hash: manifest.hash, inspection: known } : undefined,
+    );
     if (
       review.resource.hash !== manifest.hash ||
       review.resource.skills.length !== manifest.skills ||
@@ -659,17 +792,22 @@ export class HarnessService {
       this.cancelReview(review.reviewId);
       throw new Error('built-in pack integrity changed');
     }
+    if (!known) {
+      const { name, version, license, packagePath, extensions, skills } = review.resource;
+      inspections.set(manifest.hash, { name, version, license, packagePath, extensions, skills });
+    }
     review.resource.sourceLabel = manifest.source;
     return review;
   }
 
-  async discoverLocal(source: string) {
+  async discoverLocal(source: string, known?: { hash: string; inspection: PackageInspection }) {
     this.expireReviews();
     const original = this.sourceDirectory(source);
     const directory = mkdtempSync(join(this.root, 'reviews', 'copy-'));
     try {
       const files = scan(original, directory);
-      const inspection = await this.inspect(directory);
+      const inspection =
+        known && treeHash(files) === known.hash ? known.inspection : await this.inspect(directory);
       const resource = HarnessResource.parse({
         ...inspection,
         hash: treeHash(files),
@@ -786,8 +924,31 @@ export class HarnessService {
       bundles: [],
     };
     const bundled = new Set<string>();
+    const checked = new Map<string, HarnessResourceView | Error>();
     for (const ref of input.harness.resources) {
-      const resource = this.verify(ref.hash);
+      let resource = checked.get(ref.hash);
+      if (!resource) {
+        try {
+          resource = this.verify(ref.hash);
+        } catch (error) {
+          resource = error instanceof Error ? error : new Error(String(error));
+        }
+        checked.set(ref.hash, resource);
+      }
+      // A skill nobody required or picked never blocks a worker start; it is left out instead.
+      const loose = ref.kind === 'skill' && !ref.required && !ref.selectedByRole;
+      if (resource instanceof Error) {
+        if (loose) continue;
+        throw resource;
+      }
+      if (
+        loose &&
+        (!resource.trustedAt ||
+          !resource.skills.some(
+            (skill) => skill.entry === ref.entry && skill.name === ref.skillName,
+          ))
+      )
+        continue;
       if (!resource.trustedAt || !ref.entry)
         throw new Error('resource requires trust before execution');
       if (!bundled.has(ref.hash)) {
@@ -887,8 +1048,15 @@ export class HarnessService {
       text: new TextDecoder('utf-8', { fatal: true }).decode(bytes),
       sha256: file.hash,
       resourceHash: ref.hash,
+      // An explicit skill is used only when a request names it, so it is not listed.
       boundSkills: snapshot.resources
-        .filter((resource) => resource.kind === 'skill' && resource.skillName && resource.entry)
+        .filter(
+          (resource) =>
+            resource.kind === 'skill' &&
+            resource.skillName &&
+            resource.entry &&
+            resource.skillMode !== 'explicit',
+        )
         .map((resource) => ({
           name: resource.skillName,
           path: `skills/${resource.skillName}/SKILL.md`,
@@ -909,7 +1077,15 @@ export class HarnessService {
           throw new Error('installed resource integrity changed');
         rmSync(review.directory, { recursive: true, force: true });
       } else renameSync(review.directory, destination);
-      const installed = this.store.putResource(review.resource);
+      // The install review is the person's check: a new hash is trusted when it is installed.
+      // A hash already stored keeps its trust decision, so a revocation is never undone here.
+      const known = this.store.getResource(review.resource.hash) !== null;
+      let installed = this.store.putResource(review.resource);
+      if (!known) installed = this.store.trustResource(installed.hash, true);
+      // Installing again is how a person brings back a package they removed.
+      const status = this.store.packageManagement(installed.hash);
+      if (status.status === 'removed')
+        this.store.managePackage(installed.hash, status.managementRevision, 'enabled');
       if (review.display) {
         const key = {
           resourceHash: installed.hash,
@@ -926,12 +1102,23 @@ export class HarnessService {
         );
       }
       if (review.previous && review.previous.resourceHash !== installed.hash) {
+        const saved = { ...review.previous, resourceHash: installed.hash };
+        // Saving back to text saved before makes that entry the latest again
+        // (skill-library.md item 7): it leaves the chain it pointed into.
+        const restored = this.store.entryManagement(saved);
+        if (restored.successor)
+          this.store.manageEntry(
+            saved,
+            restored.managementRevision,
+            restored.archivedAt !== null,
+            null,
+          );
         const current = this.store.entryManagement(review.previous);
         this.store.manageEntry(
           review.previous,
           current.managementRevision,
           current.archivedAt !== null,
-          { ...review.previous, resourceHash: installed.hash },
+          saved,
         );
       }
       if (review.previousPackageHash && review.previousPackageHash !== installed.hash) {
@@ -1038,6 +1225,7 @@ export class HarnessService {
     projectId: string,
     runOverride?: HarnessBindingRef,
     role?: HarnessPreviewRole,
+    library = true,
   ) {
     const layers: {
       scope: 'personal' | 'project' | 'role' | 'run';
@@ -1052,7 +1240,7 @@ export class HarnessService {
       profile: role && !role.harness ? this.minimalProfile() : this.profile(binding),
     });
     if (runOverride) layers.push({ scope: 'run', profile: this.profile(runOverride) });
-    return this.compose(layers, binding, projectId, role);
+    return this.compose(layers, binding, projectId, role, library);
   }
 
   private minimalProfile() {
@@ -1133,7 +1321,7 @@ export class HarnessService {
     binding: HarnessBindingRef | undefined,
     definition: CorralDefinition,
     roleId: string,
-    options?: { runOverride?: HarnessBindingRef; sessionId?: string },
+    options?: { runOverride?: HarnessBindingRef; sessionId?: string; library?: false },
   ): EffectiveHarnessSnapshot | null {
     const selections = definition.roles.find((role) => role.id === roleId);
     const role = {
@@ -1145,13 +1333,13 @@ export class HarnessService {
     const base = roleBinding(role, options?.runOverride);
     if (!base) return null;
     const evaluation = this.evaluationDefinitions.get(hash(canonicalJson(definition)));
-    if (
-      evaluation &&
-      binding &&
-      canonicalJson(evaluation) === canonicalJson(binding) &&
-      !options?.sessionId &&
-      !options?.runOverride
-    )
+    // An evaluation compares fixed groups: it never receives library skills, with or without a
+    // workspace session. A sealed definition also skips the person's and project's defaults.
+    const sealed =
+      evaluation !== undefined &&
+      binding !== undefined &&
+      canonicalJson(evaluation) === canonicalJson(binding);
+    if (sealed && !options?.sessionId && !options?.runOverride)
       return this.compose(
         [{ scope: 'role', profile: this.profile(binding) }],
         binding,
@@ -1173,6 +1361,7 @@ export class HarnessService {
       session?.project_id ?? row?.project_id ?? 'default',
       options?.runOverride,
       role,
+      !sealed && options?.library !== false,
     ).snapshot;
   }
 
@@ -1182,11 +1371,16 @@ export class HarnessService {
     return profile;
   }
 
+  /**
+   * `library` adds the other usable library skills (harness-contract, "그 밖에 쓸 수 있는 스킬"):
+   * every role or binding resolution does, profile and default validation and evaluation runs do not.
+   */
   private compose(
     layers: { scope: 'personal' | 'project' | 'role' | 'run'; profile: HarnessProfileRevision }[],
     binding?: HarnessBindingRef,
     projectId?: string,
     role?: HarnessPreviewRole,
+    library = false,
   ) {
     const last = layers.at(-1)?.profile;
     if (!last) throw new Error('harness profile is missing');
@@ -1300,19 +1494,20 @@ export class HarnessService {
         });
       }
     if (picks) {
-      for (const [key, resource] of selected) {
-        if (
-          resource.kind === 'skill'
-            ? !requiredResource(resource) && !picks.has(key)
-            : !role?.harness && !resource.required
-        )
-          selected.delete(key);
-      }
+      // A selection guarantees skills and removes none; a role without its own harness still
+      // receives no optional default extension.
+      if (!role?.harness)
+        for (const [key, resource] of selected)
+          if (resource.kind === 'extension' && !resource.required) selected.delete(key);
       for (const [key, ref] of picks) {
         if (!selected.has(key))
           selected.set(key, { ...ref, kind: 'skill', required: false, skillMode: 'auto' });
       }
     }
+    // Required entries claim their names first, then picked ones; any other skill yields.
+    const rank = (key: string, resource: HarnessProfile['resources'][number]) =>
+      requiredResource(resource) ? 0 : picks?.has(key) ? 1 : 2;
+    const ordered = [...selected].sort(([ka, a], [kb, b]) => rank(ka, a) - rank(kb, b));
     const resources: EffectiveHarnessSnapshot['resources'] = [];
     const sections: { source: 'skill'; name: string; text: string }[] = [];
     const names = new Map<string, string>();
@@ -1322,8 +1517,13 @@ export class HarnessService {
     if (disabledMcp) diagnostics.push('mcp_server_disabled');
     let needsExecutionPolicy = false;
     let mandatoryBytes = 0;
-    for (const [key, selectedResource] of selected) {
+    // A layer-bound optional skill that cannot be used is left out, and the snapshot says so once.
+    let skippedOptional = false;
+    for (const [key, selectedResource] of ordered) {
       const picked = picks?.has(key);
+      // An optional skill nobody picked never blocks a start: when it cannot be used it is left out.
+      const loose =
+        !picked && selectedResource.kind === 'skill' && !requiredResource(selectedResource);
       if (picked && selectedResource.kind !== 'skill') {
         problems.set(key, 'missing');
         continue;
@@ -1337,6 +1537,7 @@ export class HarnessService {
         if (requiredResource(selectedResource))
           throw new Error('required package is disabled or removed');
         diagnostics.push('package_disabled');
+        if (loose) skippedOptional = true;
         continue;
       }
       let resource = verified.get(selectedResource.resourceHash);
@@ -1344,6 +1545,10 @@ export class HarnessService {
         try {
           resource = this.verify(selectedResource.resourceHash);
         } catch (error) {
+          if (loose && error instanceof ResourceVerificationError) {
+            skippedOptional = true;
+            continue;
+          }
           if (!picked || !(error instanceof ResourceVerificationError)) throw error;
           problems.set(key, error.reason);
           continue;
@@ -1351,6 +1556,10 @@ export class HarnessService {
         verified.set(resource.hash, resource);
       }
       if (!resource.trustedAt) {
+        if (loose) {
+          skippedOptional = true;
+          continue;
+        }
         if (!picked) throw new Error('resource requires trust before binding');
         problems.set(key, 'untrusted');
         continue;
@@ -1366,11 +1575,19 @@ export class HarnessService {
       } else {
         const skill = resource.skills.find((skill) => skill.entry === selectedResource.entry);
         if (!skill) {
+          if (loose) {
+            skippedOptional = true;
+            continue;
+          }
           if (!picked) throw new Error('unknown or duplicate skill name');
           problems.set(key, 'missing');
           continue;
         }
         const priorKey = names.get(skill.name);
+        if (priorKey && loose) {
+          skippedOptional = true;
+          continue;
+        }
         if (priorKey) {
           const prior = selected.get(priorKey)!;
           const conflict = [priorKey, key].filter((candidate) => picks?.has(candidate));
@@ -1410,6 +1627,13 @@ export class HarnessService {
             }
           : {}),
       });
+    }
+    if (skippedOptional) diagnostics.push('optional_skill_skipped');
+    if (library && !problems.size && !needsExecutionPolicy) {
+      const room = Math.max(0, MAX_SNAPSHOT_RESOURCES - resources.length);
+      const { skills, truncated } = this.librarySkills(names, selected, verified, room);
+      resources.push(...skills);
+      if (truncated) diagnostics.push('library_skills_truncated');
     }
     if (role && picks && (problems.size || needsExecutionPolicy)) {
       const entries = [...picks].flatMap(([key, ref]) => {
@@ -1463,6 +1687,80 @@ export class HarnessService {
     };
   }
 
+  /**
+   * The usable library skills whose internal name no bound skill has: one per name, preferring
+   * an entry with no successor, then the most recently installed. Unusable entries are skipped.
+   * Only `room` entries are kept, those of the most recently installed packages first.
+   */
+  private librarySkills(
+    names: ReadonlyMap<string, string>,
+    selected: ReadonlyMap<string, unknown>,
+    verified: Map<string, HarnessResourceView>,
+    room: number,
+  ): { skills: EffectiveHarnessSnapshot['resources']; truncated: boolean } {
+    const order = this.store.installOrder();
+    const candidates = new Map<
+      string,
+      { resource: HarnessResourceView; skill: HarnessResource['skills'][number]; next: boolean }[]
+    >();
+    for (const hash of order) {
+      if (this.store.packageManagement(hash).status !== 'enabled') continue;
+      const resource = this.store.getResource(hash);
+      if (!resource?.trustedAt) continue;
+      for (const skill of resource.skills) {
+        if (names.has(skill.name) || selected.has(resourceKey({ resourceHash: hash, ...skill })))
+          continue;
+        const state = this.store.entryManagement({
+          resourceHash: hash,
+          entry: skill.entry,
+          kind: 'skill',
+        });
+        if (state.archivedAt) continue;
+        const list = candidates.get(skill.name) ?? [];
+        list.push({ resource, skill, next: state.successor !== null });
+        candidates.set(skill.name, list);
+      }
+    }
+    const failed = new Set<string>();
+    const usable = (hash: string) => {
+      if (verified.has(hash)) return true;
+      if (failed.has(hash)) return false;
+      try {
+        verified.set(hash, this.verify(hash));
+        return true;
+      } catch {
+        failed.add(hash);
+        return false;
+      }
+    };
+    const chosen: (EffectiveHarnessSnapshot['resources'][number] & { recency: number })[] = [];
+    for (const name of [...candidates.keys()].sort()) {
+      // Install order is kept within each group by the stable sort.
+      const list = candidates.get(name)!.sort((a, b) => Number(a.next) - Number(b.next));
+      const pick = list.find(({ resource }) => usable(resource.hash));
+      if (!pick) continue;
+      chosen.push({
+        hash: pick.resource.hash,
+        name: pick.resource.name,
+        version: pick.resource.version,
+        kind: 'skill',
+        required: false,
+        library: true,
+        entry: pick.skill.entry,
+        skillMode: pick.skill.disableModelInvocation ? 'explicit' : 'auto',
+        skillName: pick.skill.name,
+        recency: order.indexOf(pick.resource.hash),
+      });
+    }
+    // Cut by install recency, then keep the name order `chosen` was built in.
+    const fits = new Set(chosen.toSorted((a, b) => a.recency - b.recency).slice(0, room));
+    const kept = chosen.filter((skill) => fits.has(skill));
+    return {
+      skills: kept.map(({ recency: _recency, ...skill }) => skill),
+      truncated: kept.length < chosen.length,
+    };
+  }
+
   private verify(resourceHash: string): HarnessResourceView {
     const resource = this.store.getResource(resourceHash);
     if (!resource) throw new ResourceVerificationError('missing', 'resource not installed');
@@ -1506,56 +1804,4 @@ export class HarnessService {
       rmSync(review.directory, { recursive: true, force: true });
     this.reviews.clear();
   }
-}
-
-function inside(root: string, target: string) {
-  const path = relative(root, target);
-  return !isAbsolute(path) && path !== '..' && !path.startsWith(`..${sep}`);
-}
-
-/** Dereference only internal links, and hash exactly the bytes copied for review. */
-function scan(root: string, copyTo?: string): HarnessResource['files'] {
-  const base = realpathSync(root);
-  const files: HarnessResource['files'] = [];
-  let bytes = 0;
-  const walk = (folder: string, prefix: string, ancestors: Set<string>) => {
-    const actual = realpathSync(folder);
-    if (!inside(base, actual)) throw new Error('resource link points outside its root');
-    if (ancestors.has(actual)) throw new Error('resource link cycle');
-    const next = new Set([...ancestors, actual]);
-    for (const name of readdirSync(folder).sort()) {
-      if (name === '.git') continue;
-      if (
-        name === '.corral' ||
-        name === '.npmrc' ||
-        /^\.env(?:\.|$)/.test(name) ||
-        ['auth.json', 'credentials.json'].includes(name)
-      )
-        throw new Error('resource contains private configuration');
-      const path = prefix ? `${prefix}/${name}` : name;
-      ResourcePath.parse(path);
-      const source = join(folder, name);
-      if (!inside(base, realpathSync(source)))
-        throw new Error('resource link points outside its root');
-      const info = statSync(source);
-      if (info.isDirectory()) {
-        walk(source, path, next);
-        continue;
-      }
-      if (!info.isFile()) throw new Error('resource contains a non-file entry');
-      if (files.length >= 10_000 || bytes + info.size > MAX_RESOURCE_BYTES)
-        throw new Error('resource size limit exceeded');
-      const body = readFileSync(source);
-      bytes += body.length;
-      if (bytes > MAX_RESOURCE_BYTES) throw new Error('resource size limit exceeded');
-      if (copyTo) {
-        const destination = join(copyTo, path);
-        mkdirSync(dirname(destination), { recursive: true, mode: 0o700 });
-        writeFileSync(destination, body, { mode: info.mode & 0o100 ? 0o700 : 0o600 });
-      }
-      files.push({ path, hash: hash(body), bytes: body.length });
-    }
-  };
-  walk(base, '', new Set());
-  return files;
 }

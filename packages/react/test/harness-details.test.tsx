@@ -152,3 +152,71 @@ it('shows the pinned resource, final context, payload and unmanaged call evidenc
   expect(screen.getByText('MCP connections: issues')).toBeInTheDocument();
   expect(screen.getByText('Allowed tool names: echo, mcp__issues__search')).toBeInTheDocument();
 });
+
+it('lists bound skills as rows and folds the other usable skills into one counted group', () => {
+  const definition = linearCorral(['writer']);
+  const skill = (letter: string, skillName: string, mark: object) => ({
+    hash: letter.repeat(64),
+    name: 'coding',
+    version: '2.0.0',
+    kind: 'skill',
+    required: false,
+    skillName,
+    entry: `skills/${skillName}/SKILL.md`,
+    skillMode: 'auto',
+    ...mark,
+  });
+  const started = RunEvent.parse({
+    schemaVersion: '0.1',
+    runId: 'run_1',
+    recordedAt: '2026-10-18T00:00:00.000Z',
+    actor: { kind: 'runtime', id: 'runtime' },
+    causedByEventIds: [],
+    eventId: 'event_0',
+    runSeq: 1,
+    type: 'run.started',
+    payload: {
+      corralId: definition.id,
+      definitionHash: 'a'.repeat(64),
+      inputHash: 'b'.repeat(64),
+      mode: 'mock',
+      modelProfiles: [],
+      limits: definition.limits,
+      harnesses: {
+        writer_role: {
+          binding: { profileId: 'role-skills-minimal', revision: 1 },
+          snapshotHash: 'c'.repeat(64),
+          piVersion: '1.3.0',
+          policyRevision: 1,
+          policy: 'strict',
+          resources: [
+            skill('1', 'prove-it', { selectedByRole: true }),
+            skill('2', 'layer-bound', {}),
+            skill('3', 'break-it', { library: true }),
+            skill('4', 'root-cause', { library: true }),
+            skill('5', 'shape-first', { library: true }),
+          ],
+          allowedTools: ['read_file'],
+          tools: [],
+          diagnostics: [],
+        },
+      },
+    },
+  });
+  render(
+    <IntlProvider locale="en" messages={messages} timeZone="UTC">
+      <HarnessDetails session={sessionStore({ runId: 'run_1', definition, events: [started] })} />
+    </IntlProvider>,
+  );
+  const group = screen.getByText('Other usable skills · 3', { selector: 'summary' }).parentElement;
+  if (!(group instanceof HTMLDetailsElement)) throw Error('Missing library group');
+  expect(group.open).toBe(false);
+  for (const name of ['break-it', 'root-cause', 'shape-first'])
+    expect(within(group).getByText(new RegExp(name), { selector: 'summary' })).toBeInTheDocument();
+  for (const name of ['prove-it', 'layer-bound']) {
+    const row = screen.getByText(new RegExp(name), { selector: 'summary' });
+    expect(group).not.toContainElement(row);
+    // Bound rows come first; the folded group follows them.
+    expect(row.compareDocumentPosition(group) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  }
+});

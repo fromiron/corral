@@ -392,9 +392,8 @@ describe('team editor views', () => {
     expect(layoutOf()).toBe('stacked');
     await click(named(editorRoot(), messages.TeamAssistant.editTitle));
     expect(document.querySelector('[role="dialog"]')).toBeNull();
-    expect(
-      editorRoot().querySelector(`textarea[aria-label="${messages.TeamAssistant.editRequest}"]`),
-    ).toBe(document.activeElement);
+    // Without a model the switched-off request stands in the input's place and takes its focus.
+    expect(named(editorRoot(), messages.TeamAssistant.localServer)).toBe(document.activeElement);
     await click(named(editorRoot(), messages.TeamAssistant.choice.describe));
     expect(shown(testRun())).toBe(true);
   });
@@ -409,7 +408,7 @@ describe('team editor views', () => {
     await click(entry);
     const dialog = region('[role="dialog"]');
     expect(dialog).toBeTruthy();
-    const input = dialog.querySelector('textarea');
+    const input = named(dialog, messages.TeamAssistant.localServer);
     await vi.waitFor(() => expect(document.activeElement).toBe(input));
     await act(async () => {
       input?.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
@@ -417,16 +416,51 @@ describe('team editor views', () => {
     await vi.waitFor(() => expect(document.activeElement).toBe(entry));
   });
 
-  it('offers only examples and choices when there is no server to connect a model to', async () => {
+  it('turns the request off without a server, keeping the choices that need no model', async () => {
     const draft = await mount('route', 1280);
     const before = draft();
     await click(named(editorRoot(), 'Edit the team with AI'));
+    expect(editorRoot().querySelector('textarea')).toBeNull();
+    const off = named(editorRoot(), messages.TeamAssistant.localServer);
+    expect(off?.getAttribute('aria-disabled')).toBe('true');
     expect(named(editorRoot(), 'Connect a model')).toBeFalsy();
-    expect(editorRoot().textContent).toContain(messages.TeamAssistant.noModel);
+    expect(named(editorRoot(), messages.TeamAssistant.choice.describe)).toBeTruthy();
     expect(draft()).toBe(before);
   });
 
-  it('does not offer a different connected profile when the endpoint’s first profile is offline', async () => {
+  it('does not claim there is no model while the model list is still loading', async () => {
+    await mount('route', 1280, () => ({
+      live: true,
+      models: {
+        catalog: async () => [],
+        profiles: () => new Promise(() => {}),
+        assistTeam: vi.fn(),
+      },
+    }));
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    expect(editorRoot().querySelector('textarea')).toBeTruthy();
+    expect(named(editorRoot(), 'Connect a model')).toBeFalsy();
+  });
+
+  it('offers Connect a model, not a waiting input, when the model list cannot be read', async () => {
+    const assistTeam = vi.fn();
+    await mount('route', 1280, () => ({
+      live: true,
+      models: {
+        catalog: async () => [],
+        profiles: async () => {
+          throw new Error('offline');
+        },
+        assistTeam,
+      },
+    }));
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    await vi.waitFor(() => expect(named(editorRoot(), 'Connect a model')).toBeTruthy());
+    expect(editorRoot().querySelector('textarea')).toBeNull();
+    expect(assistTeam).not.toHaveBeenCalled();
+  });
+
+  it('opens the model settings from the switched-off request when no model can run', async () => {
     const assistTeam = vi.fn();
     const profile = { source: 'profile', providerName: 'Provider', available: true };
     await mount('route', 1280, () => ({
@@ -435,18 +469,53 @@ describe('team editor views', () => {
         catalog: async () => [],
         profiles: async () => [
           { ...profile, profileId: 'model-a', modelName: 'Offline model', method: null },
-          { ...profile, profileId: 'model-b', modelName: 'Connected model', method: 'apiKey' },
         ],
         assistTeam,
       },
     }));
     await click(named(editorRoot(), 'Edit the team with AI'));
-    expect(named(editorRoot(), 'Connect a model')).toBeTruthy();
+    expect(editorRoot().querySelector('textarea')).toBeNull();
     await click(named(editorRoot(), 'Connect a model'));
     expect(fixture.navigate).toHaveBeenCalledWith(
       expect.objectContaining({ to: '/settings/models' }),
     );
     expect(assistTeam).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      case: 'the first named profile is offline',
+      listed: [
+        { source: 'profile', profileId: 'model-a', modelName: 'Offline model', method: null },
+        { source: 'profile', profileId: 'model-b', modelName: 'Ready model', method: 'apiKey' },
+      ],
+    },
+    {
+      case: 'only a provider is connected',
+      listed: [
+        {
+          source: 'connection',
+          profileId: 'provider:ready',
+          modelName: 'Ready model',
+          method: 'apiKey',
+        },
+      ],
+    },
+  ])('asks the first ready model of the list when $case', async ({ listed }) => {
+    await mount('route', 1280, () => ({
+      live: true,
+      models: {
+        catalog: async () => [],
+        profiles: async () =>
+          listed.map((entry) => ({ providerName: 'Provider', available: true, ...entry })),
+        assistTeam: vi.fn(),
+      },
+    }));
+    await click(named(editorRoot(), 'Edit the team with AI'));
+    await vi.waitFor(() => expect(editorRoot().querySelector('textarea')).toBeTruthy());
+    expect(editorRoot().textContent).toContain('Ready model');
+    expect(editorRoot().textContent).not.toContain('Offline model');
+    expect(named(editorRoot(), 'Connect a model')).toBeFalsy();
   });
 
   it.each(['route', 'session'] as const)(
@@ -882,7 +951,10 @@ describe('test run validation and recovery in the editor', () => {
       'review',
     ]);
     for (const input of inputs) {
-      const duty = messages.TeamTemplates.presets[input.nodeId as 'implement' | 'review'].duty;
+      const agent = ({ implement: 'builder', review: 'reviewer' } as const)[
+        input.nodeId as 'implement' | 'review'
+      ];
+      const duty = messages.TeamTemplates.presets[agent].duty;
       expect(input.assignment.kind).toBe('scheduled');
       expect(input.stepInstruction).toBe(duty);
       expect(input.role.prompt).toBe(team.roles.find((role) => role.id === input.role.id)?.prompt);

@@ -161,16 +161,15 @@ async function createForm(api: ReturnType<typeof creationApi>, options?: RenderO
   return dialog;
 }
 
-it.each([true, false])('saves a skill with explicit trust choice %s', async (trusted) => {
+it('saves a skill with one Save; installing makes it usable without a trust call', async () => {
   const api = creationApi();
   const onSaved = vi.fn();
   const dialog = await createForm(api, { embedded: true, onSaved });
-  await act(async () => button(dialog, trusted ? 'Save and trust' : 'Save without trust').click());
+  expect(dialog.textContent).not.toContain('Save and trust');
+  expect(dialog.textContent).not.toContain('Save without trust');
+  await act(async () => button(dialog, en.Resources.save).click());
   expect(api.install).toHaveBeenCalledExactlyOnceWith('review_new');
-  if (trusted) {
-    expect(api.trust).toHaveBeenCalledExactlyOnceWith('installed-hash', true);
-    expect(api.install).toHaveBeenCalledBefore(api.trust);
-  } else expect(api.trust).not.toHaveBeenCalled();
+  expect(api.trust).not.toHaveBeenCalled();
   expect(onSaved).toHaveBeenCalledExactlyOnceWith('installed-hash', 'skills/SKILL.md');
 });
 
@@ -234,29 +233,19 @@ it('does not review, install or trust a creation cancelled before save', async (
   expect(api.trust).not.toHaveBeenCalled();
 });
 
-it('keeps the fields on install failure, and does not trust before success', async () => {
+it('keeps the fields on install failure and saves on retry', async () => {
   const api = creationApi();
   api.install.mockRejectedValueOnce(new Error('unavailable'));
-  const dialog = await createForm(api);
-  await act(async () => button(dialog, 'Save and trust').click());
-  expect(dialog.querySelector('[role="alert"]')).toBeTruthy();
-  expect(api.trust).not.toHaveBeenCalled();
-  expect(dialog.querySelector('input')?.value).toBe('Security review');
-  expect(dialog.querySelector('textarea')?.value).toBe('Inspect the diff.');
-  await act(async () => button(dialog, 'Save and trust').click());
-  expect(api.trust).toHaveBeenCalledExactlyOnceWith('installed-hash', true);
-});
-
-it('retries only trust when installation already succeeded', async () => {
-  const api = creationApi();
-  api.trust.mockRejectedValueOnce(new Error('offline'));
   const onSaved = vi.fn();
   const dialog = await createForm(api, { onSaved });
-  await act(async () => button(dialog, 'Save and trust').click());
-  expect(dialog.querySelector('[role="alert"]')?.textContent).toContain('The skill was saved');
-  await act(async () => button(dialog, 'Save and trust').click());
-  expect(api.install).toHaveBeenCalledTimes(1);
-  expect(api.trust).toHaveBeenCalledTimes(2);
+  await act(async () => button(dialog, en.Resources.save).click());
+  expect(dialog.querySelector('[role="alert"]')).toBeTruthy();
+  expect(onSaved).not.toHaveBeenCalled();
+  expect(dialog.querySelector('input')?.value).toBe('Security review');
+  expect(dialog.querySelector('textarea')?.value).toBe('Inspect the diff.');
+  await act(async () => button(dialog, en.Resources.save).click());
+  expect(api.install).toHaveBeenCalledTimes(2);
+  expect(api.trust).not.toHaveBeenCalled();
   expect(onSaved).toHaveBeenCalledExactlyOnceWith('installed-hash', 'skills/SKILL.md');
 });
 

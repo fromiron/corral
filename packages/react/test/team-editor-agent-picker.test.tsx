@@ -1,4 +1,9 @@
-import { type AgentRole, isWorkAgent, type LibraryAgent } from '@corral/contracts';
+import {
+  type AgentRole,
+  isWorkAgent,
+  type LibraryAgent,
+  LibraryAgentRole,
+} from '@corral/contracts';
 import { roleFromPreset } from '@corral/core';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -36,18 +41,23 @@ const library = {
 };
 const origin = { kind: 'library' as const, agentId: 'author', revision: 2 };
 const writingBase = roleFromPreset(
-  'write',
-  'write',
-  messages.TeamTemplates.presets.write.name,
+  'writer',
+  'writer',
+  messages.TeamTemplates.presets.writer.name,
 ).prompt;
 function mount(
   props: Partial<TeamEditorProps> = {},
   from: AgentRole['origin'] | null = origin,
   stepInstruction = 'Team-only sentence',
+  changes: Partial<AgentRole> = {},
 ) {
   const seat = addAgent(
     emptyDraft(),
-    { role: { ...original.role, name: 'Planner' }, ...(from && { origin: from }), stepInstruction },
+    {
+      role: { ...original.role, name: 'Planner', ...changes },
+      ...(from && { origin: from }),
+      stepInstruction,
+    },
     { kind: 'empty' },
   );
   if (!seat.ok || !seat.nodeId) throw Error('missing seat');
@@ -110,6 +120,25 @@ it('adds the same original twice without replacing the selected seat; a copied r
   expect(editor.getState().draft).toBe(before);
 });
 
+it('shows a saved agent’s description in its row, finds it by it or its instructions, and copies it', async () => {
+  const description = 'Edits long manuscripts. Use it after the first draft.';
+  const { editor, user } = mount({
+    agentLibrary: {
+      ...library,
+      agents: [{ ...original, role: { ...original.role, description } }],
+    },
+  });
+  await user.click(add());
+  expect(button(/^Writer/)).toHaveAccessibleDescription(description);
+  await user.type(search(), 'FIRST DRAFT');
+  expect(button(/^Writer/)).toHaveAccessibleDescription(description);
+  await user.clear(search());
+  await user.type(search(), 'polish the');
+  await user.click(button(/^Writer/));
+  const copy = editor.getState().draft.definition.roles.at(-1);
+  expect(copy).toMatchObject({ description, prompt: original.role.prompt });
+});
+
 it('searches only the active group, opens built-in for an empty library, and restores focus on cancel', async () => {
   const { editor, user, before } = mount({ agentLibrary: { ...library, agents: [] } });
   const opener = add();
@@ -123,8 +152,10 @@ it('searches only the active group, opens built-in for an empty library, and res
   expect(screen.getByRole('dialog')).not.toHaveTextContent('Project: Harbor');
   await user.click(tab(/Built-in/));
   await user.type(search(), 'each claim');
-  expect(button('Writing')).toHaveAccessibleDescription(messages.TeamTemplates.presets.write.duty);
-  expect(screen.queryByRole('button', { name: 'Plan' })).toBeNull();
+  expect(button('Writing')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.writer.duty}plain-prose · doc-writing`,
+  );
+  expect(screen.queryByRole('button', { name: 'Design' })).toBeNull();
   fireEvent.keyDown(search(), { key: 'Escape', isComposing: true });
   expect(search()).toBeVisible();
   await user.keyboard('{Escape}');
@@ -136,10 +167,10 @@ it('searches only the active group, opens built-in for an empty library, and res
   const { roles, nodes } = editor.getState().draft.definition;
   expect(roles.at(-1)).toMatchObject({
     prompt: writingBase,
-    origin: { kind: 'preset', presetId: 'write' },
+    origin: { kind: 'preset', presetId: 'writer' },
   });
   expect(nodes.filter(isWorkAgent).at(-1)?.stepInstruction).toBe(
-    messages.TeamTemplates.presets.write.duty,
+    messages.TeamTemplates.presets.writer.duty,
   );
 });
 
@@ -173,10 +204,11 @@ it('keeps built-ins and custom creation usable on a failed library read, with ex
 const teamTask = 'Compare the quotations in the interview.';
 const laterTask = 'Index the appendices.';
 const handmadeTask = 'Check footnotes.';
-function otherTeam() {
+function otherTeam(description?: string) {
   const skills = [{ resourceHash: 'a'.repeat(64), entry: 'writing/SKILL.md' }];
-  const shared = { ...original.role, id: 'writer', skills };
-  const handmade = { ...original.role, id: 'notes', prompt: handmadeTask };
+  const described = description ? { description } : {};
+  const shared = { ...original.role, ...described, id: 'writer', skills };
+  const handmade = { ...original.role, ...described, id: 'notes', prompt: handmadeTask };
   const observer: AgentRole = {
     ...original.role,
     id: 'advisor',
@@ -245,6 +277,58 @@ it('shows loading, distinct descriptions and resolved skill names rather than an
   );
 });
 
+it('summarises a row by its seat’s task, then its description, then its instructions, and finds it by any', async () => {
+  const { user } = mount({ teams: [otherTeam('Edits manuscripts.')] });
+  await user.click(add());
+  await user.click(tab(/Other teams/));
+  const writers = () =>
+    within(screen.getByRole('dialog')).getAllByRole('button', { name: 'Writer' });
+  // The first seat's task stands for the role that seat uses; the seat without one shows the description.
+  expect(writers()[0]).toHaveAccessibleDescription(/Compare the quotations/);
+  expect(writers()[0]).not.toHaveAccessibleDescription(/Edits manuscripts/);
+  expect(writers()[1]).toHaveAccessibleDescription(/Edits manuscripts/);
+  expect(writers()[1]).not.toHaveAccessibleDescription(/Check footnotes/);
+  for (const words of ['edits manuscripts', 'quotations', 'check footnotes']) {
+    await user.clear(search());
+    await user.type(search(), words);
+    expect(writers().length).toBeGreaterThan(0);
+  }
+});
+
+it('reads a blank description as none', async () => {
+  const { user } = mount({
+    agentLibrary: {
+      ...library,
+      agents: [{ ...original, role: { ...original.role, description: '  ' } }],
+    },
+  });
+  await user.click(add());
+  expect(button(/^Writer/)).toHaveAccessibleDescription(original.role.prompt);
+});
+
+it('names a changed description in the replace preview and carries it on replace', async () => {
+  const edited = {
+    ...original,
+    revision: 3,
+    role: { ...original.role, name: 'Planner', description: 'Plans the whole book.' },
+  };
+  const { user, editor, before } = mount(
+    { agentLibrary: { ...library, agents: [edited] } },
+    origin,
+    'Team-only sentence',
+    { description: 'Plans the chapters.' },
+  );
+  await user.click(screen.getByRole('button', { name: messages.Inspector.seatActions }));
+  await user.click(await screen.findByRole('menuitem', { name: messages.Inspector.replaceAgent }));
+  await user.click(button('Planner'));
+  expect(within(screen.getByRole('dialog')).getByRole('list')).toHaveTextContent(
+    messages.TeamEditor.agentPicker.fields.description,
+  );
+  await user.click(button('Replace'));
+  expect(editor.getState().draft.definition.roles[0]?.description).toBe('Plans the whole book.');
+  expect(editor.getState().past).toEqual([before]);
+});
+
 it.each(['Built-in', 'Other teams'] as const)(
   'previews and fills an empty task on replacement from %s, only on confirmation',
   async (group) => {
@@ -267,7 +351,7 @@ it.each(['Built-in', 'Other teams'] as const)(
     await user.click(button('Replace'));
     const { nodes, roles } = editor.getState().draft.definition;
     expect(nodes.find(isWorkAgent)?.stepInstruction).toBe(
-      group === 'Built-in' ? messages.TeamTemplates.presets.write.duty : teamTask,
+      group === 'Built-in' ? messages.TeamTemplates.presets.writer.duty : teamTask,
     );
     expect(roles[0]?.prompt).toBe(group === 'Built-in' ? writingBase : original.role.prompt);
     expect(editor.getState().past).toEqual([before]);
@@ -330,10 +414,25 @@ it('saves only reusable role fields, preserves input on failure and never edits 
   expect(editor.getState().past).toEqual([]);
 });
 
+it('saves a copy’s description to the library with it', async () => {
+  const save = vi.fn().mockResolvedValue({ ok: true });
+  const description = 'Plans the chapters. Use it first.';
+  mount({ beginSaveAgent: () => save }, origin, 'Team-only sentence', { description });
+  const user = userEvent.setup();
+  await user.click(screen.getByRole('button', { name: messages.Inspector.seatActions }));
+  await user.click(await screen.findByRole('menuitem', { name: 'Save to library' }));
+  await user.click(button('Save agent'));
+  expect(LibraryAgentRole.parse(save.mock.calls[0]?.[0])).toEqual({
+    ...original.role,
+    name: 'Planner',
+    description,
+  });
+});
+
 it.each([
   {
     kind: 'preset',
-    from: { kind: 'preset', presetId: 'plan' } as const,
+    from: { kind: 'preset', presetId: 'architect' } as const,
     step: 'Compare the candidates.',
     expected: `Compare the candidates.\n\n${original.role.prompt}`,
   },
@@ -356,8 +455,10 @@ it.each([
 
 it.each([
   [origin, 'Source: Writer · r2'],
-  [{ kind: 'preset', presetId: 'plan' } as const, 'Source: Plan'],
+  [{ kind: 'preset', presetId: 'architect' } as const, 'Source: Design'],
   [{ ...origin, agentId: 'unknown' }, null],
+  // A saved team from before the presets were the built-in agents: the row goes, the seat stays.
+  [{ kind: 'preset', presetId: 'plan' } as const, null],
 ])(
   'only identifies a known origin from this project in advanced settings',
   async (from, expected) => {
@@ -367,3 +468,23 @@ it.each([
     else expect(screen.queryByText(/^Source:/)).toBeNull();
   },
 );
+
+it('shows each built-in agent with its duty and the names of its skills', async () => {
+  const { user } = mount({ agentLibrary: { ...library, agents: [] } });
+  await user.click(add());
+  expect(tab(/Built-in/)).toHaveAttribute('aria-selected', 'true');
+  const rows = within(screen.getByRole('dialog')).getAllByRole('button', {
+    description: /./,
+  });
+  expect(rows.map((row) => row.getAttribute('aria-label'))).toEqual(
+    Object.values(messages.TeamTemplates.presets).map((preset) => preset.name),
+  );
+  // Without a resolved skill library the generated names still read, never a bare count.
+  expect(button('Implementation')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.builder.duty}smallest-change · engineering-principles · failing-test-first · prove-it · corral-change-report`,
+  );
+  expect(button('Verification')).toHaveAccessibleDescription(
+    `${messages.TeamTemplates.presets.verifier.duty}prove-it · measure-first · corral-verification · corral-review`,
+  );
+  expect(screen.getByRole('dialog')).not.toHaveTextContent(/\d skills/);
+});

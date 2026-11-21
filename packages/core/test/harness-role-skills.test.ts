@@ -21,7 +21,9 @@ import {
   exportRunArchive,
   type HarnessResolver,
   InMemoryRunStore,
+  InProcessTransport,
   sha256Hex,
+  waitForProjection,
 } from '../src/index.ts';
 import { roleSkillCases } from './harness-role-skill-cases.ts';
 
@@ -188,11 +190,39 @@ describe('role-selected skills at the Coordinator boundary', () => {
     s.stop.open();
   });
 
-  it('rejects an unavailable resolver before a Run exists, even for an empty list', () => {
-    const s = setup();
-    expect(s.start(writer([]))).toMatchObject(denied);
+  it.each([{ keys: [] }, { keys: ['first'] }])(
+    'a mock run with no resolver runs a skills-only role without skills ($keys)',
+    async ({ keys }) => {
+      const s = setup();
+      const definition = writer(keys);
+      expect(s.start(definition).receipt.error).toBeUndefined();
+      const { input } = await s.execution();
+      expect(input).not.toHaveProperty('harness');
+      expect(s.store.getRun(input.runId)!.snapshot).not.toHaveProperty('harnesses');
+      s.stop.open();
+    },
+  );
+
+  it('a live run with no resolver refuses a skills-only role before a Run exists', () => {
+    const s = setup(undefined, { models: fixtureModel() });
+    expect(s.start(writer(['first']), { mode: 'live' })).toMatchObject(denied);
+    expect(s.start(writer([]), { mode: 'live', commandId: 'start_empty' })).toMatchObject(denied);
     expect(s.store.listRuns()).toEqual([]);
   });
+
+  it.each(['mock', 'live'] as const)(
+    'a %s run with no resolver refuses a role with a pinned harness',
+    (mode) => {
+      const s = setup(undefined, { models: fixtureModel() });
+      const definition = writer(['first']);
+      definition.roles[0]!.harness = bound;
+      expect(s.start(definition, { mode })).toMatchObject(denied);
+      const pinnedOnly = writer();
+      pinnedOnly.roles[0]!.harness = bound;
+      expect(s.start(pinnedOnly, { mode, commandId: 'start_pinned' })).toMatchObject(denied);
+      expect(s.store.listRuns()).toEqual([]);
+    },
+  );
 
   it.each([
     { tag: 'profile', changed: { binding: bound } },
@@ -441,5 +471,132 @@ describe('role-selected skills at the Coordinator boundary', () => {
     expect(resumed.runId).toBeNull();
     expect(resumed.receipt.error?.message).toContain('released');
     expect(s.store.listRuns()).toHaveLength(1);
+  });
+
+  // harness-contract.md, "이전 실행에서 이어 갈 때": only the bound resources must match.
+  const libraryOf = (
+    base: EffectiveHarnessSnapshot,
+    keys: string[],
+    diagnostics: string[] = [],
+    marked = true,
+  ): EffectiveHarnessSnapshot => {
+    const resources = [
+      ...base.resources,
+      ...keys.map((key) => ({
+        hash: ref(key).resourceHash,
+        entry: ref(key).entry,
+        kind: 'skill' as const,
+        name: key,
+        skillName: key,
+        skillMode: 'auto' as const,
+        version: '1.0.0',
+        required: false,
+        ...(marked ? { library: true as const } : {}),
+      })),
+    ];
+    return {
+      ...base,
+      resources,
+      diagnostics,
+      snapshotHash: sha256Hex(canonicalJson({ resources, diagnostics, base: base.snapshotHash })),
+    };
+  };
+  const checkpointed = async (effective: EffectiveHarnessSnapshot) => {
+    const resolve = vi.fn<HarnessResolver['resolve']>(() => effective);
+    const s = setup(
+      { resolve },
+      { models: fixtureModel(), runtimeRecovery: { confirm: async () => {} } },
+    );
+    expect(s.start(writer(['first']), { mode: 'live' }).receipt.error).toBeUndefined();
+    const { input, host } = await s.execution();
+    await host.reportHarness!({
+      ok: true,
+      snapshotHash: effective.snapshotHash,
+      tools: [],
+      diagnostics: [],
+    });
+    const context = { messages: [{ role: 'user', content: 'Request', timestamp: 1 }] };
+    expect(
+      await host.checkpointContext!({
+        version: 1,
+        piVersion: '1.3.0',
+        runtime: 'pi-sdk',
+        context,
+        contextHash: sha256Hex(canonicalJson(context)),
+      }),
+    ).toBeTruthy();
+    const blocked = async (next: EffectiveHarnessSnapshot) => {
+      resolve.mockReturnValue(next);
+      const [view] = await s.coordinator.runtimeCheckpoints(input.runId);
+      return view!.blockers.includes('resources_changed');
+    };
+    return { s, blocked };
+  };
+
+  it('a library-only change does not mark a checkpoint changed; a bound change still does', async () => {
+    const started = libraryOf(snapshot(['first']), ['lib_a']);
+    const { s, blocked } = await checkpointed(started);
+    expect(await blocked(started)).toBe(false);
+    expect(await blocked(libraryOf(snapshot(['first']), ['lib_b']))).toBe(false);
+    expect(await blocked(snapshot(['first']))).toBe(false);
+    expect(
+      await blocked(
+        libraryOf(snapshot(['first']), ['lib_a', 'lib_b'], ['library_skills_truncated']),
+      ),
+    ).toBe(false);
+    // A picked or required skill, the tools or the policy are bound.
+    expect(await blocked(libraryOf(snapshot(['second']), ['lib_a']))).toBe(true);
+    expect(await blocked(libraryOf(snapshot(['first', 'required']), ['lib_a']))).toBe(true);
+    const tools = libraryOf(snapshot(['first']), ['lib_a']);
+    tools.allowedTools = [...tools.allowedTools, 'ask'];
+    expect(await blocked(tools)).toBe(true);
+    expect(
+      await blocked({ ...libraryOf(snapshot(['first']), ['lib_a']), policy: 'trusted-native' }),
+    ).toBe(true);
+    s.stop.open();
+  });
+
+  it('a snapshot recorded without library marks treats every entry as bound', async () => {
+    const { s, blocked } = await checkpointed(libraryOf(snapshot(['first']), ['lib_a'], [], false));
+    expect(await blocked(libraryOf(snapshot(['first']), ['lib_a'], [], false))).toBe(false);
+    expect(await blocked(libraryOf(snapshot(['first']), ['lib_a']))).toBe(true);
+    s.stop.open();
+  });
+
+  it('a branch from the original request takes the newly resolved library; a bound change refuses it', async () => {
+    const resolve = vi.fn<HarnessResolver['resolve']>(() =>
+      libraryOf(snapshot(['first']), ['lib_a']),
+    );
+    const s = setup({ resolve });
+    const source = s.start(writer(['first']));
+    expect(source.receipt.error).toBeUndefined();
+    await s.execution();
+    s.stop.open();
+    await s.ended.wait();
+    const point = { sourceRunId: source.runId!, requestStart: true as const };
+    const preview = s.coordinator.branchPreview(point);
+    const later = libraryOf(snapshot(['first']), ['lib_b']);
+    resolve.mockReturnValue(later);
+    const prepare = async () => ({ sessionId: 'session_branch' });
+    const branch = await s.coordinator.branchRun(
+      { ...point, commandId: 'branch_library', expectedHash: preview.hash },
+      prepare,
+    );
+    expect(branch.receipt.error).toBeUndefined();
+    expect(s.store.getRun(branch.runId!)!.snapshot.harnesses).toEqual({ writer_role: later });
+    await waitForProjection(new InProcessTransport(s.coordinator), branch.runId!, (run) =>
+      ['succeeded', 'failed', 'cancelled'].includes(run.status),
+    );
+    resolve.mockReturnValue(libraryOf(snapshot(['second']), ['lib_b']));
+    const refused = await s.coordinator.branchRun(
+      { ...point, commandId: 'branch_bound', expectedHash: preview.hash },
+      prepare,
+    );
+    expect(refused).toMatchObject({
+      runId: null,
+      receipt: {
+        error: { code: 'CAPABILITY_DENIED', message: 'branch model or resources changed' },
+      },
+    });
   });
 });

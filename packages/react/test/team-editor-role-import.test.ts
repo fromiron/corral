@@ -1,11 +1,19 @@
 import { type AgentRole, isWorkAgent } from '@corral/contracts';
-import { compileDefinition, ROLE_PRESET_IDS, roleFromPreset, teamTemplate } from '@corral/core';
+import {
+  compileDefinition,
+  ROLE_PRESET_IDS,
+  roleFromPreset,
+  TEAM_TEMPLATE_ROLES,
+  teamTemplate,
+} from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import {
   connectCapability,
   draftFromDefinition,
   type EditorDraft,
   emptyDraft,
+  exportDefinition,
+  importDefinition,
   updateNode,
 } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
@@ -93,6 +101,23 @@ describe('adding a copy to a team', () => {
     expect(again.draft.definition.roles).toHaveLength(3);
   });
 
+  it('copies a saved agent’s description, kept over JSON export and import; a built-in copy has none', () => {
+    const source = writer();
+    const description = 'Writes announcements. Use it for public notes.';
+    const added = addAtEnd(flow(), { ...source, role: { ...source.role, description } });
+    expect(roleOf(added.draft, added.nodeId).description).toBe(description);
+    const reopened = importDefinition(exportDefinition(added.draft));
+    if (!reopened.ok) throw new Error(reopened.errors.join(', '));
+    expect(reopened.draft.definition).toEqual(added.draft.definition);
+    const { id: _id, ...preset } = roleFromPreset('writer', 'writer', 'Writing');
+    const builtin = addAtEnd(flow(), {
+      role: preset,
+      origin: { kind: 'preset', presetId: 'writer' },
+      stepInstruction: 'Write the notice.',
+    });
+    expect(roleOf(builtin.draft, builtin.nodeId)).not.toHaveProperty('description');
+  });
+
   it('never collides with an existing imported role id derived from the new node id', () => {
     const before = flow();
     const existing = { ...roleOf(before, 'agent_1'), id: 'agent_2_role' };
@@ -117,18 +142,30 @@ describe('adding a copy to a team', () => {
     expect(draft.definition.controlEdges).toMatchObject([{ source: nodeId, target: 'output_1' }]);
   });
 
-  it.each(['implement-review', 'plan-implement-review', 'bug-fix'] as const)(
+  it.each([
+    ['implement-review', 'implement'],
+    ['feature', 'implement'],
+    ['bug-fix', 'fix'],
+    ['refactor', 'reshape'],
+    ['performance', 'improve'],
+  ] as const)(
     'inserts one seat on both final Loop routes in %s, without changing its submission',
-    (id) => {
+    (id, worker) => {
       const definition = teamTemplate(id, 'example', {
         name: id,
         brief: 'Prepare a result.',
         criteria: ['Reviewed'],
-        labels: { loop: 'Review loop', decision: 'Decision', join: 'Gather', output: 'Output' },
-        roles: {
-          ...messages.TeamTemplates.presets,
-          ...messages.TeamTemplates.templates['bug-fix'].roles,
+        labels: {
+          loop: 'Review loop',
+          decision: 'Decision',
+          verifyLoop: 'Verification loop',
+          verifyDecision: 'Verification decision',
+          join: 'Gather',
+          output: 'Output',
         },
+        roles: Object.fromEntries(
+          Object.keys(TEAM_TEMPLATE_ROLES[id]).map((key) => [key, { name: key, duty: key }]),
+        ) as never,
       });
       const store = createEditorStore(draftFromDefinition(definition));
       const original = store.getState().draft;
@@ -148,7 +185,7 @@ describe('adding a copy to a team', () => {
         {
           kind: 'task_output',
           name: 'draft',
-          sourceNodeId: id === 'bug-fix' ? 'fix' : 'implement',
+          sourceNodeId: worker,
         },
       ]);
       expect(compileDefinition(draft.definition).diagnostics).toEqual([]);
@@ -340,17 +377,17 @@ describe('replacing the role, not the seat', () => {
         kind === 'origin'
           ? addAtEnd(emptyDraft(), {
               role: writer().role,
-              origin: { kind: 'preset', presetId: 'write' },
+              origin: { kind: 'preset', presetId: 'writer' },
             }).draft
           : flow();
       let before = updateNode(initial, 'agent_1', { prompt: sentence });
       if (kind === 'step')
         before = patchNode(before, 'agent_1', { stepInstruction: 'Invite the neighbors.' });
-      const { name, duty } = messages.TeamTemplates.presets.plan;
-      const preset = roleFromPreset('plan', 'plan', name);
+      const { name, duty } = messages.TeamTemplates.presets.architect;
+      const preset = roleFromPreset('architect', 'architect', name);
       const source: AgentSource = {
         role: preset,
-        origin: { kind: 'preset', presetId: 'plan' },
+        origin: { kind: 'preset', presetId: 'architect' },
         stepInstruction: duty,
       };
       const expectedTask =
@@ -379,7 +416,7 @@ describe('replacing the role, not the seat', () => {
   it('fills only the missing task when choosing the same preset, but not a library original', () => {
     const source: AgentSource = {
       role: writer().role,
-      origin: { kind: 'preset', presetId: 'write' },
+      origin: { kind: 'preset', presetId: 'writer' },
     };
     const { draft, nodeId } = addAtEnd(emptyDraft(), source);
     const preview = previewReplaceAgent(draft, nodeId, { ...source, stepInstruction: 'Draft it.' });
@@ -399,7 +436,7 @@ describe('replacing the role, not the seat', () => {
   it('fills an empty seat from another team’s handmade role without duplicating its one prompt', () => {
     const { draft, nodeId } = addAtEnd(emptyDraft(), {
       role: writer().role,
-      origin: { kind: 'preset', presetId: 'write' },
+      origin: { kind: 'preset', presetId: 'writer' },
     });
     const preview = previewReplaceAgent(draft, nodeId, { role: writer().role });
     if (!preview.ok) throw new Error(preview.reason);
@@ -451,6 +488,67 @@ describe('replacing the role, not the seat', () => {
       origin: other.origin,
     });
     expect(agent(preview.draft, nodeId).label).toBe(initial.role.name);
+  });
+
+  it('lists a changed description first and carries the new one, as when the original was edited', () => {
+    const source = writer();
+    const first: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+      origin: { kind: 'library', agentId: 'writer', revision: 1 },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), first);
+    // The original's description was edited: revision 2, nothing else changed.
+    const edited: AgentSource = {
+      ...first,
+      role: { ...first.role, description: 'Writes public announcements.' },
+      origin: { kind: 'library', agentId: 'writer', revision: 2 },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, edited);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['description']);
+    expect(roleOf(preview.draft, nodeId).description).toBe('Writes public announcements.');
+  });
+
+  it('takes the description away when the new agent has none, and lists it before the instructions', () => {
+    const source = writer();
+    const described: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+    };
+    const { draft, nodeId } = addAtEnd(emptyDraft(), described);
+    const { id: _id, ...preset } = roleFromPreset('writer', 'writer', 'Writing');
+    const builtin: AgentSource = { role: preset, origin: { kind: 'preset', presetId: 'writer' } };
+    const preview = previewReplaceAgent(draft, nodeId, builtin);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed.slice(0, 2)).toEqual(['description', 'instructions']);
+    const { draft: replaced } = ok(replaceAgent(draft, nodeId, builtin));
+    expect(roleOf(replaced, nodeId)).not.toHaveProperty('description');
+  });
+
+  it('replaces a source that differs only in its description, in one undo step', () => {
+    const source = writer();
+    const { draft, nodeId } = addAtEnd(emptyDraft(), source);
+    const described: AgentSource = {
+      ...source,
+      role: { ...source.role, description: 'Writes announcements.' },
+    };
+    const preview = previewReplaceAgent(draft, nodeId, described);
+    if (!preview.ok) throw new Error(preview.reason);
+    expect(preview.changed).toEqual(['description']);
+    expect(preview.draft).not.toBe(draft);
+    const store = createEditorStore(draft);
+    store.getState().applyDraft(ok(replaceAgent(draft, nodeId, described)).draft);
+    expect(roleOf(store.getState().draft, nodeId).description).toBe('Writes announcements.');
+    expect(store.getState().past).toEqual([draft]);
+    store.getState().undo();
+    expect(store.getState().draft).toBe(draft);
+    // A blank description reads as none: choosing the same agent again is the same content.
+    const blank: AgentSource = { ...source, role: { ...source.role, description: '   ' } };
+    const again = previewReplaceAgent(draft, nodeId, blank);
+    if (!again.ok) throw new Error(again.reason);
+    expect(again.changed).toEqual([]);
+    expect(again.draft).toBe(draft);
   });
 
   it('refuses to orphan an owner but leaves a shared owner with the remaining seat', () => {

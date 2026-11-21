@@ -1,11 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import {
+  SHAPE_ISSUES,
   TeamAssistantReply,
   TeamAssistantRequest,
   TeamAssistantResponse,
   TeamAssistantTarget,
   TeamAssistantTeam,
-  type TeamPlan,
+  type TeamCatalog,
+  type TeamComposition,
+  UNUSABLE_TEAM_PROPOSAL_MESSAGE,
+  unusableTeamProposal,
+  unusableTeamProposalReason,
 } from '../src/index.ts';
 
 const target: TeamAssistantTarget = { outputId: 'final', index: 3 };
@@ -19,18 +24,51 @@ const team: TeamAssistantTeam = {
   hasSharedOutrider: false,
 };
 const message = { role: 'user', content: 'Prepare a report.' } as const;
-const create: TeamAssistantRequest = { mode: 'create', operationId: '0-a', messages: [message] };
-const edit: TeamAssistantRequest = { ...create, mode: 'edit', team };
-const plan: TeamPlan = {
+const catalog: TeamCatalog = {
+  agents: [
+    {
+      id: 'a1',
+      name: 'Writer',
+      changesFiles: false,
+      runsCommands: false,
+      output: 'draft',
+      skills: [],
+    },
+  ],
+  skills: [],
+};
+const create: TeamAssistantRequest = {
+  mode: 'create',
+  operationId: '0-a',
+  messages: [message],
+  catalog,
+};
+const { catalog: _catalog, ...withoutCatalog } = create;
+const edit: TeamAssistantRequest = { ...withoutCatalog, mode: 'edit', team };
+const plan: TeamComposition = {
   name: 'Writing',
-  pattern: 'single',
   brief: 'Prepare a report.',
-  finalApproval: false,
   criteria: ['A report is ready.'],
-  roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the report.' }],
+  seats: [{ id: 's1', agent: 'a1', name: 'Writer', duty: 'Write the report.' }],
+  flow: [{ seat: 's1' }],
 };
 
 describe('team assistant request', () => {
+  it('a new team carries the catalog and may carry the proposal it revises; an edit carries neither', () => {
+    expect(TeamAssistantRequest.safeParse(create).success).toBe(true);
+    expect(TeamAssistantRequest.safeParse({ ...create, proposal: plan }).success).toBe(true);
+    for (const invalid of [
+      withoutCatalog,
+      { ...create, catalog: { agents: [], skills: [] } },
+      { ...create, catalog: { ...catalog, teams: [] } },
+      { ...create, proposal: { ...plan, pattern: 'single' } },
+      { ...create, proposal: { ...plan, flow: [{ parallel: ['s1', 's1'] }] } },
+      { ...edit, catalog },
+      { ...edit, proposal: plan },
+    ])
+      expect(TeamAssistantRequest.safeParse(invalid).success).toBe(false);
+  });
+
   it('accepts edit decisions only for results at their original input index', () => {
     const decisions = {
       material: 'person',
@@ -63,17 +101,22 @@ describe('team assistant request', () => {
       expect(TeamAssistantRequest.safeParse(invalid).success).toBe(false);
   });
 
-  it('bounds the conversation and requires an operation id', () => {
-    const messages = Array.from({ length: 12 }, (_, i) => ({
-      ...(i === 1 ? { role: 'assistant', questionId: 'material' } : { role: 'user' }),
-      content: 'a'.repeat(2000),
-    }));
-    expect(TeamAssistantRequest.safeParse({ ...create, messages }).success).toBe(true);
+  it('takes the whole conversation, each message bounded, and requires an operation id', () => {
+    const conversation = (length: number) =>
+      Array.from({ length }, (_, i) => ({
+        ...(i === 1 ? { role: 'assistant', questionId: 'material' } : { role: 'user' }),
+        content: 'a'.repeat(2000),
+      }));
+    // No count limit: a conversation that grows by refinement is sent whole.
+    for (const length of [12, 13, 40])
+      expect(
+        TeamAssistantRequest.safeParse({ ...create, messages: conversation(length) }).success,
+      ).toBe(true);
     for (const invalid of [
       { ...create, operationId: undefined },
       { ...create, operationId: '' },
       { ...create, messages: [] },
-      { ...create, messages: [...messages, message] },
+      { ...create, messages: [...conversation(39), { ...message, content: 'a'.repeat(2001) }] },
       { ...create, messages: [{ ...message, content: 'a'.repeat(2001) }] },
       { ...create, messages: [{ ...message, content: '' }] },
       { ...create, messages: [{ ...message, role: 'system' }] },
@@ -192,6 +235,23 @@ describe('team assistant reply', () => {
     for (const reply of [
       { kind: 'plan', plan, reason, extra: true },
       { kind: 'plan', plan: { ...plan, grants: [] }, reason },
+      {
+        kind: 'plan',
+        plan: { ...plan, seats: [{ ...plan.seats[0], tools: ['write_file'] }] },
+        reason,
+      },
+      {
+        kind: 'plan',
+        plan: {
+          name: 'Writing',
+          pattern: 'single',
+          brief: 'Prepare a report.',
+          finalApproval: false,
+          criteria: ['A report is ready.'],
+          roles: [{ slot: 'worker', name: 'Writer', duty: 'Write the report.' }],
+        },
+        reason,
+      },
       { kind: 'edits', edits: [], reason },
       { kind: 'edits', edits: ['add_shared_advice'], reason },
       { kind: 'edits', edits: [{ kind: 'require_review', target }], reason },
@@ -229,5 +289,74 @@ describe('team assistant reply', () => {
       { ...response, reply: 'unsupported' },
     ])
       expect(TeamAssistantResponse.safeParse(invalid).success).toBe(false);
+  });
+});
+
+describe('an unusable team proposal', () => {
+  it('keeps the fixed sentence and puts a reason code after it in parentheses', () => {
+    expect(UNUSABLE_TEAM_PROPOSAL_MESSAGE).toBe('The model did not return a usable team proposal.');
+    expect(unusableTeamProposal()).toBe(UNUSABLE_TEAM_PROPOSAL_MESSAGE);
+    expect(unusableTeamProposal('shape')).toBe(
+      'The model did not return a usable team proposal. (shape)',
+    );
+  });
+
+  it('reads back every reason the server can give, a place in the shape included', () => {
+    const codes = [
+      'empty',
+      'cut_off',
+      'not_json',
+      'shape',
+      'kind',
+      'unknown_agent',
+      'judge_without_review',
+      'loop_with_opinion_only',
+      'decision_conflict',
+    ];
+    const places = ['$', 'reason', 'plan.criteria.2', 'plan.flow.3.loop.work.2', 'plan.*.0'];
+    const shapes = places.flatMap((place) =>
+      SHAPE_ISSUES.map((issue) => `shape:${place}:${issue}`),
+    );
+    for (const reason of [...codes, ...shapes])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason))).toBe(reason);
+    expect(SHAPE_ISSUES).toEqual(
+      expect.arrayContaining([
+        'missing',
+        'type',
+        'too_long',
+        'too_many',
+        'extra_field',
+        'no_variant',
+      ]),
+    );
+  });
+
+  it('reads no reason from text outside the grammar', () => {
+    for (const reason of [
+      'shape:plan.criteria.2',
+      'shape::missing',
+      'shape:plan criteria:missing',
+      'shape:plan.criteria.2:Too long',
+      'shape:plan.criteria.2:unheard_of',
+      'shape:plan.my-key:missing',
+      'shape:plan..2:missing',
+      'Shape:plan.name:missing',
+      'not json',
+    ])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason)), reason).toBeNull();
+  });
+
+  it('reads the reason back: empty without one, null for any other message', () => {
+    for (const reason of ['not_json', 'shape', 'kind', 'unknown_agent', 'decision_conflict'])
+      expect(unusableTeamProposalReason(unusableTeamProposal(reason))).toBe(reason);
+    expect(unusableTeamProposalReason(UNUSABLE_TEAM_PROPOSAL_MESSAGE)).toBe('');
+    for (const other of [
+      'The model did not return a usable team proposal',
+      'The model did not return a usable team proposal. (Shape)',
+      'The model did not return a usable team proposal. (shape) more',
+      'Model is unavailable.',
+      '',
+    ])
+      expect(unusableTeamProposalReason(other)).toBeNull();
   });
 });

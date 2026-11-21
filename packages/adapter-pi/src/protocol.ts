@@ -15,6 +15,7 @@ import {
   ImageInput,
   ItemRef,
   isHarnessMcpTool,
+  MAX_SNAPSHOT_RESOURCES,
   McpChallenge,
   MeetingRunOrigin,
   ModelRequestRecord,
@@ -378,7 +379,7 @@ export const SdkResources = z.strictObject({
         files: HarnessResource.shape.files,
       }),
     )
-    .max(64),
+    .max(MAX_SNAPSHOT_RESOURCES),
   extensions: z
     .array(
       z.strictObject({ path: z.string().min(1), hash: ContentHash, source: z.string().min(1) }),
@@ -395,7 +396,7 @@ export const SdkResources = z.strictObject({
         content: z.string().max(64 * 1024),
       }),
     )
-    .max(64),
+    .max(MAX_SNAPSHOT_RESOURCES),
   startupCommands: z.array(z.string().min(1).max(1000)).max(16),
 });
 export type SdkResources = z.infer<typeof SdkResources>;

@@ -1,5 +1,6 @@
 import {
   type CorralNode,
+  DEFAULT_ADVISOR_REVIEW,
   type InputBinding,
   isWorkAgent,
   type OutputNode,
@@ -8,13 +9,16 @@ import {
   TeamAssistantReply,
   type TeamAssistantTarget,
   type TeamAssistantTeam,
-  type TeamPlan,
+  type TeamCatalog,
+  type TeamComposition,
 } from '@corral/contracts';
 import {
   type CompileOptions,
   compileDefinition,
-  draftFromPlan,
+  draftFromComposition,
+  type ResolvedCatalog,
   reviewedOutputBinding,
+  TeamCompositionError,
   type TeamWording,
 } from '@corral/core';
 import type { EditorDraft } from '../editor/model.ts';
@@ -30,18 +34,22 @@ type Edits = Extract<TeamAssistantReply, { kind: 'edits' }>['edits'];
 type Nodes = ReadonlyMap<string, CorralNode>;
 type Target = TeamAssistantTarget & { name: string; producerName: string };
 
+/** The catalog a create request carried, with what its ids stood for on the editor's side. */
+export type SentCatalog = ResolvedCatalog & { catalog: TeamCatalog };
+
 export interface Proposal {
   base: EditorDraft;
   result: EditorDraft;
   focus: string;
   reason: string;
-  plan?: TeamPlan;
+  /** A new team: the model's composition and what its catalog ids stood for in that request. */
+  plan?: TeamComposition;
+  resolved?: SentCatalog;
   canApply: boolean;
   targets: Target[];
   briefChange?: { before: string; after: string };
   changes: string[];
-  origin: 'choice' | 'model' | 'local';
-  recovery?: 'incompatible' | 'unusable';
+  origin: 'choice' | 'model';
 }
 
 interface ProposalOptions {
@@ -348,16 +356,17 @@ function check(draft: EditorDraft, { t, compileOptions }: ProposalOptions) {
 
 export function createProposal(
   base: EditorDraft,
-  plan: TeamPlan,
+  plan: TeamComposition,
   options: ProposalOptions & {
-    wording: TeamWording;
+    wording: Pick<TeamWording, 'labels'>;
     initialName: string;
-    origin: 'local' | 'model';
+    resolved: SentCatalog;
     target?: TeamAssistantTarget | undefined;
-    recovery?: Proposal['recovery'];
+    /** The person turned automatic observation on in the proposal. */
+    observe?: boolean | undefined;
   },
 ): Proposal {
-  const { t, target } = options;
+  const { t, target, resolved } = options;
   if (
     base.definition.nodes.length ||
     base.definition.roles.length ||
@@ -367,8 +376,18 @@ export function createProposal(
   }
   const parsed = TeamAssistantReply.safeParse({ kind: 'plan', plan, reason: options.reason });
   if (!parsed.success || parsed.data.kind !== 'plan') throw new Error(t('invalid.proposal'));
-  plan = parsed.data.plan;
-  const { definition } = draftFromPlan(plan, base.definition.id, options.wording.labels);
+  let definition: ReturnType<typeof draftFromComposition>;
+  try {
+    definition = draftFromComposition(parsed.data.plan, base.definition.id, resolved, {
+      ...options.wording.labels,
+      join: t('TeamEditor.kinds.join'),
+      // A group side by side that starts the team sits in a Team, named as one made by hand.
+      group: t('TeamEditor.kinds.team'),
+    });
+  } catch (error) {
+    if (error instanceof TeamCompositionError) throw new Error(t('logic.unusable'));
+    throw error;
+  }
   // Only these newly generated template slots are defaults. An edit to an existing team
   // keeps its authored profile IDs, even when a profile is no longer installed.
   const profiles = options.compileOptions?.knownModelProfiles;
@@ -385,9 +404,22 @@ export function createProposal(
     }
   }
   if (base.definition.name !== options.initialName) definition.name = base.definition.name;
-  // draftFromPlan already constructed a new graph. Keep the editor's ID counters for its
+  // draftFromComposition already constructed a new graph. Keep the editor's ID counters for its
   // lifetime; nextId also checks the plan's new graph before allocating any node or edge ID.
   let result = { ...base, definition };
+  if (options.observe) {
+    const shared = definition.sharedOutrider;
+    result = accepted(
+      setSharedOutrider(result, {
+        modelProfile: shared?.modelProfile ?? definition.roles[0]?.modelProfile ?? 'model-a',
+        principles: shared?.principles ?? t('TeamEditor.sharedOutrider.defaultPrinciples'),
+        targets: shared?.targets ?? { kind: 'all' },
+        ...(shared?.artifactReview ? { artifactReview: true as const } : {}),
+        observation: { targets: { kind: 'all' }, review: { ...DEFAULT_ADVISOR_REVIEW } },
+      }),
+      t,
+    );
+  }
   const targets =
     plan.outrider === 'required_review'
       ? summarize(result).outputs.flatMap(({ outputId, results }) =>
@@ -406,14 +438,13 @@ export function createProposal(
     result,
     reason: parsed.data.reason,
     plan,
+    resolved,
     targets,
     changes: [],
-    origin: options.origin,
+    // A new team's plan comes from the model alone.
+    origin: 'model',
     focus: definition.nodes.find(isWorkAgent)!.id,
-    canApply:
-      plan.outrider !== 'clarify_review' &&
-      (plan.outrider !== 'required_review' || Boolean(target)),
-    ...(options.recovery ? { recovery: options.recovery } : {}),
+    canApply: plan.outrider !== 'required_review' || Boolean(target),
   };
 }
 

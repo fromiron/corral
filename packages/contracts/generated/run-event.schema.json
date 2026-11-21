@@ -2499,7 +2499,7 @@
           "type": "object",
           "properties": {
             "skills": {
-              "maxItems": 64,
+              "maxItems": 256,
               "type": "array",
               "items": {
                 "type": "object",
@@ -3442,7 +3442,7 @@
                     "const": "none"
                   },
                   "resources": {
-                    "maxItems": 64,
+                    "maxItems": 256,
                     "type": "array",
                     "items": {
                       "type": "object",
@@ -3472,6 +3472,10 @@
                           "type": "boolean"
                         },
                         "selectedByRole": {
+                          "type": "boolean",
+                          "const": true
+                        },
+                        "library": {
                           "type": "boolean",
                           "const": true
                         },

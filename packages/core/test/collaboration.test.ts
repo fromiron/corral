@@ -85,7 +85,14 @@ it('sends each saved template delegate its base and its own duty exactly once', 
     brief: '입력을 검증합니다.',
     criteria: ['검사 결과를 남깁니다.'],
     roles,
-    labels: { loop: '반복', decision: '결정', join: '합류', output: '출력' },
+    labels: {
+      loop: '반복',
+      decision: '결정',
+      verifyLoop: '검증 반복',
+      verifyDecision: '검증 결정',
+      join: '합류',
+      output: '출력',
+    },
   });
   const { transport, started } = runtime({
     collaborate: false,
@@ -135,7 +142,8 @@ it('sends each saved template delegate its base and its own duty exactly once', 
     expect(input?.stepInstruction).toBe(duty);
     expect(input?.role.prompt).toBe(base);
     expect(base).toContain('submit with submit_result.');
-    expect(JSON.stringify(input).split(base)).toHaveLength(2);
+    // The base is the agent's Markdown body: compare it as it reads inside the JSON.
+    expect(JSON.stringify(input).split(JSON.stringify(base).slice(1, -1))).toHaveLength(2);
     expect(JSON.stringify(started).split(duty)).toHaveLength(2);
   }
 });

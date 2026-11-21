@@ -660,7 +660,7 @@ it.each(['en', 'ko'] as const)(
   },
 );
 
-it('shows the eight templates in order with their roles, and marks the ones that change nothing', async () => {
+it('shows the eleven templates in order with their roles, and marks the ones that change nothing', async () => {
   const { container } = await render('/library/templates?project=project_1');
   const cards = [...container.querySelectorAll<HTMLElement>('[data-library-view] article')];
   const title = (card: HTMLElement) =>
@@ -668,10 +668,13 @@ it('shows the eight templates in order with their roles, and marks the ones that
   expect(cards.map(title)).toEqual([
     'Single agent',
     'Implement and review',
-    'Plan, implement and review',
+    'Feature',
     'Bug fix',
-    'Parallel code review',
+    'Refactoring',
+    'Performance',
+    'Adversarial review',
     'Technical decision',
+    'Code investigation',
     'Research team',
     'Empty',
   ]);
@@ -680,10 +683,13 @@ it('shows the eight templates in order with their roles, and marks the ones that
   expect(cards.map(roles)).toEqual([
     ['Agent 1'],
     ['Implementation', 'Review'],
-    ['Plan', 'Implementation', 'Review'],
-    ['Cause investigation', 'Fix', 'Review'],
-    ['Scope', 'Correctness review and Security review', 'Synthesis'],
-    ['Framing', 'Option A research and Option B research', 'Comparison'],
+    ['Design', 'Implementation', 'Verification'],
+    ['Cause investigation', 'Fix', 'Verification'],
+    ['Behavior pin', 'Restructuring', 'Verification'],
+    ['Baseline', 'Improvement', 'Re-measurement'],
+    ['Scope', 'Challenge A and Challenge B', 'Verdict'],
+    ['Framing', 'Option A research and Option B research', 'Decision'],
+    ['Scope', 'Trace and History', 'Writing'],
     ['Researcher', 'Writer', 'Reviewer'],
     [],
   ]);
@@ -691,15 +697,32 @@ it('shows the eight templates in order with their roles, and marks the ones that
     [...card.querySelectorAll('[data-slot="card-action"]')].some(
       (mark) => mark.textContent === 'Read-only',
     );
-  expect(cards.map(readOnly)).toEqual([true, false, false, false, true, true, true, false]);
+  // library.md: only the single agent, the technical decision and the research team change
+  // nothing; the adversarial review and the code investigation run commands.
+  expect(cards.map(readOnly)).toEqual([
+    true,
+    false,
+    false,
+    false,
+    false,
+    false,
+    false,
+    true,
+    false,
+    true,
+    false,
+  ]);
   // The name and the role flow only: no sentence retelling the flow.
   const ids = [
     'starter',
     'implement-review',
-    'plan-implement-review',
+    'feature',
     'bug-fix',
-    'parallel-review',
+    'refactor',
+    'performance',
+    'adversarial-review',
     'tech-decision',
+    'code-investigation',
     'research-team',
     'blank',
   ] as const;
@@ -718,7 +741,7 @@ it('shows the eight templates in order with their roles, and marks the ones that
     cards.map((card, index) => {
       const name = title(card);
       const edit = ['Edit a copy', `Edit a copy of ${name}`];
-      return index === 7 ? [edit] : [['New conversation', `New conversation with ${name}`], edit];
+      return index === 10 ? [edit] : [['New conversation', `New conversation with ${name}`], edit];
     }),
   );
   // Neither is the screen's primary button: tertiary, then ghost.
@@ -769,7 +792,9 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
   const roles = (card: HTMLElement) =>
     [...card.querySelectorAll('ol[aria-label="역할"] > li')].map((step) => step.textContent);
   expect(roles(cards[0] as HTMLElement)).toEqual(['에이전트 1']);
-  expect(roles(cards[6] as HTMLElement)).toEqual(['조사자', '작성자', '검토자']);
+  expect(roles(cards[2] as HTMLElement)).toEqual(['설계', '구현', '검증']);
+  expect(roles(cards[6] as HTMLElement)).toEqual(['범위 정리', '반증 A 및 반증 B', '심사']);
+  expect(roles(cards[9] as HTMLElement)).toEqual(['조사자', '작성자', '검토자']);
   for (const card of cards)
     for (const step of roles(card))
       expect([step, /[A-Za-z]{2,}/.test(step ?? '')]).toEqual([step, false]);
@@ -784,7 +809,7 @@ it('names every template’s roles in Korean on a Korean screen', async () => {
 });
 
 it.each([
-  ['Parallel code review', { template: 'parallel-review' }],
+  ['Adversarial review', { template: 'adversarial-review' }],
   ['Empty', {}],
 ] as const)('opens an unsaved template copy of %s without creating a team', async (name, query) => {
   const { container, router } = await render('/library/templates?project=project_2');

@@ -27,6 +27,7 @@ import {
   type SkillCatalog as Catalog,
   loadSkillCatalog,
   skillState,
+  usableSkill,
   versionsOf,
 } from './harness/skillCatalog.ts';
 
@@ -378,10 +379,6 @@ interface DialogProps {
   restoreFocus(): HTMLElement | null;
   refresh(): void;
 }
-const usable = (entry: HarnessEntryView, catalog: Catalog) =>
-  !entry.archivedAt &&
-  !catalog.disabled.has(entry.resourceHash) &&
-  Boolean(entry.resource.trustedAt);
 
 function Picker({
   api,
@@ -435,7 +432,7 @@ function Picker({
       if (replacement && keyOf(replacement) === key) setReplacement(undefined);
       return;
     }
-    if (!usable(item, ready)) return;
+    if (!usableSkill(item, ready)) return;
     if (replacement) {
       setChecks(checks.map((s) => (keyOf(s) === keyOf(replacement) ? toRef(item) : s)));
       setReplacement(undefined);
@@ -447,7 +444,7 @@ function Picker({
     const installed = ready.entries.find((e) => keyOf(e) === key);
     if (!installed) return;
     awaitingInstall.current = false;
-    if (usable(installed, ready)) {
+    if (usableSkill(installed, ready)) {
       setChecks((current) => {
         if (current.some((s) => keyOf(s) === key)) return current;
         if (replacement) return current.map((s) => (keyOf(s) === keyOf(replacement) ? created : s));
@@ -473,7 +470,7 @@ function Picker({
     checks.every(
       (ref) =>
         before.has(keyOf(ref)) ||
-        ready.entries.some((entry) => keyOf(entry) === keyOf(ref) && usable(entry, ready)),
+        ready.entries.some((entry) => keyOf(entry) === keyOf(ref) && usableSkill(entry, ready)),
     );
   return (
     <Dialog
@@ -582,7 +579,7 @@ function Picker({
                   const key = keyOf(entry),
                     policy = required.get(key),
                     isChecked = checked.has(key) || Boolean(policy),
-                    disabled = Boolean(policy) || (!isChecked && !usable(entry, ready));
+                    disabled = Boolean(policy) || (!isChecked && !usableSkill(entry, ready));
                   const state = skillState(entry, ready.disabled);
                   const mark =
                     policy ?? (saved === key && !state ? t('saved') : state ? r(state) : null);
@@ -670,7 +667,7 @@ function SkillDetail({
   const canAdopt =
     ready &&
     entry &&
-    usable(entry, ready) &&
+    usableSkill(entry, ready) &&
     read &&
     keyOf(read) === keyOf(entry) &&
     !selected.some((s) => keyOf(s) === keyOf(entry));

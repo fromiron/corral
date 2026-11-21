@@ -44,6 +44,35 @@ it('Pi package discovery uses its manifest and skill parser without importing ex
   expect(existsSync(marker)).toBe(false);
 }, 15000);
 
+it('records the disable-model-invocation mark per skill entry; an unmarked entry has none', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'corral-package-'));
+  roots.push(root);
+  for (const [name, marked] of [
+    ['manual', true],
+    ['open', false],
+  ] as const) {
+    mkdirSync(join(root, 'skills', name), { recursive: true });
+    writeFileSync(
+      join(root, 'skills', name, 'SKILL.md'),
+      `---\nname: ${name}\ndescription: Use ${name}.\n${marked ? 'disable-model-invocation: true\n' : ''}---\nBody.`,
+    );
+  }
+  writeFileSync(
+    join(root, 'package.json'),
+    JSON.stringify({ name: 'marked', version: '1.0.0', pi: { skills: ['./skills'] } }),
+  );
+  const { skills } = await inspectPiPackage(root);
+  expect(skills.find((skill) => skill.name === 'manual')).toEqual({
+    name: 'manual',
+    description: 'Use manual.',
+    entry: 'skills/manual/SKILL.md',
+    disableModelInvocation: true,
+  });
+  expect(skills.find((skill) => skill.name === 'open')).not.toHaveProperty(
+    'disableModelInvocation',
+  );
+}, 15000);
+
 it('downloads require an exact npm version or HTTPS Git commit and cannot embed credentials', async () => {
   for (const source of [
     'npm:package',
