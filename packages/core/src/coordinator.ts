@@ -8107,10 +8107,14 @@ export class Coordinator {
     return loopId ? (run.rounds.get(loopId)?.iterationId ?? null) : null;
   }
 
-  /** Whether every Loop around `nodeId` still has a round open. */
-  private insideOpenRounds(run: LiveRun, nodeId: string): boolean {
-    for (let loopId = this.loopOf(run, nodeId); loopId; loopId = this.loopOf(run, loopId))
-      if (!run.rounds.has(loopId)) return false;
+  /** Whether the Loop round an execution runs in is still open, with every round around it. */
+  private inOpenRound(run: LiveRun, executionId: string): boolean {
+    const iterationId = run.projection.executions[executionId]?.iterationId ?? null;
+    const loopId = iterationId ? run.projection.iterations[iterationId]?.loopNodeId : undefined;
+    if (!loopId) return true;
+    if (run.rounds.get(loopId)?.iterationId !== iterationId) return false;
+    for (let around = this.loopOf(run, loopId); around; around = this.loopOf(run, around))
+      if (!run.rounds.has(around)) return false;
     return true;
   }
 
@@ -9371,8 +9375,8 @@ export class Coordinator {
         if (reason) {
           this.commit(run, [...tool.opening, ...tool.closing(null, reason)]);
           const context = this.recipeForExecution(run, executionId);
-          // A candidate of a round that has ended stops no recipe: the round's end stands.
-          if (context && this.insideOpenRounds(run, context.loopId))
+          // A candidate whose round has ended stops no recipe: the round's end stands.
+          if (context && this.inOpenRound(run, executionId))
             this.stopRecipe(
               run,
               context.loopId,

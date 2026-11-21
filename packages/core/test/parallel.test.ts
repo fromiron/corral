@@ -9,6 +9,7 @@ import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@cor
 import { describe, expect, it, vi } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
+  BranchStopped,
   Coordinator,
   type CoordinatorDeps,
   compileDefinition,
@@ -449,7 +450,12 @@ describe('parallel branches', () => {
  * The Coordinator's own walker, logging each callback as it is reached (before the Coordinator
  * acts on it), so a test can show the loser had entered its wait before the Join fired.
  */
-function recording(log: string[], before?: (name: string, args: unknown[]) => void): GraphRunner {
+function recording(
+  log: string[],
+  before?: (name: string, args: unknown[]) => void,
+  /** What each callback the Coordinator refused was refused with, beside the walk. */
+  refused?: { call: string; error: unknown }[],
+): GraphRunner {
   return {
     run: (plan, callbacks, signal) =>
       walkPlan(
@@ -458,9 +464,15 @@ function recording(log: string[], before?: (name: string, args: unknown[]) => vo
           Object.entries(callbacks).map(([name, fn]) => [
             name,
             (...args: unknown[]) => {
-              log.push(`${name} ${String(args[0])}`);
+              const call = `${name} ${String(args[0])}`;
+              log.push(call);
               before?.(name, args);
-              return (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
+              const answer = (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
+              if (refused)
+                Promise.resolve(answer).then(undefined, (error: unknown) =>
+                  refused.push({ call, error }),
+                );
+              return answer;
             },
           ]),
         ) as unknown as RunnerCallbacks,
@@ -549,8 +561,9 @@ describe('a branch an any Join stopped', () => {
   it('opens no round of the Loop the stopped branch was entering', async () => {
     // p → [Loop l [ w → d ], j]; l.next → j.
     const log: string[] = [];
+    const refused: { call: string; error: unknown }[] = [];
     const transport = runtime({}, { decide: async () => 'pass' }, undefined, {
-      runner: recording(log),
+      runner: recording(log, undefined, refused),
     });
     const definition = team(
       [
@@ -590,6 +603,9 @@ describe('a branch an any Join stopped', () => {
     expect(roundsOf(events, 'l')).toEqual([]);
     expect(executions(final, 'w')).toEqual([]);
     expect(settled(final)).toEqual([]);
+    // The entry is refused as a dropped request, which the walker never takes for a failure.
+    expect(refused.map((r) => r.call)).toEqual(['loopEntered l']);
+    expect(refused[0]?.error).toBeInstanceOf(BranchStopped);
   });
 
   it('starts no chooser of a router the stopped branch was about to decide', async () => {
@@ -1401,7 +1417,7 @@ describe('a recipe Loop entry an any Join stopped', () => {
    * Holds the criteria check rd makes for its recipe evidence (any check once the reviewer has
    * started) until `release`; x and m wait at their gates.
    */
-  function evidenceRuntime(gates: { x: Gate; m: Gate }) {
+  function evidenceRuntime(gates: { x: Gate; m: Gate }, runner?: GraphRunner) {
     const clock = new FakeClock();
     let reviewed = false;
     const held: ((valid: boolean) => void)[] = [];
@@ -1409,6 +1425,7 @@ describe('a recipe Loop entry an any Join stopped', () => {
       clock,
       timers: clock,
       ids: new SequentialIdFactory(),
+      ...(runner ? { runner } : {}),
       files: {
         available: () => false,
         execute: async () => {
@@ -1445,7 +1462,8 @@ describe('a recipe Loop entry an any Join stopped', () => {
     async (valid) => {
       expect(planRun(flat()).ok).toBe(true);
       const gates = { x: new Gate(), m: new Gate() };
-      const s = evidenceRuntime(gates);
+      const refused: { call: string; error: unknown }[] = [];
+      const s = evidenceRuntime(gates, recording([], undefined, refused));
       const { runId, events } = await run(s.transport, flat());
       // rd is checking its evidence; x then wins the Join and m keeps the run live.
       await vi.waitFor(() => expect(s.held()).toBe(1));
@@ -1460,6 +1478,9 @@ describe('a recipe Loop entry an any Join stopped', () => {
       expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
       expect(afterJoin(events).filter((e) => e.type === 'recipe.evaluated')).toEqual([]);
       expect(selected(events, 'rd')).toEqual([]);
+      // rd is refused as a dropped request, which the walker never takes for a failure.
+      expect(refused.map((r) => r.call)).toEqual(['decide rd']);
+      expect(refused[0]?.error).toBeInstanceOf(BranchStopped);
     },
   );
 
@@ -1815,60 +1836,70 @@ describe('a recipe Loop entry an any Join stopped', () => {
       },
     );
 
-    it('stops no recipe when c’s candidate learns its criteria changed after l’s round ended', async () => {
-      // write submits its result and waits for the criteria to be read again; d closes l's
-      // round inconclusive meanwhile, and only then does the reading say they changed.
-      let held = false;
-      let asked: () => void = () => {};
-      const asking = new Promise<void>((resolve) => {
-        asked = resolve;
-      });
-      let answer: (valid: boolean) => void = () => {};
-      const runner: GraphRunner = {
-        run: async (_plan, callbacks) => {
-          await callbacks.activate('s', null);
-          await callbacks.loopEntered('l', 1);
-          await callbacks.activate('p', { loopId: 'l', no: 1 });
-          await callbacks.loopEntered('c', 1);
-          held = true;
-          const write = callbacks.activate('write', { loopId: 'c', no: 1 });
-          await asking;
-          await callbacks.loopLeft('l', 1, 'inconclusive');
-          answer(false);
-          await write;
-          return { kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' };
-        },
-      };
-      const clock = new FakeClock();
-      const transport = new InProcessTransport(
-        new Coordinator({
-          clock,
-          timers: clock,
-          ids: new SequentialIdFactory(),
-          runner,
-          files: {
-            available: () => false,
-            execute: async () => {
-              throw new Error('no file tools in this test');
-            },
-            pinCriteria: async () => {},
-            validateCriteria: () => {
-              if (!held) return Promise.resolve(true);
-              held = false;
-              asked();
-              return new Promise<boolean>((resolve) => {
-                answer = resolve;
-              });
-            },
+    it.each([
+      ['l', 'd'],
+      ['c', 'rd'],
+    ] as const)(
+      'stops no recipe when c’s candidate learns its criteria changed after %s’s round ended',
+      async (closed, by) => {
+        // write submits its result and waits for the criteria to be read again; a Decision
+        // closes the round around c, or c's own, inconclusive meanwhile, and only then does the
+        // reading say they changed.
+        let held = false;
+        let asked: () => void = () => {};
+        const asking = new Promise<void>((resolve) => {
+          asked = resolve;
+        });
+        let answer: (valid: boolean) => void = () => {};
+        const runner: GraphRunner = {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('s', null);
+            await callbacks.loopEntered('l', 1);
+            await callbacks.activate('p', { loopId: 'l', no: 1 });
+            await callbacks.loopEntered('c', 1);
+            held = true;
+            const write = callbacks.activate('write', { loopId: 'c', no: 1 });
+            await asking;
+            await callbacks.loopLeft(closed, 1, 'inconclusive');
+            answer(false);
+            await write;
+            return { kind: 'needs_user', nodeId: by, branch: 'inconclusive' };
           },
-          agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
-        }),
-      );
-      const { runId, events } = await run(transport, ended());
-      const final = await waitForProjection(transport, runId, finished);
-      expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
-      expect([final.status, final.statusReason]).toEqual(['failed', 'needs_user: d inconclusive']);
-    });
+        };
+        const clock = new FakeClock();
+        const transport = new InProcessTransport(
+          new Coordinator({
+            clock,
+            timers: clock,
+            ids: new SequentialIdFactory(),
+            runner,
+            files: {
+              available: () => false,
+              execute: async () => {
+                throw new Error('no file tools in this test');
+              },
+              pinCriteria: async () => {},
+              validateCriteria: () => {
+                if (!held) return Promise.resolve(true);
+                held = false;
+                asked();
+                return new Promise<boolean>((resolve) => {
+                  answer = resolve;
+                });
+              },
+            },
+            agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+          }),
+        );
+        const { runId, events } = await run(transport, ended());
+        const final = await waitForProjection(transport, runId, finished);
+        expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
+        expect([final.status, final.statusReason]).toEqual([
+          'failed',
+          `needs_user: ${by} inconclusive`,
+        ]);
+      },
+    );
   });
 });
 
