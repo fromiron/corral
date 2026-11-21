@@ -838,6 +838,41 @@ describe('a branch an any Join stopped', () => {
       expect(r.outcome.value).toEqual({ ok: false, reason: 'branch stopped' });
     });
 
+    /** Starts `start` only once the run has paused after p, so the step waits at its first wait. */
+    async function startWhilePaused(r: ReturnType<typeof paused>, runId: string, gate: Gate) {
+      await waitForProjection(r.transport, runId, (p) =>
+        executions(p, 'p').some((e) => e.status === 'succeeded'),
+      );
+      r.submit(runId, 'pause');
+      await waitForProjection(r.transport, runId, (p) => p.status === 'paused');
+      gate.open();
+    }
+    const breakpointsOf = (p: RunProjection) =>
+      Object.values(p.approvals).filter((a) => a.kind === 'breakpoint');
+
+    it('asks no breakpoint of an Agent stopped at its first wait', async () => {
+      const gate = new Gate();
+      let asked = false;
+      const r = paused({
+        definition: withAgent(),
+        breakpoints: ['x'],
+        step: async (callbacks) => {
+          await gate.wait();
+          const outcome = callbacks.activate('x', null);
+          asked = true;
+          return outcome;
+        },
+      });
+      const { runId } = await r.start();
+      await startWhilePaused(r, runId, gate);
+      await vi.waitFor(() => expect(asked).toBe(true));
+      const final = await r.joinWhilePaused(runId);
+      expect(final.status).toBe('succeeded');
+      expect(breakpointsOf(final)).toEqual([]);
+      expect(executions(final, 'x')).toEqual([]);
+      expect(r.outcome.value).toEqual({ ok: false, reason: 'branch stopped' });
+    });
+
     it('starts no Agent whose breakpoint was approved', async () => {
       const r = paused({
         definition: withAgent(),
@@ -852,36 +887,33 @@ describe('a branch an any Join stopped', () => {
       expect(r.outcome.value).toEqual({ ok: false, reason: 'branch stopped' });
     });
 
-    it('records no route of a Decision whose breakpoint was approved', async () => {
-      // p → [router x, j]; x.go → j (any) → m → output.
-      const definition = team(
-        [
-          agent('p'),
-          {
-            id: 'x',
-            type: 'decision',
-            label: 'x',
-            mode: 'router',
-            routes: [
-              { id: 'go', label: 'go' },
-              { id: 'stay', label: 'stay' },
-            ],
-            inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
-          },
-          join('any'),
-          agent('m', 'p'),
-          output('m'),
-        ],
-        [
-          edge('p', 'out', 'x'),
-          edge('p', 'out', 'j'),
-          edge('x', 'go', 'j'),
-          edge('j', 'out', 'm'),
-          edge('m', 'out', 'output'),
-        ],
-      );
+    it('asks no breakpoint of a Decision stopped at its first wait', async () => {
+      const gate = new Gate();
+      let asked = false;
       const r = paused({
-        definition,
+        definition: withRouter(),
+        breakpoints: ['x'],
+        step: async (callbacks) => {
+          await gate.wait();
+          const branch = callbacks.decide('x', null);
+          asked = true;
+          return branch;
+        },
+      });
+      const { runId, events } = await r.start();
+      await startWhilePaused(r, runId, gate);
+      await vi.waitFor(() => expect(asked).toBe(true));
+      const final = await r.joinWhilePaused(runId);
+      expect(final.status).toBe('succeeded');
+      expect(breakpointsOf(final)).toEqual([]);
+      expect(r.outcome.value).toBeNull();
+      expect(r.consulted).toEqual([]);
+      expect(selected(events, 'x')).toEqual([]);
+    });
+
+    it('records no route of a Decision whose breakpoint was approved', async () => {
+      const r = paused({
+        definition: withRouter(),
         breakpoints: ['x'],
         step: (callbacks) => callbacks.decide('x', null),
       });
@@ -895,6 +927,90 @@ describe('a branch an any Join stopped', () => {
       expect(selected(events, 'x')).toEqual([]);
     });
   });
+
+  /** p → [`first`, a]; `first` → j, a → j (any) → m → output. */
+  const late = (first: CorralNode, port = 'out') =>
+    team(
+      [agent('p'), first, agent('a', 'p'), join('any'), agent('m', 'p'), output('m')],
+      [
+        edge('p', 'out', first.id),
+        edge('p', 'out', 'a'),
+        edge(first.id, port, 'j'),
+        edge('a', 'out', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+
+  it('asks no route of a router whose chooser the Join stopped', async () => {
+    // a reaches j while x's chooser runs; the chooser then ends cancelled, with no route.
+    const a = new Gate();
+    const x = new Gate();
+    const transport = runtime({ a, x });
+    const { runId, events } = await run(transport, late(withRouter().nodes[1] as CorralNode, 'go'));
+    await waitForProjection(transport, runId, (p) => live(p, 'x'));
+    a.open();
+    await waitForProjection(transport, runId, () => joins(events).length > 0);
+    x.open();
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(executions(final, 'x').map((e) => e.status)).toEqual(['cancelled']);
+    expect(Object.values(final.approvals).filter((r) => r.kind === 'route')).toEqual([]);
+    expect(selected(events, 'x')).toEqual([]);
+  });
+
+  it('does not cancel the run when the Join withdraws a breakpoint the step waited at', async () => {
+    const a = new Gate();
+    const transport = runtime({ a });
+    const { runId, receipt } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: `cmd_${++n}`,
+      definition: late(agent('x', 'p')),
+      mode: 'mock',
+      breakpoints: ['x'],
+    });
+    if (!runId) throw new Error(JSON.stringify(receipt.error));
+    await waitForProjection(transport, runId, (p) =>
+      Object.values(p.approvals).some((r) => r.kind === 'breakpoint' && r.status === 'pending'),
+    );
+    a.open();
+    const final = await waitForProjection(transport, runId, finished);
+    expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+    expect(Object.values(final.approvals).map((r) => [r.kind, r.status])).toEqual([
+      ['breakpoint', 'rejected'],
+    ]);
+    expect(executions(final, 'x')).toEqual([]);
+  });
+
+  /** p → [router x, j]; x.go → j (any) → m → output. */
+  function withRouter() {
+    return team(
+      [
+        agent('p'),
+        {
+          id: 'x',
+          type: 'decision',
+          label: 'x',
+          mode: 'router',
+          routes: [
+            { id: 'go', label: 'go' },
+            { id: 'stay', label: 'stay' },
+          ],
+          inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+        },
+        join('any'),
+        agent('m', 'p'),
+        output('m'),
+      ],
+      [
+        edge('p', 'out', 'x'),
+        edge('p', 'out', 'j'),
+        edge('x', 'go', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+  }
 
   it.each(['ended', 'replaced'] as const)(
     'a Decision whose round was %s while it decided records no route',

@@ -633,6 +633,33 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
     });
 
+    it('closes the round once when a sibling then also comes back inconclusive', async () => {
+      // e's answer, asked in the round d then closes, would close the same round again.
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['inconclusive'] });
+      const { decide, loopLeft } = callbacks;
+      let closed = false;
+      let answered = false;
+      callbacks.decide = async (nodeId, iteration) => {
+        if (nodeId === 'e') await until(() => closed);
+        const branch = await decide(nodeId, iteration);
+        if (nodeId === 'e') answered = true;
+        return branch;
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive' || answered) return;
+        closed = true;
+        await until(() => answered);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      const result = await makeRunner().run(roundInBranches(), callbacks);
+      expect(log).toContain('decide e#1 → inconclusive');
+      expect(log.filter((line) => line.startsWith('leave l#1'))).toEqual([
+        'leave l#1 inconclusive',
+      ]);
+      expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
     it('keeps the needs_user of the round’s close when a sibling’s request then fails', async () => {
       const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'] });
       const { decide, loopLeft } = callbacks;

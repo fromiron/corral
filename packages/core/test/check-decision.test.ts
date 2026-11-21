@@ -412,6 +412,42 @@ describe('check decision', () => {
     expect(events.slice(end + 1).filter((e) => e.type.startsWith('execution.'))).toEqual([]);
   });
 
+  // "병렬 실행": a check Decision stopped while its checks ran asks the person nothing.
+  it('asks nothing once a Join stopped the check while its checks ran', async () => {
+    const gate = new Gate();
+    let joinNow: () => Promise<void> = async () => {};
+    let branch: string | null | undefined;
+    const s = runtime(
+      {},
+      {
+        definition: parallel(),
+        held: { nodeId: 'check', gate },
+        runner: {
+          run: async (_plan, callbacks) => {
+            await callbacks.activate('p', null);
+            await callbacks.activate('w', null);
+            joinNow = () => callbacks.joined('j', null, [{ nodeId: 'check', iteration: null }], []);
+            branch = await callbacks.decide('check', null);
+            await callbacks.activate('m', null);
+            await callbacks.finalize('output');
+            return { kind: 'finished', outputNodeId: 'output' };
+          },
+        },
+      },
+    );
+    const runId = await started(s);
+    await waitForProjection(s.transport, runId, (p) =>
+      attempts(p, 'check').some((e) => e.status === 'active'),
+    );
+    await joinNow();
+    gate.open();
+    const final = await waitForProjection(s.transport, runId, finished);
+    expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+    expect(branch).toBeNull();
+    expect(attempts(final, 'check').map((e) => e.status)).toEqual(['cancelled']);
+    expect(Object.values(final.approvals).filter((a) => a.kind === 'check')).toEqual([]);
+  });
+
   // "병렬 실행": a stopped check Decision makes no approved next attempt.
   it('makes no approved next attempt once a Join stopped the check during its wait', async () => {
     // A scripted runner: the check asks to run again; the person approves and the run pauses at
