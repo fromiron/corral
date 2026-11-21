@@ -1091,6 +1091,40 @@ describe('a branch whose Loop round has ended', () => {
     expect(types).not.toContain('output.finalized');
     expect(types).not.toContain('workflow.joined');
   });
+
+  it('keeps that needs_user when a sibling approval then ends as rejected', async () => {
+    // e is an approval whose reject has no edge. d and e decide together, as above; this relies
+    // on the order microtasks settle in, the runner contract pins the order itself.
+    const definition = inconclusiveInLoop();
+    definition.nodes = definition.nodes.map((node) =>
+      node.id === 'e'
+        ? ({ ...node, mode: 'approval', rule: 'human_approval' } as CorralNode)
+        : node,
+    );
+    definition.controlEdges = definition.controlEdges.map((e) =>
+      e.source === 'e' ? { ...e, sourcePort: 'approve' } : e,
+    );
+    expect(planRun(definition).ok).toBe(true);
+    const gate = new Gate();
+    const waiting: string[] = [];
+    const transport = runtime(
+      {},
+      {
+        decide: async ({ nodeId }) => {
+          if (nodeId === 'd' || nodeId === 'e') {
+            waiting.push(nodeId);
+            await gate.wait();
+          }
+          return nodeId === 'd' ? 'inconclusive' : 'reject';
+        },
+      },
+    );
+    const { runId } = await run(transport, definition);
+    await vi.waitFor(() => expect(waiting).toEqual(['d', 'e']));
+    gate.open();
+    const final = await waitForProjection(transport, runId, finished);
+    expect([final.status, final.statusReason]).toEqual(['failed', 'needs_user: d inconclusive']);
+  });
 });
 
 /**

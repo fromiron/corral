@@ -449,6 +449,8 @@ export async function walkPlan(
       );
       token.current = null;
       if (token.stopped || result || failure) return;
+      // A branch whose round ended meanwhile neither ends the run nor goes on.
+      if (!inRound(token)) return;
       // A step that settles after a stop must not start the next one.
       if (signal?.aborted) return finish({ kind: 'stopped' });
       if ('end' in outcome) return finish(outcome.end);
