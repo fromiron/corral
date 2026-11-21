@@ -1814,6 +1814,61 @@ describe('a recipe Loop entry an any Join stopped', () => {
         }
       },
     );
+
+    it('stops no recipe when c’s candidate learns its criteria changed after l’s round ended', async () => {
+      // write submits its result and waits for the criteria to be read again; d closes l's
+      // round inconclusive meanwhile, and only then does the reading say they changed.
+      let held = false;
+      let asked: () => void = () => {};
+      const asking = new Promise<void>((resolve) => {
+        asked = resolve;
+      });
+      let answer: (valid: boolean) => void = () => {};
+      const runner: GraphRunner = {
+        run: async (_plan, callbacks) => {
+          await callbacks.activate('s', null);
+          await callbacks.loopEntered('l', 1);
+          await callbacks.activate('p', { loopId: 'l', no: 1 });
+          await callbacks.loopEntered('c', 1);
+          held = true;
+          const write = callbacks.activate('write', { loopId: 'c', no: 1 });
+          await asking;
+          await callbacks.loopLeft('l', 1, 'inconclusive');
+          answer(false);
+          await write;
+          return { kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' };
+        },
+      };
+      const clock = new FakeClock();
+      const transport = new InProcessTransport(
+        new Coordinator({
+          clock,
+          timers: clock,
+          ids: new SequentialIdFactory(),
+          runner,
+          files: {
+            available: () => false,
+            execute: async () => {
+              throw new Error('no file tools in this test');
+            },
+            pinCriteria: async () => {},
+            validateCriteria: () => {
+              if (!held) return Promise.resolve(true);
+              held = false;
+              asked();
+              return new Promise<boolean>((resolve) => {
+                answer = resolve;
+              });
+            },
+          },
+          agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+        }),
+      );
+      const { runId, events } = await run(transport, ended());
+      const final = await waitForProjection(transport, runId, finished);
+      expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
+      expect([final.status, final.statusReason]).toEqual(['failed', 'needs_user: d inconclusive']);
+    });
   });
 });
 

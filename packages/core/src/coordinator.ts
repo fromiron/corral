@@ -8107,6 +8107,13 @@ export class Coordinator {
     return loopId ? (run.rounds.get(loopId)?.iterationId ?? null) : null;
   }
 
+  /** Whether every Loop around `nodeId` still has a round open. */
+  private insideOpenRounds(run: LiveRun, nodeId: string): boolean {
+    for (let loopId = this.loopOf(run, nodeId); loopId; loopId = this.loopOf(run, loopId))
+      if (!run.rounds.has(loopId)) return false;
+    return true;
+  }
+
   /**
    * A request for `nodeId`'s step, read before any wait: `dropped()` tells later whether it may
    * still act. It is dropped once an any Join stopped its branch, or once the round it was made
@@ -9364,7 +9371,8 @@ export class Coordinator {
         if (reason) {
           this.commit(run, [...tool.opening, ...tool.closing(null, reason)]);
           const context = this.recipeForExecution(run, executionId);
-          if (context)
+          // A candidate of a round that has ended stops no recipe: the round's end stands.
+          if (context && this.insideOpenRounds(run, context.loopId))
             this.stopRecipe(
               run,
               context.loopId,
