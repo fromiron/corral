@@ -3,7 +3,13 @@ import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../../examples/research-team.corral.json' with { type: 'json' };
 import { type CompiledPlan, compileDefinition } from '../compiler/index.ts';
 import { forkPlan, reachableFrom } from '../fork.ts';
-import type { GraphRunner, IterationRef, LoopStop, RunnerCallbacks } from '../runner.ts';
+import {
+  BranchStopped,
+  type GraphRunner,
+  type IterationRef,
+  type LoopStop,
+  type RunnerCallbacks,
+} from '../runner.ts';
 
 /**
  * Behaviour every GraphRunner must share (runner parity, v0.2 supplement §5). The reference
@@ -733,7 +739,7 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
         if (nodeId !== 'e') return decide(nodeId, iteration);
         await until(() => closed);
         failed = true;
-        throw new Error('branch stopped');
+        throw new BranchStopped();
       };
       callbacks.loopLeft = async (loopId, no, outcome) => {
         await loopLeft(loopId, no, outcome);
@@ -745,6 +751,28 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       const result = await makeRunner().run(roundInBranches(), callbacks);
       expect(log).toContain('leave l#1 inconclusive');
       expect(result).toEqual({ kind: 'needs_user', nodeId: 'd', branch: 'inconclusive' });
+    });
+
+    it('fails the run with a sibling’s own failure, though the round closes right behind it', async () => {
+      const { log, callbacks } = recorder({ d: ['inconclusive'], e: ['go'] });
+      const { loopLeft } = callbacks;
+      let failed = false;
+      // e fails while its round is open. d closes the round before that failure has surfaced,
+      // and holds there: the failure is e's own, not a dropped request, and ends the run.
+      callbacks.decide = async (nodeId) => {
+        if (nodeId === 'e') {
+          failed = true;
+          throw new Error('policy failed');
+        }
+        await until(() => failed);
+        return 'inconclusive';
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        for (let i = 0; i < 50; i++) await Promise.resolve();
+      };
+      await expect(makeRunner().run(roundInBranches(), callbacks)).rejects.toThrow('policy failed');
+      expect(log).toContain('leave l#1 inconclusive');
     });
 
     it('drops a stopped branch whose Decision comes back inconclusive after the Join', async () => {

@@ -199,6 +199,7 @@ import { recipeAttempts } from './review-recipe.ts';
 import { planRun, type RunPlan } from './run-plan.ts';
 import { type RunStats, runStats } from './run-stats.ts';
 import {
+  BranchStopped,
   type GraphRunner,
   type IterationRef,
   type LoopStop,
@@ -5255,7 +5256,7 @@ export class Coordinator {
         // Join that stops this branch meanwhile writes that key, and the entry opens no round.
         const request = this.requestOf(run, loopId);
         const stopped = () => {
-          if (request.dropped()) throw new Error('branch stopped');
+          if (request.dropped()) throw new BranchStopped();
         };
         await this.boundary(run);
         stopped();
@@ -7137,7 +7138,7 @@ export class Coordinator {
       }
       const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
       // A request dropped while its evidence was checked: the result goes, and so does the step.
-      if (dropped()) throw new Error('branch stopped');
+      if (dropped()) throw new BranchStopped();
       if (problem) {
         this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');

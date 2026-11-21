@@ -261,7 +261,16 @@ interface Token {
   stopped: boolean;
 }
 
-class BranchStopped extends Error {}
+/**
+ * A request that acts no more: its branch was stopped, or the Loop round it was made in has
+ * ended. The walker throws it for a branch it has dropped and the Coordinator for a request
+ * it drops. It is never the run's failure, whenever it surfaces.
+ */
+export class BranchStopped extends Error {
+  constructor() {
+    super('branch stopped');
+  }
+}
 
 /**
  * Walks a plan with parallel branches: every branch moves on its own, and they wait for each
@@ -292,24 +301,18 @@ export async function walkPlan(
   const opened = new Map<string, object>();
 
   /**
-   * Where a branch stands in the Loop rounds it holds: in all of them, one has ended, or a Loop
-   * has opened another round since (named), which only a plan the compiler refuses allows.
+   * Whether a branch is still in every Loop round it holds: false once one has ended. A Loop
+   * that has opened another round since means a plan the compiler should have refused.
    */
-  const roundState = (token: Token): { ended: boolean; replaced: string | null } => {
+  const inRound = (token: Token): boolean => {
     let ended = false;
     for (const [loopId, mark] of Object.entries(token.marks)) {
       const current = opened.get(loopId);
       if (current === mark) continue;
-      if (current) return { ended, replaced: loopId };
+      if (current)
+        throw new Error(`Loop ${loopId} opened another round while a branch was in the one before`);
       ended = true;
     }
-    return { ended, replaced: null };
-  };
-  /** Whether a branch is still in every round it holds; throws when one was replaced. */
-  const inRound = (token: Token): boolean => {
-    const { ended, replaced } = roundState(token);
-    if (replaced)
-      throw new Error(`Loop ${replaced} opened another round while a branch was in the one before`);
     return !ended;
   };
 
@@ -344,10 +347,9 @@ export async function walkPlan(
     Promise.resolve()
       .then(() => walk(token))
       .catch((error: unknown) => {
+        // A dropped request is no failure. Any other error is the branch's own, and the run's:
+        // a round that closes while it surfaces does not unmake it.
         if (error instanceof BranchStopped || token.stopped || result || failure) return;
-        // A request of a branch whose round has ended may fail: the round's end stands.
-        const state = roundState(token);
-        if (state.ended && !state.replaced) return;
         failure = { error };
         settle();
       })
