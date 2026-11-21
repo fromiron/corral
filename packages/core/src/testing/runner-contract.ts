@@ -922,6 +922,89 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       },
     );
 
+    // "끝난 회차의 분기", 다만: a branch outside the Loop that reaches the any Join first.
+    it('goes on through the any Join an outside branch reaches before the round’s close ends the run', async () => {
+      // s → [ Loop l [ router d (go: l.exit, again: l.repeat) ], b ] → Join k (any) → m → output;
+      // d's inconclusive has no edge.
+      const definition = linearCorral(['s', 'b', 'm']);
+      for (const node of definition.nodes) {
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 's')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 's' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'm' }];
+      }
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        router('d', 'l', 's', ['go', 'again', 'inconclusive']),
+        { id: 'k', type: 'join', label: 'k', policy: 'any' },
+      );
+      definition.controlEdges = [
+        link('sl', 's', 'out', 'l', 'enter'),
+        link('sb', 's', 'out', 'b', 'in'),
+        link('ld', 'l', 'body', 'd', 'in'),
+        link('dx', 'd', 'go', 'l', 'exit'),
+        link('dr', 'd', 'again', 'l', 'repeat'),
+        link('lk', 'l', 'next', 'k', 'in'),
+        link('bk', 'b', 'out', 'k', 'in'),
+        link('km', 'k', 'out', 'm', 'in'),
+        link('mo', 'm', 'out', 'output', 'in'),
+      ];
+      const { log, callbacks } = recorder({ d: ['inconclusive'] });
+      const { activate, loopLeft, joined } = callbacks;
+      let closed = false;
+      let joinedK = false;
+      callbacks.activate = async (nodeId, iteration) => {
+        if (nodeId === 'b') await until(() => closed);
+        return activate(nodeId, iteration);
+      };
+      callbacks.loopLeft = async (loopId, no, outcome) => {
+        await loopLeft(loopId, no, outcome);
+        if (outcome !== 'inconclusive') return;
+        closed = true;
+        await until(() => joinedK);
+      };
+      callbacks.joined = async (...args) => {
+        await joined(...args);
+        joinedK = true;
+      };
+      const result = await makeRunner().run(planOf(definition), callbacks);
+      expect(log).toContain('leave l#1 inconclusive');
+      expect(log).toContain('join k stops d#1');
+      expect(log.slice(-2)).toEqual(['activate m', 'finalize output']);
+      expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+    });
+
+    it.each(['first', 'last'])(
+      'starts no branch of a fan-out into a step and a repeat, the repeat %s',
+      async (where) => {
+        // Loop l [ a → router d (again: l.repeat, done: l.exit) ] → output; d's again also gets
+        // the step a by hand.
+        const definition = linearCorral(['a']);
+        for (const node of definition.nodes) if (node.id === 'a') node.parentId = 'l';
+        definition.entryNodeId = 'l';
+        definition.nodes.push(
+          { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+          router('d', 'l', 'a', ['again', 'done']),
+        );
+        definition.controlEdges = [
+          link('la', 'l', 'body', 'a', 'in'),
+          link('ad', 'a', 'out', 'd', 'in'),
+          link('dr', 'd', 'again', 'l', 'repeat'),
+          link('dx', 'd', 'done', 'l', 'exit'),
+          link('lo', 'l', 'next', 'output', 'in'),
+        ];
+        const plan = planOf(definition);
+        const d = plan.steps.d;
+        if (d?.kind !== 'decision') throw new Error('d is not a decision');
+        const step = { nodeId: 'a', port: 'in' as const };
+        const repeat = d.branches.again ?? [];
+        d.branches.again = where === 'first' ? [...repeat, step] : [step, ...repeat];
+        const { log, callbacks } = recorder({ d: ['again'] });
+        await expect(makeRunner().run(plan, callbacks)).rejects.toThrow('repeat of Loop l');
+        expect(log.at(-1)).toBe('decide d#1 → again');
+      },
+    );
+
     it('fails the run when a branch is still in a round its Loop has replaced', async () => {
       // A plan the compiler refuses, built by hand: in Loop l, p fans out to a and b; a goes on
       // to the Decision whose revise repeats l while b has not joined.
