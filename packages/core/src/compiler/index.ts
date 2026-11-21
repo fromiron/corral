@@ -1117,9 +1117,19 @@ function checkParallel(
     return false;
   };
   for (const edge of c.definition.controlEdges) {
-    const branches =
+    let branches =
       carried.get(edge.id) ??
       context.get(vertexOf(c.nodes, edge.source, edge.sourcePort, 'source'));
+    // A repeat edge is left out of the traversal, so its source's context lacks the fan-out of
+    // the edge's own port: add it, so a fan-out port cannot lead straight into a repeat.
+    const port = `${edge.source}\u0000${edge.sourcePort}`;
+    if (edge.targetPort === 'repeat' && (fanOut.get(port) ?? 0) > 1) {
+      const index = c.definition.controlEdges
+        .filter((e) => e.source === edge.source && e.sourcePort === edge.sourcePort)
+        .indexOf(edge);
+      branches = new Map([...(branches ?? [])].map(([k, set]) => [k, new Set(set)]));
+      branches.set(port, new Set([index]));
+    }
     if (!branches) continue;
     const unjoined = open(branches);
     const leaves =

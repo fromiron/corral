@@ -1048,16 +1048,17 @@ function twoRepeats(): CorralDefinition {
   });
 }
 
-// "갈라지기": a runner given a fan-out into a Loop's repeat starts no branch and fails the run.
+// "모이기 전에 끝나는 분기는 오류다": a fan-out into a Loop's repeat does not start.
 describe('a fan-out into a repeat', () => {
-  it('fails the run with nothing finalized', async () => {
-    const transport = runtime({});
-    const { runId, events } = await run(transport, twoRepeats());
-    const final = await waitForProjection(transport, runId, finished);
-    expect(final.status).toBe('failed');
-    expect(final.statusReason).toMatch(/^internal_error: .*repeat of Loop/);
-    expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
-    expect(executions(final, 'w')).toHaveLength(1);
+  it('is refused at the start of the run', async () => {
+    const { runId, receipt } = await runtime({}).startRun({
+      schemaVersion: '0.1',
+      commandId: `cmd_${++n}`,
+      definition: twoRepeats(),
+      mode: 'mock',
+    });
+    expect(runId).toBeNull();
+    expect(receipt.error?.code).toBe('GRAPH_INVALID');
   });
 });
 
@@ -1172,5 +1173,122 @@ describe('parallel structure', () => {
     });
     expect(errors(definition)).toEqual([]);
     expect(planRun(definition).ok).toBe(true);
+  });
+
+  // "모이기 전에 끝나는 분기는 오류다": a fan-out port that leads straight into a repeat.
+  describe('a fan-out port straight into a repeat', () => {
+    const unjoined = (definition: CorralDefinition) =>
+      errors(definition)
+        .filter((d) => d.code === 'PARALLEL_UNJOINED')
+        .map((d) => {
+          const e = definition.controlEdges.find((edge) => edge.id === d.edgeId);
+          return `${e?.source}.${e?.sourcePort} → ${e?.target}.${e?.targetPort}`;
+        });
+    const router = (id: string, source: string, parentId?: string): CorralNode => ({
+      id,
+      type: 'decision',
+      label: id,
+      mode: 'router',
+      routes: [
+        { id: 'a', label: 'a' },
+        { id: 'b', label: 'b' },
+      ],
+      inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: source }],
+      ...(parentId ? { parentId } : {}),
+    });
+    const reviewer = (id: string, source: string, parentId: string): CorralNode => ({
+      id,
+      type: 'agent',
+      label: id,
+      roleId: 'reviewer',
+      invocation: 'scheduled',
+      parentId,
+      inputBindings: [
+        { kind: 'task_output', name: 'draft', sourceNodeId: source },
+        { kind: 'run_input', name: 'criteria' },
+      ],
+      outputName: 'review',
+    });
+    const review = (id: string, source: string, parentId: string): CorralNode => ({
+      id,
+      type: 'decision',
+      label: id,
+      mode: 'review',
+      rule: 'review_verdict',
+      parentId,
+      inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: source }],
+    });
+    /**
+     * s → Loop o [ Loop l [ w → r → d, router x ] → r2 → od ] → output, with od's pass: o.exit,
+     * revise: o.repeat. `ports` wires d's pass and revise; x has no edges of its own.
+     */
+    const nested = (ports: ControlEdge[], withX = true) =>
+      team(
+        [
+          agent('s'),
+          { id: 'o', type: 'loop', label: 'o', maxIterations: 3 } as CorralNode,
+          { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 } as CorralNode,
+          agent('w', 's', 'l'),
+          reviewer('r', 'w', 'l'),
+          review('d', 'r', 'l'),
+          ...(withX ? [router('x', 'w', 'l')] : []),
+          reviewer('r2', 'w', 'o'),
+          review('od', 'r2', 'o'),
+          output('w'),
+        ],
+        [
+          edge('s', 'out', 'o', 'enter'),
+          edge('o', 'body', 'l', 'enter'),
+          edge('l', 'body', 'w'),
+          edge('w', 'out', 'r'),
+          edge('r', 'out', 'd'),
+          ...ports,
+          edge('l', 'next', 'r2'),
+          edge('r2', 'out', 'od'),
+          edge('od', 'pass', 'o', 'exit'),
+          edge('od', 'revise', 'o', 'repeat'),
+          edge('o', 'next', 'output'),
+        ],
+      );
+    const withEntry = (definition: CorralDefinition) => ({ ...definition, entryNodeId: 's' });
+
+    it('refuses one port into an outer and an inner Loop’s repeat on both edges', () => {
+      expect(unjoined(twoRepeats())).toEqual(['d.revise → l.repeat', 'd.revise → o.repeat']);
+    });
+
+    it('refuses one port into a step and its Loop’s repeat on the repeat edge', () => {
+      const definition = withEntry(
+        nested([
+          edge('d', 'pass', 'l', 'exit'),
+          edge('d', 'revise', 'l', 'repeat'),
+          edge('d', 'revise', 'x'),
+        ]),
+      );
+      expect(unjoined(definition)).toEqual(['d.revise → l.repeat']);
+    });
+
+    it('accepts one edge into a repeat, and two ports into two Loops’ repeat', () => {
+      expect(errors(base)).toEqual([]);
+      const definition = withEntry(
+        nested([edge('d', 'pass', 'l', 'exit'), edge('d', 'revise', 'l', 'repeat')], false),
+      );
+      expect(errors(definition)).toEqual([]);
+    });
+
+    it('already refuses a port into its Loop’s exit and a step, and into an Output and a step', () => {
+      const exit = withEntry(
+        nested([
+          edge('d', 'pass', 'l', 'exit'),
+          edge('d', 'pass', 'x'),
+          edge('d', 'revise', 'l', 'repeat'),
+        ]),
+      );
+      expect(unjoined(exit)).toContain('d.pass → l.exit');
+      const outputAndStep = team(
+        [agent('p'), router('x', 'p'), output('p')],
+        [edge('p', 'out', 'output'), edge('p', 'out', 'x')],
+      );
+      expect(unjoined(outputAndStep)).toContain('p.out → output.in');
+    });
   });
 });
