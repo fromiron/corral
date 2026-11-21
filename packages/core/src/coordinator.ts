@@ -5171,11 +5171,16 @@ export class Coordinator {
     return {
       activate: (nodeId, iteration) => this.activate(run, nodeId, iteration),
       decide: async (nodeId, iteration) => {
+        // Read before any wait: a Join that stops this branch meanwhile names this round.
+        const iterationId = this.openRoundOf(run, nodeId);
+        const stopped = () => run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`);
         await this.boundary(run);
         const step = run.plan.steps[nodeId];
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
-        const iterationId = this.openRoundOf(run, nodeId);
+        // A branch stopped before it decided starts no chooser, check or policy.
+        if (stopped()) return null;
         if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
+        if (stopped()) return null;
         const decisionRevision = run.projection.controlRevision;
         // A router asks its own chooser and a check runs its checks; an external policy decides
         // the other modes.
@@ -5201,11 +5206,10 @@ export class Coordinator {
         // The choice may have waited on a person or external policy. Never append a late
         // routing fact to a cancelled Run or a different iteration.
         await this.boundary(run);
+        // A branch stopped while it decided records no route.
+        if (decision === null || stopped()) return null;
         if (iterationId !== this.openRoundOf(run, nodeId))
           throw new Error('decision scope changed');
-        // A branch stopped while it decided records no route.
-        if (decision === null || run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`))
-          return null;
         const next = step.branches[decision.branch]?.[0] ?? null;
         const executionIds = new Set<string>();
         const author = (id: string) => {
@@ -5246,25 +5250,34 @@ export class Coordinator {
       loopCheck: (loopId, no) => this.loopCheck(run, loopId, no),
       finalize: async (outputNodeId) => this.finalizeOutput(run, outputNodeId),
       loopEntered: async (loopId, no) => {
+        // The Loop step is named by the round of the Loop around it, read before any wait: a
+        // Join that stops this branch meanwhile writes that key, and the entry opens no round.
+        const key = `${loopId}@${this.openRoundOf(run, loopId) ?? '-'}`;
+        const stopped = () => {
+          if (run.stoppedSteps.has(key)) throw new Error('branch stopped');
+        };
         await this.boundary(run);
+        stopped();
         const loop = run.plan.loops[loopId];
         if (!loop) throw new Error(`plan has no Loop ${loopId}`);
         const node = run.snapshot.definition.nodes.find((node) => node.id === loopId);
         if (node?.type === 'loop' && node.reviewRecipe && !run.recipes.has(loopId)) {
           const recipe = node.reviewRecipe;
-          run.recipes.set(loopId, {
-            recipe,
-            candidates: new Map(),
-          });
+          // Registered only once this entry goes on, so a stopped entry leaves the next to pin.
+          const register = () => run.recipes.set(loopId, { recipe, candidates: new Map() });
           if (recipe.criteriaFiles.length) {
             try {
               await this.files?.pinCriteria?.(run.runId, recipe.criteriaFiles);
             } catch {
+              stopped();
+              register();
               this.stopRecipe(run, loopId, 'criteria_changed');
               throw new Error('recipe criteria changed');
             }
           }
           await this.boundary(run);
+          stopped();
+          register();
         }
         if (run.pendingCriteriaVersionId) {
           run.criteriaVersionId = run.pendingCriteriaVersionId;
@@ -5779,9 +5792,14 @@ export class Coordinator {
     nodeId: string,
     iterationId: string | null,
   ): Promise<StepOutcome> {
+    // A Join that stops this branch while the step waits writes this key: nothing starts.
+    const key = `${nodeId}@${iterationId ?? '-'}`;
+    const stopped: StepOutcome = { ok: false, reason: 'branch stopped' };
     await this.boundary(run);
+    if (run.stoppedSteps.has(key)) return stopped;
     if (!(await this.passBreakpoint(run, nodeId, iterationId)))
       return { ok: false, reason: 'stopped at its breakpoint' };
+    if (run.stoppedSteps.has(key)) return stopped;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
     const retries =
       node?.type === 'agent' && node.invocation !== 'observer' ? (node.retry?.maxAttempts ?? 0) : 0;
@@ -5803,6 +5821,7 @@ export class Coordinator {
       if (!WORKING.has(run.projection.status) && !this.pausedOrWaiting(run)) return outcome;
       await this.boundary(run);
       if (!WORKING.has(run.projection.status)) return outcome;
+      if (run.stoppedSteps.has(key)) return stopped;
       prepared = this.prepareExecution(run, {
         nodeId,
         iterationId,

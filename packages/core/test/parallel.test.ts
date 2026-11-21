@@ -10,12 +10,17 @@ import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   Coordinator,
+  type CoordinatorDeps,
   compileDefinition,
   type DecisionPolicy,
+  type GraphRunner,
   InProcessTransport,
   planRun,
+  type RunnerCallbacks,
   type RunProjection,
+  reviewCriteriaHash,
   waitForProjection,
+  walkPlan,
 } from '../src/index.ts';
 
 // Parallel branches and Joins (docs/specs/features/team-graph.md, "병렬 실행").
@@ -76,13 +81,19 @@ function forked(
 }
 
 /** Agents named in `held` wait at their gate before replying (a cancelled one then stops). */
-function runtime(held: Record<string, Gate>, decisions?: DecisionPolicy, released?: boolean[]) {
+function runtime(
+  held: Record<string, Gate>,
+  decisions?: DecisionPolicy,
+  released?: boolean[],
+  deps: Partial<CoordinatorDeps> = {},
+) {
   const clock = new FakeClock();
   return new InProcessTransport(
     new Coordinator({
       clock,
       ids: new SequentialIdFactory(),
       timers: clock,
+      ...deps,
       ...(decisions ? { decisions } : {}),
       // Records how the run gave back its working copy: confirmed ended, or not.
       ...(released
@@ -127,6 +138,21 @@ const live = (p: RunProjection, nodeId: string) =>
   executions(p, nodeId).some((e) => !['succeeded', 'failed', 'cancelled'].includes(e.status));
 const joins = (events: RunEvent[]) =>
   events.flatMap((e) => (e.type === 'workflow.joined' ? [e.payload] : []));
+/** Executions that have not ended. */
+const settled = (p: RunProjection) =>
+  Object.values(p.executions).filter(
+    (e) => !['succeeded', 'failed', 'cancelled'].includes(e.status),
+  );
+const afterJoin = (events: RunEvent[]) =>
+  events.slice(events.findIndex((e) => e.type === 'workflow.joined') + 1);
+const selected = (events: RunEvent[], nodeId: string) =>
+  events.filter((e) => e.type === 'workflow.branch_selected' && e.payload.nodeId === nodeId);
+const roundsOf = (events: RunEvent[], loopId: string) =>
+  events.filter(
+    (e) =>
+      (e.type === 'loop.iteration_started' || e.type === 'loop.iteration_finished') &&
+      e.payload.loopNodeId === loopId,
+  );
 
 describe('shared Outrider consultations', () => {
   it.each(['answered', 'timed_out', 'cancelled'] as const)(
@@ -416,6 +442,466 @@ describe('parallel branches', () => {
     expect(final.status).toBe('succeeded');
     expect(rounds(final)).toEqual([[1, 'cancelled']]);
     expect(joins(events)[0]?.cancelledNodeIds).toEqual(['w']);
+  });
+});
+
+// "any Join이 멈춘 분기는 그 뒤에 아무것도 시작하지 않는다": a step the stopped branch was
+// about to start, still waiting inside the Coordinator when the Join fired, starts nothing.
+describe('a branch an any Join stopped', () => {
+  /**
+   * The Coordinator's own walker, logging each callback as it is reached (before the Coordinator
+   * acts on it), so a test can show the loser had entered its wait before the Join fired.
+   */
+  function recording(log: string[], before?: (name: string, args: unknown[]) => void): GraphRunner {
+    return {
+      run: (plan, callbacks, signal) =>
+        walkPlan(
+          plan,
+          Object.fromEntries(
+            Object.entries(callbacks).map(([name, fn]) => [
+              name,
+              (...args: unknown[]) => {
+                log.push(`${name} ${String(args[0])}`);
+                before?.(name, args);
+                return (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
+              },
+            ]),
+          ) as unknown as RunnerCallbacks,
+          signal,
+        ),
+    };
+  }
+
+  /** p → [x, j]: one branch runs x, the other reaches the any Join at once. */
+  const direct = () =>
+    team(
+      [agent('p'), agent('x', 'p'), join('any'), agent('m', 'p'), output('m')],
+      [
+        edge('p', 'out', 'x'),
+        edge('p', 'out', 'j'),
+        edge('x', 'out', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+
+  it('creates no execution of the step the stopped branch was about to start', async () => {
+    const log: string[] = [];
+    const transport = runtime({}, undefined, undefined, { runner: recording(log) });
+    const { runId, events } = await run(transport, direct());
+    const final = await waitForProjection(transport, runId, finished);
+    expect(log.indexOf('activate x')).toBeGreaterThan(-1);
+    expect(log.indexOf('activate x')).toBeLessThan(log.indexOf('joined j'));
+    expect(joins(events)).toEqual([
+      { nodeId: 'j', policy: 'any', iterationId: null, cancelledNodeIds: ['x'] },
+    ]);
+    expect(executions(final, 'x')).toEqual([]);
+    expect(final.status).toBe('succeeded');
+    expect(settled(final)).toEqual([]);
+  });
+
+  it('creates no execution when the Join fired while the run was paused', async () => {
+    const log: string[] = [];
+    let coordinator: Coordinator | null = null;
+    let runId = '';
+    const clock = new FakeClock();
+    coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+      // The run pauses as the losing branch is about to start x: x waits at the pause.
+      runner: recording(log, (name, args) => {
+        if (name !== 'activate' || args[0] !== 'x') return;
+        coordinator?.submit({
+          schemaVersion: '0.1',
+          commandId: 'pause',
+          runId,
+          type: 'pause',
+          payload: { scope: 'run' },
+        });
+      }),
+    });
+    const transport = new InProcessTransport(coordinator);
+    const started = await run(transport, direct());
+    runId = started.runId;
+    const paused = await waitForProjection(
+      transport,
+      runId,
+      (p) => p.status === 'paused' && joins(started.events).length > 0,
+    );
+    expect(log.indexOf('activate x')).toBeLessThan(log.indexOf('joined j'));
+    expect(executions(paused, 'x')).toEqual([]);
+    coordinator.submit({
+      schemaVersion: '0.1',
+      commandId: 'resume',
+      runId,
+      type: 'resume',
+      payload: { scope: 'run' },
+    });
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(executions(final, 'x')).toEqual([]);
+    expect(executions(final, 'm')).toHaveLength(1);
+    expect(settled(final)).toEqual([]);
+  });
+
+  it('opens no round of the Loop the stopped branch was entering', async () => {
+    // p → [Loop l [ w → d ], j]; l.next → j.
+    const log: string[] = [];
+    const transport = runtime({}, { decide: async () => 'pass' }, undefined, {
+      runner: recording(log),
+    });
+    const definition = team(
+      [
+        agent('p'),
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 } as CorralNode,
+        agent('w', 'p', 'l', 'reviewer'),
+        {
+          id: 'd',
+          type: 'decision',
+          label: 'd',
+          mode: 'review',
+          rule: 'review_verdict',
+          parentId: 'l',
+          inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'w' }],
+        },
+        join('any'),
+        agent('m', 'p'),
+        output('m'),
+      ],
+      [
+        edge('p', 'out', 'l', 'enter'),
+        edge('p', 'out', 'j'),
+        edge('l', 'body', 'w'),
+        edge('w', 'out', 'd'),
+        edge('d', 'pass', 'l', 'exit'),
+        edge('d', 'revise', 'l', 'repeat'),
+        edge('l', 'next', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(log.indexOf('loopEntered l')).toBeGreaterThan(-1);
+    expect(log.indexOf('loopEntered l')).toBeLessThan(log.indexOf('joined j'));
+    expect(final.status).toBe('succeeded');
+    expect(roundsOf(events, 'l')).toEqual([]);
+    expect(executions(final, 'w')).toEqual([]);
+    expect(settled(final)).toEqual([]);
+  });
+
+  it('starts no chooser of a router the stopped branch was about to decide', async () => {
+    // p → [router d, j]; d.go → j.
+    const log: string[] = [];
+    const transport = runtime({}, undefined, undefined, { runner: recording(log) });
+    const router: CorralNode = {
+      id: 'd',
+      type: 'decision',
+      label: 'd',
+      mode: 'router',
+      routes: [
+        { id: 'go', label: 'go' },
+        { id: 'stay', label: 'stay' },
+      ],
+      inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+    };
+    const definition = team(
+      [agent('p'), router, join('any'), agent('m', 'p'), output('m')],
+      [
+        edge('p', 'out', 'd'),
+        edge('p', 'out', 'j'),
+        edge('d', 'go', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(log.indexOf('decide d')).toBeGreaterThan(-1);
+    expect(log.indexOf('decide d')).toBeLessThan(log.indexOf('joined j'));
+    expect(final.status).toBe('succeeded');
+    expect(executions(final, 'd')).toEqual([]);
+    expect(selected(events, 'd')).toEqual([]);
+    expect(settled(final)).toEqual([]);
+  });
+
+  it('records no route of a Decision in a cancelled round that was waiting to decide', async () => {
+    // p → [Loop l [ rule d ], j]. A scripted runner asks d to decide and, while d waits at
+    // its first boundary, reports the Join that stops it and cancels l's round: the order the
+    // walker produces when the other branch reaches j during that wait.
+    const consulted: string[] = [];
+    const branches: (string | null)[] = [];
+    const runner: GraphRunner = {
+      run: async (_plan, callbacks) => {
+        await callbacks.activate('p', null);
+        await callbacks.loopEntered('l', 1);
+        const deciding = callbacks.decide('d', { loopId: 'l', no: 1 });
+        await callbacks.joined(
+          'j',
+          null,
+          [{ nodeId: 'd', iteration: { loopId: 'l', no: 1 } }],
+          [{ loopId: 'l', no: 1 }],
+        );
+        branches.push(await deciding.catch(() => 'threw'));
+        await callbacks.activate('m', null);
+        await callbacks.finalize('output');
+        return { kind: 'finished', outputNodeId: 'output' };
+      },
+    };
+    const transport = runtime(
+      {},
+      {
+        decide: async ({ nodeId }) => {
+          consulted.push(nodeId);
+          return 'yes';
+        },
+      },
+      undefined,
+      { runner },
+    );
+    const definition = team(
+      [
+        agent('p'),
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 } as CorralNode,
+        {
+          id: 'd',
+          type: 'decision',
+          label: 'd',
+          mode: 'rule',
+          rule: 'required_tasks_submitted',
+          parentId: 'l',
+          inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+        },
+        join('any'),
+        agent('m', 'p'),
+        output('m'),
+      ],
+      [
+        edge('p', 'out', 'l', 'enter'),
+        edge('p', 'out', 'j'),
+        edge('l', 'body', 'd'),
+        edge('d', 'yes', 'l', 'exit'),
+        edge('d', 'no', 'l', 'repeat'),
+        edge('l', 'next', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+    );
+    expect(planRun(definition).ok).toBe(true);
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    expect(roundsOf(events, 'l').map((e) => e.type)).toEqual([
+      'loop.iteration_started',
+      'loop.iteration_finished',
+    ]);
+    expect(branches).toEqual([null]);
+    expect(consulted).toEqual([]);
+    expect(selected(afterJoin(events), 'd')).toEqual([]);
+  });
+});
+
+// A recipe Loop the stopped branch was entering: its criteria pin is slow, and settles late.
+describe('a recipe Loop entry an any Join stopped', () => {
+  const criteriaFile = { path: 'criteria.md', sha256: 'a'.repeat(64) };
+  /**
+   * s → Loop o [ p → [ recipe Loop l [ write → review → rd ], x ] → Join j (any) → or → od ]
+   * → output. od revises o's first round and passes its second.
+   */
+  function nested(): CorralDefinition {
+    const recipe = {
+      recipeId: 'quality',
+      revision: 1,
+      criteriaHash: reviewCriteriaHash(base.input.criteria),
+      candidateNodeId: 'write',
+      evaluatorRoleId: 'reviewer',
+      checkIds: [],
+      criteriaFiles: [criteriaFile],
+      maxAttempts: 3,
+      maxRepairs: 2,
+    };
+    const review = (id: string, source: string, parentId: string): CorralNode => ({
+      id,
+      type: 'decision',
+      label: id,
+      mode: 'review',
+      rule: 'review_verdict',
+      parentId,
+      inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: source }],
+    });
+    const reviewer = (id: string, source: string, parentId: string): CorralNode => ({
+      id,
+      type: 'agent',
+      label: id,
+      roleId: 'reviewer',
+      invocation: 'scheduled',
+      parentId,
+      inputBindings: [
+        { kind: 'task_output', name: 'draft', sourceNodeId: source },
+        { kind: 'run_input', name: 'criteria' },
+      ],
+      outputName: 'review',
+    });
+    return Definition.parse({
+      ...base,
+      entryNodeId: 's',
+      nodes: [
+        agent('s'),
+        { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+        { ...agent('p', 's'), parentId: 'o' },
+        {
+          id: 'l',
+          type: 'loop',
+          label: 'l',
+          parentId: 'o',
+          maxIterations: 3,
+          reviewRecipe: recipe,
+        },
+        {
+          ...agent('write', undefined, 'l'),
+          inputBindings: [
+            { kind: 'run_input', name: 'brief' },
+            { kind: 'run_input', name: 'criteria' },
+          ],
+        },
+        reviewer('review', 'write', 'l'),
+        review('rd', 'review', 'l'),
+        agent('x', 'p', 'o'),
+        { ...join('any'), parentId: 'o' },
+        reviewer('or', 'p', 'o'),
+        review('od', 'or', 'o'),
+        output('p'),
+      ],
+      controlEdges: [
+        edge('s', 'out', 'o', 'enter'),
+        edge('o', 'body', 'p'),
+        edge('p', 'out', 'l', 'enter'),
+        edge('p', 'out', 'x'),
+        edge('l', 'body', 'write'),
+        edge('write', 'out', 'review'),
+        edge('review', 'out', 'rd'),
+        edge('rd', 'pass', 'l', 'exit'),
+        edge('rd', 'revise', 'l', 'repeat'),
+        edge('l', 'next', 'j'),
+        edge('x', 'out', 'j'),
+        edge('j', 'out', 'or'),
+        edge('or', 'out', 'od'),
+        edge('od', 'pass', 'o', 'exit'),
+        edge('od', 'revise', 'o', 'repeat'),
+        edge('o', 'next', 'output'),
+      ],
+      capabilityLinks: [],
+    });
+  }
+
+  /**
+   * The first pin waits for `firstPin`; later pins settle at once. In o's second round x waits
+   * at its gate so l's fresh entry wins the Join, and write waits so the run stays live.
+   */
+  function recipeRuntime(
+    firstPin: () => Promise<void>,
+    gates: { x: Gate; write: Gate },
+    heldX = 2,
+  ) {
+    const clock = new FakeClock();
+    const pins: string[] = [];
+    let xRuns = 0;
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      files: {
+        available: () => false,
+        execute: async () => {
+          throw new Error('no file tools in this test');
+        },
+        pinCriteria: async () => {
+          pins.push(pins.length === 0 ? 'first' : 'later');
+          if (pins.length === 1) await firstPin();
+        },
+        validateCriteria: async () => true,
+      },
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        appendNotes: false,
+        reply: (_turn, input) => `${input.nodeId} ${input.executionId}`,
+        review: (input) => (input.nodeId === 'or' && (input.round ?? 1) === 1 ? 'revise' : 'pass'),
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'x' && ++xRuns === heldX) await gates.x.wait();
+          if (input.nodeId === 'write') await gates.write.wait();
+        },
+      }),
+    });
+    return { transport: new InProcessTransport(coordinator), pins };
+  }
+
+  it.each<['resolves' | 'rejects', string]>([
+    ['resolves', 'keeps the fresh round of the later entry open and finishes it'],
+    ['rejects', 'neither stops the recipe nor fails the run'],
+  ])('a late first pin that %s %s', async (settle) => {
+    expect(planRun(nested()).ok).toBe(true);
+    let release: (ok: boolean) => void = () => {};
+    const firstPin = new Promise<void>((resolve, reject) => {
+      release = (ok) => (ok ? resolve() : reject(new Error('criteria changed')));
+    });
+    const gates = { x: new Gate(), write: new Gate() };
+    const { transport, pins } = recipeRuntime(() => firstPin, gates);
+    const { runId, events } = await run(transport, nested());
+    // o's second round: l's fresh entry has opened its round and write is running.
+    const live = await waitForProjection(
+      transport,
+      runId,
+      (p) => finished(p) || executions(p, 'write').some((e) => e.status === 'active'),
+    );
+    expect(live.status).toBe('running');
+    expect(pins).toEqual(['first', 'later']);
+    const fresh = roundsOf(events, 'l');
+    expect(fresh.map((e) => e.type)).toEqual(['loop.iteration_started']);
+    const freshId = String(
+      (fresh[0]?.payload as { iterationId?: string } | undefined)?.iterationId,
+    );
+    // The stopped first entry's pin settles while the winning run is live.
+    release(settle === 'resolves');
+    for (let i = 0; i < 50; i++) await Promise.resolve();
+    gates.write.open();
+    const final = await waitForProjection(transport, runId, (p) => {
+      if (finished(p)) return true;
+      if (joins(events).length === 2) gates.x.open();
+      return false;
+    });
+    gates.x.open();
+    expect(final.status).toBe('succeeded');
+    expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
+    const ids = roundsOf(events, 'l').map((e) => [
+      e.type,
+      (e.payload as { iterationId: string }).iterationId,
+    ]);
+    expect(ids).toEqual([
+      ['loop.iteration_started', freshId],
+      ['loop.iteration_finished', freshId],
+    ]);
+    expect(final.iterations[freshId]?.outcome).toBe('pass');
+  });
+
+  it('still stops the recipe when the pin of an entry nobody stopped fails', async () => {
+    const gates = { x: new Gate(), write: new Gate() };
+    // x is held in o's first round, so l's entry is not stopped; its pin fails.
+    const { transport } = recipeRuntime(
+      () => Promise.reject(new Error('criteria changed')),
+      gates,
+      1,
+    );
+    const { runId, events } = await run(transport, nested());
+    const final = await waitForProjection(transport, runId, (p) => {
+      if (p.status !== 'running') gates.x.open();
+      return finished(p);
+    });
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('review_recipe:criteria_changed');
+    expect(events.filter((e) => e.type === 'recipe.stopped')).toHaveLength(1);
   });
 });
 
