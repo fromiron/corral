@@ -320,13 +320,13 @@ directive 내용은 snapshot에서 역추적 가능해야 한다. 스냅샷은 �
 
 예외는 [제출 전 필수 검토](features/shared-outrider.md#제출-전-필수-검토)가 감싼 생산자가 자기 결과를 읽는 바인딩 하나다. 검토 Loop의 1회차에서는 검토 Loop를 감싼 바로 바깥 루프의 앞 회차에서 읽는다. 검토 Loop는 사람이 그린 구조가 아니므로, 바깥에서 돌려보낸 생산자는 감싸기 전과 같이 자기 지난 결과에서 이어 고친다. 검토자의 수정 의견은 검토 Loop의 같은 진입 안에서만 넘어온다. 같은 작성자의 산출물이 앞 버전을 잇는 계보도 같은 회차 선택을 따른다.
 
-반복 시작의 pin은 **이전 회차에서 넘어오는 값**에만 적용한다. 바깥 루프의 앞 회차에서 넘어오는 값은 안쪽 루프의 작업이 읽는 것이라도 바깥 회차가 시작될 때 고정한다. 이번 회차 writer의 새 출력은 reviewer 시작 시 task_output으로 별도 해석한다. 전역 latest에 의존하지 않는다. 허용된 API에서 latest를 받더라도 조회 시점에 실제 버전으로 고정해 read event에 남긴다.
+반복 시작의 pin은 **이전 회차에서 넘어오는 값**에만 적용한다. pin에는 바인딩이 실제로 넘기는 버전만 적는다. 한 번에 여러 버전을 제출한 작업에서 바인딩이 넘기는 것은 첫 버전이다. 바깥 루프의 앞 회차에서 넘어오는 값은 안쪽 루프의 작업이 읽는 것이라도 바깥 회차가 시작될 때 고정한다. 이번 회차 writer의 새 출력은 reviewer 시작 시 task_output으로 별도 해석한다. 전역 latest에 의존하지 않는다. 허용된 API에서 latest를 받더라도 조회 시점에 실제 버전으로 고정해 read event에 남긴다.
 
 ### 9.3 제출·완료·사용자 승인
 
 `write_artifact`가 만들어낸 초안은 바로 control flow에 노출하지 않는다. `submit_result`가 출력 계약을 통과해야 Task의 공식 output이 된다. reviewer Task의 제출이 유효한 review schema여도 그 verdict가 pass인지 별도로 판단한다.
 
-Final Approval은 draftVersionId + reviewVersionId + criteriaVersionId를 묶은 대상을 가진다. 함께 묶는 검토는 확정하려는 버전을 대상으로 한, 현재 기준의 유효한 검토 가운데 가장 최근 것이다. 그런 검토가 없으면 검토 없이 묶는다. 기준 patch는 Loop가 아직 종료되지 않은 상태에서만 허용하며 다음 회차 기준으로 적용한다. pending 기준 변경이 있으면 옛 기준 pass로 Loop를 종료하지 않고 다음 회차 진입 확인으로 이동한다. 이미 Loop가 종료되어 Final Approval에 도달했다면 기준 변경은 `CRITERIA_CHANGE_REQUIRES_NEW_RUN`으로 거절한다. 완료한 그래프 구간을 몰래 되돌리지 않는다. Loop 내부의 승인 요청은 기준 변경 시 stale로 바꾸고 새 대상 snapshot으로 다시 만든다. UI에서 ‘승인’만 눌러 새 버전이 자동 포함되지 않는다.
+Final Approval은 draftVersionId + reviewVersionId + criteriaVersionId를 묶은 대상을 가진다. 함께 묶는 검토는 확정하려는 버전을 대상으로 기록된 검토 가운데, 낡지 않았고 현재 기준을 쓴 것 중 가장 최근에 기록된 것이다. 판정이 무엇이든 같다. Corral이 읽지 못해 판정 불가로 기록한 검토도 포함한다: 승인하는 사람이 보는 것은 그 버전에 대한 마지막 검토 시도다. 같은 검토를 다시 기록하면 그 기록이 가장 최근이다. 그런 검토가 없으면 검토 없이 묶는다. 기준 patch는 Loop가 아직 종료되지 않은 상태에서만 허용하며 다음 회차 기준으로 적용한다. pending 기준 변경이 있으면 옛 기준 pass로 Loop를 종료하지 않고 다음 회차 진입 확인으로 이동한다. 이미 Loop가 종료되어 Final Approval에 도달했다면 기준 변경은 `CRITERIA_CHANGE_REQUIRES_NEW_RUN`으로 거절한다. 완료한 그래프 구간을 몰래 되돌리지 않는다. Loop 내부의 승인 요청은 기준 변경 시 stale로 바꾸고 새 대상 snapshot으로 다시 만든다. UI에서 ‘승인’만 눌러 새 버전이 자동 포함되지 않는다.
 
 ## 10. 사용량·patch·경합
 
