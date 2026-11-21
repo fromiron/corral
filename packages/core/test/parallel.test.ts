@@ -858,6 +858,8 @@ describe('a recipe Loop entry an any Join stopped', () => {
     );
     expect(live.status).toBe('running');
     expect(pins).toEqual(['first', 'later']);
+    // o's first Join stopped l's entry while it waited on its first pin.
+    expect(joins(events)[0]?.cancelledNodeIds).toEqual(['l']);
     const fresh = roundsOf(events, 'l');
     expect(fresh.map((e) => e.type)).toEqual(['loop.iteration_started']);
     const freshId = String(
