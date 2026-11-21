@@ -673,6 +673,44 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       },
     );
 
+    // docs/specs/features/team-graph.md, "병렬 실행", 갈라지기.
+    it.each(['first', 'last'])(
+      'starts no branch of a fan-out with a repeat target %s, and fails',
+      async (where) => {
+        // Loop o [ Loop l [ a → router d (again: l.repeat, done: l.exit) ] → router od
+        // (again: o.repeat, done: o.exit) ] → output; d's again also gets o's repeat by hand.
+        const definition = linearCorral(['a']);
+        for (const node of definition.nodes) if (node.id === 'a') node.parentId = 'l';
+        definition.entryNodeId = 'o';
+        definition.nodes.push(
+          { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+          { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 },
+          router('d', 'l', 'a', ['again', 'done']),
+          router('od', 'o', 'a', ['again', 'done']),
+        );
+        definition.controlEdges = [
+          link('ol', 'o', 'body', 'l', 'enter'),
+          link('la', 'l', 'body', 'a', 'in'),
+          link('ad', 'a', 'out', 'd', 'in'),
+          link('dr', 'd', 'again', 'l', 'repeat'),
+          link('dx', 'd', 'done', 'l', 'exit'),
+          link('ld', 'l', 'next', 'od', 'in'),
+          link('or', 'od', 'again', 'o', 'repeat'),
+          link('ox', 'od', 'done', 'o', 'exit'),
+          link('oo', 'o', 'next', 'output', 'in'),
+        ];
+        const plan = planOf(definition);
+        const d = plan.steps.d;
+        if (d?.kind !== 'decision') throw new Error('d is not a decision');
+        const outer = { nodeId: 'o', port: 'repeat' as const };
+        const inner = d.branches.again ?? [];
+        d.branches.again = where === 'first' ? [outer, ...inner] : [...inner, outer];
+        const { log, callbacks } = recorder({ d: ['again'] });
+        await expect(makeRunner().run(plan, callbacks)).rejects.toThrow('repeat of Loop');
+        expect(log.at(-1)).toBe('decide d#1 → again');
+      },
+    );
+
     it('fails the run when a branch is still in a round its Loop has replaced', async () => {
       // A plan the compiler refuses, built by hand: in Loop l, p fans out to a and b; a goes on
       // to the Decision whose revise repeats l while b has not joined.

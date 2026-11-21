@@ -355,6 +355,12 @@ export async function walkPlan(
       token.target = first;
       return;
     }
+    // A fan-out into a Loop's repeat is a plan the compiler refuses: no branch of it starts.
+    const repeats = next.filter((target) => target.port === 'repeat').map((t) => t.nodeId);
+    if (repeats.length)
+      throw new Error(
+        `a fan-out from ${port.split('\u0000')[0]} reaches the repeat of Loop ${repeats.join(', ')}`,
+      );
     const fork = { port, instance: ++instances, loops: Object.keys(token.rounds) };
     const parent = { rounds: token.rounds, marks: token.marks, forks: token.forks };
     rest.forEach((target, i) => {

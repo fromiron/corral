@@ -993,6 +993,74 @@ describe('a branch whose Loop round has ended', () => {
   });
 });
 
+/**
+ * s → Loop o [ Loop l [ w → r → d ] → output ] → done, where d's revise goes to both l's and
+ * o's repeat: one port that fans out into two Loops' repeat.
+ */
+function twoRepeats(): CorralDefinition {
+  return Definition.parse({
+    ...base,
+    entryNodeId: 's',
+    nodes: [
+      agent('s'),
+      { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+      { id: 'l', type: 'loop', label: 'l', parentId: 'o', maxIterations: 3 },
+      agent('w', 's', 'l'),
+      {
+        id: 'r',
+        type: 'agent',
+        label: 'r',
+        roleId: 'reviewer',
+        invocation: 'scheduled',
+        parentId: 'l',
+        inputBindings: [
+          { kind: 'task_output', name: 'draft', sourceNodeId: 'w' },
+          { kind: 'run_input', name: 'criteria' },
+        ],
+        outputName: 'review',
+      },
+      {
+        id: 'd',
+        type: 'decision',
+        label: 'd',
+        mode: 'review',
+        rule: 'review_verdict',
+        parentId: 'l',
+        inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: 'r' }],
+      },
+      { ...output('w'), parentId: 'o' },
+      { ...output('w'), id: 'done' },
+    ],
+    controlEdges: [
+      edge('s', 'out', 'o', 'enter'),
+      edge('o', 'body', 'l', 'enter'),
+      edge('l', 'body', 'w'),
+      edge('w', 'out', 'r'),
+      edge('r', 'out', 'd'),
+      edge('d', 'pass', 'l', 'exit'),
+      edge('d', 'revise', 'l', 'repeat'),
+      edge('d', 'revise', 'o', 'repeat'),
+      edge('l', 'next', 'output'),
+      edge('l', 'exhausted', 'o', 'exit'),
+      edge('o', 'next', 'done'),
+    ],
+    capabilityLinks: [],
+  });
+}
+
+// "갈라지기": a runner given a fan-out into a Loop's repeat starts no branch and fails the run.
+describe('a fan-out into a repeat', () => {
+  it('fails the run with nothing finalized', async () => {
+    const transport = runtime({});
+    const { runId, events } = await run(transport, twoRepeats());
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toMatch(/^internal_error: .*repeat of Loop/);
+    expect(events.filter((e) => e.type === 'output.finalized')).toEqual([]);
+    expect(executions(final, 'w')).toHaveLength(1);
+  });
+});
+
 describe('parallel structure', () => {
   const errors = (definition: unknown) =>
     compileDefinition(definition).diagnostics.filter((d) => d.severity === 'error');
