@@ -1668,6 +1668,76 @@ describe('a recipe Loop entry an any Join stopped', () => {
         }
       },
     );
+
+    it('does not cancel the run when an outside branch’s Join withdraws a breakpoint in the ended round', async () => {
+      // x waits at its breakpoint in l's round when d closes it inconclusive; b then wins k,
+      // which withdraws x's breakpoint.
+      let ready: () => void = () => {};
+      const waiting = new Promise<void>((resolve) => {
+        ready = resolve;
+      });
+      const outcomes: Record<string, unknown> = {};
+      const l1 = { loopId: 'l', no: 1 };
+      const runner: GraphRunner = {
+        run: async (_plan, callbacks) => {
+          await callbacks.activate('s', null);
+          await callbacks.activate('b', null);
+          await callbacks.loopEntered('l', 1);
+          await callbacks.activate('p', l1);
+          const x = callbacks.activate('x', l1);
+          await waiting;
+          await callbacks.loopLeft('l', 1, 'inconclusive');
+          await callbacks.joined(
+            'k',
+            null,
+            [
+              { nodeId: 'd', iteration: l1 },
+              { nodeId: 'x', iteration: l1 },
+            ],
+            [{ loopId: 'l', no: 1 }],
+          );
+          outcomes.x = await x;
+          await callbacks.activate('m', null);
+          await callbacks.finalize('output');
+          return { kind: 'finished', outputNodeId: 'output' };
+        },
+      };
+      const clock = new FakeClock();
+      const transport = new InProcessTransport(
+        new Coordinator({
+          clock,
+          timers: clock,
+          ids: new SequentialIdFactory(),
+          runner,
+          // c's recipe needs the broker; c is not entered here.
+          files: {
+            available: () => false,
+            execute: async () => {
+              throw new Error('no file tools in this test');
+            },
+            pinCriteria: async () => {},
+            validateCriteria: async () => true,
+          },
+          agents: new ScriptedAgentAdapter({ turns: 1, appendNotes: false }),
+        }),
+      );
+      const { runId, receipt } = await transport.startRun({
+        schemaVersion: '0.1',
+        commandId: `cmd_${++n}`,
+        definition: ended(),
+        mode: 'mock',
+        breakpoints: ['x'],
+      });
+      if (!runId) throw new Error(JSON.stringify(receipt.error));
+      await waitForProjection(transport, runId, (p) =>
+        Object.values(p.approvals).some((a) => a.kind === 'breakpoint' && a.status === 'pending'),
+      );
+      ready();
+      const final = await waitForProjection(transport, runId, finished);
+      expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+      expect(executions(final, 'x')).toEqual([]);
+      expect(outcomes.x).toEqual({ ok: false, reason: 'stopped at its breakpoint' });
+    });
   });
 });
 

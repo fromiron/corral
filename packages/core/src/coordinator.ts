@@ -5179,7 +5179,7 @@ export class Coordinator {
         if (step?.kind !== 'decision') throw new Error(`${nodeId} is not a decision`);
         // A dropped request starts no chooser, check or policy.
         if (request.dropped()) return null;
-        if (!(await this.passBreakpoint(run, nodeId, iterationId))) return null;
+        if (!(await this.passBreakpoint(run, nodeId, iterationId, request.dropped))) return null;
         if (request.dropped()) return null;
         const decisionRevision = run.projection.controlRevision;
         // A router asks its own chooser and a check runs its checks; an external policy decides
@@ -5802,7 +5802,7 @@ export class Coordinator {
     const stopped: StepOutcome = { ok: false, reason: 'branch stopped' };
     await this.boundary(run);
     if (request.dropped()) return stopped;
-    if (!(await this.passBreakpoint(run, nodeId, iterationId)))
+    if (!(await this.passBreakpoint(run, nodeId, iterationId, request.dropped)))
       return { ok: false, reason: 'stopped at its breakpoint' };
     if (request.dropped()) return stopped;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
@@ -7372,6 +7372,7 @@ export class Coordinator {
     run: LiveRun,
     nodeId: string,
     iterationId: string | null,
+    dropped: () => boolean,
   ): Promise<boolean> {
     if (!run.projection.breakpoints.includes(nodeId)) return true;
     const node = run.snapshot.definition.nodes.find((n) => n.id === nodeId);
@@ -7415,11 +7416,8 @@ export class Coordinator {
           },
         },
       ]);
-    else if (
-      approval?.status === 'rejected' &&
-      WORKING.has(run.projection.status) &&
-      !run.stoppedSteps.has(`${nodeId}@${iterationId ?? '-'}`)
-    )
+    // A Join that withdrew the breakpoint of a dropped request is not a person stopping here.
+    else if (approval?.status === 'rejected' && WORKING.has(run.projection.status) && !dropped())
       this.submit({
         schemaVersion: '0.1',
         runId: run.runId,
