@@ -907,6 +907,104 @@ describe('a recipe Loop entry an any Join stopped', () => {
   });
 });
 
+// "병렬 실행": a branch stopped while it passed another Join fans out past it no more.
+describe('a branch stopped while it passed another Join', () => {
+  const rule = (id: string, parentId?: string): CorralNode =>
+    ({
+      id,
+      type: 'decision',
+      label: id,
+      mode: 'rule',
+      rule: 'required_tasks_submitted',
+      inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+      ...(parentId ? { parentId } : {}),
+    }) as CorralNode;
+  /**
+   * Loop o [ p → [dx0, dy0]; dx0.yes → [dx, a2]; dx.yes → j2 (any) ← a2; j2 → [c1, c2] → j3
+   * (all) → j1; dy0.yes → dy; dy.yes → j1 (any) → od ], od's no: o.repeat, yes: o.exit;
+   * o.next → m → output.
+   */
+  function passingJoin(): CorralDefinition {
+    return Definition.parse({
+      ...base,
+      entryNodeId: 'o',
+      nodes: [
+        { id: 'o', type: 'loop', label: 'o', maxIterations: 3 },
+        { ...agent('p'), parentId: 'o' },
+        rule('dx0', 'o'),
+        rule('dy0', 'o'),
+        rule('dx', 'o'),
+        agent('a2', 'p', 'o'),
+        { id: 'j2', type: 'join', label: 'j2', parentId: 'o', policy: 'any' },
+        agent('c1', 'p', 'o'),
+        agent('c2', 'p', 'o'),
+        { id: 'j3', type: 'join', label: 'j3', parentId: 'o', policy: 'all' },
+        rule('dy', 'o'),
+        { id: 'j1', type: 'join', label: 'j1', parentId: 'o', policy: 'any' },
+        rule('od', 'o'),
+        agent('m', 'p'),
+        output('m'),
+      ],
+      controlEdges: [
+        edge('o', 'body', 'p'),
+        edge('p', 'out', 'dx0'),
+        edge('p', 'out', 'dy0'),
+        edge('dx0', 'yes', 'dx'),
+        edge('dx0', 'yes', 'a2'),
+        edge('dx', 'yes', 'j2'),
+        edge('a2', 'out', 'j2'),
+        edge('j2', 'out', 'c1'),
+        edge('j2', 'out', 'c2'),
+        edge('c1', 'out', 'j3'),
+        edge('c2', 'out', 'j3'),
+        edge('j3', 'out', 'j1'),
+        edge('dy0', 'yes', 'dy'),
+        edge('dy', 'yes', 'j1'),
+        edge('j1', 'out', 'od'),
+        edge('od', 'no', 'o', 'repeat'),
+        edge('od', 'yes', 'o', 'exit'),
+        edge('o', 'next', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+      capabilityLinks: [],
+    });
+  }
+
+  it('starts nothing after the Join it was passing, and the Loop goes round again', async () => {
+    expect(planRun(passingJoin()).ok).toBe(true);
+    const log: string[] = [];
+    const answers = ['no', 'yes'];
+    // a2 stands in for a slow agent; c2 would outlast the opening of o's next round.
+    const a2 = new Gate();
+    const c2 = new Gate();
+    const transport = runtime(
+      { a2, c2 },
+      { decide: async ({ nodeId }) => (nodeId === 'od' ? (answers.shift() ?? 'yes') : 'yes') },
+      undefined,
+      { runner: recording(log) },
+    );
+    const { runId, events } = await run(transport, passingJoin());
+    const final = await waitForProjection(transport, runId, (p) => {
+      if (finished(p)) return true;
+      // Once o's second round has opened, the held agents may end.
+      if ((p.loopIterations.o ?? []).length === 2) {
+        a2.open();
+        c2.open();
+      }
+      return false;
+    });
+    a2.open();
+    c2.open();
+    expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+    const passed = joins(events).map((j) => j.nodeId);
+    expect(passed).toEqual(['j2', 'j1', 'j2', 'j1']);
+    // j1 stopped the branch that passed j2: neither c1 nor c2 ran in either round.
+    expect(log.filter((line) => /activate c[12]/.test(line))).toEqual([]);
+    expect(executions(final, 'c1')).toEqual([]);
+    expect(executions(final, 'c2')).toEqual([]);
+  });
+});
+
 // "끝난 회차의 분기": once a Loop round has ended, a branch still in it goes no further.
 describe('a branch whose Loop round has ended', () => {
   /**

@@ -711,6 +711,82 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       },
     );
 
+    /**
+     * Loop l [ p → [ q → [a, b] → Join k (policy given) → [u, v] → all Join k2, x ] → any Join j
+     * → router d ], d's pass: l.exit, again: l.repeat; l.next → output.
+     */
+    function joinInsideBranch(policy: 'all' | 'any') {
+      const definition = linearCorral(['p', 'q', 'a', 'b', 'u', 'v', 'x']);
+      for (const node of definition.nodes) {
+        if (node.type !== 'output') node.parentId = 'l';
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+      }
+      definition.entryNodeId = 'l';
+      definition.nodes.push(
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        { id: 'k', type: 'join', label: 'k', parentId: 'l', policy },
+        { id: 'k2', type: 'join', label: 'k2', parentId: 'l', policy: 'all' },
+        { id: 'j', type: 'join', label: 'j', parentId: 'l', policy: 'any' },
+        router('d', 'l', 'p', ['pass', 'again']),
+      );
+      definition.controlEdges = [
+        link('lp', 'l', 'body', 'p', 'in'),
+        link('pq', 'p', 'out', 'q', 'in'),
+        link('px', 'p', 'out', 'x', 'in'),
+        link('qa', 'q', 'out', 'a', 'in'),
+        link('qb', 'q', 'out', 'b', 'in'),
+        link('ak', 'a', 'out', 'k', 'in'),
+        link('bk', 'b', 'out', 'k', 'in'),
+        link('ku', 'k', 'out', 'u', 'in'),
+        link('kv', 'k', 'out', 'v', 'in'),
+        link('uk', 'u', 'out', 'k2', 'in'),
+        link('vk', 'v', 'out', 'k2', 'in'),
+        link('kj', 'k2', 'out', 'j', 'in'),
+        link('xj', 'x', 'out', 'j', 'in'),
+        link('jd', 'j', 'out', 'd', 'in'),
+        link('dx', 'd', 'pass', 'l', 'exit'),
+        link('dr', 'd', 'again', 'l', 'repeat'),
+        link('lo', 'l', 'next', 'output', 'in'),
+      ];
+      return planOf(definition);
+    }
+
+    // docs/specs/features/team-graph.md, "병렬 실행": a stopped branch fans out past no Join.
+    it.each(['all', 'any'] as const)(
+      'fans out past no %s Join a branch that an outer any Join stopped while it joined',
+      async (policy) => {
+        const { log, callbacks } = recorder({ d: ['again', 'pass'] });
+        const { activate, joined } = callbacks;
+        let atK = false;
+        // Round 1: x waits until k's join is under way, and k's join answers only after x has
+        // won j. Round 2: x waits until the other branch has won j.
+        callbacks.activate = async (nodeId, iteration) => {
+          if (nodeId === 'x' && iteration?.no === 1) await until(() => atK);
+          if (nodeId === 'x' && iteration?.no === 2)
+            await until(() => log.some((line) => line.startsWith('join j#2')));
+          return activate(nodeId, iteration);
+        };
+        callbacks.joined = async (joinId, iteration, stopped, loops) => {
+          if (joinId === 'k' && iteration?.no === 1) {
+            atK = true;
+            await until(() => log.some((line) => line.startsWith('join j#1')));
+          }
+          return joined(joinId, iteration, stopped, loops);
+        };
+        const result = await makeRunner().run(joinInsideBranch(policy), callbacks);
+        expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+        const j1 = log.findIndex((line) => line.startsWith('join j#1'));
+        expect(log.findIndex((line) => line.startsWith('join k#1'))).toBeGreaterThan(j1);
+        expect(log).not.toContain('activate u#1');
+        expect(log).not.toContain('activate v#1');
+        expect(log).toContain('activate u#2');
+        expect(log.slice(-2)).toEqual(['leave l#2 pass', 'finalize output']);
+      },
+    );
+
     it('fails the run when a branch is still in a round its Loop has replaced', async () => {
       // A plan the compiler refuses, built by hand: in Loop l, p fans out to a and b; a goes on
       // to the Decision whose revise repeats l while b has not joined.

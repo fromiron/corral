@@ -434,6 +434,8 @@ export async function walkPlan(
       if (!step) throw new Error(`plan has no step ${token.target.nodeId}`);
       if (step.kind === 'join' && step.gathers) {
         if (!(await arrive(token, step))) return;
+        // Another Join may have stopped this branch while its own Join was being recorded.
+        if (token.stopped || result || failure) return;
         advance(token, step.next, `${step.nodeId}\u0000out`);
         continue;
       }
