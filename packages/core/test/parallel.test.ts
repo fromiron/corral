@@ -6,7 +6,7 @@ import {
   type RunEvent,
 } from '@corral/contracts';
 import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
 import {
   Coordinator,
@@ -445,33 +445,33 @@ describe('parallel branches', () => {
   });
 });
 
+/**
+ * The Coordinator's own walker, logging each callback as it is reached (before the Coordinator
+ * acts on it), so a test can show the loser had entered its wait before the Join fired.
+ */
+function recording(log: string[], before?: (name: string, args: unknown[]) => void): GraphRunner {
+  return {
+    run: (plan, callbacks, signal) =>
+      walkPlan(
+        plan,
+        Object.fromEntries(
+          Object.entries(callbacks).map(([name, fn]) => [
+            name,
+            (...args: unknown[]) => {
+              log.push(`${name} ${String(args[0])}`);
+              before?.(name, args);
+              return (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
+            },
+          ]),
+        ) as unknown as RunnerCallbacks,
+        signal,
+      ),
+  };
+}
+
 // "any Join이 멈춘 분기는 그 뒤에 아무것도 시작하지 않는다": a step the stopped branch was
 // about to start, still waiting inside the Coordinator when the Join fired, starts nothing.
 describe('a branch an any Join stopped', () => {
-  /**
-   * The Coordinator's own walker, logging each callback as it is reached (before the Coordinator
-   * acts on it), so a test can show the loser had entered its wait before the Join fired.
-   */
-  function recording(log: string[], before?: (name: string, args: unknown[]) => void): GraphRunner {
-    return {
-      run: (plan, callbacks, signal) =>
-        walkPlan(
-          plan,
-          Object.fromEntries(
-            Object.entries(callbacks).map(([name, fn]) => [
-              name,
-              (...args: unknown[]) => {
-                log.push(`${name} ${String(args[0])}`);
-                before?.(name, args);
-                return (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
-              },
-            ]),
-          ) as unknown as RunnerCallbacks,
-          signal,
-        ),
-    };
-  }
-
   /** p → [x, j]: one branch runs x, the other reaches the any Join at once. */
   const direct = () =>
     team(
@@ -902,6 +902,94 @@ describe('a recipe Loop entry an any Join stopped', () => {
     expect(final.status).toBe('failed');
     expect(final.statusReason).toBe('review_recipe:criteria_changed');
     expect(events.filter((e) => e.type === 'recipe.stopped')).toHaveLength(1);
+  });
+});
+
+// "끝난 회차의 분기": once a Loop round has ended, a branch still in it goes no further.
+describe('a branch whose Loop round has ended', () => {
+  /**
+   * s → Loop l [ p → [ d, e ] → Join j (any) → f → output ], f.revise → g (yes: repeat, no:
+   * exit), l.next → after → done. d's inconclusive has no edge.
+   */
+  function inconclusiveInLoop(): CorralDefinition {
+    const decision = (id: string, mode: 'review' | 'rule'): CorralNode =>
+      ({
+        id,
+        type: 'decision',
+        label: id,
+        mode,
+        rule: mode === 'review' ? 'review_verdict' : 'required_tasks_submitted',
+        parentId: 'l',
+        inputBindings: [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }],
+      }) as CorralNode;
+    return Definition.parse({
+      ...base,
+      entryNodeId: 's',
+      nodes: [
+        agent('s'),
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+        agent('p', 's', 'l', 'reviewer'),
+        decision('d', 'review'),
+        decision('e', 'review'),
+        { ...join('any'), parentId: 'l' },
+        decision('f', 'review'),
+        decision('g', 'rule'),
+        { ...output('p'), parentId: 'l' },
+        agent('after', 's'),
+        { ...output('after'), id: 'done' },
+      ],
+      controlEdges: [
+        edge('s', 'out', 'l', 'enter'),
+        edge('l', 'body', 'p'),
+        edge('p', 'out', 'd'),
+        edge('p', 'out', 'e'),
+        edge('d', 'pass', 'j'),
+        edge('e', 'pass', 'j'),
+        edge('j', 'out', 'f'),
+        edge('f', 'pass', 'output'),
+        edge('f', 'revise', 'g'),
+        edge('g', 'yes', 'l', 'repeat'),
+        edge('g', 'no', 'l', 'exit'),
+        edge('l', 'next', 'after'),
+        edge('after', 'out', 'done'),
+      ],
+      capabilityLinks: [],
+    });
+  }
+
+  it('ends the run with the needs_user of the Decision that ended the round', async () => {
+    expect(
+      compileDefinition(inconclusiveInLoop()).diagnostics.filter((d) => d.severity === 'error'),
+    ).toEqual([]);
+    // d and e decide together once both are waiting: d ends the round inconclusive, and e
+    // reaches the Join before d's branch ends the run.
+    const gate = new Gate();
+    const waiting: string[] = [];
+    const log: string[] = [];
+    const transport = runtime(
+      {},
+      {
+        decide: async ({ nodeId }) => {
+          if (nodeId === 'd' || nodeId === 'e') {
+            waiting.push(nodeId);
+            await gate.wait();
+          }
+          return nodeId === 'd' ? 'inconclusive' : 'pass';
+        },
+      },
+      undefined,
+      { runner: recording(log) },
+    );
+    const { runId, events } = await run(transport, inconclusiveInLoop());
+    await vi.waitFor(() => expect(waiting).toEqual(['d', 'e']));
+    gate.open();
+    const final = await waitForProjection(transport, runId, finished);
+    const types = events.map((e) => e.type);
+    expect(log).toContain('loopLeft l');
+    expect(final.status).toBe('failed');
+    expect(final.statusReason).toBe('needs_user: d inconclusive');
+    expect(types).not.toContain('output.finalized');
+    expect(types).not.toContain('workflow.joined');
   });
 });
 

@@ -254,6 +254,8 @@ interface Fork {
 interface Token {
   target: PlanTarget;
   rounds: Record<string, number>;
+  /** The marker of each Loop round the token is in, as the walk gave it when the round opened. */
+  marks: Record<string, object>;
   forks: Fork[];
   current: StepRef | null;
   stopped: boolean;
@@ -286,14 +288,45 @@ export async function walkPlan(
   };
   const iterationOf = (token: Token, loopId: string | null): IterationRef | null =>
     loopId ? { loopId, no: token.rounds[loopId] ?? 1 } : null;
+  /** One marker per Loop whose round is open, made when the round opens. */
+  const opened = new Map<string, object>();
 
-  /** A stopped branch reaches the Coordinator no more, whatever it was in the middle of. */
+  /**
+   * Whether a branch is still in every Loop round it holds: false once one has ended. A Loop
+   * that has opened another round since means a plan the compiler should have refused.
+   */
+  const inRound = (token: Token): boolean => {
+    let ended = false;
+    for (const [loopId, mark] of Object.entries(token.marks)) {
+      const current = opened.get(loopId);
+      if (current === mark) continue;
+      if (current)
+        throw new Error(`Loop ${loopId} opened another round while a branch was in the one before`);
+      ended = true;
+    }
+    return !ended;
+  };
+
+  /**
+   * A stopped branch, or one whose round has ended, reaches the Coordinator no more, whatever
+   * it was in the middle of. Round markers follow the calls as they are made.
+   */
   const guarded = (token: Token): RunnerCallbacks =>
     Object.fromEntries(
       Object.entries(callbacks).map(([name, fn]) => [
         name,
         (...args: unknown[]) => {
           if (token.stopped || result || failure) throw new BranchStopped();
+          if (!inRound(token)) throw new BranchStopped();
+          const loopId = args[0] as string;
+          if (name === 'loopEntered') {
+            const mark = {};
+            opened.set(loopId, mark);
+            token.marks[loopId] = mark;
+          } else if (name === 'loopLeft') {
+            opened.delete(loopId);
+            delete token.marks[loopId];
+          }
           return (fn as (...a: unknown[]) => unknown).apply(callbacks, args);
         },
       ]),
@@ -323,11 +356,12 @@ export async function walkPlan(
       return;
     }
     const fork = { port, instance: ++instances, loops: Object.keys(token.rounds) };
-    const parent = { rounds: token.rounds, forks: token.forks };
+    const parent = { rounds: token.rounds, marks: token.marks, forks: token.forks };
     rest.forEach((target, i) => {
       spawn({
         target,
         rounds: { ...parent.rounds },
+        marks: { ...parent.marks },
         forks: [...parent.forks, { ...fork, index: i + 1 }],
         current: null,
         stopped: false,
@@ -335,6 +369,7 @@ export async function walkPlan(
     });
     token.target = first;
     token.rounds = { ...parent.rounds };
+    token.marks = { ...parent.marks };
     token.forks = [...parent.forks, { ...fork, index: 0 }];
   };
 
@@ -366,6 +401,8 @@ export async function walkPlan(
         for (const [loopId, no] of Object.entries(other.rounds))
           if (!theirs.loops.includes(loopId)) loops.set(loopId, no);
       }
+      // Their rounds end here: no branch is in them any more.
+      for (const loopId of loops.keys()) opened.delete(loopId);
       // Innermost first: a Loop inside another ends before it.
       const ordered = [...loops].sort(
         ([a], [b]) => Number(inside(plan, b, a)) - Number(inside(plan, a, b)),
@@ -384,6 +421,8 @@ export async function walkPlan(
   const walk = async (token: Token) => {
     for (;;) {
       if (token.stopped || result || failure) return;
+      // Before a Join can touch another branch: a branch whose round has ended goes no further.
+      if (!inRound(token)) return;
       if (signal?.aborted) return finish({ kind: 'stopped' });
       const step: PlanStep | undefined = plan.steps[token.target.nodeId];
       if (!step) throw new Error(`plan has no step ${token.target.nodeId}`);
@@ -409,7 +448,14 @@ export async function walkPlan(
     }
   };
 
-  spawn({ target: entryTarget(plan), rounds: {}, forks: [], current: null, stopped: false });
+  spawn({
+    target: entryTarget(plan),
+    rounds: {},
+    marks: {},
+    forks: [],
+    current: null,
+    stopped: false,
+  });
   await done;
   if (failure) throw (failure as { error: unknown }).error;
   if (!result) throw new Error('every branch stopped without ending the run');
