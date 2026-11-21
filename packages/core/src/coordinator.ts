@@ -8061,9 +8061,9 @@ export class Coordinator {
   }
 
   /**
-   * Versions the previous round hands to the next through previous_iteration_output: every
+   * Versions the previous round hands to the next through previous_iteration_output: for every
    * binding whose value this Loop's round before carries, on its members and on the steps of the
-   * boxes inside it, in plan order.
+   * boxes inside it, the version it delivers, in plan order.
    */
   private carriedInto(run: LiveRun, loopId: string): string[] {
     const previous =
@@ -8079,9 +8079,10 @@ export class Coordinator {
         b.kind === 'previous_iteration_output' &&
         b.sourceNodeId &&
         this.carriedBy(run, readerId, b.sourceNodeId).includes(loopId)
-          ? this.submittedOutputOf(run, b.sourceNodeId, (round) =>
+          ? // The binding delivers the first submitted version (resolveInputs).
+            this.submittedOutputOf(run, b.sourceNodeId, (round) =>
               this.inRound(run, round, previous),
-            )
+            ).slice(0, 1)
           : [],
       );
     });

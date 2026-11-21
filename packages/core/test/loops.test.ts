@@ -1223,6 +1223,49 @@ describe('a previous round’s output across nested Loops', () => {
     expect(inputs.get(y2?.id ?? '')).toEqual({ beside: x2?.versions });
     expect(pins(events, 'loop_o')).toEqual([[], x2?.versions]);
   });
+
+  // §9.2: the pin lists what the binding hands over, the first version a step submitted.
+  it('pins only the first of two versions a step submitted in the round before', async () => {
+    const body = reviewedBody('loop_l', 'l');
+    const definition = team(
+      [research, loop('loop_l'), ...body.nodes, output('l_write')],
+      [edge('research', 'out', 'loop_l', 'enter'), ...body.edges, edge('loop_l', 'next', 'output')],
+    );
+    const inputs = new Map<string, Record<string, string[]>>();
+    const transport = runtime(scripted({ l_decision: ['revise', 'pass'] }), {
+      beforeReply: async (turn, input) => {
+        if (turn !== 1) return;
+        const named: Record<string, string[]> = {};
+        for (const { name, artifactVersionId } of input.inputs)
+          if (artifactVersionId) named[name] = [...(named[name] ?? []), artifactVersionId];
+        inputs.set(input.executionId, named);
+      },
+      // The writer's first round submits two versions at once.
+      script: async (input, host) => {
+        if (input.nodeId !== 'l_write' || input.round !== 1) return null;
+        const ids: string[] = [];
+        for (const text of ['first draft', 'second draft']) {
+          const written = await host.invokeTool({ name: 'write_artifact', args: { text } });
+          if (!written.ok) return { outcome: 'failed', error: written.error.message };
+          ids.push(written.result.artifactVersionId as string);
+        }
+        const submitted = await host.invokeTool({
+          name: 'submit_result',
+          args: { artifactVersionIds: ids },
+        });
+        return submitted.ok
+          ? { outcome: 'succeeded' }
+          : { outcome: 'failed', error: submitted.error.message };
+      },
+    });
+    const { runId, events } = await run(transport, definition);
+    const final = await waitForProjection(transport, runId, finished);
+    expect(final.status).toBe('succeeded');
+    const [w1, w2] = runsOf(final, 'l_write');
+    expect(w1?.versions).toHaveLength(2);
+    expect(pins(events, 'loop_l')).toEqual([[], [w1?.versions[0]]]);
+    expect(inputs.get(w2?.id ?? '')).toEqual({ draft: [w1?.versions[0]] });
+  });
 });
 
 // docs/specs/technical-design.md §9.2: an Output inside a Loop reads each source in the round that
