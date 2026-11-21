@@ -275,7 +275,13 @@ export function InspectorSheet({
     .filter(
       (d): d is Diagnostic & { nodeId: string } =>
         Boolean(d.nodeId) &&
-        ['PARALLEL_MERGE_NEEDS_JOIN', 'PARALLEL_UNJOINED', 'JOIN_PARTIAL'].includes(d.code),
+        [
+          'PARALLEL_MERGE_NEEDS_JOIN',
+          'PARALLEL_MIXED_ENTRY',
+          'PARALLEL_UNJOINED',
+          'JOIN_PARTIAL',
+          'JOIN_SPLIT',
+        ].includes(d.code),
     )
     .map((d) => (
       <Button

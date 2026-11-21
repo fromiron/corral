@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { emptyDraft } from '../src/editor/model.ts';
 import { createEditorStore } from '../src/editor/store.ts';
 import messages from '../src/messages/en.json' with { type: 'json' };
+import korean from '../src/messages/ko.json' with { type: 'json' };
 import { type EditResult, patchNode, placeStep } from '../src/team-editor/commands.ts';
 import { InspectorSheet, type InspectorSheetProps } from '../src/team-editor/InspectorSheet.tsx';
 import { RoleForm } from '../src/team-editor/NodeSettings.tsx';
@@ -211,6 +212,27 @@ describe('work seat settings', () => {
     await userEvent.click(screen.getByRole('button', { name: /Join/i }));
     expect(onSelect).toHaveBeenCalledWith({ nodes: [], edge: edge.id });
   });
+
+  it.each(['JOIN_SPLIT', 'PARALLEL_MIXED_ENTRY'] as const)(
+    'lists %s among the Join problems of a connection, worded in both languages',
+    async (code) => {
+      const draft = team();
+      const edge = draft.definition.controlEdges[0];
+      if (!edge) throw new Error('Expected a connected team');
+      const onSelect = vi.fn();
+      open(draft, {
+        selection: { nodes: [], edge: edge.id },
+        onSelect,
+        diagnostics: [{ code, severity: 'error', nodeId: edge.target, message: 'compiler text' }],
+      });
+      expect(korean.Validation.codes[code]).toMatch(/합류|분기/);
+      await userEvent.click(
+        screen.getByRole('button', { name: new RegExp(messages.Validation.codes[code]) }),
+      );
+      expect(onSelect).toHaveBeenCalledWith({ nodes: [edge.target], edge: null });
+      expect(screen.queryByText(/compiler text/)).toBeNull();
+    },
+  );
 
   it('names every material by its source and changes only the chosen binding', async () => {
     const bindings: InputBinding[] = [
