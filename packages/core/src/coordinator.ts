@@ -7130,6 +7130,8 @@ export class Coordinator {
         throw new Error('review recipe stopped');
       }
       const problem = await this.recipeBoundaryProblem(run, recipeLoopId, recipe, candidate);
+      // A branch stopped while its evidence was checked: the result goes, and so does the step.
+      if (run.stoppedSteps.has(`${nodeId}@${round ?? '-'}`)) throw new Error('branch stopped');
       if (problem) {
         this.stopRecipe(run, recipeLoopId, problem, candidate.artifactVersionId);
         throw new Error('review recipe stopped');

@@ -706,44 +706,44 @@ describe('a branch an any Join stopped', () => {
 // A recipe Loop the stopped branch was entering: its criteria pin is slow, and settles late.
 describe('a recipe Loop entry an any Join stopped', () => {
   const criteriaFile = { path: 'criteria.md', sha256: 'a'.repeat(64) };
+  const recipe = {
+    recipeId: 'quality',
+    revision: 1,
+    criteriaHash: reviewCriteriaHash(base.input.criteria),
+    candidateNodeId: 'write',
+    evaluatorRoleId: 'reviewer',
+    checkIds: [],
+    criteriaFiles: [criteriaFile],
+    maxAttempts: 3,
+    maxRepairs: 2,
+  };
+  const review = (id: string, source: string, parentId: string): CorralNode => ({
+    id,
+    type: 'decision',
+    label: id,
+    mode: 'review',
+    rule: 'review_verdict',
+    parentId,
+    inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: source }],
+  });
+  const reviewer = (id: string, source: string, parentId: string): CorralNode => ({
+    id,
+    type: 'agent',
+    label: id,
+    roleId: 'reviewer',
+    invocation: 'scheduled',
+    parentId,
+    inputBindings: [
+      { kind: 'task_output', name: 'draft', sourceNodeId: source },
+      { kind: 'run_input', name: 'criteria' },
+    ],
+    outputName: 'review',
+  });
   /**
    * s → Loop o [ p → [ recipe Loop l [ write → review → rd ], x ] → Join j (any) → or → od ]
    * → output. od revises o's first round and passes its second.
    */
   function nested(): CorralDefinition {
-    const recipe = {
-      recipeId: 'quality',
-      revision: 1,
-      criteriaHash: reviewCriteriaHash(base.input.criteria),
-      candidateNodeId: 'write',
-      evaluatorRoleId: 'reviewer',
-      checkIds: [],
-      criteriaFiles: [criteriaFile],
-      maxAttempts: 3,
-      maxRepairs: 2,
-    };
-    const review = (id: string, source: string, parentId: string): CorralNode => ({
-      id,
-      type: 'decision',
-      label: id,
-      mode: 'review',
-      rule: 'review_verdict',
-      parentId,
-      inputBindings: [{ kind: 'task_output', name: 'review', sourceNodeId: source }],
-    });
-    const reviewer = (id: string, source: string, parentId: string): CorralNode => ({
-      id,
-      type: 'agent',
-      label: id,
-      roleId: 'reviewer',
-      invocation: 'scheduled',
-      parentId,
-      inputBindings: [
-        { kind: 'task_output', name: 'draft', sourceNodeId: source },
-        { kind: 'run_input', name: 'criteria' },
-      ],
-      outputName: 'review',
-    });
     return Definition.parse({
       ...base,
       entryNodeId: 's',
@@ -886,6 +886,127 @@ describe('a recipe Loop entry an any Join stopped', () => {
       ['loop.iteration_finished', freshId],
     ]);
     expect(final.iterations[freshId]?.outcome).toBe('pass');
+  });
+
+  /** p → [ recipe Loop l [ write → review → rd ], x ] → Join j (any) → m → output. */
+  function flat(): CorralDefinition {
+    return Definition.parse({
+      ...base,
+      entryNodeId: 'p',
+      nodes: [
+        agent('p'),
+        { id: 'l', type: 'loop', label: 'l', maxIterations: 3, reviewRecipe: recipe },
+        {
+          ...agent('write', undefined, 'l'),
+          inputBindings: [
+            { kind: 'run_input', name: 'brief' },
+            { kind: 'run_input', name: 'criteria' },
+          ],
+        },
+        reviewer('review', 'write', 'l'),
+        review('rd', 'review', 'l'),
+        agent('x', 'p'),
+        join('any'),
+        agent('m', 'p'),
+        output('m'),
+      ],
+      controlEdges: [
+        edge('p', 'out', 'l', 'enter'),
+        edge('p', 'out', 'x'),
+        edge('l', 'body', 'write'),
+        edge('write', 'out', 'review'),
+        edge('review', 'out', 'rd'),
+        edge('rd', 'pass', 'l', 'exit'),
+        edge('rd', 'revise', 'l', 'repeat'),
+        edge('l', 'next', 'j'),
+        edge('x', 'out', 'j'),
+        edge('j', 'out', 'm'),
+        edge('m', 'out', 'output'),
+      ],
+      capabilityLinks: [],
+    });
+  }
+
+  /**
+   * Holds the criteria check rd makes for its recipe evidence (any check once the reviewer has
+   * started) until `release`; x and m wait at their gates.
+   */
+  function evidenceRuntime(gates: { x: Gate; m: Gate }) {
+    const clock = new FakeClock();
+    let reviewed = false;
+    const held: ((valid: boolean) => void)[] = [];
+    const coordinator = new Coordinator({
+      clock,
+      timers: clock,
+      ids: new SequentialIdFactory(),
+      files: {
+        available: () => false,
+        execute: async () => {
+          throw new Error('no file tools in this test');
+        },
+        pinCriteria: async () => {},
+        validateCriteria: () =>
+          reviewed ? new Promise<boolean>((resolve) => held.push(resolve)) : Promise.resolve(true),
+      },
+      agents: new ScriptedAgentAdapter({
+        turns: 1,
+        collaborate: false,
+        appendNotes: false,
+        reply: (_turn, input) => `${input.nodeId} ${input.executionId}`,
+        review: () => 'pass',
+        beforeReply: async (_turn, input) => {
+          if (input.nodeId === 'review') reviewed = true;
+          if (input.nodeId === 'x') await gates.x.wait();
+          if (input.nodeId === 'm') await gates.m.wait();
+        },
+      }),
+    });
+    return {
+      transport: new InProcessTransport(coordinator),
+      held: () => held.length,
+      release: (valid: boolean) => {
+        for (const resolve of held.splice(0)) resolve(valid);
+      },
+    };
+  }
+
+  it.each([false, true])(
+    'drops the recipe evidence check (valid: %s) of a review Decision stopped meanwhile',
+    async (valid) => {
+      expect(planRun(flat()).ok).toBe(true);
+      const gates = { x: new Gate(), m: new Gate() };
+      const s = evidenceRuntime(gates);
+      const { runId, events } = await run(s.transport, flat());
+      // rd is checking its evidence; x then wins the Join and m keeps the run live.
+      await vi.waitFor(() => expect(s.held()).toBe(1));
+      gates.x.open();
+      await waitForProjection(s.transport, runId, () => joins(events).length > 0);
+      expect(joins(events)[0]?.cancelledNodeIds).toEqual(['rd']);
+      s.release(valid);
+      for (let i = 0; i < 50; i++) await Promise.resolve();
+      gates.m.open();
+      const final = await waitForProjection(s.transport, runId, finished);
+      expect([final.status, final.statusReason]).toEqual(['succeeded', 'output_finalized']);
+      expect(events.filter((e) => e.type === 'recipe.stopped')).toEqual([]);
+      expect(afterJoin(events).filter((e) => e.type === 'recipe.evaluated')).toEqual([]);
+      expect(selected(events, 'rd')).toEqual([]);
+    },
+  );
+
+  it('still evaluates the recipe evidence of a review Decision nobody stopped', async () => {
+    const gates = { x: new Gate(), m: new Gate() };
+    gates.m.open();
+    const s = evidenceRuntime(gates);
+    const { runId, events } = await run(s.transport, flat());
+    await vi.waitFor(() => expect(s.held()).toBe(1));
+    s.release(true);
+    const final = await waitForProjection(s.transport, runId, (p) => {
+      if (joins(events).length > 0) gates.x.open();
+      return finished(p);
+    });
+    expect(final.status).toBe('succeeded');
+    expect(events.filter((e) => e.type === 'recipe.evaluated')).toHaveLength(1);
+    expect(joins(events)[0]?.cancelledNodeIds).toEqual(['x']);
   });
 
   it('still stops the recipe when the pin of an entry nobody stopped fails', async () => {
