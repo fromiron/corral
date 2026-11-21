@@ -812,6 +812,92 @@ export function describeGraphRunnerContract(name: string, makeRunner: () => Grap
       },
     );
 
+    /**
+     * p → [ q → [y, z] → Join k (any) → w, x ] → Join j (any) → output. With `looped`, q's part
+     * is Loop l [ a → [y, z] → k → router dl (again: l.repeat, pass: l.exit) ], l.next → j.
+     */
+    function nestedAnyJoins(looped: boolean) {
+      const definition = linearCorral(['p', 'q', 'a', 'y', 'z', 'w', 'x']);
+      const inLoop = ['a', 'y', 'z'];
+      const used = looped ? ['p', 'a', 'y', 'z', 'x'] : ['p', 'q', 'y', 'z', 'w', 'x'];
+      definition.nodes = definition.nodes.filter((n) => n.type === 'output' || used.includes(n.id));
+      for (const node of definition.nodes) {
+        if (looped && inLoop.includes(node.id)) node.parentId = 'l';
+        if (node.type === 'agent' && node.invocation !== 'observer' && node.id !== 'p')
+          node.inputBindings = [{ kind: 'task_output', name: 'input', sourceNodeId: 'p' }];
+        if (node.type === 'output')
+          node.inputBindings = [{ kind: 'task_output', name: 'final', sourceNodeId: 'p' }];
+      }
+      definition.nodes.push(
+        { id: 'k', type: 'join', label: 'k', policy: 'any', ...(looped ? { parentId: 'l' } : {}) },
+        { id: 'j', type: 'join', label: 'j', policy: 'any' },
+      );
+      if (looped)
+        definition.nodes.push(
+          { id: 'l', type: 'loop', label: 'l', maxIterations: 3 },
+          router('dl', 'l', 'p', ['pass', 'again']),
+        );
+      const head = looped ? 'a' : 'q';
+      definition.controlEdges = [
+        looped ? link('pl', 'p', 'out', 'l', 'enter') : link('pq', 'p', 'out', 'q', 'in'),
+        link('px', 'p', 'out', 'x', 'in'),
+        ...(looped ? [link('la', 'l', 'body', 'a', 'in')] : []),
+        link('hy', head, 'out', 'y', 'in'),
+        link('hz', head, 'out', 'z', 'in'),
+        link('yk', 'y', 'out', 'k', 'in'),
+        link('zk', 'z', 'out', 'k', 'in'),
+        ...(looped
+          ? [
+              link('kd', 'k', 'out', 'dl', 'in'),
+              link('dx', 'dl', 'pass', 'l', 'exit'),
+              link('dr', 'dl', 'again', 'l', 'repeat'),
+              link('lj', 'l', 'next', 'j', 'in'),
+            ]
+          : [link('kw', 'k', 'out', 'w', 'in'), link('wj', 'w', 'out', 'j', 'in')]),
+        link('xj', 'x', 'out', 'j', 'in'),
+        link('jo', 'j', 'out', 'output', 'in'),
+      ];
+      return planOf(definition);
+    }
+
+    // "기록": a Join does not stop again a branch another Join already stopped.
+    it.each([false, true])(
+      'an outer any Join reports no branch an inner one already stopped (in a Loop: %s)',
+      async (looped) => {
+        const { log, callbacks } = recorder({ dl: ['again'] });
+        const { activate, joined } = callbacks;
+        const reported: { loopId: string; no: number }[][] = [];
+        const joinedJ = () => log.some((line) => line.startsWith('join j'));
+        // z, stopped by k, is still ending; the inner winner's next step (w, or a in l's second
+        // round) runs on; x reaches j once that step has started.
+        const last = looped ? 'a' : 'w';
+        callbacks.activate = async (nodeId, iteration) => {
+          if (nodeId === 'z' || (nodeId === last && (!looped || iteration?.no === 2))) {
+            const outcome = activate(nodeId, iteration);
+            await until(joinedJ);
+            await outcome;
+            return { ok: false, reason: 'stopped' };
+          }
+          if (nodeId === 'x')
+            await until(() => log.includes(looped ? 'activate a#2' : 'activate w'));
+          return activate(nodeId, iteration);
+        };
+        callbacks.joined = async (joinId, iteration, stopped, loops) => {
+          if (joinId === 'j') reported.push(loops);
+          return joined(joinId, iteration, stopped, loops);
+        };
+        const result = await makeRunner().run(nestedAnyJoins(looped), callbacks);
+        expect(result).toEqual({ kind: 'finished', outputNodeId: 'output' });
+        const joins = log.filter((line) => line.startsWith('join'));
+        if (looped) {
+          expect(reported).toEqual([[{ loopId: 'l', no: 2 }]]);
+          expect(joins).toEqual(['join k#1 stops z#1', 'join j stops a#2']);
+        } else {
+          expect(joins).toEqual(['join k stops z', 'join j stops w']);
+        }
+      },
+    );
+
     it('fails the run when a branch is still in a round its Loop has replaced', async () => {
       // A plan the compiler refuses, built by hand: in Loop l, p fans out to a and b; a goes on
       // to the Decision whose revise repeats l while b has not joined.

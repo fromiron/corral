@@ -401,7 +401,8 @@ export async function walkPlan(
       const loops = new Map<string, number>();
       for (const other of live) {
         const theirs = other.forks.find((f) => f.instance === fork.instance);
-        if (other === token || !theirs || theirs.index === fork.index) continue;
+        // A branch another Join already stopped is not stopped again, nor its rounds read.
+        if (other === token || other.stopped || !theirs || theirs.index === fork.index) continue;
         other.stopped = true;
         if (other.current) stopped.push(other.current);
         for (const [loopId, no] of Object.entries(other.rounds))
