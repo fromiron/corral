@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { createHash } from 'node:crypto';
 import {
   cpSync,
   existsSync,
@@ -11,12 +10,13 @@ import {
   rmSync,
   writeFileSync,
 } from 'node:fs';
-import { dirname, isAbsolute, join, relative, resolve } from 'node:path';
+import { isAbsolute, join, relative, resolve } from 'node:path';
 import ts from 'typescript';
 import { helperFileName } from '../../../packages/local-intelligence/src/engine/helper.ts';
 import { candidateFiles, candidateHash } from '../../../tools/release/candidate.ts';
 import {
   assertRelocatableRuntime,
+  copyCorrespondingSource,
   NODE_VERSION,
   nodeLicensePath,
   packageManagerCommand,
@@ -213,19 +213,14 @@ cpSync(join(root, 'THIRD-PARTY-NOTICES'), join(staging, 'THIRD-PARTY-NOTICES'), 
 });
 cpSync(nodeLicense, join(staging, 'THIRD-PARTY-NOTICES/Node-LICENSE'));
 // The browser includes LGPL budget code; ship the corresponding application and library sources for rebuilding it.
-const sourceDirectory = join(staging, 'corresponding-source', 'corral');
-const sourceHashes: Record<string, string> = {};
-for (const path of candidateFiles(root)) {
-  const source = join(root, path);
-  if (!existsSync(source)) continue;
-  const target = join(sourceDirectory, path);
-  mkdirSync(dirname(target), { recursive: true });
-  cpSync(source, target);
-  sourceHashes[path] = createHash('sha256').update(readFileSync(target)).digest('hex');
-}
+const correspondingSource = copyCorrespondingSource(
+  root,
+  candidateFiles(root),
+  join(staging, 'corresponding-source', 'corral'),
+);
 writeFileSync(
   join(staging, 'corresponding-source', 'manifest.json'),
-  JSON.stringify({ candidate, files: sourceHashes }, null, 2),
+  JSON.stringify({ candidate, ...correspondingSource }, null, 2),
 );
 execFileSync(pnpmCommand.executable, [...pnpmCommand.args, 'release:inventory'], {
   cwd: root,

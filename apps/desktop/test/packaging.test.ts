@@ -1,5 +1,8 @@
+import { createHash } from 'node:crypto';
 import {
   cpSync,
+  existsSync,
+  lstatSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -11,10 +14,11 @@ import {
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import {
   assertRelocatableRuntime,
   assertRuntimeIdentity,
+  copyCorrespondingSource,
   nodeLicensePath,
   packageManagerCommand,
   runtimeTarget,
@@ -123,3 +127,60 @@ it('discovers the license in Windows and Unix Node distributions', () => {
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+describe.skipIf(process.platform === 'win32')('corresponding source copy', () => {
+  const fixture = (run: (root: string, destination: string) => void) => {
+    const base = mkdtempSync(join(tmpdir(), 'corral-corresponding-source-'));
+    try {
+      const root = join(base, 'repo');
+      mkdirSync(join(root, 'skills/review'), { recursive: true });
+      writeFileSync(join(root, 'skills/review/SKILL.md'), 'review');
+      writeFileSync(join(root, 'README.md'), 'readme');
+      run(root, join(base, 'staging/corresponding-source/corral'));
+    } finally {
+      rmSync(base, { recursive: true, force: true });
+    }
+  };
+  const sha256 = (text: string) => createHash('sha256').update(text).digest('hex');
+
+  it('records in-repo links instead of copying them and copies files with their hashes', () =>
+    fixture((root, destination) => {
+      mkdirSync(join(root, '.claude/skills'), { recursive: true });
+      symlinkSync('../../skills/review', join(root, '.claude/skills/review'));
+      symlinkSync('README.md', join(root, 'readme-link.md'));
+      const paths = [
+        '.claude/skills/review',
+        'README.md',
+        'gone.md',
+        'readme-link.md',
+        'skills/review/SKILL.md',
+      ];
+      expect(copyCorrespondingSource(root, paths, destination)).toEqual({
+        files: { 'README.md': sha256('readme'), 'skills/review/SKILL.md': sha256('review') },
+        links: { '.claude/skills/review': '../../skills/review', 'readme-link.md': 'README.md' },
+      });
+      expect(readFileSync(join(destination, 'skills/review/SKILL.md'), 'utf8')).toBe('review');
+      for (const path of ['.claude/skills/review', 'readme-link.md', 'gone.md'])
+        expect(existsSync(join(destination, path)) || isLink(join(destination, path))).toBe(false);
+      expect(assertRelocatableRuntime(join(destination, '../..')).links).toEqual([]);
+    }));
+
+  it('refuses a link with an absolute target and names it', () =>
+    fixture((root, destination) => {
+      symlinkSync(join(root, 'README.md'), join(root, 'absolute.md'));
+      expect(() => copyCorrespondingSource(root, ['absolute.md'], destination)).toThrow(
+        'absolute.md',
+      );
+    }));
+
+  it('refuses a link that leaves the repository and names it', () =>
+    fixture((root, destination) => {
+      writeFileSync(join(root, '../outside.md'), 'outside');
+      symlinkSync('../outside.md', join(root, 'escape.md'));
+      expect(() => copyCorrespondingSource(root, ['escape.md'], destination)).toThrow('escape.md');
+    }));
+});
+
+function isLink(path: string) {
+  return lstatSync(path, { throwIfNoEntry: false })?.isSymbolicLink() ?? false;
+}

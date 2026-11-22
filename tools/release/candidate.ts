@@ -1,6 +1,6 @@
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { lstatSync, readFileSync, readlinkSync } from 'node:fs';
 import { join } from 'node:path';
 export const ROOT = join(import.meta.dirname, '..', '..');
 
@@ -23,8 +23,15 @@ export function candidateHash(root = ROOT): string {
   const hash = createHash('sha256');
   for (const path of [...new Set(paths)].sort()) {
     hash.update(path).update('\0');
+    const entry = lstatSync(join(root, path), { throwIfNoEntry: false });
     hash
-      .update(existsSync(join(root, path)) ? readFileSync(join(root, path)) : '<deleted>')
+      .update(
+        !entry
+          ? '<deleted>'
+          : entry.isSymbolicLink()
+            ? readlinkSync(join(root, path))
+            : readFileSync(join(root, path)),
+      )
       .update('\0');
   }
   return hash.digest('hex');

@@ -1,6 +1,16 @@
 import assert from 'node:assert/strict';
-import { existsSync, lstatSync, readdirSync, readFileSync, readlinkSync, statSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { createHash } from 'node:crypto';
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  readlinkSync,
+  statSync,
+} from 'node:fs';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 export const NODE_VERSION = readFileSync(
   new URL('../../../.node-version', import.meta.url),
@@ -69,4 +79,32 @@ export function nodeLicensePath(executable: string) {
     'The bundled Node distribution must carry its license beside node.exe or above bin/node.',
   );
   return license;
+}
+
+export function copyCorrespondingSource(root: string, paths: string[], destination: string) {
+  const files: Record<string, string> = {};
+  const links: Record<string, string> = {};
+  for (const path of paths) {
+    const source = join(root, path);
+    const entry = lstatSync(source, { throwIfNoEntry: false });
+    if (!entry) continue;
+    if (entry.isSymbolicLink()) {
+      const link = readlinkSync(source);
+      const inside = relative(resolve(root), resolve(dirname(source), link));
+      if (
+        isAbsolute(link) ||
+        isAbsolute(inside) ||
+        inside === '..' ||
+        inside.startsWith(`..${sep}`)
+      )
+        throw new Error(`Source link must point inside the repository by a relative path: ${path}`);
+      links[path] = link;
+      continue;
+    }
+    const target = join(destination, path);
+    mkdirSync(dirname(target), { recursive: true });
+    cpSync(source, target);
+    files[path] = createHash('sha256').update(readFileSync(target)).digest('hex');
+  }
+  return { files, links };
 }

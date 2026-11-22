@@ -173,3 +173,72 @@ test('candidate proof changes for new, modified and deleted source but ignores g
     rmSync(root, { recursive: true, force: true });
   }
 });
+
+const linkTest = (
+  name: string,
+  check: (
+    root: string,
+    tools: typeof import('node:fs') & {
+      hash: () => string;
+      join: typeof import('node:path').join;
+      track: () => void;
+    },
+  ) => void,
+) =>
+  test(name, { skip: process.platform === 'win32' }, async () => {
+    const { execFileSync } = await import('node:child_process');
+    const fs = await import('node:fs');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const { candidateHash } = await import('./candidate.ts');
+    const root = fs.mkdtempSync(join(tmpdir(), 'corral-candidate-link-'));
+    try {
+      execFileSync('git', ['init', '-q', '-b', 'fixture'], { cwd: root });
+      for (const skill of ['first', 'second']) {
+        fs.mkdirSync(join(root, 'skills', skill), { recursive: true });
+        fs.writeFileSync(join(root, 'skills', skill, 'SKILL.md'), 'same');
+      }
+      const track = () => execFileSync('git', ['add', '.'], { cwd: root });
+      check(root, { ...fs, hash: () => candidateHash(root), join, track });
+    } finally {
+      fs.rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+linkTest('candidate proof accepts a link to a folder', (root, { hash, join, symlinkSync }) => {
+  symlinkSync('skills/first', join(root, 'skill'));
+  assert.match(hash(), /^[0-9a-f]{64}$/);
+});
+
+linkTest(
+  'candidate proof changes when a link points somewhere else with the same content',
+  (root, { hash, join, rmSync, symlinkSync }) => {
+    symlinkSync('skills/first/SKILL.md', join(root, 'skill.md'));
+    const original = hash();
+    rmSync(join(root, 'skill.md'));
+    symlinkSync('skills/second/SKILL.md', join(root, 'skill.md'));
+    assert.notEqual(hash(), original);
+  },
+);
+
+linkTest(
+  'candidate proof does not hash a dangling link as a deleted file',
+  (root, { hash, join, rmSync, symlinkSync, track }) => {
+    symlinkSync('skills/missing', join(root, 'skill'));
+    track();
+    const dangling = hash();
+    rmSync(join(root, 'skill'));
+    assert.notEqual(hash(), dangling);
+  },
+);
+
+linkTest(
+  'candidate proof hashes a link like a plain file holding its target text',
+  (root, { hash, join, rmSync, symlinkSync, writeFileSync }) => {
+    symlinkSync('skills/first/SKILL.md', join(root, 'skill.md'));
+    const linked = hash();
+    rmSync(join(root, 'skill.md'));
+    writeFileSync(join(root, 'skill.md'), 'skills/first/SKILL.md');
+    assert.equal(hash(), linked);
+  },
+);
