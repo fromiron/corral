@@ -17,7 +17,7 @@ gate는 순서대로 의존성 버전·Node/peer 호환성, contracts:check, lin
 
 ## 현재 후보와 live 결과
 
-source SHA256은 Git이 추적하는 파일 및 ignore되지 않은 새 파일의 경로·내용을 정렬해 계산한다. 수정되거나 삭제된 파일도 반영한다. 생성 결과와 credential, DB, `test-results/`는 ignore된다. 같은 commit 안의 미커밋 변경도 다른 후보가 된다. 검증 중 소스를 변경하면 다시 실행해야 한다.
+source SHA256은 Git이 추적하는 파일 및 ignore되지 않은 새 파일의 경로·내용을 정렬해 계산한다. 수정되거나 삭제된 파일도 반영한다. 심볼릭 링크는 가리키는 대상의 내용이 아니라 링크에 적힌 경로 문자열로 반영한다. 생성 결과와 credential, DB, `test-results/`는 ignore된다. 같은 commit 안의 미커밋 변경도 다른 후보가 된다. 검증 중 소스를 변경하면 다시 실행해야 한다.
 
 실제 공급자 smoke는 필요할 때 사용자가 명시적으로 실행한다.
 
