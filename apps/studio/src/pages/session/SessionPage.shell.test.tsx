@@ -2,11 +2,11 @@
 import { collaborationCorral } from '@corral/testkit';
 import { act, type ComponentProps } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { registeredCommands } from '../commandRegistry.ts';
-import { FRESH_TREE, treeState, updateTreeState } from '../workbench/fileTreeState.ts';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { registeredCommands } from '../../commandRegistry.ts';
+import { FRESH_TREE, treeState, updateTreeState } from '../../workbench/fileTreeState.ts';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -26,8 +26,8 @@ import {
 // The composer's whole-run confirmation, watched as it renders: a test can tell it never
 // mounted open, not only that it is gone once React settles.
 const stopDialog = vi.hoisted(() => ({ openRenders: 0, open: false }));
-vi.mock('../workbench/session/composer/dialogs.tsx', async (original) => {
-  const actual = await original<typeof import('../workbench/session/composer/dialogs.tsx')>();
+vi.mock('../../workbench/session/composer/dialogs.tsx', async (original) => {
+  const actual = await original<typeof import('../../workbench/session/composer/dialogs.tsx')>();
   return {
     ...actual,
     StopRunDialog: (props: ComponentProps<typeof actual.StopRunDialog>) => {
@@ -42,8 +42,8 @@ vi.mock('../workbench/session/composer/dialogs.tsx', async (original) => {
 // and jsdom runs neither Monaco nor xterm. The stores beneath them are the real ones.
 // The settings dialog's general section, standing in for a form with unsaved changes.
 const unsavedSettings = vi.hoisted(() => ({ dirty: false }));
-vi.mock('./AppearanceSettings.tsx', async () => {
-  const { useSettingsForm } = await import('../workbench/SettingsLifecycle.tsx');
+vi.mock('../AppearanceSettings.tsx', async () => {
+  const { useSettingsForm } = await import('../../workbench/SettingsLifecycle.tsx');
   return {
     AppearanceSettings: () => {
       useSettingsForm({ dirty: unsavedSettings.dirty });
@@ -54,8 +54,8 @@ vi.mock('./AppearanceSettings.tsx', async () => {
 
 // The advice arrivals the conversation's rows are given, by run and request.
 const adviceArrivals = vi.hoisted(() => ({ seen: new Set<string>() }));
-vi.mock('../workbench/adviceArrival.ts', async (original) => {
-  const actual = await original<typeof import('../workbench/adviceArrival.ts')>();
+vi.mock('../../workbench/adviceArrival.ts', async (original) => {
+  const actual = await original<typeof import('../../workbench/adviceArrival.ts')>();
   return {
     ...actual,
     useAdviceArrivalRequest: (...args: Parameters<typeof actual.useAdviceArrivalRequest>) => {
@@ -68,8 +68,8 @@ vi.mock('../workbench/adviceArrival.ts', async (original) => {
 
 // The Git view with something staged: its commit message field on screen.
 const gitStaged = vi.hoisted(() => ({ on: false }));
-vi.mock('../workbench/GitPanel.tsx', async (original) => {
-  const actual = await original<typeof import('../workbench/GitPanel.tsx')>();
+vi.mock('../../workbench/GitPanel.tsx', async (original) => {
+  const actual = await original<typeof import('../../workbench/GitPanel.tsx')>();
   return {
     ...actual,
     GitPanel: (props: ComponentProps<typeof actual.GitPanel>) =>
@@ -86,7 +86,7 @@ vi.mock('../workbench/GitPanel.tsx', async (original) => {
 const documentLink = vi.hoisted(() => ({
   current: null as { sessionId: string; search: Record<string, unknown> } | null,
 }));
-vi.mock('../workbench/DockDocumentPanel.tsx', async () => {
+vi.mock('../../workbench/DockDocumentPanel.tsx', async () => {
   const { Link } = await import('@tanstack/react-router');
   return {
     DockDocumentPanel: ({ path }: { path: string }) => (
@@ -109,7 +109,7 @@ vi.mock('../workbench/DockDocumentPanel.tsx', async () => {
 // While `attached` is false the terminal's screen has not attached yet: a way that names the
 // terminal is left waiting for it.
 const terminalScreen = vi.hoisted(() => ({ attached: true }));
-vi.mock('../workbench/terminals/TerminalView.tsx', () => ({
+vi.mock('../../workbench/terminals/TerminalView.tsx', () => ({
   TerminalView: ({ terminalId }: { terminalId: string }) =>
     terminalScreen.attached ? (
       <section data-testid="terminal-leaf" data-terminal-screen="" tabIndex={-1}>
@@ -124,8 +124,8 @@ vi.mock('../workbench/terminals/TerminalView.tsx', () => ({
 const desktopShell = vi.hoisted(() => ({
   commands: null as ((id: string) => void)[] | null,
 }));
-vi.mock('../desktop.tsx', async (original) => {
-  const actual = await original<typeof import('../desktop.tsx')>();
+vi.mock('../../desktop.tsx', async (original) => {
+  const actual = await original<typeof import('../../desktop.tsx')>();
   const bridge = new Proxy(
     {},
     {

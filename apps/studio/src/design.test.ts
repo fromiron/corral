@@ -167,7 +167,7 @@ describe('design guard (Workbench polish P0)', () => {
   it('uses one select on the workbench screens, never a native one', () => {
     const workbench = [
       ...files(join(root, 'apps/studio/src/workbench'), /\.tsx$/),
-      join(root, 'apps/studio/src/pages/SessionPage.tsx'),
+      join(root, 'apps/studio/src/pages/session/SessionPage.tsx'),
       join(root, 'apps/studio/src/pages/RootLayout.tsx'),
       join(root, 'apps/studio/src/pages/Workbench.tsx'),
     ];

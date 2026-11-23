@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
-import { PANEL_WIDTH_KEY } from '../workbench/panel/width.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
+import { PANEL_WIDTH_KEY } from '../../workbench/panel/width.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -19,7 +19,7 @@ import {
 // 300px column beside the selected 문서 tab, and 파일 leaves the strip while a 문서 tab is open.
 // The document's editor is the document panel's own, stood in for here.
 
-vi.mock('../workbench/DockDocumentPanel.tsx', () => ({
+vi.mock('../../workbench/DockDocumentPanel.tsx', () => ({
   DockDocumentPanel: ({ path }: { path: string }) => <div data-testid="document-leaf">{path}</div>,
 }));
 

@@ -3,15 +3,15 @@ import { ApiError } from '@corral/client';
 import { createTextAttachment } from '@corral/core';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import type { AnnotateContext } from '../annotate/protocol.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { AnnotateContext } from '../../annotate/protocol.ts';
 import {
   createFakeBrowserBridge,
   type FakeBrowserBridge,
-} from '../workbench/browser/fakeBrowserBridge.ts';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
-import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
+} from '../../workbench/browser/fakeBrowserBridge.ts';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
+import { readComposerDraft, writeComposerDraft } from '../../workbench/sessionDraft.ts';
 import {
   createShellWorld,
   mountShell,

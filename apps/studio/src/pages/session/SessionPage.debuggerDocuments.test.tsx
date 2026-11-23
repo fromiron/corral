@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { act, useContext } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SourceNavigationContext } from '../../workbench/context/SourceAttachments.tsx';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -21,10 +21,10 @@ import {
 // the focus stays in the debugger. The debugger stands in as a list of frames; the document's
 // editor is the document panel's own, stood in for too.
 
-vi.mock('../workbench/DockDocumentPanel.tsx', () => ({
+vi.mock('../../workbench/DockDocumentPanel.tsx', () => ({
   DockDocumentPanel: ({ path }: { path: string }) => <div data-testid="document-leaf">{path}</div>,
 }));
-vi.mock('../workbench/DebuggerPanel.tsx', () => ({
+vi.mock('../../workbench/DebuggerPanel.tsx', () => ({
   DebuggerPanel: ({ sessionId, projectId }: { sessionId: string; projectId: string }) => {
     const navigation = useContext(SourceNavigationContext);
     const target = {

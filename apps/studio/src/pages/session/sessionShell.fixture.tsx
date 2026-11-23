@@ -14,18 +14,18 @@ import { createMemoryHistory, RouterProvider } from '@tanstack/react-router';
 import { act, StrictMode } from 'react';
 import { createRoot, type Root } from 'react-dom/client';
 import { vi } from 'vitest';
-import { DemoWorkspace } from '../demo/workspace.ts';
-import { createDemoWorkspaces } from '../demo/workspaces-client.ts';
-import type { DemoWorkspaceMethod } from '../demo-protocol.ts';
-import { LocaleProvider } from '../locale.tsx';
-import { createStudioRouter } from '../router.tsx';
-import { createRunSessions } from '../runSessions.ts';
-import { ServicesProvider, type StudioServices } from '../services.tsx';
-import type { RecoveryDraft } from '../workbench/documents/recovery.ts';
-import { type DocumentStore, documentKey, documentStore } from '../workbench/documents/store.ts';
-import { WorkAreaWidthContext } from '../workbench/panel/workAreaWidth.ts';
-import { StudioDesignKit } from '../workbench/StudioDesignKit.tsx';
-import { type TerminalStore, terminalStore } from '../workbench/terminals/store.ts';
+import { DemoWorkspace } from '../../demo/workspace.ts';
+import { createDemoWorkspaces } from '../../demo/workspaces-client.ts';
+import type { DemoWorkspaceMethod } from '../../demo-protocol.ts';
+import { LocaleProvider } from '../../locale.tsx';
+import { createStudioRouter } from '../../router.tsx';
+import { createRunSessions } from '../../runSessions.ts';
+import { ServicesProvider, type StudioServices } from '../../services.tsx';
+import type { RecoveryDraft } from '../../workbench/documents/recovery.ts';
+import { type DocumentStore, documentKey, documentStore } from '../../workbench/documents/store.ts';
+import { WorkAreaWidthContext } from '../../workbench/panel/workAreaWidth.ts';
+import { StudioDesignKit } from '../../workbench/StudioDesignKit.tsx';
+import { type TerminalStore, terminalStore } from '../../workbench/terminals/store.ts';
 
 // The whole app on a memory history, over the in-process runtime the demo worker runs: a real
 // Coordinator with scripted agents, a real repository on this window's storage, and the run

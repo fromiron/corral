@@ -3,20 +3,20 @@
 import type { WorkspacePreview } from '@corral/client';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import type { StudioServices } from '../services.tsx';
-import { effectiveShortcuts } from '../shortcuts.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { StudioServices } from '../../services.tsx';
+import { effectiveShortcuts } from '../../shortcuts.ts';
 import {
   createFakeBrowserBridge,
   type FakeBrowserBridge,
-} from '../workbench/browser/fakeBrowserBridge.ts';
-import { holdPages } from '../workbench/browser/overlap.ts';
+} from '../../workbench/browser/fakeBrowserBridge.ts';
+import { holdPages } from '../../workbench/browser/overlap.ts';
 import {
   panelMemoryKey,
   parsePanelMemory,
   serializePanelMemory,
-} from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
+} from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -1137,7 +1137,7 @@ it('다른 대화의 탭이 권한을 요청한다 → 이 대화에는 줄이 �
 });
 
 const download = (
-  patch: Partial<import('../../../desktop/src/browser-bridge.ts').BrowserDownload>,
+  patch: Partial<import('../../../../desktop/src/browser-bridge.ts').BrowserDownload>,
 ) => ({
   downloadId: 'd_1',
   tabId: 'b_one',

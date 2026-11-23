@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { dockMemoryKey, serializeDockMemory } from '../workbench/panel/dock.ts';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { dockMemoryKey, serializeDockMemory } from '../../workbench/panel/dock.ts';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -20,7 +20,7 @@ import {
 // the ⋯ menu moves it across, and the addresses that name a terminal open it where it is. The
 // terminal list is the fixture's fake host; nothing here runs a shell.
 
-vi.mock('../workbench/terminals/TerminalView.tsx', () => ({
+vi.mock('../../workbench/terminals/TerminalView.tsx', () => ({
   TerminalView: ({ terminalId, onExit }: { terminalId: string; onExit?: () => void }) => (
     <section data-testid="terminal-leaf" data-terminal-screen="" tabIndex={-1}>
       <textarea aria-label="terminal input" data-terminal-input={terminalId} />

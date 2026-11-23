@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { editorWorkingCopy } from '../workbench/editorDraft.ts';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { editorWorkingCopy } from '../../workbench/editorDraft.ts';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
 import {
   createShellWorld,
   type MountedShell,

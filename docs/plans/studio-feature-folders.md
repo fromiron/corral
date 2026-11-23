@@ -18,7 +18,7 @@
 | M7 | `pages/meeting/` | 끝 |
 | M8 | `pages/editor/` | 끝 |
 | M9 | `pages/library/` | 끝 |
-| M10 | `pages/session/` | 할 일 |
+| M10 | `pages/session/` | 끝 |
 | M11 | `pages/models/` | 할 일 |
 | M12 | `pages/shell/` | 할 일 |
 | M13 | `pages/run/` | 할 일 |

@@ -14,9 +14,12 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { appendComposerAttachment, beginAttachmentCapture } from '../workbench/context/bridge.ts';
-import { readComposerDraft, writeComposerDraft } from '../workbench/sessionDraft.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import {
+  appendComposerAttachment,
+  beginAttachmentCapture,
+} from '../../workbench/context/bridge.ts';
+import { readComposerDraft, writeComposerDraft } from '../../workbench/sessionDraft.ts';
 import { Composer } from './SessionPage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -24,18 +27,18 @@ const fixture = vi.hoisted(() => ({
   invalidate: vi.fn(async () => {}),
   navigate: vi.fn(),
   href: '/sessions/session?panel=files',
-  profiles: null as import('../workbench/useModels.ts').ProfileInfo[] | null,
+  profiles: null as import('../../workbench/useModels.ts').ProfileInfo[] | null,
   roles: [] as { profileId: string; name: string }[],
   executionStatus: 'active' as string,
   materialsRequest: vi.fn(
     async (_path: string, _body?: unknown): Promise<unknown> => ({ materials: [] }),
   ),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../projects-api.ts', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../projects-api.ts', () => ({
   projectRequest: (...args: [string, unknown?]) => fixture.materialsRequest(...args),
 }));
-vi.mock('../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
+vi.mock('../../router.tsx', () => ({ sessionRoute: {}, runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: ReactNode }) => <a href="#session">{children}</a>,
   useNavigate: () => fixture.navigate,
@@ -44,35 +47,35 @@ vi.mock('@tanstack/react-router', () => ({
     state: { location: { href: fixture.href } },
   }),
 }));
-vi.mock('../commandRegistry.ts', () => ({
+vi.mock('../../commandRegistry.ts', () => ({
   useRegisterCommands() {},
   useRegisteredCommands: () => [],
 }));
-vi.mock('../shortcutBindings.ts', async (original) => ({
-  ...(await original<typeof import('../shortcutBindings.ts')>()),
+vi.mock('../../shortcutBindings.ts', async (original) => ({
+  ...(await original<typeof import('../../shortcutBindings.ts')>()),
   useShortcutBindings() {},
 }));
-vi.mock('./Workbench.tsx', () => ({
+vi.mock('../Workbench.tsx', () => ({
   useRemembered: (_key: string, initial: boolean) => useState(initial),
 }));
-vi.mock('../workbench/navigation.ts', () => ({
+vi.mock('../../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
-vi.mock('../workbench/useModels.ts', () => ({
+vi.mock('../../workbench/useModels.ts', () => ({
   useModelProfiles: () => fixture.profiles,
   useTeamRoles: () => fixture.roles,
 }));
-vi.mock('../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
+vi.mock('../../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
 // The activity bar has its own tests (ComposerActivity.test.tsx); here it only holds its place.
-vi.mock('../workbench/session/ComposerActivity.tsx', () => ({
+vi.mock('../../workbench/session/ComposerActivity.tsx', () => ({
   ComposerActivity: () => (
     <div data-testid="activity-bar">
       <div data-testid="composer-plan-fixture">Work plan</div>
     </div>
   ),
 }));
-vi.mock('../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
-vi.mock('../workbench/ImageAttachments.tsx', () => ({
+vi.mock('../../workbench/widgets/ComposerStats.tsx', () => ({ ComposerStats: () => null }));
+vi.mock('../../workbench/ImageAttachments.tsx', () => ({
   ImageAttachmentPicker: () => null,
   ImageAttachmentList: () => null,
 }));

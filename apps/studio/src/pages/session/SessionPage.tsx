@@ -21,50 +21,53 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
-import { setCurrentProject } from '../projects.ts';
-import { sessionRoute } from '../router.tsx';
-import { modalConfirmationOpen } from '../workbench/modalConfirmation.ts';
-import { panelKey, type SessionPanel } from '../workbench/panels/registry.ts';
-import { type SessionSearch, sessionPanelDescriptor } from '../workbench/panels/routes.ts';
+import { setCurrentProject } from '../../projects.ts';
+import { sessionRoute } from '../../router.tsx';
+import { modalConfirmationOpen } from '../../workbench/modalConfirmation.ts';
+import { panelKey, type SessionPanel } from '../../workbench/panels/registry.ts';
+import { type SessionSearch, sessionPanelDescriptor } from '../../workbench/panels/routes.ts';
 
-export type { SessionPanel } from '../workbench/panels/registry.ts';
-export { Composer } from '../workbench/session/Composer.tsx';
+export type { SessionPanel } from '../../workbench/panels/registry.ts';
+export { Composer } from '../../workbench/session/Composer.tsx';
 
-import { useServices } from '../services.tsx';
-import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
+import { useServices } from '../../services.tsx';
+import { ArchivedSessionNotice } from '../../workbench/ArchivedSessionNotice.tsx';
 import {
   AdviceArrival,
   type AdviceRequest,
   useAdviceArrivalRequest,
-} from '../workbench/adviceArrival.ts';
+} from '../../workbench/adviceArrival.ts';
 import {
   BrowserAnnotateProvider,
   BrowserAnnouncer,
   ComposerAnnotateContext,
   ComposerAnnotateRegistry,
   useBrowserAnnotate,
-} from '../workbench/browser/annotate.tsx';
-import { BrowserTab } from '../workbench/browser/BrowserTab.tsx';
-import { BrowserTabsProvider, useBrowserTabs } from '../workbench/browser/browserTabs.tsx';
-import { type PreviewTabs, PreviewTabsContext } from '../workbench/browser/previewTabs.tsx';
-import { usePageHoldSwitch } from '../workbench/browser/usePageStill.ts';
-import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
-import { SourceNavigationContext } from '../workbench/context/SourceAttachments.tsx';
-import { DebuggerPanel } from '../workbench/DebuggerPanel.tsx';
-import { DocumentCloseDialog } from '../workbench/documents/DocumentCloseDialog.tsx';
+} from '../../workbench/browser/annotate.tsx';
+import { BrowserTab } from '../../workbench/browser/BrowserTab.tsx';
+import { BrowserTabsProvider, useBrowserTabs } from '../../workbench/browser/browserTabs.tsx';
+import { type PreviewTabs, PreviewTabsContext } from '../../workbench/browser/previewTabs.tsx';
+import { usePageHoldSwitch } from '../../workbench/browser/usePageStill.ts';
+import {
+  type AttachmentCapture,
+  appendComposerAttachment,
+} from '../../workbench/context/bridge.ts';
+import { SourceNavigationContext } from '../../workbench/context/SourceAttachments.tsx';
+import { DebuggerPanel } from '../../workbench/DebuggerPanel.tsx';
+import { DocumentCloseDialog } from '../../workbench/documents/DocumentCloseDialog.tsx';
 import {
   type CloseChoice,
   type DocumentStore,
   documentStore,
-} from '../workbench/documents/store.ts';
+} from '../../workbench/documents/store.ts';
 import {
   FilePanel,
   type FileReference,
   type OpenDocumentRequest,
-} from '../workbench/FilePanel.tsx';
-import { forgetTreeState } from '../workbench/fileTreeState.ts';
-import { ProblemsPanel } from '../workbench/ProblemsPanel.tsx';
-import { deviceStorage } from '../workbench/panel/memory.ts';
+} from '../../workbench/FilePanel.tsx';
+import { forgetTreeState } from '../../workbench/fileTreeState.ts';
+import { ProblemsPanel } from '../../workbench/ProblemsPanel.tsx';
+import { deviceStorage } from '../../workbench/panel/memory.ts';
 import {
   conversationOperable,
   DOCUMENT_LIMIT,
@@ -74,9 +77,12 @@ import {
   panelOnScreen,
   toggleAvailable,
   treeColumn,
-} from '../workbench/panel/model.ts';
-import { runControlPlace, stopCommandRoute } from '../workbench/panel/runControls.ts';
-import { RunHeadControlsContext, StopCommandContext } from '../workbench/panel/runHeadControls.ts';
+} from '../../workbench/panel/model.ts';
+import { runControlPlace, stopCommandRoute } from '../../workbench/panel/runControls.ts';
+import {
+  RunHeadControlsContext,
+  StopCommandContext,
+} from '../../workbench/panel/runHeadControls.ts';
 import {
   type CopyIdentity,
   PANEL_TAB_OF,
@@ -85,8 +91,8 @@ import {
   type TabKey,
   tabKey,
   targetTab,
-} from '../workbench/panel/tabs.ts';
-import { newBrowserId, runStatusOf, usePanelFrame } from '../workbench/panel/usePanelFrame.ts';
+} from '../../workbench/panel/tabs.ts';
+import { newBrowserId, runStatusOf, usePanelFrame } from '../../workbench/panel/usePanelFrame.ts';
 import {
   CONVERSATION_MIN_WIDTH,
   drawerWidth,
@@ -94,44 +100,47 @@ import {
   panelWidth,
   readPanelWidth,
   writePanelWidth,
-} from '../workbench/panel/width.ts';
-import { useGivenWorkAreaWidth } from '../workbench/panel/workAreaWidth.ts';
-import { sessionRunViews } from '../workbench/panelRun.ts';
-import { QuickOpen, requestFileReveal } from '../workbench/QuickOpen.tsx';
-import { SessionChangesPanel } from '../workbench/SessionChangesPanel.tsx';
-import { ChangesTabShownContext } from '../workbench/session/ComposerActivity.tsx';
-import { DocumentTab, documentViewId } from '../workbench/session/DocumentTab.tsx';
-import { documentTabFor } from '../workbench/session/documentTarget.ts';
-import { OriginalDocumentTab } from '../workbench/session/OriginalDocumentTab.tsx';
+} from '../../workbench/panel/width.ts';
+import { useGivenWorkAreaWidth } from '../../workbench/panel/workAreaWidth.ts';
+import { sessionRunViews } from '../../workbench/panelRun.ts';
+import { QuickOpen, requestFileReveal } from '../../workbench/QuickOpen.tsx';
+import { SessionChangesPanel } from '../../workbench/SessionChangesPanel.tsx';
+import { ChangesTabShownContext } from '../../workbench/session/ComposerActivity.tsx';
+import { DocumentTab, documentViewId } from '../../workbench/session/DocumentTab.tsx';
+import { documentTabFor } from '../../workbench/session/documentTarget.ts';
+import { OriginalDocumentTab } from '../../workbench/session/OriginalDocumentTab.tsx';
 import {
   createPendingTrayStore,
   PendingTrayContext,
   revealPendingTray,
-} from '../workbench/session/PendingTray.tsx';
-import { SessionActions } from '../workbench/session/SessionActions.tsx';
-import { SessionChat } from '../workbench/session/SessionChat.tsx';
-import { PANEL_ID_PREFIX, SessionPanelSide } from '../workbench/session/SessionPanelSide.tsx';
+} from '../../workbench/session/PendingTray.tsx';
+import { SessionActions } from '../../workbench/session/SessionActions.tsx';
+import { SessionChat } from '../../workbench/session/SessionChat.tsx';
+import { PANEL_ID_PREFIX, SessionPanelSide } from '../../workbench/session/SessionPanelSide.tsx';
 import {
   ArtifactsPanel,
   ChecksPanel,
   RunPanel,
   useRunNames,
-} from '../workbench/session/SessionPanels.tsx';
-import { useSourceReread } from '../workbench/session/sourceReread.ts';
-import { useDocumentRestore } from '../workbench/session/useDocumentRestore.ts';
-import { type FocusTarget, useSessionDockArea } from '../workbench/session/useSessionDockArea.tsx';
-import { useUnsavedTabs } from '../workbench/session/useUnsavedTabs.ts';
-import { OpenTerminalContext } from '../workbench/TerminalWriterNotice.tsx';
-import { terminalStore } from '../workbench/terminals/store.ts';
-import { TerminalScreen } from '../workbench/terminals/TerminalScreen.tsx';
-import { useTerminalList } from '../workbench/terminals/useTerminalList.ts';
-import { useSessionRuns } from '../workbench/useSessionRuns.ts';
-import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
-import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
-import { TeamDesign } from './editor/EditorPage.tsx';
-import { useBinding } from './FilesViews.tsx';
-import { MeetingPage } from './meeting/MeetingPage.tsx';
+} from '../../workbench/session/SessionPanels.tsx';
+import { useSourceReread } from '../../workbench/session/sourceReread.ts';
+import { useDocumentRestore } from '../../workbench/session/useDocumentRestore.ts';
+import {
+  type FocusTarget,
+  useSessionDockArea,
+} from '../../workbench/session/useSessionDockArea.tsx';
+import { useUnsavedTabs } from '../../workbench/session/useUnsavedTabs.ts';
+import { OpenTerminalContext } from '../../workbench/TerminalWriterNotice.tsx';
+import { terminalStore } from '../../workbench/terminals/store.ts';
+import { TerminalScreen } from '../../workbench/terminals/TerminalScreen.tsx';
+import { useTerminalList } from '../../workbench/terminals/useTerminalList.ts';
+import { useSessionRuns } from '../../workbench/useSessionRuns.ts';
+import { WorkbenchToolsPanel } from '../../workbench/WorkbenchToolsPanel.tsx';
+import { ChatWidgetProvider } from '../../workbench/widgets/useChatWidgets.tsx';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
+import { TeamDesign } from '../editor/EditorPage.tsx';
+import { useBinding } from '../FilesViews.tsx';
+import { MeetingPage } from '../meeting/MeetingPage.tsx';
 
 // A work session: what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.

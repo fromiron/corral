@@ -1,14 +1,14 @@
 // @vitest-environment jsdom
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import {
   panelMemoryKey,
   parsePanelMemory,
   serializePanelMemory,
-} from '../workbench/panel/memory.ts';
-import type { PanelTab, TabKey } from '../workbench/panel/tabs.ts';
-import { PANEL_WIDTH_KEY } from '../workbench/panel/width.ts';
+} from '../../workbench/panel/memory.ts';
+import type { PanelTab, TabKey } from '../../workbench/panel/tabs.ts';
+import { PANEL_WIDTH_KEY } from '../../workbench/panel/width.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -26,10 +26,10 @@ import {
 // in its place when it leaves a draft. The editor inside is the document panel's own (its tests
 // cover it), stood in for here.
 
-vi.mock('../workbench/DockDocumentPanel.tsx', () => ({
+vi.mock('../../workbench/DockDocumentPanel.tsx', () => ({
   DockDocumentPanel: ({ path }: { path: string }) => <div data-testid="document-leaf">{path}</div>,
 }));
-vi.mock('../workbench/PierreCode.tsx', () => ({
+vi.mock('../../workbench/PierreCode.tsx', () => ({
   SourceCode: ({ text }: { text: string }) => <pre data-testid="source-code">{text}</pre>,
 }));
 

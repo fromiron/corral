@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { act, useSyncExternalStore } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { registeredCommands } from '../commandRegistry.ts';
-import { dockMemoryKey, serializeDockMemory } from '../workbench/panel/dock.ts';
-import { panelMemoryKey, serializePanelMemory } from '../workbench/panel/memory.ts';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { registeredCommands } from '../../commandRegistry.ts';
+import { dockMemoryKey, serializeDockMemory } from '../../workbench/panel/dock.ts';
+import { panelMemoryKey, serializePanelMemory } from '../../workbench/panel/memory.ts';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
 import {
   createShellWorld,
   type MountedShell,
@@ -41,7 +41,7 @@ const screens = vi.hoisted(() => {
     },
   };
 });
-vi.mock('../workbench/terminals/TerminalView.tsx', () => ({
+vi.mock('../../workbench/terminals/TerminalView.tsx', () => ({
   TerminalView: ({ terminalId }: { terminalId: string }) => {
     const held = useSyncExternalStore(screens.subscribe, () => screens.value.held);
     return held ? null : (

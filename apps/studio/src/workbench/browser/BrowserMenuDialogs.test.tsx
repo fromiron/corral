@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { stubBrowser } from '../../pages/sessionShell.fixture.tsx';
+import { stubBrowser } from '../../pages/session/sessionShell.fixture.tsx';
 import { SitePermissionsDialog } from './BrowserMenuDialogs.tsx';
 import { createFakeBrowserBridge } from './fakeBrowserBridge.ts';
 
