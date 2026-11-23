@@ -791,7 +791,7 @@ it('bundled content is reviewed and pinned, only bound entries are exposed, and 
     ['core', 6],
     ['browser', 1],
     ['coding', 16],
-    ['design', 10],
+    ['design', 11],
   ] as const) {
     const review = await service.discoverBuiltin(id);
     expect(review.resource.skills).toHaveLength(count);

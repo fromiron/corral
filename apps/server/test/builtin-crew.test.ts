@@ -80,6 +80,44 @@ describe('built-in skills', () => {
         ).toBe(true);
   });
 
+  it('pin the design pack to one upstream commit and version wherever it is named', () => {
+    const commit = '4af91ab0be506de2323d5a6548c284a745bf1af3';
+    const version = '0.8.0';
+    const design = join(BUILTIN_ROOT, 'design');
+    const notice = readFileSync(join(design, 'NOTICE.md'), 'utf8');
+    expect(notice).toContain(`Pinned commit: ${commit}\n`);
+    expect(notice).toContain(`Version: ${version}\n`);
+    expect(JSON.parse(readFileSync(join(design, 'package.json'), 'utf8')).version).toBe(version);
+    const manifest = JSON.parse(readFileSync(join(BUILTIN_ROOT, 'manifest.json'), 'utf8'));
+    expect(manifest.design.source).toBe(`leeskills@${commit}`);
+    const skills = BUILTIN_SKILLS.filter((skill) => skill.pack === 'design');
+    expect(skills.map((skill) => skill.name)).toContain('map-flows');
+    expect(manifest.design.skills).toBe(skills.length);
+    const label = (language: string) =>
+      JSON.parse(
+        readFileSync(
+          join(BUILTIN_ROOT, '../../../../packages/react/src/messages', `${language}.json`),
+          'utf8',
+        ),
+      );
+    const find = (messages: unknown): string | undefined => {
+      if (!messages || typeof messages !== 'object') return undefined;
+      const packs = (messages as Record<string, unknown>).builtinPacks as
+        | Record<string, string>
+        | undefined;
+      if (packs?.design) return packs.design;
+      for (const value of Object.values(messages)) {
+        const found = find(value);
+        if (found) return found;
+      }
+      return undefined;
+    };
+    expect(find(label('en'))).toBe(
+      `leeskills · ${skills.length} design skills (pinned ${version})`,
+    );
+    expect(find(label('ko'))).toBe(`디자인 검토 · 스킬 ${skills.length}개 (고정 버전 ${version})`);
+  });
+
   it('name each skill that breaks the format, and why', () => {
     const tree = copyTree();
     const skill = (path: string) => join(tree.root, path, 'SKILL.md');
