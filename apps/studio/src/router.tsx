@@ -498,7 +498,7 @@ export const compareRoute = createRoute({
 });
 
 function createPerformanceRoute() {
-  const PerformancePage = lazy(() => import('./pages/PerformancePage.tsx'));
+  const PerformancePage = lazy(() => import('./pages/performance/PerformancePage.tsx'));
   return createRoute({
     getParentRoute: () => rootRoute,
     path: '/performance',

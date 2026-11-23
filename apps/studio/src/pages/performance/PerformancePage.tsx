@@ -11,7 +11,7 @@ import {
 } from '@corral/react';
 import { useLayoutEffect, useState } from 'react';
 import { useStore } from 'zustand';
-import { useSkillLabel } from '../workbench/RoleSkills.tsx';
+import { useSkillLabel } from '../../workbench/RoleSkills.tsx';
 
 // Only bundled in MODE=performance. All replay, commands and frames use the local server.
 const params = new URLSearchParams(location.search);

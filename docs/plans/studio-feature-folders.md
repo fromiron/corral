@@ -9,7 +9,7 @@
 | 단계 | 내용 | 상태 |
 |---|---|---|
 | S0 | 이 계획 | 끝 |
-| M1 | `pages/performance/` | 할 일 |
+| M1 | `pages/performance/` | 끝 |
 | M2 | `pages/schedules/` | 할 일 |
 | M3 | `pages/compare/` | 할 일 |
 | M4 | `pages/projects/` | 할 일 |
