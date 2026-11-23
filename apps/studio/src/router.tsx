@@ -8,7 +8,7 @@ import {
 } from '@tanstack/react-router';
 import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
-import { ComparePage } from './pages/ComparePage.tsx';
+import { ComparePage } from './pages/compare/ComparePage.tsx';
 import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
 import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';

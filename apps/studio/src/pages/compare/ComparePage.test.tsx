@@ -5,8 +5,8 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { projectionWith } from '../../../../packages/react/src/stories/fixtures.tsx';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { projectionWith } from '../../../../../packages/react/src/stories/fixtures.tsx';
 import { ComparePage } from './ComparePage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -16,10 +16,10 @@ const fixture = vi.hoisted(() => ({
   }),
   services: {},
 }));
-vi.mock('../router.tsx', () => ({ compareRoute: { useSearch: () => fixture.search } }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../prices.ts', () => ({ useModelPrices: () => undefined }));
-vi.mock('../projects.ts', () => ({ currentProject: () => 'project_current' }));
+vi.mock('../../router.tsx', () => ({ compareRoute: { useSearch: () => fixture.search } }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../prices.ts', () => ({ useModelPrices: () => undefined }));
+vi.mock('../../projects.ts', () => ({ currentProject: () => 'project_current' }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     children,

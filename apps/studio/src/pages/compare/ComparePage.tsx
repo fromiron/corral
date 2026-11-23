@@ -3,11 +3,11 @@ import { fontWeights } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useModelPrices } from '../prices.ts';
-import { currentProject } from '../projects.ts';
-import { compareRoute } from '../router.tsx';
-import { useServices } from '../services.tsx';
-import { runIdentity, runIdentityText } from '../workbench/runIdentity.ts';
+import { useModelPrices } from '../../prices.ts';
+import { currentProject } from '../../projects.ts';
+import { compareRoute } from '../../router.tsx';
+import { useServices } from '../../services.tsx';
+import { runIdentity, runIdentityText } from '../../workbench/runIdentity.ts';
 
 /** `/compare?a=&b=`: two runs side by side. Reads only; nothing is started. */
 export function ComparePage() {
