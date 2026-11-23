@@ -17,7 +17,7 @@ import { operationId } from '../../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../../workbench/navigation.ts';
 import { SectionIndex } from '../../workbench/SectionIndex.tsx';
 import { useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
-import { SettingsLayout } from '../SettingsPage.tsx';
+import { SettingsLayout } from '../settings/SettingsPage.tsx';
 
 export function SkillSettingsPage() {
   const { harnesses } = useServices();

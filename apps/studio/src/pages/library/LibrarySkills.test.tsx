@@ -56,7 +56,7 @@ function projectServices() {
 }
 let services: Pick<StudioServices, 'agents' | 'repository'> & { harnesses: typeof api | null };
 vi.mock('../../services.tsx', () => ({ useServices: () => services }));
-vi.mock('../SettingsPage.tsx', () => ({
+vi.mock('../settings/SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({

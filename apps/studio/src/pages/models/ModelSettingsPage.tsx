@@ -3,7 +3,7 @@ import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
 import { ModelSettingsRefresh, useModelSettings } from '../../workbench/modelSettings.tsx';
-import { SettingsLayout } from '../SettingsPage.tsx';
+import { SettingsLayout } from '../settings/SettingsPage.tsx';
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
 import { EffortRoutingSettings } from './EffortRoutingSettings.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';

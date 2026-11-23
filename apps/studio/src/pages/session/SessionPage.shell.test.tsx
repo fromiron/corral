@@ -42,7 +42,7 @@ vi.mock('../../workbench/session/composer/dialogs.tsx', async (original) => {
 // and jsdom runs neither Monaco nor xterm. The stores beneath them are the real ones.
 // The settings dialog's general section, standing in for a form with unsaved changes.
 const unsavedSettings = vi.hoisted(() => ({ dirty: false }));
-vi.mock('../AppearanceSettings.tsx', async () => {
+vi.mock('../settings/AppearanceSettings.tsx', async () => {
   const { useSettingsForm } = await import('../../workbench/SettingsLifecycle.tsx');
   return {
     AppearanceSettings: () => {

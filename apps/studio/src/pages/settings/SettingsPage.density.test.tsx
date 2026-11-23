@@ -3,13 +3,13 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { parsePreferences, preferences } from '../workbench/preferences.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { parsePreferences, preferences } from '../../workbench/preferences.ts';
 import { SettingsPage } from './SettingsPage.tsx';
 
-vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
-vi.mock('../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
-vi.mock('./FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
+vi.mock('../../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
+vi.mock('../FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
 vi.mock('./ProjectToolSettings.tsx', () => ({ WorkspaceToolSettings: () => null }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }));
 vi.mock('@corral/react/design-kit', async (original) => ({

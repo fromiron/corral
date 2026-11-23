@@ -16,7 +16,7 @@ vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => async () => true,
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('../SettingsPage.tsx', () => ({
+vi.mock('../settings/SettingsPage.tsx', () => ({
   // The frame's description line, as SettingsLayout draws it under the section title.
   SettingsLayout: ({
     children,

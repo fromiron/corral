@@ -2,8 +2,8 @@ import { Button, cn, LiveDot } from '@corral/react/design-kit';
 import { CircleAlert, CircleCheck, Info, TriangleAlert } from '@corral/react/icons';
 import type { CSSProperties, ReactNode } from 'react';
 import { useTranslations } from 'use-intl';
-import type { Palette, PaletteBase, SyntaxColor } from '../workbench/themes/palette.ts';
-import { paletteTokens } from '../workbench/themes/tokens.ts';
+import type { Palette, PaletteBase, SyntaxColor } from '../../workbench/themes/palette.ts';
+import { paletteTokens } from '../../workbench/themes/tokens.ts';
 
 /**
  * A subtree drawn in one theme whatever the app shows now: a named theme's tokens from the theme

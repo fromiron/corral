@@ -3,19 +3,19 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { PREFERENCES_KEY, parsePreferences, preferences } from '../workbench/preferences.ts';
-import { applyAppearance, chooseAppearance } from '../workbench/themes/appearance.ts';
-import { BUILTIN_THEMES } from '../workbench/themes/builtin.ts';
-import { addPersonalTheme, loadPersonalThemes } from '../workbench/themes/storage.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { PREFERENCES_KEY, parsePreferences, preferences } from '../../workbench/preferences.ts';
+import { applyAppearance, chooseAppearance } from '../../workbench/themes/appearance.ts';
+import { BUILTIN_THEMES } from '../../workbench/themes/builtin.ts';
+import { addPersonalTheme, loadPersonalThemes } from '../../workbench/themes/storage.ts';
 import { SettingsPage } from './SettingsPage.tsx';
 
 // Settings › General's Appearance gallery (docs/specs/features/themes.md, 사용자 관측 동작): one
 // choice among cards, each a picture of the app in that theme.
 
-vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
-vi.mock('../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
-vi.mock('./FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
+vi.mock('../../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
+vi.mock('../FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
 vi.mock('./ProjectToolSettings.tsx', () => ({ WorkspaceToolSettings: () => null }));
 vi.mock('@tanstack/react-router', () => ({ useNavigate: () => vi.fn() }));
 

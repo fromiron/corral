@@ -7,7 +7,7 @@ import {
 import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { projectToolValues } from './projectToolValues.ts';
 
 const emptyAdapter = { id: '', name: '', argv: '', seconds: '30' };

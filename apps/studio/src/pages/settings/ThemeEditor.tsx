@@ -23,9 +23,9 @@ import {
   useState,
 } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useSettingsForm } from '../workbench/SettingsLifecycle.tsx';
-import { chooseAppearance, endPreview, previewPalette } from '../workbench/themes/appearance.ts';
-import { contrastRatio } from '../workbench/themes/color.ts';
+import { useSettingsForm } from '../../workbench/SettingsLifecycle.tsx';
+import { chooseAppearance, endPreview, previewPalette } from '../../workbench/themes/appearance.ts';
+import { contrastRatio } from '../../workbench/themes/color.ts';
 import {
   PALETTE_NAME_MAX,
   type Palette,
@@ -35,14 +35,14 @@ import {
   type SyntaxColor,
   UI_COLORS,
   type UiColor,
-} from '../workbench/themes/palette.ts';
+} from '../../workbench/themes/palette.ts';
 import {
   addPersonalTheme,
   personalThemes,
   type ThemeSaveError,
   updatePersonalTheme,
-} from '../workbench/themes/storage.ts';
-import { legibleText } from '../workbench/themes/tokens.ts';
+} from '../../workbench/themes/storage.ts';
+import { legibleText } from '../../workbench/themes/tokens.ts';
 import { SettingsScroll } from './SettingsScroll.tsx';
 import { ThemeSample } from './ThemePreview.tsx';
 

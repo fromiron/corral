@@ -14,7 +14,7 @@ import { McpEditor, mcpDraft } from '../../workbench/harness/McpEditor.tsx';
 import { operationId } from '../../workbench/harness/Target.tsx';
 import { useSettingsNavigation } from '../../workbench/navigation.ts';
 import { useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
-import { SettingsLayout } from '../SettingsPage.tsx';
+import { SettingsLayout } from '../settings/SettingsPage.tsx';
 
 export function McpSettingsPage() {
   const { harnesses } = useServices(),

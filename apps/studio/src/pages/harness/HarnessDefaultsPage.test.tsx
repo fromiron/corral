@@ -16,7 +16,7 @@ vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
 vi.mock('../../workbench/ScopeLadder.tsx', () => ({ ScopeLadder: () => null }));
-vi.mock('../SettingsPage.tsx', () => ({
+vi.mock('../settings/SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));

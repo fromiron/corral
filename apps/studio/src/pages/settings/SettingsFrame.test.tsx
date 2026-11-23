@@ -11,14 +11,14 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SettingsNavigationContext, type SettingsSection } from '../workbench/navigation.ts';
-import { SettingsContent } from '../workbench/SettingsContent.tsx';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SettingsNavigationContext, type SettingsSection } from '../../workbench/navigation.ts';
+import { SettingsContent } from '../../workbench/SettingsContent.tsx';
 
 // The settings dialog's content frame owns the one section heading (docs/specs/workbench.md#문맥형-설정).
 
 const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {

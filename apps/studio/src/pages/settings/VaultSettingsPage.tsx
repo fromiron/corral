@@ -17,14 +17,14 @@ import {
 } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useLocale } from '../locale.tsx';
-import { projectName } from '../projects.ts';
-import { useServices } from '../services.tsx';
+import { useLocale } from '../../locale.tsx';
+import { projectName } from '../../projects.ts';
+import { useServices } from '../../services.tsx';
 import {
   applyPortablePreferences,
   portablePreferences,
-} from '../workbench/portable-preferences.ts';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+} from '../../workbench/portable-preferences.ts';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 type Choice = { value: string; label: string };

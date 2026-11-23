@@ -4,13 +4,13 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import type { WorkspacesClient } from '../demo/workspaces-client.ts';
-import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { WorkspacesClient } from '../../demo/workspaces-client.ts';
+import { SettingsNavigationContext } from '../../workbench/navigation.ts';
 import { DiagnosticsSettingsPage } from './DiagnosticsSettingsPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('./SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => children,
 }));

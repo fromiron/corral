@@ -11,33 +11,37 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { PREFERENCES_KEY, parsePreferences, preferences } from '../workbench/preferences.ts';
-import { SettingsLeavePrompt, SettingsLifecycle } from '../workbench/SettingsLifecycle.tsx';
-import { applyAppearance, chooseAppearance, endPreview } from '../workbench/themes/appearance.ts';
-import { BUILTIN_THEMES } from '../workbench/themes/builtin.ts';
-import { serializeTheme } from '../workbench/themes/json.ts';
-import type { Palette } from '../workbench/themes/palette.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { PREFERENCES_KEY, parsePreferences, preferences } from '../../workbench/preferences.ts';
+import { SettingsLeavePrompt, SettingsLifecycle } from '../../workbench/SettingsLifecycle.tsx';
+import {
+  applyAppearance,
+  chooseAppearance,
+  endPreview,
+} from '../../workbench/themes/appearance.ts';
+import { BUILTIN_THEMES } from '../../workbench/themes/builtin.ts';
+import { serializeTheme } from '../../workbench/themes/json.ts';
+import type { Palette } from '../../workbench/themes/palette.ts';
 import {
   addPersonalTheme,
   loadPersonalThemes,
   PERSONAL_THEME_LIMIT,
   PERSONAL_THEMES_KEY,
   personalThemes,
-} from '../workbench/themes/storage.ts';
-import { PALETTE_TOKENS } from '../workbench/themes/tokens.ts';
+} from '../../workbench/themes/storage.ts';
+import { PALETTE_TOKENS } from '../../workbench/themes/tokens.ts';
 import { SettingsPage } from './SettingsPage.tsx';
 
 // Personal themes in Settings › General (docs/specs/features/themes.md, 개인 테마 and its
 // acceptance scenarios): their cards in the Appearance gallery, the editor with its sample, color
 // tiles, kit picker and contrast marks, export, import, delete and the cap.
 
-vi.mock('../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
-vi.mock('../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
-vi.mock('./FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ mode: 'browser' }) }));
+vi.mock('../../CommandPalette.tsx', () => ({ ShortcutTable: () => null }));
+vi.mock('../FilesViews.tsx', () => ({ WorkFolderSection: () => null }));
 vi.mock('./ProjectToolSettings.tsx', () => ({ WorkspaceToolSettings: () => null }));
 // jsdom has no canvas: the screen's resolved kit colors, by the side showing now.
-vi.mock('../workbench/theme-colors.ts', () => ({
+vi.mock('../../workbench/theme-colors.ts', () => ({
   resolvedThemeColors: (names: readonly string[]) => {
     const dark = document.documentElement.classList.contains('dark');
     const screen: Record<string, string> = dark

@@ -18,7 +18,7 @@ import {
 import { Ellipsis, Plus } from '@corral/react/icons';
 import { type ReactNode, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { usePreferences } from '../workbench/preferences.ts';
+import { usePreferences } from '../../workbench/preferences.ts';
 import {
   type Appearance,
   appearanceOf,
@@ -26,17 +26,17 @@ import {
   applyAppearance,
   chooseAppearance,
   deletePersonalTheme,
-} from '../workbench/themes/appearance.ts';
-import { BUILTIN_THEMES } from '../workbench/themes/builtin.ts';
-import { defaultPalette } from '../workbench/themes/default.ts';
-import { serializeTheme, themeFileName } from '../workbench/themes/json.ts';
+} from '../../workbench/themes/appearance.ts';
+import { BUILTIN_THEMES } from '../../workbench/themes/builtin.ts';
+import { defaultPalette } from '../../workbench/themes/default.ts';
+import { serializeTheme, themeFileName } from '../../workbench/themes/json.ts';
 import {
   builtinPaletteId,
   PALETTE_NAME_MAX,
   type Palette,
   personalPaletteId,
   TERMINAL_COLOR_COUNT,
-} from '../workbench/themes/palette.ts';
+} from '../../workbench/themes/palette.ts';
 import {
   importPersonalTheme,
   numberedName,
@@ -44,7 +44,7 @@ import {
   type PersonalTheme,
   type ThemeSaveError,
   usePersonalThemes,
-} from '../workbench/themes/storage.ts';
+} from '../../workbench/themes/storage.ts';
 import type { ThemeEditorTarget } from './ThemeEditor.tsx';
 import { SystemThumbnail, ThemeThumbnail } from './ThemePreview.tsx';
 

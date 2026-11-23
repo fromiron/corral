@@ -25,7 +25,7 @@
 | M14 | `workbench/harness/`에 `McpConnection` | 끝 |
 | M15 | `pages/harness/` | 끝 |
 | M16 | `pages/changes/` | 끝 |
-| M17 | `pages/settings/` | 할 일 |
+| M17 | `pages/settings/` | 끝 |
 | E | 마무리 확인: smoke E2E 한 번 | 할 일 |
 | L | 기능 폴더 경계 lint, 끝나면 이 계획 삭제 | 할 일, 따로 정한다 |
 

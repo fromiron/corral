@@ -3,7 +3,7 @@ import { type ProjectToolConfigRevision, RegisteredDeployment } from '@corral/co
 import { Button, fontWeights, Input, Textarea } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { projectToolValues } from './projectToolValues.ts';
 
 const empty = {

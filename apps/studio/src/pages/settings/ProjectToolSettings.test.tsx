@@ -9,9 +9,9 @@ import { ProjectToolSettings } from './ProjectToolSettings.tsx';
 vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => ({}) }));
-vi.mock('./FilesViews.tsx', () => ({ WORKSPACE_CHANGED: 'corral:workspace-changed' }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({}) }));
+vi.mock('../FilesViews.tsx', () => ({ WORKSPACE_CHANGED: 'corral:workspace-changed' }));
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => async (task: () => Promise<void>) => task(),
 }));

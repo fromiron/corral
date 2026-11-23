@@ -3,7 +3,7 @@ import { Button, KitBadge } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
+import { useServices } from '../../services.tsx';
 import {
   type DiagnosticCause,
   type DiagnosticRow,
@@ -12,10 +12,10 @@ import {
   diagnosticRows,
   diagnosticsSummary,
   displayVersion,
-} from '../workbench/diagnostics.ts';
-import { useModelSettings } from '../workbench/modelSettings.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { useBinding } from './FilesViews.tsx';
+} from '../../workbench/diagnostics.ts';
+import { useModelSettings } from '../../workbench/modelSettings.tsx';
+import { useSettingsNavigation } from '../../workbench/navigation.ts';
+import { useBinding } from '../FilesViews.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
 const TONE_COLOR = {

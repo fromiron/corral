@@ -31,7 +31,7 @@ const api = {
   resource: vi.fn(pending),
 };
 vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
-vi.mock('../SettingsPage.tsx', () => ({
+vi.mock('../settings/SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));

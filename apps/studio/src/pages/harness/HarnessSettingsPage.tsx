@@ -34,7 +34,7 @@ import {
   useSettingsForm,
   useSettingsTask,
 } from '../../workbench/SettingsLifecycle.tsx';
-import { SettingsLayout } from '../SettingsPage.tsx';
+import { SettingsLayout } from '../settings/SettingsPage.tsx';
 import { HarnessMcpTools } from './HarnessMcpTools.tsx';
 
 const emptyProfile = (): HarnessProfile => ({

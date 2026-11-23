@@ -1,11 +1,11 @@
-import { DiagnosticsSettingsPage } from '../pages/DiagnosticsSettingsPage.tsx';
 import { HarnessDefaultsPage } from '../pages/harness/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from '../pages/harness/HarnessSettingsPage.tsx';
 import { McpSettingsPage } from '../pages/harness/McpSettingsPage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from '../pages/harness/ResourceSettingsPage.tsx';
 import { ModelSettingsPage } from '../pages/models/ModelSettingsPage.tsx';
-import { SettingsPage } from '../pages/SettingsPage.tsx';
-import { VaultSettingsPage } from '../pages/VaultSettingsPage.tsx';
+import { DiagnosticsSettingsPage } from '../pages/settings/DiagnosticsSettingsPage.tsx';
+import { SettingsPage } from '../pages/settings/SettingsPage.tsx';
+import { VaultSettingsPage } from '../pages/settings/VaultSettingsPage.tsx';
 
 /** The standalone routes and the workbench dialog use the same forms. */
 export function SettingsContent({ section }: { section: string }) {

@@ -7,7 +7,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { DeploymentSettings } from './DeploymentSettings.tsx';
 
 vi.mock('use-intl', () => ({ useTranslations: () => (key: string) => key }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: vi.fn(),
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));

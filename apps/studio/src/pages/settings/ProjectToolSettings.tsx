@@ -3,11 +3,11 @@ import { type ProjectToolConfigRevision, RegisteredLspServer } from '@corral/con
 import { Button, fontWeights, Input, Textarea } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useServices } from '../../services.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { WORKSPACE_CHANGED } from '../FilesViews.tsx';
 import { DebuggerSettings } from './DebuggerSettings.tsx';
 import { DeploymentSettings } from './DeploymentSettings.tsx';
-import { WORKSPACE_CHANGED } from './FilesViews.tsx';
 import { projectToolValues } from './projectToolValues.ts';
 
 const empty = { id: '', name: '', argv: '', languages: '', extensions: '', seconds: '30' };
