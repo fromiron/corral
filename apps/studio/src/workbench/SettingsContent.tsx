@@ -1,9 +1,9 @@
 import { DiagnosticsSettingsPage } from '../pages/DiagnosticsSettingsPage.tsx';
-import { HarnessDefaultsPage } from '../pages/HarnessDefaultsPage.tsx';
-import { HarnessSettingsPage } from '../pages/HarnessSettingsPage.tsx';
-import { McpSettingsPage } from '../pages/McpSettingsPage.tsx';
+import { HarnessDefaultsPage } from '../pages/harness/HarnessDefaultsPage.tsx';
+import { HarnessSettingsPage } from '../pages/harness/HarnessSettingsPage.tsx';
+import { McpSettingsPage } from '../pages/harness/McpSettingsPage.tsx';
+import { HookSettingsPage, SkillSettingsPage } from '../pages/harness/ResourceSettingsPage.tsx';
 import { ModelSettingsPage } from '../pages/models/ModelSettingsPage.tsx';
-import { HookSettingsPage, SkillSettingsPage } from '../pages/ResourceSettingsPage.tsx';
 import { SettingsPage } from '../pages/SettingsPage.tsx';
 import { VaultSettingsPage } from '../pages/VaultSettingsPage.tsx';
 

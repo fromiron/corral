@@ -7,16 +7,16 @@ import { HarnessDefaultsPage } from './HarnessDefaultsPage.tsx';
 
 const fixture = vi.hoisted(() => ({ api: {} as HarnessApi, text: (key: string) => key }));
 vi.mock('use-intl', () => ({ useTranslations: () => fixture.text }));
-vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: fixture.api }) }));
-vi.mock('../workbench/navigation.ts', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: fixture.api }) }));
+vi.mock('../../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ projectId: 'project', link: () => ({}) }),
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('../workbench/ScopeLadder.tsx', () => ({ ScopeLadder: () => null }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../../workbench/ScopeLadder.tsx', () => ({ ScopeLadder: () => null }));
+vi.mock('../SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: React.ReactNode }) => children,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));

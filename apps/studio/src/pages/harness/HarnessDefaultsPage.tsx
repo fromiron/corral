@@ -3,11 +3,11 @@ import { Button, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { ScopeLadder } from '../workbench/ScopeLadder.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsLayout } from './SettingsPage.tsx';
+import { useServices } from '../../services.tsx';
+import { useSettingsNavigation } from '../../workbench/navigation.ts';
+import { ScopeLadder } from '../../workbench/ScopeLadder.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { SettingsLayout } from '../SettingsPage.tsx';
 
 const bindingKey = (value: HarnessDefault) =>
   value.binding ? `${value.binding.profileId}:${value.binding.revision}` : '';

@@ -25,7 +25,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import type { StudioServices } from '../../services.tsx';
 import { SettingsNavigationContext, standaloneSettingsLink } from '../../workbench/navigation.ts';
-import { SkillSettingsPage } from '../ResourceSettingsPage.tsx';
+import { SkillSettingsPage } from '../harness/ResourceSettingsPage.tsx';
 import { LibrarySkills } from './LibrarySkills.tsx';
 
 const api = {

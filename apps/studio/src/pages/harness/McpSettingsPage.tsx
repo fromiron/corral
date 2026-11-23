@@ -6,15 +6,15 @@ import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
-import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
-import { McpConnection } from '../workbench/harness/McpConnection.tsx';
-import { McpEditor, mcpDraft } from '../workbench/harness/McpEditor.tsx';
-import { operationId } from '../workbench/harness/Target.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsLayout } from './SettingsPage.tsx';
+import { useServices } from '../../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../../workbench/chosenRow.ts';
+import { useManagementConfirmation } from '../../workbench/harness/ConfirmAction.tsx';
+import { McpConnection } from '../../workbench/harness/McpConnection.tsx';
+import { McpEditor, mcpDraft } from '../../workbench/harness/McpEditor.tsx';
+import { operationId } from '../../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../../workbench/navigation.ts';
+import { useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { SettingsLayout } from '../SettingsPage.tsx';
 
 export function McpSettingsPage() {
   const { harnesses } = useServices(),

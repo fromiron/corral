@@ -18,7 +18,7 @@ vi.mock('@corral/react', async (importOriginal) => ({
 vi.mock('./navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
-vi.mock('../pages/HarnessSettingsPage.tsx', () => ({ HarnessPreviewView: () => null }));
+vi.mock('../pages/harness/HarnessSettingsPage.tsx', () => ({ HarnessPreviewView: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, 'aria-label': label }: { children?: unknown; 'aria-label'?: string }) => (
     <a href="/" aria-label={label}>

@@ -5,18 +5,18 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SettingsNavigationContext } from '../workbench/navigation.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SettingsNavigationContext } from '../../workbench/navigation.ts';
 import { HarnessSettingsPage } from './HarnessSettingsPage.tsx';
 
 const fixture = vi.hoisted(() => ({ api: {} as HarnessApi }));
-vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: fixture.api }) }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: fixture.api }) }));
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsCommand: () => ({ current: null }),
   useSettingsForm: () => async () => true,
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../SettingsPage.tsx', () => ({
   // The frame's description line, as SettingsLayout draws it under the section title.
   SettingsLayout: ({
     children,
@@ -38,7 +38,7 @@ vi.mock('./SettingsPage.tsx', () => ({
   ),
 }));
 vi.mock('./HarnessMcpTools.tsx', () => ({ HarnessMcpTools: () => null }));
-vi.mock('../workbench/harness/PermissionPolicyEditor.tsx', () => ({
+vi.mock('../../workbench/harness/PermissionPolicyEditor.tsx', () => ({
   PermissionPolicyEditor: () => null,
 }));
 vi.mock('@tanstack/react-router', () => ({

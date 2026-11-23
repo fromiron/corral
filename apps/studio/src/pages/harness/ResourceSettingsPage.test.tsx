@@ -3,8 +3,8 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider, useTranslations } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import { HookSettingsPage } from './ResourceSettingsPage.tsx';
 
 const api = {
@@ -14,24 +14,24 @@ const api = {
   trust: vi.fn(async () => {}),
 };
 const navigation = vi.hoisted(() => ({ item: undefined as string | undefined }));
-vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
+vi.mock('../SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
-vi.mock('../workbench/navigation.ts', () => ({
+vi.mock('../../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ item: navigation.item, link: () => ({ to: '/' }) }),
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
 }));
-vi.mock('../workbench/harness/ConfirmAction.tsx', () => ({
+vi.mock('../../workbench/harness/ConfirmAction.tsx', () => ({
   useManagementConfirmation: () => ({ request: () => {}, dialog: null }),
 }));
-vi.mock('../workbench/harness/ResourceEditor.tsx', () => ({ ResourceEditor: () => null }));
-vi.mock('../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
+vi.mock('../../workbench/harness/ResourceEditor.tsx', () => ({ ResourceEditor: () => null }));
+vi.mock('../../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
 // The package manager's own section starts with its heading, as the real one does.
-vi.mock('../workbench/harness/PackageManager.tsx', () => ({
+vi.mock('../../workbench/harness/PackageManager.tsx', () => ({
   PackageManager: function Packages() {
     const t = useTranslations('Packages');
     return (

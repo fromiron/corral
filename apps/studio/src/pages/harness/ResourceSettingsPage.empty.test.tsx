@@ -4,7 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { SkillSettingsPage } from './ResourceSettingsPage.tsx';
 
 const SKILL = {
@@ -30,30 +30,30 @@ const api = {
   readEntry: vi.fn(pending),
   resource: vi.fn(pending),
 };
-vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
+vi.mock('../SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
-vi.mock('../workbench/navigation.ts', () => ({
+vi.mock('../../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
 }));
-vi.mock('../workbench/harness/ConfirmAction.tsx', () => ({
+vi.mock('../../workbench/harness/ConfirmAction.tsx', () => ({
   useManagementConfirmation: () => ({ request: () => {}, dialog: null }),
 }));
 // The editor saves the one skill the library then lists.
-vi.mock('../workbench/harness/ResourceEditor.tsx', () => ({
+vi.mock('../../workbench/harness/ResourceEditor.tsx', () => ({
   ResourceEditor: ({ onSaved }: { onSaved: (hash: string, entry?: string) => void }) => (
     <button type="button" onClick={() => onSaved('h1', 'skills/SKILL.md')}>
       Save skill
     </button>
   ),
 }));
-vi.mock('../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
-vi.mock('../workbench/harness/PackageManager.tsx', () => ({ PackageManager: () => null }));
+vi.mock('../../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
+vi.mock('../../workbench/harness/PackageManager.tsx', () => ({ PackageManager: () => null }));
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {

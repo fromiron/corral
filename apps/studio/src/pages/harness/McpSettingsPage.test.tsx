@@ -4,7 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { McpSettingsPage } from './McpSettingsPage.tsx';
 
 const config = (mcpServers: ProjectToolConfigRevision['mcpServers']) =>
@@ -32,27 +32,27 @@ const api = {
   mcpHistory: vi.fn(async () => []),
   mcpUsages: vi.fn(async () => []),
 };
-vi.mock('../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({ harnesses: api }) }));
+vi.mock('../SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => <>{children}</>,
 }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null }));
 const navigation = vi.hoisted(() => ({ item: undefined as string | undefined }));
-vi.mock('../workbench/navigation.ts', () => ({
+vi.mock('../../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({
     projectId: 'p1',
     item: navigation.item,
     link: () => ({ to: '/' }),
   }),
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
 }));
-vi.mock('../workbench/harness/ConfirmAction.tsx', () => ({
+vi.mock('../../workbench/harness/ConfirmAction.tsx', () => ({
   useManagementConfirmation: () => ({ request: () => {}, dialog: null }),
 }));
 // The editor saves the one server the page then lists.
-vi.mock('../workbench/harness/McpEditor.tsx', () => ({
+vi.mock('../../workbench/harness/McpEditor.tsx', () => ({
   mcpDraft: () => ({}),
   McpEditor: ({ onSaved }: { onSaved: (saved: ProjectToolConfigRevision) => void }) => (
     <button type="button" onClick={() => onSaved(SAVED)}>
@@ -60,7 +60,7 @@ vi.mock('../workbench/harness/McpEditor.tsx', () => ({
     </button>
   ),
 }));
-vi.mock('../workbench/harness/McpConnection.tsx', () => ({ McpConnection: () => null }));
+vi.mock('../../workbench/harness/McpConnection.tsx', () => ({ McpConnection: () => null }));
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {

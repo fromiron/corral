@@ -23,7 +23,7 @@
 | M12 | `pages/shell/` | 끝 |
 | M13 | `pages/run/` | 끝 |
 | M14 | `workbench/harness/`에 `McpConnection` | 끝 |
-| M15 | `pages/harness/` | 할 일 |
+| M15 | `pages/harness/` | 끝 |
 | M16 | `pages/changes/` | 할 일 |
 | M17 | `pages/settings/` | 할 일 |
 | E | 마무리 확인: smoke E2E 한 번 | 할 일 |

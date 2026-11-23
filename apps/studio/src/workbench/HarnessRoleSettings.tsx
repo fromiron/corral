@@ -11,7 +11,7 @@ import { Button, fontWeights, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
+import { HarnessPreviewView } from '../pages/harness/HarnessSettingsPage.tsx';
 import { useServices } from '../services.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 

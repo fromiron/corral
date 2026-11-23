@@ -9,7 +9,7 @@ import type {
 import { Button, Select } from '@corral/react/design-kit';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { HarnessPreviewView } from '../pages/HarnessSettingsPage.tsx';
+import { HarnessPreviewView } from '../pages/harness/HarnessSettingsPage.tsx';
 import { useServices } from '../services.tsx';
 import { McpPreviewProblem, RoleHarnessProblem } from './HarnessRoleSettings.tsx';
 

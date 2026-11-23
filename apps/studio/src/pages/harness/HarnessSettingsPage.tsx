@@ -22,20 +22,20 @@ import {
 import { Link } from '@tanstack/react-router';
 import { useEffect, useEffectEvent, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { CHOSEN_BUTTON_ROW } from '../workbench/chosenRow.ts';
-import { useManagementConfirmation } from '../workbench/harness/ConfirmAction.tsx';
-import { PermissionPolicyEditor } from '../workbench/harness/PermissionPolicyEditor.tsx';
-import { updateResourceSelection } from '../workbench/harness/selection.ts';
-import { operationId, profileInput } from '../workbench/harness/Target.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { useServices } from '../../services.tsx';
+import { CHOSEN_BUTTON_ROW } from '../../workbench/chosenRow.ts';
+import { useManagementConfirmation } from '../../workbench/harness/ConfirmAction.tsx';
+import { PermissionPolicyEditor } from '../../workbench/harness/PermissionPolicyEditor.tsx';
+import { updateResourceSelection } from '../../workbench/harness/selection.ts';
+import { operationId, profileInput } from '../../workbench/harness/Target.tsx';
+import { useSettingsNavigation } from '../../workbench/navigation.ts';
 import {
   useSettingsCommand,
   useSettingsForm,
   useSettingsTask,
-} from '../workbench/SettingsLifecycle.tsx';
+} from '../../workbench/SettingsLifecycle.tsx';
+import { SettingsLayout } from '../SettingsPage.tsx';
 import { HarnessMcpTools } from './HarnessMcpTools.tsx';
-import { SettingsLayout } from './SettingsPage.tsx';
 
 const emptyProfile = (): HarnessProfile => ({
   name: '',
