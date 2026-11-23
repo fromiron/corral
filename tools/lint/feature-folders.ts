@@ -1,6 +1,6 @@
 // Studio's feature folders stay closed: a file outside apps/studio/src/pages/<feature>/ imports
 // only that folder's entry, and tests and stories may also import its fixtures. The rules are in
-// docs/plans/studio-feature-folders.md (경계 규칙). Each file's count of crossing imports is held
+// docs/specs/architecture.md (Studio 화면 폴더). Each file's count of crossing imports is held
 // in feature-folders.baseline.json, and the ratchet fails when one rises.
 
 import { posix } from 'node:path';
