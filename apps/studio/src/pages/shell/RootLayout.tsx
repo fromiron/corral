@@ -27,21 +27,21 @@ import {
 } from '@tanstack/react-router';
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { useTranslations } from 'use-intl';
-import { CommandLayer } from '../CommandPalette.tsx';
-import { OPEN_PALETTE, useRegisterCommands } from '../commandRegistry.ts';
-import { desktop, onTopbarDoubleClick } from '../desktop.tsx';
-import { useServices } from '../services.tsx';
-import { SESSION_MISSING } from '../sessionConnection.ts';
-import { useShortcutBindings } from '../shortcutBindings.ts';
-import { shortcutLabel } from '../shortcuts.ts';
-import type { WorkspaceTemplateId } from '../templates.ts';
-import { documentStore } from '../workbench/documents/store.ts';
+import { CommandLayer } from '../../CommandPalette.tsx';
+import { OPEN_PALETTE, useRegisterCommands } from '../../commandRegistry.ts';
+import { desktop, onTopbarDoubleClick } from '../../desktop.tsx';
+import { useServices } from '../../services.tsx';
+import { SESSION_MISSING } from '../../sessionConnection.ts';
+import { useShortcutBindings } from '../../shortcutBindings.ts';
+import { shortcutLabel } from '../../shortcuts.ts';
+import type { WorkspaceTemplateId } from '../../templates.ts';
+import { documentStore } from '../../workbench/documents/store.ts';
 import {
   hasUnsavedEditorCopy,
   newEditorName,
   subscribeEditorCopies,
-} from '../workbench/editorDraft.ts';
-import { NEW_MEETING, NewMeetingHost } from '../workbench/NewMeeting.tsx';
+} from '../../workbench/editorDraft.ts';
+import { NEW_MEETING, NewMeetingHost } from '../../workbench/NewMeeting.tsx';
 import {
   SettingsNavigationContext,
   settingsClosedState,
@@ -52,22 +52,22 @@ import {
   withoutSettings,
   withoutSettingsItem,
   workHref,
-} from '../workbench/navigation.ts';
-import { useRecordHistoryActions } from '../workbench/panel/historyActions.ts';
-import { changePreferences, usePreferences } from '../workbench/preferences.ts';
-import { ScheduledRunNotifications } from '../workbench/ScheduledRunNotifications.tsx';
-import { useSessionJump } from '../workbench/SessionJump.tsx';
-import { SettingsDialog } from '../workbench/SettingsDialog.tsx';
+} from '../../workbench/navigation.ts';
+import { useRecordHistoryActions } from '../../workbench/panel/historyActions.ts';
+import { changePreferences, usePreferences } from '../../workbench/preferences.ts';
+import { ScheduledRunNotifications } from '../../workbench/ScheduledRunNotifications.tsx';
+import { useSessionJump } from '../../workbench/SessionJump.tsx';
+import { SettingsDialog } from '../../workbench/SettingsDialog.tsx';
 import {
   SettingsLeavePrompt,
   SettingsLifecycle,
   SettingsOperationStatus,
-} from '../workbench/SettingsLifecycle.tsx';
-import { Sidebar, useCorralSidebar } from '../workbench/Sidebar.tsx';
-import { outsidePage, TopbarPath } from '../workbench/TopbarPath.tsx';
-import { TopbarBar, TopbarFit, TopbarSlotContext } from '../workbench/TopbarSlot.tsx';
-import { appliedAppearance, applyAppearance } from '../workbench/themes/appearance.ts';
-import { personalThemes } from '../workbench/themes/storage.ts';
+} from '../../workbench/SettingsLifecycle.tsx';
+import { Sidebar, useCorralSidebar } from '../../workbench/Sidebar.tsx';
+import { outsidePage, TopbarPath } from '../../workbench/TopbarPath.tsx';
+import { TopbarBar, TopbarFit, TopbarSlotContext } from '../../workbench/TopbarSlot.tsx';
+import { appliedAppearance, applyAppearance } from '../../workbench/themes/appearance.ts';
+import { personalThemes } from '../../workbench/themes/storage.ts';
 
 export function RootLayout() {
   return (

@@ -20,10 +20,10 @@ import { PreviewPage, validatePreviewSearch } from './pages/preview/PreviewPage.
 import { ProjectsPage } from './pages/projects/ProjectsPage.tsx';
 import { WorkspacePage } from './pages/projects/WorkspacePage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
-import { ErrorView, NotFoundView, RootLayout } from './pages/RootLayout.tsx';
 import { RunPage } from './pages/RunPage.tsx';
 import { ScheduledPage } from './pages/schedules/ScheduledPage.tsx';
 import { SessionPage } from './pages/session/SessionPage.tsx';
+import { ErrorView, NotFoundView, RootLayout } from './pages/shell/RootLayout.tsx';
 import { VaultSettingsPage } from './pages/VaultSettingsPage.tsx';
 import { currentProject, projectOfRun } from './projects.ts';
 import type { StudioServices } from './services.tsx';

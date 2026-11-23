@@ -17,8 +17,8 @@ vi.mock('./services.tsx', () => ({
   ServicesProvider: () => null,
 }));
 vi.mock('./router.tsx', () => ({ createStudioRouter: () => ({}) }));
-vi.mock('./pages/RootLayout.tsx', () => ({ SessionMissingView: () => null }));
-vi.mock('./pages/StartupFailure.tsx', () => ({ StartupFailure: () => null }));
+vi.mock('./pages/shell/RootLayout.tsx', () => ({ SessionMissingView: () => null }));
+vi.mock('./pages/shell/StartupFailure.tsx', () => ({ StartupFailure: () => null }));
 vi.mock('./locale.tsx', () => ({ LocaleProvider: () => null }));
 vi.mock('./workbench/StudioDesignKit.tsx', () => ({ StudioDesignKit: () => null }));
 vi.mock('./desktop.tsx', () => ({ desktop: undefined }));
