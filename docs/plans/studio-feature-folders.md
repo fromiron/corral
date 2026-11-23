@@ -26,8 +26,8 @@
 | M15 | `pages/harness/` | 끝 |
 | M16 | `pages/changes/` | 끝 |
 | M17 | `pages/settings/` | 끝 |
-| E | 마무리 확인: smoke E2E 한 번 | 할 일 |
-| L | 기능 폴더 경계 lint, 끝나면 이 계획 삭제 | 할 일, 따로 정한다 |
+| E | 마무리 확인: smoke E2E 한 번, 끝나면 이 계획 삭제 | 할 일 |
+| L | 기능 폴더 경계 lint: `tools/lint/feature-folders.ts` | 끝 |
 
 단계 순서는 밖에서 그 폴더의 파일을 가리키는 파일(import, `vi.mock`, 경로를 읽는 테스트, 문서 링크)이 적은 것부터다. 각 단계의 수는 [단계별 고칠 곳](#단계별-고칠-곳)에 있다.
 
@@ -184,4 +184,4 @@ done | sort -u
 7. 공용 세 파일(`FilesViews.tsx`, `Workbench.tsx`, `GettingStarted.tsx`)과 `FilesViews`의 테스트 셋은 `pages/` 맨 위에 둔다.
 8. 설정은 `settings`, `harness`, `models` 셋으로 나눈다.
 9. 이동은 합쳐지지 않은 옛 브랜치를 기다리지 않는다.
-10. 경계 lint의 방식은 L 단계에서 시험해 정한다.
+10. 경계 lint는 `pnpm lint`가 돌리는 ratchet 규칙 `tools/lint/feature-folders.ts`다. 경계를 넘는 import를 파일마다 세어 `tools/lint/feature-folders.baseline.json`과 비교하고, 늘면 실패한다. 시작할 때 넘는 import는 없어 기준선이 비어 있다.

@@ -4,9 +4,10 @@
 import { join } from 'node:path';
 import { comments } from './comments.ts';
 import { effects } from './effects.ts';
+import { featureFolders } from './feature-folders.ts';
 import { run } from './ratchet.ts';
 
-const result = run([effects, comments], {
+const result = run([effects, comments, featureFolders], {
   root: join(import.meta.dirname, '..', '..'),
   update: process.argv.includes('--update'),
 });

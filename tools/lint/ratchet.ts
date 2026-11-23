@@ -21,6 +21,8 @@ export interface Rule {
   /** Whether a repository-relative path is counted at all. */
   includes(path: string): boolean;
   count(path: string, text: string): number;
+  /** Lines printed under a file that rose or has no entry, such as the specifiers it counted. */
+  details?(path: string, text: string): string[];
   messages: {
     rose(path: string, count: number, allowed: number): string;
     added(path: string, count: number): string;
@@ -119,10 +121,18 @@ function compare(rule: Rule, root: string, baseline: Counts, current: Counts): C
   for (const path of [...new Set([...before.keys(), ...now.keys()])].sort()) {
     const allowed = before.get(path);
     const count = now.get(path) ?? 0;
-    if (allowed === undefined) result.problems.push(rule.messages.added(path, count));
-    else if (count > allowed) result.problems.push(rule.messages.rose(path, count, allowed));
-    else if (count === 0 && !existsSync(join(root, path))) result.gone++;
-    else if (count < allowed) result.under++;
+    if (allowed !== undefined && count <= allowed) {
+      if (count === 0 && !existsSync(join(root, path))) result.gone++;
+      else if (count < allowed) result.under++;
+      continue;
+    }
+    result.problems.push(
+      allowed === undefined
+        ? rule.messages.added(path, count)
+        : rule.messages.rose(path, count, allowed),
+    );
+    const details = rule.details?.(path, readFileSync(join(root, path), 'utf8')) ?? [];
+    result.problems.push(...details.map((line) => `  ${line}`));
   }
   return result;
 }
