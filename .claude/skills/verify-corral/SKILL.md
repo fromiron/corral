@@ -5,26 +5,22 @@ description: "Shows a change working in the real Corral Studio UI and leaves evi
 
 # Verify Corral
 
-A test passing says the test passed. This skill shows the change in the browser Studio, one journey at a time, and leaves a run record for each journey walked.
+A passing test says the test passed. This skill shows the change in the browser Studio, one journey at a time, and leaves a run record per journey walked.
 
-Everything here runs from the checkout under test (a worktree is fine). Handles are in **English**: the e2e helpers in `apps/studio/e2e/workbench.ts` read `packages/react/src/messages/en.json`, and the walk pins Studio to `en`.
+Run everything from the root of the checkout under test (a worktree is fine). Handles are **English**: the e2e helpers in `apps/studio/e2e/workbench.ts` read `packages/react/src/messages/en.json`, and the walk pins Studio to `en`.
 
 ## 1. Launch
 
-Pick one mode.
-
 | Mode | Use for | Cannot show |
 |---|---|---|
-| (a) In-browser simulated runtime | Screens and flows that need no server: layout, navigation, the composer, the demo's simulated runs | Anything the server owns: storage across reloads, files and folders, settings that persist, real run events, the security boundary |
-| (b) No-model server + Vite | Everything else in the browser Studio | Answers from a real model, provider sign-in, live search, local AI installs, anything outside the browser |
+| (a) In-browser simulated runtime | Screens that need no server: layout, navigation, the composer, the demo's simulated runs | Anything the server owns: persistence, files and folders, saved settings, real run events, the security boundary |
+| (b) No-model server + Vite | Everything else in the browser Studio | Real model answers, provider sign-in, live search, local AI installs; a stop the agent does not answer in time (the agent-unresponsive scenarios need a mock delay of tens of seconds, which this skill rules out) |
 
-The desktop app (Electron) is not covered; its existing checks are the smoke scripts in `apps/desktop/scripts/` (`smoke.ts`, `native-smoke.ts`).
+The desktop app (Electron) is not covered; its checks are the smoke scripts in `apps/desktop/scripts/`.
 
-Ports 4317, 4318, 5173, 5174, 5179, 6006, 6007 and 4400 belong to other work on the machine. Never use them, and never stop a process you did not start. Both modes take private ports chosen at launch.
+Both modes take free ports from the OS, so they never collide with the fixed ports of the repository's own dev commands and test configs (`tools/dev.ts`, `apps/studio/playwright*.config.ts`, `.claude/launch.json`). Never stop a process you did not start.
 
-Each shell call may start a fresh shell, so the first call writes every value to `$VERIFY/env` and later calls start with `. <that file>`.
-
-**Set up (both modes).** From the root of the checkout under test:
+A shell call may start a fresh shell, so the set-up writes every value to `$VERIFY/env`, and every later call starts with `. <VERIFY>/env` (the path it printed).
 
 ```sh
 VERIFY=$(mktemp -d "${TMPDIR:-/tmp}/corral-verify.XXXXXX")
@@ -34,9 +30,9 @@ printf 'REPO=%s\nVERIFY=%s\nSERVER_PORT=%s\nSTUDIO_PORT=%s\n' "$(pwd)" "$VERIFY"
 cat "$VERIFY/env"
 ```
 
-Run Doctor checks 1 to 4 (section 2) now; nothing starts until they pass.
+Pass Doctor checks 1 to 4 now; nothing starts before they pass.
 
-**Mode (a).** Vite alone, as `pnpm dev` runs it, on the private port:
+**Mode (a)**, Vite alone as `pnpm dev` runs it:
 
 ```sh
 . <VERIFY>/env; cd "$REPO/apps/studio"
@@ -44,9 +40,7 @@ env -u CORRAL_SERVER node node_modules/vite/bin/vite.js --port "$STUDIO_PORT" --
 echo "STUDIO_PID=$!" >> "$VERIFY/env"
 ```
 
-Open `http://localhost:$STUDIO_PORT/`. There is no server and no bootstrap link.
-
-**Mode (b).** The server first, with every home-derived directory pointed into the scratch folder, so it finds no stored sign-in or provider key and writes nothing under the real home. Then Vite, proxying `/api` to it, as `pnpm dev --live` does but on private ports:
+**Mode (b)**: the server, with every home-derived directory inside the scratch folder so it finds no stored sign-in or key and writes nothing under the real home; then Vite proxying `/api` to it, as `pnpm dev --live` does:
 
 ```sh
 . <VERIFY>/env; cd "$REPO"
@@ -60,26 +54,26 @@ env CORRAL_SERVER="http://127.0.0.1:$SERVER_PORT" node node_modules/vite/bin/vit
 echo "STUDIO_PID=$!" >> "$VERIFY/env"
 ```
 
-The page is opened on Vite's origin with the server's token: `http://localhost:$STUDIO_PORT/#bootstrap=<token>`, the token taken from the link in `$VERIFY/server.log`. Never print the token into a record.
+The page opens on Vite's origin with the token from the link in `server.log` (the skeleton in section 3 does this). Never put the token in a record.
 
-`--mock-delay` is how long each simulated agent turn waits, in ms. At 1500 the default scripted run (an Assistant and two Helper executions) is live for about six seconds, long enough to act on a running conversation. Use a few hundred ms when only finished runs matter. Never use tens of seconds: a stop cannot interrupt the delay, so the run ends unconfirmed. To change it, or when a long-lived server stops finishing runs, restart the server instead of waiting: `kill $SERVER_PID`, then run only the server's lines of the block above (from `. <VERIFY>/env; cd "$REPO"` to the `SERVER_PID` line) with the new delay. The same port and workspace are kept, the new `SERVER_PID` is appended, and the last line of `env` wins.
+`--mock-delay` is each simulated agent turn's wait in ms. At 1500 the default scripted run (an Assistant and two Helper executions) is live for about six seconds. Use a few hundred ms when only finished runs matter; never tens of seconds, since a stop cannot interrupt the delay. To change it, or when a long-lived server stops finishing runs, `kill $SERVER_PID` and run only the server lines above again (through the `SERVER_PID` line); the appended `SERVER_PID` wins.
 
 ## 2. Doctor
 
-Pass every check before driving. A failed check is fixed or reported, never skipped. Start each call with `. <VERIFY>/env`.
+Every check passes before driving; a failed one is fixed or reported, never skipped.
 
-1. **Dependencies.** `test -x "$REPO/apps/studio/node_modules/.bin/vite" && echo deps ok` prints `deps ok`. If not, run `pnpm install --frozen-lockfile --offline` in `$REPO`.
-2. **Browser.** `cd "$REPO/apps/studio" && node -e "require('@playwright/test').chromium.launch().then(b=>{console.log('chromium',b.version());return b.close()})"` prints `chromium <version>`.
-3. **Ports free**, before launch: `ss -ltnH "( sport = :$SERVER_PORT or sport = :$STUDIO_PORT )"` prints nothing.
-4. **No other Vite on this checkout**, before launch: the command below prints nothing. Two Vites in one checkout share `node_modules/.vite` and re-optimize under each other, which can disturb someone else's dev server; verify from a separate worktree instead.
+1. **Dependencies.** `test -x "$REPO/apps/studio/node_modules/.bin/vite" && echo deps ok` prints `deps ok`. Otherwise run `pnpm install --frozen-lockfile --offline` in `$REPO`.
+2. **Browser.** `cd "$REPO/apps/studio" && node -e "require('@playwright/test').chromium.launch().then(b=>{console.log('chromium',b.version());return b.close()})"` prints `chromium <version>`. If Chromium is missing, run `pnpm --filter @corral/studio exec playwright install --with-deps chromium` (as CI does), or without `--with-deps` when the system libraries are present.
+3. **Ports free.** `ss -ltnH "( sport = :$SERVER_PORT or sport = :$STUDIO_PORT )"` prints nothing.
+4. **No other Vite on this checkout.** This prints nothing. Two Vites in one checkout share `node_modules/.vite` and re-optimize under each other; verify from another worktree instead.
 
    ```sh
    for p in $(pgrep -f '[v]ite/bin/vite'); do readlink "/proc/$p/cwd"; done | grep -Fx "$REPO/apps/studio"
    ```
 
-5. **Listeners are yours**, after launch: `ss -ltnpH "( sport = :$SERVER_PORT or sport = :$STUDIO_PORT )"` shows one line per port, with `pid=$SERVER_PID` and `pid=$STUDIO_PID` (mode a: the Studio port only). Vite may listen on `[::1]` only; that is fine.
-6. **Server answers**, mode (b): `curl -s "http://127.0.0.1:$SERVER_PORT/api/v1/health"` prints JSON with `"ok":true` and `"live":false`.
-7. **No live model**, mode (b): these print `204`, then `[]`, then `[]`.
+5. **Listeners are yours.** `ss -ltnpH "( sport = :$SERVER_PORT or sport = :$STUDIO_PORT )"` shows `pid=$SERVER_PID` and `pid=$STUDIO_PID` (mode a: the Studio port only). Vite may listen on `[::1]` only.
+6. **Server answers** (b). `curl -s "http://127.0.0.1:$SERVER_PORT/api/v1/health"` prints JSON with `"ok":true` and `"live":false`.
+7. **No live model** (b). These print `204`, `[]`, `[]`. Anything else means a model could be called: clean up and find the leak first. Runs against a real provider are outside this skill; AGENTS.md says who may start them.
 
    ```sh
    TOKEN=$(sed -n 's/.*#bootstrap=\([A-Za-z0-9_-]*\).*/\1/p' "$VERIFY/server.log")
@@ -89,13 +83,12 @@ Pass every check before driving. A failed check is fixed or reported, never skip
    curl -s -b "$VERIFY/cookies" "http://127.0.0.1:$SERVER_PORT/api/v1/model-auth"; echo
    ```
 
-   Anything but `[]` means a model could be called: stop, clean up, and find what leaked before going on. Starting a run against a real provider is outside this skill; AGENTS.md says who may.
-8. **Studio serves this tree.** `readlink "/proc/$STUDIO_PID/cwd"` prints `$REPO/apps/studio`, and `curl -s "http://localhost:$STUDIO_PORT/" | grep -c 'corral-runtime" content="server'` prints `1` in mode (b), `0` in mode (a). From the checkout root, note `git rev-parse HEAD` and `git status --short` now: together they name what the walk saw. A Vite left running across a merge can serve old modules; that is why this skill always launches its own.
-9. **Viewport, locale, runtime.** The drive script's first two lines of output (section 3) read `1280x800 en` and `Corral menu · Local · simulated` in mode (b), `Corral menu · Demo · simulated` in mode (a).
+8. **Studio serves this tree.** `readlink "/proc/$STUDIO_PID/cwd"` prints `$REPO/apps/studio`; `curl -s "http://localhost:$STUDIO_PORT/" | grep -c 'corral-runtime" content="server'` prints `1` in (b), `0` in (a). Note `git rev-parse HEAD` and `git status --short`: they name what the walk saw. Launching fresh is what keeps a Vite from serving modules older than a merge.
+9. **Viewport, locale, runtime.** The walk script's first two output lines are `1280x800 en` and `Corral menu · Local · simulated` in (b), `Corral menu · Demo · simulated` in (a).
 
 ## 3. Drive
 
-Write each journey's walk as its own Node script in `$VERIFY`, never in the repository, named after the journey, and run it with `cd "$VERIFY" && node <journey>.mjs`. Start from this skeleton:
+One Node script per journey, in `$VERIFY` and never in the repository, named after the journey: `cd "$VERIFY" && node <journey>.mjs`. Start from this skeleton:
 
 ```js
 import { createRequire } from 'node:module';
@@ -112,91 +105,98 @@ const page = await context.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));
 page.on('console', (m) => m.type() === 'error' && errors.push(m.text()));
-const walk = new URL(import.meta.url).pathname.split('/').pop().replace(/\.mjs$/, ''); // one script per journey
-const steps = [];
-let n = 0;
+const walk = new URL(import.meta.url).pathname.split('/').pop().replace(/\.mjs$/, '');
+/** On screen for a sighted person; isVisible() and checkVisibility() are also true for sr-only text. */
+const shown = (el) => { if (!el.checkVisibility()) return false; for (let e = el; e; e = e.parentElement) { const s = getComputedStyle(e), r = e.getBoundingClientRect(); if (s.clipPath === 'inset(50%)' || (s.overflow === 'hidden' && r.width <= 1 && r.height <= 1)) return false; } return true; };
 /** Finite animations and transitions have ended; spinners and scroll-driven effects run on. */
 const still = () => !document.getAnimations().some((a) => { const t = a.effect?.getComputedTiming(); return a.playState === 'running' && typeof t?.duration === 'number' && t.iterations !== Infinity; });
-/** One transition: act, wait for the state it should land on, screenshot, note what was seen. */
-async function step(transition, act, landed, seen) {
-  const shot = `${env.VERIFY}/shots/${walk}-${String(++n).padStart(2, '0')}-${transition}.png`;
+const steps = [];
+const shots = [];
+let at = '<entry state id>'; // set once the journey's entry is reached
+/** One map transition. elsewhere: {stateId: () => locator} for other states it may land on. A step not reached ends the walk. */
+async function step({ transition, to, act, arrive, seen, elsewhere = {} }) {
+  const why = (e) => String(e.message).split('\n')[0];
+  let record;
   try {
     await act();
-    await landed();
-    steps.push({ transition, result: 'reached', evidence: await seen(), shot });
-  } catch (error) {
-    steps.push({ transition, result: 'did not land', evidence: String(error.message).split('\n')[0], shot });
-    throw error;
-  } finally {
-    await page.waitForFunction(still, null, { timeout: 5_000 }).catch(() => {}); // a sliding tab pill is not the state
-    await page.screenshot({ path: shot }); // not animations: 'disabled', which froze the pill on the wrong tab
+    await arrive().then(async () => (record = { transition, result: 'reached', landed: to, evidence: await seen().catch(why) }), async (e) => {
+      let landed;
+      for (const [id, locator] of Object.entries(elsewhere)) if (await locator().isVisible()) { landed = id; break; }
+      record = { transition, result: 'diverged', landed, evidence: `Did not reach ${to} (${why(e)}); ${landed ? `${landed} is showing` : 'name the state from the screenshot'}.` };
+    });
+  } catch (e) {
+    record ??= { transition, result: 'blocked', landed: at, evidence: `Could not perform it: ${why(e)}` };
   }
+  await page.waitForFunction(still, null, { timeout: 5_000 }).catch(() => {}); // a sliding tab pill is not the state
+  shots.push(`${env.VERIFY}/shots/${walk}-${String(steps.length + 1).padStart(2, '0')}-${transition}.png`);
+  await page.screenshot({ path: shots.at(-1) }); // not animations: 'disabled', which froze the pill on the wrong tab
+  steps.push(record);
+  at = record.landed;
+  if (record.result !== 'reached') throw new Error(`walk ended: ${transition} ${record.result}`);
 }
 try {
   await page.goto(`http://localhost:${env.STUDIO_PORT}/${token ? '#bootstrap=' + token : ''}`);
   await page.getByRole('banner').waitFor({ timeout: 20_000 });
   console.log(await page.evaluate(() => `${innerWidth}x${innerHeight} ${document.documentElement.lang}`));
   console.log(await page.getByRole('button', { name: /^Corral menu · / }).getAttribute('aria-label'));
-  // the journey's steps go here, each through step(...)
+  // reach the entry state with unrecorded steps, set `at`, then one step({...}) per transition
 } finally {
-  writeFileSync(`${env.VERIFY}/${walk}.steps.json`, JSON.stringify({ steps, errors }, null, 2));
+  writeFileSync(`${env.VERIFY}/${walk}.steps.json`, JSON.stringify({ steps, shots, errors }, null, 2));
   await browser.close();
 }
 ```
 
-`<journey>.steps.json` holds your notes, not the record. The run record is written from it (section 4): a step marked `did not land` becomes `diverged` with the state actually seen, or `blocked` when the control could not be operated, and the walk stops there.
+`<journey>.steps.json` holds `steps` already in the run record's step shape (`transition`, `result`, `landed`, `evidence`), the screenshot paths and the page errors. A diverged step names its `landed` state when one of `elsewhere` showed; otherwise name it from the screenshot. Rewrite any `evidence` that does not say what was visible.
 
-Rules for the steps, from [the testing guide](../../../docs/guides/testing.md) ("추가·수정 기준"):
+Rules, from the [testing guide](../../../docs/guides/testing.md) ("추가·수정 기준"):
 
-- Locate by role and accessible name (`getByRole('button', { name: 'Send', exact: true })`), scoped to a landmark or region when a name repeats. A test id or CSS selector only where the feature file names one.
-- Act on the real handle. No `force`, no dispatched DOM events, no `waitForTimeout`, no raised timeouts to get past a covered or wrong target.
-- After each action wait for one exact state: a role and name becoming visible, `aria-selected` or `aria-expanded` changing, an address matching a pattern. Then take the screenshot.
-- Before writing that something "is shown", check it is visible (`toBeVisible`, `isVisible`). Text content includes screen-reader-only lines.
-- Compute any expected date or number format in the page (`page.evaluate`), not in Node: their ICU data differ.
-- Start each journey from a fresh conversation in a fresh page. Settle any run a journey needs before its entry state with plain steps that are not recorded.
-- Look at every screenshot (open the image) before you describe it.
+- Locate by role and accessible name, scoped to a region when a name repeats. A test id only where the feature file names one.
+- Act on the real handle: no `force`, no dispatched events, no `waitForTimeout`, no raised timeouts to get past a covered target.
+- After each action wait for one exact state: a role and name appearing, `aria-selected` or `aria-expanded` changing, an attribute such as `data-run`, an address pattern.
+- Say something "is shown" only after `await locator.evaluate(shown)` is true. `isVisible()` and `checkVisibility()` are also true for screen-reader-only text.
+- Compute expected dates and numbers in the page (`page.evaluate`), not in Node; their ICU data differ.
+- Start each journey with `New conversation` in a fresh page. Reach a journey's entry with unrecorded steps, then set `at`.
+- Open every screenshot before describing it.
 
-Finding the handles for a journey, in this order:
-
-1. The feature file for the area in [features/](features/): its Handles section gives, per journey and transition id, the locator that worked and the state to wait for.
-2. The flow map, when the checkout has one (see Evidence): the transition's `action`, `from` and `to`, and its evidence `ref` into the code.
-3. The code: the component the ref names and the English string in `packages/react/src/messages/en.json`. A quick way to see the names on a screen is `console.log(await page.getByRole('main').ariaSnapshot())`.
-
-When the walk finds a handle that the feature file lacks or gets wrong, fix the feature file in the same change.
+Handles for a journey, in this order: the area's feature file in [features/](features/) (per journey and transition id: what to do and what to wait for); the flow map's transition (`action`, `from`, `to`, and the code `ref`); the code and `en.json`. `console.log(await page.getByRole('main').ariaSnapshot())` lists the names on a screen. A handle the walk corrects goes into the feature file in the same change.
 
 ## 4. Evidence
 
-A verification leaves one [map-flows](../../../apps/server/resources/builtin/design/skills/map-flows/SKILL.md) run record per journey walked, written to the run schema (`assets/flow-run.schema.json` in that skill; read its `references/recording-runs.md` once).
+Each journey walked leaves one [map-flows](../../../apps/server/resources/builtin/design/skills/map-flows/SKILL.md) run record (`assets/flow-run.schema.json` there; read `references/recording-runs.md` once). The maps are not in Git: `git rev-parse --path-format=absolute --git-common-dir` prints `<main checkout>/.git`, and the maps, when there are any, are `<main checkout>/ux-flows/*.flow.json` with runs in `ux-flows/runs/`. Below, `$MAPS` is that folder.
 
-**Where it goes.** The flow maps are not in Git; they live in the main checkout's `ux-flows/`, when it has one:
+**The record.** Name it `<map>-<journey>[-<scenario>]-<mode>-<yyyymmdd>` (scenario left out for `default`; mode `mock` for (b), `demo` for (a); add a word if taken) and save it as `<name>.run.json`:
 
-```sh
-git rev-parse --path-format=absolute --git-common-dir      # prints <main checkout>/.git
-find <main checkout>/ux-flows -maxdepth 1 -name '*.flow.json'
+```json
+{ "schema_version": "1.0", "run": "<name>", "map": "<map>", "journey": "<journey>", "scenario": "default",
+  "recorded_at": "<yyyy-mm-dd>", "revision": "<full git rev-parse HEAD>", "method": "browser-automation",
+  "tool": "Playwright <version> (Chromium <version>)",
+  "environment": { "target": "<mode and mock delay in words, no path or port>", "viewport": "1280x800", "input": "pointer", "locale": "en" },
+  "steps": [ "<the steps array of <journey>.steps.json>" ],
+  "outcome": "success | failure | blocked | abandoned", "success_evidence": "<only for success>",
+  "limitations": [ "simulated agents", "one viewport, pointer only, no assistive technology", "uncommitted changes, if git status showed any" ] }
 ```
 
-Below, `$MAPS` stands for that `ux-flows` folder.
+A step that did not land is recorded as it happened, and the run ends there with its honest outcome. When a step lands on a state the map reaches under another scenario's facts (the map's `requires` show which), record that divergence, then walk the scenario whose facts held as its own run.
 
-- With the map: save the run as `$MAPS/runs/<map>-<journey>-<mode>-<yyyymmdd>.run.json` (`mode` is `mock` for (b), `demo` for (a); add a word if the name is taken). Runs are a log: never edit or delete an existing run file. Then validate and analyze from the map-flows folder:
+**Where it goes, then validate:**
 
-  ```sh
-  cd "$REPO/apps/server/resources/builtin/design/skills/map-flows"
-  python3 -B scripts/validate_flow.py "$MAPS/<map>.flow.json"
-  python3 -B scripts/analyze_flow.py "$MAPS/<map>.flow.json" --revision "<full HEAD hash noted in Doctor>"
-  ```
+- Map present and writable: save into `$MAPS/runs/`. Never edit or delete an existing run.
+- Map present but not writable (an isolated worktree's tool may refuse writes into the main checkout): copy `$MAPS/<map>.flow.json` and `$MAPS/runs/*.run.json` into `$VERIFY/maps/` and `$VERIFY/maps/runs/`, add your runs there, and validate the copy. Paste the records into the report and say they were not saved.
+- No map: keep the record in `$VERIFY`, paste it into the report, and say it was not validated against a map.
 
-  `-B` keeps Python from leaving a `__pycache__` folder in the repository. The validator must report `"valid": true`. A run that cites a transition the map lacks is a defect in the run or the map: fix the map in Inspect mode, never the run's facts.
-- Without the map: keep the run in `$VERIFY`, say in the report that it was not validated against a map, and paste it into the report before Cleanup deletes the folder.
+```sh
+cd "$REPO/apps/server/resources/builtin/design/skills/map-flows"
+python3 -B scripts/validate_flow.py <maps folder>/<map>.flow.json
+python3 -B scripts/analyze_flow.py <maps folder>/<map>.flow.json --revision "<full HEAD hash>"
+```
 
-**What goes in it.** `revision` is the full `git rev-parse HEAD`; say in `limitations` if `git status` showed uncommitted changes. `method` `browser-automation`; `tool` `Playwright <version> (Chromium <version>)`; `environment` `{target, viewport: "1280x800", input: "pointer", locale: "en"}`, where `target` names the mode and mock delay in words, never a path or port. One step per transition, in walk order, with `reached`, `diverged` (and the real `landed` state), `blocked` or `unmapped` as it happened, and `evidence` saying what was visible afterwards. A step that did not land is recorded as it happened and the run ends there with its honest outcome. `limitations` lists what the run cannot show: the simulated agents, one viewport, pointer only, no assistive technology.
+The validator must print `"valid": true`; `-B` keeps a `__pycache__` out of the repository. A run citing a transition the map lacks means the map needs an Inspect-mode fix; never change what a run records.
 
-No message bodies beyond the synthetic request you typed, no credentials, tokens, cookies, ports or local paths in any record. Screenshots stay in `$VERIFY/shots` and never enter the repository; if the person wants them kept, move the folder where they say before Cleanup.
+No message bodies beyond the synthetic request you typed, and no credentials, tokens, cookies, ports or local paths in any record. Screenshots stay in `$VERIFY/shots`; if the person wants them, move them where they say before Cleanup.
 
-**Reporting.** Each claim about the UI points at a run and a step (`session-tasks-send-request-mock-20261123`, step 2). List the journeys, scenarios and transitions you did not walk, and the Doctor checks that were not possible. Keep "ran" apart from "read in the code".
+**Report.** Each claim about the UI points at a run and step (`session-tasks-send-request-mock-20261123`, step 2). List what was not walked (journeys, scenarios, transitions) and any Doctor check that could not run. Keep "ran" apart from "read in the code".
 
 ## 5. Cleanup
-
-Stop exactly the processes you started, by pid, and leave nothing behind:
 
 ```sh
 . <VERIFY>/env
@@ -206,10 +206,10 @@ ss -ltnH "( sport = :$SERVER_PORT or sport = :$STUDIO_PORT )"         # expect n
 rm -rf "$VERIFY"
 ```
 
-If a pid is still alive after the first `kill`, send `kill -9` to that pid only. Never kill by name or by port. Then, from the checkout root, `git status --short` shows only your own changes: no `__pycache__`, no screenshots, no scripts.
+A pid still alive after `kill` gets `kill -9`, that pid only; never kill by name or port. Then `git status --short` at the checkout root shows only your own changes.
 
 ## Adding an area
 
-A feature file is `features/<area>.md`, one per area of Studio, written only after its journeys were walked with this skill. It has four sections: **Sub-features**; **How to get to it** (as a user would, from a fresh workspace); **Handles** (per journey and transition id: the locator that worked and the state to wait for); **Gotchas**. Copy the shape of an existing file, and add the area to the list below.
+`features/<area>.md`, written only after its journeys were walked, has four sections: **Sub-features**; **How to get to it** (as a user would, from a fresh workspace, and which scenarios each launch mode produces); **Handles** (per journey and transition id); **Gotchas**. Copy an existing file's shape and list it here.
 
-- [features/session.md](features/session.md): the conversation screen, the journeys of the `session-tasks` map.
+- [features/session.md](features/session.md): the conversation screen, the `session-tasks` map's journeys.
