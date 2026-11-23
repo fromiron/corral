@@ -51,38 +51,38 @@ import {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
-import { createPendingSessionCommands } from '../pendingCommands.ts';
-import { useServices } from '../services.tsx';
-import { conversationRequest, newCommandId, steer, steerTargets } from '../sessionActions.ts';
+import { createPendingSessionCommands } from '../../pendingCommands.ts';
+import { useServices } from '../../services.tsx';
+import { conversationRequest, newCommandId, steer, steerTargets } from '../../sessionActions.ts';
 import {
   autoChoiceFor,
   autoNotReady,
   autoReasoningUnsupported,
   sessionRunMode,
-} from '../workbench/autoChoice.ts';
-import { Checks } from '../workbench/ChecksView.tsx';
-import type { AttachmentCapture } from '../workbench/context/bridge.ts';
+} from '../../workbench/autoChoice.ts';
+import { Checks } from '../../workbench/ChecksView.tsx';
+import type { AttachmentCapture } from '../../workbench/context/bridge.ts';
 import {
   integrationDisplayState,
   uniqueFileOperations,
-} from '../workbench/fileReviewPresentation.ts';
-import { HunkActions } from '../workbench/HunkActions.tsx';
-import { type HunkNavigation, HunkNavigator, hunkLabel } from '../workbench/HunkNavigator.tsx';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
-import type { DiffHandle } from '../workbench/PierreCode.tsx';
-import { panelKey } from '../workbench/panels/registry.ts';
-import type { ReviewSearch } from '../workbench/panels/routes.ts';
-import { CommentBody, ReviewCommentForm } from '../workbench/ReviewCommentForm.tsx';
-import { rangeChanged, sideText } from '../workbench/reviewComments.ts';
-import { type ReviewMarks, useReviewMarks } from '../workbench/reviewMarks.ts';
-import { reveal, reviewMoveFor, stepIndex } from '../workbench/reviewNavigation.ts';
-import { reviewSelection } from '../workbench/reviewSelection.ts';
-import { entryStart } from '../workbench/session/composer/send.ts';
-import { useModelProfiles } from '../workbench/useModels.ts';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
-import { useBinding } from './FilesViews.tsx';
+} from '../../workbench/fileReviewPresentation.ts';
+import { HunkActions } from '../../workbench/HunkActions.tsx';
+import { type HunkNavigation, HunkNavigator, hunkLabel } from '../../workbench/HunkNavigator.tsx';
+import { useSettingsNavigation } from '../../workbench/navigation.ts';
+import type { DiffHandle } from '../../workbench/PierreCode.tsx';
+import { panelKey } from '../../workbench/panels/registry.ts';
+import type { ReviewSearch } from '../../workbench/panels/routes.ts';
+import { CommentBody, ReviewCommentForm } from '../../workbench/ReviewCommentForm.tsx';
+import { rangeChanged, sideText } from '../../workbench/reviewComments.ts';
+import { type ReviewMarks, useReviewMarks } from '../../workbench/reviewMarks.ts';
+import { reveal, reviewMoveFor, stepIndex } from '../../workbench/reviewNavigation.ts';
+import { reviewSelection } from '../../workbench/reviewSelection.ts';
+import { entryStart } from '../../workbench/session/composer/send.ts';
+import { useModelProfiles } from '../../workbench/useModels.ts';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
+import { useBinding } from '../FilesViews.tsx';
+import { useRemembered, WorkbenchLayout } from '../Workbench.tsx';
 import { LspProposals } from './LspProposals.tsx';
-import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 
 // Reviewing a session's file changes: a fixed comparison range, then three columns. The files
 // the range changed (with where each change came from), the selected file's changes, and the
@@ -91,7 +91,7 @@ import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
 // primary actions (the decision, and sending drafts) stay in a row at the bottom of the review.
 
 const DiffCode = lazy(() =>
-  import('../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
+  import('../../workbench/PierreCode.tsx').then((module) => ({ default: module.DiffCode })),
 );
 
 const semibold = { fontVariationSettings: fontWeights.semibold };
@@ -747,7 +747,7 @@ export function FileDiff({
     const before = sideText(sides.before);
     const after = sideText(sides.after);
     if (before === null || after === null) return;
-    const worker = new Worker(new URL('../diff.worker.ts', import.meta.url), { type: 'module' });
+    const worker = new Worker(new URL('../../diff.worker.ts', import.meta.url), { type: 'module' });
     const timer = setTimeout(() => {
       worker.terminate();
       setDiff('stopped');

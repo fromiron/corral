@@ -31,7 +31,10 @@ vi.mock('../pages/FilesViews.tsx', () => ({
   useBinding: () => ({ binding: null }),
 }));
 vi.mock('./CheckpointPanel.tsx', () => ({ CheckpointPanel: () => null }));
-vi.mock('../pages/ReviewPage.tsx', () => ({ ReviewContent: () => null, Checks: () => null }));
+vi.mock('../pages/changes/ReviewPage.tsx', () => ({
+  ReviewContent: () => null,
+  Checks: () => null,
+}));
 
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {

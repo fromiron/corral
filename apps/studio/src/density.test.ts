@@ -13,7 +13,7 @@ const root = join(import.meta.dirname, '..', '..', '..');
 const panels: Record<string, string[]> = {
   changes: [
     'apps/studio/src/workbench/SessionChangesPanel.tsx',
-    'apps/studio/src/pages/ReviewPage.tsx',
+    'apps/studio/src/pages/changes/ReviewPage.tsx',
     'apps/studio/src/workbench/GitPanel.tsx',
     'apps/studio/src/workbench/GitConflicts.tsx',
     'apps/studio/src/workbench/GitHunks.tsx',
@@ -24,7 +24,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/HunkNavigator.tsx',
     'apps/studio/src/workbench/ReviewCommentForm.tsx',
     'apps/studio/src/workbench/LineRangePopover.tsx',
-    'apps/studio/src/pages/LspProposals.tsx',
+    'apps/studio/src/pages/changes/LspProposals.tsx',
     'apps/studio/src/workbench/EditProposalReview.tsx',
     'apps/studio/src/pages/FilesViews.tsx',
   ],
@@ -144,7 +144,7 @@ const keptSmall: { file: string; near: RegExp }[] = [
   // A badge inside a menu row, as the kit puts badges inside buttons.
   { file: 'apps/studio/src/workbench/SessionChangesPanel.tsx', near: /<Badge size="sm"/ },
   // A file row's provenance badge: the kit DiffReview's file rows carry compact badges.
-  { file: 'apps/studio/src/pages/ReviewPage.tsx', near: /provenance\./ },
+  { file: 'apps/studio/src/pages/changes/ReviewPage.tsx', near: /provenance\./ },
   // The target chip in the quick open field: the kit CommandMenu keeps its field chips compact.
   { file: 'apps/studio/src/workbench/QuickOpen.tsx', near: /id=\{targetId\}/ },
   // The run header's actions and the run side panel's close: the kit AgentRun screen keeps its

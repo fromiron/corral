@@ -26,7 +26,7 @@ import { SourceNavigationContext } from './context/SourceAttachments.tsx';
 import type { DocumentBuffer, DocumentStore } from './documents/store.ts';
 
 const FileDiff = lazy(() =>
-  import('../pages/ReviewPage.tsx').then((module) => ({ default: module.FileDiff })),
+  import('../pages/changes/ReviewPage.tsx').then((module) => ({ default: module.FileDiff })),
 );
 export type ConflictStage = Omit<Extract<GitWriteCommand, { kind: 'stage' }>, 'operationId'>;
 interface Props {

@@ -47,7 +47,7 @@ vi.mock('./GitPanel.tsx', () => ({ GitPanel: () => <input aria-label="commit mes
 vi.mock('./CheckpointPanel.tsx', () => ({
   CheckpointPanel: () => <input aria-label="checkpoint name" />,
 }));
-vi.mock('../pages/ReviewPage.tsx', () => ({
+vi.mock('../pages/changes/ReviewPage.tsx', () => ({
   ReviewContent: ({
     search,
     onPrepareCopy,

@@ -6,8 +6,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Checks } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ reviewRoute: {} }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', () => ({ reviewRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null, useNavigate: () => () => {} }));
 vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,

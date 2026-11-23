@@ -19,7 +19,7 @@ import type { DocumentBuffer, DocumentStore } from './documents/store.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const FileDiff = lazy(() =>
-  import('../pages/ReviewPage.tsx').then((module) => ({ default: module.FileDiff })),
+  import('../pages/changes/ReviewPage.tsx').then((module) => ({ default: module.FileDiff })),
 );
 
 export type FileEditClient = Pick<

@@ -11,7 +11,7 @@ import { GitConflicts } from './GitConflicts.tsx';
 vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string) => `${namespace}.${key}`,
 }));
-vi.mock('../pages/ReviewPage.tsx', () => ({
+vi.mock('../pages/changes/ReviewPage.tsx', () => ({
   FileDiff: ({
     loadKey,
     load,

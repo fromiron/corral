@@ -593,7 +593,7 @@ S3의 탭은 명세에 적었다. 탭과 그 여는 길 · 닫기 · 기억 · �
 
 - 트리 상태는 지금 컴포넌트 상태라 내려가면 잃는다. 대화마다 컴포넌트 밖으로 올린다.
 - 대화를 지우면 그 기억(문서의 상대 경로 포함)도 지워지는지, 쌓인 편집기에서도 두 끌기가 되는지 테스트한다.
-- `Files.noCopyBody`는 `apps/studio/src/pages/ReviewPage.tsx`의 `ReviewContent`에 있고, `ReviewContent`는 변경 탭의 `SessionChangesPanel`로 닿는다(닿지 않는 것은 `ReviewPage` 라우트 컴포넌트뿐이다). 그래서 `Files.noCopyBody`는 그대로 둔다(조정자가 정함).
+- `Files.noCopyBody`는 `apps/studio/src/pages/changes/ReviewPage.tsx`의 `ReviewContent`에 있고, `ReviewContent`는 변경 탭의 `SessionChangesPanel`로 닿는다(닿지 않는 것은 `ReviewPage` 라우트 컴포넌트뿐이다). 그래서 `Files.noCopyBody`는 그대로 둔다(조정자가 정함).
 - `Docking.*` 문구는 다른 화면에서도 쓰이므로 키마다 확인하고 지운다. `PANE_CATALOG`의 `tools`(슬래시 `preview`)는 나누지 않는다. 미리보기는 작업 탭의 안쪽 탭이고, `/preview`와 `panel=preview`는 그 안쪽 탭을 앞에 두고 작업 탭을 여는 길이다.
 - 없어지는 것: 도킹의 "창" 전환기, preset, 문서 그룹 둘, 도킹 배치 저장, dockview 의존성(S7에서 의존성 기록까지).
 

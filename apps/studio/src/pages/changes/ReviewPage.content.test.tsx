@@ -3,8 +3,8 @@ import type { WorkSession } from '@corral/core';
 import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { ReviewSearch } from '../workbench/panels/routes.ts';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
+import type { ReviewSearch } from '../../workbench/panels/routes.ts';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
 import { ReviewContent } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -12,14 +12,14 @@ const fixture = vi.hoisted(() => ({
   session: null as WorkSession | null,
   navigate: vi.fn(),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children, to }: { children: ReactNode; to: string }) => <a href={to}>{children}</a>,
   useNavigate: () => fixture.navigate,
 }));
-vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
+vi.mock('../../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
 vi.mock('@corral/react/design-kit', async (original) => ({
   ...(await original<typeof import('@corral/react/design-kit')>()),
   Select: ({

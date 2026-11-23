@@ -5,8 +5,8 @@ import { linearCorral } from '@corral/testkit';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import type { ProfileInfo } from '../workbench/useModels.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { ProfileInfo } from '../../workbench/useModels.ts';
 import { CommentsPanel, ReviewContent } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -15,11 +15,11 @@ const fixture = vi.hoisted(() => ({
   catalog: null as typeof messages | null,
   session: null as WorkSession | null,
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null, useNavigate: () => () => {} }));
-vi.mock('../workbench/useModels.ts', () => ({
+vi.mock('../../workbench/useModels.ts', () => ({
   useModelProfiles: () => fixture.profiles,
 }));
 vi.mock('@corral/react/design-kit', async (original) => ({

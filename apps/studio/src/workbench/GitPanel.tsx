@@ -18,7 +18,7 @@ import { Button, fontWeights, Input, Select, Switch, Textarea } from '@corral/re
 import { Minus, Plus } from '@corral/react/icons';
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { FileDiff } from '../pages/ReviewPage.tsx';
+import { FileDiff } from '../pages/changes/ReviewPage.tsx';
 import { useServices } from '../services.tsx';
 import { documentStore } from './documents/store.ts';
 import { GitConflicts } from './GitConflicts.tsx';

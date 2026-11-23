@@ -4,13 +4,16 @@ import type { TextAttachment } from '@corral/contracts';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
-import { type AttachmentCapture, appendComposerAttachment } from '../workbench/context/bridge.ts';
-import { readComposerDraft } from '../workbench/sessionDraft.ts';
+import {
+  type AttachmentCapture,
+  appendComposerAttachment,
+} from '../../workbench/context/bridge.ts';
+import { readComposerDraft } from '../../workbench/sessionDraft.ts';
 import { Checks } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ reviewRoute: {} }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', () => ({ reviewRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({ Link: () => null, useNavigate: () => () => {} }));
 vi.mock('use-intl', () => ({
   useTranslations: (namespace: string) => (key: string, values?: Record<string, unknown>) =>

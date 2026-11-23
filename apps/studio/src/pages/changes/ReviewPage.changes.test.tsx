@@ -8,17 +8,17 @@ import { act, type ReactNode, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { AttachmentCapture } from '../workbench/context/bridge.ts';
-import type { ReviewSearch } from '../workbench/panels/routes.ts';
-import { parseCommentBody } from '../workbench/reviewComments.ts';
+import type { AttachmentCapture } from '../../workbench/context/bridge.ts';
+import type { ReviewSearch } from '../../workbench/panels/routes.ts';
+import { parseCommentBody } from '../../workbench/reviewComments.ts';
 import { CommentsPanel, ReviewContent } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({
   services: {} as Record<string, unknown>,
   navigations: [] as unknown[],
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('./FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
@@ -26,12 +26,12 @@ vi.mock('@tanstack/react-router', () => ({
     fixture.navigations.push(options);
   },
 }));
-vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
+vi.mock('../../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
 // The diff renderer needs real workers. This one reports line picks the way the renderer does
 // (a finished range on the "after" side) and shows which range it is asked to highlight; the
 // comment form the pick opens is the real one.
 type Picked = { start: number; end: number; side: 'additions' | 'deletions' };
-vi.mock('../workbench/PierreCode.tsx', () => ({
+vi.mock('../../workbench/PierreCode.tsx', () => ({
   DiffCode: ({
     selection,
     onPick,
