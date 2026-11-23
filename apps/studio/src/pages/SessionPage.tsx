@@ -131,7 +131,7 @@ import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 import { TeamDesign } from './EditorPage.tsx';
 import { useBinding } from './FilesViews.tsx';
-import { MeetingPage } from './MeetingPage.tsx';
+import { MeetingPage } from './meeting/MeetingPage.tsx';
 
 // A work session: what was asked, the runs it started, the queue, and
 // one input box whose intent is chosen, never guessed.

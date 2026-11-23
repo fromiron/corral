@@ -89,7 +89,7 @@ const panels: Record<string, string[]> = {
     'packages/react/src/components/GraphViewport.tsx',
   ],
   meeting: [
-    'apps/studio/src/pages/MeetingPage.tsx',
+    'apps/studio/src/pages/meeting/MeetingPage.tsx',
     'apps/studio/src/workbench/session/composer/meeting.tsx',
     'apps/studio/src/workbench/MeetingRecords.tsx',
     'apps/studio/src/workbench/MeetingEvidence.tsx',
@@ -171,8 +171,8 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'packages/react/src/components/GraphViewport.tsx', near: /labels\.zoomOut/ },
   { file: 'packages/react/src/components/GraphViewport.tsx', near: /labels\.fit/ },
   // The meeting's top bar actions: the kit path bar keeps its actions compact.
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /ref=\{recordsToggle\}/ },
-  { file: 'apps/studio/src/pages/MeetingPage.tsx', near: /'sessionActions'/ },
+  { file: 'apps/studio/src/pages/meeting/MeetingPage.tsx', near: /ref=\{recordsToggle\}/ },
+  { file: 'apps/studio/src/pages/meeting/MeetingPage.tsx', near: /'sessionActions'/ },
   // The meeting composer's action row: the kit composer's slot controls are compact.
   { file: 'apps/studio/src/workbench/session/composer/meeting.tsx', near: /'attachmentActions'/ },
   {

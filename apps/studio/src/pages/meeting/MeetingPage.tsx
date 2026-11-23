@@ -21,45 +21,45 @@ import { Link, useRouter } from '@tanstack/react-router';
 import { type RefObject, useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useRegisterCommands } from '../commandRegistry.ts';
-import { projectsChanged } from '../projects.ts';
-import { useServices } from '../services.tsx';
-import { ArchivedSessionNotice } from '../workbench/ArchivedSessionNotice.tsx';
-import { sessionRunMode } from '../workbench/autoChoice.ts';
-import { ChatView, useChatDensityRow } from '../workbench/ChatView.tsx';
-import { MeetingContinue } from '../workbench/MeetingContinue.tsx';
-import { MeetingDecisions } from '../workbench/MeetingDecisions.tsx';
-import { MeetingDiagnostics } from '../workbench/MeetingDiagnostics.tsx';
-import { MeetingHandoffLinks } from '../workbench/MeetingHandoff.tsx';
-import { MeetingParticipants } from '../workbench/MeetingParticipants.tsx';
+import { useRegisterCommands } from '../../commandRegistry.ts';
+import { projectsChanged } from '../../projects.ts';
+import { useServices } from '../../services.tsx';
+import { ArchivedSessionNotice } from '../../workbench/ArchivedSessionNotice.tsx';
+import { sessionRunMode } from '../../workbench/autoChoice.ts';
+import { ChatView, useChatDensityRow } from '../../workbench/ChatView.tsx';
+import { MeetingContinue } from '../../workbench/MeetingContinue.tsx';
+import { MeetingDecisions } from '../../workbench/MeetingDecisions.tsx';
+import { MeetingDiagnostics } from '../../workbench/MeetingDiagnostics.tsx';
+import { MeetingHandoffLinks } from '../../workbench/MeetingHandoff.tsx';
+import { MeetingParticipants } from '../../workbench/MeetingParticipants.tsx';
 import {
   MeetingRecordsDrawer,
   MeetingRecordsPanel,
   useNarrowScreen,
-} from '../workbench/MeetingRecords.tsx';
-import { MeetingRoundStatus } from '../workbench/MeetingRoundStatus.tsx';
-import { answerLabel } from '../workbench/meetingActivity.ts';
+} from '../../workbench/MeetingRecords.tsx';
+import { MeetingRoundStatus } from '../../workbench/MeetingRoundStatus.tsx';
+import { answerLabel } from '../../workbench/meetingActivity.ts';
 import {
   answerOrder,
   continuedOrder,
   roundOrder,
   startedAnswer,
   stopLines,
-} from '../workbench/meetingTimeline.ts';
-import { preferences } from '../workbench/preferences.ts';
-import { RenameSessionDialog } from '../workbench/RenameSessionDialog.tsx';
-import { TurnActions } from '../workbench/RunMessage.tsx';
-import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
-import { Composer } from '../workbench/session/Composer.tsx';
+} from '../../workbench/meetingTimeline.ts';
+import { preferences } from '../../workbench/preferences.ts';
+import { RenameSessionDialog } from '../../workbench/RenameSessionDialog.tsx';
+import { TurnActions } from '../../workbench/RunMessage.tsx';
+import { SessionDeletionDialog } from '../../workbench/SessionDeletionDialog.tsx';
+import { Composer } from '../../workbench/session/Composer.tsx';
 import {
   FAILED_ANSWER,
   type MeetingComposerHandle,
   nameOf,
-} from '../workbench/session/composer/meeting.tsx';
-import { TextAttachmentList } from '../workbench/TextAttachments.tsx';
-import { TopbarActions } from '../workbench/TopbarSlot.tsx';
-import { useCorralRun } from '../workbench/useCorralChat.ts';
-import { useRemembered } from './Workbench.tsx';
+} from '../../workbench/session/composer/meeting.tsx';
+import { TextAttachmentList } from '../../workbench/TextAttachments.tsx';
+import { TopbarActions } from '../../workbench/TopbarSlot.tsx';
+import { useCorralRun } from '../../workbench/useCorralChat.ts';
+import { useRemembered } from '../Workbench.tsx';
 
 type RoundView = MeetingView['rounds'][number];
 type AnswerView = RoundView['answers'][number];

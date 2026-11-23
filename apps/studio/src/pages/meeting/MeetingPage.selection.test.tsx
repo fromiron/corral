@@ -5,20 +5,20 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 
 // What a person's message says about who receives it, and the card a held mention chain waits
 // on (workbench.md, the meeting's timeline and composer; features/local-intelligence.md, the
 // selection record and the chain). In the words the person reads.
 
 const services = vi.hoisted(() => ({ current: {} as Record<string, unknown> }));
-vi.mock('../services.tsx', () => ({ useServices: () => services.current }));
-vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
-vi.mock('../workbench/useCorralChat.ts', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => services.current }));
+vi.mock('../../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
+vi.mock('../../workbench/useCorralChat.ts', () => ({
   useCorralRun: () => ({ state: { projection: null, streams: {} } }),
 }));
-vi.mock('../workbench/MeetingEvidence.tsx', () => ({ MeetingEvidencePicker: () => null }));
-vi.mock('../workbench/ChatView.tsx', () => ({
+vi.mock('../../workbench/MeetingEvidence.tsx', () => ({ MeetingEvidencePicker: () => null }));
+vi.mock('../../workbench/ChatView.tsx', () => ({
   useChatDensityRow: () => () => null,
   ChatView: ({ items, composer, header, children, tray }: any) => (
     <div data-chat-view>
@@ -48,8 +48,8 @@ vi.mock('@corral/react', async (importOriginal) => ({
 }));
 
 const { MeetingPage } = await import('./MeetingPage.tsx');
-const { TopbarSlotContext } = await import('../workbench/TopbarSlot.tsx');
-const { writeComposerDraft } = await import('../workbench/sessionDraft.ts');
+const { TopbarSlotContext } = await import('../../workbench/TopbarSlot.tsx');
+const { writeComposerDraft } = await import('../../workbench/sessionDraft.ts');
 const m = messages.Meetings;
 
 const config = {

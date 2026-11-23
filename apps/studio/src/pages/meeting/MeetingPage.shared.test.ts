@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 
 const pages = import.meta.dirname;
 const meetingPage = resolve(pages, 'MeetingPage.tsx');
-const workTab = resolve(pages, '../workbench/session/WorkTab.tsx');
+const workTab = resolve(pages, '../../workbench/session/WorkTab.tsx');
 
 /** The module a file imports `name` from, resolved to its path. */
 function importOf(file: string, name: string) {
@@ -24,10 +24,10 @@ function importOf(file: string, name: string) {
 
 it('the meeting renders the conversation’s composer and timeline, from the same modules', () => {
   expect(importOf(meetingPage, 'Composer')).toBe(
-    resolve(pages, '../workbench/session/Composer.tsx'),
+    resolve(pages, '../../workbench/session/Composer.tsx'),
   );
   expect(importOf(meetingPage, 'Composer')).toBe(importOf(workTab, 'Composer'));
-  expect(importOf(meetingPage, 'ChatView')).toBe(resolve(pages, '../workbench/ChatView.tsx'));
+  expect(importOf(meetingPage, 'ChatView')).toBe(resolve(pages, '../../workbench/ChatView.tsx'));
   expect(importOf(meetingPage, 'ChatView')).toBe(importOf(workTab, 'ChatView'));
 });
 

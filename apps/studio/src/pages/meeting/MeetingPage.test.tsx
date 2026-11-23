@@ -12,12 +12,12 @@ vi.mock('use-intl', () => ({
   useTranslations: () => translate,
   useFormatter: () => ({ dateTime: () => 'local-date' }),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => services.current }));
-vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
-vi.mock('../workbench/useCorralChat.ts', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => services.current }));
+vi.mock('../../workbench/useModels.ts', () => ({ useModelProfiles: () => null }));
+vi.mock('../../workbench/useCorralChat.ts', () => ({
   useCorralRun: () => ({ state: { projection: null, streams: {}, ...liveAnswer.current } }),
 }));
-vi.mock('../workbench/MeetingEvidence.tsx', () => ({
+vi.mock('../../workbench/MeetingEvidence.tsx', () => ({
   MeetingEvidencePicker: ({ value, onChange }: any) => (
     <button
       type="button"
@@ -29,7 +29,7 @@ vi.mock('../workbench/MeetingEvidence.tsx', () => ({
     </button>
   ),
 }));
-vi.mock('../workbench/ChatView.tsx', () => ({
+vi.mock('../../workbench/ChatView.tsx', () => ({
   useChatDensityRow: () => () => null,
   // The real view hides its timeline while a long header (the widened records) is read.
   ChatView: ({ items, composer, header, children, expandedHeader, sent }: any) => (
@@ -67,11 +67,11 @@ vi.mock('@corral/react/design-kit', async (importOriginal) => ({
 }));
 
 const { MeetingPage } = await import('./MeetingPage.tsx');
-const { writeComposerDraft } = await import('../workbench/sessionDraft.ts');
-const { preferences } = await import('../workbench/preferences.ts');
-const { TopbarSlotContext } = await import('../workbench/TopbarSlot.tsx');
-const { registeredCommands } = await import('../commandRegistry.ts');
-const { meetingDecisionEdits } = await import('../workbench/MeetingDecisions.tsx');
+const { writeComposerDraft } = await import('../../workbench/sessionDraft.ts');
+const { preferences } = await import('../../workbench/preferences.ts');
+const { TopbarSlotContext } = await import('../../workbench/TopbarSlot.tsx');
+const { registeredCommands } = await import('../../commandRegistry.ts');
+const { meetingDecisionEdits } = await import('../../workbench/MeetingDecisions.tsx');
 
 const config = {
   version: 1 as const,
