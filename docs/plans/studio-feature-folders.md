@@ -4,11 +4,11 @@
 
 명세: 바꿀 동작이 없어 고칠 명세는 없다. 폴더 이름은 [용어집](../specs/glossary.md)의 코드·URL 이름을 쓴다. `shell`은 [Workbench › 전역 셸과 화면 틀](../specs/workbench.md#전역-셸과-화면-틀)의 셸이고, `changes`는 [세션 패널](../specs/features/session-panel.md)의 변경 탭이다. 용어집의 [파일명](../specs/glossary.md#파일명) 줄은 경로만 고친다.
 
-브랜치는 `develop`에서 가른 `refactor/studio-feature-folders`다. 단계마다 커밋 하나이고, 각 단계는 따로 합칠 수 있다. [정할 것](#정할-것)이 정해지기 전에는 파일을 옮기지 않는다.
+브랜치는 `develop`에서 가른 `refactor/studio-feature-folders`다. 단계마다 커밋 하나이고, 각 단계는 따로 합칠 수 있다.
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| S0 | 이 계획 | 정할 것을 기다린다 |
+| S0 | 이 계획 | 끝 |
 | M1 | `pages/performance/` | 할 일 |
 | M2 | `pages/schedules/` | 할 일 |
 | M3 | `pages/compare/` | 할 일 |
@@ -62,10 +62,10 @@
 - `EditorPage.tsx`의 `TeamDesign`은 대화 화면의 팀 그래프 탭이 쓴다. 편집기의 화면이라 `editor`가 가진다.
 - `RunPage.tsx`의 `RunDetail`은 `workbench/session/SessionPanels.tsx`(실행 탭)가 쓴다. `run`이 가진다.
 - `HarnessSettingsPage.tsx`의 `HarnessPreviewView`는 `workbench/HarnessRoleSettings.tsx`와 `workbench/RunHarnessOverrides.tsx`가 쓴다. `harness`가 가진다.
-- `MeetingPage.tsx`는 `SessionPage.tsx`만 그리지만 화면 하나를 채우므로 자기 폴더를 가진다([정할 것](#정할-것) 4).
-- `ReviewPage.tsx`는 라우트가 없고 `workbench/`의 변경 탭 부품만 쓴다. 변경 탭의 화면이라 `changes`가 가진다([정할 것](#정할-것) 5).
-- `McpConnection.tsx`는 `harness`의 두 화면과 `workbench/RoleToolPicker.tsx`가 쓴다. `McpEditor.tsx`가 있는 `workbench/harness/`로 간다([정할 것](#정할-것) 6).
-- `FilesViews.tsx`(`useBinding`, `WorkFolderSection`, `WorkingCopyPanel`, `WORKSPACE_CHANGED`)는 `session`, `settings`, `changes`와 `workbench/`의 여덟 파일이 쓴다. `Workbench.tsx`(`useRemembered`, `WorkbenchLayout`)와 `GettingStarted.tsx`(`markRunReviewed`)도 `workbench/`와 여러 화면이 쓴다. 이 셋과 `FilesViews`의 테스트 셋은 이 계획에서 옮기지 않는다([정할 것](#정할-것) 7).
+- `MeetingPage.tsx`는 `SessionPage.tsx`만 그리지만 화면 하나를 채우므로 자기 폴더를 가진다([정한 것](#정한-것) 4).
+- `ReviewPage.tsx`는 라우트가 없고 `workbench/`의 변경 탭 부품만 쓴다. 변경 탭의 화면이라 `changes`가 가진다([정한 것](#정한-것) 5).
+- `McpConnection.tsx`는 `harness`의 두 화면과 `workbench/RoleToolPicker.tsx`가 쓴다. `McpEditor.tsx`가 있는 `workbench/harness/`로 간다([정한 것](#정한-것) 6).
+- `FilesViews.tsx`(`useBinding`, `WorkFolderSection`, `WorkingCopyPanel`, `WORKSPACE_CHANGED`)는 `session`, `settings`, `changes`와 `workbench/`의 여덟 파일이 쓴다. `Workbench.tsx`(`useRemembered`, `WorkbenchLayout`)와 `GettingStarted.tsx`(`markRunReviewed`)도 `workbench/`와 여러 화면이 쓴다. 이 셋과 `FilesViews`의 테스트 셋은 이 계획에서 옮기지 않는다([정한 것](#정한-것) 7).
 - `download-size.ts`와 `ApiKeyInput.tsx`는 `models` 안의 두 파일씩만 쓴다. `modelTestDom.ts`는 `models`의 테스트만 쓴다.
 - `sessionShell.fixture.tsx`는 `session`의 테스트 열 개와 `workbench/browser/BrowserMenuDialogs.test.tsx`가 쓴다. `session`이 가진다.
 - `InboxPage.story-fixture.tsx`는 `packages/react/src/components/NeedsYouAdvice.stories.tsx`만 쓴다. `inbox`가 가진다.
@@ -103,26 +103,27 @@ lint로 옮길 수 있게 경로로 쓴다. 기능 폴더는 `pages/<기능>/`�
 한 커밋에 하는 것:
 
 - `git mv`로 옮긴다.
-- 경로만 고친다: 옮긴 파일 안의 상대 경로(`../`가 `../../`가 되고, 아직 `pages/` 맨 위에 있는 파일은 `./`가 `../`가 된다), 옮긴 파일을 import·`import()`·`vi.mock`하는 파일, 경로를 글자로 가진 테스트, 코드 경로를 가리키는 문서, 경로를 키로 쓰는 lint 기준선. `biome check --write`가 import의 순서와 줄바꿈을 바꾼 것은 받는다. 그 밖의 고침은 이 계획의 단계가 아니다.
-- 옮긴 파일은 모두 `git show -M --stat`에서 이름 바꿈(`R`)으로 보여야 한다.
+- 경로만 고친다: 옮긴 파일 안의 상대 경로(`../`가 `../../`가 되고, 아직 `pages/` 맨 위에 있는 파일은 `./`가 `../`가 된다), 옮긴 파일을 import·`import()`·`vi.mock`하는 파일, 경로를 글자로 가진 테스트, 코드 경로를 가리키는 문서. `biome check --write`가 import의 순서와 줄바꿈을 바꾼 것은 받는다. 그 밖의 고침은 이 계획의 단계가 아니다.
+- 이 계획의 단계표를 같은 커밋에서 고친다.
 
-확인. 단계의 바탕 커밋에서 같은 것을 먼저 돌려 두고 비교한다.
+단계마다 하는 확인:
 
-- `pnpm typecheck`가 바탕과 같이 끝난다. 정적 import, `import()`, JSON import의 경로는 여기서 잡힌다.
-- `pnpm lint`: 오류가 없고 경고·정보 수가 바탕과 같다.
-- studio 단위 테스트 전체(`pnpm test --project studio`): 실패 목록이 바탕과 같다. `vi.mock`이 가리키는 파일이 없으면 테스트가 실패하지 않고 지나갈 수 있으므로, 옮긴 파일의 테스트만이 아니라 전체를 돌린다.
-- `pnpm --filter @corral/studio build`. `new URL(…, import.meta.url)`의 경로는 typecheck가 보지 않는다.
-- 옛 경로가 남지 않았다: 옮긴 이름마다 `rg -n "pages/<이름>" apps packages docs tools`가 비어 있다. `apps/server/test/files.test.ts`와 `packages/core/test/fuzzy.test.ts`의 `src/pages/SessionPage.tsx`는 이 저장소의 경로가 아닌 시험용 문자열이라 고치지 않는다.
-- `vi.mock`과 그 친척의 상대 경로가 모두 있는 파일을 가리킨다. 아래 명령의 출력이 바탕과 같다.
+- 건드린 패키지의 typecheck. Studio는 늘(`pnpm --filter @corral/studio typecheck`), 스토리나 fixture의 import가 바뀌면 `packages/react`도. 정적 import, `import()`, JSON import의 경로는 여기서 잡힌다.
+- 옮긴 파일은 모두 `git show -M --stat`에서 이름 바꿈(`R`)으로 보인다.
+- 건드린 파일에 `pnpm exec biome check`를 돌려 새 진단이 없다.
+- 옛 경로가 남지 않았다: 옮긴 이름마다 `rg -n "pages/<이름>" apps packages docs tools .claude/skills`가 비어 있다. `apps/server/test/files.test.ts`와 `packages/core/test/fuzzy.test.ts`의 `src/pages/SessionPage.tsx`는 이 저장소의 경로가 아닌 시험용 문자열이라 고치지 않는다.
+- `vi.mock`과 그 친척의 상대 경로가 모두 있는 파일을 가리킨다. 아래 명령의 출력이 바탕과 같다. `vi.mock`이 가리키는 파일이 없으면 테스트가 실패하지 않고 지나갈 수 있다.
 
 ```sh
 rg -U -n --no-heading -o "vi\.(?:mock|doMock|unmock|importActual|importMock)(?:<[^>]*>)?\(\s*'(\.[^']+)'" -r '$1' apps packages |
   while IFS=: read -r f _ p; do [ -e "$(dirname "$f")/$p" ] || echo "$f: $p"; done
 ```
 
-끝난 조건: 위 확인이 모두 바탕과 같고, 커밋에는 이름 바꿈과 경로 고침만 있다.
+점검(M9, M13, M17 뒤): Studio 단위 테스트를 적은 워커로, 그리고 `pnpm --filter @corral/studio build`. `new URL(…, import.meta.url)`의 경로는 typecheck가 보지 않고 build가 본다. 바탕 커밋의 실패 목록을 같은 방식으로 한 번 먼저 받아 두고, 그와 다른 실패는 [흔들리는 테스트 분류 절차](../guides/testing.md#흔들리는-테스트-분류-절차)대로 단독으로 다시 돌린 뒤에 판단한다.
 
-smoke E2E는 단계마다 돌리지 않는다. 마지막 이동(M17) 뒤 E 단계에서 [테스트 운영](../guides/testing.md)의 기본 E2E를 한 번 돌린다.
+끝난 조건: 확인이 바탕과 같고, 커밋에는 이름 바꿈과 경로 고침과 단계표만 있다.
+
+smoke E2E는 이동 단계에서 돌리지 않는다. 고정 포트로 서버를 띄우지 않는다.
 
 ## 단계별 고칠 곳
 
@@ -152,11 +153,10 @@ smoke E2E는 단계마다 돌리지 않는다. 마지막 이동(M17) 뒤 E 단�
 
 ## 경로를 키로 쓰는 기준선
 
-효과 훅·주석의 "늘지 않음" 검사는 파일 경로를 키로 한 기준선을 가진다. 이동 단계를 시작할 때 그 검사의 실제 파일과 명령을 다시 읽는다.
+`pnpm lint`는 biome 다음에 `node tools/lint/main.ts`를 돌린다. 효과 훅과 주석의 "늘지 않음" 기준선(`tools/lint/effects.baseline.json`, `tools/lint/comments.baseline.json`)은 파일 경로를 키로 한다. `pnpm lint:update`가 지금의 트리에서 다시 쓰고, 묶음의 합계가 늘면 거절한다. 키는 손으로 고치지 않는다.
 
-- 이동 커밋 안에서 옮긴 파일의 키를 새 경로로 바꾼다. 값은 그대로 둔다.
-- 이동 단계에서는 기준선을 다시 만들지 않는다. 다시 만들면 늘어난 값이 함께 들어간다.
-- 기준선 파일의 diff는 키 이름만 바뀌어야 한다. 두 검사가 바탕과 같이 끝나야 한다.
+- 그 lint가 `develop`에 들어오면(`git log develop -- tools/lint`) 단계 경계에서 `develop` 위로 리베이스한다.
+- 이 브랜치는 `pnpm lint:update`를 돌린 커밋 하나로 닫는다. 그 diff는 키 이름 바꿈뿐이고, 모든 값과 묶음 합계가 그대로다.
 
 ## 합쳐지지 않은 브랜치
 
@@ -170,18 +170,18 @@ git for-each-ref --format='%(refname:short)' refs/heads | while read -r b; do
 done | sort -u
 ```
 
-- 살릴 브랜치는 그 파일을 옮긴 단계가 `develop`에 합쳐진 뒤 리베이스한다. `git mv`와 경로 고침이 한 커밋에 있어 이름 바꿈 추적이 옛 경로의 고침을 새 경로로 옮긴다.
+- 이동은 이 브랜치들을 기다리지 않는다. 살릴 브랜치는 그 파일을 옮긴 단계가 `develop`에 합쳐진 뒤 리베이스한다. `git mv`와 경로 고침이 한 커밋에 있어 이름 바꿈 추적이 옛 경로의 고침을 새 경로로 옮긴다.
 - 그 브랜치가 `pages/` 맨 위에 새 파일을 더했다면 리베이스 뒤 [새 파일의 자리](#새-파일의-자리)대로 옮긴다.
 
-## 정할 것
+## 정한 것
 
-1. 화면의 자리: 모든 화면을 `pages/<기능>/`에 모은다(권장). 다른 길은 화면이 이름이 같은 공용 부품 폴더(`workbench/session/`, `workbench/harness/`)로 들어가는 것이다. 그러면 `session`의 파일 열세 개와 `harness`의 파일 열 개가 `workbench/`의 두 폴더로 가고, 경계 규칙이 `workbench/`의 공용 파일과 화면을 가르지 못한다. 권장안에서는 `session`과 `harness`가 `pages/`와 `workbench/` 두 곳에 이름으로 있다.
-2. 기능 미리보기 화면: `pages/preview/`에 둔다(권장, 경로 고침만으로 된다). 다른 길은 부품이 있는 `feature-preview/`에 넣는 것이다. 그러면 `feature-preview/boundary.test.ts`가 `router.tsx`의 import를 막으므로 그 테스트의 규칙을 고쳐야 한다.
-3. 입구: 폴더 맨 위의 `*Page.tsx`(`shell/`은 두 파일)로 한다(권장, 새 파일이 없고 지금의 `vi.mock`과 `import()` 경로가 그대로 맞는다). 다른 길은 폴더마다 `index.ts`를 새로 두는 것이다. `apps/studio/src`에는 아직 `index.ts`가 없다.
-4. 회의 화면: `pages/meeting/`에 따로 둔다(권장). 다른 길은 `pages/session/` 안이다.
-5. 변경 탭(`ReviewPage.tsx`, `LspProposals.tsx`와 테스트): `pages/changes/`에 둔다(권장). 다른 길은 그 탭의 다른 부품이 있는 `workbench/` 맨 위다.
-6. `McpConnection.tsx`: `workbench/harness/`로 옮긴다(권장). 다른 길은 `pages/harness/`에 두고 `workbench/RoleToolPicker.tsx`를 경계 규칙의 예외로 두는 것이다.
-7. 공용 세 파일(`FilesViews.tsx`, `Workbench.tsx`, `GettingStarted.tsx`)과 `FilesViews`의 테스트 셋: 이 계획에서는 `pages/` 맨 위에 둔다(권장). 다른 길은 `workbench/` 맨 위로 옮기는 것이다.
-8. 설정: `settings`, `harness`, `models` 셋으로 나눈다(권장). 다른 길은 `pages/settings/` 하나(57개)다.
-9. 합쳐지지 않은 브랜치: 이동은 기다리지 않고, 살릴 브랜치는 그 단계가 합쳐진 뒤 리베이스한다(권장).
-10. 경계 lint(L 단계)의 방식: L에서 시험해 정한다(권장). 후보는 `biome.json`의 `noRestrictedImports` 덮어쓰기와 `feature-preview/boundary.test.ts` 같은 Vitest 검사다. `noRestrictedImports`는 import 글자를 맞추므로 `../run/RunPage.tsx` 같은 형제 폴더 경로를 폴더마다 따로 써야 하고, 같은 파일에 걸리는 다른 덮어쓰기와 옵션이 겹치는지 먼저 본다.
+1. 모든 화면을 `pages/<기능>/`에 모은다. 공용 부품 폴더(`workbench/session/`, `workbench/harness/`)에는 넣지 않는다.
+2. 기능 미리보기 화면은 `pages/preview/`에 둔다.
+3. 입구는 폴더 맨 위의 `*Page.tsx`(`shell/`은 두 파일)다. `index.ts`는 두지 않는다.
+4. 회의 화면은 `pages/meeting/`에 따로 둔다.
+5. 변경 탭(`ReviewPage.tsx`, `LspProposals.tsx`와 테스트)은 `pages/changes/`에 둔다.
+6. `McpConnection.tsx`는 `workbench/harness/`로 옮긴다.
+7. 공용 세 파일(`FilesViews.tsx`, `Workbench.tsx`, `GettingStarted.tsx`)과 `FilesViews`의 테스트 셋은 `pages/` 맨 위에 둔다.
+8. 설정은 `settings`, `harness`, `models` 셋으로 나눈다.
+9. 이동은 합쳐지지 않은 옛 브랜치를 기다리지 않는다.
+10. 경계 lint의 방식은 L 단계에서 시험해 정한다.
