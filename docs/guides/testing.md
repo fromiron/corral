@@ -47,7 +47,7 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    - `apps/server/resources/builtin/`을 바꿨으면 더 돌릴 것이 없다. `pnpm test`가 `pnpm builtin:check`와 같은 검사를 한다([기본 제공 스킬과 에이전트 › 생성과 검사](../specs/features/builtin-crew.md#생성과-검사)).
 8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 이 단계는 건너뛴다.
    - 언제나: 바꾼 영역의 확장 스펙 파일만, 위 "특정 회귀만 확인할 때"의 형식(스펙 경로, `--project`, `--workers`)으로 돌린다.
-   - [docs/plans](../plans/)에 계획을 두는 긴 작업([AGENTS.md › Getting Started](../../AGENTS.md#getting-started) 4번)을 끝낼 때만: 확장 검사 전체를 돌린다.
+   - [docs/plans](../plans/)에 계획을 두는 긴 작업([AGENTS.md › Getting Started](../../AGENTS.md#getting-started) 4번)을 끝낼 때만: 확장 검사 전체를 돌린다. 동작을 바꾸지 않고 파일 이동·이름 바꾸기·import 경로 고치기만 한 작업이면 전체를 돌리지 않고 6단계의 스모크로 갈음한다. 그런 작업인지는 작업의 커밋마다 `git show -M --stat <커밋>`에 이름이 바뀐 파일과 import 경로만 고친 파일만 나오는지로 확인한다.
 
      ```sh
      pnpm test:e2e:extended --workers=2
@@ -55,7 +55,7 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
 
    전체 실행은 `--project`를 주지 않아야 chromium·firefox·server 세 프로젝트를 모두 돈다. `--workers=2`는 CI의 값이다. 워커가 많으면 실행이 끝나기 전의 짧은 구간을 보는 스펙이 흔들린다. server 프로젝트는 6단계의 빌드 결과(`apps/studio/dist`)를 쓰고, 하네스는 빌드가 있는지만 볼 뿐 최신인지는 보지 않는다. Firefox는 위 준비 문단대로 따로 설치한다.
 9. [흐름 장면](#흐름-장면)에 적힌 영역을 바꿨으면 그 절의 명령으로 흐름 장면을 돌린다. 6단계에서 빌드했으므로 빌드 명령은 건너뛴다.
-10. 돌린 명령과 결과를 작업 보고에 적는다. 조건 때문에 건너뛴 단계(7·8·9)는 건너뛰었다고 그 조건과 함께 적는다. 실패는 분류 절차의 결과 이름으로, 결과 표의 "할 일" 칸이 정한 내용과 함께 적는다.
+10. 돌린 명령과 결과를 작업 보고에 적는다. 조건 때문에 건너뛴 단계(7·8·9)와 8단계에서 돌리지 않은 전체 실행은 건너뛰었다고 그 조건과 함께 적는다. 실패는 분류 절차의 결과 이름으로, 결과 표의 "할 일" 칸이 정한 내용과 함께 적는다.
 
 화면이나 서버 동작을 바꾼 변경이 실제 Studio에서 동작하는 것을 보이고 기록을 남기는 방법은 개발 스킬 [verify-corral](../../.claude/skills/verify-corral/SKILL.md)이다. 모델을 부를 수 없는 서버에 브라우저 Studio를 붙여 여정마다 실행 기록 하나를 남기며, 데스크톱 앱은 다루지 않는다. 위 단계의 하나가 아니며 테스트를 대신하지 않는다.
 
