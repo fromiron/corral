@@ -12,7 +12,7 @@
 | M1 | `pages/performance/` | 끝 |
 | M2 | `pages/schedules/` | 끝 |
 | M3 | `pages/compare/` | 끝 |
-| M4 | `pages/projects/` | 할 일 |
+| M4 | `pages/projects/` | 끝 |
 | M5 | `pages/preview/` | 할 일 |
 | M6 | `pages/inbox/` | 할 일 |
 | M7 | `pages/meeting/` | 할 일 |

@@ -63,25 +63,25 @@ import {
   useState,
 } from 'react';
 import { useTranslations } from 'use-intl';
-import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
-import { workspaceRoute } from '../router.tsx';
-import { useServices } from '../services.tsx';
-import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from '../templates.ts';
-import { CriteriaField } from '../workbench/CriteriaField.tsx';
-import { rememberEditorView } from '../workbench/editorView.ts';
-import { NewMeetingDialog } from '../workbench/NewMeeting.tsx';
-import { useSettingsNavigation, workHref } from '../workbench/navigation.ts';
+import { projectName, projectsChanged, setCurrentProject } from '../../projects.ts';
+import { workspaceRoute } from '../../router.tsx';
+import { useServices } from '../../services.tsx';
+import { createFromTemplate, useTemplateText, WORKSPACE_TEMPLATES } from '../../templates.ts';
+import { CriteriaField } from '../../workbench/CriteriaField.tsx';
+import { rememberEditorView } from '../../workbench/editorView.ts';
+import { NewMeetingDialog } from '../../workbench/NewMeeting.tsx';
+import { useSettingsNavigation, workHref } from '../../workbench/navigation.ts';
 import {
   EMPTY_DRAFT,
   type NewSessionDraft,
   newSessionDraftKey,
-} from '../workbench/newSessionDraft.ts';
-import { ProjectMaterials } from '../workbench/ProjectMaterials.tsx';
-import { isSendKey, usePreferences } from '../workbench/preferences.ts';
-import { RunList } from '../workbench/RunList.tsx';
-import { SessionDeletionDialog } from '../workbench/SessionDeletionDialog.tsx';
-import { readCriteria } from '../workbench/sessionCriteria.ts';
-import { writeDraft } from '../workbench/sessionDraft.ts';
+} from '../../workbench/newSessionDraft.ts';
+import { ProjectMaterials } from '../../workbench/ProjectMaterials.tsx';
+import { isSendKey, usePreferences } from '../../workbench/preferences.ts';
+import { RunList } from '../../workbench/RunList.tsx';
+import { SessionDeletionDialog } from '../../workbench/SessionDeletionDialog.tsx';
+import { readCriteria } from '../../workbench/sessionCriteria.ts';
+import { writeDraft } from '../../workbench/sessionDraft.ts';
 import {
   type AttentionReason,
   latestSessionRun,
@@ -93,12 +93,12 @@ import {
   sessionGroups,
   sessionLiveStates,
   uncertainSessionTerminal,
-} from '../workbench/sessionList.ts';
-import { useModelProfiles } from '../workbench/useModels.ts';
-import { useSessionAge } from '../workbench/useSessionAge.ts';
-import { useSettledPresence } from '../workbench/useSettledPresence.ts';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
-import { useRemembered, WorkbenchLayout } from './Workbench.tsx';
+} from '../../workbench/sessionList.ts';
+import { useModelProfiles } from '../../workbench/useModels.ts';
+import { useSessionAge } from '../../workbench/useSessionAge.ts';
+import { useSettledPresence } from '../../workbench/useSettledPresence.ts';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
+import { useRemembered, WorkbenchLayout } from '../Workbench.tsx';
 
 // A project's workspace (docs/specs/workbench.md#전역-셸과-화면-틀): the kit page frame with the
 // project's name, folder state, pending count and actions, then Sessions · Runs · Environment ·

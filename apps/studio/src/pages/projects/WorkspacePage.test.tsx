@@ -19,11 +19,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { SettingsNavigationContext } from '../workbench/navigation.ts';
-import { chooseNewSessionTeam } from '../workbench/newSessionDraft.ts';
-import { forgetSharedPresenceHolds } from '../workbench/useSettledPresence.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { SettingsNavigationContext } from '../../workbench/navigation.ts';
+import { chooseNewSessionTeam } from '../../workbench/newSessionDraft.ts';
+import { forgetSharedPresenceHolds } from '../../workbench/useSettledPresence.ts';
 import { WorkspacePage } from './WorkspacePage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -32,8 +32,8 @@ const fixture = vi.hoisted(() => ({
   /** Views reading the loader data, told when a test loads new data. */
   readers: new Set<() => void>(),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', async () => {
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', async () => {
   const { useSyncExternalStore } = await import('react');
   const listen = (change: () => void) => {
     fixture.readers.add(change);
@@ -46,10 +46,10 @@ vi.mock('../router.tsx', async () => {
     },
   };
 });
-vi.mock('../workbench/ProjectMaterials.tsx', () => ({
+vi.mock('../../workbench/ProjectMaterials.tsx', () => ({
   ProjectMaterials: () => <p>Project materials</p>,
 }));
-vi.mock('../workbench/useModels.ts', () => ({ useModelProfiles: () => [] }));
+vi.mock('../../workbench/useModels.ts', () => ({ useModelProfiles: () => [] }));
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {

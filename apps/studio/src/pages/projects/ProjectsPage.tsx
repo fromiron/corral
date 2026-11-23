@@ -22,14 +22,14 @@ import {
 import { Link, useNavigate, useRouter, useRouterState } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { desktop } from '../desktop.tsx';
-import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../projects.ts';
-import { projectsRoute } from '../router.tsx';
-import { useServices } from '../services.tsx';
-import { createDemoExamples, useTemplateText } from '../templates.ts';
-import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
-import { type GitCloneDraft, GitCloneFolder } from '../workbench/GitCloneFolder.tsx';
-import { useSessionAge } from '../workbench/useSessionAge.ts';
+import { desktop } from '../../desktop.tsx';
+import { projectName, projectOfRun, projectsChanged, useCurrentProject } from '../../projects.ts';
+import { projectsRoute } from '../../router.tsx';
+import { useServices } from '../../services.tsx';
+import { createDemoExamples, useTemplateText } from '../../templates.ts';
+import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosenRow.ts';
+import { type GitCloneDraft, GitCloneFolder } from '../../workbench/GitCloneFolder.tsx';
+import { useSessionAge } from '../../workbench/useSessionAge.ts';
 
 const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
 

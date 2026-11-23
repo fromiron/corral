@@ -4,7 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ProjectsPage } from './ProjectsPage.tsx';
 
 const project = (projectId: string, name: string, change: Partial<ProjectSummary> = {}) =>
@@ -26,7 +26,7 @@ const fixture = vi.hoisted(() => ({
   invalidate: vi.fn(async () => {}),
   services: {} as Record<string, unknown>,
 }));
-vi.mock('../router.tsx', () => ({
+vi.mock('../../router.tsx', () => ({
   projectsRoute: { useLoaderData: () => fixture.data },
 }));
 vi.mock('@tanstack/react-router', () => ({
@@ -36,14 +36,14 @@ vi.mock('@tanstack/react-router', () => ({
   useRouterState: ({ select }: { select: (state: { location: { hash: string } }) => unknown }) =>
     select({ location: { hash: fixture.hash } }),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../projects.ts', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../projects.ts', () => ({
   projectName: (project: { name: string }) => project.name,
   projectOfRun: () => null,
   projectsChanged() {},
   useCurrentProject: () => null,
 }));
-vi.mock('../desktop.tsx', () => ({ desktop: null }));
+vi.mock('../../desktop.tsx', () => ({ desktop: null }));
 
 const cleanup: (() => Promise<void>)[] = [];
 beforeEach(() => {
