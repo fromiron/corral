@@ -10,7 +10,7 @@
 |---|---|---|
 | S0 | 이 계획 | 끝 |
 | M1 | `pages/performance/` | 끝 |
-| M2 | `pages/schedules/` | 할 일 |
+| M2 | `pages/schedules/` | 끝 |
 | M3 | `pages/compare/` | 할 일 |
 | M4 | `pages/projects/` | 할 일 |
 | M5 | `pages/preview/` | 할 일 |

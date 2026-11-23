@@ -5,8 +5,8 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { automationShownRuns } from '../workbench/scheduledRuns.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { automationShownRuns } from '../../workbench/scheduledRuns.ts';
 import { ScheduledPage } from './ScheduledPage.tsx';
 
 const fixture = vi.hoisted(() => {
@@ -34,8 +34,8 @@ const fixture = vi.hoisted(() => {
   };
   return { api, services };
 });
-vi.mock('../schedules-api.ts', () => ({ schedulesApi: fixture.api }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../schedules-api.ts', () => ({ schedulesApi: fixture.api }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({
     children,

@@ -27,13 +27,13 @@ import {
 import { Link } from '@tanstack/react-router';
 import { type FormEvent, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { projectName } from '../projects.ts';
-import { schedulesApi } from '../schedules-api.ts';
-import { useServices } from '../services.tsx';
-import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
-import { watchRefresh } from '../workbench/refresh.ts';
-import { watchRunList } from '../workbench/runList.ts';
-import { automationShownRuns, scheduleHistoryStatus } from '../workbench/scheduledRuns.ts';
+import { projectName } from '../../projects.ts';
+import { schedulesApi } from '../../schedules-api.ts';
+import { useServices } from '../../services.tsx';
+import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosenRow.ts';
+import { watchRefresh } from '../../workbench/refresh.ts';
+import { watchRunList } from '../../workbench/runList.ts';
+import { automationShownRuns, scheduleHistoryStatus } from '../../workbench/scheduledRuns.ts';
 
 /** Sunday first, as the rule's weekday numbers count them. */
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
