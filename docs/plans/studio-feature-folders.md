@@ -13,7 +13,7 @@
 | M2 | `pages/schedules/` | 할 일 |
 | M3 | `pages/compare/` | 할 일 |
 | M4 | `pages/projects/` | 할 일 |
-| M5 | `feature-preview/`에 기능 미리보기 화면 | 할 일 |
+| M5 | `pages/preview/` | 할 일 |
 | M6 | `pages/inbox/` | 할 일 |
 | M7 | `pages/meeting/` | 할 일 |
 | M8 | `pages/editor/` | 할 일 |
@@ -27,13 +27,13 @@
 | M16 | `pages/changes/` | 할 일 |
 | M17 | `pages/settings/` | 할 일 |
 | E | 마무리 확인: smoke E2E 한 번 | 할 일 |
-| L | 기능 폴더 경계 lint | 할 일, 따로 정한다 |
+| L | 기능 폴더 경계 lint, 끝나면 이 계획 삭제 | 할 일, 따로 정한다 |
 
 단계 순서는 밖에서 그 폴더의 파일을 가리키는 파일(import, `vi.mock`, 경로를 읽는 테스트, 문서 링크)이 적은 것부터다. 각 단계의 수는 [단계별 고칠 곳](#단계별-고칠-곳)에 있다.
 
 ## 목표 구조
 
-파일 이름은 바뀌지 않는다. 옛 경로는 `apps/studio/src/pages/<이름>`이고 새 경로는 아래 표의 폴더 안의 같은 이름이다. 표의 폴더는 `apps/studio/src/` 아래 경로다.
+파일 이름은 바뀌지 않는다. 옛 경로는 `apps/studio/src/pages/<이름>`이고 새 경로는 아래 표의 폴더 안의 같은 이름이다. 표의 폴더는 `apps/studio/src/` 아래 경로다. 기능 폴더는 `pages/<기능>/`이다.
 
 | 폴더 | 화면과 주소 | 입구 | 옮기는 파일 |
 |---|---|---|---|
@@ -52,7 +52,7 @@
 | `pages/settings/` | 설정 대화상자의 틀과 일반·화면·작업 폴더·진단·금고 구역 | `SettingsPage.tsx`, `DiagnosticsSettingsPage.tsx`, `VaultSettingsPage.tsx` | `AppearanceSettings.tsx`, `DebuggerSettings.tsx`, `DeploymentSettings.tsx`, `DiagnosticsSettingsPage.tsx`, `ProjectToolSettings.tsx`, `projectToolValues.ts`, `SettingsPage.tsx`, `SettingsScroll.tsx`, `ThemeEditor.tsx`, `ThemePreview.tsx`, `VaultSettingsPage.tsx`, `AppearanceSettings.test.tsx`, `DeploymentSettings.test.tsx`, `DiagnosticsSettingsPage.test.tsx`, `ProjectToolSettings.test.tsx`, `SettingsFrame.test.tsx`, `SettingsPage.appearance.test.tsx`, `SettingsPage.density.test.tsx`, `VaultSettingsPage.test.ts` |
 | `pages/harness/` | 설정의 Harness·개인 기본·프로젝트 기본·Skill·Hook·MCP 구역 | `HarnessSettingsPage.tsx`, `HarnessDefaultsPage.tsx`, `ResourceSettingsPage.tsx`, `McpSettingsPage.tsx` | `HarnessDefaultsPage.tsx`, `HarnessMcpTools.tsx`, `HarnessSettingsPage.tsx`, `McpSettingsPage.tsx`, `ResourceSettingsPage.tsx`, `HarnessDefaultsPage.test.tsx`, `HarnessSettingsPage.project.test.tsx`, `McpSettingsPage.test.tsx`, `ResourceSettingsPage.empty.test.tsx`, `ResourceSettingsPage.test.tsx` |
 | `pages/models/` | 설정의 모델 구역 | `ModelSettingsPage.tsx` | `AddConnectionDialog.tsx`, `ApiKeyInput.tsx`, `DecisionApiSettings.tsx`, `download-size.ts`, `EffortRoutingSettings.tsx`, `ImageProfileSettings.tsx`, `LocalAiPanel.tsx`, `ModelCatalogDialog.tsx`, `modelConnections.ts`, `ModelConnections.tsx`, `ModelImportPanel.tsx`, `ModelProfilesEditor.tsx`, `ModelSettingsPage.tsx`, `ModelUsageChart.tsx`, `ModelUsagePanel.tsx`, `AddConnectionDialog.test.tsx`, `DecisionApiSettings.test.tsx`, `EffortRoutingSettings.test.tsx`, `imageProfileId.test.ts`, `ImageProfileSettings.test.tsx`, `LocalAiPanel.test.tsx`, `modelConnections.test.ts`, `ModelConnections.test.tsx`, `ModelProfilesEditor.test.tsx`, `modelSettings.lifecycle.test.tsx`, `ModelSettingsPage.tabs.test.tsx`, `modelTestDom.ts`, `ModelUsagePanel.test.tsx` |
-| `feature-preview/` | `/preview`, `/preview/$feature` | `PreviewPage.tsx` | `PreviewPage.tsx`, `PreviewPage.test.tsx` |
+| `pages/preview/` | `/preview`, `/preview/$feature`. 부품은 `feature-preview/`에 그대로 있다 | `PreviewPage.tsx` | `PreviewPage.tsx`, `PreviewPage.test.tsx` |
 | `workbench/harness/` | 공용 Harness 부품 | (공용) | `McpConnection.tsx`, `McpConnection.test.tsx` |
 | `pages/`(그대로) | 공용, 잠정 | (공용) | 옮기지 않는다: `FilesViews.tsx`, `GettingStarted.tsx`, `Workbench.tsx`, `FilesViews.link-row.test.tsx`, `FilesViews.trust.test.tsx`, `FilesViews.working-copy.test.tsx` |
 
@@ -73,7 +73,7 @@
 
 ## 경계 규칙
 
-lint로 옮길 수 있게 경로로 쓴다. 기능 폴더는 `pages/<기능>/`과 `feature-preview/`다.
+lint로 옮길 수 있게 경로로 쓴다. 기능 폴더는 `pages/<기능>/`다. `feature-preview/`는 `preview`의 부품 폴더이고, 그 밖의 파일이 그것을 import하는 것은 `feature-preview/boundary.test.ts`가 이미 막는다(`PreviewPage.tsx`만 예외).
 
 1. 기능 폴더 안의 파일끼리는 자유롭게 import한다.
 2. 기능 폴더 밖의 파일(다른 기능 폴더, `workbench/`, `src/` 맨 위, `packages/`)은 그 폴더의 입구 파일만 import한다. 입구는 폴더 맨 위의 `*Page.tsx`이고, `shell/`만 `RootLayout.tsx`와 `StartupFailure.tsx`다.
@@ -93,7 +93,7 @@ lint로 옮길 수 있게 경로로 쓴다. 기능 폴더는 `pages/<기능>/`�
 
 - 한 기능 폴더만 쓰는 파일은 그 폴더에 둔다.
 - 화면(라우트의 화면이거나, 다른 화면이 통째로 그리는 화면)은 자기 기능 폴더를 가진다. 이름은 `<이름>Page.tsx`이고 그 폴더의 입구다. 폴더 이름은 용어집의 코드·URL 이름이다.
-- 그 기능만의 부품 폴더가 이미 있으면 화면도 거기에 둔다(`feature-preview/`). 여러 화면이 함께 쓰는 부품 폴더(`workbench/session/`, `workbench/harness/`)에는 화면을 두지 않는다.
+- 화면은 부품 폴더(`workbench/session/`, `workbench/harness/`, `feature-preview/`)에 두지 않는다.
 - 테스트는 검사하는 파일과 같은 폴더에 `<파일>.<관점>.test.tsx`로 둔다. fixture는 그것을 쓰는 테스트의 폴더에 둔다.
 - 두 기능 폴더 이상이 쓰는 파일은 기능 폴더에 두지 않는다. 그 부품이 속한 `workbench/`의 폴더에 두고, 맞는 폴더가 없으면 `pages/` 맨 위에 둔다(잠정).
 - 다른 기능이 쓸 것은 입구 파일에서 export한다.
@@ -113,10 +113,10 @@ lint로 옮길 수 있게 경로로 쓴다. 기능 폴더는 `pages/<기능>/`�
 - studio 단위 테스트 전체(`pnpm test --project studio`): 실패 목록이 바탕과 같다. `vi.mock`이 가리키는 파일이 없으면 테스트가 실패하지 않고 지나갈 수 있으므로, 옮긴 파일의 테스트만이 아니라 전체를 돌린다.
 - `pnpm --filter @corral/studio build`. `new URL(…, import.meta.url)`의 경로는 typecheck가 보지 않는다.
 - 옛 경로가 남지 않았다: 옮긴 이름마다 `rg -n "pages/<이름>" apps packages docs tools`가 비어 있다. `apps/server/test/files.test.ts`와 `packages/core/test/fuzzy.test.ts`의 `src/pages/SessionPage.tsx`는 이 저장소의 경로가 아닌 시험용 문자열이라 고치지 않는다.
-- `vi.mock`의 상대 경로가 모두 있는 파일을 가리킨다. 아래 명령의 출력이 바탕과 같다.
+- `vi.mock`과 그 친척의 상대 경로가 모두 있는 파일을 가리킨다. 아래 명령의 출력이 바탕과 같다.
 
 ```sh
-rg -U -n --no-heading -o "vi\.mock\(\s*'(\.[^']+)'" -r '$1' apps packages |
+rg -U -n --no-heading -o "vi\.(?:mock|doMock|unmock|importActual|importMock)(?:<[^>]*>)?\(\s*'(\.[^']+)'" -r '$1' apps packages |
   while IFS=: read -r f _ p; do [ -e "$(dirname "$f")/$p" ] || echo "$f: $p"; done
 ```
 
@@ -134,7 +134,7 @@ smoke E2E는 단계마다 돌리지 않는다. 마지막 이동(M17) 뒤 E 단�
 | M2 schedules | 2 | 1 | `router.tsx` | |
 | M3 compare | 2 | 1 | `router.tsx` | |
 | M4 projects | 4 | 1 | `router.tsx` | |
-| M5 feature-preview | 2 | 2 | `router.tsx`, `feature-preview/boundary.test.ts`의 `page` 경로 | 옮긴 뒤 `../feature-preview/…`는 `./…`이고 `../workbench/…`는 깊이가 같아 그대로다 |
+| M5 preview | 2 | 2 | `router.tsx`, `feature-preview/boundary.test.ts`의 `page` 경로 | 그 테스트는 `page` 말고 `feature-preview/`를 import하는 소스를 막는다. 폴더 이름에 `feature-preview`가 들어가면 `router.tsx`의 import가 걸린다 |
 | M6 inbox | 3 | 2 | `router.tsx`, `packages/react/src/components/NeedsYouAdvice.stories.tsx`(import 둘) | `InboxPage.test.tsx`가 `InboxPage.tsx`의 import 글자 `'../workbench/RunResponseArea.tsx'`를 단언하고 `../workbench/session/PendingTray.tsx`를 읽는다. 둘 다 한 단계 깊어진다 |
 | M7 meeting | 4 | 2 | `SessionPage.tsx`, `density.test.ts`(`panels.meeting`과 `keptSmall` 두 줄) | `MeetingPage.shared.test.ts`가 `import.meta.dirname`에서 `../workbench/…`를 푼다. 한 단계 깊어진다 |
 | M8 editor | 2 | 3 | `router.tsx`, `SessionPage.tsx`, `docs/plans/team-editor-usability.md`(링크 둘) | |
@@ -175,8 +175,8 @@ done | sort -u
 
 ## 정할 것
 
-1. 화면의 자리: `pages/<기능>/`에 모으고, 그 기능만의 부품 폴더가 이미 있으면(`feature-preview/`) 거기에 둔다. 권장. 다른 길은 화면이 이름이 같은 공용 부품 폴더(`workbench/session/`, `workbench/harness/`)로 들어가는 것이다. 그러면 `session`의 파일 열세 개와 `harness`의 파일 열 개가 `workbench/`의 두 폴더로 가고 경계 규칙이 `workbench/`의 공용 파일과 화면을 가르지 못한다. 권장안에서는 `session`과 `harness`가 `pages/`와 `workbench/` 두 곳에 이름으로 있다.
-2. 기능 미리보기 화면: `feature-preview/`에 넣는다(권장). 다른 길은 `pages/feature-preview/`다.
+1. 화면의 자리: 모든 화면을 `pages/<기능>/`에 모은다(권장). 다른 길은 화면이 이름이 같은 공용 부품 폴더(`workbench/session/`, `workbench/harness/`)로 들어가는 것이다. 그러면 `session`의 파일 열세 개와 `harness`의 파일 열 개가 `workbench/`의 두 폴더로 가고, 경계 규칙이 `workbench/`의 공용 파일과 화면을 가르지 못한다. 권장안에서는 `session`과 `harness`가 `pages/`와 `workbench/` 두 곳에 이름으로 있다.
+2. 기능 미리보기 화면: `pages/preview/`에 둔다(권장, 경로 고침만으로 된다). 다른 길은 부품이 있는 `feature-preview/`에 넣는 것이다. 그러면 `feature-preview/boundary.test.ts`가 `router.tsx`의 import를 막으므로 그 테스트의 규칙을 고쳐야 한다.
 3. 입구: 폴더 맨 위의 `*Page.tsx`(`shell/`은 두 파일)로 한다(권장, 새 파일이 없고 지금의 `vi.mock`과 `import()` 경로가 그대로 맞는다). 다른 길은 폴더마다 `index.ts`를 새로 두는 것이다. `apps/studio/src`에는 아직 `index.ts`가 없다.
 4. 회의 화면: `pages/meeting/`에 따로 둔다(권장). 다른 길은 `pages/session/` 안이다.
 5. 변경 탭(`ReviewPage.tsx`, `LspProposals.tsx`와 테스트): `pages/changes/`에 둔다(권장). 다른 길은 그 탭의 다른 부품이 있는 `workbench/` 맨 위다.
@@ -184,4 +184,4 @@ done | sort -u
 7. 공용 세 파일(`FilesViews.tsx`, `Workbench.tsx`, `GettingStarted.tsx`)과 `FilesViews`의 테스트 셋: 이 계획에서는 `pages/` 맨 위에 둔다(권장). 다른 길은 `workbench/` 맨 위로 옮기는 것이다.
 8. 설정: `settings`, `harness`, `models` 셋으로 나눈다(권장). 다른 길은 `pages/settings/` 하나(57개)다.
 9. 합쳐지지 않은 브랜치: 이동은 기다리지 않고, 살릴 브랜치는 그 단계가 합쳐진 뒤 리베이스한다(권장).
-10. 경계 lint(L 단계): `biome.json`의 `noRestrictedImports` 덮어쓰기로 폴더마다 쓴다(권장, 먼저 합쳐지는 `apps/studio/src/**`의 import 경계도 이 방식이다). 다른 길은 `feature-preview/boundary.test.ts` 같은 Vitest 검사다.
+10. 경계 lint(L 단계)의 방식: L에서 시험해 정한다(권장). 후보는 `biome.json`의 `noRestrictedImports` 덮어쓰기와 `feature-preview/boundary.test.ts` 같은 Vitest 검사다. `noRestrictedImports`는 import 글자를 맞추므로 `../run/RunPage.tsx` 같은 형제 폴더 경로를 폴더마다 따로 써야 하고, 같은 파일에 걸리는 다른 덮어쓰기와 옵션이 겹치는지 먼저 본다.
