@@ -24,7 +24,7 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
 
 한 작업을 마치고 합치기 직전에, 합칠 커밋에서 한 번 돌린다. 각 명령은 종료 코드 0이어야 통과다. 실패하면 거기서 멈추고 [흔들리는 테스트 분류 절차](#흔들리는-테스트-분류-절차)로 가른다.
 
-1. 변경을 모두 커밋하고 `git status`가 깨끗한지 확인한다. 이 절차 도중 소스를 바꾸면 1단계부터 다시 돌린다.
+1. 변경을 모두 커밋하고 `git status`가 깨끗한지 확인한다. `pnpm lint`는 git이 무시하지 않는 추적 안 된 파일도 읽으므로, 작업 트리를 깨끗하게 만들 수 없으면 합칠 커밋을 [분류 절차](#흔들리는-테스트-분류-절차) 5단계와 같은 형식(`git worktree add`)으로 별도 작업 트리에 꺼내 거기서 이 절차를 돌린다. 이 절차 도중 소스를 바꾸면 1단계부터 다시 돌린다.
 2. `node --version`이 [`.node-version`](../../.node-version)의 값과 같은지 확인한다([출시 증거와 게이트 › 라이선스와 SBOM](release.md#라이선스와-sbom)).
 3. 이 기계에서 다른 테스트 실행이나 빌드가 돌고 있지 않은지 확인한다. 아래 명령도 한 번에 하나씩 돌린다. 함께 돌면 짧은 구간을 보는 테스트가 거짓으로 실패한다.
 4. 5179 포트에 떠 있는 서버가 없는지 확인한다. 로컬의 확장 검사는 그 포트에 이미 떠 있는 서버를 그대로 쓰므로, 다른 작업 트리의 서버가 떠 있으면 그 코드를 검사하게 된다.
@@ -45,15 +45,17 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    - 의존성을 바꿨으면 `pnpm deps:check`([AGENTS.md › Validation and Documentation](../../AGENTS.md#validation-and-documentation)). PR 게이트에는 없고 출시 게이트에만 있다.
    - `tools/release/`나 `tools/deps/`를 바꿨으면 `pnpm test:release`. 이 `node --test` 테스트는 `pnpm test`에도 PR 게이트에도 들지 않는다.
    - `apps/server/resources/builtin/`을 바꿨으면 더 돌릴 것이 없다. `pnpm test`가 `pnpm builtin:check`와 같은 검사를 한다([기본 제공 스킬과 에이전트 › 생성과 검사](../specs/features/builtin-crew.md#생성과-검사)).
-8. Studio·서버·패키지 코드를 바꿨으면 확장 검사 전체를 돌린다.
+8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 이 단계는 건너뛴다.
+   - 언제나: 바꾼 영역의 확장 스펙 파일만, 위 "특정 회귀만 확인할 때"의 형식(스펙 경로, `--project`, `--workers`)으로 돌린다.
+   - [docs/plans](../plans/)에 계획을 두는 긴 작업([AGENTS.md › Getting Started](../../AGENTS.md#getting-started) 4번)을 끝낼 때만: 확장 검사 전체를 돌린다.
 
-   ```sh
-   pnpm test:e2e:extended --workers=2
-   ```
+     ```sh
+     pnpm test:e2e:extended --workers=2
+     ```
 
-   `--project`를 주지 않아야 chromium·firefox·server 세 프로젝트를 모두 돈다. `--workers=2`는 CI의 값이다. 워커가 많으면 실행이 끝나기 전의 짧은 구간을 보는 스펙이 흔들린다. server 프로젝트는 6단계의 빌드 결과(`apps/studio/dist`)를 쓰고, 하네스는 빌드가 있는지만 볼 뿐 최신인지는 보지 않는다. Firefox는 위 준비 문단대로 따로 설치한다.
+   전체 실행은 `--project`를 주지 않아야 chromium·firefox·server 세 프로젝트를 모두 돈다. `--workers=2`는 CI의 값이다. 워커가 많으면 실행이 끝나기 전의 짧은 구간을 보는 스펙이 흔들린다. server 프로젝트는 6단계의 빌드 결과(`apps/studio/dist`)를 쓰고, 하네스는 빌드가 있는지만 볼 뿐 최신인지는 보지 않는다. Firefox는 위 준비 문단대로 따로 설치한다.
 9. [흐름 장면](#흐름-장면)에 적힌 영역을 바꿨으면 그 절의 명령으로 흐름 장면을 돌린다. 6단계에서 빌드했으므로 빌드 명령은 건너뛴다.
-10. 돌린 명령과 결과, 돌리지 않은 단계와 그 이유를 작업 보고에 적는다. 실패는 분류 절차의 결과 이름으로 적는다.
+10. 돌린 명령과 결과를 작업 보고에 적는다. 조건 때문에 건너뛴 단계(7·8·9)는 건너뛰었다고 그 조건과 함께 적는다. 실패는 분류 절차의 결과 이름으로, 결과 표의 "할 일" 칸이 정한 내용과 함께 적는다.
 
 ## 흔들리는 테스트 분류 절차
 
