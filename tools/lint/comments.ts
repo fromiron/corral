@@ -1,9 +1,9 @@
 // Comment lines per file are held in comments.baseline.json, and the ratchet fails when one
-// changes. Tool directives and licence headers are never counted. Any other comment counts every
+// rises. Tool directives and licence headers are never counted. Any other comment counts every
 // line it touches, so a line of code with a trailing comment is a comment line.
 
 import ts from 'typescript';
-import { type Group, type Rule, UPDATE_COMMAND } from './ratchet.ts';
+import type { Group, Rule } from './ratchet.ts';
 
 export interface CommentLines {
   directive: number;
@@ -186,9 +186,5 @@ export const comments: Rule = {
       `${path}: ${lines(count)}, the baseline has ${allowed}. ${instead} raise this file's count by hand in tools/lint/comments.baseline.json in the same change. ${counting}`,
     added: (path, count) =>
       `${path}: ${lines(count)} and no entry in the baseline. ${instead} add this file with its count by hand to tools/lint/comments.baseline.json in the same change. ${counting}`,
-    fell: (path, count, allowed) =>
-      `${path}: ${lines(count)}, the baseline has ${allowed}. Run \`${UPDATE_COMMAND}\` to lock the gain in.`,
-    gone: (path) =>
-      `${path}: in the baseline but the file is gone. Run \`${UPDATE_COMMAND}\` to lock the gain in.`,
   },
 };

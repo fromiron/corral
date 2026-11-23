@@ -55,24 +55,38 @@ test('a file with an effect and no baseline entry fails', () => {
   );
 });
 
-test('a file whose count fell fails with the update hint', () => {
+test('a file whose count fell passes with one note for the rule', () => {
   const root = tree({ [page]: one }, { studio: { [page]: 2 } });
   const result = run([effects], { root });
-  assert.equal(result.code, 1);
-  assert.match(
+  assert.equal(result.code, 0);
+  assert.equal(
     result.output,
-    /Page\.tsx: 1 effect hook, the baseline has 2\. Run `pnpm lint:update`/,
+    'effects: 1 file is under the baseline; `pnpm lint:update` locks the gain in.',
   );
 });
 
-test('an entry whose file is gone fails with the update hint', () => {
-  const root = tree({}, { studio: { [page]: 1 } });
+test('an entry whose file is gone passes with the note', () => {
+  const root = tree(
+    { [page]: one },
+    { studio: { [page]: 2, 'apps/studio/src/A.tsx': 1, 'apps/studio/src/B.tsx': 1 } },
+  );
+  const result = run([effects], { root });
+  assert.equal(result.code, 0);
+  assert.equal(
+    result.output,
+    'effects: 1 file is under the baseline and 2 entries have no file; `pnpm lint:update` locks the gain in.',
+  );
+});
+
+test('a file under its baseline may rise back to it, but not above it', () => {
+  const root = tree({ [page]: one }, { studio: { [page]: 2 } });
+  assert.equal(run([effects], { root }).code, 0);
+  writeFileSync(join(root, page), two);
+  assert.deepEqual(run([effects], { root }), { code: 0, output: '' });
+  writeFileSync(join(root, page), two.replace('}\n', '  useEffect(() => {});\n}\n'));
   const result = run([effects], { root });
   assert.equal(result.code, 1);
-  assert.match(
-    result.output,
-    /Page\.tsx: in the baseline but the file is gone\. Run `pnpm lint:update`/,
-  );
+  assert.match(result.output, /Page\.tsx: 3 effect hooks, the baseline has 2\./);
 });
 
 test('a tree that matches its baseline passes', () => {

@@ -38,7 +38,7 @@ test('a new plain comment fails and names the file', () => {
   assert.match(result.output, /Delete the comment and let names, types and tests carry it\./);
 });
 
-test('a comment that rose fails, and one that fell fails with the update hint', () => {
+test('a comment that rose fails, and one that fell passes with the update note', () => {
   const two = `// One.\n// Two.\n${plain}`;
   const rose = run([comments], { root: tree({ [file]: two }, { core: { [file]: 1 } }) });
   assert.equal(rose.code, 1);
@@ -48,8 +48,11 @@ test('a comment that rose fails, and one that fell fails with the update hint', 
     /raise this file's count by hand in tools\/lint\/comments\.baseline\.json/,
   );
   const fell = run([comments], { root: tree({ [file]: plain }, { core: { [file]: 2 } }) });
-  assert.equal(fell.code, 1);
-  assert.match(fell.output, /a\.ts: 0 comment lines, the baseline has 2\. Run `pnpm lint:update`/);
+  assert.equal(fell.code, 0);
+  assert.equal(
+    fell.output,
+    'comments: 1 file is under the baseline; `pnpm lint:update` locks the gain in.',
+  );
 });
 
 test('tool directives and a licence header do not count', () => {

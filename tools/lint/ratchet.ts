@@ -1,6 +1,7 @@
 // A ratchet over source files: a rule counts something per file, and a checked-in baseline holds
-// the exact count of every file that has any. The check fails on any difference; --update
-// rewrites the baseline to the tree as it is, unless a group's total would rise.
+// the exact count of every file that has any. The check fails when a file's count rises or a file
+// with a count has no entry; a file under its count, or an entry whose file is gone, only earns a
+// note. --update rewrites the baseline to the tree as it is, unless a group's total would rise.
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
@@ -23,8 +24,6 @@ export interface Rule {
   messages: {
     rose(path: string, count: number, allowed: number): string;
     added(path: string, count: number): string;
-    fell(path: string, count: number, allowed: number): string;
-    gone(path: string): string;
   };
 }
 
@@ -105,20 +104,37 @@ function flatten(counts: Counts): Map<string, number> {
 const total = (files: Record<string, number> | undefined) =>
   Object.values(files ?? {}).reduce((sum, count) => sum + count, 0);
 
-function check(rule: Rule, root: string, baseline: Counts, current: Counts): string[] {
+interface Comparison {
+  /** One line per file that rose or has no entry: these fail the check. */
+  problems: string[];
+  /** Files under their baseline count, and entries whose file is gone: these only earn a note. */
+  under: number;
+  gone: number;
+}
+
+function compare(rule: Rule, root: string, baseline: Counts, current: Counts): Comparison {
   const before = flatten(baseline);
   const now = flatten(current);
-  const lines: string[] = [];
+  const result: Comparison = { problems: [], under: 0, gone: 0 };
   for (const path of [...new Set([...before.keys(), ...now.keys()])].sort()) {
     const allowed = before.get(path);
     const count = now.get(path) ?? 0;
-    if (allowed === undefined) lines.push(rule.messages.added(path, count));
-    else if (count > allowed) lines.push(rule.messages.rose(path, count, allowed));
-    else if (count < allowed && count === 0 && !existsSync(join(root, path)))
-      lines.push(rule.messages.gone(path));
-    else if (count < allowed) lines.push(rule.messages.fell(path, count, allowed));
+    if (allowed === undefined) result.problems.push(rule.messages.added(path, count));
+    else if (count > allowed) result.problems.push(rule.messages.rose(path, count, allowed));
+    else if (count === 0 && !existsSync(join(root, path))) result.gone++;
+    else if (count < allowed) result.under++;
   }
-  return lines;
+  return result;
+}
+
+const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+
+function gainNote(rule: Rule, { under, gone }: Comparison): string | null {
+  if (under === 0 && gone === 0) return null;
+  const parts = [];
+  if (under > 0) parts.push(`${plural(under, 'file is', 'files are')} under the baseline`);
+  if (gone > 0) parts.push(`${plural(gone, 'entry has', 'entries have')} no file`);
+  return `${rule.name}: ${parts.join(' and ')}; \`${UPDATE_COMMAND}\` locks the gain in.`;
 }
 
 function update(rule: Rule, root: string, baseline: Counts, current: Counts): string[] | null {
@@ -163,11 +179,13 @@ export function run(rules: Rule[], options: Options): { code: number; output: st
       }
       continue;
     }
-    const problems = check(rule, options.root, baseline, current);
-    if (problems.length > 0) {
+    const comparison = compare(rule, options.root, baseline, current);
+    if (comparison.problems.length > 0) {
       code = 1;
-      lines.push(...problems);
+      lines.push(...comparison.problems);
     }
+    const note = gainNote(rule, comparison);
+    if (note) lines.push(note);
   }
   return { code, output: lines.join('\n') };
 }

@@ -1,8 +1,8 @@
 // No new effect hooks: every file's count of useEffect, useLayoutEffect and useInsertionEffect
-// calls is held in effects.baseline.json, and the ratchet fails when one changes.
+// calls is held in effects.baseline.json, and the ratchet fails when one rises.
 
 import ts from 'typescript';
-import { type Rule, UPDATE_COMMAND } from './ratchet.ts';
+import type { Rule } from './ratchet.ts';
 
 const HOOKS = new Set(['useEffect', 'useLayoutEffect', 'useInsertionEffect']);
 
@@ -108,9 +108,5 @@ export const effects: Rule = {
       `${path}: ${hooks(count)}, the baseline has ${allowed}. ${instead} If an effect is truly needed, raise this file's count by hand in tools/lint/effects.baseline.json in the same change.`,
     added: (path, count) =>
       `${path}: ${hooks(count)} and no entry in the baseline. ${instead} If an effect is truly needed, add this file with its count by hand to tools/lint/effects.baseline.json in the same change.`,
-    fell: (path, count, allowed) =>
-      `${path}: ${hooks(count)}, the baseline has ${allowed}. Run \`${UPDATE_COMMAND}\` to lock the gain in.`,
-    gone: (path) =>
-      `${path}: in the baseline but the file is gone. Run \`${UPDATE_COMMAND}\` to lock the gain in.`,
   },
 };
