@@ -83,6 +83,131 @@
       }
     },
     {
+      "includes": [
+        "apps/studio/src/**",
+        "packages/react/src/**",
+        "!**/*.test.ts",
+        "!**/*.test.tsx",
+        "!**/test/**"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": [
+                      "node:*",
+                      "node:*/**",
+                      "assert",
+                      "assert/**",
+                      "async_hooks",
+                      "async_hooks/**",
+                      "buffer",
+                      "buffer/**",
+                      "child_process",
+                      "child_process/**",
+                      "cluster",
+                      "cluster/**",
+                      "console",
+                      "console/**",
+                      "constants",
+                      "constants/**",
+                      "crypto",
+                      "crypto/**",
+                      "dgram",
+                      "dgram/**",
+                      "diagnostics_channel",
+                      "diagnostics_channel/**",
+                      "dns",
+                      "dns/**",
+                      "domain",
+                      "domain/**",
+                      "events",
+                      "events/**",
+                      "fs",
+                      "fs/**",
+                      "http",
+                      "http/**",
+                      "http2",
+                      "http2/**",
+                      "https",
+                      "https/**",
+                      "inspector",
+                      "inspector/**",
+                      "module",
+                      "module/**",
+                      "net",
+                      "net/**",
+                      "os",
+                      "os/**",
+                      "path",
+                      "path/**",
+                      "perf_hooks",
+                      "perf_hooks/**",
+                      "process",
+                      "process/**",
+                      "punycode",
+                      "punycode/**",
+                      "querystring",
+                      "querystring/**",
+                      "readline",
+                      "readline/**",
+                      "repl",
+                      "repl/**",
+                      "stream",
+                      "stream/**",
+                      "string_decoder",
+                      "string_decoder/**",
+                      "sys",
+                      "sys/**",
+                      "timers",
+                      "timers/**",
+                      "tls",
+                      "tls/**",
+                      "trace_events",
+                      "trace_events/**",
+                      "tty",
+                      "tty/**",
+                      "url",
+                      "url/**",
+                      "util",
+                      "util/**",
+                      "v8",
+                      "v8/**",
+                      "vm",
+                      "vm/**",
+                      "wasi",
+                      "wasi/**",
+                      "worker_threads",
+                      "worker_threads/**",
+                      "zlib",
+                      "zlib/**"
+                    ],
+                    "message": "Studio and packages/react run in the browser and in the sandboxed desktop renderer, where Node built-ins do not exist. In Studio, ask the server through @corral/client (see apps/studio/src/services.tsx) or the desktop shell through window.corralDesktop (typed in apps/studio/src/desktop.tsx); in packages/react, take the data or the action as a prop from the app."
+                  },
+                  {
+                    "group": ["electron/**"],
+                    "message": "Studio and packages/react run in the browser and in the sandboxed desktop renderer, where Electron's modules are not available. Expose the capability in a preload under apps/desktop/src and call it from Studio through its bridge (window.corralDesktop, typed in apps/studio/src/desktop.tsx); packages/react takes it as a prop from the app."
+                  },
+                  {
+                    "group": ["@corral/server/**"],
+                    "message": "Studio and packages/react must not bundle server code. Studio reaches server data through @corral/client, and packages/react takes it as a prop from the app; shared types and schemas live in @corral/contracts."
+                  }
+                ],
+                "paths": {
+                  "electron": "Studio and packages/react run in the browser and in the sandboxed desktop renderer, where Electron's modules are not available. Expose the capability in a preload under apps/desktop/src and call it from Studio through its bridge (window.corralDesktop, typed in apps/studio/src/desktop.tsx); packages/react takes it as a prop from the app.",
+                  "@corral/server": "Studio and packages/react must not bundle server code. Studio reaches server data through @corral/client, and packages/react takes it as a prop from the app; shared types and schemas live in @corral/contracts."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
       "includes": ["**/test/**", "**/*.test.ts", "**/*.test.tsx"],
       "linter": {
         "rules": {
