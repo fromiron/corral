@@ -42,10 +42,10 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    ```
 
 7. 바꾼 것에 따라 다음을 더 돌린다.
-   - 의존성을 바꿨으면 `pnpm deps:check`([AGENTS.md › Validation and Documentation](../../AGENTS.md#validation-and-documentation)). PR 게이트에는 없고 출시 게이트에만 있다.
+   - 어느 `package.json`의 `dependencies`·`devDependencies`·`optionalDependencies`·`engines`, `pnpm-lock.yaml`, `docs/dependency-lock.json` 가운데 하나라도 바뀌었으면 `pnpm deps:check`([AGENTS.md › Validation and Documentation](../../AGENTS.md#validation-and-documentation)). PR 게이트에는 없고 출시 게이트에만 있다.
    - `tools/release/`나 `tools/deps/`를 바꿨으면 `pnpm test:release`. 이 `node --test` 테스트는 `pnpm test`에도 PR 게이트에도 들지 않는다.
    - `apps/server/resources/builtin/`을 바꿨으면 더 돌릴 것이 없다. `pnpm test`가 `pnpm builtin:check`와 같은 검사를 한다([기본 제공 스킬과 에이전트 › 생성과 검사](../specs/features/builtin-crew.md#생성과-검사)).
-8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 8·9단계를 건너뛴다. 동작을 바꾸지 않고 파일 이동·이름 바꾸기·import 경로 고치기만 한 작업도 8·9단계를 건너뛰고 6단계의 스모크로 갈음한다. 그런 작업인지는 작업의 커밋마다 `git show -M --stat <커밋>`으로 이름이 바뀐 파일과 고친 파일을 보고, `git show -M -U0 <커밋>`으로 고친 줄이 import 경로뿐인지 확인한다.
+8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 8·9단계를 건너뛴다. 동작을 바꾸지 않고 파일 이동·이름 바꾸기와 경로를 가리키는 줄만 고친 작업도 8·9단계를 건너뛰고 6단계의 스모크로 갈음한다. 그런 작업인지는 작업의 커밋마다 `git show -M --stat <커밋>`으로 이름이 바뀐 파일과 고친 파일을 보고, `git show -M -U0 <커밋>`으로 고친 줄이 모두 경로를 가리키는 줄(import·mock 경로, 테스트가 글자로 든 경로, worker·asset URL, 문서의 링크)인지 확인한다.
    - 언제나: 바꾼 영역의 확장 스펙 파일만, 위 "특정 회귀만 확인할 때"의 형식(스펙 경로, `--project`, `--workers`)으로 돌린다.
    - [docs/plans](../plans/)에 계획을 두는 긴 작업([AGENTS.md › Getting Started](../../AGENTS.md#getting-started) 4번)을 끝낼 때만: 확장 검사 전체를 돌린다.
 
@@ -70,13 +70,13 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    ```
 
 2. 실패 메시지와 trace에서 대상 부재·입력 가림·서버 실패를 먼저 구분한다. 실패가 테스트 밖에서 왔으면(브라우저 미설치, `Studio is not built` 오류, 5179 포트를 다른 서버가 씀, 고정값과 다른 Node, 마지막 빌드 뒤의 소스 변경) 결과는 **환경 문제**다. 아니면 3단계로 간다.
-3. 실패한 파일을 이 브랜치가 새로 만들었거나 바꿨는지 본다.
+3. 실패한 파일을 이 브랜치가 새로 만들었거나 바꿨는지 본다. 옮기기만 한 파일은 바꾼 파일이 아니다.
 
    ```sh
-   git diff --name-only "$(git merge-base HEAD <합칠 브랜치>)" -- <실패한 파일>
+   git diff -M --name-status "$(git merge-base HEAD <합칠 브랜치>)" | grep -F <실패한 파일>
    ```
 
-   경로가 찍히면 결과는 **회귀**다. 아무것도 찍히지 않으면 4단계로 간다.
+   `A`나 `M`이 찍히거나, `R`(옮김)인데 고친 줄 중 경로를 가리키지 않는 줄이 있으면 결과는 **회귀**다. 아무것도 찍히지 않거나 경로를 가리키는 줄만 고친 `R`이면 4단계로 간다.
 4. 실패한 파일만 워커 하나로, 다른 무거운 프로세스 없이 다시 돌린다. Vitest 파일은 경로를 준다. Playwright 스펙은 위 "특정 회귀만 확인할 때"의 명령 형식으로 스펙 경로를 `--project`보다 앞에 두고, 프로젝트는 실패 보고에 찍힌 이름을 쓴다.
 
    ```sh
@@ -84,7 +84,7 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    ```
 
    통과하면 결과는 **흔들림**이다. 같은 테스트가 다시 실패하면 5단계로 간다.
-5. 브랜치를 딴 커밋을 별도 작업 트리에 꺼내 4단계의 같은 명령을 돌린다. E2E 파일이면 그 트리에서 먼저 `pnpm build`를 돌린다.
+5. 브랜치를 딴 커밋을 별도 작업 트리에 꺼내 4단계의 같은 명령을 돌린다. 옮긴 파일은 3단계가 찍은 옛 경로로 돌린다. E2E 파일이면 그 트리에서 먼저 `pnpm build`를 돌린다.
 
    ```sh
    git worktree add ../corral-base "$(git merge-base HEAD <합칠 브랜치>)"
