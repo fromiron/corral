@@ -42,7 +42,7 @@ Corral은 바로 쓸 수 있는 스킬과 에이전트를 함께 싣는다. 템�
 |---|---|
 | `core` (Corral 안에서만 뜻이 통하는 절차) | `corral-change-report`, `corral-delegation`, `corral-evidence`, `corral-handoff`, `corral-review`, `corral-verification` |
 | `coding` (어느 도구에서나 쓰는 엔지니어링 절차) | `engineering-principles`, `shape-first`, `smallest-change`, `root-cause`, `failing-test-first`, `prove-it`, `break-it`, `change-impact`, `behavior-pin`, `measure-first`, `trace-the-code`, `ask-the-record`, `plain-prose`, `doc-writing`, `comment-hygiene`, `pick-and-graft` |
-| `design` | 고정한 upstream을 내용 변경 없이 실은 열 개([NOTICE](../../../apps/server/resources/builtin/design/NOTICE.md)) |
+| `design` | 고정한 upstream을 내용 변경 없이 실은 열한 개([NOTICE](../../../apps/server/resources/builtin/design/NOTICE.md)) |
 | `browser` | `corral-browser-verification` |
 
 - `engineering-principles`는 원칙의 색인이다. 본문은 원칙마다 언제 적용하는지를 한 줄로 적고, 각 원칙의 전문은 그 스킬의 `references/` 파일에 있다. 에이전트는 적용하는 원칙의 파일만 읽는다.
