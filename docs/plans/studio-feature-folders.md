@@ -16,7 +16,7 @@
 | M5 | `pages/preview/` | 끝 |
 | M6 | `pages/inbox/` | 끝 |
 | M7 | `pages/meeting/` | 끝 |
-| M8 | `pages/editor/` | 할 일 |
+| M8 | `pages/editor/` | 끝 |
 | M9 | `pages/library/` | 할 일 |
 | M10 | `pages/session/` | 할 일 |
 | M11 | `pages/models/` | 할 일 |

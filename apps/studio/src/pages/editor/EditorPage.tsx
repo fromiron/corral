@@ -51,13 +51,13 @@ import {
 } from 'react';
 import { useMessages, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { DemoGuide } from '../demo/DemoGuide.tsx';
-import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../demo/templates.ts';
-import { useModelPrices } from '../prices.ts';
-import { projectName, projectsChanged, setCurrentProject } from '../projects.ts';
-import { demoRoute, editorRoute, newEditorRoute } from '../router.tsx';
-import { useServices } from '../services.tsx';
-import { draftWording, templateDefinition, useTemplateText } from '../templates.ts';
+import { DemoGuide } from '../../demo/DemoGuide.tsx';
+import { DEMO_TEMPLATE_IDS, type DemoTemplateId } from '../../demo/templates.ts';
+import { useModelPrices } from '../../prices.ts';
+import { projectName, projectsChanged, setCurrentProject } from '../../projects.ts';
+import { demoRoute, editorRoute, newEditorRoute } from '../../router.tsx';
+import { useServices } from '../../services.tsx';
+import { draftWording, templateDefinition, useTemplateText } from '../../templates.ts';
 import {
   blocksLeaving,
   discardEditorCopy,
@@ -68,30 +68,30 @@ import {
   newEditorWorkingCopy,
   ownsSaveShortcut,
   saveEditorCopy,
-} from '../workbench/editorDraft.ts';
-import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
-import { HarnessRoleSettings } from '../workbench/HarnessRoleSettings.tsx';
-import { LoopRecipeSettings } from '../workbench/LoopRecipeSettings.tsx';
-import { MarkdownAgentImport } from '../workbench/MarkdownAgentImport.tsx';
+} from '../../workbench/editorDraft.ts';
+import { readEditorView, rememberEditorView } from '../../workbench/editorView.ts';
+import { HarnessRoleSettings } from '../../workbench/HarnessRoleSettings.tsx';
+import { LoopRecipeSettings } from '../../workbench/LoopRecipeSettings.tsx';
+import { MarkdownAgentImport } from '../../workbench/MarkdownAgentImport.tsx';
 import {
   settingsInteractionBlocked,
   settingsOnlyTransition,
   useSettingsNavigation,
-} from '../workbench/navigation.ts';
-import { panelKey } from '../workbench/panels/registry.ts';
-import { RoleSkills, useSkillLabel } from '../workbench/RoleSkills.tsx';
-import { RoleTools } from '../workbench/RoleTools.tsx';
-import { RunBreakpoints } from '../workbench/RunBreakpoints.tsx';
-import { RunHarnessOverrides } from '../workbench/RunHarnessOverrides.tsx';
-import { RunRoleOverrides } from '../workbench/RunRoleOverrides.tsx';
-import { RunSetupSummary } from '../workbench/RunSetupSummary.tsx';
-import { teamChoices } from '../workbench/teamChoices.ts';
-import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
-import { useImageProfiles } from '../workbench/useImageProfiles.ts';
-import { useModelProfileRead, useModelProfiles } from '../workbench/useModels.ts';
-import { useRunMode } from '../workbench/useRunMode.ts';
-import { useRunStats } from '../workbench/useRunStats.ts';
-import { useSavedTeams } from '../workbench/useSavedTeams.ts';
+} from '../../workbench/navigation.ts';
+import { panelKey } from '../../workbench/panels/registry.ts';
+import { RoleSkills, useSkillLabel } from '../../workbench/RoleSkills.tsx';
+import { RoleTools } from '../../workbench/RoleTools.tsx';
+import { RunBreakpoints } from '../../workbench/RunBreakpoints.tsx';
+import { RunHarnessOverrides } from '../../workbench/RunHarnessOverrides.tsx';
+import { RunRoleOverrides } from '../../workbench/RunRoleOverrides.tsx';
+import { RunSetupSummary } from '../../workbench/RunSetupSummary.tsx';
+import { teamChoices } from '../../workbench/teamChoices.ts';
+import { useContainerAtLeast } from '../../workbench/useContainerAtLeast.ts';
+import { useImageProfiles } from '../../workbench/useImageProfiles.ts';
+import { useModelProfileRead, useModelProfiles } from '../../workbench/useModels.ts';
+import { useRunMode } from '../../workbench/useRunMode.ts';
+import { useRunStats } from '../../workbench/useRunStats.ts';
+import { useSavedTeams } from '../../workbench/useSavedTeams.ts';
 
 export function EditorPage() {
   const existing = editorRoute.useMatch({ shouldThrow: false });

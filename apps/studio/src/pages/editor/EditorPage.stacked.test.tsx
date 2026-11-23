@@ -21,11 +21,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, assert, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { placeStep } from '../../../../packages/react/src/team-editor/commands.ts';
-import { templateDefinition, templateText } from '../templates.ts';
-import { editorWorkingCopy, newEditorWorkingCopy } from '../workbench/editorDraft.ts';
-import { readEditorView, rememberEditorView } from '../workbench/editorView.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { placeStep } from '../../../../../packages/react/src/team-editor/commands.ts';
+import { templateDefinition, templateText } from '../../templates.ts';
+import { editorWorkingCopy, newEditorWorkingCopy } from '../../workbench/editorDraft.ts';
+import { readEditorView, rememberEditorView } from '../../workbench/editorView.ts';
 import { EditorPage, TeamDesign } from './EditorPage.tsx';
 
 // The team editor in its two hosts, the route editor and the session's team graph pane, stacks
@@ -39,8 +39,8 @@ const fixture = vi.hoisted(() => ({
   fromSession: undefined as string | undefined,
   template: undefined as 'starter' | 'blank' | undefined,
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', () => ({
   editorRoute: {
     useLoaderData: () => fixture.record,
     useSearch: () => ({ fromSession: fixture.fromSession }),

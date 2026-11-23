@@ -9,7 +9,7 @@ import {
 import { lazy, Suspense } from 'react';
 import { type DemoTemplateId, demoTemplate } from './demo/templates.ts';
 import { ComparePage } from './pages/compare/ComparePage.tsx';
-import { DemoPage, EditorPage } from './pages/EditorPage.tsx';
+import { DemoPage, EditorPage } from './pages/editor/EditorPage.tsx';
 import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
 import { InboxPage, validateInboxSearch } from './pages/inbox/InboxPage.tsx';

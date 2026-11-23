@@ -129,7 +129,7 @@ import { useSessionRuns } from '../workbench/useSessionRuns.ts';
 import { WorkbenchToolsPanel } from '../workbench/WorkbenchToolsPanel.tsx';
 import { ChatWidgetProvider } from '../workbench/widgets/useChatWidgets.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
-import { TeamDesign } from './EditorPage.tsx';
+import { TeamDesign } from './editor/EditorPage.tsx';
 import { useBinding } from './FilesViews.tsx';
 import { MeetingPage } from './meeting/MeetingPage.tsx';
 
