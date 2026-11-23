@@ -15,17 +15,20 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useStore } from 'zustand';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
 import {
   advisorDefinition,
   advisorNodeId,
   advisorRunEvents,
   advisorRunProjection,
-} from '../../../../packages/react/src/stories/advisorRunFixture.ts';
-import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
-import { createPendingTrayStore, PendingTrayContext } from '../workbench/session/PendingTray.tsx';
-import { ChatWidgetProvider, useChatWidget } from '../workbench/widgets/useChatWidgets.tsx';
+} from '../../../../../packages/react/src/stories/advisorRunFixture.ts';
+import { RunResponseArea } from '../../workbench/RunResponseArea.tsx';
+import {
+  createPendingTrayStore,
+  PendingTrayContext,
+} from '../../workbench/session/PendingTray.tsx';
+import { ChatWidgetProvider, useChatWidget } from '../../workbench/widgets/useChatWidgets.tsx';
 import { RunDetail, type RunDetailSearch } from './RunPage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -49,14 +52,14 @@ vi.mock('@corral/core', async (original) => {
       })),
   };
 });
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ runRoute: {} }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', () => ({ runRoute: {} }));
 // The real response area, observed: Needs you renders the same component.
-vi.mock('../workbench/RunResponseArea.tsx', async (original) => {
-  const module = await original<typeof import('../workbench/RunResponseArea.tsx')>();
+vi.mock('../../workbench/RunResponseArea.tsx', async (original) => {
+  const module = await original<typeof import('../../workbench/RunResponseArea.tsx')>();
   return { ...module, RunResponseArea: vi.fn(module.RunResponseArea) };
 });
-vi.mock('../workbench/RunStatusCards.tsx', () => ({
+vi.mock('../../workbench/RunStatusCards.tsx', () => ({
   ExecutionContext: () => null,
   RunStatusCards: () => (
     <details data-testid="status-card">

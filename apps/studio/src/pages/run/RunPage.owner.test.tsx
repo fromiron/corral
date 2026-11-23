@@ -4,12 +4,12 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import { createStore } from 'zustand';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { RunDetail } from './RunPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../router.tsx', () => ({ runRoute: {} }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../router.tsx', () => ({ runRoute: {} }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children: React.ReactNode }) => <span>{children}</span>,
   useNavigate: () => () => {},

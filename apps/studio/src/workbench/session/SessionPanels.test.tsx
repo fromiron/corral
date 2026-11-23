@@ -15,7 +15,7 @@ vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
 vi.mock('../../pages/ReviewPage.tsx', () => ({ Checks: () => null }));
 // The run record has its own tests; here it shows the line the panel puts above its header.
-vi.mock('../../pages/RunPage.tsx', () => ({
+vi.mock('../../pages/run/RunPage.tsx', () => ({
   RunDetail: ({
     runId,
     lead,

@@ -78,29 +78,29 @@ import {
 } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { useModelPrices } from '../prices.ts';
-import { projectOfRun, setCurrentProject } from '../projects.ts';
-import { runRoute } from '../router.tsx';
-import { useServices } from '../services.tsx';
-import { ExecutionEvidence } from '../workbench/ExecutionEvidence.tsx';
-import { useRunHeadCarriesControls } from '../workbench/panel/runHeadControls.ts';
-import { panelKey } from '../workbench/panels/registry.ts';
-import type { RunDetailSearch } from '../workbench/panels/routes.ts';
-import { RunPlanStrip } from '../workbench/RunActivity.tsx';
-import { breakpointSteps } from '../workbench/RunBreakpoints.tsx';
-import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
-import { RunResultVersions } from '../workbench/RunResultVersions.tsx';
-import { ExecutionContext, RunStatusCards } from '../workbench/RunStatusCards.tsx';
-import { RunTimeChart } from '../workbench/RunTimeChart.tsx';
-import { RunViews } from '../workbench/RunViews.tsx';
-import { runFlowChecks } from '../workbench/runFlowChecks.ts';
-import { useRespondInConversation } from '../workbench/session/PendingTray.tsx';
-import { toolMarks } from '../workbench/toolMarks.ts';
-import { useContainerAtLeast } from '../workbench/useContainerAtLeast.ts';
-import { failedExecutionId } from '../workbench/widgets/selectors.ts';
-import { markRunReviewed } from './GettingStarted.tsx';
+import { useModelPrices } from '../../prices.ts';
+import { projectOfRun, setCurrentProject } from '../../projects.ts';
+import { runRoute } from '../../router.tsx';
+import { useServices } from '../../services.tsx';
+import { ExecutionEvidence } from '../../workbench/ExecutionEvidence.tsx';
+import { useRunHeadCarriesControls } from '../../workbench/panel/runHeadControls.ts';
+import { panelKey } from '../../workbench/panels/registry.ts';
+import type { RunDetailSearch } from '../../workbench/panels/routes.ts';
+import { RunPlanStrip } from '../../workbench/RunActivity.tsx';
+import { breakpointSteps } from '../../workbench/RunBreakpoints.tsx';
+import { RunResponseArea } from '../../workbench/RunResponseArea.tsx';
+import { RunResultVersions } from '../../workbench/RunResultVersions.tsx';
+import { ExecutionContext, RunStatusCards } from '../../workbench/RunStatusCards.tsx';
+import { RunTimeChart } from '../../workbench/RunTimeChart.tsx';
+import { RunViews } from '../../workbench/RunViews.tsx';
+import { runFlowChecks } from '../../workbench/runFlowChecks.ts';
+import { useRespondInConversation } from '../../workbench/session/PendingTray.tsx';
+import { toolMarks } from '../../workbench/toolMarks.ts';
+import { useContainerAtLeast } from '../../workbench/useContainerAtLeast.ts';
+import { failedExecutionId } from '../../workbench/widgets/selectors.ts';
+import { markRunReviewed } from '../GettingStarted.tsx';
 
-export type { RunDetailSearch } from '../workbench/panels/routes.ts';
+export type { RunDetailSearch } from '../../workbench/panels/routes.ts';
 
 /** One run: observed work flow, execution details and Reins. */
 export function RunPage() {

@@ -58,7 +58,7 @@ const panels: Record<string, string[]> = {
     'apps/studio/src/workbench/WorktreeCommandPanel.tsx',
   ],
   runs: [
-    'apps/studio/src/pages/RunPage.tsx',
+    'apps/studio/src/pages/run/RunPage.tsx',
     'apps/studio/src/workbench/RunTaskTimeline.tsx',
     'apps/studio/src/workbench/RunTimeChart.tsx',
     'apps/studio/src/workbench/RunStatusCards.tsx',
@@ -149,10 +149,10 @@ const keptSmall: { file: string; near: RegExp }[] = [
   { file: 'apps/studio/src/workbench/QuickOpen.tsx', near: /id=\{targetId\}/ },
   // The run header's actions and the run side panel's close: the kit AgentRun screen keeps its
   // header's Stop, Run options and side panel toggle, and its side panel's close, compact.
-  { file: 'apps/studio/src/pages/RunPage.tsx', near: /'closeDetails'/ },
-  { file: 'apps/studio/src/pages/RunPage.tsx', near: /ref=\{detailsButton\}/ },
-  { file: 'apps/studio/src/pages/RunPage.tsx', near: /run-respond/ },
-  { file: 'apps/studio/src/pages/RunPage.tsx', near: /onOpenExecution\(failedExecution\)/ },
+  { file: 'apps/studio/src/pages/run/RunPage.tsx', near: /'closeDetails'/ },
+  { file: 'apps/studio/src/pages/run/RunPage.tsx', near: /ref=\{detailsButton\}/ },
+  { file: 'apps/studio/src/pages/run/RunPage.tsx', near: /run-respond/ },
+  { file: 'apps/studio/src/pages/run/RunPage.tsx', near: /onOpenExecution\(failedExecution\)/ },
   // The line above a past run's header leads to the run going with the header's own size.
   { file: 'apps/studio/src/workbench/session/SessionPanels.tsx', near: /onShowActiveRun/ },
   // An approval's decision row: the kit permission card and the kit AgentRun side panel's

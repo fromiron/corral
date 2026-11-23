@@ -10,7 +10,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useBinding } from '../../pages/FilesViews.tsx';
 import { Checks } from '../../pages/ReviewPage.tsx';
-import { RunDetail } from '../../pages/RunPage.tsx';
+import { RunDetail } from '../../pages/run/RunPage.tsx';
 import { useServices } from '../../services.tsx';
 import type { AttachmentCapture } from '../context/bridge.ts';
 import type { SessionSearch } from '../panels/routes.ts';

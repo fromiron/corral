@@ -20,7 +20,7 @@ import { PreviewPage, validatePreviewSearch } from './pages/preview/PreviewPage.
 import { ProjectsPage } from './pages/projects/ProjectsPage.tsx';
 import { WorkspacePage } from './pages/projects/WorkspacePage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';
-import { RunPage } from './pages/RunPage.tsx';
+import { RunPage } from './pages/run/RunPage.tsx';
 import { ScheduledPage } from './pages/schedules/ScheduledPage.tsx';
 import { SessionPage } from './pages/session/SessionPage.tsx';
 import { ErrorView, NotFoundView, RootLayout } from './pages/shell/RootLayout.tsx';
