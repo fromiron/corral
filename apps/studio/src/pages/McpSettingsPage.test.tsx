@@ -60,7 +60,7 @@ vi.mock('../workbench/harness/McpEditor.tsx', () => ({
     </button>
   ),
 }));
-vi.mock('./McpConnection.tsx', () => ({ McpConnection: () => null }));
+vi.mock('../workbench/harness/McpConnection.tsx', () => ({ McpConnection: () => null }));
 
 const cleanup: (() => void)[] = [];
 beforeEach(() => {

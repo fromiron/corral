@@ -5,11 +5,11 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import en from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { McpConnection } from './McpConnection.tsx';
 
-vi.mock('../services.tsx', () => ({ useServices: () => ({}) }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => ({}) }));
+vi.mock('../SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => (task: () => Promise<unknown>) => task(),
 }));

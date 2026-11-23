@@ -13,12 +13,12 @@ import {
 } from '@corral/react/design-kit';
 import { type ReactNode, useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
+import { CHOSEN_BUTTON_ROW } from './chosenRow.ts';
 import {
   inspectMcpConnection,
   McpConnection,
   type McpConnectionCheck,
-} from '../pages/McpConnection.tsx';
-import { CHOSEN_BUTTON_ROW } from './chosenRow.ts';
+} from './harness/McpConnection.tsx';
 import { useSettingsNavigation } from './navigation.ts';
 
 interface PickerProps {

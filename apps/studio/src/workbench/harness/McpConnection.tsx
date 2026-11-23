@@ -4,11 +4,11 @@ import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { operationId } from '../workbench/harness/Target.tsx';
-import { mcpFailureKind } from '../workbench/mcpFailure.ts';
-import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useServices } from '../../services.tsx';
+import { mcpFailureKind } from '../mcpFailure.ts';
+import { useSettingsNavigation } from '../navigation.ts';
+import { useSettingsForm, useSettingsTask } from '../SettingsLifecycle.tsx';
+import { operationId } from './Target.tsx';
 
 export interface McpConnectionCheck {
   launch: Awaited<ReturnType<HarnessApi['inspectMcpServer']>>;

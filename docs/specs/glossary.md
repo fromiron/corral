@@ -71,7 +71,7 @@
 
 ## 파일명
 
-- `pages/McpConnection.tsx`는 MCP 서버 한 개의 연결 위젯이고, `pages/McpSettingsPage.tsx`가 설정 화면이다.
+- `workbench/harness/McpConnection.tsx`는 MCP 서버 한 개의 연결 위젯이고, `pages/McpSettingsPage.tsx`가 설정 화면이다.
 - `workbench/ProjectMaterials.tsx`는 서버의 지침·메모리 기록을 다루며 작업 폴더 파일과 무관하다.
 
 ## 고유한 이름

@@ -22,7 +22,7 @@
 | M11 | `pages/models/` | 끝 |
 | M12 | `pages/shell/` | 끝 |
 | M13 | `pages/run/` | 끝 |
-| M14 | `workbench/harness/`에 `McpConnection` | 할 일 |
+| M14 | `workbench/harness/`에 `McpConnection` | 끝 |
 | M15 | `pages/harness/` | 할 일 |
 | M16 | `pages/changes/` | 할 일 |
 | M17 | `pages/settings/` | 할 일 |

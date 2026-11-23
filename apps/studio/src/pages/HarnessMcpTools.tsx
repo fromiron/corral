@@ -3,7 +3,7 @@ import type { ProjectToolConfigRevision, RegisteredMcpServer } from '@corral/con
 import { Checkbox, fontWeights } from '@corral/react/design-kit';
 import { useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { McpConnection } from './McpConnection.tsx';
+import { McpConnection } from '../workbench/harness/McpConnection.tsx';
 
 export function HarnessMcpTools({
   api,
