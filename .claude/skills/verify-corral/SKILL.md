@@ -168,7 +168,7 @@ Each journey walked leaves one [map-flows](../../../apps/server/resources/builti
 
 ```json
 { "schema_version": "1.0", "run": "<name>", "map": "<map>", "journey": "<journey>", "scenario": "default",
-  "recorded_at": "<yyyy-mm-dd>", "revision": "<full git rev-parse HEAD>", "method": "browser-automation",
+  "recorded_at": "<date -Iseconds>", "revision": "<full git rev-parse HEAD>", "method": "browser-automation",
   "tool": "Playwright <version> (Chromium <version>)",
   "environment": { "target": "<mode and mock delay in words, no path or port>", "viewport": "1280x800", "input": "pointer", "locale": "en" },
   "steps": [ "<the steps array of <journey>.steps.json>" ],
@@ -176,7 +176,7 @@ Each journey walked leaves one [map-flows](../../../apps/server/resources/builti
   "limitations": [ "simulated agents", "one viewport, pointer only, no assistive technology", "uncommitted changes, if git status showed any" ] }
 ```
 
-A step that did not land is recorded as it happened, and the run ends there with its honest outcome. When a step lands on a state the map reaches under another scenario's facts (the map's `requires` show which), record that divergence, then walk the scenario whose facts held as its own run.
+`recorded_at` is the full date-time with offset that `date -Iseconds` prints when the walk ends (`2026-11-16T09:27:32+09:00`), never a bare date: `analyze_flow.py` takes a transition's latest run by sorting `recorded_at` as text, then the run name, so same-day bare dates rank by name, and only a single offset keeps the text order true. A step that did not land is recorded as it happened, and the run ends there with its honest outcome. When a step lands on a state the map reaches under another scenario's facts (the map's `requires` show which), record that divergence, then walk the scenario whose facts held as its own run.
 
 **Where it goes, then validate:**
 
