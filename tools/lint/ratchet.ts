@@ -2,7 +2,8 @@
 // the exact count of every file that has any. The check fails on any difference; --update
 // rewrites the baseline to the tree as it is, unless a group's total would rise.
 
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 export interface Group {
@@ -32,20 +33,42 @@ export type Counts = Record<string, Record<string, number>>;
 
 export const UPDATE_COMMAND = 'pnpm lint:update';
 
+/** Repository-relative files under the folders: Git's view (tracked and not ignored) when the root is a repository, otherwise every file outside node_modules. */
+function listFiles(root: string, folders: string[]): string[] {
+  try {
+    const out = execFileSync(
+      'git',
+      ['ls-files', '-z', '--cached', '--others', '--exclude-standard', '--', ...folders],
+      { cwd: root, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'], maxBuffer: 64 << 20 },
+    );
+    return out.split('\0').filter((path) => path && existsSync(join(root, path)));
+  } catch {
+    return folders.flatMap((folder) =>
+      existsSync(join(root, folder))
+        ? readdirSync(join(root, folder), { recursive: true, encoding: 'utf8' })
+            .map((entry) => `${folder}/${entry.split('\\').join('/')}`)
+            .filter((path) => !path.split('/').includes('node_modules'))
+            .filter((path) => statSync(join(root, path)).isFile())
+        : [],
+    );
+  }
+}
+
 export function scan(rule: Rule, root: string): Counts {
   const counts: Counts = Object.fromEntries(rule.groups.map((group) => [group.name, {}]));
-  const seen = new Set<string>();
-  for (const group of rule.groups) {
-    const folder = join(root, group.root);
-    if (!existsSync(folder)) continue;
-    for (const entry of readdirSync(folder, { recursive: true, encoding: 'utf8' })) {
-      const path = `${group.root}/${entry.split('\\').join('/')}`;
-      if (seen.has(path)) continue;
-      seen.add(path);
-      if (!rule.includes(path)) continue;
-      const count = rule.count(path, readFileSync(join(root, path), 'utf8'));
-      if (count > 0) (counts[group.name] as Record<string, number>)[path] = count;
-    }
+  const files = [
+    ...new Set(
+      listFiles(
+        root,
+        rule.groups.map((group) => group.root),
+      ),
+    ),
+  ].sort();
+  for (const path of files) {
+    const group = rule.groups.find((g) => path.startsWith(`${g.root}/`));
+    if (!group || !rule.includes(path)) continue;
+    const count = rule.count(path, readFileSync(join(root, path), 'utf8'));
+    if (count > 0) (counts[group.name] as Record<string, number>)[path] = count;
   }
   return counts;
 }

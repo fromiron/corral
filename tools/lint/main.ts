@@ -2,10 +2,11 @@
 // pnpm lint:update (--update) rewrites the baselines to the tree as it is.
 
 import { join } from 'node:path';
+import { comments } from './comments.ts';
 import { effects } from './effects.ts';
 import { run } from './ratchet.ts';
 
-const result = run([effects], {
+const result = run([effects, comments], {
   root: join(import.meta.dirname, '..', '..'),
   update: process.argv.includes('--update'),
 });
