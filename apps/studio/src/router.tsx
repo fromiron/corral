@@ -16,7 +16,7 @@ import { InboxPage, validateInboxSearch } from './pages/InboxPage.tsx';
 import { LibraryPage, validateLibrarySearch } from './pages/LibraryPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
-import { PreviewPage, validatePreviewSearch } from './pages/PreviewPage.tsx';
+import { PreviewPage, validatePreviewSearch } from './pages/preview/PreviewPage.tsx';
 import { ProjectsPage } from './pages/projects/ProjectsPage.tsx';
 import { WorkspacePage } from './pages/projects/WorkspacePage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from './pages/ResourceSettingsPage.tsx';

@@ -15,11 +15,11 @@ import {
 import { ArrowLeft, Eye, LayoutGrid, RefreshCw } from '@corral/react/icons';
 import { Link, useNavigate, useRouterState } from '@tanstack/react-router';
 import { useTranslations } from 'use-intl';
-import { BrowserQaPreview } from '../feature-preview/BrowserQaPreview.tsx';
-import { PullReviewPreview } from '../feature-preview/PullReviewPreview.tsx';
-import { resetPreviews, usePreview } from '../feature-preview/store.ts';
-import { workHref } from '../workbench/navigation.ts';
-import { TopbarCrumb } from '../workbench/TopbarSlot.tsx';
+import { BrowserQaPreview } from '../../feature-preview/BrowserQaPreview.tsx';
+import { PullReviewPreview } from '../../feature-preview/PullReviewPreview.tsx';
+import { resetPreviews, usePreview } from '../../feature-preview/store.ts';
+import { workHref } from '../../workbench/navigation.ts';
+import { TopbarCrumb } from '../../workbench/TopbarSlot.tsx';
 
 // Feature previews: sample flows with no real calls (docs/specs/features/feature-preview.md).
 

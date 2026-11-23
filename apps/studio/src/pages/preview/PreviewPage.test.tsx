@@ -11,10 +11,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SAMPLE_PULLS } from '../feature-preview/fixture.ts';
-import { previewStore, resetPreviews } from '../feature-preview/store.ts';
-import { ServicesProvider, type StudioServices } from '../services.tsx';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SAMPLE_PULLS } from '../../feature-preview/fixture.ts';
+import { previewStore, resetPreviews } from '../../feature-preview/store.ts';
+import { ServicesProvider, type StudioServices } from '../../services.tsx';
 import {
   PREVIEW_FEATURES,
   PreviewPage,

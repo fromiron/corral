@@ -8,7 +8,7 @@ import { expect, it } from 'vitest';
 
 const studio = join(import.meta.dirname, '..');
 const previewDir = join(studio, 'feature-preview');
-const page = join(studio, 'pages', 'PreviewPage.tsx');
+const page = join(studio, 'pages', 'preview', 'PreviewPage.tsx');
 
 function sources(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
