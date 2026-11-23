@@ -3661,7 +3661,7 @@
     "builtinPacks": {
       "core": "Corral 기본 · 스킬 6개",
       "coding": "Corral 코딩 · 스킬 16개",
-      "design": "디자인 검토 · 스킬 10개 (고정 버전 0.7.0)",
+      "design": "디자인 검토 · 스킬 11개 (고정 버전 0.8.0)",
       "browser": "로컬 브라우저 검증"
     },
     "browserFixture": "전용 로컬 브라우저 검증",

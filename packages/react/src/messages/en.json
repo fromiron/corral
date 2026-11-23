@@ -3661,7 +3661,7 @@
     "builtinPacks": {
       "core": "Corral Core · 6 skills",
       "coding": "Corral Coding · 16 skills",
-      "design": "leeskills · 10 design skills (pinned 0.7.0)",
+      "design": "leeskills · 11 design skills (pinned 0.8.0)",
       "browser": "Local browser verification"
     },
     "browserFixture": "Owned local browser fixture",

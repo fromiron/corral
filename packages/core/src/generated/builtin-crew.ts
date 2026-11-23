@@ -161,70 +161,77 @@ export const BUILTIN_SKILLS: readonly BuiltinSkill[] = [
     "name": "audit-design",
     "description": "Diagnoses an existing website, UI, portfolio, landing page, design system, or generated visual artifact for generic, unsupported, redundant, inaccessible, or purposeless design signals and prioritizes what to remove or fix. Use for one diagnostic pass, such as a quick read of a page or screenshot, an anti-slop or simplification audit, or a scored audit when the user asks for scoring. Not for coordinating a multi-area redesign, verifying a specific change, editing copy, or deciding whether AI authored the artifact.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/audit-design/SKILL.md"
   },
   {
     "name": "check-accessibility",
     "description": "Checks that a website or interface keeps accessible names, semantics, headings, labels, errors, text alternatives, keyboard operation, visible focus, sufficient contrast, reflow, target usability, status feedback, and reduced-motion behavior, especially after simplification or redesign. Use for accessibility-focused reviews, contrast or keyboard checks, and the accessibility step of anti-slop work. Not for general visual or copy critique, and not a full WCAG conformance claim from screenshots or automated checks alone.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/check-accessibility/SKILL.md"
   },
   {
     "name": "design-workflow",
-    "description": "Plans and runs a multi-area review or build of a website, interface, landing page, portfolio, product flow, component library, or generated design by combining focused skills into one scoped sequence of content grounding, structure, components, visuals, copy, motion, accessibility, and verification. Use when a request spans several of these areas, such as an end-to-end anti-slop review, simplifying or de-slopping a whole page, or a new artifact built from verified material. Not for a single area such as a copy-only edit, a contrast-only check, a motion-only review, a component-only contract, or a one-off scored audit, where the focused skill is enough.",
+    "description": "Plans and runs a multi-area review or build of a website, interface, landing page, portfolio, product flow, component library, or generated design by combining focused skills into one scoped sequence of content grounding, structure, user flows, components, visuals, copy, motion, accessibility, and verification. Use when a request spans several of these areas, such as an end-to-end anti-slop review, simplifying or de-slopping a whole page, or a new artifact built from verified material. Not for a single area such as a copy-only edit, a contrast-only check, a motion-only review, a component-only contract, or a one-off scored audit, where the focused skill is enough.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/design-workflow/SKILL.md"
   },
   {
     "name": "edit-copy",
     "description": "Audits and edits product, interface, landing-page, documentation, portfolio, case-study, or product-narrative copy for specificity, factual support, natural language, and consistency with the product's established voice. Use for vague or inflated claims, translation-like or stiff wording, mixed register, terminology drift, multilingual screens, or localized runtime strings. Not for deciding whether sources support a claim; preserves meaning and approved voice and never infers authorship from prose style.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/edit-copy/SKILL.md"
   },
   {
-    "name": "plan-structure",
-    "description": "Chooses the dominant information structure for a website, interface, portfolio, archive, product page, profile, institution, or task flow after the user and content are grounded. Use when deciding between a profile, list, timeline, index, catalog, product explanation, or workflow, or when a page needs restructuring. Not for visual styling, copy edits, or choosing a layout from trends or a default card grid.",
+    "name": "map-flows",
+    "description": "Maps how people move through a product toward a goal as a graph of states and actions, keeps the intended design separate from evidence about the built product, and analyzes routes, effort, recovery after failure, dead ends, and regressions between revisions, optionally keeping the map and recorded runs in the project. Use when a request concerns a journey across screens or states such as onboarding, checkout, sign-in, or settings, where people get stuck or cannot recover, or whether a change broke a critical path. Not for the content structure of one page, the states of one component, visual styling, copy edits, or claims about conversion or real user behavior without research.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
+    "entry": "skills/map-flows/SKILL.md"
+  },
+  {
+    "name": "plan-structure",
+    "description": "Chooses the dominant information structure for a website, interface, portfolio, archive, product page, profile, institution, or task flow after the user and content are grounded. Use when deciding between a profile, list, timeline, index, catalog, product explanation, or workflow, or when a page needs restructuring. Not for visual styling, copy edits, mapping how a journey moves between screens, or choosing a layout from trends or a default card grid.",
+    "pack": "design",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/plan-structure/SKILL.md"
   },
   {
     "name": "review-components",
     "description": "Audits or defines reusable UI component and design-system contracts across design files, documentation, Storybook, source code, and live usage, covering anatomy, variants, states, content, responsive and accessibility behavior, semantic token mapping, design-code parity, affordances, action priority and visibility, grouping cues, and design-system adoption. Use when the question is how a component behaves or should behave. Not for consolidating visual values such as color, spacing, type, or radius tokens, and not for copying another design system's component specifications.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/review-components/SKILL.md"
   },
   {
     "name": "review-motion",
     "description": "Reviews animations, transitions, parallax, scroll effects, reveals, carousels, and micro-interactions in a website or interface and decides for each pattern whether to keep, reduce, replace, or remove it and how it behaves with reduced motion. Use when simplifying motion, checking a specific animation, or adding reduced-motion behavior. Not for static visual styling or a full accessibility audit.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/review-motion/SKILL.md"
   },
   {
     "name": "review-visuals",
     "description": "Audits or defines the visual value system of a website, interface, landing page, portfolio, or design system, including layout grammars, spacing and container roles, typefaces and type roles, typography settings, colors, radii and nested-radius relationships, shadows, surfaces, CTA styles, and imagery. Use when visual variants need consolidation, a relationship such as nested radii needs checking, or the user asks for token definitions or a token proposal page. Not for component behavior, states, or parity, motion behavior, or a full accessibility review.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/review-visuals/SKILL.md"
   },
   {
     "name": "verify-changes",
     "description": "Verifies that a specific change made after grounding, redesign, rewriting, or simplification preserves user tasks, evidence, identity, accessibility, responsive behavior, and reduced-motion behavior, with targeted checks for a narrow change and full checks when a release decision is requested. Use for before-and-after verification, deletion and consolidation tests, release QA, or a reversible change plan. Not for a first diagnosis of an artifact, full usability research, or complete accessibility conformance testing.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/verify-changes/SKILL.md"
   },
   {
     "name": "verify-content",
     "description": "Builds an evidence-backed content inventory so claims in a website, interface, landing page, portfolio, case study, or product narrative stay grounded in supplied sources. Use before designing or rewriting, or to check whether customers, metrics, quotes, outcomes, capabilities, prices, or dates are supported, missing, or contradictory. Not for rewording a claim that is already supported, and never for generating placeholder marketing content.",
     "pack": "design",
-    "resourceHash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
+    "resourceHash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
     "entry": "skills/verify-content/SKILL.md"
   },
   {

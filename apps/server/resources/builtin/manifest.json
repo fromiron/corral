@@ -12,10 +12,10 @@
     "source": "Corral 2.0.0"
   },
   "design": {
-    "hash": "d47a35d0a544dc4a061ceb33f7d45b062d41a3fc32f9bb64c325ea6bfc2ba827",
-    "files": 93,
-    "skills": 10,
-    "source": "leeskills@1472032c0521c7f76f8811973b4cbe6b67804988"
+    "hash": "eddc9fdfec70376907f80815f7c338fcbdc7786b3708559b7c40bbbb2db4fd93",
+    "files": 110,
+    "skills": 11,
+    "source": "leeskills@4af91ab0be506de2323d5a6548c284a745bf1af3"
   },
   "browser": {
     "hash": "adef99fe07a16f685a0c072109e9df20d12fa2dca8a7a64a07737a07243cf18f",

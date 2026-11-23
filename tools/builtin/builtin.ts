@@ -26,7 +26,7 @@ export const BUILTIN_MODULE = join(
 const PACKS: Record<string, (version: string) => string> = {
   core: (version) => `Corral ${version}`,
   coding: (version) => `Corral ${version}`,
-  design: () => 'leeskills@1472032c0521c7f76f8811973b4cbe6b67804988',
+  design: () => 'leeskills@4af91ab0be506de2323d5a6548c284a745bf1af3',
   browser: (version) => `Corral browser verification ${version}`,
 };
 export const PACK_IDS = Object.keys(PACKS);
@@ -193,6 +193,7 @@ export const UPSTREAM_EXCEPTIONS: Record<string, Partial<Record<string, readonly
     'check-accessibility': ['scripts'],
     'design-workflow': ['parent-path'],
     'edit-copy': ['scripts'],
+    'map-flows': ['scripts'],
     'plan-structure': ['scripts'],
     'review-components': ['scripts', 'parent-path'],
     'review-motion': ['scripts'],
