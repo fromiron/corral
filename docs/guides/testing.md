@@ -45,7 +45,7 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
    - 의존성을 바꿨으면 `pnpm deps:check`([AGENTS.md › Validation and Documentation](../../AGENTS.md#validation-and-documentation)). PR 게이트에는 없고 출시 게이트에만 있다.
    - `tools/release/`나 `tools/deps/`를 바꿨으면 `pnpm test:release`. 이 `node --test` 테스트는 `pnpm test`에도 PR 게이트에도 들지 않는다.
    - `apps/server/resources/builtin/`을 바꿨으면 더 돌릴 것이 없다. `pnpm test`가 `pnpm builtin:check`와 같은 검사를 한다([기본 제공 스킬과 에이전트 › 생성과 검사](../specs/features/builtin-crew.md#생성과-검사)).
-8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 8·9단계를 건너뛴다. 동작을 바꾸지 않고 파일 이동·이름 바꾸기·import 경로 고치기만 한 작업도 8·9단계를 건너뛰고 6단계의 스모크로 갈음한다. 그런 작업인지는 작업의 커밋마다 `git show -M --stat <커밋>`에 이름이 바뀐 파일과 import 경로만 고친 파일만 나오는지로 확인한다.
+8. 확장 검사를 돌린다. `apps/`나 `packages/` 아래(Studio·서버·패키지)에 바뀐 것이 없으면 8·9단계를 건너뛴다. 동작을 바꾸지 않고 파일 이동·이름 바꾸기·import 경로 고치기만 한 작업도 8·9단계를 건너뛰고 6단계의 스모크로 갈음한다. 그런 작업인지는 작업의 커밋마다 `git show -M --stat <커밋>`으로 이름이 바뀐 파일과 고친 파일을 보고, `git show -M -U0 <커밋>`으로 고친 줄이 import 경로뿐인지 확인한다.
    - 언제나: 바꾼 영역의 확장 스펙 파일만, 위 "특정 회귀만 확인할 때"의 형식(스펙 경로, `--project`, `--workers`)으로 돌린다.
    - [docs/plans](../plans/)에 계획을 두는 긴 작업([AGENTS.md › Getting Started](../../AGENTS.md#getting-started) 4번)을 끝낼 때만: 확장 검사 전체를 돌린다.
 
