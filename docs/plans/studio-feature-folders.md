@@ -19,7 +19,7 @@
 | M8 | `pages/editor/` | 끝 |
 | M9 | `pages/library/` | 끝 |
 | M10 | `pages/session/` | 끝 |
-| M11 | `pages/models/` | 할 일 |
+| M11 | `pages/models/` | 끝 |
 | M12 | `pages/shell/` | 할 일 |
 | M13 | `pages/run/` | 할 일 |
 | M14 | `workbench/harness/`에 `McpConnection` | 할 일 |

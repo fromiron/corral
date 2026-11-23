@@ -2,7 +2,7 @@ import type { ModelAttemptPage } from '@corral/contracts';
 import { Button, fontWeights } from '@corral/react/design-kit';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
+import { useServices } from '../../services.tsx';
 import { ModelUsageChart } from './ModelUsageChart.tsx';
 
 /**

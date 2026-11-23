@@ -10,9 +10,9 @@ import {
 } from '@corral/react/design-kit';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useServices } from '../../services.tsx';
+import { useModelSettingsRefresh } from '../../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 
 const SOURCES: { value: ModelImportSource; label: string }[] = [
   { value: 'claude-code', label: 'Claude Code' },

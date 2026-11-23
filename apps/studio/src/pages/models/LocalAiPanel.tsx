@@ -9,7 +9,7 @@ import {
 } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
+import { useServices } from '../../services.tsx';
 import { formatDownload } from './download-size.ts';
 
 const MB = 1_000_000;

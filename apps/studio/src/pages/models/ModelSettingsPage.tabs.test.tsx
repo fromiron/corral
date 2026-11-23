@@ -4,7 +4,7 @@ import { act, type ReactNode, useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ModelSettingsPage } from './ModelSettingsPage.tsx';
 
 const fixture = vi.hoisted(() => ({
@@ -13,14 +13,14 @@ const fixture = vi.hoisted(() => ({
   // The providers the Connections tab was first drawn with.
   firstProviders: null as number | null,
 }));
-vi.mock('../services.tsx', () => ({
+vi.mock('../../services.tsx', () => ({
   useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => async () => true,
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../SettingsPage.tsx', () => ({
   // The frame's description line, as SettingsLayout draws it under the section title.
   SettingsLayout: ({
     children,
@@ -43,7 +43,7 @@ vi.mock('./SettingsPage.tsx', () => ({
 }));
 // The tabs' own screens have their own tests; here they only show what the page hands them.
 vi.mock('./ModelConnections.tsx', async () => {
-  const { useModelSettingsRefresh } = await import('../workbench/modelSettings.tsx');
+  const { useModelSettingsRefresh } = await import('../../workbench/modelSettings.tsx');
   return {
     ModelConnections: ({
       providers,

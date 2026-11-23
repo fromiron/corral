@@ -25,8 +25,8 @@ import {
 import { createRoot, type Root } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { SettingsLeavePrompt, SettingsLifecycle } from '../workbench/SettingsLifecycle.tsx';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { SettingsLeavePrompt, SettingsLifecycle } from '../../workbench/SettingsLifecycle.tsx';
 import { AddConnectionDialog, type AddConnectionStart } from './AddConnectionDialog.tsx';
 import { ModelConnections } from './ModelConnections.tsx';
 import { click, control, field, provider, settle, stubBrowser, type } from './modelTestDom.ts';
@@ -39,8 +39,8 @@ const fixture = vi.hoisted(() => ({
   services: { mode: 'server', live: true, models: {} as Partial<ModelsApi> },
   refresh: vi.fn(),
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../workbench/modelSettings.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../workbench/modelSettings.tsx', () => ({
   useModelSettingsRefresh: () => fixture.refresh,
 }));
 

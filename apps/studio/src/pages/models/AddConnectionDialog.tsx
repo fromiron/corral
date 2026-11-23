@@ -26,10 +26,10 @@ import {
 import { ArrowLeft, Download, ExternalLink, Globe } from '@corral/react/icons';
 import { type FormEvent, type ReactNode, useEffect, useId, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsTaskPending } from '../workbench/settingsTasks.ts';
+import { useServices } from '../../services.tsx';
+import { useModelSettingsRefresh } from '../../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { SettingsTaskPending } from '../../workbench/settingsTasks.ts';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 import { ModelImportPanel } from './ModelImportPanel.tsx';
 import { endpointIdFor, modelReady, offeredToAdd } from './modelConnections.ts';

@@ -2,7 +2,7 @@ import { DiagnosticsSettingsPage } from '../pages/DiagnosticsSettingsPage.tsx';
 import { HarnessDefaultsPage } from '../pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from '../pages/HarnessSettingsPage.tsx';
 import { McpSettingsPage } from '../pages/McpSettingsPage.tsx';
-import { ModelSettingsPage } from '../pages/ModelSettingsPage.tsx';
+import { ModelSettingsPage } from '../pages/models/ModelSettingsPage.tsx';
 import { HookSettingsPage, SkillSettingsPage } from '../pages/ResourceSettingsPage.tsx';
 import { SettingsPage } from '../pages/SettingsPage.tsx';
 import { VaultSettingsPage } from '../pages/VaultSettingsPage.tsx';

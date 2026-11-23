@@ -3,9 +3,9 @@ import { ImageGenerationProfile } from '@corral/contracts';
 import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { type ImageProfilesView, imageProfilesApi } from '../image-profiles-api.ts';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { imageProfilesChanged } from '../workbench/useImageProfiles.ts';
+import { type ImageProfilesView, imageProfilesApi } from '../../image-profiles-api.ts';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { imageProfilesChanged } from '../../workbench/useImageProfiles.ts';
 import { imageProfileIdFor } from './modelConnections.ts';
 
 /** Image operations have their own explicit provider model and spend limits. */

@@ -5,7 +5,7 @@ import type {
   ProviderAuthView,
 } from '@corral/client';
 import { sha256Hex } from '@corral/core';
-import { profileReady } from '../workbench/modelReadiness.ts';
+import { profileReady } from '../../workbench/modelReadiness.ts';
 
 /**
  * A model this connection can call now, by the pickers' rule: known, signed in or keyed, and one

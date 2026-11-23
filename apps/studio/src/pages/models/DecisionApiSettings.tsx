@@ -2,7 +2,7 @@ import type { DecisionApiView } from '@corral/client';
 import { Button, fontWeights } from '@corral/react/design-kit';
 import { type FormEvent, useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
+import { useServices } from '../../services.tsx';
 import { ApiKeyInput } from './ApiKeyInput.tsx';
 
 /**

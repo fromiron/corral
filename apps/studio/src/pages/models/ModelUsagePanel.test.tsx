@@ -5,11 +5,11 @@ import { act, type ReactNode, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ModelUsagePanel } from './ModelUsagePanel.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 
 afterEach(() => vi.unstubAllGlobals());
 

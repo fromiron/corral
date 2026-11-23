@@ -22,9 +22,9 @@ import {
 import { Info, Plus, X } from '@corral/react/icons';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useServices } from '../../services.tsx';
+import { useModelSettingsRefresh } from '../../workbench/modelSettings.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { connectedModels, isIdentifier, modelKey, profileNameFor } from './modelConnections.ts';
 
 /** A model the Connections tab asked to make into a profile; `nonce` makes each ask new. */

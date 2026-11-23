@@ -11,7 +11,7 @@ import {
 import { Search, X } from '@corral/react/icons';
 import { useEffect, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
+import { useServices } from '../../services.tsx';
 
 /** How many catalog rows show at once; the filter narrows the rest. */
 const SHOWN = 100;

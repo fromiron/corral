@@ -4,11 +4,11 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 
 const KEY = 'decision-secret-key-0123456789';
 const apis = (openaiKey: boolean): DecisionApiView[] => [

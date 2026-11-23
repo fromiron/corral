@@ -26,8 +26,8 @@ import {
 } from '@corral/react/design-kit';
 import { type ReactNode, useEffect, useId, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
+import { useServices } from '../../services.tsx';
+import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { formatDownload } from './download-size.ts';
 
 const MB = 1_000_000;

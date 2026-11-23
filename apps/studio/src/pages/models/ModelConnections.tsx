@@ -23,10 +23,10 @@ import {
 import { Brain, Ellipsis, ImageIcon, Plus, RefreshCw, Search } from '@corral/react/icons';
 import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { useModelSettingsRefresh } from '../workbench/modelSettings.tsx';
-import { useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { SettingsTaskPending } from '../workbench/settingsTasks.ts';
+import { useServices } from '../../services.tsx';
+import { useModelSettingsRefresh } from '../../workbench/modelSettings.tsx';
+import { useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { SettingsTaskPending } from '../../workbench/settingsTasks.ts';
 import { AddConnectionDialog, type AddConnectionStart } from './AddConnectionDialog.tsx';
 import { ModelCatalogDialog } from './ModelCatalogDialog.tsx';
 import {

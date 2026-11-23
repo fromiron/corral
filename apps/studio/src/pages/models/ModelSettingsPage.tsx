@@ -1,8 +1,9 @@
 import { Button, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { ModelSettingsRefresh, useModelSettings } from '../workbench/modelSettings.tsx';
+import { useServices } from '../../services.tsx';
+import { ModelSettingsRefresh, useModelSettings } from '../../workbench/modelSettings.tsx';
+import { SettingsLayout } from '../SettingsPage.tsx';
 import { DecisionApiSettings } from './DecisionApiSettings.tsx';
 import { EffortRoutingSettings } from './EffortRoutingSettings.tsx';
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
@@ -14,7 +15,6 @@ import {
   type ProfileRequest,
 } from './ModelProfilesEditor.tsx';
 import { ModelUsagePanel } from './ModelUsagePanel.tsx';
-import { SettingsLayout } from './SettingsPage.tsx';
 
 /** The Models sub-views, in tab order. Each keeps its sections' ids for in-page links. */
 const MODEL_TABS = ['connections', 'profiles', 'judgment', 'images', 'usage'] as const;

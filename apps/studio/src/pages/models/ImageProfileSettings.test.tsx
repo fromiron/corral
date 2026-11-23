@@ -4,7 +4,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ImageProfileSettings } from './ImageProfileSettings.tsx';
 import { all, click, control, field, settle, stubBrowser, type } from './modelTestDom.ts';
 
@@ -41,10 +41,10 @@ const api = vi.hoisted(() => ({
   save: vi.fn(async () => undefined),
 }));
 
-vi.mock('../image-profiles-api.ts', () => ({
+vi.mock('../../image-profiles-api.ts', () => ({
   imageProfilesApi: api,
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => (action: () => Promise<unknown>) => action(),
 }));

@@ -76,7 +76,7 @@ A1–A9는 단계마다 별도 worktree에서 작업하고 단계마다 PR을 �
 
 ### A6. 판정 모델 설치 안내, 로컬 모델 제거
 
-- **지금 준비**는 이미 설치된 모델을 띄울 뿐 내려받지 않는다. 내려받는 버튼은 **설치**다(`apps/studio/src/pages/EffortRoutingSettings.tsx` 363–396행).
+- **지금 준비**는 이미 설치된 모델을 띄울 뿐 내려받지 않는다. 내려받는 버튼은 **설치**다(`apps/studio/src/pages/models/EffortRoutingSettings.tsx` 363–396행).
 - 크기는 "설치 안 됨" 상태 줄에만 나온다(매니페스트 합 약 1,123 MB). 설치 실패 뒤에는 크기 없이 **설치**가 바로 내려받는다. [추론 판정](../specs/features/effort-routing.md)은 설치 전에 전체 크기를 보이라고 한다.
 - [모델 안내](../guides/models.md)는 약 1.1 GB라고 적는다.
 - 두 번들(판정 모델, 회의 분석) 모두 제거 경로가 없다. 안내는 폴더를 손으로 지우라고 한다.
@@ -87,7 +87,7 @@ A1–A9는 단계마다 별도 worktree에서 작업하고 단계마다 PR을 �
 
 ### A7. 모델 요청 이력
 
-`apps/studio/src/pages/ModelUsagePanel.tsx`는 버튼을 눌러야 최근 50건을 읽는다. [LLM 런타임](../specs/llm-runtime.md)이 막는 것은 원장 전체를 설정에 올리는 것이고, 첫 페이지를 여는 것은 막지 않는다.
+`apps/studio/src/pages/models/ModelUsagePanel.tsx`는 버튼을 눌러야 최근 50건을 읽는다. [LLM 런타임](../specs/llm-runtime.md)이 막는 것은 원장 전체를 설정에 올리는 것이고, 첫 페이지를 여는 것은 막지 않는다.
 
 할 일: 탭을 열면 첫 페이지를 읽는다. 읽은 페이지를 모델별 입력·출력·캐시 토큰과 시간순 요청으로 그린 차트를 위에 두고, 표는 상세로 남긴다. 차트는 SVG로 직접 그리고 의존성을 더하지 않는다. 미확인·구독·보고된 0의 구분은 차트에서도 유지한다. 명세에 이 화면의 표시를 적는다.
 

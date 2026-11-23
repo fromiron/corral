@@ -15,7 +15,7 @@ import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
 import { InboxPage, validateInboxSearch } from './pages/inbox/InboxPage.tsx';
 import { LibraryPage, validateLibrarySearch } from './pages/library/LibraryPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
-import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
+import { ModelSettingsPage } from './pages/models/ModelSettingsPage.tsx';
 import { PreviewPage, validatePreviewSearch } from './pages/preview/PreviewPage.tsx';
 import { ProjectsPage } from './pages/projects/ProjectsPage.tsx';
 import { WorkspacePage } from './pages/projects/WorkspacePage.tsx';

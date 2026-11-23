@@ -4,12 +4,12 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { EffortRoutingSettings } from './EffortRoutingSettings.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsForm: () => {},
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
