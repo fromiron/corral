@@ -15,14 +15,14 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { setCurrentProject } from '../projects.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { setCurrentProject } from '../../projects.ts';
 import {
   SettingsNavigationContext,
   settingsItemOf,
   settingsOpenState,
-} from '../workbench/navigation.ts';
+} from '../../workbench/navigation.ts';
 import {
   LIBRARY_VIEWS,
   LibraryPage,
@@ -32,7 +32,7 @@ import {
 import { ResourceTable } from './LibraryResources.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {

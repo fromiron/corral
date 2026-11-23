@@ -20,8 +20,8 @@ import { Plus } from '@corral/react/icons';
 import { Link } from '@tanstack/react-router';
 import { type DependencyList, useCallback, useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { type SettingsSection, useSettingsNavigation } from '../workbench/navigation.ts';
+import { useServices } from '../../services.tsx';
+import { type SettingsSection, useSettingsNavigation } from '../../workbench/navigation.ts';
 
 // The library's resources: what is installed and whether it works, read-only. Editing, trust,
 // installation and unsaved-change protection stay in the settings dialog, which "Manage" opens

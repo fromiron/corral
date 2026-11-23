@@ -1,8 +1,8 @@
 import { EmptyState } from '@corral/react/design-kit';
 import { useTranslations } from 'use-intl';
-import { useServices } from '../services.tsx';
-import { SkillManager } from '../workbench/harness/SkillManager.tsx';
-import { SettingsNavigationContext, useSettingsNavigation } from '../workbench/navigation.ts';
+import { useServices } from '../../services.tsx';
+import { SkillManager } from '../../workbench/harness/SkillManager.tsx';
+import { SettingsNavigationContext, useSettingsNavigation } from '../../workbench/navigation.ts';
 
 export function LibrarySkills({
   projectId,

@@ -13,7 +13,7 @@ import { DemoPage, EditorPage } from './pages/editor/EditorPage.tsx';
 import { HarnessDefaultsPage } from './pages/HarnessDefaultsPage.tsx';
 import { HarnessSettingsPage } from './pages/HarnessSettingsPage.tsx';
 import { InboxPage, validateInboxSearch } from './pages/inbox/InboxPage.tsx';
-import { LibraryPage, validateLibrarySearch } from './pages/LibraryPage.tsx';
+import { LibraryPage, validateLibrarySearch } from './pages/library/LibraryPage.tsx';
 import { McpSettingsPage } from './pages/McpSettingsPage.tsx';
 import { ModelSettingsPage } from './pages/ModelSettingsPage.tsx';
 import { PreviewPage, validatePreviewSearch } from './pages/preview/PreviewPage.tsx';

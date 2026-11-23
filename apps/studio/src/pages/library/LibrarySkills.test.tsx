@@ -22,11 +22,11 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import type { StudioServices } from '../services.tsx';
-import { SettingsNavigationContext, standaloneSettingsLink } from '../workbench/navigation.ts';
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { StudioServices } from '../../services.tsx';
+import { SettingsNavigationContext, standaloneSettingsLink } from '../../workbench/navigation.ts';
+import { SkillSettingsPage } from '../ResourceSettingsPage.tsx';
 import { LibrarySkills } from './LibrarySkills.tsx';
-import { SkillSettingsPage } from './ResourceSettingsPage.tsx';
 
 const api = {
   entries: vi.fn<() => Promise<HarnessEntryView[]>>(),
@@ -55,14 +55,14 @@ function projectServices() {
   return { agents, repository, harnesses: api };
 }
 let services: Pick<StudioServices, 'agents' | 'repository'> & { harnesses: typeof api | null };
-vi.mock('../services.tsx', () => ({ useServices: () => services }));
-vi.mock('./SettingsPage.tsx', () => ({
+vi.mock('../../services.tsx', () => ({ useServices: () => services }));
+vi.mock('../SettingsPage.tsx', () => ({
   SettingsLayout: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
   useSettingsTask: () => (task: () => Promise<unknown>) => task(),
 }));
-vi.mock('../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
+vi.mock('../../workbench/harness/SkillQualityPanel.tsx', () => ({ SkillQualityPanel: () => null }));
 const fixture = (name: string, resourceHash: string, changes: Partial<HarnessEntryView> = {}) =>
   ({
     kind: 'skill',

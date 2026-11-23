@@ -9,7 +9,7 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { LibraryAgents } from './LibraryAgents.tsx';
 
 function library() {
@@ -27,7 +27,9 @@ function library() {
 }
 let agents: AgentLibrary;
 let harnesses: { entries: () => Promise<HarnessEntryView[]> } | null;
-vi.mock('../services.tsx', () => ({ useServices: () => ({ agents, harnesses, mode: 'browser' }) }));
+vi.mock('../../services.tsx', () => ({
+  useServices: () => ({ agents, harnesses, mode: 'browser' }),
+}));
 vi.mock('@tanstack/react-router', async (original) => ({
   ...(await original<object>()),
   Link: ({ children, to }: { children: React.ReactNode; to: string }) => (

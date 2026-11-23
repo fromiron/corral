@@ -28,17 +28,17 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { type ChangeEvent, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useFormatter, useTranslations } from 'use-intl';
-import { projectName, projectsChanged } from '../projects.ts';
-import { useServices } from '../services.tsx';
+import { projectName, projectsChanged } from '../../projects.ts';
+import { useServices } from '../../services.tsx';
 import {
   roleSteps,
   templateDefinition,
   useTemplateText,
   WORKSPACE_TEMPLATES,
-} from '../templates.ts';
-import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../workbench/chosenRow.ts';
-import { chooseNewSessionTeam } from '../workbench/newSessionDraft.ts';
-import { useSessionAge } from '../workbench/useSessionAge.ts';
+} from '../../templates.ts';
+import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosenRow.ts';
+import { chooseNewSessionTeam } from '../../workbench/newSessionDraft.ts';
+import { useSessionAge } from '../../workbench/useSessionAge.ts';
 
 // The library's saved teams and templates for one project (docs/specs/features/library.md).
 // Importing, duplicating, moving and deleting use the existing Corral API.
