@@ -246,6 +246,25 @@ it('links a same-named earlier bundled entry to its new version', async () => {
   });
 });
 
+it('a team pinned to an earlier bundled skill keeps it, not the same-named new version', async () => {
+  const s = setup();
+  const v1 = await s.pack('alpha', '1.0.0', { kept: 'old', sibling: 'old' });
+  await s.service().installBuiltins();
+  const v2 = await s.pack('alpha', '2.0.0', { kept: 'new', sibling: 'new' });
+  const service = s.service();
+  await service.installBuiltins();
+  const pinned = { resourceHash: v1, entry: 'skills/kept/SKILL.md' };
+  const snapshot = service.preview({ id: 'writer', skills: [pinned] }, 'default').snapshot!;
+  const kept = snapshot.resources.filter((resource) => resource.skillName === 'kept');
+  expect(kept).toEqual([expect.objectContaining({ hash: v1, selectedByRole: true })]);
+  const read = service.readSkill(snapshot, 'skills/kept/SKILL.md');
+  expect(read).toMatchObject({ resourceHash: v1, text: expect.stringMatching(/old$/) });
+  // A sibling the role did not pin comes from the library, which offers the new version.
+  expect(service.readSkill(snapshot, 'skills/sibling/SKILL.md')).toMatchObject({
+    resourceHash: v2,
+  });
+});
+
 it('inspects each bundled version once per process, and never content that differs', async () => {
   const s = setup();
   const alpha = await s.pack('alpha', '1.0.0', { one: 'A' });
