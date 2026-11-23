@@ -88,7 +88,7 @@
       "assertions": [
         "Every baseline check appears in the report.",
         "No check is recorded as out of scope in release verification.",
-        "Required unknowns block release unless explicitly accepted."
+        "Required unknowns block release; an accepted risk records the owner's decision and does not clear the blocker."
       ]
     }
   ]

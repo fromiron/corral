@@ -1,0 +1,63 @@
+{
+  "skill_name": "map-flows",
+  "evals": [
+    {
+      "id": "design-before-build",
+      "prompt": "We are adding guest checkout. A guest goes from cart to shipping to payment to confirmation; members skip the email step. Design the flow before we build it. The product owner has approved the four screens but nobody has decided what happens when a card is declined.",
+      "expected_output": "A flow map in design mode with the approved screens as approved transitions, a declined-card branch offered as a proposal or left as an unknown, guest and member handled through a fact, and an analysis of the design only.",
+      "assertions": [
+        "Transitions the owner approved are marked approved; the declined-card handling is marked proposed or listed as an unknown, not presented as decided.",
+        "Every transition's evidence is unknown, and the answer says nothing here is evidence about a product.",
+        "Guest and member are modeled with a fact and a scenario rather than two unrelated maps.",
+        "No file is written unless the user asked to save the map.",
+        "No conversion, completion-rate, or usability figure is stated."
+      ]
+    },
+    {
+      "id": "inspect-static-only",
+      "prompt": "Review the workout logging flow in evals/fixtures/flow-app/before. You cannot run a browser in this session. Do not change any files.",
+      "expected_output": "An as-built map read from the three HTML files and their scripts, with observed and inferred evidence, the findings the analysis supports, and a clear statement that nothing was executed.",
+      "assertions": [
+        "No transition is described as verified, measured, or tested, and no run is recorded.",
+        "The answer reports that Finish workout is available only inside the More menu and that a failed save offers no way to try again.",
+        "The possible keyboard problem with the Add set control is labeled inferred from the markup and routed to check-accessibility.",
+        "The fixture files and the stored map are unchanged.",
+        "The answer lists which runtime checks were not performed."
+      ]
+    },
+    {
+      "id": "record-run-with-browser",
+      "prompt": "Walk the log-workout journey in evals/fixtures/flow-app/before with the browser tool, once with the pointer and once with the keyboard only, and record what happens against the map in evals/fixtures/flow-app/before/ux-flows.",
+      "expected_output": "Two new run files with per-step results and evidence, recorded under stated conditions, validated against the map, with the keyboard block reported and handed to check-accessibility.",
+      "assertions": [
+        "Each step's result comes from what the page showed after the action, with the observation written in evidence.",
+        "The keyboard run records the Add set step as blocked and does not report the journey as successful.",
+        "Existing run files are not edited or deleted; new runs get new names.",
+        "The runs name the revision, tool, viewport, and input method, and list what the run cannot show.",
+        "validate_flow.py is run after recording, or the answer says it could not be run."
+      ]
+    },
+    {
+      "id": "compare-fewer-is-not-better",
+      "prompt": "Compare evals/fixtures/flow-app/before/ux-flows/log-workout.flow.json with evals/fixtures/flow-app/after/ux-flows/log-workout.flow.json and tell me whether the flow got better.",
+      "expected_output": "A comparison that reports no regression, lists the improvements the runs support, and presents the extra confirmation step when discarding a workout as a change to judge rather than a loss.",
+      "assertions": [
+        "The answer reports that saving after a lost connection now recovers and that the keyboard run now reaches the goal.",
+        "Discarding a workout taking three actions instead of two is described as a change with its reason, not as a regression.",
+        "The answer does not claim the product is release-ready or that users will complete the flow more often.",
+        "The scenario with no earlier run is listed as not compared.",
+        "No file is changed."
+      ]
+    },
+    {
+      "id": "baseline-needs-approval",
+      "prompt": "The keyboard run passed. Update the map so future comparisons use it.",
+      "expected_output": "A proposed change of baseline_run to the named run, applied only because the user asked for it, with the changed file listed.",
+      "assertions": [
+        "baseline_run changes only for the journey the run belongs to, and only to a run that ended in success.",
+        "Earlier run files are left in place.",
+        "The answer states that a baseline is a reference for comparison, not proof that the flow is usable."
+      ]
+    }
+  ]
+}

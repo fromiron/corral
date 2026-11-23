@@ -63,8 +63,10 @@ This is not a requirement for every action to look unique. Reuse is desirable
 when behavior and priority are compatible. A different treatment also needs a
 reason; decorative variation is not a substitute for a contract.
 
-A justified exception records the expected interpretation, evidence, owner,
-accessibility representation, and review trigger.
+Record a justified exception in the report's `findings` or `accepted_risks`
+with the expected interpretation, evidence, owner, accessibility
+representation, and review trigger; the mapping entry itself has no fields for
+them.
 
 ## Action priority by decision context
 
@@ -113,6 +115,12 @@ supported reason and an adequate discoverable path.
 
 Do not infer frequency from visual prominence. Use research, analytics, product
 requirements, or an explicit inference label.
+
+When the project keeps a flow map, an action that every route to a journey's
+goal passes through is required for that journey; take that fact, the action's
+recorded visibility, and the number of steps needed to reach it from the map.
+The map shows that the step is unavoidable. Whether hiding it is acceptable is
+still decided here, with a reason and an adequate path.
 
 ## Grouping cues and container strength
 

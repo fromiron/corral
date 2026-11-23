@@ -1,0 +1,557 @@
+<!doctype html>
+<html lang="{{LANG}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="data:,">
+  <title>{{TITLE}}</title>
+  <style>
+    /*
+      Page chrome for a rendered flow map. Layout: navigation on the canvas,
+      one reading column on a panel, the map drawn as state cards wired
+      together: forward moves on the right, returns on the left.
+      Chrome budget: one sans stack per script plus mono, 5 type roles,
+      1 accent, 2 status colors (attention, problem), 2 radius tokens,
+      0 shadows, 3 surfaces (canvas, panel, well).
+      Status is never carried by color alone: every status has a word, and
+      every wire has a line style.
+    */
+    :root {
+      --c-canvas: #eff0f4;
+      --c-panel: #ffffff;
+      --c-well: #f5f5f8;
+      --c-border: #e3e4ea;
+      --c-border-strong: #8a8e99;
+      --c-text: #2e2d32;
+      --c-muted: #62636c;
+      --c-accent: #2f4fd0;
+      --c-accent-soft: #e9edfb;
+      --c-attention: #774800;
+      --c-attention-soft: #fff4d4;
+      --c-problem: #a3261d;
+      --c-problem-soft: #fdecea;
+
+      --space-1: 4px;
+      --space-2: 8px;
+      --space-3: 12px;
+      --space-4: 16px;
+      --space-5: 24px;
+      --space-6: 32px;
+      --space-7: 48px;
+      --space-8: 64px;
+
+      --radius-control: 6px;
+      --radius-surface: 16px;
+
+      --text-display: clamp(1.75rem, 1.4rem + 1.6vw, 2.5rem);
+      --text-title: 1.5rem;
+      --text-heading: 1.125rem;
+      --text-body: 1rem;
+      --text-small: 0.8125rem;
+
+      --lead-body: 1.65;
+      --lead-dense: 1.45;
+
+      --sidebar-width: 264px;
+      --doc-width: 860px;
+
+      --font-sans: "Pretendard", system-ui, -apple-system, "Segoe UI", "Apple SD Gothic Neo",
+        "Malgun Gothic", "Noto Sans KR", "Noto Sans CJK KR", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        color-scheme: dark;
+        --c-canvas: #121318;
+        --c-panel: #1a1c22;
+        --c-well: #23252c;
+        --c-border: #30323b;
+        --c-border-strong: #7d818d;
+        --c-text: #e8e9ee;
+        --c-muted: #a4a7b2;
+        --c-accent: #a3b4ff;
+        --c-accent-soft: #252c4a;
+        --c-attention: #f0c467;
+        --c-attention-soft: #3a2e10;
+        --c-problem: #ffa198;
+        --c-problem-soft: #3d1b18;
+      }
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --c-canvas: #121318;
+      --c-panel: #1a1c22;
+      --c-well: #23252c;
+      --c-border: #30323b;
+      --c-border-strong: #7d818d;
+      --c-text: #e8e9ee;
+      --c-muted: #a4a7b2;
+      --c-accent: #a3b4ff;
+      --c-accent-soft: #252c4a;
+      --c-attention: #f0c467;
+      --c-attention-soft: #3a2e10;
+      --c-problem: #ffa198;
+      --c-problem-soft: #3d1b18;
+    }
+
+    :lang(ja) {
+      --font-sans: system-ui, -apple-system, "Hiragino Sans", "Yu Gothic UI",
+        "Meiryo", "Noto Sans JP", "Noto Sans CJK JP", sans-serif;
+    }
+
+    :lang(ko), :lang(ja) { --lead-body: 1.75; --lead-dense: 1.55; }
+
+    * { box-sizing: border-box; }
+
+    html { -webkit-text-size-adjust: 100%; }
+
+    @media (prefers-reduced-motion: no-preference) {
+      html { scroll-behavior: smooth; }
+    }
+
+    body {
+      margin: 0;
+      color: var(--c-text);
+      background: var(--c-canvas);
+      font-family: var(--font-sans);
+      font-size: var(--text-body);
+      line-height: var(--lead-body);
+      overflow-wrap: break-word;
+    }
+
+    html:lang(ko) body { word-break: keep-all; }
+
+    a { color: var(--c-accent); text-underline-offset: 0.2em; }
+
+    :focus-visible { outline: 2px solid var(--c-accent); outline-offset: 2px; }
+
+    h1, h2, h3, p, figure, dl, dd, ol, ul { margin: 0; }
+    ol, ul { padding: 0; list-style: none; }
+
+    h1, h2, h3 { line-height: 1.25; text-wrap: balance; }
+    h1 { font-size: var(--text-display); font-weight: 700; letter-spacing: -0.015em; }
+    h2 { font-size: var(--text-title); font-weight: 700; letter-spacing: -0.01em; }
+    h3 { font-size: var(--text-heading); font-weight: 600; }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 0.875em;
+    }
+
+    .skip-link {
+      position: absolute;
+      z-index: 20;
+      top: var(--space-2);
+      left: var(--space-2);
+      padding: var(--space-2) var(--space-3);
+      border-radius: var(--radius-control);
+      background: var(--c-text);
+      color: var(--c-panel);
+      transform: translateY(-200%);
+    }
+
+    .skip-link:focus { transform: none; }
+
+    /* Shell */
+    .app {
+      display: grid;
+      grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      position: sticky;
+      top: 0;
+      align-self: start;
+      display: grid;
+      gap: var(--space-6);
+      max-height: 100vh;
+      padding: var(--space-7) var(--space-6);
+      overflow-y: auto;
+    }
+
+    .brand { display: grid; gap: var(--space-1); line-height: var(--lead-dense); }
+    .brand strong { font-size: var(--text-body); }
+    .brand span { color: var(--c-muted); font-size: var(--text-small); }
+
+    .nav { display: grid; gap: var(--space-2); }
+    .nav-label { font-weight: 600; }
+    .nav ul { display: grid; gap: 2px; }
+
+    .nav a {
+      display: flex;
+      gap: var(--space-2);
+      align-items: baseline;
+      padding: 5px 0;
+      color: var(--c-muted);
+      line-height: var(--lead-dense);
+      text-decoration: none;
+    }
+
+    .nav a::before {
+      content: "";
+      flex: none;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: transparent;
+      transform: translateY(-2px);
+    }
+
+    .nav a:hover { color: var(--c-text); }
+    .nav a[aria-current="location"] { color: var(--c-accent); font-weight: 600; }
+    .nav a[aria-current="location"]::before { background: var(--c-accent); }
+    .nav .nav-sub a { padding-left: var(--space-3); font-size: var(--text-small); }
+
+    .panel {
+      min-width: 0;
+      margin: var(--space-4) var(--space-4) var(--space-4) 0;
+      padding-block: var(--space-8);
+      padding-left: max(var(--space-5), env(safe-area-inset-left, 0px));
+      padding-right: max(var(--space-5), env(safe-area-inset-right, 0px));
+      border-radius: var(--radius-surface);
+      background: var(--c-panel);
+    }
+
+    .doc { display: grid; gap: var(--space-8); max-width: var(--doc-width); margin: 0 auto; }
+    .doc > * { min-width: 0; }
+
+    /* Shared pieces */
+    .eyebrow { color: var(--c-muted); font-size: var(--text-small); font-weight: 600; }
+    .lede { max-width: 64ch; color: var(--c-muted); }
+    .small { color: var(--c-muted); font-size: var(--text-small); line-height: var(--lead-dense); }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      gap: var(--space-1);
+      padding: 1px var(--space-2);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-control);
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      font-weight: 600;
+      line-height: var(--lead-dense);
+      white-space: nowrap;
+    }
+
+    .tag-verified { border-color: var(--c-text); color: var(--c-text); }
+    .tag-attention { border-color: transparent; background: var(--c-attention-soft); color: var(--c-attention); }
+    .tag-problem { border-color: transparent; background: var(--c-problem-soft); color: var(--c-problem); }
+    .tag-accent { border-color: transparent; background: var(--c-accent-soft); color: var(--c-accent); }
+
+    .id {
+      padding: 1px 6px;
+      border-radius: var(--radius-control);
+      background: var(--c-well);
+      font-family: var(--font-mono);
+      font-size: 0.8125rem;
+      overflow-wrap: anywhere;
+    }
+
+    .section { display: grid; gap: var(--space-5); scroll-margin-top: var(--space-5); }
+    .section-head { display: grid; gap: var(--space-2); }
+    .section + .section,
+    .intro + .section { padding-top: var(--space-8); border-top: 1px solid var(--c-border); }
+
+    .well {
+      display: grid;
+      gap: var(--space-1);
+      padding: var(--space-4) var(--space-5);
+      border-radius: var(--radius-surface);
+      background: var(--c-well);
+    }
+
+    /* Intro */
+    .intro { display: grid; gap: var(--space-4); scroll-margin-top: var(--space-5); }
+    .intro-status { display: flex; flex-wrap: wrap; gap: var(--space-2); align-items: center; }
+
+    .meta {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: var(--space-4) var(--space-5);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--c-border);
+      line-height: var(--lead-dense);
+    }
+
+    .meta dt { color: var(--c-muted); font-size: var(--text-small); }
+    .meta dd { font-weight: 600; overflow-wrap: anywhere; }
+
+    /* Evidence bar: how much of the map rests on what kind of evidence. */
+    .evidence { display: grid; gap: var(--space-3); }
+
+    .evidence-bar {
+      display: flex;
+      gap: 2px;
+      height: 12px;
+      border-radius: var(--radius-control);
+      overflow: hidden;
+    }
+
+    .evidence-bar span { min-width: 4px; }
+    .seg-measured { background: var(--c-text); }
+    .seg-observed { background: var(--c-border-strong); }
+    .seg-inferred {
+      background: repeating-linear-gradient(135deg, var(--c-border-strong) 0 3px, var(--c-panel) 3px 6px);
+    }
+    .seg-unknown { background: var(--c-border); }
+
+    .evidence-key {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+      gap: var(--space-2) var(--space-5);
+      line-height: var(--lead-dense);
+    }
+
+    .evidence-key li { display: grid; grid-template-columns: auto 1fr; gap: 0 var(--space-2); align-items: baseline; }
+    .evidence-key .swatch { width: 12px; height: 12px; border-radius: 3px; transform: translateY(1px); }
+    .evidence-key strong { font-variant-numeric: tabular-nums; }
+    .evidence-key .small { grid-column: 2; }
+
+    /* Signals */
+    .signals { display: grid; }
+
+    .signal {
+      display: grid;
+      grid-template-columns: minmax(0, 15rem) minmax(0, 1fr);
+      gap: var(--space-2) var(--space-5);
+      padding: var(--space-4) 0;
+      border-top: 1px solid var(--c-border);
+      line-height: var(--lead-dense);
+    }
+
+    .signal:last-child { border-bottom: 1px solid var(--c-border); }
+    .signal-title { display: grid; gap: var(--space-1); align-content: start; justify-items: start; }
+    .signal-title strong { font-weight: 600; }
+    .signal-body { display: grid; gap: var(--space-2); align-content: start; }
+    .chips { display: flex; flex-wrap: wrap; gap: var(--space-1) var(--space-2); align-items: center; }
+    .subjects { display: grid; gap: var(--space-1); color: var(--c-muted); font-size: var(--text-small); }
+
+    /* Journey */
+    .journey-facts {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: var(--space-4) var(--space-5);
+      line-height: var(--lead-dense);
+    }
+
+    .journey-facts dt { color: var(--c-muted); font-size: var(--text-small); }
+
+    .sub { display: grid; gap: var(--space-3); }
+    .sub > p { max-width: 64ch; color: var(--c-muted); }
+
+    .scroll { overflow-x: auto; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      line-height: var(--lead-dense);
+      font-variant-numeric: tabular-nums;
+    }
+
+    th, td {
+      padding: var(--space-3) var(--space-4) var(--space-3) 0;
+      border-bottom: 1px solid var(--c-border);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th:last-child, td:last-child { padding-right: 0; }
+
+    thead th {
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      font-weight: 500;
+      white-space: nowrap;
+    }
+
+    tbody th { font-weight: 500; }
+    td .small { display: block; }
+    td.num { white-space: nowrap; }
+    .cell-stack { display: grid; gap: var(--space-1); justify-items: start; }
+    .wide-table table { min-width: 760px; }
+    .scenario-table table { min-width: 620px; }
+    .scenario-table tbody th { min-width: 11rem; }
+
+    /* Map */
+    .map {
+      display: grid;
+      gap: var(--space-4);
+      padding: var(--space-5);
+      border: 1px solid var(--c-border);
+      border-radius: var(--radius-surface);
+    }
+
+    .map-scroll { overflow-x: auto; }
+    .map-scroll svg { display: block; margin: 0 auto; font-family: var(--font-sans); }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-2) var(--space-5);
+      padding-top: var(--space-4);
+      border-top: 1px solid var(--c-border);
+      color: var(--c-muted);
+      font-size: var(--text-small);
+      line-height: var(--lead-dense);
+    }
+
+    .legend li { display: flex; gap: var(--space-2); align-items: center; }
+    .legend svg { flex: none; }
+
+    /* Map drawing. Fills and strokes come from the same tokens as the page. */
+    .card-box { fill: var(--c-panel); stroke: var(--c-border-strong); stroke-width: 1; }
+    .card-goal .card-box { stroke: var(--c-text); stroke-width: 2; }
+    .card-failure .card-box { stroke: var(--c-problem); stroke-width: 1.5; }
+    .card-stuck .card-box { stroke: var(--c-problem); stroke-width: 1.5; stroke-dasharray: 5 3; }
+    .card-head { fill: var(--c-well); }
+    .card-rule { stroke: var(--c-border); stroke-width: 1; }
+    .card-kind { fill: var(--c-muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.06em; }
+    .card-role { fill: var(--c-text); font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; }
+    .card-failure .card-role, .card-stuck .card-role { fill: var(--c-problem); }
+    .card-label { fill: var(--c-text); font-size: 15px; font-weight: 600; }
+    .row-action { fill: var(--c-text); font-size: 13px; font-weight: 500; }
+    .row-meta { fill: var(--c-muted); font-size: 11.5px; }
+    .row-status { fill: var(--c-muted); font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-anchor: end; }
+    .row-status.is-verified { fill: var(--c-text); }
+    .row-status.is-attention { fill: var(--c-attention); }
+    .row-status.is-problem { fill: var(--c-problem); }
+    .row-dot { fill: var(--c-border-strong); }
+    .row-step { fill: var(--c-accent); }
+    .row-step-num { fill: var(--c-panel); font-size: 10.5px; font-weight: 700; text-anchor: middle; }
+
+    .wire { fill: none; stroke: var(--c-text); stroke-width: 1.25; stroke-linecap: round; stroke-linejoin: round; }
+    .wire-halo { fill: none; stroke: var(--c-panel); stroke-width: 5; stroke-linecap: round; }
+    .wire.is-measured { stroke-width: 2; }
+    .wire.is-observed { stroke-width: 1.25; }
+    .wire.is-inferred { stroke: var(--c-muted); stroke-dasharray: 6 4; }
+    .wire.is-unknown { stroke: var(--c-muted); stroke-dasharray: 1 5; stroke-width: 1.75; }
+    .wire.is-route { stroke: var(--c-accent); }
+    .wire.is-drift { stroke: var(--c-problem); stroke-dasharray: 6 4; }
+    .head { fill: var(--c-text); }
+    .head.is-inferred, .head.is-unknown { fill: var(--c-muted); }
+    .head.is-route { fill: var(--c-accent); }
+    .head.is-drift { fill: var(--c-problem); }
+    .stop { fill: none; stroke: var(--c-problem); stroke-width: 2; stroke-linecap: round; }
+
+    /* Route as text: the reading equivalent of the map. */
+    .route { display: grid; counter-reset: step; }
+
+    .route li {
+      display: grid;
+      grid-template-columns: 2rem minmax(0, 1fr) auto;
+      gap: var(--space-1) var(--space-3);
+      align-items: baseline;
+      padding: var(--space-3) 0;
+      border-top: 1px solid var(--c-border);
+      line-height: var(--lead-dense);
+      counter-increment: step;
+    }
+
+    .route li:last-child { border-bottom: 1px solid var(--c-border); }
+
+    .route li::before {
+      content: counter(step);
+      color: var(--c-accent);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .route .small { grid-column: 2; }
+    .route .tag { grid-column: 3; grid-row: 1; }
+
+    .plain-list { display: grid; gap: var(--space-2); padding-left: 1.1em; list-style: disc; }
+    .plain-list li::marker { color: var(--c-border-strong); }
+
+    .doc-footer { padding-top: var(--space-5); border-top: 1px solid var(--c-border); }
+
+    @media (max-width: 960px) {
+      .app { grid-template-columns: minmax(0, 1fr); }
+
+      .sidebar {
+        position: static;
+        max-height: none;
+        gap: var(--space-3);
+        padding: var(--space-5) max(var(--space-4), env(safe-area-inset-right, 0px)) var(--space-3)
+          max(var(--space-4), env(safe-area-inset-left, 0px));
+      }
+
+      .nav-label, .nav .nav-sub { display: none; }
+      .nav ul { display: flex; gap: var(--space-4); overflow-x: auto; }
+      .nav a { white-space: nowrap; }
+      .nav a::before { display: none; }
+
+      .panel {
+        margin: 0;
+        padding-block: var(--space-6) var(--space-8);
+        padding-left: max(var(--space-4), env(safe-area-inset-left, 0px));
+        padding-right: max(var(--space-4), env(safe-area-inset-right, 0px));
+        border-radius: var(--radius-surface) var(--radius-surface) 0 0;
+      }
+
+      .doc { gap: var(--space-7); }
+      .section + .section, .intro + .section { padding-top: var(--space-7); }
+      .signal { grid-template-columns: minmax(0, 1fr); }
+      .map { padding: var(--space-4); }
+      .route li { grid-template-columns: 1.5rem minmax(0, 1fr); }
+      .route .tag { grid-column: 2; grid-row: auto; justify-self: start; }
+    }
+
+    @media print {
+      body { background: var(--c-panel); }
+      .app { display: block; }
+      .sidebar, .skip-link { display: none; }
+      .panel { margin: 0; padding: 0; }
+      .section, .signal, .map { break-inside: avoid; }
+    }
+  </style>
+</head>
+<body>
+  <a class="skip-link" href="#content">{{SKIP}}</a>
+  <div class="app">
+    <header class="sidebar">
+      <div class="brand">
+        <strong>{{PRODUCT}}</strong>
+        <span>{{KIND}}</span>
+      </div>
+      <nav class="nav" aria-labelledby="nav-label">
+        <div class="nav-label" id="nav-label">{{NAV_LABEL}}</div>
+        {{NAV}}
+      </nav>
+    </header>
+    <main class="panel" id="content">
+      <div class="doc">
+        {{CONTENT}}
+      </div>
+    </main>
+  </div>
+  <script>
+    // Marks the section in view in the navigation. The page reads the same without it.
+    (() => {
+      const links = [...document.querySelectorAll('.nav a[href^="#"]')];
+      const byId = new Map(links.map((link) => [link.getAttribute("href").slice(1), link]));
+      if (!("IntersectionObserver" in window) || !links.length) return;
+      const visible = new Set();
+      const observer = new IntersectionObserver((entries) => {
+        for (const entry of entries) {
+          if (entry.isIntersecting) visible.add(entry.target.id);
+          else visible.delete(entry.target.id);
+        }
+        const current = [...byId.keys()].find((id) => visible.has(id));
+        for (const [id, link] of byId) {
+          if (id === current) link.setAttribute("aria-current", "location");
+          else link.removeAttribute("aria-current");
+        }
+      }, { rootMargin: "-10% 0px -60% 0px" });
+      for (const id of byId.keys()) {
+        const target = document.getElementById(id);
+        if (target) observer.observe(target);
+      }
+    })();
+  </script>
+</body>
+</html>

@@ -1,11 +1,11 @@
 ---
 name: design-workflow
-description: Plans and runs a multi-area review or build of a website, interface, landing page, portfolio, product flow, component library, or generated design by combining focused skills into one scoped sequence of content grounding, structure, components, visuals, copy, motion, accessibility, and verification. Use when a request spans several of these areas, such as an end-to-end anti-slop review, simplifying or de-slopping a whole page, or a new artifact built from verified material. Not for a single area such as a copy-only edit, a contrast-only check, a motion-only review, a component-only contract, or a one-off scored audit, where the focused skill is enough.
+description: Plans and runs a multi-area review or build of a website, interface, landing page, portfolio, product flow, component library, or generated design by combining focused skills into one scoped sequence of content grounding, structure, user flows, components, visuals, copy, motion, accessibility, and verification. Use when a request spans several of these areas, such as an end-to-end anti-slop review, simplifying or de-slopping a whole page, or a new artifact built from verified material. Not for a single area such as a copy-only edit, a contrast-only check, a motion-only review, a component-only contract, or a one-off scored audit, where the focused skill is enough.
 license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -54,6 +54,8 @@ Use what the user supplied:
   behavior, interaction governance, or parity is in scope;
 - intended user, primary task, and material decision contexts;
 - visible, contextual, disclosed, or unavailable action paths when relevant;
+- an existing flow map (`*.flow.json`), its recorded runs, and the product
+  revision when a journey across screens or states is in scope;
 - real copy, claims, dates, prices, outcomes, and constraints;
 - approved product voice, terminology, nearby copy, and every locale in scope;
 - target platform and release stage;
@@ -82,6 +84,11 @@ again before the final result is reported.
 6. `check-accessibility`
 7. `verify-changes`
 
+Add `map-flows` in design mode after `plan-structure` when the artifact is a
+journey across screens or states, such as onboarding, checkout, sign-in, or
+settings, or when success depends on branches and recovery. Its map is a
+design, not evidence about a product.
+
 Add `review-components` before the visual budget when reusable
 components, action hierarchy, affordances, disclosure policy, or shared-system
 adoption must be defined.
@@ -99,6 +106,20 @@ adoption must be defined.
 7. `check-accessibility`
 8. `verify-changes`
 9. Re-run `audit-design` when a before/after comparison is useful.
+
+Add `map-flows` in inspect mode after `audit-design` when a journey across
+screens or states is in scope. After requested edits that touch a mapped
+journey, run it in compare mode before `verify-changes`, when runs recorded
+under the same conditions exist.
+
+### Journey or flow request
+
+1. `map-flows`, in design, inspect, or compare mode
+2. `review-components` when a finding concerns how visible a required action
+   is or what a failure state must offer
+3. `check-accessibility` when a keyboard or assistive-technology path is in
+   question
+4. `verify-changes`, targeted to the changed journey
 
 ### Design system or reusable component
 
@@ -223,6 +244,9 @@ Do not issue a passing result while any of these project hard failures remain:
   equal-priority or no-primary reason;
 - a required primary, frequent, or recovery action disclosed or unavailable
   without a supported reason and adequate path;
+- a critical journey in the release scope whose goal no recorded run reaches,
+  whose required step a run found blocked, or whose failure state has no route
+  back to the goal;
 - a required design-system lifecycle that remains failed or unknown when
   migration or adoption is part of the release scope;
 - unsupported claims presented with certainty.
@@ -248,5 +272,5 @@ instructions for applied changes.
 
 Do not optimize for emptiness or uniformity. Stop pruning when the next removal
 would reduce task completion, comprehension, evidence, identity, component or
-interaction behavior, action discoverability, migration safety, or
-accessibility.
+interaction behavior, action discoverability, recovery from failure, migration
+safety, or accessibility.

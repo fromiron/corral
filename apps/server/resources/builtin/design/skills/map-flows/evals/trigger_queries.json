@@ -1,0 +1,110 @@
+[
+  {
+    "id": "en-positive-1",
+    "language": "en",
+    "query": "Map the checkout flow from cart to confirmation and show me where a guest gets stuck.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-2",
+    "language": "en",
+    "query": "We are designing onboarding across five screens. Lay out the user journey with the failure and recovery paths before we build it.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-positive-3",
+    "language": "en",
+    "query": "Did this refactor break the sign-in to dashboard path? Compare it with the flow we recorded last release.",
+    "should_trigger": true
+  },
+  {
+    "id": "en-negative-1",
+    "language": "en",
+    "query": "Choose whether this essay archive should be a timeline or an index.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-2",
+    "language": "en",
+    "query": "Define the hover, focus, disabled, and loading states of the submit button.",
+    "should_trigger": false
+  },
+  {
+    "id": "en-negative-3",
+    "language": "en",
+    "query": "Rewrite the error message on the payment form so it says what to do next.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-positive-1",
+    "language": "ko",
+    "query": "장바구니에서 주문 완료까지 결제 플로우를 그려 주고, 비회원이 어디서 막히는지 보여 줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-2",
+    "language": "ko",
+    "query": "온보딩을 화면 다섯 개로 설계하는 중이야. 구현 전에 실패와 복구 경로까지 포함해서 사용자 여정을 정리해 줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-positive-3",
+    "language": "ko",
+    "query": "이번 리팩터링으로 로그인에서 대시보드까지 가는 경로가 깨졌는지, 지난 릴리스 때 기록한 플로우와 비교해 줘.",
+    "should_trigger": true
+  },
+  {
+    "id": "ko-negative-1",
+    "language": "ko",
+    "query": "이 에세이 아카이브를 타임라인으로 할지 인덱스로 할지 골라 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-2",
+    "language": "ko",
+    "query": "제출 버튼의 호버, 포커스, 비활성, 로딩 상태를 정의해 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ko-negative-3",
+    "language": "ko",
+    "query": "결제 폼의 오류 문구를 다음에 무엇을 해야 하는지 알 수 있게 고쳐 줘.",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-positive-1",
+    "language": "ja",
+    "query": "カートから注文完了までの購入フローを図にして、ゲストがどこで行き詰まるか示してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-2",
+    "language": "ja",
+    "query": "オンボーディングを5画面で設計しています。実装前に、失敗時と復帰の経路も含めてユーザージャーニーを整理してください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-positive-3",
+    "language": "ja",
+    "query": "今回のリファクタリングでサインインからダッシュボードまでの経路が壊れていないか、前回のリリースで記録したフローと比べてください。",
+    "should_trigger": true
+  },
+  {
+    "id": "ja-negative-1",
+    "language": "ja",
+    "query": "このエッセイのアーカイブを年表にするか索引にするか選んでください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-2",
+    "language": "ja",
+    "query": "送信ボタンのホバー、フォーカス、無効、読み込み中の状態を定義してください。",
+    "should_trigger": false
+  },
+  {
+    "id": "ja-negative-3",
+    "language": "ja",
+    "query": "決済フォームのエラーメッセージを、次に何をすればよいか分かる文言に直してください。",
+    "should_trigger": false
+  }
+]

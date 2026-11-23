@@ -1,0 +1,415 @@
+{
+  "schema_version": "1.0",
+  "map": "log-workout",
+  "title": "Log a workout",
+  "product": "Example workout log app (flow-app fixture)",
+  "scope": "From the Today screen to a saved workout, including discarding a workout. Sign-in, the exercise library, and history are out of scope.",
+  "facts": [
+    {
+      "id": "has-sets",
+      "description": "At least one set is logged in the active workout."
+    },
+    {
+      "id": "offline",
+      "description": "The device cannot reach the server when the workout is saved."
+    },
+    {
+      "id": "reps-missing",
+      "description": "The person submits the set form without entering reps."
+    }
+  ],
+  "states": [
+    {
+      "id": "today",
+      "kind": "screen",
+      "label": "Today",
+      "route": "today.html"
+    },
+    {
+      "id": "workout",
+      "kind": "screen",
+      "label": "Active workout",
+      "route": "workout.html"
+    },
+    {
+      "id": "set-form",
+      "kind": "overlay",
+      "label": "Add set form"
+    },
+    {
+      "id": "set-error",
+      "kind": "inline",
+      "role": "failure",
+      "label": "Reps missing"
+    },
+    {
+      "id": "more-menu",
+      "kind": "overlay",
+      "label": "More menu"
+    },
+    {
+      "id": "save-failed",
+      "kind": "inline",
+      "role": "failure",
+      "label": "Save failed"
+    },
+    {
+      "id": "discard-confirm",
+      "kind": "overlay",
+      "label": "Discard confirmation"
+    },
+    {
+      "id": "discarded",
+      "kind": "screen",
+      "label": "Today, workout discarded",
+      "route": "today.html?discarded=1"
+    },
+    {
+      "id": "summary",
+      "kind": "screen",
+      "label": "Workout saved",
+      "route": "summary.html"
+    }
+  ],
+  "transitions": [
+    {
+      "id": "today.start",
+      "from": "today",
+      "to": "workout",
+      "action": "Activate “Start workout”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/today.html#start-workout",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "workout.add-set",
+      "from": "workout",
+      "to": "set-form",
+      "action": "Activate “Add set”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#add-set",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "set-form.save",
+      "from": "set-form",
+      "to": "workout",
+      "action": "Choose an exercise, enter weight and reps, then activate “Save set”",
+      "actor": "user",
+      "requires": [
+        "!reps-missing"
+      ],
+      "effects": [
+        "has-sets"
+      ],
+      "inputs": 3,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#set-form",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "set-form.save-without-reps",
+      "from": "set-form",
+      "to": "set-error",
+      "action": "Activate “Save set” with reps left empty",
+      "actor": "user",
+      "requires": [
+        "reps-missing"
+      ],
+      "inputs": 2,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#reps-error",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "set-error.save",
+      "from": "set-error",
+      "to": "workout",
+      "action": "Enter reps, then activate “Save set”",
+      "actor": "user",
+      "effects": [
+        "has-sets",
+        "!reps-missing"
+      ],
+      "inputs": 1,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#reps-error",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "set-form.cancel",
+      "from": "set-form",
+      "to": "workout",
+      "action": "Activate “Cancel”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#cancel-set",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "workout.finish",
+      "from": "workout",
+      "to": "summary",
+      "action": "Activate “Finish workout”",
+      "actor": "user",
+      "requires": [
+        "has-sets",
+        "!offline"
+      ],
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#finish",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "workout.finish-offline",
+      "from": "workout",
+      "to": "save-failed",
+      "action": "Activate “Finish workout” while the connection is down",
+      "actor": "user",
+      "requires": [
+        "has-sets",
+        "offline"
+      ],
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#failed-view",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "workout.more",
+      "from": "workout",
+      "to": "more-menu",
+      "action": "Open the “More” menu",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#more",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "more.close",
+      "from": "more-menu",
+      "to": "workout",
+      "action": "Activate “Close”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "disclosed",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#close-more",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "more.discard-confirm",
+      "from": "more-menu",
+      "to": "discard-confirm",
+      "action": "Activate “Discard workout”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "disclosed",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#discard",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "discard-confirm.discard",
+      "from": "discard-confirm",
+      "to": "discarded",
+      "action": "Confirm “Discard workout”",
+      "actor": "user",
+      "effects": [
+        "!has-sets"
+      ],
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#confirm-discard",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "discard-confirm.keep",
+      "from": "discard-confirm",
+      "to": "workout",
+      "action": "Activate “Keep workout”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#keep-workout",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "save-failed.reconnect",
+      "from": "save-failed",
+      "to": "save-failed",
+      "action": "The connection returns",
+      "actor": "system",
+      "effects": [
+        "!offline"
+      ],
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/shared.js",
+        "revision": "flow-app-after",
+        "note": "Simulated with the fixture's connection control."
+      }
+    },
+    {
+      "id": "save-failed.retry",
+      "from": "save-failed",
+      "to": "summary",
+      "action": "Activate “Try again”",
+      "actor": "user",
+      "requires": [
+        "!offline"
+      ],
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#retry",
+        "revision": "flow-app-after"
+      }
+    },
+    {
+      "id": "save-failed.discard",
+      "from": "save-failed",
+      "to": "discard-confirm",
+      "action": "Activate “Discard workout”",
+      "actor": "user",
+      "inputs": 0,
+      "visibility": "persistent",
+      "intent": "approved",
+      "evidence": {
+        "state": "observed",
+        "source": "code",
+        "ref": "evals/fixtures/flow-app/after/workout.html#failed-discard",
+        "revision": "flow-app-after"
+      }
+    }
+  ],
+  "journeys": [
+    {
+      "id": "log-workout",
+      "user": "A member logging sets between exercises, often with one hand",
+      "goal": "Log the sets of a workout and save it",
+      "success_condition": "The summary screen lists the logged sets under “Workout saved”.",
+      "entry": "today",
+      "success": [
+        "summary"
+      ],
+      "exits": [
+        "discarded"
+      ],
+      "start_facts": [],
+      "critical": true,
+      "baseline_run": "after-pointer-default",
+      "scenarios": [
+        {
+          "id": "offline-at-save",
+          "description": "The connection drops before the workout is saved.",
+          "facts": [
+            "offline"
+          ]
+        },
+        {
+          "id": "reps-left-empty",
+          "description": "The person saves a set without entering reps.",
+          "facts": [
+            "reps-missing"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "discard-workout",
+      "user": "A member who started a workout by mistake",
+      "goal": "Leave the workout without saving it",
+      "success_condition": "Today shows “Workout discarded” and no sets remain.",
+      "entry": "workout",
+      "success": [
+        "discarded"
+      ],
+      "exits": [
+        "summary"
+      ],
+      "start_facts": [],
+      "critical": false,
+      "baseline_run": null
+    }
+  ],
+  "unknowns": [
+    "Touch input and screen readers were not exercised.",
+    "How often members save a workout without a connection is not known."
+  ]
+}

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Prune and verify report",
+  "title": "Verification report",
   "type": "object",
   "required": [
     "artifact",
@@ -61,7 +61,32 @@
           "type": "string",
           "minLength": 1
         }
-      }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "verification": {
+                "const": "targeted"
+              }
+            },
+            "required": [
+              "verification"
+            ]
+          },
+          "then": {
+            "required": [
+              "changed_surfaces",
+              "rationale"
+            ],
+            "properties": {
+              "changed_surfaces": {
+                "minItems": 1
+              }
+            }
+          }
+        }
+      ]
     },
     "evidence": {
       "type": "array",
@@ -158,6 +183,7 @@
               "action-visibility",
               "grouping-cues",
               "system-lifecycle",
+              "journey-paths",
               "custom"
             ]
           },
@@ -202,7 +228,8 @@
             "minLength": 1
           }
         }
-      }
+      },
+      "minItems": 1
     },
     "accepted_risks": {
       "type": "array",

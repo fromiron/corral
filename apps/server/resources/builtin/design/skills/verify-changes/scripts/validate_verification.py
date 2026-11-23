@@ -37,6 +37,7 @@ TESTS = {
     "action-visibility",
     "grouping-cues",
     "system-lifecycle",
+    "journey-paths",
     "custom",
 }
 BASELINE_TESTS = {

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -43,6 +43,12 @@ accessible names, reading order, status announcements, reflow behavior, or full
 WCAG conformance.
 
 Label untested requirements as `unknown`.
+
+When the project keeps a flow map, a keyboard or assistive-technology run
+recorded by `map-flows` is evidence for operating that journey with that input
+at the recorded revision. A step the run found blocked is a failed keyboard
+check for that control. A run with Tab and Enter in a browser is not a screen
+reader test, and one journey is not the whole interface.
 
 ## Baseline checks
 
@@ -128,7 +134,8 @@ mislabeling it as AA.
 ## Completion
 
 A mechanical release-ready result is blocked by every failed check and by every
-required check that remains unknown. Recording an accepted risk does not clear
+required check that remains unknown. Recording an accepted risk, written as
+`<check-id>:<status>` such as `focus-visible:unknown`, does not clear
 the blocker; an accountable owner must make that release decision outside the
 validator. The final report must state what was tested, how, and what was not
 tested.

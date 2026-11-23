@@ -18,7 +18,7 @@ Record one source-of-truth declaration:
 - review trigger.
 
 When the project intentionally shares authority, define which surface owns each
-dimension instead of writing only `shared`.
+dimension instead of writing only `split`.
 
 ## Purpose and selection
 

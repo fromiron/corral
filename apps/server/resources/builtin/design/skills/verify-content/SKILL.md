@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -123,8 +123,9 @@ Produce:
 3. contradictions;
 4. missing content;
 5. prohibited generation;
-6. safe claims;
-7. allowed placeholders for internal-only use;
+6. safe claims, listed as the ids of verified or inferred facts;
+7. allowed placeholders for internal-only use, listed as the ids of
+   placeholder facts;
 8. questions that materially affect structure.
 
 Do not ask for low-impact details merely to fill a template. When the user

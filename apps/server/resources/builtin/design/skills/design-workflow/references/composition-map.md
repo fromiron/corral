@@ -72,9 +72,29 @@ Produce:
     {"pattern": "", "reason": ""},
     {"pattern": "", "reason": ""}
   ],
+  "hybrid_justification": null,
   "unknowns": []
 }
 ```
+
+`hybrid_justification` is required text when the grammar is
+`justified-hybrid` and stays `null` otherwise.
+
+### Map flows (`map-flows`)
+
+Limited level: describe each journey in prose and one table. Record the user,
+goal, and success condition; the states the person passes through; the action
+between each pair of states; the conditions on those actions; and every
+failure with its way back or out. Label each path as designed (`approved` or
+`proposed`) or as found in the product, and give its evidence state. A designed
+path is not evidence that the product has it.
+
+The flow map and run schemas, the validator, the route and recovery analysis,
+the regression comparison, and the rendered map belong to `map-flows`. At the
+limited level, do not report reachability, route counts, or a regression
+result as computed, do not record a run, and do not write flow map files.
+Report a dead end or a missing recovery path only where the supplied material
+shows it directly, and label the rest inferred or unknown.
 
 ### Review components (`review-components`)
 
@@ -164,24 +184,19 @@ Produce:
 
 ```json
 {
+  "artifact": "",
   "observed": {},
   "limits": {},
   "radius_scope": "none | evaluated | unknown",
   "radius_scope_evidence": "",
   "radius_relationships": [],
-  "token_proposal": {
-    "required": false,
-    "artifact_path": "",
-    "proposal_json_path": "",
-    "foundations": [],
-    "primitive_tokens": [],
-    "semantic_tokens": [],
-    "current_to_proposed": [],
-    "open_questions": []
-  },
   "exceptions": []
 }
 ```
+
+`observed` and `limits` use the same metric names. A token proposal is a
+separate deliverable with its own schema in `review-visuals`; report a
+recommended proposal in prose, not inside this object.
 
 For shared nested contours, record either the inward semantic token step or a
 measured concentric offset. Classify independent components and pills instead
@@ -248,18 +263,23 @@ word-for-word parity.
 
 For each motion pattern, record:
 
+- an id;
 - trigger;
 - purpose;
 - essential or nonessential;
 - keep, reduce, replace, or remove;
+- the information it conveys, if any;
 - reduced-motion behavior;
 - equivalent static state.
+
+Record behavior that could not be checked in the report's `unknowns`.
 
 ### Check accessibility (`check-accessibility`)
 
 For each check, record:
 
-- criterion or requirement;
+- an id, the criterion or requirement, and its level;
+- whether the project requires it;
 - status: pass, fail, unknown, or not applicable;
 - evidence;
 - impact;
@@ -280,18 +300,25 @@ targeted result is never release readiness. Use release verification when a
 release decision is requested or the change is broad; it allows no
 `out-of-scope` checks. Observed hard failures are reported in either scope.
 
-In release verification, run the deletion, substitution, semantic,
-five-second, growth, reflow, keyboard, reduced-motion, and provenance tests.
+In release verification, run the ten baseline tests: deletion, substitution,
+semantic structure, glance hierarchy, primary task, growth, reflow, keyboard
+and focus, reduced motion, and provenance.
 In either scope, when nested rounded surfaces
 exist or changed, also run nested-radius coherence verification. When reusable
 components changed, verify required anatomy, states, content, responsive
 behavior, accessibility, and design-code parity. When affordances, action
 hierarchy, disclosure, grouping, or a design-system migration changed, run the
-matching conditional checks. Unknown results remain unknown.
+matching conditional checks. When a mapped journey changed, repeat the affected
+runs and record the result as `journey-paths`. Unknown results remain unknown.
 
 ## Dependency rules
 
 - Structure depends on grounded user needs and content.
+- A flow map depends on a stated user, goal, and success condition.
+- A designed path is not evidence that the product has it; a path counts as
+  verified only when a recorded run reached it.
+- A lower action count cannot override recovery, confirmation of a destructive
+  action, or accessibility.
 - Copy cannot add facts absent from grounding.
 - Component contracts cannot infer runtime support from a design file.
 - Design-code parity cannot pass while a required surface is failed, unknown,

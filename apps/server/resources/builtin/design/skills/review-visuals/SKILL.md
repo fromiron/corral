@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -75,8 +75,7 @@ Use as available:
 | Metric | Default |
 |---|---:|
 | Dominant layout grammars | 1 |
-| Typeface families | 1 |
-| Typeface families, maximum without exception | 2 |
+| Typeface families | 1; a second needs a recorded exception |
 | Type roles | 4–6 |
 | Accent colors | 0–1 |
 | Radius tokens | 0–2 |

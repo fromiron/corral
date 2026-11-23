@@ -1,4 +1,4 @@
-# Slop signal audit: [artifact]
+# Design audit: [artifact]
 
 ## Result
 
@@ -27,7 +27,7 @@
 
 ## Unknowns
 
-- <!-- Add unknowns here. -->
+-
 
 ## Top five changes
 

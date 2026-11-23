@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -47,6 +47,8 @@ Use as available:
 - representative product usage and decision contexts;
 - project tokens, breakpoints, content rules, and action-priority rules;
 - overflow menus, disclosure paths, and available-space evidence;
+- flow map findings from `map-flows`: actions that every route to a goal
+  passes through, and failure states with no route back to the goal;
 - supported browsers, devices, input methods, and accessibility baseline;
 - for design-system work, current inventories, legacy-to-target mappings,
   adoption status, version history, roadmap, and deprecation criteria.
@@ -224,7 +226,9 @@ python scripts/validate_component_contract.py path/to/component-contract.json
 
 The base validator checks report structure and declared release blockers. It
 does not render the component, operate a browser, compare screenshots, or run
-assistive technology.
+assistive technology. It exits 0 for a well-formed report and reports blockers
+in its output; the interaction-governance validator also exits 1 while a
+blocker remains. Read the result fields, not only the exit code.
 
 ## Recommendation format
 

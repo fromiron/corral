@@ -1,0 +1,176 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow run",
+  "description": "One continuous walk through a journey in the running product. Stored as runs/<name>.run.json and never overwritten.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "run",
+    "map",
+    "journey",
+    "recorded_at",
+    "revision",
+    "method",
+    "tool",
+    "environment",
+    "steps",
+    "outcome",
+    "limitations"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "run": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+    },
+    "map": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "journey": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "scenario": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+      "description": "Defaults to default."
+    },
+    "recorded_at": {
+      "type": "string",
+      "description": "ISO 8601 date or date-time."
+    },
+    "revision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Product revision that was run, or unknown."
+    },
+    "method": {
+      "enum": [
+        "browser-automation",
+        "automated-test",
+        "manual"
+      ]
+    },
+    "tool": {
+      "type": "string",
+      "minLength": 1
+    },
+    "environment": {
+      "type": "object",
+      "required": [
+        "target",
+        "viewport",
+        "input"
+      ],
+      "properties": {
+        "target": {
+          "type": "string",
+          "minLength": 1
+        },
+        "viewport": {
+          "type": "string",
+          "minLength": 1
+        },
+        "input": {
+          "enum": [
+            "pointer",
+            "keyboard",
+            "touch",
+            "assistive-technology"
+          ]
+        },
+        "locale": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "result",
+          "evidence"
+        ],
+        "properties": {
+          "transition": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Transition id from the map. Null or absent for an unmapped step."
+          },
+          "result": {
+            "enum": [
+              "reached",
+              "diverged",
+              "blocked",
+              "unmapped"
+            ]
+          },
+          "landed": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "State the product was in afterwards."
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+            "description": "Unmapped steps only: the state the action started from."
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Unmapped steps only: what was done."
+          },
+          "evidence": {
+            "type": "string",
+            "minLength": 1,
+            "description": "What was seen that supports the result."
+          }
+        }
+      }
+    },
+    "outcome": {
+      "enum": [
+        "success",
+        "failure",
+        "blocked",
+        "abandoned"
+      ]
+    },
+    "success_evidence": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Required when outcome is success: how the success condition was confirmed."
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "outcome": {
+            "const": "success"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "success_evidence"
+        ]
+      }
+    }
+  ]
+}

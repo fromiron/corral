@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -47,6 +47,8 @@ Use as available:
 - component, affordance, action-governance, and design-system lifecycle reports
   when those dimensions changed;
 - motion and accessibility reports;
+- the flow map, recorded runs, and comparison result when a mapped journey
+  changed;
 - supported viewport, input, browser, and assistive-technology requirements;
 - release constraints and explicitly accepted risks.
 
@@ -93,6 +95,10 @@ change is broad: a redesign, restructure, or shared token, component, or
 migration change. Release verification classifies every check in the required
 set below; `out-of-scope` is not allowed.
 
+A targeted report also names the changed surfaces and why targeted
+verification is enough: `scope.changed_surfaces` and `scope.rationale` in the
+structured report.
+
 Scope never hides evidence. Report a directly observed hard failure or required
 failure even outside the changed surfaces. A targeted result is not release
 readiness or WCAG conformance. Do not widen a verification request into new
@@ -126,10 +132,14 @@ deletions or cleanup; apply the deletion test to the changed material only.
     action-hierarchy, action-visibility, and grouping-cue checks.
 14. When a design-system migration or adoption plan changed, verify inventory,
     mappings, coexistence, ownership, changelog, and deprecation gates.
-15. Classify each check as pass, fail, unknown, or not applicable.
-16. Block release for required failures or unknowns unless the exact risk is
-    documented and explicitly accepted by an accountable owner.
-17. If a check leads to another authorized edit, apply it and repeat the affected
+15. When a journey with a flow map changed, repeat the affected runs under the
+    earlier conditions and compare the maps and runs with `map-flows`.
+16. Classify each check as pass, fail, unknown, or not applicable, or as
+    out of scope in targeted verification.
+17. Block release for required failures or unknowns. Record an accepted risk
+    with its accountable owner; it documents the decision and does not clear
+    the blocker.
+18. If a check leads to another authorized edit, apply it and repeat the affected
     checks against the changed artifact. Report applied and proposed changes
     separately, with actual outcomes, remaining unknowns, and rollback steps.
 
@@ -163,11 +173,22 @@ Include these checks when their corresponding scope exists or changed:
 - `action-hierarchy`;
 - `action-visibility`;
 - `grouping-cues`;
-- `system-lifecycle`.
+- `system-lifecycle`;
+- `journey-paths`.
+
+In the structured report each check names its test by id: `deletion`,
+`substitution`, `semantic-structure`, `glance-hierarchy`, `primary-task`,
+`growth`, `reflow`, `keyboard-focus`, `reduced-motion`, `provenance`,
+`assistive-technology`, `nested-radius-coherence`, and the conditional ids
+above. Use `custom` for any other check, such as the before-and-after
+comparison or the spacing, typography, and token-proposal tests in the
+reference.
 
 A screenshot can support visual observations but cannot pass keyboard,
 semantics, runtime behavior, reflow, assistive-technology, reduced-motion,
-action frequency, or design-system adoption checks by itself.
+action frequency, or design-system adoption checks by itself. A flow map can
+show that a route exists in the design; only a recorded run shows that the
+product follows it.
 
 ## Accepted-risk syntax
 
@@ -213,6 +234,10 @@ A report without `scope` is validated as release verification. With
 The script validates the report contract and required-check gates. It does not
 inspect CSS, render contours, operate disclosures, measure discoverability, or
 perform browser, accessibility, usability, or adoption testing.
+
+A hard failure here means a project release gate listed by the skill that owns
+the area, such as a fabricated claim, a removed accessibility cue, or a
+required action without an adequate path.
 
 ## Recommendation order
 

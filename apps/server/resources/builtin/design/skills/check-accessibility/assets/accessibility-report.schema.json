@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "title": "Accessibility simplicity report",
+  "title": "Accessibility report",
   "type": "object",
   "required": [
     "artifact",

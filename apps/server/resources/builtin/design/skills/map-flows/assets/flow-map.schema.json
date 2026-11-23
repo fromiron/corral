@@ -1,0 +1,418 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Flow map",
+  "description": "One graph of states and transitions, the journeys that cross it, and static evidence for each transition. Stored as <name>.flow.json.",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "map",
+    "title",
+    "product",
+    "states",
+    "transitions",
+    "journeys",
+    "unknowns"
+  ],
+  "properties": {
+    "schema_version": {
+      "const": "1.0"
+    },
+    "map": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1
+    },
+    "product": {
+      "type": "string",
+      "minLength": 1
+    },
+    "scope": {
+      "type": "string"
+    },
+    "facts": {
+      "type": "array",
+      "description": "Boolean conditions that guards and effects refer to, such as signed-in or offline.",
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "description"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "description": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "states": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "kind",
+          "label"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "kind": {
+            "enum": [
+              "screen",
+              "overlay",
+              "inline",
+              "external"
+            ]
+          },
+          "role": {
+            "enum": [
+              "step",
+              "failure"
+            ],
+            "description": "Defaults to step. A failure is a state the person did not want to reach."
+          },
+          "label": {
+            "type": "string",
+            "minLength": 1
+          },
+          "route": {
+            "type": "string",
+            "minLength": 1
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Static evidence only. `measured` is never written here; it is earned by a recorded run that reaches the transition.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "observed",
+                  "inferred",
+                  "unknown"
+                ]
+              },
+              "source": {
+                "enum": [
+                  "design",
+                  "documentation",
+                  "code",
+                  "screenshot",
+                  "live"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Where the material was inspected: a repository path, a design frame, a screenshot name."
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product revision the material was inspected at."
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "enum": [
+                        "observed",
+                        "inferred"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "source",
+                    "ref"
+                  ]
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "transitions": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "from",
+          "to",
+          "action",
+          "actor",
+          "intent",
+          "evidence"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:[.-][a-z0-9]+)*$"
+          },
+          "from": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "to": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "action": {
+            "type": "string",
+            "minLength": 1
+          },
+          "actor": {
+            "enum": [
+              "user",
+              "system"
+            ]
+          },
+          "requires": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^!?[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "description": "Every literal must hold for the transition to be available. Prefix a fact with ! to require it false."
+          },
+          "effects": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^!?[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "description": "Facts the transition sets true, or false with a ! prefix."
+          },
+          "inputs": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "Fields or choices the action asks the person to provide."
+          },
+          "visibility": {
+            "enum": [
+              "persistent",
+              "contextual",
+              "disclosed"
+            ],
+            "description": "How the control is offered in the state the transition starts from."
+          },
+          "intent": {
+            "enum": [
+              "approved",
+              "proposed",
+              "none"
+            ],
+            "description": "approved: an accountable owner decided it. proposed: a design hypothesis awaiting approval. none: it exists in the product without a recorded design decision."
+          },
+          "evidence": {
+            "type": "object",
+            "description": "Static evidence only. `measured` is never written here; it is earned by a recorded run that reaches the transition.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "enum": [
+                  "observed",
+                  "inferred",
+                  "unknown"
+                ]
+              },
+              "source": {
+                "enum": [
+                  "design",
+                  "documentation",
+                  "code",
+                  "screenshot",
+                  "live"
+                ]
+              },
+              "ref": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Where the material was inspected: a repository path, a design frame, a screenshot name."
+              },
+              "revision": {
+                "type": "string",
+                "minLength": 1,
+                "description": "Product revision the material was inspected at."
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "allOf": [
+              {
+                "if": {
+                  "properties": {
+                    "state": {
+                      "enum": [
+                        "observed",
+                        "inferred"
+                      ]
+                    }
+                  }
+                },
+                "then": {
+                  "required": [
+                    "source",
+                    "ref"
+                  ]
+                }
+              }
+            ]
+          },
+          "note": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "journeys": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "id",
+          "user",
+          "goal",
+          "success_condition",
+          "entry",
+          "success",
+          "critical"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "user": {
+            "type": "string",
+            "minLength": 1
+          },
+          "goal": {
+            "type": "string",
+            "minLength": 1
+          },
+          "success_condition": {
+            "type": "string",
+            "minLength": 1
+          },
+          "entry": {
+            "type": "string",
+            "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+          },
+          "success": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          },
+          "exits": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            },
+            "description": "States where a person leaves this journey on purpose, including another journey's success."
+          },
+          "start_facts": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+            }
+          },
+          "expect": {
+            "enum": [
+              "success",
+              "exit"
+            ],
+            "description": "What the default scenario should reach. Defaults to success."
+          },
+          "critical": {
+            "type": "boolean"
+          },
+          "baseline_run": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Id of the run accepted as the reference for comparison. Set only after explicit approval."
+          },
+          "scenarios": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "description",
+                "facts"
+              ],
+              "properties": {
+                "id": {
+                  "type": "string",
+                  "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$",
+                  "not": {
+                    "const": "default"
+                  }
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "facts": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^!?[a-z0-9]+(?:-[a-z0-9]+)*$"
+                  },
+                  "minItems": 1,
+                  "description": "Changes applied on top of start_facts."
+                },
+                "expect": {
+                  "enum": [
+                    "success",
+                    "exit"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "unknowns": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    }
+  }
+}

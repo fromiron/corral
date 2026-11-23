@@ -1,11 +1,11 @@
 ---
 name: plan-structure
-description: Chooses the dominant information structure for a website, interface, portfolio, archive, product page, profile, institution, or task flow after the user and content are grounded. Use when deciding between a profile, list, timeline, index, catalog, product explanation, or workflow, or when a page needs restructuring. Not for visual styling, copy edits, or choosing a layout from trends or a default card grid.
+description: Chooses the dominant information structure for a website, interface, portfolio, archive, product page, profile, institution, or task flow after the user and content are grounded. Use when deciding between a profile, list, timeline, index, catalog, product explanation, or workflow, or when a page needs restructuring. Not for visual styling, copy edits, mapping how a journey moves between screens, or choosing a layout from trends or a default card grid.
 license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -73,6 +73,11 @@ file, which describes a full grammar decision.
 10. Use `justified-hybrid` only when distinct user tasks cannot share one
     coherent grammar.
 
+When the grammar is `task-workflow`, or navigation connects several screens
+toward one goal, hand the decision to `map-flows`. This skill decides which
+screens exist and how one page is organized; `map-flows` records how the
+states connect, including failure and recovery.
+
 ## Rules
 
 - One page may contain many records while still using one grammar.
@@ -104,7 +109,7 @@ python scripts/validate_structure.py path/to/structure-decision.json
 
 The decision must include:
 
-- primary task;
+- primary user and primary task;
 - chosen grammar;
 - organizing key;
 - content sequence;

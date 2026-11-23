@@ -2,6 +2,9 @@
 
 Score the artifact on a 100-point quality scale. Higher is better.
 
+In every category, evidence that is `unknown` may receive at most half of the
+category maximum and never full credit. The scorer enforces this cap.
+
 ## 1. Content grounding — 20
 
 Full credit requires:
@@ -89,8 +92,8 @@ Full credit requires evidence for contrast, semantics, keyboard operation,
 visible focus, reflow, labels, alternatives, errors, and target usability as
 applicable.
 
-Unknown checks may receive at most half of the category maximum and never full
-credit. A screenshot alone cannot establish full conformance.
+A screenshot alone cannot establish full conformance, so checks it cannot
+show stay `unknown` and fall under the cap above.
 
 ## 8. Motion and interaction restraint — 5
 

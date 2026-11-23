@@ -108,7 +108,7 @@ def scan(text: str) -> dict[str, Any]:
         })
 
     universal_pattern = re.compile(
-        r"\b(always|never|everyone|every team|all users|guaranteed|#1|number one)\b",
+        r"(?<!\w)(always|never|everyone|every team|all users|guaranteed|#1|number one)\b",
         re.IGNORECASE,
     )
     for match in universal_pattern.finditer(text):

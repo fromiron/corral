@@ -62,6 +62,10 @@ Execute the declared primary task from entry to success. Record:
 A five-second impression test may assess initial orientation, but it cannot
 prove task success.
 
+When the project keeps a flow map for this task, record the walk as a run with
+`map-flows` and cite the run id as the evidence. A route that exists in the
+map without a recorded run leaves this test `unknown`.
+
 ## 6. Growth test
 
 Model a realistic larger state, such as ten times more posts, projects,
@@ -274,3 +278,24 @@ When a design-system migration or adoption plan is in scope:
 
 Do not require a central team, ambassador program, or a single migration
 strategy. Require reviewable ownership and convergence.
+
+## 22. Journey-paths test
+
+When a journey with a flow map changed, or a change touched a state or action
+on a mapped route:
+
+1. validate the map after the change, including any map update the change
+   required;
+2. repeat the affected runs under the earlier conditions: the same scenario,
+   input method, viewport, and locale;
+3. compare the earlier and later map and runs with `map-flows`;
+4. fail the check when the comparison reports a regression on a required
+   journey: an expected end that became unreachable, a new dead end, a failure
+   that lost its recovery, or a step a run no longer reaches;
+5. record changes in route or effort as changes for an owner to judge, not as
+   a pass or a failure;
+6. mark the check `unknown` when no run could be recorded at the changed
+   revision.
+
+A comparison without a regression is not a release decision, and a shorter
+route is not by itself an improvement. Use the test id `journey-paths`.

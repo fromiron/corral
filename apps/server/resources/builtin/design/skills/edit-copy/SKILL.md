@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -172,9 +172,9 @@ For every material decision include:
 
 - locale and location;
 - original;
-- action: `correct`, `suggest`, or `keep`;
+- decision: `correct`, `suggest`, or `keep`;
 - issue;
-- evidence status;
+- evidence status: `observed`, `measured`, `inferred`, or `unknown`;
 - proposed copy when changed;
 - product-voice and language basis;
 - unresolved information.

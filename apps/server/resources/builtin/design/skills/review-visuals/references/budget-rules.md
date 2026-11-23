@@ -11,7 +11,7 @@
 - [Iconography and icon–text pairing](#iconography-and-icon–text-pairing)
 - [Surfaces, radii, and shadows](#surfaces-radii-and-shadows)
 - [Nested radius coherence](#nested-radius-coherence)
-- [CT styles and action priority](#cta-styles-and-action-priority)
+- [CTA styles and action priority](#cta-styles-and-action-priority)
 - [Grouping cues](#grouping-cues)
 - [Motion patterns](#motion-patterns)
 - [Decorative image families](#decorative-image-families)

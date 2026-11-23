@@ -222,6 +222,8 @@
       border-top: 1px solid var(--c-border);
     }
 
+    /* Short labelled values read as data, so they take tighter leading than prose. */
+    .meta { line-height: 1.45; }
     .meta dt { color: var(--c-muted); font-size: var(--text-small); }
     .meta dd { font-weight: 600; }
 
@@ -505,7 +507,8 @@
 
     .ramp {
       display: grid;
-      grid-auto-columns: minmax(48px, 120px);
+      /* A step is never narrower than its value, so a color notation stays on one line. */
+      grid-auto-columns: minmax(max-content, 120px);
       grid-auto-flow: column;
       overflow-x: auto;
       margin: 0;
@@ -540,7 +543,7 @@
 
     .ramp-step strong { padding-right: var(--space-1); font-size: var(--text-small); }
 
-    .ramp-step span { padding-right: var(--space-1); font-family: var(--font-mono); }
+    .ramp-step span { padding-right: var(--space-3); font-family: var(--font-mono); white-space: nowrap; }
 
     .space-bar {
       display: block;
@@ -612,12 +615,14 @@
     /* Decisions */
     .decisions {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      /* Two columns at the document width: four groups sit two by two, not three and one. */
+      grid-template-columns: repeat(auto-fit, minmax(min(340px, 100%), 1fr));
       gap: var(--space-4);
     }
 
     .decision {
       padding: var(--space-5);
+      line-height: 1.5;
       border: 1px solid var(--c-border);
       border-radius: var(--radius-surface);
     }

@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -82,7 +82,7 @@ no passing credit merely because it was not visible.
    or measured contour offsets; do not treat token count alone as coherence.
 8. Check whether images demonstrate real work or merely occupy space.
 9. Check motion for a functional purpose and reduced-motion behavior.
-10. Run the accessibility guard or mark untested items as unknown.
+10. Run `check-accessibility` or mark untested items as unknown.
 11. Score every category using [references/rubric.md](references/rubric.md).
 12. List project hard failures independently of the score.
 13. Order recommendations by user impact, confidence, and reversibility.
@@ -134,6 +134,7 @@ Block a passing verdict when directly supported evidence shows any of:
 - essential information available only through motion, color, hover, or a
   pointer-only interaction;
 - nonessential interaction motion without a disable or reduction path;
+- content that cannot reflow without loss at the target accessibility baseline;
 - unsupported claims presented as verified facts.
 
 Label legal or standards compliance separately. A project hard failure is not
@@ -153,7 +154,10 @@ For every recommendation include:
 
 Prefer removal or consolidation before adding new components.
 Route detailed nested-radius measurement to `review-visuals` and verify
-the repaired relationship with `verify-changes`.
+the repaired relationship with `verify-changes`. When the artifact is a
+journey across screens or states, route dead ends, missing recovery, and
+paths that cannot be completed to `map-flows`; this audit reads one artifact,
+not the connections between its states.
 
 ## Completion
 

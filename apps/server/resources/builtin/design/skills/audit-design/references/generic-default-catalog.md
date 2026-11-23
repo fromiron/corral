@@ -4,8 +4,8 @@ Recurring observable patterns that make an artifact read as template-driven
 output rather than as a specific person, product, or institution.
 
 Each entry was derived by contrasting common template and generated-page output
-with recurring choices in the curated minimal corpus recorded in
-`docs/source-notes.md` (Dead Simple Sites). The corpus observations are
+with recurring choices in a curated minimal corpus (Dead Simple Sites), whose
+sources the project repository records in its source notes. The corpus observations are
 inferences from a curated sample, not universal laws. The template-side
 defaults are a maintainer heuristic, not a systematically sampled corpus;
 treat the catalog as reviewable guidance rather than a research-backed finding.

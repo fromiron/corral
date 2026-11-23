@@ -43,6 +43,19 @@ results; a review-only request does not authorize edits.
 - Rejected alternatives:
 - Responsive reflow:
 
+## User flows
+
+Use only when a journey across screens or states is in scope.
+
+| Journey and scenario | Design | Product | Effort | After a failure |
+|---|---|---|---|---|
+
+- Evidence: transitions verified by a run / seen, not run / inferred / no
+  evidence
+- Runs recorded, with input method, viewport, and revision:
+- Regressions, improvements, and changes to judge, when revisions were
+  compared:
+
 ## Components and interaction
 
 Use only when reusable components, affordances, action hierarchy or
@@ -118,15 +131,17 @@ a release verdict.
 
 - Deletion test:
 - Substitution test:
-- Semantic/CSS-off test:
-- Five-second test:
+- Semantic-structure test:
+- Glance-hierarchy test:
+- Primary-task test:
 - Growth test:
 - Reflow test:
-- Keyboard/focus test:
+- Keyboard and focus test:
 - Reduced-motion test:
 - Provenance test:
 - Out of scope (targeted only):
 - Nested-radius coherence test, when applicable:
+- Journey-paths test, when a mapped journey changed:
 
 ## Unknowns
 

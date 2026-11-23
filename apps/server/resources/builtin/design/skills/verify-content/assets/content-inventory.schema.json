@@ -95,7 +95,8 @@
       }
     },
     "content_groups": {
-      "type": "object"
+      "type": "object",
+      "description": "Each group lists fact ids."
     },
     "contradictions": {
       "type": "array",
@@ -107,13 +108,15 @@
     "missing": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "prohibited_generation": {
       "type": "array",
       "items": {
-        "type": "string"
+        "type": "string",
+        "minLength": 1
       }
     },
     "safe_claims": {
@@ -121,14 +124,16 @@
       "items": {
         "type": "string",
         "minLength": 1
-      }
+      },
+      "description": "Ids of facts whose status is verified or inferred."
     },
     "allowed_placeholders": {
       "type": "array",
       "items": {
         "type": "string",
         "minLength": 1
-      }
+      },
+      "description": "Ids of facts whose status is placeholder."
     },
     "questions": {
       "type": "array",

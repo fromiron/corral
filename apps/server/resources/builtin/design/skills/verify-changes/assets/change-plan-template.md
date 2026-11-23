@@ -4,6 +4,8 @@
 
 - Artifact:
 - Request: review only / edits requested
+- Verification: targeted (changed surfaces only) / release
+- Changed surfaces and why targeted verification is enough (targeted only):
 - Before version:
 - After version:
 - Primary user:
@@ -12,9 +14,11 @@
 - Evidence inspected:
 - Evidence not inspected:
 
-## Release decision
+## Result
 
-- Ready: yes / no
+- Targeted verification: pass / blocked for the changed surfaces. Never a
+  release decision.
+- Release verification: ready / not ready
 - Required failures:
 - Required unknowns:
 - Accepted risks and accountable owner:
@@ -34,7 +38,7 @@ predictions separate from performed checks.
 
 | Check ID | Test | Required | Status | Evidence state | Evidence | Impact | Remediation | Verification | Owner |
 |---|---|---:|---|---|---|---|---|---|---|
-|  | deletion | yes | pass / fail / unknown / not-applicable |  |  |  |  |  |  |
+|  | deletion | yes | pass / fail / unknown / not-applicable / out-of-scope (targeted only) |  |  |  |  |  |  |
 |  | substitution | yes |  |  |  |  |  |  |  |
 |  | semantic-structure | yes |  |  |  |  |  |  |  |
 |  | glance-hierarchy | yes |  |  |  |  |  |  |  |
@@ -45,6 +49,7 @@ predictions separate from performed checks.
 |  | reduced-motion | yes |  |  |  |  |  |  |  |
 |  | provenance | yes |  |  |  |  |  |  |  |
 |  | nested-radius-coherence | when applicable |  |  |  |  |  |  |  |
+|  | journey-paths | when a mapped journey changed |  |  |  |  |  |  |  |
 
 ## What changed
 

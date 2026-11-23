@@ -3,6 +3,10 @@
   "primary_user": "Hiring manager",
   "primary_task": "Identify relevant work and reach the author",
   "success_condition": "The reviewer can find role, scope, evidence, and contact without an unnecessary detour",
+  "scope": {
+    "operation": "edit",
+    "verification": "release"
+  },
   "evidence": [
     "before and after screenshots at 1440 and 390 CSS px",
     "rendered page",

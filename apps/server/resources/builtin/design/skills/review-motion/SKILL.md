@@ -5,7 +5,7 @@ license: MIT
 compatibility: Agent Skills-compatible clients. Core workflow is instruction-only; optional Python 3.9+ scripts use the standard library and no network.
 metadata:
   author: leeskills contributors
-  version: "0.7.0"
+  version: "0.8.0"
   languages: "en, ko, ja"
 ---
 
@@ -71,7 +71,9 @@ animate in" are not functional purposes.
 7. Remove or replace scroll hijacking and nonessential parallax.
 8. Check autoplaying, repeated, flashing, and time-based content separately.
 9. Verify keyboard, touch, pointer, zoom, and motion-preference behavior.
-10. Record unknown behavior rather than assuming support.
+10. Record unknown behavior rather than assuming support. In the structured
+    inventory, list it in the top-level `unknowns`; do not write "unknown"
+    into a pattern's reduced-motion behavior, where it reads as a description.
 
 Read [references/motion-rules.md](references/motion-rules.md).
 
