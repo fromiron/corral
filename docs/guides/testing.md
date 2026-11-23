@@ -20,7 +20,74 @@ pnpm test:e2e:extended e2e/server/server.spec.ts --project=server --workers=1
 
 세션 테스트는 대화 옆 패널의 탭(파일 · 문서 · 변경 · 실행 #n · 결과 등)을 `workbench.ts`의 도우미(`openPanelTab`, `openPane`, `selectPanelTab`, `closePanel`)로 열고 고르고 닫는다. `openPane`은 명령 팔레트의 "{탭 이름} 열기"(Open {tab})를 고른다. 문서 탭은 그 접근 이름으로 찾는다(이름이 같으면 " — 폴더", 원본 폴더면 ", 프로젝트 원본 폴더"가 붙는다. [세션 패널 › 문서 탭](../specs/features/session-panel.md#문서-탭)). 다른 탭으로 이동한 뒤 보존된 입력을 검사할 때와 실제 입력할 때를 구분한다. 실행 완료는 개별 실행 행의 부분 일치 텍스트가 아니라 Run의 정확한 상태나 확정 결과로 기다린다. 디자인킷 전환 뒤에도 키보드 조작·전체 식별자 펼치기·초안 보존 같은 원래 검증 목적은 유지한다.
 
-로컬에서 확장 검사 전체를 돌릴 때는 `--workers=2`를 준다(CI의 값이다). 워커가 많으면 실행이 끝나기 전의 짧은 구간을 보는 스펙이 흔들린다. 흔들린 스펙은 단독으로 다시 돌려 가른다.
+## 마지막 검증 절차
+
+한 작업을 마치고 합치기 직전에, 합칠 커밋에서 한 번 돌린다. 각 명령은 종료 코드 0이어야 통과다. 실패하면 거기서 멈추고 [흔들리는 테스트 분류 절차](#흔들리는-테스트-분류-절차)로 가른다.
+
+1. 변경을 모두 커밋하고 `git status`가 깨끗한지 확인한다. 이 절차 도중 소스를 바꾸면 1단계부터 다시 돌린다.
+2. `node --version`이 [`.node-version`](../../.node-version)의 값과 같은지 확인한다([출시 증거와 게이트 › 라이선스와 SBOM](release.md#라이선스와-sbom)).
+3. 이 기계에서 다른 테스트 실행이나 빌드가 돌고 있지 않은지 확인한다. 아래 명령도 한 번에 하나씩 돌린다. 함께 돌면 짧은 구간을 보는 테스트가 거짓으로 실패한다.
+4. 5179 포트에 떠 있는 서버가 없는지 확인한다. 로컬의 확장 검사는 그 포트에 이미 떠 있는 서버를 그대로 쓰므로, 다른 작업 트리의 서버가 떠 있으면 그 코드를 검사하게 된다.
+5. `pnpm install --frozen-lockfile`을 돌린다.
+6. PR 게이트(`.github/workflows/pr.yml`)의 명령을 같은 순서로 돌린다. Vitest에는 CI와 같은 워커 수를 준다.
+
+   ```sh
+   pnpm contracts:check
+   pnpm lint
+   pnpm typecheck
+   pnpm test --maxWorkers=2
+   pnpm test:dev
+   pnpm build
+   pnpm test:e2e
+   ```
+
+7. 바꾼 것에 따라 다음을 더 돌린다.
+   - 의존성을 바꿨으면 `pnpm deps:check`([AGENTS.md › Validation and Documentation](../../AGENTS.md#validation-and-documentation)). PR 게이트에는 없고 출시 게이트에만 있다.
+   - `tools/release/`를 바꿨으면 `pnpm test:release`. 이 `node --test` 테스트는 `pnpm test`에도 PR 게이트에도 들지 않는다.
+   - `apps/server/resources/builtin/`을 바꿨으면 더 돌릴 것이 없다. `pnpm test`가 `pnpm builtin:check`와 같은 검사를 한다([기본 제공 스킬과 에이전트 › 생성과 검사](../specs/features/builtin-crew.md#생성과-검사)).
+8. Studio·서버·패키지 코드를 바꿨으면 확장 검사 전체를 돌린다.
+
+   ```sh
+   pnpm test:e2e:extended --workers=2
+   ```
+
+   `--project`를 주지 않아야 chromium·firefox·server 세 프로젝트를 모두 돈다. `--workers=2`는 CI의 값이다. 워커가 많으면 실행이 끝나기 전의 짧은 구간을 보는 스펙이 흔들린다. server 프로젝트는 6단계의 빌드 결과(`apps/studio/dist`)를 쓰고, 하네스는 빌드가 있는지만 볼 뿐 최신인지는 보지 않는다. Firefox는 위 준비 문단대로 따로 설치한다.
+9. [흐름 장면](#흐름-장면)에 적힌 영역을 바꿨으면 그 절의 명령으로 흐름 장면을 돌린다. 6단계에서 빌드했으므로 빌드 명령은 건너뛴다.
+10. 돌린 명령과 결과, 돌리지 않은 단계와 그 이유를 작업 보고에 적는다. 실패는 분류 절차의 결과 이름으로 적는다.
+
+## 흔들리는 테스트 분류 절차
+
+어느 실행에서든 테스트가 실패하면 아래 순서로 가른다. 각 단계는 다음 단계로 넘어가거나 결과 하나로 끝난다. 어느 결과에서도 재시도, 제한 시간 늘리기, 테스트 약화·삭제로 통과시키지 않는다(아래 추가·수정 기준).
+
+1. 다시 돌리기 전에 Playwright 결과물을 옮긴다. Playwright는 시작할 때 `test-results`를 지운다. 저장소 루트의 `test-results/`는 git이 무시하므로 그 아래로 옮긴다.
+
+   ```sh
+   mkdir -p test-results && mv apps/studio/test-results test-results/failed-run
+   ```
+
+2. 실패 메시지와 trace에서 대상 부재·입력 가림·서버 실패를 먼저 구분한다. 실패가 테스트 밖에서 왔으면(브라우저 미설치, `Studio is not built` 오류, 5179 포트를 다른 서버가 씀, 고정값과 다른 Node, 마지막 빌드 뒤의 소스 변경) 결과는 **환경 문제**다. 아니면 3단계로 간다.
+3. 실패한 파일만 워커 하나로, 다른 무거운 프로세스 없이 다시 돌린다. Vitest 파일은 경로를 준다. Playwright 스펙은 위 "특정 회귀만 확인할 때"의 명령 형식으로 스펙 경로를 `--project`보다 앞에 두고, 프로젝트는 실패 보고에 찍힌 이름을 쓴다.
+
+   ```sh
+   pnpm test apps/server/test/builtin-crew.test.ts --maxWorkers=1
+   ```
+
+   통과하면 결과는 **흔들림**이다. 같은 테스트가 다시 실패하면 4단계로 간다.
+4. 실패한 파일이 이 브랜치에서 새로 생겼으면 결과는 **회귀**다. 아니면 브랜치를 딴 커밋을 별도 작업 트리에 꺼내 3단계의 같은 명령을 돌린다. E2E 파일이면 그 트리에서 먼저 `pnpm build`를 돌린다.
+
+   ```sh
+   git worktree add ../corral-base "$(git merge-base HEAD <합칠 브랜치>)"
+   cd ../corral-base && pnpm install --frozen-lockfile
+   ```
+
+   거기서도 실패하면 결과는 **이미 있던 실패**, 통과하면 **회귀**다. 끝나면 `git worktree remove ../corral-base`로 지운다.
+
+| 결과 | 할 일 |
+|---|---|
+| 환경 문제 | 원인을 고치고 마지막 검증을 실패한 단계부터 다시 돌린다. 테스트 실패로 세지 않는다 |
+| 흔들림 | 마지막 검증을 이어 간다. 보고에는 통과가 아니라 "전체 실행에서 실패, 단독 실행에서 통과"로 스펙 이름, 옮긴 trace 위치와 함께 적는다. 흔들리는 테스트는 결함이며 고치는 일은 따로 한다 |
+| 이미 있던 실패 | 보고에 한 번 적고 마지막 검증을 이어 간다. 요청이 없으면 고치지 않는다 |
+| 회귀 | 합치기 전에 고친다. 고친 뒤 마지막 검증을 1단계부터 다시 돌린다 |
 
 ## 흐름 장면
 
@@ -57,7 +124,7 @@ pnpm --filter @corral/studio exec playwright test --config playwright.flow.confi
 | 사이드바 | 실행 종료 → 2초 안에 다음 실행 시작 | 행이 묶음을 옮기지 않음, 응답 대기는 즉시 이동 |
 | 회의 | 사람 메시지 → 자동 선택 → 답변, 수신자 없음, 연쇄 8회에서 계속 카드 | 대화와 같은 컴포저 |
 
-합격선을 낮추거나 구간·장면을 지워서 통과시키지 않는다. 재시도로 가리지 않는다. Playwright는 시작할 때 `test-results`를 지우므로, 실패한 실행의 trace와 `report.json`은 다시 돌리기 전에 옮겨 둔다.
+합격선을 낮추거나 구간·장면을 지워서 통과시키지 않는다. 재시도로 가리지 않는다. 실패한 실행의 trace와 `report.json`은 다시 돌리기 전에 [분류 절차](#흔들리는-테스트-분류-절차)의 1단계대로 옮겨 둔다.
 
 ## 추가·수정 기준
 
