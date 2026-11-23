@@ -1,8 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import type { ComponentProps } from 'react';
 import { expect, waitFor, within } from 'storybook/test';
-import { InboxStoryFrame } from '../../../../apps/studio/src/pages/InboxPage.story-fixture.tsx';
-import { InboxPage } from '../../../../apps/studio/src/pages/InboxPage.tsx';
+import { InboxStoryFrame } from '../../../../apps/studio/src/pages/inbox/InboxPage.story-fixture.tsx';
+import { InboxPage } from '../../../../apps/studio/src/pages/inbox/InboxPage.tsx';
 
 // Needs you with advice its target never read (docs/specs/features/inbox.md `advice`).
 

@@ -7,7 +7,7 @@ import {
   RouterContextProvider,
 } from '@tanstack/react-router';
 import { type ReactNode, useMemo } from 'react';
-import { ServicesProvider, type StudioServices } from '../services.tsx';
+import { ServicesProvider, type StudioServices } from '../../services.tsx';
 
 // Story-only: Needs you over fixed items, with Studio's installed router and no server.
 

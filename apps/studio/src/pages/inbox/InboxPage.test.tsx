@@ -14,10 +14,10 @@ import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
-import en from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import ko from '../../../../packages/react/src/messages/ko.json' with { type: 'json' };
-import { inboxEntries } from '../workbench/inbox.ts';
-import { notificationDestination } from '../workbench/notifications.ts';
+import en from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import ko from '../../../../../packages/react/src/messages/ko.json' with { type: 'json' };
+import { inboxEntries } from '../../workbench/inbox.ts';
+import { notificationDestination } from '../../workbench/notifications.ts';
 import { InboxPage, validateInboxSearch } from './InboxPage.tsx';
 
 // docs/specs/features/inbox.md: the global Needs you list and its one selected detail.
@@ -27,7 +27,7 @@ const fixture = vi.hoisted(() => ({
   navigate: (() => {}) as (...args: unknown[]) => void,
   search: {} as Record<string, unknown>,
 }));
-vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
+vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('@tanstack/react-router', async (original) => {
   const hrefOf = (
     to: string,
@@ -829,12 +829,12 @@ it('answers a decision in the same response area the conversation’s tray draws
   const source = (path: string) => readFileSync(new URL(path, import.meta.url), 'utf8');
   const area = /import \{ RunResponseArea \} from '([^']+)';/;
   // Both resolve to apps/studio/src/workbench/RunResponseArea.tsx.
-  expect(source('./InboxPage.tsx').match(area)?.[1]).toBe('../workbench/RunResponseArea.tsx');
-  expect(source('../workbench/session/PendingTray.tsx').match(area)?.[1]).toBe(
+  expect(source('./InboxPage.tsx').match(area)?.[1]).toBe('../../workbench/RunResponseArea.tsx');
+  expect(source('../../workbench/session/PendingTray.tsx').match(area)?.[1]).toBe(
     '../RunResponseArea.tsx',
   );
   expect(source('./InboxPage.tsx')).toMatch(/<RunResponseArea\b/);
-  expect(source('../workbench/session/PendingTray.tsx')).toMatch(/<RunResponseArea\b/);
+  expect(source('../../workbench/session/PendingTray.tsx')).toMatch(/<RunResponseArea\b/);
 });
 
 const limit = { kind: 'no_progress', used: 3, max: 3 } as const;

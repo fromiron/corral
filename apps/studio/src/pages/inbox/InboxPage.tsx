@@ -30,13 +30,13 @@ import {
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
-import { projectName } from '../projects.ts';
-import { useServices } from '../services.tsx';
-import { type InboxEntry, inboxEntries, inboxGroups } from '../workbench/inbox.ts';
-import { workHref } from '../workbench/navigation.ts';
-import { type InboxDestination, inboxDestination } from '../workbench/notifications.ts';
-import { RunResponseArea } from '../workbench/RunResponseArea.tsx';
-import { runIdentity } from '../workbench/runIdentity.ts';
+import { projectName } from '../../projects.ts';
+import { useServices } from '../../services.tsx';
+import { type InboxEntry, inboxEntries, inboxGroups } from '../../workbench/inbox.ts';
+import { workHref } from '../../workbench/navigation.ts';
+import { type InboxDestination, inboxDestination } from '../../workbench/notifications.ts';
+import { RunResponseArea } from '../../workbench/RunResponseArea.tsx';
+import { runIdentity } from '../../workbench/runIdentity.ts';
 
 // Needs you: every project's waiting items on one screen (docs/specs/features/inbox.md).
 
