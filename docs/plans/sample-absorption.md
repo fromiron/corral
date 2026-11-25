@@ -342,6 +342,7 @@
   - 의도 문장: 워커가 내놓는 Corral 도구마다 선택 필드 `i`(왜 이 호출인가, 몇 마디). 워커가 Coordinator에 허가를 묻기 전에 인자에서 떼어 따로 싣고, Coordinator는 `tool.requested`에 표시용으로만 남긴다(200자). 검사·같은 호출 세기·실행 내내 허용·해시·실행은 늘 `i` 없는 인자를 본다(반례: `i`만 다른 세 호출의 인자가 같다). 실행 기록의 도구 행 설명 줄 맨 앞에 보인다. Pi가 스스로 내놓는 Harness 도구(read·write·edit)에는 없다.
   - 고친 것(11-26, 어드바이저 검토 뒤): Hashline이 보인 줄은 거절 문장(영구 기록의 `tool.finished` 실패 문장)이 아니라 적용하지 않은 결과(`applied: false`)의 본문으로, 읽기와 같은 크기 한도로 돌려준다. `i`는 워커가 감싼 도구에서만 뗀다(MCP 도구에 진짜 `i` 인자가 있을 수 있다). 인자를 숨기는 호출(`ask_user`, `update_plan`, `advise`, Harness 호출)은 의도도 남기지 않는다. 편집 방식은 `write_file`이 있는 역할에만 채운다(읽기만 하는 역할이 `read_hashline`을 얻지 않게). 체크포인트에서 이어 갈 때는 채운 방식까지 같은 역할로 비교한다. pi-ai는 strict 전송 때 선택 속성을 "필수 + null"로 바꾸고 Corral은 strict를 보내지 않으므로 `i`가 요청을 깨지 않는다.
   - 실제 모델 확인(11-26, `tests/live/tool-intent.live.test.ts`, 지켜보며 한 번씩): DeepSeek V4.1 Flash와 GLM 5.3 Flash 모두 `i`가 붙은 도구를 그대로 불렀고 두 호출 모두 의도 문장을 채웠다("Saving the two-line note" 등). 인자에는 `i`가 없었고 두 실행 모두 성공했다. 두 모델은 표에서 Pi 쪽이라 Hashline 기본값과 Hashline 거절 줄은 실제 모델로 확인하지 않았다(파일 도구는 작업 공간이 있어야 해서 이 확인 밖이다).
+  - Hashline 실제 확인(11-26, `tests/live/hashline-unseen.live.test.ts`, DeepSeek V4.1 Flash에 Hashline을 명시, 연결한 폴더, 한 번): 1–5행만 읽고 40행을 고치자 적용되지 않은 결과로 그 줄들이 왔고, 같은 태그로 다시 고쳐 40행이 바뀌었다. 실패 줄에 파일 글은 없었다. 알고 두는 것: 적용되지 않은 편집도 도구 행에는 "완료"로 보인다(실패가 아니라 결과이기 때문).
 - 곁가지 질문(`/btw`) 화면(서버의 explain 경로가 있다)
 - 다른 코딩 도구의 세션 가져오기(ade C13, pi 10.5)
 - Corral 기능을 MCP 서버로 열기(ade A16·H6, agentes 10.3). 권한 범위를 먼저 정한다.
