@@ -43,7 +43,10 @@ import {
   MeetingWithdrawDecisionRequest,
   MessageBranchPoint,
   MessageBranchRequest,
+  OpenPullRequest,
   PermissionMode,
+  type PullRequestDraft,
+  PullRequestDraftRequest,
   QueuedMeetingMessage,
   type Receipt,
   ResourcePath,
@@ -166,6 +169,9 @@ import { PTY_INTERACTIVE_ROUTES, registerTerminalRoutes } from './processes/pty-
 import { registerAgentLibraryRoutes } from './projects/agent-library-routes.ts';
 import { registerProjectRoutes } from './projects/routes.ts';
 import { materialsVaultAdapters } from './projects/vault.ts';
+import { type GhRunner, ghRunner } from './pull-requests/gh.ts';
+import { PULL_REQUEST_SYSTEM_PROMPT, pullRequestPrompt } from './pull-requests/prompt.ts';
+import { PullRequestService } from './pull-requests/service.ts';
 import { drainRejectedBody } from './rejected-body.ts';
 import { onceResourceCleanup } from './resource-cleanup.ts';
 import { routingEngines } from './routing-engines.ts';
@@ -245,6 +251,7 @@ export interface ServerOptions {
   inputs?: InputOptions;
   /** Where sessions' git worktrees live; outside every linked folder. */
   worktreeRoot?: string;
+  gh?: GhRunner;
   /** Opt-in only for a local launcher; remote and generic servers leave this off. */
   allowSharedDevelopment?: boolean;
   /**
@@ -1626,7 +1633,31 @@ async function createCorralServer(
   );
 
   // A team proposal's admission record and its single in-flight request, by operation id.
-  const teamOperations = new Map<string, Promise<TeamOperationResult>>();
+  const teamOperations = new Map<string, Promise<unknown>>();
+  const pullRequestData = join(workspace.root, '.corral', 'pull-requests');
+  const pullRequests = new PullRequestService({
+    copyOf: (sessionId) => files.copyOf(sessionId),
+    gh: options.gh ?? ghRunner({ cwd: workspace.root }),
+    dataDir: pullRequestData,
+    draft: async (input, context) => {
+      const current = registry;
+      if (!current) return null;
+      const session = await corrals.getSession(context.sessionId);
+      const profileId =
+        [...(session?.entries ?? [])].reverse().find((entry) => entry.start)?.start?.choice
+          .modelProfile ?? null;
+      const answer = await current.requestOneText(
+        {
+          systemPrompt: PULL_REQUEST_SYSTEM_PROMPT,
+          content: pullRequestPrompt(input),
+          operationId: context.operationId,
+          profileId,
+        },
+        context.signal,
+      );
+      return answer.ok ? readDraft(answer.text) : null;
+    },
+  });
   const findOperation = db.prepare<[string], { fingerprint: string; result_json: string | null }>(
     'SELECT fingerprint, result_json FROM model_operations WHERE operation_id=?',
   );
@@ -1636,23 +1667,41 @@ async function createCorralServer(
   const finishOperation = db.prepare(
     'UPDATE model_operations SET result_json=? WHERE operation_id=?',
   );
-  const teamOperation = async (
+  type ModelFailure = { ok: false; code: ErrorCode; message: string };
+  const teamOperation = (
     reply: FastifyReply,
     id: string,
     fingerprint: string,
     send: (signal: AbortSignal) => Promise<TeamOperationResult>,
+  ) =>
+    modelOperation<Extract<TeamOperationResult, { ok: true }>>(
+      reply,
+      id,
+      fingerprint,
+      send,
+      (result) => ({
+        reply: result.reply,
+        model: result.model,
+      }),
+    );
+  const modelOperation = async <T extends { ok: true }>(
+    reply: FastifyReply,
+    id: string,
+    fingerprint: string,
+    send: (signal: AbortSignal) => Promise<T | ModelFailure>,
+    respond: (result: T) => unknown,
   ) => {
     const previous = findOperation.get(id);
     if (previous && previous.fingerprint !== fingerprint)
       return fail(reply, 'REVISION_CONFLICT', 'This operation belongs to another request.');
-    let work = teamOperations.get(id);
+    let work = teamOperations.get(id) as Promise<T | ModelFailure> | undefined;
     if (previous && !previous.result_json && !work)
       return fail(
         reply,
         'REQUEST_OUTCOME_UNKNOWN',
         'The earlier outcome is unconfirmed. It has not been resent.',
       );
-    let result: TeamOperationResult;
+    let result: T | ModelFailure;
     if (previous?.result_json) {
       result = JSON.parse(previous.result_json);
     } else {
@@ -1678,7 +1727,7 @@ async function createCorralServer(
       result = await work;
     }
     if (!result.ok) return fail(reply, result.code, result.message);
-    return { reply: result.reply, model: result.model };
+    return respond(result);
   };
 
   app.post('/api/v1/team-assistant', async (request, reply) => {
@@ -3337,6 +3386,57 @@ async function createCorralServer(
       return workspaceFail(reply, error);
     }
   });
+  app.get<SessionParams & { Querystring: { remote?: string } }>(
+    '/api/v1/sessions/:sessionId/pull-request',
+    async (request, reply) => {
+      const session = await sessionOr404(reply, request.params.sessionId);
+      if (!session) return reply;
+      return pullRequests
+        .view(session.sessionId, request.query.remote === '1')
+        .catch(() => ({ kind: 'read_failed' as const }));
+    },
+  );
+  app.post<SessionParams>(
+    '/api/v1/sessions/:sessionId/pull-request/draft',
+    async (request, reply) => {
+      const body = parse(PullRequestDraftRequest, request, reply);
+      if (!body) return reply;
+      const session = await sessionOr404(reply, request.params.sessionId);
+      if (!session) return reply;
+      const fingerprint = createHash('sha256')
+        .update(canonicalJson({ kind: 'pull_request_draft', sessionId: session.sessionId }))
+        .digest('hex');
+      return modelOperation<{ ok: true; draft: PullRequestDraft }>(
+        reply,
+        body.operationId,
+        fingerprint,
+        async (signal) => {
+          try {
+            const draft = await pullRequests.draft(session.sessionId, {
+              signal,
+              operationId: body.operationId,
+            });
+            return { ok: true as const, draft };
+          } catch (error) {
+            return {
+              ok: false as const,
+              code: 'TARGET_NOT_FOUND' as const,
+              message: error instanceof Error ? error.message : 'no pull request draft',
+            };
+          }
+        },
+        (result) => result.draft,
+      );
+    },
+  );
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/pull-request', async (request, reply) => {
+    const body = parse(OpenPullRequest, request, reply);
+    if (!body) return reply;
+    const session = await sessionOr404(reply, request.params.sessionId);
+    if (!session) return reply;
+    const opened = await pullRequests.open(session.sessionId, body);
+    return opened.ok ? { pr: opened.pr } : fail(reply, opened.code, opened.message);
+  });
   app.get<SessionParams>('/api/v1/sessions/:sessionId/deletion', async (request, reply) => {
     const preview = previewSessionDeletion(db, request.params.sessionId);
     if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');
@@ -4004,4 +4104,16 @@ function refusedStart(body: unknown, error: CommandError): Receipt {
     relatedEventIds: [],
     error,
   };
+}
+
+function readDraft(text: string): { title: string; body: string } | null {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)?.[1] ?? text;
+  try {
+    const value = JSON.parse(fenced.trim()) as { title?: unknown; body?: unknown };
+    return typeof value.title === 'string' && typeof value.body === 'string'
+      ? { title: value.title, body: value.body }
+      : null;
+  } catch {
+    return null;
+  }
 }

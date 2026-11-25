@@ -33,6 +33,7 @@ export * from './preview-observation.ts';
 export * from './preview-tools.ts';
 export * from './profile-context.ts';
 export * from './project-tools.ts';
+export * from './pull-requests.ts';
 export * from './reasoning.ts';
 export * from './receipt.ts';
 export * from './review.ts';

@@ -51,7 +51,7 @@
   - GitHub: `gh pr list --repo <r> --head <branch> --state all --limit 20 --json number,url,state,isDraft,title,headRefOid,baseRefName,updatedAt,statusCheckRollup,reviewDecision,mergeable`. 열린 것이 있으면 그것을, 없으면 `updatedAt`이 가장 늦은 것을 고른다. 결과는 세션과 브랜치마다 서버 메모리에 남고, `remote=1`이 없는 읽기는 그 남은 결과를 함께 돌려준다.
   - 응답은 `PullRequestView`(`packages/contracts`)다: 줄이 없는 경우(`hidden`과 그 이유), PR 없음(행동과 지난 PR), PR 있음(PR과 push 필요 여부), `gh_missing`, `gh_signed_out`, `read_failed`.
 - **초안.** `POST /api/v1/sessions/:sessionId/pull-request/draft`, 본문 `{ operationId }`. 돌려주는 것은 `{ title, body, head, base, source }`이고 `source`는 `model` 또는 `commits`다.
-  - 모델 입력은 base·head 브랜치, 커밋 목록(20,000자까지), diff 통계(20,000자까지), diff(60,000자까지)다. 시스템 지침은 `apps/server/src/pull-requests/prompt.ts`에 있다. 대화 기록은 넣지 않는다.
+  - 모델 입력은 base·head 브랜치, 커밋 목록(12,000자까지), diff 통계(12,000자까지), diff(40,000자까지)다. 넘는 부분은 잘리고 `[truncated]`가 붙는다. 시스템 지침은 `apps/server/src/pull-requests/prompt.ts`에 있다. 대화 기록은 넣지 않는다.
   - 모델 답은 `{ "title", "body" }` JSON이다. 제목은 첫 줄만 쓰고, 비거나 읽을 수 없으면 커밋 목록 초안으로 간다.
   - 모델 요청은 팀 도우미와 같은 작업 기록(`model_operations`)을 쓴다. 같은 `operationId`는 한 번만 보내고, 요청이 끊기면(대화상자를 닫으면) 멈춘다.
 - **열기.** `POST /api/v1/sessions/:sessionId/pull-request`, 본문 `{ operationId, title, body, head }`.

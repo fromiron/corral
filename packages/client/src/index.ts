@@ -65,9 +65,14 @@ import type {
   MeetingRoundRequest,
   MeetingView,
   MeetingWithdrawDecisionRequest,
+  OpenPullRequest,
   ProfileContextOverrides,
   ProfileContextPolicy,
   ProfileContextResolution,
+  PullRequestDraft,
+  PullRequestDraftRequest,
+  PullRequestSummary,
+  PullRequestView,
   QueuedMeetingMessage,
   ReasoningCapabilities,
   RestoreCheckpoint,
@@ -3009,6 +3014,24 @@ export class WorkspacesApi {
   }
   parentMerge(sessionId: string): Promise<ParentMerge> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/parent-merge`);
+  }
+  pullRequest(sessionId: string, remote: boolean): Promise<PullRequestView> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/pull-request${remote ? '?remote=1' : ''}`,
+    );
+  }
+  pullRequestDraft(sessionId: string, request: PullRequestDraftRequest): Promise<PullRequestDraft> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/pull-request/draft`,
+      'POST',
+      request,
+    );
+  }
+  openPullRequest(
+    sessionId: string,
+    request: OpenPullRequest,
+  ): Promise<{ pr: PullRequestSummary }> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/pull-request`, 'POST', request);
   }
   /** Removes the copy; with `generation`, only that copy, never one made again since. */
   removeWorktree(sessionId: string, generation?: number): Promise<null> {

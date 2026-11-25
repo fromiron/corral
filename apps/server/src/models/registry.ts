@@ -706,14 +706,37 @@ export class ModelRegistry implements ModelResolver {
     const { operationId, ...input } = request;
     const systemPrompt =
       request.mode === 'create' ? createPrompt(request) : TEAM_ASSISTANT_EDIT_PROMPT;
-    // The first model of the list that can run, named profiles first: the one the team editor
-    // names beside its input (apps/studio/src/workbench/modelReadiness.ts reads the same rule).
-    const profile = this.profilesView().find(
-      (view) =>
-        view.available &&
-        view.method !== null &&
-        !(view.method === 'oauth' && view.subscriptionSupported === false),
+    return this.requestOneText(
+      { systemPrompt, content: JSON.stringify(input), operationId, profileId: null },
+      signal,
     );
+  }
+
+  /** The named profile when it can run, else the first that can (as modelReadiness.ts reads). */
+  async requestOneText(
+    request: {
+      systemPrompt: string;
+      content: string;
+      operationId: string;
+      profileId: string | null;
+    },
+    signal?: AbortSignal,
+  ): Promise<
+    TeamModelResult<{
+      text: string;
+      stopReason: AssistantMessage['stopReason'];
+      modelName: string;
+    }>
+  > {
+    const { systemPrompt, operationId } = request;
+    const runnable = (view: ReturnType<ModelRegistry['profilesView']>[number]) =>
+      view.available &&
+      view.method !== null &&
+      !(view.method === 'oauth' && view.subscriptionSupported === false);
+    const views = this.profilesView();
+    const profile =
+      views.find((view) => view.profileId === request.profileId && runnable(view)) ??
+      views.find(runnable);
     const resolution = profile ? this.resolve(profile.profileId, 'live') : null;
     if (!resolution?.ok || !resolution.snapshot.provider || !resolution.snapshot.modelId) {
       return {
@@ -757,7 +780,7 @@ export class ModelRegistry implements ModelResolver {
         sent.model,
         {
           systemPrompt,
-          messages: [{ role: 'user', content: JSON.stringify(input), timestamp: this.now() }],
+          messages: [{ role: 'user', content: request.content, timestamp: this.now() }],
         },
         sent.options,
         {
