@@ -8,7 +8,7 @@ export const INBOX_GROUPS = [
   { id: 'response', kinds: ['decision', 'uncertain_write', 'uncertain_terminal'] },
   {
     id: 'review',
-    kinds: ['unreviewed', 'check_failed', 'lsp_proposal', 'integration', 'advice'],
+    kinds: ['unreviewed', 'check_failed', 'lsp_proposal', 'integration', 'advice', 'pull_request'],
   },
   { id: 'waiting', kinds: ['queued', 'recipe_stopped'] },
 ] as const satisfies readonly { id: string; kinds: readonly Kind[] }[];

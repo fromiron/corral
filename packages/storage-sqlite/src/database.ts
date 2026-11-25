@@ -784,6 +784,29 @@ CREATE TABLE IF NOT EXISTS sub_session_commands (
   ON work_sessions (parent_session_id) WHERE parent_session_id IS NOT NULL`);
     },
   },
+  {
+    name: '0049_pull_request_watches',
+    sql: `
+CREATE TABLE IF NOT EXISTS pull_request_watches (
+  session_id TEXT PRIMARY KEY,
+  branch TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  url TEXT NOT NULL,
+  base TEXT NOT NULL,
+  head_sha TEXT NOT NULL,
+  failed_checks_json TEXT NOT NULL CHECK (json_valid(failed_checks_json)),
+  conflicting INTEGER NOT NULL,
+  wakes INTEGER NOT NULL DEFAULT 0,
+  review TEXT,
+  remarks_seen INTEGER NOT NULL DEFAULT 0,
+  remarks_now INTEGER NOT NULL DEFAULT 0,
+  pending_entry TEXT,
+  needs TEXT,
+  started_at TEXT NOT NULL,
+  ended_at TEXT
+) STRICT;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

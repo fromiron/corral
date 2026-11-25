@@ -37,6 +37,12 @@ it('a live notification opens its exact run or review, never the latest run', as
   const check = { ...decision, kind: 'check_failed' as const, runId: null };
   source.inbox.mockResolvedValue([check]);
   expect(await notificationDestination(check, source)).toBe('/sessions/session_a?panel=checks');
+  // A PR item opens the session's Changes tab (features/pull-requests.md).
+  const pullRequest = { ...decision, kind: 'pull_request' as const, runId: null };
+  source.inbox.mockResolvedValue([pullRequest]);
+  expect(await notificationDestination(pullRequest, source)).toBe(
+    '/sessions/session_a?panel=changes',
+  );
 });
 
 it('deleted, archived, resolved or mismatched notification targets cannot navigate', async () => {

@@ -3351,7 +3351,8 @@ export interface InboxItemView {
     | 'unreviewed'
     | 'recipe_stopped'
     | 'lsp_proposal'
-    | 'advice';
+    | 'advice'
+    | 'pull_request';
   sessionId: string;
   sessionTitle: string;
   runId: string | null;

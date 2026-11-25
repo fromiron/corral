@@ -172,6 +172,7 @@ import { materialsVaultAdapters } from './projects/vault.ts';
 import { type GhRunner, ghRunner } from './pull-requests/gh.ts';
 import { PULL_REQUEST_SYSTEM_PROMPT, pullRequestPrompt } from './pull-requests/prompt.ts';
 import { PullRequestService } from './pull-requests/service.ts';
+import { PullRequestWatcher } from './pull-requests/watch.ts';
 import { drainRejectedBody } from './rejected-body.ts';
 import { onceResourceCleanup } from './resource-cleanup.ts';
 import { routingEngines } from './routing-engines.ts';
@@ -700,7 +701,11 @@ async function createCorralServer(
   // Bound once the auto start path exists; runs cannot end before the server is ready.
   let sessionQueue: ReturnType<typeof createSessionQueue> | null = null;
   const coordinator = new Coordinator({
-    onRunEnded: (runId) => void sessionQueue?.onRunEnded(runId),
+    onRunEnded: (runId) => {
+      void sessionQueue?.onRunEnded(runId);
+      const sessionId = coordinator.listRuns().find((run) => run.runId === runId)?.sessionId;
+      if (sessionId) void pullRequestWatch?.onRunEnded(sessionId);
+    },
     onDirectivesExpired: (runId, projection) =>
       void sessionQueue?.onDirectivesExpired(runId, projection),
     previewTools,
@@ -1636,7 +1641,10 @@ async function createCorralServer(
   const teamOperations = new Map<string, Promise<unknown>>();
   const pullRequestData = join(workspace.root, '.corral', 'pull-requests');
   mkdirSync(pullRequestData, { recursive: true, mode: 0o700 });
+  let pullRequestWatch: PullRequestWatcher | null = null;
   const pullRequests = new PullRequestService({
+    observe: (sessionId, context, prs, source) =>
+      pullRequestWatch?.observe(sessionId, context, prs, source),
     copyOf: (sessionId) => files.copyOf(sessionId),
     gh: options.gh ?? ghRunner({ cwd: pullRequestData }),
     dataDir: pullRequestData,
@@ -2238,6 +2246,22 @@ async function createCorralServer(
     for (const controller of queueStarts) controller.abort();
     sessionQueue?.close();
   });
+  pullRequestWatch = new PullRequestWatcher({
+    db,
+    now: () => clock.nowIso(),
+    timers: options.timers ?? systemTimers,
+    getSession: (sessionId) => corrals.getSession(sessionId),
+    addEntry: (sessionId, entry) => corrals.addSessionEntry(sessionId, entry),
+    dismissEntry: async (sessionId, entryId) => {
+      await corrals.updateSessionEntry(sessionId, entryId, { state: 'dismissed' });
+    },
+    read: async (sessionId) => {
+      await pullRequests.view(sessionId, true, 'server');
+    },
+    queued: (sessionId) => void sessionQueue?.onEntryQueued(sessionId),
+  });
+  pullRequestWatch.resume();
+  resources.defer(() => pullRequestWatch?.close());
   sessionQueue = createSessionQueue({
     repository: corrals,
     runs: () => coordinator.listRuns(),
@@ -3302,14 +3326,14 @@ async function createCorralServer(
     // Approvals and questions come from each run's status; advice needs the projection, so only
     // runs that recorded advice are read.
     const advised = review.runsWithAdvice();
-    return review.inbox(
-      sessions.filter((x) => !x.archivedAt),
-      coordinator.listRuns(),
-      (runId) => {
+    const listed = sessions.filter((x) => !x.archivedAt);
+    return [
+      ...review.inbox(listed, coordinator.listRuns(), (runId) => {
         const projection = advised.has(runId) ? coordinator.findSnapshot(runId)?.projection : null;
         return projection ? unreadAdvice(projection) : [];
-      },
-    );
+      }),
+      ...(pullRequestWatch?.inboxItems(listed) ?? []),
+    ];
   });
   // The person opened an execution row (features/inbox.md, `advice`).
   app.post<{ Params: { runId: string; executionId: string } }>(
@@ -3601,6 +3625,8 @@ async function createCorralServer(
       const body = parse(NewEntry, request, reply);
       if (!body) return reply;
       const saved = await corrals.addSessionEntry(request.params.sessionId, body);
+      if (saved.ok && (body.intent === 'next' || body.intent === 'queue'))
+        pullRequestWatch?.onPersonRequest(request.params.sessionId);
       // A request queued just after the session's run ended would otherwise wait for a person.
       if (saved.ok && body.state === 'queued')
         void sessionQueue?.onEntryQueued(request.params.sessionId);

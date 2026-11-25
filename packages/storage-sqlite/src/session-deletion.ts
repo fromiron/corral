@@ -360,6 +360,7 @@ function removeRows(db: Db, sessionId: string, runIds: string[], title: string) 
   db.prepare('DELETE FROM command_operations WHERE session_id=?').run(sessionId);
   db.prepare('DELETE FROM message_branches WHERE session_id=?').run(sessionId);
   db.prepare('DELETE FROM sub_session_commands WHERE session_id=?').run(sessionId);
+  db.prepare('DELETE FROM pull_request_watches WHERE session_id=?').run(sessionId);
   db.prepare('UPDATE work_sessions SET parent_session_id=NULL WHERE parent_session_id=?').run(
     sessionId,
   );

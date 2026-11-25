@@ -110,6 +110,7 @@ export interface SessionEntry {
   /** The instruction this request was carried over from; it starts even without autoStart. */
   carriedFrom?: string;
   resend?: SessionResend;
+  pullRequest?: { number: number; headSha: string };
 }
 
 /**
@@ -248,6 +249,7 @@ export interface NewSessionEntry {
   start?: SessionEntryStart;
   carriedFrom?: string;
   resend?: SessionResend;
+  pullRequest?: { number: number; headSha: string };
 }
 
 export interface CorralRecord {
@@ -571,6 +573,14 @@ export function planSessionEntry(
       error: 'invalid',
       message: 'a resend requires a queued request and a time',
     };
+  if (
+    entry.pullRequest !== undefined &&
+    (entry.intent !== 'queue' ||
+      !Number.isSafeInteger(entry.pullRequest.number) ||
+      entry.pullRequest.number < 1 ||
+      !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(entry.pullRequest.headSha))
+  )
+    return { ok: false, error: 'invalid', message: 'a PR wake requires a queued request' };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -653,6 +663,14 @@ export function planSessionEntry(
                   of: entry.resend.of,
                   runId: entry.resend.runId,
                   notBefore: entry.resend.notBefore,
+                },
+              }
+            : {}),
+          ...(entry.pullRequest
+            ? {
+                pullRequest: {
+                  number: entry.pullRequest.number,
+                  headSha: entry.pullRequest.headSha,
                 },
               }
             : {}),

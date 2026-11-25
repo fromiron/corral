@@ -1141,7 +1141,8 @@
       "integration": "반영이 깔끔하게 끝나지 않음",
       "queued": "대기 요청",
       "recipe_stopped": "검토 중단: {reason}",
-      "advice": "조언"
+      "advice": "조언",
+      "pull_request": "풀 리퀘스트"
     },
     "open": {
       "run": "실행 열기",
@@ -1156,7 +1157,13 @@
       "uncertain_write": "{count, plural, other {결과를 모르는 파일 쓰기 #개}}",
       "unreviewed": "{count, plural, other {확인하지 않은 파일 쓰기 #개}}",
       "lsp_proposal": "{count, plural, other {언어 서버 제안 #개}}",
-      "advice": "{severity} · <line>{detail}</line>"
+      "advice": "{severity} · <line>{detail}</line>",
+      "pull_request": {
+        "review": "PR #{number}: 리뷰 결정이 바뀜",
+        "remarks": "PR #{number}: 새 댓글",
+        "wakes_stopped": "PR #{number}: 자동 깨우기 멈춤",
+        "no_start": "PR #{number}: 에이전트를 깨울 요청이 없음"
+      }
     },
     "close": "닫기",
     "backToList": "목록으로",
@@ -2311,7 +2318,8 @@
       "notDelivered": "전달되지 않음",
       "resend": "다시 보내기",
       "unknown": "전달 여부를 확인하지 못함",
-      "openTarget": "{name}의 실행 기록 열기"
+      "openTarget": "{name}의 실행 기록 열기",
+      "pullRequestWake": "PR 감시가 보냄"
     },
     "openSubSession": "서브세션 열기",
     "subSessionNeedsPaddock": "Paddock 필요",

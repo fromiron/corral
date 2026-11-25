@@ -1141,7 +1141,8 @@
       "integration": "Applying did not finish cleanly",
       "queued": "Queued request",
       "recipe_stopped": "Review stopped: {reason}",
-      "advice": "Advice"
+      "advice": "Advice",
+      "pull_request": "Pull request"
     },
     "open": {
       "run": "Open run",
@@ -1156,7 +1157,13 @@
       "uncertain_write": "{count, plural, one {# file write with an unknown outcome} other {# file writes with unknown outcomes}}",
       "unreviewed": "{count, plural, one {# unreviewed file write} other {# unreviewed file writes}}",
       "lsp_proposal": "{count, plural, one {# language server proposal} other {# language server proposals}}",
-      "advice": "{severity} · <line>{detail}</line>"
+      "advice": "{severity} · <line>{detail}</line>",
+      "pull_request": {
+        "review": "PR #{number}: review changed",
+        "remarks": "PR #{number}: new comments",
+        "wakes_stopped": "PR #{number}: automatic wakes stopped",
+        "no_start": "PR #{number}: no request to wake the agent with"
+      }
     },
     "close": "Close",
     "backToList": "Back to list",
@@ -2311,7 +2318,8 @@
       "notDelivered": "Not delivered",
       "resend": "Send again",
       "unknown": "Delivery not confirmed",
-      "openTarget": "Open {name}'s run record"
+      "openTarget": "Open {name}'s run record",
+      "pullRequestWake": "Sent by the PR watch"
     },
     "openSubSession": "Open sub-session",
     "subSessionNeedsPaddock": "Needs a Paddock",

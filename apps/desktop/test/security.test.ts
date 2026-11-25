@@ -167,6 +167,9 @@ it('notification destinations accept identities only, without URLs or host selec
     sessionId: 'session_a',
     runId: null,
   });
+  expect(notificationTarget({ kind: 'pull_request', sessionId: 'session_a', runId: null })).toEqual(
+    { kind: 'pull_request', sessionId: 'session_a', runId: null },
+  );
 });
 
 it('terminal notifications require an exact terminal identity and do not accept it on other kinds', async () => {

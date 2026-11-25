@@ -37,7 +37,7 @@ export type InboxDestination =
       to: '/sessions/$sessionId';
       params: { sessionId: string };
       search: {
-        panel?: 'run' | 'terminal' | 'checks';
+        panel?: 'run' | 'terminal' | 'checks' | 'changes';
         view?: 'run';
         run?: string;
         execution?: string;
@@ -77,6 +77,8 @@ export function inboxDestination(target: NotificationTarget): InboxDestination |
   // A failed check opens the review's Checks view; other review items open the review.
   if (target.kind === 'check_failed')
     return { to: '/sessions/$sessionId', params, search: { panel: 'checks' } };
+  if (target.kind === 'pull_request')
+    return { to: '/sessions/$sessionId', params, search: { panel: 'changes' } };
   return { to: '/sessions/$sessionId/review', params, search: {} };
 }
 

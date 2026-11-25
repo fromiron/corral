@@ -89,6 +89,7 @@ export {
 export type { PartialOutput, RuntimeSnapshot } from './partial-output.ts';
 export * from './profile-context.ts';
 export * from './projection.ts';
+export * from './pull-request-watch.ts';
 export { fixedReasoning } from './reasoning.ts';
 export * from './redact.ts';
 export * from './repository/index.ts';

@@ -28,13 +28,19 @@ export interface PullRequestDeps {
     context: { signal: AbortSignal; operationId: string; sessionId: string },
   ): Promise<{ title: string; body: string } | null>;
   dataDir: string;
+  observe?(
+    sessionId: string,
+    context: { branch: string; base: string },
+    prs: RawPr[],
+    source: 'screen' | 'server',
+  ): Promise<void> | void;
 }
 
 export type OpenResult =
   | { ok: true; pr: PullRequestSummary }
   | { ok: false; code: ErrorCode; message: string };
 
-interface RawPr {
+export interface RawPr {
   number: number;
   url: string;
   state: string;
@@ -51,10 +57,12 @@ interface RawPr {
   }[];
   reviewDecision?: string;
   mergeable?: string;
+  comments?: unknown[];
+  reviews?: unknown[];
 }
 
 const FIELDS =
-  'number,url,state,isDraft,title,headRefOid,baseRefName,updatedAt,statusCheckRollup,reviewDecision,mergeable';
+  'number,url,state,isDraft,title,headRefOid,baseRefName,updatedAt,statusCheckRollup,reviewDecision,mergeable,comments,reviews';
 const FAILED = new Set([
   'FAILURE',
   'TIMED_OUT',
@@ -127,7 +135,11 @@ export class PullRequestService {
     this.deps = deps;
   }
 
-  async view(sessionId: string, readRemote: boolean): Promise<PullRequestView> {
+  async view(
+    sessionId: string,
+    readRemote: boolean,
+    source: 'screen' | 'server' = 'screen',
+  ): Promise<PullRequestView> {
     const local = await this.local(sessionId);
     if ('kind' in local) return local;
     const ahead = local.baseRef ? await count(local.worktree, `${local.baseRef}..HEAD`) : 1;
@@ -140,6 +152,12 @@ export class PullRequestService {
         return ahead > 0 ? listed : { kind: 'hidden', reason: 'nothing_to_open' };
       this.remote.set(sessionId, { branch: local.branch, prs: listed });
       prs = listed;
+      await this.deps.observe?.(
+        sessionId,
+        { branch: local.branch, base: local.base },
+        listed,
+        source,
+      );
     }
     const open = prs.find((pr) => pr.state === 'OPEN');
     if (open) {

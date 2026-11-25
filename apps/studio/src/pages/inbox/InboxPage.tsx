@@ -285,6 +285,10 @@ export function InboxPage() {
     }
     if (!detail) return null;
     if (item.kind === 'check_failed') return t('summary.check_failed', { name: detail });
+    if (item.kind === 'pull_request') {
+      const match = /^#(\d+) (review|remarks|wakes_stopped|no_start)$/.exec(detail);
+      return match ? t(`summary.pull_request.${match[2]}`, { number: Number(match[1]) }) : null;
+    }
     if (
       item.kind === 'uncertain_write' ||
       item.kind === 'unreviewed' ||

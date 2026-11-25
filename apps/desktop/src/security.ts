@@ -193,6 +193,7 @@ export function notificationTarget(value: unknown): {
       'recipe_stopped',
       'lsp_proposal',
       'advice',
+      'pull_request',
     ].includes(kind) ||
     !identifier(sessionId) ||
     !(runId === null || identifier(runId)) ||
