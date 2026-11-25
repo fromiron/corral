@@ -771,17 +771,15 @@ export function ApprovalPanel({
           </AgentCard>
         ))}
         {!readOnly && plain.length >= 2 ? (
-          <SizeScope size="compact">
-            <span className="flex justify-end">
-              <Button
-                variant="secondary"
-                disabled={busy}
-                onClick={() => void approveShown(plain.map((approval) => approval.approvalId))}
-              >
-                {t('approveShown', { count: plain.length })}
-              </Button>
-            </span>
-          </SizeScope>
+          <span className="flex justify-end">
+            <Button
+              variant="secondary"
+              disabled={busy}
+              onClick={() => void approveShown(plain.map((approval) => approval.approvalId))}
+            >
+              {t('approveShown', { count: plain.length })}
+            </Button>
+          </span>
         ) : null}
       </section>
     </>
