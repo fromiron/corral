@@ -467,12 +467,12 @@ interface SessionRow {
   archived_at: string | null;
   entries_json: string;
   auto_json: string | null;
-  parent_session_id: string | null;
   auto_title: number;
   meeting_json: string | null;
   criteria_json: string;
   auto_start: number;
   advisor_json: string | null;
+  parent_session_id: string | null;
 }
 
 function sessionFromRow(row: SessionRow): WorkSession {
@@ -486,12 +486,12 @@ function sessionFromRow(row: SessionRow): WorkSession {
     criteria: readJson(row.criteria_json, row.id),
     pinned: row.pinned === 1,
     revision: row.revision,
-    parentSessionId: row.parent_session_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,
     autoStart: row.auto_start !== 0,
     advisor: row.advisor_json === null ? null : readJson(row.advisor_json, row.id),
+    parentSessionId: row.parent_session_id,
     entries: readJson(row.entries_json, row.id),
     auto: row.auto_json === null ? null : readJson(row.auto_json, row.id),
     ...(row.meeting_json === null ? {} : { meeting: readJson(row.meeting_json, row.id) }),
