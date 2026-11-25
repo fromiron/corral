@@ -7024,13 +7024,13 @@
       "review_required": "리뷰 필요"
     },
     "conflicting": "충돌",
-    "push": "push",
-    "pushAndOpen": "push하고 PR 열기",
+    "push": "올리기",
+    "pushAndOpen": "올리고 PR 열기",
     "open": "PR 열기",
     "sync": "Git 보기에서 맞추기",
     "viewOnGitHub": "GitHub에서 보기",
     "ghMissing": "GitHub CLI(gh)를 설치하면 여기서 PR을 엽니다",
-    "ghSignedOut": "터미널에서 gh auth login을 실행하세요",
+    "ghSignedOut": "터미널에서 {command}을 실행하세요",
     "readFailed": "PR을 읽지 못했습니다",
     "retry": "다시 시도",
     "dialog": {
@@ -7041,7 +7041,7 @@
       "drafting": "초안 쓰는 중…",
       "cancel": "취소",
       "open": "PR 열기",
-      "pushAndOpen": "push하고 PR 열기",
+      "pushAndOpen": "올리고 PR 열기",
       "moved": "이 창을 연 뒤 브랜치가 바뀌었습니다. 닫고 다시 여세요.",
       "checking": "PR이 열렸는지 확인하는 중…"
     }

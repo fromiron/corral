@@ -180,7 +180,7 @@ export function PullRequestRow({
       className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-1.5 text-caption text-muted-foreground"
     >
       {view.kind === 'gh_missing' ? t('ghMissing') : null}
-      {view.kind === 'gh_signed_out' ? t('ghSignedOut') : null}
+      {view.kind === 'gh_signed_out' ? t('ghSignedOut', { command: 'gh auth login' }) : null}
       {view.kind === 'read_failed' ? (
         <>
           <span>{t('readFailed')}</span>
