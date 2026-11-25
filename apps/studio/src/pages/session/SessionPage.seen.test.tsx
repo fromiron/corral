@@ -76,3 +76,20 @@ it('a run that ended before the entry is seen once the run list answers', async 
   await until(() => seen(world.sessionId)?.seenRun === runId);
   expect(seen(world.sessionId)?.seenRun).toBe(runId);
 });
+
+it('a run that ends while open is seen from its live record, before the run list says so', async () => {
+  const world = await createShellWorld();
+  const runId = await world.startRun();
+  await world.working(runId, 1);
+  await open(world, `/sessions/${world.sessionId}`);
+  await until(() => seen(world.sessionId)?.openedAt != null);
+  const release = world.holdListings();
+  try {
+    await world.releaseReplies();
+    await world.runReaches(runId, ['succeeded']);
+    await until(() => seen(world.sessionId)?.seenRun === runId);
+    expect(seen(world.sessionId)?.seenRun).toBe(runId);
+  } finally {
+    release();
+  }
+});

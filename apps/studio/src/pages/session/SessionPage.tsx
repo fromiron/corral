@@ -19,6 +19,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import { useTranslations } from 'use-intl';
 import { setCurrentProject } from '../../projects.ts';
@@ -301,8 +302,19 @@ function WorkSessionPage() {
   }, [listed, runIdsKey, session.sessionId]);
   const runIds = latched?.sessionId === session.sessionId ? latched.ids : null;
   const newestRun = listed ? runs.at(-1) : undefined;
+  const newestStore = newestRun ? services.runFor(newestRun.runId) : null;
+  const subscribeNewest = useCallback(
+    (changed: () => void) => newestStore?.subscribe(changed) ?? (() => {}),
+    [newestStore],
+  );
+  const newestEndedLive = useSyncExternalStore(subscribeNewest, () => {
+    const status = newestStore?.getState().projection?.status;
+    return Boolean(status && TERMINAL_RUN_STATUSES.has(status));
+  });
   const endedRun =
-    newestRun && TERMINAL_RUN_STATUSES.has(newestRun.status) ? newestRun.runId : null;
+    newestRun && (TERMINAL_RUN_STATUSES.has(newestRun.status) || newestEndedLive)
+      ? newestRun.runId
+      : null;
 
   // The work area's width: given (tests), else as the frame measures it.
   const given = useGivenWorkAreaWidth();
