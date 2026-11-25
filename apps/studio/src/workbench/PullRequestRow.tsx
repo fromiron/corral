@@ -24,6 +24,7 @@ interface DialogState {
   action: Opening;
   controller: AbortController;
   operationId: string;
+  pushOperationId: string;
   draft: PullRequestDraft | null;
   title: string;
   body: string;
@@ -35,26 +36,40 @@ interface DialogState {
 const newId = (prefix: string) => `${prefix}_${crypto.randomUUID().replaceAll('-', '')}`;
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
-async function pushBranch(workspaces: Workspaces, sessionId: string, branch: string) {
-  const status = await workspaces.gitStatus({ kind: 'session', id: sessionId });
-  if (status.target.kind !== 'session') throw new Error('no working copy');
-  const { kind: _kind, ...target } = status.target;
-  let operation = await workspaces.gitChange(sessionId, {
-    operationId: newId('git'),
-    kind: 'push',
-    target,
-    expect: { head: status.head.oid, indexHash: status.indexHash },
-    remote: 'origin',
-    branch,
-    runHooks: true,
-  } as GitWriteCommand);
+class PushFailed extends Error {}
+
+async function pushBranch(
+  workspaces: Workspaces,
+  sessionId: string,
+  branch: string,
+  operationId: string,
+) {
+  let operation = await (async () => workspaces.gitOperation(sessionId, operationId))().catch(
+    () => null,
+  );
+  if (!operation) {
+    const status = await workspaces.gitStatus({ kind: 'session', id: sessionId });
+    if (status.target.kind !== 'session') throw new Error('no working copy');
+    const { kind: _kind, ...target } = status.target;
+    operation = await workspaces.gitChange(sessionId, {
+      operationId,
+      kind: 'push',
+      target,
+      expect: { head: status.head.oid, indexHash: status.indexHash },
+      remote: 'origin',
+      branch,
+      runHooks: true,
+    } as GitWriteCommand);
+  }
   for (let i = 0; operation.state === 'running' && i < 240; i++) {
     await wait(500);
     operation = await workspaces.gitOperation(sessionId, operation.operationId);
   }
   window.dispatchEvent(new Event(WORKSPACE_CHANGED));
   if (operation.state !== 'succeeded')
-    throw new Error((operation.result as { message?: string } | null)?.message ?? operation.state);
+    throw new PushFailed(
+      (operation.result as { message?: string } | null)?.message ?? operation.state,
+    );
 }
 
 export function PullRequestRow({
@@ -72,6 +87,7 @@ export function PullRequestRow({
   const { workspaces } = useServices();
   const [dialog, setDialog] = useState<DialogState | null>(null);
   const [pushing, setPushing] = useState(false);
+  const [pushOperation, setPushOperation] = useState(() => newId('git'));
   if (!view || view.kind === 'hidden' || !workspaces) return null;
 
   const begin = (action: Opening) => {
@@ -81,6 +97,7 @@ export function PullRequestRow({
       action,
       controller,
       operationId,
+      pushOperationId: newId('git'),
       draft: null,
       title: '',
       body: '',
@@ -133,7 +150,7 @@ export function PullRequestRow({
     try {
       if (current.action === 'push_and_open') {
         step('pushing');
-        await pushBranch(workspaces, sessionId, draft.head.branch);
+        await pushBranch(workspaces, sessionId, draft.head.branch, current.pushOperationId);
       }
       step('opening');
       await workspaces.openPullRequest(sessionId, {
@@ -145,6 +162,12 @@ export function PullRequestRow({
       setDialog(null);
       onChanged();
     } catch (failure) {
+      if (failure instanceof PushFailed)
+        setDialog((value) =>
+          value?.controller === current.controller
+            ? { ...value, pushOperationId: newId('git') }
+            : value,
+        );
       const code = (failure as { code?: string }).code;
       if (code === 'REQUEST_OUTCOME_UNKNOWN') {
         step('checking', t('dialog.checking'));
@@ -165,7 +188,10 @@ export function PullRequestRow({
     if (view.kind !== 'open' || pushing) return;
     setPushing(true);
     try {
-      await pushBranch(workspaces, sessionId, view.branch);
+      await pushBranch(workspaces, sessionId, view.branch, pushOperation);
+      setPushOperation(newId('git'));
+    } catch (failure) {
+      if (failure instanceof PushFailed) setPushOperation(newId('git'));
     } finally {
       setPushing(false);
       onChanged();

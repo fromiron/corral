@@ -59,7 +59,10 @@ function useCopy(
   }, []);
   useEffect(() => {
     void tick;
-    if (!workspaces || !visible) return;
+    if (!workspaces || !visible) {
+      remoteSeen.current = null;
+      return;
+    }
     const remoteKey = `${sessionId}|${copyChanged}|${remoteTick}`;
     const remote = remoteSeen.current !== remoteKey;
     remoteSeen.current = remoteKey;

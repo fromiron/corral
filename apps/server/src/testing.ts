@@ -58,7 +58,7 @@ export function fakeOpenAI(
     refreshes: 0,
     tokens: [] as (string | undefined)[],
     /** Requests the host made itself (team drafts), not a worker. */
-    hostRequests: [] as { maxTokens: number | undefined; text: string }[],
+    hostRequests: [] as { model: string; maxTokens: number | undefined; text: string }[],
   };
   const oauth: OAuthAuth = {
     name: 'OpenAI (ChatGPT subscription)',
@@ -150,6 +150,7 @@ export function fakeOpenAI(
         stream: faux.stream,
         streamSimple: (model, context, streamOptions) => {
           seen.hostRequests.push({
+            model: model.id,
             maxTokens: streamOptions?.maxTokens,
             text: JSON.stringify(context.messages),
           });

@@ -100,7 +100,20 @@ async function render(view: PullRequestView, extra: Record<string, unknown> = {}
     [...document.querySelectorAll<HTMLButtonElement>('button')].find(
       (node) => node.textContent === label,
     );
-  return { container, pullRequest, onViewChange, row, button };
+  const show = async (visible: boolean) => {
+    await act(async () =>
+      root.render(
+        <SessionChangesPanel
+          session={{ sessionId: 's1', projectId: 'project' } as WorkSession}
+          visible={visible}
+          onReviewChange={() => {}}
+          onViewChange={onViewChange}
+        />,
+      ),
+    );
+    await settle();
+  };
+  return { container, pullRequest, onViewChange, row, button, show };
 }
 
 const open: PullRequestView = {
@@ -219,4 +232,50 @@ it('stops the draft when the dialog closes before it arrives', async () => {
   await settle();
   await act(async () => f.button('PullRequests.dialog.cancel')?.click());
   expect(signals[0]?.aborted).toBe(true);
+});
+
+it('reads GitHub again when the tab comes back on screen', async () => {
+  const f = await render(open);
+  await f.show(false);
+  await f.show(true);
+  expect(f.pullRequest.mock.calls.map((call) => call[1])).toEqual([true, true]);
+});
+
+it('after a lost push response, reads that push back by its ID instead of pushing again', async () => {
+  const head = { branch: 'corral/fix-abc123', commit: 'a'.repeat(40) };
+  const pullRequestDraft = vi.fn(async () => ({
+    title: 'Fix',
+    body: '',
+    head,
+    base: 'main',
+    source: 'commits',
+  }));
+  const ids: string[] = [];
+  const gitChange = vi.fn(async (_s: string, command: { operationId: string }) => {
+    ids.push(command.operationId);
+    throw new TypeError('Failed to fetch');
+  });
+  const gitOperation = vi.fn(async (_s: string, operationId: string) => ({
+    operationId,
+    state: 'succeeded',
+    result: { kind: 'applied' },
+  }));
+  const openPullRequest = vi.fn(async () => ({ pr: open.kind === 'open' ? open.pr : null }));
+  const f = await render(
+    { kind: 'none', branch: head.branch, base: 'main', action: 'push_and_open', previous: null },
+    { pullRequestDraft, gitChange, gitOperation, openPullRequest },
+  );
+  gitOperation.mockRejectedValueOnce(
+    Object.assign(new Error('missing'), { code: 'TARGET_NOT_FOUND' }),
+  );
+  await act(async () => f.button('PullRequests.pushAndOpen')?.click());
+  await settle();
+  await act(async () => f.button('PullRequests.dialog.pushAndOpen')?.click());
+  await settle();
+  expect(openPullRequest).not.toHaveBeenCalled();
+  await act(async () => f.button('PullRequests.dialog.pushAndOpen')?.click());
+  await settle();
+  expect(gitChange).toHaveBeenCalledTimes(1);
+  expect(gitOperation.mock.calls.map((call) => call[1])).toEqual([ids[0], ids[0]]);
+  expect(openPullRequest).toHaveBeenCalledTimes(1);
 });

@@ -131,16 +131,15 @@ export class PullRequestService {
     const local = await this.local(sessionId);
     if ('kind' in local) return local;
     const ahead = local.baseRef ? await count(local.worktree, `${local.baseRef}..HEAD`) : 1;
-    let prs: RawPr[] = [];
-    if (readRemote) {
+    const kept = readRemote ? undefined : this.remote.get(sessionId);
+    let prs: RawPr[];
+    if (kept?.branch === local.branch) prs = kept.prs;
+    else {
       const listed = await this.list(local, 'all');
       if (!Array.isArray(listed))
         return ahead > 0 ? listed : { kind: 'hidden', reason: 'nothing_to_open' };
       this.remote.set(sessionId, { branch: local.branch, prs: listed });
       prs = listed;
-    } else {
-      const kept = this.remote.get(sessionId);
-      prs = kept?.branch === local.branch ? kept.prs : [];
     }
     const open = prs.find((pr) => pr.state === 'OPEN');
     if (open) {
@@ -346,7 +345,12 @@ export class PullRequestService {
     if (!branch) return { kind: 'hidden', reason: 'detached' };
     const head = await gitText(copy.worktree, ['rev-parse', 'HEAD']);
     const base = await this.defaultBranch(copy.root, repo);
-    if (typeof base !== 'string') return base;
+    if (typeof base !== 'string') {
+      const unpushed = Number(
+        await gitText(copy.worktree, ['rev-list', '--count', 'HEAD', '--not', '--remotes=origin']),
+      );
+      return unpushed > 0 ? base : { kind: 'hidden', reason: 'nothing_to_open' };
+    }
     if (base === branch) return { kind: 'hidden', reason: 'default_branch' };
     const baseRef = (await exists(copy.worktree, `refs/remotes/origin/${base}`))
       ? `refs/remotes/origin/${base}`

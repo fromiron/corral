@@ -1635,17 +1635,23 @@ async function createCorralServer(
   // A team proposal's admission record and its single in-flight request, by operation id.
   const teamOperations = new Map<string, Promise<unknown>>();
   const pullRequestData = join(workspace.root, '.corral', 'pull-requests');
+  mkdirSync(pullRequestData, { recursive: true, mode: 0o700 });
   const pullRequests = new PullRequestService({
     copyOf: (sessionId) => files.copyOf(sessionId),
-    gh: options.gh ?? ghRunner({ cwd: workspace.root }),
+    gh: options.gh ?? ghRunner({ cwd: pullRequestData }),
     dataDir: pullRequestData,
     draft: async (input, context) => {
       const current = registry;
       if (!current) return null;
       const session = await corrals.getSession(context.sessionId);
+      const latest = [...(session?.entries ?? [])]
+        .reverse()
+        .find((entry) => entry.start || entry.auto?.modelProfile);
       const profileId =
-        [...(session?.entries ?? [])].reverse().find((entry) => entry.start)?.start?.choice
-          .modelProfile ?? null;
+        latest?.start?.choice.modelProfile ??
+        latest?.auto?.modelProfile ??
+        session?.auto?.modelProfile ??
+        null;
       const answer = await current.requestOneText(
         {
           systemPrompt: PULL_REQUEST_SYSTEM_PROMPT,

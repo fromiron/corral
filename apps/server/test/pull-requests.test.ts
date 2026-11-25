@@ -270,6 +270,24 @@ describe('the PR row', () => {
     expect(f.calls.some((call) => call.args[0] === 'repo' && call.args[1] === 'view')).toBe(true);
   });
 
+  it('reads GitHub on a local read that has nothing kept for this branch', async () => {
+    const f = fixture();
+    const pushed = f.commit('b.txt', 'one');
+    f.setPrs([pr('OPEN', 12, { headRefOid: pushed })]);
+    expect(await f.service.view('s1', false)).toMatchObject({ kind: 'open', pr: { number: 12 } });
+    git(f.copy, 'checkout', '-q', '-b', 'corral/other-def456');
+    f.setPrs([pr('OPEN', 14, { headRefOid: pushed })]);
+    expect(await f.service.view('s1', false)).toMatchObject({ kind: 'open', pr: { number: 14 } });
+  });
+
+  it('without origin/HEAD and without gh, names gh only for unpushed commits', async () => {
+    const f = fixture({ originHead: false });
+    f.setGh(() => ({ code: 'missing', stdout: '' }));
+    expect(await f.service.view('s1', true)).toEqual({ kind: 'hidden', reason: 'nothing_to_open' });
+    f.commit('b.txt', 'one');
+    expect(await f.service.view('s1', true)).toEqual({ kind: 'gh_missing' });
+  });
+
   it('keeps the last GitHub read for local reads, and runs gh only when asked', async () => {
     const f = fixture();
     const pushed = f.commit('b.txt', 'one');

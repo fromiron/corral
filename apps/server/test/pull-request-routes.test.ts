@@ -126,8 +126,8 @@ it('reads the row, drafts from the commits and opens a PR once', async () => {
   });
   expect(created).toHaveLength(1);
   expect(await workspaces.pullRequest(sessionId, false)).toMatchObject({
-    kind: 'none',
-    action: 'push_and_open',
+    kind: 'open',
+    pr: { number: 21 },
   });
   expect(await workspaces.pullRequest(sessionId, true)).toMatchObject({
     kind: 'open',
