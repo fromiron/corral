@@ -158,6 +158,7 @@ import { removeLegacyCandidateCopies } from './legacy-candidate-copies.ts';
 import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
+import { freeBranch, paddockBranch } from './paddock-branch.ts';
 import type { FffPathEngine, PathEngineStatus } from './path-engine.ts';
 import { RunAccessStore } from './run-access.ts';
 import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
@@ -1207,6 +1208,7 @@ export class WorkspaceService implements FileTools {
     sessionId: string,
     projectId: string,
     baseCommit?: string,
+    options: { branchTitle?: string } = {},
   ): Promise<WorktreeView> {
     if (baseCommit !== undefined && !/^(?:[a-f0-9]{40}|[a-f0-9]{64})$/.test(baseCommit))
       throw new WorkspaceError('SCHEMA_INVALID', 'a full commit hash is required');
@@ -1234,7 +1236,16 @@ export class WorkspaceService implements FileTools {
     }
     const path = join(this.worktreeRoot, binding.id, sessionId);
     await mkdir(dirname(path), { recursive: true, mode: 0o700 });
-    await git(binding.root_path, ['worktree', 'add', '--detach', path, head]);
+    const title =
+      options.branchTitle ??
+      (
+        this.db.prepare('SELECT title FROM work_sessions WHERE id=?').get(sessionId) as
+          | { title: string }
+          | undefined
+      )?.title ??
+      '';
+    const branch = await freeBranch(binding.root_path, paddockBranch(title, sessionId));
+    await git(binding.root_path, ['worktree', 'add', '-b', branch, path, head]);
     const tree = await gitText(path, ['rev-parse', `${head}^{tree}`]);
     await this.pin(path, `refs/corral/${sessionId}/base`, tree);
     this.db

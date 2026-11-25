@@ -126,11 +126,11 @@ async function setup() {
   };
 }
 
-it('attaches the detached copy to a new branch, switches, fetches, fast-forwards and pushes', async () => {
+it('starts the copy on its own branch, makes another, switches, fetches, fast-forwards and pushes', async () => {
   const s = await setup();
-  const detached = await s.status();
-  expect(detached.head.detached).toBe(true);
-  expect(detached.remotes).toEqual(['origin']);
+  const start = await s.status();
+  expect(start.head).toMatchObject({ detached: false, branch: expect.stringMatching(/^corral\//) });
+  expect(start.remotes).toEqual(['origin']);
   expect(await s.run({ kind: 'branch', name: 'feature/one' })).toMatchObject({
     kind: 'git.branch',
     state: 'succeeded',
@@ -139,7 +139,7 @@ it('attaches the detached copy to a new branch, switches, fetches, fast-forwards
   expect(attached.head).toMatchObject({
     branch: 'feature/one',
     detached: false,
-    oid: detached.head.oid,
+    oid: start.head.oid,
   });
   expect(attached.branches).toEqual(expect.arrayContaining(['feature/one', 'main']));
   // The original keeps its own branch and index.
