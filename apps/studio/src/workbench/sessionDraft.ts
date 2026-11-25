@@ -7,6 +7,7 @@ import {
 } from '@corral/contracts';
 import type { SessionIntent } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
+import { onUnsentAnswer } from '@corral/react';
 import type { MentionItem } from './composerMenu.ts';
 
 // A session's unsent request, kept in this browser: the text, what it is for (intent
@@ -16,6 +17,7 @@ const key = (sessionId: string) => `corral:session-draft:${sessionId}`;
 const INTENTS: readonly SessionIntent[] = ['next', 'queue', 'steer', 'explain'];
 const KINDS = ['file', 'folder', 'result', 'run', 'role'];
 export const COMPOSER_DRAFT_SENT = 'corral:composer-draft-sent';
+export const CARRY_ANSWER = 'corral:carry-answer';
 const revisions = new Map<string, { value: string | null; revision: number }>();
 const consumed = new Map<string, number>();
 
@@ -198,3 +200,15 @@ export function readDraft(sessionId: string) {
 export function writeDraft(sessionId: string, text: string) {
   writeComposerDraft(sessionId, empty(text));
 }
+
+export const joinCarriedAnswer = (draft: string, answer: string) =>
+  draft.trim() ? `${draft.trimEnd()}\n\n${answer}` : answer;
+
+export function carryAnswerToDraft(sessionId: string, text: string) {
+  const event = new CustomEvent(CARRY_ANSWER, { detail: { sessionId, text }, cancelable: true });
+  if (!window.dispatchEvent(event)) return;
+  const draft = readComposerDraft(sessionId);
+  writeComposerDraft(sessionId, { ...draft, text: joinCarriedAnswer(draft.text, text) });
+}
+
+onUnsentAnswer(({ sessionId, text }) => carryAnswerToDraft(sessionId, text));

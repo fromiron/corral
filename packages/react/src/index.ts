@@ -211,6 +211,11 @@ export {
   toolTarget,
   turnSummary,
 } from './run/turn-process.ts';
+export {
+  AnswerDraftTarget,
+  type CarriedAnswer,
+  onUnsentAnswer,
+} from './run/unsentAnswers.ts';
 export { type AgentUsage, usageByAgent } from './run/usage-by-agent.ts';
 export { type ReportedInput, reportedInput, type UsageInput } from './run/usage-input.ts';
 export {

@@ -27,6 +27,12 @@ import {
   Select,
 } from '../design-kit/index.ts';
 import type { RunSessionStore } from '../run/session.ts';
+import {
+  AnswerDraftTarget,
+  keepUnsentAnswer,
+  settleUnsentAnswer,
+  unsentAnswer,
+} from '../run/unsentAnswers.ts';
 import { FirstRow } from './FirstRow.tsx';
 import { useFreshDecisions } from './freshDecisions.ts';
 import {
@@ -382,7 +388,10 @@ function ExtensionPrompt({
   const format = useFormatter();
   const askedBy = useAskedBy(session, event.payload.executionId, event.payload.attemptNo);
   const titleId = useId();
-  const [value, setValue] = useState('');
+  const draftTarget = useContext(AnswerDraftTarget);
+  const [value, setValue] = useState(
+    () => unsentAnswer(session, event.payload.requestId)[''] ?? '',
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const card = useRef<HTMLDivElement>(null);
@@ -416,7 +425,8 @@ function ExtensionPrompt({
         },
       });
       if (receipt.error) setError(receipt.error.message);
-      else if (ownedFocus)
+      else settleUnsentAnswer(session, event.payload.requestId, 'answered');
+      if (!receipt.error && ownedFocus)
         // The next waiting card's main action, else the request box.
         requestAnimationFrame(() => {
           if (
@@ -481,7 +491,12 @@ function ExtensionPrompt({
             value={value}
             maxLength={12000}
             placeholder={request.placeholder}
-            onChange={(e) => setValue(e.target.value)}
+            onChange={(e) => {
+              setValue(e.target.value);
+              keepUnsentAnswer(session, event.payload.requestId, draftTarget, {
+                '': e.target.value,
+              });
+            }}
           />
         ) : null}
         <p className="text-muted-foreground">
@@ -551,7 +566,15 @@ function UserQuestionPrompt({
   const form = useRef<HTMLFormElement>(null);
   const stepHeading = useRef<HTMLParagraphElement>(null);
   const headingId = useId();
-  const [values, setValues] = useState<Record<string, UserAnswers[number]>>({});
+  const draftTarget = useContext(AnswerDraftTarget);
+  const [values, setValues] = useState<Record<string, UserAnswers[number]>>(() =>
+    Object.fromEntries(
+      Object.entries(unsentAnswer(session, event.payload.requestId)).map(([id, text]) => [
+        id,
+        { questionId: id, text },
+      ]),
+    ),
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   // With two or more questions, one question per step and then a review step (index = count).
@@ -608,7 +631,8 @@ function UserQuestionPrompt({
         },
       });
       if (receipt.error) setError(receipt.error.message);
-      else if (ownedFocus)
+      else settleUnsentAnswer(session, event.payload.requestId, 'answered');
+      if (!receipt.error && ownedFocus)
         // As a decided approval does: the next waiting card's main action, else the request box.
         requestAnimationFrame(() => {
           if (
@@ -711,8 +735,8 @@ function UserQuestionPrompt({
               maxLength={12000}
               onChange={(e) => {
                 const content = e.target.value;
-                setValues((current) => ({
-                  ...current,
+                const next = {
+                  ...values,
                   [q.id]: {
                     questionId: q.id,
                     ...(q.kind === 'multiple' && value.optionIds?.length
@@ -720,7 +744,19 @@ function UserQuestionPrompt({
                       : {}),
                     ...(content.trim() ? { text: content } : {}),
                   },
-                }));
+                };
+                setValues(next);
+                keepUnsentAnswer(
+                  session,
+                  event.payload.requestId,
+                  draftTarget,
+                  Object.fromEntries(
+                    (request?.questions ?? []).flatMap((question) => {
+                      const typed = next[question.id]?.text;
+                      return typed ? [[question.id, typed]] : [];
+                    }),
+                  ),
+                );
               }}
             />
           </label>

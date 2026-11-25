@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { createTextAttachment } from '@corral/core';
 import { describe, expect, it } from 'vitest';
 import { parseComposerDraft, serializeComposerDraft } from './sessionDraft.ts';
@@ -132,4 +133,27 @@ it('stores meeting recipient choices without text and rejects malformed saved re
   expect(
     parseComposerDraft(JSON.stringify({ v: 2, meetingMentions: ['p1', null, 9] })).meetingMentions,
   ).toEqual(['p1']);
+});
+
+// features/composer-flow.md 대기 요청과 넘겨받기: a question's unsent text goes to the end of the
+// conversation's stored draft when no request box of that conversation takes it.
+describe('a carried answer', () => {
+  it('becomes an empty draft, or joins a written one after a blank line, keeping the rest', async () => {
+    const { carryAnswerToDraft, readComposerDraft, writeComposerDraft } = await import(
+      './sessionDraft.ts'
+    );
+    const attachment = createTextAttachment('notes.txt', 'text/plain', 'kept');
+    carryAnswerToDraft('session_empty', 'Use staging');
+    expect(readComposerDraft('session_empty').text).toBe('Use staging');
+    writeComposerDraft('session_full', {
+      ...parseComposerDraft(null),
+      text: 'Also check the docs  \n',
+      attachments: [attachment],
+    });
+    carryAnswerToDraft('session_full', 'Use staging');
+    expect(readComposerDraft('session_full')).toMatchObject({
+      text: 'Also check the docs\n\nUse staging',
+      attachments: [attachment],
+    });
+  });
 });

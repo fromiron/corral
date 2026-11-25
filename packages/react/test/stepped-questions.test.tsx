@@ -1,5 +1,5 @@
 import { type Receipt, RunEvent, type UserInputRequest } from '@corral/contracts';
-import { act, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
@@ -357,4 +357,35 @@ it('keeps the free-text label visible beside a question’s options', async () =
   const answer = screen.getByRole('textbox', { name: 'Your answer' });
   expect(answer.closest('label')?.querySelector('.sr-only')).toBeNull();
   expect(answer.closest('label')).toHaveTextContent('Your answer');
+});
+
+// features/composer-flow.md 대기 요청과 넘겨받기: the card keeps what was typed for its run's
+// store, with the conversation it stands in, and shows it again when drawn anew; a sent answer
+// keeps nothing.
+it('keeps typed text for the conversation the card stands in, shows it again when redrawn, and drops it once sent', async () => {
+  const { AnswerDraftTarget } = await import('../src/run/unsentAnswers.ts');
+  const { unsentAnswer } = await import('../src/run/unsentAnswers.ts');
+  const sendCommand = vi.fn(async (_command: SessionCommand) => ({ status: 'applied' }) as Receipt);
+  const { session } = setup(
+    { key: 'one', questions: [{ id: 'a', prompt: 'Only?', kind: 'text' }] },
+    sendCommand,
+  );
+  cleanup();
+  const view = () =>
+    render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <AnswerDraftTarget.Provider value="session_a">
+          <InteractionPanel session={session} />
+        </AnswerDraftTarget.Provider>
+      </IntlProvider>,
+    );
+  const first = view();
+  await userEvent.type(screen.getByRole('textbox', { name: 'Your answer' }), 'Half a thought');
+  expect(unsentAnswer(session, 'user_1')).toEqual({ a: 'Half a thought' });
+  first.unmount();
+  view();
+  expect(screen.getByRole('textbox', { name: 'Your answer' })).toHaveValue('Half a thought');
+  fireEvent.click(send());
+  await vi.waitFor(() => expect(sendCommand).toHaveBeenCalledOnce());
+  await vi.waitFor(() => expect(unsentAnswer(session, 'user_1')).toEqual({}));
 });

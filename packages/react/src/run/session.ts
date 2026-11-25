@@ -23,6 +23,7 @@ import {
 } from '@corral/core';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import type { RunRecovery } from './recovery.ts';
+import { settleUnsentAnswer } from './unsentAnswers.ts';
 
 // Live view of one run. Everything shown comes from committed events or receipts: buttons
 // show "sending" while a command is in flight, but status badges only change on server facts.
@@ -207,6 +208,10 @@ export function createRunSession(
         });
         recovery?.committed(runId, get().events);
         for (const event of batch) {
+          if (event.type === 'user_input.answered' || event.type === 'extension.ui_answered')
+            settleUnsentAnswer(store, event.payload.requestId, 'answered');
+          if (event.type === 'user_input.closed' || event.type === 'extension.ui_expired')
+            settleUnsentAnswer(store, event.payload.requestId, 'closed');
           if (event.type === 'model.finished' && event.payload.responseRef) {
             void restoreResponse(
               runId,

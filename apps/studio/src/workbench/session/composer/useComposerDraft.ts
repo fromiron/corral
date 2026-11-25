@@ -25,7 +25,13 @@ import {
 } from '../../context/bridge.ts';
 import type { FileReference } from '../../FilePanel.tsx';
 import { EDIT_REQUEST } from '../../RefusalHelp.tsx';
-import { COMPOSER_DRAFT_SENT, type ComposerDraft, writeComposerDraft } from '../../sessionDraft.ts';
+import {
+  CARRY_ANSWER,
+  COMPOSER_DRAFT_SENT,
+  type ComposerDraft,
+  joinCarriedAnswer,
+  writeComposerDraft,
+} from '../../sessionDraft.ts';
 
 // The composer's draft: its text, intent lock, references and attachments, kept in the
 // session's stored draft and filled by captures, "edit the request again" and a sent draft.
@@ -257,7 +263,16 @@ export function useComposerDraft({
   // "Edit the request again" on a refused turn brings its text back here.
   const editRequested = useRef(onEditRequest);
   editRequested.current = onEditRequest;
+  const sessionNow = useRef(session.sessionId);
+  sessionNow.current = session.sessionId;
   useEffect(() => {
+    const carry = (event: Event) => {
+      const answer = (event as CustomEvent<{ sessionId?: unknown; text?: unknown }>).detail;
+      if (answer?.sessionId !== sessionNow.current || typeof answer.text !== 'string') return;
+      const text = answer.text;
+      event.preventDefault();
+      setText((current) => joinCarriedAnswer(current, text));
+    };
     const take = (event: Event) => {
       const value = (event as CustomEvent<string | TakenBackRequest>).detail;
       if (
@@ -283,7 +298,11 @@ export function useComposerDraft({
       requestAnimationFrame(() => input.current?.focus());
     };
     window.addEventListener(EDIT_REQUEST, take);
-    return () => window.removeEventListener(EDIT_REQUEST, take);
+    window.addEventListener(CARRY_ANSWER, carry);
+    return () => {
+      window.removeEventListener(EDIT_REQUEST, take);
+      window.removeEventListener(CARRY_ANSWER, carry);
+    };
   }, [input]);
 
   /** Writes the draft as it is sent; its revision tells the sent draft apart from a newer one. */

@@ -1,6 +1,7 @@
 import { TERMINAL_RUN_STATUSES } from '@corral/contracts';
 import { pendingInteractions, type RunSummary } from '@corral/core';
 import {
+  AnswerDraftTarget,
   answeredExtensionNotices,
   InteractionPanel,
   RequestRunContext,
@@ -211,38 +212,43 @@ export function PendingTray({
       aria-label={t('neededNow')}
       className="flex flex-col gap-3 pb-4 outline-none"
     >
-      {entries.map(({ runId, count }) => (
-        // With several runs waiting, each card names its run (as the run's row does).
-        <RequestRunContext.Provider
-          key={runId}
-          value={
-            entries.length > 1
-              ? t('runNumber', { number: runs.findIndex((run) => run.runId === runId) + 1 })
-              : null
-          }
-        >
-          {count === 0 ? (
-            // Nothing waits on this run: only what its extension said, as the record says it.
-            <InteractionPanel session={runFor(runId)} answeredNoticesOnly />
-          ) : (
-            <RunResponseArea
-              session={runFor(runId)}
-              onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
-              policySettingsAction={
-                // A way out of a tool card, quieter than its decisions.
-                <Button
-                  variant="ghost"
-                  render={
-                    <Link to="/settings/harness" search={{ returnTo: `/sessions/${sessionId}` }} />
-                  }
-                >
-                  {trun('permissionSettings')}
-                </Button>
-              }
-            />
-          )}
-        </RequestRunContext.Provider>
-      ))}
+      <AnswerDraftTarget.Provider value={sessionId}>
+        {entries.map(({ runId, count }) => (
+          // With several runs waiting, each card names its run (as the run's row does).
+          <RequestRunContext.Provider
+            key={runId}
+            value={
+              entries.length > 1
+                ? t('runNumber', { number: runs.findIndex((run) => run.runId === runId) + 1 })
+                : null
+            }
+          >
+            {count === 0 ? (
+              // Nothing waits on this run: only what its extension said, as the record says it.
+              <InteractionPanel session={runFor(runId)} answeredNoticesOnly />
+            ) : (
+              <RunResponseArea
+                session={runFor(runId)}
+                onOpenArtifact={(artifactVersionId) => onOpenArtifact(runId, artifactVersionId)}
+                policySettingsAction={
+                  // A way out of a tool card, quieter than its decisions.
+                  <Button
+                    variant="ghost"
+                    render={
+                      <Link
+                        to="/settings/harness"
+                        search={{ returnTo: `/sessions/${sessionId}` }}
+                      />
+                    }
+                  >
+                    {trun('permissionSettings')}
+                  </Button>
+                }
+              />
+            )}
+          </RequestRunContext.Provider>
+        ))}
+      </AnswerDraftTarget.Provider>
     </section>
   );
 }

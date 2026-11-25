@@ -14,7 +14,10 @@ const fixture = vi.hoisted(() => ({
   attention: vi.fn(),
   inbox: vi.fn(),
   stop: vi.fn(),
-  desktop: { notify: vi.fn(async () => {}), badge: vi.fn(async () => {}) },
+  desktop: {
+    notify: vi.fn(async (_title: string, _body: string, _target?: unknown) => {}),
+    badge: vi.fn(async (_count: number) => {}),
+  },
 }));
 vi.mock('../desktop.tsx', () => ({ desktop: fixture.desktop }));
 const otherSession = {

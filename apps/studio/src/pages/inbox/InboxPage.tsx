@@ -1,5 +1,5 @@
 import { type ProjectSummary, pendingInteractions, type RunSummary } from '@corral/core';
-import { type RunSessionState, useSeverityName } from '@corral/react';
+import { AnswerDraftTarget, type RunSessionState, useSeverityName } from '@corral/react';
 import {
   Banner,
   BannerActions,
@@ -686,17 +686,19 @@ function DecisionResponse({
     );
   return (
     <div className="grid gap-3">
-      <RunResponseArea
-        session={session}
-        receipts
-        onOpenArtifact={(artifact) =>
-          void navigate({
-            to: '/sessions/$sessionId',
-            params: { sessionId },
-            search: { panel: 'run', view: 'run', run: runId, artifact },
-          })
-        }
-      />
+      <AnswerDraftTarget.Provider value={sessionId}>
+        <RunResponseArea
+          session={session}
+          receipts
+          onOpenArtifact={(artifact) =>
+            void navigate({
+              to: '/sessions/$sessionId',
+              params: { sessionId },
+              search: { panel: 'run', view: 'run', run: runId, artifact },
+            })
+          }
+        />
+      </AnswerDraftTarget.Provider>
       {pending === 0 && !answered ? (
         <p role="status" className="text-body text-muted-foreground">
           {t('nothingWaiting')}
