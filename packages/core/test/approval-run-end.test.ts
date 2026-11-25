@@ -22,6 +22,7 @@ import {
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import type { AdmissionConfig } from '../src/index.ts';
 import {
   applyEvent,
   Coordinator,
@@ -32,6 +33,7 @@ import {
   SPEC_HARD_CAPS,
   waitForProjection,
 } from '../src/index.ts';
+import { NO_PROGRESS_APPROVAL } from './no-progress-gate.ts';
 
 // When a run ends (succeeded, failed, cancelled), the runtime closes every approval still
 // waiting, whatever its kind (api-contract, "구현에서 정한 검토·승인 규칙").
@@ -102,7 +104,11 @@ function replays(store: InMemoryRunStore, runId: string, projection: RunProjecti
 
 function manual(
   definition: CorralDefinition = linearCorral(['writer']),
-  options: { cancelSettles?: boolean; start?: Partial<StartRunRequest> } = {},
+  options: {
+    cancelSettles?: boolean;
+    start?: Partial<StartRunRequest>;
+    admission?: AdmissionConfig;
+  } = {},
 ) {
   const store = new CommitStore();
   const clock = new FakeClock();
@@ -110,6 +116,7 @@ function manual(
   const inputs: AgentStartInput[] = [];
   const exits: ((result: AgentSettlement) => void)[] = [];
   const coordinator = new Coordinator({
+    ...(options.admission ? { admission: options.admission } : {}),
     store,
     clock,
     timers: clock,
@@ -445,7 +452,7 @@ describe('approvals still waiting when a run fails', () => {
 
 describe('approvals a run ends with', () => {
   it('closes a no-progress approval asked again after a criteria change, when the run is cancelled', async () => {
-    const s = manual(Definition.parse(researchTeam));
+    const s = manual(Definition.parse(researchTeam), { admission: NO_PROGRESS_APPROVAL });
     await drain();
     await writeAndSubmit(required(s.hosts[0]), 'notes');
     s.exits[0]?.({ outcome: 'succeeded' });
@@ -484,7 +491,7 @@ describe('approvals a run ends with', () => {
   });
 
   it('closes a child’s approval when its parent submits and the run succeeds', async () => {
-    const s = manual(collaborationCorral());
+    const s = manual(collaborationCorral(), { admission: NO_PROGRESS_APPROVAL });
     await drain();
     const { parent, child } = await spawnHelper(s);
     const childWait = await stall(s, child);
@@ -516,7 +523,7 @@ describe('approvals a run ends with', () => {
   });
 
   it('closes each approval once when a run cancelled while paused ends', async () => {
-    const s = manual();
+    const s = manual(linearCorral(['writer']), { admission: NO_PROGRESS_APPROVAL });
     await drain();
     const { promise } = await stall(s, required(s.hosts[0]));
     const [approval] = pendingOf(s.projection());
@@ -532,7 +539,10 @@ describe('approvals a run ends with', () => {
   });
 
   it('closes each approval once when a cancelled run cannot confirm its end and fails', async () => {
-    const s = manual(linearCorral(['writer']), { cancelSettles: false });
+    const s = manual(linearCorral(['writer']), {
+      cancelSettles: false,
+      admission: NO_PROGRESS_APPROVAL,
+    });
     await drain();
     const { promise } = await stall(s, required(s.hosts[0]));
     const [approval] = pendingOf(s.projection());
@@ -548,7 +558,10 @@ describe('approvals a run ends with', () => {
   });
 
   it('refuses an answer sent after the cancel request and before its confirmation', async () => {
-    const s = manual(linearCorral(['writer']), { cancelSettles: false });
+    const s = manual(linearCorral(['writer']), {
+      cancelSettles: false,
+      admission: NO_PROGRESS_APPROVAL,
+    });
     await drain();
     const { promise } = await stall(s, required(s.hosts[0]));
     const [approval] = pendingOf(s.projection());
@@ -569,7 +582,7 @@ describe('approvals a run ends with', () => {
   });
 
   it('closes one approval two executions wait on once', async () => {
-    const s = manual(collaborationCorral());
+    const s = manual(collaborationCorral(), { admission: NO_PROGRESS_APPROVAL });
     await drain();
     const { parent, child } = await spawnHelper(s);
     const childWait = await stall(s, child);
@@ -588,7 +601,7 @@ describe('approvals a run ends with', () => {
   });
 
   it('closes no approval when one execution is cancelled; the others keep waiting', async () => {
-    const s = manual(collaborationCorral());
+    const s = manual(collaborationCorral(), { admission: NO_PROGRESS_APPROVAL });
     await drain();
     const { parent, child, childId } = await spawnHelper(s);
     const childWait = await stall(s, child);
@@ -616,7 +629,7 @@ describe('approvals a run ends with', () => {
     const definition = linearCorral(['writer']);
     const node = required(definition.nodes.find((x) => x.type === 'agent'));
     Object.assign(node, { retry: { maxAttempts: 1 } });
-    const s = manual(definition);
+    const s = manual(definition, { admission: NO_PROGRESS_APPROVAL });
     await drain();
     const first = await stall(s, required(s.hosts[0]));
     const [approval] = pendingOf(s.projection());

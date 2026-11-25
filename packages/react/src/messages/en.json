@@ -1339,6 +1339,7 @@
     "request": "Request {no}",
     "withInstructions": "{count, plural, one {with your instruction} other {with # instructions}}",
     "withAdvice": "{count, plural, one {with advice} other {with # pieces of advice}}",
+    "corralNote": "Corral noted a repeated tool call",
     "effort": "Effort {level} · {provider}",
     "waiting": "Waiting for the model…",
     "emptyReply": "Response complete · no text",
@@ -1442,9 +1443,13 @@
     "adviceAdmitted": "<isolate>{advisor}</isolate> advised <isolate>{node}</isolate> ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}), {delivery, select, next_request {for its next request} interrupt {interrupting its response} preserve {kept on record} other {{delivery}}}",
     "adviceSuppressed": "Advice from <isolate>{advisor}</isolate> dropped ({severity, select, nit {Note} concern {Concern} blocker {Blocker} other {{severity}}}): {reason, select, noise {nothing to act on} duplicate {already given} over_budget {too many in one review} target_terminal {the target had finished} other {{reason}}}",
     "adviceDirectiveAccepted": "Advice for {node} was accepted",
+    "corralDirectiveAccepted": "Corral sent {node} a note about a repeated tool call",
     "adviceDirectiveAttached": "Advice was attached to a request",
     "adviceDirectiveDispatched": "Advice was sent",
-    "adviceDirectiveUndelivered": "Advice was not delivered ({status})"
+    "adviceDirectiveUndelivered": "Advice was not delivered ({status})",
+    "corralDirectiveAttached": "Corral's note was attached to a request",
+    "corralDirectiveDispatched": "Corral's note was sent",
+    "corralDirectiveUndelivered": "Corral's note was not delivered ({status})"
   },
   "RunReasons": {
     "run_requested": "The run was requested",

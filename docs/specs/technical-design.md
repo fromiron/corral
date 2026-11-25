@@ -150,7 +150,7 @@ crash 이후 pending effect를 자동 재발행하지 않는다. 실행 기록�
 
 | stage | 시점 | 기본 gate (등록 순서) | 거절 결과 |
 |---|---|---|---|
-| `model.request` | 모델 슬롯을 잡기 전 | `no_progress@1`(사용자 승인 요구) | `limit.reached` 후 승인 대기, 반려 시 실행 실패 |
+| `model.request` | 모델 슬롯을 잡기 전 | 없음(설정한 gate만) | `limit.reached` 후 승인 대기, 반려 시 실행 실패 |
 | `tool.pre_boundary` | 안전 경계 대기 전 | `question_open@1` | reply는 `observation.late` + `TARGET_TERMINAL`, 그 밖은 `tool.blocked` |
 | `tool.authorize` | 경계에서 제안 시 | `role_allowlist@1`, `limits@1` | `tool.blocked`, 필요 시 `limit.reached` |
 | `tool.execute` | 실행 직전 재검사 | `role_allowlist@1`, `limits@1` | 실행 거절 |
@@ -292,7 +292,7 @@ resident worker는 총 활성/대기 instance 12개로 제한한다. 동적 spaw
 
 ### 8.4 진행 없음
 
-새 메시지 자체는 진전이 아니다. 완료한 child task, 새 제출 산출물, 승인 해결, 검토 기준의 충족 변화를 관측한다. 동일 내용 hash의 연속 산출물은 경고다. 자동 판단이 잘못될 수 있으므로 no_progress는 강제 성공/실패보다 `awaiting_user`로 보낸다.
+새 메시지 자체는 진전이 아니다. 완료한 child task, 새 제출 산출물, 승인 해결, 검토 기준의 충족 변화를 관측한다. 동일 내용 hash의 연속 산출물은 경고다. 자동 판단이 잘못될 수 있으므로 no_progress는 실행을 멈추거나 끝내지 않고 경고로 남긴다([LLM 런타임](llm-runtime.md)).
 
 ## 9. Context·산출물·검토
 

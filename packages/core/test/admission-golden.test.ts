@@ -18,6 +18,7 @@ import {
 } from '@corral/testkit';
 import { describe, expect, it } from 'vitest';
 import {
+  type AdmissionConfig,
   applyEvent,
   Coordinator,
   canonicalJson,
@@ -31,6 +32,7 @@ import {
 import researchTeam from './fixtures/research-team.before-criteria-input.corral.json' with {
   type: 'json',
 };
+import { NO_PROGRESS_APPROVAL } from './no-progress-gate.ts';
 
 // Golden event streams for the admission refactor. They were recorded
 // from the Coordinator *before* its checks moved into gates, and the default gate set must
@@ -68,13 +70,14 @@ async function drain() {
   for (let i = 0; i < 300; i++) await Promise.resolve();
 }
 
-function runtime(agents: AgentAdapter, clock = new FakeClock()) {
+function runtime(agents: AgentAdapter, clock = new FakeClock(), admission?: AdmissionConfig) {
   const coordinator = new Coordinator({
     clock,
     timers: clock,
     ids: new SequentialIdFactory(),
     agents,
     policy: SPEC_HARD_CAPS,
+    ...(admission ? { admission } : {}),
   });
   return { coordinator, transport: new InProcessTransport(coordinator), clock };
 }
@@ -207,9 +210,10 @@ const SCENARIOS: Record<string, () => Promise<RunEvent[]>> = {
     return events;
   },
 
+  // A configured no-progress gate; it is no default (docs/specs/llm-runtime.md).
   async 'no-progress-approval'() {
     const { agents, hosts } = manualAgents();
-    const { transport } = runtime(agents);
+    const { transport } = runtime(agents, new FakeClock(), NO_PROGRESS_APPROVAL);
     const { runId, events, send } = await start(transport, linearCorral(['writer']));
     await drain();
     const host = hosts[0];

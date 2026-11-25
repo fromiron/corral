@@ -506,3 +506,41 @@ describe('the advisor’s rest in the timeline', () => {
     expect(said(worker)).toBe('Implementer: waiting for a reply');
   });
 });
+
+describe('a Corral note about a repeated tool call', () => {
+  // features/reins.md "지시의 출처": neither the person's instruction nor an advisor's advice.
+  const note = (): RunEvent => {
+    const base = find(
+      'directive.accepted',
+      (event) => (event.payload as { origin?: string }).origin === 'user',
+    );
+    const events = advisorRunEvents();
+    return {
+      ...base,
+      eventId: 'evt_corral_note',
+      runSeq: (events.at(-1)?.runSeq ?? 0) + 1,
+      payload: {
+        ...(base.payload as object),
+        directiveId: 'dir_corral_1',
+        text: 'You called read_artifact with the same arguments 3 times in a row.',
+        origin: 'corral',
+      },
+    } as RunEvent;
+  };
+
+  it('is said as Corral’s note, in both languages', () => {
+    expect(said(note())).toBe('Corral sent Implementer a note about a repeated tool call');
+    expect(said(note(), 'ko')).toBe('Implementer에 같은 도구 반복 알림을 보냄');
+  });
+
+  it('is a note in the transcript, never the person’s instruction', () => {
+    const events = [...advisorRunEvents(), note()];
+    const projection = advisorRunProjection(events);
+    const target = (note().payload as { targetExecutionId: string }).targetExecutionId;
+    const entries = buildTranscript(events, projection, {}, target);
+    const noted = entries.filter(
+      (entry) => 'directiveId' in entry && entry.directiveId === 'dir_corral_1',
+    );
+    expect(noted.map((entry) => entry.kind)).toEqual(['note']);
+  });
+});

@@ -28,7 +28,7 @@ import {
 } from '../src/index.ts';
 
 // Runs have no usage budget (docs/specs/product-contract.md §9). What stops a run is a Loop's
-// round cap, a stall, the no-progress warning, a failure path, a person's approval or cancel.
+// round cap, a stall, a failure path, a person's approval or cancel.
 
 it.each([1, 3, 6])(
   'calls and tokens do not stop a run with %i host model slots',
@@ -48,65 +48,24 @@ it.each([1, 3, 6])(
       definition: linearCorral(['writer']),
     });
     expect(result.runId).not.toBeNull();
-    // Six replies without progress pause it; nothing counts calls or tokens against a cap.
+    // Replies without progress leave a warning; nothing counts calls or tokens against a cap.
     const projection = await waitForProjection(
       new InProcessTransport(coordinator),
       result.runId!,
       (p) => ['succeeded', 'failed', 'awaiting_user'].includes(p.status),
     );
-    expect(projection.status).toBe('awaiting_user');
-    expect(Object.keys(projection.modelCalls)).toHaveLength(6);
+    expect(projection.status).toBe('succeeded');
+    expect(Object.keys(projection.modelCalls)).toHaveLength(105);
     const events = store.readEvents(result.runId!, 0);
     expect(
       events.filter((e) => e.type === 'extension.ui_notified' && e.payload.key === 'no_progress'),
     ).toHaveLength(1);
-    expect(
-      events.some((e) => e.type === 'limit.reached' && e.payload.limitKind === 'no_progress'),
-    ).toBe(true);
+    expect(events.some((e) => e.type === 'limit.reached')).toBe(false);
     expect(events.some((e) => e.type.startsWith('budget.'))).toBe(false);
     expect('budget' in projection).toBe(false);
     expect('usageLimits' in projection).toBe(false);
   },
 );
-
-it('a run continues past the no-progress pause only on approval', async () => {
-  const coordinator = new Coordinator({
-    clock: new FakeClock(),
-    ids: new SequentialIdFactory(),
-    agents: new ScriptedAgentAdapter({ turns: 8 }),
-  });
-  const transport = new InProcessTransport(coordinator);
-  const started = coordinator.startRun({
-    schemaVersion: '0.1',
-    commandId: 'start_no_progress',
-    mode: 'mock',
-    definition: linearCorral(['writer']),
-  });
-  const paused = await waitForProjection(transport, started.runId!, (p) =>
-    ['awaiting_user', 'succeeded', 'failed'].includes(p.status),
-  );
-  expect(paused.status).toBe('awaiting_user');
-  const approval = Object.values(paused.approvals).find((a) => a.status === 'pending');
-  if (!approval) throw new Error('no-progress approval not created');
-  const receipt = await coordinator.submit({
-    schemaVersion: '0.1',
-    commandId: 'continue_no_progress',
-    runId: started.runId!,
-    type: 'resolve_approval',
-    expectedControlRevision: paused.controlRevision,
-    payload: {
-      approvalId: approval.approvalId,
-      decision: 'approve',
-      subjectVersionId: approval.subjectVersionIds[0] ?? '',
-    },
-  });
-  expect(receipt.status).toBe('applied');
-  const final = await waitForProjection(transport, started.runId!, (p) =>
-    ['succeeded', 'failed'].includes(p.status),
-  );
-  expect(final.status).toBe('succeeded');
-  expect(Object.keys(final.modelCalls)).toHaveLength(8);
-});
 
 it('usage is recorded on each model call', async () => {
   const coordinator = new Coordinator({

@@ -2,7 +2,7 @@ import type { RunEvent } from '@corral/contracts';
 import { describe, expect, it } from 'vitest';
 import { applyEvent, emptyProjection } from '../src/index.ts';
 
-// A run limit that pauses for the person (the no-progress pause) names itself on the approval,
+// A run limit that pauses for the person (a configured no-progress gate) names itself on the approval,
 // from the `limit.reached` fact the Coordinator commits immediately before it
 // (chat-widgets-contract §6.3). Nothing is guessed from the approval's subject.
 

@@ -507,7 +507,7 @@ export const OutputFinalized = event(
 );
 
 // ── Reins ────────────────────────────────────────────────────────────────────
-export const DirectiveOrigin = z.enum(['user', 'advice']);
+export const DirectiveOrigin = z.enum(['user', 'advice', 'corral']);
 export type DirectiveOrigin = z.infer<typeof DirectiveOrigin>;
 export const DirectiveAccepted = event(
   'directive.accepted',

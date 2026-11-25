@@ -8,6 +8,7 @@ import type {
 import { collaborationCorral, FakeClock, linearCorral, SequentialIdFactory } from '@corral/testkit';
 import fc from 'fast-check';
 import { describe, expect, it, vi } from 'vitest';
+import type { AdmissionConfig } from '../src/index.ts';
 import {
   applyEvent,
   Coordinator,
@@ -18,12 +19,17 @@ import {
   usageTotals,
   waitForProjection,
 } from '../src/index.ts';
+import { NO_PROGRESS_APPROVAL } from './no-progress-gate.ts';
 
 async function drain() {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
 
-async function setup(definition = linearCorral(['writer']), cancelSettles = true) {
+async function setup(
+  definition = linearCorral(['writer']),
+  cancelSettles = true,
+  admission?: AdmissionConfig,
+) {
   const clock = new FakeClock();
   const hosts: AgentHost[] = [];
   const settles: ((result: AgentSettlement) => void)[] = [];
@@ -44,6 +50,7 @@ async function setup(definition = linearCorral(['writer']), cancelSettles = true
     },
   };
   const coordinator = new Coordinator({
+    ...(admission ? { admission } : {}),
     clock,
     timers: clock,
     ids: new SequentialIdFactory(),
@@ -243,8 +250,8 @@ describe('Coordinator model requests', () => {
     expect(s.events.some((e) => e.type === 'cancel.confirmed')).toBe(false);
   });
 
-  it('message-only turns reach user intervention before a seventh request', async () => {
-    const s = await setup();
+  it('with a configured no-progress gate, message-only turns reach user intervention before a seventh request', async () => {
+    const s = await setup(undefined, true, NO_PROGRESS_APPROVAL);
     const host = s.host();
     for (let turn = 0; turn < 6; turn++) {
       const permit = await host.prepareModelRequest();
@@ -316,7 +323,7 @@ describe('Coordinator model requests', () => {
       );
 
     it('closes as rejected by the runtime when the run is cancelled', async () => {
-      const s = await setup();
+      const s = await setup(undefined, true, NO_PROGRESS_APPROVAL);
       const { approval, waiting } = await stalled(s);
       s.send('cancel', { scope: { kind: 'run' }, reason: 'stop' }, 'cancel');
       await drain();
@@ -340,7 +347,7 @@ describe('Coordinator model requests', () => {
     });
 
     it('closes with the run when the run fails', async () => {
-      const s = await setup();
+      const s = await setup(undefined, true, NO_PROGRESS_APPROVAL);
       const { approval, waiting } = await stalled(s);
       s.settles[0]?.({ outcome: 'failed', error: 'worker crashed' });
       await drain();
@@ -400,7 +407,7 @@ describe('Coordinator model requests', () => {
   });
 
   it('concurrent workers wait through one no-progress intervention instead of failing each other', async () => {
-    const s = await setup(collaborationCorral());
+    const s = await setup(collaborationCorral(), true, NO_PROGRESS_APPROVAL);
     await s.host().invokeTool({
       name: 'spawn_subagents',
       args: { tasks: [{ targetNodeId: 'helper', brief: 'Part' }] },

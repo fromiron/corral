@@ -642,7 +642,16 @@ interface LiveRun {
   openMcpCalls?: Map<string, string>;
   /** The run's advisors (features/advisor.md); empty when the definition has none. */
   advisors: AdvisorRuntime;
+  repeatedCalls?: Map<string, RepeatedCalls>;
 }
+
+interface RepeatedCalls {
+  key: string;
+  count: number;
+  noted: Set<string>;
+}
+
+const REPEATED_CALL_NOTE_AT = 3;
 
 /** What the Coordinator keeps of its advisors while the run is open; never in the event log. */
 interface AdvisorRuntime {
@@ -4105,6 +4114,36 @@ export class Coordinator {
     } catch {
       return unavailable(commandId, runId, this.storageError);
     }
+  }
+
+  private noteRepeatedCall(run: LiveRun, executionId: string, proposal: ToolProposal) {
+    if (proposal.name === 'await_tasks') return;
+    const key = hashOf({ name: proposal.name, args: proposal.args });
+    run.repeatedCalls ??= new Map();
+    const previous = run.repeatedCalls.get(executionId);
+    const state: RepeatedCalls =
+      previous?.key === key
+        ? { ...previous, count: previous.count + 1 }
+        : { key, count: 1, noted: previous?.noted ?? new Set() };
+    run.repeatedCalls.set(executionId, state);
+    if (state.count < REPEATED_CALL_NOTE_AT || state.noted.has(key)) return;
+    state.noted.add(key);
+    const text = `You called ${proposal.name} with the same arguments ${state.count} times in a row. Do not call it with these arguments again; use its last result and try another way.`;
+    const directiveId = this.ids.next('directive');
+    this.commit(run, [
+      {
+        type: 'directive.accepted',
+        executionId,
+        payload: {
+          directiveId,
+          targetExecutionId: executionId,
+          text,
+          delivery: 'next_request',
+          origin: 'corral',
+        },
+      },
+    ]);
+    run.handles.get(executionId)?.pushDirective?.({ directiveId, text, origin: 'corral' });
   }
 
   private wake(run: LiveRun) {
@@ -9079,6 +9118,7 @@ export class Coordinator {
             ]
           : []),
       ]);
+      if (!automatic && !advisor) this.noteRepeatedCall(run, executionId, proposal);
       if (error) return { ok: false, toolCallId, error };
       authorized.set(toolCallId, {
         proposal,
@@ -10447,7 +10487,7 @@ export class Coordinator {
             ? `notice_${observation.modelCallId}`
             : null;
         const warning =
-          'No new file evidence, artifact or review progress in the last six model replies. Corral paused this run; continue or stop it.';
+          'No new file evidence, artifact or review progress in the last six model replies.';
         if (warningRef)
           drafts.push({
             type: 'extension.ui_notified',

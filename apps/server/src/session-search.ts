@@ -209,6 +209,7 @@ export class SessionSearch {
             body = event.payload.text;
             // An advisor's advice is model text, not the person's message.
             if (event.payload.origin === 'advice') kind = 'response';
+            if (event.payload.origin === 'corral') continue;
           } else continue;
           if (ref) {
             if (!canReadArtifactBody(projection, ref)) continue;

@@ -40,6 +40,7 @@ import {
   type ToolGateView,
   unreadAdvice,
 } from '../src/index.ts';
+import { NO_PROGRESS_APPROVAL } from './no-progress-gate.ts';
 
 // The advisor's execution and its advice (docs/specs/features/advisor.md). Scripted agents and
 // fake replies only.
@@ -978,8 +979,8 @@ describe('the advisor’s own record', () => {
     ).toBe(false);
   });
 
-  it('with an advisor, the watched role’s own replies still bring the pause', async () => {
-    const s = setup({ turns: { writer: 8 } });
+  it('with an advisor, the watched role’s own replies still bring a configured no-progress pause', async () => {
+    const s = setup({ turns: { writer: 8 }, admission: NO_PROGRESS_APPROVAL });
     await s.wait((p) => Object.values(p.approvals).some((a) => a.status === 'pending'));
     const p = s.projection();
     expect(Object.values(p.approvals).map((a) => a.limit)).toEqual([

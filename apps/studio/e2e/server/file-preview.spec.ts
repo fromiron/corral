@@ -276,13 +276,10 @@ test.describe('run-owned previews', () => {
       const question = page.getByRole('form', { name: 'Waiting for you' });
       await question.getByRole('textbox', { name: 'Your answer' }).fill('Keep it.');
       await question.getByRole('button', { name: 'Send answer' }).click();
-      // A no-progress pause may ask before the reply; continue through that visible gate rather
-      // than changing limits behind the UI.
       const answer = page.getByTestId('chat-result');
-      const gate = page.getByRole('button', { name: 'Continue with this version', exact: true });
-      await expect(answer.or(gate).first()).toBeVisible({ timeout: 30_000 });
-      if (await gate.isVisible()) await gate.click();
-      await expect(answer).toContainText('The live browser interaction was verified.');
+      await expect(answer).toContainText('The live browser interaction was verified.', {
+        timeout: 30_000,
+      });
       await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
       const ended = await page.request.get(
         `${corral.server.url}/api/v1/sessions/${sessionId}/previews`,

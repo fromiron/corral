@@ -97,7 +97,11 @@ export function callSnapshot(
   input: CallSnapshotInput | undefined,
   fixed: {
     /** An advice is named as one: it is not the person's instruction. */
-    directives: readonly { directiveId: string; text: string; origin?: 'user' | 'advice' }[];
+    directives: readonly {
+      directiveId: string;
+      text: string;
+      origin?: 'user' | 'advice' | 'corral';
+    }[];
     questions: readonly ParentQuestionMessage[];
     attachments?: readonly QuestionAttachment[];
   },
@@ -118,7 +122,7 @@ export function callSnapshot(
   for (const directive of fixed.directives)
     add({
       id: `directive:${directive.directiveId}`,
-      label: `${directive.origin === 'advice' ? 'advisor advice' : 'instruction'} ${directive.directiveId}`,
+      label: `${directive.origin === 'advice' ? 'advisor advice' : directive.origin === 'corral' ? 'Corral note' : 'instruction'} ${directive.directiveId}`,
       text: directive.text,
       required: true,
       group: null,

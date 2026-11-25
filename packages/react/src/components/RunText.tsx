@@ -15,7 +15,7 @@ const num = (value: unknown) => (typeof value === 'number' ? value : 0);
 /** What the record knows beyond the event: who made a directive, which executions advise. */
 export interface EventContext {
   /** The person or an advisor's advice. */
-  directiveOrigin?: (directiveId: string) => 'user' | 'advice' | undefined;
+  directiveOrigin?: (directiveId: string) => 'user' | 'advice' | 'corral' | undefined;
   /** Whether an execution is an advisor's. */
   advisor?: (executionId: string) => boolean;
 }
@@ -31,9 +31,14 @@ export function describeEvent(
   const actor = labelOf(str(p.executionId) || event.executionId);
   const of = (key: string, values: Values = {}): Described => ({ key, values });
   // An advice's directive is not the person's instruction (features/advisor.md).
-  const advice = directiveOrigin(str(p.directiveId)) === 'advice';
+  const origin = directiveOrigin(str(p.directiveId));
   const directive = (key: string, values: Values = {}) =>
-    of(advice ? `advice${key[0]?.toUpperCase()}${key.slice(1)}` : key, values);
+    of(
+      origin === 'advice' || origin === 'corral'
+        ? `${origin}${key[0]?.toUpperCase()}${key.slice(1)}`
+        : key,
+      values,
+    );
   switch (event.type) {
     case 'run.started':
       return of(p.mode === 'live' ? 'runStartedLive' : 'runStartedMock');
@@ -103,9 +108,16 @@ export function describeEvent(
         ? of('approvalClosed')
         : of('approvalResolved', { decision: str(p.decision) });
     case 'directive.accepted':
-      return of(p.origin === 'advice' ? 'adviceDirectiveAccepted' : 'directiveAccepted', {
-        node: labelOf(str(p.targetExecutionId)),
-      });
+      return of(
+        p.origin === 'corral'
+          ? 'corralDirectiveAccepted'
+          : p.origin === 'advice'
+            ? 'adviceDirectiveAccepted'
+            : 'directiveAccepted',
+        {
+          node: labelOf(str(p.targetExecutionId)),
+        },
+      );
     case 'directive.attached':
       return directive('directiveAttached');
     case 'directive.dispatched':

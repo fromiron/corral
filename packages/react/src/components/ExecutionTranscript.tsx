@@ -165,7 +165,9 @@ export function ExecutionTranscript({
 type ToolEntry = Extract<TranscriptEntry, { kind: 'tool' }>;
 
 const instructions = (entry: Extract<TranscriptEntry, { kind: 'request' }>) =>
-  entry.directives.filter((directive) => directive.origin !== 'advice').length;
+  entry.directives.filter((directive) => directive.origin === 'user').length;
+const advices = (entry: Extract<TranscriptEntry, { kind: 'request' }>) =>
+  entry.directives.filter((directive) => directive.origin === 'advice').length;
 
 /** Consecutive tool calls fold into one kit tool-call group. */
 function groupTools(entries: TranscriptEntry[]): (TranscriptEntry | ToolEntry[])[] {
@@ -313,6 +315,8 @@ function Entry({
     case 'advice':
       // An advisor's advice is not the person's message; its own line is drawn with advice.
       return null;
+    case 'note':
+      return <p className="text-caption text-muted-foreground">{t('corralNote')}</p>;
     case 'request':
       return (
         <p className="flex flex-wrap items-center gap-2 text-caption text-muted-foreground">
@@ -322,11 +326,7 @@ function Entry({
           {instructions(entry) > 0 ? (
             <Badge>{t('withInstructions', { count: instructions(entry) })}</Badge>
           ) : null}
-          {entry.directives.length > instructions(entry) ? (
-            <Badge>
-              {t('withAdvice', { count: entry.directives.length - instructions(entry) })}
-            </Badge>
-          ) : null}
+          {advices(entry) > 0 ? <Badge>{t('withAdvice', { count: advices(entry) })}</Badge> : null}
         </p>
       );
     case 'reply': {

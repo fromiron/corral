@@ -66,12 +66,13 @@ accepted → queued → attached_to_request → delivered
 |---|---|
 | `user` | 사람이 보낸 합류·끼어들기 |
 | `advice` | [Outrider](advisor.md)의 조언 가운데 접수된 것 |
+| `corral` | Corral이 보낸 반복 알림([LLM 런타임](../llm-runtime.md#conversation-agent-and-final-replies)) |
 
-출처와 무관하게 같은 전달 경로와 상태를 쓴다. `advice` 지시는 승인·취소·패치·권한을 바꾸지 못하고, 모델에 실릴 때 출처가 드러나게 감싼다.
+출처와 무관하게 같은 전달 경로와 상태를 쓴다. `advice`와 `corral` 지시는 승인·취소·패치·권한을 바꾸지 못하고, 모델에 실릴 때 출처가 드러나게 감싼다.
 
 ### 읽히지 못한 지시의 넘겨받기
 
-`queued`에서 `expired`가 된 `user` 지시 가운데 대상이 성공으로 끝난 것은 그 세션의 대기 요청으로 넘겨받는다. 지시의 기록은 `expired`로 남고 지우지 않는다. 대상이 실패한 경우, `not_delivered`, `delivery_unknown`, 그리고 `advice` 지시는 넘겨받지 않는다. 화면의 표시와 시작 규칙은 [대화 입력 흐름](composer-flow.md#대기-요청과-넘겨받기)을 따른다.
+`queued`에서 `expired`가 된 `user` 지시 가운데 대상이 성공으로 끝난 것은 그 세션의 대기 요청으로 넘겨받는다. 지시의 기록은 `expired`로 남고 지우지 않는다. 대상이 실패한 경우, `not_delivered`, `delivery_unknown`, 그리고 `advice`·`corral` 지시는 넘겨받지 않는다. 화면의 표시와 시작 규칙은 [대화 입력 흐름](composer-flow.md#대기-요청과-넘겨받기)을 따른다.
 
 ## 3. 명령 receipt와 적용
 

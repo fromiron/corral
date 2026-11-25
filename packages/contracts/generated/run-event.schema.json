@@ -7973,7 +7973,8 @@
               "type": "string",
               "enum": [
                 "user",
-                "advice"
+                "advice",
+                "corral"
               ]
             },
             "attachments": {

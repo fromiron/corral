@@ -8,6 +8,7 @@ import {
 } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import researchTeam from '../../../examples/research-team.corral.json' with { type: 'json' };
+import type { AdmissionConfig } from '../src/index.ts';
 import {
   applyEvent,
   Coordinator,
@@ -16,6 +17,7 @@ import {
   InProcessTransport,
   waitForProjection,
 } from '../src/index.ts';
+import { NO_PROGRESS_APPROVAL } from './no-progress-gate.ts';
 
 function required<T>(value: T | null | undefined): T {
   if (value === null || value === undefined) throw new Error('Missing test fixture');
@@ -26,12 +28,13 @@ async function drain() {
   for (let i = 0; i < 100; i++) await Promise.resolve();
 }
 
-function controlled(definition = linearCorral(['writer'])) {
+function controlled(definition = linearCorral(['writer']), admission?: AdmissionConfig) {
   const store = new InMemoryRunStore();
   const clock = new FakeClock();
   const hosts = new Map<string, AgentHost>();
   const exits = new Map<string, (result: AgentSettlement) => void>();
   const coordinator = new Coordinator({
+    ...(admission ? { admission } : {}),
     store,
     clock,
     timers: clock,
@@ -169,7 +172,7 @@ it('a request failure during pause is retained until resume', async () => {
 });
 
 it('no-progress approval is a safe pause boundary without approving it', async () => {
-  const s = controlled();
+  const s = controlled(undefined, NO_PROGRESS_APPROVAL);
   await drain();
   const host = required(s.hosts.get(required(s.projection().executionOrder[0])));
   for (let i = 0; i < 6; i++) await completeRequest(host);
@@ -247,7 +250,7 @@ it('recovery closes open questions and invalidates approvals exactly once', asyn
     sourceNodeId: 'research',
     targetNodeId: 'respond',
   });
-  const s = controlled(definition);
+  const s = controlled(definition, NO_PROGRESS_APPROVAL);
   await drain();
   const parent = required(s.hosts.get(required(s.projection().executionOrder[0])));
   void parent.invokeTool({ name: 'ask', args: { targetNodeId: 'respond', body: 'Evidence?' } });
@@ -262,6 +265,7 @@ it('recovery closes open questions and invalidates approvals exactly once', asyn
   let starts = 0;
   const recover = (suffix: string) =>
     new Coordinator({
+      admission: NO_PROGRESS_APPROVAL,
       clock: new FakeClock(),
       ids: new SequentialIdFactory(suffix),
       store: s.store,

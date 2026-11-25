@@ -31,6 +31,7 @@ export type TranscriptEntry =
       severity: AdviceSeverity | null;
       status: RunProjection['directives'][string]['status'] | 'accepted';
     }
+  | { kind: 'note'; seq: number; directiveId: string }
   | {
       kind: 'request';
       reasoning?: ReasoningResolution;
@@ -42,7 +43,7 @@ export type TranscriptEntry =
       /** The request can still record what it sent; see `requestOpen`. */
       open: boolean;
       /** What the request carried: the person's instructions and an advisor's advice. */
-      directives: { directiveId: string; text: string; origin: 'user' | 'advice' }[];
+      directives: { directiveId: string; text: string; origin: 'user' | 'advice' | 'corral' }[];
     }
   | {
       kind: 'reply';
@@ -135,9 +136,11 @@ export function buildTranscript(
           status: directive?.status ?? ('accepted' as const),
         };
         entries.push(
-          event.payload.origin === 'advice'
-            ? { kind: 'advice', ...common, severity: directive?.advice?.severity ?? null }
-            : { kind: 'instruction', ...common },
+          event.payload.origin === 'corral'
+            ? { kind: 'note', seq: event.runSeq, directiveId: event.payload.directiveId }
+            : event.payload.origin === 'advice'
+              ? { kind: 'advice', ...common, severity: directive?.advice?.severity ?? null }
+              : { kind: 'instruction', ...common },
         );
         break;
       }

@@ -23,7 +23,7 @@ import { utf8ToBytes } from '@noble/hashes/utils.js';
 import { ADVISOR_COLLABORATION_TOOLS, advisorMayUse } from '../advisor/tools.ts';
 import { canReadArtifactBody } from '../artifact-retention.ts';
 import type { InstallationPolicy } from '../config.ts';
-import { createsWaitCycle, NO_PROGRESS_TURNS, noProgressReached } from '../limits.ts';
+import { createsWaitCycle } from '../limits.ts';
 import type { RunProjection } from '../projection.ts';
 
 // Admission gates and observers.
@@ -239,20 +239,6 @@ export function notifyObservers(
 }
 
 // ── default gates: today's checks, unchanged ────────────────────────────────
-
-const noProgress: Gate<ModelGateView> = {
-  id: 'no_progress',
-  version: 1,
-  // every run waits for the person after six replies without progress.
-  check: ({ projection }) =>
-    noProgressReached(projection.progress)
-      ? {
-          kind: 'require_approval',
-          approval: 'user_action',
-          limit: { kind: 'no_progress', used: projection.progress.turns, max: NO_PROGRESS_TURNS },
-        }
-      : { kind: 'allow' },
-};
 
 /** A reply to a question that has already closed. */
 const questionOpen: Gate<ToolGateView> = {
@@ -824,7 +810,7 @@ const limits: Gate<ToolGateView> = {
 
 /** Today's checks as gates, in today's order. */
 export const DEFAULT_GATES: AdmissionGates = {
-  'model.request': [noProgress],
+  'model.request': [],
   'tool.pre_boundary': [questionOpen],
   'tool.authorize': [roleAllowlist, limits],
   'tool.execute': [roleAllowlist, limits],
