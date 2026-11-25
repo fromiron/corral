@@ -530,6 +530,25 @@ export function ApprovalPanel({
       </Button>
     </>
   );
+  const plain = approvals.filter(
+    (approval) =>
+      approval.kind !== 'route' &&
+      (!approval.tool ||
+        (approval.tool.purpose === 'tool'
+          ? toolPlans[approval.tool.bodyRef]
+          : checkPlans[approval.tool.bodyRef])),
+  );
+  const approveShown = async (approvalIds: readonly string[]) => {
+    setBusy(true);
+    for (const approvalId of approvalIds) {
+      const receipt = await session
+        .getState()
+        .resolveApproval(approvalId, 'approve')
+        .catch(() => null);
+      if (receipt?.error) setRefused(receipt);
+    }
+    setBusy(false);
+  };
   const decisionRow = (approval: (typeof approvals)[number]) =>
     approval.kind === 'route' ? (
       // A router that could not choose: each connected route is its own answer.
@@ -747,6 +766,19 @@ export function ApprovalPanel({
             ) : null}
           </AgentCard>
         ))}
+        {!readOnly && plain.length >= 2 ? (
+          <SizeScope size="compact">
+            <span className="flex justify-end">
+              <Button
+                variant="secondary"
+                disabled={busy}
+                onClick={() => void approveShown(plain.map((approval) => approval.approvalId))}
+              >
+                {t('approveShown', { count: plain.length })}
+              </Button>
+            </span>
+          </SizeScope>
+        ) : null}
       </section>
     </>
   );

@@ -1021,6 +1021,7 @@
     "preferenceAi": "AI proposed the values"
   },
   "Approvals": {
+    "approveShown": "Approve the {count} shown",
     "heading": "Waiting for you",
     "kind": {
       "final_output": "Final output",

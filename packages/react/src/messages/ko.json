@@ -1021,6 +1021,7 @@
     "preferenceAi": "AI가 값을 제안함"
   },
   "Approvals": {
+    "approveShown": "보이는 {count}개 승인",
     "heading": "응답 대기",
     "kind": {
       "final_output": "최종 출력",
