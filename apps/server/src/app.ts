@@ -59,6 +59,7 @@ import {
   SchemaVersion,
   SessionSearchRequest,
   StartFrom,
+  SubSessionRequest,
   TaskStart,
   TERMINAL_RUN_STATUSES,
   TeamAssistantRequest,
@@ -188,6 +189,7 @@ import { prepareBranchSession } from './session-branches.ts';
 import { createSessionQueue } from './session-queue.ts';
 import { SessionSearch } from './session-search.ts';
 import { boundedSseWriter, flushSseRecord, MAX_SSE_BUFFER_BYTES } from './sse.ts';
+import { openSubSession } from './sub-sessions.ts';
 import { providersVaultAdapter } from './vault/providers.ts';
 import { registerVaultRoutes } from './vault/routes.ts';
 import { VaultService } from './vault/service.ts';
@@ -3314,6 +3316,27 @@ async function createCorralServer(
       );
     },
   );
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/sub-sessions', async (request, reply) => {
+    const body = parse(SubSessionRequest, request, reply);
+    if (!body) return reply;
+    try {
+      const opened = await openSubSession(db, clock, files, request.params.sessionId, body);
+      return reply.code(opened.created ? 201 : 200).send({ sessionId: opened.sessionId });
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
+  app.get<SessionParams>('/api/v1/sessions/:sessionId/parent-merge', async (request, reply) => {
+    const session = await sessionOr404(reply, request.params.sessionId);
+    if (!session) return reply;
+    if (!session.parentSessionId)
+      return fail(reply, 'TARGET_NOT_FOUND', 'this session has no parent');
+    try {
+      return await files.parentMerge(session.sessionId, session.parentSessionId);
+    } catch (error) {
+      return workspaceFail(reply, error);
+    }
+  });
   app.get<SessionParams>('/api/v1/sessions/:sessionId/deletion', async (request, reply) => {
     const preview = previewSessionDeletion(db, request.params.sessionId);
     if (!preview) return fail(reply, 'TARGET_NOT_FOUND', 'no such session');

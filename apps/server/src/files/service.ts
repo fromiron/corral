@@ -6247,45 +6247,127 @@ export class WorkspaceService implements FileTools {
         'CAPABILITY_DENIED',
         'a branch requires a separate session in the same project',
       );
-    const checkpointId = `branch_${reference.checkpointId}`;
+    return this.seedCopy(sessionId, {
+      projectId: binding.project_id,
+      head: row.base_commit,
+      tree: reference.tree,
+      checkpointId: `branch_${reference.checkpointId}`,
+      label: 'Message branch baseline',
+    });
+  }
+
+  async branchFromCopy(parentId: string, sessionId: string, branchTitle: string): Promise<string> {
+    const checkpointId = `sub_${sessionId}`;
+    const session = this.db
+      .prepare('SELECT project_id FROM work_sessions WHERE id=?')
+      .get(sessionId) as { project_id: string } | undefined;
+    if (!session) throw new WorkspaceError('TARGET_NOT_FOUND', 'no such session');
+    const seed = {
+      projectId: session.project_id,
+      checkpointId,
+      label: 'Sub-session start',
+      branchTitle,
+    };
+    const started = this.worktree(sessionId)
+      ? this.checkpoints(sessionId).find((item) => item.checkpointId === checkpointId)
+      : undefined;
+    if (started?.tree) return this.seedCopy(sessionId, { ...seed, head: '', tree: started.tree });
+    const parent = this.worktree(parentId);
+    if (!parent)
+      throw new WorkspaceError('CAPABILITY_DENIED', 'the parent session has no working copy');
+    if (!existsSync(parent.worktree_path))
+      throw new WorkspaceError('TARGET_NOT_FOUND', 'the parent working copy is missing');
+    const start = await this.lease(parent.worktree_path, async () => ({
+      head: await gitText(parent.worktree_path, ['rev-parse', '--verify', 'HEAD^{commit}']),
+      tree: await this.snapshotTree(parent.worktree_path),
+    }));
+    return this.seedCopy(sessionId, { ...seed, ...start });
+  }
+
+  async parentMerge(sessionId: string, parentId: string) {
+    const own = this.worktree(sessionId);
+    const parent = this.worktree(parentId);
+    const parentPaddock = Boolean(parent && existsSync(parent.worktree_path));
+    const branch =
+      own && existsSync(own.worktree_path)
+        ? await gitText(own.worktree_path, ['symbolic-ref', '--short', '-q', 'HEAD']).catch(
+            () => null,
+          )
+        : null;
+    const commits =
+      branch && parent && parentPaddock
+        ? Number(
+            await gitText(parent.worktree_path, [
+              'rev-list',
+              '--count',
+              `HEAD..refs/heads/${branch}`,
+            ]),
+          )
+        : null;
+    return { parentSessionId: parentId, branch: branch || null, commits, parentPaddock };
+  }
+
+  private async seedCopy(
+    sessionId: string,
+    {
+      projectId,
+      head,
+      tree,
+      checkpointId,
+      label,
+      branchTitle,
+    }: {
+      projectId: string;
+      head: string;
+      tree: string;
+      checkpointId: string;
+      label: string;
+      branchTitle?: string;
+    },
+  ): Promise<string> {
     const finishBaseline = async () => {
       const target = this.worktree(sessionId)!;
       await this.lease(target.worktree_path, async () => {
-        if ((await this.snapshotTree(target.worktree_path)) !== reference.tree)
+        if ((await this.snapshotTree(target.worktree_path)) !== tree)
           throw new WorkspaceError(
             'REVISION_CONFLICT',
-            'the new branch was edited before its baseline was fixed',
+            'the new copy was edited before its baseline was fixed',
           );
-        await this.pin(target.worktree_path, `refs/corral/${sessionId}/base`, reference.tree);
+        await this.pin(target.worktree_path, `refs/corral/${sessionId}/base`, tree);
         this.db
           .prepare('UPDATE session_worktrees SET base_tree=? WHERE session_id=?')
-          .run(reference.tree, sessionId);
+          .run(tree, sessionId);
       });
-      return reference.tree;
+      return tree;
     };
     if (this.worktree(sessionId)) {
       const existing = this.checkpoints(sessionId).find(
         (item) => item.checkpointId === checkpointId,
       );
       if (
-        existing?.tree === reference.tree &&
+        existing?.tree === tree &&
         existing.state === 'ready' &&
-        (await this.currentTree(sessionId)) === reference.tree
+        (await this.currentTree(sessionId)) === tree
       )
         return finishBaseline();
       throw new WorkspaceError(
         'REVISION_CONFLICT',
-        'the branch working copy already exists or is incomplete',
+        'the new working copy already exists or is incomplete',
       );
     }
-    await this.createWorktree(sessionId, binding.project_id, row.base_commit);
+    await this.createWorktree(
+      sessionId,
+      projectId,
+      head,
+      branchTitle === undefined ? {} : { branchTitle },
+    );
     const copy = await this.checkpointTarget(sessionId, 'working_copy');
     const saved = await this.lease(copy.worktree_path, () =>
       this.checkpointAt(copy, {
         checkpointId,
-        label: 'Message branch baseline',
+        label,
         kind: 'manual',
-        tree: reference.tree,
+        tree,
         pinned: true,
       }),
     );
@@ -6297,7 +6379,7 @@ export class WorkspaceService implements FileTools {
       expectedTree: plan.expectedTree,
     });
     if (restored.state !== 'applied')
-      throw new WorkspaceError('REVISION_CONFLICT', 'the branch working copy is incomplete');
+      throw new WorkspaceError('REVISION_CONFLICT', 'the new working copy is incomplete');
     return finishBaseline();
   }
 

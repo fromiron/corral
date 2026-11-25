@@ -25,6 +25,7 @@ it('rebuilds only the derived search cache while retaining sessions and original
         criteria_json: '[]',
         auto_start: 1,
         advisor_json: null,
+        parent_session_id: null,
       })),
     );
     expect(db.prepare('SELECT * FROM session_search_v1').all()).toEqual([]);

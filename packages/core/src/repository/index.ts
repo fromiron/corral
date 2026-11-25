@@ -185,6 +185,7 @@ export interface WorkSession {
    * when off. Stores always return it; only sessions built by hand may lack it.
    */
   advisor?: SessionAdvisor | null;
+  parentSessionId?: string | null;
   entries: SessionEntry[];
   /** present only for a meeting; changed only by the meeting service. */
   meeting?: MeetingState;

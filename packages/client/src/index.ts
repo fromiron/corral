@@ -79,6 +79,7 @@ import type {
   SkillKey,
   SkillRollbackRequest,
   SkillUpdatePreview,
+  SubSessionRequest,
   TaskCandidates,
   TaskStart,
   TerminalAck,
@@ -2374,6 +2375,13 @@ export interface WorkspaceBindingView {
   missing: boolean;
 }
 
+export interface ParentMerge {
+  parentSessionId: string;
+  branch: string | null;
+  commits: number | null;
+  parentPaddock: boolean;
+}
+
 export interface WorktreeView {
   sessionId: string;
   bindingId: string;
@@ -2995,6 +3003,12 @@ export class WorkspacesApi {
     const s = encodeURIComponent(sessionId);
     return (await this.send<{ worktree: WorktreeView }>(`/sessions/${s}/worktree`, 'POST'))
       .worktree;
+  }
+  openSubSession(parentId: string, request: SubSessionRequest): Promise<{ sessionId: string }> {
+    return this.send(`/sessions/${encodeURIComponent(parentId)}/sub-sessions`, 'POST', request);
+  }
+  parentMerge(sessionId: string): Promise<ParentMerge> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/parent-merge`);
   }
   /** Removes the copy; with `generation`, only that copy, never one made again since. */
   removeWorktree(sessionId: string, generation?: number): Promise<null> {

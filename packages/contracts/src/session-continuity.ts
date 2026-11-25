@@ -56,6 +56,11 @@ export const MessageBranchRequest = MessageBranchFields.extend({
   expectedHash: ContentHash,
 }).refine(validPoint, 'choose a result or the original request');
 export type MessageBranchRequest = z.infer<typeof MessageBranchRequest>;
+export const SubSessionRequest = z.strictObject({
+  commandId: Identifier,
+  title: z.string().min(1).max(120),
+});
+export type SubSessionRequest = z.infer<typeof SubSessionRequest>;
 export const BranchedFrom = z.strictObject({
   runId: Identifier,
   artifactVersionId: Identifier.nullable(),

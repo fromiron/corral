@@ -116,13 +116,13 @@ export class SqliteCorralRepository implements CorralRepository, DefinitionSourc
       sessions: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
            updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json,
-           auto_start, advisor_json
+           auto_start, advisor_json, parent_session_id
            FROM work_sessions WHERE project_id = ?`,
       ),
       session: db.prepare(
         `SELECT id, project_id, corral_id, title, objective, pinned, revision, created_at,
            updated_at, archived_at, entries_json, auto_json, auto_title, meeting_json, criteria_json,
-           auto_start, advisor_json
+           auto_start, advisor_json, parent_session_id
            FROM work_sessions WHERE id = ?`,
       ),
       upsertSession: db.prepare(
@@ -467,6 +467,7 @@ interface SessionRow {
   archived_at: string | null;
   entries_json: string;
   auto_json: string | null;
+  parent_session_id: string | null;
   auto_title: number;
   meeting_json: string | null;
   criteria_json: string;
@@ -485,6 +486,7 @@ function sessionFromRow(row: SessionRow): WorkSession {
     criteria: readJson(row.criteria_json, row.id),
     pinned: row.pinned === 1,
     revision: row.revision,
+    parentSessionId: row.parent_session_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     archivedAt: row.archived_at,

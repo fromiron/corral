@@ -765,6 +765,25 @@ CREATE TABLE IF NOT EXISTS library_agents (
 CREATE INDEX IF NOT EXISTS library_agents_by_project ON library_agents (project_id, created_at, id);
 `,
   },
+  {
+    name: '0048_sub_sessions',
+    sql: `
+CREATE TABLE IF NOT EXISTS sub_session_commands (
+  command_id TEXT PRIMARY KEY,
+  request_hash TEXT NOT NULL,
+  parent_session_id TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+) STRICT;
+`,
+    data: (db) => {
+      const columns = db.prepare('PRAGMA table_info(work_sessions)').all() as { name: string }[];
+      if (!columns.some((column) => column.name === 'parent_session_id'))
+        db.exec('ALTER TABLE work_sessions ADD COLUMN parent_session_id TEXT');
+      db.exec(`CREATE INDEX IF NOT EXISTS work_sessions_by_parent
+  ON work_sessions (parent_session_id) WHERE parent_session_id IS NOT NULL`);
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

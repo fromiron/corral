@@ -52,6 +52,8 @@ export function createDemoWorkspaces(
     startTask: noTasks,
     taskOutput: noTasks,
     stopTask: noTasks,
+    openSubSession: noGit,
+    parentMerge: noGit,
     commandReport: noCheckpoints,
     commandOutput: noCheckpoints,
     stopCommand: noCheckpoints,
