@@ -31,12 +31,19 @@ export type HashlineEvidence = {
 };
 export class HashlineError extends Error {
   readonly code: 'SCHEMA_INVALID' | 'REVISION_CONFLICT' | 'CAPABILITY_DENIED' | 'LIMIT_REACHED';
-  constructor(code: HashlineError['code'], message: string) {
+  readonly unseen: { start: number; end: number } | undefined;
+  constructor(
+    code: HashlineError['code'],
+    message: string,
+    unseen?: { start: number; end: number },
+  ) {
     super(message);
     this.name = 'HashlineError';
     this.code = code;
+    this.unseen = unseen;
   }
 }
+export const UNSEEN_SHOWN = 40;
 const invalid = (message: string): never => {
   throw new HashlineError('SCHEMA_INVALID', message);
 };
@@ -341,11 +348,18 @@ export function applyHashline(input: {
   };
   const visible = (start: number, end = start) => {
     if (end < start) return;
-    if (!coalesce(evidence.ranges).some((range) => range.start <= start && range.end >= end))
-      throw new HashlineError(
-        'REVISION_CONFLICT',
-        'referenced lines were not displayed; read the complete range before editing',
-      );
+    const seen = coalesce(evidence.ranges);
+    if (seen.some((range) => range.start <= start && range.end >= end)) return;
+    const covered = (line: number) => seen.some((r) => r.start <= line && r.end >= line);
+    let first = start;
+    while (first <= end && covered(first)) first++;
+    let last = first;
+    while (last < end && last - first + 1 < UNSEEN_SHOWN && !covered(last + 1)) last++;
+    throw new HashlineError(
+      'REVISION_CONFLICT',
+      'referenced lines were not displayed; read the complete range before editing',
+      { start: first, end: last },
+    );
   };
   const one = ops[0];
   if (one?.kind === 'REM' || one?.kind === 'MV') {

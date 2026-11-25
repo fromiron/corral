@@ -6675,9 +6675,10 @@ export class WorkspaceService implements FileTools {
           const entries = this.hashlineReads.get(input.runId);
           const key = JSON.stringify([input.executionId, path]);
           let plan: ReturnType<typeof applyHashline>;
+          const bytes = await textBytes(root, path);
           try {
             plan = applyHashline({
-              bytes: await textBytes(root, path),
+              bytes,
               path,
               scope: this.hashlineScope(input),
               evidence: entries?.get(key),
@@ -6685,8 +6686,22 @@ export class WorkspaceService implements FileTools {
               ops: args.ops,
             });
           } catch (error) {
-            if (error instanceof HashlineError) throw new ToolRefusal(error.code, error.message);
-            throw error;
+            if (!(error instanceof HashlineError)) throw error;
+            if (!error.unseen) throw new ToolRefusal(error.code, error.message);
+            const shown = readHashline({
+              bytes,
+              path,
+              scope: this.hashlineScope(input),
+              offset: error.unseen.start,
+              limit: error.unseen.end - error.unseen.start + 1,
+            });
+            const known = this.hashlineReads.get(input.runId) ?? new Map();
+            known.set(key, mergeHashlineEvidence(known.get(key), shown.evidence));
+            this.hashlineReads.set(input.runId, known);
+            throw new ToolRefusal(
+              error.code,
+              `${error.message}. These lines are shown now and may be edited with the same tag:\n${shown.text}`,
+            );
           }
           const change =
             plan.kind === 'write'
