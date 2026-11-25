@@ -14,7 +14,7 @@
 | T1 | 끝낸 단계의 확인 닫기: S2 헤더 확인, 실제 모델 코딩 세션 한 번 | 끝(11-25). 결과는 §7 T1 | 없음 |
 | T2 | 생각 반복 감지, Outrider 검토 입력의 캐시 분할 | 끝(11-25). 생각 반복 감지만 들였다(§7 T2 결과) | 없음 |
 | T3 | 서브세션, Paddock 브랜치 | 끝(11-25). §7 T3 결과 | 없음 |
-| T4 | PR 흐름 | 진행 중(11-25). T4a 끝, T4b(감시·깨우기) 다음 | 없음 |
+| T4 | PR 흐름 | 진행 중(11-25). T4a 끝(실제 GitHub 미확인), T4b(감시·깨우기) 다음 | 실제 GitHub 확인 |
 | T5 | 화면 다듬기 | 대기 | T3(세션 목록을 한 번에 고친다) |
 | T6 | 나머지 기능 | 대기 | 항목마다 다름 |
 | T7 | 이벤트 로그 정리 | 대기 | 실행 기록 재열람 약속을 따로 정함 |
@@ -255,7 +255,10 @@
   - 대화상자: 초안은 세션의 최근 요청 모델(팀 도우미와 같은 단발 호출과 작업 기록), 없으면 커밋 목록. 닫으면 초안 요청을 멈춘다. push는 Git 보기의 push 명령(영수증)을 먼저 보내고, PR 열기는 대화상자를 연 때의 head로 보내며 같은 브랜치에 열린 PR이 있으면 그것을 돌려준다.
   - 샘플에서 옮긴 것: PR 내용 지침과 구획 제한(`apps/server/src/pull-requests/prompt.ts`, 템플릿과 대화 맥락 없이).
   - 확인한 것: 서비스·라우트·`gh` 실행기 테스트, 변경 탭 테스트, 가짜 `gh`와 로컬 bare 저장소로 브라우저에서 줄 → 대화상자 → push → PR 열림까지 걸었다(en). push 실패 시 PR을 열지 않고 실패를 보이는 것도 화면에서 봤다. 변경 탭을 쓰는 E2E server 스펙 5개 통과.
-  - 확인하지 않은 것: 실제 GitHub(`gh pr create --repo --head`가 작업 사본 밖에서 브랜치를 찾는지 포함), 모델이 쓴 초안, 한국어 화면, 데스크톱 앱.
+  - 리뷰 뒤 보강: 남은 GitHub 결과가 없으면 "PR 없음"이 아니라 GitHub를 읽는다. 버려진 GitHub 읽기(StrictMode, 빠른 Git 변경)는 다시 한다. 탭이 다시 보이면 GitHub를 읽는다. 세션의 모델은 보낸 요청의 경로 기록에서 찾는다. `gh`는 데이터 폴더의 `pull-requests`에서 돈다. 대화상자와 줄의 push는 작업 ID를 결과를 읽은 뒤에만 다시 쓴다. `origin/HEAD`와 `gh`가 없으면 올리지 않은 커밋이 있을 때만 `gh` 줄을 보인다.
+  - 확인한 것(추가): DeepSeek(deepseek-hive)로 초안 한 번, 1.7초에 `source: model`, Summary·Testing 형식, 로컬 경로 없음. 가짜 `gh`로 줄의 상태들(가장 긴 줄, 합쳐진 PR 뒤 새 PR, 맞추기, 로그인 안 됨, 읽기 실패, 서브세션, 한국어)을 화면에서 봤다.
+  - 확인하지 않은 것: 실제 GitHub(`gh pr create --repo --head`가 작업 사본 밖에서 브랜치를 찾는지, 실제 `statusCheckRollup` 모양, 로그인 안 됐을 때의 종료 코드 4), 데스크톱 앱. T4b의 평가는 이 모양을 읽으므로 실제 GitHub 확인을 먼저 한다.
+  - 디자인으로 남은 것: 가장 긴 줄(실패한 검사·변경 요청·충돌·올리기)은 패널 폭에서 두 줄이 되고, 줄 안의 버튼이 기본 높이(36px)다. 밀도 규칙상 작은 고정 크기는 DESIGN.md의 예외 목록에 넣어야 쓸 수 있다.
 - 확인한 `gh` 사실(2.105, 도움말): `gh pr list --head <브랜치> --state all --json …`, `gh pr create --repo --head --base --title --body-file`, `gh pr view <번호> --repo --json …`. JSON에 `statusCheckRollup`, `reviewDecision`, `mergeable`, `mergeStateStatus`, `comments`, `reviews`, `headRefOid`, `state`가 있다.
 
 **T5 화면 다듬기**
