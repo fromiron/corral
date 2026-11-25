@@ -53,11 +53,17 @@ import {
   settingsInteractionBlocked,
   useSettingsNavigation,
 } from './workbench/navigation.ts';
+import { deviceStorage, readSeenMemory } from './workbench/panel/memory.ts';
 import { usePreferences } from './workbench/preferences.ts';
 import { loadRunIdentities, runIdentity, runIdentityText } from './workbench/runIdentity.ts';
 import { SessionSearchDialog } from './workbench/SessionSearchDialog.tsx';
 import { useSettingsSectionLabel } from './workbench/SettingsNavigation.tsx';
-import { bySidebarOrder } from './workbench/sessionOrder.ts';
+
+const recentUse = (session: WorkSession) =>
+  Math.max(
+    Date.parse(session.updatedAt) || 0,
+    Date.parse(readSeenMemory(deviceStorage(), session.sessionId)?.openedAt ?? '') || 0,
+  );
 
 /**
  * Global shortcuts and window commands are held back while settings hold the screen or a modal
@@ -514,7 +520,9 @@ export function Palette({
     () =>
       sessions
         .filter((x) => !x.archivedAt && (searchAll || x.projectId === here))
-        .toSorted(bySidebarOrder)
+        .map((x) => ({ x, used: recentUse(x) }))
+        .toSorted((a, b) => b.used - a.used)
+        .map(({ x }) => x)
         .map(
           (x): AppCommand => ({
             id: `session:${x.sessionId}`,

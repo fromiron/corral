@@ -309,3 +309,24 @@ it.each([
     }
   },
 );
+
+// workbench.md 대화 찾기: with nothing typed, the conversations this device used last come first,
+// by when each was last entered here or last changed, whichever is later.
+it('lists the conversations used last on this device first while nothing is typed', async () => {
+  const { writeSeenMemory } = await import('./workbench/panel/memory.ts');
+  const at = (day: number) => `2026-11-${String(day).padStart(2, '0')}T00:00:00.000Z`;
+  const used = [
+    { ...session('a', 'alpha', 'Changed lately'), updatedAt: at(20) },
+    { ...session('b', 'alpha', 'Opened lately'), updatedAt: at(2), pinned: true },
+    { ...session('c', 'alpha', 'Quiet and pinned'), updatedAt: at(1), pinned: true },
+  ];
+  window.localStorage.clear();
+  writeSeenMemory(window.localStorage, 'b', { openedAt: at(24) });
+  writeSeenMemory(window.localStorage, 'a', { openedAt: at(3) });
+  const container = await mount({ mode: 'sessions', sessions: used });
+  const titles = options(container)
+    .map((text) => text?.split(' ')[0])
+    .filter((word) => word === 'Opened' || word === 'Changed' || word === 'Quiet');
+  expect(titles).toEqual(['Opened', 'Changed', 'Quiet']);
+  window.localStorage.clear();
+});
