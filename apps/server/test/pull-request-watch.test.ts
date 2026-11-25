@@ -208,7 +208,7 @@ it('raises reviews and comments for the person, never for the agent, and a scree
   expect(f.watcher.inboxItems([session])).toEqual([]);
 });
 
-it('ends the watch when the PR closes or the session is archived', async () => {
+it('ends the watch when the PR closes', async () => {
   const f = await setup();
   await f.watcher.onRunEnded(f.sessionId);
   f.set(pr({ state: 'MERGED' }));
@@ -218,4 +218,25 @@ it('ends the watch when the PR closes or the session is archived', async () => {
     .prepare('SELECT ended_at FROM pull_request_watches WHERE session_id=?')
     .get(f.sessionId) as { ended_at: string | null };
   expect(ended.ended_at).not.toBeNull();
+});
+
+it('ends the watch, and drops its unstarted wake, once the session is archived', async () => {
+  const f = await setup();
+  await f.watcher.onRunEnded(f.sessionId);
+  f.set(pr({ statusCheckRollup: failing('test') }));
+  await f.sweep();
+  expect((await f.wakes()).map((wake) => wake.state)).toEqual(['queued']);
+  const session = (await f.repository.getSession(f.sessionId)) as WorkSession;
+  const archived = await f.repository.updateSession(f.sessionId, {
+    archived: true,
+    expectedRevision: session.revision,
+  });
+  expect(archived.ok).toBe(true);
+  await f.sweep();
+  expect(f.timers).toHaveLength(0);
+  const ended = f.db
+    .prepare('SELECT ended_at FROM pull_request_watches WHERE session_id=?')
+    .get(f.sessionId) as { ended_at: string | null };
+  expect(ended.ended_at).not.toBeNull();
+  expect((await f.wakes()).map((wake) => wake.state)).toEqual(['dismissed']);
 });

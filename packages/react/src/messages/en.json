@@ -1150,7 +1150,8 @@
       "checks": "Open checks",
       "session": "Open conversation",
       "terminal": "Open terminal",
-      "advice": "Open advice"
+      "advice": "Open advice",
+      "changes": "Open pull request"
     },
     "summary": {
       "check_failed": "Check failed: {name}",

@@ -93,7 +93,7 @@
     "packages/contracts/src/workbench.ts": 2
   },
   "core": {
-    "packages/core/src/admission/index.ts": 54,
+    "packages/core/src/admission/index.ts": 53,
     "packages/core/src/advisor/channel.ts": 13,
     "packages/core/src/advisor/delta.ts": 50,
     "packages/core/src/advisor/guard.ts": 16,
@@ -520,7 +520,7 @@
     "apps/server/src/models/endpoints.ts": 24,
     "apps/server/src/models/import-routes.ts": 4,
     "apps/server/src/models/imports/parsers.ts": 2,
-    "apps/server/src/models/registry.ts": 176,
+    "apps/server/src/models/registry.ts": 175,
     "apps/server/src/models/request-runtime.ts": 2,
     "apps/server/src/models/team-assistant.ts": 20,
     "apps/server/src/preview/debug-browser.ts": 4,

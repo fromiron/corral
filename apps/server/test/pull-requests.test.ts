@@ -2,9 +2,16 @@ import { execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { openDatabase, SqliteCorralRepository } from '@corral/storage-sqlite';
+import { FakeClock } from '@corral/testkit';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { type GhResult, parseGitHubRemote } from '../src/pull-requests/gh.ts';
-import { type PullRequestDraftInput, PullRequestService } from '../src/pull-requests/service.ts';
+import {
+  type PullRequestDeps,
+  type PullRequestDraftInput,
+  PullRequestService,
+} from '../src/pull-requests/service.ts';
+import { PullRequestWatcher } from '../src/pull-requests/watch.ts';
 
 // docs/specs/features/pull-requests.md: the PR row's facts, the draft and the open command, with
 // real Git copies and an injected gh.
@@ -30,7 +37,14 @@ const git = (cwd: string, ...args: string[]) =>
 type Call = { args: string[]; body?: string };
 
 /** A repository whose origin is GitHub, a session copy on its own branch, and a fake gh. */
-function fixture(options: { remote?: string; originHead?: boolean } = {}) {
+function fixture(
+  options: {
+    remote?: string;
+    originHead?: boolean;
+    sessionId?: string;
+    observe?: PullRequestDeps['observe'];
+  } = {},
+) {
   const root = temp();
   git(root, 'init', '-q', '-b', 'main');
   writeFileSync(join(root, 'a.txt'), 'one\n');
@@ -85,7 +99,9 @@ function fixture(options: { remote?: string; originHead?: boolean } = {}) {
     ) => null as { title: string; body: string } | null,
   );
   const service = new PullRequestService({
-    copyOf: (sessionId) => (sessionId === 's1' ? { worktree: copy, root } : null),
+    copyOf: (sessionId) =>
+      sessionId === (options.sessionId ?? 's1') ? { worktree: copy, root } : null,
+    ...(options.observe ? { observe: options.observe } : {}),
     gh: async (args) => {
       const bodyFile = args.includes('--body-file') ? args[args.indexOf('--body-file') + 1] : null;
       calls.push({ args, ...(bodyFile ? { body: readFileSync(bodyFile, 'utf8') } : {}) });
@@ -426,4 +442,50 @@ describe('opening', () => {
     ).toMatchObject({ ok: false, code: 'REQUEST_OUTCOME_UNKNOWN' });
     expect(existsSync(f.dataDir) && readdirSync(f.dataDir)).toEqual([]);
   });
+});
+
+// features/pull-requests.md 감시: the server's own read ends the watch of an archived session.
+it('ends the watch of an archived session through a server read', async () => {
+  const db = openDatabase(':memory:');
+  const repository = new SqliteCorralRepository(db, {
+    clock: new FakeClock(),
+    newCorralId: () => 'corral_x',
+  });
+  const made = await repository.createSession({ projectId: 'default', title: 'Login fix' });
+  if (!made.ok) throw new Error(made.message);
+  const sessionId = made.session.sessionId;
+  const watching: { current: PullRequestWatcher | null } = { current: null };
+  const f = fixture({
+    sessionId,
+    observe: (id, context, prs, source) => watching.current?.observe(id, context, prs, source),
+  });
+  f.setPrs([pr('OPEN', 12, { headRefOid: f.commit('b.txt', 'one') })]);
+  const watcher = new PullRequestWatcher({
+    db,
+    now: () => '2026-11-25T00:00:00.000Z',
+    timers: { after: () => () => {}, turn: async () => {} },
+    getSession: (id) => repository.getSession(id),
+    addEntry: (id, entry) => repository.addSessionEntry(id, entry),
+    dismissEntry: async () => {},
+    read: async (id) => {
+      await f.service.view(id, true, 'server');
+    },
+    queued: () => {},
+  });
+  watching.current = watcher;
+  const endedAt = () =>
+    (
+      db.prepare('SELECT ended_at FROM pull_request_watches WHERE session_id=?').get(sessionId) as
+        | { ended_at: string | null }
+        | undefined
+    )?.ended_at;
+  await watcher.onRunEnded(sessionId);
+  expect(endedAt()).toBeNull();
+  const archived = await repository.updateSession(sessionId, {
+    archived: true,
+    expectedRevision: made.session.revision,
+  });
+  expect(archived.ok).toBe(true);
+  await watcher.onRunEnded(sessionId);
+  expect(endedAt()).not.toBeNull();
 });

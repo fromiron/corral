@@ -1150,7 +1150,8 @@
       "checks": "검사 열기",
       "session": "대화 열기",
       "terminal": "터미널 열기",
-      "advice": "조언 열기"
+      "advice": "조언 열기",
+      "changes": "PR 열기"
     },
     "summary": {
       "check_failed": "검사 실패: {name}",

@@ -22,7 +22,6 @@ export interface PullRequestDraftInput {
 export interface PullRequestDeps {
   copyOf(sessionId: string): { worktree: string; root: string } | null;
   gh: GhRunner;
-  /** The model's title and body, or null when no model could write them. */
   draft(
     input: PullRequestDraftInput,
     context: { signal: AbortSignal; operationId: string; sessionId: string },

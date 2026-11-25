@@ -13,7 +13,6 @@ export function parseGitHubRemote(url: string): { owner: string; name: string } 
 
 const OUTPUT_LIMIT = 4 * 1024 * 1024;
 
-/** The person's `gh`, run outside any repository with prompts off (features/pull-requests.md). */
 export function ghRunner(options: { cwd: string; timeoutMs?: number }): GhRunner {
   return (args) =>
     new Promise((resolve) => {

@@ -570,6 +570,9 @@ it('names a non-decision item fully on its row, and its detail is only the way t
     item('unreviewed', 's_z', 'Zero count', { detail: '0' }),
     item('uncertain_terminal', 's_t', 'Shell owner', { terminalId: 'pty_1' }),
     item('recipe_stopped', 's_r', 'Recipe review', { runId: 'run_r', detail: 'attempt_limit' }),
+    item('pull_request', 's_p', 'Login review', { detail: '#12 review' }),
+    item('pull_request', 's_q', 'Login wakes', { detail: '#7 wakes_stopped' }),
+    item('pull_request', 's_o', 'Login oddity', { detail: '#7 not_a_need' }),
     queuedC,
   ];
   const { container, rowButton, detail, click } = await mount({ inbox: async () => listed });
@@ -647,6 +650,14 @@ it('names a non-decision item fully on its row, and its detail is only the way t
     rest: [],
     links: [['Open run', '/sessions/s_r?panel=run&view=run&run=run_r']],
   });
+  // A PR item names its number and what changed, and opens the session's Changes with the PR row.
+  expect(await shown('Login review')).toMatchObject({
+    line: 'PR #12: review changed',
+    rest: [],
+    links: [['Open pull request', '/sessions/s_p?panel=changes']],
+  });
+  expect(await shown('Login wakes')).toMatchObject({ line: 'PR #7: automatic wakes stopped' });
+  expect(await shown('Login oddity')).toMatchObject({ line: 'Pull request' });
   // A queued request's body is never shown, in the row or the detail.
   expect(await shown('Write docs')).toMatchObject({
     line: 'Queued request',

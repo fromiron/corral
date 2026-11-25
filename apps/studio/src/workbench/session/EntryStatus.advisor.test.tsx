@@ -71,3 +71,43 @@ it("a refused request's meta line opens the advisor control", async () => {
   }
   expect(opened).toHaveBeenCalledTimes(1);
 });
+
+// features/pull-requests.md 깨우기: a request the PR watch queued says so once it has started.
+it('a started PR wake says the PR watch sent it', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const wake = (state: string) =>
+    ({
+      entryId: 'entry_2',
+      intent: 'queue',
+      text: 'Note from Corral, not from the person: an update on pull request #12',
+      state,
+      pullRequest: { number: 12, headSha: 'a'.repeat(40) },
+      createdAt: '2026-11-25T00:00:00Z',
+    }) as unknown as SessionEntry;
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const render = (entry: SessionEntry) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <EntryStatus
+            sessionId="session"
+            entry={entry}
+            steer={null}
+            canResend={false}
+            onResend={() => {}}
+            onPanel={() => {}}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await render(wake('started'));
+  expect(container.textContent).toContain(messages.Sessions.meta.pullRequestWake);
+  await render({ ...wake('started'), pullRequest: undefined } as unknown as SessionEntry);
+  expect(container.textContent).not.toContain(messages.Sessions.meta.pullRequestWake);
+});
