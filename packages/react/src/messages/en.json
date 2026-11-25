@@ -7006,5 +7006,44 @@
       "name": "Outrider",
       "meaning": "A role that rides alongside: it watches another role's work and advises it. It does not do the work itself."
     }
+  },
+  "PullRequests": {
+    "number": "PR #{number}",
+    "state": {
+      "open": "Open",
+      "merged": "Merged",
+      "closed": "Closed",
+      "draft": "Draft"
+    },
+    "checksFailed": "{count, plural, one {# check failing} other {# checks failing}}",
+    "checksPending": "Checks running",
+    "checksPassed": "Checks passed",
+    "review": {
+      "approved": "Approved",
+      "changes_requested": "Changes requested",
+      "review_required": "Review required"
+    },
+    "conflicting": "Conflicts",
+    "push": "Push",
+    "pushAndOpen": "Push and open PR",
+    "open": "Open PR",
+    "sync": "Sync in Git",
+    "viewOnGitHub": "View on GitHub",
+    "ghMissing": "Install the GitHub CLI (gh) to open pull requests here",
+    "ghSignedOut": "Run gh auth login in a terminal",
+    "readFailed": "Couldn't read the pull request",
+    "retry": "Retry",
+    "dialog": {
+      "title": "Pull request",
+      "into": "{head} → {base}",
+      "titleLabel": "Title",
+      "bodyLabel": "Description",
+      "drafting": "Writing a draft…",
+      "cancel": "Cancel",
+      "open": "Open PR",
+      "pushAndOpen": "Push and open PR",
+      "moved": "The branch moved since this opened. Close it and open again.",
+      "checking": "Checking whether the pull request opened…"
+    }
   }
 }

@@ -3020,12 +3020,17 @@ export class WorkspacesApi {
       `/sessions/${encodeURIComponent(sessionId)}/pull-request${remote ? '?remote=1' : ''}`,
     );
   }
-  pullRequestDraft(sessionId: string, request: PullRequestDraftRequest): Promise<PullRequestDraft> {
-    return this.send(
+  async pullRequestDraft(
+    sessionId: string,
+    request: PullRequestDraftRequest,
+    signal?: AbortSignal,
+  ): Promise<PullRequestDraft> {
+    const response = await this.http.request(
       `/sessions/${encodeURIComponent(sessionId)}/pull-request/draft`,
-      'POST',
-      request,
+      { method: 'POST', body: JSON.stringify(request), ...(signal ? { signal } : {}) },
     );
+    if (!response.ok) throw await apiError(response);
+    return (await response.json()) as PullRequestDraft;
   }
   openPullRequest(
     sessionId: string,

@@ -1,5 +1,5 @@
 import type { ParentMerge } from '@corral/client';
-import type { TextAttachment } from '@corral/contracts';
+import type { PullRequestView, TextAttachment } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import {
   Badge,
@@ -16,7 +16,7 @@ import {
 } from '@corral/react/design-kit';
 import { Ellipsis, GitBranch } from '@corral/react/icons';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Checks, ReviewContent } from '../pages/changes/ReviewPage.tsx';
 import { useBinding, WorkingCopyPanel } from '../pages/FilesViews.tsx';
@@ -24,6 +24,7 @@ import { useServices } from '../services.tsx';
 import { CheckpointPanel } from './CheckpointPanel.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { GitPanel } from './GitPanel.tsx';
+import { PullRequestRow } from './PullRequestRow.tsx';
 import type { ReviewSearch } from './panels/routes.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
@@ -36,6 +37,7 @@ interface CopyState {
   /** The copy's current branch; null while unknown, detached or without a copy. */
   branch: string | null;
   merge: ParentMerge | null;
+  pr: PullRequestView | null;
 }
 
 /** Whether the session has a working copy, the branch it is on, and its merge into a parent. */
@@ -44,10 +46,12 @@ function useCopy(
   parentSessionId: string | null,
   copyChanged: string | undefined,
   visible: boolean,
-): CopyState & { reread: () => void } {
+): CopyState & { reread: (remote?: boolean) => void } {
   const { workspaces } = useServices();
   const [read, setRead] = useState<({ sessionId: string } & CopyState) | null>(null);
   const [tick, setTick] = useState(0);
+  const [remoteTick, setRemoteTick] = useState(0);
+  const remoteSeen = useRef<string | null>(null);
   useEffect(() => {
     const changed = () => setTick((value) => value + 1);
     window.addEventListener(WORKSPACE_CHANGED, changed);
@@ -55,15 +59,20 @@ function useCopy(
   }, []);
   useEffect(() => {
     void tick;
-    void copyChanged;
     if (!workspaces || !visible) return;
+    const remoteKey = `${sessionId}|${copyChanged}|${remoteTick}`;
+    const remote = remoteSeen.current !== remoteKey;
+    remoteSeen.current = remoteKey;
     let live = true;
     void (async (): Promise<CopyState> => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
-      if (!copy || copy.missing) return { state: 'none', branch: null, merge: null };
-      const [status, merge] = await Promise.all([
+      if (!copy || copy.missing) return { state: 'none', branch: null, merge: null, pr: null };
+      const [status, merge, pr] = await Promise.all([
         workspaces.gitStatus({ kind: 'session', id: sessionId }).catch(() => null),
         parentSessionId ? workspaces.parentMerge(sessionId).catch(() => null) : null,
+        (async () => workspaces.pullRequest(sessionId, remote))().catch(
+          (): PullRequestView => ({ kind: 'read_failed' }),
+        ),
       ]);
       return {
         state: 'ready',
@@ -72,18 +81,20 @@ function useCopy(
             ? status.head.branch
             : null,
         merge,
+        pr,
       };
     })().then((copy) => live && setRead({ sessionId, ...copy }));
     return () => {
       live = false;
     };
-  }, [workspaces, sessionId, parentSessionId, tick, copyChanged, visible]);
+  }, [workspaces, sessionId, parentSessionId, tick, remoteTick, copyChanged, visible]);
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
-  const reread = () => setTick((value) => value + 1);
-  if (!workspaces) return { state: 'ready', branch: null, merge: null, reread };
+  const reread = (remote = false) =>
+    remote ? setRemoteTick((value) => value + 1) : setTick((value) => value + 1);
+  if (!workspaces) return { state: 'ready', branch: null, merge: null, pr: null, reread };
   return read?.sessionId === sessionId
-    ? { state: read.state, branch: read.branch, merge: read.merge, reread }
-    : { state: 'unknown', branch: null, merge: null, reread };
+    ? { state: read.state, branch: read.branch, merge: read.merge, pr: read.pr, reread }
+    : { state: 'unknown', branch: null, merge: null, pr: null, reread };
 }
 
 function ChecksView({
@@ -273,6 +284,12 @@ export function SessionChangesPanel({
           </Menu>
         </div>
       </div>
+      <PullRequestRow
+        sessionId={session.sessionId}
+        view={copy.pr}
+        onSync={() => choose('git')}
+        onChanged={() => copy.reread(true)}
+      />
       {missing ? (
         // The copy's setup: the shared empty view, laid out as the sub-views lay out theirs.
         <div className="shrink-0 p-3">
@@ -303,7 +320,7 @@ export function SessionChangesPanel({
             <GitPanel
               sessionId={session.sessionId}
               projectId={session.projectId}
-              onRefresh={copy.reread}
+              onRefresh={() => copy.reread(true)}
               {...(mergeBranch ? { mergeBranch } : {})}
             />
           </div>

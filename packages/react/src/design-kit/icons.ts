@@ -38,6 +38,7 @@ export {
   Gauge,
   GitBranch,
   GitMerge,
+  GitPullRequest,
   Globe,
   History,
   ImageIcon,

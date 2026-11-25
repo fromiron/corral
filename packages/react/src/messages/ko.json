@@ -7006,5 +7006,44 @@
       "name": "Outrider",
       "meaning": "곁에서 함께 달리는 역할입니다. 다른 역할의 일을 지켜보다가 조언하고, 일을 직접 하지는 않습니다."
     }
+  },
+  "PullRequests": {
+    "number": "PR #{number}",
+    "state": {
+      "open": "열림",
+      "merged": "합쳐짐",
+      "closed": "닫힘",
+      "draft": "초안"
+    },
+    "checksFailed": "검사 {count}개 실패",
+    "checksPending": "검사 중",
+    "checksPassed": "검사 통과",
+    "review": {
+      "approved": "승인",
+      "changes_requested": "변경 요청",
+      "review_required": "리뷰 필요"
+    },
+    "conflicting": "충돌",
+    "push": "push",
+    "pushAndOpen": "push하고 PR 열기",
+    "open": "PR 열기",
+    "sync": "Git 보기에서 맞추기",
+    "viewOnGitHub": "GitHub에서 보기",
+    "ghMissing": "GitHub CLI(gh)를 설치하면 여기서 PR을 엽니다",
+    "ghSignedOut": "터미널에서 gh auth login을 실행하세요",
+    "readFailed": "PR을 읽지 못했습니다",
+    "retry": "다시 시도",
+    "dialog": {
+      "title": "풀 리퀘스트",
+      "into": "{head} → {base}",
+      "titleLabel": "제목",
+      "bodyLabel": "설명",
+      "drafting": "초안 쓰는 중…",
+      "cancel": "취소",
+      "open": "PR 열기",
+      "pushAndOpen": "push하고 PR 열기",
+      "moved": "이 창을 연 뒤 브랜치가 바뀌었습니다. 닫고 다시 여세요.",
+      "checking": "PR이 열렸는지 확인하는 중…"
+    }
   }
 }

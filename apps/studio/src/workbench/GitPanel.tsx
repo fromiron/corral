@@ -45,7 +45,7 @@ type Pending = {
   advanced?: true;
   target?: WorkspaceTarget;
 };
-const MOVES_HEAD = new Set<Pending['kind']>(['commit', 'branch', 'switch', 'pull']);
+const MOVES_HEAD = new Set<Pending['kind']>(['commit', 'branch', 'switch', 'pull', 'push']);
 const pendingKey = (sessionId: string) => `corral:git-operation:v1:${sessionId}`;
 function readPending(sessionId: string): Pending | null {
   try {
