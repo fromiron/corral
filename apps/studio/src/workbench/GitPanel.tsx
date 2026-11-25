@@ -45,6 +45,7 @@ type Pending = {
   advanced?: true;
   target?: WorkspaceTarget;
 };
+const MOVES_HEAD = new Set<Pending['kind']>(['commit', 'branch', 'switch', 'pull']);
 const pendingKey = (sessionId: string) => `corral:git-operation:v1:${sessionId}`;
 function readPending(sessionId: string): Pending | null {
   try {
@@ -208,6 +209,7 @@ export function GitPanel({
         setFailure(null);
         if (pending.kind === 'commit') setMessage('');
         if (pending.kind === 'branch') setBranchName('');
+        if (MOVES_HEAD.has(pending.kind)) window.dispatchEvent(new Event(WORKSPACE_CHANGED));
       } else if (result?.kind === 'error') {
         if (result.reason === 'author_missing')
           setAuthor((value) => value ?? { name: '', email: '' });
@@ -422,7 +424,12 @@ export function GitPanel({
   const staged = status?.entries.filter((entry) => belongs(entry, 'staged')) ?? [];
   const [branchName, setBranchName] = useState('');
   // The pane re-reads Git after each change; the section stays as the person left it.
-  const [branchOpen, setBranchOpen] = useState(false);
+  const [branchOpen, setBranchOpen] = useState(Boolean(mergeBranch));
+  const [mergeSeen, setMergeSeen] = useState(mergeBranch);
+  if (mergeBranch !== mergeSeen) {
+    setMergeSeen(mergeBranch);
+    if (mergeBranch) setBranchOpen(true);
+  }
   const remote =
     status?.head.upstream?.name.split('/')[0] ??
     (status?.remotes?.includes('origin') ? 'origin' : status?.remotes?.[0]);

@@ -1184,7 +1184,7 @@ function SessionList({
                     runs={runs}
                     attention={inbox.items}
                     pinSlot={pinSlot}
-                    archivable={Boolean(row.session.archivedAt) || group.id === 'empty'}
+                    archivable={Boolean(row.session.archivedAt) || row.empty}
                     archiving={archiving !== null}
                     onArchive={(session) => void setArchived(session, !session.archivedAt)}
                     onDelete={
@@ -1442,7 +1442,7 @@ function SessionRow({
               runs={runs}
               attention={attention}
               pinSlot={pinSlot}
-              archivable={Boolean(child.session.archivedAt)}
+              archivable={Boolean(child.session.archivedAt) || child.empty}
               archiving={archiving}
               onArchive={onArchive}
               {...(onDelete ? { onDelete } : {})}

@@ -5232,9 +5232,7 @@
     "reconcile": "결과 확인 후 잠금 해제",
     "advancedRunning": "검토한 Git 변경을 적용하는 중…",
     "sequenceConflicted": "충돌로 통합이 멈췄습니다. 작업 파일을 편집하고 저장한 뒤 스테이징하고 계속하세요.",
-    "mergeIntoParent": "부모에 합치기",
-    "nothingToMerge": "합칠 커밋 없음",
-    "parentNoPaddock": "부모에 Paddock 없음"
+    "mergeIntoParent": "부모에 합치기"
   },
   "Checks": {
     "title": "검사",

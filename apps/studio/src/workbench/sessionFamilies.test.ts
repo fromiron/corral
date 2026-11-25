@@ -85,3 +85,14 @@ it('writes no state on a member whose own group is the family group', () => {
   expect(group?.rows[0]).toMatchObject({ state: null });
   expect(group?.rows[0]?.children[0]).toMatchObject({ state: null });
 });
+
+it('marks a row empty by its own session, whatever group the family sits in', async () => {
+  const sessions = [
+    session('parent', '2026-11-01'),
+    { ...session('child', '2026-11-02', 'parent'), entries: [] } as WorkSession,
+  ];
+  const [group] = sessionGroups(sessions, [run('parent', 'running')], []);
+  expect(group?.id).toBe('running');
+  expect(group?.rows[0]).toMatchObject({ empty: false });
+  expect(group?.rows[0]?.children[0]).toMatchObject({ empty: true, state: 'empty' });
+});

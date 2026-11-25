@@ -167,6 +167,7 @@ export interface SessionGroupRow {
   /** The review kinds a row of the review group names, in the Needs you order; else empty. */
   review: ReviewKind[];
   state: Presence['kind'] | null;
+  empty: boolean;
   children: SessionGroupRow[];
 }
 
@@ -246,6 +247,7 @@ export function sessionGroups(
       review: mine.review,
       state:
         mine.id === first || mine.id === 'attention' || mine.id === 'review' ? null : mine.kind,
+      empty: mine.id === 'empty',
       children: children.map(row),
     });
     const group = grouped.get(first) ?? { rows: [], count: 0 };

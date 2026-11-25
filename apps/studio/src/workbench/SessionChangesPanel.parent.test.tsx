@@ -117,14 +117,11 @@ it('opens the parent’s Git view with the sub-session branch picked', async () 
   });
 });
 
-it('turns off with its reason when there is nothing to merge or no parent Paddock', async () => {
+it('is absent while there is nothing to merge or the parent has no Paddock', async () => {
   const none = await render(sub, { ...ready, commits: 0 });
-  expect(
-    none.merger?.getAttribute('aria-disabled') ?? none.merger?.hasAttribute('disabled'),
-  ).toBeTruthy();
-  expect(none.container.textContent).toContain('Git.nothingToMerge');
+  expect(none.merger).toBeUndefined();
   const noPaddock = await render(sub, { ...ready, commits: null, parentPaddock: false });
-  expect(noPaddock.container.textContent).toContain('Git.parentNoPaddock');
+  expect(noPaddock.merger).toBeUndefined();
 });
 
 it('has no merge for a copy without a branch, and reads nothing for a main session', async () => {

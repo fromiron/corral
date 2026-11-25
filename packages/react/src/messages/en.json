@@ -5232,9 +5232,7 @@
     "reconcile": "Check outcome and release lock",
     "advancedRunning": "Applying the reviewed Git change…",
     "sequenceConflicted": "Integration paused at conflicts. Edit and save the working files, stage them, then continue.",
-    "mergeIntoParent": "Merge into parent",
-    "nothingToMerge": "Nothing to merge",
-    "parentNoPaddock": "The parent has no Paddock"
+    "mergeIntoParent": "Merge into parent"
   },
   "Checks": {
     "title": "Checks",

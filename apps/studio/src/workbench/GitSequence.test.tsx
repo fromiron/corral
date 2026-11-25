@@ -63,7 +63,7 @@ afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
   vi.unstubAllGlobals();
 });
-async function mount(initial = state, initialStatus = status) {
+async function mount(initial = state, initialStatus = status, preferredBranch?: string) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const owner = createStore<{ documents: Record<string, DocumentBuffer> }>(() => ({
     documents: {},
@@ -86,6 +86,7 @@ async function mount(initial = state, initialStatus = status) {
           author={{ name: 'Person', email: 'person@example.test' }}
           onRunHooksChange={onRunHooksChange}
           onCommand={onCommand}
+          {...(preferredBranch ? { preferredBranch } : {})}
         />,
       ),
     );
@@ -211,5 +212,19 @@ it('offers no sequence action for unsupported or external state and pins an owne
       sequenceIdentity: active.sequence?.identity,
       runHooks: true,
     }),
+  );
+});
+
+// features/sub-sessions.md: "부모에 합치기" arrives with the sub-session branch picked.
+it('starts on the branch the address names, even when it is not the first choice', async () => {
+  const three: GitSequenceState = {
+    ...state,
+    localBranches: [...state.localBranches, { name: 'corral/sub-abc123', oid: '9'.repeat(40) }],
+  };
+  const view = await mount(three, status, 'corral/sub-abc123');
+  await view.click('reviewMerge');
+  await view.click('confirm');
+  expect(view.onCommand).toHaveBeenCalledWith(
+    expect.objectContaining({ branch: 'corral/sub-abc123', branchCommit: '9'.repeat(40) }),
   );
 });

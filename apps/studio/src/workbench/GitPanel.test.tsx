@@ -82,7 +82,7 @@ function diff(input: {
     after: { kind: 'text', text: `${input.side} contents` },
   };
 }
-async function mount(workspaces: object, sessionId = 'session') {
+async function mount(workspaces: object, sessionId = 'session', mergeBranch?: string) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -113,7 +113,10 @@ async function mount(workspaces: object, sessionId = 'session') {
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
-  const render = (id: string) => root.render(<GitPanel sessionId={id} projectId="project" />);
+  const render = (id: string) =>
+    root.render(
+      <GitPanel sessionId={id} projectId="project" {...(mergeBranch ? { mergeBranch } : {})} />,
+    );
   cleanups.push(async () => {
     await act(async () => root.unmount());
     container.remove();
@@ -336,7 +339,12 @@ it('a trusted copy stages a row and commits the confirmed staged list with one r
     setter?.call(message, 'Explain the change');
     message?.dispatchEvent(new Event('input', { bubbles: true }));
   });
+  // A commit moves HEAD: the Changes header (branch, merge into the parent) reads the copy again.
+  const notices = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, notices);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, notices));
   await act(async () => control(f.container, 'Git.commit')[0]?.click());
+  expect(notices).toHaveBeenCalledTimes(1);
   expect(gitChange).toHaveBeenLastCalledWith('session', {
     kind: 'commit',
     operationId: expect.stringMatching(/^git_/),
@@ -533,4 +541,33 @@ it('a switch is not sent while this copy has an unsaved document', async () => {
   expect(gitChange).not.toHaveBeenCalled();
   expect(f.container.textContent).toContain('Git.unsavedDocuments');
   documents.value = {};
+});
+
+// features/sub-sessions.md: "부모에 합치기" opens the parent's Git view with the merge in sight.
+it('opens the branch section when the address names a branch to merge, and not otherwise', async () => {
+  sessionStorage.clear();
+  documents.value = {};
+  const workspaces = {
+    gitStatus: vi.fn(async () => branchStatus()),
+    gitChange: vi.fn(),
+    binding: vi.fn(async () => ({ trusted: true })),
+  };
+  const branchSection = (container: HTMLElement) =>
+    [...container.querySelectorAll('details')].find((details) =>
+      details.querySelector('summary')?.textContent?.includes('Git.branchActions'),
+    );
+  const plain = await mount(workspaces);
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(branchSection(plain.container)?.open).toBe(false);
+  const merging = await mount(workspaces, 'session', 'corral/sub-abc123');
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(branchSection(merging.container)?.open).toBe(true);
+  // The panel already on screen opens the section when the address names a branch later.
+  await act(async () =>
+    plain.root.render(
+      <GitPanel sessionId="session" projectId="project" mergeBranch="corral/sub-abc123" />,
+    ),
+  );
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(branchSection(plain.container)?.open).toBe(true);
 });

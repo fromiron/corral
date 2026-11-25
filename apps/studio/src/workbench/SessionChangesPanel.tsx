@@ -16,7 +16,7 @@ import {
 } from '@corral/react/design-kit';
 import { Ellipsis, GitBranch } from '@corral/react/icons';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { useEffect, useId, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Checks, ReviewContent } from '../pages/changes/ReviewPage.tsx';
 import { useBinding, WorkingCopyPanel } from '../pages/FilesViews.tsx';
@@ -39,7 +39,11 @@ interface CopyState {
 }
 
 /** Whether the session has a working copy, the branch it is on, and its merge into a parent. */
-function useCopy(sessionId: string, parentSessionId: string | null): CopyState {
+function useCopy(
+  sessionId: string,
+  parentSessionId: string | null,
+  copyChanged: string | undefined,
+): CopyState {
   const { workspaces } = useServices();
   const [read, setRead] = useState<({ sessionId: string } & CopyState) | null>(null);
   const [tick, setTick] = useState(0);
@@ -50,6 +54,7 @@ function useCopy(sessionId: string, parentSessionId: string | null): CopyState {
   }, []);
   useEffect(() => {
     void tick;
+    void copyChanged;
     if (!workspaces) return;
     let live = true;
     void (async (): Promise<CopyState> => {
@@ -71,7 +76,7 @@ function useCopy(sessionId: string, parentSessionId: string | null): CopyState {
     return () => {
       live = false;
     };
-  }, [workspaces, sessionId, parentSessionId, tick]);
+  }, [workspaces, sessionId, parentSessionId, tick, copyChanged]);
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
   if (!workspaces) return { state: 'ready', branch: null, merge: null };
   return read?.sessionId === sessionId
@@ -148,8 +153,7 @@ export function SessionChangesPanel({
   const tf = useTranslations('Files');
   const { workspaces } = useServices();
   const href = useRouterState({ select: (state) => state.location.href });
-  const copy = useCopy(session.sessionId, session.parentSessionId ?? null);
-  const mergeReason = useId();
+  const copy = useCopy(session.sessionId, session.parentSessionId ?? null, copyChanged);
   const reviewing = reviewSearch !== undefined;
   const [remembered, setRemembered] = useState<ReviewSearch | undefined>(reviewSearch);
   if (reviewSearch && reviewSearch !== remembered) setRemembered(reviewSearch);
@@ -212,30 +216,19 @@ export function SessionChangesPanel({
               </span>
             </span>
           ) : null}
-          {copy.merge?.branch ? (
-            copy.merge.parentPaddock && copy.merge.commits ? (
-              <Button
-                variant="secondary"
-                render={
-                  <Link
-                    to="/sessions/$sessionId"
-                    params={{ sessionId: copy.merge.parentSessionId }}
-                    search={{ panel: 'git', merge: copy.merge.branch }}
-                  />
-                }
-              >
-                {tg('mergeIntoParent')}
-              </Button>
-            ) : (
-              <>
-                <span id={mergeReason} className="text-caption text-muted-foreground">
-                  {tg(copy.merge.parentPaddock ? 'nothingToMerge' : 'parentNoPaddock')}
-                </span>
-                <Button variant="secondary" disabled aria-describedby={mergeReason}>
-                  {tg('mergeIntoParent')}
-                </Button>
-              </>
-            )
+          {copy.merge?.branch && copy.merge.parentPaddock && copy.merge.commits ? (
+            <Button
+              variant="secondary"
+              render={
+                <Link
+                  to="/sessions/$sessionId"
+                  params={{ sessionId: copy.merge.parentSessionId }}
+                  search={{ panel: 'git', merge: copy.merge.branch }}
+                />
+              }
+            >
+              {tg('mergeIntoParent')}
+            </Button>
           ) : null}
           <Menu>
             <Tooltip content={tr('more')}>
