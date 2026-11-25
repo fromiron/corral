@@ -165,6 +165,7 @@ import {
 } from './context-checkpoint.ts';
 import { definitionHash } from './definition-hash.ts';
 import { adaptDesignReview } from './design-review.ts';
+import { withEditingMode } from './editing-mode.ts';
 import {
   callSnapshot,
   type EffortRoutingDeps,
@@ -6056,7 +6057,7 @@ export class Coordinator {
       taskId,
       nodeId: spec.nodeId,
       attemptNo,
-      role,
+      role: withEditingMode(role, model),
       ...(isWorkAgent(node) && node.stepInstruction
         ? { stepInstruction: node.stepInstruction }
         : {}),

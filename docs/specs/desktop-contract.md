@@ -92,7 +92,9 @@ flowchart LR
 
 ### ABS-03 — Hashline
 
-`edit`의 기존 Pi schema와 동작을 보존한다. `edit_hashline`과 그에 맞는 읽기 출력 형식을 별도 버전으로 제공한다. 동일 역할에 두 편집 문법을 혼합 노출하지 않고, 기존 자료는 Pi 방식, 새 역할은 선택한 편집 방식을 Run 시작에 고정한다.
+`edit`의 기존 Pi schema와 동작을 보존한다. `edit_hashline`과 그에 맞는 읽기 출력 형식을 별도 버전으로 제공한다. 동일 역할에 두 편집 문법을 혼합 노출하지 않고, 편집 방식은 Run 시작에 고정한다.
+
+역할이 편집 방식을 고르지 않았으면 그 실행 단위의 모델 계열이 정한다: 기본은 Hashline이고, Hashline을 잘 다루지 못하는 계열(Kimi, MiMo, MiniMax, DeepSeek, StepFun, Codex Spark, GLM 5.3 Flash, Qwen 3.8)은 Pi 방식이다. 모델 이름이 없으면(시뮬레이션) Pi 방식이다. 역할에 고른 편집 방식이 있으면 늘 그것이 이긴다. 정한 방식은 실행 단위의 시작 입력에 실려 어댑터가 내놓는 도구와 Coordinator의 도구 입장 검사가 같은 값을 본다. 이 표는 샘플 하네스의 것을 그대로 옮겼고, Corral에서 실제로 돌려 본 계열은 진행 계획에 적는다.
 
 - 파일 태그, 줄 번호, PUT/CUT/REM/MV 의미를 정리한 계약부터 만든다. Corral용 순수 TypeScript 변환기를 우선 제안한다. 엔진 선택 때문에 Rust host 전체를 들이지 않는다.
 - `ReadEvidence`는 host/run/execution/attempt/path·전체 bytes hash·읽은 줄 구간·encoding/EOL에 결합한다. 다른 실행의 읽기나 잘린 줄은 편집 권한이 아니다.

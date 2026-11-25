@@ -390,6 +390,9 @@ describe('file tools switch', () => {
     const shellOff = updateNode(filesOff, added.nodeId, { runCommand: false, editingMode: 'pi' });
     expect(shellOff.definition.roles[0]?.allowedWorkTools).toEqual(['write_artifact']);
     expect(shellOff.definition.roles[0]?.editingMode).toBe('pi');
+    // Choosing "by model" again clears the choice: the run's model family decides.
+    const byModel = updateNode(shellOff, added.nodeId, { editingMode: null });
+    expect(byModel.definition.roles[0]).not.toHaveProperty('editingMode');
   });
   it('persists image permission and profile independently of file and shell access', () => {
     const added = addNode(emptyDraft(), 'agent');

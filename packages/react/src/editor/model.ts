@@ -129,7 +129,7 @@ export interface NodeChange {
   previewApp?: boolean;
   previewAction?: boolean;
   imageProfile?: string | null;
-  editingMode?: AgentRole['editingMode'];
+  editingMode?: AgentRole['editingMode'] | null;
   teamPlanOwner?: boolean;
 }
 
@@ -527,7 +527,7 @@ export function updateNode(draft: EditorDraft, nodeId: string, change: NodeChang
     if (change.modelProfile) roleChange.modelProfile = change.modelProfile;
     if (change.harness !== undefined) roleChange.harness = change.harness ?? undefined;
     if (change.reasoning !== undefined) roleChange.reasoning = change.reasoning ?? undefined;
-    if (change.editingMode) roleChange.editingMode = change.editingMode;
+    if (change.editingMode !== undefined) roleChange.editingMode = change.editingMode ?? undefined;
     if (change.skills) {
       const seen = new Set<string>();
       roleChange.skills = change.skills.filter(({ resourceHash, entry }) => {

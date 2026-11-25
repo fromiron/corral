@@ -11,8 +11,11 @@ import { liveRuntime } from './harness.ts';
 
 it('a Markdown Edit callable exposes real Hashline schemas when delegated through Pi', async () => {
   const parent = linearCorral(['writer']);
-  for (const role of parent.roles)
+  for (const role of parent.roles) {
     role.allowedWorkTools = ['write_artifact', 'read_file', 'write_file'];
+    // Chosen, so the model family does not decide it: only the imported child edits by Hashline.
+    role.editingMode = 'pi';
+  }
   const imported = importMarkdownAgent({
     draft: { definition: parent },
     candidate: parseMarkdownAgent(
