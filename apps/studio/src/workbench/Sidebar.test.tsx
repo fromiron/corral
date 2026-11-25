@@ -789,6 +789,41 @@ describe('session row presence', () => {
     expect(label(container)).toEqual([messages.Presence.state.cancelled]);
   });
 
+  // presence.md: a row with nothing to care for recedes once its last run was seen here; one
+  // ended but not seen stays and says Unread to a screen reader.
+  it('recedes a row with nothing to care for once its last run was seen here, never a failed or running one', async () => {
+    const { writeSeenMemory } = await import('./panel/memory.ts');
+    window.localStorage.clear();
+    const ended = (sessionId: string, runId: string, status: RunSummary['status']) => ({
+      ...run(sessionId, status, first),
+      runId,
+    });
+    writeSeenMemory(window.localStorage, 'session_0', { seenRun: 'run_0' });
+    writeSeenMemory(window.localStorage, 'session_2', { seenRun: 'run_2' });
+    const container = await mount({
+      runs: [
+        ended('session_0', 'run_0', 'succeeded'),
+        ended('session_1', 'run_1', 'succeeded'),
+        ended('session_2', 'run_2', 'failed'),
+        ended('session_3', 'run_3', 'running'),
+      ],
+    });
+    const receded = (id: string) =>
+      row(container, id)
+        ?.querySelector('[data-session-line="title"]')
+        ?.classList.contains('text-muted-foreground');
+    const spokenName = (id: string) => row(container, id)?.querySelector('a')?.textContent ?? '';
+    expect(receded('session_0')).toBe(true);
+    expect(spokenName('session_0')).not.toContain('Unread');
+    expect(receded('session_1')).toBe(false);
+    expect(spokenName('session_1')).toContain(messages.Sessions.unread);
+    expect(receded('session_2')).toBe(false);
+    expect(receded('session_3')).toBe(false);
+    // No run at all: nothing to care for.
+    expect(receded('session_4')).toBe(true);
+    window.localStorage.clear();
+  });
+
   it('shows a run that ended long before the sidebar opened as Completed at once', async () => {
     const container = await mount({ runs: [run('session_0', 'succeeded', first)] });
     expect(group(container)).toBe('completed');

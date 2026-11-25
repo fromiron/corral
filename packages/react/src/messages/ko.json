@@ -2324,7 +2324,8 @@
     },
     "openSubSession": "서브세션 열기",
     "subSessionNeedsPaddock": "Paddock 필요",
-    "subSession": "서브세션"
+    "subSession": "서브세션",
+    "unread": "읽지 않음"
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",

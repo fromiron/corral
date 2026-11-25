@@ -1,6 +1,12 @@
 import type { InboxItemView } from '@corral/client';
 import type { CorralSummary, ProjectSummary, RunSummary, WorkSession } from '@corral/core';
-import { CorralSymbol, CorralWordmark, sessionGroupOf, usePresenceWord } from '@corral/react';
+import {
+  CorralSymbol,
+  CorralWordmark,
+  type Presence,
+  sessionGroupOf,
+  usePresenceWord,
+} from '@corral/react';
 import {
   Button,
   cn,
@@ -79,6 +85,7 @@ import {
 } from './notifications.ts';
 import { PresenceMark } from './PresenceMark.tsx';
 import { navigateFromOutside } from './panel/historyActions.ts';
+import { deviceStorage, readSeenMemory } from './panel/memory.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
@@ -98,6 +105,8 @@ import { familyOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
 import { useSettledPresence } from './useSettledPresence.ts';
+
+const CALM = new Set<Presence['kind']>(['succeeded', 'cancelled', 'ready', 'empty']);
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces, terminals } = useServices();
@@ -852,6 +861,12 @@ export const Sidebar = memo(function Sidebar({
                           session.sessionId,
                           model.terminalAttention,
                         );
+                        const calm =
+                          !active && !terminal && Boolean(presence && CALM.has(presence.kind));
+                        const lastRun = livePresence.get(session.sessionId)?.runId ?? null;
+                        const seen =
+                          lastRun === null ||
+                          readSeenMemory(deviceStorage(), session.sessionId)?.seenRun === lastRun;
                         return (
                           <SidebarMenuSubItem
                             key={item.key}
@@ -896,7 +911,11 @@ export const Sidebar = memo(function Sidebar({
                                 <span
                                   data-session-line="title"
                                   data-sidebar-guide-line=""
-                                  className={cn(size.type.body, 'truncate')}
+                                  className={cn(
+                                    size.type.body,
+                                    'truncate',
+                                    calm && seen && 'text-muted-foreground',
+                                  )}
                                   style={{
                                     fontVariationSettings: active
                                       ? fontWeights.semibold
@@ -921,6 +940,9 @@ export const Sidebar = memo(function Sidebar({
                                   {terminal ? `${ts('terminalNeedsAttention')} · ` : null}
                                   {ago(session.updatedAt)}
                                 </span>
+                                {calm && !seen ? (
+                                  <span className="sr-only">{ts('unread')}</span>
+                                ) : null}
                               </span>
                               {session.pinned ? (
                                 <Pin size={12} className="mt-1 shrink-0 text-muted-foreground" />

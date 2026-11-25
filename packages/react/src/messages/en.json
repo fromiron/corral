@@ -2324,7 +2324,8 @@
     },
     "openSubSession": "Open sub-session",
     "subSessionNeedsPaddock": "Needs a Paddock",
-    "subSession": "Sub-session"
+    "subSession": "Sub-session",
+    "unread": "Unread"
   },
   "Files": {
     "folderHeading": "Project source folder",
