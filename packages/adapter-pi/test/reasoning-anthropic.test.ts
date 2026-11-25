@@ -107,7 +107,7 @@ it.each(['claude-sonnet-4-6', 'claude-opus-5-5'])(
   },
 );
 
-it('Gemini offers Pi’s own levels while Pi refuses a per-request HTTP fence', async () => {
+it('Gemini offers Pi’s own levels and sends through the fetch it is given', async () => {
   const model = builtinModels().getModel('google', 'gemini-3.8-flash')!;
   if (!hasApi(model, 'google-generative-ai')) throw new Error('wrong fixture API');
   let requests = 0;
@@ -122,8 +122,9 @@ it('Gemini offers Pi’s own levels while Pi refuses a per-request HTTP fence', 
       },
     },
   ).result();
-  expect(result.errorMessage).toContain('Custom fetch is not supported');
-  expect(requests).toBe(0);
+  // Pi 1.6.0 hands a supplied fetch to the Google SDK; earlier it refused one before sending.
+  expect(result.errorMessage).toContain('network forbidden');
+  expect(requests).toBe(1);
   // features/model-connections.md: every built-in model with reasoning gets Pi's levels.
   expect(modelReasoningCapabilities(model)).toMatchObject({
     levels: getSupportedThinkingLevels(model),

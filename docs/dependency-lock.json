@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-18T12:47:57.380Z",
+  "generatedAt": "2026-11-25T03:05:31.915Z",
   "node": "v26.13.1",
   "packageManager": "pnpm@10.34.9",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -65,10 +65,10 @@
     },
     {
       "name": "@earendil-works/pi-agent-core",
-      "version": "1.5.2",
+      "version": "1.6.0",
       "license": "MIT",
-      "integrity": "sha512-ie5mejS7mGfXt//9As7i3LfxVXdktZvF1JP4EQsUXTp4mU437h23MNGx7wXZ5VYs3YiG/Qnj3e7OZ2HC069OMw==",
-      "published": "2026-11-10T12:20:34.817Z",
+      "integrity": "sha512-IU/x+2XtE4KIdIkEndZssdLPbIUR38Btj+Q7vjIIXIK7GSamLtDH5jOw/dzBWAvWFAgZ2dslF5sPc6GcGOnS+w==",
+      "published": "2026-11-20T11:03:02.118Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -83,10 +83,10 @@
     },
     {
       "name": "@earendil-works/pi-ai",
-      "version": "1.5.2",
+      "version": "1.6.0",
       "license": "MIT",
-      "integrity": "sha512-2tWPSnV3qzfiDIY3aWluBag3vC++Vs+VsXt/UquSU5onPMohPih72FUhIhaqmDdMYubOgB3Byl9uF4Vk40JLvQ==",
-      "published": "2026-11-10T12:20:46.480Z",
+      "integrity": "sha512-9hL+eygFDEiFp//cydeUfmFsKmEqpmvsNPb10Y1W8+m5K9O+sx1hMStfu6nukrBD5sl6mP4RykCYBBNEgsVLfw==",
+      "published": "2026-11-20T11:05:00.915Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -104,10 +104,10 @@
     },
     {
       "name": "@earendil-works/pi-coding-agent",
-      "version": "1.5.2",
+      "version": "1.6.0",
       "license": "MIT",
-      "integrity": "sha512-mUWI04rqF1Vd/m1q+Ps1XeWsTXEVvRUnsmRa83I3Dzua0Tx5bYS93imeqtIfrXf7PkkaR6ERz+AuQhIJlom5yA==",
-      "published": "2026-11-10T12:24:55.226Z",
+      "integrity": "sha512-zX1BVEsshx7A2MRuQ6jfr3RJGWw4Wn+vLq5ZfmlvS1RskhRmByaSZVXH/zcwRrWHO7qPgs98pNCbPOEti/t0fQ==",
+      "published": "2026-11-20T11:09:15.529Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {
@@ -121,10 +121,10 @@
     },
     {
       "name": "@earendil-works/pi-mcp",
-      "version": "1.5.2",
+      "version": "1.6.0",
       "license": "MIT",
-      "integrity": "sha512-zU1UgeXDlbixPqGEWD7Ql0brEMIpYr7aEWjoEE5h5enJbM/kQ2jIr7lN8JoR80oUnq1fJSU7SC8kLx2Fx/IZYg==",
-      "published": "2026-11-10T12:25:15.812Z",
+      "integrity": "sha512-dhqAR6MP8Fp3b8LEcBFOyxMZpGSozUAdzF0Dbl7OvojsjZrQsDV3ZKn85WRbwjHb4WjQUCVBsIZXwoyQxXeunw==",
+      "published": "2026-11-20T11:03:55.945Z",
       "repository": "git+https://github.com/earendil-works/pi.git",
       "gitHead": null,
       "engines": {

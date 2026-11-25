@@ -376,7 +376,16 @@ describe('the auto chooser at the provider boundary', () => {
       };
       await registry.routeAuto('A short question.', choice);
       expect(payload).toBeDefined();
-      expect((payload as { reasoning?: { effort?: string } }).reasoning?.effort).toBe('none');
+      // Pi keeps the top-level effort of these models fixed and carries the level of this
+      // request in the last configuration update.
+      const body = payload as {
+        reasoning?: { effort?: string };
+        input?: { type?: string; reasoning?: { effort?: string } }[];
+      };
+      expect(body.reasoning?.effort).toBe('medium');
+      expect(
+        body.input?.findLast((item) => item.type === 'configuration_update')?.reasoning?.effort,
+      ).toBe('none');
       expect(models.getModel('openai-codex', 'gpt-6-luna')?.thinkingLevelMap?.off).toBe('none');
     },
   );

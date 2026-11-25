@@ -16,10 +16,10 @@
   "dependencies": {
     "@corral/contracts": "workspace:*",
     "@corral/pi-runtime-port": "workspace:*",
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
-    "@earendil-works/pi-coding-agent": "1.5.2",
-    "@earendil-works/pi-mcp": "1.5.2",
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
+    "@earendil-works/pi-coding-agent": "1.6.0",
+    "@earendil-works/pi-mcp": "1.6.0",
     "@playwright/mcp": "0.0.83",
     "typebox": "1.4.7",
     "zod": "4.6.7"

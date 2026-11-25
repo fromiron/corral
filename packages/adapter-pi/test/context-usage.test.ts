@@ -199,6 +199,33 @@ describe('context usage measurement', () => {
       expect(usage.usedTokens).toBe(usage.parts.reduce((sum, part) => sum + part.tokens, 0));
     }
   });
+  it('a configuration update between the messages carries no context and leaves the measure complete', () => {
+    const inspected = inspectContext({
+      messages: [
+        { role: 'system', content: 'private system' },
+        { role: 'user', content: 'hello' },
+      ],
+    });
+    const input = [
+      { role: 'developer', content: 'private system' },
+      { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+    ];
+    const plain = reconcileContextUsage(
+      inspected.usage,
+      inspected.probes,
+      JSON.stringify({ model: 'gpt-6.2-sol', input }),
+    );
+    const updated = reconcileContextUsage(
+      inspected.usage,
+      inspected.probes,
+      JSON.stringify({
+        model: 'gpt-6.2-sol',
+        input: [...input, { type: 'configuration_update', reasoning: { effort: 'high' } }],
+      }),
+    );
+    expect(plain.completeness).toBe('complete');
+    expect(updated).toEqual(plain);
+  });
   it('CTX-02 counts included categories once with the same estimator', () => {
     const skill = 'Skill resources: skills/review/\nReview the diff.';
     const system = 'You are the writer.';
