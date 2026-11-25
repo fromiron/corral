@@ -70,6 +70,7 @@ export type TranscriptEntry =
       args: Record<string, unknown>;
       /** It passed without asking on an earlier approval of this run for the same call. */
       allowedForRun?: true;
+      intent?: string;
     }
   | {
       kind: 'question';
@@ -263,6 +264,7 @@ function toolEntry(event: Extract<RunEvent, { type: 'tool.requested' }>): ToolEn
     detail: null,
     resultRef: null,
     args: event.payload.validatedArgs,
+    ...(event.payload.intent ? { intent: event.payload.intent } : {}),
   };
 }
 

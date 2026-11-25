@@ -9087,6 +9087,7 @@ export class Coordinator {
             toolCallId,
             name: proposal.name,
             ...(proposal.parentToolCallId ? { parentToolCallId: proposal.parentToolCallId } : {}),
+            ...(intentOf(proposal) ? { intent: intentOf(proposal) } : {}),
             validatedArgs: error
               ? {}
               : // An advice's text is kept only where it is delivered or preserved, never here.
@@ -12361,4 +12362,9 @@ function deepFreeze<T>(value: T): T {
     for (const item of Object.values(value)) deepFreeze(item);
   }
   return value;
+}
+
+function intentOf(proposal: ToolProposal): string | undefined {
+  const text = proposal.intent?.replace(/\s+/g, ' ').trim();
+  return text ? Array.from(text).slice(0, 200).join('') : undefined;
 }

@@ -225,6 +225,7 @@ export interface ToolProposal {
   name: string;
   args: Record<string, unknown>;
   parentToolCallId?: string;
+  intent?: string;
 }
 
 export type ToolOutcome =

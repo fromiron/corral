@@ -640,6 +640,8 @@ export const ToolRequested = event(
     name: z.string().min(1),
     /** Validated arguments; large values are replaced by size and hash. */
     validatedArgs: z.record(z.string(), z.unknown()),
+    /** Why the agent made the call, in its words; shown, never part of the arguments. */
+    intent: z.string().min(1).max(200).optional(),
   }),
 );
 export const ToolAllowed = event(

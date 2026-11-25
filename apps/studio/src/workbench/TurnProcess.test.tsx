@@ -98,6 +98,7 @@ it.each(['en', 'ko'] as const)(
           toolCallId,
           name: 'run_command',
           validatedArgs: { command: 'npm test' },
+          ...(granted ? { intent: 'Rerun the tests after the fix' } : {}),
         },
       },
       { type: 'tool.allowed', actor, payload: { executionId: 'lead', toolCallId } },
@@ -146,7 +147,10 @@ it.each(['en', 'ko'] as const)(
     expect(rows).toHaveLength(2);
     expect(rows[0]).toContain(`npm test · ${done}`);
     expect(rows[0]).not.toContain(messages.Turn.allowedForRun);
-    expect(rows[1]).toContain(`npm test · ${done} · ${messages.Turn.allowedForRun}`);
+    // The agent's own words for why, first on the line, when it gave them (llm-runtime.md).
+    expect(rows[1]).toContain(
+      `Rerun the tests after the fix · npm test · ${done} · ${messages.Turn.allowedForRun}`,
+    );
     expect(container.textContent).not.toContain('appr_0001');
   },
 );

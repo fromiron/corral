@@ -688,6 +688,7 @@ class WorkerExecution {
             name: frame.name,
             args: frame.args,
             ...(frame.parentToolCallId ? { parentToolCallId: frame.parentToolCallId } : {}),
+            ...(frame.intent ? { intent: frame.intent } : {}),
           });
           this.send({
             type: 'tool_authorization',

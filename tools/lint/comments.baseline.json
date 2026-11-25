@@ -60,7 +60,7 @@
     "packages/contracts/src/definition.ts": 74,
     "packages/contracts/src/effort-routing.ts": 36,
     "packages/contracts/src/errors.ts": 10,
-    "packages/contracts/src/events.ts": 56,
+    "packages/contracts/src/events.ts": 57,
     "packages/contracts/src/git-advanced.ts": 3,
     "packages/contracts/src/harness-management.ts": 2,
     "packages/contracts/src/harness.ts": 24,

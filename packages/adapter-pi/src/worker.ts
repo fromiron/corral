@@ -283,7 +283,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       name,
       label: name,
       description: TOOL_TEXT[name],
-      parameters: parametersOf(name, start),
+      parameters: withIntent(parametersOf(name, start)),
       executionMode: 'sequential',
       // Runs only after the host authorized this call; the host records tool.started.
       execute: async (piCallId) => {
@@ -733,7 +733,10 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           : undefined,
       prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
-        const args = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
+        const { i: said, ...args } = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
+        if (toolCall.arguments && 'i' in toolCall.arguments)
+          delete (toolCall.arguments as Record<string, unknown>).i;
+        const intent = typeof said === 'string' && said.trim() ? said.slice(0, 2000) : undefined;
         // Only the omitted legacy ID defaults to the assigned question. Explicit
         // child IDs remain subject to the Coordinator's current-execution check.
         if (
@@ -743,7 +746,12 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         ) {
           args.questionId = start.assignment.questionId;
         }
-        const reply = await call({ type: 'authorize_tool', name: toolCall.name, args });
+        const reply = await call({
+          type: 'authorize_tool',
+          name: toolCall.name,
+          args,
+          ...(intent ? { intent } : {}),
+        });
         if (reply.type !== 'tool_authorization' || !reply.ok) {
           return {
             block: true,
@@ -913,4 +921,17 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       settle(cancelled ? 'cancelled' : 'succeeded');
     }
   }
+}
+
+const INTENT = {
+  type: 'string',
+  description:
+    'In a few words, why you make this call. Shown to the person; never changes the call.',
+} as const;
+
+function withIntent<T>(parameters: T): T {
+  const schema = parameters as { type?: unknown; properties?: Record<string, unknown> };
+  if (schema?.type !== 'object' || !schema.properties || 'i' in schema.properties)
+    return parameters;
+  return { ...schema, properties: { ...schema.properties, i: INTENT } } as T;
 }

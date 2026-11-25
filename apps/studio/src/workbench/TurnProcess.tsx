@@ -493,6 +493,7 @@ export function TurnProcess({
                     <StepDetails
                       step={label}
                       description={[
+                        row.intent,
                         row.artifact ? t('artifactTarget', row.artifact) : row.target,
                         tt(`tool.${row.status}`),
                         row.allowedForRun ? t('allowedForRun') : null,
