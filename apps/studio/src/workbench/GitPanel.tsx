@@ -82,10 +82,12 @@ export function GitPanel({
   sessionId,
   projectId,
   mergeBranch,
+  onRefresh,
 }: {
   sessionId: string;
   projectId: string;
   mergeBranch?: string;
+  onRefresh?: () => void;
 }) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
@@ -567,7 +569,10 @@ export function GitPanel({
         <Button
           variant="tertiary"
           disabled={!result}
-          onClick={() => setRevision((value) => value + 1)}
+          onClick={() => {
+            setRevision((value) => value + 1);
+            onRefresh?.();
+          }}
         >
           {t('refresh')}
         </Button>

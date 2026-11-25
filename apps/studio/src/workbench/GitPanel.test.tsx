@@ -571,3 +571,20 @@ it('opens the branch section when the address names a branch to merge, and not o
   for (let i = 0; i < 3; i++) await act(async () => {});
   expect(branchSection(plain.container)?.open).toBe(true);
 });
+
+// features/sub-sessions.md: Refresh in the Git view also re-reads the Changes header.
+it('tells its host when the person refreshes', async () => {
+  sessionStorage.clear();
+  documents.value = {};
+  const onRefresh = vi.fn();
+  const f = await mount({
+    gitStatus: vi.fn(async () => branchStatus()),
+    binding: vi.fn(async () => ({ trusted: true })),
+  });
+  await act(async () =>
+    f.root.render(<GitPanel sessionId="session" projectId="project" onRefresh={onRefresh} />),
+  );
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  await f.click('Git.refresh');
+  expect(onRefresh).toHaveBeenCalledTimes(1);
+});

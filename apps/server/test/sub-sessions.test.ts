@@ -13,7 +13,8 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { RestCorralRepository, WorkspacesApi } from '@corral/client';
-import { ScriptedAgentAdapter } from '@corral/testkit';
+import { InProcessTransport, waitForProjection } from '@corral/core';
+import { Gate, linearCorral, ScriptedAgentAdapter } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { startCorralServer } from '../src/index.ts';
 
@@ -33,7 +34,7 @@ const git = (cwd: string, ...args: string[]) =>
   }).trim();
 const short = (id: string) => createHash('sha256').update(id).digest('hex').slice(0, 6);
 
-async function setup() {
+async function setup(agents: ConstructorParameters<typeof ScriptedAgentAdapter>[0] = { turns: 1 }) {
   const root = mkdtempSync(join(tmpdir(), 'corral-sub-session-http-'));
   const original = join(root, 'original');
   execFileSync('git', ['init', '-q', original]);
@@ -46,7 +47,7 @@ async function setup() {
     workspace: join(root, 'workspace'),
     worktreeRoot: join(root, 'copies'),
     bootstrapToken: token,
-    agents: new ScriptedAgentAdapter({ turns: 1 }),
+    agents: new ScriptedAgentAdapter(agents),
     port: 0,
   });
   cleanups.push(async () => {
@@ -85,7 +86,7 @@ async function setup() {
   // The copies root holds one folder per binding; the fixture binds exactly one.
   const copy = (sessionId: string) =>
     join(root, 'copies', readdirSync(join(root, 'copies'))[0] ?? '', sessionId);
-  return { root, original, repository, workspaces, parent, open, parentMerge, copy };
+  return { root, original, server, repository, workspaces, parent, open, parentMerge, copy };
 }
 
 it('starts from the parent HEAD and its uncommitted files, leaving the parent as it was', async () => {
@@ -206,4 +207,71 @@ it('returns the same sub-session for its command after the sub-session was used'
   });
   expect(archived.ok).toBe(true);
   expect((await s.open(s.parent, body)).status).toBe(200);
+});
+
+it('opens while the parent runs, and a run in the sub-session finishes', async () => {
+  const gate = new Gate();
+  const s = await setup({ turns: 1, beforeReply: () => gate.wait() });
+  cleanups.unshift(async () => gate.open());
+  await s.workspaces.createWorktree(s.parent);
+  const transport = new InProcessTransport(s.server.coordinator);
+  const run = (sessionId: string, commandId: string) => {
+    const started = s.server.coordinator.startRun({
+      schemaVersion: '0.1',
+      commandId,
+      definition: linearCorral(['writer']),
+      mode: 'mock',
+      sessionId,
+    });
+    if (!started.runId) throw new Error(JSON.stringify(started.receipt.error));
+    return started.runId;
+  };
+  const parentRun = run(s.parent, 'cmd_parent_run');
+  await waitForProjection(transport, parentRun, (p) => p.status === 'running');
+  const opened = await s.open(s.parent, { commandId: 'open_6', title: 'New conversation' });
+  expect(opened.status).toBe(201);
+  const { sessionId } = (await opened.json()) as { sessionId: string };
+  expect(await s.workspaces.worktree(sessionId)).toMatchObject({ missing: false });
+  gate.open();
+  await waitForProjection(transport, parentRun, (p) => p.status === 'succeeded');
+  const subRun = run(sessionId, 'cmd_sub_run');
+  const ended = await waitForProjection(transport, subRun, (p) =>
+    ['succeeded', 'failed', 'cancelled'].includes(p.status),
+  );
+  expect(ended.status).toBe('succeeded');
+});
+
+it('opens a sub-session of a sub-session, which merges into the middle one and keeps the team', async () => {
+  const s = await setup();
+  const saved = await s.repository.save({
+    definition: linearCorral(['writer']),
+    expectedDefinitionRevision: null,
+  });
+  assert(saved.ok);
+  const parent = await s.repository.getSession(s.parent);
+  const teamed = await s.repository.updateSession(s.parent, {
+    corralId: saved.record.corralId,
+    expectedRevision: parent?.revision ?? 0,
+  });
+  assert(teamed.ok);
+  await s.workspaces.createWorktree(s.parent);
+  const open = async (from: string, commandId: string) =>
+    (
+      (await (await s.open(from, { commandId, title: 'New conversation' })).json()) as {
+        sessionId: string;
+      }
+    ).sessionId;
+  const middle = await open(s.parent, 'open_7');
+  const leaf = await open(middle, 'open_8');
+  expect(await s.repository.getSession(leaf)).toMatchObject({
+    parentSessionId: middle,
+    corralId: saved.record.corralId,
+  });
+  expect(await (await s.parentMerge(leaf)).json()).toMatchObject({
+    parentSessionId: middle,
+    branch: `corral/new-conversation-${short(leaf)}`,
+    commits: 0,
+    parentPaddock: true,
+  });
+  expect(git(s.copy(leaf), 'rev-parse', 'HEAD')).toBe(git(s.copy(middle), 'rev-parse', 'HEAD'));
 });

@@ -14,6 +14,7 @@ import { SessionActions } from './SessionActions.tsx';
 const fixture = vi.hoisted(() => ({
   navigate: (() => {}) as (...args: unknown[]) => unknown,
   services: {} as Record<string, unknown>,
+  ids: 0,
 }));
 vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('@tanstack/react-router', () => ({
@@ -21,7 +22,7 @@ vi.mock('@tanstack/react-router', () => ({
   useRouter: () => ({ invalidate: async () => {} }),
 }));
 vi.mock('../ChatView.tsx', () => ({ useChatDensityRow: () => () => null }));
-vi.mock('../../sessionActions.ts', () => ({ newCommandId: () => 'cmd_fixed' }));
+vi.mock('../../sessionActions.ts', () => ({ newCommandId: () => `cmd_${++fixture.ids}` }));
 
 Element.prototype.getAnimations ??= () => [];
 const cleanup: (() => Promise<void>)[] = [];
@@ -48,7 +49,12 @@ async function menuItem(canOpenSubSession: boolean) {
     addEventListener() {},
     removeEventListener() {},
   }));
-  const openSubSession = vi.fn(async () => ({ sessionId: 'sub' }));
+  fixture.ids = 0;
+  const openSubSession = vi.fn(
+    async (_parent: string, _request: { commandId: string; title: string }) => ({
+      sessionId: 'sub',
+    }),
+  );
   fixture.navigate = vi.fn();
   fixture.services = {
     mode: 'server',
@@ -100,7 +106,7 @@ it('opens a sub-session under this one and goes to it', async () => {
   await act(async () => item?.click());
   for (let i = 0; i < 3; i++) await act(async () => {});
   expect(openSubSession).toHaveBeenCalledWith('parent', {
-    commandId: 'cmd_fixed',
+    commandId: 'cmd_1',
     title: messages.Sessions.new,
   });
   expect(fixture.navigate).toHaveBeenCalledWith({
@@ -115,4 +121,30 @@ it('is off and says why when the session has no Paddock', async () => {
   expect(item?.textContent).toContain(messages.Sessions.subSessionNeedsPaddock);
   await act(async () => item?.click());
   expect(openSubSession).not.toHaveBeenCalled();
+});
+
+it('sends the same command again after a failed open, and a new one after a success', async () => {
+  const { item, openSubSession } = await menuItem(true);
+  openSubSession.mockRejectedValueOnce(new Error('copy failed'));
+  await act(async () => item?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(document.body.textContent).toContain('copy failed');
+  const reopen = async () => {
+    const trigger = document.querySelector<HTMLElement>(
+      `[aria-label="${messages.Desktop.sessionActions.replace('{title}', 'Login work')}"]`,
+    );
+    await act(async () => trigger?.click());
+    const again = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find((row) =>
+      row.textContent?.startsWith(messages.Sessions.openSubSession),
+    );
+    await act(async () => again?.click());
+    for (let i = 0; i < 3; i++) await act(async () => {});
+  };
+  await reopen();
+  await reopen();
+  expect(openSubSession.mock.calls.map((call) => call[1].commandId)).toEqual([
+    'cmd_1',
+    'cmd_1',
+    'cmd_2',
+  ]);
 });

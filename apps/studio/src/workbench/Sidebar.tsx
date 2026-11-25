@@ -825,7 +825,7 @@ export const Sidebar = memo(function Sidebar({
                           // absolutely positioned virtual rows; a sub-session sits deeper.
                           left:
                             row.kind === 'session' && row.depth
-                              ? `${0.5 + row.depth * 0.75}rem`
+                              ? `calc(var(--spacing) * ${2 + row.depth * 3})`
                               : '0.5rem',
                           right: 0,
                           height: item.size,

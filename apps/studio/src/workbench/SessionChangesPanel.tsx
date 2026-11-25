@@ -43,7 +43,8 @@ function useCopy(
   sessionId: string,
   parentSessionId: string | null,
   copyChanged: string | undefined,
-): CopyState {
+  visible: boolean,
+): CopyState & { reread: () => void } {
   const { workspaces } = useServices();
   const [read, setRead] = useState<({ sessionId: string } & CopyState) | null>(null);
   const [tick, setTick] = useState(0);
@@ -55,7 +56,7 @@ function useCopy(
   useEffect(() => {
     void tick;
     void copyChanged;
-    if (!workspaces) return;
+    if (!workspaces || !visible) return;
     let live = true;
     void (async (): Promise<CopyState> => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
@@ -76,12 +77,13 @@ function useCopy(
     return () => {
       live = false;
     };
-  }, [workspaces, sessionId, parentSessionId, tick, copyChanged]);
+  }, [workspaces, sessionId, parentSessionId, tick, copyChanged, visible]);
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
-  if (!workspaces) return { state: 'ready', branch: null, merge: null };
+  const reread = () => setTick((value) => value + 1);
+  if (!workspaces) return { state: 'ready', branch: null, merge: null, reread };
   return read?.sessionId === sessionId
-    ? { state: read.state, branch: read.branch, merge: read.merge }
-    : { state: 'unknown', branch: null, merge: null };
+    ? { state: read.state, branch: read.branch, merge: read.merge, reread }
+    : { state: 'unknown', branch: null, merge: null, reread };
 }
 
 function ChecksView({
@@ -153,7 +155,7 @@ export function SessionChangesPanel({
   const tf = useTranslations('Files');
   const { workspaces } = useServices();
   const href = useRouterState({ select: (state) => state.location.href });
-  const copy = useCopy(session.sessionId, session.parentSessionId ?? null, copyChanged);
+  const copy = useCopy(session.sessionId, session.parentSessionId ?? null, copyChanged, visible);
   const reviewing = reviewSearch !== undefined;
   const [remembered, setRemembered] = useState<ReviewSearch | undefined>(reviewSearch);
   if (reviewSearch && reviewSearch !== remembered) setRemembered(reviewSearch);
@@ -301,6 +303,7 @@ export function SessionChangesPanel({
             <GitPanel
               sessionId={session.sessionId}
               projectId={session.projectId}
+              onRefresh={copy.reread}
               {...(mergeBranch ? { mergeBranch } : {})}
             />
           </div>

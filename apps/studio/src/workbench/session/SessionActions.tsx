@@ -176,14 +176,15 @@ export function SessionActions({
   const tdock = useTranslations('Docking');
   const { workspaces, browser } = useServices();
   const [openingSub, setOpeningSub] = useState(false);
+  const unfinishedSub = useRef<{ commandId: string; title: string } | null>(null);
   const openSubSession = async () => {
     if (!workspaces || openingSub) return;
     setOpeningSub(true);
+    const request = unfinishedSub.current ?? { commandId: newCommandId(), title: t('new') };
+    unfinishedSub.current = request;
     try {
-      const opened = await workspaces.openSubSession(session.sessionId, {
-        commandId: newCommandId(),
-        title: t('new'),
-      });
+      const opened = await workspaces.openSubSession(session.sessionId, request);
+      unfinishedSub.current = null;
       setError(null);
       projectsChanged();
       await router.invalidate();

@@ -55,7 +55,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(session: Partial<WorkSession>, merge: ParentMerge | null) {
+async function render(session: Partial<WorkSession>, merge: ParentMerge | null, visible = true) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -93,15 +93,28 @@ async function render(session: Partial<WorkSession>, merge: ParentMerge | null) 
     root.render(
       <SessionChangesPanel
         session={{ projectId: 'project', ...session } as WorkSession}
+        visible={visible}
         onReviewChange={() => {}}
       />,
     ),
   );
   for (let i = 0; i < 3; i++) await act(async () => {});
+  const show = async () => {
+    await act(async () =>
+      root.render(
+        <SessionChangesPanel
+          session={{ projectId: 'project', ...session } as WorkSession}
+          visible
+          onReviewChange={() => {}}
+        />,
+      ),
+    );
+    for (let i = 0; i < 3; i++) await act(async () => {});
+  };
   const merger = [...container.querySelectorAll<HTMLElement>('a, button')].find(
     (item) => item.textContent === 'Git.mergeIntoParent',
   );
-  return { container, parentMerge, merger };
+  return { container, parentMerge, merger, show };
 }
 
 const sub = { sessionId: 'sub', parentSessionId: 'parent' };
@@ -130,4 +143,11 @@ it('has no merge for a copy without a branch, and reads nothing for a main sessi
   const main = await render({ sessionId: 'main', parentSessionId: null }, null);
   expect(main.parentMerge).not.toHaveBeenCalled();
   expect(main.merger).toBeUndefined();
+});
+
+it('reads the merge again when the tab comes on screen, not while it is hidden', async () => {
+  const hidden = await render(sub, { ...ready, commits: 1 }, false);
+  expect(hidden.parentMerge).not.toHaveBeenCalled();
+  await hidden.show();
+  expect(hidden.parentMerge).toHaveBeenCalledTimes(1);
 });
