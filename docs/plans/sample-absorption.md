@@ -269,7 +269,7 @@
   - 확인하지 않은 것: Actions가 만드는 `CheckRun`(이 프로젝트의 PR 60개에도 검사 기록이 없었다), 충돌로 깨우기와 리뷰 항목의 실제 GitHub 경로, 확인 필요 화면의 새 항목 모습, 데스크톱 알림.
   - 뒤에 고친 것: 확인 필요의 PR 항목 버튼이 이름 키(`Inbox.open.changes`) 없이 나가 있었다. "PR 열기"(Open pull request)를 넣고, 보관한 세션의 감시 끝(서비스 경로까지), PR 항목의 행 문구, "PR 감시가 보냄" 메타 줄을 테스트로 묶었다. 서버·Studio 전체 스위트는 다시 돌렸다(서버의 실패 셋은 부하 때문이었고 단독으로 통과).
 
-- 전체 확장 E2E(11-26): Chromium과 server 프로젝트만 돌았다. Firefox 17개는 이 컴퓨터에 Playwright용 Firefox가 없어 시작하지 못했다(설치는 `pnpm --filter @corral/studio exec playwright install firefox`, 소유자의 허락 뒤). 처음 돌린 server 프로젝트와 flow 장면은 Studio 빌드가 11-25 09:40 것이라 화면이 예전 것이었다. 다시 빌드한 뒤 server 프로젝트는 255 통과·2 실패(`harness-mcp`는 단독으로 통과하는 흔들림, `markdown-agent-import`는 아래). 
+- 전체 확장 E2E(11-26): Chromium과 server 프로젝트를 돌렸고, 소유자의 허락으로 Firefox를 설치한 뒤 Firefox 프로젝트도 돌렸다(15 통과·2 실패). Firefox의 두 실패(`accessibility` 키보드만으로 편집, IME 조합 중 Enter)는 Firefox 페이지가 죽거나 시간이 넘는 것이고, 로드맵 전 커밋(e874a38b)에서도 똑같이 실패한다. Playwright가 이 OS를 공식 지원하지 않아 우분투용 대체 빌드를 받았다. 처음 돌린 server 프로젝트와 flow 장면은 Studio 빌드가 11-25 09:40 것이라 화면이 예전 것이었다. 다시 빌드한 뒤 server 프로젝트는 255 통과·2 실패(`harness-mcp`는 단독으로 통과하는 흔들림, `markdown-agent-import`는 아래). 
   - `markdown-agent-import`: 로드맵 전 커밋(빌드 포함)에서는 통과했다. 이분 탐색으로 의도 필드(0330f24c)가 원인임을 찾았다: 8,000토큰 창의 모델에서 모든 도구에 붙은 `i`가 도구 선언을 키워 "context cannot fit without dropping required input"으로 요청이 실패했다. 창이 32,000토큰보다 작은 모델에는 `i`를 내놓지 않게 고쳤고, 그 테스트는 통과한다.
   - `desktop-workbench` DW-02/03(axe `label-content-name-mismatch`: 대화의 "Work log" 버튼과 입력창의 모델 선택 버튼)은 Vite가 소스에서 바로 띄우는 Chromium 프로젝트이고, 로드맵 전 커밋에서도 똑같이 실패한다. 이 로드맵이 만든 실패가 아니며 고치지 않았다.
   - `server/guidance`는 예전 빌드에서만 실패했고 새 빌드에서 통과한다.
