@@ -314,6 +314,8 @@ export function reconcileContextUsage(
         unsupported();
         continue;
       }
+      // Pi's thinking-level marker for the Responses and Codex APIs: a setting, not context text.
+      if (message.type === 'configuration_update') continue;
       const category = ['system', 'developer'].includes(String(message.role))
         ? 'system_prompt'
         : 'messages';

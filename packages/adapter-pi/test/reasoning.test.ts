@@ -1,5 +1,5 @@
 import type { ReasoningResolution } from '@corral/contracts';
-import { normalizeContext } from '@earendil-works/pi-ai';
+import { fauxAssistantMessage, normalizeContext } from '@earendil-works/pi-ai';
 import { streamSimple as codexStream } from '@earendil-works/pi-ai/api/openai-codex-responses';
 import { streamSimple as responsesStream } from '@earendil-works/pi-ai/api/openai-responses';
 import { builtinModels } from '@earendil-works/pi-ai/providers/all';
@@ -187,5 +187,51 @@ it('a ChatGPT-account GPT-6.2 request carries its level in the configuration upd
     const uncapped = structuredClone(payload!);
     uncapped.max_output_tokens = 4097;
     expect(() => verifyReasoningWire(sol, uncapped, resolution, 4096, 'oauth')).toThrow('output');
+  }
+});
+
+it('after a turn at one level, a ChatGPT-account request at another level or at the provider default still agrees with its permit', async () => {
+  const token = `test.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'test-account' } })).toString('base64')}.test`;
+  const sol = builtinModels().getModel('openai-codex', 'gpt-6.2-sol')!;
+  const context = normalizeContext({
+    messages: [
+      { role: 'user', content: 'first', timestamp: 0 },
+      {
+        ...fauxAssistantMessage('answered'),
+        api: sol.api,
+        provider: sol.provider,
+        model: sol.id,
+        providerThinkingLevel: 'high',
+      },
+      { role: 'user', content: 'second', timestamp: 1 },
+    ],
+  });
+  const fallback: ReasoningResolution = {
+    requested: { mode: 'auto' },
+    resolved: null,
+    source: 'fallback',
+    preparationId: 'prep',
+  };
+  for (const [resolution, wire] of [
+    [fixed('low'), { kind: 'effort', value: 'low' }],
+    [fallback, { kind: 'omitted', value: null }],
+  ] as const) {
+    const request = reasoningRequest(sol, {}, resolution);
+    let payload: { input?: { type?: string; reasoning?: { effort?: string } }[] } | undefined;
+    const result = await codexStream({ ...request.model, api: 'openai-codex-responses' }, context, {
+      ...request.options,
+      apiKey: token,
+      onPayload: (value: unknown) => {
+        payload = value as typeof payload;
+        throw new Error('serializer-only: do not send');
+      },
+    }).result();
+    expect(result.errorMessage).toContain('serializer-only');
+    const updates = payload!.input!.filter((item) => item.type === 'configuration_update');
+    // The earlier turn's level is replayed only while this request sends one of its own.
+    expect(updates.map((item) => item.reasoning?.effort)).toEqual(
+      resolution.resolved === null ? [] : ['high', 'low'],
+    );
+    expect(verifyReasoningWire(sol, payload, resolution)).toEqual(wire);
   }
 });
