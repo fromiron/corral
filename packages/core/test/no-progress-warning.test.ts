@@ -156,3 +156,56 @@ it('a call between waits still counts as in a row', async () => {
     .filter((e) => e.type === 'directive.accepted' && e.payload.origin === 'corral');
   expect(notes).toHaveLength(1);
 });
+
+it('the sixth identical call gets a second note, and the ninth ends the execution failed', async () => {
+  const seen: DeliveredDirective[][] = [];
+  const { projection, store, runId } = await run(
+    caller(
+      Array.from({ length: 10 }, () => read('artv_a')),
+      seen,
+    ),
+  );
+  const events = store.readEvents(runId, 0);
+  const notes = events.filter(
+    (e) => e.type === 'directive.accepted' && e.payload.origin === 'corral',
+  );
+  expect(notes).toHaveLength(2);
+  expect(String((notes[1]?.payload as { text?: string } | undefined)?.text)).toContain('finish');
+  // Delivered with the request after the third and after the sixth call.
+  expect(seen.slice(0, 8).map((list) => list.filter((d) => d.origin === 'corral').length)).toEqual([
+    0, 0, 0, 1, 0, 0, 1, 0,
+  ]);
+  const repeated = events.filter(
+    (e) =>
+      e.type === 'tool.blocked' &&
+      String((e.payload as { reason?: string }).reason).startsWith('LIMIT_REACHED'),
+  );
+  expect(repeated).toHaveLength(1);
+  const settled = events.find((e) => e.type === 'execution.settled');
+  expect(settled?.payload).toMatchObject({
+    outcome: 'failed',
+    error: 'the same tool call was repeated 9 times in a row',
+  });
+  expect(projection.status).toBe('failed');
+});
+
+it('eight identical calls do not end the execution', async () => {
+  const seen: DeliveredDirective[][] = [];
+  const { store, runId } = await run(
+    caller(
+      Array.from({ length: 8 }, () => read('artv_a')),
+      seen,
+    ),
+  );
+  const events = store.readEvents(runId, 0);
+  expect(
+    events.some(
+      (e) =>
+        e.type === 'tool.blocked' &&
+        String((e.payload as { reason?: string }).reason).startsWith('LIMIT_REACHED'),
+    ),
+  ).toBe(false);
+  expect(events.find((e) => e.type === 'execution.settled')?.payload).toMatchObject({
+    error: 'scripted end',
+  });
+});

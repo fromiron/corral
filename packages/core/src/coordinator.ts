@@ -643,6 +643,7 @@ interface LiveRun {
   /** The run's advisors (features/advisor.md); empty when the definition has none. */
   advisors: AdvisorRuntime;
   repeatedCalls?: Map<string, RepeatedCalls>;
+  failRequested?: Map<string, string>;
 }
 
 interface RepeatedCalls {
@@ -651,7 +652,14 @@ interface RepeatedCalls {
   noted: Set<string>;
 }
 
-const REPEATED_CALL_NOTE_AT = 3;
+const REPEATED_CALL_END_AT = 9;
+const REPEATED_CALL_END = `the same tool call was repeated ${REPEATED_CALL_END_AT} times in a row`;
+const repeatedCallNote = (name: string, count: number) =>
+  count === 3
+    ? `You called ${name} with the same arguments ${count} times in a row. Do not call it with these arguments again; use its last result and try another way.`
+    : count === 6
+      ? `You called ${name} with the same arguments ${count} times in a row. Stop calling it. Say what you found and where the work stands, and finish.`
+      : null;
 
 /** What the Coordinator keeps of its advisors while the run is open; never in the event log. */
 interface AdvisorRuntime {
@@ -4116,8 +4124,8 @@ export class Coordinator {
     }
   }
 
-  private noteRepeatedCall(run: LiveRun, executionId: string, proposal: ToolProposal) {
-    if (proposal.name === 'await_tasks') return;
+  private countRepeatedCall(run: LiveRun, executionId: string, proposal: ToolProposal): number {
+    if (proposal.name === 'await_tasks') return 0;
     const key = hashOf({ name: proposal.name, args: proposal.args });
     run.repeatedCalls ??= new Map();
     const previous = run.repeatedCalls.get(executionId);
@@ -4126,9 +4134,27 @@ export class Coordinator {
         ? { ...previous, count: previous.count + 1 }
         : { key, count: 1, noted: previous?.noted ?? new Set() };
     run.repeatedCalls.set(executionId, state);
-    if (state.count < REPEATED_CALL_NOTE_AT || state.noted.has(key)) return;
-    state.noted.add(key);
-    const text = `You called ${proposal.name} with the same arguments ${state.count} times in a row. Do not call it with these arguments again; use its last result and try another way.`;
+    return state.count;
+  }
+
+  private afterRepeatedCall(
+    run: LiveRun,
+    executionId: string,
+    proposal: ToolProposal,
+    count: number,
+  ) {
+    if (count >= REPEATED_CALL_END_AT) {
+      run.failRequested ??= new Map();
+      if (run.failRequested.has(executionId)) return;
+      run.failRequested.set(executionId, REPEATED_CALL_END);
+      this.requestCancel(run, executionId, REPEATED_CALL_END);
+      return;
+    }
+    const state = run.repeatedCalls?.get(executionId);
+    const text = repeatedCallNote(proposal.name, count);
+    const noted = `${state?.key}:${count}`;
+    if (!state || !text || state.noted.has(noted)) return;
+    state.noted.add(noted);
     const directiveId = this.ids.next('directive');
     this.commit(run, [
       {
@@ -6530,17 +6556,19 @@ export class Coordinator {
       !run.cancelRequested.has(input.executionId);
     const submitted = task?.status === 'completed' || advisorDone;
     // The Coordinator decides: an execution it cancelled ends cancelled unless it finished.
-    const cancelled = run.cancelRequested.has(input.executionId) && !submitted;
+    const forcedFailure = submitted ? undefined : run.failRequested?.get(input.executionId);
+    const cancelled = run.cancelRequested.has(input.executionId) && !submitted && !forcedFailure;
     const outcome =
-      settlement.terminationMode === 'unconfirmed'
+      settlement.terminationMode === 'unconfirmed' || forcedFailure
         ? ('failed' as const)
         : cancelled
           ? ('cancelled' as const)
           : settlement.outcome === 'succeeded' && !submitted
             ? ('failed' as const)
             : settlement.outcome;
-    const error =
-      !cancelled && settlement.outcome === 'succeeded' && !submitted
+    const error = forcedFailure
+      ? forcedFailure
+      : !cancelled && settlement.outcome === 'succeeded' && !submitted
         ? input.assignment.kind === 'question'
           ? 'the responder finished without reply'
           : input.assignment.kind === 'advisor'
@@ -9024,7 +9052,12 @@ export class Coordinator {
       requireActive();
       const toolCallId = this.ids.next('tool_call');
       const permission = permissionDecision(proposal);
+      const repeated =
+        !automatic && !advisor ? this.countRepeatedCall(run, executionId, proposal) : 0;
       const refusal =
+        (repeated >= REPEATED_CALL_END_AT
+          ? { kind: 'refuse' as const, code: 'LIMIT_REACHED' as const, message: REPEATED_CALL_END }
+          : null) ??
         (permission === 'deny'
           ? {
               kind: 'refuse' as const,
@@ -9118,7 +9151,7 @@ export class Coordinator {
             ]
           : []),
       ]);
-      if (!automatic && !advisor) this.noteRepeatedCall(run, executionId, proposal);
+      if (repeated) this.afterRepeatedCall(run, executionId, proposal, repeated);
       if (error) return { ok: false, toolCallId, error };
       authorized.set(toolCallId, {
         proposal,
