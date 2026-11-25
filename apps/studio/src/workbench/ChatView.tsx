@@ -1,6 +1,7 @@
 import {
   Button,
   cn,
+  LiveDot,
   MenuRadioGroup,
   MenuRadioItem,
   MenuSub,
@@ -13,6 +14,7 @@ import { defaultRangeExtractor, observeElementRect, useVirtualizer } from '@tans
 import { type ReactNode, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
+import { READING_TOP_PAD, readingLanding } from './ported/readingLanding.ts';
 import { changePreferences, preferences } from './preferences.ts';
 
 /**
@@ -202,8 +204,10 @@ export function ChatView({
   expandedHeader = false,
   sent,
   tray,
+  landOn,
 }: {
   sessionId: string;
+  landOn?: string | null | undefined;
   messageId?: string | undefined;
   children?: ReactNode;
   items: { id: string; content: ReactNode }[];
@@ -269,6 +273,8 @@ export function ChatView({
   const touchY = useRef<number | null>(null);
   const sentSeen = useRef<number | undefined>(undefined);
   const [atEnd, setAtEnd] = useState(true);
+  const endRow = useRef(items.at(-1)?.id ?? null);
+  const newBelow = !atEnd && endRow.current !== null && items.at(-1)?.id !== endRow.current;
   const [focused, setFocused] = useState<string | null>(null);
   // The row that holds the focus itself (not a control inside it).
   const [selfFocused, setSelfFocused] = useState<string | null>(null);
@@ -325,8 +331,9 @@ export function ChatView({
     after: last ? Math.max(0, rows.getTotalSize() - last.end) : 0,
   };
   const position = useRef<() => void>(() => {});
-  const current = useRef({ items, rows });
-  current.current = { items, rows };
+  const current = useRef({ items, rows, landOn });
+  current.current = { items, rows, landOn };
+  const landPending = useRef(false);
   useLayoutEffect(() => {
     const box = timeline.current;
     const body = content.current;
@@ -352,6 +359,7 @@ export function ChatView({
     } catch {
       /* A missing preference does not block the conversation. */
     }
+    landPending.current = follow.current;
     position.current = () => {
       if (box.hidden) return;
       const { items, rows } = current.current;
@@ -398,6 +406,23 @@ export function ChatView({
         )
           readingAnchor.current = readPlace(box);
       }
+      const landing = landPending.current && follow.current ? current.current.landOn : null;
+      const answer = landing ? mounted(landing) : undefined;
+      if (landing && answer) {
+        const rect = answer.getBoundingClientRect();
+        const { held } = readingLanding({
+          scrollTop: box.scrollTop,
+          clientHeight: box.clientHeight,
+          scrollHeight: box.scrollHeight,
+          rowTop: rect.top - box.getBoundingClientRect().top + box.scrollTop,
+          rowHeight: rect.height,
+        });
+        if (held) {
+          landPending.current = false;
+          follow.current = false;
+          restoreAnchor.current = { id: landing, offset: READING_TOP_PAD };
+        }
+      }
       const anchor = restoreAnchor.current ?? (!follow.current ? readingAnchor.current : null);
       if (anchor && items.some((item) => item.id === anchor.id)) {
         const row = mounted(anchor.id);
@@ -424,7 +449,9 @@ export function ChatView({
         box.scrollTop = box.scrollHeight;
         followedTop.current = box.scrollTop;
       }
-      setAtEnd(box.scrollHeight - box.scrollTop - box.clientHeight < 48);
+      const end = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+      if (end) endRow.current = current.current.items.at(-1)?.id ?? null;
+      setAtEnd(end);
     };
     const remember = () => {
       if (box.hidden) return;
@@ -514,6 +541,7 @@ export function ChatView({
     };
   }, [floating]);
   const followEnd = () => {
+    landPending.current = false;
     restoreTop.current = null;
     restoreAnchor.current = null;
     readingAnchor.current = null;
@@ -541,6 +569,7 @@ export function ChatView({
   place.current = (id, offset) => {
     if (!items.some((item) => item.id === id)) return null;
     const following = follow.current;
+    landPending.current = false;
     // Held rather than followed: focus coming to the row is not the person leaving the end.
     follow.current = false;
     const anchor = { id, offset };
@@ -623,6 +652,7 @@ export function ChatView({
     follow.current = false;
   };
   const stopRestoring = () => {
+    landPending.current = false;
     restoreTop.current = null;
     restoreAnchor.current = null;
     readingAnchor.current = null;
@@ -630,6 +660,7 @@ export function ChatView({
   };
   const rememberPlace = (box: HTMLElement) => {
     readingAnchor.current = follow.current ? null : readPlace(box);
+    if (follow.current) endRow.current = current.current.items.at(-1)?.id ?? null;
     setAtEnd(follow.current);
   };
   const readPosition = () => {
@@ -885,15 +916,16 @@ export function ChatView({
         {!expandedHeader && !atEnd ? (
           // Centered over the composer, where the conversation continues.
           <div className="pointer-events-none absolute inset-x-0 bottom-full z-20 flex justify-center pb-3">
-            <Tooltip content={t('toLatest')}>
+            <Tooltip content={t(newBelow ? 'toLatestNew' : 'toLatest')}>
               <Button
-                aria-label={t('toLatest')}
+                aria-label={t(newBelow ? 'toLatestNew' : 'toLatest')}
                 size="icon"
                 variant="tertiary"
-                className="pointer-events-auto rounded-full"
+                className="pointer-events-auto relative rounded-full"
                 onClick={followEnd}
               >
                 <ArrowDown />
+                {newBelow ? <LiveDot live={false} className="absolute top-1 right-1" /> : null}
               </Button>
             </Tooltip>
           </div>

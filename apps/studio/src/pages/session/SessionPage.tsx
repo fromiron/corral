@@ -1423,6 +1423,7 @@ function WorkSessionPage() {
                             onPanel={(value, run) => open({ ...run, panel: value })}
                             // The conversation's place only: no history entry, no other view.
                             onPlace={(message) => frame.writeTab({ message }, { replace: true })}
+                            seenAtEntry={frame.entered ? frame.seenAtEntry : undefined}
                           />
                         </ChangesTabShownContext.Provider>
                       </AdviceArrival.Provider>

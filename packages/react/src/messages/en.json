@@ -2628,6 +2628,7 @@
   "Desktop": {
     "conversation": "Conversation",
     "toLatest": "Jump to latest",
+    "toLatestNew": "Jump to latest · New below",
     "search": "Search",
     "working": "Working",
     "runCount": "{count} runs",

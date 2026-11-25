@@ -2628,6 +2628,7 @@
   "Desktop": {
     "conversation": "대화",
     "toLatest": "최신 내용으로",
+    "toLatestNew": "최신 내용으로 · 아래에 새 내용",
     "search": "검색",
     "working": "작업 중",
     "runCount": "실행 {count}개",

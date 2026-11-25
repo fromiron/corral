@@ -5,7 +5,7 @@ import { act, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
-import { afterEach, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { ChatView, followChatEnd, type PlacedRow, placeChatRow } from './ChatView.tsx';
 import { SessionConnectionContext } from './session/SessionConnection.tsx';
@@ -598,6 +598,8 @@ it('a row holding the focus itself stays focusable while the window loses the fo
 async function mountConversation(initial: {
   items: { id: string; content: React.ReactNode }[];
   sent?: number;
+  landOn?: string;
+  messageId?: string;
 }) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal(
@@ -640,6 +642,8 @@ async function mountConversation(initial: {
           sessionId="session-follow"
           sent={sent}
           items={items}
+          landOn={initial.landOn}
+          messageId={initial.messageId}
           composer={<textarea aria-label="request" />}
         />
       </IntlProvider>,
@@ -1177,13 +1181,20 @@ it('virtualizes the timeline the same way for three rows as for two hundred', as
  * A long conversation of rows at the list's estimated height, laid out as the browser would:
  * each mounted row sits at its index's place below the content's top padding.
  */
-async function mountLong(count: number, content?: (index: number) => React.ReactNode) {
+async function mountLong(
+  count: number,
+  content?: (index: number) => React.ReactNode,
+  place: { landOn?: string; messageId?: string; client?: number } = {},
+) {
   const chat = await mountConversation({
     items: Array.from({ length: count }, (_, index) => ({
       id: `turn-${index}`,
       content: content ? content(index) : <p>Turn {index}</p>,
     })),
+    landOn: place.landOn,
+    messageId: place.messageId,
   });
+  if (place.client) chat.metrics.client = place.client;
   chat.metrics.height = 24 + count * 260 + 8;
   // A row that grew: every row after it sits that much lower.
   const grown = { index: count, by: 0 };
@@ -1983,4 +1994,161 @@ it('moving from the empty session to the conversation keeps the same composer, d
   expect(document.activeElement).toBe(input);
   expect([input.selectionStart, input.selectionEnd]).toEqual([2, 7]);
   expect(mounts).toBe(1);
+});
+
+// workbench.md 대화 스크롤: away from the end, a row that arrived below marks Jump to latest; back at
+// the end the mark goes. Rows above measured anew are not news.
+it('marks Jump to latest when a row arrived below while away, and not for rows measured above', async () => {
+  sessionStorage.clear();
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      constructor(privateCallback: (entries?: unknown) => void) {
+        this.callback = privateCallback;
+        resizeCallbacks.add(privateCallback);
+      }
+      callback: (entries?: unknown) => void;
+      observe() {}
+      unobserve() {}
+      disconnect() {
+        resizeCallbacks.delete(this.callback);
+      }
+    },
+  );
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  disposals.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const draw = (ids: string[]) =>
+    act(async () =>
+      root.render(
+        <IntlProvider locale="en" messages={messages} timeZone="UTC">
+          <ChatView
+            sessionId="session"
+            header={<p>Records</p>}
+            items={ids.map((id) => ({ id, content: <p>{id}</p> }))}
+            composer={<textarea aria-label="request" />}
+          />
+        </IntlProvider>,
+      ),
+    );
+  await draw(['a']);
+  const box = container.querySelector<HTMLElement>('[data-testid="chat-timeline"]')!;
+  let height = 500;
+  let top = 0;
+  Object.defineProperties(box, {
+    scrollHeight: { get: () => height },
+    clientHeight: { get: () => 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  const resize = async () =>
+    act(async () => {
+      for (const callback of [...resizeCallbacks]) callback([]);
+    });
+  await resize();
+  const latest = () =>
+    [...container.querySelectorAll('button')].find((button) =>
+      button.getAttribute('aria-label')?.startsWith(messages.Desktop.toLatest),
+    );
+  await act(async () => {
+    box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+    box.scrollTop = 100;
+    box.dispatchEvent(new Event('scroll', { bubbles: true }));
+  });
+  // A row above measured taller: the same rows, nothing new below.
+  height = 900;
+  await resize();
+  expect(latest()?.getAttribute('aria-label')).toBe(messages.Desktop.toLatest);
+  await draw(['a', 'b']);
+  await resize();
+  expect(latest()?.getAttribute('aria-label')).toBe(messages.Desktop.toLatestNew);
+  await act(async () => latest()?.click());
+  await resize();
+  expect(latest()).toBeUndefined();
+});
+
+// workbench.md 대화 스크롤: entering with an unseen answer taller than the view lands its first
+// line at the top, held, once; never against a reading place, a linked message or the person.
+describe('landing on an unseen long answer at entry', () => {
+  const rowTop = (index: number) => 24 + index * 260;
+  it('puts its first line at the top, held through layout', async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(30, undefined, { landOn: 'turn-29' });
+    await chat.scroll(chat.top);
+    await chat.resize();
+    expect(chat.top).toBe(rowTop(29) - 12);
+    chat.top += 100;
+    await chat.resize();
+    expect(chat.top).toBe(rowTop(29) - 12);
+  });
+
+  it('keeps the end, still following, for an answer that fits the view', async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(30, undefined, { landOn: 'turn-29', client: 400 });
+    await chat.resize();
+    await chat.scroll(chat.top);
+    await chat.resize();
+    expect(chat.top).toBe(chat.end());
+    chat.metrics.height += 300;
+    await chat.resize();
+    expect(chat.top).toBe(chat.end());
+  });
+
+  it('lands once the answer grows taller than the view', async () => {
+    sessionStorage.clear();
+    const chat = await mountLong(30, undefined, { landOn: 'turn-29', client: 400 });
+    await chat.resize();
+    await chat.scroll(chat.top);
+    expect(chat.top).toBe(chat.end());
+    chat.metrics.client = 200;
+    await chat.resize();
+    expect(chat.top).toBe(rowTop(29) - 12);
+  });
+
+  it('does not land once the person moved first (counterexample)', async () => {
+    sessionStorage.clear();
+    const moved = await mountLong(30, undefined, { landOn: 'turn-29', client: 400 });
+    await moved.resize();
+    await act(async () => {
+      moved.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: -80 }));
+    });
+    await moved.scroll(moved.top - 80);
+    // Back down to the end by the person's own scroll: following again, the landing gone.
+    await act(async () => {
+      moved.box.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 200 }));
+    });
+    await moved.scroll(moved.end());
+    await moved.resize();
+    moved.metrics.client = 200;
+    await moved.resize();
+    expect(moved.top).toBe(moved.end());
+  });
+
+  it('leaves a stored reading place as it is', async () => {
+    sessionStorage.clear();
+    sessionStorage.setItem(
+      'corral:chat-scroll:session-follow',
+      JSON.stringify({ top: 1_000, follow: false }),
+    );
+    const restored = await mountLong(30, undefined, { landOn: 'turn-29' });
+    await restored.resize();
+    expect(restored.top).toBe(1_000);
+  });
+
+  it('leaves a linked message where its link puts it', async () => {
+    sessionStorage.clear();
+    const linked = await mountLong(30, undefined, { landOn: 'turn-29', messageId: 'turn-10' });
+    await linked.scroll(linked.top);
+    await linked.resize();
+    expect(linked.top).toBe(rowTop(10));
+  });
 });

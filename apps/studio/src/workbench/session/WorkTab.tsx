@@ -14,11 +14,13 @@ import { AdviceArrival } from '../adviceArrival.ts';
 import { ChatView, placeChatRow } from '../ChatView.tsx';
 import type { FileReference } from '../FilePanel.tsx';
 import { MeetingHandoffLinks } from '../MeetingHandoff.tsx';
+import type { SeenMemory } from '../panel/memory.ts';
 import type { SessionPanel } from '../panels/registry.ts';
 import type { SessionSearch } from '../panels/routes.ts';
 import { ReplySelection, runRow } from '../ReplySelection.tsx';
 import { useFolderAccess } from '../WorkFolderNotice.tsx';
 import { Composer } from './Composer.tsx';
+import { unseenAnswerRun } from './entryLanding.ts';
 import { inConversation, placeEntries, type SteerRecord } from './entryMeta.ts';
 import { PendingTray } from './PendingTray.tsx';
 import { useRunRecords } from './runRecords.ts';
@@ -70,8 +72,10 @@ export function WorkTab({
   onReferenceUsed,
   onPanel,
   onPlace,
+  seenAtEntry,
 }: {
   session: WorkSession;
+  seenAtEntry?: SeenMemory | null;
   team: CorralSummary | null;
   corrals: CorralSummary[];
   runs: RunSummary[];
@@ -127,6 +131,11 @@ export function WorkTab({
   const folderAction =
     folderAccess === 'unlinked' || folderAccess === 'untrusted' || folderAccess === 'missing';
   const rowOf = (runId: string) => runRow(session.entries, loose, runId);
+  const [landing, setLanding] = useState<string | null | undefined>(undefined);
+  if (landing === undefined && runsListed && seenAtEntry !== undefined) {
+    const runId = unseenAnswerRun(runs, seenAtEntry?.seenRun ?? null);
+    setLanding(runId ? (rowOf(runId) ?? null) : null);
+  }
   // What became of each instruction, from its run's record (features/composer-flow.md). One
   // seen to expire unread asks for the session, which alone says whether it was carried.
   const { records, watched } = useRunRecords(
@@ -193,6 +202,7 @@ export function WorkTab({
           key={session.sessionId}
           sessionId={session.sessionId}
           messageId={messageId}
+          landOn={landing ?? null}
           sent={sent}
           header={
             <MeetingHandoffLinks
