@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { defaultEditingMode, withEditingMode } from '../src/editing-mode.ts';
 
 // desktop-contract.md ABS-03: an unset editing mode follows the model family; a chosen one wins.
-describe('editing mode by model family', () => {
+describe('editing mode by model family, for a role that chose By model', () => {
   const model = (provider: string, modelId: string) => ({ provider, modelId });
   it('gives Hashline by default and the replace grammar to the families that handle Hashline poorly', () => {
     for (const [provider, id] of [
@@ -27,29 +27,31 @@ describe('editing mode by model family', () => {
     expect(defaultEditingMode({ provider: null, modelId: null })).toBe('pi');
   });
 
-  it('never overrides a mode the role chose (counterexample)', () => {
-    const role = { id: 'writer', editingMode: 'pi' } as never;
-    expect(withEditingMode(role, model('anthropic', 'claude-opus-5-5'))).toBe(role);
-    const chosen = { id: 'writer', editingMode: 'hashline' } as never;
-    expect(withEditingMode(chosen, model('deepseek', 'deepseek-v4'))).toBe(chosen);
-    const files = { id: 'writer', allowedWorkTools: ['read_file', 'write_file'] } as never;
-    expect(withEditingMode(files, model('deepseek', 'deepseek-v4'))).toMatchObject({
+  it('resolves only a role that chose By model, and leaves an unset or chosen mode alone (counterexample)', () => {
+    const byModel = { id: 'writer', editingMode: 'model' } as never;
+    expect(withEditingMode(byModel, model('anthropic', 'claude-opus-5-5'))).toMatchObject({
+      editingMode: 'hashline',
+    });
+    expect(withEditingMode(byModel, model('deepseek', 'deepseek-v4'))).toMatchObject({
       editingMode: 'pi',
     });
-    // A role that touches no file keeps no editing mode.
-    const writer = { id: 'writer', allowedWorkTools: ['write_artifact'] } as never;
-    expect(withEditingMode(writer, model('anthropic', 'claude-opus-5-5'))).toBe(writer);
+    for (const role of [
+      { id: 'writer', allowedWorkTools: ['read_file', 'write_file'] },
+      { id: 'writer', editingMode: 'pi' },
+      { id: 'writer', editingMode: 'hashline' },
+    ] as never[])
+      expect(withEditingMode(role, model('anthropic', 'claude-opus-5-5'))).toBe(role);
   });
 });
 
 // The mode reaches the execution's start input, which both the adapter's tool list and the
 // Coordinator's tool admission read.
 describe('editing mode at the execution start', () => {
-  it('fills an unset mode from the execution model, and keeps a chosen one', async () => {
+  it('resolves By model from the execution model, and keeps an unset or chosen mode', async () => {
     const { Coordinator } = await import('../src/coordinator.ts');
     const { FakeClock, linearCorral, SequentialIdFactory } = await import('@corral/testkit');
     const started: { role: string; mode: string | undefined }[] = [];
-    const run = async (provider: string, modelId: string, chosen?: 'pi' | 'hashline') => {
+    const run = async (provider: string, modelId: string, chosen?: 'pi' | 'hashline' | 'model') => {
       const definition = linearCorral(['writer']);
       definition.roles = definition.roles.map((role) => ({
         ...role,
@@ -83,9 +85,28 @@ describe('editing mode at the execution start', () => {
       } as never);
       for (let i = 0; i < 20; i++) await Promise.resolve();
     };
-    await run('anthropic', 'claude-opus-5-5');
-    await run('deepseek', 'deepseek-v4');
+    await run('anthropic', 'claude-opus-5-5', 'model');
+    await run('deepseek', 'deepseek-v4', 'model');
     await run('deepseek', 'deepseek-v4', 'hashline');
-    expect(started.map((item) => item.mode)).toEqual(['hashline', 'pi', 'hashline']);
+    await run('anthropic', 'claude-opus-5-5');
+    // The start input never carries By model; an unset mode stays unset (Pi).
+    expect(started.map((item) => item.mode)).toEqual(['hashline', 'pi', 'hashline', undefined]);
+  });
+});
+
+// llm-runtime.md: a call whose arguments the record withholds keeps its intent out too.
+describe('tool intent in the record', () => {
+  it('records an ordinary call’s intent, tidied and cut, and none for a withheld call', async () => {
+    const { recordedIntent } = await import('../src/coordinator.ts');
+    const call = (intent?: string) => ({
+      name: 'write_artifact',
+      args: {},
+      ...(intent ? { intent } : {}),
+    });
+    expect(recordedIntent(call('  Save   the note '), false)).toBe('Save the note');
+    expect(recordedIntent(call('x'.repeat(300)), false)).toHaveLength(200);
+    expect(recordedIntent(call('   '), false)).toBeUndefined();
+    expect(recordedIntent(call(), false)).toBeUndefined();
+    expect(recordedIntent(call('Private planning words'), true)).toBeUndefined();
   });
 });

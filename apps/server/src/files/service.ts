@@ -6688,20 +6688,23 @@ export class WorkspaceService implements FileTools {
           } catch (error) {
             if (!(error instanceof HashlineError)) throw error;
             if (!error.unseen) throw new ToolRefusal(error.code, error.message);
-            const shown = readHashline({
+            const { evidence, ...shown } = readHashline({
               bytes,
               path,
               scope: this.hashlineScope(input),
               offset: error.unseen.start,
               limit: error.unseen.end - error.unseen.start + 1,
+              maxOutputBytes: MAX_TEXT + 4096,
             });
             const known = this.hashlineReads.get(input.runId) ?? new Map();
-            known.set(key, mergeHashlineEvidence(known.get(key), shown.evidence));
+            known.set(key, mergeHashlineEvidence(known.get(key), evidence));
             this.hashlineReads.set(input.runId, known);
-            throw new ToolRefusal(
-              error.code,
-              `${error.message}. These lines are shown now and may be edited with the same tag:\n${shown.text}`,
-            );
+            return {
+              applied: false,
+              code: error.code,
+              message: `${error.message}. Nothing was changed. The lines are shown here and may be edited with the same tag.`,
+              ...shown,
+            };
           }
           const change =
             plan.kind === 'write'

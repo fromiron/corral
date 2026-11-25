@@ -58,3 +58,36 @@ it('takes each call’s intent out of its arguments, so sentences that differ ne
   const args = requested.map((event) => JSON.stringify(event.payload.validatedArgs));
   expect(new Set(args).size).toBe(1);
 });
+
+it('gives a By model role the Hashline tools on a Hashline family, and an unset writing role none', async () => {
+  const offered: string[][] = [];
+  const respond: FauxResponseStep = (context) => {
+    offered.push(getCurrentTools(context.messages).map((tool) => tool.name));
+    return fauxAssistantMessage('Done.');
+  };
+  for (const mode of ['model', undefined] as const) {
+    const { transport } = liveRuntime([respond, respond]);
+    const definition = linearCorral(['writer']);
+    definition.roles = definition.roles.map((role) => ({
+      ...role,
+      allowedWorkTools: [
+        'write_artifact',
+        'read_file',
+        'write_file',
+      ] as typeof role.allowedWorkTools,
+      ...(mode ? { editingMode: mode } : {}),
+    }));
+    const { runId } = await transport.startRun({
+      schemaVersion: '0.1',
+      commandId: `cmd_mode_${mode ?? 'unset'}`,
+      definition,
+      mode: 'live',
+    });
+    if (!runId) throw new Error('the run did not start');
+    await waitForProjection(transport, runId, (state) =>
+      ['succeeded', 'failed', 'cancelled'].includes(state.status),
+    );
+  }
+  expect(offered[0]).toEqual(expect.arrayContaining(['read_hashline', 'edit_hashline']));
+  expect(offered.at(-1)).not.toContain('read_hashline');
+});

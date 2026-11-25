@@ -137,10 +137,12 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     await expect(
       s.call('write_file', { path: 'a.txt', text: 'unseen overwrite' }),
     ).rejects.toMatchObject({ code: 'REVISION_CONFLICT' });
-    const refused = await s.edit(read.tag, 'PUT 2.=2:\n+TWO').catch((error: Error) => error);
-    expect(refused).toMatchObject({ code: 'REVISION_CONFLICT' });
-    expect((refused as Error).message).toContain(`[a.txt#${read.tag}]\n2:two`);
-    expect((refused as Error).message).not.toContain('3:three');
+    // Not a failure with the rows in its message (that would keep file text in the run's event
+    // log): an unapplied result whose body shows them, as a read does.
+    const refused = (await s.edit(read.tag, 'PUT 2.=2:\n+TWO')) as Record<string, unknown>;
+    expect(refused).toMatchObject({ applied: false, code: 'REVISION_CONFLICT' });
+    expect(refused.text).toBe(`[a.txt#${read.tag}]\n2:two`);
+    expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('\ufeffone\r\ntwo\r\nthree\r\n');
     // The rows shown are read evidence now, through the read tool's own record.
     await s.edit(read.tag, 'PUT 2.=2:\n+TWO');
     expect(readFileSync(join(s.root, 'a.txt'), 'utf8')).toBe('\ufeffone\r\nTWO\r\nthree\r\n');
@@ -155,16 +157,18 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     const lines = Array.from({ length: 60 }, (_, index) => `row ${index + 1}`).join('\n');
     writeFileSync(join(s.root, 'long.txt'), `${lines}\n`);
     const head = await s.read('long.txt', { offset: 1, limit: 1 });
-    const refused = (await s.edit(head.tag, 'CUT 2.=55', 'long.txt').catch((e) => e)) as Error;
-    expect(refused.message).toContain('\n41:row 41');
-    expect(refused.message).not.toContain('42:row 42');
+    const refused = (await s.edit(head.tag, 'CUT 2.=55', 'long.txt')) as Record<string, unknown>;
+    expect(refused.text).toContain('\n41:row 41');
+    expect(refused.text).not.toContain('42:row 42');
     const foreign = (await s
       .edit(head.tag, 'CUT 50.=50', 'long.txt', 'foreign')
       .catch((e) => e)) as Error;
-    expect(foreign.message).not.toContain('50:row 50');
+    expect(foreign).toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(foreign.message).not.toContain('row 50');
     writeFileSync(join(s.root, 'long.txt'), `${lines}\nmore\n`);
     const stale = (await s.edit(head.tag, 'CUT 50.=50', 'long.txt').catch((e) => e)) as Error;
-    expect(stale.message).not.toContain('50:row 50');
+    expect(stale).toMatchObject({ code: 'REVISION_CONFLICT' });
+    expect(stale.message).not.toContain('row 50');
   });
 
   it('a new attempt cannot inherit earlier read evidence even with the same execution ID', async () => {

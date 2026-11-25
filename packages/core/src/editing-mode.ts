@@ -26,7 +26,5 @@ export function withEditingMode(
   role: Role,
   model: { provider: string | null; modelId: string | null },
 ): Role {
-  if (role.editingMode) return role;
-  const edits = role.allowedWorkTools.some((tool) => tool === 'read_file' || tool === 'write_file');
-  return edits ? { ...role, editingMode: defaultEditingMode(model) } : role;
+  return role.editingMode === 'model' ? { ...role, editingMode: defaultEditingMode(model) } : role;
 }

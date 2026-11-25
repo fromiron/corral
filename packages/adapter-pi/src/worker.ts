@@ -283,7 +283,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       name,
       label: name,
       description: TOOL_TEXT[name],
-      parameters: withIntent(parametersOf(name, start)),
+      parameters: withIntent(name, parametersOf(name, start)),
       executionMode: 'sequential',
       // Runs only after the host authorized this call; the host records tool.started.
       execute: async (piCallId) => {
@@ -733,10 +733,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
           : undefined,
       prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
-        const { i: said, ...args } = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
-        if (toolCall.arguments && 'i' in toolCall.arguments)
+        const given = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
+        const declared = INTENT_TOOLS.has(toolCall.name);
+        const { i: said, ...stripped } = given;
+        const args = declared ? stripped : given;
+        if (declared && toolCall.arguments && 'i' in toolCall.arguments)
           delete (toolCall.arguments as Record<string, unknown>).i;
-        const intent = typeof said === 'string' && said.trim() ? said.slice(0, 2000) : undefined;
+        const intent =
+          declared && typeof said === 'string' && said.trim() ? said.slice(0, 2000) : undefined;
         // Only the omitted legacy ID defaults to the assigned question. Explicit
         // child IDs remain subject to the Coordinator's current-execution check.
         if (
@@ -929,9 +933,12 @@ const INTENT = {
     'In a few words, why you make this call. Shown to the person; never changes the call.',
 } as const;
 
-function withIntent<T>(parameters: T): T {
+const INTENT_TOOLS = new Set<string>();
+
+function withIntent<T>(name: string, parameters: T): T {
   const schema = parameters as { type?: unknown; properties?: Record<string, unknown> };
   if (schema?.type !== 'object' || !schema.properties || 'i' in schema.properties)
     return parameters;
+  INTENT_TOOLS.add(name);
   return { ...schema, properties: { ...schema.properties, i: INTENT } } as T;
 }

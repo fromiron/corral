@@ -132,7 +132,7 @@ export const AgentRole = z.strictObject({
   reasoning: ReasoningPolicy.optional(),
   allowedWorkTools: z.array(WorkTool).max(13),
   imageProfile: Identifier.optional(),
-  editingMode: z.enum(['pi', 'hashline']).optional(),
+  editingMode: z.enum(['pi', 'hashline', 'model']).optional(),
   allowedCollaborationTools: z.array(CollaborationTool).max(9),
   outputContract: OutputContract,
   harness: HarnessBindingRef.optional(),

@@ -291,7 +291,7 @@ export function importMarkdownAgent<T extends AgentImportDraft>(input: {
   mappings: Record<string, string>;
   suffix: string;
   /** Preserves an explicit Corral role setting when importing a settings snapshot. */
-  editingMode?: 'pi' | 'hashline' | undefined;
+  editingMode?: 'pi' | 'hashline' | 'model' | undefined;
   parentHarness?: Pick<EffectiveHarnessSnapshot, 'binding' | 'policy' | 'allowedTools'> | undefined;
   /** The skills `attachSkillsByName` found; none leaves the role without a skill choice. */
   skills?: readonly RoleSkillRef[] | undefined;

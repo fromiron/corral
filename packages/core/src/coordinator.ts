@@ -1769,7 +1769,7 @@ export class Coordinator {
       const { state } = this.loadRuntimeCheckpoint(runId, record.checkpointId);
       const last = state.context.context.messages.at(-1);
       if (
-        hashOf(state.role) !== hashOf(role) ||
+        hashOf(state.role) !== hashOf(withEditingMode(role, model.snapshot)) ||
         last?.role !== 'assistant' ||
         last.stopReason !== 'stop'
       )
@@ -9077,6 +9077,8 @@ export class Coordinator {
         typeof questionId === 'string' &&
         run.projection.questions[questionId] &&
         run.projection.questions[questionId]?.status !== 'open';
+      const withheld =
+        Boolean(harness) || ['ask_user', 'update_plan', 'advise'].includes(proposal.name);
       this.commit(run, [
         {
           type: 'tool.requested',
@@ -9087,11 +9089,13 @@ export class Coordinator {
             toolCallId,
             name: proposal.name,
             ...(proposal.parentToolCallId ? { parentToolCallId: proposal.parentToolCallId } : {}),
-            ...(intentOf(proposal) ? { intent: intentOf(proposal) } : {}),
+            ...(recordedIntent(proposal, withheld)
+              ? { intent: recordedIntent(proposal, withheld) }
+              : {}),
             validatedArgs: error
               ? {}
               : // An advice's text is kept only where it is delivered or preserved, never here.
-                harness || ['ask_user', 'update_plan', 'advise'].includes(proposal.name)
+                withheld
                 ? {
                     hash: hashOf(proposal.args),
                     bytes: utf8ToBytes(canonicalJson(proposal.args)).length,
@@ -12364,7 +12368,7 @@ function deepFreeze<T>(value: T): T {
   return value;
 }
 
-function intentOf(proposal: ToolProposal): string | undefined {
-  const text = proposal.intent?.replace(/\s+/g, ' ').trim();
+export function recordedIntent(proposal: ToolProposal, withheld: boolean): string | undefined {
+  const text = withheld ? '' : proposal.intent?.replace(/\s+/g, ' ').trim();
   return text ? Array.from(text).slice(0, 200).join('') : undefined;
 }

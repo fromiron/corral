@@ -810,14 +810,12 @@ function WorkTools({
           <Select
             id={`${id}-editing`}
             label={t('editingMode')}
-            value={role.editingMode ?? 'model'}
-            onValueChange={(choice) =>
-              update(node.id, { editingMode: choice === 'model' ? null : choice })
-            }
+            value={role.editingMode ?? 'pi'}
+            onValueChange={(editingMode) => update(node.id, { editingMode })}
             options={[
-              { value: 'model', label: t('editingModeModel') },
               { value: 'pi', label: t('editingModePi') },
               { value: 'hashline', label: t('editingModeHashline') },
+              { value: 'model', label: t('editingModeModel') },
             ]}
           />
           <span className="text-muted-foreground">{t('editingModeHint')}</span>
