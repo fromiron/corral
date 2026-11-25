@@ -534,3 +534,133 @@ it('does not repeat a response lost because it was cancelled', async () => {
   const { opened: again } = await runCut(() => cutAfter([thinking], 'Request was aborted'));
   expect(again).toEqual([0]);
 });
+
+// docs/specs/llm-runtime.md: a response whose reasoning loops is cut while it shows only reasoning
+// and asked for again within the two-retry allowance; the last allowed attempt is not cut.
+const LOOP = 'I will open the config file again and check the value once more. ';
+
+/** A live attempt: reasoning that loops, ending only when its signal is aborted (or `endsAfter`). */
+function looping(
+  signal: AbortSignal | undefined,
+  options: { before?: Block[]; endsAfter?: number } = {},
+) {
+  const stream = createAssistantMessageEventStream();
+  const base = fauxAssistantMessage('');
+  stream.push({ type: 'start', partial: { ...base, content: [] } });
+  const blocks = [...(options.before ?? [])];
+  blocks.forEach((block, contentIndex) => {
+    if (block.type === 'text')
+      stream.push({
+        type: 'text_delta',
+        contentIndex,
+        delta: block.text,
+        partial: { ...base, content: blocks.slice(0, contentIndex + 1) },
+      });
+  });
+  const index = blocks.length;
+  let thought = '';
+  let sent = 0;
+  const finish = (stopReason: 'aborted' | 'stop') => {
+    const message = {
+      ...base,
+      content: [...blocks, { type: 'thinking' as const, thinking: thought }],
+      stopReason,
+      ...(stopReason === 'aborted' ? { errorMessage: 'Request was aborted' } : {}),
+    };
+    if (stopReason === 'aborted') stream.push({ type: 'error', reason: 'aborted', error: message });
+    else stream.push({ type: 'done', reason: 'stop', message });
+    stream.end(message);
+  };
+  const tick = () => {
+    if (signal?.aborted) return finish('aborted');
+    if (options.endsAfter !== undefined && sent >= options.endsAfter) return finish('stop');
+    thought += LOOP;
+    sent++;
+    stream.push({
+      type: 'thinking_delta',
+      contentIndex: index,
+      delta: LOOP,
+      partial: { ...base, content: [...blocks, { type: 'thinking', thinking: thought }] },
+    });
+    setTimeout(tick, 0);
+  };
+  setTimeout(tick, 0);
+  return stream;
+}
+
+async function runLoops(
+  model: { id: string; provider: string; api: string },
+  open: (attempt: number, signal: AbortSignal | undefined) => ReturnType<typeof succeed>,
+) {
+  const opened: number[] = [];
+  const signals: (AbortSignal | undefined)[] = [];
+  const seen: string[] = [];
+  const out = managedRetryStream({
+    model,
+    signal: new AbortController().signal,
+    random: () => 0.5,
+    delay: async () => true,
+    open: (attempt, signal) => {
+      opened.push(attempt);
+      signals.push(signal);
+      return open(attempt, signal);
+    },
+  });
+  for await (const event of out) seen.push(event.type);
+  return { opened, signals, seen, result: await out.result() };
+}
+
+const DEEPSEEK = {
+  id: 'deepseek-ai/deepseek-v4.1-flash',
+  provider: 'hive',
+  api: 'openai-completions',
+};
+
+it('cuts an attempt whose reasoning loops and asks again; the consumer sees only the answer', async () => {
+  const r = await runLoops(DEEPSEEK, (attempt, signal) =>
+    attempt === 0 ? looping(signal) : succeed(),
+  );
+  expect(r.opened).toEqual([0, 1]);
+  expect(r.signals[0]?.aborted).toBe(true);
+  expect(r.seen).not.toContain('thinking_delta');
+  expect(r.result.stopReason).toBe('stop');
+});
+
+it('does not cut the last allowed attempt, so the watch never fails a reply', async () => {
+  const r = await runLoops(DEEPSEEK, (attempt, signal) =>
+    looping(signal, attempt === 2 ? { endsAfter: 40 } : {}),
+  );
+  expect(r.opened).toEqual([0, 1, 2]);
+  expect(r.signals[2]?.aborted).toBe(false);
+  expect(r.result.stopReason).toBe('stop');
+  expect(r.seen).toContain('thinking_delta');
+});
+
+it('does not watch Claude, and does not cut once visible text was sent', async () => {
+  const claude = await runLoops(
+    { id: 'claude-sonnet-5-5', provider: 'anthropic', api: 'anthropic-messages' },
+    (_attempt, signal) => looping(signal, { endsAfter: 40 }),
+  );
+  expect(claude.opened).toEqual([0]);
+  const answered = await runLoops(DEEPSEEK, (_attempt, signal) =>
+    looping(signal, { before: [bodyText], endsAfter: 40 }),
+  );
+  expect(answered.opened).toEqual([0]);
+  expect(answered.result.stopReason).toBe('stop');
+});
+
+it('does not watch a stream whose caller turned the watch off (an Outrider review)', async () => {
+  const opened: number[] = [];
+  const out = managedRetryStream({
+    model: DEEPSEEK,
+    signal: new AbortController().signal,
+    watchLoops: false,
+    delay: async () => true,
+    open: (attempt, signal) => {
+      opened.push(attempt);
+      return looping(signal, { endsAfter: 40 });
+    },
+  });
+  expect((await out.result()).stopReason).toBe('stop');
+  expect(opened).toEqual([0]);
+});

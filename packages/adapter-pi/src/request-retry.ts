@@ -6,6 +6,7 @@ import {
   type Model,
 } from '@earendil-works/pi-ai';
 import { cancellableDelay, providerFailure, retryDelay } from './ported/dsh/retry.ts';
+import { loopGuardLevel, ThinkingLoopDetector } from './ported/thinking-loop.ts';
 
 /**
  * A cut response can be asked for again only while it has shown the consumer nothing that
@@ -67,28 +68,48 @@ export function retryDelayAfter(
 /** Each open obtains a new host permit; only the final attempt reaches the agent loop. */
 export function managedRetryStream(options: {
   model: Pick<Model<string>, 'id' | 'provider' | 'api'>;
-  open(attempt: number): Promise<AssistantMessageEventStream> | AssistantMessageEventStream;
+  /** `signal` ends this attempt alone: the run's signal, or the cut of a reasoning loop. */
+  open(
+    attempt: number,
+    signal: AbortSignal,
+  ): Promise<AssistantMessageEventStream> | AssistantMessageEventStream;
   signal: AbortSignal;
   beforeRetry?(message: AssistantMessage): void | Promise<void>;
   onContextOverflow?(): Promise<boolean> | boolean;
+  watchLoops?: boolean;
   random?: () => number;
   delay?: (ms: number, signal: AbortSignal) => Promise<boolean>;
 }) {
   const out = createAssistantMessageEventStream();
   void (async () => {
     let contextRecovered = false;
+    const level = options.watchLoops === false ? 'off' : loopGuardLevel(options.model);
     for (let attempt = 0; ; attempt++) {
-      const stream = await options.open(attempt);
+      const cut = new AbortController();
+      const stream = await options.open(attempt, AbortSignal.any([options.signal, cut.signal]));
+      // The last allowed attempt is not watched, so the watch never fails a reply.
+      const watch =
+        level !== 'off' && attempt < 2 ? new ThinkingLoopDetector(level === 'semantic') : null;
+      let looped = false;
       // Events stay held while the attempt is replay-safe, so a retry leaves no trace in the consumer.
       let held: AssistantMessageEvent[] | null = [];
       let terminal: Extract<AssistantMessageEvent, { type: 'done' | 'error' }> | undefined;
       let responseStarted = false;
       for await (const event of stream) {
+        if (looped) continue;
         if (event.type === 'done' || event.type === 'error') {
           terminal = event;
           continue;
         }
         responseStarted = true;
+        if (watch && held && (event.type === 'thinking_delta' || event.type === 'thinking_end')) {
+          const loop = event.type === 'thinking_delta' ? watch.push(event.delta) : watch.flush();
+          if (loop && !options.signal.aborted) {
+            looped = true;
+            cut.abort();
+            continue;
+          }
+        }
         if (held) {
           held.push(event);
           if (!isReplaySafe(event.partial)) {
@@ -98,6 +119,10 @@ export function managedRetryStream(options: {
         } else out.push(event);
       }
       const message = await stream.result();
+      if (looped && !options.signal.aborted) {
+        await options.beforeRetry?.(message);
+        continue;
+      }
       const failure = () =>
         providerFailure(message.errorMessage ?? '', undefined, { responseStarted });
       const replaySafe = held !== null && isReplaySafe(message);

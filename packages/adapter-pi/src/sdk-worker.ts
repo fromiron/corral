@@ -746,11 +746,11 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
                   },
                 }
               : {}),
-            open: (attempt) =>
+            open: (attempt, attemptSignal) =>
               oneRequest(
                 selected,
                 current,
-                { ...options, signal },
+                { ...options, signal: attemptSignal },
                 requestPurpose === 'turn' && attempt ? 'retry' : requestPurpose,
                 logicalRequestId,
                 attempt,

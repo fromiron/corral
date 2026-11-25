@@ -155,6 +155,7 @@ const LEFT_OUT = [
   'packages/contracts/generated/',
   'apps/server/resources/builtin/',
   'packages/adapter-pi/src/ported/dsh/',
+  'packages/adapter-pi/src/ported/thinking-loop.ts',
 ];
 
 export function isCountedSource(path: string): boolean {

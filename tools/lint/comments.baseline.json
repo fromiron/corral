@@ -26,7 +26,7 @@
     "packages/adapter-pi/src/request-credentials.ts": 6,
     "packages/adapter-pi/src/request-fence.ts": 6,
     "packages/adapter-pi/src/request-record.ts": 12,
-    "packages/adapter-pi/src/request-retry.ts": 18,
+    "packages/adapter-pi/src/request-retry.ts": 20,
     "packages/adapter-pi/src/sandbox-channel.ts": 4,
     "packages/adapter-pi/src/sdk-worker.ts": 43,
     "packages/adapter-pi/src/static-tools.ts": 1,

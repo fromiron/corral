@@ -136,6 +136,7 @@ test('test files, generated code, built-in resources and ported code are not cou
       'packages/core/src/generated/d.ts': noisy,
       'apps/server/resources/builtin/e.ts': noisy,
       'packages/adapter-pi/src/ported/dsh/f.ts': noisy,
+      'packages/adapter-pi/src/ported/thinking-loop.ts': noisy,
       'packages/pi-runtime-port/src/g.ts': noisy,
     },
     {},

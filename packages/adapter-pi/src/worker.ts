@@ -411,7 +411,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 managedRetryStream({
                   model,
                   signal: cancellation.signal,
-                  open: async (retryIndex) => {
+                  open: async (retryIndex, attemptSignal) => {
                     const record = requestRecord(
                       summary,
                       'compaction',
@@ -429,13 +429,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                     summaryCalls.push(grant.modelCallId);
                     try {
                       return accountModelStream(
-                        await sendRequest(
-                          grant,
-                          model,
-                          summary,
-                          { signal: cancellation.signal },
-                          false,
-                        ),
+                        await sendRequest(grant, model, summary, { signal: attemptSignal }, false),
                         (response) => {
                           port.send({
                             type: 'observe',
@@ -691,6 +685,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
         ]);
         const stream = managedRetryStream({
           model: m,
+          watchLoops: !advisor,
           // A cut response is never retried: the abort is ours, not a transient failure.
           signal,
           onContextOverflow: () => {
@@ -709,7 +704,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
                 failed: true,
               });
           },
-          open: async (attempt) => {
+          open: async (attempt, attemptSignal) => {
             if (attempt) {
               const next = await prepareRequest({ messages: current.messages, tools }, attempt);
               if (next)
@@ -718,7 +713,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
             if (!permit) throw new Error('request has no permit');
             flight.directiveIds = directivesInPrepared;
             flight.messages = preparedMessages;
-            return await sendRequest(permit, m, current, { ...options, signal });
+            return await sendRequest(permit, m, current, { ...options, signal: attemptSignal });
           },
         });
         // The mark stays with this request, whichever permit its last attempt got.

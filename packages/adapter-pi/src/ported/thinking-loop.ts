@@ -1,0 +1,348 @@
+// Copied from a contributor's coding-agent harness (the contributor's own code, shared with
+// permission; THIRD-PARTY-NOTICES/llm-runtime-ports.md). The detector and its thresholds are
+// unchanged; the catalog lookup is replaced by `loopGuardLevel` below.
+
+/**
+ * How much of the loop guard runs on a stream: `off` none, `exact` only exact suffix cycles,
+ * `semantic` exact cycles plus the near-duplicate and progress-lexicon paragraph heuristics.
+ */
+export type LoopGuardLevel = 'off' | 'exact' | 'semantic';
+
+/** docs/specs/llm-runtime.md: Claude is not watched; DeepSeek, Gemini and Grok get the semantic heuristics. */
+export function loopGuardLevel(model: { id: string; provider: string }): LoopGuardLevel {
+  const name = `${model.provider}/${model.id}`.toLowerCase();
+  if (model.provider === 'anthropic' || name.includes('claude')) return 'off';
+  return /deepseek|gemini|grok/.test(name) ? 'semantic' : 'exact';
+}
+
+/** Rolling tail retained for exact suffix-cycle detection. */
+const EXACT_TAIL_WINDOW = 4096;
+/** Longest exact cycle length considered. */
+const EXACT_MAX_UNIT = 1024;
+/** New characters between scans. Large deltas are scanned immediately. */
+const EXACT_CHECK_STRIDE = 128;
+/** Short cycles need four repeats covering at least this many characters. */
+const EXACT_SHORT_MAX_UNIT = 60;
+const EXACT_SHORT_MIN_REPEATED_CHARS = 180;
+/** Long cycles need at least three repeats covering at least this many chars.
+ *  Short cycles that span a line break need it too: those repeat whole lines,
+ *  which summarizer status lines do legitimately. */
+const EXACT_LONG_MIN_REPEATED_CHARS = 1024;
+/** Repeated characters before a punctuation-only run counts as a loop. Matches
+ *  {@link EXACT_LONG_MIN_REPEATED_CHARS}: a model that has emitted a kilobyte of
+ *  one punctuation cycle back-to-back is degenerate, while the short separators
+ *  real output produces (table rules, dividers) never reach it. */
+const EXACT_PUNCTUATION_MIN_REPEATED_CHARS = EXACT_LONG_MIN_REPEATED_CHARS;
+
+/** Char cap for an unterminated segment; forces a flush so a wall-of-text loop
+ *  (no blank lines / headings) still segments. */
+const SEGMENT_CHAR_CAP = 700;
+/** Normalized-length floor below which a segment is ignored (too short to be a
+ *  meaningful paragraph; bare headings must not trip detection). */
+const SEGMENT_MIN_NORM_CHARS = 60;
+/** How many recent substantial segments are kept for similarity comparison. */
+const SEGMENT_WINDOW = 16;
+/** Word-trigram Jaccard at/above which two segments count as near-duplicates. */
+const SEGMENT_SIMILARITY = 0.8;
+/** Substantial segments required before detection may fire (warm-up). */
+const SEGMENT_MIN_COUNT = 8;
+/** Near-duplicate cluster size (current + matches) that trips the loop. */
+const SEGMENT_MIN_CLUSTER = 4;
+
+/** Recent segments whose pooled unigram vocabulary is the novelty baseline for
+ *  progress-lexicon stall detection. */
+const LEX_NOVELTY_WINDOW = 8;
+/** Novelty (fraction of a segment's content words unseen across the recent
+ *  window) at/below which a segment counts as recycling earlier wording.
+ *  Calibrated against 536k real non-Gemini reasoning blocks: at 0.2 the longest
+ *  low-information run any legitimate block reached was 7. */
+const LEX_STALL_NOVELTY_FLOOR = 0.2;
+/** Consecutive low-information segments that trip a progress-lexicon stall. Set
+ *  to 8 (one above the worst legitimate run observed in the 536k-block corpus) so
+ *  the heuristic stays clear of focused reasoning that briefly recycles wording;
+ *  the real reasoning-summarizer loop sustains far longer runs (10+). */
+const LEX_STALL_MIN_RUN = 8;
+
+/** A concrete reference the model is actually reasoning about: a code span, a
+ *  file extension / dotted member, a multi-segment path, or a snake/camel/Pascal
+ *  identifier. A segment that introduces a NEW one resets the lexical-stall run —
+ *  this spares genuine per-target work (per-file templates, focused single-symbol
+ *  debugging) while still catching reworded filler that names nothing new ("just
+ *  doing it, pushing ahead") or fixates on one unchanging reference. Excludes bare
+ *  digits, abbreviations, and decimals (e.g. "Step 2", "i.e.", "1.2") so numbered
+ *  or punctuated filler is not self-anchoring. Global flag: collected with
+ *  matchAll, so never used with the stateful test(). */
+const CONCRETE_ANCHOR =
+  /`[^`]+`|\b\w{2,}\.[a-zA-Z]\w{0,4}\b|[\w-]+(?:\/[\w-]+){2,}|\b\w+_\w+\b|\b[a-z]+[A-Z]\w*\b|\b[A-Z][a-z]+[A-Z]\w*\b/g;
+
+/** A whole line shaped like code rather than prose: a fence marker, an indented
+ *  line that is not a nested list item, or a line ending in a block, statement,
+ *  or markup delimiter. Classified per line rather than by fence state because Gemini
+ *  thought summaries routinely end inside an unclosed fence; tracking fences
+ *  would hide every later prose paragraph from the heuristics. */
+const CODE_LINE =
+  /^(?:[ \t]*```.*|(?: {2,}|\t)(?![ \t]*(?:[-*+]|\d+[.)])[ \t]).*|.*[{}[\](;,>][ \t]*)$/gm;
+
+/**
+ * Stateful detector fed the streamed thinking deltas. `push` returns a
+ * human-readable reason the first time a loop shape is recognized; the caller
+ * is responsible for stopping after the first hit.
+ */
+export class ThinkingLoopDetector {
+  /** Rolling char tail for exact suffix-cycle detection. */
+  #tail = '';
+  /** Total characters received when the exact detector last scanned. */
+  #exactScannedAt = 0;
+  /** Pending thinking text not yet split into completed segments. */
+  #pending = '';
+  /** Fingerprints of the most recent substantial segments (≤ SEGMENT_WINDOW). */
+  #window: Set<string>[] = [];
+  /** Count of substantial segments seen so far (warm-up gate). */
+  #count = 0;
+  /** Unigram word sets of the most recent segments (≤ LEX_NOVELTY_WINDOW); the
+   *  novelty baseline for progress-lexicon stall detection. */
+  #wordWindow: Set<string>[] = [];
+  /** Consecutive low-information (low-novelty, anchor-free) segments seen. */
+  #lexStallRun = 0;
+  /** Concrete anchors seen per recent segment (≤ LEX_NOVELTY_WINDOW). A stall is
+   *  only broken by a *new* reference, so filler repeating one fixed
+   *  path/identifier every paragraph is still caught. */
+  #anchorWindow: Set<string>[] = [];
+
+  private readonly semanticHeuristics: boolean;
+
+  constructor(semanticHeuristics = true) {
+    this.semanticHeuristics = semanticHeuristics;
+  }
+
+  push(delta: string): string | null {
+    if (!delta) return null;
+
+    // 1. Exact suffix cycles. Scan at a bounded cadence rather than doing
+    // quadratic work for every token-sized delta.
+    this.#tail += delta;
+    if (this.#tail.length > EXACT_TAIL_WINDOW) this.#tail = this.#tail.slice(-EXACT_TAIL_WINDOW);
+    this.#exactScannedAt += delta.length;
+    if (this.#exactScannedAt >= EXACT_CHECK_STRIDE || delta.length >= EXACT_CHECK_STRIDE) {
+      this.#exactScannedAt = 0;
+      const exact = detectExactSuffixCycle(this.#tail);
+      if (exact) {
+        const [unit, times] = exact;
+        return `repeated an exact ${unit.length}-character cycle ${times}× back-to-back`;
+      }
+    }
+
+    if (!this.semanticHeuristics) return null;
+
+    // 2. Near-duplicate paragraph loop. Append, then drain completed segments.
+    this.#pending += delta;
+    while (true) {
+      const boundary = /\n\s*\n/.exec(this.#pending);
+      let raw: string;
+      if (boundary) {
+        raw = this.#pending.slice(0, boundary.index);
+        this.#pending = this.#pending.slice(boundary.index + boundary[0].length);
+      } else if (this.#pending.length > SEGMENT_CHAR_CAP) {
+        // No boundary yet but the segment is runaway-long: force a flush.
+        raw = this.#pending.slice(0, SEGMENT_CHAR_CAP);
+        this.#pending = this.#pending.slice(SEGMENT_CHAR_CAP);
+      } else {
+        return null;
+      }
+      // An over-long segment is chunked so each piece stays comparable.
+      for (let rest = raw; rest.length > 0; ) {
+        const chunk = rest.length > SEGMENT_CHAR_CAP ? rest.slice(0, SEGMENT_CHAR_CAP) : rest;
+        rest = rest.slice(chunk.length);
+        const hit = this.#consumeSegment(chunk);
+        if (hit) return hit;
+      }
+    }
+  }
+
+  /** Process the buffered trailing paragraph (one with no blank-line / heading
+   *  terminator). Called when the thinking block ends so the final segment —
+   *  which may be the one that completes a duplicate cluster — is not dropped. */
+  flush(): string | null {
+    // A stream can end before the next cadence boundary. Force one final exact
+    // check even when semantic heuristics are disabled and #pending is empty.
+    const exact = detectExactSuffixCycle(this.#tail);
+    if (exact) {
+      const [unit, times] = exact;
+      return `repeated an exact ${unit.length}-character cycle ${times}× back-to-back`;
+    }
+    if (!this.semanticHeuristics || !this.#pending) return null;
+    let rest = this.#pending;
+    this.#pending = '';
+    while (rest.length > 0) {
+      const chunk = rest.length > SEGMENT_CHAR_CAP ? rest.slice(0, SEGMENT_CHAR_CAP) : rest;
+      rest = rest.slice(chunk.length);
+      const hit = this.#consumeSegment(chunk);
+      if (hit) return hit;
+    }
+    return null;
+  }
+
+  #consumeSegment(raw: string): string | null {
+    // Reasoning-summarizer titles ("**Maintaining Momentum**", "## Heading")
+    // are per-thought formatting, not chain-of-thought; their ever-changing
+    // wording would otherwise mask a loop by inflating novelty. Strip them and
+    // code lines before analysis (a title- or code-only segment then falls below
+    // the length gate).
+    const segment = raw
+      .replace(CODE_LINE, '')
+      .replace(/^[ \t]*#{1,6}[ \t].*$/gm, '')
+      .replace(/^[ \t]*\*{2,3}.+?\*{2,3}[ \t]*$/gm, '');
+    const normalized = normalizeSegment(segment);
+    if (normalized.length < SEGMENT_MIN_NORM_CHARS) return null;
+
+    // (a) Near-duplicate trigram cluster: the same paragraph reused with
+    // cosmetic wording drift (high word-trigram overlap).
+    const fingerprint = trigramShingles(normalized);
+    let cluster = 1;
+    for (const prev of this.#window) {
+      if (jaccard(fingerprint, prev) >= SEGMENT_SIMILARITY) cluster++;
+    }
+
+    // (b) Progress-lexicon stall: paragraphs that recycle the recent
+    // vocabulary (low novelty) and add no *new* concrete reference — reworded
+    // filler that burns budget without advancing. The trigram check above
+    // already claims high-overlap near-duplicates; this catches the
+    // low-overlap, reshuffled-wording shape it misses. Requiring a NEW anchor
+    // (not merely any anchor) still catches filler that name-drops one fixed
+    // path/identifier every paragraph, while sparing genuine per-target work
+    // that names a fresh file/symbol each time.
+    const words = new Set<string>(normalized.split(' ').filter(Boolean));
+    const priorVocab = new Set<string>();
+    for (const set of this.#wordWindow) for (const w of set) priorVocab.add(w);
+    let unseen = 0;
+    for (const w of words) if (!priorVocab.has(w)) unseen++;
+    const novelty = priorVocab.size === 0 ? 1 : unseen / words.size;
+
+    const anchors = new Set<string>();
+    // Canonicalize so the same reference written as `Foo`, Foo, or FOO is one
+    // anchor and cannot masquerade as "new" to keep a fixed-reference stall alive.
+    for (const match of segment.matchAll(CONCRETE_ANCHOR))
+      anchors.add(match[0].replace(/`/g, '').toLowerCase());
+    let newAnchor = false;
+    for (const anchor of anchors) {
+      if (this.#anchorWindow.every((seen) => !seen.has(anchor))) {
+        newAnchor = true;
+        break;
+      }
+    }
+
+    if (novelty <= LEX_STALL_NOVELTY_FLOOR && !newAnchor) {
+      this.#lexStallRun++;
+    } else {
+      this.#lexStallRun = 0;
+    }
+
+    this.#window.push(fingerprint);
+    if (this.#window.length > SEGMENT_WINDOW) this.#window.shift();
+    this.#wordWindow.push(words);
+    if (this.#wordWindow.length > LEX_NOVELTY_WINDOW) this.#wordWindow.shift();
+    this.#anchorWindow.push(anchors);
+    if (this.#anchorWindow.length > LEX_NOVELTY_WINDOW) this.#anchorWindow.shift();
+    this.#count++;
+
+    if (this.#count >= SEGMENT_MIN_COUNT) {
+      if (cluster >= SEGMENT_MIN_CLUSTER) {
+        return `${cluster} near-identical segments within the last ${SEGMENT_WINDOW}`;
+      }
+      if (this.#lexStallRun >= LEX_STALL_MIN_RUN) {
+        return `${this.#lexStallRun} low-information segments recycling recent wording`;
+      }
+    }
+    return null;
+  }
+}
+
+const exactZ = new Uint16Array(EXACT_MAX_UNIT + 1);
+
+/**
+ * Detect an exact cycle at the text suffix. A Z-array over the reversed tail
+ * finds every possible suffix period in linear time without substring churn.
+ * The reversal is virtual (indexed from the end) and only `z[1..maxUnit]` is
+ * computed — the period check reads nothing past it, and each `z[i]` reads
+ * only `z[i - left]` with `i - left < i`, which is already filled. Short
+ * cycles retain the original 180-character/four-repeat sensitivity; long
+ * cycles and short ones spanning a line break require at least three repeats
+ * and 1024 repeated characters.
+ *
+ * A unit carrying a letter or an emoji matches at those thresholds. A unit with
+ * neither, such as the `?!?!` run a stuck model emits, matches only once it has
+ * repeated for {@link EXACT_PUNCTUATION_MIN_REPEATED_CHARS} characters, and never
+ * when it holds only digits and whitespace: padding, indentation and zero-filled
+ * hexdumps or literals are ordinary output at any length.
+ */
+function detectExactSuffixCycle(text: string): [unit: string, count: number] | null {
+  const n = text.length;
+  if (n < EXACT_SHORT_MIN_REPEATED_CHARS) return null;
+  const last = n - 1;
+  const maxUnit = Math.min(EXACT_MAX_UNIT, Math.floor(n / 3));
+  const z = exactZ;
+  let left = 0;
+  let right = 0;
+  for (let i = 1; i <= maxUnit; i++) {
+    let zi = i <= right ? Math.min(right - i + 1, z[i - left] ?? 0) : 0;
+    while (i + zi < n && text.charCodeAt(last - zi) === text.charCodeAt(last - i - zi)) zi++;
+    z[i] = zi;
+    if (i + zi - 1 > right) {
+      left = i;
+      right = i + zi - 1;
+    }
+  }
+
+  for (let len = 2; len <= maxUnit; len++) {
+    const count = 1 + Math.floor((z[len] ?? 0) / len);
+    const minCount = len <= EXACT_SHORT_MAX_UNIT ? 4 : 3;
+    if (count < minCount) continue;
+    const unit = text.slice(-len);
+    if (/\p{L}|\p{Extended_Pictographic}/u.test(unit)) {
+      // `unit` is one whole period, so it holds a newline iff the cycle does.
+      const minChars =
+        len <= EXACT_SHORT_MAX_UNIT && !unit.includes('\n')
+          ? EXACT_SHORT_MIN_REPEATED_CHARS
+          : EXACT_LONG_MIN_REPEATED_CHARS;
+      if (len * count >= minChars) return [unit, count];
+      continue;
+    }
+    if (/^[\p{N}\s]*$/u.test(unit)) continue;
+    if (len * count >= EXACT_PUNCTUATION_MIN_REPEATED_CHARS) return [unit, count];
+  }
+  return null;
+}
+
+/** Lowercase and tokenize prose plus code/path payloads, dropping pure numbers. */
+function normalizeSegment(segment: string): string {
+  return segment
+    .toLowerCase()
+    .replace(/`([^`]*)`/g, ' $1 ')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .split(/\s+/)
+    .filter((token) => /[a-z]/.test(token))
+    .join(' ')
+    .trim();
+}
+
+/** Word-trigram shingle set of a normalized segment. */
+function trigramShingles(normalized: string): Set<string> {
+  const words = normalized.split(' ').filter(Boolean);
+  if (words.length < 3) return new Set(words.length > 0 ? [words.join(' ')] : []);
+  const shingles = new Set<string>();
+  for (let i = 0; i + 3 <= words.length; i++) {
+    shingles.add(`${words[i]} ${words[i + 1]} ${words[i + 2]}`);
+  }
+  return shingles;
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  const [small, large] = a.size < b.size ? [a, b] : [b, a];
+  let intersection = 0;
+  for (const x of small) {
+    if (large.has(x)) intersection++;
+  }
+  const union = a.size + b.size - intersection;
+  return union === 0 ? 0 : intersection / union;
+}
