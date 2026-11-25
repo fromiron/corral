@@ -91,3 +91,34 @@ it('gives a By model role the Hashline tools on a Hashline family, and an unset 
   expect(offered[0]).toEqual(expect.arrayContaining(['read_hashline', 'edit_hashline']));
   expect(offered.at(-1)).not.toContain('read_hashline');
 });
+
+it('declares no intent field to a model whose context window is small', async () => {
+  let declared: unknown;
+  const respond: FauxResponseStep = (context) => {
+    declared ??= getCurrentTools(context.messages).find(
+      (tool) => tool.name === 'write_artifact',
+    )?.parameters;
+    return fauxAssistantMessage('Done.');
+  };
+  const { resolveProfileContext } = await import('@corral/core');
+  const policy = resolveProfileContext(
+    { contextWindow: 8_000, compaction: { reserveTokens: 0, keepRecentTokens: 1_000 } },
+    { contextWindow: 8_000, source: 'catalog' },
+    'small-window',
+    256,
+  ).policy;
+  if (!policy) throw new Error('no context policy');
+  const { transport } = liveRuntime([respond, respond], { contextPolicy: policy });
+  const { runId } = await transport.startRun({
+    schemaVersion: '0.1',
+    commandId: 'cmd_small_window',
+    definition: linearCorral(['writer']),
+    mode: 'live',
+  });
+  if (!runId) throw new Error('the run did not start');
+  await waitForProjection(transport, runId, (state) =>
+    ['succeeded', 'failed', 'cancelled'].includes(state.status),
+  );
+  expect(declared).toBeDefined();
+  expect((declared as { properties: Record<string, unknown> }).properties).not.toHaveProperty('i');
+});

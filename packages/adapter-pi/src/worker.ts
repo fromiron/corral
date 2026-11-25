@@ -279,11 +279,15 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
     let logicalRequests = 0;
     let logicalRequestId = '';
 
+    const intentTools = new Set<string>();
+    const intents = (model?.contextWindow ?? 0) >= INTENT_MIN_WINDOW;
     const tools: AgentTool[] = start.tools.map((name) => ({
       name,
       label: name,
       description: TOOL_TEXT[name],
-      parameters: withIntent(name, parametersOf(name, start)),
+      parameters: intents
+        ? withIntent(name, parametersOf(name, start), intentTools)
+        : parametersOf(name, start),
       executionMode: 'sequential',
       // Runs only after the host authorized this call; the host records tool.started.
       execute: async (piCallId) => {
@@ -734,7 +738,7 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
       prepareRequest: ({ context }) => prepareRequest(context),
       beforeToolCall: async ({ toolCall }) => {
         const given = { ...((toolCall.arguments ?? {}) as Record<string, unknown>) };
-        const declared = INTENT_TOOLS.has(toolCall.name);
+        const declared = intentTools.has(toolCall.name);
         const { i: said, ...stripped } = given;
         const args = declared ? stripped : given;
         if (declared && toolCall.arguments && 'i' in toolCall.arguments)
@@ -927,18 +931,14 @@ export function runWorker(port: Channel, deps: WorkerDeps): void {
   }
 }
 
-const INTENT = {
-  type: 'string',
-  description:
-    'In a few words, why you make this call. Shown to the person; never changes the call.',
-} as const;
+const INTENT = { type: 'string', description: 'Why this call, in a few words.' } as const;
 
-const INTENT_TOOLS = new Set<string>();
+const INTENT_MIN_WINDOW = 32_000;
 
-function withIntent<T>(name: string, parameters: T): T {
+function withIntent<T>(name: string, parameters: T, wrapped: Set<string>): T {
   const schema = parameters as { type?: unknown; properties?: Record<string, unknown> };
   if (schema?.type !== 'object' || !schema.properties || 'i' in schema.properties)
     return parameters;
-  INTENT_TOOLS.add(name);
+  wrapped.add(name);
   return { ...schema, properties: { ...schema.properties, i: INTENT } } as T;
 }
