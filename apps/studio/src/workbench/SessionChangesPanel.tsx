@@ -67,6 +67,7 @@ function useCopy(
     const remote = remoteSeen.current !== remoteKey;
     remoteSeen.current = remoteKey;
     let live = true;
+    let answered = false;
     void (async (): Promise<CopyState> => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
       if (!copy || copy.missing) return { state: 'none', branch: null, merge: null, pr: null };
@@ -86,9 +87,14 @@ function useCopy(
         merge,
         pr,
       };
-    })().then((copy) => live && setRead({ sessionId, ...copy }));
+    })().then((copy) => {
+      if (!live) return;
+      answered = true;
+      setRead({ sessionId, ...copy });
+    });
     return () => {
       live = false;
+      if (remote && !answered) remoteSeen.current = null;
     };
   }, [workspaces, sessionId, parentSessionId, tick, remoteTick, copyChanged, visible]);
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.

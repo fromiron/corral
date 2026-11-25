@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import type { PullRequestView } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
-import { act } from 'react';
+import { act, StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { SessionChangesPanel } from './SessionChangesPanel.tsx';
@@ -278,4 +278,54 @@ it('after a lost push response, reads that push back by its ID instead of pushin
   expect(gitChange).toHaveBeenCalledTimes(1);
   expect(gitOperation.mock.calls.map((call) => call[1])).toEqual([ids[0], ids[0]]);
   expect(openPullRequest).toHaveBeenCalledTimes(1);
+});
+
+it('under StrictMode, the GitHub read that the first effect dropped is made again', async () => {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
+  const stale: PullRequestView = { kind: 'hidden', reason: 'nothing_to_open' };
+  const pullRequest = vi.fn(async (_s: string, remote: boolean) => (remote ? open : stale));
+  fixture.services = {
+    mode: 'server',
+    workspaces: {
+      worktree: vi.fn(async () => ({ copyGeneration: 1, missing: false })),
+      gitStatus: vi.fn(async () => null),
+      parentMerge: vi.fn(async () => null),
+      pullRequest,
+    },
+  };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <StrictMode>
+        <SessionChangesPanel
+          session={{ sessionId: 's1', projectId: 'project' } as WorkSession}
+          onReviewChange={() => {}}
+        />
+      </StrictMode>,
+    ),
+  );
+  await settle();
+  expect(pullRequest.mock.calls.at(-1)?.[1]).toBe(true);
+  expect(container.querySelector('[data-pull-request-row]')?.textContent).toContain(
+    'PullRequests.number(12)',
+  );
 });
