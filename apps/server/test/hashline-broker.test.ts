@@ -160,6 +160,12 @@ describe('Hashline managed file broker', { timeout: 30_000 }, () => {
     const refused = (await s.edit(head.tag, 'CUT 2.=55', 'long.txt')) as Record<string, unknown>;
     expect(refused.text).toContain('\n41:row 41');
     expect(refused.text).not.toContain('42:row 42');
+    // More of the edit is still unseen past the 40 shown: it says to read them, not to repeat
+    // the same call (which the identical-call count would stop).
+    expect(refused.message).toContain('line 42');
+    expect(refused.message).not.toContain('may be edited with the same tag');
+    const near = (await s.edit(head.tag, 'CUT 50.=52', 'long.txt')) as Record<string, unknown>;
+    expect(near.message).toContain('may be edited with the same tag');
     const foreign = (await s
       .edit(head.tag, 'CUT 50.=50', 'long.txt', 'foreign')
       .catch((e) => e)) as Error;

@@ -31,11 +31,11 @@ export type HashlineEvidence = {
 };
 export class HashlineError extends Error {
   readonly code: 'SCHEMA_INVALID' | 'REVISION_CONFLICT' | 'CAPABILITY_DENIED' | 'LIMIT_REACHED';
-  readonly unseen: { start: number; end: number } | undefined;
+  readonly unseen: { start: number; end: number; next: number | null } | undefined;
   constructor(
     code: HashlineError['code'],
     message: string,
-    unseen?: { start: number; end: number },
+    unseen?: { start: number; end: number; next: number | null },
   ) {
     super(message);
     this.name = 'HashlineError';
@@ -355,10 +355,13 @@ export function applyHashline(input: {
     while (first <= end && covered(first)) first++;
     let last = first;
     while (last < end && last - first + 1 < UNSEEN_SHOWN && !covered(last + 1)) last++;
+    let next: number | null = last + 1;
+    while (next !== null && next <= end && covered(next)) next++;
+    if (next !== null && next > end) next = null;
     throw new HashlineError(
       'REVISION_CONFLICT',
       'referenced lines were not displayed; read the complete range before editing',
-      { start: first, end: last },
+      { start: first, end: last, next },
     );
   };
   const one = ops[0];

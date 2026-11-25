@@ -269,7 +269,7 @@
   - 확인하지 않은 것: Actions가 만드는 `CheckRun`(이 프로젝트의 PR 60개에도 검사 기록이 없었다), 충돌로 깨우기와 리뷰 항목의 실제 GitHub 경로, 확인 필요 화면의 새 항목 모습, 데스크톱 알림.
   - 뒤에 고친 것: 확인 필요의 PR 항목 버튼이 이름 키(`Inbox.open.changes`) 없이 나가 있었다. "PR 열기"(Open pull request)를 넣고, 보관한 세션의 감시 끝(서비스 경로까지), PR 항목의 행 문구, "PR 감시가 보냄" 메타 줄을 테스트로 묶었다. 서버·Studio 전체 스위트는 다시 돌렸다(서버의 실패 셋은 부하 때문이었고 단독으로 통과).
 
-- 전체 확장 E2E(11-26, 한 번, 다른 테스트 없이, `--workers=2`): 328 통과, 20 실패, 7 건너뜀. 실패 17개는 Firefox 프로젝트로, 이 컴퓨터에 Playwright용 Firefox가 설치되어 있지 않아 시작하지 못했다(내려받지 않았다). 나머지 셋(`desktop-workbench` DW-02/03의 axe `label-content-name-mismatch`: 대화의 "Work log" 버튼과 입력창의 모델 선택 버튼, `server/guidance` 파일 설정 도움말, `server/markdown-agent-import`의 실제 모델 실행 실패)은 단독으로도 실패하고, 이번 작업 직전 커밋(97ff4027)의 작업 트리에서도 똑같이 실패한다. 이번 작업이 만든 실패가 아니며 고치지 않았다.
+- 전체 확장 E2E(11-26, 한 번, 다른 테스트 없이, `--workers=2`): 328 통과, 20 실패, 7 건너뜀. 실패 17개는 Firefox 프로젝트로, 이 컴퓨터에 Playwright용 Firefox가 설치되어 있지 않아 시작하지 못했다(내려받지 않았다). 나머지 셋(`desktop-workbench` DW-02/03의 axe `label-content-name-mismatch`: 대화의 "Work log" 버튼과 입력창의 모델 선택 버튼, `server/guidance` 파일 설정 도움말, `server/markdown-agent-import`의 실제 모델 실행 실패)은 단독으로도 실패하고, 이 로드맵을 시작하기 전 커밋(e874a38b, 계획 파일을 처음 만든 커밋의 부모)의 작업 트리에서도 똑같이 실패한다. 이 로드맵이 만든 실패가 아니며 고치지 않았다. 마크다운 가져오기는 부모 에이전트의 모델 요청이 워커에서 실패한다("the model worker reported a request failure"). Chromium과 server 프로젝트만 돈 셈이다.
 - 외부 검토(11-26): Astra는 모델을 찾지 못해(404) 돌지 않았다. PR 감시, Hashline 거절 줄, 편집 방식, 의도 문장의 엔진 커밋은 외부 검토를 거치지 않았다.
 
 **어드바이저가 정한 것(사용자가 끝에 검토, 11-25부터)**

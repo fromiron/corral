@@ -6702,7 +6702,10 @@ export class WorkspaceService implements FileTools {
             return {
               applied: false,
               code: error.code,
-              message: `${error.message}. Nothing was changed. The lines are shown here and may be edited with the same tag.`,
+              message:
+                error.unseen.next === null
+                  ? `${error.message}. Nothing was changed. The lines are shown here and may be edited with the same tag.`
+                  : `${error.message}. Nothing was changed. Lines ${error.unseen.start}-${error.unseen.end} are shown here; line ${error.unseen.next} and others in the edit are still unseen, so read them with read_hashline before making this edit again.`,
               ...shown,
             };
           }
