@@ -16,6 +16,7 @@
 | Harness가 정해지는 순서 | 개인 기본값 → 프로젝트 기본값 → Corral 역할 → 이번 실행 | `ScopeLadder` | 3단 설명, 팀 역할 |
 | 실행 결과물 | Results / 결과 | 패널 `artifacts`, 슬래시 `/results` | Artifacts |
 | 대화의 실행이 원본 폴더 대신 쓰는 격리 사본 | Paddock / Paddock | `worktree`, scope `session` | Conversation working copy, working copy, 대화 작업 사본, 작업 사본, 세션 작업 사본, 세션 복사본, 작업 복사본 |
+| 한 세션의 Paddock에서 갈라 나온 세션 | Sub-session / 서브세션 | `parentSessionId`, `sub-sessions` | Child session, 하위 세션, 자식 세션, branch(대화에서 갈라 만든 세션과 섞어) |
 | 연결한 원래 폴더 | Project source folder / 프로젝트 원본 폴더 | `binding`, scope `project` | Linked folder |
 | 프로젝트 지침·메모리 기록 | Instructions & memory / 지침·메모리 | `materials`, `ProjectMaterials.tsx` | Project documents, 프로젝트 문서 |
 | 파일 하나를 연 패널의 탭 | 문서 탭 | 패널 `document` | 파일 탭(이 뜻으로), 창 |
