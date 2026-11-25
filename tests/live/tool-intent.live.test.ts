@@ -29,7 +29,9 @@ for (const profileId of ['deepseek-hive', 'zai-org-glm-5.3-flash'])
         JSON.stringify({
           schemaVersion: '0.1',
           modelProfiles: [profile],
-          modelProviders: parsed.config.modelProviders?.filter((row) => row.id === profile.provider),
+          modelProviders: parsed.config.modelProviders?.filter(
+            (row) => row.id === profile.provider,
+          ),
         }),
       );
       const server = await startCorralServer({
