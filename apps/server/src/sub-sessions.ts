@@ -26,6 +26,8 @@ export async function openSubSession(
     .get(request.commandId) as { request_hash: string; session_id: string } | undefined;
   if (prior && prior.request_hash !== requestHash)
     throw new WorkspaceError('REVISION_CONFLICT', 'the sub-session command changed');
+  if (prior && files.subSessionReady(prior.session_id))
+    return { sessionId: prior.session_id, created: false };
   const parent = db
     .prepare(
       `SELECT s.title, s.project_id, s.corral_id, s.auto_json FROM work_sessions s

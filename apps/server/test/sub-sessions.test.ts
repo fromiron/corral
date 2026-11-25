@@ -188,3 +188,22 @@ it('reads what a merge into the parent would take', async () => {
   const main = await s.parentMerge(s.parent);
   expect(await main.json()).toMatchObject({ error: { code: 'TARGET_NOT_FOUND' } });
 });
+
+it('returns the same sub-session for its command after the sub-session was used', async () => {
+  const s = await setup();
+  await s.workspaces.createWorktree(s.parent);
+  const body = { commandId: 'open_5', title: 'New conversation' };
+  const { sessionId } = (await (await s.open(s.parent, body)).json()) as { sessionId: string };
+  writeFileSync(join(s.copy(sessionId), 'work.txt'), 'sub work\n');
+  const again = await s.open(s.parent, body);
+  expect(again.status).toBe(200);
+  expect(await again.json()).toEqual({ sessionId });
+  expect(readFileSync(join(s.copy(sessionId), 'work.txt'), 'utf8')).toBe('sub work\n');
+  const parent = await s.repository.getSession(s.parent);
+  const archived = await s.repository.updateSession(s.parent, {
+    archived: true,
+    expectedRevision: parent?.revision ?? 0,
+  });
+  expect(archived.ok).toBe(true);
+  expect((await s.open(s.parent, body)).status).toBe(200);
+});

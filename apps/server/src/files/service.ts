@@ -6268,10 +6268,9 @@ export class WorkspaceService implements FileTools {
       label: 'Sub-session start',
       branchTitle,
     };
-    const started = this.worktree(sessionId)
-      ? this.checkpoints(sessionId).find((item) => item.checkpointId === checkpointId)
-      : undefined;
-    if (started?.tree) return this.seedCopy(sessionId, { ...seed, head: '', tree: started.tree });
+    const started = this.subSessionStart(sessionId);
+    if (started && this.worktree(sessionId)?.base_tree === started) return started;
+    if (started) return this.seedCopy(sessionId, { ...seed, head: '', tree: started });
     const parent = this.worktree(parentId);
     if (!parent)
       throw new WorkspaceError('CAPABILITY_DENIED', 'the parent session has no working copy');
@@ -6282,6 +6281,19 @@ export class WorkspaceService implements FileTools {
       tree: await this.snapshotTree(parent.worktree_path),
     }));
     return this.seedCopy(sessionId, { ...seed, ...start });
+  }
+
+  private subSessionStart(sessionId: string): string | null {
+    if (!this.worktree(sessionId)) return null;
+    const start = this.checkpoints(sessionId).find(
+      (item) => item.checkpointId === `sub_${sessionId}`,
+    );
+    return start?.tree ?? null;
+  }
+
+  subSessionReady(sessionId: string): boolean {
+    const start = this.subSessionStart(sessionId);
+    return start !== null && this.worktree(sessionId)?.base_tree === start;
   }
 
   async parentMerge(sessionId: string, parentId: string) {
@@ -6361,6 +6373,38 @@ export class WorkspaceService implements FileTools {
       head,
       branchTitle === undefined ? {} : { branchTitle },
     );
+    try {
+      return await this.restoreSeed(sessionId, { tree, checkpointId, label, finishBaseline });
+    } catch (error) {
+      await this.discardNewCopy(sessionId, projectId, head);
+      throw error;
+    }
+  }
+
+  private async discardNewCopy(sessionId: string, projectId: string, head: string) {
+    const copy = this.worktree(sessionId);
+    const root = this.binding(projectId)?.root_path;
+    if (!copy || !root) return;
+    const branch = await gitText(copy.worktree_path, [
+      'symbolic-ref',
+      '--short',
+      '-q',
+      'HEAD',
+    ]).catch(() => '');
+    await this.removeWorktree(sessionId);
+    if (branch && (await gitText(root, ['rev-parse', `refs/heads/${branch}`])) === head)
+      await git(root, ['branch', '-D', branch]);
+  }
+
+  private async restoreSeed(
+    sessionId: string,
+    {
+      tree,
+      checkpointId,
+      label,
+      finishBaseline,
+    }: { tree: string; checkpointId: string; label: string; finishBaseline: () => Promise<string> },
+  ): Promise<string> {
     const copy = await this.checkpointTarget(sessionId, 'working_copy');
     const saved = await this.lease(copy.worktree_path, () =>
       this.checkpointAt(copy, {
