@@ -107,7 +107,7 @@ export function ComposerQueue({
         );
         return entry.resend ? (
           <>
-            <span className="text-muted-foreground text-xs">
+            <span className="text-caption text-muted-foreground">
               {t('resendAt', { time: resendTime(entry.resend.notBefore) })}
             </span>
             {start}
