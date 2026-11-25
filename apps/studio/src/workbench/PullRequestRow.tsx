@@ -277,8 +277,14 @@ export function PullRequestRow({
                   required
                 />
               </InputGroup>
+              <label
+                htmlFor="pull-request-body"
+                className="-mb-2 px-1 text-caption text-muted-foreground"
+              >
+                {t('dialog.bodyLabel')}
+              </label>
               <Textarea
-                aria-label={t('dialog.bodyLabel')}
+                id="pull-request-body"
                 name="pull-request-body"
                 rows={10}
                 value={dialog?.body ?? ''}

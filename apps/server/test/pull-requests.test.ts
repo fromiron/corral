@@ -251,6 +251,18 @@ describe('the PR row', () => {
     });
   });
 
+  it('knows the repository by its configured URL, whatever insteadOf rewrites it to', async () => {
+    const f = fixture({ remote: 'https://github.com/acme/widgets.git' });
+    git(
+      f.root,
+      'config',
+      'url./srv/mirror/widgets.git.insteadOf',
+      'https://github.com/acme/widgets.git',
+    );
+    f.commit('b.txt', 'one');
+    expect(await f.service.view('s1', true)).toMatchObject({ kind: 'none', base: 'main' });
+  });
+
   it('reads the default branch with gh when origin/HEAD is unknown', async () => {
     const f = fixture({ originHead: false });
     f.commit('b.txt', 'one');

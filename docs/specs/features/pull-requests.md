@@ -44,7 +44,7 @@
   - 환경에 `GH_PROMPT_DISABLED=1`, `GH_NO_UPDATE_NOTIFIER=1`, `NO_COLOR=1`, `GH_PAGER=cat`을 더한다. 사람의 `gh` 설정(로그인)은 그대로 쓴다.
   - 한 번에 30초까지 기다리고, 넘으면 프로세스를 끝내고 결과를 모름으로 둔다.
   - 토큰을 읽거나 묻지 않는다. `gh`의 출력은 로그에 남기지 않는다. 실패는 실행 파일이 없음(`gh_missing`), 종료 코드 4(`gh_signed_out`), 그 밖(`unavailable`)으로만 나눈다.
-- **저장소.** 원본 폴더의 `git remote get-url origin`이 `https://github.com/<owner>/<name>(.git)`, `git@github.com:<owner>/<name>(.git)`, `ssh://git@github.com/<owner>/<name>(.git)`일 때만 GitHub 저장소다.
+- **저장소.** 원본 폴더에 설정된 `remote.origin.url`(`insteadOf` 재작성 전의 값)이 `https://github.com/<owner>/<name>(.git)`, `git@github.com:<owner>/<name>(.git)`, `ssh://git@github.com/<owner>/<name>(.git)`일 때만 GitHub 저장소다.
 - **기본 브랜치.** 원본 폴더의 `git symbolic-ref refs/remotes/origin/HEAD`가 있으면 그것이고, 없으면 `gh repo view <owner>/<name> --json defaultBranchRef`로 읽는다. 서버가 켜져 있는 동안 연결마다 기억한다.
 - **PR 읽기.** `GET /api/v1/sessions/:sessionId/pull-request`, 질의 `remote=1`이면 GitHub도 읽는다.
   - 로컬: 사본의 브랜치, HEAD, `refs/remotes/origin/<branch>`(없으면 원격 브랜치 없음)에 대한 앞섬·뒤처짐, 기본 브랜치에 없는 커밋 수.

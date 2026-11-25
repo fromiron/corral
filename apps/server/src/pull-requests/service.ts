@@ -336,7 +336,7 @@ export class PullRequestService {
   private async local(sessionId: string): Promise<Local | Extract<PullRequestView, object>> {
     const copy = this.deps.copyOf(sessionId);
     if (!copy) return { kind: 'hidden', reason: 'no_paddock' };
-    const url = await gitText(copy.root, ['remote', 'get-url', 'origin']).catch(() => '');
+    const url = await gitText(copy.root, ['config', '--get', 'remote.origin.url']).catch(() => '');
     const github = parseGitHubRemote(url);
     if (!github) return { kind: 'hidden', reason: 'not_github' };
     const repo = `${github.owner}/${github.name}`;
