@@ -22,6 +22,7 @@ import { type AppCommand, useRegisterCommands } from '../../commandRegistry.ts';
 import { WORKSPACE_CHANGED } from '../../pages/FilesViews.tsx';
 import { projectsChanged } from '../../projects.ts';
 import { useServices } from '../../services.tsx';
+import { newCommandId } from '../../sessionActions.ts';
 import { useShortcutBindings } from '../../shortcutBindings.ts';
 import { shortcutLabel } from '../../shortcuts.ts';
 import { useChatDensityRow } from '../ChatView.tsx';
@@ -67,8 +68,10 @@ export function SessionActions({
   panelToggle,
   dockToggle,
   onEditTeam,
+  canOpenSubSession = false,
 }: {
   session: WorkSession;
+  canOpenSubSession?: boolean;
   corrals: CorralSummary[];
   team: CorralSummary | null;
   /** Opens the saved team as a dock tab; false when it could not, so the route opens it. */
@@ -172,6 +175,27 @@ export function SessionActions({
   const tcmd = useTranslations('Commands');
   const tdock = useTranslations('Docking');
   const { workspaces, browser } = useServices();
+  const [openingSub, setOpeningSub] = useState(false);
+  const openSubSession = async () => {
+    if (!workspaces || openingSub) return;
+    setOpeningSub(true);
+    try {
+      const opened = await workspaces.openSubSession(session.sessionId, {
+        commandId: newCommandId(),
+        title: t('new'),
+      });
+      setError(null);
+      projectsChanged();
+      await router.invalidate();
+      void navigate({ to: '/sessions/$sessionId', params: { sessionId: opened.sessionId } });
+    } catch (failure) {
+      setError(
+        t('failed', { message: failure instanceof Error ? failure.message : String(failure) }),
+      );
+    } finally {
+      setOpeningSub(false);
+    }
+  };
   const panelGroup = tcmd('groups.panel');
   const sessionGroup = tcmd('groups.session');
   const tpanel = useTranslations('SessionPanel');
@@ -437,6 +461,18 @@ export function SessionActions({
               {t('editTeam')}
             </MenuItem>
           ) : null}
+          <MenuSeparator />
+          <MenuItem
+            disabled={!canOpenSubSession || openingSub}
+            onClick={() => void openSubSession()}
+          >
+            {t('openSubSession')}
+            {canOpenSubSession ? null : (
+              <span className="ml-auto pl-3 text-caption text-muted-foreground">
+                {t('subSessionNeedsPaddock')}
+              </span>
+            )}
+          </MenuItem>
           <MenuSeparator />
           <MenuItem onClick={() => void update({ pinned: !session.pinned })}>
             {session.pinned ? t('unpin') : t('pin')}

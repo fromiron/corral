@@ -1090,7 +1090,8 @@ function SessionList({
     shownPresence,
   );
   // Rows keep room for the pin when any is shown, so pinned or not their meta ends together.
-  const pinSlot = groups.some((group) => group.rows.some((row) => row.session.pinned));
+  const pinned = (row: SessionGroupRow): boolean => row.session.pinned || row.children.some(pinned);
+  const pinSlot = groups.some((group) => group.rows.some(pinned));
   const loadFailed =
     inbox.failed && inbox.evidenceFailed
       ? 'reviewAndEvidenceLoadFailed'
@@ -1167,7 +1168,7 @@ function SessionList({
                 <SessionGroupHeading
                   id={`${id}-${group.id}`}
                   name={t(`listState.${group.id}`)}
-                  count={group.rows.length}
+                  count={group.count}
                 />
               </SessionGroupSummary>
               <ul
@@ -1179,6 +1180,7 @@ function SessionList({
                     key={row.session.sessionId}
                     row={row}
                     facts={sessionFacts(inbox.evidence.get(row.session.sessionId))}
+                    factsOf={(session) => sessionFacts(inbox.evidence.get(session.sessionId))}
                     runs={runs}
                     attention={inbox.items}
                     pinSlot={pinSlot}
@@ -1272,8 +1274,9 @@ function SessionGroupHeading({ id, name, count }: { id: string; name: string; co
  * worded as the sidebar words it. Pinned is the sidebar's pin, at the row's end.
  */
 function SessionRow({
-  row: { session: x, attention: reasons, review },
+  row,
   facts,
+  factsOf,
   runs,
   attention,
   pinSlot,
@@ -1281,8 +1284,11 @@ function SessionRow({
   archiving,
   onArchive,
   onDelete,
+  depth = 0,
 }: {
   row: SessionGroupRow;
+  depth?: number;
+  factsOf: (session: WorkSession) => SessionFact[];
   /** Check · decision · applied, as recorded; none when they could not be read. */
   facts: SessionFact[];
   runs: RunSummary[];
@@ -1294,6 +1300,7 @@ function SessionRow({
   onArchive: (session: WorkSession) => void;
   onDelete?: (session: WorkSession) => void;
 }) {
+  const { session: x, attention: reasons, review } = row;
   const presenceText = useTranslations('Presence');
   const t = useTranslations('Sessions');
   const ti = useTranslations('Inbox');
@@ -1324,90 +1331,124 @@ function SessionRow({
         : undefined;
   return (
     // Narrow, the meta sits under the title, so only the row's own action takes room from it.
-    <li
-      data-session-row={x.sessionId}
-      className="col-span-full flex items-center gap-2 sm:grid sm:grid-cols-subgrid"
-    >
-      <Link
-        to="/sessions/$sessionId"
-        params={{ sessionId: x.sessionId }}
-        {...(terminal ? { search: { panel: 'terminal' as const, terminal } } : {})}
-        data-session-kind={x.meeting ? 'meeting' : 'session'}
-        className={cn(
-          'flex min-w-0 flex-1 items-center rounded-md transition-colors hover:bg-hover',
-          // The row takes the density's control height, as sidebar and table rows do.
-          size.variant === 'compact' ? 'min-h-7 gap-2 px-1.5 py-1' : 'min-h-9 gap-2.5 px-2 py-1.5',
-        )}
+    <li className="col-span-full grid grid-cols-subgrid">
+      <div
+        data-session-row={x.sessionId}
+        className="col-span-full flex items-center gap-2 sm:grid sm:grid-cols-subgrid"
       >
-        <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
-        {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
-        {/* Narrow: the facts and time take a second line under the title. */}
-        <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
-          <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>{x.title}</span>
-          <span
-            className={cn(
-              'min-w-0 text-muted-foreground sm:shrink-0 sm:text-right',
-              size.type.caption,
-            )}
+        <Link
+          to="/sessions/$sessionId"
+          params={{ sessionId: x.sessionId }}
+          {...(terminal ? { search: { panel: 'terminal' as const, terminal } } : {})}
+          data-session-kind={x.meeting ? 'meeting' : 'session'}
+          className={cn(
+            'flex min-w-0 flex-1 items-center rounded-md transition-colors hover:bg-hover',
+            // The row takes the density's control height, as sidebar and table rows do.
+            size.variant === 'compact'
+              ? 'min-h-7 gap-2 px-1.5 py-1'
+              : 'min-h-9 gap-2.5 px-2 py-1.5',
+          )}
+          style={
+            depth
+              ? {
+                  paddingInlineStart: `calc(var(--spacing) * ${(size.variant === 'compact' ? 1.5 : 2) + depth * 5})`,
+                }
+              : undefined
+          }
+        >
+          <Icon aria-hidden size={size.icon} className="shrink-0 text-muted-foreground" />
+          {x.meeting ? <span className="sr-only">{t('meeting')}</span> : null}
+          {/* Narrow: the facts and time take a second line under the title. */}
+          <span className="flex min-w-0 flex-1 flex-col sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+            <span className={cn('min-w-0 truncate text-foreground', size.type.body)}>
+              {x.title}
+            </span>
+            <span
+              className={cn(
+                'min-w-0 text-muted-foreground sm:shrink-0 sm:text-right',
+                size.type.caption,
+              )}
+            >
+              {/* A long line wraps between items, never inside one; the dot ends its line. */}
+              {[
+                row.state ? { text: presenceText(`state.${row.state}`) } : null,
+                ...facts.map((fact) => ({ text: t(`fact.${fact}`) })),
+                ...reasons.map((value) => ({ text: reason(value), label: target(value) })),
+                // What there is to review, by kind: never a count or a request's text.
+                ...review.map((kind) => ({ text: ti(`kind.${kind}`) })),
+                runCount ? { text: t('runCount', { count: runCount }) } : null,
+                { text: ago(x.updatedAt) },
+              ]
+                .filter((item): item is { text: string; label?: `run:${string}` } => Boolean(item))
+                .map((item, index, items) => (
+                  <Fragment key={item.text}>
+                    <span className="whitespace-nowrap">
+                      {item.label ? (
+                        <span data-presence-label={item.label}>{item.text}</span>
+                      ) : (
+                        item.text
+                      )}
+                      {index < items.length - 1 ? ' ·' : null}
+                    </span>
+                    {index < items.length - 1 ? ' ' : null}
+                  </Fragment>
+                ))}
+            </span>
+          </span>
+          {pinSlot ? (
+            <span className="flex w-3 shrink-0 justify-center">
+              {x.pinned ? (
+                <Pin
+                  role="img"
+                  aria-label={t('pinned')}
+                  size={12}
+                  className="shrink-0 text-muted-foreground"
+                />
+              ) : null}
+            </span>
+          ) : null}
+        </Link>
+        {archivable ? (
+          <Button
+            variant="ghost"
+            size="compact"
+            disabled={archiving}
+            aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
+            onClick={() => onArchive(x)}
           >
-            {/* A long line wraps between items, never inside one; the dot ends its line. */}
-            {[
-              ...facts.map((fact) => ({ text: t(`fact.${fact}`) })),
-              ...reasons.map((value) => ({ text: reason(value), label: target(value) })),
-              // What there is to review, by kind: never a count or a request's text.
-              ...review.map((kind) => ({ text: ti(`kind.${kind}`) })),
-              runCount ? { text: t('runCount', { count: runCount }) } : null,
-              { text: ago(x.updatedAt) },
-            ]
-              .filter((item): item is { text: string; label?: `run:${string}` } => Boolean(item))
-              .map((item, index, items) => (
-                <Fragment key={item.text}>
-                  <span className="whitespace-nowrap">
-                    {item.label ? (
-                      <span data-presence-label={item.label}>{item.text}</span>
-                    ) : (
-                      item.text
-                    )}
-                    {index < items.length - 1 ? ' ·' : null}
-                  </span>
-                  {index < items.length - 1 ? ' ' : null}
-                </Fragment>
-              ))}
-          </span>
-        </span>
-        {pinSlot ? (
-          <span className="flex w-3 shrink-0 justify-center">
-            {x.pinned ? (
-              <Pin
-                role="img"
-                aria-label={t('pinned')}
-                size={12}
-                className="shrink-0 text-muted-foreground"
-              />
-            ) : null}
-          </span>
+            {t(x.archivedAt ? 'restoreSession' : 'archive')}
+          </Button>
         ) : null}
-      </Link>
-      {archivable ? (
-        <Button
-          variant="ghost"
-          size="compact"
-          disabled={archiving}
-          aria-label={t(x.archivedAt ? 'restoreNamed' : 'archiveEmpty', { title: x.title })}
-          onClick={() => onArchive(x)}
-        >
-          {t(x.archivedAt ? 'restoreSession' : 'archive')}
-        </Button>
-      ) : null}
-      {x.archivedAt && onDelete ? (
-        <Button
-          variant="ghost"
-          size="compact"
-          aria-label={t('deleteNamed', { title: x.title })}
-          onClick={() => onDelete(x)}
-        >
-          {t('delete')}
-        </Button>
+        {x.archivedAt && onDelete ? (
+          <Button
+            variant="ghost"
+            size="compact"
+            aria-label={t('deleteNamed', { title: x.title })}
+            onClick={() => onDelete(x)}
+          >
+            {t('delete')}
+          </Button>
+        ) : null}
+      </div>
+      {row.children.length ? (
+        <ul className="col-span-full grid grid-cols-subgrid">
+          {row.children.map((child) => (
+            <SessionRow
+              key={child.session.sessionId}
+              row={child}
+              depth={depth + 1}
+              facts={factsOf(child.session)}
+              factsOf={factsOf}
+              runs={runs}
+              attention={attention}
+              pinSlot={pinSlot}
+              archivable={Boolean(child.session.archivedAt)}
+              archiving={archiving}
+              onArchive={onArchive}
+              {...(onDelete ? { onDelete } : {})}
+            />
+          ))}
+        </ul>
       ) : null}
     </li>
   );

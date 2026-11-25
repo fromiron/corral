@@ -28,6 +28,7 @@ export interface SessionSearch extends RunDetailSearch, ReviewSearch {
   corral?: string | undefined;
   /** With `panel=browser`: the browser tab's ID, never the page's address. */
   browser?: string | undefined;
+  merge?: string | undefined;
 }
 export interface ReviewSearch {
   scope?: 'session' | 'review' | 'run' | 'git';
@@ -64,6 +65,7 @@ export function validateSessionSearch(search: Record<string, unknown>): SessionS
     if (search.target === 'original') out.target = 'original';
   }
   if (out.panel === 'graph' && text(search.corral)) out.corral = text(search.corral);
+  if (out.panel === 'git' && text(search.merge)) out.merge = text(search.merge);
   if (
     out.panel === 'browser' &&
     typeof search.browser === 'string' &&

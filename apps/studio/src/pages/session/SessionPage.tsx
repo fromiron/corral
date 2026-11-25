@@ -1031,6 +1031,7 @@ function WorkSessionPage() {
             requestedView={
               requestedView === 'checks' || requestedView === 'git' ? requestedView : undefined
             }
+            mergeBranch={search.merge}
             onReviewChange={(review) =>
               frame.writeTab({
                 panel: 'changes',
@@ -1287,6 +1288,7 @@ function WorkSessionPage() {
         onPanel={(value) => showPanel({ panel: value })}
         panelToggle={toggleAvailable(state, ctx) ? { pressed: onScreen, onToggle: toggle } : null}
         dockToggle={dockArea.toggle}
+        canOpenSubSession={Boolean(copyNow.copy)}
         onEditTeam={(corralId) => {
           open({ panel: 'graph', corral: corralId });
           return true;

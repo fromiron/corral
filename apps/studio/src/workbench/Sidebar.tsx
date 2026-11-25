@@ -94,7 +94,7 @@ import {
   sessionRunOpen,
   uncertainSessionTerminal,
 } from './sessionList.ts';
-import { bySidebarOrder } from './sessionOrder.ts';
+import { familyOrder } from './sessionOrder.ts';
 import { useModelProfiles } from './useModels.ts';
 import { useSessionAge } from './useSessionAge.ts';
 import { useSettledPresence } from './useSettledPresence.ts';
@@ -328,7 +328,7 @@ export const Sidebar = memo(function Sidebar({
   const rows = useMemo(() => {
     const result: (
       | { kind: 'project'; project: ProjectSummary }
-      | { kind: 'session'; session: WorkSession }
+      | { kind: 'session'; session: WorkSession; depth: number }
       | { kind: 'empty'; id: string }
     )[] = [];
     const groups = new Map<string, WorkSession[]>();
@@ -341,8 +341,8 @@ export const Sidebar = memo(function Sidebar({
       const sessions = groups.get(project.projectId) ?? [];
       result.push({ kind: 'project', project });
       if (collapsed?.[project.projectId] === true) continue;
-      sessions.sort(bySidebarOrder);
-      for (const session of sessions) result.push({ kind: 'session', session });
+      for (const { session, depth } of familyOrder(sessions))
+        result.push({ kind: 'session', session, depth });
       if (!sessions.length) result.push({ kind: 'empty', id: project.projectId });
     }
     return result;
@@ -822,8 +822,11 @@ export const Sidebar = memo(function Sidebar({
                           position: 'absolute' as const,
                           top: item.start - scrollMargin - group.start - group.projectSize,
                           // Keep the source submenu's pl-2 content inset for
-                          // absolutely positioned virtual rows.
-                          left: '0.5rem',
+                          // absolutely positioned virtual rows; a sub-session sits deeper.
+                          left:
+                            row.kind === 'session' && row.depth
+                              ? `${0.5 + row.depth * 0.75}rem`
+                              : '0.5rem',
                           right: 0,
                           height: item.size,
                         };
@@ -871,6 +874,7 @@ export const Sidebar = memo(function Sidebar({
                             <SidebarMenuSubButton
                               tabIndex={item.index === sessionTabIndex ? 0 : -1}
                               aria-describedby="session-list-keys"
+                              aria-description={row.depth ? ts('subSession') : undefined}
                               isActive={active}
                               // Two full lines: the icon sits on the title's line.
                               className={cn(

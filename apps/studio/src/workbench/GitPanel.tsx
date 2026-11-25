@@ -77,7 +77,15 @@ const FAILURE_KEYS = {
  * User Git observations are separate from Corral's internal snapshot comparisons. In a trusted
  * session copy the same view stages, unstages and commits with a receipt.
  */
-export function GitPanel({ sessionId, projectId }: { sessionId: string; projectId: string }) {
+export function GitPanel({
+  sessionId,
+  projectId,
+  mergeBranch,
+}: {
+  sessionId: string;
+  projectId: string;
+  mergeBranch?: string;
+}) {
   const t = useTranslations('Git');
   const { workspaces, workspaceId, mode } = useServices();
   // The source the person chose; until then a conversation with a copy starts on its Paddock and
@@ -534,6 +542,7 @@ export function GitPanel({ sessionId, projectId }: { sessionId: string; projectI
         onRunHooksChange={setRunHooks}
         author={author?.name && author.email ? author : undefined}
         onCommand={(command) => execute(command, true)}
+        {...(mergeBranch ? { preferredBranch: mergeBranch } : {})}
       />
     ) : null;
   return (

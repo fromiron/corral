@@ -2,6 +2,7 @@ import type { InboxItemView, SessionEvidenceView } from '@corral/client';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { type Presence, runPresence, sessionGroupOf, sessionPresence } from '@corral/react';
 import { INBOX_GROUPS, type InboxGroupId } from './inbox.ts';
+import { type SessionNode, sessionTree } from './sessionOrder.ts';
 
 /** Each session's newest run, by start time. */
 export function latestRunsBySession(runs: readonly RunSummary[]) {
@@ -165,6 +166,8 @@ export interface SessionGroupRow {
   attention: AttentionReason[];
   /** The review kinds a row of the review group names, in the Needs you order; else empty. */
   review: ReviewKind[];
+  state: Presence['kind'] | null;
+  children: SessionGroupRow[];
 }
 
 function attentionReasons(presence: Presence, has: ReadonlySet<InboxKind>): AttentionReason[] {
@@ -182,17 +185,17 @@ function attentionReasons(presence: Presence, has: ReadonlySet<InboxKind>): Atte
 
 /**
  * Each session in the first group whose rule it meets: something waits for the person, then a
- * run in progress, then something to review, then the latest run (or none). Groups keep the
- * display order and drop out without sessions; inside one, pinned sessions lead, then the most
- * recently updated. The sidebar keeps `sessionListState`, which has no review state. `shown`
- * holds the states the screen keeps through the exit grace; a session missing from it is live.
+ * run in progress, then something to review, then the latest run (or none); a family sits in the
+ * first group any member meets (docs/specs/features/sub-sessions.md). The sidebar keeps
+ * `sessionListState`, which has no review state. `shown` holds the states the screen keeps
+ * through the exit grace; a session missing from it is live.
  */
 export function sessionGroups(
   sessions: readonly WorkSession[],
   runs: RunSummary[],
   attention: readonly SessionAttention[],
   shown?: ReadonlyMap<string, Presence>,
-): { id: SessionGroupId; rows: SessionGroupRow[] }[] {
+): { id: SessionGroupId; rows: SessionGroupRow[]; count: number }[] {
   const live = sessionPresences(sessions, runs);
   const kinds = new Map<string, Set<InboxKind>>();
   for (const item of attention) {
@@ -200,11 +203,7 @@ export function sessionGroups(
     seen.add(item.kind);
     kinds.set(item.sessionId, seen);
   }
-  const grouped = new Map<SessionGroupId, SessionGroupRow[]>();
-  const ordered = [...sessions].sort(
-    (a, b) => Number(b.pinned) - Number(a.pinned) || b.updatedAt.localeCompare(a.updatedAt),
-  );
-  for (const session of ordered) {
+  const own = (session: WorkSession) => {
     const has = kinds.get(session.sessionId) ?? new Set<InboxKind>();
     const presence = (shown?.get(session.sessionId) ?? live.get(session.sessionId)) as Presence;
     const state = sessionGroupOf(presence, has.has('uncertain_terminal'));
@@ -217,17 +216,46 @@ export function sessionGroups(
           : review.length
             ? 'review'
             : state;
-    const rows = grouped.get(id) ?? [];
-    rows.push({
-      session,
+    return {
+      id,
+      kind: presence.kind,
       attention: id === 'attention' ? attentionReasons(presence, has) : [],
       review: id === 'review' ? review : [],
+    };
+  };
+  const rank = (id: SessionGroupId) => SESSION_GROUPS.indexOf(id);
+  const grouped = new Map<SessionGroupId, { rows: SessionGroupRow[]; count: number }>();
+  for (const root of sessionTree(sessions)) {
+    let first: SessionGroupId = 'empty';
+    let count = 0;
+    type Built = {
+      node: SessionNode<WorkSession>;
+      mine: ReturnType<typeof own>;
+      children: Built[];
+    };
+    const build = (node: SessionNode<WorkSession>): Built => {
+      const mine = own(node.session);
+      if (rank(mine.id) < rank(first)) first = mine.id;
+      count += 1;
+      return { node, mine, children: node.children.map(build) };
+    };
+    const built = build(root);
+    const row = ({ node, mine, children }: Built): SessionGroupRow => ({
+      session: node.session,
+      attention: mine.attention,
+      review: mine.review,
+      state:
+        mine.id === first || mine.id === 'attention' || mine.id === 'review' ? null : mine.kind,
+      children: children.map(row),
     });
-    grouped.set(id, rows);
+    const group = grouped.get(first) ?? { rows: [], count: 0 };
+    group.rows.push(row(built));
+    group.count += count;
+    grouped.set(first, group);
   }
   return SESSION_GROUPS.flatMap((id) => {
-    const rows = grouped.get(id);
-    return rows ? [{ id, rows }] : [];
+    const group = grouped.get(id);
+    return group ? [{ id, ...group }] : [];
   });
 }
 

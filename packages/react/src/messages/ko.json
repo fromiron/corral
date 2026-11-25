@@ -2312,7 +2312,10 @@
       "resend": "다시 보내기",
       "unknown": "전달 여부를 확인하지 못함",
       "openTarget": "{name}의 실행 기록 열기"
-    }
+    },
+    "openSubSession": "서브세션 열기",
+    "subSessionNeedsPaddock": "Paddock 필요",
+    "subSession": "서브세션"
   },
   "Files": {
     "folderHeading": "프로젝트 원본 폴더",
@@ -5228,7 +5231,10 @@
     "unsavedDocuments": "브랜치를 바꾸기 전에 이 Paddock의 저장하지 않은 문서를 저장하거나 닫으세요.",
     "reconcile": "결과 확인 후 잠금 해제",
     "advancedRunning": "검토한 Git 변경을 적용하는 중…",
-    "sequenceConflicted": "충돌로 통합이 멈췄습니다. 작업 파일을 편집하고 저장한 뒤 스테이징하고 계속하세요."
+    "sequenceConflicted": "충돌로 통합이 멈췄습니다. 작업 파일을 편집하고 저장한 뒤 스테이징하고 계속하세요.",
+    "mergeIntoParent": "부모에 합치기",
+    "nothingToMerge": "합칠 커밋 없음",
+    "parentNoPaddock": "부모에 Paddock 없음"
   },
   "Checks": {
     "title": "검사",

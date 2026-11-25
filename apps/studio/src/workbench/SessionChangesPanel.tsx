@@ -1,3 +1,4 @@
+import type { ParentMerge } from '@corral/client';
 import type { TextAttachment } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import {
@@ -15,7 +16,7 @@ import {
 } from '@corral/react/design-kit';
 import { Ellipsis, GitBranch } from '@corral/react/icons';
 import { Link, useRouterState } from '@tanstack/react-router';
-import { useEffect, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { Checks, ReviewContent } from '../pages/changes/ReviewPage.tsx';
 import { useBinding, WorkingCopyPanel } from '../pages/FilesViews.tsx';
@@ -34,10 +35,11 @@ interface CopyState {
   state: 'unknown' | 'none' | 'ready';
   /** The copy's current branch; null while unknown, detached or without a copy. */
   branch: string | null;
+  merge: ParentMerge | null;
 }
 
-/** Whether the session has a working copy, and the branch it is on. */
-function useCopy(sessionId: string): CopyState {
+/** Whether the session has a working copy, the branch it is on, and its merge into a parent. */
+function useCopy(sessionId: string, parentSessionId: string | null): CopyState {
   const { workspaces } = useServices();
   const [read, setRead] = useState<({ sessionId: string } & CopyState) | null>(null);
   const [tick, setTick] = useState(0);
@@ -52,27 +54,29 @@ function useCopy(sessionId: string): CopyState {
     let live = true;
     void (async (): Promise<CopyState> => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
-      if (!copy || copy.missing) return { state: 'none', branch: null };
-      const status = await workspaces
-        .gitStatus({ kind: 'session', id: sessionId })
-        .catch(() => null);
+      if (!copy || copy.missing) return { state: 'none', branch: null, merge: null };
+      const [status, merge] = await Promise.all([
+        workspaces.gitStatus({ kind: 'session', id: sessionId }).catch(() => null),
+        parentSessionId ? workspaces.parentMerge(sessionId).catch(() => null) : null,
+      ]);
       return {
         state: 'ready',
         branch:
           status?.target.kind === 'session' && status.target.copyGeneration === copy.copyGeneration
             ? status.head.branch
             : null,
+        merge,
       };
     })().then((copy) => live && setRead({ sessionId, ...copy }));
     return () => {
       live = false;
     };
-  }, [workspaces, sessionId, tick]);
+  }, [workspaces, sessionId, parentSessionId, tick]);
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
-  if (!workspaces) return { state: 'ready', branch: null };
+  if (!workspaces) return { state: 'ready', branch: null, merge: null };
   return read?.sessionId === sessionId
-    ? { state: read.state, branch: read.branch }
-    : { state: 'unknown', branch: null };
+    ? { state: read.state, branch: read.branch, merge: read.merge }
+    : { state: 'unknown', branch: null, merge: null };
 }
 
 function ChecksView({
@@ -118,8 +122,10 @@ export function SessionChangesPanel({
   onAttach,
   visible = true,
   copyChanged,
+  mergeBranch,
 }: {
   session: WorkSession;
+  mergeBranch?: string | undefined;
   /** False while the host keeps the tab mounted behind another one. */
   visible?: boolean;
   /** Changes whenever a run of the session starts or ends, which may change the copy. */
@@ -142,7 +148,8 @@ export function SessionChangesPanel({
   const tf = useTranslations('Files');
   const { workspaces } = useServices();
   const href = useRouterState({ select: (state) => state.location.href });
-  const copy = useCopy(session.sessionId);
+  const copy = useCopy(session.sessionId, session.parentSessionId ?? null);
+  const mergeReason = useId();
   const reviewing = reviewSearch !== undefined;
   const [remembered, setRemembered] = useState<ReviewSearch | undefined>(reviewSearch);
   if (reviewSearch && reviewSearch !== remembered) setRemembered(reviewSearch);
@@ -204,6 +211,31 @@ export function SessionChangesPanel({
                 {copy.branch}
               </span>
             </span>
+          ) : null}
+          {copy.merge?.branch ? (
+            copy.merge.parentPaddock && copy.merge.commits ? (
+              <Button
+                variant="secondary"
+                render={
+                  <Link
+                    to="/sessions/$sessionId"
+                    params={{ sessionId: copy.merge.parentSessionId }}
+                    search={{ panel: 'git', merge: copy.merge.branch }}
+                  />
+                }
+              >
+                {tg('mergeIntoParent')}
+              </Button>
+            ) : (
+              <>
+                <span id={mergeReason} className="text-caption text-muted-foreground">
+                  {tg(copy.merge.parentPaddock ? 'nothingToMerge' : 'parentNoPaddock')}
+                </span>
+                <Button variant="secondary" disabled aria-describedby={mergeReason}>
+                  {tg('mergeIntoParent')}
+                </Button>
+              </>
+            )
           ) : null}
           <Menu>
             <Tooltip content={tr('more')}>
@@ -273,7 +305,11 @@ export function SessionChangesPanel({
             {missing ? null : (
               <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
             )}
-            <GitPanel sessionId={session.sessionId} projectId={session.projectId} />
+            <GitPanel
+              sessionId={session.sessionId}
+              projectId={session.projectId}
+              {...(mergeBranch ? { mergeBranch } : {})}
+            />
           </div>
         ) : null}
       </TabPanel>

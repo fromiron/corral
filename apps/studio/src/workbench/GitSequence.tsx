@@ -32,6 +32,7 @@ interface Props {
   author?: GitAuthor;
   onRunHooksChange(value: boolean): void;
   onCommand(command: GitSequenceInput): Promise<void>;
+  preferredBranch?: string;
 }
 type Review = {
   snapshot: string;
@@ -57,10 +58,11 @@ function SequenceControls({
   author,
   onRunHooksChange,
   onCommand,
+  preferredBranch,
 }: Props) {
   const t = useTranslations('GitSequence');
   const { documents } = useSyncExternalStore(owner.subscribe, owner.getState, owner.getState);
-  const [selected, setSelected] = useState('');
+  const [selected, setSelected] = useState(preferredBranch ?? '');
   const [review, setReview] = useState<Review | null>(null);
   const [confirmed, setConfirmed] = useState(false);
   const [sending, setSending] = useState(false);
