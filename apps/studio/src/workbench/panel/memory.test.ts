@@ -6,9 +6,12 @@ import {
   panelMemoryKey,
   parsePanelMemory,
   readPanelMemory,
+  readSeenMemory,
   rememberedPanel,
+  seenMemoryKey,
   serializePanelMemory,
   writePanelMemory,
+  writeSeenMemory,
 } from './memory.ts';
 import type { PanelState } from './model.ts';
 import type { PanelTab } from './tabs.ts';
@@ -289,5 +292,48 @@ describe('remembering documents, team graphs and 작업', () => {
     expect(storage.items.has(panelMemoryKey('session_a'))).toBe(false);
     expect([...storage.items.values()].some((value) => value.includes('src/a.ts'))).toBe(false);
     expect(readPanelMemory(storage, 'session_b')).toEqual(rememberedPanel(state));
+  });
+});
+
+// features/session-panel.md 주소와 기억: when the conversation was last entered on this device,
+// and the newest ended run seen there, kept apart from its tabs.
+describe('what a conversation was seen at', () => {
+  it('keeps the entry time and the seen run apart, each write leaving the other as it was', () => {
+    const storage = memoryStorage();
+    expect(writeSeenMemory(storage, 'session_a', { openedAt: '2026-11-25T10:00:00.000Z' })).toBe(
+      true,
+    );
+    writeSeenMemory(storage, 'session_a', { seenRun: 'run_2' });
+    expect(readSeenMemory(storage, 'session_a')).toEqual({
+      openedAt: '2026-11-25T10:00:00.000Z',
+      seenRun: 'run_2',
+    });
+    expect(readSeenMemory(storage, 'session_b')).toBeNull();
+    expect(storage.items.has(panelMemoryKey('session_a'))).toBe(false);
+  });
+
+  it('reads nothing seen from a malformed or unreadable record (counterexample)', () => {
+    const storage = memoryStorage();
+    for (const raw of [
+      'not json',
+      '[]',
+      JSON.stringify({ v: 2, openedAt: null, seenRun: 'run_1' }),
+      JSON.stringify({ v: 1, openedAt: 'yesterday', seenRun: 'run_1' }),
+      JSON.stringify({ v: 1, openedAt: null, seenRun: 'run 1/../x' }),
+    ]) {
+      storage.items.set(seenMemoryKey('session_a'), raw);
+      expect(readSeenMemory(storage, 'session_a'), raw).toBeNull();
+    }
+    expect(readSeenMemory(throwing, 'session_a')).toBeNull();
+    expect(writeSeenMemory(throwing, 'session_a', { seenRun: 'run_1' })).toBe(false);
+    expect(writeSeenMemory(null, 'session_a', { seenRun: 'run_1' })).toBe(false);
+  });
+
+  it('is forgotten with the rest of a deleted conversation’s memory', () => {
+    const storage = memoryStorage();
+    writePanelMemory(storage, 'session_a', state);
+    writeSeenMemory(storage, 'session_a', { seenRun: 'run_1' });
+    forgetPanelMemory(storage, 'session_a');
+    expect(storage.items.size).toBe(0);
   });
 });

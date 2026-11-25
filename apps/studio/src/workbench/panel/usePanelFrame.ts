@@ -11,7 +11,14 @@ import {
   withoutFrameParams,
 } from './address.ts';
 import { historyActionOf, travelled } from './historyActions.ts';
-import { deviceStorage, readPanelMemory, writePanelMemory } from './memory.ts';
+import {
+  deviceStorage,
+  readPanelMemory,
+  readSeenMemory,
+  type SeenMemory,
+  writePanelMemory,
+  writeSeenMemory,
+} from './memory.ts';
 import {
   EMPTY_PANEL,
   type EntryVia,
@@ -101,6 +108,8 @@ export interface PanelFrameInput {
    * screen from an earlier visit is to be forgotten (restored tabs start as if first opened).
    */
   onEnter?: (sessionId: string) => void;
+  endedRun?: string | null;
+  now?: () => string;
 }
 
 export interface PanelFrame {
@@ -115,6 +124,7 @@ export interface PanelFrame {
   tabSearch(key: TabKey): SessionSearch | undefined;
   /** The window or view in front inside 파일 and 변경, as their address last named it. */
   fronts: PanelFronts;
+  seenAtEntry: SeenMemory | null;
 }
 
 export function usePanelFrame(input: PanelFrameInput): PanelFrame {
@@ -128,6 +138,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     corralIds = null,
     browser = false,
     leaseIds = null,
+    endedRun = null,
   } = input;
   const router = useRouter();
   // The search of this very entry: the route's own search can lag a render behind the location.
@@ -147,6 +158,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
   // selected one, kept in one place (here) for this conversation only.
   const fronts = useRef<PanelFronts>({});
   const [held, setHeld] = useState<{ sessionId: string; state: PanelState } | null>(null);
+  const [visit, setVisit] = useState<{ sessionId: string; seen: SeenMemory | null } | null>(null);
   const state = held?.sessionId === sessionId ? held.state : EMPTY_PANEL;
   const entered = held?.sessionId === sessionId;
   const ctx: PanelContext = {
@@ -238,6 +250,11 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
         tabStates.current.clear();
         fronts.current = {};
         now.input.onEnter?.(now.sessionId);
+        const storage = deviceStorage();
+        setVisit({ sessionId: now.sessionId, seen: readSeenMemory(storage, now.sessionId) });
+        writeSeenMemory(storage, now.sessionId, {
+          openedAt: (now.input.now ?? (() => new Date().toISOString()))(),
+        });
       } else note(now.search, before);
       const result = reducePanel(before, event, {
         ...now.ctx,
@@ -384,6 +401,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
       contextSeen.current = null;
       return;
     }
+    if (endedRun) writeSeenMemory(deviceStorage(), sessionId, { seenRun: endedRun });
     if (contextSeen.current === null) {
       contextSeen.current = key;
       // A listing may have answered before the entry: let its clean-up run.
@@ -404,6 +422,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     leaseKey,
     browser,
     wide,
+    endedRun,
     dispatch,
   ]);
 
@@ -430,6 +449,7 @@ export function usePanelFrame(input: PanelFrameInput): PanelFrame {
     writeTab,
     tabSearch: (key) => tabStates.current.get(key),
     fronts: fronts.current,
+    seenAtEntry: visit?.sessionId === sessionId ? visit.seen : null,
   };
 }
 

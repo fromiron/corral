@@ -300,6 +300,9 @@ function WorkSessionPage() {
     );
   }, [listed, runIdsKey, session.sessionId]);
   const runIds = latched?.sessionId === session.sessionId ? latched.ids : null;
+  const newestRun = listed ? runs.at(-1) : undefined;
+  const endedRun =
+    newestRun && TERMINAL_RUN_STATUSES.has(newestRun.status) ? newestRun.runId : null;
 
   // The work area's width: given (tests), else as the frame measures it.
   const given = useGivenWorkAreaWidth();
@@ -351,6 +354,7 @@ function WorkSessionPage() {
     rememberedWidth,
     folder: Boolean(binding),
     runIds,
+    endedRun,
     paddock: Boolean(terminals && terminalList.value?.list?.target),
     terminalIds: terminalList.answer.kind === 'answered' ? terminalList.answer.ids : null,
     corralIds: corrals.map((corral) => corral.corralId),

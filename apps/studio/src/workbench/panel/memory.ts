@@ -205,9 +205,61 @@ export function writePanelMemory(
   }
 }
 
-/** Deleting a conversation deletes its memory: the panel's and the bottom dock's. */
+export interface SeenMemory {
+  readonly openedAt: string | null;
+  readonly seenRun: string | null;
+}
+
+export const seenMemoryKey = (sessionId: string) => `corral:session-seen:v1:${sessionId}`;
+
+function parseSeenMemory(raw: string | null | undefined): SeenMemory | null {
+  if (typeof raw !== 'string') return null;
+  let value: unknown;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return null;
+  const { v, openedAt, seenRun } = value as Record<string, unknown>;
+  if (v !== 1) return null;
+  const opened =
+    openedAt === null || (typeof openedAt === 'string' && !Number.isNaN(Date.parse(openedAt)));
+  const run = seenRun === null || Identifier.safeParse(seenRun).success;
+  if (!opened || !run) return null;
+  return { openedAt: openedAt as string | null, seenRun: seenRun as string | null };
+}
+
+export function readSeenMemory(storage: PanelStorage | null, sessionId: string) {
+  try {
+    return parseSeenMemory(storage?.getItem(seenMemoryKey(sessionId)));
+  } catch {
+    return null;
+  }
+}
+
+export function writeSeenMemory(
+  storage: PanelStorage | null,
+  sessionId: string,
+  change: Partial<SeenMemory>,
+): boolean {
+  if (!storage) return false;
+  try {
+    const now = readSeenMemory(storage, sessionId) ?? { openedAt: null, seenRun: null };
+    const next = { ...now, ...change };
+    storage.setItem(
+      seenMemoryKey(sessionId),
+      JSON.stringify({ v: 1, openedAt: next.openedAt, seenRun: next.seenRun }),
+    );
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** Deleting a conversation deletes its memory: the panel's, the bottom dock's and the seen record. */
 export function forgetPanelMemory(storage: PanelStorage | null, sessionId: string): void {
-  for (const key of [panelMemoryKey(sessionId), dockMemoryKey(sessionId)])
+  for (const key of [panelMemoryKey(sessionId), dockMemoryKey(sessionId), seenMemoryKey(sessionId)])
     try {
       storage?.removeItem(key);
     } catch {
