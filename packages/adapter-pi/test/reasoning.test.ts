@@ -150,3 +150,42 @@ it('the actual Pi serializer agrees on off, provider default and non-reasoning m
     }
   }
 });
+
+it('a ChatGPT-account GPT-6.2 request carries its level in the configuration update, and a changed one is refused', async () => {
+  const token = `test.${Buffer.from(JSON.stringify({ 'https://api.openai.com/auth': { chatgpt_account_id: 'test-account' } })).toString('base64')}.test`;
+  for (const id of ['gpt-6.2-sol', 'gpt-6.2-astra']) {
+    const sol = builtinModels().getModel('openai-codex', id)!;
+    expect(modelReasoningCapabilities(sol).levels).not.toContain('off');
+    const resolution = fixed('high');
+    const request = reasoningRequest(sol, { maxTokens: 4096 }, resolution);
+    let payload: Record<string, unknown> | undefined;
+    const result = await codexStream(
+      { ...request.model, api: 'openai-codex-responses' },
+      normalizeContext({ messages: [{ role: 'user', content: 'test', timestamp: 0 }] }),
+      {
+        ...request.options,
+        apiKey: token,
+        onPayload: (value: unknown) => {
+          payload = value as Record<string, unknown>;
+          throw new Error('serializer-only: do not send');
+        },
+      },
+    ).result();
+    expect(result.errorMessage).toContain('serializer-only');
+    expect(verifyReasoningWire(sol, payload, resolution, 4096, 'oauth')).toEqual({
+      kind: 'effort',
+      value: 'high',
+    });
+    const changed = structuredClone(payload!);
+    (changed.input as { type: string; reasoning?: { effort: string } }[]).findLast(
+      (item) => item.type === 'configuration_update',
+    )!.reasoning!.effort = 'low';
+    expect(() => verifyReasoningWire(sol, changed, resolution, 4096, 'oauth')).toThrow('differs');
+    const raised = structuredClone(payload!);
+    raised.reasoning = { effort: 'max' };
+    expect(() => verifyReasoningWire(sol, raised, resolution, 4096, 'oauth')).toThrow('differs');
+    const uncapped = structuredClone(payload!);
+    uncapped.max_output_tokens = 4097;
+    expect(() => verifyReasoningWire(sol, uncapped, resolution, 4096, 'oauth')).toThrow('output');
+  }
+});

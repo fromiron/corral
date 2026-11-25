@@ -174,8 +174,10 @@ export function verifyReasoningWire(
     max_completion_tokens?: unknown;
   };
   let actual = model.api === 'openai-completions' ? body.reasoning_effort : body.reasoning?.effort;
+  // Pi carries the level of these models in the last configuration_update item, on the
+  // Responses API and the ChatGPT-account (Codex) one alike, and keeps the top-level effort fixed.
   if (
-    hasApi(model, 'openai-responses') &&
+    (hasApi(model, 'openai-responses') || hasApi(model, 'openai-codex-responses')) &&
     model.compat?.supportsMidConvoEffort === true &&
     Array.isArray(body.input)
   ) {

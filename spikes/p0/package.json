@@ -5,8 +5,8 @@
   "type": "module",
   "description": "technical spikes. Not part of the product build.",
   "dependencies": {
-    "@earendil-works/pi-agent-core": "1.5.2",
-    "@earendil-works/pi-ai": "1.5.2",
+    "@earendil-works/pi-agent-core": "1.6.0",
+    "@earendil-works/pi-ai": "1.6.0",
     "@langchain/core": "1.4.1",
     "@langchain/langgraph": "1.7.5",
     "better-sqlite3": "13.2.0",
