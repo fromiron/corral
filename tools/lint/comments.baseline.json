@@ -849,7 +849,7 @@
     "apps/studio/src/workbench/panel/documentNames.ts": 7,
     "apps/studio/src/workbench/panel/fixtures.ts": 6,
     "apps/studio/src/workbench/panel/historyActions.ts": 13,
-    "apps/studio/src/workbench/panel/memory.ts": 17,
+    "apps/studio/src/workbench/panel/memory.ts": 18,
     "apps/studio/src/workbench/panel/model.ts": 167,
     "apps/studio/src/workbench/panel/runControls.ts": 21,
     "apps/studio/src/workbench/panel/runHeadControls.ts": 11,

@@ -389,3 +389,27 @@ it('keeps typed text for the conversation the card stands in, shows it again whe
   await vi.waitFor(() => expect(sendCommand).toHaveBeenCalledOnce());
   await vi.waitFor(() => expect(unsentAnswer(session, 'user_1')).toEqual({}));
 });
+
+it('forgets typed text a picked option cleared, so nothing stale is carried', async () => {
+  const { unsentAnswer } = await import('../src/run/unsentAnswers.ts');
+  const { session } = setup({
+    key: 'mixed',
+    questions: [
+      {
+        id: 'a',
+        prompt: 'Which?',
+        kind: 'single',
+        allowFreeText: true,
+        options: [
+          { id: 'x', label: 'X' },
+          { id: 'y', label: 'Y' },
+        ],
+      },
+    ],
+  });
+  await userEvent.type(screen.getByRole('textbox', { name: 'Your answer' }), 'Neither');
+  expect(unsentAnswer(session, 'user_1')).toEqual({ a: 'Neither' });
+  await userEvent.click(screen.getByRole('radio', { name: 'X' }));
+  expect(screen.getByRole('textbox', { name: 'Your answer' })).toHaveValue('');
+  expect(unsentAnswer(session, 'user_1')).toEqual({});
+});

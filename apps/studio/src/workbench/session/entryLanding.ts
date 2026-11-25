@@ -1,9 +1,10 @@
 import type { RunSummary } from '@corral/core';
+import { type SeenMemory, sawRun } from '../panel/memory.ts';
 
 export function unseenAnswerRun(
   runs: readonly Pick<RunSummary, 'runId' | 'status'>[],
-  seenRun: string | null,
+  seen: SeenMemory | null,
 ): string | null {
   const newest = runs.at(-1);
-  return newest?.status === 'succeeded' && newest.runId !== seenRun ? newest.runId : null;
+  return newest?.status === 'succeeded' && !sawRun(seen, newest.runId) ? newest.runId : null;
 }

@@ -418,6 +418,16 @@ export function ApprovalPanel({
               : 'checkHeading',
         )
       : kindText(approval);
+  const handedFrom = (approvalId: string) => ({
+    approvalId,
+    chat: section.current?.closest('[data-chat-view]') ?? null,
+    // The response place: a conversation's needed-now tray, else the run's whole response
+    // area (Needs you, the Run page), so a continue-or-stop decision beside it is next.
+    tray:
+      section.current?.closest('[data-pending-tray]') ??
+      section.current?.closest('[data-run-response]') ??
+      null,
+  });
   const decide = async (
     approvalId: string,
     decision: 'approve' | 'reject',
@@ -425,16 +435,7 @@ export function ApprovalPanel({
   ) => {
     // Focus in this decision's card is handed on when the card leaves.
     handoff.current = document.activeElement?.closest(`[data-approval="${approvalId}"]`)
-      ? {
-          approvalId,
-          chat: section.current?.closest('[data-chat-view]') ?? null,
-          // The response place: a conversation's needed-now tray, else the run's whole response
-          // area (Needs you, the Run page), so a continue-or-stop decision beside it is next.
-          tray:
-            section.current?.closest('[data-pending-tray]') ??
-            section.current?.closest('[data-run-response]') ??
-            null,
-        }
+      ? handedFrom(approvalId)
       : null;
     setBusy(true);
     try {
@@ -539,6 +540,9 @@ export function ApprovalPanel({
           : checkPlans[approval.tool.bodyRef])),
   );
   const approveShown = async (approvalIds: readonly string[]) => {
+    const last = approvalIds.at(-1);
+    handoff.current =
+      last && section.current?.contains(document.activeElement) ? handedFrom(last) : null;
     setBusy(true);
     for (const approvalId of approvalIds) {
       const receipt = await session

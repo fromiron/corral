@@ -790,9 +790,9 @@ describe('session row presence', () => {
     expect(label(container)).toEqual([messages.Presence.state.cancelled]);
   });
 
-  // presence.md: a row with nothing to care for recedes once its last run was seen here; one
-  // ended but not seen stays and says Unread to a screen reader.
-  it('recedes a row with nothing to care for once its last run was seen here, never a failed or running one', async () => {
+  // presence.md: a row with nothing to care for rests in the kit's resting colour once its last
+  // run was seen here; every other row is lit, and one ended but unseen says Unread.
+  it('rests a row with nothing to care for once its last run was seen here, and lights the rest', async () => {
     const { writeSeenMemory } = await import('./panel/memory.ts');
     window.localStorage.clear();
     const ended = (sessionId: string, runId: string, status: RunSummary['status']) => ({
@@ -800,6 +800,8 @@ describe('session row presence', () => {
       runId,
     });
     writeSeenMemory(window.localStorage, 'session_0', { seenRun: 'run_0' });
+    // Entered here before run_1 ended: a record without that run.
+    writeSeenMemory(window.localStorage, 'session_1', { openedAt: first });
     writeSeenMemory(window.localStorage, 'session_2', { seenRun: 'run_2' });
     const container = await mount({
       runs: [
@@ -807,27 +809,30 @@ describe('session row presence', () => {
         ended('session_1', 'run_1', 'succeeded'),
         ended('session_2', 'run_2', 'failed'),
         ended('session_3', 'run_3', 'running'),
+        ended('session_5', 'run_5', 'succeeded'),
       ],
     });
-    const receded = (id: string) =>
+    const lit = (id: string) =>
       row(container, id)
         ?.querySelector('[data-session-line="title"]')
-        ?.classList.contains('text-muted-foreground');
+        ?.classList.contains('text-foreground');
     const spokenName = (id: string) => row(container, id)?.querySelector('a')?.textContent ?? '';
-    expect(receded('session_0')).toBe(true);
-    expect(spokenName('session_0')).not.toContain('Unread');
-    expect(receded('session_1')).toBe(false);
+    expect(lit('session_0')).toBe(false);
+    expect(spokenName('session_0')).not.toContain(messages.Sessions.unread);
+    expect(lit('session_1')).toBe(true);
     expect(spokenName('session_1')).toContain(messages.Sessions.unread);
-    expect(receded('session_2')).toBe(false);
-    expect(receded('session_3')).toBe(false);
-    // No run at all: nothing to care for.
-    expect(receded('session_4')).toBe(true);
-    // Something in Needs you for it (a queued request, a failed check, a PR item): it stays.
+    expect(lit('session_2')).toBe(true);
+    expect(lit('session_3')).toBe(true);
+    // No run at all, or never entered on this device: nothing to tell.
+    expect(lit('session_4')).toBe(false);
+    expect(lit('session_5')).toBe(false);
+    expect(spokenName('session_5')).not.toContain(messages.Sessions.unread);
+    // Something in Needs you for it (a queued request, a failed check, a PR item): lit.
     await redraw({
       waiting: ['session_0'],
       runs: [ended('session_0', 'run_0', 'succeeded')],
     });
-    expect(receded('session_0')).toBe(false);
+    expect(lit('session_0')).toBe(true);
     window.localStorage.clear();
   });
 
@@ -848,8 +853,10 @@ describe('session row presence', () => {
       return {
         item: item?.getAttribute('style'),
         button: button?.className,
+        // The title's lit colour is the one difference a state may make (presence.md).
         lines: [...(button?.querySelectorAll('[data-session-line]') ?? [])].map(
-          (line) => `${line.getAttribute('data-session-line')}:${line.className}`,
+          (line) =>
+            `${line.getAttribute('data-session-line')}:${line.className.replace(/\s*text-foreground\b/, '')}`,
         ),
       };
     });

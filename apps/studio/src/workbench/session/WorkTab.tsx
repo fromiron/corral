@@ -133,7 +133,7 @@ export function WorkTab({
   const rowOf = (runId: string) => runRow(session.entries, loose, runId);
   const [landing, setLanding] = useState<string | null | undefined>(undefined);
   if (landing === undefined && runsListed && seenAtEntry !== undefined) {
-    const runId = unseenAnswerRun(runs, seenAtEntry?.seenRun ?? null);
+    const runId = unseenAnswerRun(runs, seenAtEntry);
     setLanding(runId ? (rowOf(runId) ?? null) : null);
   }
   // What became of each instruction, from its run's record (features/composer-flow.md). One

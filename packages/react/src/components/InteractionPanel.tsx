@@ -587,6 +587,20 @@ function UserQuestionPrompt({
     /* Invalid records are not answerable. */
   }
   const answers = request?.questions.map((q) => values[q.id] ?? { questionId: q.id }) ?? [];
+  const answer = (next: Record<string, UserAnswers[number]>) => {
+    setValues(next);
+    keepUnsentAnswer(
+      session,
+      event.payload.requestId,
+      draftTarget,
+      Object.fromEntries(
+        (request?.questions ?? []).flatMap((question) => {
+          const typed = next[question.id]?.text;
+          return typed ? [[question.id, typed]] : [];
+        }),
+      ),
+    );
+  };
   const count = request?.questions.length ?? 0;
   const stepped = count >= 2;
   const reviewing = stepped && step >= count;
@@ -694,8 +708,8 @@ function UserQuestionPrompt({
               className="mt-0.5"
               checked={value.optionIds?.includes(option.id) ?? false}
               onChange={(e) =>
-                setValues((current) => ({
-                  ...current,
+                answer({
+                  ...values,
                   [q.id]:
                     q.kind === 'single'
                       ? { questionId: q.id, optionIds: [option.id] }
@@ -705,7 +719,7 @@ function UserQuestionPrompt({
                             ? [...(value.optionIds ?? []), option.id]
                             : value.optionIds?.filter((id) => id !== option.id),
                         },
-                }))
+                })
               }
             />
             <span>
@@ -735,7 +749,7 @@ function UserQuestionPrompt({
               maxLength={12000}
               onChange={(e) => {
                 const content = e.target.value;
-                const next = {
+                answer({
                   ...values,
                   [q.id]: {
                     questionId: q.id,
@@ -744,19 +758,7 @@ function UserQuestionPrompt({
                       : {}),
                     ...(content.trim() ? { text: content } : {}),
                   },
-                };
-                setValues(next);
-                keepUnsentAnswer(
-                  session,
-                  event.payload.requestId,
-                  draftTarget,
-                  Object.fromEntries(
-                    (request?.questions ?? []).flatMap((question) => {
-                      const typed = next[question.id]?.text;
-                      return typed ? [[question.id, typed]] : [];
-                    }),
-                  ),
-                );
+                });
               }}
             />
           </label>

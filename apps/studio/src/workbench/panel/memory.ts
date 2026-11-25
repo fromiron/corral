@@ -230,6 +230,11 @@ function parseSeenMemory(raw: string | null | undefined): SeenMemory | null {
   return { openedAt: openedAt as string | null, seenRun: seenRun as string | null };
 }
 
+/** A conversation this device never entered has no news: only a record can leave a run unseen. */
+export function sawRun(record: SeenMemory | null, runId: string) {
+  return record === null || record.seenRun === runId;
+}
+
 export function readSeenMemory(storage: PanelStorage | null, sessionId: string) {
   try {
     return parseSeenMemory(storage?.getItem(seenMemoryKey(sessionId)));

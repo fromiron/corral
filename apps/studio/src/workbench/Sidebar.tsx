@@ -85,7 +85,7 @@ import {
 } from './notifications.ts';
 import { PresenceMark } from './PresenceMark.tsx';
 import { navigateFromOutside } from './panel/historyActions.ts';
-import { deviceStorage, readSeenMemory } from './panel/memory.ts';
+import { deviceStorage, readSeenMemory, sawRun } from './panel/memory.ts';
 import { changePreferences, preferences } from './preferences.ts';
 import { RenameSessionDialog } from './RenameSessionDialog.tsx';
 import { watchRunList } from './runList.ts';
@@ -107,6 +107,7 @@ import { useSessionAge } from './useSessionAge.ts';
 import { useSettledPresence } from './useSettledPresence.ts';
 
 const CALM = new Set<Presence['kind']>(['succeeded', 'cancelled', 'ready', 'empty']);
+const COUNTS_ONLY = new Set<InboxItemView['kind']>(['unreviewed', 'lsp_proposal']);
 
 export function useCorralSidebar() {
   const { repository, transport, workspaces, terminals } = useServices();
@@ -193,7 +194,11 @@ export function useCorralSidebar() {
         }
         if (items) {
           setInbox(items.length);
-          setWaiting([...new Set(items.map((item) => item.sessionId))]);
+          setWaiting([
+            ...new Set(
+              items.filter((item) => !COUNTS_ONLY.has(item.kind)).map((item) => item.sessionId),
+            ),
+          ]);
           const added = inboxNotificationTargets(items, seen ?? items);
           seen = inboxNotificationTargets(items);
           void desktop?.badge(items.length).catch(() => {});
@@ -867,13 +872,13 @@ export const Sidebar = memo(function Sidebar({
                         const calm =
                           !active &&
                           !terminal &&
-                          !session.meeting &&
                           !model.waiting.includes(session.sessionId) &&
                           Boolean(presence && CALM.has(presence.kind));
                         const lastRun = livePresence.get(session.sessionId)?.runId ?? null;
                         const seen =
+                          Boolean(session.meeting) ||
                           lastRun === null ||
-                          readSeenMemory(deviceStorage(), session.sessionId)?.seenRun === lastRun;
+                          sawRun(readSeenMemory(deviceStorage(), session.sessionId), lastRun);
                         return (
                           <SidebarMenuSubItem
                             key={item.key}
@@ -921,7 +926,7 @@ export const Sidebar = memo(function Sidebar({
                                   className={cn(
                                     size.type.body,
                                     'truncate',
-                                    calm && seen && 'text-muted-foreground',
+                                    !(calm && seen) && 'text-foreground',
                                   )}
                                   style={{
                                     fontVariationSettings: active

@@ -218,3 +218,22 @@ it('leaves the last decision’s focus to a host that is not a chat view', async
   await nextFrame();
   expect(document.body).toHaveFocus();
 });
+
+// workbench.md 응답 카드: approving the cards shown hands focus on as one card's decision does.
+it('hands focus to the request box once the approved cards shown have left a chat view', async () => {
+  const resolveApproval = vi.fn(async () => ({}) as Receipt);
+  const session = sessionStore({
+    projection: waiting(
+      approval('approval_1', 'user_action'),
+      approval('approval_2', 'final_output'),
+    ),
+    resolveApproval,
+  });
+  show(session, chat);
+  await decide(messages.Approvals.approveShown.replace('{count}', '2'));
+  expect(resolveApproval).toHaveBeenCalledTimes(2);
+  resolve(session, 'approval_1');
+  resolve(session, 'approval_2');
+  await nextFrame();
+  expect(screen.getByRole('textbox', { name: 'Request' })).toHaveFocus();
+});
