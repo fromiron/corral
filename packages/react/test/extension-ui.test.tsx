@@ -423,3 +423,58 @@ it('never brings back an answered expansion request’s line when the run waits 
   expect(screen.getByText('Choose a size')).toBeVisible();
   expect(screen.queryByTestId('answered-ui_select')).toBeNull();
 });
+
+// features/execution-monitor.md: Corral's own no-progress warning is told in the screen's words,
+// without the extension label; another key keeps the text it stored.
+it("shows Corral's no-progress warning in the screen's language, and another notice as stored", async () => {
+  const { default: ko } = await import('../src/messages/ko.json', { with: { type: 'json' } });
+  const notified = (eventId: string, key: string, bodyRef: string, runSeq: number) =>
+    RunEvent.parse({
+      schemaVersion: '0.1',
+      eventId,
+      runId: 'run_story',
+      runSeq,
+      recordedAt: '2026-10-18T00:00:00.000Z',
+      actor: { kind: 'runtime', id: 'coordinator' },
+      causedByEventIds: [],
+      type: 'extension.ui_notified',
+      executionId: 'exec_1',
+      payload: {
+        executionId: 'exec_1',
+        kind: 'notify',
+        key,
+        level: 'warning',
+        bodyRef,
+        bodyHash: 'a'.repeat(64),
+      },
+    });
+  const session = sessionStore({
+    runId: 'run_story',
+    projection: projectionWith({ status: 'running' }),
+    events: [
+      notified('event_1', 'no_progress', 'notice_1', 1),
+      notified('event_2', 'lint', 'notice_2', 2),
+    ],
+    artifactTexts: {
+      notice_1: 'No new file evidence, artifact or review progress in the last six model replies.',
+      notice_2: JSON.stringify({ kind: 'notify', key: 'lint', text: 'Lint ran', level: 'warning' }),
+    },
+  });
+  const view = (locale: 'en' | 'ko') =>
+    render(
+      <IntlProvider locale={locale} messages={locale === 'en' ? messages : ko} timeZone="UTC">
+        <InteractionPanel session={session} />
+      </IntlProvider>,
+    );
+  const en = view('en');
+  const lines = [...en.container.querySelectorAll('[role="status"]')].map((p) => p.textContent);
+  expect(lines).toEqual([
+    'No new files, results or review progress in the last 6 replies. The run goes on.',
+    'Extension · Lint ran',
+  ]);
+  en.unmount();
+  const inKorean = view('ko');
+  expect(inKorean.container.querySelector('[role="status"]')?.textContent).toBe(
+    '최근 응답 6번 동안 새 파일·결과·검토 진전이 없습니다. 실행은 계속됩니다.',
+  );
+});

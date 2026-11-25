@@ -3077,6 +3077,7 @@
     "unmanaged": "관리되지 않은 네이티브 실행",
     "extensionUi": "확장 입력 요청",
     "extensionNotice": "확장",
+    "noProgress": "최근 응답 {count}번 동안 새 파일·결과·검토 진전이 없습니다. 실행은 계속됩니다.",
     "answerUnconfirmed": "답변 전달을 확인하지 못했습니다. 요청 상태를 확인한 뒤 다시 시도하세요.",
     "loadingPrompt": "확장 요청 불러오는 중…",
     "attempt": "시도 {attempt}",

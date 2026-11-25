@@ -3077,6 +3077,7 @@
     "unmanaged": "Unmanaged native execution",
     "extensionUi": "Extension needs your input",
     "extensionNotice": "Extension",
+    "noProgress": "No new files, results or review progress in the last {count} replies. The run goes on.",
     "answerUnconfirmed": "Answer delivery is unconfirmed. Check the pending request before trying again.",
     "loadingPrompt": "Loading extension prompt…",
     "attempt": "Attempt {attempt}",

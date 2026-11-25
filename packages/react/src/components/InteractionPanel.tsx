@@ -7,7 +7,12 @@ import {
   UserInputRequest,
   validUserAnswers,
 } from '@corral/contracts';
-import { canReadArtifactBody, pendingInteractions, type RunProjection } from '@corral/core';
+import {
+  canReadArtifactBody,
+  NO_PROGRESS_TURNS,
+  pendingInteractions,
+  type RunProjection,
+} from '@corral/core';
 import { type ReactNode, useContext, useEffect, useId, useRef, useState } from 'react';
 import { useFormatter, useTranslations } from 'use-intl';
 import { useStore } from 'zustand';
@@ -207,9 +212,22 @@ export function InteractionPanel({
   const shownNotices = notices.flatMap((event) => {
     const text = bodies[event.payload.bodyRef];
     if (!text) return [];
+    if (event.payload.key === 'no_progress' && event.payload.kind === 'notify')
+      return [
+        {
+          event,
+          own: true,
+          notice: {
+            kind: 'notify' as const,
+            key: event.payload.key,
+            level: 'warning' as const,
+            text: t('noProgress', { count: NO_PROGRESS_TURNS }),
+          },
+        },
+      ];
     try {
       const notice = ExtensionUiNotice.parse(JSON.parse(text));
-      return notice.text ? [{ event, notice }] : [];
+      return notice.text ? [{ event, own: false, notice }] : [];
     } catch {
       return [];
     }
@@ -294,13 +312,13 @@ export function InteractionPanel({
           />
         );
       })}
-      {shownNotices.map(({ event, notice }, index) => (
+      {shownNotices.map(({ event, own, notice }, index) => (
         <FirstRow key={event.eventId} action={!pending.length && index === 0 ? action : undefined}>
           <p
             role="status"
             className={`text-caption ${notice.level === 'info' ? 'text-muted-foreground' : 'text-warning'}`}
           >
-            {t('extensionNotice')} · {notice.text}
+            {own ? notice.text : `${t('extensionNotice')} · ${notice.text}`}
           </p>
         </FirstRow>
       ))}
