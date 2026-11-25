@@ -57,7 +57,7 @@
 - **열기.** `POST /api/v1/sessions/:sessionId/pull-request`, 본문 `{ operationId, title, body, head }`.
   - 사본의 브랜치와 HEAD가 `head`(브랜치와 커밋)와 다르면 `REVISION_CONFLICT`로 거절한다.
   - 같은 브랜치에 열린 PR이 이미 있으면 새로 열지 않고 그 PR을 돌려준다. 응답을 잃은 재전송도 이 조회가 먼저라서 PR이 둘 생기지 않는다.
-  - PR은 `gh pr create --repo <r> --head <branch> --base <base> --title <title> --body-file <임시 파일>`로 연다. 임시 파일은 Corral 데이터 폴더 안에 0600으로 만들고 끝나면 지운다. 이 명령이 작업 사본 밖에서 브랜치를 찾는지는 실제 GitHub에서 확인하지 않았다.
+  - PR은 `gh pr create --repo <r> --head <branch> --base <base> --title <title> --body-file <임시 파일>`로 연다. 임시 파일은 Corral 데이터 폴더 안에 0600으로 만들고 끝나면 지운다.
   - 결과는 같은 `operationId`의 재요청에 처음 결과로 돌아간다. 30초를 넘겨 결과를 모르면 `REQUEST_OUTCOME_UNKNOWN`이고, 화면은 브랜치로 다시 읽어 확인한다.
   - push는 이 명령에 들어 있지 않다. 화면이 Git 보기의 push 명령을 먼저 보낸다.
 - **서브세션.** 서브세션의 base도 저장소 기본 브랜치다. 부모의 브랜치를 base로 쓰지 않는다.
