@@ -38,6 +38,16 @@ export function triggerAt(text: string, caret: number): Trigger | null {
   return null;
 }
 
+export function valueCommand<
+  C extends { slash?: string | undefined; takesValue?: boolean; disabled?: boolean },
+>(text: string, commands: readonly C[]): { command: C; value: string | undefined } | null {
+  const match = /^\/(\S+)(?:[ \t]+(.+))?$/.exec(text.trim());
+  const command = match
+    ? commands.find((c) => c.takesValue && !c.disabled && c.slash === match[1])
+    : undefined;
+  return command ? { command, value: match?.[2]?.trim() || undefined } : null;
+}
+
 /** Replaces the trigger with `token` and a following space; returns the new caret too. */
 export function replaceTrigger(
   text: string,

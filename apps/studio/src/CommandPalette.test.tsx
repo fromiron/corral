@@ -279,6 +279,7 @@ it.each([
         focus: () => {},
         run: () => {},
         compact: () => {},
+        autocompaction: () => {},
         requestStop: () => {},
         openTeam: () => {},
         openModels: () => {},

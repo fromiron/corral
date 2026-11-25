@@ -1699,10 +1699,17 @@ export interface EndpointConfig {
 }
 
 /** `.corral/config.json`'s model keys, with the revision a save must start from. */
+export interface ModelContextWindow {
+  provider: string;
+  model: string;
+  contextWindow: number;
+}
+
 export interface ModelConfig {
   effectiveProfiles?: Record<string, ProfileContextResolution>;
   modelProfiles: ProfileConfig[];
   modelProviders: EndpointConfig[];
+  modelContextWindows?: ModelContextWindow[];
   /** No profiles are configured; the defaults are in use. */
   usingDefaults: boolean;
   revision: string;
@@ -1870,6 +1877,18 @@ export class ModelsApi {
     change: Pick<ModelConfig, 'modelProfiles' | 'modelProviders' | 'revision'>,
   ): Promise<ModelConfig> {
     return this.http.json('/model-config', { method: 'PUT', body: JSON.stringify(change) });
+  }
+
+  setModelContextWindow(change: {
+    revision: string;
+    provider: string;
+    model: string;
+    contextWindow: number | null;
+  }): Promise<{ modelContextWindows: ModelContextWindow[]; revision: string }> {
+    return this.http.json('/model-context-window', {
+      method: 'PUT',
+      body: JSON.stringify(change),
+    });
   }
 
   assistTeam(request: TeamAssistantRequest, signal?: AbortSignal): Promise<TeamAssistantResponse> {

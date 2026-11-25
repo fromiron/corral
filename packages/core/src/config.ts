@@ -88,6 +88,13 @@ export const ModelProviderConfig = z.strictObject({
 });
 export type ModelProviderConfig = z.infer<typeof ModelProviderConfig>;
 
+export const ModelContextWindow = z.strictObject({
+  provider: Identifier,
+  model: z.string().min(1).max(200),
+  contextWindow: z.int().min(1).max(10_000_000),
+});
+export type ModelContextWindow = z.infer<typeof ModelContextWindow>;
+
 export const WorkspaceConfig = z.strictObject({
   schemaVersion: SchemaVersion,
   hardCaps: z
@@ -114,6 +121,22 @@ export const WorkspaceConfig = z.strictObject({
     .optional(),
   /** OpenAI-compatible endpoints the profiles may name. Keys are not configuration. */
   modelProviders: z.array(ModelProviderConfig).max(10).optional(),
+  modelContextWindows: z
+    .array(ModelContextWindow)
+    .superRefine((entries, context) => {
+      const seen = new Set<string>();
+      entries.forEach((entry, index) => {
+        const pair = `${entry.provider}\u0000${entry.model}`;
+        if (seen.has(pair))
+          context.addIssue({
+            code: 'custom',
+            path: [index],
+            message: 'one entry per provider and model',
+          });
+        seen.add(pair);
+      });
+    })
+    .optional(),
   /** Internal settings-owner checkpoint; never included in portable model configuration. */
   modelSettingsOperation: z
     .strictObject({

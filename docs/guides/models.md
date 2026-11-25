@@ -167,7 +167,7 @@ Local 판정 모델을 켜는 순서:
 }
 ```
 
-컨텍스트는 프로필 명시값 → 해당 연결 모델의 명시값 → 같은 provider/model 카탈로그 → 연결 기본값 순서다. 압축 기본값은 PI-Desktop에서 이식한 모델 window·출력 한도 비례 정책이다. 새 명시 정책은 `reserve < context`, `keep < context - reserve`를 만족해야 한다. 관계가 잘못된 새 설정은 거절하며 과거 snapshot은 당시 정책으로 읽는다. 모든 입력을 지우면 기본 경로로 돌아간다.
+컨텍스트는 프로필 명시값 → 그 공급자·모델에 적은 모델 단위 값 → 해당 연결 모델의 명시값 → 같은 provider/model 카탈로그 → 연결 기본값 순서다. 모델 단위 값은 설정 → 모델 → 연결의 모델 줄이나 입력창의 `/autocompaction 200k`로 적고, 프로필 없이 고른 모델에도 쓰인다([모델 연결](../specs/features/model-connections.md#모델-단위-컨텍스트-창)). 압축 기본값은 PI-Desktop에서 이식한 모델 window·출력 한도 비례 정책이다. 새 명시 정책은 `reserve < context`, `keep < context - reserve`를 만족해야 한다. 관계가 잘못된 새 설정은 거절하며 과거 snapshot은 당시 정책으로 읽는다. 모든 입력을 지우면 기본 경로로 돌아간다.
 
 화면은 입력값과 별도로 유효값·출처·추정 압축 임계점·설정 버전을 표시한다. 공통 자동 압축 조건은 계측 입력이 `floor((context - reserve) × 0.9)`보다 **클 때**다. 실제 provider overflow는 별도로 한 번 압축 복구를 시도한다. `reserve=0`은 압축 끄기가 아니며 `keep=0`도 모든 원문 제거를 보장하지 않는다. reserve는 일반 응답 길이 설정이 아니다. 요약 요청의 최종 출력 한도는 기존 Corral permit을 따른다.
 

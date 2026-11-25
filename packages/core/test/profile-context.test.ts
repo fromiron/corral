@@ -1,4 +1,4 @@
-import type { ModelProfileSnapshot } from '@corral/contracts';
+import { type ModelProfileSnapshot, ProfileContextPolicy } from '@corral/contracts';
 import { FakeClock, Gate, ScriptedAgentAdapter, SequentialIdFactory } from '@corral/testkit';
 import { expect, it } from 'vitest';
 import { parseWorkspaceConfig } from '../src/config.ts';
@@ -148,6 +148,54 @@ it('uses adaptive defaults and validates explicit policies after resolving their
     },
   });
   expect(resolveProfileContext({}, base, 'rev-c', 4096).policy?.explicit).toBe(false);
+});
+
+it('a context window set for the model sits between the profile value and the model’s own', () => {
+  const base = { contextWindow: 500_000, source: 'catalog' as const };
+  const model = resolveProfileContext({}, base, 'rev-a', 4096, 200_000);
+  expect(model.errors).toEqual([]);
+  expect(model.policy).toMatchObject({
+    contextWindow: 200_000,
+    explicit: true,
+    baseContextWindow: 500_000,
+    baseSource: 'catalog',
+    sources: { contextWindow: 'model', reserveTokens: 'adaptive', keepRecentTokens: 'adaptive' },
+    warnings: [],
+  });
+  expect(ProfileContextPolicy.safeParse(model.policy).success).toBe(true);
+  expect(
+    resolveProfileContext({ contextWindow: 120_000 }, base, 'rev-a', 4096, 200_000).policy,
+  ).toMatchObject({ contextWindow: 120_000, sources: { contextWindow: 'profile' } });
+  expect(resolveProfileContext({}, base, 'rev-a', 4096).policy).toMatchObject({
+    contextWindow: 500_000,
+    explicit: false,
+    sources: { contextWindow: 'catalog' },
+  });
+  expect(resolveProfileContext({}, base, 'rev-a', 4096, 600_000).policy?.warnings).toEqual([
+    'above_model_limit',
+  ]);
+  expect(
+    resolveProfileContext({ compaction: { reserveTokens: 16_384 } }, base, 'rev-a', 4096, 10_000)
+      .errors,
+  ).not.toEqual([]);
+  expect(
+    resolveProfileContext({}, { contextWindow: null, source: 'fallback' }, 'rev-a', 4096, 64_000)
+      .policy,
+  ).toMatchObject({
+    contextWindow: 64_000,
+    baseContextWindow: null,
+    sources: { contextWindow: 'model' },
+  });
+});
+
+it('a policy recorded before model-level values still parses', () => {
+  const recorded = resolveProfileContext(
+    {},
+    { contextWindow: 128_000, source: 'endpoint' },
+    'rev-a',
+    4096,
+  ).policy;
+  expect(ProfileContextPolicy.parse(JSON.parse(JSON.stringify(recorded)))).toEqual(recorded);
 });
 
 it('accepts explicit zero reserves and omission as different profile settings', () => {

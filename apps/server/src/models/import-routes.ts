@@ -238,7 +238,12 @@ export function registerModelImportRoutes(
     workspace.configRevision = written.revision;
     const endpoints = registry.endpointsFor(written.config.modelProviders);
     registerEndpoints(live.models, endpoints);
-    await registry.reconfigure(profiles, endpoints, written.revision);
+    await registry.reconfigure(
+      profiles,
+      endpoints,
+      written.revision,
+      written.config.modelContextWindows ?? [],
+    );
     const keyFailures: string[] = [];
     for (const selection of body.data.selected) {
       const draft = preview.drafts[Number(selection.id)];

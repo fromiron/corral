@@ -707,6 +707,183 @@ describe('profile limits', () => {
   });
 });
 
+describe('a context window set per model', () => {
+  /** A provider connected by an environment key, with one 500,000-token model. */
+  function lunaServer(config: Record<string, unknown> = { modelProfiles: FAKE_PROFILES }) {
+    const fake = fakeOpenAI({ configDir: temp('config'), env: { LUNA_API_KEY: 'luna-key' } });
+    const faux = createFauxCore({
+      provider: 'luna',
+      models: [{ id: 'luna-500k', name: 'Luna 500k', contextWindow: 500_000 }],
+    });
+    fake.live.models.setProvider(
+      createProvider({
+        id: 'luna',
+        name: 'Luna',
+        auth: { apiKey: envApiKeyAuth('Luna key', ['LUNA_API_KEY']) },
+        models: faux.models,
+        api: { stream: faux.stream, streamSimple: faux.streamSimple },
+      }),
+    );
+    return start(fake.live, config);
+  }
+  const LUNA = 'luna:luna-500k';
+  const configPath = (context: Context) => join(context.workspace, '.corral', 'config.json');
+  const revision = async (context: Context) =>
+    (await context.json('/model-config')).body.revision as string;
+  const setWindow = async (context: Context, contextWindow: number | null, change = {}) =>
+    context.json('/model-context-window', {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision: await revision(context),
+        provider: 'luna',
+        model: 'luna-500k',
+        contextWindow,
+        ...change,
+      }),
+    });
+  /** The model snapshot a Run on `profile` froze at its start. */
+  async function frozen(context: Context, profile: string) {
+    const { runId, receipt, transport } = await startRun(context, profile);
+    expect(receipt.error).toBeUndefined();
+    const read = async () => {
+      const events: RunEvent[] = [];
+      const stop = transport.subscribe(runId ?? '', 0, { onEvent: (e) => events.push(e) });
+      const all = await until(
+        async () => events,
+        (list) => list.some((e) => e.type === 'run.started'),
+      );
+      stop();
+      const started = all.find((e) => e.type === 'run.started');
+      return started?.type === 'run.started' ? started.payload.modelProfiles[0] : undefined;
+    };
+    return { runId, read };
+  }
+  const listed = async (context: Context, profileId: string) =>
+    ((await context.json('/model-profiles')).body as Record<string, unknown>[]).find(
+      (p) => p.profileId === profileId,
+    );
+
+  it('200,000 on a 500,000 model is the next Run’s window; a Run resolved before keeps 500,000; clearing returns to 500,000', async () => {
+    const context = await lunaServer();
+    expect((await context.json('/model-config')).body.modelContextWindows).toEqual([]);
+    expect(await listed(context, LUNA)).toMatchObject({
+      source: 'connection',
+      contextWindow: 500_000,
+    });
+    const before = await frozen(context, LUNA);
+    expect(await before.read()).toMatchObject({ contextWindow: 500_000 });
+
+    const saved = await setWindow(context, 200_000);
+    expect(saved.status).toBe(200);
+    const entry = { provider: 'luna', model: 'luna-500k', contextWindow: 200_000 };
+    expect(saved.body).toEqual({ modelContextWindows: [entry], revision: await revision(context) });
+    expect(JSON.parse(readFileSync(configPath(context), 'utf8')).modelContextWindows).toEqual([
+      entry,
+    ]);
+    expect((await context.json('/model-config')).body.modelContextWindows).toEqual([entry]);
+    expect(await listed(context, LUNA)).toMatchObject({
+      contextWindow: 200_000,
+      contextPolicy: {
+        contextWindow: 200_000,
+        baseContextWindow: 500_000,
+        sources: { contextWindow: 'model' },
+      },
+    });
+    expect(await (await frozen(context, LUNA)).read()).toMatchObject({
+      contextWindow: 200_000,
+      contextPolicy: { contextWindow: 200_000, sources: { contextWindow: 'model' } },
+    });
+    // The Run resolved before the change keeps what it froze.
+    expect(await before.read()).toMatchObject({
+      contextWindow: 500_000,
+      contextPolicy: { contextWindow: 500_000, sources: { contextWindow: 'catalog' } },
+    });
+
+    const cleared = await setWindow(context, null);
+    expect(cleared.status).toBe(200);
+    expect(cleared.body.modelContextWindows).toEqual([]);
+    expect(JSON.parse(readFileSync(configPath(context), 'utf8'))).not.toHaveProperty(
+      'modelContextWindows',
+    );
+    expect(await (await frozen(context, LUNA)).read()).toMatchObject({
+      contextWindow: 500_000,
+      contextPolicy: { sources: { contextWindow: 'catalog' } },
+    });
+  });
+
+  it('a profile with 120,000 on the same model keeps it; the model chosen without a profile gets 200,000', async () => {
+    const context = await lunaServer({
+      modelProfiles: [
+        ...FAKE_PROFILES,
+        { id: 'luna-small', provider: 'luna', model: 'luna-500k', contextWindow: 120_000 },
+      ],
+    });
+    expect((await setWindow(context, 200_000)).status).toBe(200);
+    expect(await (await frozen(context, 'luna-small')).read()).toMatchObject({
+      contextWindow: 120_000,
+      contextPolicy: { sources: { contextWindow: 'profile' } },
+    });
+    expect(await (await frozen(context, LUNA)).read()).toMatchObject({
+      contextWindow: 200_000,
+      contextPolicy: { sources: { contextWindow: 'model' } },
+    });
+  });
+
+  it('a value that breaks a profile’s reserve on that model is refused and the file stays as it was', async () => {
+    const context = await lunaServer({
+      modelProfiles: [
+        ...FAKE_PROFILES,
+        {
+          id: 'luna-kept',
+          provider: 'luna',
+          model: 'luna-500k',
+          compaction: { reserveTokens: 16_384 },
+        },
+      ],
+    });
+    const before = readFileSync(configPath(context), 'utf8');
+    const refused = await setWindow(context, 10_000);
+    expect(refused.status).toBe(400);
+    expect(refused.body.error.code).toBe('SCHEMA_INVALID');
+    expect(refused.body.error.message).toContain('luna-kept');
+    expect(readFileSync(configPath(context), 'utf8')).toBe(before);
+    expect(await listed(context, 'luna-kept')).toMatchObject({ contextWindow: 500_000 });
+  });
+
+  it('saving profiles keeps the model-level value', async () => {
+    const context = await lunaServer();
+    expect((await setWindow(context, 200_000)).status).toBe(200);
+    const saved = await context.json('/model-config', {
+      method: 'PUT',
+      body: JSON.stringify({
+        revision: await revision(context),
+        modelProfiles: [{ id: 'model-a', provider: 'openai', model: 'gpt-test-a' }],
+        modelProviders: [],
+      }),
+    });
+    expect(saved.status).toBe(200);
+    expect((await context.json('/model-config')).body.modelContextWindows).toEqual([
+      { provider: 'luna', model: 'luna-500k', contextWindow: 200_000 },
+    ]);
+    expect(await listed(context, LUNA)).toMatchObject({ contextWindow: 200_000 });
+  });
+
+  it('an unknown provider or model is TARGET_NOT_FOUND and a stale revision REVISION_CONFLICT; the file is untouched', async () => {
+    const context = await lunaServer();
+    const before = readFileSync(configPath(context), 'utf8');
+    for (const change of [{ provider: 'nobody' }, { model: 'luna-missing' }]) {
+      const answer = await setWindow(context, 200_000, change);
+      expect(answer.status, JSON.stringify(change)).toBe(404);
+      expect(answer.body.error.code).toBe('TARGET_NOT_FOUND');
+      expect(answer.body.error.message).toContain('has no model');
+    }
+    const stale = await setWindow(context, 200_000, { revision: 'stale' });
+    expect(stale.status).toBe(409);
+    expect(stale.body.error.code).toBe('REVISION_CONFLICT');
+    expect(readFileSync(configPath(context), 'utf8')).toBe(before);
+  });
+});
+
 describe('endpoint models over HTTP', () => {
   const ROUTER = {
     id: 'router',

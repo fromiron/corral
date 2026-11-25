@@ -2,6 +2,7 @@ import {
   ApiError,
   type CatalogProvider,
   type ModelConfig,
+  type ModelContextWindow,
   type ModelProfileView,
   type ProviderAuthView,
   type SourcedValue,
@@ -19,12 +20,17 @@ import {
   MenuItem,
   MenuPopup,
   MenuTrigger,
+  Popover,
+  PopoverPopup,
+  PopoverTrigger,
 } from '@corral/react/design-kit';
 import { Brain, Ellipsis, ImageIcon, Plus, RefreshCw, Search } from '@corral/react/icons';
 import { type KeyboardEvent, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
+import { parseContextWindow } from '../../workbench/contextWindowText.ts';
 import { useModelSettingsRefresh } from '../../workbench/modelSettings.tsx';
+import { withProfileWindow } from '../../workbench/profileWindow.ts';
 import { useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
 import { SettingsTaskPending } from '../../workbench/settingsTasks.ts';
 import { AddConnectionDialog, type AddConnectionStart } from './AddConnectionDialog.tsx';
@@ -117,6 +123,31 @@ export function ModelConnections({
         );
       }
     });
+  const saveContextWindow = (
+    provider: ProviderAuthView,
+    model: string,
+    contextWindow: number | null,
+    profile: string | null,
+  ) =>
+    config &&
+    models &&
+    act(provider.providerId, async () => {
+      const save = (current: ModelConfig) =>
+        profile
+          ? models.saveConfig(withProfileWindow(current, profile, contextWindow))
+          : models.setModelContextWindow({
+              revision: current.revision,
+              provider: provider.providerId,
+              model,
+              contextWindow,
+            });
+      try {
+        return await save(config);
+      } catch (failure) {
+        if (!conflicted(failure)) throw failure;
+        return await save(await models.config());
+      }
+    });
   const run = (provider: ProviderAuthView, action: ConnectionAction) => {
     if (action === 'retry') return void refreshModels(provider);
     if (provider.endpoint) return setAdding({ face: 'address', providerId: provider.providerId });
@@ -200,6 +231,9 @@ export function ModelConnections({
           onRefresh={() => void refreshModels(provider)}
           onEditAddress={() => setAdding({ face: 'address', providerId: provider.providerId })}
           onRemove={() => removeEndpoint(provider)}
+          onContextWindow={(model, value, profile) =>
+            void saveContextWindow(provider, model, value, profile)
+          }
           onSignInHere={() =>
             setAdding({ face: 'connect', providerId: provider.providerId, method: 'oauth' })
           }
@@ -271,6 +305,8 @@ interface ConnectionModel {
   id: string;
   name: string;
   contextWindow: SourcedValue<number> | null;
+  contextSet: number | null;
+  contextProfile: string | null;
   reasoning: SourcedValue<string[]> | null;
   imageInput: SourcedValue<boolean> | null;
   /** The named profile that already points at this model. */
@@ -281,7 +317,21 @@ function modelsOf(
   provider: ProviderAuthView,
   catalog: CatalogProvider[],
   profiles: ModelProfileView[],
+  windows: readonly ModelContextWindow[],
 ): ConnectionModel[] {
+  const owner = (modelId: string) => {
+    const id = named.get(modelKey(provider.providerId, modelId));
+    const view = id ? profiles.find((p) => p.source === 'profile' && p.profileId === id) : null;
+    return view?.contextPolicy?.sources.contextWindow === 'profile' ? view : null;
+  };
+  const contextOf = (modelId: string) => ({
+    contextSet:
+      owner(modelId)?.contextPolicy?.contextWindow ??
+      windows.find((entry) => entry.provider === provider.providerId && entry.model === modelId)
+        ?.contextWindow ??
+      null,
+    contextProfile: owner(modelId)?.profileId ?? null,
+  });
   const named = new Map(
     profiles
       .filter((p) => p.source === 'profile' && p.provider === provider.providerId)
@@ -301,6 +351,7 @@ function modelsOf(
       id: model.id,
       name: model.name,
       contextWindow: model.limits?.contextWindow ?? null,
+      ...contextOf(model.id),
       reasoning: model.limits?.reasoning.value
         ? { value: levels(model.id), source: model.limits.reasoning.source }
         : null,
@@ -315,10 +366,12 @@ function modelsOf(
     if (seen.has(view.modelId)) continue;
     seen.add(view.modelId);
     const config = { source: 'config' as const };
+    const own = view.contextPolicy ? view.contextPolicy.baseContextWindow : view.contextWindow;
     out.push({
       id: view.modelId,
       name: view.modelName ?? view.modelId,
-      contextWindow: view.contextWindow !== null ? { value: view.contextWindow, ...config } : null,
+      contextWindow: own !== null ? { value: own, ...config } : null,
+      ...contextOf(view.modelId),
       reasoning: view.reasoningCapabilities?.levels.length
         ? { value: view.reasoningCapabilities.levels, ...config }
         : view.reasoning
@@ -354,6 +407,7 @@ function ConnectionDetails({
   onRefresh,
   onEditAddress,
   onRemove,
+  onContextWindow,
   onSignInHere,
 }: {
   provider: ProviderAuthView;
@@ -370,12 +424,17 @@ function ConnectionDetails({
   onRefresh: () => void;
   onEditAddress: () => void;
   onRemove: () => void;
+  onContextWindow: (model: string, contextWindow: number | null, profile: string | null) => void;
   onSignInHere: () => void;
 }) {
   const t = useTranslations('Connections');
   const tm = useTranslations('Models');
   const tq = useTranslations('Reasoning');
-  const list = useMemo(() => modelsOf(provider, catalog, profiles), [provider, catalog, profiles]);
+  const windows = config?.modelContextWindows;
+  const list = useMemo(
+    () => modelsOf(provider, catalog, profiles, windows ?? []),
+    [provider, catalog, profiles, windows],
+  );
   const [query, setQuery] = useState('');
   const [shown, setShown] = useState(PAGE);
   const [focusAt, setFocusIndex] = useState(0);
@@ -407,6 +466,7 @@ function ConnectionDetails({
       : text;
   // One tab stop for the list; arrows move between the rows' actions.
   const onListKey = (e: KeyboardEvent<HTMLUListElement>) => {
+    if (!e.currentTarget.contains(e.target as Node)) return;
     const next =
       e.key === 'ArrowDown'
         ? focusIndex + 1
@@ -466,6 +526,7 @@ function ConnectionDetails({
         >
           {drawn.map((model, index) => {
             const context = model.contextWindow;
+            const inEffect = model.contextSet ?? context?.value ?? null;
             const reasoning = model.reasoning;
             const levels = reasoning?.value.length
               ? t('reasoning', {
@@ -483,16 +544,25 @@ function ConnectionDetails({
                 <span className="min-w-0 flex-1 truncate text-foreground">{model.name}</span>{' '}
                 {/* Fixed slots keep each mark in its own column down the list. */}
                 <span className="flex shrink-0 items-center gap-2 text-caption text-muted-foreground tabular-nums">
-                  {context ? (
-                    <span
-                      data-mark="context"
-                      className="w-10 text-right"
-                      title={withSource(t('context', { value: context.value }), context)}
-                    >
-                      {shortTokens(context.value)}
-                    </span>
+                  {inEffect !== null ? (
+                    <ContextWindowMark
+                      name={model.name}
+                      set={model.contextSet}
+                      own={context?.value ?? null}
+                      label={withSource(
+                        model.contextSet !== null && context
+                          ? t('contextSet', { value: model.contextSet, own: context.value })
+                          : t('context', { value: inEffect }),
+                        context,
+                      )}
+                      text={shortTokens(inEffect)}
+                      disabled={busy || !config}
+                      tabIndex={index === focusIndex ? 0 : -1}
+                      onFocus={() => setFocusIndex(index)}
+                      onSave={(value) => onContextWindow(model.id, value, model.contextProfile)}
+                    />
                   ) : (
-                    <span aria-hidden className="w-10" />
+                    <span aria-hidden className="w-12" />
                   )}
                   {reasoning ? (
                     <span
@@ -624,5 +694,111 @@ function ConnectionDetails({
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ContextWindowMark({
+  name,
+  set,
+  own,
+  label,
+  text,
+  disabled,
+  tabIndex,
+  onFocus,
+  onSave,
+}: {
+  name: string;
+  set: number | null;
+  own: number | null;
+  label: string;
+  text: string;
+  disabled: boolean;
+  tabIndex: number;
+  onFocus: () => void;
+  onSave: (contextWindow: number | null) => void;
+}) {
+  const t = useTranslations('Connections');
+  const format = useFormatter();
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState('');
+  const [invalid, setInvalid] = useState(false);
+  const field = t('contextField', { model: name });
+  const finish = (value: number | null) => {
+    setOpen(false);
+    if (value !== set) onSave(value);
+  };
+  const save = () => {
+    if (!draft.trim()) return finish(null);
+    const value = parseContextWindow(draft);
+    if (value === 'invalid') return setInvalid(true);
+    finish(value);
+  };
+  return (
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (!next) return;
+        setDraft(set === null ? '' : String(set));
+        setInvalid(false);
+      }}
+    >
+      <PopoverTrigger
+        render={
+          <Button
+            variant="ghost"
+            size="compact"
+            data-mark="context"
+            data-state={set === null ? 'own' : 'set'}
+            title={label}
+            aria-label={label}
+            disabled={disabled}
+            tabIndex={tabIndex}
+            onFocus={onFocus}
+            className={cn(
+              'h-6 w-12 shrink-0 justify-end px-1 tabular-nums',
+              set === null ? 'text-muted-foreground' : 'text-foreground',
+            )}
+          />
+        }
+      >
+        {text}
+      </PopoverTrigger>
+      <PopoverPopup side="bottom" align="end" padding="compact" aria-label={field}>
+        <form
+          className="flex items-start gap-2 p-1"
+          onSubmit={(event) => {
+            event.preventDefault();
+            save();
+          }}
+        >
+          <InputGroup size="compact" className="w-36">
+            <InputField
+              index={0}
+              label={field}
+              labelHidden
+              value={draft}
+              onChange={(value) => {
+                setDraft(value);
+                setInvalid(false);
+              }}
+              placeholder={own === null ? undefined : format.number(own)}
+              inputMode="numeric"
+              autoComplete="off"
+              {...(invalid ? { error: t('contextInvalid') } : {})}
+            />
+          </InputGroup>
+          <Button type="submit" size="compact">
+            {t('contextSave')}
+          </Button>
+          {set !== null ? (
+            <Button type="button" variant="tertiary" size="compact" onClick={() => finish(null)}>
+              {t('contextClear')}
+            </Button>
+          ) : null}
+        </form>
+      </PopoverPopup>
+    </Popover>
   );
 }

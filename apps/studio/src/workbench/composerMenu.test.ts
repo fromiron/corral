@@ -10,6 +10,7 @@ import {
   restoredMentions,
   selectMention,
   triggerAt,
+  valueCommand,
 } from './composerMenu.ts';
 
 // the composer's `/` commands and `@` references.
@@ -113,6 +114,41 @@ describe('composer triggers', () => {
     expect(pickedReferences(rangeFirst, [file, range])).toEqual([file.reference]);
     expect(removeMention('@"my notes.md":L1-L3', range)).toBe('');
   });
+  it('reads a value-taking command typed whole, with or without its value', () => {
+    const run = () => {};
+    const autocompaction = { slash: 'autocompaction', takesValue: true, run };
+    const commands = [
+      autocompaction,
+      { slash: 'compact', run },
+      { slash: 'held', takesValue: true, disabled: true, run },
+    ];
+    expect(valueCommand('/autocompaction', commands)).toEqual({
+      command: autocompaction,
+      value: undefined,
+    });
+    expect(valueCommand('/autocompaction ', commands)).toEqual({
+      command: autocompaction,
+      value: undefined,
+    });
+    expect(valueCommand('/autocompaction 200k', commands)).toEqual({
+      command: autocompaction,
+      value: '200k',
+    });
+    expect(valueCommand('  /autocompaction   1M  ', commands)?.value).toBe('1M');
+    for (const text of [
+      '',
+      '/',
+      '/compact',
+      '/compact 3',
+      '/autocompactionx 2',
+      '/auto 200k',
+      'set /autocompaction 2',
+      '/held 1',
+      '/autocompaction 200k\nand more',
+    ])
+      expect(valueCommand(text, commands), text).toBeNull();
+  });
+
   it('opens commands only for `/` at the very start', () => {
     expect(triggerAt('/pa', 3)).toEqual({ kind: 'slash', query: 'pa', start: 0, end: 3 });
     expect(triggerAt('/', 1)).toEqual({ kind: 'slash', query: '', start: 0, end: 1 });

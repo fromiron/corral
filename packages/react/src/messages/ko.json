@@ -2909,7 +2909,15 @@
     "targetLabel": "{name}에게 보내기",
     "targetAwaiting": "{name} · 결정 뒤에 읽힘",
     "targetNone": "지금 합류할 수 있는 역할 없음",
-    "lowered": "이 역할은 지금 끼어들 수 없어 다음 요청에 읽힙니다."
+    "lowered": "이 역할은 지금 끼어들 수 없어 다음 요청에 읽힙니다.",
+    "autocompaction": {
+      "title": "컨텍스트 창 정하기",
+      "current": "{model}: 컨텍스트 창 {value, number}({source})",
+      "next": "{model}: 다음 Run부터 컨텍스트 창 {value, number}",
+      "unknown": "{model}: 컨텍스트 창을 알 수 없습니다",
+      "noModel": "먼저 모델을 고르세요.",
+      "invalid": "200000, 200k, 1m처럼 적거나, 지우려면 off를 적으세요."
+    }
   },
   "Commands": {
     "newSession": "새 대화",
@@ -4211,7 +4219,8 @@
       "catalog": "모델 카탈로그",
       "fallback": "연결 기본값",
       "pi_default": "Pi 기본값",
-      "adaptive": "모델별 자동값"
+      "adaptive": "모델별 자동값",
+      "model": "모델 단위 값"
     },
     "warning": {
       "legacy_inconsistent": "기존 기본값의 관계가 맞지 않습니다. 호환성을 위해 그대로 유지합니다. 값을 지정하려면 세 값의 관계를 맞춰주세요.",
@@ -6800,7 +6809,12 @@
       "needs": "{name}: {line}.",
       "removed": "{name}을(를) 지웠습니다."
     },
-    "failed": "마치지 못했습니다: {message}"
+    "failed": "마치지 못했습니다: {message}",
+    "contextSet": "컨텍스트 창 {value, number}, 모델 값 {own, number}",
+    "contextField": "{model}의 컨텍스트 창",
+    "contextSave": "저장",
+    "contextClear": "지우기",
+    "contextInvalid": "200000이나 200k처럼 토큰 수를 적으세요."
   },
   "AddConnection": {
     "title": {

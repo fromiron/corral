@@ -200,6 +200,7 @@ import {
   readWorkspaceConfig,
   writeEffortRouting,
   writeModelConfig,
+  writeModelContextWindow,
 } from './workspace.ts';
 import { acquireWorkspaceOwnership } from './workspace-ownership.ts';
 
@@ -523,6 +524,7 @@ async function createCorralServer(
           ? { subscriptionModels: options.live.subscriptionModels }
           : {}),
         endpoints,
+        modelContextWindows: workspace.config.modelContextWindows ?? [],
         configRevision: workspace.configRevision,
         endpointModels: {
           cache: endpointModels,
@@ -1452,12 +1454,14 @@ async function createCorralServer(
         (await options.live?.defaultProfiles?.()) ??
         DEFAULT_PROFILES,
       modelProviders: snapshot.config.modelProviders ?? [],
+      modelContextWindows: snapshot.config.modelContextWindows ?? [],
       usingDefaults: snapshot.config.modelProfiles === undefined,
       revision: snapshot.revision,
       effectiveProfiles: registry.contextPolicies(
         snapshot.config.modelProfiles ?? registry.profileConfigs(),
         registry.endpointsFor(snapshot.config.modelProviders),
         snapshot.revision,
+        snapshot.config.modelContextWindows ?? [],
       ),
     };
   });
@@ -1503,7 +1507,7 @@ async function createCorralServer(
           ...current.unknownProviders(config.modelProfiles ?? [], next),
           ...(config.modelProfiles ?? []).flatMap((profile, index) =>
             current
-              .contextPolicy(profile, next, body.revision)
+              .contextPolicy(profile, next, body.revision, config.modelContextWindows ?? [])
               .errors.map((error) => `modelProfiles.${index}: ${error}`),
           ),
         ];
@@ -1524,6 +1528,7 @@ async function createCorralServer(
       written.config.modelProfiles ?? DEFAULT_PROFILES,
       endpoints,
       written.revision,
+      written.config.modelContextWindows ?? [],
     );
     return {
       modelProfiles: current.profileConfigs(),
@@ -1532,6 +1537,40 @@ async function createCorralServer(
       revision: written.revision,
       effectiveProfiles: current.contextPolicies(),
     };
+  });
+  const contextWindowBody = z.strictObject({
+    revision: z.string().min(1).max(100),
+    provider: Identifier,
+    model: z.string().min(1).max(200),
+    contextWindow: z.int().min(1).max(10_000_000).nullable(),
+  });
+  app.put('/api/v1/model-context-window', async (request, reply) => {
+    if (!registry) return noLive(reply);
+    const body = parse(contextWindowBody, request, reply);
+    if (!body) return reply;
+    const current = registry;
+    if (!current.hasModel(body.provider, body.model))
+      return fail(reply, 'TARGET_NOT_FOUND', `${body.provider} has no model ${body.model}`);
+    const written = writeModelContextWindow(workspace.root, body, body.revision, (config) =>
+      current.contextWindowErrors(
+        body.provider,
+        body.model,
+        config.modelContextWindows ?? [],
+        config.modelProfiles ?? current.profileConfigs(),
+        body.revision,
+      ),
+    );
+    if (!written.ok)
+      return fail(
+        reply,
+        written.conflict ? 'REVISION_CONFLICT' : 'SCHEMA_INVALID',
+        written.errors.join('; '),
+      );
+    workspace.config = written.config;
+    workspace.configRevision = written.revision;
+    const modelContextWindows = written.config.modelContextWindows ?? [];
+    current.setModelContextWindows(modelContextWindows, written.revision);
+    return { modelContextWindows, revision: written.revision };
   });
 
   registerModelImportRoutes(app, {

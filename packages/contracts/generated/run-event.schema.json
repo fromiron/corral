@@ -2934,6 +2934,7 @@
                             "type": "string",
                             "enum": [
                               "profile",
+                              "model",
                               "endpoint",
                               "catalog",
                               "fallback"

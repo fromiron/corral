@@ -13,6 +13,7 @@ export function resolveProfileContext(
   base: { contextWindow: number | null; source: ProfileContextPolicy['baseSource'] },
   configRevision: string,
   maxOutputTokens: number,
+  modelContextWindow?: number,
 ): ProfileContextResolution {
   const parsed = ProfileContextOverrides.safeParse({
     contextWindow: input.contextWindow,
@@ -24,9 +25,10 @@ export function resolveProfileContext(
       errors: ['context policy fields must be safe integers in their permitted ranges'],
     };
   const profile = parsed.data;
-  const contextWindow = profile.contextWindow ?? base.contextWindow;
+  const contextWindow = profile.contextWindow ?? modelContextWindow ?? base.contextWindow;
   const explicit =
     profile.contextWindow !== undefined ||
+    modelContextWindow !== undefined ||
     profile.compaction?.reserveTokens !== undefined ||
     profile.compaction?.keepRecentTokens !== undefined;
   if (contextWindow === null)
@@ -64,7 +66,12 @@ export function resolveProfileContext(
       baseContextWindow: base.contextWindow,
       baseSource: base.source,
       sources: {
-        contextWindow: profile.contextWindow !== undefined ? 'profile' : base.source,
+        contextWindow:
+          profile.contextWindow !== undefined
+            ? 'profile'
+            : modelContextWindow !== undefined
+              ? 'model'
+              : base.source,
         reserveTokens: profile.compaction?.reserveTokens !== undefined ? 'profile' : 'adaptive',
         keepRecentTokens:
           profile.compaction?.keepRecentTokens !== undefined ? 'profile' : 'adaptive',

@@ -17,6 +17,8 @@ export interface AppCommand extends Command {
   shortcutId?: ShortcutId;
   /** Shown in the composer's `/` menu under this name, e.g. `pause`. */
   slash?: string;
+  takesValue?: boolean;
+  run(value?: string): void | Promise<void>;
   /** Present but not possible now (the reason is in `hint`); still listed so it is findable. */
   disabled?: boolean;
   hint?: string;

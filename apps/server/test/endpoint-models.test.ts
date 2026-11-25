@@ -716,6 +716,28 @@ describe('the registry fetches, caches and applies endpoint lists', () => {
     await expect(registry.credentials(snapshot)).resolves.toBe('k');
   });
 
+  it('a context window set for the model after a request was prepared neither refuses nor resizes it; the next resolution uses it', async () => {
+    const { registry, snapshot } = await runningAlpha();
+    registry.setModelContextWindows(
+      [{ provider: 'router', model: 'alpha', contextWindow: 30000 }],
+      'rev-2',
+    );
+    expect(() => registry.endpointOf(snapshot)).not.toThrow();
+    expect(registry.modelBroker(snapshot).model).toMatchObject({
+      id: 'alpha',
+      contextWindow: 60000,
+    });
+    await expect(registry.credentials(snapshot)).resolves.toBe('k');
+    const next = registry.resolve('router:alpha', 'live');
+    if (!next.ok) throw new Error(next.reason);
+    expect(next.snapshot).toMatchObject({
+      contextWindow: 30000,
+      endpointHash: snapshot.endpointHash,
+      contextPolicy: { contextWindow: 30000, baseContextWindow: 60000, configRevision: 'rev-2' },
+    });
+    expect(next.snapshot.contextPolicy?.sources.contextWindow).toBe('model');
+  });
+
   it('a running Run keeps its model when a refresh drops it from the list', async () => {
     const { registry, net, snapshot } = await runningAlpha();
     net.answer(() => list([{ id: 'gamma' }]));

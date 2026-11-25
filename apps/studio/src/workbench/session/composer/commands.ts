@@ -1,12 +1,15 @@
+import { ApiError, type ModelsApi } from '@corral/client';
 import type { CorralSummary, RunSummary } from '@corral/core';
 import type { AppCommand } from '../../../commandRegistry.ts';
 import type { StudioServices } from '../../../services.tsx';
 import { shortcutLabel } from '../../../shortcuts.ts';
 import { compactTarget } from '../../compactTarget.ts';
 import type { SendChoice } from '../../composerIntent.ts';
+import { parseContextWindow } from '../../contextWindowText.ts';
+import { withProfileWindow } from '../../profileWindow.ts';
 
 // The composer's slash commands (`/next`, `/steer`, `/interrupt`, `/pause`, `/resume`,
-// `/compact`, `/stop`, `/team`, `/model`) and the run commands they send.
+// `/compact`, `/stop`, `/team`, `/model`, `/autocompaction`) and the commands they send.
 
 type Say = (key: string, values?: Record<string, string | number>) => string;
 
@@ -107,6 +110,82 @@ export async function compactContext(
   if (receipt.error) setError(receipt.error.message);
 }
 
+export async function autoCompaction(
+  deps: {
+    models: Pick<ModelsApi, 'profiles' | 'config' | 'saveConfig' | 'setModelContextWindow'> | null;
+    modelProfile: string;
+    tc: Say;
+    sourceName: Say;
+    setError: (message: string | null) => void;
+    setNotice: (message: string | null) => void;
+  },
+  value: string | undefined,
+) {
+  const { models, tc } = deps;
+  const refuse = (message: string) => {
+    deps.setNotice(null);
+    deps.setError(message);
+  };
+  const say = (message: string) => {
+    deps.setError(null);
+    deps.setNotice(message);
+  };
+  const wanted =
+    value === undefined
+      ? undefined
+      : value.toLowerCase() === 'off'
+        ? null
+        : parseContextWindow(value);
+  if (wanted === 'invalid') return refuse(tc('autocompaction.invalid'));
+  if (!models) return refuse(tc('autocompaction.noModel'));
+  const find = async () =>
+    (await models.profiles()).find((view) => view.profileId === deps.modelProfile);
+  try {
+    const chosen = await find();
+    if (!chosen) return refuse(tc('autocompaction.noModel'));
+    const model = chosen.modelName ?? chosen.modelId;
+    const unknown = tc('autocompaction.unknown', { model });
+    if (wanted === undefined) {
+      const policy = chosen.contextPolicy;
+      return say(
+        policy
+          ? tc('autocompaction.current', {
+              model,
+              value: policy.contextWindow,
+              source: deps.sourceName(`source.${policy.sources.contextWindow}`),
+            })
+          : unknown,
+      );
+    }
+    const owned = chosen.contextPolicy?.sources.contextWindow === 'profile';
+    const save = async () => {
+      const config = await models.config();
+      if (owned) await models.saveConfig(withProfileWindow(config, chosen.profileId, wanted));
+      else
+        await models.setModelContextWindow({
+          revision: config.revision,
+          provider: chosen.provider,
+          model: chosen.modelId,
+          contextWindow: wanted,
+        });
+      return config;
+    };
+    const config = await save().catch((failure: unknown) => {
+      if (failure instanceof ApiError && failure.code === 'REVISION_CONFLICT') return save();
+      throw failure;
+    });
+    const modelWide = owned
+      ? config.modelContextWindows?.find(
+          (entry) => entry.provider === chosen.provider && entry.model === chosen.modelId,
+        )?.contextWindow
+      : undefined;
+    const next = wanted ?? modelWide ?? chosen.contextPolicy?.baseContextWindow ?? null;
+    say(next === null ? unknown : tc('autocompaction.next', { model, value: next }));
+  } catch (failure) {
+    refuse(failure instanceof Error ? failure.message : String(failure));
+  }
+}
+
 /** The composer's commands for the command menu and the slash list. */
 export function composerCommands({
   t,
@@ -120,6 +199,7 @@ export function composerCommands({
   focus,
   run,
   compact,
+  autocompaction,
   requestStop,
   openTeam,
   openModels,
@@ -136,6 +216,7 @@ export function composerCommands({
   focus: () => void;
   run: (type: 'pause' | 'resume') => void;
   compact: () => void;
+  autocompaction: (value?: string) => void;
   requestStop: () => void;
   openTeam: () => void;
   openModels: () => void;
@@ -217,6 +298,15 @@ export function composerCommands({
       group: tc('groupRequest'),
       slash: 'model',
       run: openModels,
+    },
+    {
+      id: 'composer:autocompaction',
+      title: tc('autocompaction.title'),
+      group: tc('groupRequest'),
+      slash: 'autocompaction',
+      takesValue: true,
+      keywords: ['context', 'compaction', '컨텍스트', '압축'],
+      run: autocompaction,
     },
     {
       id: 'composer:focus',

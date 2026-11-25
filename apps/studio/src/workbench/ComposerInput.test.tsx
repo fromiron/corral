@@ -1,9 +1,10 @@
 // @vitest-environment jsdom
-import { act, createRef } from 'react';
+import { act, createRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import type { AppCommand } from '../commandRegistry.ts';
 import { ComposerInput } from './ComposerInput.tsx';
 
 it('closes reference suggestions when focus leaves the request for a reference chip', async () => {
@@ -136,6 +137,129 @@ it.each([
     expect(event.defaultPrevented).toBe(false);
   } finally {
     await view.dispose();
+  }
+});
+
+// workbench.md: a `/` command that takes a value is written after its name and run by the send
+// key; picking it from the menu leaves the name and a space for the value.
+async function withCommands(sendKey: 'enter' | 'mod-enter', initial: string) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+    callback(0);
+    return 0;
+  });
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  const input = createRef<HTMLTextAreaElement>();
+  const onSend = vi.fn();
+  const takes = vi.fn();
+  const compact = vi.fn();
+  const commands: AppCommand[] = [
+    {
+      id: 'auto',
+      title: 'Set the context window',
+      group: 'Request',
+      slash: 'autocompaction',
+      takesValue: true,
+      run: takes,
+    },
+    { id: 'compact', title: 'Compact', group: 'Run', slash: 'compact', run: compact },
+  ];
+  let text = initial;
+  function Harness() {
+    const [value, setValue] = useState(initial);
+    text = value;
+    return (
+      <IntlProvider locale="en" messages={messages}>
+        <ComposerInput
+          value={value}
+          onChange={setValue}
+          onKeyDown={() => {}}
+          sendKey={sendKey}
+          onSend={onSend}
+          commands={commands}
+          searchMentions={async () => []}
+          onMention={(item) => item}
+          inputRef={input}
+          placeholder="Request"
+          label="Request"
+        />
+      </IntlProvider>
+    );
+  }
+  await act(async () => root.render(<Harness />));
+  await act(async () => {
+    input.current?.focus();
+    input.current?.setSelectionRange(initial.length, initial.length);
+    input.current?.dispatchEvent(new KeyboardEvent('keyup', { key: 'End', bubbles: true }));
+  });
+  const press = async (init: KeyboardEventInit = {}) => {
+    await act(async () => {
+      input.current?.dispatchEvent(
+        new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...init }),
+      );
+    });
+  };
+  const dispose = async () => {
+    await act(async () => root.unmount());
+    container.remove();
+    vi.unstubAllGlobals();
+  };
+  return { input, onSend, takes, compact, press, dispose, text: () => text };
+}
+
+it('picking a command that takes a value leaves its name and a space, and runs nothing yet', async () => {
+  const view = await withCommands('enter', '/autoc');
+  try {
+    expect(view.input.current?.getAttribute('aria-expanded')).toBe('true');
+    await view.press();
+    expect(view.text()).toBe('/autocompaction ');
+    expect(view.takes).not.toHaveBeenCalled();
+    expect(view.onSend).not.toHaveBeenCalled();
+    // The menu is closed now: the send key goes to the composer, which runs the command.
+    await view.press();
+    expect(view.onSend).toHaveBeenCalledWith('send');
+  } finally {
+    await view.dispose();
+  }
+});
+
+it.each([
+  ['enter', {}],
+  ['mod-enter', { ctrlKey: true }],
+] as const)(
+  'with the %s send key, the send key on a value command’s whole name sends it to the composer',
+  async (sendKey, modifiers) => {
+    const view = await withCommands(sendKey, '/autocompaction');
+    try {
+      expect(view.input.current?.getAttribute('aria-expanded')).toBe('true');
+      await view.press(modifiers);
+      expect(view.onSend).toHaveBeenCalledWith('send');
+      expect(view.text()).toBe('/autocompaction');
+    } finally {
+      await view.dispose();
+    }
+  },
+);
+
+it('Enter in the menu still completes a value command when Enter is not the send key, and runs a command without a value at once', async () => {
+  const typed = await withCommands('mod-enter', '/autocompaction');
+  try {
+    await typed.press();
+    expect(typed.text()).toBe('/autocompaction ');
+    expect(typed.onSend).not.toHaveBeenCalled();
+  } finally {
+    await typed.dispose();
+  }
+  const plain = await withCommands('enter', '/compact');
+  try {
+    await plain.press();
+    expect(plain.compact).toHaveBeenCalledTimes(1);
+    expect(plain.text()).toBe('');
+    expect(plain.onSend).not.toHaveBeenCalled();
+  } finally {
+    await plain.dispose();
   }
 });
 

@@ -140,6 +140,7 @@ async function mount({
   runState = {},
   folderAccess,
   workspaces = null,
+  models = null,
 }: {
   active?: RunSummary | null;
   executions?: Record<string, string>;
@@ -152,6 +153,8 @@ async function mount({
   folderAccess?: 'copy' | 'unlinked';
   /** The server's files and images; none in a browser demo. */
   workspaces?: Record<string, unknown> | null;
+  /** The server's model settings; none unless a test reads them. */
+  models?: Record<string, unknown> | null;
 } = {}) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
@@ -243,6 +246,7 @@ async function mount({
     workspaces,
     voice: null,
     startAuto,
+    models,
   };
   const container = document.createElement('div');
   document.body.append(container);
@@ -2037,5 +2041,117 @@ describe('a request with too many references', () => {
     expect(f.container.textContent).not.toContain(messages.Composer.tooManyItems.split('{')[0]);
     await f.press();
     expect(f.startAuto).toHaveBeenCalledTimes(1);
+  });
+});
+
+// workbench.md: a `/` command that takes a value runs from the send key or Send, and its text is
+// never sent as a request.
+describe('a command that takes a value', () => {
+  const luna = {
+    profileId: 'openai:gpt-6-luna',
+    source: 'connection',
+    provider: 'openai',
+    providerName: 'OpenAI',
+    modelId: 'gpt-6-luna',
+    modelName: 'GPT-6 Luna',
+    available: true,
+    reasoning: false,
+    contextWindow: 500_000,
+    maxOutputTokens: 4096,
+    method: 'oauth',
+    keyConfigured: true,
+    subscriptionSupported: null,
+  };
+  const modelSettings = () => ({
+    profiles: vi
+      .fn()
+      .mockResolvedValueOnce([luna])
+      .mockResolvedValue([{ ...luna, contextWindow: 200_000 }]),
+    config: vi.fn(async () => ({
+      revision: 'r1',
+      usingDefaults: false,
+      modelProfiles: [],
+      modelProviders: [],
+      modelContextWindows: [],
+    })),
+    setModelContextWindow: vi.fn(async () => ({ modelContextWindows: [], revision: 'r2' })),
+  });
+  const session = { ...baseSession, auto: { modelProfile: 'openai:gpt-6-luna' } };
+  const settle = () => act(async () => new Promise<void>((resolve) => setTimeout(resolve, 0)));
+  // The composer keeps an empty live region for alerts; what it says is what counts.
+  const alerts = (container: HTMLElement) =>
+    [...container.querySelectorAll('[role="alert"]')]
+      .map((node) => node.textContent ?? '')
+      .filter(Boolean);
+
+  it('/autocompaction 200k sets the chosen model’s window, sends no request and says so outside the error line', async () => {
+    const models = modelSettings();
+    const f = await mount({ active: null, session, models });
+    await f.type('/autocompaction 200k');
+    await f.press();
+    await settle();
+    expect(models.setModelContextWindow).toHaveBeenCalledWith({
+      revision: 'r1',
+      provider: 'openai',
+      model: 'gpt-6-luna',
+      contextWindow: 200_000,
+    });
+    expect(f.startAuto).not.toHaveBeenCalled();
+    expect(f.repository.addSessionEntry).not.toHaveBeenCalled();
+    expect(f.box().value).toBe('');
+    const said = 'GPT-6 Luna: context window 200,000 from the next run';
+    const status = [...f.container.querySelectorAll('[role="status"]')].find(
+      (node) => node.textContent === said,
+    );
+    expect(status?.className).not.toMatch(/danger|destructive|warning/);
+    expect(alerts(f.container)).toEqual([]);
+  });
+
+  it('Send stays open for the command while a request could not go now', async () => {
+    const models = modelSettings();
+    // A saved team that is gone holds every request back.
+    const f = await mount({ active: null, session: { ...session, corralId: 'gone' }, models });
+    const sendButton = () =>
+      f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]');
+    await f.type('Write the summary');
+    expect(sendButton()?.disabled).toBe(true);
+    await f.type('/autocompaction 200k');
+    expect(sendButton()?.disabled).toBe(false);
+    await act(async () => sendButton()?.click());
+    await settle();
+    expect(models.setModelContextWindow).toHaveBeenCalledWith(
+      expect.objectContaining({ contextWindow: 200_000 }),
+    );
+    expect(f.startAuto).not.toHaveBeenCalled();
+  });
+
+  it('a later error replaces the confirmation instead of standing under it', async () => {
+    const models = modelSettings();
+    const f = await mount({ active: null, session, models });
+    await f.type('/autocompaction 200k');
+    await f.press();
+    await settle();
+    expect(f.container.textContent).toContain('from the next run');
+    // `/compact` with no run going says why; that line is the only one left.
+    await f.type('/compact');
+    await f.press();
+    await settle();
+    expect(alerts(f.container)).toEqual([messages.RunStatus.compactNoExecution]);
+    expect(f.container.textContent).not.toContain('from the next run');
+  });
+
+  it('Send runs it too; a value it cannot read is refused as an error and nothing is sent', async () => {
+    const models = modelSettings();
+    const f = await mount({ active: null, session, models });
+    await f.type('/autocompaction lots');
+    await act(async () =>
+      f.container.querySelector<HTMLButtonElement>('button[aria-label="Send"]')?.click(),
+    );
+    await settle();
+    expect(models.setModelContextWindow).not.toHaveBeenCalled();
+    expect(f.startAuto).not.toHaveBeenCalled();
+    expect(alerts(f.container)).toEqual([
+      'Write a size like 200000, 200k or 1m, or off to clear it.',
+    ]);
   });
 });

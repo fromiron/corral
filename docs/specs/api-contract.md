@@ -54,9 +54,10 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /session | — | 세션 cookie가 유효하면 `{ok:true,csrfToken}`. 모든 변경 요청은 `x-corral-csrf` 헤더로 이 값을 보낸다 |
 | GET /runs | — | 실행 이력(최신 먼저): runId, status, corralId, startedAt, projectId(시작할 때의 프로젝트), sessionId. `POST /runs`는 `sessionId?`를 받고 팀 프로젝트의 세션이 아니면 `TARGET_NOT_FOUND` |
 | GET /model-catalog | — | 내장 provider·엔드포인트와 모델 목록, provider별 연결 방법(`oauth`·`apiKey`). 엔드포인트의 모델은 `limits`(contextWindow·maxOutput·reasoning·imageInput 각각 `{value, source}`; source는 `config`·`known`·`response`·`catalog`·`default`)를 가진다. 자격 증명·상태 없음 |
-| GET /model-config | — | `modelProfiles`, `modelProviders`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
+| GET /model-config | — | `modelProfiles`, `modelProviders`, `modelContextWindows`, `usingDefaults`, `revision`(설정 파일 내용 해시) |
 | POST /team-assistant | `TeamAssistantRequest` | `{ reply, model }`. 한 번 보낼 때 모델에 팀 구성 질문이나 제안을 한 번 요청한다. 저장이나 실행은 하지 않는다. [허용된 응답과 멱등 규칙](features/team-assistant.md#계약)을 따른다. |
 | PUT /model-config | revision, modelProfiles, modelProviders | 두 키만 교체해 저장·즉시 반영. 검사 실패 `SCHEMA_INVALID`(필드 이름만), 다른 revision `REVISION_CONFLICT` |
+| PUT /model-context-window | revision, provider, model, contextWindow(정수 또는 지울 때 `null`) | [모델 단위 컨텍스트 창](features/model-connections.md#모델-단위-컨텍스트-창) 한 쌍을 적거나 지우고 즉시 반영. `modelContextWindows`와 새 `revision`을 준다. 다른 키는 그대로. 모르는 공급자·모델 `TARGET_NOT_FOUND`, 관계를 어기는 값 `SCHEMA_INVALID`, 다른 revision `REVISION_CONFLICT` |
 | GET /runs/:id | — | RunSnapshot: 실행에 쓴 정의·definitionHash·출처 revision·criteriaVersionId·mode |
 | GET /runs/:id/artifact-versions/:artifactVersionId | — | 불변 본문 `{text}`. 이 run의 산출물 버전과 기준 버전만 |
 | GET /runs/:id/artifact-versions/:artifactVersionId/preview | — | 산출물 버전이 HTML 문서일 때만 `text/html` 본문. 응답 CSP `sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:` 등, `frame-ancestors 'self'`. 그 밖에는 `TARGET_NOT_FOUND` |

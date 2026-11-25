@@ -146,6 +146,43 @@ export function writeEffortRouting(
   };
 }
 
+export function writeModelContextWindow(
+  root: string,
+  change: { provider: string; model: string; contextWindow: number | null },
+  expectedRevision: string,
+  check: (config: WorkspaceConfig) => string[],
+):
+  | { ok: true; config: WorkspaceConfig; revision: string }
+  | { ok: false; conflict: boolean; errors: string[] } {
+  if (configRevision(root) !== expectedRevision)
+    return { ok: false, conflict: true, errors: ['the config changed since it was read'] };
+  const path = join(root, CONFIG);
+  const raw = existsSync(path)
+    ? (JSON.parse(readFileSync(path, 'utf-8')) as Record<string, unknown>)
+    : { schemaVersion: '0.1' };
+  const { modelContextWindows: before, ...rest } = raw;
+  const kept = (Array.isArray(before) ? before : []).filter(
+    (entry: { provider?: unknown; model?: unknown }) =>
+      entry?.provider !== change.provider || entry?.model !== change.model,
+  );
+  const entries =
+    change.contextWindow === null
+      ? kept
+      : [
+          ...kept,
+          { provider: change.provider, model: change.model, contextWindow: change.contextWindow },
+        ];
+  const next = entries.length ? { ...rest, modelContextWindows: entries } : rest;
+  const parsed = parseWorkspaceConfig(next);
+  if (!parsed.ok) return { ok: false, conflict: false, errors: parsed.errors };
+  const refused = check(parsed.config);
+  if (refused.length > 0) return { ok: false, conflict: false, errors: refused };
+  const temporary = `${path}.${process.pid}.tmp`;
+  writeFileSync(temporary, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
+  renameSync(temporary, path);
+  return { ok: true, config: parsed.config, revision: configRevision(root) };
+}
+
 /** The saved effort routing as it is now; an unreadable config routes nothing. */
 export function currentEffortRouting(root: string): EffortRoutingSettings {
   try {

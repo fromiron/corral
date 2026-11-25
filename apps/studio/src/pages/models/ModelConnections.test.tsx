@@ -501,6 +501,197 @@ describe('Connections tab', () => {
     expect(live()).toBe('');
   });
 
+  describe('a context window set per model (model-connections.md 연결)', () => {
+    const policy = (contextWindow: number, own: number, source: 'model' | 'catalog') => ({
+      version: 2 as const,
+      contextWindow,
+      reserveTokens: 16_384,
+      keepRecentTokens: 20_000,
+      explicit: source === 'model',
+      configRevision: 'r1',
+      baseContextWindow: own,
+      baseSource: 'catalog' as const,
+      sources: {
+        contextWindow: source,
+        reserveTokens: 'adaptive' as const,
+        keepRecentTokens: 'adaptive' as const,
+      },
+      warnings: [],
+    });
+    const windows = {
+      ...config,
+      modelContextWindows: [
+        { provider: 'openai', model: 'gpt-6-1', contextWindow: 200_000 },
+        { provider: 'hive', model: 'qwen-4', contextWindow: 64_000 },
+      ],
+    };
+    const withSet = profiles.map((p) =>
+      p.modelId === 'gpt-6-1'
+        ? { ...p, contextWindow: 200_000, contextPolicy: policy(200_000, 128_000, 'model') }
+        : p,
+    );
+    const mark = (provider: string, name: string) =>
+      all('li', row(provider))
+        .find((li) => visibleText(li).startsWith(`${name} `))
+        ?.querySelector<HTMLElement>('[data-mark="context"]');
+
+    it('shows the value in effect, a set one apart from the model’s own and named with both', async () => {
+      await show(providers, { models: withSet, settings: windows });
+      await toggle('OpenAI');
+      const set = mark('OpenAI', 'GPT-6 Mini 1');
+      expect(set?.textContent).toBe('200k');
+      expect(set?.dataset.state).toBe('set');
+      expect(set?.getAttribute('title')).toBe('Context window 200,000; the model’s own is 128,000');
+      expect(set?.getAttribute('aria-label')).toBe(set?.getAttribute('title'));
+      const own = mark('OpenAI', 'GPT-6 Mini 3');
+      expect(own?.textContent).toBe('128k');
+      expect(own?.dataset.state).toBe('own');
+      expect(own?.getAttribute('title')).toBe('Context window 128,000');
+      // An endpoint model's own value comes from its limits and keeps its source.
+      await toggle('Hive');
+      const qwen = mark('Hive', 'qwen-4');
+      expect(qwen?.textContent).toBe('64k');
+      expect(qwen?.dataset.state).toBe('set');
+      expect(qwen?.getAttribute('title')).toBe(
+        'Context window 64,000; the model’s own is 128,000 (from models.dev)',
+      );
+      // The marks are not extra tab stops.
+      const list = all('ul').find((el) => el.getAttribute('aria-label') === 'Models of OpenAI');
+      expect(
+        all('[data-mark="context"]', list).filter((el) => el.tabIndex === 0).length,
+      ).toBeLessThanOrEqual(1);
+    });
+
+    it('saves a value from the row, clears one back to the model’s own, and refuses one it cannot read', async () => {
+      fixture.models = {
+        setModelContextWindow: vi.fn(async () => ({ modelContextWindows: [], revision: 'r2' })),
+      };
+      await show(providers, { models: withSet, settings: windows });
+      await toggle('OpenAI');
+      await click(mark('OpenAI', 'GPT-6 Mini 3'));
+      const input = field('Context window for GPT-6 Mini 3');
+      expect(input?.placeholder).toBe('128,000');
+      // Arrow keys in the field stay in the field.
+      const arrow = new KeyboardEvent('keydown', {
+        key: 'ArrowDown',
+        bubbles: true,
+        cancelable: true,
+      });
+      await act(async () => {
+        input?.dispatchEvent(arrow);
+      });
+      expect(arrow.defaultPrevented).toBe(false);
+      await type(input, 'lots');
+      await click(control('Save'));
+      expect(fixture.models.setModelContextWindow).not.toHaveBeenCalled();
+      expect(input?.getAttribute('aria-invalid')).toBe('true');
+      await type(input, '200k');
+      await click(control('Save'));
+      await settle();
+      expect(fixture.models.setModelContextWindow).toHaveBeenCalledWith({
+        revision: 'r1',
+        provider: 'openai',
+        model: 'gpt-6-3',
+        contextWindow: 200_000,
+      });
+      expect(fixture.refresh).toHaveBeenCalled();
+
+      await click(mark('OpenAI', 'GPT-6 Mini 1'));
+      expect(field('Context window for GPT-6 Mini 1')?.placeholder).toBe('128,000');
+      await click(control('Clear'));
+      await settle();
+      expect(fixture.models.setModelContextWindow).toHaveBeenLastCalledWith({
+        revision: 'r1',
+        provider: 'openai',
+        model: 'gpt-6-1',
+        contextWindow: null,
+      });
+    });
+
+    it('a row whose profile sets its own window shows that value and changes or clears the profile', async () => {
+      const owned = {
+        ...config,
+        modelProfiles: [
+          { id: 'model-a', provider: 'openai', model: 'gpt-6-luna', contextWindow: 500_000 },
+        ],
+      };
+      const saveConfig = vi.fn(async () => ({ ...owned, revision: 'r2' }));
+      fixture.models = { saveConfig, setModelContextWindow: vi.fn() };
+      const ownedProfiles = profiles.map((p) =>
+        p.profileId === 'model-a'
+          ? {
+              ...p,
+              contextWindow: 500_000,
+              contextPolicy: {
+                ...policy(500_000, 272_000, 'catalog'),
+                explicit: true,
+                sources: {
+                  contextWindow: 'profile' as const,
+                  reserveTokens: 'adaptive' as const,
+                  keepRecentTokens: 'adaptive' as const,
+                },
+              },
+            }
+          : p,
+      );
+      await show(providers, { models: ownedProfiles, settings: owned });
+      await toggle('OpenAI');
+      const luna = mark('OpenAI', 'GPT-6 Luna');
+      expect(luna?.textContent).toBe('500k');
+      expect(luna?.dataset.state).toBe('set');
+      await click(luna);
+      const input = field('Context window for GPT-6 Luna');
+      expect(input?.placeholder).toBe('272,000');
+      await type(input, '300k');
+      await click(control('Save'));
+      await settle();
+      expect(saveConfig).toHaveBeenLastCalledWith({
+        revision: 'r1',
+        modelProfiles: [
+          { id: 'model-a', provider: 'openai', model: 'gpt-6-luna', contextWindow: 300_000 },
+        ],
+        modelProviders: owned.modelProviders,
+      });
+      await click(mark('OpenAI', 'GPT-6 Luna'));
+      await click(control('Clear'));
+      await settle();
+      expect(saveConfig).toHaveBeenLastCalledWith({
+        revision: 'r1',
+        modelProfiles: [{ id: 'model-a', provider: 'openai', model: 'gpt-6-luna' }],
+        modelProviders: owned.modelProviders,
+      });
+      expect(fixture.models.setModelContextWindow).not.toHaveBeenCalled();
+    });
+
+    it('saves again on the new revision when only the revision moved, and says a refusal on the row', async () => {
+      fixture.models = {
+        setModelContextWindow: vi
+          .fn()
+          .mockRejectedValueOnce(new ApiError(409, 'REVISION_CONFLICT', 'the config changed'))
+          .mockResolvedValueOnce({ modelContextWindows: [], revision: 'r3' })
+          .mockRejectedValue(new ApiError(400, 'SCHEMA_INVALID', 'luna-kept: context policy')),
+        config: vi.fn(async () => ({ ...config, revision: 'r2' })),
+      };
+      await show(providers, { models: withSet, settings: windows });
+      await toggle('OpenAI');
+      await click(mark('OpenAI', 'GPT-6 Mini 3'));
+      await type(field('Context window for GPT-6 Mini 3'), '300000');
+      await click(control('Save'));
+      await settle();
+      expect(fixture.models.setModelContextWindow).toHaveBeenLastCalledWith(
+        expect.objectContaining({ revision: 'r2', contextWindow: 300_000 }),
+      );
+      expect(row('OpenAI')?.querySelector('[role="alert"]')).toBeNull();
+      await click(mark('OpenAI', 'GPT-6 Mini 3'));
+      await type(field('Context window for GPT-6 Mini 3'), '10000');
+      await click(control('Save'));
+      await settle();
+      expect(row('OpenAI')?.querySelector('[role="alert"]')?.textContent).toContain(
+        'luna-kept: context policy',
+      );
+    });
+  });
+
   it('lists only models the connection can call, by the pickers’ rule', async () => {
     await show(providers, {
       models: [

@@ -28,6 +28,7 @@ import {
   autoRouterPrompt,
   FALLBACK_OUTPUT_TOKENS,
   fixedReasoning,
+  type ModelContextWindow,
   type ModelResolution,
   type ModelResolver,
   type RouteAnswer,
@@ -232,6 +233,7 @@ export interface RegistryOptions {
   subscriptionModels?: (providerId: string) => ReadonlySet<string> | null;
   /** OpenAI-compatible endpoints from the workspace config, already registered. */
   endpoints?: ReadonlyMap<string, Endpoint>;
+  modelContextWindows?: readonly ModelContextWindow[];
   /** Fetching endpoint model lists: the cache, models.dev metadata and the request function. */
   endpointModels?: {
     cache: EndpointModelCache;
@@ -948,10 +950,16 @@ export class ModelRegistry implements ModelResolver {
     profiles: readonly ProfileConfig[],
     endpoints: ReadonlyMap<string, Endpoint>,
     configRevision = this.options.configRevision,
+    modelContextWindows = this.options.modelContextWindows,
   ) {
     const before = this.options.endpoints ?? new Map<string, Endpoint>();
     this.profiles = profiles;
-    this.options = { ...this.options, endpoints, ...(configRevision ? { configRevision } : {}) };
+    this.options = {
+      ...this.options,
+      endpoints,
+      ...(configRevision ? { configRevision } : {}),
+      ...(modelContextWindows ? { modelContextWindows } : {}),
+    };
     this.catalogChanged();
     // A pinned definition whose written part changed refuses its requests from now on.
     for (const [key, entry] of this.pinned) {
@@ -979,10 +987,42 @@ export class ModelRegistry implements ModelResolver {
     return endpointsFrom(configs, this.options.endpointModels?.cache);
   }
 
+  setModelContextWindows(
+    modelContextWindows: readonly ModelContextWindow[],
+    configRevision: string,
+  ) {
+    this.options = { ...this.options, modelContextWindows, configRevision };
+  }
+
+  hasModel(provider: string, model: string): boolean {
+    return this.knownProvider(provider) && Boolean(this.models.getModel(provider, model));
+  }
+
+  contextWindowErrors(
+    provider: string,
+    model: string,
+    modelContextWindows: readonly ModelContextWindow[],
+    profiles: readonly ProfileConfig[],
+    configRevision: string,
+  ): string[] {
+    return [
+      { id: connectionProfileId(provider, model), provider, model },
+      ...profiles.filter((profile) => profile.provider === provider && profile.model === model),
+    ].flatMap((profile) =>
+      this.contextPolicy(
+        profile,
+        this.options.endpoints,
+        configRevision,
+        modelContextWindows,
+      ).errors.map((error) => `${profile.id}: ${error}`),
+    );
+  }
+
   contextPolicy(
     profile: ProfileConfig,
     endpoints = this.options.endpoints,
     configRevision = this.options.configRevision ?? 'none',
+    modelContextWindows = this.options.modelContextWindows,
   ) {
     const endpoint = endpoints?.get(profile.provider);
     const configured = endpoint?.contextWindows?.get(profile.model);
@@ -1005,6 +1045,9 @@ export class ModelRegistry implements ModelResolver {
       },
       configRevision,
       model ? ('maxTokens' in model ? model.maxTokens : model.maxOutput) : FALLBACK_OUTPUT_TOKENS,
+      modelContextWindows?.find(
+        (entry) => entry.provider === profile.provider && entry.model === profile.model,
+      )?.contextWindow,
     );
   }
 
@@ -1012,9 +1055,13 @@ export class ModelRegistry implements ModelResolver {
     profiles = this.profiles,
     endpoints = this.options.endpoints,
     revision = this.options.configRevision ?? 'none',
+    modelContextWindows = this.options.modelContextWindows,
   ) {
     return Object.fromEntries(
-      profiles.map((profile) => [profile.id, this.contextPolicy(profile, endpoints, revision)]),
+      profiles.map((profile) => [
+        profile.id,
+        this.contextPolicy(profile, endpoints, revision, modelContextWindows),
+      ]),
     );
   }
 

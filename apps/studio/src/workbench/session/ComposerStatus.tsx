@@ -43,11 +43,13 @@ export function ComposerStatus({
   liveUnavailable,
   reasoningBlocked,
   error,
+  notice = null,
 }: {
   runs: RunSummary[];
   liveUnavailable: boolean;
   reasoningBlocked: boolean;
   error: string | null;
+  notice?: string | null;
 }) {
   const t = useTranslations('Sessions');
   const tc = useTranslations('Composer');
@@ -72,6 +74,11 @@ export function ComposerStatus({
       {error ? (
         <p role="alert" className="px-4 pt-1 text-caption text-danger">
           {error}
+        </p>
+      ) : null}
+      {notice && !error ? (
+        <p role="status" className="px-4 pt-1 text-caption text-muted-foreground">
+          {notice}
         </p>
       ) : null}
     </>

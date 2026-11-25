@@ -2909,7 +2909,15 @@
     "targetLabel": "Send to {name}",
     "targetAwaiting": "{name} · read after the decision",
     "targetNone": "No role can be joined now",
-    "lowered": "This role cannot be interrupted now; the message is read at its next request."
+    "lowered": "This role cannot be interrupted now; the message is read at its next request.",
+    "autocompaction": {
+      "title": "Set the context window",
+      "current": "{model}: context window {value, number} ({source})",
+      "next": "{model}: context window {value, number} from the next run",
+      "unknown": "{model}: the context window is not known",
+      "noModel": "Choose a model first.",
+      "invalid": "Write a size like 200000, 200k or 1m, or off to clear it."
+    }
   },
   "Commands": {
     "newSession": "New conversation",
@@ -4211,7 +4219,8 @@
       "catalog": "model catalog",
       "fallback": "connection fallback",
       "pi_default": "Pi default",
-      "adaptive": "model-based default"
+      "adaptive": "model-based default",
+      "model": "per-model override"
     },
     "warning": {
       "legacy_inconsistent": "Legacy defaults are inconsistent and preserved for compatibility. Explicit overrides must satisfy the policy.",
@@ -6800,7 +6809,12 @@
       "needs": "{name}: {line}.",
       "removed": "{name} removed."
     },
-    "failed": "Couldn’t finish: {message}"
+    "failed": "Couldn’t finish: {message}",
+    "contextSet": "Context window {value, number}; the model’s own is {own, number}",
+    "contextField": "Context window for {model}",
+    "contextSave": "Save",
+    "contextClear": "Clear",
+    "contextInvalid": "Write a number of tokens, like 200000 or 200k."
   },
   "AddConnection": {
     "title": {

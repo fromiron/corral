@@ -148,6 +148,34 @@ describe('workspace config and installation policy', () => {
     );
   });
 
+  it('reads context windows set per provider and model, one entry per pair', () => {
+    const luna = { provider: 'openai', model: 'gpt-6-luna', contextWindow: 200_000 };
+    const sol = { provider: 'openai', model: 'vendor/gpt-6-sol', contextWindow: 1_000_000 };
+    const parsed = parseWorkspaceConfig({ schemaVersion: '0.1', modelContextWindows: [luna, sol] });
+    expect(parsed.ok && parsed.config.modelContextWindows).toEqual([luna, sol]);
+    const absent = parseWorkspaceConfig({ schemaVersion: '0.1' });
+    expect(absent.ok && absent.config.modelContextWindows).toBeUndefined();
+    const twice = parseWorkspaceConfig({
+      schemaVersion: '0.1',
+      modelContextWindows: [luna, { ...luna, contextWindow: 100_000 }],
+    });
+    expect(twice.ok).toBe(false);
+    if (!twice.ok) expect(twice.errors.join(' ')).toContain('modelContextWindows.1');
+    for (const entry of [
+      { ...luna, contextWindow: 0 },
+      { ...luna, contextWindow: 10_000_001 },
+      { ...luna, contextWindow: 1.5 },
+      { ...luna, contextWindow: '200k' },
+      { ...luna, provider: 'Not An Id' },
+      { ...luna, model: '' },
+      { ...luna, reserveTokens: 1 },
+    ])
+      expect(
+        parseWorkspaceConfig({ schemaVersion: '0.1', modelContextWindows: [entry] }).ok,
+        JSON.stringify(entry),
+      ).toBe(false);
+  });
+
   it('names every definition limit above the installation caps', () => {
     const policy = { ...SPEC_HARD_CAPS, maxQuestions: 4 };
     expect(limitViolations(DEFAULT_LIMITS, policy)).toEqual([

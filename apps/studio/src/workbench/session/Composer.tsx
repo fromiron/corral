@@ -20,7 +20,7 @@ import { usePublishComposerAnnotate } from '../browser/annotate.tsx';
 import { noteNumber } from '../browser/noteChips.ts';
 import { ComposerSurface } from '../ComposerSurface.tsx';
 import type { SendChoice, SendKeyRole } from '../composerIntent.ts';
-import { removeMention, selectMention } from '../composerMenu.ts';
+import { removeMention, selectMention, valueCommand } from '../composerMenu.ts';
 import type { FileReference } from '../FilePanel.tsx';
 import { StopCommandContext } from '../panel/runHeadControls.ts';
 import { usePreferences } from '../preferences.ts';
@@ -50,6 +50,7 @@ import {
   WorkFolderEntry,
 } from './composer/ComposerTools.tsx';
 import {
+  autoCompaction,
   compactContext,
   composerCommands,
   type RunCommandFailure,
@@ -147,6 +148,7 @@ function SessionComposer({
   const destinationId = useId();
   const tr = useTranslations('Reins');
   const tStatus = useTranslations('RunStatus');
+  const tContext = useTranslations('ProfileContext');
   const tActivity = useTranslations('Activity');
   const tApprovals = useTranslations('Approvals');
   const services = useServices();
@@ -179,6 +181,7 @@ function SessionComposer({
   );
   useEffect(() => () => cancelAuto(), [cancelAuto]);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   // UX-04: why the last request did not start; the text stays in the box to send again.
   const [refusal, setRefusal] = useState<Refusal | null>(null);
   const [teamOpen, setTeamOpen] = useState(false);
@@ -348,6 +351,12 @@ function SessionComposer({
   const lastPick = useRef<{ role: SendKeyRole } | { choice: SendChoice }>({ role: 'send' });
   /** Sends as a key, or a choice in the send menu, says (features/composer-flow.md "전송"). */
   const send = async (pick: { role: SendKeyRole } | { choice: SendChoice }) => {
+    const typed = valueCommand(text, slashCommands);
+    if (typed) {
+      onText('');
+      return void typed.command.run(typed.value);
+    }
+    setNotice(null);
     const body = text.trim();
     const how = 'role' in pick ? forKey(pick.role) : forChoice(pick.choice);
     const explicitQueue = 'role' in pick ? pick.role === 'queue' : pick.choice === 'queue';
@@ -561,6 +570,18 @@ function SessionComposer({
       focus: () => input.current?.focus(),
       run: (type) => void runCommand(runDeps, type, ownActive?.runId),
       compact: () => void compactContext({ ...runDeps, ownActive, tStatus }),
+      autocompaction: (value) =>
+        void autoCompaction(
+          {
+            models: services.models,
+            modelProfile: autoChoice.modelProfile,
+            tc,
+            sourceName: tContext,
+            setError,
+            setNotice,
+          },
+          value,
+        ),
       requestStop,
       openTeam: () => setTeamOpen(true),
       openModels: () => setModelsOpen(true),
@@ -617,7 +638,7 @@ function SessionComposer({
         onClose={backToInput}
       />
     ),
-    sendDisabled: busy || !text.trim() || unavailable,
+    sendDisabled: busy || !text.trim() || (unavailable && !valueCommand(text, slashCommands)),
     send: (role) => void send({ role }),
   };
   const compose = (
@@ -802,6 +823,7 @@ function SessionComposer({
         liveUnavailable={liveUnavailable}
         reasoningBlocked={reasoningBlocked}
         error={error}
+        notice={notice}
       />
       {lowered ? (
         <p role="status" className="sr-only">

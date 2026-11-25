@@ -28,7 +28,7 @@ export const ProfileContextPolicy = z.strictObject({
   baseContextWindow: z.int().min(1).max(10_000_000).nullable(),
   baseSource: ContextBaseSource,
   sources: z.strictObject({
-    contextWindow: z.enum(['profile', 'endpoint', 'catalog', 'fallback']),
+    contextWindow: z.enum(['profile', 'model', 'endpoint', 'catalog', 'fallback']),
     reserveTokens: z.enum(['profile', 'pi_default', 'adaptive']),
     keepRecentTokens: z.enum(['profile', 'pi_default', 'adaptive']),
   }),

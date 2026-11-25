@@ -24,6 +24,7 @@ import {
   replaceTrigger,
   type Trigger,
   triggerAt,
+  valueCommand,
 } from './composerMenu.ts';
 import { type Preferences, sendKeyRole } from './preferences.ts';
 
@@ -129,6 +130,7 @@ export function ComposerInput({
         ? mentions.items.map((item) => ({ kind: 'mention', id: item.id, item }))
         : [];
   const open = kind !== null && (kind === 'slash' || mentions !== null);
+  const typedCommand = menus ? valueCommand(value, commands) : null;
   const selected = Math.min(index, Math.max(0, rows.length - 1));
   const anchor = useRef<HTMLDivElement>(null);
   const [placement, setPlacement] = useState<MenuPlacement | null>(null);
@@ -183,6 +185,11 @@ export function ComposerInput({
       if (row.command.disabled) return;
       // A command replaces what was typed for it; the rest of the request stays.
       const rest = value.slice(trigger.end).replace(/^\s+/, '');
+      if (row.command.takesValue) {
+        const name = `/${row.command.slash} `;
+        put({ text: `${name}${rest}`, caret: name.length });
+        return;
+      }
       put({ text: rest, caret: 0 });
       void row.command.run();
       return;
@@ -326,7 +333,12 @@ export function ComposerInput({
               else setDismissed(value);
               return;
             }
-            if ((e.key === 'Enter' || e.key === 'Tab') && !e.shiftKey && rows.length) {
+            if (
+              (e.key === 'Enter' || e.key === 'Tab') &&
+              !e.shiftKey &&
+              rows.length &&
+              !(e.key === 'Enter' && typedCommand && sendKeyRole(e, sendKey))
+            ) {
               e.preventDefault();
               choose(ordered[selected]);
               return;
@@ -336,7 +348,7 @@ export function ComposerInput({
           if (role) {
             e.preventDefault();
             // A command being chosen is not a message: no send key sends it.
-            if (!(open && kind === 'slash')) onSend(role);
+            if (!(open && kind === 'slash') || typedCommand) onSend(role);
             return;
           }
           onKeyDown(e);

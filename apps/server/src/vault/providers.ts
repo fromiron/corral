@@ -181,7 +181,12 @@ export function providersVaultAdapter(options: {
     workspace.configRevision = latest.revision;
     const activeEndpoints = registry.endpointsFor(latest.config.modelProviders);
     registerEndpoints(live.models, activeEndpoints);
-    await registry.reconfigure(latest.config.modelProfiles ?? [], activeEndpoints, latest.revision);
+    await registry.reconfigure(
+      latest.config.modelProfiles ?? [],
+      activeEndpoints,
+      latest.revision,
+      latest.config.modelContextWindows ?? [],
+    );
     return { revision: committed.revision };
   }
   return {
