@@ -122,6 +122,7 @@ export function useCorralSidebar() {
   const [sessions, setSessions] = useState<WorkSession[]>([]);
   const [runs, setRuns] = useState<RunSummary[]>([]);
   const [inbox, setInbox] = useState(0);
+  const [waiting, setWaiting] = useState<readonly string[]>([]);
   const [terminalAttention, setTerminalAttention] = useState<InboxItemView[]>([]);
   useEffect(() => {
     void terminals;
@@ -192,6 +193,7 @@ export function useCorralSidebar() {
         }
         if (items) {
           setInbox(items.length);
+          setWaiting([...new Set(items.map((item) => item.sessionId))]);
           const added = inboxNotificationTargets(items, seen ?? items);
           seen = inboxNotificationTargets(items);
           void desktop?.badge(items.length).catch(() => {});
@@ -247,6 +249,7 @@ export function useCorralSidebar() {
     sessions,
     runs,
     inbox,
+    waiting,
     terminalAttention,
     error,
     current,
@@ -862,7 +865,11 @@ export const Sidebar = memo(function Sidebar({
                           model.terminalAttention,
                         );
                         const calm =
-                          !active && !terminal && Boolean(presence && CALM.has(presence.kind));
+                          !active &&
+                          !terminal &&
+                          !session.meeting &&
+                          !model.waiting.includes(session.sessionId) &&
+                          Boolean(presence && CALM.has(presence.kind));
                         const lastRun = livePresence.get(session.sessionId)?.runId ?? null;
                         const seen =
                           lastRun === null ||

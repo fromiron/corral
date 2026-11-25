@@ -162,6 +162,7 @@ const model: Model = {
   corrals: [],
   runs: [],
   inbox: 0,
+  waiting: [],
   terminalAttention: [],
   error: null,
   current: 'alpha',
@@ -821,6 +822,12 @@ describe('session row presence', () => {
     expect(receded('session_3')).toBe(false);
     // No run at all: nothing to care for.
     expect(receded('session_4')).toBe(true);
+    // Something in Needs you for it (a queued request, a failed check, a PR item): it stays.
+    await redraw({
+      waiting: ['session_0'],
+      runs: [ended('session_0', 'run_0', 'succeeded')],
+    });
+    expect(receded('session_0')).toBe(false);
     window.localStorage.clear();
   });
 
