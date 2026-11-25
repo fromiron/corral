@@ -753,6 +753,9 @@ class WorkerExecution {
           ...(frame.finalTextModelCallId
             ? { finalTextModelCallId: frame.finalTextModelCallId }
             : {}),
+          ...(failure.code === 'QUOTA' && failure.resetAt
+            ? { usageLimit: { resetAt: failure.resetAt } }
+            : {}),
           ...(frame.error
             ? {
                 error: cause

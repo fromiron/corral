@@ -47,6 +47,7 @@ export interface ExecutionView {
   waitingOn: WaitingOn | null;
   modelCallIds: string[];
   error: string | null;
+  usageLimit?: { resetAt: string };
 }
 
 export interface TaskView {
@@ -1050,12 +1051,13 @@ function executionCreated(p: RunProjection, event: EventOf<'execution.created'>)
 }
 
 function executionSettled(p: RunProjection, event: EventOf<'execution.settled'>): RunProjection {
-  const { executionId, outcome, error } = event.payload;
+  const { executionId, outcome, error, usageLimit } = event.payload;
   const settled = updateExecution(p, executionId, {
     status: outcome,
     activity: null,
     waitingOn: null,
     error: error ?? null,
+    ...(usageLimit ? { usageLimit } : {}),
   });
   const execution = settled.executions[executionId];
   const task = execution ? settled.tasks[execution.taskId] : undefined;

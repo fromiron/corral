@@ -8,7 +8,7 @@ import {
   useQueueCardHeight,
 } from '@corral/react/design-kit';
 import { type ReactNode, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { useTranslations } from 'use-intl';
+import { useFormatter, useNow, useTranslations } from 'use-intl';
 
 /**
  * Saved requests for the next run, stacked in the kit QueuedStack above the input: start one now,
@@ -37,6 +37,15 @@ export function ComposerQueue({
   onRemove: (entry: SessionEntry) => void;
 }) {
   const t = useTranslations('Sessions');
+  const format = useFormatter();
+  const now = useNow({ updateInterval: 60_000 });
+  const day = (date: Date) => format.dateTime(date, { dateStyle: 'short' });
+  const resendTime = (iso: string) => {
+    const at = new Date(iso);
+    return day(at) === day(now)
+      ? format.dateTime(at, { timeStyle: 'short' })
+      : format.dateTime(at, { dateStyle: 'short', timeStyle: 'short' });
+  };
   // Text attachments and images travel with the request; the card shows them as file tiles.
   const identity = queued
     .map((entry) =>
@@ -90,11 +99,22 @@ export function ComposerQueue({
       }}
       renderActions={(item) => {
         const entry = entryFor(item);
-        return entry ? (
+        if (!entry) return null;
+        const start = (
           <Button variant="ghost" disabled={startDisabled} onClick={() => onStart(entry)}>
             {t('startNow')}
           </Button>
-        ) : null;
+        );
+        return entry.resend ? (
+          <>
+            <span className="text-muted-foreground text-xs">
+              {t('resendAt', { time: resendTime(entry.resend.notBefore) })}
+            </span>
+            {start}
+          </>
+        ) : (
+          start
+        );
       }}
     />
   );

@@ -160,3 +160,29 @@ it('renders nothing without saved requests', async () => {
   const view = await mount([]);
   expect(view.container.querySelector('section')).toBeNull();
 });
+
+it('shows when a request that failed on a usage limit is sent again, and still starts now', async () => {
+  // features/usage-limit-resend.md
+  const resend = entry('resend', 'Summarize the report', {
+    resend: { of: 'sent', runId: 'run_failed', notBefore: '2026-11-25T10:43:00.000Z' },
+  });
+  vi.useFakeTimers({ now: new Date('2026-11-25T09:00:00.000Z'), toFake: ['Date'] });
+  const view = await mount([resend]);
+  expect(view.container.textContent).toContain('Resends at 10:43');
+  expect(view.container.textContent).not.toContain('11/25');
+  const [start] = view.buttons(messages.Sessions.startNow);
+  await act(async () => start?.click());
+  expect(view.handlers.onStart).toHaveBeenCalledWith(resend);
+  vi.useRealTimers();
+});
+
+it('names the day of a resend that is not today', async () => {
+  vi.useFakeTimers({ now: new Date('2026-11-25T09:00:00.000Z'), toFake: ['Date'] });
+  const view = await mount([
+    entry('resend', 'Weekly limit', {
+      resend: { of: 'sent', runId: 'run_failed', notBefore: '2026-11-28T10:43:00.000Z' },
+    }),
+  ]);
+  expect(view.container.textContent).toContain('Resends at 11/28/26, 10:43');
+  vi.useRealTimers();
+});

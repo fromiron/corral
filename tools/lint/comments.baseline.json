@@ -159,6 +159,7 @@
     "packages/core/src/testing/transport-contract.ts": 5,
     "packages/core/src/tool-policy.ts": 7,
     "packages/core/src/transport.ts": 12,
+    "packages/core/src/usage-limit-resend.ts": 3,
     "packages/core/src/usage.ts": 10
   },
   "design-kit": {
@@ -459,7 +460,7 @@
     "packages/runner-langgraph/src/index.ts": 13
   },
   "server": {
-    "apps/server/src/app.ts": 119,
+    "apps/server/src/app.ts": 120,
     "apps/server/src/decision-apis.ts": 32,
     "apps/server/src/evaluation-edits.ts": 3,
     "apps/server/src/files/check-isolation.ts": 2,
@@ -547,7 +548,7 @@
     "apps/server/src/schedules/vault.ts": 1,
     "apps/server/src/security.ts": 14,
     "apps/server/src/session-branches.ts": 1,
-    "apps/server/src/session-queue.ts": 23,
+    "apps/server/src/session-queue.ts": 24,
     "apps/server/src/session-search.ts": 3,
     "apps/server/src/sse.ts": 2,
     "apps/server/src/testing.ts": 26,

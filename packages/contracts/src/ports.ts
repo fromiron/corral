@@ -286,6 +286,7 @@ export interface AgentSettlement {
   finalTextModelCallId?: string;
   outcome: 'succeeded' | 'failed' | 'cancelled';
   error?: string;
+  usageLimit?: { resetAt: string };
   terminationMode?: 'normal' | 'forced' | 'unconfirmed';
 }
 

@@ -87,7 +87,9 @@ export function EntryStatus({
   else if (steer) {
     const line = steerLine(steer, t, sessionId, onPanel, entry, canResend, onResend);
     if (line) parts.push(line);
-  } else if (entry.carriedFrom && entry.state === 'started' && !sourceShown)
+  } else if (entry.resend && entry.state === 'started')
+    parts.push(<Text key="resent">{t('meta.resentStarted')}</Text>);
+  else if (entry.carriedFrom && entry.state === 'started' && !sourceShown)
     // Carried over from an instruction sent from the run record: no source message here.
     parts.push(<Text key="carried">{t('meta.carriedStarted')}</Text>);
   return (

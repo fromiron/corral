@@ -27,6 +27,7 @@ import { z } from 'zod';
 import { validTextAttachments } from '../attachments.ts';
 import { canonicalJson } from '../canonical-json.ts';
 import { definitionHash } from '../definition-hash.ts';
+import { type SessionResend, validResend } from '../usage-limit-resend.ts';
 
 export * from './agent-library.ts';
 
@@ -108,6 +109,7 @@ export interface SessionEntry {
   start?: SessionEntryStart;
   /** The instruction this request was carried over from; it starts even without autoStart. */
   carriedFrom?: string;
+  resend?: SessionResend;
 }
 
 /**
@@ -244,6 +246,7 @@ export interface NewSessionEntry {
   auto?: SessionEntryAuto | null;
   start?: SessionEntryStart;
   carriedFrom?: string;
+  resend?: SessionResend;
 }
 
 export interface CorralRecord {
@@ -561,6 +564,12 @@ export function planSessionEntry(
     (typeof entry.carriedFrom !== 'string' || !entry.carriedFrom || entry.intent !== 'queue')
   )
     return { ok: false, error: 'invalid', message: 'a carried request requires a queued request' };
+  if (entry.resend !== undefined && (!validResend(entry.resend) || entry.intent !== 'queue'))
+    return {
+      ok: false,
+      error: 'invalid',
+      message: 'a resend requires a queued request and a time',
+    };
   const text = entry.text.trim();
   if (!text || text.length > ENTRY_MAX)
     return { ok: false, error: 'invalid', message: `A request has 1 to ${ENTRY_MAX} characters.` };
@@ -583,6 +592,7 @@ export function planSessionEntry(
           meetingHandoff: value.meetingHandoff ?? null,
           start: value.start ?? null,
           carriedFrom: value.carriedFrom ?? null,
+          resend: value.resend ?? null,
         });
       return identity(previous) === identity(entry)
         ? { ok: true, session: current }
@@ -595,6 +605,8 @@ export function planSessionEntry(
   }
   // A directive is carried once, however many times its end is reported.
   if (entry.carriedFrom && current.entries.some((value) => value.carriedFrom === entry.carriedFrom))
+    return { ok: true, session: current };
+  if (entry.resend && current.entries.some((value) => value.resend?.runId === entry.resend?.runId))
     return { ok: true, session: current };
   if (current.entries.length >= ENTRIES_MAX)
     return { ok: false, error: 'invalid', message: 'This session is full; start a new one.' };
@@ -634,6 +646,15 @@ export function planSessionEntry(
           ...(entry.auto ? { auto: entry.auto } : {}),
           ...(start?.success ? { start: start.data } : {}),
           ...(entry.carriedFrom ? { carriedFrom: entry.carriedFrom } : {}),
+          ...(entry.resend
+            ? {
+                resend: {
+                  of: entry.resend.of,
+                  runId: entry.resend.runId,
+                  notBefore: entry.resend.notBefore,
+                },
+              }
+            : {}),
           ...(entry.permissionMode ? { permissionMode: entry.permissionMode } : {}),
           ...(entry.harness ? { harness: HarnessBindingRef.parse(entry.harness) } : {}),
           ...(entry.taskScope ? { taskScope: entry.taskScope } : {}),
@@ -654,12 +675,16 @@ export function planSessionEntry(
 }
 
 /**
- * The queued requests in the order they start: carried requests first, in the order they were
- * carried, then the rest in the order queued. The server and a screen use this one order.
+ * The queued requests in the order they start: a resend after a usage limit, carried requests,
+ * then the rest in the order queued. The server and a screen use this one order.
  */
 export function queuedEntriesInStartOrder(session: WorkSession): SessionEntry[] {
   const queued = session.entries.filter((entry) => entry.state === 'queued');
-  return [...queued.filter((entry) => entry.carriedFrom), ...queued.filter((e) => !e.carriedFrom)];
+  return [
+    ...queued.filter((entry) => entry.resend),
+    ...queued.filter((entry) => !entry.resend && entry.carriedFrom),
+    ...queued.filter((entry) => !entry.resend && !entry.carriedFrom),
+  ];
 }
 
 /**

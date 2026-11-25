@@ -6526,6 +6526,9 @@ export class Coordinator {
           outcome,
           terminationMode: settlement.terminationMode ?? 'normal',
           ...(error ? { error } : {}),
+          ...(outcome === 'failed' && settlement.usageLimit
+            ? { usageLimit: { resetAt: settlement.usageLimit.resetAt } }
+            : {}),
         },
       },
       { type: 'effect.settled', executionId: input.executionId, payload: { effectId, outcome } },

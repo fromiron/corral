@@ -94,6 +94,7 @@ import {
   parentQuestionsText,
   promptSections,
   replyCompletesAssignment,
+  safe,
   sdkDirectiveText,
   systemPrompt,
   TOOL_TEXT,
@@ -1686,6 +1687,7 @@ export function runSdkWorker(port: Channel, deps: SdkWorkerDeps): void {
         ...(outcome === 'succeeded' && finalReplyModelCallId
           ? { finalTextModelCallId: finalReplyModelCallId }
           : {}),
+        ...(outcome === 'failed' && last?.errorMessage ? { error: safe(last.errorMessage) } : {}),
       });
     } catch {
       try {

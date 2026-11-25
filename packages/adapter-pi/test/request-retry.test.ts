@@ -9,11 +9,22 @@ import { isReplaySafe, managedRetryStream } from '../src/request-retry.ts';
 
 it('identifies Hive exhausted balance as quota and preserves safe metadata', () => {
   expect(
-    providerFailure('Organization has been paused due to account balance', {
-      status: 405,
-      headers: new Headers({ 'retry-after': '2', 'x-request-id': 'req-1' }),
-    }),
-  ).toEqual({ code: 'QUOTA', status: 405, retryAfterMs: 2000, requestId: 'req-1' });
+    providerFailure(
+      'Organization has been paused due to account balance',
+      {
+        status: 405,
+        headers: new Headers({ 'retry-after': '2', 'x-request-id': 'req-1' }),
+      },
+      { now: 0 },
+    ),
+  ).toEqual({
+    code: 'QUOTA',
+    status: 405,
+    retryAfterMs: 2000,
+    requestId: 'req-1',
+    // A quota's retry-after is its reset time (features/usage-limit-resend.md).
+    resetAt: '1970-01-01T00:00:02.000Z',
+  });
 });
 
 it('identifies a reached subscription limit as quota, even on a 200 stream', () => {
@@ -26,6 +37,78 @@ it('identifies a reached subscription limit as quota, even on a 200 stream', () 
   expect(providerFailure('usage_limit_reached', { status: 429, headers: new Headers() }).code).toBe(
     'QUOTA',
   );
+});
+
+// features/usage-limit-resend.md "리셋 시각의 출처".
+const NOW = Date.parse('2026-11-25T10:00:00.000Z');
+
+it('reads the reset time of a ChatGPT usage limit from the minutes Pi writes', () => {
+  expect(
+    providerFailure(
+      'You have hit your ChatGPT usage limit (plus plan). Try again in ~42 min.',
+      undefined,
+      { now: NOW },
+    ),
+  ).toEqual({
+    code: 'QUOTA',
+    status: null,
+    retryAfterMs: null,
+    requestId: null,
+    resetAt: '2026-11-25T10:42:00.000Z',
+  });
+});
+
+it('takes the later of the retry-after header and the stated minutes as the reset time', () => {
+  expect(
+    providerFailure(
+      'You have hit your ChatGPT usage limit (pro plan). Try again in ~42 min.',
+      { status: 429, headers: new Headers({ 'retry-after': '3600' }) },
+      { now: NOW },
+    ).resetAt,
+  ).toBe('2026-11-25T11:00:00.000Z');
+  expect(
+    providerFailure(
+      'usage_limit_reached',
+      { status: 429, headers: new Headers({ 'retry-after-ms': '600000' }) },
+      { now: NOW },
+    ).resetAt,
+  ).toBe('2026-11-25T10:10:00.000Z');
+  // A short generic retry-after beside a stated reset does not hide it.
+  expect(
+    providerFailure(
+      'You have hit your ChatGPT usage limit (plus plan). Try again in ~42 min.',
+      { status: 429, headers: new Headers({ 'retry-after': '5' }) },
+      { now: NOW },
+    ).resetAt,
+  ).toBe('2026-11-25T10:42:00.000Z');
+});
+
+it('gives no reset time without a usage limit or without a stated time', () => {
+  // A short rate limit keeps its own retry rule.
+  expect(
+    providerFailure(
+      'Rate limit exceeded',
+      { status: 429, headers: new Headers({ 'retry-after': '3600' }) },
+      { now: NOW },
+    ),
+  ).not.toHaveProperty('resetAt');
+  // A sharing cap carries no reset time.
+  expect(
+    providerFailure('The ChatGPT user has reached their Subscription Sharing usage limit.', {
+      status: 200,
+      headers: new Headers(),
+    }),
+  ).not.toHaveProperty('resetAt');
+});
+
+it('keeps the reset time when a classified failure crosses the worker boundary as JSON', () => {
+  const first = providerFailure(
+    'You have hit your ChatGPT usage limit. Try again in ~5 min.',
+    undefined,
+    { now: NOW },
+  );
+  expect(providerFailure(JSON.stringify(first))).toEqual(first);
+  expect(providerFailure(JSON.stringify({ ...first, resetAt: 'not a time' })).code).toBe('UNKNOWN');
 });
 
 it('leaves a rate limit retryable', () => {

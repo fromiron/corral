@@ -172,6 +172,7 @@ export const ExecutionSettled = event(
     outcome: z.enum(['succeeded', 'failed', 'cancelled']),
     terminationMode: z.enum(['normal', 'forced', 'unconfirmed']),
     error: z.string().optional(),
+    usageLimit: z.strictObject({ resetAt: z.iso.datetime() }).optional(),
   }),
 );
 export const TaskCreated = event(

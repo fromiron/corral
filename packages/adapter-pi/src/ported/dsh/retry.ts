@@ -13,7 +13,11 @@ export interface ProviderFailure {
   status: number | null;
   retryAfterMs: number | null;
   requestId: string | null;
+  /** When a usage limit resets, if the provider said so (features/usage-limit-resend.md). */
+  resetAt?: string;
 }
+// Pi turns a ChatGPT usage limit's `resets_at` into these words (openai-codex-responses.js).
+const CHATGPT_RESET = /Try again in ~(\d{1,6}) min\b/;
 /**
  * `responseStarted` says a response event arrived before the failure. Only then does a lost
  * connection or an overload notice count as transient; before it, delivery is unknown.
@@ -45,13 +49,17 @@ export function providerFailure(
       (value.retryAfterMs === null ||
         (Number.isSafeInteger(value.retryAfterMs) && value.retryAfterMs >= 0)) &&
       (value.requestId === null ||
-        (typeof value.requestId === 'string' && /^[\w:.-]{1,200}$/.test(value.requestId)))
+        (typeof value.requestId === 'string' && /^[\w:.-]{1,200}$/.test(value.requestId))) &&
+      (value.resetAt === undefined ||
+        (typeof value.resetAt === 'string' &&
+          new Date(Date.parse(value.resetAt)).toISOString() === value.resetAt))
     )
       return {
         code: value.code,
         status: value.status,
         retryAfterMs: value.retryAfterMs,
         requestId: value.requestId,
+        ...(value.resetAt ? { resetAt: value.resetAt } : {}),
       };
   } catch {
     /* Raw provider errors are classified without retaining their text. */
@@ -59,6 +67,7 @@ export function providerFailure(
   const status =
     response?.status ?? (Number(text.match(/\b(401|403|408|429|500|502|503|504)\b/)?.[1]) || null);
   const after = response?.headers.get('retry-after');
+  const afterMs = Number(response?.headers.get('retry-after-ms') ?? Number.NaN);
   const retryAfterMs =
     after == null
       ? null
@@ -91,11 +100,19 @@ export function providerFailure(
                   ? 'TRANSPORT'
                   : 'UNKNOWN';
   const requestId = response?.headers.get('x-request-id') ?? response?.headers.get('request-id');
+  const minutes = CHATGPT_RESET.exec(text)?.[1];
+  const stated = [
+    Number.isFinite(afterMs) && afterMs >= 0 ? afterMs : null,
+    retryAfterMs !== null && Number.isFinite(retryAfterMs) ? retryAfterMs : null,
+    minutes !== undefined ? Number(minutes) * 60_000 : null,
+  ].filter((value) => value !== null);
+  const resetMs = code === 'QUOTA' && stated.length ? Math.max(...stated) : null;
   return {
     code,
     status,
     retryAfterMs: Number.isFinite(retryAfterMs) ? retryAfterMs : null,
     requestId: requestId && /^[\w:.-]{1,200}$/.test(requestId) ? requestId : null,
+    ...(resetMs !== null ? { resetAt: new Date(now + resetMs).toISOString() } : {}),
   };
 }
 export function retryDelay(

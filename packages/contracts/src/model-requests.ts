@@ -96,6 +96,7 @@ export const ModelAttempt = z.strictObject({
       status: z.int().nullable(),
       retryAfterMs: count,
       requestId: z.string().nullable(),
+      resetAt: z.iso.datetime().optional(),
     })
     .nullable(),
   usage: UsageRecordV2,

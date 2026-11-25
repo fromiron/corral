@@ -49,6 +49,9 @@ function harness(
     directiveRuns?: Record<string, string>;
     /** A start a person already made: the same command with the same body is that run. */
     owned?: { request: QueuedStartRequest; runId: string };
+    /** What each run's record holds when its end is reported. */
+    projections?: Record<string, RunProjection>;
+    now?: string;
   } = {},
 ) {
   const runs: QueueRun[] = [
@@ -96,9 +99,20 @@ function harness(
       return { ok: true, session: structuredClone(session) };
     },
   };
+  const clock = { now: Date.parse(options.now ?? '2026-11-25T10:00:00.000Z') };
+  const timers: { sessionId: string; at: string; fire: () => void; cleared: boolean }[] = [];
   const queue = createSessionQueue({
     repository,
     runs: () => runs,
+    projection: (runId) => options.projections?.[runId] ?? null,
+    now: () => clock.now,
+    timer: (sessionId, at, fire) => {
+      const timer = { sessionId, at, fire, cleared: false };
+      timers.push(timer);
+      return () => {
+        timer.cleared = true;
+      };
+    },
     directiveRun: (_sessionId, directiveId) => options.directiveRuns?.[directiveId] ?? null,
     start: async (request) => {
       starts.push(request);
@@ -134,6 +148,8 @@ function harness(
     logs,
     queue,
     states,
+    clock,
+    timers,
     setFail: (value: boolean) => (fail = value),
   };
 }
@@ -564,4 +580,127 @@ it('a request carried from a cancelled run holds the queue behind it without aut
   await ending(on, 'run_b', 'cancelled');
   for (const runId of ['run_new_1', 'run_new_2']) await ending(on, runId, 'succeeded');
   expect(on.starts.map((request) => request.brief)).toEqual(['dir_1', 'dir_2', 'text plain']);
+});
+
+// features/usage-limit-resend.md: the queue copies a request that failed on a usage limit and
+// starts the copy once the limit resets.
+
+const limited = (resetAt: string) =>
+  ({
+    status: 'failed',
+    executionOrder: ['exec_1'],
+    executions: { exec_1: { status: 'failed', usageLimit: { resetAt } } },
+  }) as unknown as RunProjection;
+
+function limitedHarness(extra: SessionEntry[] = []) {
+  const h = harness({
+    entries: [
+      entry('sent', { intent: 'next', state: 'started', runId: 'run_b', commandId: 'cmd_sent' }),
+      ...extra,
+    ],
+    projections: { run_b: limited('2026-11-25T10:42:00.000Z') },
+  });
+  h.runs[1] = { ...h.runs[1], status: 'failed' } as QueueRun;
+  return h;
+}
+
+it('copies a request that failed on a usage limit to the front and waits for the reset', async () => {
+  const h = limitedHarness([entry('later')]);
+  await h.queue.onRunEnded('run_b');
+  expect(h.starts).toHaveLength(0);
+  const copy = h.session.entries.find((item) => item.resend);
+  expect(copy).toMatchObject({
+    intent: 'queue',
+    state: 'queued',
+    text: 'text sent',
+    start: START,
+    resend: { of: 'sent', runId: 'run_b', notBefore: '2026-11-25T10:43:00.000Z' },
+  });
+  expect(h.timers.map((timer) => [timer.sessionId, timer.at])).toEqual([
+    ['s1', '2026-11-25T10:43:00.000Z'],
+  ]);
+  // The request queued behind it waits too: it may assume the failed request's result.
+  expect(h.session.entries.find((item) => item.entryId === 'later')?.state).toBe('queued');
+});
+
+it('starts the copy when its time comes, as the same start a person would make', async () => {
+  const h = limitedHarness();
+  await h.queue.onRunEnded('run_b');
+  h.clock.now = Date.parse('2026-11-25T10:43:00.000Z');
+  h.timers[0]?.fire();
+  await h.queue.onEntryQueued('s1');
+  expect(h.starts).toHaveLength(1);
+  const copy = h.session.entries.find((item) => item.resend);
+  expect(h.starts[0]).toMatchObject({
+    brief: 'text sent',
+    sessionId: 's1',
+    conversation: { throughRunId: 'run_b' },
+  });
+  expect(h.starts[0]?.commandId).toBe(queuedSessionCommandId('s1', copy as SessionEntry));
+  expect(copy?.state).toBe('started');
+});
+
+it('reporting the same failed end twice makes one copy', async () => {
+  const h = limitedHarness();
+  await Promise.all([h.queue.onRunEnded('run_b'), h.queue.onRunEnded('run_b')]);
+  expect(h.session.entries.filter((item) => item.resend)).toHaveLength(1);
+});
+
+it('removes the copy once another run of the session ended first', async () => {
+  const h = limitedHarness();
+  await h.queue.onRunEnded('run_b');
+  // A person sent another request, with another model, and its run ended.
+  h.runs.push({
+    runId: 'run_c',
+    sessionId: 's1',
+    status: 'succeeded',
+    startedAt: '2026-11-25T10:05:00Z',
+  });
+  await h.queue.onRunEnded('run_c');
+  expect(h.starts).toHaveLength(0);
+  expect(h.session.entries.find((item) => item.resend)?.state).toBe('dismissed');
+  expect(h.timers.every((timer) => timer.cleared)).toBe(true);
+});
+
+it('arms the time again for copies already saved when the server starts', async () => {
+  const h = harness({
+    entries: [
+      entry('r1', {
+        resend: { of: 'sent', runId: 'run_b', notBefore: '2026-11-25T10:43:00.000Z' },
+      }),
+    ],
+  });
+  h.runs[1] = { ...h.runs[1], status: 'failed' } as QueueRun;
+  await h.queue.resume([h.session]);
+  expect(h.starts).toHaveLength(0);
+  expect(h.timers.map((timer) => timer.at)).toEqual(['2026-11-25T10:43:00.000Z']);
+});
+
+it('copies a run that ended before the screen recorded the request that started it', async () => {
+  // The screen saves a sent request after the start answers; a usage limit can end the run first.
+  const h = harness({ entries: [], projections: { run_b: limited('2026-11-25T10:42:00.000Z') } });
+  h.runs[1] = { ...h.runs[1], status: 'failed' } as QueueRun;
+  await h.queue.onRunEnded('run_b');
+  expect(h.session.entries).toHaveLength(0);
+  h.session.entries.push(
+    entry('sent', { intent: 'next', state: 'started', runId: 'run_b', commandId: 'cmd_sent' }),
+  );
+  await h.queue.onEntryRecorded('s1', 'run_b');
+  await h.queue.onEntryRecorded('s1', 'run_b');
+  expect(h.session.entries.filter((item) => item.resend)).toHaveLength(1);
+  // A record of a run still open copies nothing yet.
+  await h.queue.onEntryRecorded('s1', 'run_new_9');
+  expect(h.session.entries.filter((item) => item.resend)).toHaveLength(1);
+});
+
+it('starts nothing at the time when the person removed the copy', async () => {
+  const h = limitedHarness([entry('later')]);
+  await h.queue.onRunEnded('run_b');
+  const copy = h.session.entries.find((item) => item.resend);
+  if (copy) copy.state = 'dismissed';
+  h.clock.now = Date.parse('2026-11-25T10:43:00.000Z');
+  h.timers[0]?.fire();
+  await new Promise((resolve) => setTimeout(resolve, 10));
+  expect(h.starts).toHaveLength(0);
+  expect(h.session.entries.find((item) => item.entryId === 'later')?.state).toBe('queued');
 });

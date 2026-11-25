@@ -2179,6 +2179,7 @@ async function createCorralServer(
   resources.defer(() => {
     queueClosed = true;
     for (const controller of queueStarts) controller.abort();
+    sessionQueue?.close();
   });
   sessionQueue = createSessionQueue({
     repository: corrals,
@@ -2208,8 +2209,28 @@ async function createCorralServer(
         autoRoute: started.result.autoRoute ?? null,
       };
     },
+    projection: (runId) => coordinator.findSnapshot(runId)?.projection ?? null,
+    now: () => Date.parse(clock.nowIso()),
+    timer: (_sessionId, at, fire) => {
+      // A timeout longer than the platform's limit fires early; the queue then arms it again.
+      const delay = Math.min(Math.max(0, Date.parse(at) - Date.parse(clock.nowIso())), 2 ** 31 - 1);
+      const handle = setTimeout(() => {
+        if (!queueClosed) fire();
+      }, delay);
+      handle.unref?.();
+      return () => clearTimeout(handle);
+    },
     log: (sessionId, code) => console.warn(`session queue: ${sessionId} ${code}`),
   });
+  void (async () => {
+    const projects = await corrals.listProjects();
+    const sessions = (
+      await Promise.all(projects.map((project) => corrals.listSessions(project.projectId)))
+    ).flat();
+    await sessionQueue?.resume(sessions);
+  })().catch((error: unknown) =>
+    console.warn(`session queue: resume ${error instanceof Error ? error.name : 'unknown'}`),
+  );
   app.post<{ Params: { commandId: string } }>(
     '/api/v1/runs/auto/:commandId/cancel',
     async (request, reply) => {
@@ -3454,6 +3475,8 @@ async function createCorralServer(
       // A request queued just after the session's run ended would otherwise wait for a person.
       if (saved.ok && body.state === 'queued')
         void sessionQueue?.onEntryQueued(request.params.sessionId);
+      if (saved.ok && body.runId)
+        void sessionQueue?.onEntryRecorded(request.params.sessionId, body.runId);
       return sessionReply(reply, saved, true);
     },
   );
@@ -3462,11 +3485,14 @@ async function createCorralServer(
     async (request, reply) => {
       const body = parse(EntryChange, request, reply);
       if (!body) return reply;
-      return sessionReply(
-        reply,
-        await corrals.updateSessionEntry(request.params.sessionId, request.params.entryId, body),
-        false,
+      const saved = await corrals.updateSessionEntry(
+        request.params.sessionId,
+        request.params.entryId,
+        body,
       );
+      if (saved.ok && body.runId)
+        void sessionQueue?.onEntryRecorded(request.params.sessionId, body.runId);
+      return sessionReply(reply, saved, false);
     },
   );
 
