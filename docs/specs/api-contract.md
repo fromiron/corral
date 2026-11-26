@@ -162,7 +162,7 @@ bootstrap 링크는 해당 서버 프로세스가 실행 중인 동안 다른 �
 | GET /sessions/:id/terminals/:terminalId/events | generation, after 또는 Last-Event-ID | 인증된 SSE. sequenced output/resize와 unsequenced 현재 status. 화면 detach는 구독 해제만 하며 PTY를 종료하지 않음 |
 | GET /sessions/:id/worktree/removal | — | 사본 삭제 전 요약(읽기 전용): bindingId·copyGeneration·missing, 사본의 Git 변경 수(읽지 못하면 null), active/uncertain owner(사람 operation 종류), 미제출 검토 의견·planned/uncertain 쓰기 수, 끝나지 않은 Run |
 | DELETE /sessions/:id/worktree?generation= | — | 사본 삭제. generation이 지금 사본과 다르면 `REVISION_CONFLICT`. owner가 있거나 폴더가 남으면 거절하고 삭제로 기록하지 않음 |
-| GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처·이전/이후 blob). 출처는 `managed_agent`(Corral의 마지막 적용 쓰기 그대로)·`mixed`(Corral이 바꾼 뒤 다른 쓰기가 섞임)·`external_observed`(Corral이 바꾸지 않음). `scope=session`에 `group=run`을 주면 파일마다 `runs`와 `outsideRuns`를 싣는다([변경 검토의 실행별 묶음](features/review-run-groups.md#계약)) |
+| GET /sessions/:id/changes?scope=session\|review\|run&runId= | — | 비교 범위의 from·to tree와 파일 목록(상태·줄 수·바이너리·출처·이전/이후 blob). 출처는 `managed_agent`(Corral의 마지막 적용 쓰기 그대로)·`mixed`(Corral이 바꾼 뒤 다른 쓰기가 섞임)·`external_observed`(Corral의 파일 도구가 쓰지 않음. 실행의 명령이 바꾼 파일도 여기 든다). `scope=session`에 `group=run`을 주면 파일마다 `runs`와 `outsideRuns`를 싣는다([변경 검토의 실행별 묶음](features/review-run-groups.md#계약)) |
 | GET /sessions/:id/changes/file?from&to&path | — | 두 tree의 파일 내용(text·binary·too_large·absent) |
 | GET /sessions/:id/checkpoints | — | `{checkpoints, restores}`: 세션의 `FileCheckpoint`(kind·label·target·state incomplete/ready/expired·pinned·manifestHash)와 `CheckpointRestore` 기록 |
 | POST /sessions/:id/checkpoints | `CaptureCheckpoint`: checkpointId·label·target?(`working_copy`·`original`) | 고정된 수동 `FileCheckpoint`. [사본 관문](#3-오류)을 거친다 |
