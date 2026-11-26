@@ -5,10 +5,11 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { WorkFolderSection, WorkingCopyPanel } from './FilesViews.tsx';
+import { PaddockSetupStatus } from '../workbench/PaddockSetupStatus.tsx';
+import { WorkFolderSection } from './FilesViews.tsx';
 
-// features/paddock-setup.md 적기 · 화면: the setup command beside the checks, and the setup's
-// state in the Paddock head with its one action.
+// features/paddock-setup.md 적기 · 화면: the setup command under the checks, and the setup's
+// state with its one action and its kept output.
 
 const fixture = vi.hoisted(() => ({
   setup: null as PaddockSetup | null,
@@ -129,14 +130,17 @@ it('shows a running setup with Stop, and nothing once it succeeded', async () =>
     startedAt: '2026-11-26T00:00:00.000Z',
     endedAt: null,
   };
-  let container = await render(<WorkingCopyPanel sessionId="session_1" projectId="project" />);
+  const status = () => (
+    <PaddockSetupStatus sessionId="session_1" setup={fixture.setup} onChanged={() => {}} />
+  );
+  let container = await render(status());
   expect(container.querySelector('[role="status"]')?.textContent).toBe(messages.Files.setupRunning);
   await act(async () => button(container, messages.Files.setupStop)?.click());
   expect(fixture.stopSetup).toHaveBeenCalledWith('session_1', 'setup_1', target);
   await unmount?.();
 
   fixture.setup = { ...fixture.setup, state: 'succeeded', exitCode: 0, endedAt: 'x' };
-  container = await render(<WorkingCopyPanel sessionId="session_1" projectId="project" />);
+  container = await render(status());
   expect(container.textContent).not.toContain(messages.Files.setupRunning);
   expect(container.textContent).not.toContain(messages.Files.setupFailed);
 });
@@ -150,7 +154,9 @@ it('shows a failed setup with its kept output and runs it again on request', asy
     startedAt: '2026-11-26T00:00:00.000Z',
     endedAt: '2026-11-26T00:01:00.000Z',
   };
-  const container = await render(<WorkingCopyPanel sessionId="session_1" projectId="project" />);
+  const container = await render(
+    <PaddockSetupStatus sessionId="session_1" setup={fixture.setup} onChanged={() => {}} />,
+  );
   expect(container.querySelector('[role="status"]')?.textContent).toBe(messages.Files.setupFailed);
   const details = container.querySelector('details');
   await act(async () => {

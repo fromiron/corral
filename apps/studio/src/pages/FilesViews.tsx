@@ -8,7 +8,6 @@ import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
-import { PaddockSetupStatus } from '../workbench/PaddockSetupStatus.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
@@ -309,24 +308,15 @@ export function WorkingCopyPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
-  const settingUp = useRef(false);
   const reload = useCallback(async () => {
     if (!workspaces) return setWorktree(null);
-    const view = await workspaces.worktree(sessionId).catch(() => null);
-    settingUp.current = view?.setup?.state === 'running';
-    setWorktree(view);
+    setWorktree(await workspaces.worktree(sessionId).catch(() => null));
   }, [workspaces, sessionId]);
   useEffect(() => {
     void reload();
     const changed = () => void reload();
     window.addEventListener(WORKSPACE_CHANGED, changed);
-    const poll = window.setInterval(() => {
-      if (settingUp.current) void reload();
-    }, 2000);
-    return () => {
-      window.removeEventListener(WORKSPACE_CHANGED, changed);
-      window.clearInterval(poll);
-    };
+    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, [reload]);
   if (!workspaces || worktree === undefined || binding === undefined) return null;
   const act = async (work: () => Promise<unknown>) => {
@@ -426,11 +416,6 @@ export function WorkingCopyPanel({
           }}
         />
       </div>
-      <PaddockSetupStatus
-        sessionId={sessionId}
-        setup={worktree.setup}
-        onChanged={() => void act(async () => {})}
-      />
       {error ? (
         <p role="alert" className="text-body text-danger">
           {error}
