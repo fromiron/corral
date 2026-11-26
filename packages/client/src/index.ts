@@ -96,6 +96,7 @@ import type {
   TerminalResize,
   TerminalView,
   UserTaskView,
+  WorkspaceTarget,
 } from '@corral/contracts';
 import { canonicalJson } from '@corral/core';
 import type { CommandRecovery, StartRecovery } from './recovery.ts';
@@ -2398,6 +2399,28 @@ export interface WorktreeView {
   removedAt: string | null;
   reviewed: boolean;
   missing: boolean;
+  setup: PaddockSetup | null;
+}
+
+export interface PaddockSetup {
+  operationId: string;
+  state: 'running' | 'succeeded' | 'failed' | 'cancelled' | 'uncertain';
+  reason:
+    | 'command_failed'
+    | 'command_timeout'
+    | 'launch_failed'
+    | 'stopped'
+    | 'trust_revoked'
+    | 'interrupted'
+    | 'interrupted_unconfirmed'
+    | null;
+  exitCode: number | null;
+  startedAt: string;
+  endedAt: string | null;
+}
+export interface PaddockSetupDetail extends PaddockSetup {
+  target: WorkspaceTarget;
+  output: { text: string; truncated: boolean };
 }
 
 export interface SessionDeletionSummary {
@@ -2842,6 +2865,28 @@ export class WorkspacesApi {
     return this.send(
       `/sessions/${encodeURIComponent(sessionId)}/worktree/tasks/${encodeURIComponent(operationId)}/stop`,
       'POST',
+    );
+  }
+  startSetup(
+    sessionId: string,
+    input: { operationId: string; target: WorkspaceTarget },
+  ): Promise<PaddockSetup> {
+    return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/setup`, 'POST', input);
+  }
+  stopSetup(
+    sessionId: string,
+    operationId: string,
+    target: WorkspaceTarget,
+  ): Promise<PaddockSetup> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/setup/${encodeURIComponent(operationId)}/stop`,
+      'POST',
+      { target },
+    );
+  }
+  setup(sessionId: string, operationId: string): Promise<PaddockSetupDetail> {
+    return this.send(
+      `/sessions/${encodeURIComponent(sessionId)}/worktree/setup/${encodeURIComponent(operationId)}`,
     );
   }
   /** Stage, unstage or commit in a managed copy; a retry reads the same receipt (P13). */

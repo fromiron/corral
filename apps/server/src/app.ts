@@ -2751,13 +2751,55 @@ async function createCorralServer(
     const session = await sessionOr404(reply, request.params.sessionId);
     if (!session) return reply;
     try {
-      return reply
-        .code(201)
-        .send({ worktree: await files.createWorktree(session.sessionId, session.projectId) });
+      await files.createWorktree(session.sessionId, session.projectId);
+      await files.setupNewCopy(session.sessionId);
+      return reply.code(201).send({ worktree: files.worktreeView(session.sessionId) });
     } catch (error) {
       return workspaceFail(reply, error);
     }
   });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/worktree/setup', async (request, reply) => {
+    const body = parse(
+      z.strictObject({ operationId: Identifier, target: WorkspaceTarget }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      return await files.startSetup(request.params.sessionId, body);
+    } catch (error) {
+      return gitFail(reply, error);
+    }
+  });
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/setup/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.setupDetail(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/setup/:operationId/stop',
+    async (request, reply) => {
+      const body = parse(z.strictObject({ target: WorkspaceTarget }), request, reply);
+      if (!body) return reply;
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.stopSetup(
+          request.params.sessionId,
+          request.params.operationId,
+          body.target,
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree/removal', async (request, reply) => {
     if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
     try {

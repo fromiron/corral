@@ -194,6 +194,7 @@ export class DemoWorkspace implements FileTools {
           baseCommit: c.baseTree,
           createdAt: c.createdAt,
           removedAt: null,
+          setup: null,
           reviewed: c.reviewedTree !== null,
           missing: false,
         }

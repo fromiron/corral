@@ -112,6 +112,7 @@ const copy: WorktreeView = {
   removedAt: null,
   reviewed: false,
   missing: false,
+  setup: null,
 };
 
 beforeEach(() => {
