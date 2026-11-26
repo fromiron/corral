@@ -1,6 +1,22 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { createInventory, GATES, type ReleaseEvidence, verifyEvidence } from './policy.ts';
+import {
+  assertSpdxDocument,
+  createInventory,
+  GATES,
+  type ReleaseEvidence,
+  verifyEvidence,
+} from './policy.ts';
+
+test('a generated inventory passes the vendored SPDX 2.3 schema and a broken one does not', () => {
+  const inventory = createInventory(
+    { MIT: [{ name: 'safe', versions: ['1.0.0'] }] },
+    'abc',
+    '2026-10-15T00:00:00Z',
+  );
+  assertSpdxDocument(inventory);
+  assert.throws(() => assertSpdxDocument({ ...inventory, spdxVersion: 1 }), /\/spdxVersion/);
+});
 
 test('inventory includes each exact transitive version and excludes local paths', () => {
   const inventory = createInventory(

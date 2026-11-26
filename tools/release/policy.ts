@@ -1,4 +1,6 @@
+import Ajv from 'ajv';
 import { prerelease, valid } from 'semver';
+import spdxSchema from './spdx.schema.json' with { type: 'json' };
 
 export const SOURCE_PORTS = [
   {
@@ -173,6 +175,14 @@ export function createInventory(
       relatedSpdxElement: pkg.SPDXID,
     })),
   };
+}
+
+export function assertSpdxDocument(document: unknown) {
+  const validate = new Ajv({ allErrors: true }).compile(spdxSchema);
+  if (!validate(document))
+    throw new Error(
+      `SPDX inventory fails the 2.3 schema: ${validate.errors?.map((error) => `${error.instancePath || '/'} ${error.message}`).join('; ')}`,
+    );
 }
 
 export function verifyEvidence(evidence: ReleaseEvidence, candidate: string, requireLive = true) {

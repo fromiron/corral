@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-11-25T03:05:31.915Z",
+  "generatedAt": "2026-11-26T04:32:15.535Z",
   "node": "v26.13.1",
   "packageManager": "pnpm@10.34.9",
   "note": "Registry facts for pinned direct dependencies. Compatibility evidence is the CI gate result, not this file.",
@@ -709,7 +709,8 @@
       "peerDependencies": null,
       "scope": "development",
       "usedBy": [
-        "@corral/contracts"
+        "@corral/contracts",
+        "corral"
       ]
     },
     {
