@@ -4,7 +4,12 @@ import {
   type HostProcessReservation,
   restoreHostProcessGroupReservation,
 } from '@corral/adapter-pi/processes';
-import { type Clock, canonicalJson, type WorkspaceTarget } from '@corral/contracts';
+import {
+  type Clock,
+  type CommandError,
+  canonicalJson,
+  type WorkspaceTarget,
+} from '@corral/contracts';
 import { ToolRefusal } from '@corral/core';
 import type { Db } from '@corral/storage-sqlite';
 import { confirmOwnedProcessCleanup } from '../processes/owned-process.ts';
@@ -210,6 +215,22 @@ export class PaddockSetups {
   latest(sessionId: string, copyGeneration: number): SetupSummary | null {
     const receipt = this.receipts(sessionId, copyGeneration).at(-1);
     return receipt ? this.summary(this.settleGone(receipt)) : null;
+  }
+
+  holder(sessionId: string): NonNullable<CommandError['owner']> | null {
+    const copy = this.copy(sessionId);
+    const current = copy && this.latest(sessionId, copy.target.copyGeneration);
+    if (current?.state !== 'running') return null;
+    const access = this.access.get({ kind: 'user', id: current.operationId });
+    return access
+      ? this.access.holder(access)
+      : {
+          kind: 'operation',
+          id: current.operationId,
+          sessionId,
+          state: 'active',
+          operationKind: 'setup',
+        };
   }
 
   running(sessionId: string): boolean {

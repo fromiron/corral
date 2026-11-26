@@ -54,6 +54,7 @@ export interface QueueRun {
 export interface SessionQueueDeps {
   repository: Pick<CorralRepository, 'getSession' | 'updateSessionEntry' | 'addSessionEntry'>;
   runs(): readonly QueueRun[];
+  setupRunning?(sessionId: string): boolean;
   /** The run of the session a directive was sent in, read from the runs' records. */
   directiveRun(sessionId: string, directiveId: string): string | null;
   start(request: QueuedStartRequest): Promise<QueuedStartOutcome>;
@@ -81,6 +82,7 @@ export function createSessionQueue(deps: SessionQueueDeps) {
   // One pass at a time per session, so two runs ending together start one request.
   const passes = new Map<string, Promise<void>>();
   const open = (sessionId: string) =>
+    deps.setupRunning?.(sessionId) === true ||
     deps
       .runs()
       .some((run) => run.sessionId === sessionId && !TERMINAL_RUN_STATUSES.has(run.status));
@@ -129,7 +131,11 @@ export function createSessionQueue(deps: SessionQueueDeps) {
       disarm(sessionId);
       if (step.kind === 'hold') return;
     }
-    if (!entry?.start || !(session.autoStart || carriedPast(sessionId, entry.carriedFrom))) return;
+    if (
+      !entry?.start ||
+      !(session.autoStart || entry.afterSetup || carriedPast(sessionId, entry.carriedFrom))
+    )
+      return;
     const commandId = queuedSessionCommandId(sessionId, entry);
     const throughRunId = conversationRun(deps.runs(), sessionId);
     // The same references, in the same order, as a person starting this entry sends.
@@ -218,6 +224,9 @@ export function createSessionQueue(deps: SessionQueueDeps) {
     },
     /** Called after a queued entry is saved; a session with an open run waits for its end. */
     onEntryQueued(sessionId: string): Promise<void> {
+      return open(sessionId) ? Promise.resolve() : schedule(sessionId);
+    },
+    onSetupEnded(sessionId: string): Promise<void> {
       return open(sessionId) ? Promise.resolve() : schedule(sessionId);
     },
     /** A screen records a request after its start answers; its run may have ended already. */

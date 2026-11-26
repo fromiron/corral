@@ -109,6 +109,7 @@ export interface SessionEntry {
   start?: SessionEntryStart;
   /** The instruction this request was carried over from; it starts even without autoStart. */
   carriedFrom?: string;
+  afterSetup?: true;
   resend?: SessionResend;
   pullRequest?: { number: number; headSha: string };
 }
@@ -248,6 +249,7 @@ export interface NewSessionEntry {
   auto?: SessionEntryAuto | null;
   start?: SessionEntryStart;
   carriedFrom?: string;
+  afterSetup?: true;
   resend?: SessionResend;
   pullRequest?: { number: number; headSha: string };
 }
@@ -567,6 +569,11 @@ export function planSessionEntry(
     (typeof entry.carriedFrom !== 'string' || !entry.carriedFrom || entry.intent !== 'queue')
   )
     return { ok: false, error: 'invalid', message: 'a carried request requires a queued request' };
+  if (
+    entry.afterSetup !== undefined &&
+    (entry.afterSetup !== true || entry.intent !== 'queue' || entry.state !== 'queued')
+  )
+    return { ok: false, error: 'invalid', message: 'only a new queued request waits for setup' };
   if (entry.resend !== undefined && (!validResend(entry.resend) || entry.intent !== 'queue'))
     return {
       ok: false,
@@ -603,6 +610,7 @@ export function planSessionEntry(
           meetingHandoff: value.meetingHandoff ?? null,
           start: value.start ?? null,
           carriedFrom: value.carriedFrom ?? null,
+          afterSetup: value.afterSetup ?? null,
           resend: value.resend ?? null,
         });
       return identity(previous) === identity(entry)
@@ -657,6 +665,7 @@ export function planSessionEntry(
           ...(entry.auto ? { auto: entry.auto } : {}),
           ...(start?.success ? { start: start.data } : {}),
           ...(entry.carriedFrom ? { carriedFrom: entry.carriedFrom } : {}),
+          ...(entry.afterSetup ? { afterSetup: true as const } : {}),
           ...(entry.resend
             ? {
                 resend: {
@@ -702,7 +711,8 @@ export function queuedEntriesInStartOrder(session: WorkSession): SessionEntry[] 
   return [
     ...queued.filter((entry) => entry.resend),
     ...queued.filter((entry) => !entry.resend && entry.carriedFrom),
-    ...queued.filter((entry) => !entry.resend && !entry.carriedFrom),
+    ...queued.filter((entry) => !entry.resend && !entry.carriedFrom && entry.afterSetup),
+    ...queued.filter((entry) => !entry.resend && !entry.carriedFrom && !entry.afterSetup),
   ];
 }
 

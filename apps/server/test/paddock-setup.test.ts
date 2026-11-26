@@ -7,6 +7,7 @@ import { openDatabase } from '@corral/storage-sqlite';
 import { FakeClock } from '@corral/testkit';
 import { afterEach, expect, it, vi } from 'vitest';
 import { WorkspaceService } from '../src/files/service.ts';
+import { WorkspaceAccessStore } from '../src/files/workspace-access.ts';
 
 // Real child processes share CI workers; this is a runaway limit, not a latency assertion.
 vi.setConfig({ testTimeout: 40_000 });
@@ -346,4 +347,29 @@ it('after a restart a setup whose process cannot be identified ends as failed an
   await new Promise((resolve) => setTimeout(resolve, 2500));
   await s.service.removeWorktree('s1');
   expect(s.service.worktreeView('s1')).toBeNull();
+});
+
+it('on a shared copy a running setup holds the writing run’s place but not a run already writing', async () => {
+  const s = await setup({ shared: true });
+  await s.command('sleep 30');
+  const { path, target } = await s.copy();
+  const access = new WorkspaceAccessStore(s.db, true);
+  expect(() =>
+    access.acquire({ kind: 'run', id: 'run_after' }, 's1', path, true, target.copyGeneration),
+  ).toThrow(
+    expect.objectContaining({
+      code: 'RUN_ALREADY_ACTIVE',
+      owner: expect.objectContaining({ kind: 'operation', operationKind: 'setup' }),
+    }),
+  );
+  // A reading run and the person's own work still go beside it.
+  access.acquire({ kind: 'run', id: 'run_reader' }, 's1', path, false, target.copyGeneration);
+  expect(s.service.setupRunning('s1')).toBe(true);
+  await s.service.stopSetup('s1', s.service.worktreeView('s1')?.setup?.operationId ?? '', target);
+  expect(s.service.setupRunning('s1')).toBe(false);
+  access.acquire({ kind: 'run', id: 'run_after' }, 's1', path, true, target.copyGeneration);
+
+  // A setup run again beside a writing run starts; the run keeps going.
+  const again = await s.service.startSetup('s1', { operationId: 'setup_beside', target });
+  expect(again.state).toBe('running');
 });

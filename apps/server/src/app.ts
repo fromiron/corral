@@ -403,6 +403,7 @@ const NewEntry = z.strictObject({
   auto: SessionEntryAuto.nullable().optional(),
   // The start request of a new or next request; the server starts only a `queued` entry with it.
   start: SessionEntryStart.optional(),
+  afterSetup: z.literal(true).optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
@@ -559,6 +560,7 @@ async function createCorralServer(
     allowSharedDevelopment: options.allowSharedDevelopment,
     worktreeRoot,
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
+    setup: { ended: (sessionId) => void sessionQueue?.onSetupEnded(sessionId) },
     timers: options.timers ?? systemTimers,
     ...(options.fff
       ? {
@@ -1824,6 +1826,17 @@ async function createCorralServer(
         });
       }
     }
+    const setup =
+      parsed.data.sessionId && !resend ? files.setupHolder(parsed.data.sessionId) : null;
+    if (setup)
+      return reply.code(409).send({
+        runId: null,
+        receipt: refusedStart(request.body, {
+          code: 'RUN_ALREADY_ACTIVE',
+          message: 'this working copy is being set up',
+          owner: setup,
+        }),
+      });
     const startTree =
       parsed.data.sessionId && !resend ? await files.currentTree(parsed.data.sessionId) : null;
     const result = coordinator.startRun(parsed.data);
@@ -2152,7 +2165,7 @@ async function createCorralServer(
     signal: AbortSignal,
     controller: AbortController,
   ): Promise<
-    | { ok: false; code: ErrorCode; message: string }
+    | { ok: false; code: ErrorCode; message: string; owner?: CommandError['owner'] }
     | { ok: true; result: AutoResult; resend: boolean }
   > => {
     if (body.commandId.startsWith('meeting_'))
@@ -2176,6 +2189,14 @@ async function createCorralServer(
         };
       sessionCriteria = session.criteria;
       sessionAdvisor = session.advisor;
+      const setup = files.setupHolder(body.sessionId);
+      if (setup)
+        return {
+          ok: false,
+          code: 'RUN_ALREADY_ACTIVE',
+          message: 'this working copy is being set up',
+          owner: setup,
+        };
     }
     const work = autoStarter.start(
       {
@@ -2221,7 +2242,7 @@ async function createCorralServer(
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
       const started = await startAutoRun(body, dropped.signal, dropped);
-      if (!started.ok) return fail(reply, started.code, started.message);
+      if (!started.ok) return fail(reply, started.code, started.message, started.owner);
       const { result, resend } = started;
       const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
       return reply.code(status).send(result);
@@ -2265,6 +2286,7 @@ async function createCorralServer(
   sessionQueue = createSessionQueue({
     repository: corrals,
     runs: () => coordinator.listRuns(),
+    setupRunning: (sessionId) => files.setupRunning(sessionId),
     directiveRun: (sessionId, directiveId) =>
       coordinator
         .listRuns()

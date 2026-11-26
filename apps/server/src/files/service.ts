@@ -1293,6 +1293,10 @@ export class WorkspaceService implements FileTools {
     return this.setups.running(sessionId);
   }
 
+  setupHolder(sessionId: string) {
+    return this.setups.holder(sessionId);
+  }
+
   async resolvePreviewRoot(sessionId: string): Promise<string> {
     const row = this.worktree(sessionId);
     if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this session has no working copy');
