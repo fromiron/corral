@@ -7,7 +7,6 @@
 ```sh
 pnpm install --frozen-lockfile
 pnpm deps:check
-python -m pip install -r tools/requirements.txt
 pnpm --filter @corral/studio exec playwright install --with-deps chromium firefox
 pnpm release:gate
 ```
@@ -41,6 +40,6 @@ prerelease는 안정 버전이나 MIT 라이선스만으로 승인되지 않는�
 
 허용한 정확한 SPDX 표현은 `tools/release/policy.ts`에서 검토한다. permissive 라이선스 외 axe 등 MPL-2.0 도구와 CC-BY-4.0 데이터도 있으므로 MIT 프로젝트라는 이유로 제3자 의무가 사라지지 않는다. 알 수 없는 표현은 fail closed한다. 버전 변경 시 [의존성 기록](../dependency-lock.json), upstream LICENSE/NOTICE, 번들에 포함되는 범위를 함께 검토한다. SPDX 생성은 취약점 감사나 법률 판정이 아니다.
 
-형식 근거: [pnpm 10 licenses](https://pnpm.io/10.x/cli/licenses), [SPDX 2.3](https://spdx.github.io/spdx-spec/v2.3.1/). 새 의존성 없이 설치된 pnpm 10.34.9의 JSON 출력과 표준 SPDX package inventory를 사용한다. SPDX 프로젝트의 2.3 공식 JSON Schema(CC-BY-3.0, 원본 LICENSE 동봉)를 `tools/release/spdx.schema.json`에 고정하고 기존 문서 검사용 jsonschema로 매번 생성 결과를 검증한다.
+형식 근거: [pnpm 10 licenses](https://pnpm.io/10.x/cli/licenses), [SPDX 2.3](https://spdx.github.io/spdx-spec/v2.3.1/). 새 의존성 없이 설치된 pnpm 10.34.9의 JSON 출력과 표준 SPDX package inventory를 사용한다. SPDX 프로젝트의 2.3 공식 JSON Schema(CC-BY-3.0, 원본 LICENSE 동봉)를 `tools/release/spdx.schema.json`에 고정하고 루트 개발 의존성 ajv로 매번 생성 결과를 검증한다.
 
 `.github/workflows/release.yml`은 수동 실행 또는 버전 태그에서 같은 결정적 gate를 실행하고 inventory·측정 JSON·CPU profile·flamegraph를 보관한다. Playwright trace는 로컬 진단용이며 소스 경로를 포함할 수 있어 공개 artifact에 자동 업로드하지 않는다. 이 workflow는 live 증명이나 공개 릴리스를 발행하지 않는다.

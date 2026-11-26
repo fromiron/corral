@@ -4,7 +4,12 @@ import { join } from 'node:path';
 import { packageManagerCommand } from '../../apps/desktop/scripts/packaging.ts';
 import type { DependencyEvidence } from '../deps/check.ts';
 import { candidateHash, ROOT } from './candidate.ts';
-import { createInventory, type LicensedPackage, SOURCE_PORTS } from './policy.ts';
+import {
+  assertSpdxDocument,
+  createInventory,
+  type LicensedPackage,
+  SOURCE_PORTS,
+} from './policy.ts';
 
 const output = join(ROOT, 'test-results/release');
 mkdirSync(output, { recursive: true });
@@ -34,18 +39,8 @@ const bom = createInventory(
 );
 const bomPath = join(output, 'sbom.spdx.json');
 writeFileSync(bomPath, `${JSON.stringify(bom, null, 2)}\n`);
-// SPDX 2.3's official vendored schema; validated with the jsonschema package from tools/requirements.txt.
-execFileSync(
-  process.env.CORRAL_PYTHON ?? 'python3',
-  [
-    '-I',
-    '-c',
-    'import json,sys; from jsonschema import Draft7Validator; Draft7Validator(json.load(open(sys.argv[1]))).validate(json.load(open(sys.argv[2])))',
-    join(import.meta.dirname, 'spdx.schema.json'),
-    bomPath,
-  ],
-  { stdio: 'inherit' },
-);
+// SPDX 2.3's official vendored schema (tools/release/spdx.schema.json), checked in process with ajv.
+assertSpdxDocument(bom);
 const notices: string[] = [
   'SPDX 2.3 JSON Schema — SPDX Project\nSource: https://github.com/spdx/spdx-spec/blob/v2.3/schemas/spdx-schema.json\nVendored for validation; JSON whitespace reformatted only. License: CC-BY-3.0\n\n' +
     readFileSync(join(import.meta.dirname, 'SPDX-SCHEMA-LICENSE.txt'), 'utf8'),
