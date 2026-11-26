@@ -8,6 +8,7 @@ import { desktop } from '../desktop.tsx';
 import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
+import { PaddockSetupStatus } from '../workbench/PaddockSetupStatus.tsx';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
 import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
@@ -85,11 +86,12 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   const { binding, reload } = useBinding(projectId);
   const [path, setPath] = useState(mode === 'browser' ? 'demo://example-repo' : '');
   const [checks, setChecks] = useState<string | null>(null);
+  const [setup, setSetup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const runSettingsTask = useSettingsTask(`work-folder:${projectId}`);
   useSettingsForm({
-    dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null,
+    dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null || setup !== null,
     pending,
   });
   if (!workspaces || binding === undefined) return null;
@@ -247,6 +249,39 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
               </Button>
             </section>
           ) : null}
+          {binding.trusted && mode === 'server' ? (
+            <section className="settings-surface flex flex-col gap-3">
+              <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('setupHeading')}
+              </h3>
+              <Textarea
+                rows={3}
+                value={setup ?? binding.setupCommand ?? ''}
+                placeholder={t('setupPlaceholder')}
+                onChange={(e) => setSetup(e.target.value)}
+                spellCheck={false}
+                aria-label={t('setupHeading')}
+                className="font-mono"
+              />
+              <Button
+                variant="tertiary"
+                type="button"
+                disabled={setup === null}
+                onClick={() =>
+                  void act(async () => {
+                    await workspaces.configure(projectId, {
+                      setupCommand: setup?.trim() ? setup : null,
+                      setupRevision: binding.setupRevision,
+                    });
+                    setSetup((current) => (current === setup ? null : current));
+                  })
+                }
+                className="self-start"
+              >
+                {t('saveSetup')}
+              </Button>
+            </section>
+          ) : null}
         </>
       )}
       {error ? (
@@ -274,15 +309,24 @@ export function WorkingCopyPanel({
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const settingUp = useRef(false);
   const reload = useCallback(async () => {
     if (!workspaces) return setWorktree(null);
-    setWorktree(await workspaces.worktree(sessionId).catch(() => null));
+    const view = await workspaces.worktree(sessionId).catch(() => null);
+    settingUp.current = view?.setup?.state === 'running';
+    setWorktree(view);
   }, [workspaces, sessionId]);
   useEffect(() => {
     void reload();
     const changed = () => void reload();
     window.addEventListener(WORKSPACE_CHANGED, changed);
-    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+    const poll = window.setInterval(() => {
+      if (settingUp.current) void reload();
+    }, 2000);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED, changed);
+      window.clearInterval(poll);
+    };
   }, [reload]);
   if (!workspaces || worktree === undefined || binding === undefined) return null;
   const act = async (work: () => Promise<unknown>) => {
@@ -382,6 +426,11 @@ export function WorkingCopyPanel({
           }}
         />
       </div>
+      <PaddockSetupStatus
+        sessionId={sessionId}
+        setup={worktree.setup}
+        onChanged={() => void act(async () => {})}
+      />
       {error ? (
         <p role="alert" className="text-body text-danger">
           {error}

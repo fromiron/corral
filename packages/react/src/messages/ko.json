@@ -2345,7 +2345,7 @@
     "saveChecks": "검사 저장",
     "checksPlaceholder": "테스트 = npm t",
     "setupHeading": "준비 명령",
-    "setupPlaceholder": "pnpm install\ncp \"$CORRAL_SOURCE_DIR/.env\" .env",
+    "setupPlaceholder": "npm ci\ncp \"$CORRAL_SOURCE_DIR/.env\" .env",
     "saveSetup": "준비 명령 저장",
     "copyHeading": "Paddock",
     "noFolder": "이 대화에 Paddock을 만들려면 프로젝트 원본 폴더를 연결하세요.",

@@ -2345,7 +2345,7 @@
     "saveChecks": "Save checks",
     "checksPlaceholder": "Tests = pnpm test",
     "setupHeading": "Setup command",
-    "setupPlaceholder": "pnpm install\ncp \"$CORRAL_SOURCE_DIR/.env\" .env",
+    "setupPlaceholder": "npm ci\ncp \"$CORRAL_SOURCE_DIR/.env\" .env",
     "saveSetup": "Save setup command",
     "copyHeading": "Paddock",
     "noFolder": "Link a project source folder to give this conversation a Paddock.",
