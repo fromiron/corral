@@ -159,6 +159,12 @@ import { LspRunner } from './lsp.ts';
 import { stageLspEdit } from './lsp-edits.ts';
 import { lspResults, validateLspPosition } from './lsp-results.ts';
 import { freeBranch, paddockBranch } from './paddock-branch.ts';
+import {
+  PaddockSetups,
+  type SetupDetail,
+  type SetupOptions,
+  type SetupSummary,
+} from './paddock-setup.ts';
 import type { FffPathEngine, PathEngineStatus } from './path-engine.ts';
 import { RunAccessStore } from './run-access.ts';
 import { readUserGitDiff, readUserGitStatus } from './user-git.ts';
@@ -213,6 +219,8 @@ export interface BindingView {
   isGit: boolean;
   trusted: boolean;
   verifyCommands: VerifyCommand[];
+  setupCommand: string | null;
+  setupRevision: number;
   status: { branch: string | null; head: string | null; changed: number } | null;
   /** The folder is no longer where it was linked. */
   missing: boolean;
@@ -228,6 +236,7 @@ export interface WorktreeView {
   reviewed: boolean;
   /** The working copy's folder is gone (deleted outside Corral). */
   missing: boolean;
+  setup: SetupSummary | null;
 }
 
 export type ChangeScope = { kind: 'session' } | { kind: 'review' } | { kind: 'run'; runId: string };
@@ -471,6 +480,8 @@ interface BindingRow {
   is_git: number;
   trusted: number;
   verify_json: string;
+  setup_command: string | null;
+  setup_revision: number;
 }
 interface WorktreeRow {
   session_id: string;
@@ -513,6 +524,7 @@ export class WorkspaceService implements FileTools {
   private readonly language: LanguageSessions;
   private readonly debugger: DebugSessions;
   private readonly deploymentTasks: DeploymentTasks;
+  private readonly setups: PaddockSetups;
   private readonly fileEdits: FileEditProposals;
   private readonly io: MutationIo;
   readonly projectTools: SqliteProjectToolStore;
@@ -571,6 +583,7 @@ export class WorkspaceService implements FileTools {
     debugPreview?: DebugOptions['preview'];
     edit?: (request: EditTextRequest, cancellation: ToolCancellation) => Promise<EditTextResult>;
     pathEngine?: FffPathEngine;
+    setup?: SetupOptions;
   }) {
     this.db = options.db;
     this.pathEngine = options.pathEngine ?? null;
@@ -698,6 +711,37 @@ export class WorkspaceService implements FileTools {
       snapshot: (root) => this.snapshotTree(root, 'linux-bwrap'),
       lease: (root, work) => this.lease(root, work),
     });
+    this.setups = new PaddockSetups({
+      db: this.db,
+      clock: options.clock,
+      operations: this.workbenchOperations,
+      runtime: this.taskRuntime,
+      hostId: this.hostId,
+      shares: this.allowSharedDevelopment,
+      copy: (sessionId) => {
+        const row = this.worktree(sessionId);
+        const binding = row
+          ? (this.db.prepare('SELECT * FROM workspace_bindings WHERE id = ?').get(row.binding_id) as
+              | BindingRow
+              | undefined)
+          : undefined;
+        if (!row || !binding || !existsSync(row.worktree_path)) return null;
+        return {
+          path: row.worktree_path,
+          target: {
+            hostId: this.hostId,
+            projectId: binding.project_id,
+            bindingId: binding.id,
+            sessionId,
+            copyGeneration: row.copy_generation,
+          },
+          sourceDir: binding.root_path,
+          command: binding.setup_command,
+          trusted: binding.trusted === 1,
+        };
+      },
+      ...(options.setup ? { options: options.setup } : {}),
+    });
     this.verificationRunner = new VerificationRunner({
       clock: options.clock,
       timers: options.timers ?? systemTimers,
@@ -806,6 +850,8 @@ export class WorkspaceService implements FileTools {
       isGit: row.is_git === 1,
       trusted: row.trusted === 1,
       verifyCommands: this.projectTools.latest(projectId)?.checks ?? [],
+      setupCommand: row.setup_command,
+      setupRevision: row.setup_revision,
       status,
       missing,
     };
@@ -865,14 +911,39 @@ export class WorkspaceService implements FileTools {
 
   async configure(
     projectId: string,
-    change: { trusted?: boolean; verifyCommands?: VerifyCommand[] },
+    change: {
+      trusted?: boolean;
+      verifyCommands?: VerifyCommand[];
+      setupCommand?: string | null;
+      setupRevision?: number;
+    },
   ): Promise<BindingView> {
     const row = this.binding(projectId);
     if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this project has no folder');
     const trusted = change.trusted ?? row.trusted === 1;
     if (change.verifyCommands && !trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before adding checks');
+    if (change.setupCommand !== undefined) {
+      if (change.setupRevision === undefined)
+        throw new WorkspaceError('SCHEMA_INVALID', 'a setup command is saved with its revision');
+      if (change.setupCommand !== null && !change.setupCommand.trim())
+        throw new WorkspaceError('SCHEMA_INVALID', 'a setup command needs some text');
+      if (!trusted)
+        throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before setting it up');
+    }
     this.db.transaction(() => {
+      if (change.setupCommand !== undefined) {
+        const saved = this.db
+          .prepare(
+            'UPDATE workspace_bindings SET setup_command = ?, setup_revision = setup_revision + 1 WHERE id = ? AND setup_revision = ?',
+          )
+          .run(change.setupCommand, row.id, change.setupRevision);
+        if (saved.changes !== 1)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'the setup command changed since it was read',
+          );
+      }
       if (change.verifyCommands) {
         const previous = this.projectTools.latest(projectId);
         this.projectTools.save(projectId, previous?.revision ?? 0, {
@@ -901,6 +972,7 @@ export class WorkspaceService implements FileTools {
       this.language.invalidate(projectId);
       this.debugger.invalidate(projectId);
     }
+    if (!trusted) await this.setups.revokeTrust(projectId);
     return (await this.view(projectId)) as BindingView;
   }
 
@@ -1192,8 +1264,37 @@ export class WorkspaceService implements FileTools {
           removedAt: row.removed_at,
           reviewed: row.reviewed_tree !== null,
           missing: !existsSync(row.worktree_path),
+          setup: this.setups.latest(sessionId, row.copy_generation),
         }
       : null;
+  }
+
+  async setupNewCopy(sessionId: string): Promise<SetupSummary | null> {
+    try {
+      return await this.setups.startForNewCopy(sessionId);
+    } catch {
+      return null;
+    }
+  }
+
+  startSetup(sessionId: string, input: { operationId: string; target: WorkspaceTarget }) {
+    return this.setups.start(sessionId, input);
+  }
+
+  stopSetup(sessionId: string, operationId: string, target: WorkspaceTarget) {
+    return this.setups.stop(sessionId, operationId, target);
+  }
+
+  setupDetail(sessionId: string, operationId: string): SetupDetail {
+    return this.setups.detail(sessionId, operationId);
+  }
+
+  setupRunning(sessionId: string): boolean {
+    return this.setups.running(sessionId);
+  }
+
+  setupHolder(sessionId: string) {
+    return this.setups.holder(sessionId);
   }
 
   async resolvePreviewRoot(sessionId: string): Promise<string> {
@@ -5256,6 +5357,7 @@ export class WorkspaceService implements FileTools {
     await this.terminals.close();
     await this.commandRuntime.close();
     await this.taskRuntime.close();
+    this.setups.dispose();
     await this.deploymentTasks.dispose();
     await Promise.allSettled([...this.pendingCommands.values()]);
     await Promise.allSettled(
@@ -6463,12 +6565,15 @@ export class WorkspaceService implements FileTools {
       head,
       branchTitle === undefined ? {} : { branchTitle },
     );
+    let seeded: string;
     try {
-      return await this.restoreSeed(sessionId, { tree, checkpointId, label, finishBaseline });
+      seeded = await this.restoreSeed(sessionId, { tree, checkpointId, label, finishBaseline });
     } catch (error) {
       await this.discardNewCopy(sessionId, projectId, head);
       throw error;
     }
+    await this.setupNewCopy(sessionId);
+    return seeded;
   }
 
   private async discardNewCopy(sessionId: string, projectId: string, head: string) {

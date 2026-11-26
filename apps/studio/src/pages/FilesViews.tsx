@@ -85,11 +85,12 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
   const { binding, reload } = useBinding(projectId);
   const [path, setPath] = useState(mode === 'browser' ? 'demo://example-repo' : '');
   const [checks, setChecks] = useState<string | null>(null);
+  const [setup, setSetup] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, setPending] = useState(false);
   const runSettingsTask = useSettingsTask(`work-folder:${projectId}`);
   useSettingsForm({
-    dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null,
+    dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null || setup !== null,
     pending,
   });
   if (!workspaces || binding === undefined) return null;
@@ -244,6 +245,39 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
                 className="self-start"
               >
                 {t('saveChecks')}
+              </Button>
+            </section>
+          ) : null}
+          {binding.trusted && mode === 'server' ? (
+            <section className="settings-surface flex flex-col gap-3">
+              <h3 className="text-subtitle" style={{ fontVariationSettings: fontWeights.semibold }}>
+                {t('setupHeading')}
+              </h3>
+              <Textarea
+                rows={3}
+                value={setup ?? binding.setupCommand ?? ''}
+                placeholder={t('setupPlaceholder')}
+                onChange={(e) => setSetup(e.target.value)}
+                spellCheck={false}
+                aria-label={t('setupHeading')}
+                className="font-mono"
+              />
+              <Button
+                variant="tertiary"
+                type="button"
+                disabled={setup === null}
+                onClick={() =>
+                  void act(async () => {
+                    await workspaces.configure(projectId, {
+                      setupCommand: setup?.trim() ? setup : null,
+                      setupRevision: binding.setupRevision,
+                    });
+                    setSetup((current) => (current === setup ? null : current));
+                  })
+                }
+                className="self-start"
+              >
+                {t('saveSetup')}
               </Button>
             </section>
           ) : null}

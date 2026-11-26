@@ -807,6 +807,23 @@ CREATE TABLE IF NOT EXISTS pull_request_watches (
 ) STRICT;
 `,
   },
+  {
+    name: '0050_setup_command',
+    sql: '',
+    data(db) {
+      const columns = new Set(
+        (db.prepare('PRAGMA table_info(workspace_bindings)').all() as { name: string }[]).map(
+          (column) => column.name,
+        ),
+      );
+      if (!columns.has('setup_command'))
+        db.exec('ALTER TABLE workspace_bindings ADD COLUMN setup_command TEXT');
+      if (!columns.has('setup_revision'))
+        db.exec(
+          'ALTER TABLE workspace_bindings ADD COLUMN setup_revision INTEGER NOT NULL DEFAULT 0',
+        );
+    },
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */

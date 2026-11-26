@@ -114,12 +114,16 @@ export class WorkspaceAccessStore {
           }
           if (owner.kind === 'run' && writer) {
             const writing = owners.find(
-              (access) => access.owner_kind === 'run' && access.writer === 1,
+              (access) =>
+                access.writer === 1 &&
+                (access.owner_kind === 'run' || this.holder(access).operationKind === 'setup'),
             );
             if (writing)
               throw new ToolRefusal(
                 'RUN_ALREADY_ACTIVE',
-                `run ${writing.owner_id} is already writing this working copy`,
+                writing.owner_kind === 'run'
+                  ? `run ${writing.owner_id} is already writing this working copy`
+                  : 'this working copy is being set up',
                 this.holder(writing),
               );
           }

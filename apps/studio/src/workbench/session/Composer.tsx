@@ -316,6 +316,7 @@ function SessionComposer({
     availableFor(intent);
   const { liveUnavailable, savedRequestUnavailable, unavailable, heldForNew } = availability;
 
+  const refusalText = useTranslations('Refusal');
   const startDeps = {
     services,
     session,
@@ -323,7 +324,11 @@ function SessionComposer({
     teamMode,
     throughRunId,
     missingTeam,
-    messages: { selectedTeamMissing: t('selectedTeamMissing'), failed },
+    messages: {
+      selectedTeamMissing: t('selectedTeamMissing'),
+      failed,
+      settingUp: refusalText('heldSetup'),
+    },
     commands,
     autoRequest,
     onChoosingAuto: setChoosingAuto,

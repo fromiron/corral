@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import type { DirectiveView, SessionEntry, WorkSession } from '@corral/core';
 import { createTextAttachment, emptyProjection, queuedSessionCommandId } from '@corral/core';
 import { describe, expect, it, vi } from 'vitest';
@@ -66,7 +67,11 @@ function deps(overrides: Partial<QueueDeps> = {}) {
     teamMode: 'none',
     throughRunId: 'run_old',
     missingTeam: false,
-    messages: { selectedTeamMissing: 'missing', failed: (message: string) => message },
+    messages: {
+      selectedTeamMissing: 'missing',
+      failed: (message: string) => message,
+      settingUp: 'being set up',
+    },
     commands: {
       sessionId: 'session',
       pending: { current: null as PendingCommand | null },
@@ -105,6 +110,24 @@ describe('starting a queued request', () => {
       brief: 'Run the tests too',
       conversation: { throughRunId: 'run_old' },
     });
+  });
+
+  it('started now while the Paddock is set up, it stays queued and says why', async () => {
+    const h = deps();
+    h.startAuto.mockRejectedValueOnce(
+      new ApiError(409, 'RUN_ALREADY_ACTIVE', 'this working copy is being set up', {
+        owner: {
+          kind: 'operation',
+          id: 'setup_1',
+          sessionId: 'session',
+          state: 'active',
+          operationKind: 'setup',
+        },
+      }),
+    );
+    await startQueued(h.deps, entry);
+    expect(h.deps.services.repository.updateSessionEntry).not.toHaveBeenCalled();
+    expect(h.deps.setError).toHaveBeenLastCalledWith('being set up');
   });
 
   it('does not start one while a run goes', async () => {

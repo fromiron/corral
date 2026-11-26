@@ -1,4 +1,4 @@
-import type { ParentMerge } from '@corral/client';
+import type { PaddockSetup, ParentMerge } from '@corral/client';
 import type { PullRequestView, TextAttachment } from '@corral/contracts';
 import type { WorkSession } from '@corral/core';
 import {
@@ -24,6 +24,7 @@ import { useServices } from '../services.tsx';
 import { CheckpointPanel } from './CheckpointPanel.tsx';
 import type { AttachmentCapture } from './context/bridge.ts';
 import { GitPanel } from './GitPanel.tsx';
+import { PaddockSetupStatus, setupWord } from './PaddockSetupStatus.tsx';
 import { PullRequestRow } from './PullRequestRow.tsx';
 import type { ReviewSearch } from './panels/routes.ts';
 import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
@@ -38,6 +39,7 @@ interface CopyState {
   branch: string | null;
   merge: ParentMerge | null;
   pr: PullRequestView | null;
+  setup: PaddockSetup | null;
 }
 
 /** Whether the session has a working copy, the branch it is on, and its merge into a parent. */
@@ -52,10 +54,17 @@ function useCopy(
   const [tick, setTick] = useState(0);
   const [remoteTick, setRemoteTick] = useState(0);
   const remoteSeen = useRef<string | null>(null);
+  const settingUp = useRef(false);
   useEffect(() => {
     const changed = () => setTick((value) => value + 1);
     window.addEventListener(WORKSPACE_CHANGED, changed);
-    return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
+    const poll = window.setInterval(() => {
+      if (settingUp.current) changed();
+    }, 2000);
+    return () => {
+      window.removeEventListener(WORKSPACE_CHANGED, changed);
+      window.clearInterval(poll);
+    };
   }, []);
   useEffect(() => {
     void tick;
@@ -70,7 +79,8 @@ function useCopy(
     let answered = false;
     void (async (): Promise<CopyState> => {
       const copy = await workspaces.worktree(sessionId).catch(() => null);
-      if (!copy || copy.missing) return { state: 'none', branch: null, merge: null, pr: null };
+      if (!copy || copy.missing)
+        return { state: 'none', branch: null, merge: null, pr: null, setup: null };
       const [status, merge, pr] = await Promise.all([
         workspaces.gitStatus({ kind: 'session', id: sessionId }).catch(() => null),
         parentSessionId ? workspaces.parentMerge(sessionId).catch(() => null) : null,
@@ -86,10 +96,12 @@ function useCopy(
             : null,
         merge,
         pr,
+        setup: copy.setup,
       };
     })().then((copy) => {
       if (!live) return;
       answered = true;
+      settingUp.current = copy.setup?.state === 'running';
       setRead({ sessionId, ...copy });
     });
     return () => {
@@ -100,10 +112,18 @@ function useCopy(
   // Without a workspace service there is nothing to prepare; the sub-views say so themselves.
   const reread = (remote = false) =>
     remote ? setRemoteTick((value) => value + 1) : setTick((value) => value + 1);
-  if (!workspaces) return { state: 'ready', branch: null, merge: null, pr: null, reread };
+  if (!workspaces)
+    return { state: 'ready', branch: null, merge: null, pr: null, setup: null, reread };
   return read?.sessionId === sessionId
-    ? { state: read.state, branch: read.branch, merge: read.merge, pr: read.pr, reread }
-    : { state: 'unknown', branch: null, merge: null, pr: null, reread };
+    ? {
+        state: read.state,
+        branch: read.branch,
+        merge: read.merge,
+        pr: read.pr,
+        setup: read.setup,
+        reread,
+      }
+    : { state: 'unknown', branch: null, merge: null, pr: null, setup: null, reread };
 }
 
 function ChecksView({
@@ -293,6 +313,15 @@ export function SessionChangesPanel({
           </Menu>
         </div>
       </div>
+      {setupWord(copy.setup) ? (
+        <div className="shrink-0 border-b border-border px-3 py-2">
+          <PaddockSetupStatus
+            sessionId={session.sessionId}
+            setup={copy.setup}
+            onChanged={() => copy.reread()}
+          />
+        </div>
+      ) : null}
       <PullRequestRow
         sessionId={session.sessionId}
         view={copy.pr}

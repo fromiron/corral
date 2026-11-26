@@ -76,6 +76,7 @@ import {
   type NewSessionDraft,
   newSessionDraftKey,
 } from '../../workbench/newSessionDraft.ts';
+import { type SetupWord, setupWord } from '../../workbench/PaddockSetupStatus.tsx';
 import { ProjectMaterials } from '../../workbench/ProjectMaterials.tsx';
 import { isSendKey, usePreferences } from '../../workbench/preferences.ts';
 import { RunList } from '../../workbench/RunList.tsx';
@@ -877,6 +878,8 @@ function useWorkingCopies(sessions: WorkSession[]) {
   return copies;
 }
 
+const SETUP_COLOR = { setupRunning: 'blue', setupFailed: 'red', setupUncertain: 'amber' } as const;
+
 /** The source folder, and each session's working copy (path, branch, uncommitted, session). */
 function EnvironmentPanel({
   projectId,
@@ -889,6 +892,7 @@ function EnvironmentPanel({
 }) {
   const t = useTranslations('Workspace.environment');
   const tf = useTranslations('Workspace.folder');
+  const tFiles = useTranslations('Files');
   const navigation = useSettingsNavigation();
   const copies = useWorkingCopies(sessions);
   const noInfo = t('noInfo');
@@ -967,6 +971,16 @@ function EnvironmentPanel({
                     {copy.state === 'copy' && copy.worktree.missing ? (
                       <KitBadge variant="dot" size="compact" color="red" className="ml-2">
                         {t('copyMissing')}
+                      </KitBadge>
+                    ) : null}
+                    {copy.state === 'copy' && setupWord(copy.worktree.setup) ? (
+                      <KitBadge
+                        variant="dot"
+                        size="compact"
+                        color={SETUP_COLOR[setupWord(copy.worktree.setup) as SetupWord]}
+                        className="ml-2"
+                      >
+                        {tFiles(setupWord(copy.worktree.setup) as SetupWord)}
                       </KitBadge>
                     ) : null}
                   </TableCell>

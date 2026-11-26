@@ -38,6 +38,8 @@ export type OwnedCommandInput<Owner extends { sessionId: string } = CommandOwner
   timeoutMs?: number;
   /** Broker-resolved references only; never populated directly from a renderer request. */
   environment?: Record<string, string>;
+  ownEnvironment?: boolean;
+  hiddenPaths?: string[];
   secrets?: string[];
 };
 export type OwnedCommandReport = {
@@ -122,7 +124,7 @@ export class CommandRuntime<Owner extends { sessionId: string } = CommandOwner> 
       resolveStarted,
       input,
       key,
-      output: new CheckOutput([input.directory], input.secrets),
+      output: new CheckOutput([input.directory, ...(input.hiddenPaths ?? [])], input.secrets),
       completion: Promise.resolve(null as unknown as OwnedCommandReport),
       stop: () => {},
     };
@@ -239,7 +241,9 @@ export class CommandRuntime<Owner extends { sessionId: string } = CommandOwner> 
           finish = resolve;
           child = spawnOwnedProcess(input.command.executable, input.command.args, {
             cwd: directory,
-            env: { ...commandEnvironment(home as string), ...input.environment },
+            env: input.ownEnvironment
+              ? { ...input.environment }
+              : { ...commandEnvironment(home as string), ...input.environment },
             shell: false,
             stdio: ['ignore', 'pipe', 'pipe'],
           });

@@ -148,6 +148,8 @@ export class DemoWorkspace implements FileTools {
       isGit: true,
       trusted: b.trusted,
       verifyCommands: [],
+      setupCommand: null,
+      setupRevision: 0,
       status: { branch: 'main', head: treeId(b.head).slice(0, 7), changed },
       missing: false,
     };
@@ -192,6 +194,7 @@ export class DemoWorkspace implements FileTools {
           baseCommit: c.baseTree,
           createdAt: c.createdAt,
           removedAt: null,
+          setup: null,
           reviewed: c.reviewedTree !== null,
           missing: false,
         }

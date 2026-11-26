@@ -98,6 +98,8 @@ const binding: WorkspaceBindingView = {
   isGit: true,
   trusted: true,
   verifyCommands: [],
+  setupCommand: null,
+  setupRevision: 0,
   status: { branch: 'main', head: 'abc1234', changed: 2 },
   missing: false,
 };
@@ -110,6 +112,7 @@ const copy: WorktreeView = {
   removedAt: null,
   reviewed: false,
   missing: false,
+  setup: null,
 };
 
 beforeEach(() => {

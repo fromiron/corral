@@ -77,6 +77,8 @@ it('a linked folder with a long unbroken path wraps whole in its block instead o
     isGit: false,
     status: null,
     verifyCommands: [],
+    setupCommand: null,
+    setupRevision: 0,
   };
   const { container, unmount } = await render();
   try {

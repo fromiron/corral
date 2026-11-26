@@ -403,6 +403,7 @@ const NewEntry = z.strictObject({
   auto: SessionEntryAuto.nullable().optional(),
   // The start request of a new or next request; the server starts only a `queued` entry with it.
   start: SessionEntryStart.optional(),
+  afterSetup: z.literal(true).optional(),
 });
 const EntryChange = z.strictObject({
   state: EntryState,
@@ -559,6 +560,7 @@ async function createCorralServer(
     allowSharedDevelopment: options.allowSharedDevelopment,
     worktreeRoot,
     forbidden: [join(workspace.root, '.corral'), userConfigDir()],
+    setup: { ended: (sessionId) => void sessionQueue?.onSetupEnded(sessionId) },
     timers: options.timers ?? systemTimers,
     ...(options.fff
       ? {
@@ -1824,6 +1826,17 @@ async function createCorralServer(
         });
       }
     }
+    const setup =
+      parsed.data.sessionId && !resend ? files.setupHolder(parsed.data.sessionId) : null;
+    if (setup)
+      return reply.code(409).send({
+        runId: null,
+        receipt: refusedStart(request.body, {
+          code: 'RUN_ALREADY_ACTIVE',
+          message: 'this working copy is being set up',
+          owner: setup,
+        }),
+      });
     const startTree =
       parsed.data.sessionId && !resend ? await files.currentTree(parsed.data.sessionId) : null;
     const result = coordinator.startRun(parsed.data);
@@ -2152,7 +2165,7 @@ async function createCorralServer(
     signal: AbortSignal,
     controller: AbortController,
   ): Promise<
-    | { ok: false; code: ErrorCode; message: string }
+    | { ok: false; code: ErrorCode; message: string; owner?: CommandError['owner'] }
     | { ok: true; result: AutoResult; resend: boolean }
   > => {
     if (body.commandId.startsWith('meeting_'))
@@ -2176,6 +2189,14 @@ async function createCorralServer(
         };
       sessionCriteria = session.criteria;
       sessionAdvisor = session.advisor;
+      const setup = files.setupHolder(body.sessionId);
+      if (setup)
+        return {
+          ok: false,
+          code: 'RUN_ALREADY_ACTIVE',
+          message: 'this working copy is being set up',
+          owner: setup,
+        };
     }
     const work = autoStarter.start(
       {
@@ -2221,7 +2242,7 @@ async function createCorralServer(
     if (reply.raw.destroyed || request.raw.aborted) dropped.abort();
     try {
       const started = await startAutoRun(body, dropped.signal, dropped);
-      if (!started.ok) return fail(reply, started.code, started.message);
+      if (!started.ok) return fail(reply, started.code, started.message, started.owner);
       const { result, resend } = started;
       const status = result.receipt.error ? STATUS[result.receipt.error.code] : resend ? 200 : 201;
       return reply.code(status).send(result);
@@ -2265,6 +2286,7 @@ async function createCorralServer(
   sessionQueue = createSessionQueue({
     repository: corrals,
     runs: () => coordinator.listRuns(),
+    setupRunning: (sessionId) => files.setupRunning(sessionId),
     directiveRun: (sessionId, directiveId) =>
       coordinator
         .listRuns()
@@ -2693,6 +2715,14 @@ async function createCorralServer(
           )
           .max(10)
           .optional(),
+        setupCommand: z
+          .string()
+          .min(1)
+          .max(32000)
+          .refine((value) => !value.includes('\0'), 'NUL in the setup command')
+          .nullable()
+          .optional(),
+        setupRevision: z.int().min(0).optional(),
       }),
       request,
       reply,
@@ -2743,13 +2773,55 @@ async function createCorralServer(
     const session = await sessionOr404(reply, request.params.sessionId);
     if (!session) return reply;
     try {
-      return reply
-        .code(201)
-        .send({ worktree: await files.createWorktree(session.sessionId, session.projectId) });
+      await files.createWorktree(session.sessionId, session.projectId);
+      await files.setupNewCopy(session.sessionId);
+      return reply.code(201).send({ worktree: files.worktreeView(session.sessionId) });
     } catch (error) {
       return workspaceFail(reply, error);
     }
   });
+  app.post<SessionParams>('/api/v1/sessions/:sessionId/worktree/setup', async (request, reply) => {
+    const body = parse(
+      z.strictObject({ operationId: Identifier, target: WorkspaceTarget }),
+      request,
+      reply,
+    );
+    if (!body) return reply;
+    if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+    try {
+      return await files.startSetup(request.params.sessionId, body);
+    } catch (error) {
+      return gitFail(reply, error);
+    }
+  });
+  app.get<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/setup/:operationId',
+    async (request, reply) => {
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return files.setupDetail(request.params.sessionId, request.params.operationId);
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
+  app.post<{ Params: { sessionId: string; operationId: string } }>(
+    '/api/v1/sessions/:sessionId/worktree/setup/:operationId/stop',
+    async (request, reply) => {
+      const body = parse(z.strictObject({ target: WorkspaceTarget }), request, reply);
+      if (!body) return reply;
+      if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
+      try {
+        return await files.stopSetup(
+          request.params.sessionId,
+          request.params.operationId,
+          body.target,
+        );
+      } catch (error) {
+        return gitFail(reply, error);
+      }
+    },
+  );
   app.get<SessionParams>('/api/v1/sessions/:sessionId/worktree/removal', async (request, reply) => {
     if (!(await sessionOr404(reply, request.params.sessionId))) return reply;
     try {

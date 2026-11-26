@@ -484,6 +484,7 @@
     "apps/server/src/files/lsp-edits.ts": 2,
     "apps/server/src/files/lsp-results.ts": 1,
     "apps/server/src/files/lsp.ts": 2,
+    "apps/server/src/files/paddock-setup.ts": 2,
     "apps/server/src/files/path-engine.ts": 26,
     "apps/server/src/files/process-group.ts": 4,
     "apps/server/src/files/review.ts": 51,
