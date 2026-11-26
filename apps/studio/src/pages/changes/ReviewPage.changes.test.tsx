@@ -181,6 +181,7 @@ async function mount({
   reviewed = false,
   runs = [] as RunSummary[],
   groups = undefined as Record<string, { runs?: string[]; outside?: boolean }> | undefined,
+  statuses = {} as Record<string, string>,
   runOrder = [] as string[],
   head = to,
   attach = undefined as
@@ -234,6 +235,7 @@ async function mount({
         unavailable: null,
         files: copy.files.map((path) => ({
           ...file(path, provenance[path]),
+          ...(statuses[path] ? { status: statuses[path] } : {}),
           ...(group && copy.groups
             ? {
                 runs: copy.groups[path]?.runs ?? [],
@@ -1066,12 +1068,22 @@ it('the brace keys pass each file once in the order shown, although a file has t
   expect(document.activeElement).toBe(rowsOf(view.container, 'b.ts')[0]);
 });
 
-it("a run group's head opens that run's comparison, and that range is not grouped", async () => {
-  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
-  const head = [...view.container.querySelectorAll<HTMLButtonElement>('nav h4 button')].find(
-    (button) => button.textContent?.startsWith('Workbench.runNumber:{"number":1}'),
+const compareButton = (container: HTMLElement, runId: string) =>
+  container.querySelector<HTMLButtonElement>(
+    `nav [data-review-group="${runId}"] button[aria-label^="Files.compareRun"]`,
   );
-  await act(async () => head?.click());
+
+it("a run group's compare button opens that run's comparison, and that range is not grouped", async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  const compare = compareButton(view.container, 'run_a');
+  expect(compare?.getAttribute('aria-label')).toBe(
+    'Files.compareRunNamed:{"run":"Workbench.runNumber:{\\"number\\":1}"}',
+  );
+  // The head is a label: nothing in it is pressed, and what changed outside runs has no button.
+  expect(view.container.querySelector('nav h4 button')).toBeNull();
+  expect(compare?.closest('h4')).toBeNull();
+  expect(compareButton(view.container, 'outside')).toBeNull();
+  await act(async () => compare?.click());
   await act(async () => {});
   expect(view.searches.at(-1)).toEqual({ scope: 'run', runId: 'run_a', file: undefined });
   expect(view.changes.changes).toHaveBeenLastCalledWith(session.sessionId, {
@@ -1080,6 +1092,76 @@ it("a run group's head opens that run's comparison, and that range is not groupe
   });
   expect(groupsShown(view.container)).toEqual([]);
   expect(view.scope()?.value).toBe('run:run_a');
+});
+
+const rowName = (row: HTMLElement | undefined) => row?.querySelector('.sr-only')?.textContent;
+
+it('a file in more than one group shows no status or line counts on its rows; one in a single group does', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    ...twoRuns,
+    statuses: { 'a.ts': 'added', 'b.ts': 'added' },
+  });
+  const [inSecond, inFirst] = rowsOf(view.container, 'b.ts');
+  for (const row of [inSecond, inFirst]) {
+    expect(rowName(row)).toBe('b.ts \u00b7 Files.provenance.managed_agent');
+    expect(row?.querySelector('[title="Files.status.added"]')).toBeNull();
+    expect(row?.textContent).not.toContain('+1');
+  }
+  const single = rowsOf(view.container, 'a.ts')[0];
+  expect(rowName(single)).toBe(
+    'a.ts \u00b7 Files.status.added \u00b7 +1 \u22121 \u00b7 Files.provenance.managed_agent',
+  );
+  expect(single?.querySelector('[title="Files.status.added"]')?.textContent).toBe('A');
+  // Counted from the answer, not from the groups left on screen by a filter.
+  const filter = view.container.querySelector<HTMLInputElement>('input[type="search"]');
+  if (!filter) throw new Error('Missing file filter');
+  await act(async () => setValue(filter, 'b.ts'));
+  expect(rowsOf(view.container, 'b.ts').map(rowName)).toEqual([
+    'b.ts \u00b7 Files.provenance.managed_agent',
+    'b.ts \u00b7 Files.provenance.managed_agent',
+  ]);
+});
+
+it('the kind filter goes by the whole-conversation status, shown on the row or not', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    ...twoRuns,
+    statuses: { 'b.ts': 'added' },
+  });
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  const trigger = view.container.querySelector<HTMLButtonElement>(
+    'nav button[aria-label="Files.filterFiles"]',
+  );
+  await act(async () => {
+    trigger?.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true }));
+    trigger?.click();
+  });
+  let added: HTMLElement | undefined;
+  await vi.waitFor(() => {
+    added = [...document.querySelectorAll<HTMLElement>('[role="menuitemradio"]')].find((item) =>
+      (item.getAttribute('aria-label') ?? item.textContent ?? '').includes('Files.status.added'),
+    );
+    expect(added).toBeDefined();
+  });
+  await act(async () => added?.click());
+  expect(groupsShown(view.container).map(([, rows]) => rows)).toEqual([['b.ts'], ['b.ts']]);
+});
+
+it('a generated file listed once in its folded group keeps its status and line counts', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    ...twoRuns,
+    files: [...twoRuns.files, 'pnpm-lock.yaml'],
+    groups: { ...twoRuns.groups, 'pnpm-lock.yaml': { runs: ['run_a', 'run_b'] } },
+  });
+  expect(rowName(rowsOf(view.container, 'pnpm-lock.yaml')[0])).toBe(
+    'pnpm-lock.yaml \u00b7 Files.status.modified \u00b7 +1 \u22121 \u00b7 Files.provenance.managed_agent',
+  );
 });
 
 it('keeps a list whose files all changed during one run flat', async () => {
@@ -1121,6 +1203,9 @@ it('leaves generated and lock files in their one folded group, outside the run g
 
 it('a run not yet in the run list still heads its group, without a number', async () => {
   const view = await mount({ search: { scope: 'session' }, ...twoRuns, runs: [] });
+  expect(compareButton(view.container, 'run_a')?.getAttribute('aria-label')).toBe(
+    'Files.compareRun',
+  );
   expect(groupsShown(view.container).map(([head]) => head)).toEqual([
     'Files.run1Files.files:{"count":1}',
     'Files.run2Files.files:{"count":2}',

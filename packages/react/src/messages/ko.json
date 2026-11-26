@@ -2379,6 +2379,7 @@
     "externalBadge": "외부 변경",
     "outsideRuns": "실행 밖",
     "compareRun": "이 실행만 비교",
+    "compareRunNamed": "{run}만 비교",
     "binary": "바이너리 파일: 글자 비교 없음.",
     "tooLarge": "1 MiB보다 커서 보이지 않습니다.",
     "unified": "한 줄로",

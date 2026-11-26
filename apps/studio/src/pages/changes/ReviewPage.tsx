@@ -33,7 +33,16 @@ import {
   Tooltip,
   useSize,
 } from '@corral/react/design-kit';
-import { Check, ChevronDown, Eye, Info, ListFilter, Plus, Trash2 } from '@corral/react/icons';
+import {
+  Check,
+  ChevronDown,
+  Eye,
+  FileDiff as FileDiffIcon,
+  Info,
+  ListFilter,
+  Plus,
+  Trash2,
+} from '@corral/react/icons';
 import type { FileDiffMetadata, SelectedLineRange } from '@pierre/diffs';
 import { Link } from '@tanstack/react-router';
 import {
@@ -502,6 +511,11 @@ export function ReviewContent({
                 groups={groups}
                 runLabel={(runId) =>
                   runNumber(runId) ? tw('runNumber', { number: runNumber(runId) }) : t('run')
+                }
+                compareLabel={(runId) =>
+                  runNumber(runId)
+                    ? t('compareRunNamed', { run: tw('runNumber', { number: runNumber(runId) }) })
+                    : t('compareRun')
                 }
                 onRun={(runId) => setScope(`run:${runId}`)}
                 selected={selected}
@@ -1794,6 +1808,7 @@ function FileList({
   changes,
   groups,
   runLabel,
+  compareLabel,
   onRun,
   selected,
   reviewed,
@@ -1803,6 +1818,7 @@ function FileList({
   changes: ChangeSetView | null;
   groups: ChangeGroup[] | null;
   runLabel: (runId: string) => string;
+  compareLabel: (runId: string) => string;
   onRun: (runId: string) => void;
   selected: string | null;
   reviewed: ReviewMarks;
@@ -1837,13 +1853,14 @@ function FileList({
       ? t('newChanges', { count: files.length })
       : t('files', { count: files.length })
     : t('reviewHeading');
-  const row = (file: FileChangeView) => {
+  const row = (file: FileChangeView, inGroup = false) => {
     const cut = file.path.lastIndexOf('/') + 1;
     const isReviewed = reviewed.changeReviewed(file);
     const isRead = !isReviewed && reviewed.contentRead(file);
-    const status = STATUS_MARKS[file.status];
+    const whole = !inGroup || (file.runs?.length ?? 0) + (file.outsideRuns ? 1 : 0) < 2;
+    const status = whole ? STATUS_MARKS[file.status] : undefined;
     const counts =
-      file.additions !== null ? `+${file.additions} −${file.deletions ?? 0}` : undefined;
+      whole && file.additions !== null ? `+${file.additions} −${file.deletions ?? 0}` : undefined;
     return (
       <li key={file.path}>
         <Button
@@ -1884,7 +1901,7 @@ function FileList({
                 </span>
               ) : null}
               {file.binary ? <span className="text-muted-foreground">bin</span> : null}
-              {file.additions !== null ? (
+              {whole && file.additions !== null ? (
                 <>
                   {file.additions > 0 || !file.deletions ? (
                     <span className="text-success">+{file.additions}</span>
@@ -1910,7 +1927,7 @@ function FileList({
           <span className="sr-only">
             {[
               file.path,
-              t(`status.${file.status}`),
+              whole ? t(`status.${file.status}`) : undefined,
               counts,
               file.binary ? 'bin' : undefined,
               t(`provenance.${file.provenance}`),
@@ -2032,39 +2049,47 @@ function FileList({
                 data-review-group={runId ?? 'outside'}
                 className="flex flex-col gap-0.5"
               >
-                <h4 id={headId} className="m-0 text-caption text-muted-foreground" style={semibold}>
+                <div className={cn('flex items-center justify-between gap-2 pl-2', rowHeight)}>
+                  <h4
+                    id={headId}
+                    className="m-0 flex min-w-0 items-center gap-2 text-caption text-muted-foreground"
+                    style={semibold}
+                  >
+                    <span className="truncate">{runId ? runLabel(runId) : t('outsideRuns')}</span>
+                    {count}
+                  </h4>
                   {runId ? (
-                    <Button
-                      variant="ghost"
-                      title={t('compareRun')}
-                      onClick={() => onRun(runId)}
-                      className={cn('h-auto justify-start gap-2 px-2 py-1', rowHeight)}
-                    >
-                      {runLabel(runId)}
-                      {count}
-                    </Button>
-                  ) : (
-                    <span className={cn('flex items-center gap-2 px-2 py-1', rowHeight)}>
-                      {t('outsideRuns')}
-                      {count}
-                    </span>
-                  )}
-                </h4>
+                    <Tooltip content={compareLabel(runId)}>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        aria-label={compareLabel(runId)}
+                        onClick={() => onRun(runId)}
+                      >
+                        <FileDiffIcon aria-hidden />
+                      </Button>
+                    </Tooltip>
+                  ) : null}
+                </div>
                 <ul aria-labelledby={headId} className="m-0 flex list-none flex-col gap-0.5 p-0">
-                  {rows.map(row)}
+                  {rows.map((file) => row(file, true))}
                 </ul>
               </section>
             );
           })
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">{main.map(row)}</ul>
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+            {main.map((file) => row(file))}
+          </ul>
         )}
         {generated.length > 0 ? (
           <details className="text-caption">
             <summary className="cursor-pointer text-muted-foreground">
               {t('generatedGroup', { count: generated.length })}
             </summary>
-            <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">{generated.map(row)}</ul>
+            <ul className="m-0 mt-1 flex list-none flex-col gap-0.5 p-0">
+              {generated.map((file) => row(file))}
+            </ul>
           </details>
         ) : null}
       </div>
