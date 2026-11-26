@@ -2373,10 +2373,12 @@
     },
     "provenance": {
       "managed_agent": "Corral",
-      "external_observed": "User or external change",
-      "mixed": "Corral, then changed elsewhere"
+      "external_observed": "Changed by a command or outside Corral",
+      "mixed": "Written by Corral, then changed by a command or outside Corral"
     },
     "externalBadge": "External",
+    "outsideRuns": "Outside runs",
+    "compareRun": "Compare this run only",
     "binary": "Binary file: no text diff.",
     "tooLarge": "Larger than 1 MiB: not shown.",
     "unified": "Unified",

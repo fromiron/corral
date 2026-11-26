@@ -180,6 +180,8 @@ async function mount({
   provenance = {} as Record<string, string>,
   reviewed = false,
   runs = [] as RunSummary[],
+  groups = undefined as Record<string, { runs?: string[]; outside?: boolean }> | undefined,
+  runOrder = [] as string[],
   head = to,
   attach = undefined as
     | ((attachment: TextAttachment, capture: AttachmentCapture) => void | Promise<void>)
@@ -213,7 +215,7 @@ async function mount({
   });
   const startAuto = vi.fn();
   // What the copy holds now; a test changes it as a run would.
-  const copy = { files, to: head };
+  const copy = { files, to: head, groups, runOrder };
   fixture.services = {
     mode: 'server',
     live: false,
@@ -226,11 +228,20 @@ async function mount({
       addComment,
       worktree: async () => ({ missing: false, reviewed }),
       comments: async () => comments,
-      changes: vi.fn(async () => ({
+      changes: vi.fn(async (_session: string, _scope: unknown, group?: 'run') => ({
         from,
         to: copy.to,
         unavailable: null,
-        files: copy.files.map((path) => file(path, provenance[path])),
+        files: copy.files.map((path) => ({
+          ...file(path, provenance[path]),
+          ...(group && copy.groups
+            ? {
+                runs: copy.groups[path]?.runs ?? [],
+                outsideRuns: copy.groups[path]?.outside ?? false,
+              }
+            : {}),
+        })),
+        ...(group && copy.groups ? { runs: copy.runOrder } : {}),
       })),
       fileVersions: vi.fn(async (_s: string, _f: string, _t: string, path: string) => ({
         path,
@@ -870,15 +881,21 @@ it('an existing review address keeps its run and file, and names the run by numb
     runs: [run('run_b', '2026-11-10T02:00:00Z'), run('run_a', '2026-11-10T01:00:00Z')],
   });
   expect(view.scope()?.value).toBe('run:run_b');
+  // Only the chosen run is a range to pick; the others are reached from their groups or the
+  // conversation (features/review-run-groups.md).
   const labels = [...(view.scope()?.options ?? [])].map((option) => option.textContent);
-  expect(labels).toEqual([
-    'Files.scopes.session',
-    'Workbench.runNumber:{"number":2}',
-    'Workbench.runNumber:{"number":1}',
-  ]);
+  expect(labels).toEqual(['Files.scopes.session', 'Workbench.runNumber:{"number":2}']);
   expect(labels.join()).not.toContain('run_b');
   expect(view.fileButton('b.ts')?.getAttribute('aria-current')).toBe('true');
   expect(view.fileButton('a.ts')?.getAttribute('aria-current')).toBeNull();
+});
+
+it('offers no run as a range while the whole conversation is compared', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    runs: [run('run_b', '2026-11-10T02:00:00Z'), run('run_a', '2026-11-10T01:00:00Z')],
+  });
+  expect([...(view.scope()?.options ?? [])].map((option) => option.value)).toEqual(['session']);
 });
 
 it('offers "since last read" only once the copy has been marked read', async () => {
@@ -974,4 +991,149 @@ it('marks a sent comment whose quoted range changed in the current comparison', 
   // The pinned quote and the existing state stay.
   expect(item('comment_moved')?.querySelector('blockquote')?.textContent).toBe('# Setup');
   expect(item('comment_moved')?.textContent).toContain('Review.commentState.submitted');
+});
+
+// features/review-run-groups.md: the whole-conversation list grouped by the run a file changed
+// during.
+const twoRuns = {
+  files: ['a.ts', 'b.ts', 'c.ts'],
+  runs: [run('run_b', '2026-11-10T02:00:00Z'), run('run_a', '2026-11-10T01:00:00Z')],
+  runOrder: ['run_a', 'run_b'],
+  groups: {
+    'a.ts': { runs: ['run_a'] },
+    'b.ts': { runs: ['run_a', 'run_b'] },
+    'c.ts': { outside: true },
+  },
+};
+const groupsShown = (container: HTMLElement) =>
+  [...container.querySelectorAll<HTMLElement>('nav [data-review-group]')].map((group) => [
+    group.querySelector('h4')?.textContent,
+    [...group.querySelectorAll<HTMLElement>('[data-review-file]')].map(
+      (row) => row.dataset.reviewFile,
+    ),
+  ]);
+const rowsOf = (container: HTMLElement, path: string) => [
+  ...container.querySelectorAll<HTMLButtonElement>(`nav button[data-review-file="${path}"]`),
+];
+
+it('groups the whole conversation by run, newest first, with what changed outside any run last', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  expect(view.changes.changes).toHaveBeenLastCalledWith(
+    session.sessionId,
+    { kind: 'session' },
+    'run',
+  );
+  expect(groupsShown(view.container)).toEqual([
+    ['Workbench.runNumber:{"number":2}1Files.files:{"count":1}', ['b.ts']],
+    ['Workbench.runNumber:{"number":1}2Files.files:{"count":2}', ['a.ts', 'b.ts']],
+    ['Files.outsideRuns1Files.files:{"count":1}', ['c.ts']],
+  ]);
+  // The head counts files, not rows: b.ts is one file in two groups.
+  expect(view.container.querySelector('nav h3')?.textContent).toBe('Files.files:{"count":3}');
+});
+
+it('opens on the first row as shown, and a file in two groups is one file whichever row is picked', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  const rows = rowsOf(view.container, 'b.ts');
+  expect(rows).toHaveLength(2);
+  expect(rows.map((row) => row.getAttribute('aria-current'))).toEqual(['true', 'true']);
+  expect(rowsOf(view.container, 'a.ts')[0]?.getAttribute('aria-current')).toBeNull();
+  await act(async () => rowsOf(view.container, 'a.ts')[0]?.click());
+  await act(async () => rows[1]?.click());
+  expect(view.searches.at(-1)).toEqual({ file: 'b.ts' });
+  expect(view.searches.every((patch) => !('scope' in patch))).toBe(true);
+});
+
+it('the brace keys pass each file once in the order shown, although a file has two rows', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  const press = async (key: string) =>
+    act(async () => {
+      (document.activeElement ?? view.container).dispatchEvent(
+        new KeyboardEvent('keydown', { key, shiftKey: true, bubbles: true }),
+      );
+    });
+  rowsOf(view.container, 'b.ts')[0]?.focus();
+  await press('}');
+  expect(view.searches.at(-1)).toEqual({ file: 'a.ts' });
+  await press('}');
+  expect(view.searches.at(-1)).toEqual({ file: 'c.ts' });
+  const count = view.searches.length;
+  await press('}');
+  expect(view.searches).toHaveLength(count);
+  await press('{');
+  await press('{');
+  expect(view.searches.at(-1)).toEqual({ file: 'b.ts' });
+  expect(document.activeElement).toBe(rowsOf(view.container, 'b.ts')[0]);
+});
+
+it("a run group's head opens that run's comparison, and that range is not grouped", async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  const head = [...view.container.querySelectorAll<HTMLButtonElement>('nav h4 button')].find(
+    (button) => button.textContent?.startsWith('Workbench.runNumber:{"number":1}'),
+  );
+  await act(async () => head?.click());
+  await act(async () => {});
+  expect(view.searches.at(-1)).toEqual({ scope: 'run', runId: 'run_a', file: undefined });
+  expect(view.changes.changes).toHaveBeenLastCalledWith(session.sessionId, {
+    kind: 'run',
+    runId: 'run_a',
+  });
+  expect(groupsShown(view.container)).toEqual([]);
+  expect(view.scope()?.value).toBe('run:run_a');
+});
+
+it('keeps a list whose files all changed during one run flat', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    files: ['a.ts', 'b.ts'],
+    runs: [run('run_a', '2026-11-10T01:00:00Z')],
+    runOrder: ['run_a'],
+    groups: { 'a.ts': { runs: ['run_a'] }, 'b.ts': { runs: ['run_a'] } },
+  });
+  expect(groupsShown(view.container)).toEqual([]);
+  expect(view.fileButton('a.ts')?.getAttribute('aria-current')).toBe('true');
+  expect(view.fileButton('b.ts')).toBeDefined();
+});
+
+it('filters rows inside the groups and hides a group left without rows', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  const filter = view.container.querySelector<HTMLInputElement>('input[type="search"]');
+  if (!filter) throw new Error('Missing file filter');
+  await act(async () => setValue(filter, 'b.ts'));
+  expect(groupsShown(view.container).map(([, rows]) => rows)).toEqual([['b.ts'], ['b.ts']]);
+  await act(async () => setValue(filter, 'c.ts'));
+  expect(groupsShown(view.container)).toEqual([
+    ['Files.outsideRuns1Files.files:{"count":1}', ['c.ts']],
+  ]);
+});
+
+it('leaves generated and lock files in their one folded group, outside the run groups', async () => {
+  const view = await mount({
+    search: { scope: 'session' },
+    ...twoRuns,
+    files: [...twoRuns.files, 'pnpm-lock.yaml'],
+    groups: { ...twoRuns.groups, 'pnpm-lock.yaml': { runs: ['run_a', 'run_b'] } },
+  });
+  expect(groupsShown(view.container).flatMap(([, rows]) => rows)).not.toContain('pnpm-lock.yaml');
+  expect(rowsOf(view.container, 'pnpm-lock.yaml')).toHaveLength(1);
+  expect(rowsOf(view.container, 'pnpm-lock.yaml')[0]?.closest('details')).not.toBeNull();
+});
+
+it('a run not yet in the run list still heads its group, without a number', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns, runs: [] });
+  expect(groupsShown(view.container).map(([head]) => head)).toEqual([
+    'Files.run1Files.files:{"count":1}',
+    'Files.run2Files.files:{"count":2}',
+    'Files.outsideRuns1Files.files:{"count":1}',
+  ]);
+});
+
+it('regroups when a new answer moves a file to another group', async () => {
+  const view = await mount({ search: { scope: 'session' }, ...twoRuns });
+  view.copy.groups = { ...twoRuns.groups, 'c.ts': { runs: ['run_b'] } };
+  await view.host({ shown: true, copyChanged: 'run_b:succeeded' });
+  expect(groupsShown(view.container).map(([, rows]) => rows)).toEqual([
+    ['b.ts', 'c.ts'],
+    ['a.ts', 'b.ts'],
+  ]);
 });

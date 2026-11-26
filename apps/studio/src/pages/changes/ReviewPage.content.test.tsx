@@ -173,7 +173,7 @@ it('selects review files through the Changes tab that holds the review', async (
         runId: undefined,
         file: undefined,
       });
-      expect(view.changes).toHaveBeenLastCalledWith('session_embedded', { kind: 'session' });
+      expect(view.changes).toHaveBeenLastCalledWith('session_embedded', { kind: 'session' }, 'run');
     }
   }
 });
