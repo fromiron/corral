@@ -72,7 +72,7 @@
 - **시간 한도.** 30분, 고정이다. 넘기면 소유 프로세스 정리를 거쳐 `failed`(`command_timeout`)다.
 - **기다리는 요청.** 지금 copy generation의 준비가 `running`인 동안, 세션 대기열은 그 준비를 끝나지 않은 Run처럼 본다.
   - 그 동안 그 세션의 시작(`POST /runs/auto`, `POST /runs`, 예약, 재개)은 Run을 만들지 않고 409 `RUN_ALREADY_ACTIVE`이며 `owner`는 그 준비다. `POST /runs/auto`는 팀을 고르는 모델 호출 전에 거절한다. 이 두 HTTP 시작의 거절은 아무것도 기록하지 않는다: 같은 `commandId`로 다시 보내도 같은 거절이고, 준비가 끝난 뒤에는 그 `commandId`로 시작할 수 있다. 예약과 재개는 실행 시작의 사본 관문에서 거절된다. 화면이 준비 상태를 미리 알 필요는 없다.
-  - 입력창은 새 요청의 이 거절을 받으면 그 요청을 대기 요청으로 저장한다: `POST /sessions/:id/entries`에 `{ intent: 'queue', state: 'queued', start, afterSetup: true }`와, 다음 요청을 대기열에 넣을 때처럼 글 · 참조 · 첨부 · 이미지 · 권한 방식을 싣는다. 시작의 응답을 잃으면 입력창은 지금처럼 같은 `commandId`로 다시 보내고, 대기 요청은 거절을 받은 뒤에 한 번 저장한다.
+  - 입력창은 새 요청의 이 거절을 받으면 그 요청을 대기 요청으로 저장한다: `POST /sessions/:id/entries`에 `{ intent: 'queue', state: 'queued', start, afterSetup: true }`와, 다음 요청을 대기열에 넣을 때처럼 글 · 참조 · 첨부 · 이미지 · 권한 방식을 싣는다. 대기 요청의 명령 ID는 거절된 시작의 `commandId`다. 그래서 서버 대기열도 그 ID로 시작하고, 저장의 응답을 잃은 뒤 다시 보내도 대기 요청은 하나다([대화 입력 흐름](composer-flow.md#계약)의 재전송 규칙).
   - `afterSetup`은 새 대기 요청(`intent: 'queue'`, state `queued`)에만 실린다. 그 밖의 항목에 실으면 거절한다. 표시가 있는 항목은 만든 순서대로 표시가 없는 항목보다 앞에 놓인다. 대기열은 표시가 있는 맨 앞 항목을 [넘겨받은 요청](composer-flow.md#대기-요청과-넘겨받기)처럼 자동 시작 설정과 상관없이 시작한다.
   - 준비가 `running`이 아닌 상태로 끝나면 대기열이 한 번 돈다. 이전 generation의 준비가 끝나는 것은 대기열을 움직이지 않는다.
 - **늦은 결과.** 준비의 결과는 그 receipt의 target에만 기록된다. receipt가 이미 끝났거나 copy generation이 지금 사본과 다르면 늦은 결과는 아무것도 바꾸지 않는다. 사본의 `setup`은 지금 generation의 준비만 보인다.
@@ -131,6 +131,12 @@ Scenario: 준비 중에 보낸 요청의 응답을 잃고 다시 보낸다
   Given 준비가 도는 동안 보낸 요청의 응답을 화면이 받지 못했다
   When 화면이 같은 commandId와 본문으로 다시 보낸다
   Then 같은 RUN_ALREADY_ACTIVE 거절이 돌아오고 화면이 저장한 대기 요청은 하나다
+
+Scenario: 준비 중에 보낸 요청의 저장 응답을 잃고 다시 보낸다
+  Given 준비 중에 보낸 요청이 대기 요청으로 저장됐지만 그 응답을 화면이 받지 못했다
+  When 사람이 같은 글을 다시 보낸다
+  Then 화면은 그 명령 ID의 대기 요청을 찾아 다시 저장하지 않고 입력창을 비운다
+  And 대기 요청은 하나다
 
 Scenario: 준비 중에 바로 보낸 주석도 기다린다
   Given 새 사본의 준비가 돌고 있다
