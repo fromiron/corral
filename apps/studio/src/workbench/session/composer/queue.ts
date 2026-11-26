@@ -12,6 +12,7 @@ import {
   type Ref,
   type StartDeps,
   startNext,
+  waitsForSetup,
 } from './send.ts';
 
 // Starting a waiting request by the person, now or again after a run that did not finish. The
@@ -28,7 +29,7 @@ export const entryCommandKey = (
 
 export interface QueueDeps extends StartDeps {
   services: Pick<StudioServices, 'mode' | 'live' | 'startAuto' | 'repository'>;
-  messages: { selectedTeamMissing: string; failed: (message: string) => string };
+  messages: { selectedTeamMissing: string; failed: (message: string) => string; settingUp: string };
   /** The team chip's value: a saved Corral, or the team mode. */
   teamKey: string;
   busy: boolean;
@@ -127,7 +128,10 @@ export async function startQueued(deps: QueueDeps, entry: SessionEntry, resend =
   } catch (failure) {
     if (failure instanceof DOMException && failure.name === 'AbortError')
       clearPending(deps.commands);
-    else
+    else if (waitsForSetup(failure)) {
+      clearPending(deps.commands);
+      deps.setError(deps.messages.settingUp);
+    } else
       deps.setError(
         deps.messages.failed(failure instanceof Error ? failure.message : String(failure)),
       );

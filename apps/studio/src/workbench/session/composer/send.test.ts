@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import type { ImageAttachment, TextAttachment } from '@corral/contracts';
 import type { RunSummary, WorkSession } from '@corral/core';
 import { describe, expect, it, vi } from 'vitest';
@@ -247,6 +248,59 @@ describe('composer send paths', () => {
       'session',
       expect.objectContaining({ commandId: 'cmd_fixed', state: 'started' }),
     );
+  });
+
+  it('a new request refused while the Paddock is set up waits for the setup instead', async () => {
+    const h = harness();
+    h.startAuto.mockRejectedValueOnce(
+      new ApiError(409, 'RUN_ALREADY_ACTIVE', 'this working copy is being set up', {
+        owner: {
+          kind: 'operation',
+          id: 'setup_1',
+          sessionId: 'session',
+          state: 'active',
+          operationKind: 'setup',
+        },
+      }),
+    );
+    const outcome = await sendRequest(
+      h.deps,
+      input({ attachments: [attachment], images: [image], permissionMode: 'ask' }),
+    );
+    expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
+    expect(h.addSessionEntry).toHaveBeenCalledWith('session', {
+      intent: 'queue',
+      text: 'Write the plan',
+      state: 'queued',
+      afterSetup: true,
+      attachments: [attachment],
+      images: [image],
+      permissionMode: 'ask',
+      start: {
+        permissionMode: 'ask',
+        choice: { modelProfile: 'model-a' },
+        team: 'none',
+        mode: 'live',
+      },
+    });
+    expect(outcome.sent).toBe(true);
+    expect(h.deps.setRefusal).not.toHaveBeenCalledWith(
+      expect.objectContaining({ message: expect.any(String) }),
+    );
+    expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, false);
+    expect(h.store.get('session')).toBeUndefined();
+  });
+
+  it('a request refused for another holder of the Paddock is not saved as waiting', async () => {
+    const h = harness();
+    h.startAuto.mockRejectedValueOnce(
+      new ApiError(409, 'RUN_ALREADY_ACTIVE', 'busy', {
+        owner: { kind: 'task', id: 'task_1', sessionId: 'session', state: 'active' },
+      }),
+    );
+    await sendRequest(h.deps, input());
+    expect(h.addSessionEntry).not.toHaveBeenCalled();
+    expect(h.deps.clearDraft).not.toHaveBeenCalled();
   });
 
   it('queues a request with its references, attachments, images and permission mode, starting nothing', async () => {

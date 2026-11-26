@@ -14,6 +14,7 @@ export type HolderKind =
   | 'heldGit'
   | 'heldDebug'
   | 'heldDeployment'
+  | 'heldSetup'
   | 'heldLanguage'
   | 'heldOperation'
   | 'runUncertain'
@@ -49,6 +50,7 @@ export const HOLDER_KINDS = new Set<RefusalKind>([
   'heldGit',
   'heldDebug',
   'heldDeployment',
+  'heldSetup',
   'heldLanguage',
   'heldOperation',
   'runUncertain',
@@ -77,6 +79,7 @@ export function holderKind(owner: NonNullable<CommandError['owner']>): HolderKin
       if (operation.startsWith('git.')) return 'heldGit';
       if (operation === 'debug') return 'heldDebug';
       if (operation === 'deployment') return 'heldDeployment';
+      if (operation === 'setup') return 'heldSetup';
       if (operation === 'language') return 'heldLanguage';
       return 'heldOperation';
     }

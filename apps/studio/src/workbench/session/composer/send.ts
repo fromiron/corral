@@ -357,6 +357,13 @@ async function refused(
 }
 
 /** Sends the composer's text as its intent says. */
+export const waitsForSetup = (failure: unknown) =>
+  failure instanceof ApiError &&
+  failure.code === 'RUN_ALREADY_ACTIVE' &&
+  failure.owner?.kind === 'operation' &&
+  failure.owner.operationKind === 'setup' &&
+  failure.owner.state === 'active';
+
 export async function sendRequest(deps: SendDeps, input: SendInput): Promise<SendOutcome> {
   const { services, team, ownActive } = deps;
   const { body, intent, delivery, steerTarget, attachments, images, permissionMode } = input;
@@ -367,6 +374,19 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
   deps.setBusy(true);
   deps.setError(null);
   deps.setRefusal(null);
+  const waiting = (afterSetup: boolean): SessionEntryInput => ({
+    intent: 'queue',
+    text: body,
+    state: 'queued',
+    ...(afterSetup ? { afterSetup: true as const } : {}),
+    ...(!afterSetup && input.queueCommandId ? { commandId: input.queueCommandId } : {}),
+    // Started later, it carries what a new request sent now would (session-queue.ts).
+    ...(input.references.length ? { references: input.references } : {}),
+    ...(attachments.length ? { attachments } : {}),
+    ...(images.length ? { images } : {}),
+    ...(permissionMode ? { permissionMode } : {}),
+    start: queuedStart(deps, body, permissionMode),
+  });
   try {
     if (intent === 'next') {
       const refs: RunReference[] = [...input.references, ...attachments, ...images];
@@ -419,18 +439,7 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         return outcome;
       }
     } else if (intent === 'queue') {
-      await recordEntry(deps, {
-        intent,
-        text: body,
-        state: 'queued',
-        ...(input.queueCommandId ? { commandId: input.queueCommandId } : {}),
-        // Started later, it carries what a new request sent now would (session-queue.ts).
-        ...(input.references.length ? { references: input.references } : {}),
-        ...(attachments.length ? { attachments } : {}),
-        ...(images.length ? { images } : {}),
-        ...(permissionMode ? { permissionMode } : {}),
-        start: queuedStart(deps, body, permissionMode),
-      });
+      await recordEntry(deps, waiting(false));
     } else if (intent === 'steer' && delivery && ownActive && steerTarget) {
       // The delivery and the attachments are part of the instruction: changing either after a
       // lost answer is a new command.
@@ -493,6 +502,15 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
   } catch (failure) {
     if (failure instanceof DOMException && failure.name === 'AbortError') {
       clearPending(deps.commands);
+      return outcome;
+    }
+    if (intent === 'next' && waitsForSetup(failure)) {
+      await recordEntry(deps, waiting(true));
+      clearPending(deps.commands);
+      deps.clearDraft(input.revision, false, false);
+      await deps.invalidate();
+      deps.onChange();
+      outcome.sent = true;
       return outcome;
     }
     if (

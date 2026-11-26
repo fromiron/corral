@@ -139,6 +139,7 @@ it('names the holder of the copy, and only another run is busy', () => {
   expect(refusalKind(holder('operation', 'active', 'debug'))).toBe('heldDebug');
   expect(refusalKind(holder('operation', 'active', 'deployment'))).toBe('heldDeployment');
   expect(refusalKind(holder('operation', 'active', 'language'))).toBe('heldLanguage');
+  expect(refusalKind(holder('operation', 'active', 'setup'))).toBe('heldSetup');
   expect(refusalKind(holder('operation', 'active', 'something.new'))).toBe('heldOperation');
   expect(refusalKind(holder('run', 'uncertain'))).toBe('runUncertain');
   expect(refusalKind(holder('task', 'uncertain'))).toBe('taskUncertain');
