@@ -82,6 +82,8 @@ function harness(overrides: Partial<SendDeps> = {}) {
     ok: true as const,
     session,
   }));
+  const landed: { entries: WorkSession['entries'] } = { entries: [] };
+  const getSession = vi.fn(async (_sessionId: string) => ({ ...session, entries: landed.entries }));
   const store = createPendingSessionCommands();
   const pending = { current: null as PendingCommand | null };
   const ids = ['cmd_fixed', 'cmd_second'];
@@ -91,7 +93,7 @@ function harness(overrides: Partial<SendDeps> = {}) {
       live: true,
       startAuto,
       transport: { sendCommand },
-      repository: { addSessionEntry },
+      repository: { addSessionEntry, getSession },
     },
     session,
     choice: { modelProfile: 'model-a' },
@@ -123,7 +125,7 @@ function harness(overrides: Partial<SendDeps> = {}) {
     clearDraft: vi.fn(),
     ...overrides,
   } as unknown as SendDeps;
-  return { deps, startAuto, sendCommand, addSessionEntry, store, pending };
+  return { deps, startAuto, sendCommand, addSessionEntry, getSession, landed, store, pending };
 }
 
 const input = (overrides: Partial<SendInput> = {}): SendInput => ({
@@ -273,6 +275,8 @@ describe('composer send paths', () => {
       text: 'Write the plan',
       state: 'queued',
       afterSetup: true,
+      // The refused start's own ID: the queue starts it with that ID (features/paddock-setup.md).
+      commandId: 'cmd_fixed',
       attachments: [attachment],
       images: [image],
       permissionMode: 'ask',
@@ -322,6 +326,7 @@ describe('composer send paths', () => {
       intent: 'queue',
       text: 'Write the plan',
       state: 'queued',
+      commandId: 'cmd_fixed',
       references,
       attachments: [attachment],
       images: [image],
@@ -338,6 +343,75 @@ describe('composer send paths', () => {
     expect(h.sendCommand).not.toHaveBeenCalled();
     // Sent with the request, its images leave the box (features/composer-flow.md "합류 대상").
     expect(h.deps.clearDraft).toHaveBeenCalledWith(7, false, false);
+  });
+
+  it('a queued request whose save answer was lost is not saved twice when sent again', async () => {
+    const h = harness();
+    h.addSessionEntry.mockRejectedValueOnce(new Error('connection reset'));
+    await sendRequest(h.deps, input({ intent: 'queue' }));
+    expect(h.deps.setRefusal).toHaveBeenLastCalledWith({
+      message: 'connection reset',
+      network: true,
+    });
+    expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
+    // The save had arrived, and the server may have started it since.
+    h.landed.entries = [
+      {
+        entryId: 'entry_1',
+        intent: 'queue',
+        text: 'Write the plan',
+        createdAt: 'x',
+        state: 'started',
+        runId: 'run_from_queue',
+        executionId: null,
+        detail: null,
+        commandId: 'cmd_fixed',
+      },
+    ];
+    const outcome = await sendRequest(h.deps, input({ intent: 'queue' }));
+    expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
+    expect(outcome.sent).toBe(true);
+    expect(h.deps.clearDraft).toHaveBeenLastCalledWith(7, false, false);
+    expect(h.store.get('session')).toBeUndefined();
+  });
+
+  it('a request waiting for setup whose save answer was lost is found by its command ID', async () => {
+    const h = harness();
+    const refusal = () =>
+      new ApiError(409, 'RUN_ALREADY_ACTIVE', 'this working copy is being set up', {
+        owner: {
+          kind: 'operation',
+          id: 'setup_1',
+          sessionId: 'session',
+          state: 'active',
+          operationKind: 'setup',
+        },
+      });
+    h.startAuto.mockRejectedValueOnce(refusal()).mockRejectedValueOnce(refusal());
+    h.addSessionEntry.mockRejectedValueOnce(new Error('connection reset'));
+    await sendRequest(h.deps, input());
+    expect(h.addSessionEntry).toHaveBeenCalledWith(
+      'session',
+      expect.objectContaining({ commandId: 'cmd_fixed', afterSetup: true }),
+    );
+    h.landed.entries = [
+      {
+        entryId: 'entry_1',
+        intent: 'queue',
+        text: 'Write the plan',
+        createdAt: 'x',
+        state: 'queued',
+        runId: null,
+        executionId: null,
+        detail: null,
+        commandId: 'cmd_fixed',
+        afterSetup: true,
+      },
+    ];
+    const outcome = await sendRequest(h.deps, input());
+    expect(outcome.sent).toBe(true);
+    expect(h.addSessionEntry).toHaveBeenCalledTimes(1);
+    expect(h.startAuto).toHaveBeenCalledTimes(1);
   });
 
   it('sends an instruction to the chosen execution for its next request boundary', async () => {

@@ -374,12 +374,12 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
   deps.setBusy(true);
   deps.setError(null);
   deps.setRefusal(null);
-  const waiting = (afterSetup: boolean): SessionEntryInput => ({
+  const waiting = (commandId: string, afterSetup: boolean): SessionEntryInput => ({
     intent: 'queue',
     text: body,
     state: 'queued',
+    commandId,
     ...(afterSetup ? { afterSetup: true as const } : {}),
-    ...(!afterSetup && input.queueCommandId ? { commandId: input.queueCommandId } : {}),
     // Started later, it carries what a new request sent now would (session-queue.ts).
     ...(input.references.length ? { references: input.references } : {}),
     ...(attachments.length ? { attachments } : {}),
@@ -387,15 +387,33 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
     ...(permissionMode ? { permissionMode } : {}),
     start: queuedStart(deps, body, permissionMode),
   });
+  const refs: RunReference[] = [...input.references, ...attachments, ...images];
+  // The team is part of the request: changing it after a lost answer is a new request.
+  const seed =
+    autoCommandSeed(body, refs, deps.choice, team ? `corral:${team.corralId}` : deps.teamMode) +
+    (permissionMode ? `\u0000permission:${permissionMode}` : '');
+  const arrived = async (key: string, commandId: string) =>
+    deps.commands.pending.current?.key === key &&
+    ((await services.repository.getSession(deps.session.sessionId))?.entries.some(
+      (entry) => entry.commandId === commandId,
+    ) ??
+      false);
+  const sent = async () => {
+    clearPending(deps.commands);
+    // Text attachments ride every send; images a new or a next request (features/composer-flow.md).
+    deps.clearDraft(input.revision, false, intent !== 'next' && intent !== 'queue');
+    await deps.invalidate();
+    deps.onChange();
+    outcome.sent = true;
+    return outcome;
+  };
+  let started: string | null = null;
   try {
     if (intent === 'next') {
-      const refs: RunReference[] = [...input.references, ...attachments, ...images];
-      // The team is part of the request: changing it after a lost answer is a new request.
-      const commandId = commandFor(
-        deps.commands,
-        autoCommandSeed(body, refs, deps.choice, team ? `corral:${team.corralId}` : deps.teamMode) +
-          (permissionMode ? `\u0000permission:${permissionMode}` : ''),
-      );
+      const again = deps.commands.pending.current?.key === seed;
+      const commandId = commandFor(deps.commands, seed);
+      started = commandId;
+      if (again && (await arrived(seed, commandId))) return await sent();
       const {
         runId,
         detail,
@@ -439,7 +457,11 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
         return outcome;
       }
     } else if (intent === 'queue') {
-      await recordEntry(deps, waiting(false));
+      const key = `queue\u0000${seed}`;
+      const again = deps.commands.pending.current?.key === key;
+      const commandId = input.queueCommandId ?? commandFor(deps.commands, key);
+      if (!(again && (await arrived(key, commandId))))
+        await recordEntry(deps, waiting(commandId, false));
     } else if (intent === 'steer' && delivery && ownActive && steerTarget) {
       // The delivery and the attachments are part of the instruction: changing either after a
       // lost answer is a new command.
@@ -492,26 +514,23 @@ export async function sendRequest(deps: SendDeps, input: SendInput): Promise<Sen
     } else {
       return outcome;
     }
-    clearPending(deps.commands);
-    // Text attachments ride every send; images a new or a next request (features/composer-flow.md).
-    deps.clearDraft(input.revision, false, intent !== 'next' && intent !== 'queue');
-    await deps.invalidate();
-    deps.onChange();
-    outcome.sent = true;
-    return outcome;
+    return await sent();
   } catch (failure) {
     if (failure instanceof DOMException && failure.name === 'AbortError') {
       clearPending(deps.commands);
       return outcome;
     }
-    if (intent === 'next' && waitsForSetup(failure)) {
-      await recordEntry(deps, waiting(true));
-      clearPending(deps.commands);
-      deps.clearDraft(input.revision, false, false);
-      await deps.invalidate();
-      deps.onChange();
-      outcome.sent = true;
-      return outcome;
+    if (intent === 'next' && started && waitsForSetup(failure)) {
+      try {
+        await recordEntry(deps, waiting(started, true));
+      } catch (lost) {
+        deps.setRefusal({
+          message: lost instanceof Error ? lost.message : String(lost),
+          network: true,
+        });
+        return outcome;
+      }
+      return await sent();
     }
     if (
       failure instanceof ApiError &&
