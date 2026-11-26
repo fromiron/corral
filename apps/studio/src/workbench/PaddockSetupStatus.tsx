@@ -70,12 +70,16 @@ export function PaddockSetupStatus({
               {t(word)}
             </span>
           </summary>
-          <pre
+          <section
             aria-label={t('setupOutput')}
-            className="mt-1 max-h-48 overflow-auto whitespace-pre-wrap rounded-md fill-group p-2 font-mono text-caption"
+            // biome-ignore lint/a11y/noNoninteractiveTabindex: a scrolling output is reached by keyboard
+            tabIndex={0}
+            className="mt-1 max-h-48 overflow-auto rounded-md fill-group p-2"
           >
-            {shown || t('setupNoOutput')}
-          </pre>
+            <pre className="m-0 whitespace-pre-wrap font-mono text-caption">
+              {shown || t('setupNoOutput')}
+            </pre>
+          </section>
         </details>
         <Button
           type="button"
