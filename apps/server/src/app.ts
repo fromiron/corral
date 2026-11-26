@@ -3040,6 +3040,7 @@ async function createCorralServer(
   const ScopeQuery = z.object({
     scope: z.enum(['session', 'review', 'run']).default('session'),
     runId: Identifier.optional(),
+    group: z.literal('run').optional(),
   });
   const scopeOf = (query: z.infer<typeof ScopeQuery>): ChangeScope | null =>
     query.scope === 'run'
@@ -3050,9 +3051,15 @@ async function createCorralServer(
   app.get<SessionParams>('/api/v1/sessions/:sessionId/changes', async (request, reply) => {
     const query = ScopeQuery.safeParse(request.query);
     const scope = query.success ? scopeOf(query.data) : null;
-    if (!scope) return fail(reply, 'SCHEMA_INVALID', 'scope=session|review|run (with runId)');
+    const group = query.data?.group;
+    if (!scope || (group && scope.kind !== 'session'))
+      return fail(
+        reply,
+        'SCHEMA_INVALID',
+        'scope=session|review|run (with runId); group=run only with scope=session',
+      );
     try {
-      return await files.changes(request.params.sessionId, scope, runEnded);
+      return await files.changes(request.params.sessionId, scope, runEnded, group);
     } catch (error) {
       return workspaceFail(reply, error);
     }

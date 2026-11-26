@@ -2373,10 +2373,12 @@
     },
     "provenance": {
       "managed_agent": "Corral",
-      "external_observed": "사용자 또는 외부 변경",
-      "mixed": "Corral 변경 뒤 외부 변경"
+      "external_observed": "명령이나 Corral 밖에서 바뀜",
+      "mixed": "Corral이 쓴 뒤 명령이나 Corral 밖에서 바뀜"
     },
     "externalBadge": "외부 변경",
+    "outsideRuns": "실행 밖",
+    "compareRun": "이 실행만 비교",
     "binary": "바이너리 파일: 글자 비교 없음.",
     "tooLarge": "1 MiB보다 커서 보이지 않습니다.",
     "unified": "한 줄로",

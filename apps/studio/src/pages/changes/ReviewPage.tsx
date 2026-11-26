@@ -61,6 +61,7 @@ import {
   sessionRunMode,
 } from '../../workbench/autoChoice.ts';
 import { Checks } from '../../workbench/ChecksView.tsx';
+import { type ChangeGroup, changeGroups } from '../../workbench/changeGroups.ts';
 import type { AttachmentCapture } from '../../workbench/context/bridge.ts';
 import {
   integrationDisplayState,
@@ -271,7 +272,9 @@ export function ReviewContent({
         }
         return;
       }
-      const result = await workspaces.changes(session.sessionId, chosen);
+      const result = await (chosen.kind === 'session'
+        ? workspaces.changes(session.sessionId, chosen, 'run')
+        : workspaces.changes(session.sessionId, chosen));
       if (!live) return;
       setError(null);
       setNoCopy(false);
@@ -292,7 +295,9 @@ export function ReviewContent({
   // The review opens on the first file of the list as it is shown (build output folded after
   // the rest), unless the address names one; opening it does not write the address.
   const listed = changes && !changes.unavailable ? changes.files : [];
-  const selected = search.file ?? (listed.find((f) => !foldedFile(f)) ?? listed[0])?.path ?? null;
+  const groups = changeGroups(changes, foldedFile);
+  const first = groups?.[0]?.files[0] ?? listed.find((f) => !foldedFile(f)) ?? listed[0];
+  const selected = search.file ?? first?.path ?? null;
   const choose = (file: string) => onSearch({ file });
   const setScope = (value: string) => {
     const [kind, runId] = value.split(':');
@@ -317,13 +322,16 @@ export function ReviewContent({
       ? [{ value: 'review', label: t('scopes.review') }]
       : []),
     // A run from the address that the list has not shown yet stays chosen, without its raw id.
-    ...(scope.kind === 'run' && !runNumber(scope.runId)
-      ? [{ value: scopeKey, label: tr('selectedRun') }]
+    ...(scope.kind === 'run'
+      ? [
+          {
+            value: scopeKey,
+            label: runNumber(scope.runId)
+              ? tw('runNumber', { number: runNumber(scope.runId) })
+              : tr('selectedRun'),
+          },
+        ]
       : []),
-    ...numbered.toReversed().map((r) => ({
-      value: `run:${r.runId}`,
-      label: tw('runNumber', { number: runNumber(r.runId) }),
-    })),
   ].map((option) =>
     option.value === scopeKey && trees
       ? { ...option, hint: <span className="font-mono">{trees}</span> }
@@ -348,13 +356,14 @@ export function ReviewContent({
     const rows = [
       ...(fileNav.current?.querySelectorAll<HTMLButtonElement>('button[data-review-file]') ?? []),
     ].filter((row) => !row.closest('details:not([open])'));
-    const paths = rows.map((row) => row.dataset.reviewFile ?? '');
+    const paths = [...new Set(rows.map((row) => row.dataset.reviewFile ?? ''))];
     const at = selected ? paths.indexOf(selected) : -1;
     const next = stepIndex(at < 0 ? null : at, paths.length, direction);
     if (next === null) return false;
+    const row = rows.find((candidate) => candidate.dataset.reviewFile === paths[next]);
     choose(paths[next] as string);
-    rows[next]?.focus();
-    reveal(rows[next]);
+    row?.focus();
+    reveal(row);
     return true;
   };
   const moves = useRef(moveFile);
@@ -490,6 +499,11 @@ export function ReviewContent({
             >
               <FileList
                 changes={changes}
+                groups={groups}
+                runLabel={(runId) =>
+                  runNumber(runId) ? tw('runNumber', { number: runNumber(runId) }) : t('run')
+                }
+                onRun={(runId) => setScope(`run:${runId}`)}
                 selected={selected}
                 reviewed={reviewed}
                 onChoose={choose}
@@ -1778,12 +1792,18 @@ const STATUS_MARKS: Partial<Record<FileChangeView['status'], { letter: string; t
  */
 function FileList({
   changes,
+  groups,
+  runLabel,
+  onRun,
   selected,
   reviewed,
   onChoose,
   sinceRead = false,
 }: {
   changes: ChangeSetView | null;
+  groups: ChangeGroup[] | null;
+  runLabel: (runId: string) => string;
+  onRun: (runId: string) => void;
   selected: string | null;
   reviewed: ReviewMarks;
   onChoose: (path: string) => void;
@@ -1992,7 +2012,53 @@ function FileList({
         {matches.length === 0 ? (
           <p className="m-0 px-2 py-1 text-caption text-muted-foreground">{t('noMatches')}</p>
         ) : null}
-        <ul className="m-0 flex list-none flex-col gap-0.5 p-0">{main.map(row)}</ul>
+        {groups ? (
+          groups.map((group) => {
+            const rows = group.files.filter((file) => main.includes(file));
+            if (rows.length === 0) return null;
+            const { runId } = group;
+            const headId = `${listId}-${runId ?? 'outside'}`;
+            const count = (
+              <>
+                <span aria-hidden className="tabular-nums">
+                  {rows.length}
+                </span>
+                <span className="sr-only">{t('files', { count: rows.length })}</span>
+              </>
+            );
+            return (
+              <section
+                key={runId ?? ''}
+                data-review-group={runId ?? 'outside'}
+                className="flex flex-col gap-0.5"
+              >
+                <h4 id={headId} className="m-0 text-caption text-muted-foreground" style={semibold}>
+                  {runId ? (
+                    <Button
+                      variant="ghost"
+                      title={t('compareRun')}
+                      onClick={() => onRun(runId)}
+                      className={cn('h-auto justify-start gap-2 px-2 py-1', rowHeight)}
+                    >
+                      {runLabel(runId)}
+                      {count}
+                    </Button>
+                  ) : (
+                    <span className={cn('flex items-center gap-2 px-2 py-1', rowHeight)}>
+                      {t('outsideRuns')}
+                      {count}
+                    </span>
+                  )}
+                </h4>
+                <ul aria-labelledby={headId} className="m-0 flex list-none flex-col gap-0.5 p-0">
+                  {rows.map(row)}
+                </ul>
+              </section>
+            );
+          })
+        ) : (
+          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">{main.map(row)}</ul>
+        )}
         {generated.length > 0 ? (
           <details className="text-caption">
             <summary className="cursor-pointer text-muted-foreground">

@@ -2005,6 +2005,21 @@ describe('work folders and file changes', () => {
     expect(
       runScope.body.files.map((f: { path: string; status: string }) => [f.path, f.status]),
     ).toEqual([['notes/writer.md', 'modified']]);
+    // Grouped by run on request (features/review-run-groups.md): both runs changed the file.
+    const grouped = await json(`/sessions/${sessionId}/changes?scope=session&group=run`);
+    expect(grouped.body.files).toEqual([
+      expect.objectContaining({
+        path: 'notes/writer.md',
+        runs: [first, second],
+        outsideRuns: false,
+      }),
+    ]);
+    expect(grouped.body.runs).toEqual([first, second]);
+    expect(changes.body.files[0]).not.toHaveProperty('runs');
+    const misplaced = await json(
+      `/sessions/${sessionId}/changes?scope=run&runId=${second}&group=run`,
+    );
+    expect([misplaced.status, misplaced.body.error.code]).toEqual([400, 'SCHEMA_INVALID']);
     const versions = await json(
       `/sessions/${sessionId}/changes/file?from=${runScope.body.from}&to=${runScope.body.to}&path=notes/writer.md`,
     );

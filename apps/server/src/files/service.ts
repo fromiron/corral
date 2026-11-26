@@ -248,6 +248,13 @@ export interface FileChange {
   /** Git blob ids of the two sides (null when absent): a file's identity for "reviewed". */
   beforeBlob: string | null;
   afterBlob: string | null;
+  runs?: string[];
+  outsideRuns?: boolean;
+}
+
+interface RunTimeline {
+  points: { runId: string; phase: 'start' | 'end'; tree: string }[];
+  ended: Set<string>;
 }
 
 export interface ChangeSet {
@@ -257,6 +264,7 @@ export interface ChangeSet {
   /** Why there is nothing to compare, when there is not (no baseline recorded). */
   unavailable: string | null;
   files: FileChange[];
+  runs?: string[];
 }
 
 export interface FileVersions {
@@ -530,6 +538,7 @@ export class WorkspaceService implements FileTools {
   /** Per-worktree write lease: one Corral write at a time. */
   private readonly leases = new Map<string, Promise<unknown>>();
   private readonly pendingSnapshots = new Map<string, Promise<string | null>>();
+  private readonly pathsBetweenTrees = new Map<string, string[]>();
   /** Run → execution → path hash: another attempt's read never authorizes an overwrite. */
   private readonly reads = new Map<string, Map<string, Map<string, string>>>();
   private readonly readRanges = new WeakMap<
@@ -2994,11 +3003,90 @@ export class WorkspaceService implements FileTools {
     return { from: start, to: end, unavailable: null, row };
   }
 
+  private async runTimeline(
+    sessionId: string,
+    runEnded: (runId: string) => boolean,
+  ): Promise<RunTimeline | null> {
+    const copy = this.worktree(sessionId);
+    if (!copy) return null;
+    const read = () =>
+      this.db
+        .prepare(
+          `SELECT run_id AS runId, phase, tree FROM run_snapshots
+             WHERE session_id = ? AND captured_at >= ? ORDER BY captured_at, rowid`,
+        )
+        .all(sessionId, copy.created_at) as RunTimeline['points'];
+    const ended = new Set(
+      read()
+        .filter((point) => point.phase === 'start' && runEnded(point.runId))
+        .map((point) => point.runId),
+    );
+    await Promise.all([...ended].map((runId) => this.pendingSnapshots.get(`${runId}:end`)));
+    return { points: read(), ended };
+  }
+
+  private async groupByRun(
+    root: string,
+    base: string,
+    to: string,
+    files: FileChange[],
+    { points, ended }: RunTimeline,
+  ) {
+    const has = (phase: 'start' | 'end') =>
+      new Set(points.filter((point) => point.phase === phase).map((point) => point.runId));
+    const [started, finished] = [has('start'), has('end')];
+    const spans = points.filter(
+      (point) => started.has(point.runId) && (finished.has(point.runId) || !ended.has(point.runId)),
+    );
+    const startOrder = spans.filter((point) => point.phase === 'start').map((point) => point.runId);
+    const listed = new Map(files.map((file) => [file.path, file]));
+    const during = new Map(files.map((file) => [file.path, new Set<string>()]));
+    for (const file of files) file.outsideRuns = false;
+    const running = new Set<string>();
+    let at = base;
+    const advance = async (next: string) => {
+      if (next === at) return;
+      const pair = `${at}\n${next}`;
+      const known = this.pathsBetweenTrees.get(pair);
+      const changed =
+        known ??
+        (await git(root, ['diff-tree', '-r', '-z', '--no-renames', '--name-only', at, next])).stdout
+          .toString('utf8')
+          .split('\0');
+      if (!known) {
+        if (this.pathsBetweenTrees.size >= 1000)
+          this.pathsBetweenTrees.delete(this.pathsBetweenTrees.keys().next().value as string);
+        this.pathsBetweenTrees.set(pair, changed);
+      }
+      at = next;
+      for (const path of changed) {
+        const file = listed.get(path);
+        if (!file) continue;
+        if (running.size === 0) file.outsideRuns = true;
+        for (const runId of running) during.get(path)?.add(runId);
+      }
+    };
+    for (const point of spans) {
+      await advance(point.tree);
+      if (point.phase === 'start') running.add(point.runId);
+      else running.delete(point.runId);
+    }
+    await advance(to);
+    for (const file of files)
+      file.runs = startOrder.filter((runId) => during.get(file.path)?.has(runId));
+    return startOrder;
+  }
+
   async changes(
     sessionId: string,
     scope: ChangeScope,
     runEnded: (runId: string) => boolean,
+    group?: 'run',
   ): Promise<ChangeSet> {
+    const timeline =
+      group === 'run' && scope.kind === 'session'
+        ? await this.runTimeline(sessionId, runEnded)
+        : null;
     const { from, to, unavailable, row } = await this.trees(sessionId, scope, runEnded);
     if (!from || !to) return { scope, from, to, unavailable, files: [] };
     const raw = (
@@ -3064,7 +3152,9 @@ export class WorkspaceService implements FileTools {
       }
       file.provenance = actual === expected ? 'managed_agent' : 'mixed';
     }
-    return { scope, from, to, unavailable: null, files };
+    if (!timeline) return { scope, from, to, unavailable: null, files };
+    const runs = await this.groupByRun(row.worktree_path, from, to, files, timeline);
+    return { scope, from, to, unavailable: null, files, runs };
   }
 
   /** Each path Corral changed, with the content hash its last applied operation left (null: none). */

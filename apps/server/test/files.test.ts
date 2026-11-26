@@ -1929,3 +1929,192 @@ describe('the linked folder as Git sees it', () => {
     expect(versions.after).toEqual({ kind: 'text', text: 'one\nmore\n' });
   });
 });
+
+// features/review-run-groups.md: the files of the whole-conversation comparison, each with the
+// runs it changed during and whether it changed while no run ran.
+describe('changes grouped by run', () => {
+  const copy = (s: Awaited<ReturnType<typeof setup>>) => s.service.copyOf('session_1')!.worktree;
+  const grouped = async (s: Awaited<ReturnType<typeof setup>>, ended: string[] = []) => {
+    const set = await s.service.changes(
+      'session_1',
+      { kind: 'session' },
+      (runId) => ended.includes(runId),
+      'run',
+    );
+    return Object.fromEntries(set.files.map((f) => [f.path, [f.runs, f.outsideRuns]]));
+  };
+  const secondRun = (s: Awaited<ReturnType<typeof setup>>) =>
+    s.db
+      .prepare(
+        `INSERT INTO runs (id, corral_id, definition_hash, snapshot_json, status, last_seq,
+           projection_json, started_at, project_id, session_id)
+         VALUES ('run_2', 'c', 'h', '{}', 'running', 0, '{}', 'x', 'default', 'session_1')`,
+      )
+      .run();
+  const span = async (
+    s: Awaited<ReturnType<typeof setup>>,
+    runId: string,
+    work: () => void,
+  ): Promise<void> => {
+    await s.service.snapshotRun(runId, 'session_1', 'start');
+    work();
+    await s.service.snapshotRun(runId, 'session_1', 'end');
+  };
+
+  it('a file changed without the file tools is in the run it changed during; one changed between runs is outside', async () => {
+    const s = await setup();
+    try {
+      secondRun(s);
+      writeFileSync(join(copy(s), 'before.txt'), 'before any run\n');
+      await span(s, 'run_1', () => writeFileSync(join(copy(s), 'shell.txt'), 'by a command\n'));
+      writeFileSync(join(copy(s), 'between.txt'), 'by hand\n');
+      await span(s, 'run_2', () => writeFileSync(join(copy(s), 'second.txt'), 'later\n'));
+      expect(await grouped(s, ['run_1', 'run_2'])).toEqual({
+        'before.txt': [[], true],
+        'shell.txt': [['run_1'], false],
+        'between.txt': [[], true],
+        'second.txt': [['run_2'], false],
+      });
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('a file a run changed and someone changed again afterwards is in both', async () => {
+    const s = await setup();
+    try {
+      await span(s, 'run_1', () => writeFileSync(join(copy(s), 'a.txt'), 'two\n'));
+      writeFileSync(join(copy(s), 'a.txt'), 'three\n');
+      expect(await grouped(s, ['run_1'])).toEqual({ 'a.txt': [['run_1'], true] });
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('runs that overlap both get what changed while both ran, in start order', async () => {
+    const s = await setup();
+    try {
+      secondRun(s);
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      writeFileSync(join(copy(s), 'x.txt'), 'x\n');
+      await s.service.snapshotRun('run_2', 'session_1', 'start');
+      writeFileSync(join(copy(s), 'y.txt'), 'y\n');
+      await s.service.snapshotRun('run_1', 'session_1', 'end');
+      writeFileSync(join(copy(s), 'z.txt'), 'z\n');
+      await s.service.snapshotRun('run_2', 'session_1', 'end');
+      expect(await grouped(s, ['run_1', 'run_2'])).toEqual({
+        'x.txt': [['run_1'], false],
+        'y.txt': [['run_1', 'run_2'], false],
+        'z.txt': [['run_2'], false],
+      });
+      const answer = await s.service.changes('session_1', { kind: 'session' }, () => true, 'run');
+      expect(answer.runs).toEqual(['run_1', 'run_2']);
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('a run without both of its trees has no interval, and what changed during it is outside, never nothing', async () => {
+    const s = await setup();
+    try {
+      secondRun(s);
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      writeFileSync(join(copy(s), 'lost-end.txt'), 'the end tree was never recorded\n');
+      expect(await grouped(s, ['run_1'])).toEqual({ 'lost-end.txt': [[], true] });
+      writeFileSync(join(copy(s), 'lost-start.txt'), 'no baseline\n');
+      await s.service.snapshotRun('run_2', 'session_1', 'end');
+      expect(await grouped(s, ['run_1', 'run_2'])).toEqual({
+        'lost-end.txt': [[], true],
+        'lost-start.txt': [[], true],
+      });
+      const answer = await s.service.changes('session_1', { kind: 'session' }, () => true, 'run');
+      expect(answer.runs).toEqual([]);
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it("a running run's interval reaches the tree the answer compares to", async () => {
+    const s = await setup();
+    try {
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      writeFileSync(join(copy(s), 'live.txt'), 'still running\n');
+      expect(await grouped(s)).toEqual({ 'live.txt': [['run_1'], false] });
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('a run that has just ended is read after its end tree is recorded', async () => {
+    const s = await setup();
+    try {
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      writeFileSync(join(copy(s), 'just.txt'), 'ended a moment ago\n');
+      const ending = s.service.snapshotRun('run_1', 'session_1', 'end');
+      expect(await grouped(s, ['run_1'])).toEqual({ 'just.txt': [['run_1'], false] });
+      await ending;
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('a file a later run put back is not listed, and neither run has it', async () => {
+    const s = await setup();
+    try {
+      secondRun(s);
+      await span(s, 'run_1', () => writeFileSync(join(copy(s), 'a.txt'), 'two\n'));
+      await span(s, 'run_2', () => writeFileSync(join(copy(s), 'a.txt'), 'one\n'));
+      expect(await grouped(s, ['run_1', 'run_2'])).toEqual({});
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('every listed file has a group: added, deleted, binary and both sides of a rename', async () => {
+    const s = await setup();
+    try {
+      writeFileSync(join(copy(s), 'old-name.txt'), 'moved later\n');
+      await s.service.snapshotRun('run_1', 'session_1', 'start');
+      rmSync(join(copy(s), 'a.txt'));
+      writeFileSync(join(copy(s), 'image.bin'), Buffer.from([0, 1, 2, 0, 255]));
+      await rename(join(copy(s), 'old-name.txt'), join(copy(s), 'new-name.txt'));
+      const set = await s.service.changes('session_1', { kind: 'session' }, () => false, 'run');
+      expect(set.files.map((f) => [f.path, f.status, f.binary, f.runs, f.outsideRuns])).toEqual([
+        ['a.txt', 'deleted', false, ['run_1'], false],
+        ['image.bin', 'added', true, ['run_1'], false],
+        ['new-name.txt', 'added', false, ['run_1'], false],
+      ]);
+      expect(set.files.every((f) => f.runs?.length || f.outsideRuns)).toBe(true);
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('runs from before the current copy was made are not intervals of it', async () => {
+    const s = await setup();
+    try {
+      await span(s, 'run_1', () => writeFileSync(join(copy(s), 'a.txt'), 'two\n'));
+      s.clock.advance(1000);
+      await s.service.removeWorktree('session_1');
+      await s.service.createWorktree('session_1', 'default');
+      writeFileSync(join(copy(s), 'a.txt'), 'three\n');
+      expect(await grouped(s, ['run_1'])).toEqual({ 'a.txt': [[], true] });
+    } finally {
+      s.db.close();
+    }
+  });
+
+  it('a read that does not ask for groups carries none', async () => {
+    const s = await setup();
+    try {
+      await span(s, 'run_1', () => writeFileSync(join(copy(s), 'a.txt'), 'two\n'));
+      const set = await s.service.changes('session_1', { kind: 'session' }, () => true);
+      expect(set.files).toHaveLength(1);
+      expect(set.files[0]).not.toHaveProperty('runs');
+      expect(set.files[0]).not.toHaveProperty('outsideRuns');
+      expect(set).not.toHaveProperty('runs');
+    } finally {
+      s.db.close();
+    }
+  });
+});

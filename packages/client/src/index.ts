@@ -2469,6 +2469,8 @@ export interface FileChangeView {
   provenance: 'managed_agent' | 'mixed' | 'external_observed';
   beforeBlob: string | null;
   afterBlob: string | null;
+  runs?: string[];
+  outsideRuns?: boolean;
 }
 
 export interface ChangeSetView {
@@ -2476,6 +2478,7 @@ export interface ChangeSetView {
   to: string | null;
   unavailable: string | null;
   files: FileChangeView[];
+  runs?: string[];
 }
 
 export type FileSideView =
@@ -3049,11 +3052,11 @@ export class WorkspacesApi {
   removalPlan(sessionId: string): Promise<CopyRemovalPlan> {
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/worktree/removal`);
   }
-  changes(sessionId: string, scope: ChangeScopeQuery): Promise<ChangeSetView> {
+  changes(sessionId: string, scope: ChangeScopeQuery, group?: 'run'): Promise<ChangeSetView> {
     const query =
       scope.kind === 'run'
         ? `scope=run&runId=${encodeURIComponent(scope.runId)}`
-        : `scope=${scope.kind}`;
+        : `scope=${scope.kind}${group ? `&group=${group}` : ''}`;
     return this.send(`/sessions/${encodeURIComponent(sessionId)}/changes?${query}`);
   }
   hunks(
