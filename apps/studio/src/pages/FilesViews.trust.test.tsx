@@ -16,6 +16,8 @@ vi.mock('../services.tsx', () => {
       isGit: fixture.isGit,
       status: fixture.isGit ? { branch: 'main', head: 'abc', changed: 0 } : null,
       verifyCommands: [],
+      setupCommand: null,
+      setupRevision: 0,
     }),
   };
   return { useServices: () => ({ workspaces, mode: 'server' }) };

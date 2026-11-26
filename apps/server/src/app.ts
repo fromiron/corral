@@ -2693,6 +2693,14 @@ async function createCorralServer(
           )
           .max(10)
           .optional(),
+        setupCommand: z
+          .string()
+          .min(1)
+          .max(32000)
+          .refine((value) => !value.includes('\0'), 'NUL in the setup command')
+          .nullable()
+          .optional(),
+        setupRevision: z.int().min(0).optional(),
       }),
       request,
       reply,

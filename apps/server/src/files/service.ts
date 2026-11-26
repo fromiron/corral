@@ -213,6 +213,9 @@ export interface BindingView {
   isGit: boolean;
   trusted: boolean;
   verifyCommands: VerifyCommand[];
+  /** Runs once in every new Paddock (features/paddock-setup.md). */
+  setupCommand: string | null;
+  setupRevision: number;
   status: { branch: string | null; head: string | null; changed: number } | null;
   /** The folder is no longer where it was linked. */
   missing: boolean;
@@ -471,6 +474,8 @@ interface BindingRow {
   is_git: number;
   trusted: number;
   verify_json: string;
+  setup_command: string | null;
+  setup_revision: number;
 }
 interface WorktreeRow {
   session_id: string;
@@ -806,6 +811,8 @@ export class WorkspaceService implements FileTools {
       isGit: row.is_git === 1,
       trusted: row.trusted === 1,
       verifyCommands: this.projectTools.latest(projectId)?.checks ?? [],
+      setupCommand: row.setup_command,
+      setupRevision: row.setup_revision,
       status,
       missing,
     };
@@ -865,14 +872,39 @@ export class WorkspaceService implements FileTools {
 
   async configure(
     projectId: string,
-    change: { trusted?: boolean; verifyCommands?: VerifyCommand[] },
+    change: {
+      trusted?: boolean;
+      verifyCommands?: VerifyCommand[];
+      setupCommand?: string | null;
+      setupRevision?: number;
+    },
   ): Promise<BindingView> {
     const row = this.binding(projectId);
     if (!row) throw new WorkspaceError('TARGET_NOT_FOUND', 'this project has no folder');
     const trusted = change.trusted ?? row.trusted === 1;
     if (change.verifyCommands && !trusted)
       throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before adding checks');
+    if (change.setupCommand !== undefined) {
+      if (change.setupRevision === undefined)
+        throw new WorkspaceError('SCHEMA_INVALID', 'a setup command is saved with its revision');
+      if (change.setupCommand !== null && !change.setupCommand.trim())
+        throw new WorkspaceError('SCHEMA_INVALID', 'a setup command needs some text');
+      if (!trusted)
+        throw new WorkspaceError('CAPABILITY_DENIED', 'trust the repository before setting it up');
+    }
     this.db.transaction(() => {
+      if (change.setupCommand !== undefined) {
+        const saved = this.db
+          .prepare(
+            'UPDATE workspace_bindings SET setup_command = ?, setup_revision = setup_revision + 1 WHERE id = ? AND setup_revision = ?',
+          )
+          .run(change.setupCommand, row.id, change.setupRevision);
+        if (saved.changes !== 1)
+          throw new WorkspaceError(
+            'REVISION_CONFLICT',
+            'the setup command changed since it was read',
+          );
+      }
       if (change.verifyCommands) {
         const previous = this.projectTools.latest(projectId);
         this.projectTools.save(projectId, previous?.revision ?? 0, {

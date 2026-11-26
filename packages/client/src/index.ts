@@ -2376,6 +2376,8 @@ export interface WorkspaceBindingView {
   isGit: boolean;
   trusted: boolean;
   verifyCommands: VerifyCommand[];
+  setupCommand: string | null;
+  setupRevision: number;
   status: { branch: string | null; head: string | null; changed: number } | null;
   missing: boolean;
 }
@@ -2989,7 +2991,12 @@ export class WorkspacesApi {
   }
   async configure(
     projectId: string,
-    change: { trusted?: boolean; verifyCommands?: VerifyCommand[] },
+    change: {
+      trusted?: boolean;
+      verifyCommands?: VerifyCommand[];
+      setupCommand?: string | null;
+      setupRevision?: number;
+    },
   ): Promise<WorkspaceBindingView> {
     const p = encodeURIComponent(projectId);
     return (

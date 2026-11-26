@@ -807,6 +807,13 @@ CREATE TABLE IF NOT EXISTS pull_request_watches (
 ) STRICT;
 `,
   },
+  {
+    name: '0050_setup_command',
+    sql: `
+ALTER TABLE workspace_bindings ADD COLUMN setup_command TEXT;
+ALTER TABLE workspace_bindings ADD COLUMN setup_revision INTEGER NOT NULL DEFAULT 0;
+`,
+  },
 ];
 
 /** History queries must neither recover active runs nor migrate the workspace. */
