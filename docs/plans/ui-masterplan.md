@@ -1,18 +1,20 @@
 # UI 마스터플랜 v1.1에서 남긴 것: 작업 계획
 
-"Pi Native ADE 통합 아키텍처 및 UI 실행 마스터플랜 v1.1"(저장소에 없다. UI-01~08, D01~D12, PR 1~6으로 된 원안)을 2026-11-26에 `develop` @ `b57445d3`의 코드와 명세에 대조했다. 원안은 코드 식별자는 맞게 인용했지만 [명세](../specs/README.md)를 읽지 않아, 이미 있는 화면을 새로 만들고 이미 뺀 것을 다시 넣는 항목이 대부분이었다. 이 계획은 그 대조에서 남은 것만 싣는다. 만들 것은 둘이고 관문만 확인할 것이 하나다.
+"Pi Native ADE 통합 아키텍처 및 UI 실행 마스터플랜 v1.1"(저장소에 없다. UI-01~08, D01~D12, PR 1~6으로 된 원안)을 2026-11-26에 `develop` @ `b57445d3`의 코드와 명세에 대조했다. 원안은 코드 식별자는 맞게 인용했지만 [명세](../specs/README.md)를 읽지 않아, 이미 있는 화면을 새로 만들고 이미 뺀 것을 다시 넣는 항목이 대부분이었다. 이 계획은 그 대조에서 남은 것만 싣는다. A는 만들었고, B는 관문에서 접었고, C는 관문만 확인한다.
 
 이 문서는 승인이 아니다. 단계는 사용자가 요청할 때 시작한다. 단계는 서로 기대지 않으므로 각자 그때의 `develop`에서 분기한다. 단계마다 명세 → 실패하는 테스트 → 구현 순서이고 `pnpm lint`, `pnpm typecheck`, 관련 테스트를 돌린다. 계약 타입을 바꾸면 `pnpm contracts:check`도 돌린다. E2E는 건드린 스펙만 돌린다.
 
 | 단계 | 내용 | 상태 |
 |---|---|---|
-| A | 변경 검토의 실행별 묶음 | 만들었다. `feat/review-run-groups`에 있고 `develop`에 합치지 않았다 |
-| B | 추천 패키지 목록 | 시작 전. 관문 B0이 먼저다 |
+| A | 변경 검토의 실행별 묶음 | 만들었다. [fromiron/corral#253](https://github.com/fromiron/corral/pull/253)에 있고 `develop`에 합치지 않았다 |
+| B | 추천 패키지 목록 | 관문 B0에서 접었다. 만든 것이 없다 |
 | C | 주석의 소스 위치 | 관문만. 통과하면 따로 계획한다 |
 
 ## 사용자가 정한 것 (2026-11-26)
 
 - 대조의 판정대로 이 계획을 다시 쓴다. 원안의 PR 6개는 쓰지 않는다.
+- 작업은 브랜치에서 하고 PR로 올린다.
+- B의 판단은 조정자에게 맡긴다.
 
 ## 조정자가 정한 것 (2026-11-26)
 
@@ -60,27 +62,46 @@
 
 ## B. 추천 패키지 목록
 
-원안 UI-07에서 남긴 것이다. 신뢰와 활성의 분리, 해시별 신뢰, 고정 버전 `npm:` · git 가져오기, Pi 홈 가져오기는 이미 있다([Harness 계약](../specs/harness-contract.md#h3-리소스역할ui)). 없는 것은 무엇을 가져올지 알려 주는 목록이다.
+원안 UI-07에서 남긴 것이다. 신뢰와 활성의 분리, 해시별 신뢰, 고정 버전 `npm:` · git 가져오기, Pi 홈 가져오기는 이미 있다([Harness 계약](../specs/harness-contract.md#h3-리소스역할ui)). 없는 것은 무엇을 가져올지 알려 주는 목록이었다. 조정자가 관문 B0의 읽는 부분을 하고 이 단계를 접었다. 만든 것이 없고 명세와 코드는 그대로다.
 
-### 관문 B0 (코드 전, 읽기와 시험만)
+### 관문 B0
 
-후보 패키지마다 아래를 확인하고 결과를 이 계획에 적는다. 통과한 것만 목록에 든다. 하나도 통과하지 못하면 이 단계를 접는다.
+후보 패키지마다 아래를 확인하고, 통과한 것만 목록에 싣기로 했다. 하나도 통과하지 못하면 접는다.
 
 1. 패키지가 실제로 있고, 고정할 버전과 라이선스가 확인된다.
 2. 그 버전이 검토 → 설치 → 신뢰 → 활성 → 실행까지 실제로 된다.
 3. 그 실행에 `unsupported` 알림이 남았는지, 남았다면 어느 UI API인지.
 
-확장은 Worker의 OS 권한으로 도는 남의 코드다. 그래서 2의 내려받기와 실행은 사람이 하고, 에이전트는 남은 실행 기록을 읽어 3을 적는다. 원안의 후보 이름(`@juicesharp/rpiv-ask-user-question`, `@juicesharp/rpiv-todo`, `@plannotator/pi-extension`, `pi-web-access`)은 실재를 확인하지 않았다.
+Corral이 이미 하는 일을 대신하는 확장은 목록에 넣지 않는다.
 
-### 만들 것
+### 읽은 것 (2026-11-26)
 
-- 패키지 화면(`apps/studio/src/workbench/harness/PackageManager.tsx`)에 추천 목록을 둔다. 항목은 이름, 한 줄, 고정 버전의 source 문자열이다. 고르면 source 칸이 채워지고 지금의 검토 흐름으로 간다. 자동 설치와 자동 신뢰는 없다.
-- 목록은 서버가 싣는 정적 자료 하나다. Pi SDK나 패키지의 버전을 올릴 때마다 B0을 다시 해야 하므로 짧게 시작한다.
-- 이미 Corral이 하는 일을 대신하는 확장(MCP 어댑터, 서브에이전트, 구독 라우터 등)은 목록에 넣지 않는다.
+npm 등록 정보와 고정 버전의 소스를 읽기만 했다. 내려받아 설치하거나 실행하지 않았으므로 2와 3은 확인한 것이 없다.
 
-### 만들지 않는 것
+| 후보 | 버전 | 라이선스 | 결과 |
+|---|---|---|---|
+| `@juicesharp/rpiv-ask-user-question` | 2.15.0 | MIT | 뺀다. 모델이 사람에게 묻는 도구이고 그 일은 Corral의 `ask_user`가 한다([Desktop 계약](../specs/desktop-contract.md#3-전체-범위와-재사용)) |
+| `@juicesharp/rpiv-todo` | 2.15.0 | MIT | 뺀다. 모델의 할 일 목록이고 그 일은 Corral의 `update_plan`이 한다([채팅 위젯 계약](../specs/chat-widgets-contract.md#51-새-todo-저장-엔진은-만들지-않음)). 목록을 보이는 오버레이는 `setWidget`을 부르고, Corral은 그 UI API를 받지 않는다(`packages/adapter-pi/src/extension-ui.ts`) |
+| `@plannotator/pi-extension` | 0.29.4 | MIT OR Apache-2.0 | 읽기만으로는 정하지 못했다. 등록 정보의 설명은 계획과 코드를 검토하는 화면이고, 풀면 75.7 MB다. 소스는 읽지 않았다 |
+| `pi-web-access` | 0.48.0 | MIT | 읽기만으로는 정하지 못했다. 웹 검색과 가져오기는 Corral의 `search` · `read_document`보다 넓다([API 계약](../specs/api-contract.md#1-명령과-조회)). 브라우저의 쿠키 저장소를 읽어 푸는 코드가 있고, 그 패키지의 설정 `allowBrowserCookies`를 켜야 돈다 |
 
-패키지 카드에 "관측된 미지원 UI API"를 자동으로 보이는 것. 알림(`ExtensionUiNotice`)은 어느 확장이 불렀는지 담지 않는다. 한 세션의 확장들이 UI 컨텍스트 하나를 나눠 쓰기 때문이다(`packages/adapter-pi/src/sdk-worker.ts`의 `bindExtensions`). 목록의 미지원 표기는 B0에서 사람이 적은 값이다. 실행 화면의 알림은 지금대로 둔다.
+- 네 패키지 모두 설치 스크립트를 선언하지 않는다. Corral은 `npm --ignore-scripts`로 설치한다(`packages/adapter-pi/src/package-worker-main.ts`).
+- `pi-package` 키워드의 인기 패키지 60개는 이름과 설명만 훑었다. MCP 어댑터, 서브에이전트, 웹 접근, 계획 모드, 권한, 터미널 UI 꾸밈이 많았고, Corral이 하지 않는 일을 하는 것이 눈에 띄지 않았다.
+
+### 접은 이유
+
+1. 관문의 2는 남의 코드를 내려받아 Worker의 OS 권한으로 실행하는 일이다. 에이전트는 맡겨도 이것을 하지 않는다. Corral의 설치 흐름을 에이전트가 시켜서 돌리는 것도 같은 일이다.
+2. 규칙으로 빠지지 않은 후보는 둘이고, 둘 다 Corral에서 돌려 본 사람이 없다. 돌려 보지 않은 것을 추천으로 싣지 않는다.
+3. 둘이 모두 통과해도 목록은 둘이다. Pi SDK나 패키지의 버전을 올릴 때마다 관문을 다시 해야 하는 값에 견주어 얻는 것이 작다. 이 셋째는 조정자의 판단이다.
+
+### 다시 여는 조건
+
+- Corral이 하지 않는 일을 하는 확장을 사람이 Corral에서 검토부터 실행까지 돌려 보았을 때. 위의 두 후보도 그렇게 확인되면 든다.
+- Corral이 `setWidget`이나 `custom` 같은 확장 UI를 받게 되어 후보가 넓어졌을 때.
+
+다시 열면 만들 것은 작다. 패키지 화면(`apps/studio/src/workbench/harness/PackageManager.tsx`)에 서버가 싣는 정적 목록을 두고, 항목(이름, 한 줄, 고정 버전의 source 문자열)을 고르면 source 칸이 채워져 지금의 검토 흐름으로 간다. 자동 설치와 자동 신뢰는 없다.
+
+만들지 않는 것은 그대로다. 패키지 카드에 "관측된 미지원 UI API"를 자동으로 보이지 않는다. 알림(`ExtensionUiNotice`)은 어느 확장이 불렀는지 담지 않는다. 한 세션의 확장들이 UI 컨텍스트 하나를 나눠 쓰기 때문이다(`packages/adapter-pi/src/sdk-worker.ts`의 `bindExtensions`).
 
 ## C. 주석의 소스 위치 (관문만)
 
@@ -100,6 +121,7 @@
 | D11 Corral 안에서 디자인 스킬의 Python 스크립트 전환 | 제품 코드에 Python을 띄우는 경로가 없다. 스크립트 17개는 upstream을 바이트 그대로 싣는 묶음의 것이라 여기서 고치면 고정한 커밋과 갈라진다. `zod`는 서버의 의존성이라 에이전트의 셸에서 따로 도는 스크립트가 쓸 수 없다 | [기본 제공 묶음](../specs/features/builtin-crew.md), [NOTICE](../../apps/server/resources/builtin/design/NOTICE.md) |
 | UI-06 Paddock 준비의 3구간 계측 | Paddock 만들기는 `git worktree add` 한 번이다. `files/`, `preview/`, 계약에서 의존성 준비 단계를 찾지 못했다. 잴 구간이 없다 | |
 | UI-08 Design Guard 규칙 화면, D12 PR 증거 내보내기와 디자인 패키지 분리 | 필수 검사의 통과는 `packages/core/src/design-review.ts`가 이미 확인한다. 규칙을 설정하는 화면이 푸는 문제가 확인되지 않았다. 미룬다 | [풀 리퀘스트](../specs/features/pull-requests.md) |
+| UI-07에서 남긴 추천 패키지 목록 | [B](#b-추천-패키지-목록)의 관문에서 접었다. 후보 넷 가운데 둘은 Corral의 도구가 하는 일이고, 남은 둘은 Corral에서 돌려 본 사람이 없다 | `ask_user`, `update_plan`: [Desktop 계약](../specs/desktop-contract.md#3-전체-범위와-재사용). 패키지의 검토 · 신뢰 흐름: [Harness 계약](../specs/harness-contract.md#h3-리소스역할ui) |
 
 원안의 D01, D02, D10은 지금 코드와 원칙을 적은 것이라 할 일이 없다. D05는 B가, D08은 A와 C가, D06 · D07 · D09는 위 표의 UI-06 · UI-02 · UI-08 행이 다룬다.
 
@@ -117,5 +139,6 @@
 - 원안 §1.1의 `Coordinator` · `ModelBridge` 소유권 서술과 `EffortRoutingSettings`의 내용. 파일과 식별자의 존재, 설정 화면이 입력창과 따로라는 것만 확인했다.
 - 에이전트가 디자인 스킬의 스크립트를 스킬의 가상 경로로 실제 실행할 수 있는지.
 - 설치 검토 화면이 trusted-native 확장의 OS 권한을 사실대로 말하는지.
+- Corral이 확장에 넘기는 `hasUI`와 `mode`. B의 후보가 Corral에서 실제로 어떻게 도는지는 아는 것이 없다.
 - `deployment-tasks.ts`와 사본 명령에 준비 단계 구실을 하는 것이 있는지.
 - UI-08의 판정은 `design-review.ts`만 읽고 내렸다.
