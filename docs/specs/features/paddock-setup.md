@@ -36,7 +36,7 @@
 - **화면.** 상태는 Paddock이 이미 보이는 자리에만 있다: 변경 창의 Paddock 머리와 프로젝트 환경 탭의 Paddock 목록이다.
   - 도는 동안: 상태 낱말 "준비 중"(Setting up)과 중지.
   - 성공하지 못하고 끝났으면(실패, 중지, 시간 초과): 상태 낱말 "준비 실패"(Setup failed)와 다시 준비. 상태를 누르면 남은 출력이 열린다.
-  - 종료를 확인하지 못했으면 사람 작업의 결과 모름 상태로 보이고, 중지가 정리를 맡는다.
+  - 종료를 확인하지 못했으면 사람 작업의 결과 모름 상태로 보이고, 중지가 정리를 맡는다. 프로세스를 확인할 길이 없는 host(Linux 밖)에서 준비 중에 서버가 다시 시작하면 결과 모름이 아니라 "준비 실패"로 보인다.
   - 성공은 아무것도 보이지 않는다. 설명 줄은 두지 않는다.
 - **출력.** 앞부분과 끝부분만 한정해 남긴다. 이 컴퓨터에만 있고, 실행 이벤트, 내보내기, 에이전트의 컨텍스트에 넣지 않는다. 에이전트는 준비의 결과를 듣지 않는다.
 
@@ -56,7 +56,7 @@
   - 읽기는 준비를 시작하거나 다시 돌리지 않는다.
 - **생명 주기.** 준비 하나는 사람 작업 receipt 하나다(`workbench_operations`, 종류 `setup`). [배포 작업](../workbench.md#배포-작업과-결과-확인)과 같은 원장, 같은 소유 프로세스 정리를 쓴다.
   - 상태는 `running`에서 `succeeded` · `failed` · `cancelled` · `uncertain` 가운데 하나로 끝난다.
-  - `reason`: `command_failed`(0이 아닌 종료 코드), `command_timeout`, `launch_failed`(셸이 없음, host 프로세스 상한, 그 밖에 시작하지 못함), `stopped`, `trust_revoked`, `interrupted`(서버가 멈춘 동안 끝났음을 확인).
+  - `reason`: `command_failed`(0이 아닌 종료 코드), `command_timeout`, `launch_failed`(셸이 없음, host 프로세스 상한, 그 밖에 시작하지 못함), `stopped`, `trust_revoked`, `interrupted`(서버가 멈춘 동안 끝났음을 확인), `interrupted_unconfirmed`(프로세스를 확인할 길이 없는 host에서 서버가 다시 시작함).
   - target은 사본의 `WorkspaceTarget`(host, project, binding, session, copy generation)이다. receipt는 시작할 때 준비 명령 글의 hash를 고정한다.
   - 도는 준비는 사본의 owner다. 공유 개발 모드의 host에서는 task · 터미널 같은 다른 사람 작업과 나란히 돌고, 공유를 허용하지 않는 host에서는 사본의 writer를 잡는다([공유 개발 모드](../workbench.md#공유-개발-모드)). 어느 host에서든 도는 동안 그 사본의 쓰는 에이전트 실행 자리를 잡는다. 거절의 `owner`는 `{ kind: 'operation', operationKind: 'setup' }`이다.
 - **자동 시작.** 새 사본을 만든 명령이 끝나면 서버가 준비를 시작한다. operation ID는 세션과 copy generation에서 정해진다. 그래서 같은 generation의 자동 준비는 한 번이다. 같은 서브세션 열기 명령을 다시 보내도 준비는 다시 돌지 않는다.
@@ -77,10 +77,9 @@
   - 예약, 재개, `forkFrom`이 있는 시작은 409 `RUN_ALREADY_ACTIVE`이고 `owner`는 그 준비다.
   - 준비가 `running`이 아닌 상태로 끝나면 대기열이 한 번 돈다. 이전 generation의 준비가 끝나는 것은 대기열을 움직이지 않는다.
 - **늦은 결과.** 준비의 결과는 그 receipt의 target에만 기록된다. receipt가 이미 끝났거나 copy generation이 지금 사본과 다르면 늦은 결과는 아무것도 바꾸지 않는다. 사본의 `setup`은 지금 generation의 준비만 보인다.
-- **서버 재시작.** 재시작하면 `running`이던 준비는 원장의 복구 규칙대로 `uncertain`이 된다. 명령을 다시 돌리지 않는다.
-  - 저장해 둔 프로세스 identity로 그 process group이 사라졌음을 확인하면 상태를 읽을 때 `failed`(`interrupted`)로 정리한다. 확인하지 못하면 `uncertain`으로 남고, 중지가 정리를 확인할 때 끝난다.
-  - 프로세스 identity는 Linux에서만 남는다. 그 밖의 host에서는 재시작 뒤 정리를 확인할 길이 없어 준비가 `uncertain`으로 남는다.
-  - `uncertain`인 동안은 정리되지 않은 owner의 규칙([공유 개발 모드](../workbench.md#공유-개발-모드))대로 그 사본에 새 효과를 접수하지 않는다. 대기 요청은 시작하지 않는다.
+- **서버 재시작.** 재시작하면 `running`이던 준비의 명령을 다시 돌리지 않는다. 프로세스 identity가 남았는지에 따라 둘로 나뉜다. identity는 Linux에서만 남는다.
+  - identity가 있으면 원장의 복구 규칙대로 `uncertain`이 된다. 그 identity로 process group이 사라졌음을 확인하면 상태를 읽을 때 `failed`(`interrupted`)로 정리한다. 확인하지 못하면 `uncertain`으로 남고, 중지가 정리를 확인할 때 끝난다. `uncertain`인 동안은 정리되지 않은 owner의 규칙([공유 개발 모드](../workbench.md#공유-개발-모드))대로 그 사본에 새 효과를 접수하지 않는다.
+  - identity가 없으면 재시작할 때 확인 없이 `failed`(`interrupted_unconfirmed`)로 끝난다. 사본을 잡지 않고 host 프로세스 상한도 쓰지 않는다. 남은 프로세스가 있으면 그것이 사본에 계속 쓸 수 있고, 공유 개발 모드의 다른 사람 작업처럼 막지 않는다. [배포](../workbench.md#배포-작업과-결과-확인)는 이 규칙을 따르지 않는다.
   - 재시작으로 표시가 없어졌으므로, 정리를 확인해 준비가 끝나도 대기 요청은 [재시작 뒤의 규칙](composer-flow.md#대기-요청과-넘겨받기)대로 스스로 시작하지 않는다.
 - **사본 지우기.** `running`이거나 `uncertain`인 준비는 사본을 잡은 owner다. [사본 삭제](../api-contract.md)와 세션 삭제는 그 동안 거절되고, 삭제 전 요약의 owner에 `setup`으로 보인다. 지우려면 먼저 준비를 멈춘다.
 - **신뢰 해제.** 준비는 시작 바로 전에 저장소 신뢰를 다시 확인한다. 신뢰하지 않으면 시작하지 않고 `failed`(`launch_failed`)다.
@@ -220,8 +219,16 @@ Scenario: 이전 사본의 늦은 결과
   Given 사본 generation 1에서 시작한 준비의 결과가 generation 2의 사본이 생긴 뒤에 도착한다
   Then generation 2의 setup과 대기열은 바뀌지 않는다
 
-Scenario: 준비 중에 서버가 다시 시작한다
-  Given 준비가 돌고 있고 대기 줄에 요청이 있다
+Scenario: Linux 밖에서 준비 중에 서버가 다시 시작한다
+  Given macOS에서 준비가 돌고 있고 대기 줄에 준비 중에 보낸 요청이 있다
+  When 서버가 다시 시작한다
+  Then 준비는 failed(interrupted_unconfirmed)이고 명령은 다시 돌지 않는다
+  And Paddock 머리에 "준비 실패"와 다시 준비가 보인다
+  And 그 사본은 새 실행을 받고, 사본과 세션을 지울 수 있다
+  And 대기 요청은 사람이 시작할 때까지 남는다
+
+Scenario: Linux에서 준비 중에 서버가 다시 시작한다
+  Given Linux에서 준비가 돌고 있고 대기 줄에 요청이 있다
   When 서버가 다시 시작한다
   Then 준비는 uncertain이고 명령은 다시 돌지 않는다
   And 그 사본은 새 효과를 접수하지 않고 대기 요청은 시작하지 않는다
