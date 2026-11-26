@@ -242,7 +242,7 @@ export interface FileChange {
   /**
    * Who the observed result can be credited to: `managed_agent` when the file is as
    * Corral's last applied write or delete left it, `mixed` when Corral changed it and something
-   * else changed it afterwards, `external_observed` when Corral never changed it.
+   * else changed it afterwards, `external_observed` when no file tool of Corral's wrote it.
    */
   provenance: 'managed_agent' | 'mixed' | 'external_observed';
   /** Git blob ids of the two sides (null when absent): a file's identity for "reviewed". */
