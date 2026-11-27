@@ -428,7 +428,7 @@ export function ScheduledPage() {
       <Page
         title={shell('automation')}
         // Without the local server there is nothing to create; the empty state says why.
-        {...(mode === 'server'
+        {...(mode === 'server' && !(empty && !schedules.length)
           ? {
               toolbar: (
                 <div className="flex flex-wrap items-center gap-2">
@@ -527,7 +527,17 @@ export function ScheduledPage() {
             </Table>
           </div>
         ) : editing || !empty ? null : (
-          <EmptyState title={empty.title} text={empty.text} />
+          <EmptyState
+            title={empty.title}
+            text={empty.text}
+            action={
+              mode === 'server' ? (
+                <Button variant="primary" disabled={!sessions.length || busy} onClick={create}>
+                  {t('new')}
+                </Button>
+              ) : undefined
+            }
+          />
         )}
         {/* Where no empty state carries it, the reason New schedule is disabled stays on screen. */}
         {needsSession && !editing && !(empty && !schedules.length) ? (
