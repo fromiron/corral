@@ -6944,7 +6944,9 @@
       "redirect": "The address sent the request elsewhere. Check the address.",
       "unsupported": "No model list at this address. Check that it ends where /models is (often /v1).",
       "connection": "Couldn’t reach the address. Check it and that the server is running."
-    }
+    },
+    "listFailed": "The model list could not be read.",
+    "listFailedBecause": "The model list could not be read: {message}"
   },
   "ProfileEditor": {
     "heading": "Profiles",

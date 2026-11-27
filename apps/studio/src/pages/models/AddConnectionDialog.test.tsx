@@ -730,6 +730,37 @@ describe('Add connection', () => {
     vi.useRealTimers();
   });
 
+  it('stops saying it reads once the re-reads are used up, says why, and reads again on Try again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fixture.models = { setApiKey: vi.fn(async () => []) };
+    let offline = false;
+    fixture.refresh = vi.fn(async () => {
+      if (offline) throw new Error('offline');
+      root.render(page(currentStart));
+    });
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-fake-0000');
+    await click(control('Connect'));
+    await faceSettles();
+    expect(statusText()).toBe(messages.AddConnection.reading);
+    offline = true;
+    for (let read = 0; read < 25; read++) await nextRead();
+    expect(alertText()).toBe(
+      messages.AddConnection.listFailedBecause.replace('{message}', 'offline'),
+    );
+    expect(document.body.textContent).not.toContain(messages.AddConnection.reading);
+    offline = false;
+    state.profiles = [model('mistral', 'mistral-large')];
+    await click(control(messages.AddConnection.tryAgain));
+    await nextRead();
+    await faceSettles();
+    expect(alertText()).toBe('');
+    expect(statusText()).toContain('1 model ready');
+    vi.useRealTimers();
+  });
+
   it('does not say a key failed when only reading the lists after saving it failed', async () => {
     fixture.models = { setApiKey: vi.fn(async () => []) };
     fixture.refresh = vi.fn(async () => {

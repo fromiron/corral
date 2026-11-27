@@ -53,7 +53,7 @@ const ADDRESS = '__address';
 const READ_EVERY = 1500;
 /** Reads after a sign-in left the list with no connection showing before it counts as ended. */
 const SETTLE_READS = 3;
-/** Reads of a found face's model list before it stops asking (it keeps saying it is reading). */
+/** Reads of a found face's model list before it stops asking and says the read failed. */
 const LIST_READS = 20;
 
 /** A sign-in the dialog follows: started by a face, or picked up from the lists. */
@@ -374,29 +374,46 @@ function FoundFace({
   const unique = [...new Map(found.map((item) => [item.id, item])).values()];
   const reading = unique.length === 0;
   const [reads, setReads] = useState(0);
+  const [cause, setCause] = useState<string | null>(null);
+  const stopped = reading && reads >= LIST_READS;
   useEffect(() => {
     if (!reading || reads >= LIST_READS) return;
     const timer = setTimeout(() => {
       void refresh()
-        .catch(() => {})
+        .then(
+          () => setCause(null),
+          (failure: unknown) =>
+            setCause(failure instanceof Error ? failure.message : String(failure)),
+        )
         .finally(() => setReads((n) => n + 1));
     }, READ_EVERY);
     return () => clearTimeout(timer);
   }, [reading, reads, refresh]);
   return (
     <div className="grid gap-4">
-      <ConnectionDiscovery
-        working={reading}
-        items={unique}
-        labels={{
-          reading: t('reading'),
-          before: t('foundBefore'),
-          after: (count) => t('foundAfter', { count }),
-          list: t('foundList'),
-          more: (count) => t('more', { count }),
-        }}
-      />
-      <div className="flex justify-end">
+      {stopped ? (
+        <p role="alert" className="m-0 text-body text-danger">
+          {cause ? t('listFailedBecause', { message: cause }) : t('listFailed')}
+        </p>
+      ) : (
+        <ConnectionDiscovery
+          working={reading}
+          items={unique}
+          labels={{
+            reading: t('reading'),
+            before: t('foundBefore'),
+            after: (count) => t('foundAfter', { count }),
+            list: t('foundList'),
+            more: (count) => t('more', { count }),
+          }}
+        />
+      )}
+      <div className="flex items-center justify-end gap-2">
+        {stopped ? (
+          <Button variant="tertiary" onClick={() => setReads(0)}>
+            {t('tryAgain')}
+          </Button>
+        ) : null}
         <Button variant="primary" onClick={onDone}>
           {t('done')}
         </Button>

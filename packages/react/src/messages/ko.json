@@ -6944,7 +6944,9 @@
       "redirect": "주소가 요청을 다른 곳으로 보냈습니다. 주소를 확인하세요.",
       "unsupported": "이 주소에서 모델 목록을 찾지 못했습니다. API 기본 경로(보통 /v1)까지 적었는지 확인하세요.",
       "connection": "주소에 닿지 않습니다. 주소와 서버가 켜져 있는지 확인하세요."
-    }
+    },
+    "listFailed": "모델 목록을 읽지 못했습니다.",
+    "listFailedBecause": "모델 목록을 읽지 못했습니다: {message}"
   },
   "ProfileEditor": {
     "heading": "프로필",
