@@ -164,6 +164,15 @@ describe('design guard (Workbench polish P0)', () => {
     expect(found).toEqual([]);
   });
 
+  it('marks keyboard focus with the focus ring color, never the field border color', () => {
+    const found = [...text].flatMap(([path, source]) =>
+      [...source.matchAll(/focus(?:-visible)?:ring-(?:ring|input)\b/g)].map(
+        (m) => `${where(path)}: ${m[0]}`,
+      ),
+    );
+    expect(found).toEqual([]);
+  });
+
   it('uses one select on the workbench screens, never a native one', () => {
     const workbench = [
       ...files(join(root, 'apps/studio/src/workbench'), /\.tsx$/),
