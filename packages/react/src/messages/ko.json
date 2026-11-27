@@ -648,7 +648,12 @@
       "accept_edits": "편집 허용",
       "auto": "자동"
     },
-    "retry": "다시 시도"
+    "retry": "다시 시도",
+    "changedElsewhere": "이 예약은 연 뒤에 다른 곳에서 바뀌었습니다.",
+    "loadLatest": "최신 내용 불러오기",
+    "saveMine": "내 편집 저장",
+    "zoneUnknown": "알 수 없는 시간대입니다. Asia/Seoul이나 UTC 같은 이름을 쓰세요.",
+    "deletedElsewhere": "이 예약은 다른 곳에서 삭제됐습니다. 양식을 닫으면 지금 목록이 보입니다."
   },
   "Status": {
     "running": "진행 중",

@@ -607,3 +607,90 @@ it('keeps the reason New schedule is disabled after a failed read, and never cla
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(button('New schedule').disabled).toBe(false);
 });
+
+const form = () => container.querySelector<HTMLFormElement>('form');
+const refused = (message: string, status: number) => Object.assign(new Error(message), { status });
+
+it('a refused save shows its reason inside the form, right above Save, and moves focus to it', async () => {
+  fixture.api.create.mockRejectedValueOnce(refused('Choose a future occurrence.', 400));
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await click(button('Save schedule'));
+  await settle();
+  const alert = form()?.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert?.textContent).toContain('Choose a future occurrence.');
+  expect(alert?.compareDocumentPosition(button('Save schedule'))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(alert?.contains(document.activeElement)).toBe(true);
+  // Nothing says it again above the list.
+  expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+});
+
+it('an unknown time zone is that field’s own error and nothing is sent', async () => {
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await type(field('Time zone'), 'Mars/Olympus');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).not.toHaveBeenCalled();
+  const zone = field('Time zone');
+  expect(zone.getAttribute('aria-invalid')).toBe('true');
+  expect(document.getElementById(zone.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+    messages.Schedules.zoneUnknown,
+  );
+  expect(document.activeElement).toBe(zone);
+  await type(zone, 'UTC');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).toHaveBeenCalledTimes(1);
+});
+
+it('a schedule changed elsewhere keeps the typed form until Load the latest or Save mine', async () => {
+  const stored = schedule({ revision: 3, title: 'Changed elsewhere' });
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.update.mockRejectedValueOnce(refused('Schedule changed. Reload before saving.', 409));
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine');
+  fixture.api.list.mockResolvedValue({ schedules: [stored] });
+  await click(button('Save schedule'));
+  await settle();
+  const alert = form()?.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert?.textContent).toContain(messages.Schedules.changedElsewhere);
+  expect(alert?.textContent).not.toContain('Reload before saving');
+  expect(field('Title').value).toBe('Mine');
+  fixture.api.update.mockImplementationOnce(async (current: Schedule, draft: ScheduleDraft) =>
+    schedule({ ...current, ...draft, revision: current.revision + 1 }),
+  );
+  await click(button(messages.Schedules.saveMine));
+  await settle();
+  expect(fixture.api.update).toHaveBeenLastCalledWith(
+    expect.objectContaining({ revision: 3 }),
+    expect.objectContaining({ title: 'Mine' }),
+  );
+  expect(form()).toBeNull();
+});
+
+it('Load the latest replaces the typed form with the stored schedule', async () => {
+  const stored = schedule({ revision: 3, title: 'Changed elsewhere' });
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.update.mockRejectedValueOnce(refused('Schedule changed. Reload before saving.', 409));
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine');
+  fixture.api.list.mockResolvedValue({ schedules: [stored] });
+  await click(button('Save schedule'));
+  await settle();
+  await click(button(messages.Schedules.loadLatest));
+  await settle();
+  expect(field('Title').value).toBe('Changed elsewhere');
+  expect(form()?.querySelector('[role="alert"]')).toBeNull();
+  expect(fixture.api.update).toHaveBeenCalledTimes(1);
+});
