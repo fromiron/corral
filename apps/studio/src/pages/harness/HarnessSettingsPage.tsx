@@ -438,7 +438,7 @@ function HarnessSettingsEditor({ projectId }: { projectId: string | undefined })
                   </Button>
                 </div>
                 <ul
-                  className="flex max-h-48 flex-col gap-1 overflow-auto"
+                  className="-m-1 flex max-h-48 scroll-py-2 flex-col gap-1 overflow-auto p-1"
                   aria-label={t('profile')}
                 >
                   {profiles

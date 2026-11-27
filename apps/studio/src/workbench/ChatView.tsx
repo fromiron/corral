@@ -1,6 +1,7 @@
 import {
   Button,
   cn,
+  focusRingInset,
   LiveDot,
   MenuRadioGroup,
   MenuRadioItem,
@@ -725,7 +726,7 @@ export function ChatView({
         tabIndex={0}
         aria-label={t('conversation')}
         // A focused row scrolls into view above the composer, not behind it.
-        className={`chat-timeline min-h-0 overscroll-contain scroll-pb-(--composer-h) ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
+        className={`chat-timeline min-h-0 overscroll-contain scroll-pb-(--composer-h) ${focusRingInset} ${centered ? 'mt-auto flex-none' : 'flex-1 overflow-y-auto'}`}
         onWheel={(event) => {
           const box = timeline.current;
           if (!box || scrollingNested(event.target, box)) return;

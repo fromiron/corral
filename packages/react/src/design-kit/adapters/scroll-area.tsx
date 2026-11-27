@@ -54,7 +54,7 @@ function ScrollArea({
         'overscroll-contain focus-visible:outline-2 focus-visible:outline-focus-ring',
         chainVerticalScroll && 'overscroll-y-auto',
         scrollFade && 'scroll-fade focus-visible:mask-none',
-        scrollFade && scrollFadePadding && 'scroll-p-6',
+        scrollFade && scrollFadePadding ? 'scroll-p-6' : 'scroll-py-2',
         scrollFade && !scrollFadePadding && 'has-focus-visible:mask-none',
         scrollbarGutter && 'scrollbar-gutter-stable',
         hideScrollbars && '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',

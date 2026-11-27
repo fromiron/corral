@@ -231,7 +231,7 @@ export function AgentPicker({
             <TabPanel
               value={tab}
               tabIndex={-1}
-              className="min-h-0 min-w-0 overflow-y-auto overscroll-contain"
+              className="-m-1 min-h-0 min-w-0 scroll-py-2 overflow-y-auto overscroll-contain p-1"
             >
               {tab === 'mine' && agentLibrary?.status === 'failed' ? (
                 <div className="grid justify-items-start gap-2">

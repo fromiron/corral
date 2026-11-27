@@ -256,7 +256,12 @@ export function StructureTree({
         </Button>
       </div>
       {/* Stacked, a long outline scrolls in itself, so the canvas stays near the top. */}
-      <ul className={cn('overflow-y-auto px-2 pb-2', stacked ? 'max-h-60' : 'min-h-0 flex-1')}>
+      <ul
+        className={cn(
+          '-mt-1 scroll-py-2 overflow-y-auto px-2 pt-1 pb-2',
+          stacked ? 'max-h-60' : 'min-h-0 flex-1',
+        )}
+      >
         {children(null).map((node) => row(node, 0))}
       </ul>
       {/* What belongs to the whole team stands under its steps, as in the composition list. */}

@@ -63,11 +63,12 @@ export function DialogDescription(props: ComponentProps<typeof KitDialogDescript
 }
 export function DialogPanel({
   scrollFade = true,
+  className,
   ...props
 }: ComponentProps<'div'> & { scrollFade?: boolean }) {
   return (
-    <ScrollArea scrollFade={scrollFade}>
-      <div data-slot="dialog-panel" {...props} />
+    <ScrollArea scrollFade={scrollFade} className="-m-1 w-[calc(100%+0.5rem)]">
+      <div data-slot="dialog-panel" className={cn('p-1', className)} {...props} />
     </ScrollArea>
   );
 }
