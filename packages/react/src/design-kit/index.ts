@@ -283,6 +283,7 @@ export {
   CommandMenuDialog,
   type CommandMenuDialogProps,
   CommandMenuEmpty,
+  CommandMenuFilters,
   CommandMenuFooter,
   CommandMenuInput,
   CommandMenuItem,

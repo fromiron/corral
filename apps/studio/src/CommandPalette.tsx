@@ -1,13 +1,29 @@
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { usePresenceWord } from '@corral/react';
-import { Button, fontWeights, Kbd } from '@corral/react/design-kit';
+import {
+  Button,
+  CommandMenu,
+  CommandMenuDialog,
+  CommandMenuEmpty,
+  CommandMenuFilters,
+  CommandMenuInput,
+  CommandMenuItem,
+  type CommandMenuItemData,
+  CommandMenuList,
+  Dialog,
+  DialogHeader,
+  DialogPanel,
+  DialogPopup,
+  DialogTitle,
+  fontWeights,
+  Kbd,
+} from '@corral/react/design-kit';
 import { useNavigate, useRouterState } from '@tanstack/react-router';
 import {
   type KeyboardEvent,
   type RefObject,
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState,
@@ -95,7 +111,8 @@ const NO_PROJECTS: readonly ProjectSummary[] = [];
 
 /**
  * ⌘K / Ctrl+K command palette and ? shortcut help for the whole Studio (roadmap UX-A5).
- * Modal, keyboard first, IME safe; focus returns where it was on close.
+ * A kit dialog: focus stays inside, Escape closes it from any control, IME safe; focus returns
+ * where it was on close.
  */
 export function CommandLayer({
   sessions,
@@ -372,36 +389,12 @@ function useGlobalCommands(showHelp: () => void) {
   ]);
 }
 
-export function Modal({
-  label,
-  onClose,
-  children,
-}: {
-  label: string;
-  onClose: () => void;
-  children: React.ReactNode;
-}) {
-  // Over the whole screen, so over a browser tab's page too: the page is a picture meanwhile.
+const everyRow = () => true;
+
+/** While a dialog covers the screen a browser tab's page is a picture. */
+function HoldPages() {
   useEffect(() => holdPages(), []);
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/40 pt-[12vh]">
-      <button
-        type="button"
-        aria-hidden="true"
-        tabIndex={-1}
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-      />
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={label}
-        className="relative w-[min(36rem,calc(100vw-2rem))] rounded-lg border border-line bg-raised shadow-xl"
-      >
-        {children}
-      </div>
-    </div>
-  );
+  return null;
 }
 
 /**
@@ -437,15 +430,13 @@ export function Palette({
   const hereProject = projects.find((project) => project.projectId === here);
   const [scope, setScope] = useState<'project' | 'all'>(projectId ? 'project' : 'all');
   const searchAll = scope === 'all' || !hereProject;
-  const [active, setActive] = useState(0);
+  const [highlighted, setHighlighted] = useState<string | null>(null);
   const [dynamic, setDynamic] = useState<AppCommand[]>([]);
   const [runDetails, setRunDetails] = useState<Record<string, RunSummary>>({});
   const registered = useRegisteredCommands();
-  const listId = useId();
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    inputRef.current?.focus();
     let live = true;
     void Promise.all([
       services.repository.list(),
@@ -682,17 +673,28 @@ export function Palette({
         ]
       : [];
   const ranked = [...(rankCommands(query, commands) as AppCommand[]), ...textSearch];
-  // One heading per group, in the order the groups first appear in the ranking.
-  const grouped = new Map<string, AppCommand[]>();
-  for (const command of ranked)
-    grouped.set(command.group, [...(grouped.get(command.group) ?? []), command]);
-  const shown = [...grouped.values()].flat();
-  const current = Math.min(active, Math.max(0, shown.length - 1));
-  const selectedRun = runDetails[shown[current]?.id ?? ''];
+  const byId = new Map(ranked.map((command) => [command.id, command]));
+  const items = ranked.map((command): CommandMenuItemData => {
+    const run = runDetails[command.id];
+    const detail =
+      sessionProjects.get(command.id) ??
+      (run
+        ? `${status(run.status)} · ${format.dateTime(new Date(run.startedAt), {
+            dateStyle: 'short',
+            timeStyle: 'medium',
+          })}`
+        : undefined);
+    return {
+      value: command.id,
+      label: command.title,
+      group: command.group,
+      ...(detail ? { description: detail } : {}),
+      ...(command.disabled ? { disabled: true } : {}),
+    };
+  });
+  const selectedRun = runDetails[highlighted ?? ''];
   const chooseScope = (next: 'project' | 'all') => {
     setScope(next);
-    setActive(0);
-    // The list follows the field's keys, so the field keeps focus after a click.
     inputRef.current?.focus();
   };
   const runCommand = async (command: AppCommand | undefined) => {
@@ -700,168 +702,114 @@ export function Palette({
     onClose();
     await command.run();
   };
-  const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    if (event.nativeEvent.isComposing || event.keyCode === 229) return;
-    if (event.key === 'ArrowDown') {
-      event.preventDefault();
-      setActive((current + 1) % Math.max(1, shown.length));
-    } else if (event.key === 'ArrowUp') {
-      event.preventDefault();
-      setActive((current - 1 + shown.length) % Math.max(1, shown.length));
-    } else if (event.key === 'Enter') {
-      event.preventDefault();
-      void runCommand(shown[current]);
-    } else if (event.key === 'Escape') {
-      event.preventDefault();
-      onClose();
-    }
-  };
+  const placeholder = mode === 'sessions' ? t('sessionPlaceholder') : t('placeholder');
 
   return (
-    <Modal label={t('label')} onClose={onClose}>
-      <input
-        ref={inputRef}
-        role="combobox"
-        aria-label={mode === 'sessions' ? t('sessionSearch') : t('search')}
-        aria-expanded="true"
-        aria-controls={listId}
-        aria-activedescendant={shown[current] ? `${listId}-${current}` : undefined}
-        aria-autocomplete="list"
-        value={query}
-        placeholder={mode === 'sessions' ? t('sessionPlaceholder') : t('placeholder')}
-        onChange={(event) => {
-          setQuery(event.target.value);
-          setActive(0);
-        }}
-        onKeyDown={onKeyDown}
-        className="w-full rounded-t-lg border-b border-line bg-transparent px-3 py-2.5 text-body outline-none"
-      />
-      <fieldset
-        aria-label={t('scope')}
-        className="flex min-w-0 flex-wrap items-center gap-1 px-2 py-1.5"
+    <CommandMenuDialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+      shortcut={null}
+      title={t('label')}
+      description={placeholder}
+    >
+      <HoldPages />
+      <CommandMenu
+        items={items}
+        query={query}
+        onQueryChange={setQuery}
+        filter={everyRow}
+        closeOnSelect={false}
+        onSelect={(item) => void runCommand(byId.get(item.value))}
+        onHighlightChange={(item) => setHighlighted(item?.value ?? null)}
       >
-        {hereProject ? (
-          <Button
-            variant={searchAll ? 'ghost' : 'secondary'}
-            size="compact"
-            aria-pressed={!searchAll}
-            onClick={() => chooseScope('project')}
-          >
-            {projectName(hereProject, tp('defaultName'))}
-          </Button>
-        ) : null}
-        <Button
-          variant={searchAll ? 'secondary' : 'ghost'}
-          size="compact"
-          aria-pressed={searchAll}
-          onClick={() => chooseScope('all')}
-        >
-          {t('allProjects')}
-        </Button>
-      </fieldset>
-      <div
-        id={listId}
-        role="listbox"
-        aria-label={t('results')}
-        className="max-h-80 overflow-auto p-1"
-      >
-        {shown.length === 0 ? (
-          <p className="px-2 py-1.5 text-body text-muted-foreground">{t('none')}</p>
-        ) : null}
-        {[...grouped].map(([group, list]) => (
-          // biome-ignore lint/a11y/useSemanticElements: a listbox's option groups are ARIA groups
-          <div key={group} role="group" aria-label={group}>
-            <p
-              className="px-2 pt-2 pb-1 text-2xs text-muted-foreground"
-              style={{ fontVariationSettings: fontWeights.semibold }}
+        <CommandMenuInput
+          ref={inputRef}
+          aria-label={mode === 'sessions' ? t('sessionSearch') : t('search')}
+          placeholder={placeholder}
+        />
+        <CommandMenuFilters role="group" aria-label={t('scope')}>
+          {hereProject ? (
+            <Button
+              variant={searchAll ? 'ghost' : 'secondary'}
+              aria-pressed={!searchAll}
+              onClick={() => chooseScope('project')}
             >
-              {group}
-            </p>
-            {list.map((command) => {
-              const index = shown.indexOf(command);
-              const run = runDetails[command.id];
-              const where = sessionProjects.get(command.id);
-              return (
-                <div
-                  key={command.id}
-                  id={`${listId}-${index}`}
-                  role="option"
-                  // Focus stays in the search field; the active option is aria-activedescendant.
-                  tabIndex={-1}
-                  aria-selected={index === current}
-                  aria-disabled={command.disabled ? true : undefined}
-                  onMouseMove={() => setActive(index)}
-                  onMouseDown={(event) => {
-                    event.preventDefault();
-                    void runCommand(command);
-                  }}
-                  className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-ui ${
-                    index === current ? 'bg-subtle' : ''
-                  } ${command.disabled ? 'opacity-50' : ''}`}
-                >
-                  <span className="min-w-0 flex-1">
-                    <span className="block truncate">{command.title}</span>
-                    {where ? (
-                      <span className="block truncate text-caption text-muted-foreground">
-                        {where}
-                      </span>
-                    ) : null}
-                    {run ? (
-                      <span className="block text-caption text-muted-foreground">
-                        {status(run.status)} ·{' '}
-                        {format.dateTime(new Date(run.startedAt), {
-                          dateStyle: 'short',
-                          timeStyle: 'medium',
-                        })}
-                      </span>
-                    ) : null}
+              {projectName(hereProject, tp('defaultName'))}
+            </Button>
+          ) : null}
+          <Button
+            variant={searchAll ? 'secondary' : 'ghost'}
+            aria-pressed={searchAll}
+            onClick={() => chooseScope('all')}
+          >
+            {t('allProjects')}
+          </Button>
+        </CommandMenuFilters>
+        <CommandMenuList
+          aria-label={t('results')}
+          renderItem={(item) => {
+            const command = byId.get(item.value);
+            return (
+              <CommandMenuItem value={item.value} className="text-foreground">
+                <span className="flex min-w-0 flex-1 items-baseline gap-2">
+                  <span className="-my-1 truncate py-1 [text-box:trim-both_cap_alphabetic]">
+                    {item.label}
                   </span>
-                  {command.disabled && command.hint ? (
-                    <span className="text-2xs text-muted-foreground">{command.hint}</span>
-                  ) : command.slash ? (
-                    <span className="font-mono text-2xs text-muted-foreground">
-                      /{command.slash}
+                  {item.description ? (
+                    <span className="-my-1 min-w-0 truncate py-1 text-muted-foreground [text-box:trim-both_cap_alphabetic]">
+                      {item.description}
                     </span>
                   ) : null}
-                  {command.shortcut ? <Kbd>{command.shortcut}</Kbd> : null}
-                </div>
-              );
-            })}
-          </div>
-        ))}
-      </div>
-      {selectedRun ? (
-        <details
-          key={selectedRun.runId}
-          className="border-t border-line px-3 py-2 text-caption text-muted-foreground"
+                </span>
+                {command?.disabled && command.hint ? (
+                  <span className="shrink-0 text-2xs text-muted-foreground">{command.hint}</span>
+                ) : command?.slash ? (
+                  <span className="shrink-0 font-mono text-2xs text-muted-foreground">
+                    /{command.slash}
+                  </span>
+                ) : null}
+                {command?.shortcut ? <Kbd>{command.shortcut}</Kbd> : null}
+              </CommandMenuItem>
+            );
+          }}
         >
-          <summary>{ti('details')}</summary>
-          <code className="select-text break-all">{selectedRun.runId}</code>
-        </details>
-      ) : null}
-    </Modal>
+          <CommandMenuEmpty>{t('none')}</CommandMenuEmpty>
+        </CommandMenuList>
+        {selectedRun ? (
+          <details
+            key={selectedRun.runId}
+            className="shrink-0 border-t border-border/60 px-4 py-2 text-caption text-muted-foreground"
+          >
+            <summary>{ti('details')}</summary>
+            <code className="select-text break-all">{selectedRun.runId}</code>
+          </details>
+        ) : null}
+      </CommandMenu>
+    </CommandMenuDialog>
   );
 }
 
 function ShortcutHelp({ onClose }: { onClose: () => void }) {
   const t = useTranslations('Shortcuts');
-  const closeRef = useRef<HTMLButtonElement>(null);
-  // UX-12: focus starts at the top, so the dialog opens on its title and first shortcut.
-  useEffect(() => closeRef.current?.focus({ preventScroll: true }), []);
   return (
-    <Modal label={t('label')} onClose={onClose}>
-      <div className="flex max-h-[70vh] flex-col text-body">
-        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-4 py-3">
-          <h2 style={{ fontVariationSettings: fontWeights.semibold }}>{t('label')}</h2>
-          <Button ref={closeRef} variant="ghost" size="compact" onClick={onClose}>
-            {t('closeButton')}
-          </Button>
-        </div>
-        <div className="min-h-0 overflow-auto px-4 py-3">
+    <Dialog
+      open
+      onOpenChange={(next) => {
+        if (!next) onClose();
+      }}
+    >
+      <DialogPopup size="lg">
+        <HoldPages />
+        <DialogHeader>
+          <DialogTitle>{t('label')}</DialogTitle>
+        </DialogHeader>
+        <DialogPanel>
           <ShortcutTable />
-        </div>
-      </div>
-    </Modal>
+        </DialogPanel>
+      </DialogPopup>
+    </Dialog>
   );
 }
 
