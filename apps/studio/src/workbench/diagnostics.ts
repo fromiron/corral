@@ -23,7 +23,7 @@ export interface DiagnosticsReport {
     | { state: 'ready'; providers: ProviderAuthView[]; profiles: ModelProfileView[] };
   /** The settings target project's source folder. */
   folder:
-    | { state: 'server-only' | 'no-project' | 'loading' | 'unbound' }
+    | { state: 'server-only' | 'no-project' | 'loading' | 'failed' | 'unbound' }
     | { state: 'bound'; path: string; trusted: boolean; missing: boolean; isGit: boolean };
   /** The server's path search engine; the browser demo searches with the built-in one. */
   pathEngine: { state: 'loading' | 'failed' } | { state: 'loaded'; status: PathEngineStatus };
@@ -135,6 +135,8 @@ function folderRow(folder: DiagnosticsReport['folder']): DiagnosticRow {
       return { id, tone: 'neutral', status: 'noProject', causes: [] };
     case 'loading':
       return { id, tone: 'neutral', status: 'loading', causes: [] };
+    case 'failed':
+      return { id, tone: 'error', status: 'failed', causes: [], action: 'retry' };
     case 'unbound':
       return { id, tone: 'attention', status: 'unbound', causes: [], action: 'workspace' };
   }

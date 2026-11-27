@@ -85,7 +85,7 @@ export function useBinding(projectId: string | null) {
 export function WorkFolderSection({ projectId }: { projectId: string }) {
   const t = useTranslations('Files');
   const { workspaces, mode } = useServices();
-  const { binding, reload } = useBinding(projectId);
+  const { binding, failed, reload } = useBinding(projectId);
   const [path, setPath] = useState(mode === 'browser' ? 'demo://example-repo' : '');
   const [checks, setChecks] = useState<string | null>(null);
   const [setup, setSetup] = useState<string | null>(null);
@@ -96,7 +96,19 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
     dirty: (mode === 'server' && !binding && Boolean(path)) || checks !== null || setup !== null,
     pending,
   });
-  if (!workspaces || binding === undefined) return null;
+  if (!workspaces) return null;
+  if (failed)
+    return (
+      <div className="flex flex-col items-start gap-2">
+        <p role="alert" className="m-0 text-body text-destructive">
+          {t('folderReadFailed', { message: failed })}
+        </p>
+        <Button variant="tertiary" onClick={() => void reload()}>
+          {t('retry')}
+        </Button>
+      </div>
+    );
+  if (binding === undefined) return null;
   const act = async (work: () => Promise<unknown>) => {
     setPending(true);
     setError(null);

@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { WorkingCopyPanel } from './FilesViews.tsx';
+import { WorkFolderSection, WorkingCopyPanel } from './FilesViews.tsx';
 
 // docs/specs/workbench.md: a failed folder or Paddock read is never taken as "none".
 
@@ -17,10 +17,14 @@ vi.mock('../services.tsx', () => {
     binding: (projectId: string) => fixture.binding(projectId),
     worktree: (sessionId: string) => fixture.worktree(sessionId),
   };
-  return { useServices: () => ({ workspaces }) };
+  return { useServices: () => ({ workspaces, mode: 'server' }) };
 });
 vi.mock('../workbench/navigation.ts', () => ({
   useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+}));
+vi.mock('../workbench/SettingsLifecycle.tsx', () => ({
+  useSettingsForm: () => async () => true,
+  useSettingsTask: () => (work: () => Promise<unknown>) => work(),
 }));
 vi.mock('../workbench/CheckpointPanel.tsx', () => ({ CheckpointPanel: () => null }));
 vi.mock('../workbench/CopyRemovalDialog.tsx', () => ({ CopyRemovalDialog: () => null }));
@@ -36,7 +40,9 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render() {
+async function render(
+  view: ReactNode = <WorkingCopyPanel sessionId="session" projectId="project" />,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   const container = document.createElement('div');
   document.body.append(container);
@@ -48,7 +54,7 @@ async function render() {
   await act(async () =>
     root.render(
       <IntlProvider locale="en" messages={messages} timeZone="UTC">
-        <WorkingCopyPanel sessionId="session" projectId="project" />
+        {view}
       </IntlProvider>,
     ),
   );
@@ -86,4 +92,16 @@ it('a failed folder read says why and offers Try again, never linking a folder',
   for (let i = 0; i < 3; i++) await act(async () => {});
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(container.textContent).toContain(messages.Files.noFolder);
+});
+
+it('says on the project page that the folder link could not be read, and reads it again', async () => {
+  fixture.binding.mockRejectedValueOnce(new Error('disk offline'));
+  const container = await render(<WorkFolderSection projectId="project" />);
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('disk offline');
+  expect(container.querySelector('form')).toBeNull();
+  fixture.binding.mockResolvedValueOnce(null);
+  await act(async () => named(container, 'Try again')?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('form')).not.toBeNull();
 });
