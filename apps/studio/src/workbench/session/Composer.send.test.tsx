@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createStore, type StoreApi } from 'zustand/vanilla';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import { runShortcut, setCommands } from '../../commandRegistry.ts';
+import { appendComposerAttachment, beginAttachmentCapture } from '../context/bridge.ts';
 import { changePreferences } from '../preferences.ts';
 import { editRequest } from '../RefusalHelp.tsx';
 import { readComposerDraft, writeComposerDraft } from '../sessionDraft.ts';
@@ -2050,6 +2051,46 @@ describe('a request taken back into the box', () => {
     expect(draft.references.map((item) => item.reference)).toEqual([FILE_REF, RUN_REF]);
     expect(draft.attachments).toEqual([DRAFT_NOTE, NOTE]);
     expect(draft.images).toEqual([IMAGE]);
+  });
+
+  const arrow = (f: { box(): HTMLTextAreaElement }, key: 'ArrowUp' | 'ArrowDown') =>
+    act(async () => {
+      f.box().focus();
+      f.box().dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }));
+    });
+
+  it('the up arrow in a box that holds only an attachment changes nothing', async () => {
+    writeComposerDraft('session', {
+      text: '',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [DRAFT_NOTE],
+    });
+    const f = await mount({ active: ended, session: { ...baseSession, entries: [sent] } });
+    await arrow(f, 'ArrowUp');
+    expect(f.box().value).toBe('');
+    expect(readComposerDraft('session').attachments).toEqual([DRAFT_NOTE]);
+  });
+
+  it('a file attached to a recalled request leaves the recall, so the next arrow keeps it', async () => {
+    const f = await mount({
+      active: ended,
+      session: { ...baseSession, entries: [{ ...sent, attachments: [], images: [] }] },
+    });
+    await arrow(f, 'ArrowUp');
+    expect(f.box().value).toBe(text);
+    await act(async () => {
+      appendComposerAttachment(
+        beginAttachmentCapture({ hostId: 'host', projectId: 'project', sessionId: 'session' }),
+        DRAFT_NOTE,
+      );
+    });
+    expect(readComposerDraft('session').attachments).toEqual([DRAFT_NOTE]);
+    await arrow(f, 'ArrowDown');
+    expect(f.box().value).toBe(text);
+    expect(readComposerDraft('session').attachments).toEqual([DRAFT_NOTE]);
   });
 
   it('recalled with the up arrow, its chips, images and text attachments come back', async () => {
