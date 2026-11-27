@@ -4,7 +4,7 @@ import { createRoot } from 'react-dom/client';
 import { IntlProvider } from 'use-intl';
 import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
-import { WorkFolderSection, WorkingCopyPanel } from './FilesViews.tsx';
+import { useBinding, WorkFolderSection, WorkingCopyPanel } from './FilesViews.tsx';
 
 // docs/specs/workbench.md: a failed folder or Paddock read is never taken as "none".
 
@@ -104,4 +104,26 @@ it('says on the project page that the folder link could not be read, and reads i
   for (let i = 0; i < 3; i++) await act(async () => {});
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(container.querySelector('form')).not.toBeNull();
+});
+
+it('Try again reads the folder link again for every view that shows it', async () => {
+  fixture.binding
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue(null);
+  function Elsewhere() {
+    const { failed } = useBinding('project');
+    return <output>{failed ?? 'read'}</output>;
+  }
+  const container = await render(
+    <>
+      <WorkFolderSection projectId="project" />
+      <Elsewhere />
+    </>,
+  );
+  expect(container.querySelector('output')?.textContent).toBe('offline');
+  await act(async () => named(container, 'Try again')?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('output')?.textContent).toBe('read');
 });

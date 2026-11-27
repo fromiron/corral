@@ -3,6 +3,7 @@ import type { IntegrationResultView, ReviewDecisionView } from '@corral/client';
 import { act } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
+import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
 import { DecisionPanel } from './ReviewPage.tsx';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
@@ -35,6 +36,7 @@ async function render(
   decision: ReviewDecisionView,
   integrations: IntegrationResultView[] = [],
   revert = vi.fn(),
+  folderFailed?: string,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
@@ -53,7 +55,15 @@ async function render(
   });
   await act(async () =>
     root.render(
-      <DecisionPanel sessionId="session" from={base} to={to} changed={0} linked active={false} />,
+      <DecisionPanel
+        sessionId="session"
+        from={base}
+        to={to}
+        changed={0}
+        linked={!folderFailed}
+        {...(folderFailed ? { folderFailed } : {})}
+        active={false}
+      />,
     ),
   );
   return container;
@@ -78,6 +88,32 @@ it('an approval of this exact comparison is current and can be applied', async (
       (button) => button.textContent === 'Review.requestChanges',
     ),
   ).toBe(true);
+});
+
+// docs/specs/workbench.md: a failed folder read is never taken as "none".
+it('an approval whose folder link could not be read says why and offers Try again', async () => {
+  const view = await render(approved(base), [], vi.fn(), 'offline');
+  expect(view.querySelector('[role="alert"]')?.textContent).toBe('Files.folderReadFailed');
+  expect(view.textContent).not.toContain('Review.integrateHeading');
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  await act(async () =>
+    [...view.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Files.retry')
+      ?.click(),
+  );
+  expect(asked).toHaveBeenCalledOnce();
+});
+
+it('says nothing of the folder link before there is an approval to apply', async () => {
+  const view = await render(
+    { ...approved(base), decision: 'changes_requested' },
+    [],
+    vi.fn(),
+    'offline',
+  );
+  expect(view.querySelector('[role="alert"]')).toBeNull();
 });
 
 it('requires confirmation before reverting', async () => {

@@ -27,7 +27,7 @@ import { GitPanel } from './GitPanel.tsx';
 import { PaddockSetupStatus, setupWord } from './PaddockSetupStatus.tsx';
 import { PullRequestRow } from './PullRequestRow.tsx';
 import type { ReviewSearch } from './panels/routes.ts';
-import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
+import { readWorkspaceAgain, WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 /** The Changes tab's sub-views. Review and Checks have addresses; Git and Checkpoints do not. */
 export type ChangesView = 'review' | 'git' | 'checkpoints' | 'checks';
@@ -143,11 +143,13 @@ function useCopy(
 function ChecksView({
   session,
   onAttach,
+  folderFailedSaid,
 }: {
   session: WorkSession;
   onAttach?: ((attachment: TextAttachment, capture: AttachmentCapture) => void) | undefined;
+  folderFailedSaid: boolean;
 }) {
-  const { binding } = useBinding(session.projectId);
+  const { binding, failed } = useBinding(session.projectId);
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const changed = () => setVersion((value) => value + 1);
@@ -159,6 +161,8 @@ function ChecksView({
       sessionId={session.sessionId}
       projectId={session.projectId}
       binding={binding ?? null}
+      folderFailed={failed}
+      folderFailedSaid={folderFailedSaid}
       changed={version}
       titled={false}
       {...(onAttach ? { onAttach } : {})}
@@ -348,7 +352,7 @@ export function SessionChangesPanel({
           <p role="alert" className="m-0 text-body text-destructive">
             {tf('copyReadFailed', { message: copy.failure ?? '' })}
           </p>
-          <Button variant="tertiary" onClick={() => copy.reread()}>
+          <Button variant="tertiary" onClick={readWorkspaceAgain}>
             {tf('retry')}
           </Button>
         </div>
@@ -395,7 +399,9 @@ export function SessionChangesPanel({
         ) : null}
       </TabPanel>
       <TabPanel value="checks" keepMounted className="min-h-0 flex-1 overflow-auto p-3">
-        {visited.has('checks') ? <ChecksView session={session} onAttach={onAttach} /> : null}
+        {visited.has('checks') ? (
+          <ChecksView session={session} onAttach={onAttach} folderFailedSaid={missing || failed} />
+        ) : null}
       </TabPanel>
     </Tabs>
   );

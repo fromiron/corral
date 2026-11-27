@@ -89,7 +89,7 @@ import { reveal, reviewMoveFor, stepIndex } from '../../workbench/reviewNavigati
 import { reviewSelection } from '../../workbench/reviewSelection.ts';
 import { entryStart } from '../../workbench/session/composer/send.ts';
 import { useModelProfiles } from '../../workbench/useModels.ts';
-import { WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
+import { readWorkspaceAgain, WORKSPACE_CHANGED } from '../../workbench/workspaceEvents.ts';
 import { useBinding } from '../FilesViews.tsx';
 import { useRemembered, WorkbenchLayout } from '../Workbench.tsx';
 import { LspProposals } from './LspProposals.tsx';
@@ -214,7 +214,7 @@ export function ReviewContent({
     }
     setSeen({ shown, copyChanged });
   }
-  const { binding } = useBinding(session.projectId);
+  const { binding, failed: folderFailed } = useBinding(session.projectId);
   const [loadedComments, setComments] = useState<{
     sessionId: string;
     comments: ReviewCommentView[];
@@ -593,6 +593,7 @@ export function ReviewContent({
                   to={changes.to}
                   changed={version}
                   linked={Boolean(binding)}
+                  folderFailed={folderFailed}
                   active={active}
                   // Draft comments make sending them the next step; approving waits its turn.
                   primary={drafts === 0 && !composing}
@@ -1512,6 +1513,7 @@ export function DecisionPanel({
   to,
   changed,
   linked,
+  folderFailed,
   active,
   primary = true,
   judged = true,
@@ -1523,6 +1525,7 @@ export function DecisionPanel({
   to: string;
   changed: number;
   linked: boolean;
+  folderFailed?: string | null | undefined;
   active: boolean;
   /** False while another step leads the review (a comment being written, or drafts to send). */
   primary?: boolean;
@@ -1533,6 +1536,7 @@ export function DecisionPanel({
   detailsClassName?: string;
 }) {
   const t = useTranslations('Review');
+  const tf = useTranslations('Files');
   const { workspaces } = useServices();
   const [decisions, setDecisions] = useState<ReviewDecisionView[]>([]);
   const [integrations, setIntegrations] = useState<IntegrationResultView[]>([]);
@@ -1699,6 +1703,15 @@ export function DecisionPanel({
                 </Button>
               </>
             ) : null}
+          </div>
+        ) : approved && folderFailed ? (
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="m-0 text-caption text-destructive">
+              {tf('folderReadFailed', { message: folderFailed })}
+            </p>
+            <Button variant="tertiary" onClick={readWorkspaceAgain}>
+              {tf('retry')}
+            </Button>
           </div>
         ) : null}
         {integrations.map((integration) => (

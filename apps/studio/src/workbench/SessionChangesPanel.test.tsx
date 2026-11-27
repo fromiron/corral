@@ -12,6 +12,7 @@ Element.prototype.getAnimations ??= () => [];
 const fixture = vi.hoisted(() => ({
   reviewSearches: [] as ReviewSearch[],
   services: {} as Record<string, unknown>,
+  folder: { binding: null } as Record<string, unknown>,
   href: '/sessions/session?panel=changes&review=true&scope=run&runId=run_2&file=a.ts',
 }));
 vi.mock('use-intl', () => ({
@@ -41,7 +42,7 @@ vi.mock('@tanstack/react-router', () => ({
 }));
 vi.mock('../pages/FilesViews.tsx', () => ({
   WorkingCopyPanel: () => <span>copy preparation</span>,
-  useBinding: () => ({ binding: null }),
+  useBinding: () => fixture.folder,
 }));
 vi.mock('./GitPanel.tsx', () => ({ GitPanel: () => <input aria-label="commit message" /> }));
 vi.mock('./CheckpointPanel.tsx', () => ({
@@ -65,7 +66,18 @@ vi.mock('../pages/changes/ReviewPage.tsx', () => ({
       </div>
     );
   },
-  Checks: () => <p>check records</p>,
+  Checks: ({
+    folderFailed,
+    folderFailedSaid,
+  }: {
+    folderFailed?: string | null;
+    folderFailedSaid?: boolean;
+  }) => (
+    <p>
+      check records{folderFailed ? `, folder ${folderFailed}` : ''}
+      {folderFailedSaid ? ', said above' : ''}
+    </p>
+  ),
 }));
 
 const cleanups: (() => Promise<void>)[] = [];
@@ -86,6 +98,7 @@ beforeEach(() => {
     removeEventListener() {},
   }));
   fixture.reviewSearches = [];
+  fixture.folder = { binding: null };
   fixture.services = {
     mode: 'server',
     workspaces: {
@@ -229,6 +242,39 @@ it('opens Checks when the address asks for it and reports each sub-view it moves
   await view.choose('Checks.title');
   expect(view.views).toEqual(['checkpoints', 'git', 'checks']);
   expect(view.selected()).toBe('Checks.title');
+});
+
+it('tells Checks when the folder link could not be read', async () => {
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.textContent).toContain('check records, folder offline');
+  expect(view.container.textContent).not.toContain('said above');
+});
+
+it('leaves the folder failure to the Paddock setup above Checks while there is no Paddock', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.textContent).toContain('copy preparation');
+  expect(view.container.textContent).toContain('check records, folder offline, said above');
+});
+
+it('says one failure when the Paddock and the folder link both fail, and Try again reads both again', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => {
+    throw new Error('offline');
+  });
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(view.container.textContent).toContain('check records, folder offline, said above');
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  const again = [...view.container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Files.retry',
+  );
+  await act(async () => again?.click());
+  expect(asked).toHaveBeenCalledOnce();
 });
 
 const openMore = async (view: { container: HTMLElement }) => {

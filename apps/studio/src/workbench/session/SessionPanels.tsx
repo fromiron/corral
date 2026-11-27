@@ -361,7 +361,7 @@ export function ChecksPanel({
 }) {
   const tw = useTranslations('Workbench');
   const { workspaces } = useServices();
-  const { binding } = useBinding(session.projectId);
+  const { binding, failed } = useBinding(session.projectId);
   if (!workspaces) return <p className="text-caption text-muted-foreground">{tw('serverOnly')}</p>;
   return (
     <>
@@ -369,6 +369,7 @@ export function ChecksPanel({
         sessionId={session.sessionId}
         projectId={session.projectId}
         binding={binding ?? null}
+        folderFailed={failed}
         changed={0}
         onAttach={onAttach}
       />

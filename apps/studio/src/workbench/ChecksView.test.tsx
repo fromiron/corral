@@ -4,6 +4,7 @@ import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { afterEach, expect, it, vi } from 'vitest';
 import { Checks } from './ChecksView.tsx';
+import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 const fixture = vi.hoisted(() => ({ services: {} }));
 vi.mock('../services.tsx', () => ({ useServices: () => fixture.services }));
@@ -40,6 +41,8 @@ async function mount(
   results: VerificationResultView[],
   commands: WorkspaceBindingView['verifyCommands'] = [],
   verify = vi.fn(async () => ({})),
+  folderFailed?: string,
+  folderFailedSaid = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
@@ -59,7 +62,8 @@ async function mount(
       <Checks
         sessionId="session"
         projectId="project_a"
-        binding={{ verifyCommands: commands } as WorkspaceBindingView}
+        binding={folderFailed ? null : ({ verifyCommands: commands } as WorkspaceBindingView)}
+        {...(folderFailed ? { folderFailed, folderFailedSaid } : {})}
         changed={0}
         titled={false}
       />,
@@ -84,6 +88,34 @@ const record = (argv: string[]): VerificationResultView => ({
   startedAt: '2026-11-10T01:02:00.000Z',
   endedAt: '2026-11-10T01:02:01.000Z',
   stale: false,
+});
+
+// docs/specs/workbench.md: a failed folder read is never taken as "none".
+it('a failed folder read says why and offers Try again where the checks would be', async () => {
+  const container = await mount([], [], undefined, 'offline');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe('Files.folderReadFailed');
+  expect(container.querySelector('[data-testid="checks-empty"]')).toBeNull();
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  await act(async () =>
+    [...container.querySelectorAll('button')]
+      .find((button) => button.textContent === 'Files.retry')
+      ?.click(),
+  );
+  expect(asked).toHaveBeenCalledOnce();
+});
+
+it('says nothing where the host already said the folder link could not be read', async () => {
+  const container = await mount([], [], undefined, 'offline', true);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('[data-testid="checks-empty"]')).toBeNull();
+});
+
+it('keeps the records it read while the folder link cannot be read', async () => {
+  const container = await mount([record(['true'])], [], undefined, 'offline');
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe('Files.folderReadFailed');
+  expect(container.querySelectorAll('[data-testid="check-result"]')).toHaveLength(1);
 });
 
 it('with no checks, the empty state opens the project tools settings of this project', async () => {
