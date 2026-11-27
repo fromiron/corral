@@ -26,7 +26,11 @@ import {
   visibleText,
 } from './modelTestDom.ts';
 
-const fixture = vi.hoisted(() => ({ models: {} as Partial<ModelsApi>, refresh: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  models: {} as Partial<ModelsApi>,
+  refresh: vi.fn(),
+  unsaved: false,
+}));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
 }));
@@ -34,7 +38,10 @@ vi.mock('../../workbench/modelSettings.tsx', () => ({
   useModelSettingsRefresh: () => fixture.refresh,
 }));
 vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
-  useSettingsForm: () => async () => true,
+  useSettingsForm: (form: { dirty: boolean }) => {
+    fixture.unsaved = form.dirty;
+    return async () => true;
+  },
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
 vi.mock('./ModelImportPanel.tsx', () => ({
@@ -462,6 +469,7 @@ describe('Add connection', () => {
     await type(field('Name'), 'Local server');
     await type(field('Address'), 'http://127.0.0.1:11434/v1');
     await type(field('API key'), 'sk-local');
+    expect(fixture.unsaved).toBe(true);
     await click(control('Connect'));
     expect(fixture.models.saveConfig).toHaveBeenCalledWith({
       revision: 'r1',
@@ -483,6 +491,8 @@ describe('Add connection', () => {
     expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
       'The address refused the key. Enter the key again.',
     );
+    // What was typed is saved: closing now has nothing to ask about.
+    expect(fixture.unsaved).toBe(false);
     // Trying again edits the endpoint that was saved instead of adding another.
     state.config = saved;
     state.profiles = [model('local-server', 'llama-4'), model('local-server', 'qwen-4')];
@@ -774,6 +784,8 @@ describe('Add connection', () => {
     await type(shownField('API key'), 'sk-fake-3333');
     await click(control(messages.AddConnection.back));
     await faceSettles();
+    // The typing is still held, though its face is not shown: leaving asks first.
+    expect(fixture.unsaved).toBe(true);
     await click(row(messages.AddConnection.address));
     await faceSettles();
     expect(shownField('Name')?.value).toBe('Local server');

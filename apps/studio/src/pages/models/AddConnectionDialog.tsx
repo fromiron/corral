@@ -139,7 +139,19 @@ export function AddConnectionDialog({
   const [drafts, setDrafts] = useState<Record<string, Draft>>({});
   const keep = (id: string) => (change: Draft) =>
     setDrafts((all) => ({ ...all, [id]: { ...all[id], ...change } }));
-  const kept = Object.values(drafts).some((draft) => draft.key || draft.name || draft.address);
+  const endpoint =
+    face.face === 'address' && face.providerId
+      ? config?.modelProviders.find((entry) => entry.id === face.providerId)
+      : undefined;
+  const shown =
+    face.face === 'address'
+      ? `address:${endpoint?.id ?? ''}`
+      : face.face === 'connect' && face.method === 'apiKey'
+        ? `key:${face.providerId}`
+        : null;
+  const kept = Object.entries(drafts).some(
+    ([id, draft]) => id !== shown && (draft.key || draft.name || draft.address),
+  );
   const confirmLeave = useSettingsForm({ dirty: typed || kept });
 
   // A sign-in this dialog follows and has not seen finish; leaving cancels it.
@@ -173,10 +185,6 @@ export function AddConnectionDialog({
     catalog.find((entry) => entry.providerId === providerId)?.name ??
     providers.find((entry) => entry.providerId === providerId)?.name ??
     providerId;
-  const endpoint =
-    face.face === 'address' && face.providerId
-      ? config?.modelProviders.find((entry) => entry.id === face.providerId)
-      : undefined;
   const title =
     face.face === 'find'
       ? t('title.find')
