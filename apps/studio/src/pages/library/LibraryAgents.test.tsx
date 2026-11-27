@@ -154,7 +154,11 @@ it('separates loading, failure, retry and the empty creation path', async () => 
   await click('Try again', host);
   expect(list.mock.calls).toEqual([['default'], ['default']]);
   expect(host.textContent).toContain('No saved agents');
-  expect(button('Create agent', toolbar)).toBeTruthy();
+  // workbench.md: an empty view shows its first action once, in the empty state.
+  expect(
+    button('Create agent', host.querySelector('[data-slot="empty-state"]') ?? undefined),
+  ).toBeTruthy();
+  expect(toolbar.textContent).not.toContain('Create agent');
 });
 
 it('filters names and full instructions locally and shows exact skill names in the side detail', async () => {
@@ -198,8 +202,8 @@ it('filters names and full instructions locally and shows exact skill names in t
 
 it('describes an agent between its name and instructions; the table, detail, search and copies use it', async () => {
   const create = vi.spyOn(agents, 'create');
-  const { toolbar, host } = await show();
-  await click('Create agent', toolbar);
+  const { host } = await show();
+  await click('Create agent');
   expect(field('Description').getAttribute('maxlength')).toBe('2000');
   expect(field('Description').getAttribute('placeholder')).toBeNull();
   await type(field('Name'), 'Digest maker');
@@ -278,8 +282,8 @@ it('edits only original fields, requires name and instructions and reuses the cr
     expect(saved.ok).toBe(true);
     throw new Error('response lost');
   });
-  const { toolbar, host } = await show();
-  await click('Create agent', toolbar);
+  const { host } = await show();
+  await click('Create agent');
   const form = dialog();
   // Name, description, then the base instructions, in reading and keyboard order.
   expect([...form.querySelectorAll('input, textarea')].slice(0, 3)).toEqual([
@@ -389,8 +393,8 @@ it('reconciles a lost create with changed inputs instead of hiding the saved ori
     await persist(...args);
     throw new Error('response lost');
   });
-  const { host, toolbar } = await show();
-  await click('Create agent', toolbar);
+  const { host } = await show();
+  await click('Create agent');
   await type(dialog().querySelector('input'), 'Editor');
   await type(instructions(), 'Check the sources.');
   await click('Save agent');
@@ -403,7 +407,7 @@ it('reconciles a lost create with changed inputs instead of hiding the saved ori
   await click('Cancel');
   await click('Discard changes');
   expect(rows(host)).toEqual(['Editor']);
-  await click('Create agent', toolbar);
+  await click('Create agent');
   await type(dialog().querySelector('input'), 'Planner');
   await type(instructions(), 'Plan the review.');
   await click('Save agent');
