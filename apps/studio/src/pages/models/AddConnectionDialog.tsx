@@ -65,6 +65,13 @@ interface Followed {
   adopted: boolean;
 }
 
+type Draft = {
+  name?: string;
+  address?: string;
+  access?: EndpointConfig['access'];
+  key?: string;
+};
+
 const conflicted = (failure: unknown) =>
   failure instanceof ApiError && failure.code === 'REVISION_CONFLICT';
 
@@ -129,7 +136,11 @@ export function AddConnectionDialog({
   const [face, setFace] = useState<Face>(() => initial(start));
   const [query, setQuery] = useState('');
   const [typed, setTyped] = useState(false);
-  const confirmLeave = useSettingsForm({ dirty: typed });
+  const [drafts, setDrafts] = useState<Record<string, Draft>>({});
+  const keep = (id: string) => (change: Draft) =>
+    setDrafts((all) => ({ ...all, [id]: { ...all[id], ...change } }));
+  const kept = Object.values(drafts).some((draft) => draft.key || draft.name || draft.address);
+  const confirmLeave = useSettingsForm({ dirty: typed || kept });
 
   // A sign-in this dialog follows and has not seen finish; leaving cancels it.
   const login = useRef<Followed | null>(null);
@@ -152,8 +163,9 @@ export function AddConnectionDialog({
     setFace(next);
   };
   const close = async () => {
-    if (typed && !(await confirmLeave())) return;
+    if ((typed || kept) && !(await confirmLeave())) return;
     if (face.face !== 'found') cancelLogin();
+    setDrafts({});
     onOpenChange(false);
   };
 
@@ -298,6 +310,8 @@ export function AddConnectionDialog({
           <KeyFace
             key={face.providerId}
             providerId={face.providerId}
+            draft={drafts[`key:${face.providerId}`]?.key ?? ''}
+            onDraft={(key) => keep(`key:${face.providerId}`)({ key })}
             revision={config?.revision}
             onTyped={setTyped}
             onDone={() => go({ face: 'found', providerId: face.providerId })}
@@ -310,6 +324,8 @@ export function AddConnectionDialog({
     body = (
       <AddressFace
         endpoint={endpoint ?? null}
+        draft={drafts[`address:${endpoint?.id ?? ''}`] ?? {}}
+        onDraft={keep(`address:${endpoint?.id ?? ''}`)}
         editing={face.editing}
         config={config}
         takenIds={[
@@ -318,7 +334,10 @@ export function AddConnectionDialog({
           ...(config?.modelProviders.map((entry) => entry.id) ?? []),
         ]}
         onTyped={setTyped}
-        onDone={(id) => go({ face: 'found', providerId: id })}
+        onDone={(id) => {
+          setDrafts(({ [`address:${endpoint?.id ?? ''}`]: _done, ...rest }) => rest);
+          go({ face: 'found', providerId: id });
+        }}
         back={face.editing ? null : back}
       />
     );
@@ -689,12 +708,16 @@ function SignInFace({
 
 function KeyFace({
   providerId,
+  draft,
+  onDraft,
   revision,
   onTyped,
   onDone,
   back,
 }: {
   providerId: string;
+  draft: string;
+  onDraft: (key: string) => void;
   revision: string | undefined;
   onTyped: (typed: boolean) => void;
   onDone: () => void;
@@ -705,7 +728,8 @@ function KeyFace({
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask(`api-key:${providerId}`);
-  const [key, setKey] = useState('');
+  const key = draft;
+  const setKey = onDraft;
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   useEffect(() => onTyped(Boolean(key)), [key, onTyped]);
@@ -759,6 +783,8 @@ function KeyFace({
 
 function AddressFace({
   endpoint,
+  draft,
+  onDraft,
   editing,
   config,
   takenIds,
@@ -767,6 +793,8 @@ function AddressFace({
   back,
 }: {
   endpoint: EndpointConfig | null;
+  draft: Draft;
+  onDraft: (change: Draft) => void;
   editing: boolean;
   config: ModelConfig | null;
   takenIds: string[];
@@ -779,10 +807,14 @@ function AddressFace({
   const { models } = useServices();
   const refresh = useModelSettingsRefresh();
   const runTask = useSettingsTask('endpoint');
-  const [name, setName] = useState(endpoint?.name ?? '');
-  const [address, setAddress] = useState(endpoint?.baseUrl ?? '');
-  const [access, setAccess] = useState<EndpointConfig['access']>(endpoint?.access ?? 'api_key');
-  const [key, setKey] = useState('');
+  const name = draft.name ?? endpoint?.name ?? '';
+  const address = draft.address ?? endpoint?.baseUrl ?? '';
+  const access = draft.access ?? endpoint?.access ?? 'api_key';
+  const key = draft.key ?? '';
+  const setName = (value: string) => onDraft({ name: value });
+  const setAddress = (value: string) => onDraft({ address: value });
+  const setAccess = (value: EndpointConfig['access']) => onDraft({ access: value });
+  const setKey = (value: string) => onDraft({ key: value });
   const [invalid, setInvalid] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
