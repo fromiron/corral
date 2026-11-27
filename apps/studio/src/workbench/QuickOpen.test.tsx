@@ -536,9 +536,14 @@ it('says a Paddock that could not be read and offers Try again, and never search
   const again = [...(dialog()?.querySelectorAll('button') ?? [])].find(
     (button) => button.textContent === messages.Files.retry,
   );
-  await act(async () => again?.click());
+  await act(async () => {
+    again?.focus();
+    again?.click();
+  });
   await settle();
   expect(dialog()?.querySelector('[role="alert"]')).toBeNull();
+  // The button is gone with the failure: typing goes on in the path field.
+  expect(document.activeElement).toBe(input());
   expect(fixture.search).toHaveBeenCalledWith(
     { kind: 'session', id: 'session' },
     '',

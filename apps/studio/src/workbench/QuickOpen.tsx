@@ -172,6 +172,7 @@ export function QuickOpen({
   // The target the last search went out for: the first search for a target goes at once.
   const searchedFor = useRef<string | null>(null);
   const opens = useRef(0);
+  const field = useRef<HTMLInputElement>(null);
   const statusId = useId();
   const targetId = useId();
   const show = (next: boolean) => {
@@ -386,6 +387,7 @@ export function QuickOpen({
       >
         <div className="flex min-w-0 items-center pr-4 [&>[data-slot=command-menu-input]]:min-w-0 [&>[data-slot=command-menu-input]]:flex-1">
           <CommandMenuInput
+            ref={field}
             placeholder={t('placeholder')}
             aria-label={t('placeholder')}
             aria-describedby={`${targetId} ${statusId}`}
@@ -430,7 +432,13 @@ export function QuickOpen({
             <p role="alert" className="m-0 text-caption text-danger">
               {unreadTarget}
             </p>
-            <Button variant="tertiary" onClick={readWorkspaceAgain}>
+            <Button
+              variant="tertiary"
+              onClick={() => {
+                field.current?.focus();
+                readWorkspaceAgain();
+              }}
+            >
               {tf('retry')}
             </Button>
           </div>
