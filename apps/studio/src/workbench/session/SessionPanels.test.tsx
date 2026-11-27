@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import type { ArtifactVersionView, RunProjection, RunSummary } from '@corral/core';
+import type { ArtifactVersionView, RunProjection, RunSummary, WorkSession } from '@corral/core';
 import { emptyProjection } from '@corral/core';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -8,12 +8,18 @@ import { afterEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
 import type { SessionSearch } from '../panels/routes.ts';
 import { listedRunPresence } from '../sessionList.ts';
-import { ArtifactsPanel, RunPanel } from './SessionPanels.tsx';
+import { ArtifactsPanel, ChecksPanel, RunPanel } from './SessionPanels.tsx';
 
-const fixture = vi.hoisted(() => ({ services: {} as Record<string, unknown> }));
+const fixture = vi.hoisted(() => ({
+  services: {} as Record<string, unknown>,
+  folder: { binding: null } as Record<string, unknown>,
+}));
 vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
-vi.mock('../../pages/changes/ReviewPage.tsx', () => ({ Checks: () => null }));
+vi.mock('../../pages/FilesViews.tsx', () => ({ useBinding: () => fixture.folder }));
+vi.mock('../../pages/changes/ReviewPage.tsx', () => ({
+  Checks: ({ folderFailed }: { folderFailed?: string | null }) =>
+    folderFailed ? <p>folder {folderFailed}</p> : null,
+}));
 // The run record has its own tests; here it shows the line the panel puts above its header.
 vi.mock('../../pages/run/RunPage.tsx', () => ({
   RunDetail: ({
@@ -40,6 +46,31 @@ vi.mock('@tanstack/react-router', () => ({
 const cleanups: (() => Promise<void>)[] = [];
 afterEach(async () => {
   for (const cleanup of cleanups.splice(0)) await cleanup();
+  fixture.folder = { binding: null };
+});
+
+it('tells Checks when the folder link could not be read', async () => {
+  Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
+  fixture.services = { workspaces: {} };
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <ChecksPanel
+          session={{ sessionId: 'session', projectId: 'project' } as WorkSession}
+          onAttach={() => {}}
+        />
+      </IntlProvider>,
+    ),
+  );
+  expect(container.textContent).toContain('folder offline');
 });
 
 const version = (id: string, artifactId: string): ArtifactVersionView => ({

@@ -280,7 +280,7 @@ function WorkSessionPage() {
   useEffect(() => setCurrentProject(session.projectId), [session.projectId]);
   const team = corrals.find((c) => c.corralId === session.corralId) ?? null;
   const teamNames = Object.fromEntries(corrals.map((corral) => [corral.corralId, corral.name]));
-  const { binding } = useBinding(session.projectId);
+  const { binding, failed: folderFailed } = useBinding(session.projectId);
   const [pendingReference, setReference] = useState<{
     sessionId: string;
     value: FileReference;
@@ -364,7 +364,7 @@ function WorkSessionPage() {
     search,
     workArea,
     rememberedWidth,
-    folder: Boolean(binding),
+    folder: Boolean(binding) || Boolean(folderFailed),
     runIds,
     endedRun,
     paddock: Boolean(terminals && terminalList.value?.list?.target),

@@ -41,6 +41,7 @@ import { runResultFiles } from './runResults.ts';
 import { SourceReadOnlyNote } from './SourceReadOnlyNote.tsx';
 import { readSourceFilesAgain } from './session/sourceReread.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
+import { readWorkspaceAgain } from './workspaceEvents.ts';
 
 const noDocuments = { documents: {} as Record<string, DocumentBuffer> };
 const noSubscription = () => () => {};
@@ -555,7 +556,18 @@ export function FilePanel({
         {recoveryCandidates}
         {recoveryReadError ? <p role="alert">{te('recoveryReadFailed')}</p> : null}
         {closeDialog}
-        {error ? <p role="alert">{error}</p> : <p>{t('linkToBrowse')}</p>}
+        {error ? (
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="m-0 text-destructive">
+              {error}
+            </p>
+            <Button variant="tertiary" onClick={readWorkspaceAgain}>
+              {tf('retry')}
+            </Button>
+          </div>
+        ) : (
+          <p>{t('linkToBrowse')}</p>
+        )}
         <Link {...navigation.link('workspace', projectId)} className="text-primary underline">
           {t('workspace')}
         </Link>

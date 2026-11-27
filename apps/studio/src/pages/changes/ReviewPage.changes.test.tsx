@@ -16,9 +16,10 @@ import { CommentsPanel, ReviewContent } from './ReviewPage.tsx';
 const fixture = vi.hoisted(() => ({
   services: {} as Record<string, unknown>,
   navigations: [] as unknown[],
+  folder: { binding: null } as Record<string, unknown>,
 }));
 vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
-vi.mock('../FilesViews.tsx', () => ({ useBinding: () => ({ binding: null }) }));
+vi.mock('../FilesViews.tsx', () => ({ useBinding: () => fixture.folder }));
 vi.mock('./LspProposals.tsx', () => ({ LspProposals: () => null }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
@@ -571,6 +572,36 @@ it('keeps the decision in the decision area, recorded on the exact comparison', 
   expect(view.writes.integrate).not.toHaveBeenCalled();
   expect(view.writes.recordFeedback).not.toHaveBeenCalled();
   expect(view.startAuto).not.toHaveBeenCalled();
+});
+
+it('says in the decision area that the folder link could not be read, once approved', async () => {
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  cleanups.push(async () => {
+    fixture.folder = { binding: null };
+  });
+  const view = await mount({ search: { scope: 'session', file: 'README.md' } });
+  const area = view.container.querySelector('aside');
+  if (!area) throw new Error('Missing the decision area');
+  expect(area.textContent).not.toContain('Files.folderReadFailed');
+  view.writes.decide.mockImplementation(async () => {
+    Object.assign(fixture.services.workspaces as object, {
+      decisions: async () => [
+        {
+          decisionId: 'decision_1',
+          from,
+          to,
+          decision: 'approved',
+          note: '',
+          createdAt: date,
+          stale: false,
+        },
+      ],
+    });
+  });
+  await view.click('Review.approve', area);
+  await act(async () => {});
+  expect(area.textContent).toContain('Files.folderReadFailed');
+  expect(area.textContent).not.toContain('Review.integrateHeading');
 });
 
 it('heads the comments only once there are comments to head', async () => {

@@ -147,7 +147,7 @@ function ChecksView({
   session: WorkSession;
   onAttach?: ((attachment: TextAttachment, capture: AttachmentCapture) => void) | undefined;
 }) {
-  const { binding } = useBinding(session.projectId);
+  const { binding, failed } = useBinding(session.projectId);
   const [version, setVersion] = useState(0);
   useEffect(() => {
     const changed = () => setVersion((value) => value + 1);
@@ -159,6 +159,7 @@ function ChecksView({
       sessionId={session.sessionId}
       projectId={session.projectId}
       binding={binding ?? null}
+      folderFailed={failed}
       changed={version}
       titled={false}
       {...(onAttach ? { onAttach } : {})}

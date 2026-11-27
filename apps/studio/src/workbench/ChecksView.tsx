@@ -12,6 +12,7 @@ import { fixRequestName, fixRequestText } from './checkFixRequest.ts';
 import { commandLine } from './commandLine.ts';
 import { type AttachmentCapture, beginAttachmentCapture } from './context/bridge.ts';
 import { useSettingsNavigation } from './navigation.ts';
+import { readWorkspaceAgain } from './workspaceEvents.ts';
 
 const failed = (result: VerificationResultView) =>
   result.state === 'failed' ||
@@ -61,6 +62,7 @@ export function Checks({
   sessionId,
   projectId,
   binding,
+  folderFailed,
   changed,
   onAttach,
   titled = true,
@@ -68,6 +70,7 @@ export function Checks({
   sessionId: string;
   projectId?: string;
   binding: WorkspaceBindingView | null;
+  folderFailed?: string | null | undefined;
   changed: number;
   onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
   /** False where the host already names this view (the Checks sub-view's tab). */
@@ -230,7 +233,16 @@ export function Checks({
           {error}
         </p>
       ) : null}
-      {commands.length === 0 && results.length === 0 ? (
+      {folderFailed ? (
+        <div className="flex flex-col items-start gap-2">
+          <p role="alert" className="m-0 text-body text-destructive">
+            {t('folderReadFailed', { message: folderFailed })}
+          </p>
+          <Button variant="tertiary" onClick={readWorkspaceAgain}>
+            {t('retry')}
+          </Button>
+        </div>
+      ) : commands.length === 0 && results.length === 0 ? (
         <EmptyView
           data-testid="checks-empty"
           title={t('noChecks')}

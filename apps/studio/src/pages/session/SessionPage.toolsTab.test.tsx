@@ -191,3 +191,40 @@ it('Paddock이 있는 대화의 "+" 목록 → 작업이 마지막 항목이고,
   expect(panelTabs().map(tabName)).toEqual([W.files, W.tools]);
   expect(search(shell).panel).toBe('tools');
 });
+
+it('폴더 연결을 읽지 못한 대화의 "+" 목록 → 파일과 변경이 남는다', async () => {
+  const world = await serverWorld();
+  const workspaces = world.services.workspaces;
+  if (!workspaces) throw new Error('Missing the workspace service');
+  const failing = vi.spyOn(workspaces, 'binding').mockRejectedValue(new Error('offline'));
+  await open(world, `/sessions/${world.sessionId}?panel=tools`);
+  await until(() => panelSelected() === W.tools);
+  const plus = [...(side()?.querySelectorAll<HTMLElement>('button') ?? [])].find(
+    (button) => nameOf(button) === W.add,
+  );
+  await press(plus);
+  const rows = () =>
+    [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].map((row) =>
+      spoken(row).trim(),
+    );
+  await until(() => rows().length > 0);
+
+  expect(rows()).toContain(W.files);
+  expect(rows()).toContain(messages.Docking.changes);
+
+  const row = [...document.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (item) => spoken(item).trim() === W.files,
+  );
+  await press(row);
+  await until(() => panelSelected() === W.files);
+  const alert = () => side()?.querySelector('[role="alert"]') ?? null;
+  await until(() => alert() !== null);
+  expect(alert()?.textContent).toContain('offline');
+  failing.mockRestore();
+  const again = [...(side()?.querySelectorAll<HTMLElement>('button') ?? [])].find(
+    (button) => nameOf(button) === messages.Files.retry,
+  );
+  await press(again);
+  await until(() => alert() === null);
+  expect(alert()).toBeNull();
+});

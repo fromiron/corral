@@ -9,7 +9,7 @@ import { useServices } from '../services.tsx';
 import { CopyRemovalDialog } from '../workbench/CopyRemovalDialog.tsx';
 import { useSettingsNavigation } from '../workbench/navigation.ts';
 import { useSettingsForm, useSettingsTask } from '../workbench/SettingsLifecycle.tsx';
-import { WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
+import { readWorkspaceAgain, WORKSPACE_CHANGED } from '../workbench/workspaceEvents.ts';
 
 // Work folders and working copies in Studio, on the local server or the demo's
 // in-memory example folder.
@@ -103,7 +103,7 @@ export function WorkFolderSection({ projectId }: { projectId: string }) {
         <p role="alert" className="m-0 text-body text-destructive">
           {t('folderReadFailed', { message: failed })}
         </p>
-        <Button variant="tertiary" onClick={() => void reload()}>
+        <Button variant="tertiary" onClick={readWorkspaceAgain}>
           {t('retry')}
         </Button>
       </div>
@@ -353,13 +353,7 @@ export function WorkingCopyPanel({
         <p role="alert" className="m-0 text-body text-destructive">
           {readFailed}
         </p>
-        <Button
-          variant="tertiary"
-          onClick={() => {
-            void reload();
-            void folder.reload();
-          }}
-        >
+        <Button variant="tertiary" onClick={readWorkspaceAgain}>
           {t('retry')}
         </Button>
       </section>

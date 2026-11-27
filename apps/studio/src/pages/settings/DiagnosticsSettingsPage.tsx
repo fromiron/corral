@@ -15,6 +15,7 @@ import {
 } from '../../workbench/diagnostics.ts';
 import { useModelSettings } from '../../workbench/modelSettings.tsx';
 import { useSettingsNavigation } from '../../workbench/navigation.ts';
+import { readWorkspaceAgain } from '../../workbench/workspaceEvents.ts';
 import { useBinding } from '../FilesViews.tsx';
 import { SettingsLayout } from './SettingsPage.tsx';
 
@@ -56,7 +57,7 @@ export function DiagnosticsSettingsPage() {
   const projectId = navigation.projectId;
   const serverModels = mode === 'server' ? models : null;
   const modelSettings = useModelSettings(serverModels && live ? serverModels : null);
-  const { binding, failed, reload } = useBinding(workspaces && projectId ? projectId : null);
+  const { binding, failed } = useBinding(workspaces && projectId ? projectId : null);
   const [localAi, setLocalAi] = useState<
     { state: 'loading' | 'failed' } | { state: 'loaded'; view: LocalAiView }
   >({ state: 'loading' });
@@ -173,7 +174,7 @@ export function DiagnosticsSettingsPage() {
   const retry = () => {
     setCheck((count) => count + 1);
     void modelSettings.refresh().catch(() => {});
-    void reload();
+    readWorkspaceAgain();
   };
   const copySummary = async () => {
     try {
