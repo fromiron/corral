@@ -15,6 +15,7 @@ import {
   EmptyState,
   fontWeights,
   Input,
+  KitBadge,
   Page,
   SectionLabel,
   Select,
@@ -61,6 +62,7 @@ const statusOf = (cause: unknown) =>
   typeof cause === 'object' && cause && 'status' in cause ? cause.status : undefined;
 const focusOnMount = (node: HTMLElement | null) => node?.focus();
 const knownZone = (zone: string) => ScheduleDraft.shape.timezone.safeParse(zone).success;
+const NEW = 'new';
 type SaveRefusal = { id: number; text: string; conflict: boolean };
 
 /** A session read on its own, so a title its runs gave it since the page opened shows. */
@@ -100,6 +102,13 @@ export function ScheduledPage() {
   );
   const [error, setError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<SaveRefusal | null>(null);
+  const [kept, setKept] = useState<Record<string, { base: Schedule | null; draft: ScheduleDraft }>>(
+    {},
+  );
+  const keepForm = (base: Schedule | null, draft: ScheduleDraft) =>
+    setKept((forms) => ({ ...forms, [base?.id ?? NEW]: { base, draft } }));
+  const forget = (base: Schedule | null) =>
+    setKept(({ [base?.id ?? NEW]: _gone, ...forms }) => forms);
   const refusals = useRef(0);
   const [busy, setBusy] = useState(false);
   /** The sessions and profiles were read; until then no session is not known to be none. */
@@ -257,6 +266,11 @@ export function ScheduledPage() {
     setEditing(null);
     setSelected(schedule);
   };
+  const choose = (schedule: Schedule) => {
+    select(schedule);
+    const form = kept[schedule.id];
+    if (form) setEditing(form);
+  };
   const refuseSave = (cause: unknown) => {
     const status = statusOf(cause);
     setSaveError({
@@ -275,6 +289,8 @@ export function ScheduledPage() {
     if (!session) return;
     setSelected(null);
     setSaveError(null);
+    const form = kept[NEW];
+    if (form) return setEditing(form);
     setEditing({
       base: null,
       draft: {
@@ -302,6 +318,7 @@ export function ScheduledPage() {
       const saved = base
         ? await schedulesApi.update(base, draft)
         : await schedulesApi.create(draft);
+      forget(base);
       select(saved);
     }, refuseSave);
   };
@@ -309,7 +326,9 @@ export function ScheduledPage() {
     const base = editing?.base;
     if (!base) return;
     void perform(async () => {
-      select(await schedulesApi.update(await latest(base.id), draft));
+      const saved = await schedulesApi.update(await latest(base.id), draft);
+      forget(base);
+      select(saved);
     }, refuseSave);
   };
   const loadLatest = () => {
@@ -318,6 +337,7 @@ export function ScheduledPage() {
     void perform(async () => {
       const stored = await latest(base.id);
       setSaveError(null);
+      forget(base);
       setEditing({ base: stored, draft: scheduleDraft(stored) });
     }, refuseSave);
   };
@@ -348,6 +368,7 @@ export function ScheduledPage() {
   const remove = (schedule: Schedule) =>
     void perform(async () => {
       await schedulesApi.remove(schedule);
+      forget(schedule);
       setSelected(null);
     });
   const summary = (rule: ScheduleRule) =>
@@ -507,12 +528,17 @@ export function ScheduledPage() {
                         <button
                           type="button"
                           aria-pressed={current}
-                          onClick={() => select(schedule)}
+                          onClick={() => choose(schedule)}
                           className="block w-full truncate rounded-sm text-left text-foreground after:absolute after:inset-0 after:content-['']"
                           style={current ? semibold : undefined}
                         >
                           {schedule.title}
                         </button>
+                        {kept[schedule.id] ? (
+                          <KitBadge size="compact" color="amber">
+                            {t('unsaved')}
+                          </KitBadge>
+                        ) : null}
                       </TableCell>
                       <TableCell className="max-md:hidden">{summary(schedule.rule)}</TableCell>
                       <TableCell>{schedule.enabled ? t('enabled') : t('disabled')}</TableCell>
@@ -548,6 +574,7 @@ export function ScheduledPage() {
             key={editing.base ? `${editing.base.id}:${editing.base.revision}` : 'new'}
             initial={editing.draft}
             refusal={saveError}
+            onDraft={(draft) => keepForm(editing.base, draft)}
             onSaveMine={saveMine}
             onLoadLatest={loadLatest}
             sessions={sessions}
@@ -558,11 +585,13 @@ export function ScheduledPage() {
             onSave={save}
             onClose={() => {
               setSaveError(null);
+              forget(editing.base);
               setEditing(null);
             }}
           />
         ) : shown ? (
           <ScheduleDetail
+            key={shown.id}
             schedule={shown}
             summary={summary(shown.rule)}
             nextRun={nextRun(shown)}
@@ -682,6 +711,7 @@ function ScheduleDetail({
 }) {
   const t = useTranslations('Schedules');
   const heading = useId();
+  const [confirming, setConfirming] = useState(false);
   const term = 'text-caption text-muted-foreground';
   return (
     <section aria-labelledby={heading} className="flex min-w-0 flex-col gap-4">
@@ -700,9 +730,20 @@ function ScheduleDetail({
           <Button variant="tertiary" disabled={busy} onClick={onEdit}>
             {t('edit')}
           </Button>
-          <Button variant="ghost-destructive" disabled={busy} onClick={onDelete}>
-            {t('delete')}
-          </Button>
+          {confirming ? (
+            <>
+              <Button variant="destructive-outline" disabled={busy} onClick={onDelete}>
+                {t('confirmDelete')}
+              </Button>
+              <Button variant="ghost" onClick={() => setConfirming(false)}>
+                {t('cancel')}
+              </Button>
+            </>
+          ) : (
+            <Button variant="ghost-destructive" disabled={busy} onClick={() => setConfirming(true)}>
+              {t('delete')}
+            </Button>
+          )}
         </div>
       </div>
       {/* What the row lacks. Its timing and next run show here only where the row drops them. */}
@@ -764,6 +805,7 @@ function ScheduleDetail({
 function ScheduleEditor({
   initial,
   refusal,
+  onDraft,
   onSaveMine,
   onLoadLatest,
   sessions,
@@ -776,6 +818,7 @@ function ScheduleEditor({
 }: {
   initial: ScheduleDraft;
   refusal: SaveRefusal | null;
+  onDraft(draft: ScheduleDraft): void;
   onSaveMine(draft: ScheduleDraft): void;
   onLoadLatest(): void;
   sessions: WorkSession[];
@@ -788,7 +831,11 @@ function ScheduleEditor({
 }) {
   const t = useTranslations('Schedules');
   const tp = useTranslations('Projects');
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraftState] = useState(initial);
+  const setDraft = (next: ScheduleDraft) => {
+    setDraftState(next);
+    onDraft(next);
+  };
   const [zoneUnknown, setZoneUnknown] = useState(false);
   const zone = useRef<HTMLInputElement>(null);
   const ids = useId();

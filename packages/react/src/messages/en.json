@@ -653,7 +653,10 @@
     "loadLatest": "Load the latest",
     "saveMine": "Save mine",
     "zoneUnknown": "Unknown time zone. Use a name such as Asia/Seoul or UTC.",
-    "deletedElsewhere": "This schedule was deleted elsewhere. Close the form to see the list as it is now."
+    "deletedElsewhere": "This schedule was deleted elsewhere. Close the form to see the list as it is now.",
+    "confirmDelete": "Confirm delete",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved changes"
   },
   "Status": {
     "running": "Running",

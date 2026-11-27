@@ -652,6 +652,46 @@ it('an unknown time zone is that field’s own error and nothing is sent', async
   expect(fixture.api.create).toHaveBeenCalledTimes(1);
 });
 
+it('Delete asks first in place; Cancel keeps the schedule and Confirm delete removes it once', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.remove.mockResolvedValue(undefined);
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.delete));
+  expect(fixture.api.remove).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await click(button(messages.Schedules.cancel));
+  expect(() => button(messages.Schedules.confirmDelete)).toThrow();
+  await click(button(messages.Schedules.delete));
+  await click(button(messages.Schedules.confirmDelete));
+  await settle();
+  expect(fixture.api.remove).toHaveBeenCalledTimes(1);
+});
+
+it('another row or a new schedule keeps a form’s unsaved typing until its row is chosen again', async () => {
+  fixture.api.list.mockResolvedValue({
+    schedules: [schedule(), schedule({ id: 'schedule_2', title: 'Weekly digest' })],
+  });
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine, half typed');
+  await click(button(/Weekly digest/));
+  expect(form()).toBeNull();
+  const marked = [...container.querySelectorAll('tbody tr')].find((row) =>
+    row.textContent?.includes('Daily project review'),
+  );
+  expect(marked?.textContent).toContain(messages.Schedules.unsaved);
+  await click(button(messages.Schedules.new));
+  await type(field('Title'), 'A new one');
+  await click(button(/Daily project review/));
+  expect(field('Title').value).toBe('Mine, half typed');
+  await click(button(messages.Schedules.new));
+  expect(field('Title').value).toBe('A new one');
+  expect(fixture.api.update).not.toHaveBeenCalled();
+  expect(fixture.api.create).not.toHaveBeenCalled();
+});
+
 const newButtons = () =>
   [...container.querySelectorAll<HTMLButtonElement>('button')].filter(
     (item) => item.textContent?.trim() === messages.Schedules.new,
