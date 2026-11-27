@@ -27,6 +27,27 @@ vi.mock('../../services.tsx', () => {
   };
   return { useServices: () => services };
 });
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({
+    children,
+    to,
+    params,
+    search,
+    ...props
+  }: {
+    children?: React.ReactNode;
+    to: string;
+    params?: { sessionId: string };
+    search?: { panel?: string };
+  }) => (
+    <a
+      {...props}
+      href={`${to.replace('$sessionId', params?.sessionId ?? '')}?panel=${search?.panel ?? ''}`}
+    >
+      {children}
+    </a>
+  ),
+}));
 vi.mock('../documents/store.ts', () => ({ documentStore: () => ({ open: host.open }) }));
 vi.mock('../PierreCode.tsx', () => ({
   SourceCode: ({ text }: { text: string }) => <pre data-source>{text}</pre>,
@@ -40,7 +61,7 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function mount(path: string, onReference = vi.fn()) {
+async function mount(path: string, onReference = vi.fn(), noCopy = false) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -69,6 +90,7 @@ async function mount(path: string, onReference = vi.fn()) {
           projectId="project"
           sessionId="session"
           path={path}
+          noCopy={noCopy}
           onReference={onReference}
         />
       </IntlProvider>,
@@ -155,4 +177,22 @@ it("reads the file again when its conversation's tree is refreshed; another conv
   await act(async () => new Promise((resolve) => setTimeout(resolve, 20)));
   expect(host.readFile).toHaveBeenCalledTimes(2);
   expect(container.querySelector('[data-source]')?.textContent).toBe('changed outside Corral\n');
+});
+
+it('without a Paddock, says under its head why it is read-only and links to the file-work setup', async () => {
+  const { container } = await mount('README.md', vi.fn(), true);
+  const note = container.querySelector('[data-slot="banner"]');
+  expect(note?.textContent).toContain(messages.Files.noCopyReadOnly);
+  const link = note?.querySelector('a');
+  expect(link?.textContent).toBe(messages.Sessions.prepareWorkingCopy);
+  expect(link?.getAttribute('href')).toBe('/sessions/session?panel=changes');
+  const head = container.querySelector('[data-testid="document-header"]');
+  expect(head?.compareDocumentPosition(note as Node)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  await act(async () => link?.click());
+  expect(host.readFile).toHaveBeenCalledTimes(1);
+});
+
+it('with a Paddock, has no setup note', async () => {
+  const { container } = await mount('README.md');
+  expect(container.querySelector('[data-slot="banner"]')).toBeNull();
 });

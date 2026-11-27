@@ -198,6 +198,23 @@ describe('diagnostic rows', () => {
     expect(row('pathEngine')).toMatchObject({ status: 'builtIn', tone: 'ok' });
   });
 
+  it('says a folder read that failed could not be checked, and offers to try again', () => {
+    const rows = diagnosticRows({
+      runtime: { mode: 'server', version: '1.0.0', live: true },
+      models: { state: 'loading' },
+      folder: { state: 'failed' },
+      pathEngine: { state: 'loaded', status: { engine: 'builtIn' } },
+      localAi: { state: 'loading' },
+    });
+    expect(rows.find((value) => value.id === 'folder')).toEqual({
+      id: 'folder',
+      tone: 'error',
+      status: 'failed',
+      causes: [],
+      action: 'retry',
+    });
+  });
+
   it('counts a subscription sign-in that cannot use a model as not ready, like the sidebar', () => {
     const rows = diagnosticRows({
       runtime: { mode: 'server', version: '1.0.0', live: true },

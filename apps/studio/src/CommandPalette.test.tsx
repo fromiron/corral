@@ -74,6 +74,20 @@ beforeEach(() => {
   fixture.mode = 'server';
   services.server.repository.save.mockClear();
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  Element.prototype.getAnimations ??= () => [];
+  vi.stubGlobal('matchMedia', () => ({
+    matches: false,
+    addEventListener() {},
+    removeEventListener() {},
+  }));
+  vi.stubGlobal(
+    'ResizeObserver',
+    class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    },
+  );
 });
 afterEach(async () => {
   for (const dispose of disposals.splice(0)) await dispose();
@@ -108,7 +122,9 @@ async function mount(
       </IntlProvider>,
     );
   });
-  return container;
+  const dialog = [...document.querySelectorAll<HTMLElement>('[role="dialog"]')].at(-1);
+  if (!dialog) throw new Error('Missing palette dialog');
+  return dialog;
 }
 
 const options = (container: HTMLElement) =>
@@ -116,7 +132,7 @@ const options = (container: HTMLElement) =>
     option.textContent?.trim(),
   );
 const scopeButton = (container: HTMLElement, name: string) => {
-  const group = container.querySelector('fieldset[aria-label="Find conversations in"]');
+  const group = container.querySelector('[role="group"][aria-label="Find conversations in"]');
   const button = [...(group?.querySelectorAll<HTMLButtonElement>('button') ?? [])].find(
     (item) => item.textContent === name,
   );
@@ -168,7 +184,7 @@ it('continues the same query into message and result search in server mode only'
     );
     if (!action) throw new Error('Missing message search');
     await act(async () => {
-      action.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      action.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(searched).toEqual(['north wing']);
   } finally {
@@ -210,7 +226,7 @@ it('goes to Needs you, Library, Automation and feature previews, and starts a me
     );
     if (!row) throw new Error('Missing New meeting');
     await act(async () => {
-      row.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      row.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     });
     expect(meetings).toEqual(['alpha']);
   } finally {
@@ -229,7 +245,7 @@ it.each([
   );
   expect(option).toBeTruthy();
   await act(async () => {
-    option?.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+    option?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
   });
   expect(services.server.repository.save).not.toHaveBeenCalled();
   expect(fixture.navigate).toHaveBeenCalledWith({
@@ -299,9 +315,9 @@ it.each([
           input.dispatchEvent(new Event('input', { bubbles: true }));
         });
         // Each row's title, without the hint or slash beside it.
-        const titles = [...container.querySelectorAll('[role="option"] span.block')].map((title) =>
-          title.textContent?.trim(),
-        );
+        const titles = [
+          ...container.querySelectorAll('[role="option"] > span > span:first-child'),
+        ].map((title) => title.textContent?.trim());
         expect(titles, query).toContain(stop);
       }
     } finally {
@@ -329,4 +345,20 @@ it('lists the conversations used last on this device first while nothing is type
     .filter((word) => word === 'Opened' || word === 'Changed' || word === 'Quiet');
   expect(titles).toEqual(['Opened', 'Changed', 'Quiet']);
   window.localStorage.clear();
+});
+
+it('closes on Escape from any control inside it, not only from the search field', async () => {
+  const onClose = vi.fn();
+  await mount({ onClose, mode: 'sessions' });
+  const scope = [...document.querySelectorAll<HTMLButtonElement>('[role="dialog"] button')].find(
+    (button) => button.textContent === 'All projects',
+  );
+  if (!scope) throw new Error('Missing scope button');
+  scope.focus();
+  await act(async () => {
+    scope.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }),
+    );
+  });
+  expect(onClose).toHaveBeenCalled();
 });

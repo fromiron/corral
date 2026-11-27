@@ -56,7 +56,7 @@ export function DiagnosticsSettingsPage() {
   const projectId = navigation.projectId;
   const serverModels = mode === 'server' ? models : null;
   const modelSettings = useModelSettings(serverModels && live ? serverModels : null);
-  const { binding, reload } = useBinding(workspaces && projectId ? projectId : null);
+  const { binding, failed, reload } = useBinding(workspaces && projectId ? projectId : null);
   const [localAi, setLocalAi] = useState<
     { state: 'loading' | 'failed' } | { state: 'loaded'; view: LocalAiView }
   >({ state: 'loading' });
@@ -111,17 +111,19 @@ export function DiagnosticsSettingsPage() {
       ? { state: 'server-only' }
       : !projectId
         ? { state: 'no-project' }
-        : binding === undefined
-          ? { state: 'loading' }
-          : binding === null
-            ? { state: 'unbound' }
-            : {
-                state: 'bound',
-                path: binding.path,
-                trusted: binding.trusted,
-                missing: binding.missing,
-                isGit: binding.isGit,
-              },
+        : failed
+          ? { state: 'failed' }
+          : binding === undefined
+            ? { state: 'loading' }
+            : binding === null
+              ? { state: 'unbound' }
+              : {
+                  state: 'bound',
+                  path: binding.path,
+                  trusted: binding.trusted,
+                  missing: binding.missing,
+                  isGit: binding.isGit,
+                },
     pathEngine,
     localAi: serverModels ? localAi : { state: 'server-only' },
   };

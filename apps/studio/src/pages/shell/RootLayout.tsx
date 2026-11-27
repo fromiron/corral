@@ -446,11 +446,7 @@ function RootFrame() {
               />
               <NewMeetingHost />
               {overlay && overlaySearch.settings ? (
-                <SettingsDialog
-                  section={overlaySearch.settings}
-                  inbox={sidebar.inbox}
-                  currentProject={sidebar.current}
-                />
+                <SettingsDialog section={overlaySearch.settings} inbox={sidebar.inbox} />
               ) : null}
             </SidebarProvider>
           </TopbarFit>

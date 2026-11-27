@@ -38,6 +38,7 @@ import {
 } from '../../templates.ts';
 import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosenRow.ts';
 import { chooseNewSessionTeam } from '../../workbench/newSessionDraft.ts';
+import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 import { useSessionAge } from '../../workbench/useSessionAge.ts';
 
 // The library's saved teams and templates for one project (docs/specs/features/library.md).
@@ -87,6 +88,7 @@ export function LibraryTeams({
   const importInput = useRef<HTMLInputElement>(null);
   const [selection, select] = useState<string | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
+  const focus = useConfirmFocus();
   const [busy, setBusy] = useState(false);
   const [errors, setErrors] = useState<string[]>([]);
   const teams = corrals.filter((corral) => corral.projectId === projectId);
@@ -340,12 +342,21 @@ export function LibraryTeams({
                     >
                       {t('confirmDelete')}
                     </Button>
-                    <Button variant="ghost" size="compact" onClick={() => setConfirming(null)}>
+                    <Button
+                      ref={focus.answer}
+                      variant="ghost"
+                      size="compact"
+                      onClick={() => {
+                        focus.cancelled();
+                        setConfirming(null);
+                      }}
+                    >
                       {t('cancel')}
                     </Button>
                   </div>
                 ) : (
                   <Button
+                    ref={focus.opener}
                     variant="ghost-destructive"
                     size="compact"
                     className="self-start"

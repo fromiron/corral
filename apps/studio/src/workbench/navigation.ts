@@ -10,7 +10,7 @@ export interface SettingsSearch {
 export function workHref(value: unknown): string | undefined {
   if (typeof value !== 'string' || value.length > 2048 || /[\\\r\n]/.test(value)) return;
   if (
-    !/^\/(?:projects(?:\/[^/?#]+)?|sessions\/[^/?#]+(?:\/review)?|corrals\/[^/?#]+\/edit|runs\/[^/?#]+|demo|compare|inbox|library(?:\/(?:teams|agents|skills|templates|resources))?|preview(?:\/[^/?#]+)?)(?:[?#]|$)/.test(
+    !/^\/(?:projects(?:\/[^/?#]+)?|sessions\/[^/?#]+(?:\/review)?|corrals\/[^/?#]+\/edit|runs\/[^/?#]+|demo|compare|inbox|schedules|library(?:\/(?:teams|agents|skills|templates|resources))?|preview(?:\/[^/?#]+)?)(?:[?#]|$)/.test(
       value,
     )
   )

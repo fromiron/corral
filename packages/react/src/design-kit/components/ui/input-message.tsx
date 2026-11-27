@@ -1187,7 +1187,8 @@ const InputMessage = forwardRef<HTMLDivElement, InputMessageProps>(
             <div
               className={cn(
                 'flex min-w-0 flex-wrap items-center gap-1.5',
-                toolbar === 'single' && 'sm:flex-1 sm:flex-nowrap sm:overflow-x-clip',
+                toolbar === 'single' &&
+                  'sm:-ml-1 sm:flex-1 sm:flex-nowrap sm:overflow-x-clip sm:pl-1',
               )}
             >
               {leftContent}

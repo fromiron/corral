@@ -1,6 +1,6 @@
 import {
   type Schedule,
-  type ScheduleDraft,
+  ScheduleDraft,
   type ScheduledOccurrence,
   type ScheduleRule,
   TERMINAL_RUN_STATUSES,
@@ -8,10 +8,14 @@ import {
 import type { ProjectSummary, RunSummary, WorkSession } from '@corral/core';
 import { PresenceBadge, runPresence } from '@corral/react';
 import {
+  Banner,
+  BannerActions,
+  BannerTitle,
   Button,
   EmptyState,
   fontWeights,
   Input,
+  KitBadge,
   Page,
   SectionLabel,
   Select,
@@ -34,6 +38,7 @@ import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosen
 import { watchRefresh } from '../../workbench/refresh.ts';
 import { watchRunList } from '../../workbench/runList.ts';
 import { automationShownRuns, scheduleHistoryStatus } from '../../workbench/scheduledRuns.ts';
+import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 
 /** Sunday first, as the rule's weekday numbers count them. */
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -54,6 +59,12 @@ function scheduleDraft(schedule: Schedule): ScheduleDraft {
 }
 
 const message = (cause: unknown) => (cause instanceof Error ? cause.message : String(cause));
+const statusOf = (cause: unknown) =>
+  typeof cause === 'object' && cause && 'status' in cause ? cause.status : undefined;
+const focusOnMount = (node: HTMLElement | null) => node?.focus();
+const knownZone = (zone: string) => ScheduleDraft.shape.timezone.safeParse(zone).success;
+const NEW = 'new';
+type SaveRefusal = { id: number; text: string; conflict: boolean };
 
 /** A session read on its own, so a title its runs gave it since the page opened shows. */
 const readTarget = (
@@ -91,6 +102,15 @@ export function ScheduledPage() {
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<SaveRefusal | null>(null);
+  const [kept, setKept] = useState<Record<string, { base: Schedule | null; draft: ScheduleDraft }>>(
+    {},
+  );
+  const keepForm = (base: Schedule | null, draft: ScheduleDraft) =>
+    setKept((forms) => ({ ...forms, [base?.id ?? NEW]: { base, draft } }));
+  const forget = (base: Schedule | null) =>
+    setKept(({ [base?.id ?? NEW]: _gone, ...forms }) => forms);
+  const refusals = useRef(0);
   const [busy, setBusy] = useState(false);
   /** The sessions and profiles were read; until then no session is not known to be none. */
   const [loaded, setLoaded] = useState(false);
@@ -223,7 +243,10 @@ export function ScheduledPage() {
     const watcher = watchRefresh((current, every) => readRef.current(every, current), 3000);
     return watcher.dispose;
   }, [mode]);
-  const perform = async (action: () => Promise<void>) => {
+  const perform = async (
+    action: () => Promise<void>,
+    fail: (cause: unknown) => void = (cause) => setError(message(cause)),
+  ) => {
     if (inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
@@ -232,7 +255,7 @@ export function ScheduledPage() {
       await action();
       await refresh();
     } catch (cause) {
-      setError(message(cause));
+      fail(cause);
     } finally {
       inFlight.current = false;
       setBusy(false);
@@ -240,13 +263,35 @@ export function ScheduledPage() {
   };
   const select = (schedule: Schedule) => {
     setError(null);
+    setSaveError(null);
     setEditing(null);
     setSelected(schedule);
+  };
+  const choose = (schedule: Schedule) => {
+    select(schedule);
+    const form = kept[schedule.id];
+    if (form) setEditing(form);
+  };
+  const refuseSave = (cause: unknown) => {
+    const status = statusOf(cause);
+    setSaveError({
+      id: ++refusals.current,
+      conflict: status === 409 && Boolean(editing?.base),
+      text: status === 404 && editing?.base ? t('deletedElsewhere') : message(cause),
+    });
+  };
+  const latest = async (id: string) => {
+    const found = (await schedulesApi.list()).schedules.find((schedule) => schedule.id === id);
+    if (!found) throw Object.assign(new Error(t('deletedElsewhere')), { status: 404 });
+    return found;
   };
   const create = () => {
     const session = sessions[0];
     if (!session) return;
     setSelected(null);
+    setSaveError(null);
+    const form = kept[NEW];
+    if (form) return setEditing(form);
     setEditing({
       base: null,
       draft: {
@@ -269,12 +314,33 @@ export function ScheduledPage() {
   };
   const save = (draft: ScheduleDraft) => {
     const base = editing?.base ?? null;
+    setSaveError(null);
     void perform(async () => {
       const saved = base
         ? await schedulesApi.update(base, draft)
         : await schedulesApi.create(draft);
+      forget(base);
       select(saved);
-    });
+    }, refuseSave);
+  };
+  const saveMine = (draft: ScheduleDraft) => {
+    const base = editing?.base;
+    if (!base) return;
+    void perform(async () => {
+      const saved = await schedulesApi.update(await latest(base.id), draft);
+      forget(base);
+      select(saved);
+    }, refuseSave);
+  };
+  const loadLatest = () => {
+    const base = editing?.base;
+    if (!base) return;
+    void perform(async () => {
+      const stored = await latest(base.id);
+      setSaveError(null);
+      forget(base);
+      setEditing({ base: stored, draft: scheduleDraft(stored) });
+    }, refuseSave);
   };
   /** Stops or resumes future firings only; a run already started keeps going. */
   const setEnabled = (schedule: Schedule, enabled: boolean) =>
@@ -303,6 +369,7 @@ export function ScheduledPage() {
   const remove = (schedule: Schedule) =>
     void perform(async () => {
       await schedulesApi.remove(schedule);
+      forget(schedule);
       setSelected(null);
     });
   const summary = (rule: ScheduleRule) =>
@@ -383,7 +450,7 @@ export function ScheduledPage() {
       <Page
         title={shell('automation')}
         // Without the local server there is nothing to create; the empty state says why.
-        {...(mode === 'server'
+        {...(mode === 'server' && !(empty && !schedules.length)
           ? {
               toolbar: (
                 <div className="flex flex-wrap items-center gap-2">
@@ -462,12 +529,17 @@ export function ScheduledPage() {
                         <button
                           type="button"
                           aria-pressed={current}
-                          onClick={() => select(schedule)}
+                          onClick={() => choose(schedule)}
                           className="block w-full truncate rounded-sm text-left text-foreground after:absolute after:inset-0 after:content-['']"
                           style={current ? semibold : undefined}
                         >
                           {schedule.title}
                         </button>
+                        {kept[schedule.id] ? (
+                          <KitBadge size="compact" color="amber">
+                            {t('unsaved')}
+                          </KitBadge>
+                        ) : null}
                       </TableCell>
                       <TableCell className="max-md:hidden">{summary(schedule.rule)}</TableCell>
                       <TableCell>{schedule.enabled ? t('enabled') : t('disabled')}</TableCell>
@@ -482,7 +554,17 @@ export function ScheduledPage() {
             </Table>
           </div>
         ) : editing || !empty ? null : (
-          <EmptyState title={empty.title} text={empty.text} />
+          <EmptyState
+            title={empty.title}
+            text={empty.text}
+            action={
+              mode === 'server' ? (
+                <Button variant="primary" disabled={!sessions.length || busy} onClick={create}>
+                  {t('new')}
+                </Button>
+              ) : undefined
+            }
+          />
         )}
         {/* Where no empty state carries it, the reason New schedule is disabled stays on screen. */}
         {needsSession && !editing && !(empty && !schedules.length) ? (
@@ -490,18 +572,27 @@ export function ScheduledPage() {
         ) : null}
         {editing ? (
           <ScheduleEditor
-            key={editing.base?.id ?? 'new'}
+            key={editing.base ? `${editing.base.id}:${editing.base.revision}` : 'new'}
             initial={editing.draft}
+            refusal={saveError}
+            onDraft={(draft) => keepForm(editing.base, draft)}
+            onSaveMine={saveMine}
+            onLoadLatest={loadLatest}
             sessions={sessions}
             projects={projects}
             profiles={profiles}
             live={live}
             busy={busy}
             onSave={save}
-            onClose={() => setEditing(null)}
+            onClose={() => {
+              setSaveError(null);
+              forget(editing.base);
+              setEditing(null);
+            }}
           />
         ) : shown ? (
           <ScheduleDetail
+            key={shown.id}
             schedule={shown}
             summary={summary(shown.rule)}
             nextRun={nextRun(shown)}
@@ -621,6 +712,8 @@ function ScheduleDetail({
 }) {
   const t = useTranslations('Schedules');
   const heading = useId();
+  const [confirming, setConfirming] = useState(false);
+  const focus = useConfirmFocus();
   const term = 'text-caption text-muted-foreground';
   return (
     <section aria-labelledby={heading} className="flex min-w-0 flex-col gap-4">
@@ -639,9 +732,32 @@ function ScheduleDetail({
           <Button variant="tertiary" disabled={busy} onClick={onEdit}>
             {t('edit')}
           </Button>
-          <Button variant="ghost-destructive" disabled={busy} onClick={onDelete}>
-            {t('delete')}
-          </Button>
+          {confirming ? (
+            <>
+              <Button variant="destructive-outline" disabled={busy} onClick={onDelete}>
+                {t('confirmDelete')}
+              </Button>
+              <Button
+                ref={focus.answer}
+                variant="ghost"
+                onClick={() => {
+                  focus.cancelled();
+                  setConfirming(false);
+                }}
+              >
+                {t('cancel')}
+              </Button>
+            </>
+          ) : (
+            <Button
+              ref={focus.opener}
+              variant="ghost-destructive"
+              disabled={busy}
+              onClick={() => setConfirming(true)}
+            >
+              {t('delete')}
+            </Button>
+          )}
         </div>
       </div>
       {/* What the row lacks. Its timing and next run show here only where the row drops them. */}
@@ -702,6 +818,10 @@ function ScheduleDetail({
 
 function ScheduleEditor({
   initial,
+  refusal,
+  onDraft,
+  onSaveMine,
+  onLoadLatest,
   sessions,
   projects,
   profiles,
@@ -711,6 +831,10 @@ function ScheduleEditor({
   onClose,
 }: {
   initial: ScheduleDraft;
+  refusal: SaveRefusal | null;
+  onDraft(draft: ScheduleDraft): void;
+  onSaveMine(draft: ScheduleDraft): void;
+  onLoadLatest(): void;
   sessions: WorkSession[];
   projects: ProjectSummary[];
   profiles: string[];
@@ -721,12 +845,23 @@ function ScheduleEditor({
 }) {
   const t = useTranslations('Schedules');
   const tp = useTranslations('Projects');
-  const [draft, setDraft] = useState(initial);
+  const [draft, setDraftState] = useState(initial);
+  const setDraft = (next: ScheduleDraft) => {
+    setDraftState(next);
+    onDraft(next);
+  };
+  const [zoneUnknown, setZoneUnknown] = useState(false);
+  const zone = useRef<HTMLInputElement>(null);
   const ids = useId();
   const labelClass = 'flex min-w-0 flex-col gap-1.5 text-caption text-muted-foreground';
+  const checked = (send: (draft: ScheduleDraft) => void) => {
+    if (knownZone(draft.timezone)) return send(draft);
+    setZoneUnknown(true);
+    zone.current?.focus();
+  };
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSave(draft);
+    checked(onSave);
   };
   return (
     <form onSubmit={submit} className="flex min-w-0 flex-col gap-4" aria-label={t('settings')}>
@@ -842,15 +977,28 @@ function ScheduleEditor({
             }}
           />
         </label>
-        <label htmlFor={`${ids}-zone`} className={labelClass}>
-          {t('timeZone')}
-          <Input
-            id={`${ids}-zone`}
-            required
-            value={draft.timezone}
-            onChange={(e) => setDraft({ ...draft, timezone: e.target.value })}
-          />
-        </label>
+        <div className="flex min-w-0 flex-col gap-1">
+          <label htmlFor={`${ids}-zone`} className={labelClass}>
+            {t('timeZone')}
+            <Input
+              ref={zone}
+              id={`${ids}-zone`}
+              required
+              aria-invalid={zoneUnknown || undefined}
+              aria-describedby={zoneUnknown ? `${ids}-zone-error` : undefined}
+              value={draft.timezone}
+              onChange={(e) => {
+                setZoneUnknown(false);
+                setDraft({ ...draft, timezone: e.target.value });
+              }}
+            />
+          </label>
+          {zoneUnknown ? (
+            <p id={`${ids}-zone-error`} className="m-0 text-caption text-destructive">
+              {t('zoneUnknown')}
+            </p>
+          ) : null}
+        </div>
       </div>
       {draft.rule.kind === 'weekly' ? (
         <fieldset className="flex flex-col gap-1.5">
@@ -942,6 +1090,32 @@ function ScheduleEditor({
         checked={draft.enabled}
         onToggle={() => setDraft({ ...draft, enabled: !draft.enabled })}
       />
+      {refusal ? (
+        <Banner
+          key={refusal.id}
+          ref={focusOnMount}
+          tabIndex={-1}
+          status={refusal.conflict ? 'warning' : 'error'}
+          size="compact"
+        >
+          <BannerTitle>{refusal.conflict ? t('changedElsewhere') : refusal.text}</BannerTitle>
+          {refusal.conflict ? (
+            <BannerActions>
+              <Button
+                variant="primary"
+                size="compact"
+                disabled={busy}
+                onClick={() => checked(onSaveMine)}
+              >
+                {t('saveMine')}
+              </Button>
+              <Button variant="secondary" size="compact" disabled={busy} onClick={onLoadLatest}>
+                {t('loadLatest')}
+              </Button>
+            </BannerActions>
+          ) : null}
+        </Banner>
+      ) : null}
       <div className="flex flex-wrap gap-2">
         <Button disabled={busy} type="submit">
           {t('save')}

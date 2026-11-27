@@ -1,3 +1,4 @@
+import { textAttachmentKey } from '@corral/contracts';
 import type { SessionEntry } from '@corral/core';
 import { type KeyboardEvent, useState } from 'react';
 import type { ComposerDraftState } from './useComposerDraft.ts';
@@ -9,11 +10,14 @@ export function useComposerKeys({
   entries,
   write,
 }: {
-  draft: Pick<ComposerDraftState, 'text' | 'resetAttachments' | 'restore'>;
+  draft: Pick<
+    ComposerDraftState,
+    'text' | 'attachments' | 'images' | 'resetAttachments' | 'restore'
+  >;
   entries: SessionEntry[];
   write: (value: string) => void;
 }) {
-  const { text, resetAttachments, restore } = draft;
+  const { text, attachments, images, resetAttachments, restore } = draft;
   const [recall, setRecall] = useState(-1);
   // Earlier requests, newest first, for ↑ in an empty box.
   const history = entries
@@ -23,14 +27,28 @@ export function useComposerKeys({
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.nativeEvent.isComposing || event.keyCode === 229) return;
     const box = event.currentTarget;
-    const recalled = recall >= 0 && text === history[recall];
+    const shown =
+      recall >= 0 ? entries.findLast((entry) => entry.text === history[recall]) : undefined;
+    const recalled =
+      recall >= 0 &&
+      text === history[recall] &&
+      sameKeys(
+        attachments.map(textAttachmentKey),
+        (shown?.attachments ?? []).map(textAttachmentKey),
+      ) &&
+      sameKeys(
+        images.map((image) => image.imageId),
+        (shown?.images ?? []).map((image) => image.imageId),
+      );
+    const empty = text === '' && !attachments.length && !images.length;
     if (
       (event.key === 'ArrowUp' || event.key === 'ArrowDown') &&
       !event.shiftKey &&
-      (text === '' || recalled) &&
+      (empty || recalled) &&
       box.selectionStart === box.selectionEnd
     ) {
-      const next = event.key === 'ArrowUp' ? recall + 1 : recall - 1;
+      const from = recalled ? recall : -1;
+      const next = event.key === 'ArrowUp' ? from + 1 : from - 1;
       if (next < -1 || next >= history.length) return;
       event.preventDefault();
       setRecall(next);
@@ -47,3 +65,6 @@ export function useComposerKeys({
   const resetRecall = () => setRecall(-1);
   return { onKeyDown, resetRecall };
 }
+
+const sameKeys = (a: readonly string[], b: readonly string[]) =>
+  a.length === b.length && a.every((key, index) => key === b[index]);

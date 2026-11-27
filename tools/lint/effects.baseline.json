@@ -77,7 +77,7 @@
     "packages/react/src/team-editor/useOutriderTargets.ts": 2
   },
   "studio": {
-    "apps/studio/src/CommandPalette.tsx": 11,
+    "apps/studio/src/CommandPalette.tsx": 10,
     "apps/studio/src/annotate/AnnotateApp.tsx": 2,
     "apps/studio/src/annotate/NoteCard.tsx": 2,
     "apps/studio/src/annotate/Overlay.tsx": 13,

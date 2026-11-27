@@ -2,9 +2,6 @@ import type { FileListView } from '@corral/client';
 import type { TextAttachment, TextRange, WorkspaceTarget } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
 import {
-  Banner,
-  BannerActions,
-  BannerTitle,
   Button,
   fontWeights,
   Input,
@@ -41,6 +38,7 @@ import { fileSourceKey, type TreeState, useTreeState } from './fileTreeState.ts'
 import { useSettingsNavigation } from './navigation.ts';
 import { openQuickOpen, takeFileReveal, useFileReveal } from './QuickOpen.tsx';
 import { runResultFiles } from './runResults.ts';
+import { SourceReadOnlyNote } from './SourceReadOnlyNote.tsx';
 import { readSourceFilesAgain } from './session/sourceReread.ts';
 import { useWorkspaceFiles } from './useWorkspaceFiles.ts';
 
@@ -125,7 +123,6 @@ export function FilePanel({
   const pathRow = useSize().variant === 'compact' ? 'min-h-7' : 'min-h-9';
   const ts = useTranslations('ContentSearch');
   const tw = useTranslations('Workbench');
-  const sessionText = useTranslations('Sessions');
   const navigation = useSettingsNavigation();
   const services = useServices();
   const { workspaces, mode, workspaceId } = services;
@@ -548,23 +545,7 @@ export function FilePanel({
     ) : null;
   const fileSetup =
     scope?.kind === 'project' && !hasCopy && !loading ? (
-      <Banner status="info" role="note">
-        <BannerTitle>{tf('noCopyReadOnly')}</BannerTitle>
-        <BannerActions>
-          <Button
-            variant="tertiary"
-            render={
-              <Link
-                to="/sessions/$sessionId"
-                params={{ sessionId }}
-                search={{ panel: 'changes' }}
-              />
-            }
-          >
-            {sessionText('prepareWorkingCopy')}
-          </Button>
-        </BannerActions>
-      </Banner>
+      <SourceReadOnlyNote sessionId={sessionId} />
     ) : null;
   if (!scope && !loading)
     return (

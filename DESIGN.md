@@ -161,6 +161,7 @@ The source kit keeps all eight elevation levels. Menus rise two levels and dialo
 | Chip select | `Select variant="chip"` is compact and hugs its value, for choices that sit among compact buttons such as the composer row or the top bar. |
 | `Badge`, status and tooltip | Use semantic status roles and concise content. Color supplements text or an accessible name. Tooltips never replace a required label. |
 | `ScrollArea` | Keep existing virtualized scrolling, keyboard access, edge fades and stored positions; use the kit's scrollbar treatment. |
+| Rings in a clipping container | A field's ring and the keyboard focus outline are drawn outside the control, up to 4px. A container that scrolls or clips keeps that room: it bleeds 4px and pads 4px (`-m-1 p-1`, as the dialog body does), or a row that fills the container edge to edge draws the kit's inset ring (`focusRingInset`). Scrolling containers also set a block scroll padding so a control scrolled into view keeps its outline. |
 
 Use one primary action per decision context when there is a clear next step. Related actions use secondary or tertiary treatment; low-emphasis actions use ghost. Navigation stays a link. Destructive and media controls are explicit semantic exceptions to the four ordinary treatments.
 

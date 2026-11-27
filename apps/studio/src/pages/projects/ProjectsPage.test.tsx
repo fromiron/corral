@@ -1,4 +1,5 @@
 // @vitest-environment jsdom
+import { ApiError } from '@corral/client';
 import type { ProjectSummary } from '@corral/core';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -44,6 +45,7 @@ vi.mock('../../projects.ts', () => ({
   useCurrentProject: () => null,
 }));
 vi.mock('../../desktop.tsx', () => ({ desktop: null }));
+vi.mock('../../workbench/GitCloneFolder.tsx', () => ({ GitCloneFolder: () => null }));
 
 const cleanup: (() => Promise<void>)[] = [];
 beforeEach(() => {
@@ -225,6 +227,95 @@ it('opens the dialog at its name when reached from New project in the sidebar me
 it('leaves the dialog closed when the projects page opens without the hash', async () => {
   await show('');
   expect(form()).toBeNull();
+});
+
+it('a refused folder link keeps the dialog open with the cause, and linking again makes no second project', async () => {
+  const bind = vi
+    .fn()
+    .mockRejectedValueOnce(new ApiError(404, 'TARGET_NOT_FOUND', 'that folder does not exist'))
+    .mockResolvedValueOnce({ projectId: 'project_new' });
+  fixture.services = { ...fixture.services, mode: 'server', workspaces: { bind } };
+  const container = await show();
+  await act(async () => button(container, messages.Projects.new).click());
+  await settle();
+  const inputs = [...(form()?.querySelectorAll<HTMLInputElement>('input') ?? [])];
+  await type(inputs[0] as HTMLInputElement, 'Client A');
+  await type(inputs[2] as HTMLInputElement, '/work/clinet-a');
+  await act(async () => form()?.requestSubmit());
+  await settle();
+  expect(form()).not.toBeNull();
+  expect(form()?.textContent).toContain(messages.Projects.folderRefused.TARGET_NOT_FOUND);
+  expect(fixture.navigate).not.toHaveBeenCalled();
+  const footer = form() as HTMLFormElement;
+  expect(button(footer, messages.Projects.openWithoutFolder)).toBeDefined();
+  const folderInput = [...footer.querySelectorAll<HTMLInputElement>('input')][2];
+  await type(folderInput as HTMLInputElement, '/work/client-a');
+  await act(async () => button(footer, messages.Projects.linkAgain).click());
+  await settle();
+  const repository = fixture.services.repository as Record<string, ReturnType<typeof vi.fn>>;
+  expect(repository.createProject).toHaveBeenCalledTimes(1);
+  expect(bind).toHaveBeenLastCalledWith('project_new', '/work/client-a');
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/projects/$projectId',
+    params: { projectId: 'project_new' },
+  });
+});
+
+it('a refused folder link can be left for the project without a folder', async () => {
+  const bind = vi.fn(async () => {
+    throw new ApiError(400, 'SCHEMA_INVALID', 'choose a project folder');
+  });
+  fixture.services = { ...fixture.services, mode: 'server', workspaces: { bind } };
+  const container = await show();
+  await act(async () => button(container, messages.Projects.new).click());
+  await settle();
+  const inputs = [...(form()?.querySelectorAll<HTMLInputElement>('input') ?? [])];
+  await type(inputs[0] as HTMLInputElement, 'Client A');
+  await type(inputs[2] as HTMLInputElement, '/');
+  await act(async () => form()?.requestSubmit());
+  await settle();
+  expect(form()?.textContent).toContain(messages.Projects.folderRefused.SCHEMA_INVALID);
+  await act(async () =>
+    button(form() as HTMLFormElement, messages.Projects.openWithoutFolder).click(),
+  );
+  await settle();
+  const repository = fixture.services.repository as Record<string, ReturnType<typeof vi.fn>>;
+  expect(repository.createProject).toHaveBeenCalledTimes(1);
+  expect(bind).toHaveBeenCalledTimes(1);
+  expect(fixture.navigate).toHaveBeenCalledWith({
+    to: '/projects/$projectId',
+    params: { projectId: 'project_new' },
+  });
+});
+
+it('a dialog closed after a refused folder link reads the list again, so the new project shows', async () => {
+  const bind = vi.fn(async () => {
+    throw new ApiError(404, 'TARGET_NOT_FOUND', 'that folder does not exist');
+  });
+  fixture.services = { ...fixture.services, mode: 'server', workspaces: { bind } };
+  const container = await show();
+  const trigger = button(container, messages.Projects.new);
+  await act(async () => trigger.click());
+  await settle();
+  const inputs = [...(form()?.querySelectorAll<HTMLInputElement>('input') ?? [])];
+  await type(inputs[0] as HTMLInputElement, 'Client A');
+  await type(inputs[2] as HTMLInputElement, '/work/missing');
+  await act(async () => form()?.requestSubmit());
+  await settle();
+  fixture.invalidate.mockClear();
+  await act(async () => {
+    document.activeElement?.dispatchEvent(
+      new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }),
+    );
+  });
+  await act(async () => vi.waitFor(() => expect(form()).toBeNull(), { timeout: 3000 }));
+  expect(fixture.invalidate).toHaveBeenCalled();
+  await act(async () => trigger.click());
+  await settle();
+  expect(nameField()?.value).toBe('');
+  expect(form()?.textContent).not.toContain(messages.Projects.folderRefused.TARGET_NOT_FOUND);
+  const repository = fixture.services.repository as Record<string, ReturnType<typeof vi.fn>>;
+  expect(repository.createProject).toHaveBeenCalledTimes(1);
 });
 
 it('says when each project was saved in the studio relative time, "Just now" under a minute', async () => {

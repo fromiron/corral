@@ -35,7 +35,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 const project = (projectId: string, name: string) => ({ projectId, name }) as ProjectSummary;
 
-async function render(overlay: boolean, projectId?: string) {
+async function render(overlay: boolean, projectId?: string, inbox = 0) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', (query: string) => ({
     matches: false,
@@ -48,7 +48,7 @@ async function render(overlay: boolean, projectId?: string) {
   const root = createRoot(container);
   const navigation = (
     <SidebarProvider persist={false} shortcut={null}>
-      <SettingsNavigation inbox={0} currentProject="b" />
+      <SettingsNavigation inbox={inbox} />
     </SidebarProvider>
   );
   await act(async () =>
@@ -102,6 +102,18 @@ it('heads the project group with the one settings target picker', async () => {
     expect(
       [...(app?.querySelectorAll('a') ?? [])].map((link) => link.getAttribute('href')),
     ).toContain('/settings/diagnostics');
+  } finally {
+    await cleanup();
+  }
+});
+
+it('sends its Needs you row to Needs you, not to the project page', async () => {
+  const { container, cleanup } = await render(true, 'b', 2);
+  try {
+    const row = [...container.querySelectorAll('a')].find((link) =>
+      link.textContent?.includes('Needs you'),
+    );
+    expect(row?.getAttribute('href')).toBe('/inbox');
   } finally {
     await cleanup();
   }

@@ -1,8 +1,10 @@
 // @vitest-environment jsdom
 import type { Schedule, ScheduleDraft, ScheduledOccurrence } from '@corral/contracts';
 import type { RunSummary } from '@corral/core';
+import { Button } from '@corral/react/design-kit';
 import { act, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { renderToStaticMarkup } from 'react-dom/server';
 import { IntlProvider } from 'use-intl';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import messages from '../../../../../packages/react/src/messages/en.json' with { type: 'json' };
@@ -606,4 +608,178 @@ it('keeps the reason New schedule is disabled after a failed read, and never cla
   await settle();
   expect(container.querySelector('[role="alert"]')).toBeNull();
   expect(button('New schedule').disabled).toBe(false);
+});
+
+const form = () => container.querySelector<HTMLFormElement>('form');
+const refused = (message: string, status: number) => Object.assign(new Error(message), { status });
+
+it('a refused save shows its reason inside the form, right above Save, and moves focus to it', async () => {
+  fixture.api.create.mockRejectedValueOnce(refused('Choose a future occurrence.', 400));
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await click(button('Save schedule'));
+  await settle();
+  const alert = form()?.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert?.textContent).toContain('Choose a future occurrence.');
+  expect(alert?.compareDocumentPosition(button('Save schedule'))).toBe(
+    Node.DOCUMENT_POSITION_FOLLOWING,
+  );
+  expect(alert?.contains(document.activeElement)).toBe(true);
+  // Nothing says it again above the list.
+  expect(container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+});
+
+it('an unknown time zone is that field’s own error and nothing is sent', async () => {
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await type(field('Time zone'), 'Mars/Olympus');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).not.toHaveBeenCalled();
+  const zone = field('Time zone');
+  expect(zone.getAttribute('aria-invalid')).toBe('true');
+  expect(document.getElementById(zone.getAttribute('aria-describedby') ?? '')?.textContent).toBe(
+    messages.Schedules.zoneUnknown,
+  );
+  expect(document.activeElement).toBe(zone);
+  await type(zone, 'UTC');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).toHaveBeenCalledTimes(1);
+});
+
+it('Delete asks first in place; Cancel keeps the schedule and Confirm delete removes it once', async () => {
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.remove.mockResolvedValue(undefined);
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.delete));
+  expect(fixture.api.remove).not.toHaveBeenCalled();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  await click(button(messages.Schedules.cancel));
+  expect(() => button(messages.Schedules.confirmDelete)).toThrow();
+  await click(button(messages.Schedules.delete));
+  await click(button(messages.Schedules.confirmDelete));
+  await settle();
+  expect(fixture.api.remove).toHaveBeenCalledTimes(1);
+});
+
+it('another row or a new schedule keeps a form’s unsaved typing until its row is chosen again', async () => {
+  fixture.api.list.mockResolvedValue({
+    schedules: [schedule(), schedule({ id: 'schedule_2', title: 'Weekly digest' })],
+  });
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine, half typed');
+  await click(button(/Weekly digest/));
+  expect(form()).toBeNull();
+  const marked = [...container.querySelectorAll('tbody tr')].find((row) =>
+    row.textContent?.includes('Daily project review'),
+  );
+  expect(marked?.textContent).toContain(messages.Schedules.unsaved);
+  await click(button(messages.Schedules.new));
+  await type(field('Title'), 'A new one');
+  await click(button(/Daily project review/));
+  expect(field('Title').value).toBe('Mine, half typed');
+  await click(button(messages.Schedules.new));
+  expect(field('Title').value).toBe('A new one');
+  expect(fixture.api.update).not.toHaveBeenCalled();
+  expect(fixture.api.create).not.toHaveBeenCalled();
+});
+
+const newButtons = () =>
+  [...container.querySelectorAll<HTMLButtonElement>('button')].filter(
+    (item) => item.textContent?.trim() === messages.Schedules.new,
+  );
+
+it('a loaded, empty list holds New schedule once, as the empty state’s primary action', async () => {
+  await page();
+  const [only, ...more] = newButtons();
+  expect(more).toHaveLength(0);
+  expect(only?.closest('[data-slot="empty-state"]')).not.toBeNull();
+  const host = document.createElement('div');
+  host.innerHTML = renderToStaticMarkup(
+    <Button variant="primary">{messages.Schedules.new}</Button>,
+  );
+  expect(only?.className).toBe(host.querySelector('button')?.className);
+  await click(only as HTMLButtonElement);
+  expect(form()).not.toBeNull();
+});
+
+it('while the list is read or after it failed, New schedule stays in the toolbar', async () => {
+  fixture.api.list.mockReturnValue(new Promise(() => {}));
+  await page();
+  expect(newButtons()).toHaveLength(1);
+  expect(newButtons()[0]?.closest('[data-slot="empty-state"]')).toBeNull();
+  await dispose();
+  fixture.api.list.mockRejectedValue(new Error('The server did not answer.'));
+  await page();
+  expect(newButtons()).toHaveLength(1);
+  expect(newButtons()[0]?.closest('[data-slot="empty-state"]')).toBeNull();
+});
+
+it('a time zone alias the server accepts passes the check and is sent', async () => {
+  fixture.api.create.mockImplementation(async (draft: ScheduleDraft) =>
+    schedule({ ...draft, id: 'schedule_new', revision: 1 }),
+  );
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await type(field('Time zone'), 'US/Pacific');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).toHaveBeenCalledWith(
+    expect.objectContaining({ timezone: 'US/Pacific' }),
+  );
+});
+
+it('a schedule changed elsewhere keeps the typed form until Load the latest or Save mine', async () => {
+  const stored = schedule({ revision: 3, title: 'Changed elsewhere' });
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.update.mockRejectedValueOnce(refused('Schedule changed. Reload before saving.', 409));
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine');
+  fixture.api.list.mockResolvedValue({ schedules: [stored] });
+  await click(button('Save schedule'));
+  await settle();
+  const alert = form()?.querySelector<HTMLElement>('[role="alert"]');
+  expect(alert?.textContent).toContain(messages.Schedules.changedElsewhere);
+  expect(alert?.textContent).not.toContain('Reload before saving');
+  expect(field('Title').value).toBe('Mine');
+  fixture.api.update.mockImplementationOnce(async (current: Schedule, draft: ScheduleDraft) =>
+    schedule({ ...current, ...draft, revision: current.revision + 1 }),
+  );
+  await click(button(messages.Schedules.saveMine));
+  await settle();
+  expect(fixture.api.update).toHaveBeenLastCalledWith(
+    expect.objectContaining({ revision: 3 }),
+    expect.objectContaining({ title: 'Mine' }),
+  );
+  expect(form()).toBeNull();
+});
+
+it('Load the latest replaces the typed form with the stored schedule', async () => {
+  const stored = schedule({ revision: 3, title: 'Changed elsewhere' });
+  fixture.api.list.mockResolvedValue({ schedules: [schedule()] });
+  fixture.api.update.mockRejectedValueOnce(refused('Schedule changed. Reload before saving.', 409));
+  await page();
+  await click(button(/Daily project review/));
+  await click(button(messages.Schedules.edit));
+  await type(field('Title'), 'Mine');
+  fixture.api.list.mockResolvedValue({ schedules: [stored] });
+  await click(button('Save schedule'));
+  await settle();
+  await click(button(messages.Schedules.loadLatest));
+  await settle();
+  expect(field('Title').value).toBe('Changed elsewhere');
+  expect(form()?.querySelector('[role="alert"]')).toBeNull();
+  expect(fixture.api.update).toHaveBeenCalledTimes(1);
 });

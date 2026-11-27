@@ -108,16 +108,24 @@ describe('built-in themes', () => {
     '%s',
     (_name, theme) => {
       const tokens = paletteTokens(theme.palette);
-      // Text sits on the floor up to the step dialogs and menus use.
-      const surfaces = [1, 2, 3, 4, 5].map((step) => tokens[`--surface-${step}`] as string);
+      // Text sits on the floor up to the step a menu inside a dialog uses.
+      const surfaces = [1, 2, 3, 4, 5, 6, 7, 8].map(
+        (step) => tokens[`--surface-${step}`] as string,
+      );
 
       it.each(['foreground', 'muted', 'emphasis', 'error', 'success', 'warning', 'info'] as const)(
-        'keeps %s at 4.5:1 or more on surfaces 1 to 5',
+        'keeps %s at 4.5:1 or more on surfaces 1 to 8',
         (key) => {
           for (const surface of surfaces)
             expect(contrastRatio(theme.palette.ui[key], surface)).toBeGreaterThanOrEqual(4.5);
         },
       );
+
+      it('keeps secondary text at 4.5:1 on the quiet fill a tab track uses', () => {
+        expect(
+          contrastRatio(tokens['--muted-foreground'] as string, tokens['--muted'] as string),
+        ).toBeGreaterThanOrEqual(4.5);
+      });
 
       it('keeps text at 4.5:1 on the selected row and the focus ring at 3:1 on the floor', () => {
         expect(

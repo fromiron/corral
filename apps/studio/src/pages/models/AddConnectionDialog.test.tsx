@@ -26,7 +26,11 @@ import {
   visibleText,
 } from './modelTestDom.ts';
 
-const fixture = vi.hoisted(() => ({ models: {} as Partial<ModelsApi>, refresh: vi.fn() }));
+const fixture = vi.hoisted(() => ({
+  models: {} as Partial<ModelsApi>,
+  refresh: vi.fn(),
+  unsaved: false,
+}));
 vi.mock('../../services.tsx', () => ({
   useServices: () => ({ mode: 'server', live: true, models: fixture.models }),
 }));
@@ -34,7 +38,10 @@ vi.mock('../../workbench/modelSettings.tsx', () => ({
   useModelSettingsRefresh: () => fixture.refresh,
 }));
 vi.mock('../../workbench/SettingsLifecycle.tsx', () => ({
-  useSettingsForm: () => async () => true,
+  useSettingsForm: (form: { dirty: boolean }) => {
+    fixture.unsaved = form.dirty;
+    return async () => true;
+  },
   useSettingsTask: () => async (task: () => Promise<unknown>) => task(),
 }));
 vi.mock('./ModelImportPanel.tsx', () => ({
@@ -126,6 +133,15 @@ const copilot = (patch: Partial<ProviderAuthView> = {}) =>
     methods: { oauth: true, apiKey: false },
     ...patch,
   });
+/** The field on the face that stays, drawn after a face that left and may still be shown. */
+const shownField = (name: string) => {
+  const label = all<HTMLLabelElement>('label')
+    .filter((el) => visibleText(el) === name)
+    .at(-1);
+  return label ? field(name, label.parentElement ?? document.body) : field(name);
+};
+const row = (name: string) =>
+  all('[data-directory-row]').find((el) => visibleText(el).startsWith(`${name} `));
 // A face that leaves springs out for 120 ms; checks after a face change read the one that stays.
 const faceSettles = () => settle(300);
 
@@ -453,6 +469,7 @@ describe('Add connection', () => {
     await type(field('Name'), 'Local server');
     await type(field('Address'), 'http://127.0.0.1:11434/v1');
     await type(field('API key'), 'sk-local');
+    expect(fixture.unsaved).toBe(true);
     await click(control('Connect'));
     expect(fixture.models.saveConfig).toHaveBeenCalledWith({
       revision: 'r1',
@@ -474,6 +491,8 @@ describe('Add connection', () => {
     expect(document.body.querySelector('[role="alert"]')?.textContent).toBe(
       'The address refused the key. Enter the key again.',
     );
+    // What was typed is saved: closing now has nothing to ask about.
+    expect(fixture.unsaved).toBe(false);
     // Trying again edits the endpoint that was saved instead of adding another.
     state.config = saved;
     state.profiles = [model('local-server', 'llama-4'), model('local-server', 'qwen-4')];
@@ -726,6 +745,81 @@ describe('Add connection', () => {
     state.profiles = [model('mistral', 'mistral-large')];
     await nextRead();
     await faceSettles();
+    expect(statusText()).toContain('1 model ready');
+    vi.useRealTimers();
+  });
+
+  it('keeps a typed key across Back and across switching the method and back', async () => {
+    fixture.models = {
+      startLogin: vi.fn(async () => waiting),
+      cancelLogin: vi.fn(async () => []),
+    };
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(shownField('API key'), 'sk-fake-1111');
+    await click(control(messages.AddConnection.back));
+    await faceSettles();
+    await click(row('Mistral'));
+    await faceSettles();
+    expect(shownField('API key')?.value).toBe('sk-fake-1111');
+    await click(control(messages.AddConnection.back));
+    await faceSettles();
+    await click(row('OpenAI'));
+    await faceSettles();
+    await click(control(messages.AddConnection.methods.apiKey));
+    await type(shownField('API key'), 'sk-fake-2222');
+    await click(control(messages.AddConnection.methods.oauth));
+    await faceSettles();
+    await click(control(messages.AddConnection.methods.apiKey));
+    await faceSettles();
+    expect(shownField('API key')?.value).toBe('sk-fake-2222');
+  });
+
+  it('keeps a typed name, address and key across Back', async () => {
+    currentStart = { face: 'address' };
+    await show(currentStart);
+    await type(shownField('Name'), 'Local server');
+    await type(shownField('Address'), 'http://127.0.0.1:11434/v1');
+    await type(shownField('API key'), 'sk-fake-3333');
+    await click(control(messages.AddConnection.back));
+    await faceSettles();
+    // The typing is still held, though its face is not shown: leaving asks first.
+    expect(fixture.unsaved).toBe(true);
+    await click(row(messages.AddConnection.address));
+    await faceSettles();
+    expect(shownField('Name')?.value).toBe('Local server');
+    expect(shownField('Address')?.value).toBe('http://127.0.0.1:11434/v1');
+    expect(shownField('API key')?.value).toBe('sk-fake-3333');
+  });
+
+  it('stops saying it reads once the re-reads are used up, says why, and reads again on Try again', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    fixture.models = { setApiKey: vi.fn(async () => []) };
+    let offline = false;
+    fixture.refresh = vi.fn(async () => {
+      if (offline) throw new Error('offline');
+      root.render(page(currentStart));
+    });
+    state.providers = [];
+    currentStart = { face: 'connect', providerId: 'mistral' };
+    await show(currentStart);
+    await type(field('API key'), 'sk-fake-0000');
+    await click(control('Connect'));
+    await faceSettles();
+    expect(statusText()).toBe(messages.AddConnection.reading);
+    offline = true;
+    for (let read = 0; read < 25; read++) await nextRead();
+    expect(alertText()).toBe(
+      messages.AddConnection.listFailedBecause.replace('{message}', 'offline'),
+    );
+    expect(document.body.textContent).not.toContain(messages.AddConnection.reading);
+    offline = false;
+    state.profiles = [model('mistral', 'mistral-large')];
+    await click(control(messages.AddConnection.tryAgain));
+    await nextRead();
+    await faceSettles();
+    expect(alertText()).toBe('');
     expect(statusText()).toContain('1 model ready');
     vi.useRealTimers();
   });

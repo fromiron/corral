@@ -359,8 +359,10 @@ export function LibraryAgents({
   const skills = chosen?.role.skills ?? [];
   const names = skills.flatMap((ref) => skillLabel(ref) ?? []);
   const missing = skills.length - names.length;
+  const loadedEmpty = catalog.state === 'ready' && !items.length;
   const create =
     !archivedProject &&
+    !loadedEmpty &&
     toolbar &&
     createPortal(
       <Button size="compact" disabled={busy} onClick={(event) => open(null, event.currentTarget)}>
@@ -425,7 +427,7 @@ export function LibraryAgents({
           )}
           action={
             !items.length && !archivedProject ? (
-              <Button variant="tertiary" onClick={(e) => open(null, e.currentTarget)}>
+              <Button disabled={busy} onClick={(e) => open(null, e.currentTarget)}>
                 {t('Library.agents.create')}
               </Button>
             ) : undefined

@@ -1,5 +1,10 @@
 import { type CorralDefinition, CorralDefinitionDraft, canonicalJson } from '@corral/contracts';
-import { type CorralRecord, type CorralRepository, definitionHash } from '@corral/core';
+import {
+  type CorralRecord,
+  type CorralRepository,
+  definitionHash,
+  type SaveResult,
+} from '@corral/core';
 import {
   createEditorStore,
   draftFromDefinition,
@@ -16,8 +21,15 @@ interface EditorWorkingState {
   saved: { record: CorralRecord | null; draft: EditorDraft | null };
   unconfirmedCreate: boolean;
   saving: boolean;
-  message: { text: string; error: boolean; visible?: boolean; problems?: boolean } | null;
+  message: {
+    text: string;
+    error: boolean;
+    visible?: boolean;
+    problems?: boolean;
+    code?: SaveError;
+  } | null;
 }
+export type SaveError = Extract<SaveResult, { ok: false }>['error'];
 export type EditorWorkingCopy = StoreApi<EditorWorkingState>;
 
 const copies = new WeakMap<CorralRepository, Map<string, EditorWorkingCopy>>();
@@ -232,7 +244,7 @@ export async function saveEditorCopy(
     if (!result.ok) {
       copy.setState({
         ...(creating && result.error === 'storage_unavailable' ? { unconfirmedCreate: true } : {}),
-        message: { text: result.message, error: true },
+        message: { text: result.message, error: true, code: result.error },
       });
       return null;
     }
@@ -266,4 +278,49 @@ export async function saveEditorCopy(
   } finally {
     copy.setState({ saving: false });
   }
+}
+
+export async function loadLatestEditorCopy(
+  copy: EditorWorkingCopy,
+  repository: CorralRepository,
+): Promise<boolean> {
+  const { saved, editor } = copy.getState();
+  if (!saved.record) return false;
+  const record = await repository.get(saved.record.corralId);
+  if (!record) {
+    copy.setState({
+      message: {
+        text: `Corral ${saved.record.corralId} does not exist.`,
+        error: true,
+        code: 'not_found',
+      },
+    });
+    return false;
+  }
+  const draft = draftFromDefinition(record.definition);
+  editor.getState().replaceDraft(draft);
+  copy.setState({ saved: { record, draft }, message: null });
+  return true;
+}
+
+export async function saveEditorCopyOver(
+  copy: EditorWorkingCopy,
+  repository: CorralRepository,
+  text: Parameters<typeof saveEditorCopy>[2],
+): ReturnType<typeof saveEditorCopy> {
+  const { saved } = copy.getState();
+  if (!saved.record) return saveEditorCopy(copy, repository, text);
+  const record = await repository.get(saved.record.corralId);
+  if (!record) {
+    copy.setState({
+      message: {
+        text: `Corral ${saved.record.corralId} does not exist.`,
+        error: true,
+        code: 'not_found',
+      },
+    });
+    return null;
+  }
+  copy.setState({ saved: { ...saved, record } });
+  return saveEditorCopy(copy, repository, text);
 }

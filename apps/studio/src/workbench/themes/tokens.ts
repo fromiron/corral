@@ -9,13 +9,19 @@ const BLACK = '#000000';
  * file's row, a gray badge): the kit's own step, in hundredths, less where the theme's text is
  * too dim to stay at 4.5:1 on it, and never under a step that still shows.
  */
-function textFillAmount(background: string, foreground: string, most: number): number {
-  const least = 6;
+function textFillAmount(
+  background: string,
+  foreground: string,
+  most: number,
+  text = foreground,
+  least = 6,
+): number {
   for (let amount = most; amount > least; amount--)
-    if (contrastRatio(foreground, mix(background, foreground, amount / 100)) >= 4.5)
-      return amount / 100;
+    if (contrastRatio(text, mix(background, foreground, amount / 100)) >= 4.5) return amount / 100;
   return least / 100;
 }
+
+const RAISED_STEPS = 7;
 
 /**
  * The one function from a theme's values to the root's color tokens (DESIGN.md, Colors). Built-in
@@ -30,13 +36,20 @@ export function paletteTokens(palette: Palette): Readonly<Record<string, string>
   const textFill = (most: number) =>
     mix(ui.background, ui.foreground, textFillAmount(ui.background, ui.foreground, most));
   const tint = textFillAmount(ui.background, ui.foreground, dark ? 25 : 8);
+  const topStep = textFillAmount(
+    ui.background,
+    ui.foreground,
+    3 * RAISED_STEPS,
+    ui.muted,
+    RAISED_STEPS,
+  );
   // Dark: each elevation adds a little of the text color, as the kit's additive white ladder.
   // Light: the floor, a sunken step, then raised surfaces nearer white (the kit's flat white).
   const surface = (step: number) =>
     step === 1
       ? ui.background
       : dark
-        ? mix(ui.background, ui.foreground, 0.03 * (step - 1))
+        ? mix(ui.background, ui.foreground, (topStep * (step - 1)) / RAISED_STEPS)
         : mix(ui.background, WHITE, step === 2 ? 0.4 : 0.7);
   const tokens: Record<string, string> = {};
   for (let step = 1; step <= 8; step++) tokens[`--surface-${step}`] = surface(step);

@@ -31,7 +31,7 @@
 - 시작 요청의 `breakpoints: nodeId[]`, 실행 중 명령 `set_breakpoints { nodeIds }`(목록 전체를 바꾼다). 둘 다 그 Run 정의의 scheduled Agent와 Decision만 받는다(상자 안 포함). 없는 노드나 다른 종류가 하나라도 있으면 `TARGET_NOT_FOUND`로 거절하고 목록은 바뀌지 않는다.
 - 이벤트 `breakpoints.changed { nodeIds }`. 시작 요청의 목록은 `run.started` 뒤에 남는다. 실행 중 바뀐 목록은 다음에 시작하는 단계부터 적용한다. 이미 멈춘 단계의 승인은 그대로 남는다. 같은 목록으로 바꾸면 이벤트 없이 적용된다.
 - 중단점 단계가 시작하려 하면 `approval.requested { kind: 'breakpoint', nodeId, subjectVersionIds }`를 남기고 그 단계만 기다린다. 대상은 그 단계가 받을 입력 버전이고, 입력 버전이 없으면 현재 기준 버전이다. 병렬 분기의 다른 단계는 계속한다.
-- `approve`면 그 시점의 control revision(앞서 적용한 `node_future` 패치 포함)으로 단계를 시작한다. `reject`면 사용자의 Run 취소와 같이 `cancel.requested`(scope run, reason `breakpoint_rejected`)로 Run을 끝낸다.
+- `approve`면 그 시점의 control revision(앞서 적용한 `node_future` 패치 포함)으로 단계를 시작한다. `reject`면 사용자의 Run 취소와 같이 `cancel.requested`(scope run, reason `breakpoint_rejected`)로 Run을 끝낸다. 승인 카드에서 이 거절의 이름은 실행 중지이고, 누르면 다시 묻지 않는다. 카드가 이미 계속할지 멈출지를 묻는 질문이기 때문이다. 한도 승인의 거절도 같다. 실행 조작의 중지가 언제 묻는지는 [대화 입력 흐름](composer-flow.md)과 [세션 패널](session-panel.md#실행-조작이-서는-곳)이 정한다.
 - 단계가 갈래 정지로 멈추면 그 승인은 취소로 닫힌다. Run 취소는 열린 중단점 승인을 함께 닫는다.
 
 ## 수용 시나리오

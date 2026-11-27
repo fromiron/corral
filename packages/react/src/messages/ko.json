@@ -648,7 +648,15 @@
       "accept_edits": "편집 허용",
       "auto": "자동"
     },
-    "retry": "다시 시도"
+    "retry": "다시 시도",
+    "changedElsewhere": "이 예약은 연 뒤에 다른 곳에서 바뀌었습니다.",
+    "loadLatest": "최신 내용 불러오기",
+    "saveMine": "내 편집 저장",
+    "zoneUnknown": "알 수 없는 시간대입니다. Asia/Seoul이나 UTC 같은 이름을 쓰세요.",
+    "deletedElsewhere": "이 예약은 다른 곳에서 삭제됐습니다. 양식을 닫으면 지금 목록이 보입니다.",
+    "confirmDelete": "삭제 확인",
+    "cancel": "취소",
+    "unsaved": "저장하지 않은 변경"
   },
   "Status": {
     "running": "진행 중",
@@ -804,11 +812,19 @@
     "savedResult": "저장했습니다. {definition, select, true {정의의 새 revision.} other {정의는 그대로.}}",
     "noChanges": "저장할 것이 없습니다.",
     "export": "JSON 내보내기",
-    "leaveUnsaved": "저장하지 않고 나가시겠습니까? 저장하지 않은 변경은 사라집니다.",
     "openRun": "실행 상세 열기",
     "backToSession": "대화로 돌아가기",
     "appliesNextRun": "다음 실행부터 적용",
-    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다."
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다.",
+    "saveConflict": "이 팀은 연 뒤에 다른 곳에서 저장됐습니다.",
+    "loadLatest": "최신 내용 불러오기",
+    "saveMine": "내 편집 저장",
+    "saveError": {
+      "not_found": "이 팀이 더 이상 없습니다. 편집을 남기려면 더보기에서 내보내세요.",
+      "validation_error": "팀이 올바르지 않아 저장하지 못했습니다: {message}",
+      "storage_unavailable": "저장소를 쓸 수 없어 팀을 저장하지 못했습니다. 다시 저장하세요.",
+      "idTaken": "다른 팀이 이미 이 팀의 ID를 쓰고 있어 저장하지 못했습니다. 편집한 내용은 그대로 있습니다."
+    }
   },
   "RunPage": {
     "retry": "실행 다시 불러오기",
@@ -869,7 +885,8 @@
     "forkFailed": "시작하지 못했습니다: {message}",
     "runName": "#{number} · {name}",
     "sessionLookupFailed": "이 실행이 속한 대화를 확인하지 못해 단독 화면으로 엽니다.",
-    "viewActiveRun": "현재 실행 보기"
+    "viewActiveRun": "현재 실행 보기",
+    "missingServer": "이 작업공간에는 이 실행이 없습니다."
   },
   "Timeline": {
     "heading": "이벤트",
@@ -2005,7 +2022,10 @@
     "back": "프로젝트 홈으로",
     "chooseRuns": "실행 두 개 선택",
     "chooseRunsHint": "프로젝트의 실행 목록에서 비교할 실행 두 개를 선택하세요.",
-    "unnamedRun": "실행"
+    "unnamedRun": "실행",
+    "loading": "두 실행을 읽고 있습니다",
+    "readFailed": "실행을 읽지 못했습니다.",
+    "retry": "다시 시도"
   },
   "Results": {
     "submittedBy": "제출된 결과 · {author}",
@@ -2102,6 +2122,15 @@
       "contents": "Corral·실행",
       "saved": "저장",
       "actions": "작업"
+    },
+    "linkAgain": "폴더 연결",
+    "openWithoutFolder": "폴더 없이 프로젝트 열기",
+    "folderRefused": {
+      "TARGET_NOT_FOUND": "이 폴더가 없습니다. 경로를 확인하세요.",
+      "SCHEMA_INVALID": "드라이브 전체나 홈 폴더가 아닌 프로젝트 폴더를 고르세요.",
+      "CAPABILITY_DENIED": "Corral의 데이터 폴더는 작업 폴더가 될 수 없습니다. 다른 폴더를 고르세요.",
+      "REVISION_CONFLICT": "이 프로젝트에는 이미 폴더가 있습니다.",
+      "other": "폴더를 연결하지 못했습니다: {message}"
     }
   },
   "Sessions": {
@@ -2362,6 +2391,7 @@
     "setupAgain": "다시 준비",
     "setupOutput": "준비 출력",
     "setupNoOutput": "출력이 없습니다",
+    "setupOutputUnread": "준비 명령의 출력을 읽지 못했습니다: {message}",
     "review": "변경 검토",
     "remove": "Paddock 지우기",
     "removeConfirm": "Paddock의 파일이 지워집니다. 원본 폴더와 기록된 변경은 남습니다. 대화 보관은 Paddock을 지우지 않습니다.",
@@ -2503,7 +2533,9 @@
     "resultsFailed": "실행이 만든 파일을 불러오지 못했습니다.",
     "branch": "브랜치 {branch}",
     "linkObservesOnly": "연결은 폴더를 관찰만 하며, 에이전트는 이 폴더를 직접 읽거나 바꾸지 않습니다.",
-    "run": "실행"
+    "run": "실행",
+    "folderReadFailed": "프로젝트 폴더 연결을 읽지 못했습니다: {message}",
+    "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -4444,6 +4476,8 @@
     "port": "포트",
     "desktopOnly": "대화형 미리보기는 데스크톱 앱에서 열립니다.",
     "noService": "실행 중인 서비스가 없습니다.",
+    "servicesUnread": "실행 중인 서비스를 읽지 못했습니다: {message}",
+    "retry": "다시 시도",
     "openInteractive": "대화형 미리보기 열기",
     "opened": "열린 미리보기",
     "runSource": "실행 보기",
@@ -6916,7 +6950,9 @@
       "redirect": "주소가 요청을 다른 곳으로 보냈습니다. 주소를 확인하세요.",
       "unsupported": "이 주소에서 모델 목록을 찾지 못했습니다. API 기본 경로(보통 /v1)까지 적었는지 확인하세요.",
       "connection": "주소에 닿지 않습니다. 주소와 서버가 켜져 있는지 확인하세요."
-    }
+    },
+    "listFailed": "모델 목록을 읽지 못했습니다.",
+    "listFailedBecause": "모델 목록을 읽지 못했습니다: {message}"
   },
   "ProfileEditor": {
     "heading": "프로필",

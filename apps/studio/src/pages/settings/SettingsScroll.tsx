@@ -1,4 +1,4 @@
-import { ScrollArea } from '@corral/react/design-kit';
+import { cn, ScrollArea } from '@corral/react/design-kit';
 import type { ReactNode } from 'react';
 
 /**
@@ -15,9 +15,9 @@ export function SettingsScroll({
 }) {
   return (
     <ScrollArea
-      className={className}
+      className={cn('-my-1', className)}
       radius="none"
-      viewportClassName="[&>div]:!block [&>div]:!min-w-0"
+      viewportClassName="py-1 [&>div]:!block [&>div]:!min-w-0"
     >
       {children}
     </ScrollArea>

@@ -30,7 +30,7 @@ import {
   useShape,
   useSize,
 } from '../design-kit/index.ts';
-import { focusRing } from '../design-kit/lib/focus.ts';
+import { focusRing, focusRingInset } from '../design-kit/lib/focus.ts';
 import { fontWeights } from '../design-kit/lib/font-weight.ts';
 import { spring } from '../design-kit/lib/springs.ts';
 import { surfaceClasses, surfaceHoverClasses } from '../design-kit/lib/surface-classes.ts';
@@ -619,7 +619,7 @@ export function TeamAssistant({
       aria-expanded={open}
       aria-controls={open ? id : undefined}
       aria-describedby={waiting ? `${id}-waiting` : undefined}
-      className="h-10 w-full justify-start px-4"
+      className={cn('h-10 w-full justify-start px-4', focusRingInset)}
       onClick={() => actions.setOpen(true)}
     >
       <span className="flex items-center gap-2">

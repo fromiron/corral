@@ -82,7 +82,7 @@ export function Page({
   width?: 'wide' | 'narrow';
 }) {
   return (
-    <div className="h-full min-h-0 overflow-y-auto">
+    <div className="h-full min-h-0 overflow-y-auto scroll-py-2">
       <div
         className={cn(
           'grid gap-6 px-6 py-6',

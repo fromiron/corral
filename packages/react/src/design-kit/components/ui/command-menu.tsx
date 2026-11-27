@@ -394,6 +394,7 @@ export interface CommandMenuProps extends Omit<HTMLAttributes<HTMLDivElement>, '
   items: readonly CommandMenuItemData[];
   /** Runs when a row is picked, after the item's own `onSelect`. */
   onSelect?: (item: CommandMenuItemData) => void;
+  onHighlightChange?: (item: CommandMenuItemData | null) => void;
   /** Match an item against the query. @default defaultCommandMenuFilter */
   filter?: (item: CommandMenuItemData, query: string) => boolean;
   /** Controlled query. */
@@ -417,6 +418,7 @@ const CommandMenu = forwardRef<HTMLDivElement, CommandMenuProps>(
     {
       items,
       onSelect,
+      onHighlightChange,
       filter = defaultCommandMenuFilter,
       query: queryProp,
       defaultQuery = '',
@@ -488,10 +490,16 @@ const CommandMenu = forwardRef<HTMLDivElement, CommandMenuProps>(
       }),
       [],
     );
+    const highlightedValueRef = useRef<string | null>(null);
     useIsoLayoutEffect(() => {
       highlightRef.current = activeIndex;
       for (const listener of listenersRef.current) listener();
-    }, [activeIndex]);
+      const row = activeIndex === null ? undefined : rows[activeIndex];
+      const value = row?.value ?? null;
+      if (value === highlightedValueRef.current) return;
+      highlightedValueRef.current = value;
+      onHighlightChange?.(row ?? null);
+    }, [activeIndex, rows, onHighlightChange]);
     const fill = useMemo<FluidHoverSource>(
       () => ({ activeIndex, itemRects, isMeasured, session }),
       [activeIndex, itemRects, isMeasured, session],

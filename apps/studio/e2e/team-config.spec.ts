@@ -24,12 +24,11 @@ test('a template can be discarded or saved as a named team without losing its se
     await editCopy.click();
     await expect(writer).toBeVisible();
     await expect(save).toBeEnabled();
-    const prompt = page.waitForEvent('dialog').then(async (dialog) => {
-      expect(dialog.type()).toBe('confirm');
-      await dialog.accept();
-    });
     await page.getByTestId('app-sidebar').getByRole('link', { name: 'Library' }).click();
-    await prompt;
+    await page
+      .getByRole('dialog', { name: 'Unsaved changes', exact: true })
+      .getByRole('button', { name: 'Discard changes', exact: true })
+      .click();
     await expect(page).toHaveURL(/\/library\/teams$/);
     await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
   }

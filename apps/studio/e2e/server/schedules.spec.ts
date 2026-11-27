@@ -60,6 +60,9 @@ test('save a disabled schedule, run through Auto, and reopen its persisted histo
       .getByRole('link', { name: 'Open run', exact: true }),
   ).toHaveCount(1);
   await page.getByRole('button', { name: 'Delete schedule', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Cancel', exact: true })).toBeFocused();
+  await expect(page.getByRole('button', { name: /Daily project review/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Confirm delete', exact: true }).click();
   await expect(page.getByRole('button', { name: /Daily project review/ })).toHaveCount(0);
   expect(corral.errors).toEqual([]);
 });

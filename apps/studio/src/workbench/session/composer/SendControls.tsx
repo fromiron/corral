@@ -253,8 +253,7 @@ export function noTargetReason(input: {
 }
 
 /** The badge's trigger, where the badge opens a menu. */
-const BADGE_TRIGGER =
-  'flex shrink-0 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring';
+const BADGE_TRIGGER = 'flex shrink-0 rounded-full';
 
 /** Where a send goes, as a badge: an arrow, the name, and the menu's mark when there is a choice. */
 function TargetBadge({
