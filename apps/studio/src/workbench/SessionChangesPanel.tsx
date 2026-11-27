@@ -27,7 +27,7 @@ import { GitPanel } from './GitPanel.tsx';
 import { PaddockSetupStatus, setupWord } from './PaddockSetupStatus.tsx';
 import { PullRequestRow } from './PullRequestRow.tsx';
 import type { ReviewSearch } from './panels/routes.ts';
-import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
+import { readWorkspaceAgain, WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 /** The Changes tab's sub-views. Review and Checks have addresses; Git and Checkpoints do not. */
 export type ChangesView = 'review' | 'git' | 'checkpoints' | 'checks';
@@ -352,7 +352,7 @@ export function SessionChangesPanel({
           <p role="alert" className="m-0 text-body text-destructive">
             {tf('copyReadFailed', { message: copy.failure ?? '' })}
           </p>
-          <Button variant="tertiary" onClick={() => copy.reread()}>
+          <Button variant="tertiary" onClick={readWorkspaceAgain}>
             {tf('retry')}
           </Button>
         </div>
@@ -400,7 +400,7 @@ export function SessionChangesPanel({
       </TabPanel>
       <TabPanel value="checks" keepMounted className="min-h-0 flex-1 overflow-auto p-3">
         {visited.has('checks') ? (
-          <ChecksView session={session} onAttach={onAttach} folderFailedSaid={missing} />
+          <ChecksView session={session} onAttach={onAttach} folderFailedSaid={missing || failed} />
         ) : null}
       </TabPanel>
     </Tabs>

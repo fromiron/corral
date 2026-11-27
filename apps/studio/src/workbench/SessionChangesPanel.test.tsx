@@ -259,6 +259,24 @@ it('leaves the folder failure to the Paddock setup above Checks while there is n
   expect(view.container.textContent).toContain('check records, folder offline, said above');
 });
 
+it('says one failure when the Paddock and the folder link both fail, and Try again reads both again', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => {
+    throw new Error('offline');
+  });
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.querySelectorAll('[role="alert"]')).toHaveLength(1);
+  expect(view.container.textContent).toContain('check records, folder offline, said above');
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  const again = [...view.container.querySelectorAll('button')].find(
+    (button) => button.textContent === 'Files.retry',
+  );
+  await act(async () => again?.click());
+  expect(asked).toHaveBeenCalledOnce();
+});
+
 const openMore = async (view: { container: HTMLElement }) => {
   const more = view.container.querySelector<HTMLButtonElement>('button[aria-label="Review.more"]');
   if (!more) throw new Error('Missing the more menu');
