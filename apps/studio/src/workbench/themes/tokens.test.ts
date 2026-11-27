@@ -85,6 +85,22 @@ describe('the one token function', () => {
     }
   });
 
+  it('narrows a dark ladder until secondary text holds 4.5:1 on the top step, and never to nothing', () => {
+    const top = (palette: Palette) => paletteTokens(palette)['--surface-8'] as string;
+    const step = (palette: Palette) => paletteTokens(palette)['--surface-2'] as string;
+    // Ample secondary text keeps the kit's own step: 3% of the text color per step.
+    const ample: Palette = { ...dark, ui: { ...dark.ui, muted: '#d8d8d8' } };
+    expect(top(ample)).toBe(mix(ample.ui.background, ample.ui.foreground, 0.21));
+    // Secondary text tuned for the lower steps, as the built-in themes': the ladder narrows.
+    const tuned: Palette = { ...dark, ui: { ...dark.ui, muted: '#a0a0a0' } };
+    expect(top(tuned)).not.toBe(mix(tuned.ui.background, tuned.ui.foreground, 0.21));
+    expect(contrastRatio(tuned.ui.muted, top(tuned))).toBeGreaterThanOrEqual(4.5);
+    // Secondary text the theme puts under 4.5:1 on its own floor still gets a ladder that shows.
+    const faint: Palette = { ...dark, ui: { ...dark.ui, muted: '#606060' } };
+    expect(step(faint)).not.toBe(faint.ui.background);
+    expect(top(faint)).not.toBe(step(faint));
+  });
+
   it('fills buttons and rows with the most text color that keeps the text at 4.5:1, and never with none', () => {
     // Dim text, as One Dark Pro's, takes a lighter fill than the kit's white-over-dark tint.
     const dim: Palette = {
