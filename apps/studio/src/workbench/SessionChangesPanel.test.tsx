@@ -66,8 +66,17 @@ vi.mock('../pages/changes/ReviewPage.tsx', () => ({
       </div>
     );
   },
-  Checks: ({ folderFailed }: { folderFailed?: string | null }) => (
-    <p>check records{folderFailed ? `, folder ${folderFailed}` : ''}</p>
+  Checks: ({
+    folderFailed,
+    folderFailedSaid,
+  }: {
+    folderFailed?: string | null;
+    folderFailedSaid?: boolean;
+  }) => (
+    <p>
+      check records{folderFailed ? `, folder ${folderFailed}` : ''}
+      {folderFailedSaid ? ', said above' : ''}
+    </p>
   ),
 }));
 
@@ -239,6 +248,15 @@ it('tells Checks when the folder link could not be read', async () => {
   fixture.folder = { binding: undefined, failed: 'offline' };
   const view = await mount({ requested: 'checks' }, true);
   expect(view.container.textContent).toContain('check records, folder offline');
+  expect(view.container.textContent).not.toContain('said above');
+});
+
+it('leaves the folder failure to the Paddock setup above Checks while there is no Paddock', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
+  fixture.folder = { binding: undefined, failed: 'offline' };
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.textContent).toContain('copy preparation');
+  expect(view.container.textContent).toContain('check records, folder offline, said above');
 });
 
 const openMore = async (view: { container: HTMLElement }) => {

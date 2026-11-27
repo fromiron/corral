@@ -42,6 +42,7 @@ async function mount(
   commands: WorkspaceBindingView['verifyCommands'] = [],
   verify = vi.fn(async () => ({})),
   folderFailed?: string,
+  folderFailedSaid = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
@@ -62,7 +63,7 @@ async function mount(
         sessionId="session"
         projectId="project_a"
         binding={folderFailed ? null : ({ verifyCommands: commands } as WorkspaceBindingView)}
-        {...(folderFailed ? { folderFailed } : {})}
+        {...(folderFailed ? { folderFailed, folderFailedSaid } : {})}
         changed={0}
         titled={false}
       />,
@@ -103,6 +104,12 @@ it('a failed folder read says why and offers Try again where the checks would be
       ?.click(),
   );
   expect(asked).toHaveBeenCalledOnce();
+});
+
+it('says nothing where the host already said the folder link could not be read', async () => {
+  const container = await mount([], [], undefined, 'offline', true);
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.querySelector('[data-testid="checks-empty"]')).toBeNull();
 });
 
 it('keeps the records it read while the folder link cannot be read', async () => {

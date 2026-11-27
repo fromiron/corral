@@ -63,6 +63,7 @@ export function Checks({
   projectId,
   binding,
   folderFailed,
+  folderFailedSaid = false,
   changed,
   onAttach,
   titled = true,
@@ -71,6 +72,7 @@ export function Checks({
   projectId?: string;
   binding: WorkspaceBindingView | null;
   folderFailed?: string | null | undefined;
+  folderFailedSaid?: boolean | undefined;
   changed: number;
   onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
   /** False where the host already names this view (the Checks sub-view's tab). */
@@ -234,14 +236,16 @@ export function Checks({
         </p>
       ) : null}
       {folderFailed ? (
-        <div className="flex flex-col items-start gap-2">
-          <p role="alert" className="m-0 text-body text-destructive">
-            {t('folderReadFailed', { message: folderFailed })}
-          </p>
-          <Button variant="tertiary" onClick={readWorkspaceAgain}>
-            {t('retry')}
-          </Button>
-        </div>
+        folderFailedSaid ? null : (
+          <div className="flex flex-col items-start gap-2">
+            <p role="alert" className="m-0 text-body text-destructive">
+              {t('folderReadFailed', { message: folderFailed })}
+            </p>
+            <Button variant="tertiary" onClick={readWorkspaceAgain}>
+              {t('retry')}
+            </Button>
+          </div>
+        )
       ) : commands.length === 0 && results.length === 0 ? (
         <EmptyView
           data-testid="checks-empty"
