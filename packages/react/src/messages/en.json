@@ -2529,7 +2529,9 @@
     "resultsFailed": "The files runs made could not be read.",
     "branch": "Branch {branch}",
     "linkObservesOnly": "Linking only observes the folder: agents never read or change it directly.",
-    "run": "Run"
+    "run": "Run",
+    "folderReadFailed": "The project folder link could not be read: {message}",
+    "copyReadFailed": "This conversation’s Paddock could not be read: {message}"
   },
   "Review": {
     "commentLine": "Comment on line {line}",

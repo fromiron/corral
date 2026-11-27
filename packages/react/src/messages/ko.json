@@ -2529,7 +2529,9 @@
     "resultsFailed": "실행이 만든 파일을 불러오지 못했습니다.",
     "branch": "브랜치 {branch}",
     "linkObservesOnly": "연결은 폴더를 관찰만 하며, 에이전트는 이 폴더를 직접 읽거나 바꾸지 않습니다.",
-    "run": "실행"
+    "run": "실행",
+    "folderReadFailed": "프로젝트 폴더 연결을 읽지 못했습니다: {message}",
+    "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",

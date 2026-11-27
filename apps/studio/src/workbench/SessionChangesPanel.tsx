@@ -34,7 +34,8 @@ export type ChangesView = 'review' | 'git' | 'checkpoints' | 'checks';
 
 interface CopyState {
   /** `unknown` until the first read; `none` when the session has no working copy. */
-  state: 'unknown' | 'none' | 'ready';
+  state: 'unknown' | 'none' | 'ready' | 'failed';
+  failure?: string;
   /** The copy's current branch; null while unknown, detached or without a copy. */
   branch: string | null;
   merge: ParentMerge | null;
@@ -78,7 +79,19 @@ function useCopy(
     let live = true;
     let answered = false;
     void (async (): Promise<CopyState> => {
-      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      let copy: Awaited<ReturnType<typeof workspaces.worktree>>;
+      try {
+        copy = await workspaces.worktree(sessionId);
+      } catch (cause) {
+        return {
+          state: 'failed',
+          failure: cause instanceof Error ? cause.message : String(cause),
+          branch: null,
+          merge: null,
+          pr: null,
+          setup: null,
+        };
+      }
       if (!copy || copy.missing)
         return { state: 'none', branch: null, merge: null, pr: null, setup: null };
       const [status, merge, pr] = await Promise.all([
@@ -117,6 +130,7 @@ function useCopy(
   return read?.sessionId === sessionId
     ? {
         state: read.state,
+        ...(read.failure === undefined ? {} : { failure: read.failure }),
         branch: read.branch,
         merge: read.merge,
         pr: read.pr,
@@ -227,6 +241,7 @@ export function SessionChangesPanel({
   };
   const ready = copy.state === 'ready';
   const missing = copy.state === 'none';
+  const failed = copy.state === 'failed';
   return (
     <Tabs
       value={shown}
@@ -328,6 +343,16 @@ export function SessionChangesPanel({
         onSync={() => choose('git')}
         onChanged={() => copy.reread(true)}
       />
+      {failed ? (
+        <div className="flex shrink-0 flex-col items-start gap-2 p-3">
+          <p role="alert" className="m-0 text-body text-destructive">
+            {tf('copyReadFailed', { message: copy.failure ?? '' })}
+          </p>
+          <Button variant="tertiary" onClick={() => copy.reread()}>
+            {tf('retry')}
+          </Button>
+        </div>
+      ) : null}
       {missing ? (
         // The copy's setup: the shared empty view, laid out as the sub-views lay out theirs.
         <div className="shrink-0 p-3">
@@ -352,7 +377,7 @@ export function SessionChangesPanel({
       <TabPanel value="git" keepMounted className="min-h-0 flex-1 overflow-auto">
         {visited.has('git') ? (
           <div className="flex flex-col gap-4 p-3">
-            {missing ? null : (
+            {missing || failed ? null : (
               <WorkingCopyPanel sessionId={session.sessionId} projectId={session.projectId} />
             )}
             <GitPanel
