@@ -54,15 +54,7 @@ function keepFocusAfterClose() {
   }, 100);
 }
 
-export function SettingsDialog({
-  section,
-  inbox,
-  currentProject,
-}: {
-  section: SettingsSection;
-  inbox: number;
-  currentProject: string;
-}) {
+export function SettingsDialog({ section, inbox }: { section: SettingsSection; inbox: number }) {
   const navigation = useSettingsNavigation();
   const navigate = useNavigate();
   const t = useTranslations('SettingsDialog');
@@ -120,7 +112,7 @@ export function SettingsDialog({
         {/* Wide enough that no section name is cut, in English or Korean. */}
         <SidebarProvider persist={false} shortcut={null} width="15.5rem" className="h-full min-h-0">
           <div className="hidden h-full shrink-0 sm:block">
-            <SettingsNavigation inbox={inbox} currentProject={currentProject} />
+            <SettingsNavigation inbox={inbox} />
           </div>
           <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
             <Tooltip content={t('close')}>

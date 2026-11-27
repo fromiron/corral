@@ -63,13 +63,7 @@ const SECTION_ICONS = {
   diagnostics: Activity,
 } satisfies Record<SettingsSection, typeof Settings>;
 
-export function SettingsNavigation({
-  inbox,
-  currentProject,
-}: {
-  inbox: number;
-  currentProject: string;
-}) {
+export function SettingsNavigation({ inbox }: { inbox: number }) {
   const t = useTranslations('Navigation');
   const td = useTranslations('Desktop');
   const w = useTranslations('Workbench');
@@ -150,7 +144,7 @@ export function SettingsNavigation({
                 <SidebarMenuButton
                   icon={Inbox}
                   className="text-warning"
-                  render={<Link to="/projects/$projectId" params={{ projectId: currentProject }} />}
+                  render={<Link to="/inbox" />}
                 >
                   {w('needsYou', { count: inbox })}
                 </SidebarMenuButton>
