@@ -95,7 +95,7 @@ export function PaddockSetupStatus({
                 <p role="alert" className="m-0 text-caption text-destructive">
                   {t('setupOutputUnread', { message: readFailure })}
                 </p>
-                <Button type="button" variant="tertiary" size="compact" onClick={readOutput}>
+                <Button type="button" variant="tertiary" onClick={readOutput}>
                   {t('retry')}
                 </Button>
               </div>

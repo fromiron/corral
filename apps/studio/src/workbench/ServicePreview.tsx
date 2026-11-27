@@ -119,7 +119,7 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
             <p role="alert" className="m-0 text-caption text-destructive">
               {t('servicesUnread', { message: unread })}
             </p>
-            <Button variant="tertiary" size="compact" onClick={() => reread.current()}>
+            <Button variant="tertiary" onClick={() => reread.current()}>
               {t('retry')}
             </Button>
           </div>
