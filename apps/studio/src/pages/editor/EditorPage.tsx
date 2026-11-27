@@ -90,6 +90,7 @@ import { RunBreakpoints } from '../../workbench/RunBreakpoints.tsx';
 import { RunHarnessOverrides } from '../../workbench/RunHarnessOverrides.tsx';
 import { RunRoleOverrides } from '../../workbench/RunRoleOverrides.tsx';
 import { RunSetupSummary } from '../../workbench/RunSetupSummary.tsx';
+import { UnsavedChangesDialog } from '../../workbench/SettingsLifecycle.tsx';
 import { teamChoices } from '../../workbench/teamChoices.ts';
 import { useContainerAtLeast } from '../../workbench/useContainerAtLeast.ts';
 import { useImageProfiles } from '../../workbench/useImageProfiles.ts';
@@ -253,6 +254,7 @@ function download(name: string, text: string) {
   URL.revokeObjectURL(url);
 }
 
+type LeaveChoice = 'save' | 'discard' | 'keep';
 type StartFromChoice = { runId: string; artifactVersionId: string; label: string };
 
 function Editor({
@@ -287,6 +289,7 @@ function Editor({
   const tr = useTranslations('Run');
   const n = useTranslations('Navigation');
   const ts = useTranslations('Sessions');
+  const sd = useTranslations('SettingsDialog');
   const router = useRouter();
   const navigate = useNavigate();
   const services = useServices();
@@ -409,8 +412,10 @@ function Editor({
     if (runInPlace) setRunOpen(false);
   };
 
+  const [leaving, setLeaving] = useState<((choice: LeaveChoice) => void) | null>(null);
+  const saveNow = useRef<() => Promise<unknown>>(async () => null);
   useBlocker({
-    shouldBlockFn: ({ current, next }) => {
+    shouldBlockFn: async ({ current, next }) => {
       if (
         inSession ||
         (current.pathname === '/corrals/new/edit' &&
@@ -420,8 +425,12 @@ function Editor({
         settingsOnlyTransition(current, next)
       )
         return false;
-      if (blocksLeaving(dirtyRef.current, inSession) && !window.confirm(t('leaveUnsaved')))
-        return true;
+      if (blocksLeaving(dirtyRef.current, inSession)) {
+        const choice = await new Promise<LeaveChoice>((resolve) => setLeaving(() => resolve));
+        setLeaving(null);
+        if (choice === 'keep') return true;
+        if (choice === 'save') return !(await saveNow.current());
+      }
       if (!saved.record || dirtyRef.current) {
         discarded.current = true;
         discardEditorCopy(repository, { projectId, corralId: saved.record?.corralId ?? null });
@@ -458,6 +467,7 @@ function Editor({
     },
     [repository, router, navigate, t, workingCopy],
   );
+  saveNow.current = () => save();
 
   // A save may finish after the person has edited again. Only the draft the action
   // was requested for can launch that revision or take the person out of this editor.
@@ -765,6 +775,15 @@ function Editor({
               onClose={() => setImportOpen(false)}
               finalFocus={more}
             />
+            {leaving ? (
+              <UnsavedChangesDialog
+                title={c('unsaved')}
+                description={sd('unsavedHint')}
+                onSave={() => leaving('save')}
+                onDiscard={() => leaving('discard')}
+                onKeep={() => leaving('keep')}
+              />
+            ) : null}
           </div>
           {/* The tab's next native stop is its panel content, not an unrelated header action. */}
           <TabsList

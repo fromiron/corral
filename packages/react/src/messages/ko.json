@@ -812,7 +812,6 @@
     "savedResult": "저장했습니다. {definition, select, true {정의의 새 revision.} other {정의는 그대로.}}",
     "noChanges": "저장할 것이 없습니다.",
     "export": "JSON 내보내기",
-    "leaveUnsaved": "저장하지 않고 나가시겠습니까? 저장하지 않은 변경은 사라집니다.",
     "openRun": "실행 상세 열기",
     "backToSession": "대화로 돌아가기",
     "appliesNextRun": "다음 실행부터 적용",

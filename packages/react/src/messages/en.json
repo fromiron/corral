@@ -812,7 +812,6 @@
     "savedResult": "Saved. {definition, select, true {New revision.} other {Definition unchanged.}}",
     "noChanges": "Nothing to save.",
     "export": "Export JSON",
-    "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
     "openRun": "Open run page",
     "backToSession": "Back to the conversation",
     "appliesNextRun": "Applies from the next run",

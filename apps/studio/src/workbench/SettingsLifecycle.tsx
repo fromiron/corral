@@ -155,10 +155,61 @@ export function SettingsLeavePrompt() {
   if (!context || !prompt) return null;
   const canSave = prompt.forms.every((entry) => Boolean(entry.current.save));
   return (
+    <UnsavedChangesDialog
+      title={t('unsaved')}
+      description={t(canSave ? 'unsavedHint' : 'explicitHint')}
+      saving={saving}
+      failed={failed}
+      onSave={
+        canSave
+          ? async () => {
+              setSaving(true);
+              setFailed(false);
+              let saved = true;
+              try {
+                for (const entry of prompt.forms)
+                  if (entry.current.dirty && !(await entry.current.save?.())) {
+                    saved = false;
+                    break;
+                  }
+              } catch {
+                saved = false;
+              }
+              setSaving(false);
+              if (saved) context.finish(true);
+              else setFailed(true);
+            }
+          : undefined
+      }
+      onDiscard={() => context.finish(true)}
+      onKeep={() => context.finish(false)}
+    />
+  );
+}
+
+export function UnsavedChangesDialog({
+  title,
+  description,
+  saving = false,
+  failed = false,
+  onSave,
+  onDiscard,
+  onKeep,
+}: {
+  title: string;
+  description: string;
+  saving?: boolean;
+  failed?: boolean;
+  onSave?: (() => void) | undefined;
+  onDiscard: () => void;
+  onKeep: () => void;
+}) {
+  const t = useTranslations('SettingsDialog');
+  return (
     <Dialog
       open
       onOpenChange={(open) => {
-        if (!open && !saving) context.finish(false);
+        if (!open && !saving) onKeep();
       }}
     >
       <DialogPopup
@@ -167,42 +218,23 @@ export function SettingsLeavePrompt() {
         className="flex flex-col gap-4 p-6"
         bottomStickOnMobile={false}
       >
-        <DialogTitle>{t('unsaved')}</DialogTitle>
-        <DialogDescription>{t(canSave ? 'unsavedHint' : 'explicitHint')}</DialogDescription>
+        <DialogTitle>{title}</DialogTitle>
+        <DialogDescription>{description}</DialogDescription>
         {failed ? (
           <p role="alert" className="text-body text-danger">
             {t('saveFailed')}
           </p>
         ) : null}
         <div className="flex flex-wrap gap-2">
-          {canSave ? (
-            <Button
-              disabled={saving}
-              onClick={async () => {
-                setSaving(true);
-                setFailed(false);
-                let saved = true;
-                try {
-                  for (const entry of prompt.forms)
-                    if (entry.current.dirty && !(await entry.current.save?.())) {
-                      saved = false;
-                      break;
-                    }
-                } catch {
-                  saved = false;
-                }
-                setSaving(false);
-                if (saved) context.finish(true);
-                else setFailed(true);
-              }}
-            >
+          {onSave ? (
+            <Button disabled={saving} onClick={onSave}>
               {t('saveLeave')}
             </Button>
           ) : null}
-          <Button variant="tertiary" disabled={saving} onClick={() => context.finish(true)}>
+          <Button variant="tertiary" disabled={saving} onClick={onDiscard}>
             {t('discard')}
           </Button>
-          <Button variant="ghost" disabled={saving} onClick={() => context.finish(false)}>
+          <Button variant="ghost" disabled={saving} onClick={onKeep}>
             {t('keepEditing')}
           </Button>
         </div>

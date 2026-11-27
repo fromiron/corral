@@ -38,6 +38,12 @@ const fixture = vi.hoisted(() => ({
   navigate: vi.fn().mockResolvedValue(undefined),
   fromSession: undefined as string | undefined,
   template: undefined as 'starter' | 'blank' | undefined,
+  blocker: null as null | {
+    shouldBlockFn: (location: {
+      current: { pathname: string; search?: unknown };
+      next: { pathname: string; search?: unknown };
+    }) => boolean | Promise<boolean>;
+  },
 }));
 vi.mock('../../services.tsx', () => ({ useServices: () => fixture.services }));
 vi.mock('../../router.tsx', () => ({
@@ -65,7 +71,9 @@ vi.mock('../../router.tsx', () => ({
 }));
 vi.mock('@tanstack/react-router', () => ({
   Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
-  useBlocker: () => {},
+  useBlocker: (options: NonNullable<typeof fixture.blocker>) => {
+    fixture.blocker = options;
+  },
   useNavigate: () => fixture.navigate,
   useRouter: () => ({ invalidate: () => Promise.resolve() }),
 }));
@@ -725,6 +733,90 @@ describe('team editor views', () => {
     expect(document.querySelector('[role="dialog"]')?.getAttribute('aria-label')).toBe(
       'Import a callable agent',
     );
+  });
+});
+
+describe('leaving a team with unsaved edits', () => {
+  const leave = () =>
+    fixture.blocker?.shouldBlockFn({
+      current: { pathname: '/corrals/x/edit', search: {} },
+      next: { pathname: '/library', search: {} },
+    });
+  const prompt = () => document.querySelector<HTMLElement>('[data-settings-guard]');
+  const edited = async () => {
+    let repo!: CorralRepository;
+    let saved!: CorralRecord;
+    const draft = await mount('route', 1280, (repository, record) => {
+      repo = repository;
+      saved = record;
+      return {};
+    });
+    await act(async () =>
+      editorWorkingCopy(repo, saved).getState().editor.getState().setName('Mine'),
+    );
+    return { repo, saved, draft };
+  };
+  const choose = async (name: string, answer: Promise<boolean> | boolean | undefined) => {
+    await click(named(prompt() as HTMLElement, name));
+    return answer;
+  };
+
+  it('asks with the settings’ three choices instead of the browser’s confirm', async () => {
+    const confirm = vi.fn(() => true);
+    vi.stubGlobal('confirm', confirm);
+    await edited();
+    let answer: Promise<boolean> | boolean | undefined;
+    await act(async () => {
+      answer = leave();
+    });
+    expect(confirm).not.toHaveBeenCalled();
+    const names = [...(prompt()?.querySelectorAll('button') ?? [])].map((b) => b.textContent);
+    expect(names).toEqual([
+      messages.SettingsDialog.saveLeave,
+      messages.SettingsDialog.discard,
+      messages.SettingsDialog.keepEditing,
+    ]);
+    expect(await choose(messages.SettingsDialog.keepEditing, answer)).toBe(true);
+    expect(prompt()).toBeNull();
+  });
+
+  it('Save and continue saves, then lets the person go', async () => {
+    const { repo, saved } = await edited();
+    let answer: Promise<boolean> | boolean | undefined;
+    await act(async () => {
+      answer = leave();
+    });
+    expect(await choose(messages.SettingsDialog.saveLeave, answer)).toBe(false);
+    expect((await repo.get(saved.corralId))?.definition.name).toBe('Mine');
+  });
+
+  it('a failed Save and continue keeps the editor open with the failure where saves fail', async () => {
+    const { repo, draft } = await edited();
+    vi.spyOn(repo, 'save').mockResolvedValueOnce({
+      ok: false,
+      error: 'storage_unavailable',
+      message: 'disk full',
+    });
+    let answer: Promise<boolean> | boolean | undefined;
+    await act(async () => {
+      answer = leave();
+    });
+    expect(await choose(messages.SettingsDialog.saveLeave, answer)).toBe(true);
+    expect(prompt()).toBeNull();
+    expect(region('header').querySelector('[role="alert"]')?.textContent).toBe(
+      messages.Editor.saveError.storage_unavailable,
+    );
+    expect(draft().definition.name).toBe('Mine');
+  });
+
+  it('Discard changes lets the person go without saving', async () => {
+    const { repo, saved } = await edited();
+    let answer: Promise<boolean> | boolean | undefined;
+    await act(async () => {
+      answer = leave();
+    });
+    expect(await choose(messages.SettingsDialog.discard, answer)).toBe(false);
+    expect((await repo.get(saved.corralId))?.definition.name).not.toBe('Mine');
   });
 });
 
