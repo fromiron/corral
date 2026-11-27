@@ -808,7 +808,15 @@
     "openRun": "Open run page",
     "backToSession": "Back to the conversation",
     "appliesNextRun": "Applies from the next run",
-    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
+    "saveConflict": "This team was saved elsewhere since you opened it.",
+    "loadLatest": "Load the latest",
+    "saveMine": "Save mine",
+    "saveError": {
+      "not_found": "This team no longer exists. Export your edits from More actions to keep them.",
+      "validation_error": "The team was not saved because it is not valid: {message}",
+      "storage_unavailable": "The team could not be saved because storage is not available. Save again."
+    }
   },
   "RunPage": {
     "retry": "Retry loading run",

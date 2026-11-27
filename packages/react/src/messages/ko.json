@@ -808,7 +808,15 @@
     "openRun": "실행 상세 열기",
     "backToSession": "대화로 돌아가기",
     "appliesNextRun": "다음 실행부터 적용",
-    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다."
+    "modeSaveFailed": "실행 모드 저장에 실패했습니다. 현재 화면에서는 선택을 유지합니다.",
+    "saveConflict": "이 팀은 연 뒤에 다른 곳에서 저장됐습니다.",
+    "loadLatest": "최신 내용 불러오기",
+    "saveMine": "내 편집 저장",
+    "saveError": {
+      "not_found": "이 팀이 더 이상 없습니다. 편집을 남기려면 더보기에서 내보내세요.",
+      "validation_error": "팀이 올바르지 않아 저장하지 못했습니다: {message}",
+      "storage_unavailable": "저장소를 쓸 수 없어 팀을 저장하지 못했습니다. 다시 저장하세요."
+    }
   },
   "RunPage": {
     "retry": "실행 다시 불러오기",
