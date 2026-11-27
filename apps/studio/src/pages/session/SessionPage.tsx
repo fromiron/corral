@@ -1175,6 +1175,7 @@ function WorkSessionPage() {
           projectId={session.projectId}
           sessionId={session.sessionId}
           path={tab.path}
+          noCopy={copyNow.known && !copyNow.copy}
           onReference={handleReference}
         />
       ) : null;

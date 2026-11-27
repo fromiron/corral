@@ -1,0 +1,89 @@
+// @vitest-environment jsdom
+import { act, type ReactNode } from 'react';
+import { createRoot } from 'react-dom/client';
+import { IntlProvider } from 'use-intl';
+import { afterEach, expect, it, vi } from 'vitest';
+import messages from '../../../../packages/react/src/messages/en.json' with { type: 'json' };
+import { WorkingCopyPanel } from './FilesViews.tsx';
+
+// docs/specs/workbench.md: a failed folder or Paddock read is never taken as "none".
+
+const fixture = vi.hoisted(() => ({
+  binding: vi.fn(),
+  worktree: vi.fn(),
+}));
+vi.mock('../services.tsx', () => {
+  const workspaces = {
+    binding: (projectId: string) => fixture.binding(projectId),
+    worktree: (sessionId: string) => fixture.worktree(sessionId),
+  };
+  return { useServices: () => ({ workspaces }) };
+});
+vi.mock('../workbench/navigation.ts', () => ({
+  useSettingsNavigation: () => ({ link: () => ({ to: '/' }) }),
+}));
+vi.mock('../workbench/CheckpointPanel.tsx', () => ({ CheckpointPanel: () => null }));
+vi.mock('../workbench/CopyRemovalDialog.tsx', () => ({ CopyRemovalDialog: () => null }));
+vi.mock('@tanstack/react-router', () => ({
+  Link: ({ children }: { children?: ReactNode }) => <a href="/">{children}</a>,
+}));
+
+const cleanups: (() => Promise<void>)[] = [];
+afterEach(async () => {
+  for (const cleanup of cleanups.splice(0)) await cleanup();
+  fixture.binding.mockReset();
+  fixture.worktree.mockReset();
+  vi.unstubAllGlobals();
+});
+
+async function render() {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <WorkingCopyPanel sessionId="session" projectId="project" />
+      </IntlProvider>,
+    ),
+  );
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  return container;
+}
+const named = (container: HTMLElement, name: string) =>
+  [...container.querySelectorAll('button')].find((button) => button.textContent === name);
+
+it('a failed Paddock read says why and offers Try again, never Make a Paddock', async () => {
+  fixture.binding.mockResolvedValue({ trusted: true, status: { head: 'main', changed: 0 } });
+  fixture.worktree.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(null);
+  const container = await render();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    messages.Files.copyReadFailed.replace('{message}', 'offline'),
+  );
+  expect(container.textContent).not.toContain(messages.Files.noCopyTitle);
+  expect(container.textContent).not.toContain('Make a Paddock');
+  await act(async () => named(container, messages.Files.retry)?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain('Make a Paddock from main');
+});
+
+it('a failed folder read says why and offers Try again, never linking a folder', async () => {
+  fixture.binding.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(null);
+  fixture.worktree.mockResolvedValue(null);
+  const container = await render();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    messages.Files.folderReadFailed.replace('{message}', 'offline'),
+  );
+  expect(container.textContent).not.toContain(messages.Files.noFolder);
+  expect(container.textContent).not.toContain(messages.Files.openFolderSettings);
+  await act(async () => named(container, messages.Files.retry)?.click());
+  for (let i = 0; i < 3; i++) await act(async () => {});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain(messages.Files.noFolder);
+});

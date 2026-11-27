@@ -42,7 +42,10 @@ afterEach(async () => {
   vi.unstubAllGlobals();
 });
 
-async function render(state: 'running' | 'succeeded' | 'failed') {
+async function render(
+  state: 'running' | 'succeeded' | 'failed',
+  worktree?: () => Promise<unknown>,
+) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   vi.stubGlobal('matchMedia', () => ({
     matches: false,
@@ -77,6 +80,7 @@ async function render(state: 'running' | 'succeeded' | 'failed') {
       pullRequest: vi.fn(async () => ({ kind: 'read_failed' })),
     },
   };
+  if (worktree) (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(worktree);
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -114,4 +118,21 @@ it('a failed setup shows with Run again; a succeeded one shows nothing', async (
   const quiet = await render('succeeded');
   expect(statusText(quiet)).not.toContain('Files.setupRunning');
   expect(statusText(quiet)).not.toContain('Files.setupFailed');
+});
+
+it('a Paddock that cannot be read says why with Try again, and offers no new Paddock', async () => {
+  let offline = true;
+  const container = await render('succeeded', async () => {
+    if (offline) throw new Error('offline');
+    return null;
+  });
+  const alert = container.querySelector('[role="alert"]');
+  expect(alert?.textContent).toContain('Files.copyReadFailed(offline)');
+  offline = false;
+  const retry = [...container.querySelectorAll('button')].find(
+    (node) => node.textContent === 'Files.retry',
+  );
+  await act(async () => retry?.click());
+  for (let i = 0; i < 4; i++) await act(async () => {});
+  expect(container.querySelector('[role="alert"]')).toBeNull();
 });

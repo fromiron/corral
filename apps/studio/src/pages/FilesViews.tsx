@@ -49,20 +49,23 @@ export function useBinding(projectId: string | null) {
   const { workspaces } = useServices();
   const [read, setRead] = useState<{
     projectId: string | null;
-    binding: WorkspaceBindingView | null;
+    binding: WorkspaceBindingView | null | undefined;
+    failed: string | null;
   } | null>(null);
   const latest = useRef(0);
   const reload = useCallback(async () => {
     const request = ++latest.current;
-    let binding: WorkspaceBindingView | null = null;
+    let binding: WorkspaceBindingView | null | undefined = null;
+    let failed: string | null = null;
     if (workspaces && projectId) {
       try {
         binding = await workspaces.binding(projectId);
-      } catch {
-        binding = null;
+      } catch (cause) {
+        binding = undefined;
+        failed = cause instanceof Error ? cause.message : String(cause);
       }
     }
-    if (request === latest.current) setRead({ projectId, binding });
+    if (request === latest.current) setRead({ projectId, binding, failed });
   }, [workspaces, projectId]);
   useEffect(() => {
     void reload();
@@ -74,8 +77,8 @@ export function useBinding(projectId: string | null) {
       latest.current += 1;
     };
   }, [reload]);
-  const binding = read && read.projectId === projectId ? read.binding : undefined;
-  return { binding, reload };
+  const current = read && read.projectId === projectId ? read : null;
+  return { binding: current?.binding, failed: current?.failed ?? null, reload };
 }
 
 /** The project's linked folder, its trust and checks (project page). */
@@ -302,15 +305,23 @@ export function WorkingCopyPanel({
 }) {
   const t = useTranslations('Files');
   const { workspaces } = useServices();
-  const { binding } = useBinding(projectId);
+  const folder = useBinding(projectId);
+  const { binding } = folder;
   const navigation = useSettingsNavigation();
   const [worktree, setWorktree] = useState<WorktreeView | null | undefined>(undefined);
+  const [copyFailed, setCopyFailed] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
   const reload = useCallback(async () => {
     if (!workspaces) return setWorktree(null);
-    setWorktree(await workspaces.worktree(sessionId).catch(() => null));
+    try {
+      setWorktree(await workspaces.worktree(sessionId));
+      setCopyFailed(null);
+    } catch (cause) {
+      setWorktree(undefined);
+      setCopyFailed(cause instanceof Error ? cause.message : String(cause));
+    }
   }, [workspaces, sessionId]);
   useEffect(() => {
     void reload();
@@ -318,7 +329,30 @@ export function WorkingCopyPanel({
     window.addEventListener(WORKSPACE_CHANGED, changed);
     return () => window.removeEventListener(WORKSPACE_CHANGED, changed);
   }, [reload]);
-  if (!workspaces || worktree === undefined || binding === undefined) return null;
+  if (!workspaces) return null;
+  const readFailed = copyFailed
+    ? t('copyReadFailed', { message: copyFailed })
+    : !worktree && folder.failed
+      ? t('folderReadFailed', { message: folder.failed })
+      : null;
+  if (readFailed)
+    return (
+      <section aria-label={t('copyHeading')} className="flex flex-col items-start gap-2">
+        <p role="alert" className="m-0 text-body text-destructive">
+          {readFailed}
+        </p>
+        <Button
+          variant="tertiary"
+          onClick={() => {
+            void reload();
+            void folder.reload();
+          }}
+        >
+          {t('retry')}
+        </Button>
+      </section>
+    );
+  if (worktree === undefined || (!worktree && binding === undefined)) return null;
   const act = async (work: () => Promise<unknown>) => {
     setBusy(true);
     setError(null);

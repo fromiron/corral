@@ -653,7 +653,10 @@
     "loadLatest": "Load the latest",
     "saveMine": "Save mine",
     "zoneUnknown": "Unknown time zone. Use a name such as Asia/Seoul or UTC.",
-    "deletedElsewhere": "This schedule was deleted elsewhere. Close the form to see the list as it is now."
+    "deletedElsewhere": "This schedule was deleted elsewhere. Close the form to see the list as it is now.",
+    "confirmDelete": "Confirm delete",
+    "cancel": "Cancel",
+    "unsaved": "Unsaved changes"
   },
   "Status": {
     "running": "Running",
@@ -809,7 +812,6 @@
     "savedResult": "Saved. {definition, select, true {New revision.} other {Definition unchanged.}}",
     "noChanges": "Nothing to save.",
     "export": "Export JSON",
-    "leaveUnsaved": "Leave without saving? Your unsaved changes will be lost.",
     "openRun": "Open run page",
     "backToSession": "Back to the conversation",
     "appliesNextRun": "Applies from the next run",
@@ -820,7 +822,8 @@
     "saveError": {
       "not_found": "This team no longer exists. Export your edits from More actions to keep them.",
       "validation_error": "The team was not saved because it is not valid: {message}",
-      "storage_unavailable": "The team could not be saved because storage is not available. Save again."
+      "storage_unavailable": "The team could not be saved because storage is not available. Save again.",
+      "idTaken": "Another team already uses this team’s ID, so it was not saved. Your edits are still here."
     }
   },
   "RunPage": {
@@ -2530,7 +2533,9 @@
     "resultsFailed": "The files runs made could not be read.",
     "branch": "Branch {branch}",
     "linkObservesOnly": "Linking only observes the folder: agents never read or change it directly.",
-    "run": "Run"
+    "run": "Run",
+    "folderReadFailed": "The project folder link could not be read: {message}",
+    "copyReadFailed": "This conversation’s Paddock could not be read: {message}"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -6945,7 +6950,9 @@
       "redirect": "The address sent the request elsewhere. Check the address.",
       "unsupported": "No model list at this address. Check that it ends where /models is (often /v1).",
       "connection": "Couldn’t reach the address. Check it and that the server is running."
-    }
+    },
+    "listFailed": "The model list could not be read.",
+    "listFailedBecause": "The model list could not be read: {message}"
   },
   "ProfileEditor": {
     "heading": "Profiles",
