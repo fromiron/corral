@@ -650,6 +650,22 @@ it('an unknown time zone is that field’s own error and nothing is sent', async
   expect(fixture.api.create).toHaveBeenCalledTimes(1);
 });
 
+it('a time zone alias the server accepts passes the check and is sent', async () => {
+  fixture.api.create.mockImplementation(async (draft: ScheduleDraft) =>
+    schedule({ ...draft, id: 'schedule_new', revision: 1 }),
+  );
+  await page();
+  await click(button('New schedule'));
+  await type(field('Title'), 'Daily project review');
+  await type(field('Request'), 'Summarize the available information.');
+  await type(field('Time zone'), 'US/Pacific');
+  await click(button('Save schedule'));
+  await settle();
+  expect(fixture.api.create).toHaveBeenCalledWith(
+    expect.objectContaining({ timezone: 'US/Pacific' }),
+  );
+});
+
 it('a schedule changed elsewhere keeps the typed form until Load the latest or Save mine', async () => {
   const stored = schedule({ revision: 3, title: 'Changed elsewhere' });
   fixture.api.list.mockResolvedValue({ schedules: [schedule()] });

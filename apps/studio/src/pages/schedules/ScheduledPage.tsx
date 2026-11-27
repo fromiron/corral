@@ -1,6 +1,6 @@
 import {
   type Schedule,
-  type ScheduleDraft,
+  ScheduleDraft,
   type ScheduledOccurrence,
   type ScheduleRule,
   TERMINAL_RUN_STATUSES,
@@ -60,13 +60,7 @@ const message = (cause: unknown) => (cause instanceof Error ? cause.message : St
 const statusOf = (cause: unknown) =>
   typeof cause === 'object' && cause && 'status' in cause ? cause.status : undefined;
 const focusOnMount = (node: HTMLElement | null) => node?.focus();
-const ZONES = (() => {
-  try {
-    return new Set(Intl.supportedValuesOf('timeZone'));
-  } catch {
-    return null;
-  }
-})();
+const knownZone = (zone: string) => ScheduleDraft.shape.timezone.safeParse(zone).success;
 type SaveRefusal = { id: number; text: string; conflict: boolean };
 
 /** A session read on its own, so a title its runs gave it since the page opened shows. */
@@ -790,12 +784,7 @@ function ScheduleEditor({
   const ids = useId();
   const labelClass = 'flex min-w-0 flex-col gap-1.5 text-caption text-muted-foreground';
   const checked = (send: (draft: ScheduleDraft) => void) => {
-    const known =
-      !ZONES ||
-      draft.timezone === 'UTC' ||
-      draft.timezone === initial.timezone ||
-      ZONES.has(draft.timezone);
-    if (known) return send(draft);
+    if (knownZone(draft.timezone)) return send(draft);
     setZoneUnknown(true);
     zone.current?.focus();
   };
