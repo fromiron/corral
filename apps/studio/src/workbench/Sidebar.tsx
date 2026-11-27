@@ -315,6 +315,14 @@ export const Sidebar = memo(function Sidebar({
   const router = useRouter();
   const navigate = useNavigate();
   const path = useRouterState({ select: (s) => s.location.pathname });
+  const previewReturn = useRouterState({
+    select: (s) =>
+      workHref(
+        s.location.pathname.startsWith('/preview')
+          ? (s.location.search as Record<string, unknown>).returnTo
+          : s.location.href,
+      ),
+  });
   const settingsNavigation = useSettingsNavigation();
   const [editing, setEditing] = useState<WorkSession | null>(null);
   const [deleting, setDeleting] = useState<WorkSession | null>(null);
@@ -1024,7 +1032,9 @@ export const Sidebar = memo(function Sidebar({
             <SidebarMenuButton
               icon={Sparkles}
               isActive={path === '/preview' || path.startsWith('/preview/')}
-              render={<Link to="/preview" />}
+              render={
+                <Link to="/preview" search={previewReturn ? { returnTo: previewReturn } : {}} />
+              }
             >
               {shell('featurePreviews')}
             </SidebarMenuButton>

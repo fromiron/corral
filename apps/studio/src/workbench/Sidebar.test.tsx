@@ -43,8 +43,17 @@ vi.mock('@tanstack/react-router', () => ({
   useRouterState: ({
     select,
   }: {
-    select: (state: { location: { pathname: string; href: string } }) => unknown;
-  }) => select({ location: { pathname: fixture.pathname, href: fixture.pathname } }),
+    select: (state: {
+      location: { pathname: string; href: string; search: Record<string, unknown> };
+    }) => unknown;
+  }) =>
+    select({
+      location: {
+        pathname: fixture.pathname.split('?')[0] as string,
+        href: fixture.pathname,
+        search: Object.fromEntries(new URLSearchParams(fixture.pathname.split('?')[1] ?? '')),
+      },
+    }),
 }));
 vi.mock('../services.tsx', () => ({
   useServices: () => fixture.services,
@@ -57,7 +66,8 @@ vi.mock('../shortcutBindings.ts', async (original) => ({
 vi.mock('../pages/Workbench.tsx', () => ({
   useRemembered: () => useState(fixture.collapsed),
 }));
-vi.mock('./navigation.ts', () => ({
+vi.mock('./navigation.ts', async (original) => ({
+  ...(await original<typeof import('./navigation.ts')>()),
   useSettingsNavigation: () => ({
     link: (section: string) => ({ to: '/', search: { settings: section } }),
   }),
@@ -391,6 +401,17 @@ it('keeps Needs you without a number when nothing waits', async () => {
   expect(
     needsYou?.closest('[data-sidebar="menu-item"]')?.querySelector('[data-sidebar="menu-badge"]'),
   ).toBeNull();
+});
+
+// features/feature-preview.md: every way in carries the place to go back to.
+it('carries the screen it was opened from on the Feature previews link, and keeps it inside previews', async () => {
+  const carried = (container: HTMLElement) =>
+    container.querySelector('a[href="/preview"]')?.getAttribute('data-search');
+  fixture.pathname = '/sessions/s1?panel=changes';
+  expect(carried(await mount())).toBe(JSON.stringify({ returnTo: '/sessions/s1?panel=changes' }));
+  fixture.pathname = '/preview/pr-review?returnTo=%2Fschedules';
+  expect(carried(await mount())).toBe(JSON.stringify({ returnTo: '/schedules' }));
+  fixture.pathname = '/projects/alpha';
 });
 
 it('marks the primary entry for the path active', async () => {
