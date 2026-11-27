@@ -882,7 +882,8 @@
     "forkFailed": "시작하지 못했습니다: {message}",
     "runName": "#{number} · {name}",
     "sessionLookupFailed": "이 실행이 속한 대화를 확인하지 못해 단독 화면으로 엽니다.",
-    "viewActiveRun": "현재 실행 보기"
+    "viewActiveRun": "현재 실행 보기",
+    "missingServer": "이 작업공간에는 이 실행이 없습니다."
   },
   "Timeline": {
     "heading": "이벤트",

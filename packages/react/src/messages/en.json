@@ -882,7 +882,8 @@
     "forkFailed": "Could not start: {message}",
     "runName": "#{number} · {name}",
     "sessionLookupFailed": "Could not check which conversation this run belongs to, so it opens on its own page.",
-    "viewActiveRun": "View active run"
+    "viewActiveRun": "View active run",
+    "missingServer": "This run is not in this workspace."
   },
   "Timeline": {
     "heading": "Events",

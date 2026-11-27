@@ -150,7 +150,8 @@ export function RunDetail({
   conversationOperable?: boolean;
 }) {
   const t = useTranslations('RunPage');
-  const { runFor, retainRun, transport, repository } = useServices();
+  const shell = useTranslations('Shell');
+  const { runFor, retainRun, transport, repository, mode } = useServices();
   const session = runFor(runId);
   const activeRunId = useStore(session, (s) => s.runId);
   const missing = useStore(session, (s) => s.missingRunId === runId);
@@ -199,7 +200,7 @@ export function RunDetail({
           {t('heading', { runId })}
         </h2>
         <p role="status" className="text-body text-muted-foreground">
-          {error ?? (missing ? t('missing') : t('loading'))}
+          {error ?? (missing ? t(mode === 'server' ? 'missingServer' : 'missing') : t('loading'))}
         </p>
         {activeRunId === runId ? (
           <RunActions session={session} receiptsOnly={!carriesControls} />
@@ -209,8 +210,8 @@ export function RunDetail({
             {t('retry')}
           </Button>
         ) : null}
-        <Link to="/" className="text-body underline">
-          ←
+        <Link to="/projects" className="text-body underline">
+          {shell('allProjects')}
         </Link>
       </main>
     );
