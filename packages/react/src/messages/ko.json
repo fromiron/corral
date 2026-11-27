@@ -2019,7 +2019,10 @@
     "back": "프로젝트 홈으로",
     "chooseRuns": "실행 두 개 선택",
     "chooseRunsHint": "프로젝트의 실행 목록에서 비교할 실행 두 개를 선택하세요.",
-    "unnamedRun": "실행"
+    "unnamedRun": "실행",
+    "loading": "두 실행을 읽고 있습니다",
+    "readFailed": "실행을 읽지 못했습니다.",
+    "retry": "다시 시도"
   },
   "Results": {
     "submittedBy": "제출된 결과 · {author}",

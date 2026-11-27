@@ -2019,7 +2019,10 @@
     "back": "Back to project home",
     "chooseRuns": "Choose two runs",
     "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
-    "unnamedRun": "Run"
+    "unnamedRun": "Run",
+    "loading": "Reading the two runs",
+    "readFailed": "The runs could not be read.",
+    "retry": "Try again"
   },
   "Results": {
     "submittedBy": "Submitted result · {author}",

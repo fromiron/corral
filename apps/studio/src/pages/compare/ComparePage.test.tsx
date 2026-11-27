@@ -121,3 +121,84 @@ it('compares recorded requests and pinned team names even after the current team
   expect(container.textContent).not.toContain('Renamed current team');
   expect(renamed).not.toHaveBeenCalled();
 });
+
+const chooseLink = (container: HTMLElement) =>
+  container.querySelector('a[href="/projects/project_current#runs"]');
+const named = (container: HTMLElement, name: string) =>
+  [...container.querySelectorAll('button')].find((button) => button.textContent === name);
+const settle = () => act(async () => new Promise((resolve) => setTimeout(resolve, 0)));
+
+it('shows the kit loading presentation while the two runs are read', async () => {
+  fixture.search = { a: 'run_a', b: 'run_b' };
+  fixture.services = {
+    transport: {
+      getSnapshot: () => new Promise(() => {}),
+      listRuns: async () => [],
+      getRunDefinition: async () => null,
+    },
+    repository: {},
+  };
+  const container = await renderPage();
+  expect(container.querySelector('[role="status"]')?.textContent).toContain(
+    messages.Compare.loading,
+  );
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+});
+
+it('names each run that is not found and offers the run picker, with no retry', async () => {
+  fixture.search = { a: 'run_gone', b: 'run_lost' };
+  fixture.services = {
+    transport: {
+      getSnapshot: async () => {
+        throw new Error('run does not exist');
+      },
+      listRuns: async () => [],
+      getRunDefinition: async () => null,
+    },
+    repository: {},
+  };
+  const container = await renderPage();
+  await settle();
+  const alert = container.querySelector('[role="alert"]');
+  expect(alert?.textContent).toContain(messages.Compare.notFound.replace('{runId}', 'run_gone'));
+  expect(alert?.textContent).toContain(messages.Compare.notFound.replace('{runId}', 'run_lost'));
+  expect(chooseLink(container)?.textContent).toBe(messages.Compare.chooseRuns);
+  expect(named(container, messages.Compare.retry)).toBeUndefined();
+});
+
+it('says a failed read failed, offers the run picker and Try again, which reads again', async () => {
+  fixture.search = { a: 'run_a', b: 'run_b' };
+  let offline = true;
+  const getSnapshot = vi.fn(async (runId: string) => {
+    if (offline) throw new Error('Failed to fetch');
+    return {
+      projection: projectionWith({ runId, startedAt: '2026-10-30T01:00:00Z', corralId: 'team' }),
+    };
+  });
+  fixture.services = {
+    transport: {
+      getSnapshot,
+      listRuns: async () => [],
+      getRunDefinition: async () => {
+        if (offline) throw new Error('Failed to fetch');
+        return linearCorral(['writer']);
+      },
+      getArtifactText: async () => null,
+    },
+    repository: {},
+  };
+  const container = await renderPage();
+  await settle();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(messages.Compare.readFailed);
+  expect(chooseLink(container)).not.toBeNull();
+  offline = false;
+  await act(async () => named(container, messages.Compare.retry)?.click());
+  await settle();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(getSnapshot.mock.calls.map(([runId]) => runId)).toEqual([
+    'run_a',
+    'run_b',
+    'run_a',
+    'run_b',
+  ]);
+});
