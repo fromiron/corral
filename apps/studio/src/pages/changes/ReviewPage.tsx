@@ -1558,11 +1558,44 @@ export function DecisionPanel({
       setBusy(false);
     }
   };
+  const [read, setRead] = useState<{ answered: boolean; failed: string | null }>({
+    answered: false,
+    failed: null,
+  });
+  const reads = useRef(0);
   const reload = useCallback(async () => {
     if (!workspaces) return;
-    setDecisions(await workspaces.decisions(sessionId).catch(() => []));
-    setIntegrations(await workspaces.integrations(sessionId).catch(() => []));
+    const id = ++reads.current;
+    try {
+      const nextDecisions = await workspaces.decisions(sessionId);
+      const nextIntegrations = await workspaces.integrations(sessionId);
+      if (reads.current !== id) return;
+      setDecisions(nextDecisions);
+      setIntegrations(nextIntegrations);
+      setRead({ answered: true, failed: null });
+    } catch (cause) {
+      if (reads.current !== id) return;
+      const failed = cause instanceof Error ? cause.message : String(cause);
+      setRead((previous) => ({ answered: previous.answered, failed }));
+    }
   }, [workspaces, sessionId]);
+  const answered = !workspaces || read.answered;
+  const readFailed = read.failed ? (
+    <div className="flex flex-col items-start gap-2">
+      <p role="alert" className="m-0 text-caption text-destructive">
+        {t('decisionsReadFailed', { message: read.failed })}
+      </p>
+      <Button
+        variant="tertiary"
+        onClick={() => {
+          if (folderFailed) readWorkspaceAgain();
+          void reload();
+        }}
+      >
+        {tf('retry')}
+      </Button>
+    </div>
+  ) : null;
   useEffect(() => {
     void changed;
     void to;
@@ -1606,30 +1639,33 @@ export function DecisionPanel({
           {error}
         </p>
       ) : null}
-      <div className={cn('flex flex-wrap items-center gap-2', pinned && 'ml-auto')}>
-        {settled ? null : (
+      {readFailed}
+      {answered ? (
+        <div className={cn('flex flex-wrap items-center gap-2', pinned && 'ml-auto')}>
+          {settled ? null : (
+            <Button
+              variant={primary ? 'primary' : 'tertiary'}
+              type="button"
+              disabled={busy}
+              onClick={() => void act(() => decide('approved'))}
+            >
+              {t('approve')}
+            </Button>
+          )}
           <Button
-            variant={primary ? 'primary' : 'tertiary'}
-            type="button"
+            variant="tertiary"
             disabled={busy}
-            onClick={() => void act(() => decide('approved'))}
+            onClick={() => void act(() => decide('changes_requested'))}
           >
-            {t('approve')}
+            {t('requestChanges')}
           </Button>
-        )}
-        <Button
-          variant="tertiary"
-          disabled={busy}
-          onClick={() => void act(() => decide('changes_requested'))}
-        >
-          {t('requestChanges')}
-        </Button>
-        <Tooltip content={t('decisionScope')}>
-          <Button variant="ghost" size="icon" aria-label={t('decisionScope')}>
-            <Info aria-hidden />
-          </Button>
-        </Tooltip>
-      </div>
+          <Tooltip content={t('decisionScope')}>
+            <Button variant="ghost" size="icon" aria-label={t('decisionScope')}>
+              <Info aria-hidden />
+            </Button>
+          </Tooltip>
+        </div>
+      ) : null}
     </section>
   );
 
@@ -1643,6 +1679,7 @@ export function DecisionPanel({
             {error}
           </p>
         ) : null}
+        {judged ? null : readFailed}
         {approved && linked ? (
           <div className="flex flex-col gap-2 fill-group p-3 text-caption">
             <div className="flex items-center gap-1">
@@ -1704,7 +1741,7 @@ export function DecisionPanel({
               </>
             ) : null}
           </div>
-        ) : approved && folderFailed ? (
+        ) : approved && folderFailed && !read.failed ? (
           <div className="flex flex-col items-start gap-2">
             <p role="alert" className="m-0 text-caption text-destructive">
               {tf('folderReadFailed', { message: folderFailed })}

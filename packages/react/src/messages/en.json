@@ -2535,7 +2535,9 @@
     "linkObservesOnly": "Linking only observes the folder: agents never read or change it directly.",
     "run": "Run",
     "folderReadFailed": "The project folder link could not be read: {message}",
-    "copyReadFailed": "This conversation’s Paddock could not be read: {message}"
+    "copyReadFailed": "This conversation’s Paddock could not be read: {message}",
+    "checksReadFailed": "The check records could not be read: {message}",
+    "listReadFailed": "The file list could not be read: {message}"
   },
   "Review": {
     "commentLine": "Comment on line {line}",
@@ -2559,6 +2561,7 @@
     "markObsolete": "Obsolete",
     "deleteDraft": "Delete",
     "decisionHeading": "Decision",
+    "decisionsReadFailed": "The review decision could not be read: {message}",
     "approve": "Approve these changes",
     "requestChanges": "Mark as needing changes",
     "decisionState": {

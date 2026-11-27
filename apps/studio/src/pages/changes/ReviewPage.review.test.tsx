@@ -184,3 +184,124 @@ it('an approval of another comparison with the same result is not this review', 
   );
   expect(approve?.disabled).toBe(false);
 });
+
+async function mountPanel(
+  workspaces: Record<string, unknown>,
+  props: Partial<Parameters<typeof DecisionPanel>[0]> = {},
+) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.services = { workspaces };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  const draw = (more: Partial<Parameters<typeof DecisionPanel>[0]> = {}) =>
+    act(async () =>
+      root.render(
+        <DecisionPanel
+          sessionId="session"
+          from={base}
+          to={to}
+          changed={0}
+          linked
+          active={false}
+          {...props}
+          {...more}
+        />,
+      ),
+    );
+  await draw();
+  return { container, draw };
+}
+const named = (view: HTMLElement, name: string) =>
+  [...view.querySelectorAll('button')].filter((button) => button.textContent === name);
+const alertsOf = (view: HTMLElement) =>
+  [...view.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+const decisionReads = () => vi.fn<() => Promise<ReviewDecisionView[]>>();
+const listen = () => {
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  return asked;
+};
+
+// docs/specs/workbench.md: the judgment is offered only once it is read, and a failed read is
+// never shown as "not judged yet".
+it('offers no decision before the decisions are read', async () => {
+  const { container } = await mountPanel({
+    decisions: () => new Promise(() => {}),
+    integrations: async () => [],
+  });
+  expect(named(container, 'Review.approve')).toHaveLength(0);
+  expect(named(container, 'Review.requestChanges')).toHaveLength(0);
+});
+
+it('a failed read of the decisions says why and offers Try again, and no decision', async () => {
+  const decisions = decisionReads()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue([]);
+  const { container } = await mountPanel({ decisions, integrations: async () => [] });
+  expect(alertsOf(container)).toEqual(['Review.decisionsReadFailed']);
+  expect(named(container, 'Review.approve')).toHaveLength(0);
+  await act(async () => named(container, 'Files.retry')[0]?.click());
+  expect(alertsOf(container)).toEqual([]);
+  expect(named(container, 'Review.approve')).toHaveLength(1);
+});
+
+it('keeps the last decision it read when a later read fails', async () => {
+  const decisions = decisionReads()
+    .mockResolvedValueOnce([approved(base)])
+    .mockRejectedValue(new Error('offline'));
+  const { container, draw } = await mountPanel({ decisions, integrations: async () => [] });
+  await draw({ changed: 1 });
+  expect(container.querySelector('[data-testid="decision"]')?.textContent).toBe(
+    'Review.decisionState.approved',
+  );
+  expect(alertsOf(container)).toEqual(['Review.decisionsReadFailed']);
+  expect(named(container, 'Review.approve')).toHaveLength(0);
+  expect(container.textContent).toContain('Review.integrateHeading');
+});
+
+it('a recorded decision is not shown as a failed action when the read after it fails', async () => {
+  const decisions = decisionReads()
+    .mockResolvedValueOnce([])
+    .mockRejectedValue(new Error('offline'));
+  const decide = vi.fn(async () => {});
+  const { container } = await mountPanel({ decisions, integrations: async () => [], decide });
+  await act(async () => named(container, 'Review.approve')[0]?.click());
+  expect(decide).toHaveBeenCalledOnce();
+  expect(alertsOf(container)).toEqual(['Review.decisionsReadFailed']);
+});
+
+it('says one failure when the folder link also could not be read, and Try again reads both', async () => {
+  const decisions = decisionReads()
+    .mockResolvedValueOnce([approved(base)])
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue([approved(base)]);
+  const { container, draw } = await mountPanel(
+    { decisions, integrations: async () => [] },
+    { linked: false, folderFailed: 'offline' },
+  );
+  await draw({ changed: 1 });
+  expect(alertsOf(container)).toEqual(['Review.decisionsReadFailed']);
+  expect(named(container, 'Files.retry')).toHaveLength(1);
+  const asked = listen();
+  await act(async () => named(container, 'Files.retry')[0]?.click());
+  expect(asked).toHaveBeenCalledOnce();
+  expect(alertsOf(container)).toEqual(['Files.folderReadFailed']);
+});
+
+it('says a failed read where there is nothing to decide', async () => {
+  const { container } = await mountPanel(
+    {
+      decisions: decisionReads().mockRejectedValue(new Error('offline')),
+      integrations: async () => [],
+    },
+    { judged: false },
+  );
+  expect(alertsOf(container)).toEqual(['Review.decisionsReadFailed']);
+  expect(named(container, 'Files.retry')).toHaveLength(1);
+});

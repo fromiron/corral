@@ -63,16 +63,16 @@ export function Checks({
   projectId,
   binding,
   folderFailed,
-  folderFailedSaid = false,
+  readFailureSaid = false,
   changed,
   onAttach,
   titled = true,
 }: {
   sessionId: string;
   projectId?: string;
-  binding: WorkspaceBindingView | null;
+  binding: WorkspaceBindingView | null | undefined;
   folderFailed?: string | null | undefined;
-  folderFailedSaid?: boolean | undefined;
+  readFailureSaid?: boolean | undefined;
   changed: number;
   onAttach?(attachment: TextAttachment, capture: AttachmentCapture): void | Promise<void>;
   /** False where the host already names this view (the Checks sub-view's tab). */
@@ -94,8 +94,13 @@ export function Checks({
   const [loaded, setLoaded] = useState<{
     source: typeof source;
     results: VerificationResultView[];
-  }>({ source, results: [] });
-  const results = loaded.source === source ? loaded.results : [];
+    read: boolean;
+    failed: string | null;
+  }>({ source, results: [], read: false, failed: null });
+  const current = loaded.source === source ? loaded : null;
+  const results = current?.results ?? [];
+  const recordsRead = !workspaces || Boolean(current?.read);
+  const recordsFailed = current?.failed ?? null;
   const [error, setError] = useState<string | null>(null);
   const [attaching, setAttaching] = useState(false);
   const [attached, setAttached] = useState<string | null>(null);
@@ -119,9 +124,25 @@ export function Checks({
   const reload = useCallback(async () => {
     if (!source.workspaces) return;
     const revision = ++readRevision.current;
-    const value = await source.workspaces.verifications(source.sessionId).catch(() => []);
-    if (mounted.current && currentSource.current === source && readRevision.current === revision)
-      setLoaded({ source, results: value });
+    const answer = await source.workspaces.verifications(source.sessionId).then(
+      (value) => ({ results: value, failed: null }),
+      (cause: unknown) => ({
+        results: null,
+        failed: cause instanceof Error ? cause.message : String(cause),
+      }),
+    );
+    if (!mounted.current || currentSource.current !== source || readRevision.current !== revision)
+      return;
+    setLoaded((previous) => {
+      if (answer.results) return { source, results: answer.results, read: true, failed: null };
+      const kept = previous.source === source ? previous : null;
+      return {
+        source,
+        results: kept?.results ?? [],
+        read: Boolean(kept?.read),
+        failed: answer.failed,
+      };
+    });
   }, [source]);
   useEffect(() => {
     void changed;
@@ -134,6 +155,11 @@ export function Checks({
     return () => clearInterval(timer);
   }, [running, reload]);
   const commands = binding?.verifyCommands ?? [];
+  const readFailure = folderFailed
+    ? t('folderReadFailed', { message: folderFailed })
+    : recordsFailed
+      ? t('checksReadFailed', { message: recordsFailed })
+      : null;
   // A finished record of this session; its report, when present, must be the same check.
   const settled = (result: VerificationResultView) =>
     Boolean(
@@ -235,24 +261,32 @@ export function Checks({
           {error}
         </p>
       ) : null}
-      {folderFailed ? (
-        folderFailedSaid ? null : (
-          <div className="flex flex-col items-start gap-2">
-            <p role="alert" className="m-0 text-body text-destructive">
-              {t('folderReadFailed', { message: folderFailed })}
-            </p>
-            <Button variant="tertiary" onClick={readWorkspaceAgain}>
-              {t('retry')}
-            </Button>
-          </div>
-        )
-      ) : commands.length === 0 && results.length === 0 ? (
-        <EmptyView
-          data-testid="checks-empty"
-          title={t('noChecks')}
-          text={mode === 'browser' ? t('checksServerOnly') : undefined}
-          action={tools ? { label: tk('openProjectTools'), render: tools } : undefined}
-        />
+      {readFailure && !readFailureSaid ? (
+        <div className="flex flex-col items-start gap-2">
+          <p role="alert" className="m-0 text-body text-destructive">
+            {readFailure}
+          </p>
+          <Button
+            variant="tertiary"
+            onClick={() => {
+              if (folderFailed) readWorkspaceAgain();
+              void reload();
+            }}
+          >
+            {t('retry')}
+          </Button>
+        </div>
+      ) : null}
+      {folderFailed || binding === undefined ? null : commands.length === 0 &&
+        results.length === 0 ? (
+        recordsRead && !recordsFailed ? (
+          <EmptyView
+            data-testid="checks-empty"
+            title={t('noChecks')}
+            text={mode === 'browser' ? t('checksServerOnly') : undefined}
+            action={tools ? { label: tk('openProjectTools'), render: tools } : undefined}
+          />
+        ) : null
       ) : (
         <div className="flex flex-wrap items-center gap-1">
           {commands

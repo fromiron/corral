@@ -2535,7 +2535,9 @@
     "linkObservesOnly": "연결은 폴더를 관찰만 하며, 에이전트는 이 폴더를 직접 읽거나 바꾸지 않습니다.",
     "run": "실행",
     "folderReadFailed": "프로젝트 폴더 연결을 읽지 못했습니다: {message}",
-    "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}"
+    "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}",
+    "checksReadFailed": "검사 기록을 읽지 못했습니다: {message}",
+    "listReadFailed": "파일 목록을 읽지 못했습니다: {message}"
   },
   "Review": {
     "commentLine": "{line}번째 줄에 의견",
@@ -2559,6 +2561,7 @@
     "markObsolete": "쓸모없음",
     "deleteDraft": "지우기",
     "decisionHeading": "판단",
+    "decisionsReadFailed": "검토 판단을 읽지 못했습니다: {message}",
     "approve": "이 변경 승인",
     "requestChanges": "수정 필요로 표시",
     "decisionState": {

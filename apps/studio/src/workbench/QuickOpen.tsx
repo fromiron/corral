@@ -1,6 +1,7 @@
 import type { FileBrowseScope, PathSearchView } from '@corral/client';
 import {
   Badge,
+  Button,
   CommandMenu,
   CommandMenuDialog,
   CommandMenuEmpty,
@@ -20,7 +21,7 @@ import { documentStore } from './documents/store.ts';
 import type { OpenDocumentRequest } from './FilePanel.tsx';
 import { modalConfirmationOpen } from './modalConfirmation.ts';
 import { settingsInteractionBlocked } from './navigation.ts';
-import { WORKSPACE_CHANGED } from './workspaceEvents.ts';
+import { readWorkspaceAgain, WORKSPACE_CHANGED } from './workspaceEvents.ts';
 
 // Quick open (⌘P / Ctrl+P): find a file or folder of the session's current target by path. The
 // built-in path search ranks the candidates; a result is only ever a path that search returned
@@ -151,6 +152,7 @@ export function QuickOpen({
   const t = useTranslations('QuickOpen');
   const td = useTranslations('Desktop');
   const tcmd = useTranslations('Commands');
+  const tf = useTranslations('Files');
   const { workspaces, mode } = useServices();
   const owner = workspaces && mode === 'server' ? documentStore(workspaces) : null;
   const [open, setOpen] = useState(false);
@@ -161,6 +163,7 @@ export function QuickOpen({
     null,
   );
   const [error, setError] = useState<string | null>(null);
+  const [unread, setUnread] = useState<{ what: 'copy' | 'folder'; message: string } | null>(null);
   const [opening, setOpening] = useState(false);
   const [targetTick, setTargetTick] = useState(0);
   // Text an input method is still composing is not searched until it is committed.
@@ -181,6 +184,7 @@ export function QuickOpen({
     opens.current++;
     setComposing(false);
     setTarget(undefined);
+    setUnread(null);
     setQuery('');
     setFound(null);
     setError(null);
@@ -231,15 +235,17 @@ export function QuickOpen({
     void targetTick;
     if (!open || !workspaces) return;
     let live = true;
+    let reading: 'copy' | 'folder' = 'copy';
     void (async (): Promise<Target | null> => {
-      const copy = await workspaces.worktree(sessionId).catch(() => null);
+      const copy = await workspaces.worktree(sessionId);
       if (copy && !copy.missing && !copy.removedAt)
         return {
           key: `session:${sessionId}:${copy.bindingId}:${copy.copyGeneration}`,
           source: 'session',
           scope: { kind: 'session', id: sessionId },
         };
-      const binding = await workspaces.binding(projectId).catch(() => null);
+      reading = 'folder';
+      const binding = await workspaces.binding(projectId);
       return binding && !binding.missing
         ? {
             key: `project:${projectId}`,
@@ -247,10 +253,21 @@ export function QuickOpen({
             scope: { kind: 'project', id: projectId },
           }
         : null;
-    })().then((next) => {
-      if (live)
+    })().then(
+      (next) => {
+        if (!live) return;
+        setUnread(null);
         setTarget((current) => (current && next && current.key === next.key ? current : next));
-    });
+      },
+      (cause: unknown) => {
+        if (!live) return;
+        setTarget(undefined);
+        setUnread({
+          what: reading,
+          message: cause instanceof Error ? cause.message : String(cause),
+        });
+      },
+    );
     return () => {
       live = false;
     };
@@ -334,8 +351,14 @@ export function QuickOpen({
   const searching =
     target === undefined ||
     (target !== null && (found?.key !== target.key || found.query !== query));
-  const announcement =
-    target === null
+  const unreadTarget = unread
+    ? tf(unread.what === 'copy' ? 'copyReadFailed' : 'folderReadFailed', {
+        message: unread.message,
+      })
+    : null;
+  const announcement = unreadTarget
+    ? unreadTarget
+    : target === null
       ? t('noTarget')
       : error
         ? error
@@ -391,15 +414,27 @@ export function QuickOpen({
           )}
         >
           <CommandMenuEmpty role="none" aria-live="off">
-            {target === null
-              ? t('noTarget')
-              : error
-                ? error
-                : searching
-                  ? t('searching')
-                  : t('empty')}
+            {unreadTarget
+              ? null
+              : target === null
+                ? t('noTarget')
+                : error
+                  ? error
+                  : searching
+                    ? t('searching')
+                    : t('empty')}
           </CommandMenuEmpty>
         </CommandMenuList>
+        {unreadTarget ? (
+          <div className="flex flex-col items-start gap-2 px-4 py-2">
+            <p role="alert" className="m-0 text-caption text-danger">
+              {unreadTarget}
+            </p>
+            <Button variant="tertiary" onClick={readWorkspaceAgain}>
+              {tf('retry')}
+            </Button>
+          </div>
+        ) : null}
         {error && results.length ? (
           <p role="alert" className="px-4 py-2 text-caption text-danger">
             {error}
