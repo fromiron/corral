@@ -23,6 +23,9 @@ import {
   useStudioStores,
 } from '@corral/react';
 import {
+  Banner,
+  BannerActions,
+  BannerTitle,
   Button,
   fontWeights,
   KitBadge,
@@ -65,9 +68,11 @@ import {
   editorDraftChanged,
   editorWorkingCopy,
   firstSaveDefinition,
+  loadLatestEditorCopy,
   newEditorWorkingCopy,
   ownsSaveShortcut,
   saveEditorCopy,
+  saveEditorCopyOver,
 } from '../../workbench/editorDraft.ts';
 import { readEditorView, rememberEditorView } from '../../workbench/editorView.ts';
 import { HarnessRoleSettings } from '../../workbench/HarnessRoleSettings.tsx';
@@ -427,29 +432,32 @@ function Editor({
     enableBeforeUnload: () => dirtyRef.current,
   });
 
-  const save = useCallback(async () => {
-    const first = !workingCopy.getState().saved.record;
-    const result = await saveEditorCopy(workingCopy, repository, {
-      noChanges: t('noChanges'),
-      saved: (changed) => t('savedResult', { definition: String(changed.definition) }),
-      renamed: (name) => t('savedAs', { name }),
-      invalid: t('fixProblems'),
-    });
-    if (!result && first && workingCopy.getState().message?.problems)
-      editorNavigation.current?.showProblems();
-    if (result?.wrote) {
-      projectsChanged();
-      if (first && !discarded.current) {
-        rememberEditorView(result.record.corralId, viewRef.current);
-        await navigate({
-          to: '/corrals/$corralId/edit',
-          params: { corralId: result.record.corralId },
-          replace: true,
-        });
-      } else if (!discarded.current) await router.invalidate();
-    }
-    return discarded.current ? null : result;
-  }, [repository, router, navigate, t, workingCopy]);
+  const save = useCallback(
+    async (over = false) => {
+      const first = !workingCopy.getState().saved.record;
+      const result = await (over ? saveEditorCopyOver : saveEditorCopy)(workingCopy, repository, {
+        noChanges: t('noChanges'),
+        saved: (changed) => t('savedResult', { definition: String(changed.definition) }),
+        renamed: (name) => t('savedAs', { name }),
+        invalid: t('fixProblems'),
+      });
+      if (!result && first && workingCopy.getState().message?.problems)
+        editorNavigation.current?.showProblems();
+      if (result?.wrote) {
+        projectsChanged();
+        if (first && !discarded.current) {
+          rememberEditorView(result.record.corralId, viewRef.current);
+          await navigate({
+            to: '/corrals/$corralId/edit',
+            params: { corralId: result.record.corralId },
+            replace: true,
+          });
+        } else if (!discarded.current) await router.invalidate();
+      }
+      return discarded.current ? null : result;
+    },
+    [repository, router, navigate, t, workingCopy],
+  );
 
   // A save may finish after the person has edited again. Only the draft the action
   // was requested for can launch that revision or take the person out of this editor.
@@ -551,6 +559,15 @@ function Editor({
 
   const exportFile = () =>
     download(`${corralId}.corral.json`, exportDefinition(editor.getState().draft));
+  const conflict = Boolean(message?.error && message.code === 'revision_conflict' && saved.record);
+  const messageText =
+    message?.code && message.code !== 'revision_conflict'
+      ? t(`saveError.${message.code}`, { message: message.text })
+      : message?.text;
+  const loadLatest = async () => {
+    if ((await loadLatestEditorCopy(workingCopy, repository)) && !discarded.current)
+      await router.invalidate();
+  };
 
   return (
     <StudioStoresProvider editor={editor} session={session}>
@@ -560,7 +577,7 @@ function Editor({
         onValueChange={(next) => {
           if (next === 'composition' || next === 'graph') changeView(next);
         }}
-        className="@container grid h-full min-h-0 min-w-0 grid-cols-1 grid-rows-[auto_minmax(0,1fr)]"
+        className={`@container grid h-full min-h-0 min-w-0 grid-cols-1 ${conflict ? 'grid-rows-[auto_auto_minmax(0,1fr)]' : 'grid-rows-[auto_minmax(0,1fr)]'}`}
       >
         {/* One header row: the way back to the session leads it instead of a row of its own. */}
         <header className="flex min-h-12 flex-wrap items-center gap-2 border-b border-border py-1.5 pr-3 pl-4">
@@ -597,7 +614,7 @@ function Editor({
               saved.record && <span className="sr-only">{c('saved')}</span>
             )}
           </span>
-          {message ? (
+          {message && !conflict ? (
             <p
               role={message.error ? 'alert' : 'status'}
               className={
@@ -608,7 +625,7 @@ function Editor({
                     : 'sr-only'
               }
             >
-              {message.text}
+              {messageText}
             </p>
           ) : null}
           {checking || failed ? (
@@ -763,6 +780,31 @@ function Editor({
             />
           </TabsList>
         </header>
+        {conflict ? (
+          <div className="border-b border-border px-4 py-2">
+            <Banner status="warning" size="compact">
+              <BannerTitle>{t('saveConflict')}</BannerTitle>
+              <BannerActions>
+                <Button
+                  variant="primary"
+                  size="compact"
+                  disabled={saving}
+                  onClick={() => void save(true)}
+                >
+                  {t('saveMine')}
+                </Button>
+                <Button
+                  variant="secondary"
+                  size="compact"
+                  disabled={saving}
+                  onClick={() => void loadLatest()}
+                >
+                  {t('loadLatest')}
+                </Button>
+              </BannerActions>
+            </Banner>
+          </div>
+        ) : null}
         <TabPanel
           value={view}
           tabIndex={-1}

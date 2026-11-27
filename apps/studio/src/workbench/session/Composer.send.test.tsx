@@ -1984,6 +1984,74 @@ describe('a request taken back into the box', () => {
     ).toEqual([FILE_REF, RUN_REF, NOTE, IMAGE]);
   });
 
+  const DRAFT_NOTE = createTextAttachment('draft.txt', 'text/plain', 'Half written.');
+  const halfDraft = () =>
+    writeComposerDraft('session', {
+      text: 'Half typed',
+      intent: null,
+      target: null,
+      targetLabel: null,
+      references: [],
+      attachments: [DRAFT_NOTE],
+    });
+
+  it('taken back from the queue into a box that holds a draft, keeps the draft and its attachment', async () => {
+    halfDraft();
+    const queued: SessionEntry = { ...saved, attachments: [NOTE], images: [IMAGE] };
+    const f = await mount({ queued: [queued] });
+    const edit = f.container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Sessions.editQueuedMessage.replace('{text}', saved.text)}"]`,
+    );
+    await act(async () => edit?.click());
+    expect(f.box().value).toBe(`Half typed\n\n${saved.text}`);
+    const draft = readComposerDraft('session');
+    expect(draft.attachments).toEqual([DRAFT_NOTE, NOTE]);
+    expect(draft.images).toEqual([IMAGE]);
+    expect(draft.permissionMode).toBe('accept_edits');
+  });
+
+  it('taken back into a draft with images and references, each one stays once and goes out once', async () => {
+    withReferences();
+    const folder: RunReference = { kind: 'folder', path: 'docs' };
+    const queued: SessionEntry = {
+      ...saved,
+      text: 'Read @docs/ and @src/a.ts:L2-L4 again',
+      references: [folder, FILE_REF],
+      attachments: [NOTE],
+      images: [IMAGE],
+    };
+    const f = await mount({ queued: [queued] });
+    const edit = f.container.querySelector<HTMLButtonElement>(
+      `button[aria-label="${messages.Sessions.editQueuedMessage.replace('{text}', queued.text)}"]`,
+    );
+    await act(async () => edit?.click());
+    const joined = `Look at @src/a.ts:L2-L4 here\n\n${queued.text}`;
+    expect(f.box().value).toBe(joined);
+    const draft = readComposerDraft('session');
+    expect(draft.references.map((item) => item.reference)).toEqual([FILE_REF, folder]);
+    expect(draft.attachments).toEqual([NOTE]);
+    expect(draft.images).toEqual([IMAGE]);
+    await f.press();
+    expect(lastEntry(f.repository)).toMatchObject({
+      intent: 'queue',
+      text: joined,
+      references: [FILE_REF, folder],
+      attachments: [NOTE],
+      images: [IMAGE],
+    });
+  });
+
+  it('taken back to edit into a box that holds a draft, keeps the draft beside what comes back', async () => {
+    halfDraft();
+    await mount({ active: ended });
+    await act(async () => editRequest(sent.text, sent));
+    const draft = readComposerDraft('session');
+    expect(draft.text).toBe(`Half typed\n\n${text}`);
+    expect(draft.references.map((item) => item.reference)).toEqual([FILE_REF, RUN_REF]);
+    expect(draft.attachments).toEqual([DRAFT_NOTE, NOTE]);
+    expect(draft.images).toEqual([IMAGE]);
+  });
+
   it('recalled with the up arrow, its chips, images and text attachments come back', async () => {
     const f = await mount({
       active: ended,

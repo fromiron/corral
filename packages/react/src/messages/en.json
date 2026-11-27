@@ -648,7 +648,12 @@
       "accept_edits": "Accept edits",
       "auto": "Auto"
     },
-    "retry": "Try again"
+    "retry": "Try again",
+    "changedElsewhere": "This schedule was changed elsewhere since you opened it.",
+    "loadLatest": "Load the latest",
+    "saveMine": "Save mine",
+    "zoneUnknown": "Unknown time zone. Use a name such as Asia/Seoul or UTC.",
+    "deletedElsewhere": "This schedule was deleted elsewhere. Close the form to see the list as it is now."
   },
   "Status": {
     "running": "Running",
@@ -808,7 +813,15 @@
     "openRun": "Open run page",
     "backToSession": "Back to the conversation",
     "appliesNextRun": "Applies from the next run",
-    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view."
+    "modeSaveFailed": "Could not save the run mode. Your selection stays in this view.",
+    "saveConflict": "This team was saved elsewhere since you opened it.",
+    "loadLatest": "Load the latest",
+    "saveMine": "Save mine",
+    "saveError": {
+      "not_found": "This team no longer exists. Export your edits from More actions to keep them.",
+      "validation_error": "The team was not saved because it is not valid: {message}",
+      "storage_unavailable": "The team could not be saved because storage is not available. Save again."
+    }
   },
   "RunPage": {
     "retry": "Retry loading run",
@@ -869,7 +882,8 @@
     "forkFailed": "Could not start: {message}",
     "runName": "#{number} · {name}",
     "sessionLookupFailed": "Could not check which conversation this run belongs to, so it opens on its own page.",
-    "viewActiveRun": "View active run"
+    "viewActiveRun": "View active run",
+    "missingServer": "This run is not in this workspace."
   },
   "Timeline": {
     "heading": "Events",
@@ -2005,7 +2019,10 @@
     "back": "Back to project home",
     "chooseRuns": "Choose two runs",
     "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
-    "unnamedRun": "Run"
+    "unnamedRun": "Run",
+    "loading": "Reading the two runs",
+    "readFailed": "The runs could not be read.",
+    "retry": "Try again"
   },
   "Results": {
     "submittedBy": "Submitted result · {author}",
@@ -2102,6 +2119,15 @@
       "contents": "Corrals and runs",
       "saved": "Saved",
       "actions": "Actions"
+    },
+    "linkAgain": "Link folder",
+    "openWithoutFolder": "Open the project without a folder",
+    "folderRefused": {
+      "TARGET_NOT_FOUND": "This folder does not exist. Check the path.",
+      "SCHEMA_INVALID": "Choose a project folder, not a whole drive or your home folder.",
+      "CAPABILITY_DENIED": "Corral’s own data folder cannot be a work folder. Choose another folder.",
+      "REVISION_CONFLICT": "This project already has a folder.",
+      "other": "The folder was not linked: {message}"
     }
   },
   "Sessions": {

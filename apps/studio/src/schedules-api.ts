@@ -18,7 +18,9 @@ async function request<T>(path = '', method = 'GET', body?: unknown): Promise<T>
   });
   if (!response.ok) {
     const value = await response.json().catch(() => null);
-    throw new Error(value?.error?.message ?? 'The schedule could not be saved.');
+    throw Object.assign(new Error(value?.error?.message ?? 'The schedule could not be saved.'), {
+      status: response.status,
+    });
   }
   return response.status === 204 ? (undefined as T) : response.json();
 }

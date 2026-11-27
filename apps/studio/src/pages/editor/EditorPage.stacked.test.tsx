@@ -728,6 +728,60 @@ describe('team editor views', () => {
   });
 });
 
+describe('a team saved elsewhere while it is edited', () => {
+  const conflicted = async () => {
+    let repo!: CorralRepository;
+    let saved!: CorralRecord;
+    const draft = await mount('route', 1280, (repository, record) => {
+      repo = repository;
+      saved = record;
+      return {};
+    });
+    const theirs = await repo.save({
+      definition: { ...saved.definition, name: 'Theirs' },
+      expectedDefinitionRevision: saved.definitionRevision,
+    });
+    assert(theirs.ok);
+    await act(async () =>
+      editorWorkingCopy(repo, saved).getState().editor.getState().setName('Mine'),
+    );
+    await click(named(region('header'), messages.Editor.save));
+    return { repo, saved, draft };
+  };
+  const banner = () => document.querySelector<HTMLElement>('[data-slot="banner"]');
+
+  it('keeps the edits and offers to load the latest or save them on top, in one place', async () => {
+    const { draft } = await conflicted();
+    expect(banner()?.textContent).toContain(messages.Editor.saveConflict);
+    expect(region('header').textContent).not.toContain('Reload before saving');
+    expect(named(banner() as HTMLElement, messages.Editor.loadLatest)).toBeDefined();
+    expect(named(banner() as HTMLElement, messages.Editor.saveMine)).toBeDefined();
+    expect(draft().definition.name).toBe('Mine');
+  });
+
+  it('Save mine saves the working copy over the stored revision and keeps the edit', async () => {
+    const { repo, saved, draft } = await conflicted();
+    await click(named(banner() as HTMLElement, messages.Editor.saveMine));
+    const stored = await repo.get(saved.corralId);
+    expect(stored?.definition.name).toBe('Mine');
+    expect(stored?.definitionRevision).toBe(3);
+    expect(draft().definition.name).toBe('Mine');
+    expect(banner()).toBeNull();
+    expect(region('[data-testid="revisions"]').textContent).toBe(
+      messages.Editor.revisions.replace('{definition}', '3'),
+    );
+  });
+
+  it('Load the latest replaces the working copy with the stored team', async () => {
+    const { repo, saved, draft } = await conflicted();
+    await click(named(banner() as HTMLElement, messages.Editor.loadLatest));
+    expect(draft().definition.name).toBe('Theirs');
+    expect((await repo.get(saved.corralId))?.definitionRevision).toBe(2);
+    expect(banner()).toBeNull();
+    expect(document.querySelector('h1')?.textContent).toBe('Theirs');
+  });
+});
+
 describe('team editor hosts: stacked below 960px', () => {
   it('shows pinned Harness ask permission for the project in the shared Outrider roster and worker settings', async () => {
     const binding = { profileId: 'restricted', revision: 2 };

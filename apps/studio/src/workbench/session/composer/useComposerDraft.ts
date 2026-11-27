@@ -4,6 +4,7 @@ import {
   ImageAttachments,
   PermissionMode,
   RunReferences,
+  textAttachmentKey,
 } from '@corral/contracts';
 import type { CorralSummary, RunSummary, SessionEntry, WorkSession } from '@corral/core';
 import { validTextAttachments } from '@corral/core';
@@ -127,9 +128,13 @@ export function useComposerDraft({
   };
   // Chips of a request taken back before the role names were read, bound once they are.
   const waitingChips = useRef<{ text: string; references: RunReference[] } | null>(null);
-  const restoreChips = (value: string, references: RunReference[]) => {
+  const restoreChips = (value: string, references: RunReference[], kept: MentionItem[] = []) => {
     const items = restoredMentions(value, references, names);
-    setPicked(items);
+    const held = new Set(kept.flatMap((item) => [item.id, JSON.stringify(item.reference)]));
+    setPicked([
+      ...kept,
+      ...items.filter((item) => !held.has(item.id) && !held.has(JSON.stringify(item.reference))),
+    ]);
     waitingChips.current =
       roleNames === null && references.some((reference) => reference.kind === 'role')
         ? { text: value, references }
@@ -288,11 +293,7 @@ export function useComposerDraft({
       )
         return;
       const request = typeof value === 'string' ? { text: value } : value;
-      setAttachmentEpoch((epoch) => epoch + 1);
-      setAttachmentsBusy(false);
-      setImagesBusy(false);
-      setText(request.text);
-      restoreItems.current(request);
+      bringBackNow.current(request);
       setLock(null);
       editRequested.current();
       requestAnimationFrame(() => input.current?.focus());
@@ -323,14 +324,32 @@ export function useComposerDraft({
     setImages(request.images ?? []);
     restoreChips(request.text, request.references ?? []);
   };
-  const restoreItems = useRef(restore);
-  restoreItems.current = restore;
+  const bringBack = (request: TakenBackRequest) => {
+    resetAttachments();
+    if (!text.trim() && !attachments.length && !images.length) {
+      setText(request.text);
+      restore(request);
+      return;
+    }
+    setText(joinCarriedAnswer(text, request.text));
+    setPermissionMode(request.permissionMode);
+    const held = new Set(attachments.map(textAttachmentKey));
+    setAttachments([
+      ...attachments,
+      ...(request.attachments ?? []).filter((item) => !held.has(textAttachmentKey(item))),
+    ]);
+    setImages([
+      ...images,
+      ...(request.images ?? []).filter((item) => !images.some((x) => x.imageId === item.imageId)),
+    ]);
+    restoreChips(request.text, request.references ?? [], picked);
+  };
+  const bringBackNow = useRef(bringBack);
+  bringBackNow.current = bringBack;
 
   /** Editing a queued task takes it back into the box; sending again records a new version. */
   const takeBack = (entry: SessionEntry) => {
-    resetAttachments();
-    setText(entry.text);
-    restore(entry);
+    bringBack(entry);
     // Sent again, it is a next request: it waits while a run is going, else it starts. The send
     // key sends it as one, never as a join that would drop its permission mode and images.
     setChosen('queue');
