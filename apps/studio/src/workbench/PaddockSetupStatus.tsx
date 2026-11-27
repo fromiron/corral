@@ -33,6 +33,7 @@ export function PaddockSetupStatus({
   const [output, setOutput] = useState<{ operationId: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unread, setUnread] = useState<{ operationId: string; message: string } | null>(null);
   const word = setupWord(setup);
   if (!word || !setup || !workspaces) return null;
   const act = async (work: () => Promise<unknown>) => {
@@ -52,8 +53,17 @@ export function PaddockSetupStatus({
   const read = async () => {
     const detail = await workspaces.setup(sessionId, setup.operationId);
     setOutput({ operationId: setup.operationId, text: detail.output.text });
+    setUnread(null);
     return detail;
   };
+  const readOutput = () =>
+    void read().catch((failure) =>
+      setUnread({
+        operationId: setup.operationId,
+        message: failure instanceof Error ? failure.message : String(failure),
+      }),
+    );
+  const readFailure = unread?.operationId === setup.operationId ? unread.message : null;
   const live = setup.state === 'running' || setup.state === 'uncertain';
   const shown = output?.operationId === setup.operationId ? output.text : null;
   return (
@@ -62,7 +72,7 @@ export function PaddockSetupStatus({
         <details
           className="min-w-0 flex-1"
           onToggle={(event) => {
-            if (event.currentTarget.open) void read().catch(() => {});
+            if (event.currentTarget.open) readOutput();
           }}
         >
           <summary className="w-fit text-caption">
@@ -76,9 +86,20 @@ export function PaddockSetupStatus({
             tabIndex={0}
             className="mt-1 max-h-48 overflow-auto rounded-md fill-group p-2"
           >
-            <pre className="m-0 whitespace-pre-wrap font-mono text-caption">
-              {shown || t('setupNoOutput')}
-            </pre>
+            {readFailure === null ? (
+              <pre className="m-0 whitespace-pre-wrap font-mono text-caption">
+                {shown || t('setupNoOutput')}
+              </pre>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2">
+                <p role="alert" className="m-0 text-caption text-destructive">
+                  {t('setupOutputUnread', { message: readFailure })}
+                </p>
+                <Button type="button" variant="tertiary" size="compact" onClick={readOutput}>
+                  {t('retry')}
+                </Button>
+              </div>
+            )}
           </section>
         </details>
         <Button

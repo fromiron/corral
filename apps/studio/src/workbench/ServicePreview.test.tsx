@@ -202,3 +202,21 @@ it('브라우저 탭이 없는 데스크톱(원격 호스트의 창)에서는 �
   await flush();
   expect(fixture.workspaces.stopPreview).toHaveBeenCalledWith('session_a', 'lease_svc');
 });
+
+// workbench.md: a failed read shows its cause and a way to try again, never an empty list.
+it('tells a failed service list apart from no service, and reads it again on Try again', async () => {
+  fixture.workspaces.commands.mockRejectedValue(new Error('offline'));
+  fixture.services = { mode: 'server', workspaceId: 'local', workspaces: fixture.workspaces };
+  const { container } = await render('/sessions/session_a?panel=files');
+  expect(container.textContent).not.toContain('No service is running');
+  expect(container.querySelector('[role="alert"]')?.textContent).toContain('offline');
+  fixture.workspaces.commands.mockResolvedValue([]);
+  const again = [...container.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Try again',
+  );
+  if (!again) throw new Error('Missing Try again');
+  await act(async () => again.click());
+  await flush();
+  expect(container.querySelector('[role="alert"]')).toBeNull();
+  expect(container.textContent).toContain('No service is running');
+});

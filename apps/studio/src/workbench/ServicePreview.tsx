@@ -1,4 +1,4 @@
-import type { UserTaskView, WorkspacePreview, WorktreeCommandView } from '@corral/client';
+import type { UserTaskView, WorkspacePreview } from '@corral/client';
 import { Button, fontWeights, Input, Select } from '@corral/react/design-kit';
 import { Link, useRouterState } from '@tanstack/react-router';
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
@@ -40,6 +40,8 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   const lease = opened?.context === context ? opened.lease : null;
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [unread, setUnread] = useState<string | null>(null);
+  const reread = useRef(() => {});
   const alive = useRef(true);
   // biome-ignore lint/correctness/useExhaustiveDependencies: A new destination must not inherit the previous pending state.
   useEffect(() => {
@@ -58,32 +60,36 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
     // A Run's command or a task a person started; a terminal's server is not owned.
     const refresh = () =>
       void Promise.all([
-        workspaces.commands(sessionId).catch(() => [] as WorktreeCommandView[]),
+        workspaces.commands(sessionId),
         workspaces.tasks
-          ? workspaces.tasks(sessionId).then(
-              (value) => value.tasks,
-              () => [] as UserTaskView[],
-            )
+          ? workspaces.tasks(sessionId).then((value) => value.tasks)
           : Promise.resolve([] as UserTaskView[]),
-      ]).then(([items, tasks]) => {
-        if (!live) return;
-        setCommands([
-          ...tasks
-            .filter((task) => task.state === 'running')
-            .map((task) => ({
-              id: task.operationId,
-              kind: 'task' as const,
-              label: `${task.packageManager} run ${task.script}`,
-            })),
-          ...items
-            .filter((item) => item.state === 'running')
-            .map((item) => ({
-              id: item.id,
-              kind: 'command' as const,
-              label: `${item.command ?? item.shellId} · ${item.cwd}`,
-            })),
-        ]);
-      });
+      ]).then(
+        ([items, tasks]) => {
+          if (!live) return;
+          setUnread(null);
+          setCommands([
+            ...tasks
+              .filter((task) => task.state === 'running')
+              .map((task) => ({
+                id: task.operationId,
+                kind: 'task' as const,
+                label: `${task.packageManager} run ${task.script}`,
+              })),
+            ...items
+              .filter((item) => item.state === 'running')
+              .map((item) => ({
+                id: item.id,
+                kind: 'command' as const,
+                label: `${item.command ?? item.shellId} · ${item.cwd}`,
+              })),
+          ]);
+        },
+        (failure) => {
+          if (live) setUnread(failure instanceof Error ? failure.message : String(failure));
+        },
+      );
+    reread.current = refresh;
     refresh();
     const interval = setInterval(refresh, 3000);
     return () => {
@@ -106,7 +112,18 @@ export function ServicePreview({ sessionId, projectId }: { sessionId: string; pr
   if (!commands.length)
     return (
       <>
-        <p className="text-caption text-muted-foreground">{t('noService')}</p>
+        {unread === null ? (
+          <p className="text-caption text-muted-foreground">{t('noService')}</p>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <p role="alert" className="m-0 text-caption text-destructive">
+              {t('servicesUnread', { message: unread })}
+            </p>
+            <Button variant="tertiary" size="compact" onClick={() => reread.current()}>
+              {t('retry')}
+            </Button>
+          </div>
+        )}
         <BrowserQaPreviewLink />
       </>
     );

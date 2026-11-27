@@ -47,8 +47,8 @@
 | ID | 갈래 | 위치 | 고칠 내용 | 상태 |
 |---|---|---|---|---|
 | WB-02 | 흐름 | `FilesViews.tsx`의 `useBinding`, `SessionChangesPanel.tsx` | 폴더·Paddock 조회 실패를 "없음"으로 바꾸지 않는다. 실패는 원인과 다시 시도로 그리고, Paddock 만들기를 권하지 않는다 | 대기 |
-| WB-08 | 흐름 | `PaddockSetupStatus.tsx` | 준비 명령 출력을 읽지 못하면 "출력 없음"이 아니라 읽기 실패를 보인다 | 대기 |
-| WB-09 | 흐름 | `ServicePreview.tsx` | 명령·작업 조회 실패를 "실행 중인 서비스 없음"과 구별한다 | 대기 |
+| WB-08 | 디자인 | `PaddockSetupStatus.tsx` | 준비 명령 출력을 읽지 못하면 "출력 없음"이 아니라 읽기 실패를 보인다 | 끝 |
+| WB-09 | 디자인 | `ServicePreview.tsx` | 명령·작업 조회 실패를 "실행 중인 서비스 없음"과 구별한다 | 끝 |
 | MODEL-01 | 흐름 | `AddConnectionDialog.tsx`의 모델 발견 | 다시 읽기를 다 쓰고 멈추면 "읽는 중"이 아니라 실패와 다시 시도를 보인다 | 대기 |
 | WB-03 | 흐름 | `OriginalDocumentTab.tsx` | 원본 폴더 문서 탭의 머리에 읽기 전용인 이유와 파일 작업 준비로 가는 링크를 둔다 | 대기 |
 | SET-04 | 흐름 | `AddConnectionDialog.tsx`의 `go` | 뒤로·방식 전환에도 입력을 남긴다 | 대기 |
