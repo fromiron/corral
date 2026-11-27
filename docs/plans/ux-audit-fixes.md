@@ -86,7 +86,7 @@
 
 ## 결정을 기다리는 것
 
-- 폴더 조회가 실패했을 때 Checks 보기들은 아직 "폴더 없음"으로 다룬다(`binding ?? null`). 프로젝트 화면, Paddock 패널, Changes 탭, 진단은 실패로 보인다.
+- 폴더 조회가 실패했을 때 아직 "폴더 없음"으로 다루는 곳이 네 군데다. Checks 보기 둘(`SessionChangesPanel.tsx`, `SessionPanels.tsx`의 `binding ?? null`: 검증 명령이 없는 것처럼 보인다), 리뷰 화면(`ReviewPage.tsx`의 `linked`), 세션 화면(`SessionPage.tsx`의 `folder`·`trusted`). 코드만 읽어 확인했고 화면에서는 재현하지 않았다. 프로젝트 화면, Paddock 패널, Changes 탭, 진단은 실패로 보인다.
 
 - 예약이 저장한 팀을 실행하게 할지, 대상 대화를 미리 채울지(TEAM-03).
 - 대기 카드의 제거에 되돌리기를 둘지(CON-02). 실행 중 "지금 시작"을 숨길지 이유를 달지(CON-05).
