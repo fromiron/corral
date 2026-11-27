@@ -119,3 +119,45 @@ it.each([false, true])(
     ]);
   },
 );
+
+// docs/specs/features/file-search.md: an unread target is read again by the next search.
+it('reads the target again after a failed read, and never searches the source folder for an unread Paddock', async () => {
+  const worktree = vi
+    .fn<() => Promise<unknown>>()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue({ missing: false, removedAt: null });
+  const binding = vi.fn(async () => ({ projectId: 'project' }));
+  const searchFiles = vi.fn(async () => ({
+    items: [{ path: 'src/a.ts', kind: 'file' }],
+    truncated: false,
+  }));
+  fixture.services = {
+    workspaces: { worktree, binding, searchFiles },
+    repository: {},
+    transport: {},
+  };
+  let search!: (query: string) => Promise<MentionItem[]>;
+  function Harness() {
+    search = useMentionSearch({ projectId: 'project', sessionId: 'session', runs: [], team: null });
+    return null;
+  }
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  const root = createRoot(document.createElement('div'));
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+  });
+  await act(async () =>
+    root.render(
+      <IntlProvider locale="en" messages={messages} timeZone="UTC">
+        <Harness />
+      </IntlProvider>,
+    ),
+  );
+  const first = await search('a');
+  expect(first.filter((item) => item.kind === 'file')).toEqual([]);
+  expect(binding).not.toHaveBeenCalled();
+  expect(searchFiles).not.toHaveBeenCalled();
+  const second = await search('a');
+  expect(searchFiles).toHaveBeenCalledWith({ kind: 'session', id: 'session' }, 'a', 8);
+  expect(second.map((item) => item.label)).toContain('src/a.ts');
+});

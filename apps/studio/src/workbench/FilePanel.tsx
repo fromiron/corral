@@ -559,7 +559,14 @@ export function FilePanel({
         {error ? (
           <div className="flex flex-col items-start gap-2">
             <p role="alert" className="m-0 text-destructive">
-              {error}
+              {tf(
+                error.what === 'folder'
+                  ? 'folderReadFailed'
+                  : error.what === 'copy'
+                    ? 'copyReadFailed'
+                    : 'listReadFailed',
+                { message: error.message },
+              )}
             </p>
             <Button variant="tertiary" onClick={readWorkspaceAgain}>
               {tf('retry')}

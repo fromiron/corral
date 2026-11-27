@@ -3,6 +3,11 @@ import { useEffect, useState } from 'react';
 import { WORKSPACE_CHANGED } from '../pages/FilesViews.tsx';
 import { useServices } from '../services.tsx';
 
+export interface FilesReadFailure {
+  what: 'folder' | 'copy' | 'list';
+  message: string;
+}
+
 /** A source picker reads existing scopes; it never creates a working copy or grants tools. */
 export function useWorkspaceFiles(
   projectId: string,
@@ -18,7 +23,7 @@ export function useWorkspaceFiles(
     hasCopy: boolean;
     copy: WorktreeView | null;
     loading: boolean;
-    error: string | null;
+    error: FilesReadFailure | null;
   }>({
     scope: null,
     list: { files: [], truncated: false },
@@ -37,11 +42,18 @@ export function useWorkspaceFiles(
     if (!workspaces || !enabled) return;
     let live = true;
     setState((s) => ({ ...s, loading: true, error: null }));
+    let reading: FilesReadFailure['what'] = 'folder';
     void (async () => {
-      const [binding, copy] = await Promise.all([
+      const [bindingRead, copyRead] = await Promise.allSettled([
         workspaces.binding(projectId),
         workspaces.worktree(sessionId),
       ]);
+      if (bindingRead.status === 'rejected') throw bindingRead.reason;
+      reading = 'copy';
+      if (copyRead.status === 'rejected') throw copyRead.reason;
+      reading = 'list';
+      const binding = bindingRead.value;
+      const copy = copyRead.value;
       const hasCopy = !!copy && !copy.missing && !copy.removedAt;
       const kind = source ?? (hasCopy ? 'session' : 'project');
       const scope: FileBrowseScope | null =
@@ -61,7 +73,7 @@ export function useWorkspaceFiles(
           scope: null,
           list: { files: [], truncated: false },
           loading: false,
-          error: error instanceof Error ? error.message : String(error),
+          error: { what: reading, message: error instanceof Error ? error.message : String(error) },
         }));
     });
     return () => {

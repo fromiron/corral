@@ -49,12 +49,16 @@ export function useMentionSearch({
       const out: MentionItem[] = [];
       if (workspaces) {
         scope.current ??= (async () => {
-          const copy = await workspaces.worktree(sessionId).catch(() => null);
+          const copy = await workspaces.worktree(sessionId);
           if (copy && !copy.missing && !copy.removedAt) return { kind: 'session', id: sessionId };
-          const binding = await workspaces.binding(projectId).catch(() => null);
+          const binding = await workspaces.binding(projectId);
           return binding && !binding.missing ? { kind: 'project', id: projectId } : null;
         })();
-        const where = await scope.current;
+        const reading = scope.current;
+        const where = await reading.catch(() => {
+          if (scope.current === reading) scope.current = null;
+          return null;
+        });
         if (where) {
           const found = await workspaces.searchFiles(where, query, 8).catch(() => null);
           for (const item of found?.items ?? [])

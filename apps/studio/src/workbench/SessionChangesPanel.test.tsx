@@ -68,14 +68,14 @@ vi.mock('../pages/changes/ReviewPage.tsx', () => ({
   },
   Checks: ({
     folderFailed,
-    folderFailedSaid,
+    readFailureSaid,
   }: {
     folderFailed?: string | null;
-    folderFailedSaid?: boolean;
+    readFailureSaid?: boolean;
   }) => (
     <p>
       check records{folderFailed ? `, folder ${folderFailed}` : ''}
-      {folderFailedSaid ? ', said above' : ''}
+      {readFailureSaid ? ', said above' : ''}
     </p>
   ),
 }));
@@ -257,6 +257,14 @@ it('leaves the folder failure to the Paddock setup above Checks while there is n
   const view = await mount({ requested: 'checks' }, true);
   expect(view.container.textContent).toContain('copy preparation');
   expect(view.container.textContent).toContain('check records, folder offline, said above');
+});
+
+it('lets Checks say its own failures while there is no Paddock and the folder link is read', async () => {
+  (fixture.services.workspaces as Record<string, unknown>).worktree = vi.fn(async () => null);
+  const view = await mount({ requested: 'checks' }, true);
+  expect(view.container.textContent).toContain('copy preparation');
+  expect(view.container.textContent).toContain('check records');
+  expect(view.container.textContent).not.toContain('said above');
 });
 
 it('says one failure when the Paddock and the folder link both fail, and Try again reads both again', async () => {

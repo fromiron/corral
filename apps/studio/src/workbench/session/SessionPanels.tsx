@@ -368,7 +368,7 @@ export function ChecksPanel({
       <Checks
         sessionId={session.sessionId}
         projectId={session.projectId}
-        binding={binding ?? null}
+        binding={binding}
         folderFailed={failed}
         changed={0}
         onAttach={onAttach}

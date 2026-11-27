@@ -42,7 +42,7 @@ async function mount(
   commands: WorkspaceBindingView['verifyCommands'] = [],
   verify = vi.fn(async () => ({})),
   folderFailed?: string,
-  folderFailedSaid = false,
+  readFailureSaid = false,
 ) {
   vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
   fixture.services = {
@@ -63,7 +63,7 @@ async function mount(
         sessionId="session"
         projectId="project_a"
         binding={folderFailed ? null : ({ verifyCommands: commands } as WorkspaceBindingView)}
-        {...(folderFailed ? { folderFailed, folderFailedSaid } : {})}
+        {...(folderFailed ? { folderFailed, readFailureSaid } : {})}
         changed={0}
         titled={false}
       />,
@@ -257,4 +257,120 @@ it('shows a record command with the quoting a shell needs to read the same argum
   );
   // The project tools stay one step away once checks exist.
   expect(container.querySelector('a[aria-label="Checks.openProjectTools"]')).not.toBeNull();
+});
+
+async function show(
+  props: Partial<Parameters<typeof Checks>[0]>,
+  workspaces: Record<string, unknown> | null = { verifications: async () => [], verify: vi.fn() },
+) {
+  vi.stubGlobal('IS_REACT_ACT_ENVIRONMENT', true);
+  fixture.services = workspaces
+    ? { mode: 'server', workspaceId: 'host', workspaces }
+    : { mode: 'browser' };
+  const container = document.createElement('div');
+  document.body.append(container);
+  const root = createRoot(container);
+  cleanups.push(async () => {
+    await act(async () => root.unmount());
+    container.remove();
+  });
+  await act(async () =>
+    root.render(
+      <Checks
+        sessionId="session"
+        projectId="project_a"
+        binding={null}
+        changed={0}
+        titled={false}
+        {...props}
+      />,
+    ),
+  );
+  await act(async () => {});
+  return container;
+}
+const emptyState = (container: HTMLElement) =>
+  container.querySelector('[data-testid="checks-empty"]');
+const alerts = (container: HTMLElement) =>
+  [...container.querySelectorAll('[role="alert"]')].map((alert) => alert.textContent);
+const rows = (container: HTMLElement) => container.querySelectorAll('[data-testid="check-result"]');
+const again = (container: HTMLElement) =>
+  [...container.querySelectorAll('button')].filter(
+    (button) => button.textContent === 'Files.retry',
+  );
+const reads = () => vi.fn<() => Promise<VerificationResultView[]>>();
+
+// docs/specs/workbench.md: what is not read yet, or could not be read, is never shown as none.
+it('does not say there are no checks while the folder link is being read', async () => {
+  const container = await show({ binding: undefined });
+  expect(emptyState(container)).toBeNull();
+});
+
+it('does not say there are no checks before the records are read', async () => {
+  const container = await show({}, { verifications: () => new Promise(() => {}), verify: vi.fn() });
+  expect(emptyState(container)).toBeNull();
+});
+
+it('says there are no checks where there is no service to read them from', async () => {
+  const container = await show({}, null);
+  expect(emptyState(container)).not.toBeNull();
+});
+
+it('a failed read of the records says why and offers Try again, never "no checks"', async () => {
+  const verifications = reads()
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue([record(['true'])]);
+  const container = await show({}, { verifications, verify: vi.fn() });
+  expect(alerts(container)).toEqual(['Files.checksReadFailed']);
+  expect(emptyState(container)).toBeNull();
+  await act(async () => again(container)[0]?.click());
+  await act(async () => {});
+  expect(alerts(container)).toEqual([]);
+  expect(rows(container)).toHaveLength(1);
+});
+
+it('keeps the rows and goes on reading a running check when a later read fails', async () => {
+  vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
+  cleanups.push(async () => {
+    vi.useRealTimers();
+  });
+  const verifications = reads()
+    .mockResolvedValueOnce([{ ...record(['true']), state: 'running' }])
+    .mockRejectedValueOnce(new Error('offline'))
+    .mockResolvedValue([record(['true'])]);
+  const container = await show({}, { verifications, verify: vi.fn() });
+  expect(rows(container)).toHaveLength(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(alerts(container)).toEqual(['Files.checksReadFailed']);
+  expect(rows(container)).toHaveLength(1);
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(alerts(container)).toEqual([]);
+  expect(verifications).toHaveBeenCalledTimes(3);
+});
+
+it('says one failure when the folder link and the records both cannot be read, and Try again reads both', async () => {
+  const verifications = reads().mockRejectedValueOnce(new Error('offline')).mockResolvedValue([]);
+  const container = await show({ folderFailed: 'offline' }, { verifications, verify: vi.fn() });
+  expect(alerts(container)).toEqual(['Files.folderReadFailed']);
+  expect(again(container)).toHaveLength(1);
+  const asked = vi.fn();
+  window.addEventListener(WORKSPACE_CHANGED, asked);
+  cleanups.push(async () => window.removeEventListener(WORKSPACE_CHANGED, asked));
+  await act(async () => again(container)[0]?.click());
+  expect(asked).toHaveBeenCalledOnce();
+  expect(verifications).toHaveBeenCalledTimes(2);
+});
+
+it('adds no failure of its own under one the host already says', async () => {
+  const verifications = reads().mockRejectedValue(new Error('offline'));
+  const container = await show(
+    { folderFailed: 'offline', readFailureSaid: true },
+    { verifications, verify: vi.fn() },
+  );
+  expect(alerts(container)).toEqual([]);
+  expect(emptyState(container)).toBeNull();
 });

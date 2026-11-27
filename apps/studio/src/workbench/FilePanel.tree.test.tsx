@@ -327,3 +327,25 @@ it("Refresh files asks the conversation's open source-folder 문서 tabs to read
   expect(asked).toHaveBeenCalledTimes(1);
   expect(other).not.toHaveBeenCalled();
 });
+
+// docs/specs/workbench.md: the Files tab says which read failed, and offers Try again.
+it.each([
+  ['folder', messages.Files.folderReadFailed],
+  ['copy', messages.Files.copyReadFailed],
+  ['list', messages.Files.listReadFailed],
+] as const)('says which read failed (%s) and offers Try again', async (what, sentence) => {
+  const before = fixture.files;
+  fixture.files = { ...before, scope: null, error: { what, message: 'offline' } } as never;
+  roots.push(async () => {
+    fixture.files = before;
+  });
+  const { container } = await panel();
+  expect(container.querySelector('[role="alert"]')?.textContent).toBe(
+    sentence.replace('{message}', 'offline'),
+  );
+  expect(
+    [...container.querySelectorAll('button')].some(
+      (button) => button.textContent === messages.Files.retry,
+    ),
+  ).toBe(true);
+});

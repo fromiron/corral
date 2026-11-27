@@ -24,6 +24,8 @@ const fixture = vi.hoisted(() => ({
     removedAt: null,
   } as Record<string, unknown> | null,
   binding: { projectId: 'project' } as Record<string, unknown> | null,
+  copyFails: null as string | null,
+  bindingFails: null as string | null,
   search: vi.fn(
     async (_scope: unknown, _query: string, _limit?: number, _signal?: AbortSignal) => ({
       items: [] as { path: string; kind: 'file' | 'folder' }[],
@@ -37,8 +39,14 @@ vi.mock('../services.tsx', () => {
     mode: 'server',
     workspaceId: 'host',
     workspaces: {
-      worktree: async () => fixture.copy,
-      binding: async () => fixture.binding,
+      worktree: async () => {
+        if (fixture.copyFails) throw new Error(fixture.copyFails);
+        return fixture.copy;
+      },
+      binding: async () => {
+        if (fixture.bindingFails) throw new Error(fixture.bindingFails);
+        return fixture.binding;
+      },
       searchFiles: fixture.search,
     },
   };
@@ -94,6 +102,8 @@ beforeEach(() => {
     removedAt: null,
   };
   fixture.binding = { projectId: 'project' };
+  fixture.copyFails = null;
+  fixture.bindingFails = null;
   fixture.search.mockReset();
   fixture.search.mockImplementation(async (_scope, query) => ({
     items: [
@@ -510,4 +520,46 @@ it('Escape closes it and returns focus to the control that opened it', async () 
   await exited();
   expect(dialog()).toBeNull();
   expect(document.activeElement?.getAttribute('data-testid')).toBe('opener');
+});
+
+// docs/specs/features/file-search.md: a target that could not be read is not "no folder".
+it('says a Paddock that could not be read and offers Try again, and never searches the source folder instead', async () => {
+  fixture.copyFails = 'offline';
+  await mount();
+  await show();
+  const sentence = messages.Files.copyReadFailed.replace('{message}', 'offline');
+  expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(sentence);
+  expect(dialog()?.querySelector('[role="status"]')?.textContent).toBe(sentence);
+  expect(dialog()?.textContent).not.toContain(messages.QuickOpen.noTarget);
+  expect(fixture.search).not.toHaveBeenCalled();
+  fixture.copyFails = null;
+  const again = [...(dialog()?.querySelectorAll('button') ?? [])].find(
+    (button) => button.textContent === messages.Files.retry,
+  );
+  await act(async () => {
+    again?.focus();
+    again?.click();
+  });
+  await settle();
+  expect(dialog()?.querySelector('[role="alert"]')).toBeNull();
+  // The button is gone with the failure: typing goes on in the path field.
+  expect(document.activeElement).toBe(input());
+  expect(fixture.search).toHaveBeenCalledWith(
+    { kind: 'session', id: 'session' },
+    '',
+    50,
+    expect.any(AbortSignal),
+  );
+});
+
+it('says a folder link that could not be read, never "link a folder"', async () => {
+  fixture.copy = null;
+  fixture.bindingFails = 'offline';
+  await mount();
+  await show();
+  expect(dialog()?.querySelector('[role="alert"]')?.textContent).toBe(
+    messages.Files.folderReadFailed.replace('{message}', 'offline'),
+  );
+  expect(dialog()?.textContent).not.toContain(messages.QuickOpen.noTarget);
+  expect(fixture.search).not.toHaveBeenCalled();
 });

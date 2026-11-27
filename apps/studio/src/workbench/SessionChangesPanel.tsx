@@ -143,11 +143,11 @@ function useCopy(
 function ChecksView({
   session,
   onAttach,
-  folderFailedSaid,
+  copy,
 }: {
   session: WorkSession;
   onAttach?: ((attachment: TextAttachment, capture: AttachmentCapture) => void) | undefined;
-  folderFailedSaid: boolean;
+  copy: CopyState['state'];
 }) {
   const { binding, failed } = useBinding(session.projectId);
   const [version, setVersion] = useState(0);
@@ -160,9 +160,9 @@ function ChecksView({
     <Checks
       sessionId={session.sessionId}
       projectId={session.projectId}
-      binding={binding ?? null}
+      binding={binding}
       folderFailed={failed}
-      folderFailedSaid={folderFailedSaid}
+      readFailureSaid={copy === 'failed' || (copy === 'none' && Boolean(failed))}
       changed={version}
       titled={false}
       {...(onAttach ? { onAttach } : {})}
@@ -400,7 +400,7 @@ export function SessionChangesPanel({
       </TabPanel>
       <TabPanel value="checks" keepMounted className="min-h-0 flex-1 overflow-auto p-3">
         {visited.has('checks') ? (
-          <ChecksView session={session} onAttach={onAttach} folderFailedSaid={missing || failed} />
+          <ChecksView session={session} onAttach={onAttach} copy={copy.state} />
         ) : null}
       </TabPanel>
     </Tabs>
