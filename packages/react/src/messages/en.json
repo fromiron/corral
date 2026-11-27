@@ -2102,6 +2102,15 @@
       "contents": "Corrals and runs",
       "saved": "Saved",
       "actions": "Actions"
+    },
+    "linkAgain": "Link folder",
+    "openWithoutFolder": "Open the project without a folder",
+    "folderRefused": {
+      "TARGET_NOT_FOUND": "This folder does not exist. Check the path.",
+      "SCHEMA_INVALID": "Choose a project folder, not a whole drive or your home folder.",
+      "CAPABILITY_DENIED": "Corral’s own data folder cannot be a work folder. Choose another folder.",
+      "REVISION_CONFLICT": "This project already has a folder.",
+      "other": "The folder was not linked: {message}"
     }
   },
   "Sessions": {

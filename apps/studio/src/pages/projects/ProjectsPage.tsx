@@ -1,3 +1,4 @@
+import { ApiError } from '@corral/client';
 import { DEFAULT_PROJECT_ID, type ProjectSummary } from '@corral/core';
 import {
   Button,
@@ -32,6 +33,15 @@ import { type GitCloneDraft, GitCloneFolder } from '../../workbench/GitCloneFold
 import { useSessionAge } from '../../workbench/useSessionAge.ts';
 
 const NO_CLONE: GitCloneDraft = { source: '', destination: '' };
+const REFUSAL_CODES = [
+  'TARGET_NOT_FOUND',
+  'SCHEMA_INVALID',
+  'CAPABILITY_DENIED',
+  'REVISION_CONFLICT',
+] as const;
+type RefusalCode = (typeof REFUSAL_CODES)[number];
+const refusalCode = (code: string): code is RefusalCode =>
+  (REFUSAL_CODES as readonly string[]).includes(code);
 
 /**
  * /projects: every project, listed first, and archived ones on request. A new project is made in
@@ -58,8 +68,10 @@ export function ProjectsPage() {
   const [folder, setFolder] = useState('');
   const [clone, setClone] = useState<GitCloneDraft>(NO_CLONE);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [made, setMade] = useState<{ projectId: string; refusal: string } | null>(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const nameField = useRef<HTMLDivElement>(null);
+  const folderField = useRef<HTMLDivElement>(null);
   // New project in the sidebar's Corral menu opens here with the dialog ready to type a name.
   const hash = useRouterState({ select: (state) => state.location.hash });
   useEffect(() => {
@@ -74,25 +86,53 @@ export function ProjectsPage() {
   const shown = projects.filter((p) => showArchived || !p.archivedAt);
   const chosenIndex = shown.findIndex((p) => p.projectId === current);
 
-  const create = async (event: FormEvent) => {
-    event.preventDefault();
-    setCreateError(null);
-    const result = await repository.createProject({ name, description });
-    if (!result.ok) return setCreateError(t('failed', { message: result.message }));
-    projectsChanged();
-    // start with a folder or from material alone. A folder that cannot be
-    // linked leaves the project made; the project page says why and offers to link again.
-    if (workspaces && folder.trim())
-      await workspaces.bind(result.project.projectId, folder.trim()).catch(() => undefined);
+  const finish = async (projectId: string) => {
     setName('');
     setDescription('');
     setFolder('');
     setClone(NO_CLONE);
+    setMade(null);
     setCreating(false);
-    await navigate({
-      to: '/projects/$projectId',
-      params: { projectId: result.project.projectId },
-    });
+    await navigate({ to: '/projects/$projectId', params: { projectId } });
+  };
+  const link = async (projectId: string) => {
+    if (!workspaces || !folder.trim()) return finish(projectId);
+    try {
+      await workspaces.bind(projectId, folder.trim());
+    } catch (failure) {
+      setMade({ projectId, refusal: folderRefusal(failure) });
+      folderField.current?.querySelector('input')?.focus();
+      return;
+    }
+    await finish(projectId);
+  };
+  const create = async (event: FormEvent) => {
+    event.preventDefault();
+    setCreateError(null);
+    if (made) return link(made.projectId);
+    const result = await repository.createProject({ name, description });
+    if (!result.ok) return setCreateError(t('failed', { message: result.message }));
+    projectsChanged();
+    await link(result.project.projectId);
+  };
+  const folderRefusal = (failure: unknown) => {
+    const code = failure instanceof ApiError ? failure.code : null;
+    return code && refusalCode(code)
+      ? t(`folderRefused.${code}`)
+      : t('folderRefused.other', {
+          message: failure instanceof Error ? failure.message : String(failure),
+        });
+  };
+  const leave = () => {
+    if (made) {
+      setName('');
+      setDescription('');
+      setFolder('');
+      setClone(NO_CLONE);
+      setMade(null);
+      void router.invalidate();
+    }
+    close();
   };
   const setArchived = async (project: ProjectSummary, archived: boolean) => {
     const result = await repository.updateProject(project.projectId, {
@@ -242,7 +282,7 @@ export function ProjectsPage() {
           </Button>
         ) : null}
       </Page>
-      <Dialog open={creating} onOpenChange={(open) => (open ? setCreating(true) : close())}>
+      <Dialog open={creating} onOpenChange={(open) => (open ? setCreating(true) : leave())}>
         <DialogPopup
           className="w-[min(95vw,560px)]"
           initialFocus={() => nameField.current?.querySelector('input') ?? true}
@@ -263,6 +303,7 @@ export function ProjectsPage() {
                     onChange={setName}
                     maxLength={80}
                     required
+                    disabled={Boolean(made)}
                   />
                   <InputField
                     index={1}
@@ -270,14 +311,17 @@ export function ProjectsPage() {
                     value={description}
                     onChange={setDescription}
                     maxLength={500}
+                    disabled={Boolean(made)}
                   />
                   {workspaces && mode === 'server' && !desktop ? (
                     <InputField
+                      ref={folderField}
                       index={2}
                       label={t('folderOptional')}
                       value={folder}
                       onChange={setFolder}
                       spellCheck={false}
+                      error={made?.refusal}
                     />
                   ) : null}
                 </InputGroup>
@@ -319,6 +363,11 @@ export function ProjectsPage() {
                         </Button>
                       ) : null}
                     </div>
+                    {made ? (
+                      <p role="alert" className="m-0 text-destructive">
+                        {made.refusal}
+                      </p>
+                    ) : null}
                   </div>
                 ) : null}
                 {mode === 'server' && workspaces ? (
@@ -332,10 +381,27 @@ export function ProjectsPage() {
               </div>
             </DialogPanel>
             <DialogFooter>
-              <Button type="button" variant="tertiary" onClick={close}>
-                {t('cancel')}
-              </Button>
-              <Button type="submit">{t('create')}</Button>
+              {made ? (
+                <>
+                  <Button
+                    type="button"
+                    variant="tertiary"
+                    onClick={() => void finish(made.projectId)}
+                  >
+                    {t('openWithoutFolder')}
+                  </Button>
+                  <Button type="submit" disabled={!folder.trim()}>
+                    {t('linkAgain')}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button type="button" variant="tertiary" onClick={close}>
+                    {t('cancel')}
+                  </Button>
+                  <Button type="submit">{t('create')}</Button>
+                </>
+              )}
             </DialogFooter>
           </form>
         </DialogPopup>

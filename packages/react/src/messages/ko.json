@@ -2102,6 +2102,15 @@
       "contents": "Corral·실행",
       "saved": "저장",
       "actions": "작업"
+    },
+    "linkAgain": "폴더 연결",
+    "openWithoutFolder": "폴더 없이 프로젝트 열기",
+    "folderRefused": {
+      "TARGET_NOT_FOUND": "이 폴더가 없습니다. 경로를 확인하세요.",
+      "SCHEMA_INVALID": "드라이브 전체나 홈 폴더가 아닌 프로젝트 폴더를 고르세요.",
+      "CAPABILITY_DENIED": "Corral의 데이터 폴더는 작업 폴더가 될 수 없습니다. 다른 폴더를 고르세요.",
+      "REVISION_CONFLICT": "이 프로젝트에는 이미 폴더가 있습니다.",
+      "other": "폴더를 연결하지 못했습니다: {message}"
     }
   },
   "Sessions": {
