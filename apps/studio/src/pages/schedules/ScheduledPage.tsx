@@ -38,6 +38,7 @@ import { ABOVE_CHOSEN_TABLE_ROW, CHOSEN_TABLE_ROW } from '../../workbench/chosen
 import { watchRefresh } from '../../workbench/refresh.ts';
 import { watchRunList } from '../../workbench/runList.ts';
 import { automationShownRuns, scheduleHistoryStatus } from '../../workbench/scheduledRuns.ts';
+import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 
 /** Sunday first, as the rule's weekday numbers count them. */
 const WEEKDAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
@@ -712,6 +713,7 @@ function ScheduleDetail({
   const t = useTranslations('Schedules');
   const heading = useId();
   const [confirming, setConfirming] = useState(false);
+  const focus = useConfirmFocus();
   const term = 'text-caption text-muted-foreground';
   return (
     <section aria-labelledby={heading} className="flex min-w-0 flex-col gap-4">
@@ -735,12 +737,24 @@ function ScheduleDetail({
               <Button variant="destructive-outline" disabled={busy} onClick={onDelete}>
                 {t('confirmDelete')}
               </Button>
-              <Button variant="ghost" onClick={() => setConfirming(false)}>
+              <Button
+                ref={focus.answer}
+                variant="ghost"
+                onClick={() => {
+                  focus.cancelled();
+                  setConfirming(false);
+                }}
+              >
                 {t('cancel')}
               </Button>
             </>
           ) : (
-            <Button variant="ghost-destructive" disabled={busy} onClick={() => setConfirming(true)}>
+            <Button
+              ref={focus.opener}
+              variant="ghost-destructive"
+              disabled={busy}
+              onClick={() => setConfirming(true)}
+            >
               {t('delete')}
             </Button>
           )}

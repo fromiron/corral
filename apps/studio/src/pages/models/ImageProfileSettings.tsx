@@ -5,6 +5,7 @@ import { useEffect, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { type ImageProfilesView, imageProfilesApi } from '../../image-profiles-api.ts';
 import { useSettingsForm, useSettingsTask } from '../../workbench/SettingsLifecycle.tsx';
+import { useConfirmFocus } from '../../workbench/useConfirmFocus.ts';
 import { imageProfilesChanged } from '../../workbench/useImageProfiles.ts';
 import { imageProfileIdFor } from './modelConnections.ts';
 
@@ -17,6 +18,7 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
   const [draft, setDraft] = useState<ImageGenerationProfile | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
+  const focus = useConfirmFocus();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
@@ -156,16 +158,21 @@ export function ImageProfileSettings({ modelProfiles }: { modelProfiles: ModelPr
                   {t('confirmDelete')}
                 </Button>
                 <Button
+                  ref={focus.answer}
                   variant="ghost"
                   size="compact"
                   disabled={busy}
-                  onClick={() => setDeleteId(null)}
+                  onClick={() => {
+                    focus.cancelled();
+                    setDeleteId(null);
+                  }}
                 >
                   {t('cancel')}
                 </Button>
               </>
             ) : (
               <Button
+                ref={focus.opener}
                 variant="ghost"
                 size="compact"
                 disabled={busy}
