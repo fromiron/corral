@@ -70,13 +70,7 @@ test('leaving a new Corral prompts only for an edited draft and never creates a 
   await openLibraryTeams(page);
   const create = page.getByRole('link', { name: 'New Corral', exact: true });
   const library = page.getByTestId('app-sidebar').getByRole('link', { name: 'Library' });
-  const prompts: string[] = [];
-  let discard = false;
-  page.on('dialog', async (dialog) => {
-    prompts.push(dialog.message());
-    if (discard) await dialog.accept();
-    else await dialog.dismiss();
-  });
+  const leaving = page.getByRole('dialog', { name: 'Unsaved changes', exact: true });
 
   await create.click();
   await expect(page).toHaveURL(
@@ -87,7 +81,7 @@ test('leaving a new Corral prompts only for an edited draft and never creates a 
   await collapseTeamAssistant(page);
   await library.click();
   await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
-  expect(prompts).toEqual([]);
+  await expect(leaving).toHaveCount(0);
 
   await create.click();
   await collapseTeamAssistant(page);
@@ -98,14 +92,13 @@ test('leaving a new Corral prompts only for an edited draft and never creates a 
   await expect(settings(page).getByRole('textbox', { name: /^Criteria/ })).toHaveValue('');
   await brief.fill('Leave this request unsaved.');
   await library.click();
-  await expect
-    .poll(() => prompts)
-    .toEqual(['Leave without saving? Your unsaved changes will be lost.']);
+  await expect(leaving).toBeVisible();
+  await leaving.getByRole('button', { name: 'Keep editing', exact: true }).click();
+  await expect(leaving).toHaveCount(0);
   await expect(brief).toHaveValue('Leave this request unsaved.');
-  discard = true;
   await library.click();
+  await leaving.getByRole('button', { name: 'Discard changes', exact: true }).click();
   await expect(page.getByText('No Corrals yet', { exact: true })).toBeVisible();
-  expect(prompts).toHaveLength(2);
 
   await create.click();
   await collapseTeamAssistant(page);
