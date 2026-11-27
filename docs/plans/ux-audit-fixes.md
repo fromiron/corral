@@ -54,10 +54,10 @@
 | SET-04 | 흐름 | `AddConnectionDialog.tsx`의 `go` | 뒤로·방식 전환에도 입력을 남긴다 | 대기 |
 | TEAM-10 | 흐름 | `ScheduledPage.tsx` | 삭제에 줄 안 확인을 두고, 행을 바꿔도 폼을 남긴다 | 대기 |
 | TEAM-06 | 흐름 | `EditorPage.tsx`의 `window.confirm` | 팀 편집기를 떠날 때 설정과 같은 kit 대화상자(저장하고 계속, 버리기, 계속 편집)를 쓴다 | 대기 |
-| SET-01 | 디자인 | `workbench/navigation.ts`의 `workHref` | Automation에서 연 설정을 닫으면 Automation으로 돌아온다 | 대기 |
-| NAV-01 | 디자인 | `Sidebar.tsx`의 미리보기 링크 | 사이드바의 기능 미리보기 링크가 `returnTo`를 싣는다 | 대기 |
-| SES-01 | 디자인 | `fork-and-breakpoints.md` | 카드의 중지는 다시 묻지 않는다는 규칙을 명세에 적는다. 코드는 그대로다 | 대기 |
-| SET-05 | 디자인 | `SettingsNavigation.tsx` | 설정 안의 "확인 필요" 행이 프로젝트 홈이 아니라 확인 필요로 간다 | 대기 |
+| SET-01 | 디자인 | `workbench/navigation.ts`의 `workHref` | Automation에서 연 설정을 닫으면 Automation으로 돌아온다 | 끝 |
+| NAV-01 | 디자인 | `Sidebar.tsx`의 미리보기 링크 | 사이드바의 기능 미리보기 링크가 `returnTo`를 싣는다 | 끝 |
+| SES-01 | 디자인 | `fork-and-breakpoints.md` | 카드의 중지는 다시 묻지 않는다는 규칙을 명세에 적는다. 코드는 그대로다 | 끝 |
+| SET-05 | 디자인 | `SettingsNavigation.tsx` | 설정 안의 "확인 필요" 행이 프로젝트 홈이 아니라 확인 필요로 간다 | 끝 |
 
 ## 3단계: 이름과 문구 (흐름 갈래를 합친 뒤)
 
@@ -66,12 +66,12 @@
 - Paddock을 만드는 동작의 네 이름을 하나로(WB-05), 폴더 용어를 한 경로 안에서 하나로(WB-06), "Link a folder"와 "Paddock"이 한 화면에 함께 나오는 곳을 하나로(SES-12).
 - 대화상자 제목과 확인 버튼이 같은 "실행 중지"(SES-07), 이름이 같은 "열기" 버튼 둘(SES-06), 이름과 pressed가 겹치는 최대화(SES-08), 명령문으로 된 서랍 이름(NAV-06), 이동처럼 읽히지만 메뉴를 여는 경로 막대 버튼(CON-06).
 - 번역 없이 드러나는 서버·core 문장을 코드로 받아 Studio에서 번역한다(TEAM-11). 요청 한도에 걸렸을 때의 문구도 여기서 고친다.
-- 보이는 레이블이 접근 이름에 없는 네 요소(A11Y-02).
+- 보이는 레이블이 접근 이름에 없는 네 요소(A11Y-02). 작업 로그 토글의 이름은 흐르는 시간을 일부러 뺀 것이라(`chat-widgets-contract.md` 6.3) 시간을 버튼 밖에 둘지부터 정해야 한다.
 
 ## 4단계: 화면 다시 짜기 (시안을 먼저 본다)
 
 - 설정 폼: Folders & tools, Harnesses, 기본 Harness, Hooks & extensions, Settings vault. 필드 사이 설명 문장, 네 번 반복되는 이름, 행마다 늘 보이는 버튼 세 개, native 파일 입력(SCR-01, 02, 04, 10, 12, 13).
-- 빈 상태와 첫 동작의 자리를 kit `EmptyState`의 action 자리 하나로(SCR-03, TEAM-12).
+- 빈 상태와 첫 동작의 자리를 kit `EmptyState`의 action 자리 하나로(SCR-03, TEAM-12). 에이전트 보기의 겹친 "에이전트 만들기"는 고쳤다. Corrals 보기의 버튼 세 개(상자 아래)와 Automation의 첫 동작(상자 위)은 남아 있다.
 - 템플릿 목록, 새 Corral의 첫 화면, 데모 편집기의 툴바(SCR-07, 08, 09). 실행 패널의 탭 세 층(SCR-14). 새 회의 폼(CON-11).
 - 좁은 폭에서 잘리는 탭(SCR-22, SES-10), dark의 Tabs 트랙과 상태 배지(SCR-19), 고정폭 글꼴(SCR-20).
 - 선택된 행과 버튼·행의 채움 위에 놓이는 보조 글자: 내장 테마에서 2.2~4.4:1이다(TOK-02, 03, 06). 그런 자리의 보조 글자를 본문 색으로 그릴지 정한다.
