@@ -660,7 +660,7 @@
     "apps/studio/src/pages/models/modelTestDom.ts": 10,
     "apps/studio/src/pages/performance/PerformancePage.tsx": 1,
     "apps/studio/src/pages/preview/PreviewPage.tsx": 10,
-    "apps/studio/src/pages/projects/ProjectsPage.tsx": 14,
+    "apps/studio/src/pages/projects/ProjectsPage.tsx": 12,
     "apps/studio/src/pages/projects/WorkspacePage.tsx": 93,
     "apps/studio/src/pages/run/RunPage.tsx": 128,
     "apps/studio/src/pages/schedules/ScheduledPage.tsx": 45,
