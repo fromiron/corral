@@ -10,6 +10,7 @@ import { useServices } from '../../services.tsx';
 import { DocumentHeader } from '../DocumentHeader.tsx';
 import type { FileReference } from '../FilePanel.tsx';
 import { LineRangePopover } from '../LineRangePopover.tsx';
+import { SourceReadOnlyNote } from '../SourceReadOnlyNote.tsx';
 import { onSourceReread } from './sourceReread.ts';
 
 const SourceCode = lazy(() =>
@@ -20,9 +21,11 @@ export function OriginalDocumentTab({
   projectId,
   sessionId,
   path,
+  noCopy = false,
   onReference,
 }: {
   projectId: string;
+  noCopy?: boolean;
   /** The conversation whose tree the head may be beside: it names the source only if the tree's differs. */
   sessionId: string;
   path: string;
@@ -95,6 +98,11 @@ export function OriginalDocumentTab({
           ) : null
         }
       />
+      {noCopy ? (
+        <div className="px-3 pt-2">
+          <SourceReadOnlyNote sessionId={sessionId} />
+        </div>
+      ) : null}
       {failed ? (
         <p role="alert" className="px-3 py-2 text-caption text-danger">
           {failed}
