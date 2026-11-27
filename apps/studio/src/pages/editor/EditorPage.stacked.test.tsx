@@ -772,6 +772,22 @@ describe('a team saved elsewhere while it is edited', () => {
     );
   });
 
+  it('a first save refused because the ID is taken says so in the app’s words and keeps the draft', async () => {
+    const { save, editor } = await renderNewEditor('starter');
+    const before = editor.getState().draft;
+    save.mockResolvedValueOnce({
+      ok: false,
+      error: 'revision_conflict',
+      message: 'This Corral ID already belongs to a different first save.',
+    });
+    await click(named(region('header'), messages.Editor.save));
+    expect(region('header').querySelector('[role="alert"]')?.textContent).toBe(
+      messages.Editor.saveError.idTaken,
+    );
+    expect(document.querySelector('[data-slot="banner"]')).toBeNull();
+    expect(editor.getState().draft).toBe(before);
+  });
+
   it('Load the latest replaces the working copy with the stored team', async () => {
     const { repo, saved, draft } = await conflicted();
     await click(named(banner() as HTMLElement, messages.Editor.loadLatest));

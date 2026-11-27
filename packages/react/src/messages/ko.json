@@ -823,7 +823,8 @@
     "saveError": {
       "not_found": "이 팀이 더 이상 없습니다. 편집을 남기려면 더보기에서 내보내세요.",
       "validation_error": "팀이 올바르지 않아 저장하지 못했습니다: {message}",
-      "storage_unavailable": "저장소를 쓸 수 없어 팀을 저장하지 못했습니다. 다시 저장하세요."
+      "storage_unavailable": "저장소를 쓸 수 없어 팀을 저장하지 못했습니다. 다시 저장하세요.",
+      "idTaken": "다른 팀이 이미 이 팀의 ID를 쓰고 있어 저장하지 못했습니다. 편집한 내용은 그대로 있습니다."
     }
   },
   "RunPage": {

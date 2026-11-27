@@ -560,10 +560,13 @@ function Editor({
   const exportFile = () =>
     download(`${corralId}.corral.json`, exportDefinition(editor.getState().draft));
   const conflict = Boolean(message?.error && message.code === 'revision_conflict' && saved.record);
-  const messageText =
-    message?.code && message.code !== 'revision_conflict'
-      ? t(`saveError.${message.code}`, { message: message.text })
-      : message?.text;
+  const messageText = !message?.code
+    ? message?.text
+    : message.code === 'revision_conflict'
+      ? saved.record
+        ? message.text
+        : t('saveError.idTaken')
+      : t(`saveError.${message.code}`, { message: message.text });
   const loadLatest = async () => {
     if ((await loadLatestEditorCopy(workingCopy, repository)) && !discarded.current)
       await router.invalidate();
