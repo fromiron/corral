@@ -413,17 +413,17 @@ export function QuickOpen({
             </CommandMenuItem>
           )}
         >
-          <CommandMenuEmpty role="none" aria-live="off">
-            {unreadTarget
-              ? null
-              : target === null
+          {unreadTarget ? null : (
+            <CommandMenuEmpty role="none" aria-live="off">
+              {target === null
                 ? t('noTarget')
                 : error
                   ? error
                   : searching
                     ? t('searching')
                     : t('empty')}
-          </CommandMenuEmpty>
+            </CommandMenuEmpty>
+          )}
         </CommandMenuList>
         {unreadTarget ? (
           <div className="flex flex-col items-start gap-2 px-4 py-2">
