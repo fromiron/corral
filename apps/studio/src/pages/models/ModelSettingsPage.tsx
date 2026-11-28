@@ -1,4 +1,4 @@
-import { Button, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
+import { Button, EmptyState, TabsSubtle, TabsSubtleItem } from '@corral/react/design-kit';
 import { type ReactNode, useId, useState } from 'react';
 import { useTranslations } from 'use-intl';
 import { useServices } from '../../services.tsx';
@@ -107,7 +107,7 @@ export function ModelSettingsPage() {
           {mode !== 'server' || !models ? (
             <p className="text-body text-muted-foreground">{t('browserOnly')}</p>
           ) : !live ? (
-            <p className="text-body text-muted-foreground">{t('noLive')}</p>
+            <EmptyState title={t('noLive')} />
           ) : (
             <>
               {/* Narrow, the strip scrolls; the kit's edge fade shows there is more beyond it. */}

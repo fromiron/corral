@@ -932,7 +932,7 @@
       "connections": "Connections"
     },
     "browserOnly": "Model settings need the local server. The in-browser demo always uses simulated agents.",
-    "noLive": "This server runs simulated agents only.",
+    "noLive": "This server was started with models off. Start it again with models on to connect one.",
     "endpointChanged": "The endpoint address changed since the key was entered. Enter the key again.",
     "codexPermissions": "The Codex login file could not be verified as private. Check its permissions: restrict access to your user and system administrators on Windows, or use chmod 600 on macOS and Linux.",
     "apiKeyLabel": "API key",
