@@ -141,8 +141,12 @@ test('code and paths take the bundled monospace face from the studio origin, wit
     const code = document.createElement('code');
     const classed = document.createElement('span');
     classed.className = 'font-mono';
-    code.textContent = classed.textContent = 'a != b -> c';
-    document.body.append(code, classed);
+    const typeset = document.createElement('div');
+    typeset.className = 'typeset';
+    const typesetCode = document.createElement('code');
+    typeset.append(typesetCode);
+    code.textContent = classed.textContent = typesetCode.textContent = 'a != b -> c';
+    document.body.append(code, classed, typeset);
     const loaded = await document.fonts.load('14px "JetBrains Mono"', 'a != b -> c');
     const drawn = (element: Element) => {
       const style = getComputedStyle(element);
@@ -153,11 +157,12 @@ test('code and paths take the bundled monospace face from the studio origin, wit
     };
     const result = {
       faces: loaded.map((face) => ({ family: face.family, status: face.status })),
-      drawn: [drawn(code), drawn(classed)],
+      drawn: [drawn(code), drawn(classed), drawn(typesetCode)],
       token: getComputedStyle(document.documentElement).getPropertyValue('--font-mono').trim(),
     };
     code.remove();
     classed.remove();
+    typeset.remove();
     return result;
   });
   expect(mono.faces.length).toBeGreaterThan(0);
