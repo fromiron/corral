@@ -2846,6 +2846,13 @@
     "references": "참조",
     "noCommand": "맞는 명령이 없습니다.",
     "noReference": "맞는 파일·폴더·결과·실행·역할이 없습니다.",
+    "unreadLine": "읽지 못했습니다: {what}",
+    "unread": {
+      "files": "파일·폴더",
+      "results": "결과",
+      "roles": "역할"
+    },
+    "readAgain": "다시 시도",
     "group": {
       "file": "파일",
       "folder": "폴더",
@@ -2936,6 +2943,7 @@
     "reasoningUnsupportedHint": "이 모델은 요청한 추론 방식을 지원하지 않습니다. 새 요청을 보내려면 지원되는 추론 방식을 선택하세요.",
     "permissionMode": {
       "label": "다음 요청의 권한",
+      "defaultTip": "다음 요청의 권한: 기본 정책",
       "legacy": "기본 정책",
       "ask": "매번 확인",
       "accept_edits": "편집 허용",

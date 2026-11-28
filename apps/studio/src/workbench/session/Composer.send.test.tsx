@@ -43,7 +43,9 @@ vi.mock('../useModels.ts', () => ({
   useModelProfiles: () => null,
   useTeamRoles: () => [],
 }));
-vi.mock('../useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
+vi.mock('../useMentionSearch.ts', () => ({
+  useMentionSearch: () => async () => ({ items: [], unread: [] }),
+}));
 
 // jsdom has no Web Animations; the kit's menus and scroll areas ask for them.
 Element.prototype.getAnimations ??= () => [];

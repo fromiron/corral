@@ -55,7 +55,7 @@ it('offers readable result references and ordinary run pointers without retired 
   try {
     await act(async () => root.render(<Probe />));
     if (!search) throw new Error('mention search missing');
-    const items = await (search as ReturnType<typeof useMentionSearch>)('');
+    const { items } = await (search as ReturnType<typeof useMentionSearch>)('');
     expect(items.filter((item) => item.kind === 'result').map((item) => item.reference)).toEqual([
       { kind: 'result', runId: 'run', artifactVersionId: 'current' },
     ]);

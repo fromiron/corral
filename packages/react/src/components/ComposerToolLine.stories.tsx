@@ -16,10 +16,10 @@ import {
 import type { ProfileInfo } from '../../../../apps/studio/src/workbench/useModels.ts';
 import { OverviewStoryRouter } from '../../../../apps/studio/src/workbench/widgets/OverviewWidgets.story-fixture.tsx';
 
-// composer-flow.md "화면 틀": the tool line keeps one line's height whatever it holds. A long
-// model name gives way before its neighbours do: the icon buttons keep their square, the key hint
-// leaves whole, and the chip gives way before the permission select is cut, down to a stub that
-// clips its own marks.
+// composer-flow.md "화면 틀": the tool line keeps one line's height whatever it holds. Short of
+// room the key hint leaves whole, then what was not chosen gives its name up for a mark, then the
+// model's name is cut: the icon buttons keep their square, and the chip gives way before a chosen
+// permission is cut, down to a stub that clips its own marks.
 
 const LONG = 'provider-a/reasoning-model-2026-10-preview-long';
 
@@ -45,7 +45,17 @@ const target: SendTarget = {
   send: () => {},
 };
 
-function ToolLine({ width, name, team }: { width: number; name: string; team?: string }) {
+function ToolLine({
+  width,
+  name,
+  team,
+  policy,
+}: {
+  width: number;
+  name: string;
+  team?: string;
+  policy?: 'accept_edits';
+}) {
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const [text, setText] = useState('');
   const [choice, setChoice] = useState<AutoModelChoice>({ modelProfile: 'first' });
@@ -85,6 +95,7 @@ function ToolLine({ width, name, team }: { width: number; name: string; team?: s
                 teamMode="none"
                 corrals={corral ? [corral] : []}
                 isAuto={false}
+                policyChosen={policy !== undefined}
                 disabled={false}
                 open={false}
                 onOpenChange={() => {}}
@@ -116,7 +127,7 @@ function ToolLine({ width, name, team }: { width: number; name: string; team?: s
               modelOpen={false}
               onModelOpenChange={() => {}}
               onAutoChange={setChoice}
-              permissionMode={undefined}
+              permissionMode={policy}
               onPermissionMode={() => {}}
               voice={null as never}
               voiceTarget={null as never}
@@ -170,22 +181,41 @@ export const LongNameWide: Story = {
   },
 };
 
-export const LongNameGivesWayFirst: Story = {
+const permissionSelect = (canvasElement: HTMLElement) =>
+  [...canvasElement.querySelectorAll<HTMLElement>('[data-slot="select-trigger"]')].at(
+    -1,
+  ) as HTMLElement;
+const lineEnd = (canvasElement: HTMLElement) =>
+  canvasElement.querySelector('[class*="sm:overflow-x-clip"]')?.getBoundingClientRect().right ?? 0;
+const drawn = (element: Element | null) => (element?.getBoundingClientRect().width ?? 0) > 0;
+
+export const DefaultPolicyGivesItsNameFirst: Story = {
   args: { width: 400 },
   play: async ({ canvasElement }) => {
     const { name } = expectNeighboursHold(canvasElement);
-    // Short of room the chip gives way before anything else is cut: the permission select, the
-    // last of the line's settings, still ends inside the tool line's clip.
-    const slot = canvasElement
-      .querySelector('[class*="sm:overflow-x-clip"]')
-      ?.getBoundingClientRect();
-    const selects = canvasElement.querySelectorAll('[data-slot="select-trigger"]');
-    const permission = selects[selects.length - 1]?.getBoundingClientRect();
-    expect(permission?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
-      (slot?.right ?? 0) + 0.5,
+    const permission = permissionSelect(canvasElement);
+    expect(drawn(permission.querySelector('[data-policy-mark]'))).toBe(true);
+    expect(permission.getBoundingClientRect().width).toBeCloseTo(28, 0);
+    expect(permission.getBoundingClientRect().right).toBeLessThanOrEqual(
+      lineEnd(canvasElement) + 0.5,
     );
-    // The name is cut hard to make that room.
-    expect(name?.clientWidth ?? 0).toBeLessThan((name?.scrollWidth ?? 0) / 4);
+    expect(name?.clientWidth ?? 0).toBeGreaterThan(64);
+  },
+};
+
+export const ChosenPolicyKeepsItsName: Story = {
+  args: { width: 400, policy: 'accept_edits' },
+  play: async ({ canvasElement }) => {
+    const { name } = expectNeighboursHold(canvasElement);
+    const permission = permissionSelect(canvasElement);
+    expect(permission.querySelector('[data-policy-mark]')).toBeNull();
+    expect(permission).toHaveTextContent('Accept edits');
+    expect(permission.scrollWidth).toBeLessThanOrEqual(permission.clientWidth + 1);
+    expect(permission.getBoundingClientRect().right).toBeLessThanOrEqual(
+      lineEnd(canvasElement) + 0.5,
+    );
+    expect(drawn(canvasElement.querySelector('[data-team-mark]'))).toBe(true);
+    expect(name?.clientWidth ?? 0).toBeLessThan(name?.scrollWidth ?? 0);
   },
 };
 
@@ -205,17 +235,14 @@ export const ShortNameShowsTheHint: Story = {
 };
 
 export const ChipCutToAStub: Story = {
-  args: { width: 352 },
+  args: { width: 316, policy: 'accept_edits', team: 'Release crew' },
   play: async ({ canvasElement }) => {
     const trigger = within(canvasElement).getByRole('button', { name: /^Model(: .+)?$/ });
-    const slot = canvasElement
-      .querySelector('[class*="sm:overflow-x-clip"]')
-      ?.getBoundingClientRect();
-    const selects = canvasElement.querySelectorAll('[data-slot="select-trigger"]');
-    const permission = selects[selects.length - 1]?.getBoundingClientRect();
-    // Even the chip's own marks give way before the permission select is cut,
-    expect(permission?.right ?? Number.POSITIVE_INFINITY).toBeLessThanOrEqual(
-      (slot?.right ?? 0) + 0.5,
+    const permission = permissionSelect(canvasElement);
+    // Both chosen, nothing folds: the chip's own marks give way before the permission is cut,
+    expect(permission).toHaveTextContent('Accept edits');
+    expect(permission.getBoundingClientRect().right).toBeLessThanOrEqual(
+      lineEnd(canvasElement) + 0.5,
     );
     // and what the chip cannot fit is clipped at its own edge, never drawn over its neighbour.
     const bounds = trigger.getBoundingClientRect();

@@ -35,7 +35,9 @@ vi.mock('../useModels.ts', () => ({
   useModelProfiles: () => null,
   useTeamRoles: () => [],
 }));
-vi.mock('../useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
+vi.mock('../useMentionSearch.ts', () => ({
+  useMentionSearch: () => async () => ({ items: [], unread: [] }),
+}));
 
 const disposals: (() => Promise<void>)[] = [];
 afterEach(async () => {

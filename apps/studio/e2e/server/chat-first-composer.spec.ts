@@ -4,6 +4,7 @@ import type { Page } from '@playwright/test';
 import {
   activityBar,
   newConversation,
+  openPanelTab,
   openProject,
   requestBox,
   saveTemplateCopy,
@@ -307,5 +308,43 @@ test('the activity bar tells of a waiting question only while its tray is out of
   await page.getByRole('button', { name: 'Jump to latest' }).click();
   await expect(tray).toBeInViewport();
   await expect(bar).not.toHaveAttribute('data-line', 'waiting');
+  expect(corral.errors).toEqual([]);
+});
+
+// features/composer-flow.md "화면 틀": beside an open panel the conversation is 560px, and there
+// what was not chosen gives its name up for a mark so the model's name shows whole.
+test('on a narrow composer the default policy leaves its mark, and a chosen policy keeps its name while “No Corral” leaves its mark', async ({
+  page,
+  corral,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await startChat(page, corral);
+  const policy = page.getByRole('combobox', { name: 'Permissions for next request', exact: true });
+  const model = page.getByRole('button', { name: /^Model(: .+)?$/ });
+  const nameWhole = () =>
+    model.evaluate((chip) => {
+      const name = chip.querySelector('[data-slot="model-picker-name"]');
+      return name ? name.scrollWidth <= name.clientWidth + 1 : false;
+    });
+  await expect(policy.getByText('Default policy', { exact: true })).toBeVisible();
+  await expect(policy.locator('[data-policy-mark]')).toBeHidden();
+
+  corral.fake?.answerWith('Hello.');
+  await requestBox(page).fill('Say hello');
+  await page.getByRole('button', { name: 'Send', exact: true }).click();
+  await expect.poll(() => corral.server.coordinator.listRuns()[0]?.status).toBe('succeeded');
+  await openPanelTab(page, 'Results');
+  await expect(policy.getByText('Default policy', { exact: true })).toBeHidden();
+  await expect(policy.locator('[data-policy-mark]')).toBeVisible();
+  await expect(teamChip(page).getByText('No Corral', { exact: true })).toBeVisible();
+  expect(await nameWhole()).toBe(true);
+
+  await policy.click();
+  await page.getByRole('option', { name: /^Accept edits/ }).click();
+  await expect(policy.getByText('Accept edits', { exact: true })).toBeVisible();
+  await expect(policy.locator('[data-policy-mark]')).toHaveCount(0);
+  await expect(teamChip(page).getByText('No Corral', { exact: true })).toBeHidden();
+  await expect(teamChip(page).locator('[data-team-mark]')).toBeVisible();
+  expect(await nameWhole()).toBe(true);
   expect(corral.errors).toEqual([]);
 });

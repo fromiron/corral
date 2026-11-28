@@ -65,7 +65,9 @@ vi.mock('../../workbench/useModels.ts', () => ({
   useModelProfiles: () => fixture.profiles,
   useTeamRoles: () => fixture.roles,
 }));
-vi.mock('../../workbench/useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
+vi.mock('../../workbench/useMentionSearch.ts', () => ({
+  useMentionSearch: () => async () => ({ items: [], unread: [] }),
+}));
 // The activity bar has its own tests (ComposerActivity.test.tsx); here it only holds its place.
 vi.mock('../../workbench/session/ComposerActivity.tsx', () => ({
   ComposerActivity: () => (

@@ -727,6 +727,7 @@ function SessionComposer({
               teamMode={teamMode}
               corrals={corrals}
               isAuto={isAuto}
+              policyChosen={permissionMode !== undefined}
               disabled={busy}
               open={teamOpen}
               onOpenChange={setTeamOpen}

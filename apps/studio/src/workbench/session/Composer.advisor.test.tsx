@@ -41,7 +41,9 @@ vi.mock('../useModels.ts', () => ({
   ],
   useTeamRoles: () => [],
 }));
-vi.mock('../useMentionSearch.ts', () => ({ useMentionSearch: () => async () => [] }));
+vi.mock('../useMentionSearch.ts', () => ({
+  useMentionSearch: () => async () => ({ items: [], unread: [] }),
+}));
 
 Element.prototype.getAnimations ??= () => [];
 

@@ -2846,6 +2846,13 @@
     "references": "References",
     "noCommand": "No matching command.",
     "noReference": "No matching files, folders, results, runs or roles.",
+    "unreadLine": "Could not read {what}.",
+    "unread": {
+      "files": "files and folders",
+      "results": "results",
+      "roles": "roles"
+    },
+    "readAgain": "Try again",
     "group": {
       "file": "Files",
       "folder": "Folders",
@@ -2936,6 +2943,7 @@
     "reasoningUnsupportedHint": "This model does not support the requested reasoning policy. Choose a supported effort before sending a new request.",
     "permissionMode": {
       "label": "Permissions for next request",
+      "defaultTip": "Permissions for next request: default policy",
       "legacy": "Default policy",
       "ask": "Ask",
       "accept_edits": "Accept edits",

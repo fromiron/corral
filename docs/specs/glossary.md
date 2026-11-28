@@ -40,7 +40,7 @@
 | 내용을 보았다는 기록. Paddock 전체를 지금까지 읽었다고 남기는 기준점과, 다른 비교에서 이미 본 파일의 표시 | Mark all read up to now / 지금까지 모두 읽음(남기는 동작), Since marked read / 읽음 기록 이후(그 뒤만 보는 비교 범위), Unread file writes / 읽지 않은 파일 쓰기(읽음 기록 뒤의 쓰기를 알리는 확인 필요 항목), Read in another comparison / 다른 비교에서 읽음(파일의 표시) | `POST /sessions/:id/reviewed`, `reviewedAt`, 범위 `review`, inbox `unreviewed` | 검토함 · Reviewed, 확인함, 승인(이 뜻으로) |
 | 한 비교에서 파일 하나의 변경을 검토했다는, 이 브라우저의 표시 | Reviewed / 검토함, Mark reviewed / 검토함 표시 | `changeReviewKey` | 읽음, 승인(이 뜻으로) |
 | 변경 전체에 내리는 사람의 판단 | Approve these changes / 이 변경 승인, Mark as needing changes / 수정 필요로 표시 | `ReviewService`의 decision | 검토함, 읽음(이 뜻으로) |
-| 실행 상태와 일시정지·재개·중지를 한 줄로 보이는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
+| 실행 상태를 한 줄로 보이고, 펼치면 역할·계획·일시정지·재개·중지가 있는 컴포저 위의 줄 | Activity bar / 활동 바 | `ActivityBar` | 실행 조작 알약, 한 줄 상태, 진행 중 실행 제어 |
 | 달리는 실행을 다루는 자리(지시, 일시정지·재개·중지, 실행 단위의 취소·다시 시작) | Reins / Reins | `reins`, 메시지 `Reins`, [Reins 상태 계약](features/reins.md) | Run controls / 실행 조작(이름표로), Give instruction / 지시하기(영역의 제목으로. 그 영역을 여는 동작의 이름으로는 쓴다), Steer |
 | Run 전체를 끝내는 조작 | Stop the run / 실행 중지(버튼 자리가 좁으면 Stop / 중지) | 명령 `cancel`(Run 범위) | 이 뜻으로: 실행 전체 취소, 실행 중단, Cancel whole run. 취소 · Cancel은 실행 단위 하나를 끝내는 조작의 이름이다 |
 | 앱 전체의 색 구성 선택 | Appearance / 화면 테마 | `theme`(밝기), `palette`(이름 있는 테마) | 스킨, 컬러 스킴 |
