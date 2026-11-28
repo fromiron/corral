@@ -629,26 +629,38 @@ it('lists only the groups that have items or failed, and keeps the others one cl
   expect(settingsItemOf(router.state.location.state)).toBeUndefined();
 });
 
-it('offers New team and Browse templates when the project has no teams', async () => {
-  const { container, router } = await render('/library/teams?project=project_1');
+it('puts New Corral inside the empty box and Import at the end of the tab row, with no button to the templates', async () => {
+  const { container } = await render('/library/teams?project=project_1');
   const panel = container.querySelector<HTMLElement>('[role="tabpanel"]') as HTMLElement;
+  const state = panel.querySelector<HTMLElement>('[data-slot="empty-state"]') as HTMLElement;
   expect(panel.querySelectorAll('.border-dashed')).toHaveLength(1);
   // No pointer to templates "below": they are on their own tab.
   expect(panel.textContent).not.toMatch(/below/i);
-  expect(byText(panel, 'a', 'New Corral')?.getAttribute('href')).toBe(
+  expect(byText(state, 'a', 'New Corral')?.getAttribute('href')).toBe(
     '/corrals/new/edit?project=project_1',
   );
+  // The box holds the panel's one action, and nothing stands under the box.
+  expect([...panel.querySelectorAll('button, a')].map((item) => item.textContent)).toEqual([
+    'New Corral',
+  ]);
+  expect(panel.querySelectorAll('input[type="file"]')).toHaveLength(0);
   // The storage note is not a sentence under the list.
   expect(panel.textContent).not.toContain('saved in this app data folder');
-  await act(async () => byText(panel, 'button', 'Browse templates')?.click());
-  await settle();
-  expect(router.state.location.pathname).toBe('/library/templates');
-  expect(router.state.location.search).toMatchObject({ project: 'project_1' });
+  // Import stands where it does beside a list of teams, on the tab row, and New Corral is on
+  // screen once.
+  const importJson = byText(container, 'button', 'Import JSON') as HTMLElement;
+  let row = container.querySelector<HTMLElement>('[role="tablist"]')?.parentElement;
+  while (row && !row.contains(importJson)) row = row.parentElement;
+  expect(row && !row.contains(panel)).toBe(true);
+  expect(container.querySelectorAll('input[type="file"]')).toHaveLength(1);
+  expect(container.querySelectorAll('a[href^="/corrals/new/edit"]')).toHaveLength(1);
+  expect(byText(container, 'button', 'Browse templates')).toBeUndefined();
 });
 
-// The empty Corral list keeps to its one title line; no second line explains or urges.
+// The empty Corral list keeps to its one title line and its one action; no second line explains
+// or urges.
 it.each(['en', 'ko'] as const)(
-  'heads an empty Corral list with its title alone, no line under it (%s)',
+  'heads an empty Corral list with its title and New Corral alone, no line under it (%s)',
   async (locale) => {
     const text = locale === 'ko' ? ko : messages;
     const { container } = await render('/library/teams?project=project_1', undefined, locale);
@@ -656,7 +668,7 @@ it.each(['en', 'ko'] as const)(
     const state = panel.querySelector('[data-slot="empty-state"]') as HTMLElement;
     expect(state.querySelector('b')?.textContent).toBe(text.Workspace.empty);
     expect(state.querySelectorAll('p')).toHaveLength(0);
-    expect(state.textContent).toBe(text.Workspace.empty);
+    expect(state.textContent).toBe(`${text.Workspace.empty}${text.Workspace.new}`);
   },
 );
 

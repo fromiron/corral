@@ -141,12 +141,6 @@ export function LibraryPage({ view = 'teams' }: { view?: LibraryView | undefined
         corrals={data.corrals}
         onChanged={reload}
         toolbar={toolbar}
-        onBrowseTemplates={() =>
-          void navigate({
-            to: VIEW_ROUTES.templates,
-            search: { ...kept, project: projectId },
-          })
-        }
       />
     ) : view === 'templates' ? (
       <LibraryTemplates projectId={projectId} project={project} />

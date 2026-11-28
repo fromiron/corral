@@ -640,7 +640,7 @@
     "apps/studio/src/pages/library/LibraryAgents.tsx": 4,
     "apps/studio/src/pages/library/LibraryPage.tsx": 7,
     "apps/studio/src/pages/library/LibraryResources.tsx": 13,
-    "apps/studio/src/pages/library/LibraryTeams.tsx": 17,
+    "apps/studio/src/pages/library/LibraryTeams.tsx": 16,
     "apps/studio/src/pages/meeting/MeetingPage.tsx": 49,
     "apps/studio/src/pages/models/AddConnectionDialog.tsx": 47,
     "apps/studio/src/pages/models/ApiKeyInput.tsx": 6,

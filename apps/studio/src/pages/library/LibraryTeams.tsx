@@ -66,7 +66,6 @@ export function LibraryTeams({
   projects,
   corrals,
   onChanged,
-  onBrowseTemplates,
   toolbar,
 }: {
   projectId: string;
@@ -74,8 +73,6 @@ export function LibraryTeams({
   projects: ProjectSummary[];
   corrals: CorralSummary[];
   onChanged: () => void;
-  /** Switches the library to its Templates tab. */
-  onBrowseTemplates: () => void;
   /** The library's toolbar row, where this view's actions stand. */
   toolbar: HTMLElement | null;
 }) {
@@ -183,8 +180,8 @@ export function LibraryTeams({
     <>
       <Tooltip content={t('importHint')} className="max-w-xs">
         <Button
-          variant={teams.length ? 'tertiary' : 'ghost'}
-          size={teams.length ? 'compact' : 'default'}
+          variant="tertiary"
+          size="compact"
           disabled={busy}
           onClick={() => importInput.current?.click()}
           aria-description={t('importHint')}
@@ -206,23 +203,23 @@ export function LibraryTeams({
   );
   return (
     <div className="flex flex-col gap-6">
-      {teams.length && toolbar
+      {toolbar && (teams.length || !archived)
         ? // The list's actions; the Teams tab beside them already names the list and counts it.
           createPortal(
             <>
               {/* Where teams are kept is worth knowing once, not a line under the list. */}
-              <Tooltip content={storage} className="max-w-xs">
-                <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
-                  <Info aria-hidden />
-                </Button>
-              </Tooltip>
-              {archived ? null : (
-                <>
-                  {importButton}
-                  <Button size="compact" render={newTeamLink}>
-                    {t('new')}
+              {teams.length ? (
+                <Tooltip content={storage} className="max-w-xs">
+                  <Button variant="ghost" size="icon-compact" aria-label={tl('teams.storage')}>
+                    <Info aria-hidden />
                   </Button>
-                </>
+                </Tooltip>
+              ) : null}
+              {archived ? null : importButton}
+              {archived || !teams.length ? null : (
+                <Button size="compact" render={newTeamLink}>
+                  {t('new')}
+                </Button>
               )}
             </>,
             toolbar,
@@ -235,20 +232,10 @@ export function LibraryTeams({
       ) : null}
       <Errors errors={errors} />
       {teams.length === 0 ? (
-        <div className="grid justify-items-center gap-4">
-          <div className="w-full">
-            <EmptyState title={t('empty')} />
-          </div>
-          {archived ? null : (
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button render={newTeamLink}>{t('new')}</Button>
-              <Button variant="tertiary" onClick={onBrowseTemplates}>
-                {tl('teams.browseTemplates')}
-              </Button>
-              {importButton}
-            </div>
-          )}
-        </div>
+        <EmptyState
+          title={t('empty')}
+          action={archived ? undefined : <Button render={newTeamLink}>{t('new')}</Button>}
+        />
       ) : (
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
           <Table aria-label={tl('teams.list')}>

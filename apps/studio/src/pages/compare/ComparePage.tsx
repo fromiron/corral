@@ -1,5 +1,5 @@
 import { type ComparedRun, RunComparison } from '@corral/react';
-import { Button, fontWeights, ThinkingIndicator } from '@corral/react/design-kit';
+import { Button, EmptyState, fontWeights, ThinkingIndicator } from '@corral/react/design-kit';
 import { Link } from '@tanstack/react-router';
 import { useEffect, useState } from 'react';
 import { useTranslations } from 'use-intl';
@@ -101,10 +101,14 @@ export function ComparePage() {
         </Link>
       </div>
       {incomplete ? (
-        <div className="flex flex-col items-start gap-3 text-body">
-          <p>{t('chooseRunsHint')}</p>
-          {chooseRuns}
-        </div>
+        <EmptyState
+          title={t('empty')}
+          action={
+            <Button render={<Link to="/projects/$projectId" params={{ projectId }} hash="runs" />}>
+              {t('chooseRuns')}
+            </Button>
+          }
+        />
       ) : read.state === 'refused' ? (
         <div className="flex flex-col items-start gap-3 text-body">
           <div role="alert" className="flex flex-col gap-1 text-destructive">

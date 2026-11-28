@@ -2031,7 +2031,7 @@
     "select": "Select run {runId} to compare",
     "back": "Back to project home",
     "chooseRuns": "Choose two runs",
-    "chooseRunsHint": "Choose two runs from the project’s Runs list to compare their results.",
+    "empty": "Two runs aren’t chosen yet",
     "unnamedRun": "Run",
     "loading": "Reading the two runs",
     "readFailed": "The runs could not be read.",
@@ -3806,7 +3806,6 @@
       "detail": "Corral details",
       "newConversation": "New conversation with this Corral",
       "edit": "Edit",
-      "browseTemplates": "Browse templates",
       "storage": "Where Corrals are saved"
     },
     "skills": {
