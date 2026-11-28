@@ -46,8 +46,8 @@ const REVIEWED = new Set([
   'WTFPL OR ISC',
   'WTFPL',
   '(WTFPL OR MIT)',
-  // The bundled Inter, JetBrains Mono and Pretendard variable fonts (@fontsource-variable/inter,
-  // @fontsource-variable/jetbrains-mono, pretendard); shipped with the app, not sold alone.
+  // The bundled Inter, JetBrains Mono, Geist Mono and Pretendard variable fonts
+  // (@fontsource-variable/*, pretendard); shipped with the app, not sold alone.
   'OFL-1.1',
 ]);
 

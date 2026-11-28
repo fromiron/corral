@@ -96,7 +96,7 @@ export function CodeEditorView(props: CodeEditorViewProps) {
   useEffect(() => {
     let cancelled = false;
     let cleanup = () => {};
-    void Promise.all([loadMonaco(), monoFontReady(FONT_SIZE)])
+    void Promise.all([loadMonaco(), monoFontReady()])
       .then(([monaco]) => {
         if (cancelled || !container.current) return;
         applyEditorTheme(monaco);

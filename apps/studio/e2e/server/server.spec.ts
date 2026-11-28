@@ -155,27 +155,25 @@ test('Studio works under the strict CSP, and a tab without a session says so', a
   await other.close();
 });
 
-test('every subset of the bundled monospace face loads under the strict CSP', async ({
-  page,
-  corral,
-}) => {
+test('every bundled monospace face loads under the strict CSP', async ({ page, corral }) => {
   const violations = await policyViolations(page);
   await corral.open('/');
   await expect(page.getByRole('banner')).toBeVisible();
   // One character from each declared range: Latin, Latin Extended, Cyrillic, Cyrillic Extended,
-  // Greek, Vietnamese. A small subset the build inlines as data would be refused by `font-src`.
+  // Greek, Vietnamese, and a box-drawing character from the second family. A small subset the
+  // build inlines as data would be refused by `font-src`.
   const statuses = await page.evaluate(async () => {
-    const sample = 'a \u0101 \u044f \u0460 \u03b1 \u1ec7';
+    const sample = 'a \u0101 \u044f \u0460 \u03b1 \u1ec7 \u2502';
     const probe = document.createElement('code');
     probe.textContent = sample;
     document.body.append(probe);
-    await document.fonts.load('14px "JetBrains Mono"', sample).catch(() => undefined);
+    await document.fonts.load('14px "JetBrains Mono", "Geist Mono"', sample).catch(() => undefined);
     await document.fonts.ready;
     probe.remove();
     return [...document.fonts]
-      .filter((face) => face.family.replaceAll('"', '') === 'JetBrains Mono')
-      .map((face) => face.status);
+      .filter((face) => /JetBrains Mono|Geist Mono/.test(face.family))
+      .map((face) => `${face.family.replaceAll('"', '')} ${face.status}`);
   });
-  expect(statuses).toEqual(Array(6).fill('loaded'));
+  expect(statuses).toEqual([...Array(6).fill('JetBrains Mono loaded'), 'Geist Mono loaded']);
   expect(violations).toEqual([]);
 });

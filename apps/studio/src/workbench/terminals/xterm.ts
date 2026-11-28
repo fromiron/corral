@@ -25,7 +25,7 @@ export async function createXterm(
     import('@xterm/xterm'),
     import('@xterm/addon-fit'),
     import('@xterm/xterm/css/xterm.css'),
-    monoFontReady(FONT_SIZE),
+    monoFontReady(),
   ]);
   const host = document.createElement('div');
   host.className = 'h-full min-h-64 w-full';

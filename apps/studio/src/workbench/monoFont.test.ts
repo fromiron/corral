@@ -19,15 +19,26 @@ it('reads the monospace family from the token, and uses the generic family where
   expect(monoFontFamily()).toBe('"JetBrains Mono", ui-monospace, monospace');
 });
 
-it('waits for the face at the size asked for, and goes on when it cannot be loaded', async () => {
-  document.documentElement.style.setProperty('--font-mono', '"JetBrains Mono", monospace');
-  const load = vi.fn(async (_font: string) => []);
-  fonts({ load });
-  await monoFontReady(14);
-  expect(load).toHaveBeenCalledWith('14px "JetBrains Mono", monospace');
+it('waits for every face of the families the token names, and goes on when one cannot be loaded', async () => {
+  document.documentElement.style.setProperty(
+    '--font-mono',
+    '"JetBrains Mono", "Geist Mono", monospace',
+  );
+  const face = (family: string, load = vi.fn(async () => undefined)) => ({ family, load });
+  const latin = face('"JetBrains Mono"');
+  const greek = face(
+    'JetBrains Mono',
+    vi.fn(async () => {
+      throw new Error('offline');
+    }),
+  );
+  const box = face("'Geist Mono'");
+  const sans = face('Inter');
+  fonts(new Set([latin, greek, box, sans]));
+  await expect(monoFontReady()).resolves.toBeUndefined();
+  for (const wanted of [latin, greek, box]) expect(wanted.load).toHaveBeenCalledTimes(1);
+  expect(sans.load).not.toHaveBeenCalled();
 
-  load.mockRejectedValueOnce(new Error('offline'));
-  await expect(monoFontReady(14)).resolves.toBeUndefined();
   fonts(undefined);
-  await expect(monoFontReady(14)).resolves.toBeUndefined();
+  await expect(monoFontReady()).resolves.toBeUndefined();
 });

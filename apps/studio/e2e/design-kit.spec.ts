@@ -97,6 +97,37 @@ test('Hangul takes the kit weights from a bundled variable face after Inter', as
   expect(fontRequests.every((url) => new URL(url).origin === origin)).toBe(true);
 });
 
+test('a row of box-drawing characters is as wide and as tall as a row of letters in the monospace family', async ({
+  page,
+}) => {
+  await page.goto('/projects');
+  await expect(page.getByRole('button', { name: 'New project', exact: true })).toBeVisible();
+  const rows = await page.evaluate(async () => {
+    const bundled = [...document.fonts].filter((face) =>
+      /JetBrains Mono|Geist Mono/.test(face.family),
+    );
+    await Promise.all(bundled.map((face) => face.load()));
+    const measure = (text: string) => {
+      const row = document.createElement('div');
+      row.className = 'font-mono';
+      row.style.cssText = 'position:absolute;white-space:pre;line-height:normal';
+      row.textContent = text;
+      document.body.append(row);
+      const { width, height } = row.getBoundingClientRect();
+      row.remove();
+      return { width, height };
+    };
+    return {
+      letters: measure('abcdefgh'),
+      box: measure('\u2502\u2500\u253c\u2588\u251c\u2514\u2500\u2502'),
+      mixed: measure('\u2502 ab \u2502 c'),
+    };
+  });
+  expect(rows.letters.width).toBeGreaterThan(0);
+  expect(rows.box).toEqual(rows.letters);
+  expect(rows.mixed).toEqual(rows.letters);
+});
+
 test('code and paths take the bundled monospace face from the studio origin, with its ligatures off', async ({
   page,
 }) => {
