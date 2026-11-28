@@ -2541,6 +2541,8 @@
     "run": "실행",
     "folderReadFailed": "프로젝트 폴더 연결을 읽지 못했습니다: {message}",
     "copyReadFailed": "이 대화의 Paddock을 읽지 못했습니다: {message}",
+    "gitReadFailed": "Git 상태를 읽지 못했습니다: {message}",
+    "mergeReadFailed": "부모 대화로의 병합을 읽지 못했습니다: {message}",
     "checksReadFailed": "검사 기록을 읽지 못했습니다: {message}",
     "listReadFailed": "파일 목록을 읽지 못했습니다: {message}"
   },

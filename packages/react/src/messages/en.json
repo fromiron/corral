@@ -2541,6 +2541,8 @@
     "run": "Run",
     "folderReadFailed": "The project folder link could not be read: {message}",
     "copyReadFailed": "This conversation’s Paddock could not be read: {message}",
+    "gitReadFailed": "Could not read the Git state: {message}",
+    "mergeReadFailed": "Could not read the merge into the parent conversation: {message}",
     "checksReadFailed": "The check records could not be read: {message}",
     "listReadFailed": "The file list could not be read: {message}"
   },
