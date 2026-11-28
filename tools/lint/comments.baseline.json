@@ -725,7 +725,7 @@
     "apps/studio/src/workbench/MeetingRecords.tsx": 7,
     "apps/studio/src/workbench/MeetingRoundStatus.tsx": 14,
     "apps/studio/src/workbench/MessageBranch.tsx": 1,
-    "apps/studio/src/workbench/NewMeeting.tsx": 12,
+    "apps/studio/src/workbench/NewMeeting.tsx": 7,
     "apps/studio/src/workbench/PermissionModePicker.tsx": 1,
     "apps/studio/src/workbench/PierreCode.tsx": 27,
     "apps/studio/src/workbench/PresenceMark.tsx": 8,
